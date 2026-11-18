@@ -5,12 +5,12 @@ use super::pricer::BsmPricer;
 use crate::OptionType;
 use crate::pricing::digital::expiry_indicator;
 use crate::traits::Greeks;
+use crate::traits::ModelPricer;
 
 /// Closed-form Greeks at the `(s, k, r, q, tau)` query of [`BsmPricer`]'s prices, each but `zeta`
 /// NaN at `tau = 0`, where an expired option has a value and no sensitivity.
 impl BsmPricer {
-  /// Every Greek at one query point; the one place `Greeks::volga` maps to [`vomma`](Self::vomma)
-  /// and `Greeks::veta` to [`dvega_dtime`](Self::dvega_dtime).
+  /// Every Greek at one query point.
   pub fn greeks(
     &self,
     s: f64,
@@ -31,8 +31,8 @@ impl BsmPricer {
       rho: self.rho(s, k, r, q, tau, option_type),
       vanna: self.vanna(s, k, r, q, tau),
       charm: self.charm(s, k, r, q, tau, option_type),
-      volga: self.vomma(s, k, r, q, tau),
-      veta: self.dvega_dtime(s, k, r, q, tau),
+      volga: self.volga(s, k, r, q, tau),
+      veta: self.veta(s, k, r, q, tau),
     }
   }
 
@@ -58,7 +58,7 @@ impl BsmPricer {
     }
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) / (s * self.v * tau.sqrt())
+    ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) / (s * self.sigma * tau.sqrt())
   }
 
   /// Gamma per 1% of spot.
@@ -78,7 +78,7 @@ impl BsmPricer {
     let exp_rt = (-r * tau).exp();
     let pdf_d1 = norm_pdf(d1);
 
-    let first_term = -s * exp_bt * pdf_d1 * self.v / (2.0 * tau.sqrt());
+    let first_term = -s * exp_bt * pdf_d1 * self.sigma / (2.0 * tau.sqrt());
 
     if option_type == OptionType::Call {
       let second_term = -(b - r) * s * exp_bt * norm_cdf(d1);
@@ -118,10 +118,10 @@ impl BsmPricer {
   }
 
   /// Vomma / volga — $\partial^2 V/\partial \sigma^2$.
-  pub fn vomma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+  pub fn volga(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    self.vega(s, k, r, q, tau) * d1 * d2 / self.v
+    self.vega(s, k, r, q, tau) * d1 * d2 / self.sigma
   }
 
   /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
@@ -129,7 +129,7 @@ impl BsmPricer {
     if tau == 0.0 {
       return f64::NAN;
     }
-    let v = self.v;
+    let v = self.sigma;
     let b = self.b(r, q);
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
@@ -154,14 +154,14 @@ impl BsmPricer {
     }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    -((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * d2 / self.v
+    -((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * d2 / self.sigma
   }
 
   /// Zomma — $\partial \Gamma/\partial \sigma$.
   pub fn zomma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    self.gamma(s, k, r, q, tau) * (d1 * d2 - 1.0) / self.v
+    self.gamma(s, k, r, q, tau) * (d1 * d2 - 1.0) / self.sigma
   }
 
   /// Zomma per 1% of spot.
@@ -173,7 +173,7 @@ impl BsmPricer {
   pub fn speed(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
-    -self.gamma(s, k, r, q, tau) * (1.0 + d1 / (self.v * tau.sqrt())) / s
+    -self.gamma(s, k, r, q, tau) * (1.0 + d1 / (self.sigma * tau.sqrt())) / s
   }
 
   /// Color — $\partial \Gamma/\partial t$.
@@ -182,40 +182,29 @@ impl BsmPricer {
     let b = self.b(r, q);
 
     self.gamma(s, k, r, q, tau)
-      * (r - b + b * d1 / (self.v * tau.sqrt()) + (1.0 - d1 * d2) / (2.0 * tau))
+      * (r - b + b * d1 / (self.sigma * tau.sqrt()) + (1.0 - d1 * d2) / (2.0 * tau))
   }
 
   /// Ultima — $\partial^3 V/\partial \sigma^3$.
   pub fn ultima(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    -self.vomma(s, k, r, q, tau) / self.v * (d1 * d2 - (d1 / d2) + (d2 / d1) - 1.0)
+    -self.volga(s, k, r, q, tau) / self.sigma * (d1 * d2 - (d1 / d2) + (d2 / d1) - 1.0)
   }
 
   /// Veta / DvegaDtime — $\partial^2 V/\partial \sigma \partial t$.
-  pub fn dvega_dtime(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+  pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
     let b = self.b(r, q);
 
     self.vega(s, k, r, q, tau)
-      * (r - b + b * d1 / (self.v * tau.sqrt()) - (d1 * d2 + 1.0) / (2.0 * tau))
+      * (r - b + b * d1 / (self.sigma * tau.sqrt()) - (d1 * d2 + 1.0) / (2.0 * tau))
   }
 
-  /// Lambda (elasticity) against the call and against the put, both using
-  /// the delta of `option_type` — preserved verbatim from the pre-query
-  /// method, which likewise divided a single delta by both prices.
-  pub fn lambda(
-    &self,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    tau: f64,
-    option_type: OptionType,
-  ) -> (f64, f64) {
-    let (call, put) = self.call_put(s, k, r, q, tau);
-    let delta = self.delta(s, k, r, q, tau, option_type);
-    (delta * s / call, delta * s / put)
+  /// Lambda (elasticity) $\Delta\,S/V$ of the given option.
+  pub fn lambda(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let price = self.price_option(s, k, r, q, tau, option_type);
+    self.delta(s, k, r, q, tau, option_type) * s / price
   }
 
   /// Phi — $\partial V/\partial q$ (dividend / carry rho).
@@ -237,7 +226,7 @@ impl BsmPricer {
   /// Zeta — the in-the-money probability of Haug (2007), *The Complete Guide to Option Pricing
   /// Formulas*: `N(d₂)` (call) or `N(−d₂)` (put), and `1{s > k}` or `1{s < k}` at `tau = 0`.
   pub fn zeta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    if tau == 0.0 && self.v.is_finite() {
+    if tau == 0.0 && self.sigma.is_finite() {
       return expiry_indicator(option_type, s * (self.b(r, q) * tau).exp(), k);
     }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
@@ -280,6 +269,6 @@ impl BsmPricer {
     }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
-    norm_pdf(d2) * (-r * tau).exp() / (k * self.v * tau.sqrt())
+    norm_pdf(d2) * (-r * tau).exp() / (k * self.sigma * tau.sqrt())
   }
 }

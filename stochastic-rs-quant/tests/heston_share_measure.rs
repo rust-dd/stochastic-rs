@@ -1,15 +1,15 @@
 //! `E[e^X] = 1` normalises Gil–Pelaez's share-measure integral, also where `ρσ > κ`.
 
 use num_complex::Complex64;
-use stochastic_rs_quant::calibration::hkde::HkdeParams;
-use stochastic_rs_quant::calibration::svj::SvjParams;
 use stochastic_rs_quant::pricing::fourier::BatesFourier;
 use stochastic_rs_quant::pricing::fourier::DoubleHestonFourier;
 use stochastic_rs_quant::pricing::fourier::FourierModelExt;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
+use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::heston::HestonPricer;
 use stochastic_rs_quant::traits::ModelPricer;
@@ -90,7 +90,7 @@ fn the_models_sharing_the_heston_factor_price_there_too() {
       v0: p.v0,
       kappa,
       theta: p.theta,
-      sigma_v: sigma,
+      sigma,
       rho,
       lambda: 0.5,
       mu_j: -0.1,
@@ -100,7 +100,7 @@ fn the_models_sharing_the_heston_factor_price_there_too() {
       v0: p.v0,
       kappa,
       theta: p.theta,
-      sigma_v: sigma,
+      sigma,
       rho,
       lambda: 0.8,
       p_up: 0.4,

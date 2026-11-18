@@ -3,7 +3,7 @@
 //! $$
 //! \begin{aligned}
 //! dS_t &= (r-q-\lambda\bar k)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + S_t(e^{J_t}-1)\,dN_t \\
-//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma_v\sqrt{v_t}\,dW_t^v, \quad
+//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v, \quad
 //! d\langle W^S,W^v\rangle_t = \rho\,dt
 //! \end{aligned}
 //! $$
@@ -20,7 +20,7 @@
 //! $\phi_{\mathrm{Hkde}}(\xi,t) = \phi_{\mathrm{Hes}}(\xi,t)\,\phi_{\mathrm{Kou}}(\xi,t)$
 //! and is provided by [`HkdeFourier`](crate::pricing::fourier::HkdeFourier).
 //!
-//! The nine-dimensional parameter vector $\theta=(v_0,\kappa,\theta,\sigma_v,\rho,
+//! The nine-dimensional parameter vector $\theta=(v_0,\kappa,\theta,\sigma,\rho,
 //! \lambda,p,\eta_1,\eta_2)$ is calibrated against a set of market quotes by
 //! minimising the vega-weighted least-squares objective (Eq. 12 of the paper):
 //!
@@ -58,9 +58,9 @@ mod loss;
 mod params;
 
 pub use calibrator::HkdeCalibrator;
-pub use params::HkdeParams;
 
 use crate::calibration::Calibrated;
+use crate::pricing::fourier::HkdeParams;
 use crate::traits::ToModel;
 
 impl ToModel for Calibrated<HkdeParams> {

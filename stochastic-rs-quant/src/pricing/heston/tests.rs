@@ -55,7 +55,7 @@ fn deep_otm_short_dated_stays_within_the_quadrature_tolerance_of_zero() {
 #[test]
 fn heston_single_price() {
   let heston = HestonPricer::new(HestonParams::new(0.05, 5.0, 0.05, 0.5, -0.8));
-  let (call, put) = heston.call_put(100.0, 90.0, 0.03, 0.02, 0.5);
+  let CallPut { call, put } = heston.price_call_put(100.0, 90.0, 0.03, 0.02, 0.5);
   assert!(call.is_finite() && call > 0.0);
   assert!(put.is_finite() && put > 0.0);
 }
@@ -71,10 +71,9 @@ fn analytic_initial_variance_vega_matches_a_resolved_centered_difference() {
   down.params.v0 -= bump;
   let finite_difference =
     (up.price_call(s, k, r, q, tau) - down.price_call(s, k, r, q, tau)) / (2.0 * bump);
-  let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
+  let vega = pricer.initial_variance_vega(s, k, r, q, tau);
 
-  assert!((call - finite_difference).abs() < 1e-4);
-  assert_eq!(call, put);
+  assert!((vega - finite_difference).abs() < 1e-4);
 }
 
 #[test]
@@ -95,7 +94,7 @@ fn heston_implied_volatility() {
 fn heston_little_trap_long_maturity_high_rho() {
   let heston = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.9));
 
-  let (call, put) = heston.call_put(100.0, 100.0, 0.05, 0.0, 5.0);
+  let CallPut { call, put } = heston.price_call_put(100.0, 100.0, 0.05, 0.0, 5.0);
   assert!(
     call.is_finite() && call > 0.0,
     "Heston Trap form should give finite positive call at T=5y, ρ=-0.9: {call}"
@@ -417,7 +416,7 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
   let ot = OptionType::Call;
 
-  let (call, put) = m.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
   assert!((call - 5.229927051858368).abs() < TOL, "call {call}");
   assert!((put - 7.854146952238395).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
@@ -426,7 +425,7 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
   // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
-  let v0_vega = m.call_put_initial_variance_vega(s, k, r, q, tau).0;
+  let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
     (v0_vega - 44.210292529055565).abs() < TOL,
     "v0 vega {v0_vega}"
@@ -473,8 +472,8 @@ fn heston_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(s, k, r, q, tau, ot), "rho");
     assert_eq!(g.vanna, m.vanna(s, k, r, q, tau), "vanna");
     assert_eq!(g.charm, m.charm(s, k, r, q, tau, ot), "charm");
-    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga is vomma");
-    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga");
+    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }
@@ -487,7 +486,7 @@ fn heston_greeks_aggregate_matches_accessors() {
 fn heston_price_put_matches_parity_but_is_the_closed_form() {
   let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
   let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
-  let (call, put) = m.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
   let parity = call - s * (-q * tau).exp() + k * (-r * tau).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
   assert_eq!(m.price_put(s, k, r, q, tau), put);

@@ -68,8 +68,7 @@ fn analytic(case: usize, s: f64, v0: f64) -> f64 {
     sigma,
     rho,
   })
-  .call_put(s, 100.0, r_d, r_f, tau)
-  .0
+  .price_call(s, 100.0, r_d, r_f, tau)
 }
 
 fn adi(case: usize, v0: f64) -> HestonAdiPricer {

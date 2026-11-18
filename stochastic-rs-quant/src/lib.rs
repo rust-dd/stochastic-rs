@@ -192,6 +192,7 @@ mod types;
 pub use calibration::quote::OptionQuote;
 pub use error::QuantError;
 pub use types::CalibrationLossScore;
+pub use types::CallPut;
 pub use types::LossMetric;
 pub use types::Moneyness;
 pub use types::OptionStyle;

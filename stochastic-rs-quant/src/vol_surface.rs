@@ -79,7 +79,8 @@
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
-//! use stochastic_rs_quant::calibration::{SvjCalibrator, SvjParams};
+//! use stochastic_rs_quant::calibration::SvjCalibrator;
+//! use stochastic_rs_quant::pricing::fourier::SvjParams;
 //! use stochastic_rs_quant::pricing::fourier::BatesFourier;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
@@ -88,7 +89,7 @@
 //! let r = 0.03;
 //! let q = 0.0;
 //! let true_params = SvjParams {
-//!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma_v: 0.3, rho: -0.6,
+//!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6,
 //!     lambda: 0.3, mu_j: -0.05, sigma_j: 0.15,
 //! };
 //! let model_true = BatesFourier::new(true_params);
@@ -101,7 +102,7 @@
 //! // A reasonable initial guess keeps the optimiser fast; without one the fit
 //! // starts from a generic default and costs many more iterations.
 //! let initial = SvjParams {
-//!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma_v: 0.4, rho: -0.4,
+//!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma: 0.4, rho: -0.4,
 //!     lambda: 0.2, mu_j: -0.02, sigma_j: 0.1,
 //! };
 //! let cal = SvjCalibrator::new(s0, r, q, quotes).with_start(initial);
@@ -225,6 +226,7 @@
 //!
 //! ```
 //! use ndarray::Array2;
+//! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::vol_surface::build_surface;
 //!
 //! let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -234,7 +236,7 @@
 //! let prices = Array2::from_shape_fn((3, 5), |(j, i)| {
 //!     (forwards[j] - strikes[i] + 10.0_f64).max(0.5_f64) + j as f64
 //! });
-//! let surface = build_surface(strikes, maturities, forwards, prices.view(), true);
+//! let surface = build_surface(strikes, maturities, forwards, prices.view(), OptionType::Call);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (3, 5));
 //! ```
 //!

@@ -7,10 +7,12 @@ use stochastic_rs_quant::calibration::tree_swaption::BlackKarasinskiParams;
 use stochastic_rs_quant::calibration::tree_swaption::G2ppParams;
 use stochastic_rs_quant::instruments::BermudanDates;
 use stochastic_rs_quant::instruments::BermudanSwaption;
+use stochastic_rs_quant::instruments::BermudanSwaptionValuation;
 use stochastic_rs_quant::instruments::BermudanTree;
 use stochastic_rs_quant::instruments::ExerciseSchedule;
 use stochastic_rs_quant::instruments::SwaptionDirection;
 use stochastic_rs_quant::instruments::TreeCouponSchedule;
+use stochastic_rs_quant::instruments::option::bermudan::one_factor_valuation;
 use stochastic_rs_quant::lattice::BlackKarasinskiTree;
 use stochastic_rs_quant::lattice::BlackKarasinskiTreeModel;
 use stochastic_rs_quant::lattice::CurveFittedHullWhiteTree;
@@ -85,7 +87,7 @@ fn a_tree_model_reads_each_field_of_its_params() {
   assert_eq!((single.initial_rate, single.sigma), (0.03_f32, 0.012_f32));
 }
 
-/// The values the positional constructors gave for the same numbers, bit for bit.
+/// Pinned on rc.4 for the same numbers, bit for bit.
 #[test]
 fn the_trees_price_a_zero_coupon_bond_as_before() {
   assert_eq!(hw_tree().zero_coupon_bond_price(), HW_ZCB);
@@ -93,8 +95,7 @@ fn the_trees_price_a_zero_coupon_bond_as_before() {
   assert_eq!(g2_tree().zero_coupon_bond_price(), G2_ZCB);
 }
 
-/// Every tree answers one `valuation`, with the prices `price_on`, `price_on_tree` and
-/// `price_on_g2pp` gave, bit for bit.
+/// Every tree answers one `valuation`, with rc.4's prices bit for bit.
 #[test]
 fn a_bermudan_swaption_prices_on_any_bermudan_tree() {
   let pins = [
@@ -129,8 +130,21 @@ fn a_curve_fitted_tree_and_a_generic_caller_price_through_the_trait() {
     stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
   );
   let fitted = CurveFittedHullWhiteTree::new(0.1, 0.012, &curve, 5.0, 20);
-  let npv = payer.npv(&fitted);
-  assert!(npv.is_finite() && npv > 0.0, "{npv}");
+  assert_eq!(payer.npv(&fitted), 0.1040235044511398);
+}
+
+struct OwnTree(HullWhiteTree<f64>);
+
+impl BermudanTree<f64> for OwnTree {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<f64>) -> BermudanSwaptionValuation<f64> {
+    one_factor_valuation(swaption, &self.0.tree, &self.0.model)
+  }
+}
+
+#[test]
+fn a_callers_own_tree_prices_through_the_one_factor_helper() {
+  let payer = swaption(SwaptionDirection::Payer);
+  assert_eq!(payer.npv(&OwnTree(hw_tree())), HW_PAYER);
 }
 
 #[test]

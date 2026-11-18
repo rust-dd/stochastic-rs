@@ -21,8 +21,8 @@ fn black_karasinski_fits_a_small_swaption_grid() {
     Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
-  let quote = |expiry: f64, tenor: f64, black_vol: f64| SwaptionQuote {
-    expiry,
+  let quote = |tau: f64, tenor: f64, black_vol: f64| SwaptionQuote {
+    tau,
     tenor,
     black_vol,
     fixed_accrual: 0.5,

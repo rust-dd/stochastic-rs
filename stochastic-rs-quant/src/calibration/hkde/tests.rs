@@ -13,7 +13,7 @@ use crate::traits::ModelPricer;
 use crate::traits::ToModel;
 
 /// Analytical reference Heston prices at
-/// (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7),
+/// (v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7),
 /// S=100, r=0.05, q=0, T=1.
 const HESTON_REF: [f64; 9] = [
   25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
@@ -26,7 +26,7 @@ const SHOP: HkdeParams = HkdeParams {
   v0: 0.176,
   kappa: 0.191,
   theta: 0.728,
-  sigma_v: 0.194,
+  sigma: 0.194,
   rho: -0.718,
   lambda: 1.009,
   p_up: 0.958,
@@ -39,7 +39,7 @@ fn ref_hkde_params() -> HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 2.0,
     p_up: 0.4,
@@ -61,13 +61,13 @@ fn hkde_projection_enforces_feller() {
   let mut p = ref_hkde_params();
   p.kappa = 0.5;
   p.theta = 0.01;
-  p.sigma_v = 0.9;
+  p.sigma = 0.9;
   p.project_in_place();
   assert!(
-    2.0 * p.kappa * p.theta >= p.sigma_v * p.sigma_v - 1e-10,
-    "Feller violated after projection: 2*k*theta={}, sigma_v^2={}",
+    2.0 * p.kappa * p.theta >= p.sigma * p.sigma - 1e-10,
+    "Feller violated after projection: 2*k*theta={}, sigma^2={}",
     2.0 * p.kappa * p.theta,
-    p.sigma_v * p.sigma_v
+    p.sigma * p.sigma
   );
 }
 
@@ -88,7 +88,7 @@ const START: HkdeParams = HkdeParams {
   v0: 0.05,
   kappa: 1.8,
   theta: 0.05,
-  sigma_v: 0.4,
+  sigma: 0.4,
   rho: -0.6,
   lambda: 0.05,
   p_up: 0.5,
@@ -127,7 +127,7 @@ fn hkde_calibrate_self_consistency() {
     v0: 0.05,
     kappa: 1.5,
     theta: 0.05,
-    sigma_v: 0.25,
+    sigma: 0.25,
     rho: -0.5,
     lambda: 1.0,
     p_up: 0.5,
@@ -165,7 +165,7 @@ fn hkde_calibrate_multi_maturity() {
       v0: 0.05,
       kappa: 1.8,
       theta: 0.05,
-      sigma_v: 0.25,
+      sigma: 0.25,
       rho: -0.5,
       lambda: 1.5,
       p_up: 0.5,
@@ -313,16 +313,7 @@ fn the_fit_converts_to_the_hkde_model_of_its_parameters() {
     .with_options(CalibrationOptions::default().with_max_iterations(2))
     .calibrate(None)
     .unwrap();
-  let model = fit.to_model();
-  let p = fit.params;
-  assert_eq!(
-    [model.v0, model.kappa, model.theta, model.sigma_v, model.rho],
-    [p.v0, p.kappa, p.theta, p.sigma_v, p.rho]
-  );
-  assert_eq!(
-    [model.lam, model.p_up, model.eta1, model.eta2],
-    [p.lambda, p.p_up, p.eta1, p.eta2]
-  );
+  assert_eq!(fit.to_model().params(), fit.params);
 }
 
 /// The SHOP parameter set from Agazzotti et al. (2025), Table 1, is fully
@@ -337,14 +328,14 @@ fn the_published_shop_set_is_admissible() {
   assert!((projected.v0 - original.v0).abs() < eps);
   assert!((projected.kappa - original.kappa).abs() < eps);
   assert!((projected.theta - original.theta).abs() < eps);
-  assert!((projected.sigma_v - original.sigma_v).abs() < eps);
+  assert!((projected.sigma - original.sigma).abs() < eps);
   assert!((projected.rho - original.rho).abs() < eps);
   assert!((projected.lambda - original.lambda).abs() < eps);
   assert!((projected.p_up - original.p_up).abs() < eps);
   assert!((projected.eta1 - original.eta1).abs() < eps);
   assert!((projected.eta2 - original.eta2).abs() < eps);
   assert!(
-    2.0 * projected.kappa * projected.theta >= projected.sigma_v * projected.sigma_v,
+    2.0 * projected.kappa * projected.theta >= projected.sigma * projected.sigma,
     "Feller should hold for SHOP"
   );
 }
@@ -372,7 +363,7 @@ fn the_published_shop_set_is_recovered_from_its_own_prices() {
     v0: 0.12,
     kappa: 0.3,
     theta: 0.6,
-    sigma_v: 0.25,
+    sigma: 0.25,
     rho: -0.55,
     lambda: 0.8,
     p_up: 0.9,

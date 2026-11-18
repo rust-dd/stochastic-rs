@@ -20,7 +20,7 @@ const START: SvjParams = SvjParams {
   v0: 0.06,
   kappa: 2.0,
   theta: 0.06,
-  sigma_v: 0.4,
+  sigma: 0.4,
   rho: -0.5,
   lambda: 0.1,
   mu_j: 0.0,
@@ -41,7 +41,7 @@ fn bates_pricer_matches_heston_reference() {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.0,
     mu_j: 0.0,
@@ -80,7 +80,7 @@ fn svj_bates_little_trap_long_maturity_high_rho() {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.9,
     lambda: 0.3,
     mu_j: -0.05,
@@ -129,7 +129,7 @@ fn a_start_outside_the_bates_domain_is_an_error() {
   let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   for start in [
     SvjParams {
-      sigma_v: -0.3,
+      sigma: -0.3,
       ..START
     },
     SvjParams {
@@ -177,16 +177,7 @@ fn the_fit_converts_to_the_bates_model_of_its_parameters() {
     .with_options(CalibrationOptions::default().with_max_iterations(3))
     .calibrate(None)
     .unwrap();
-  let model = fit.to_model();
-  let p = fit.params;
-  assert_eq!(
-    [model.v0, model.kappa, model.theta, model.sigma_v, model.rho],
-    [p.v0, p.kappa, p.theta, p.sigma_v, p.rho]
-  );
-  assert_eq!(
-    [model.lambda, model.mu_j, model.sigma_j],
-    [p.lambda, p.mu_j, p.sigma_j]
-  );
+  assert_eq!(fit.to_model().params(), fit.params);
 }
 
 #[test]
@@ -207,7 +198,7 @@ fn test_svj_calibrate() {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
-      sigma_v: 0.5,
+      sigma: 0.5,
       rho: -0.7,
       lambda: 0.5,
       mu_j: -0.05,

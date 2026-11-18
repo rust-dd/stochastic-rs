@@ -3,11 +3,10 @@ use crate::OptionQuote;
 use crate::OptionType;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 fn converged_call(params: &HestonParams, k: f64, tau: f64) -> f64 {
-  HestonPricer::new(*params)
-    .call_put(100.0, k, 0.05, 0.0, tau)
-    .0
+  HestonPricer::new(*params).price_call(100.0, k, 0.05, 0.0, tau)
 }
 
 fn calibrator(params: &HestonParams, k: f64, tau: f64) -> HestonCalibrator {

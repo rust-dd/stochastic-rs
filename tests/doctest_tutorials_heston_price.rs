@@ -1,6 +1,7 @@
 // docs: tutorials/heston
 //! Prices a Heston European call in semi-closed form and by Gil-Pelaez Fourier inversion.
 
+use stochastic_rs::quant::CallPut;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
 use stochastic_rs::quant::pricing::heston::HestonParams;
@@ -19,7 +20,7 @@ fn heston_call_two_ways() {
     sigma: 0.3,
     rho: -0.7,
   });
-  let (call, put) = model.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = model.price_call_put(s, k, r, q, tau);
   let parity = s * (-q * tau).exp() - k * (-r * tau).exp();
   assert!((call - put - parity).abs() < 1e-8);
 

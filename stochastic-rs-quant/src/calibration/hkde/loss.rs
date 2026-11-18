@@ -7,7 +7,6 @@ use super::calibrator::HkdeCalibrator;
 use super::params::BOX;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
-use super::params::HkdeParams;
 use super::params::KAPPA_MIN;
 use super::params::P_P_UP;
 use super::params::RHO_BOUND;
@@ -23,6 +22,7 @@ use crate::calibration::scale_columns;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
+use crate::pricing::fourier::HkdeParams;
 use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
@@ -66,17 +66,7 @@ impl<'a> HkdeProblem<'a> {
   }
 
   fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
-    HkdeFourier {
-      v0: p.v0,
-      kappa: p.kappa,
-      theta: p.theta,
-      sigma_v: p.sigma_v,
-      rho: p.rho,
-      lam: p.lambda,
-      p_up: p.p_up,
-      eta1: p.eta1,
-      eta2: p.eta2,
-    }
+    HkdeFourier::unchecked(*p)
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Vec<f64> {
@@ -130,8 +120,8 @@ impl<'a> HkdeProblem<'a> {
           minus.theta = (x - h).max(THETA_MIN);
         }
         3 => {
-          plus.sigma_v = (x + h).abs().max(SIGMA_V_MIN);
-          minus.sigma_v = (x - h).abs().max(SIGMA_V_MIN);
+          plus.sigma = (x + h).abs().max(SIGMA_V_MIN);
+          minus.sigma = (x - h).abs().max(SIGMA_V_MIN);
         }
         4 => {
           plus.rho = (x + h).clamp(-RHO_BOUND, RHO_BOUND);

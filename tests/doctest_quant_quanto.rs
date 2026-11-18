@@ -13,7 +13,10 @@ fn quanto_price_forward_and_merton_reduction() {
   // Query: (s, k, r = domestic rate, q, tau) — the Haug §2.13.4 inputs.
   let (s, k, r, q, tau) = (100.0, 105.0, 0.08, 0.04, 0.5);
 
-  let (call, put) = model.call_put(s, k, r, q, tau);
+  let (call, put) = (
+    model.price_call(s, k, r, q, tau),
+    model.price_put(s, k, r, q, tau),
+  );
   assert!((call - 5.2936847941).abs() < 1e-4);
   assert!((put - 12.2976985036).abs() < 1e-4);
   assert_eq!(model.price_call(s, k, r, q, tau), call);

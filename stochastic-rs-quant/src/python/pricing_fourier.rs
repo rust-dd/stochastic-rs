@@ -1,8 +1,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::calibration::hkde::HkdeParams;
-use crate::calibration::svj::SvjParams;
+use crate::pricing::fourier::HkdeParams;
+use crate::pricing::fourier::SvjParams;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
@@ -160,7 +160,7 @@ impl PyBatesFourier {
         v0,
         kappa,
         theta,
-        sigma_v,
+        sigma: sigma_v,
         rho,
         lambda,
         mu_j,
@@ -335,7 +335,7 @@ impl PyHkdeFourier {
         v0,
         kappa,
         theta,
-        sigma_v,
+        sigma: sigma_v,
         rho,
         lambda: lam,
         p_up,

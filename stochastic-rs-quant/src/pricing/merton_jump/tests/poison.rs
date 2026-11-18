@@ -41,7 +41,7 @@ fn a_poisoned_query_poisons_the_greeks_and_not_only_the_price() {
 fn an_inadmissible_gamma_announces_itself_in_the_greeks_too() {
   for gamma in [-0.25, 1.5] {
     let m = Merton1976Pricer {
-      v: 0.2,
+      sigma: 0.2,
       lambda: 0.5,
       gamma,
       m: 20,
@@ -58,16 +58,8 @@ fn an_inadmissible_gamma_announces_itself_in_the_greeks_too() {
   }
 }
 
-/// The third route, and the one nothing else in the file covers: at
-/// `λτ ≈ 5e8` the Poisson weight's running product overflows to `∞` while
-/// `e^{-λτ}` underflows to `0`, so the weight itself is `0 · ∞ = NaN` with
-/// no degenerate term anywhere in sight. `call_put` has no floor, so the
-/// price was already `NaN`; the Greeks reported `0.0`. `σ_n` is an ordinary
-/// positive number in every term, so no limit is claimed and the poisoned
-/// weight multiplies straight through.
-///
-/// One intensity short of that the weights are merely tiny and both sides
-/// come back finite, so this is the boundary and not the whole regime.
+/// At `λτ ≈ 5e8` the Poisson weight is `0 · ∞ = NaN` with no degenerate term in sight: the price
+/// and every Greek are NaN, while one intensity short of it both stay finite.
 #[test]
 fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
   let m = Merton1976Pricer::new(0.2, 1.0e9, 0.4, 50, BsmCoc::Bsm1973);
@@ -85,7 +77,7 @@ fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
 
 /// The same disagreement one layer down, on a model whose terms **are**
 /// degenerate — the configuration the narrowed floor still laundered,
-/// because `term.v == 0.0` is true there by construction.
+/// because `term.sigma == 0.0` is true there by construction.
 ///
 /// A frozen underlying has `σ_n = 0` for every `n`, so every closed form is
 /// `NaN` at every query, good or bad, and the floor could not tell the two

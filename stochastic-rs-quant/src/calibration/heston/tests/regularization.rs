@@ -11,6 +11,7 @@ use crate::calibration::least_squares::tests::worst_relative_error;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
+use crate::traits::ModelPricer;
 
 const TRUTH: HestonParams = HestonParams {
   v0: 0.04,
@@ -27,7 +28,7 @@ fn calibrator(regularization: Option<Regularization>) -> HestonCalibrator {
   let quotes = strikes
     .iter()
     .map(|&k| {
-      let price = pricer.call_put(s, k, r, 0.0, tau).0;
+      let price = pricer.price_call(s, k, r, 0.0, tau);
       OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();

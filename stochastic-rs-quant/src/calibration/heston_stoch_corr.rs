@@ -25,6 +25,7 @@ use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
 use crate::calibration::quote::validate_quotes;
 use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
+use crate::traits::ModelPricer;
 use crate::traits::ToModel;
 
 /// Parameter bounds for HSCM calibration (matches Python repo).
@@ -132,7 +133,7 @@ impl CalibData {
     let (k, tau) = (quote.strike, quote.tau);
     match quote.option_type {
       OptionType::Call => model.price_call_carr_madan(self.s, k, self.r, self.q, tau),
-      OptionType::Put => model.call_put(self.s, k, self.r, self.q, tau).1,
+      OptionType::Put => model.price_put(self.s, k, self.r, self.q, tau),
     }
   }
 

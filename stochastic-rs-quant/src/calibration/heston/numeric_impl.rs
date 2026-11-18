@@ -14,10 +14,10 @@ use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
-use crate::OptionType;
 use crate::calibration::clip_negative;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 /// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their optimum from 0.01 to 0.3
 /// and lose it from 1 up, where the row stiffens the kink at the cap.
@@ -61,12 +61,15 @@ impl HestonCalibrator {
 
     for (idx, quote) in self.quotes.iter().enumerate() {
       let pricer = HestonPricer::new(*params);
-      let (call, put) = pricer.call_put(self.s, quote.strike, self.r, self.q, quote.tau);
-
-      match quote.option_type {
-        OptionType::Call => c_model[idx] = clip_negative(call),
-        OptionType::Put => c_model[idx] = clip_negative(put),
-      }
+      let price = pricer.price_option(
+        self.s,
+        quote.strike,
+        self.r,
+        self.q,
+        quote.tau,
+        quote.option_type,
+      );
+      c_model[idx] = clip_negative(price);
     }
 
     c_model

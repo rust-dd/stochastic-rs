@@ -3,8 +3,6 @@
 
 use num_complex::Complex64;
 use stochastic_rs_quant::OptionType;
-use stochastic_rs_quant::calibration::hkde::HkdeParams;
-use stochastic_rs_quant::calibration::svj::SvjParams;
 use stochastic_rs_quant::pricing::fourier::BatesFourier;
 use stochastic_rs_quant::pricing::fourier::BsmFourier;
 use stochastic_rs_quant::pricing::fourier::CgmyFourier;
@@ -14,9 +12,11 @@ use stochastic_rs_quant::pricing::fourier::DoubleHestonFourier;
 use stochastic_rs_quant::pricing::fourier::FourierModelExt;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::KouFourier;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
 use stochastic_rs_quant::pricing::fourier::NigFourier;
+use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::fourier::VarianceGammaFourier;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::regime_switching::RegimeSwitchingModel;
@@ -186,7 +186,7 @@ fn the_cumulant_table() {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.5,
     lambda: 0.5,
     mu_j: -0.1,
@@ -202,7 +202,7 @@ fn the_cumulant_table() {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.5,
+    sigma: 0.5,
     rho: -0.5,
     lambda: 0.8,
     p_up: 0.4,
@@ -378,7 +378,7 @@ fn heston_cumulants_keep_their_digits_at_a_small_kappa() {
     v0: 0.04,
     kappa: 1e-3,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.5,
     lambda: 0.5,
     mu_j: -0.1,
@@ -394,7 +394,7 @@ fn heston_cumulants_keep_their_digits_at_a_small_kappa() {
     v0: 0.04,
     kappa: 1e-3,
     theta: 0.04,
-    sigma_v: 0.5,
+    sigma: 0.5,
     rho: -0.5,
     lambda: 0.8,
     p_up: 0.4,

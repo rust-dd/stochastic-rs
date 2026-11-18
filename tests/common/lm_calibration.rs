@@ -111,7 +111,7 @@ pub fn cases() -> Vec<Case> {
   let sabr_quotes = strikes
     .iter()
     .map(|&k| {
-      let price = sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0;
+      let price = sabr.price_call(100.0, k, 0.03, 0.0, 1.0);
       OptionQuote::new(k, 1.0, price, OptionType::Call)
     })
     .collect();

@@ -35,7 +35,13 @@ fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
 fn full_pipeline() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
 
-  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   assert_eq!(result.svi_params.len(), 3);
   assert_eq!(result.analytics.len(), 3);
@@ -62,7 +68,13 @@ fn full_pipeline() {
 #[test]
 fn pipeline_local_vol() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   let ks: Vec<f64> = (-10..=10).map(|i| i as f64 * 0.05).collect();
   let ts = vec![0.3, 0.5, 0.75];
@@ -160,15 +172,15 @@ fn build_surface_from_calibration_svj_multi_maturity() {
   use crate::OptionQuote;
   use crate::OptionType;
   use crate::calibration::svj::SvjCalibrator;
-  use crate::calibration::svj::SvjParams;
   use crate::pricing::fourier::BatesFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::traits::ModelPricer;
 
   let true_model = BatesFourier::new(SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.5,
     mu_j: -0.1,
@@ -310,8 +322,13 @@ fn to_model_trait_works_with_pipeline() {
 #[test]
 fn smile_slice_svi_fit() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let iv_surface =
-    ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices.view(), true);
+  let iv_surface = ImpliedVolSurface::from_prices(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   let slice = iv_surface.smile_slice(1);
   let svi = slice.fit_svi(None);
@@ -339,7 +356,7 @@ fn all_nan_surface_reports_nothing_checkable() {
     vec![0.5, 1.0],
     vec![100.0, 100.0],
     prices.view(),
-    true,
+    OptionType::Call,
   );
 
   let finite = result
@@ -374,7 +391,13 @@ fn all_nan_surface_reports_nothing_checkable() {
 #[test]
 fn checkable_surface_still_answers() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   for (_, min_g) in &result.butterfly_checks {
     assert!(min_g.is_finite(), "every slice must have been evaluated");

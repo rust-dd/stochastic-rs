@@ -8,9 +8,9 @@
 //! `Se^{bτ} = K`, so the term tends to `½(Se^{(b-r)τ} - Ke^{-rτ}) = 0`.
 //!
 //! `σ_n = √(d² + z²·n/τ)` is zero only where the *diffusive* volatility `d`
-//! is, so what reaches this branch is a zero total volatility — `v = 0`,
+//! is, so what reaches this branch is a zero total volatility — `sigma = 0`,
 //! which `new` accepts on purpose — and the pure-jump corner `gamma = 1`,
-//! at the `n = 0` term alone, for every intensity, since `λz²` is taken as `v²γ` directly.
+//! at the `n = 0` term alone, for every intensity, since `λz²` is taken as `σ²γ` directly.
 //!
 //! An ordinary configuration has `σ_0 = d > 0` and never touches the
 //! branch; `an_ordinary_configuration_never_reaches_the_branch` is the pin
@@ -49,11 +49,15 @@ fn frozen(coc: BsmCoc) -> Merton1976Pricer {
 fn zero_total_volatility_at_the_forward_is_the_limit() {
   for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
     let m = frozen(coc);
-    let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+    let CallPut { call, put } = m.price_call_put(S, S, R, Q, FUT_TAU);
     assert_eq!(call, 0.0, "{coc:?} call");
     assert_eq!(put, 0.0, "{coc:?} put");
 
-    let raw = BsmPricer::new(0.0, coc).call_put(S, S, R, Q, FUT_TAU);
+    let bsm = BsmPricer::new(0.0, coc);
+    let raw = (
+      bsm.price_call(S, S, R, Q, FUT_TAU),
+      bsm.price_put(S, S, R, Q, FUT_TAU),
+    );
     assert!(
       raw.0.is_nan() && raw.1.is_nan(),
       "{coc:?}: the underlying zero-vol term must be NaN, else this pins nothing: {raw:?}"
@@ -100,7 +104,7 @@ fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
   let m = frozen(BsmCoc::Black1976);
   let disc = (-R * FUT_TAU).exp();
   for &k in &[90.0, 110.0] {
-    let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
+    let CallPut { call, put } = m.price_call_put(S, k, R, Q, FUT_TAU);
     // Black1976 carries at b = 0, so the forward is S itself.
     assert!(
       (call - disc * (S - k).max(0.0)).abs() < TOL,
@@ -121,8 +125,7 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
   assert_eq!(m.price_call(S, S, 0.0, Q, FUT_TAU), 0.0);
   assert!(
     BsmPricer::new(0.0, BsmCoc::Bsm1973)
-      .call_put(S, S, 0.0, Q, FUT_TAU)
-      .0
+      .price_call(S, S, 0.0, Q, FUT_TAU)
       .is_nan(),
     "Bsm1973 at r = 0 must reach the same 0/0"
   );
@@ -134,7 +137,7 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
 #[test]
 fn parity_holds_at_the_filled_in_point() {
   let m = frozen(BsmCoc::Black1976);
-  let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+  let CallPut { call, put } = m.price_call_put(S, S, R, Q, FUT_TAU);
   assert!((call - put).abs() < TOL, "call {call} vs put {put}");
 }
 
@@ -149,7 +152,10 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
     let term = m.term_bsm(n, FUT_TAU);
     assert_eq!(
       Merton1976Pricer::term_call_put(&term, S, S, R, Q, FUT_TAU),
-      term.call_put(S, S, R, Q, FUT_TAU),
+      CallPut {
+        call: term.price_call(S, S, R, Q, FUT_TAU),
+        put: term.price_put(S, S, R, Q, FUT_TAU)
+      },
       "term {n} was intercepted"
     );
   }
@@ -157,8 +163,8 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
   assert!(call.is_finite() && call > 0.0, "ATM futures call {call}");
 }
 
-/// At `gamma = 1` the whole variance is jump variance, so `d² = v² − λz²` is `0` exactly for every
-/// `(v, λ)` in the sweep.
+/// At `gamma = 1` the whole variance is jump variance, so `d² = σ² − λz²` is `0` exactly for every
+/// `(σ, λ)` in the sweep.
 #[test]
 fn the_pure_jump_corner_is_zero_for_every_intensity() {
   for &(v, lambda) in &[
@@ -184,13 +190,13 @@ fn the_pure_jump_corner_is_zero_for_every_intensity() {
   }
 }
 
-/// An inadmissible `(lambda, gamma)` in a literal that bypasses `new` prices NaN: `√(v²γ/λ)` or
-/// `√(v² − v²γ)` is not real there, where the direct `v²(1 − γ)` gives a finite number.
+/// An inadmissible `(lambda, gamma)` in a literal that bypasses `new` prices NaN: `√(σ²γ/λ)` or
+/// `√(σ² − σ²γ)` is not real there, where the direct `σ²(1 − γ)` gives a finite number.
 #[test]
 fn an_inadmissible_gamma_still_announces_itself() {
   for &(lambda, gamma) in &[(0.5, -0.25), (-0.5, 0.4), (0.5, 1.5)] {
     let m = Merton1976Pricer {
-      v: 0.2,
+      sigma: 0.2,
       lambda,
       gamma,
       m: 20,
@@ -247,7 +253,7 @@ fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
 }
 
 /// At the forward `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, approached from
-/// `v > 0` with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
+/// `sigma > 0` with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
 #[test]
 fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   let m = frozen(BsmCoc::Black1976);
@@ -307,7 +313,7 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
       "v={v}: rho {rho} must close on {want_rho} linearly in v"
     );
     // A `1/sigma` pole has a constant residue; a large finite number does
-    // not. `sigma_n = v*sqrt(0.6 + 1.6n)` here, so `v` is the scale of the
+    // not. `sigma_n = sigma*sqrt(0.6 + 1.6n)` here, so `sigma` is the scale of the
     // whole series rather than of one term, and the product is constant to
     // the precision the pole is resolved at.
     let pole = gamma * v;
@@ -333,7 +339,7 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
 /// option is one a desk actually quotes. The price there was already right;
 /// `delta`, `gamma` and `rho` were each short one `w₀`-weighted term.
 ///
-/// Adjudicated by letting `gamma → 1⁻`, which shrinks `σ_0 = v√(1-γ)`
+/// Adjudicated by letting `gamma → 1⁻`, which shrinks `σ_0 = σ√(1-γ)`
 /// towards zero through models with **no** degenerate term at all: every
 /// value below is the limit of that family, and `gamma` diverges along it
 /// with a constant `σ_0·Γ` residue.
@@ -414,7 +420,7 @@ fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
   let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
   for m in [frozen(BsmCoc::Black1976), corner] {
     for &k in &[S, 90.0, 110.0] {
-      let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
+      let CallPut { call, put } = m.price_call_put(S, k, R, Q, FUT_TAU);
       assert_eq!(
         m.series_price(S, k, R, Q, FUT_TAU, OptionType::Call),
         call,

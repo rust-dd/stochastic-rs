@@ -62,7 +62,7 @@ impl SvjCalibrator {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
-      sigma_v: 0.5,
+      sigma: 0.5,
       rho: -0.5,
       lambda: 0.5,
       mu_j: -0.05,

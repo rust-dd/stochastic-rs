@@ -12,6 +12,7 @@ use crate::calibration::CalibrationOptions;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
+use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
 
 const HESTON_REF: [f64; 9] = [
@@ -41,7 +42,7 @@ fn heston_pricer_matches_reference() {
       sigma: 0.3,
       rho: -0.7,
     });
-    let (call, _) = pricer.call_put(100.0, k, 0.05, 0.0, 1.0);
+    let call = pricer.price_call(100.0, k, 0.05, 0.0, 1.0);
     assert!(
       (call - HESTON_REF[i]).abs() < 0.15,
       "Heston K={k}: got {call:.6}, expected {:.6}",
@@ -101,7 +102,7 @@ fn test_heston_calibrate() {
 fn seeded_calibrator(truth: HestonParams) -> HestonCalibrator {
   let strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let pricer = HestonPricer::new(truth);
-  let prices = strikes.map(|k| pricer.call_put(100.0, k, 0.01, 0.0, 0.5).0);
+  let prices = strikes.map(|k| pricer.price_call(100.0, k, 0.01, 0.0, 0.5));
   HestonCalibrator::new(100.0, 0.01, 0.0, calls(&strikes, &prices, 0.5)).with_options(history())
 }
 
@@ -305,7 +306,7 @@ fn test_heston_cui_price_and_jacobian_finite() {
 
   for (i, &strike) in k.iter().enumerate() {
     let pr = HestonPricer::new(params);
-    let (call_ref, _) = pr.call_put(100.0, strike, r, q_value, tau);
+    let call_ref = pr.price_call(100.0, strike, r, q_value, tau);
     let rel = ((c_model[i] - call_ref).abs()) / (1.0 + call_ref.abs());
     assert!(rel < 5e-2, "quote {} relative gap too large: {}", i, rel);
   }

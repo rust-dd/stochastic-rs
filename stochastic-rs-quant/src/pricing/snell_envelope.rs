@@ -49,24 +49,24 @@ pub struct SnellEnvelopeResult {
 #[derive(Debug, Clone, Copy)]
 pub struct SnellEnvelopePricer {
   /// Volatility $\sigma$.
-  pub v: f64,
+  pub sigma: f64,
   /// Number of binomial time steps.
   pub steps: usize,
 }
 
 impl SnellEnvelopePricer {
-  /// Panics unless `v` is finite and positive and `steps >= 1`.
-  pub fn new(v: f64, steps: usize) -> Self {
+  /// Panics unless `sigma` is finite and positive and `steps >= 1`.
+  pub fn new(sigma: f64, steps: usize) -> Self {
     assert!(
-      v.is_finite() && v > 0.0,
-      "v must satisfy `v.is_finite() && v > 0.0`, got v = {v:?}"
+      sigma.is_finite() && sigma > 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       steps >= 1,
       "steps must satisfy `steps >= 1`, got steps = {steps}"
     );
 
-    Self { v, steps }
+    Self { sigma, steps }
   }
 
   /// Finite rates, spot and strike, the last two positive; the pricing calls answer NaN otherwise.
@@ -82,7 +82,7 @@ impl SnellEnvelopePricer {
     }
     let dt = tau / self.steps as f64;
     let sqrt_dt = dt.sqrt();
-    let u = (self.v * sqrt_dt).exp();
+    let u = (self.sigma * sqrt_dt).exp();
     let d = 1.0 / u;
     let disc = (-r * dt).exp();
     let growth = ((r - q) * dt).exp();

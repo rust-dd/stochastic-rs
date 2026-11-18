@@ -2,6 +2,7 @@ use super::DoubleHestonParams;
 use super::loss::double_heston_call_price;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 #[test]
 fn vanished_factor_matches_heston_at_short_maturity() {
@@ -23,9 +24,7 @@ fn vanished_factor_matches_heston_at_short_maturity() {
   };
   for (k, tau) in [(95.0, 0.01), (100.0, 0.005), (105.0, 0.01)] {
     let double_heston = double_heston_call_price(&params, 100.0, k, 0.05, 0.0, tau);
-    let heston = HestonPricer::new(params.first)
-      .call_put(100.0, k, 0.05, 0.0, tau)
-      .0;
+    let heston = HestonPricer::new(params.first).price_call(100.0, k, 0.05, 0.0, tau);
 
     assert!(
       (double_heston - heston).abs() < 2e-3,

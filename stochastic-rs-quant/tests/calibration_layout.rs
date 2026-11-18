@@ -99,15 +99,14 @@ fn the_tree_calibrators_carry_their_fixed_inputs_in_params() {
     Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
-  let quotes =
-    [(1.0, 2.0, 0.22), (2.0, 2.0, 0.20)].map(|(expiry, tenor, black_vol)| SwaptionQuote {
-      expiry,
-      tenor,
-      black_vol,
-      fixed_accrual: 0.5,
-      direction: SwaptionDirection::Payer,
-      weight: None,
-    });
+  let quotes = [(1.0, 2.0, 0.22), (2.0, 2.0, 0.20)].map(|(tau, tenor, black_vol)| SwaptionQuote {
+    tau,
+    tenor,
+    black_vol,
+    fixed_accrual: 0.5,
+    direction: SwaptionDirection::Payer,
+    weight: None,
+  });
   let start = HullWhiteParams {
     mean_reversion: 0.05,
     sigma: 0.01,
@@ -367,7 +366,7 @@ fn the_jump_and_two_factor_calibrators_share_the_shape() {
   use stochastic_rs_quant::calibration::double_heston::DoubleHestonCalibrator;
   use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
   use stochastic_rs_quant::calibration::svj::SvjCalibrator;
-  use stochastic_rs_quant::calibration::svj::SvjParams;
+  use stochastic_rs_quant::pricing::fourier::SvjParams;
   fn assert_send_sync<T: Send + Sync>() {}
   assert_send_sync::<SvjCalibrator>();
   assert_send_sync::<DoubleHestonCalibrator>();
@@ -385,7 +384,7 @@ fn the_jump_and_two_factor_calibrators_share_the_shape() {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
-      sigma_v: 0.3,
+      sigma: 0.3,
       rho: -0.7,
       lambda: 0.1,
       mu_j: -0.05,

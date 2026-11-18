@@ -8,11 +8,8 @@ fn zero_jump_variance_matches_black_scholes_near_zero_volatility() {
     let cases = [
       (m.vega(S, S, 0.0, 0.0, 1.0), bs.vega(S, S, 0.0, 0.0, 1.0)),
       (m.vanna(S, S, 0.0, 0.0, 1.0), bs.vanna(S, S, 0.0, 0.0, 1.0)),
-      (m.volga(S, S, 0.0, 0.0, 1.0), bs.vomma(S, S, 0.0, 0.0, 1.0)),
-      (
-        m.veta(S, S, 0.0, 0.0, 1.0),
-        bs.dvega_dtime(S, S, 0.0, 0.0, 1.0),
-      ),
+      (m.volga(S, S, 0.0, 0.0, 1.0), bs.volga(S, S, 0.0, 0.0, 1.0)),
+      (m.veta(S, S, 0.0, 0.0, 1.0), bs.veta(S, S, 0.0, 0.0, 1.0)),
     ];
     for (actual, expected) in cases {
       assert!(

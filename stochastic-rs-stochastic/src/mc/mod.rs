@@ -22,7 +22,7 @@ pub use welford::Welford;
 use crate::traits::FloatExt;
 
 /// Result of a Monte Carlo estimation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct McEstimate<T: FloatExt> {
   /// Estimated mean.
   pub mean: T,

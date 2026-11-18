@@ -26,3 +26,23 @@ def test_almgren_chriss_plan_buys_the_sell_schedule_sign_reversed():
     assert sell.risk_adjusted_cost(1e-6) == pytest.approx(1275355.5583619347, **LIBM)
     with pytest.raises(ValueError, match="direction must be 'sell' or 'buy', got 'hold'"):
         sr.AlmgrenChrissPlan(*AC_ARGS, direction="hold")
+
+
+def test_order_book_answers_with_the_same_tuples():
+    book = sr.OrderBook()
+    assert book.add_order("sell", 101.0, 5.0) == (1, [])
+    assert book.add_order("sell", 102.0, 3.0) == (2, [])
+    assert book.add_order("buy", 99.0, 1.0) == (3, [])
+    assert book.add_order("buy", 98.5, 2.0) == (4, [])
+    assert book.depth() == ([(99.0, 1.0), (98.5, 2.0)], [(101.0, 5.0), (102.0, 3.0)])
+    assert (book.best_bid(), book.best_ask()) == ((99.0, 1.0), (101.0, 5.0))
+    assert (book.mid(), book.spread()) == (100.0, 2.0)
+    assert book.add_order("buy", 101.5, 6.0) == (5, [(101.0, 5.0, 5, 1)])
+    assert book.execute_order("sell", 9.0) == (
+        6,
+        [(101.5, 1.0, 6, 5), (99.0, 1.0, 6, 3), (98.5, 2.0, 6, 4)],
+        5.0,
+    )
+    assert book.execute_order("buy", 100.0) == (7, [(102.0, 3.0, 7, 2)], 97.0)
+    assert book.depth() == ([], [])
+    assert (book.best_bid(), book.best_ask(), book.mid(), book.spread()) == (None, None, None, None)

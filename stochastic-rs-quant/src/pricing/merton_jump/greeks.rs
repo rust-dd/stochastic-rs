@@ -8,7 +8,7 @@
 //! the dependence of the Poisson weights and conditional volatilities on time.
 //!
 //! A **degenerate term** — one whose `σ_n` is exactly `0`, reachable at
-//! `v == 0` and, for `n = 0` alone, at the pure-jump corner `gamma == 1` —
+//! `sigma == 0` and, for `n = 0` alone, at the pure-jump corner `gamma == 1` —
 //! has no closed form to evaluate, only a `σ → 0⁺` limit, and the limit
 //! differs per Greek and per side of the forward. Each accessor states its
 //! own against [`TermRegime`].
@@ -75,7 +75,10 @@ impl Merton1976Pricer {
   }
 
   fn volatility_series(&self, tau: f64, f: impl Fn(&BsmPricer, f64) -> f64) -> f64 {
-    let unit_volatility = Self { v: 1.0, ..*self };
+    let unit_volatility = Self {
+      sigma: 1.0,
+      ..*self
+    };
     (0..self.m)
       .map(|n| {
         let weight = self.poisson_weight(n, tau);
@@ -98,8 +101,8 @@ impl Merton1976Pricer {
       .sum()
   }
 
-  /// Conditional prices used by the maturity differences in theta and charm.
-  /// Uses the same zero-volatility limits as `call_put`.
+  /// Conditional prices used by the maturity differences in theta and charm, at the price's own
+  /// zero-volatility limits.
   pub(super) fn series_price(
     &self,
     s: f64,
@@ -110,10 +113,10 @@ impl Merton1976Pricer {
     option_type: OptionType,
   ) -> f64 {
     self.greek_series(tau, |bsm| {
-      let (call, put) = Merton1976Pricer::term_call_put(bsm, s, k, r, q, tau);
+      let term = Merton1976Pricer::term_call_put(bsm, s, k, r, q, tau);
       match option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
+        OptionType::Call => term.call,
+        OptionType::Put => term.put,
       }
     })
   }
@@ -154,7 +157,7 @@ impl Merton1976Pricer {
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
         TermRegime::AtTheForward => {
-          ((bsm.b(r, q) - r) * tau).exp() * norm_pdf(0.0) / (s * bsm.v * tau.sqrt())
+          ((bsm.b(r, q) - r) * tau).exp() * norm_pdf(0.0) / (s * bsm.sigma * tau.sqrt())
         }
         TermRegime::Saturated => ((bsm.b(r, q) - r) * tau).exp() * 0.0,
         TermRegime::Ordinary => bsm.gamma(s, k, r, q, tau),
@@ -288,7 +291,7 @@ impl Merton1976Pricer {
       / (4.0 * hs * ht)
   }
 
-  /// Volga / vomma — $\partial^2 V/\partial\sigma^2$.
+  /// Volga — $\partial^2 V/\partial\sigma^2$.
   ///
   /// Takes no `option_type`. Put-call parity's spread
   /// $Se^{(b-r)\tau}-Ke^{-r\tau}$ carries no $\sigma$, so a derivative
@@ -301,14 +304,14 @@ impl Merton1976Pricer {
       return f64::NAN;
     }
     if self.lambda <= 0.0 {
-      return self.base_bsm().vomma(s, k, r, q, tau);
+      return self.base_bsm().volga(s, k, r, q, tau);
     }
     self.volatility_series(tau, |bsm, scale| {
       scale
         * scale
         * match Self::term_regime(bsm, s, k, r, q, tau) {
           TermRegime::AtTheForward | TermRegime::Saturated => ((bsm.b(r, q) - r) * tau).exp() * 0.0,
-          TermRegime::Ordinary => bsm.vomma(s, k, r, q, tau),
+          TermRegime::Ordinary => bsm.volga(s, k, r, q, tau),
         }
     })
   }
@@ -330,7 +333,7 @@ impl Merton1976Pricer {
       return f64::NAN;
     }
     if self.lambda <= 0.0 {
-      return self.base_bsm().dvega_dtime(s, k, r, q, tau);
+      return self.base_bsm().veta(s, k, r, q, tau);
     }
     let ht = Self::H_TAU;
     if !(tau.is_finite() && tau > ht) {
@@ -339,11 +342,7 @@ impl Merton1976Pricer {
     -(self.vega(s, k, r, q, tau + ht) - self.vega(s, k, r, q, tau - ht)) / (2.0 * ht)
   }
 
-  /// Every Greek at one query point, in a single [`Greeks`] struct.
-  ///
-  /// The `volga → Greeks::volga` and `veta → Greeks::veta` mapping lives
-  /// here and nowhere else, so a caller cannot get it wrong by
-  /// hand-writing the nine-field literal.
+  /// Every Greek at one query point.
   pub fn greeks(
     &self,
     s: f64,

@@ -13,6 +13,13 @@ pub enum OptionType {
   Put,
 }
 
+/// A call and a put that one computation yields together.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CallPut {
+  pub call: f64,
+  pub put: f64,
+}
+
 /// European or American exercise.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OptionStyle {

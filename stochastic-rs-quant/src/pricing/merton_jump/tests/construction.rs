@@ -1,5 +1,5 @@
 //! `new` refuses what the series cannot answer for: an empty series prices `(0.0, 0.0)`, a negative
-//! `v` its absolute value, and a `lambda < 0` or a `gamma` outside `[0, 1]` a variance below 0.
+//! `sigma` its absolute value, and a `lambda < 0` or a `gamma` outside `[0, 1]` a variance below 0.
 
 use super::*;
 
@@ -10,13 +10,13 @@ fn new_rejects_an_empty_series() {
 }
 
 #[test]
-#[should_panic(expected = "Merton1976Pricer::new: v must be a non-negative volatility (got -0.2)")]
+#[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.2")]
 fn new_rejects_negative_volatility() {
   let _ = Merton1976Pricer::new(-0.2, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
 
 #[test]
-#[should_panic(expected = "Merton1976Pricer::new: v must be a non-negative volatility (got NaN)")]
+#[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
 fn new_rejects_nan_volatility() {
   let _ = Merton1976Pricer::new(f64::NAN, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
@@ -64,7 +64,7 @@ fn the_supported_degenerate_states_stay_constructible() {
   assert_eq!(merton(0.5, 1.0, 20).gamma, 1.0);
   assert_eq!(merton(0.5, 0.4, 1).m, 1);
   assert_eq!(
-    Merton1976Pricer::new(0.0, 0.5, 0.4, 10, BsmCoc::Bsm1973).v,
+    Merton1976Pricer::new(0.0, 0.5, 0.4, 10, BsmCoc::Bsm1973).sigma,
     0.0
   );
 }

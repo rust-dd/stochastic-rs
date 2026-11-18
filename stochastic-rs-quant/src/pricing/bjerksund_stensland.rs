@@ -46,26 +46,18 @@ use crate::traits::ModelPricer;
 #[derive(Debug, Clone, Copy)]
 pub struct BjerksundStensland2002Pricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
 }
 
 impl BjerksundStensland2002Pricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. A negative volatility does not announce
-  ///   itself here — the approximation returns exactly the option's
-  ///   intrinsic value, an ordinary answer for a deep-in-the-money American
-  ///   call with nothing marking it as wrong. Case 1 of the crate's
-  ///   [failure convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// `v == 0` is accepted as the deterministic limit.
-  pub fn new(v: f64) -> Self {
+  /// Panics unless `sigma >= 0`, as a negative volatility prices the intrinsic value unmarked;
+  /// `sigma == 0` is the deterministic limit.
+  pub fn new(sigma: f64) -> Self {
     assert!(
-      v >= 0.0,
-      "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got {v})"
+      sigma >= 0.0,
+      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    Self { v }
+    Self { sigma }
   }
 
   /// Cost of carry: b = r - q
@@ -192,36 +184,19 @@ impl BjerksundStensland2002Pricer {
     // Ensure at least the European value
     f64::max(value, e_value)
   }
-
-  /// American call and put price at one query point.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let b = Self::b(r, q);
-
-    // Call: direct BS2002
-    let call = self.bs2002_call(s, k, tau, r, b, self.v);
-
-    // Put: use the Bjerksund-Stensland symmetry relation
-    // P(S, X, T, r, b, v) = C(X, S, T, r-b, -b, v)
-    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.v);
-    let put = f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.v));
-
-    (call, put)
-  }
 }
 
 impl ModelPricer for BjerksundStensland2002Pricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.bs2002_call(s, k, tau, r, Self::b(r, q), self.sigma)
   }
 
-  /// Overrides the trait's vanilla-parity default. Put-call parity holds
-  /// for European options only; an American put carries an early-exercise
-  /// premium the call does not, so the default would understate it. This
-  /// returns the Bjerksund-Stensland symmetry value
-  /// $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$, floored at the European put — see
-  /// `bs2002_price_put_overrides_vanilla_parity`.
+  /// The symmetry value $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$ floored at the European put, not the
+  /// parity default: an American put carries an early-exercise premium the call does not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    let b = Self::b(r, q);
+    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.sigma);
+    f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.sigma))
   }
 }
 
@@ -246,7 +221,10 @@ mod tests {
   #[test]
   fn bs2002_model_pricer_matches_pre_refactor_goldens() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     assert!((call - 7.35628449811837).abs() < TOL, "call {call}");
     assert!((put - 10.292928328280922).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
@@ -259,7 +237,10 @@ mod tests {
   #[test]
   fn bs2002_price_put_overrides_vanilla_parity() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
     assert!(
       put > vanilla + 1e-3,
@@ -286,23 +267,19 @@ mod tests {
   /// perfectly ordinary answer for a deep-in-the-money American call and
   /// nothing marks it as wrong. The reference at `σ = +0.35` is `5.2869`.
   #[test]
-  #[should_panic(
-    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got -0.35)"
-  )]
+  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.35")]
   fn new_rejects_negative_volatility() {
     let _ = BjerksundStensland2002Pricer::new(-0.35);
   }
 
   #[test]
-  #[should_panic(
-    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got NaN)"
-  )]
+  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
   fn new_rejects_nan_volatility() {
     let _ = BjerksundStensland2002Pricer::new(f64::NAN);
   }
 
   #[test]
   fn new_accepts_the_zero_volatility_limit() {
-    assert_eq!(BjerksundStensland2002Pricer::new(0.0).v, 0.0);
+    assert_eq!(BjerksundStensland2002Pricer::new(0.0).sigma, 0.0);
   }
 }

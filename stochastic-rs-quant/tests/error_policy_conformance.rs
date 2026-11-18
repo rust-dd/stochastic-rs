@@ -313,7 +313,7 @@ fn a_price_grid_shares_the_ascending_axes_check() {
     vec![1.0],
     vec![100.0],
     prices.view(),
-    true,
+    OptionType::Call,
   );
 }
 

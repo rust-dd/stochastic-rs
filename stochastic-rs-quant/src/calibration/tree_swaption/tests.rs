@@ -22,8 +22,8 @@ fn flat_curve() -> DiscountCurve<f64> {
 fn grid(pairs: &[(f64, f64)]) -> Vec<SwaptionQuote> {
   pairs
     .iter()
-    .map(|&(expiry, tenor)| SwaptionQuote {
-      expiry,
+    .map(|&(tau, tenor)| SwaptionQuote {
+      tau,
       tenor,
       black_vol: 0.0,
       fixed_accrual: 0.5,
@@ -41,7 +41,7 @@ fn atm_black_vol(price: f64, quote: &SwaptionQuote, curve: &DiscountCurve<f64>) 
     .map(|&t| curve.discount_factor(t) * market.accrual)
     .sum();
   let ratio = price / (annuity * market.fair_rate);
-  2.0 * ndtri((ratio + 1.0) / 2.0) / quote.expiry.sqrt()
+  2.0 * ndtri((ratio + 1.0) / 2.0) / quote.tau.sqrt()
 }
 
 /// Quotes generated on the tree at the true parameters are recovered by

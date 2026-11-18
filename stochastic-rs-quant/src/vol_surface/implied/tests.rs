@@ -24,8 +24,12 @@ fn from_provider_recovers_surface_from_mock_chain() {
     for &k in &strikes {
       let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
       let d2 = d1 - sigma * t.sqrt();
-      let is_call = k > 90.0;
-      let undiscounted = if is_call {
+      let option_type = if k > 90.0 {
+        OptionType::Call
+      } else {
+        OptionType::Put
+      };
+      let undiscounted = if option_type == OptionType::Call {
         f * norm_cdf(d1) - k * norm_cdf(d2)
       } else {
         k * norm_cdf(-d2) - f * norm_cdf(-d1)
@@ -38,7 +42,7 @@ fn from_provider_recovers_surface_from_mock_chain() {
         bid: price,
         ask: price,
         implied_vol: sigma,
-        is_call,
+        option_type,
       });
     }
   }
@@ -101,7 +105,7 @@ fn from_prices_round_trip() {
     maturities.clone(),
     forwards.clone(),
     prices.view(),
-    true,
+    OptionType::Call,
   );
 
   for j in 0..maturities.len() {
@@ -146,18 +150,24 @@ fn black_implied_vol_round_trips_the_reference_table() {
     (3.4529165077418788e-28, 100.0, 300.0, 0.25, 0.2),
   ];
   for (price, f, k, t, sigma) in cases {
-    let iv = black_implied_vol(price, f, k, t, true);
+    let iv = black_implied_vol(price, f, k, t, OptionType::Call);
     assert!(
       (iv - sigma).abs() < 1e-11,
       "k = {k}, t = {t}: {iv} vs {sigma}"
     );
   }
-  assert_eq!(black_implied_vol(10.0, 100.0, 90.0, 0.0, true), 0.0);
-  assert!(black_implied_vol(10.5, 100.0, 90.0, 0.0, true).is_nan());
-  assert_eq!(black_implied_vol(60.0, 100.0, 40.0, 0.1, true), 0.0);
   assert_eq!(
-    black_implied_vol(100.0, 100.0, 40.0, 0.1, true),
+    black_implied_vol(10.0, 100.0, 90.0, 0.0, OptionType::Call),
+    0.0
+  );
+  assert!(black_implied_vol(10.5, 100.0, 90.0, 0.0, OptionType::Call).is_nan());
+  assert_eq!(
+    black_implied_vol(60.0, 100.0, 40.0, 0.1, OptionType::Call),
+    0.0
+  );
+  assert_eq!(
+    black_implied_vol(100.0, 100.0, 40.0, 0.1, OptionType::Call),
     f64::INFINITY
   );
-  assert!(black_implied_vol(101.0, 100.0, 40.0, 0.1, true).is_nan());
+  assert!(black_implied_vol(101.0, 100.0, 40.0, 0.1, OptionType::Call).is_nan());
 }

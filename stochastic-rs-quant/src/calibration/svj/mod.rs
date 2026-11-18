@@ -3,7 +3,7 @@
 //! $$
 //! \begin{aligned}
 //! dS_t &= (r-q-\lambda\bar k)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t \\
-//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma_v\sqrt{v_t}\,dW_t^v, \quad
+//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v, \quad
 //! d\langle W^S,W^v\rangle_t = \rho\,dt
 //! \end{aligned}
 //! $$
@@ -28,10 +28,10 @@ mod loss;
 mod params;
 
 pub use calibrator::SvjCalibrator;
-pub use params::SvjParams;
 
 use crate::calibration::Calibrated;
 use crate::pricing::fourier::BatesFourier;
+use crate::pricing::fourier::SvjParams;
 use crate::traits::ToModel;
 
 impl ToModel for Calibrated<SvjParams> {

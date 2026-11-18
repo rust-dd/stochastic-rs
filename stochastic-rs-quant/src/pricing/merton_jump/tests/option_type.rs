@@ -5,7 +5,7 @@ use super::*;
 fn the_parity_spread_is_independent_of_volatility() {
   let spread_at = |v| {
     let m = merton_at(v, 0.5, 0.4, 10);
-    let (call, put) = m.call_put(S, K, R, Q, TAU);
+    let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
     call - put
   };
   let spread = spread_at(0.2);

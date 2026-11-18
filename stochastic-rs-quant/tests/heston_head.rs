@@ -1,6 +1,7 @@
 //! The Heston `P_j` integrals at short maturities: no negative deep out-of-the-money call, and the
 //! Black–Scholes limit where the integrand outlasts the quadrature.
 
+use stochastic_rs_quant::CallPut;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
@@ -163,7 +164,7 @@ fn an_exploding_share_measure_variance_keeps_the_quadrature() {
     let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
     assert!((got - want).abs() < tol, "tau = {tau}: {got} vs {want}");
   }
-  let (call, put) = pricer.call_put(100.0, 100.0, 0.05, 0.0, 40.0);
+  let CallPut { call, put } = pricer.price_call_put(100.0, 100.0, 0.05, 0.0, 40.0);
   assert!(call.is_nan() && put.is_nan(), "{call}, {put}");
 }
 
@@ -213,7 +214,7 @@ fn an_expected_variance_past_the_bound_prices_nan() {
   for lambda in [-50.0, -800.0] {
     let pricer = HestonPricer::new(P).with_vol_risk_premium(lambda);
     for k in [80.0, 100.0, 120.0] {
-      let (call, put) = pricer.call_put(100.0, k, 0.05, 0.0, 1.0);
+      let CallPut { call, put } = pricer.price_call_put(100.0, k, 0.05, 0.0, 1.0);
       assert!(
         call.is_nan() && put.is_nan(),
         "lambda = {lambda}, k = {k}: {call}, {put}"
