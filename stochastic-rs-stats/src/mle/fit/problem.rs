@@ -34,6 +34,21 @@ pub(super) fn ranked(nll: f64) -> f64 {
   }
 }
 
+/// Steps of a walk beside an estimate, the last `4⁶³` times the gradient's: past any box met.
+const FURTHEST: usize = 64;
+
+/// What the walks of [`MleProblem::beside`] found.
+pub(super) struct Beside {
+  /// The most one of them gains in log-likelihood.
+  pub(super) gain: f64,
+  /// The parameter that walk steps along.
+  pub(super) along: usize,
+  /// The rounding of the summed log-likelihood at the estimate, `ε √N (1 + |ℓ|)`.
+  pub(super) rounding: f64,
+  /// The gradient's own step, the first of a walk, met a point without a likelihood.
+  pub(super) walled: bool,
+}
+
 /// The solver's coordinates: each parameter over its unit, with the caller's box in them.
 #[derive(Clone)]
 pub(super) struct Units {
@@ -47,9 +62,9 @@ pub(super) struct Units {
 /// The ratio to its unit, either way, past which a parameter's estimate asks for new units.
 const FAR: f64 = 8.0;
 
-/// The path's standard deviation, the scale the data gives a parameter that brings none: the
-/// path's largest size where the deviations' squares underflow, 1 for a path of zeros.
-fn spread(sample: ArrayView1<f64>) -> f64 {
+/// The unit the path gives a parameter that brings none, never an `Err`: its standard deviation,
+/// its largest size where the deviations' squares underflow, 1 for a path of zeros.
+fn path_unit(sample: ArrayView1<f64>) -> f64 {
   let size = sample.iter().fold(0.0_f64, |size, v| size.max(v.abs()));
   if size == 0.0 {
     return 1.0;
@@ -70,8 +85,8 @@ fn spread(sample: ArrayView1<f64>) -> f64 {
 
 impl Units {
   /// The units of `start`: `|start|` for each parameter, and for one that starts at zero half
-  /// its box's width, or `spread`, the path's, where the box has no finite width.
-  fn new(lower: &[f64], upper: &[f64], start: &[f64], spread: f64) -> Self {
+  /// its box's width, or `path_unit`, where the box has no finite width.
+  fn new(lower: &[f64], upper: &[f64], start: &[f64], path_unit: f64) -> Self {
     let scale = (0..lower.len())
       .map(|i| {
         let (low, high) = (lower[i], upper[i]);
@@ -81,7 +96,7 @@ impl Units {
         } else if low.is_finite() && high.is_finite() && high > low {
           0.5 * (high - low)
         } else {
-          spread
+          path_unit
         }
       })
       .collect::<Vec<_>>();
@@ -165,7 +180,7 @@ impl<'a> MleProblem<'a> {
       sample,
       dt,
       density,
-      units: Units::new(lower, upper, start, spread(sample)),
+      units: Units::new(lower, upper, start, path_unit(sample)),
       probe: AtomicU8::new(IDLE),
     }
   }
@@ -174,8 +189,8 @@ impl<'a> MleProblem<'a> {
     self.units.clone()
   }
 
-  /// With two or more loose moves, `at` with each parameter that has one back at `start`'s value:
-  /// a move alone to an end of its box, or to `start`'s for an infinite end, under [`IDENTIFIED`].
+  /// With two or more loose moves, `at` with each such parameter back at `start`'s value: a move
+  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`IDENTIFIED`].
   pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
     let here = self.eval_nll(at);
     let mut from = at.to_vec();
@@ -188,8 +203,10 @@ impl<'a> MleProblem<'a> {
       if ends[0] >= ends[1] {
         continue;
       }
-      // An end at infinity has no likelihood to read: the start's value stands in, once.
-      let open = ends.iter().any(|end| end.is_infinite()).then_some(start[i]);
+      // An end at infinity has no likelihood to read: the start's value stands in, once, unless
+      // the estimate is still by it, on its side of zero, where the move back says nothing.
+      let left = !(1.0 / FAR..=FAR).contains(&(at[i] / start[i]));
+      let open = (left && ends.iter().any(|end| end.is_infinite())).then_some(start[i]);
       let finite = ends.into_iter().filter(|end| end.is_finite());
       let loose = finite
         .chain(open)
@@ -206,6 +223,47 @@ impl<'a> MleProblem<'a> {
     }
     // One loose end is an optimum at or beside a bound; a stall leaves two, as a speed and a level.
     if loose_ends < 2 { at.to_vec() } else { from }
+  }
+
+  /// What steps along one parameter find beside `at`, in the problem's units: from the
+  /// gradient's step, either way, four times further while the cost is not above `at`'s.
+  pub(super) fn beside(&self, at: &[f64]) -> Beside {
+    let (low, high) = (&self.units.low, &self.units.high);
+    let z = self.units.of(at);
+    let here = self.eval_nll(&self.units.scaled(&z));
+    // A sum's rounding is no rise: below it the walk goes on, across a flat stretch.
+    let rise = 16.0 * f64::EPSILON * (1.0 + here.abs());
+    // `N` additions each round a partial sum near `|ℓ|` by `ε/2`, and the roundings add as a walk.
+    let additions = (self.sample.len() - 1) as f64;
+    let mut beside = Beside {
+      gain: 0.0,
+      along: 0,
+      rounding: f64::EPSILON * additions.sqrt() * (1.0 + here.abs()),
+      walled: false,
+    };
+    for i in 0..z.len() {
+      for side in [1.0, -1.0] {
+        let mut step = side * f64::EPSILON.cbrt() * (1.0 + z[i].abs());
+        let mut moved = z.clone();
+        for nth in 0..FURTHEST {
+          let to = (z[i] + step).clamp(low[i], high[i]);
+          if to == moved[i] || !to.is_finite() {
+            break;
+          }
+          moved[i] = to;
+          let cost = self.eval_nll(&self.units.scaled(&moved));
+          beside.walled |= nth == 0 && cost >= NO_LIKELIHOOD;
+          if cost > here + rise {
+            break;
+          }
+          if here - cost > beside.gain {
+            (beside.gain, beside.along) = (here - cost, i);
+          }
+          step *= 4.0;
+        }
+      }
+    }
+    beside
   }
 
   pub(super) fn eval_nll(&self, params: &[f64]) -> f64 {

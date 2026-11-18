@@ -7,6 +7,7 @@ use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use self::problem::Beside;
 use self::problem::MleProblem;
 use self::step_back::SteppingBack;
 use super::DiffusionModel;
@@ -30,16 +31,12 @@ pub struct MleFit {
   pub aic: f64,
   /// Bayesian Information Criterion.
   pub bic: f64,
-  /// Whether the L-BFGS-B run reached a recognised convergence criterion.
-  ///
-  /// `false` means the optimiser did not report clean convergence;
-  /// [`params`](Self::params) then holds the best point found so far,
-  /// which may equal the initial guess only if nothing better was ever
-  /// found. If the optimiser reaches the iteration limit or the line search
-  /// cannot make progress,
-  /// [`params`](Self::params) still contains the best feasible point found.
-  /// Inspect this field before trusting [`params`](Self::params) downstream.
+  /// No step along one parameter gains `1e-7`, or the sum's rounding on a long path: stationary
+  /// along each parameter, not global. `false` leaves the best point found in `params`.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>` (the parameter
+  /// a step off its bound gains along), `stopped at the edge of the law's support`, …
+  pub message: String,
   /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 16
   /// searches. `0` when the model has no free parameters (trivially `converged = true`).
   pub iterations: usize,
@@ -57,6 +54,7 @@ impl fmt::Display for MleFit {
     writeln!(f, "  BIC          = {:.4}", self.bic)?;
     writeln!(f, "  sample size  = {}", self.nobs)?;
     writeln!(f, "  converged    = {}", self.converged)?;
+    writeln!(f, "  message      = {}", self.message)?;
     writeln!(f, "  iterations   = {}", self.iterations)?;
     Ok(())
   }
@@ -64,6 +62,14 @@ impl fmt::Display for MleFit {
 
 /// What a further search must gain in log-likelihood to replace the estimate it started from.
 const GAIN: f64 = 1e-6;
+
+/// The most a step along one parameter gains in log-likelihood beside a converged estimate: on
+/// 117,768 fits the stationary ones read `2.3e-9` or less, and a stall anything up to 94.
+const STATIONARY: f64 = 1e-7;
+
+/// Roundings of the sum a gain must clear: on 366 fits of `1e4` to `3e6` points the walks beside
+/// an optimum gain `0.30` of one or less, and beside the stalls they flag `1.2` or more.
+const ROUNDINGS: f64 = 1.0;
 
 /// Searches after the first: each starts where the last one left a parameter unidentified.
 const STAGES: usize = 3;
@@ -76,7 +82,49 @@ struct Search {
   params: Vec<f64>,
   cost: f64,
   converged: bool,
+  reason: TerminationReason,
   iterations: usize,
+}
+
+/// Why a fit stopped, `Converged` alone being `converged = true`.
+enum Stop {
+  Converged,
+  Search(TerminationReason),
+  NotStationary,
+  Bound(usize),
+  Edge,
+  Outside,
+}
+
+impl Stop {
+  /// The stop in the words of quant's calibrators, `names` the model's parameters.
+  fn message(&self, names: &[&str]) -> String {
+    let words = match self {
+      Self::Converged => "converged",
+      Self::Search(TerminationReason::MaxIter | TerminationReason::MaxCostEvals) => {
+        "evaluation budget exhausted"
+      }
+      Self::Search(TerminationReason::NumericalNoProgress) => "no numerical progress",
+      Self::Search(TerminationReason::SolverFailed) => "solver failed",
+      Self::Search(_) | Self::Outside => "stopped without convergence",
+      Self::NotStationary => "not stationary",
+      Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
+      Self::Edge => "stopped at the edge of the law's support",
+    };
+    words.into()
+  }
+}
+
+impl Beside {
+  /// The stop the walks read, `held` saying that the parameter of the largest gain is on a bound.
+  fn stop(&self, held: bool) -> Stop {
+    match () {
+      _ if self.gain <= STATIONARY.max(ROUNDINGS * self.rounding) => Stop::Converged,
+      _ if held => Stop::Bound(self.along),
+      _ if self.walled => Stop::Edge,
+      _ => Stop::NotStationary,
+    }
+  }
 }
 
 /// One L-BFGS-B search of at most 200 iterations from `start`, with an empty memory, in the
@@ -92,11 +140,13 @@ fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
     .expect("MLE objective is infallible");
   let cost = result.best_cost();
   let best = units.params(result.best_param());
-  let (params, converged, iterations) = resolve_fit_outcome(best, result.reason, result.iter());
+  let reason = result.reason;
+  let (params, converged, iterations) = resolve_fit_outcome(best, reason, result.iter());
   Search {
     params,
     cost,
     converged,
+    reason,
     iterations,
   }
 }
@@ -141,8 +191,8 @@ pub fn fit_mle(
 
   let x0 = model.params();
 
-  let (best_params, converged, iterations) = if n_params == 0 {
-    (x0.to_vec(), true, 0)
+  let (best_params, stop, iterations) = if n_params == 0 {
+    (x0.to_vec(), Stop::Converged, 0)
   } else {
     let init: Vec<f64> = x0.to_vec();
 
@@ -186,16 +236,30 @@ pub fn fit_mle(
       }
       fit = next;
     }
-    (fit.params, fit.converged, iterations)
+    let stop = if fit.converged {
+      let at = &fit.params;
+      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, at);
+      let beside = problem.beside(at);
+      let i = beside.along;
+      let held = lower[i] < upper[i] && (at[i] <= lower[i] || at[i] >= upper[i]);
+      // The solver's own stop passes a stall: the likelihood beside the estimate decides.
+      beside.stop(held)
+    } else {
+      Stop::Search(fit.reason)
+    };
+    (fit.params, stop, iterations)
   };
 
   // A convergence signal at an infeasible iterate does not certify the
   // projected point whose likelihood and information criteria we report.
-  let converged = converged
-    && best_params
-      .iter()
-      .zip(&bounds)
-      .all(|(&value, &(lower, upper))| (lower..=upper).contains(&value));
+  let inside = best_params
+    .iter()
+    .zip(&bounds)
+    .all(|(&value, &(lower, upper))| (lower..=upper).contains(&value));
+  let stop = match stop {
+    Stop::Converged if !inside => Stop::Outside,
+    stop => stop,
+  };
   let clamped = best_params
     .iter()
     .enumerate()
@@ -228,7 +292,8 @@ pub fn fit_mle(
     nobs: n_transitions,
     aic,
     bic,
-    converged,
+    converged: matches!(stop, Stop::Converged),
+    message: stop.message(&model.param_names()),
     iterations,
   })
 }
@@ -238,6 +303,8 @@ mod far_start_tests;
 mod problem;
 #[cfg(test)]
 mod scale_tests;
+#[cfg(test)]
+mod stationary_tests;
 mod step_back;
 #[cfg(test)]
 mod tests;

@@ -48,8 +48,8 @@ where
     direction: &Vec<f64>,
     bounds: LineSearchBounds<f64>,
   ) -> Result<LineSearchResult<Vec<f64>, f64>, Self::Error> {
-    // The solver's first trial, `1/‖d‖`, is below the least step on a steep start, which would
-    // lift it there, `√ε ‖d‖` away: the least step is then that fraction of the trial.
+    // A trial below the least step, the first one `1/‖d‖` on a steep start or the step to a bound,
+    // would be lifted `√ε ‖d‖` away or refused: the least step is then that fraction of the trial.
     let trial = bounds.initial();
     let least = self.0.stpmin * if trial < self.0.stpmin { trial } else { 1.0 };
     let mut search = MoreThuente {
@@ -247,6 +247,48 @@ mod tests {
       .unwrap();
     assert_eq!(plain.outcome, LineSearchOutcome::Step(f64::EPSILON.sqrt()));
     assert!(plain.evaluation.expect("the returned point").cost > 0.5e20);
+  }
+
+  /// `x` from 1 along `−10¹²` with a bound at `1 − 0.1`: the step to it, `10⁻¹³`, is below the
+  /// least step, where the plain search refuses to start.
+  #[test]
+  fn a_step_to_a_bound_below_the_least_step_is_taken() {
+    struct Slope;
+    impl Walled for Slope {
+      fn watch(&self, _on: bool) {}
+
+      fn walled(&self) -> bool {
+        false
+      }
+    }
+    impl CostFunction for Slope {
+      type Param = Vec<f64>;
+      type Output = f64;
+      type Error = Infallible;
+
+      fn cost(&self, x: &Vec<f64>) -> Result<f64, Infallible> {
+        Ok(x[0])
+      }
+    }
+    impl Gradient for Slope {
+      type Gradient = Vec<f64>;
+
+      fn gradient(&self, _x: &Vec<f64>) -> Result<Vec<f64>, Infallible> {
+        Ok(vec![1.0])
+      }
+    }
+    let bounds = LineSearchBounds::new(1e-13, 1e-13);
+    let (at, slope, along) = (vec![1.0], vec![1.0], vec![-1e12]);
+    let mut problem = Problem::new(Slope);
+    let result = SteppingBack(more_thuente())
+      .next_with_bounds(&mut problem, &at, 1.0, &slope, &along, bounds)
+      .unwrap();
+    assert_eq!(result.outcome, LineSearchOutcome::Step(1e-13));
+    assert_eq!(result.evaluation.expect("the bound").param, vec![0.9]);
+    let plain = more_thuente()
+      .next_with_bounds(&mut problem, &at, 1.0, &slope, &along, bounds)
+      .unwrap();
+    assert_eq!(plain.outcome, LineSearchOutcome::Failed);
   }
 
   /// With no value anywhere along the direction there is no step, and the solver ends unconverged.
