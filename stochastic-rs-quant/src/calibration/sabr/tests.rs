@@ -217,3 +217,64 @@ fn the_jacobian_is_the_slope_of_the_residuals_at_reflected_coordinates() {
     assert!(error < 2e-2, "{point}: {error:e}");
   }
 }
+
+#[test]
+fn a_non_finite_parameter_reaches_the_residuals_as_nan() {
+  let truth = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.4,
+    nu: 0.6,
+  };
+  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, smile(truth, 0.02, 0.01, 0.5));
+  let mut problem = SabrProblem {
+    calibrator: &calibrator,
+    market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+    forwards: vec![forward_fx(100.0, 0.5, 0.02, 0.01); calibrator.quotes.len()],
+    params: DEFAULT_START,
+    reflections: Array1::ones(3),
+    trail: Trail::new(),
+  };
+  for (axis, bad) in [
+    (0, f64::NAN),
+    (1, f64::NAN),
+    (2, f64::NAN),
+    (0, f64::INFINITY),
+  ] {
+    let mut x = DEFAULT_START.as_lm_vec();
+    x[axis] = bad;
+    problem.set_params(&x);
+    assert!(!problem.params()[axis].is_finite(), "axis {axis}: {bad}");
+    let residuals = problem.residuals().unwrap();
+    assert!(residuals.iter().all(|r| r.is_nan()), "axis {axis}: {bad}");
+    let jacobian = problem.jacobian().unwrap();
+    assert!(jacobian.iter().any(|d| d.is_nan()), "axis {axis}: {bad}");
+  }
+}
+
+#[test]
+fn the_projection_keeps_a_nan() {
+  for axis in 0..4 {
+    let mut v = Array1::from(DEFAULT_START);
+    v[axis] = f64::NAN;
+    let projected = Array1::from(SabrParams::from(v).projected());
+    assert!(projected[axis].is_nan(), "axis {axis}: {projected}");
+  }
+}
+
+#[test]
+fn a_nan_price_or_maturity_is_an_invalid_quote() {
+  for (tau, price) in [(f64::NAN, 1.0), (0.5, f64::NAN)] {
+    let quotes = vec![
+      OptionQuote::new(100.0, 0.5, 1.0, OptionType::Call),
+      OptionQuote::new(100.0, tau, price, OptionType::Call),
+    ];
+    let err = SabrCalibrator::new(100.0, 0.02, 0.01, quotes)
+      .calibrate(None)
+      .unwrap_err();
+    assert!(
+      matches!(err, QuantError::InvalidQuote { index: 1, .. }),
+      "{err}"
+    );
+  }
+}

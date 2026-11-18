@@ -132,3 +132,53 @@ fn new_panics_on_a_beta_outside_the_unit_interval() {
 fn one_weight_per_strike() {
   let _ = smile().with_weights(vec![1.0; 3]);
 }
+
+#[test]
+fn a_non_finite_vertex_costs_nan() {
+  let calibrator = smile();
+  let cost = SabrCapletCost {
+    forward: calibrator.forward,
+    shift: 0.0,
+    tau: calibrator.tau,
+    beta: 0.5,
+    strikes: calibrator.strikes.clone(),
+    market_vols: calibrator.market_vols.clone(),
+    weights: vec![1.0; calibrator.strikes.len()],
+    regularization: None,
+  };
+  assert!(cost.cost(&vec![0.03, 0.3, -0.1]).unwrap().is_finite());
+  for (axis, bad) in [
+    (0, f64::NAN),
+    (1, f64::NAN),
+    (2, f64::NAN),
+    (0, f64::INFINITY),
+  ] {
+    let mut x = vec![0.03, 0.3, -0.1];
+    x[axis] = bad;
+    assert!(cost.cost(&x).unwrap().is_nan(), "axis {axis}: {bad}");
+    let vols = cost.model_vols(&cost.params(&x));
+    assert!(vols.iter().all(|v| v.is_nan()), "axis {axis}: {bad}");
+  }
+}
+
+#[test]
+fn a_nan_strike_forward_or_weight_never_starts_a_fit() {
+  let mut nan_strike = smile();
+  nan_strike.strikes[2] = f64::NAN;
+  assert!(matches!(
+    nan_strike.calibrate(None).unwrap_err(),
+    QuantError::InvalidQuote { index: 2, .. }
+  ));
+  let mut nan_forward = smile();
+  nan_forward.forward = f64::NAN;
+  assert!(matches!(
+    nan_forward.calibrate(None).unwrap_err(),
+    QuantError::InvalidInput {
+      what: "forward",
+      ..
+    }
+  ));
+  let mut nan_weight = smile();
+  nan_weight.weights = Some(vec![f64::NAN; nan_weight.strikes.len()]);
+  assert!(nan_weight.calibrate(None).is_ok_and(|fit| !fit.converged));
+}
