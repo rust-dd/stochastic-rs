@@ -127,3 +127,51 @@ fn a_correlation_is_factored_into_its_lower_cholesky() {
   let recon = l.dot(&l.t());
   assert!((&recon - &rho).iter().all(|d| d.abs() < 1e-12));
 }
+
+/// Four annual forwards at 30 %, 40 % volatility and a flat 0.9 correlation, `T_0 = 0`: the
+/// levels at which a reset forward left in the drift shows.
+fn steep_correlated(l_reset: f64, seed: u64) -> Lmm<f64, Deterministic> {
+  let mut rho = Array2::<f64>::from_elem((4, 4), 0.9);
+  rho.diag_mut().fill(1.0);
+  Lmm::new(
+    flat_tenor(4, 1.0),
+    ndarray::array![l_reset, 0.3, 0.3, 0.3],
+    ndarray::array![0.4, 0.4, 0.4, 0.4],
+    257,
+    None,
+    Deterministic::new(seed),
+  )
+  .with_correlation(rho)
+}
+
+/// Glasserman & Zhao (2000) eq. (8) sums the spot drift from `η(t)`: `L_0`, reset at `T_0 = 0`,
+/// is in no live forward's drift, so its level cannot reach their paths.
+#[test]
+fn a_reset_forward_is_in_no_live_forwards_drift() {
+  let (low, high) = (
+    steep_correlated(0.05, 7).sample(),
+    steep_correlated(0.6, 7).sample(),
+  );
+  assert_eq!(low.slice(s![1.., ..]), high.slice(s![1.., ..]));
+}
+
+/// Glasserman & Zhao (2000) eq. (10) with `ζ = 1`: under the spot measure the product of the
+/// realised one-period discount factors has mean `B_n(0)`.
+#[test]
+fn deflated_bonds_are_martingales_under_correlated_factors() {
+  const PATHS: usize = 20_000;
+  let paths = steep_correlated(0.3, 11).sample_par(PATHS);
+  let last = paths[0].ncols() - 1;
+  for n in 2..=4 {
+    let mean = paths
+      .iter()
+      .map(|p| (0..n).map(|j| 1.0 / (1.0 + p[(j, last)])).product::<f64>())
+      .sum::<f64>()
+      / PATHS as f64;
+    let bond = 1.3_f64.powi(-(n as i32));
+    assert!(
+      (mean / bond - 1.0).abs() < 0.005,
+      "B_{n}(0) = {bond}, simulated {mean}"
+    );
+  }
+}

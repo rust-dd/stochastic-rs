@@ -173,12 +173,11 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
       while eta < m && self.tenor[eta] <= t_now {
         eta += 1;
       }
-      let eta_idx = eta.saturating_sub(1).min(m); // index into Libor vector
 
-      // μ_n(t) = σ_n · Σ_{j=eta_idx..=n} (δ_j ρ_{n,j} σ_j L_j) / (1 + δ_j L_j) for each alive n;
-      // under the identity correlation the sum is its j = n term.
+      // μ_n(t) = σ_n · Σ_{j=η..=n} (δ_j ρ_{n,j} σ_j L_j) / (1 + δ_j L_j) for each alive n ≥ η
+      // (Glasserman & Zhao 2000, eq. (8)); under the identity correlation it is the j = n term.
       let mut next = prev.clone();
-      for n in eta_idx..m {
+      for n in eta..m {
         if self.sigma[n] <= T::zero() {
           // Zero-vol Libor stays at its current value.
           continue;
@@ -189,7 +188,7 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
           Some(_chol) => {
             // The full correlated sum, with ρ_{n,j} = Σ_p chol_{n,p} chol_{j,p} rebuilt here.
             let chol_ref = self.chol.as_ref().unwrap();
-            for j in eta_idx..=n {
+            for j in eta..=n {
               let mut rho_nj = T::zero();
               for p in 0..=j.min(n) {
                 rho_nj += chol_ref[(n, p)] * chol_ref[(j, p)];

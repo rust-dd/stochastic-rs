@@ -168,8 +168,8 @@ macro_rules! euler_memory {
   /// step with the drift frozen at the step's start. The curve `ct` is the
   /// number of reset dates passed at the step's start, `η`: a rate whose reset
   /// date has passed (`n < η`) stays where it is, and a live rate `n` takes
-  /// `σ_n Σ_{j=max(η−1, 0)}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the rates
-  /// between the last reset and itself, `ρ_nj` from the lower Cholesky factor
+  /// `σ_n Σ_{j=η}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the live rates
+  /// up to itself, `ρ_nj` from the lower Cholesky factor
   /// `L` whose rows also correlate the four shocks. An absent rate travels
   /// with a zero volatility and an identity row and never moves nor enters a
   /// drift.
@@ -177,11 +177,10 @@ macro_rules! euler_memory {
     state (f0, f1, f2, f3)
     noise (z0, z1, z2, z3)
     step {
-      bind ei = max($ct - lit(1.0), lit(0.0));
-      bind a0 = leq(ei, lit(0.0));
-      bind a1 = leq(ei, lit(1.0));
-      bind a2 = leq(ei, lit(2.0));
-      bind a3 = leq(ei, lit(3.0));
+      bind a0 = leq($ct, lit(0.0));
+      bind a1 = leq($ct, lit(1.0));
+      bind a2 = leq($ct, lit(2.0));
+      bind a3 = leq($ct, lit(3.0));
       bind g0 = a0 * d0 * s0 * f0 / (d0 * f0 + lit(1.0));
       bind g1 = a1 * d1 * s1 * f1 / (d1 * f1 + lit(1.0));
       bind g2 = a2 * d2 * s2 * f2 / (d2 * f2 + lit(1.0));
