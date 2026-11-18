@@ -19,7 +19,7 @@ pub(super) trait Walled {
 
 /// Moré–Thuente that steps back: a search that met a point without a value runs again under a
 /// step cap, halved until none is met, so no interpolation reads the penalty.
-/// Precedent: basin 1.11's `HagerZhang`, whose non-finite trials "cause the search to contract".
+/// Reference: basin 1.11, `HagerZhang`, whose non-finite trials "cause the search to contract".
 pub(super) struct SteppingBack(pub(super) MoreThuente<f64>);
 
 /// Halvings of the cap, which leave a step no rounding distinguishes from none.
