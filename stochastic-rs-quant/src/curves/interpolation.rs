@@ -173,21 +173,12 @@ pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   }
 
   let half = T::from_f64_fast(0.5);
-  f_node[0] = fwd[1] - half * (f_node[1] - fwd[1]);
-  f_node[0] = f_node[0].max(T::zero());
-  f_node[n - 1] = fwd[n - 1] - half * (f_node[n - 2] - fwd[n - 1]);
-  f_node[n - 1] = f_node[n - 1].max(T::zero());
-
-  let two = T::from_f64_fast(2.0);
+  let first = fwd[1] - half * (f_node[1] - fwd[1]);
+  let last = fwd[n - 1] - half * (f_node[n - 2] - fwd[n - 1]);
+  f_node[0] = positivity_bound(first, fwd[1]);
+  f_node[n - 1] = positivity_bound(last, fwd[n - 1]);
   for i in 1..n - 1 {
-    let fi = fwd[i];
-    let fi1 = fwd[i + 1];
-    let min_f = fi.min(fi1);
-    if min_f > T::zero() {
-      f_node[i] = f_node[i].max(T::zero()).min(two * min_f);
-    } else {
-      f_node[i] = f_node[i].max(T::zero());
-    }
+    f_node[i] = positivity_bound(f_node[i], fwd[i].min_or_nan(fwd[i + 1]));
   }
 
   // The first knot at or after `t` is the right end of its interval, so `t` at a knot has x = 1.
@@ -203,6 +194,17 @@ pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let forward_adj = rt[idx - 1] + h * (fi * x + int_g);
 
   (-forward_adj).exp()
+}
+
+/// Hagan & West's (60)–(62), `bound(0, f, 2·discrete)`, NaN for a NaN node; the cap needs a
+/// positive discrete forward, which the paper assumes, and is dropped without one.
+fn positivity_bound<T: RealExt>(f: T, discrete: T) -> T {
+  let floored = f.max_or_nan(T::zero());
+  if discrete > T::zero() {
+    floored.min_or_nan(T::from_f64_fast(2.0) * discrete)
+  } else {
+    floored
+  }
 }
 
 /// $\int_0^x G(s)\,ds$ of the Hagan–West monotone-convex interval-relative forward $G$, by the
@@ -316,25 +318,88 @@ pub fn interpolate_discount_factor<T: RealExt>(
   }
 }
 
-/// Compute zero rates from curve points as ndarray.
+/// The pillars' zero rates `−ln Dᵢ / tᵢ`; NaN at a pillar with `t ≤ 0`, which has none.
 pub fn zero_rates_from_points<T: RealExt>(points: &[CurvePoint<T>]) -> Array1<T> {
-  Array1::from_vec(
-    points
-      .iter()
-      .map(|p| {
-        if p.time > T::zero() {
-          -p.discount_factor.ln() / p.time
-        } else {
-          T::zero()
-        }
-      })
-      .collect(),
-  )
+  points
+    .iter()
+    .map(|p| {
+      if p.time > T::zero() {
+        -p.discount_factor.ln() / p.time
+      } else {
+        T::nan()
+      }
+    })
+    .collect()
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  fn from_forwards(forwards: &[f64]) -> Vec<CurvePoint<f64>> {
+    let mut minus_log = 0.0;
+    forwards
+      .iter()
+      .enumerate()
+      .map(|(i, f)| {
+        minus_log += f;
+        CurvePoint {
+          time: (i + 1) as f64,
+          discount_factor: (-minus_log).exp(),
+        }
+      })
+      .collect()
+  }
+
+  /// Hagan & West's (60): unbounded, `f₀ = f₁ᵈ − ½(f₁ − f₁ᵈ)` is 0.025 on these forwards, above
+  /// the cap `2f₁ᵈ = 0.02`; the forward at `0⁺` is `f₀`.
+  #[test]
+  fn monotone_convex_caps_the_first_node_at_twice_its_discrete_forward() {
+    let points = from_forwards(&[0.01, -0.05, 0.01]);
+    let eps = 1e-6;
+    let forward_at_zero = -monotone_convex(&points, eps).ln() / eps;
+    assert!((forward_at_zero - 0.02).abs() < 1e-6, "{forward_at_zero}");
+  }
+
+  /// Hagan & West's (62) at the far end: unbounded, `f_n` is 0.025 against the cap of 0.02.
+  #[test]
+  fn monotone_convex_caps_the_last_node_at_twice_its_discrete_forward() {
+    let points = from_forwards(&[0.01, -0.05, 0.01]);
+    let eps = 1e-6;
+    let ratio = monotone_convex(&points, 3.0 - eps) / points[2].discount_factor;
+    assert!(
+      (ratio.ln() / eps - 0.02).abs() < 1e-6,
+      "{}",
+      ratio.ln() / eps
+    );
+  }
+
+  /// A NaN pillar makes NaN every interval whose end nodes read it, not only its own two.
+  #[test]
+  fn monotone_convex_propagates_a_nan_pillar_into_its_neighbours() {
+    let mut points = from_forwards(&[0.02, 0.02, 0.02, 0.02, 0.02, 0.02]);
+    points[2].discount_factor = f64::NAN;
+    for t in [1.5, 2.5, 3.5, 4.5] {
+      assert!(monotone_convex(&points, t).is_nan(), "t = {t}");
+    }
+    assert!((monotone_convex(&points, 0.5) - (-0.01_f64).exp()).abs() < 1e-15);
+    assert!(monotone_convex(&points, 5.5).is_finite());
+  }
+
+  #[test]
+  fn zero_rates_from_points_is_nan_at_the_origin() {
+    let mut points = from_forwards(&[0.03, 0.03]);
+    points.insert(
+      0,
+      CurvePoint {
+        time: 0.0,
+        discount_factor: 1.0,
+      },
+    );
+    let rates = zero_rates_from_points(&points);
+    assert!(rates[0].is_nan());
+    assert!((rates[1] - 0.03).abs() < 1e-15 && (rates[2] - 0.03).abs() < 1e-15);
+  }
 
   fn pts() -> Vec<CurvePoint<f64>> {
     vec![
