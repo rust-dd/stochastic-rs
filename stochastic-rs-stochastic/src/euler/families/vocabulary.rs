@@ -1,5 +1,29 @@
 //! Function vocabulary for host evaluation and CUDA source generation.
 
+/// The C definitions of the function vocabulary, in terms of the precision
+/// placeholders the CUDA kernel renderer fills in.
+#[cfg(any(feature = "cuda", test))]
+pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
+#define exp(v) STOCH_EXP(v)
+#define ln(v) STOCH_LOG(v)
+#define pow(a, b) STOCH_POW(a, b)
+#define abs(v) STOCH_ABS(v)
+#define negate(v) (-(v))
+#define tanh(v) STOCH_TANH(v)
+#define atan(v) STOCH_ATAN(v)
+#define recip(v) ((REAL)1 / (v))
+#define sin(v) STOCH_SIN(v)
+#define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define less(a, b) ((a) < (b) ? (REAL)1 : (REAL)0)
+#define leq(a, b) ((a) <= (b) ? (REAL)1 : (REAL)0)
+#define geq(a, b) ((a) >= (b) ? (REAL)1 : (REAL)0)
+#define pick(c, a, b) ((c) != (REAL)0 ? (a) : (b))
+#define lit(v) ((REAL)(v))
+"#;
+
+#[cfg(test)]
 pub(crate) mod ops {
   use crate::traits::FloatExt;
 
@@ -119,26 +143,3 @@ pub(crate) mod ops {
     if cond != T::zero() { a } else { b }
   }
 }
-
-/// The C definitions of the function vocabulary, in terms of the precision
-/// placeholders the CUDA kernel renderer fills in.
-#[cfg(any(feature = "cuda", test))]
-pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
-#define exp(v) STOCH_EXP(v)
-#define ln(v) STOCH_LOG(v)
-#define pow(a, b) STOCH_POW(a, b)
-#define abs(v) STOCH_ABS(v)
-#define negate(v) (-(v))
-#define tanh(v) STOCH_TANH(v)
-#define atan(v) STOCH_ATAN(v)
-#define recip(v) ((REAL)1 / (v))
-#define sin(v) STOCH_SIN(v)
-#define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define less(a, b) ((a) < (b) ? (REAL)1 : (REAL)0)
-#define leq(a, b) ((a) <= (b) ? (REAL)1 : (REAL)0)
-#define geq(a, b) ((a) >= (b) ? (REAL)1 : (REAL)0)
-#define pick(c, a, b) ((c) != (REAL)0 ? (a) : (b))
-#define lit(v) ((REAL)(v))
-"#;

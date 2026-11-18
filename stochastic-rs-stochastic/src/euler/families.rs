@@ -71,7 +71,7 @@
 //! `lit`, the
 //! comparisons
 //! `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host
-//! implementation in [`ops`] and a CUDA definition in `vocabulary::C_PRELUDE`,
+//! implementation in `vocabulary::ops` and a CUDA definition in `vocabulary::C_PRELUDE`,
 //! the two kept together in [`vocabulary`]; the Metal kernel crate mirrors them
 //! in its own `vocabulary` module. Anything outside it fails to compile on the
 //! host, which is the intended way to find out that a kernel could not have run
@@ -80,12 +80,14 @@
 //! [`definitions`] stores the table in code order. The host and C generator
 //! lives in [`codegen`]; `tests` pins its step and report against closed forms.
 
+#[cfg(test)]
 use crate::traits::FloatExt;
 
 #[macro_use]
 pub(crate) mod codegen;
 pub(crate) mod vocabulary;
 
+#[cfg(test)]
 pub(crate) use vocabulary::ops;
 
 #[macro_use]
