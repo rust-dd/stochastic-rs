@@ -15,8 +15,8 @@ use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
 use crate::total_order::descending;
 
-/// Build rank-based long/short momentum portfolio, best score first; a NaN score ranks last
-/// whatever its sign.
+/// Build rank-based long/short momentum portfolio, best score first; a NaN score is in neither
+/// leg.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -24,11 +24,12 @@ pub fn build_portfolio(
   scheme: WeightScheme,
   corr: Option<&[Vec<f64>]>,
 ) -> MomentumPortfolio {
-  if scores.is_empty() {
+  let mut order = (0..scores.len())
+    .filter(|&i| !scores[i].momentum_score.is_nan())
+    .collect::<Vec<_>>();
+  if order.is_empty() {
     return MomentumPortfolio::default();
   }
-
-  let mut order: Vec<usize> = (0..scores.len()).collect();
   order.sort_by(|&a, &b| descending(&scores[a].momentum_score, &scores[b].momentum_score));
 
   let long_count = long_n.min(order.len());

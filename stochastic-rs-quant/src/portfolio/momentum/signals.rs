@@ -5,17 +5,18 @@ use super::types::ModelEstimate;
 use super::types::MomentumScore;
 use crate::total_order::descending;
 
-/// Compute risk-adjusted momentum scores from model estimates.
+/// Risk-adjusted scores `(return − risk_free) / vol`; NaN unless the vol is positive, which
+/// keeps the asset out of every ranking.
 pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<MomentumScore> {
   evals
     .iter()
     .map(|e| {
       let implied_vol = e.implied_vol();
       let annualized_return = e.annualized_return();
-      let score = if implied_vol > 1e-12 {
+      let score = if implied_vol > 0.0 {
         (annualized_return - risk_free) / implied_vol
       } else {
-        0.0
+        f64::NAN
       };
 
       MomentumScore {
@@ -31,14 +32,17 @@ pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<Mome
     .collect()
 }
 
-/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score ranks
-/// last whatever its sign.
+/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score is in
+/// no bucket.
 pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
-  if scores.is_empty() {
+  let mut sorted = scores
+    .iter()
+    .filter(|s| !s.momentum_score.is_nan())
+    .cloned()
+    .collect::<Vec<_>>();
+  if sorted.is_empty() {
     return Vec::new();
   }
-
-  let mut sorted: Vec<MomentumScore> = scores.to_vec();
   sorted.sort_by(|a, b| descending(&a.momentum_score, &b.momentum_score));
 
   let n = sorted.len();
