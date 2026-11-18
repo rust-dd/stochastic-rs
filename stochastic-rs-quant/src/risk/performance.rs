@@ -1,16 +1,9 @@
-//! Performance ratios — Sharpe, Sortino, Information Ratio, Calmar.
+//! Sharpe, Sortino, information and Calmar ratios; each takes the annualisation factor
+//! (periods per year) as an argument.
 //!
-//! Reference: Sharpe, "The Sharpe Ratio", Journal of Portfolio Management,
-//! 21(1), 49–58 (1994). DOI: 10.3905/jpm.1994.409501
-//!
-//! Reference: Sortino & van der Meer, "Downside Risk", Journal of Portfolio
-//! Management, 17(4), 27–31 (1991). DOI: 10.3905/jpm.1991.409343
-//!
-//! Reference: Young, "Calmar Ratio: A Smoother Tool", Futures Magazine (1991).
-//!
-//! All ratios accept an explicit annualisation factor (periods per year) so
-//! no `252`, `365`, or `12` constants are hard-coded — callers pass whatever
-//! matches their sampling frequency.
+//! Reference: Sharpe (1994), J. Portfolio Management 21(1), 49–58, DOI 10.3905/jpm.1994.409501
+//! Reference: Sortino & van der Meer (1991), J. Portfolio Management 17(4), 10.3905/jpm.1991.409343
+//! Reference: Young (1991), "Calmar Ratio: A Smoother Tool", Futures Magazine
 
 use ndarray::ArrayView1;
 

@@ -35,10 +35,8 @@ struct FixingInner<T: RealExt> {
   observable: ObservableBase,
 }
 
-/// Observable, append-mostly map of realised fixings keyed by fixing date.
-///
-/// Cheap to clone (shared `Arc` interior). Used by coupons that need past
-/// fixings and by any pricer that must refresh when new fixings arrive.
+/// Observable map of realised fixings by fixing date, cheap to clone (a shared `Arc`); coupons
+/// read past fixings from it and pricers refresh when one arrives.
 pub struct FixingHistory<T: RealExt> {
   inner: Arc<FixingInner<T>>,
 }

@@ -1,9 +1,7 @@
-//! ISO 4217 currency definitions and metadata.
+//! The active ISO 4217 currencies: G10, emerging markets, precious metals and special drawing
+//! rights.
 //!
-//! Complete set of active ISO 4217 currencies including G10, emerging
-//! markets, precious metals, and special drawing rights.
-//!
-//! Reference: ISO 4217:2015 — Codes for the representation of currencies.
+//! Reference: ISO 4217:2015, Codes for the representation of currencies
 
 /// An ISO 4217 currency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

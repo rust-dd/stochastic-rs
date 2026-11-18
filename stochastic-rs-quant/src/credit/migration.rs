@@ -1,31 +1,15 @@
-//! Credit rating migration matrices and continuous-time generators.
+//! Rating migration: a row-stochastic one-period matrix $P$ whose last state, default, is
+//! absorbing, and a generator $Q$ with $P(t)=\exp(tQ)$.
 //!
-//! Reference: Jarrow, Lando & Turnbull, "A Markov Model for the Term Structure
-//! of Credit Risk Spreads", Review of Financial Studies, 10(2), 481–523 (1997).
-//! DOI: 10.1093/rfs/10.2.481
-//!
-//! Reference: Israel, Rosenthal & Wei, "Finding Generators for Markov Chains
-//! via Empirical Transition Matrices, with Applications to Credit Ratings",
-//! Mathematical Finance, 11(2), 245–265 (2001).
-//! DOI: 10.1111/1467-9965.00114
-//!
-//! Reference: Pfeuffer, dos Reis & Smith, "Capturing Model Risk and Rating
-//! Momentum in the Estimation of Probabilities of Default and Credit Rating
-//! Migrations", arXiv:1809.09889 (2018).
-//!
-//! Reference: Higham, "The Scaling and Squaring Method for the Matrix
-//! Exponential Revisited", SIAM Journal on Matrix Analysis and Applications,
-//! 26(4), 1179–1193 (2005). DOI: 10.1137/04061101X
-//!
-//! The discrete one-period transition matrix is row-stochastic with an
-//! absorbing default state in the last row/column:
 //! $$
-//! P\in\mathbb{R}^{n\times n},\quad P_{ij}\ge 0,\quad \sum_j P_{ij}=1,\quad
-//! P_{n,\cdot}=(0,\dots,0,1).
+//! P_{ij}\ge 0,\quad \sum_j P_{ij}=1,\quad P_{n,\cdot}=(0,\dots,0,1),\qquad
+//! Q_{ij}\ge 0\ (i\ne j),\quad \sum_j Q_{ij}=0
 //! $$
-//! A continuous-time rating process is driven by a generator $Q$ with
-//! $Q_{ii}\le 0$, $Q_{ij}\ge 0$ for $i\ne j$ and $\sum_j Q_{ij}=0$; the
-//! $t$-year transition matrix is $P(t)=\exp(tQ)$.
+//!
+//! Reference: Jarrow, Lando & Turnbull (1997), Rev. Financ. Stud. 10(2), DOI 10.1093/rfs/10.2.481
+//! Reference: Israel, Rosenthal & Wei (2001), Math. Finance 11(2), DOI 10.1111/1467-9965.00114
+//! Reference: Pfeuffer, dos Reis & Smith (2018), arXiv:1809.09889
+//! Reference: Higham (2005), SIAM J. Matrix Anal. Appl. 26(4), DOI 10.1137/04061101X
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -33,10 +17,8 @@ use ndarray::Array2;
 use crate::QuantError;
 use crate::traits::RealExt;
 
-/// Discrete-time rating transition matrix with an absorbing default state.
-///
-/// Rows correspond to the starting rating and columns to the rating at the
-/// end of the period.  The last index is the default (absorbing) state.
+/// Discrete-time rating transition matrix: row is the starting rating, column the rating at the
+/// period's end, and the last index is the absorbing default state.
 #[derive(Debug, Clone)]
 pub struct TransitionMatrix<T: RealExt> {
   matrix: Array2<T>,
@@ -66,11 +48,7 @@ impl<T: RealExt> TransitionMatrix<T> {
     &self.matrix
   }
 
-  /// Matrix reference to `P^k` — the $k$-period transition matrix.
-  ///
-  /// Convention: `power(0)` returns the identity matrix $I$ (vacuous transition,
-  /// state preserved with probability 1). `power(k)` for `k >= 1` is `P^k`
-  /// computed by repeated multiplication.
+  /// The $k$-period transition matrix `P^k`; `power(0)` is the identity.
   pub fn power(&self, k: usize) -> TransitionMatrix<T> {
     if k == 0 {
       let n = self.matrix.nrows();
@@ -142,27 +120,16 @@ impl<T: RealExt> GeneratorMatrix<T> {
     &self.matrix
   }
 
-  /// Transition matrix $P(t)=\exp(tQ)$ for a holding period of `t` years.
-  ///
-  /// Uses a scaling-and-squaring Padé approximation (Higham, 2005) implemented
-  /// on `ndarray` matrix operations so the method works under the default
-  /// crate features (no LAPACK dependency).
+  /// Transition matrix $P(t)=\exp(tQ)$ for a holding period of `t` years, by scaling and squaring
+  /// with a Padé approximant (Higham 2005).
   pub fn transition_at(&self, t: T) -> TransitionMatrix<T> {
     let scaled = &self.matrix * t;
     let p = expm(&scaled);
     TransitionMatrix::new(p)
   }
 
-  /// Jarrow-Lando-Turnbull embedding of a discrete yearly transition matrix:
-  /// $Q=\log(P)$ via series expansion.  Works when $P$ is diagonally dominant
-  /// (common for credit rating matrices).
-  ///
-  /// Uses the series
-  /// $\log(I+X)=\sum_{k\ge 1}(-1)^{k+1}X^k/k$
-  /// with $X=P-I$, which converges when $\|X\|<1$ and is the standard JLT
-  /// approach.  The result is not guaranteed to satisfy the generator
-  /// positivity constraints; downstream users should project it to a valid
-  /// generator via [`GeneratorMatrix::project_to_generator`] if needed.
+  /// Jarrow–Lando–Turnbull embedding $Q=\log P=\sum_{k\ge 1}(-1)^{k+1}(P-I)^k/k$, convergent for
+  /// $\|P-I\|<1$; the result may break generator positivity (see [`Self::project_to_generator`]).
   pub fn from_yearly_transition(p: &TransitionMatrix<T>) -> Self {
     let n = p.states();
     let identity = identity_matrix(n);
@@ -190,9 +157,8 @@ impl<T: RealExt> GeneratorMatrix<T> {
     Self::new(result)
   }
 
-  /// Project a candidate generator matrix onto the closest valid generator by
-  /// zeroing negative off-diagonal entries and rescaling rows to sum to zero
-  /// (Israel-Rosenthal-Wei "diagonal adjustment" method).
+  /// The Israel–Rosenthal–Wei diagonal adjustment: negative off-diagonal entries are zeroed and
+  /// each row is rescaled to sum to zero.
   pub fn project_to_generator(&self) -> Self {
     let n = self.states();
     let mut m: Array2<T> = self.matrix.clone();
@@ -237,9 +203,8 @@ impl<T: RealExt> GeneratorMatrix<T> {
     p.matrix.column(self.default_state()).to_owned()
   }
 
-  /// Validate that the matrix satisfies generator-matrix conditions to within
-  /// `tol`: non-negative off-diagonal entries, non-positive diagonal, zero row
-  /// sums.
+  /// `Err` unless, within `tol`, the off-diagonal entries are non-negative, the diagonal is
+  /// non-positive and every row sums to zero.
   pub fn check_generator(&self, tol: T) -> Result<(), QuantError> {
     let invalid = |reason| QuantError::invalid("generator matrix", reason);
     let n = self.states();
@@ -271,11 +236,8 @@ fn identity_matrix<T: RealExt>(n: usize) -> Array2<T> {
   m
 }
 
-/// Scaling-and-squaring Padé-13 matrix exponential.
-///
-/// Implementation follows Higham (2005) Algorithm 2.3 with the $\theta_{13}$
-/// threshold.  Uses only matrix multiplication and a Gauss-Jordan matrix
-/// inversion so it does not require a LAPACK backend.
+/// Scaling-and-squaring Padé-13 matrix exponential, Higham (2005) Algorithm 2.3 with the
+/// $\theta_{13}$ threshold.
 fn expm<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   let n = a.nrows();
   if n == 0 {
@@ -426,14 +388,8 @@ mod tests {
 
   use super::*;
 
-  /// Reference values for `expm` of the 2-state generator
-  /// Q = [[-0.1, 0.1], [0.05, -0.05]] computed with scipy.linalg.expm
-  /// (closed-form: P = (1/λ) [[β + α·e^{-λ}, α(1-e^{-λ})],
-  ///                          [β(1-e^{-λ}), α + β·e^{-λ}]] for λ = α + β).
-  /// `expm(Q) = [[0.9071795..., 0.0928204...],
-  ///             [0.0464102..., 0.9535897...]]`
-  /// Sourced by hand-computing the closed form (see comment) and
-  /// independently checked against scipy 1.11.4 with rtol=1e-12.
+  /// `expm` of `Q = [[-α, α], [β, -β]]` at `α = 0.1`, `β = 0.05` against the closed form
+  /// `(1/λ) [[β + α·e^{-λ}, α(1-e^{-λ})], [β(1-e^{-λ}), α + β·e^{-λ}]]`, `λ = α + β`.
   #[test]
   fn expm_matches_scipy_2x2_generator() {
     let q = array![[-0.1, 0.1], [0.05, -0.05]];

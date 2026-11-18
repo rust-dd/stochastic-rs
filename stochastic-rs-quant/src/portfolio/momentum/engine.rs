@@ -1,7 +1,5 @@
-//! Momentum portfolio engine.
-//!
-//! Rank-based and optimizer-based long/short builders that consume
-//! [`MomentumScore`] inputs and emit [`MomentumPortfolio`] outputs.
+//! Rank-based and optimizer-based long/short builders from [`MomentumScore`] inputs to
+//! [`MomentumPortfolio`] outputs.
 
 use super::super::data::align_return_series;
 use super::super::data::correlation_matrix;

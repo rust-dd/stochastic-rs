@@ -1,15 +1,12 @@
-//! Drawdown metrics for cumulative return / price series.
+//! Drawdown of an equity series $V_t$, reported as a negative fraction (`-0.25` is a 25 %
+//! drawdown).
 //!
-//! Reference: Magdon-Ismail & Atiya, "Maximum Drawdown", Risk Magazine,
-//! October 2004.
-//!
-//! Given an equity series $V_t$,
 //! $$
 //! \mathrm{DD}_t=\frac{V_t-\max_{s\le t}V_s}{\max_{s\le t}V_s},\qquad
 //! \mathrm{MDD}=\min_t\mathrm{DD}_t.
 //! $$
-//! Drawdown is reported as a negative fraction; e.g. `-0.25` is a 25 %
-//! drawdown.  The maximum drawdown magnitude can be recovered as `-mdd`.
+//!
+//! Reference: Magdon-Ismail & Atiya (2004), "Maximum Drawdown", Risk Magazine, October
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -44,13 +41,8 @@ pub fn max_drawdown<T: RealExt>(equity: ArrayView1<T>) -> T {
   T::min_or_nan_fold(running_drawdown(equity).iter().copied())
 }
 
-/// Length of the longest drawdown period (in observations).
-///
-/// Counts the longest run of *consecutive* observations strictly below the
-/// most-recent running peak (excludes the peak observation itself). For an
-/// alternative definition that measures the longest peak-to-recovery
-/// distance — including the unrecovered tail when the series never
-/// returns to its previous peak — see [`max_peak_to_recovery_duration`].
+/// Longest run of consecutive observations strictly below the running peak, the peak itself
+/// excluded; [`max_peak_to_recovery_duration`] measures peak to recovery.
 pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
   let mut peak = T::neg_infinity();
   let mut current = 0usize;
@@ -69,18 +61,8 @@ pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
   longest
 }
 
-/// Longest peak-to-recovery distance (in observations).
-///
-/// For each peak that is followed by at least one strictly-below-peak
-/// observation, counts the number of bars from the peak until the
-/// equity series next reaches that peak (or higher). Returns the
-/// maximum such distance. Unrecovered tail-drawdowns at the end of the
-/// series count as `equity.len() - 1 - peak_index`, since the recovery
-/// never happens — this matches the "time-under-water" convention used
-/// by Magdon-Ismail & Atiya (2004) and the `MaxDD Duration` metric on
-/// Bloomberg / Refinitiv.
-///
-/// Monotonically-increasing series report `0` (no underwater episodes).
+/// Longest distance in observations from a peak to the next value at or above it; an
+/// unrecovered tail counts `equity.len() - 1 - peak_index`, and a rising series gives `0`.
 pub fn max_peak_to_recovery_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
   let n = equity.len();
   if n == 0 {

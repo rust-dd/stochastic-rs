@@ -1,7 +1,6 @@
 //! Cash flow periods, notionals, and rate index definitions.
 //!
-//! Reference: Henrard, "Interest Rate Modelling in the Multi-Curve Framework",
-//! Palgrave Macmillan (2014).
+//! Reference: Henrard (2014), "Interest Rate Modelling in the Multi-Curve Framework", Palgrave
 
 use std::fmt::Display;
 use std::str::FromStr;
@@ -407,9 +406,8 @@ fn linear_profile<T: RealExt>(periods: usize, start: T, end: T) -> Array1<T> {
   }
 }
 
-/// Generate an unadjusted coupon-period grid `[effective, ..., termination]`.
-/// Non-EOM (the coupons-on-anniversary convention used by the cashflow leg
-/// generators). For EOM-aware schedules use [`crate::calendar::ScheduleBuilder`].
+/// Unadjusted coupon-period grid `[effective, ..., termination]` on anniversaries, with no
+/// end-of-month rule.
 fn generate_unadjusted_schedule(
   effective: NaiveDate,
   termination: NaiveDate,

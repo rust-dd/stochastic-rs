@@ -1,17 +1,12 @@
-//! European swaption pricing via Black-76 and Bachelier on the forward swap rate.
+//! European swaptions under Black-76 and Bachelier on the forward swap rate $s$; $s$ and the
+//! annuity $A = \sum_j D(t_j)\,\delta_j\,N_j$ come from the underlying swap's valuation.
 //!
 //! $$
 //! V_{\mathrm{payer}} = A\,\bigl[s\,\Phi(d_1) - K\,\Phi(d_2)\bigr],\qquad
 //! V_{\mathrm{receiver}} = A\,\bigl[K\,\Phi(-d_2) - s\,\Phi(-d_1)\bigr]
 //! $$
 //!
-//! The forward swap rate $s$ and the fixed-leg annuity $A = \sum_j D(t_j)\,
-//! \delta_j\,N_j$ are both read off the existing curve stack via the
-//! [`crate::instruments::VanillaInterestRateSwap`] valuation routine, so
-//! the Black measure collapses the discounting into $A$.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §6.7.
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §6.7
 
 use chrono::NaiveDate;
 

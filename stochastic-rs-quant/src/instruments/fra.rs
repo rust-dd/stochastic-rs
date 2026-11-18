@@ -1,22 +1,13 @@
-//! Forward Rate Agreement instrument with date-aware valuation.
-//!
-//! A FRA fixes the interest rate between two future dates against a
-//! pre-agreed strike rate. Under a multi-curve setup the expected future
-//! rate comes from a forecast curve while the discount factor comes from
-//! the OIS (risk-free) curve.
+//! Forward rate agreement: the forward comes from a forecast curve $D_f$ and the discount
+//! factor from the OIS curve.
 //!
 //! $$
-//! \text{NPV} = N\,\alpha\,\big(L(T_1, T_2) - K\big)\,D(0, T_p)
+//! \text{NPV} = N\,\alpha\,\big(L(T_1, T_2) - K\big)\,D(0, T_p),\qquad
+//! L(T_1, T_2) = \frac{1}{\alpha}\left(\frac{D_f(0,T_1)}{D_f(0,T_2)} - 1\right)
 //! $$
 //!
-//! with $L(T_1, T_2) = \big(D_f(0,T_1)/D_f(0,T_2) - 1\big)/\alpha$ the
-//! simple forward rate on the forecast curve $D_f$.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and
-//! Practice", Springer, 2nd ed. (2006), §1.5.
-//!
-//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013), §3 — FRA
-//! pricing in the multi-curve framework.
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §3
 
 use chrono::NaiveDate;
 

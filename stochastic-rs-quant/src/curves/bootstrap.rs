@@ -1,16 +1,13 @@
-//! Yield curve bootstrapping from market instruments.
+//! Yield curve bootstrapping: deposits at the short end, FRAs and futures in the middle, swaps
+//! at the long end.
 //!
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
-//! Wilmott Magazine (2006).
+//! $$
+//! D(t) = \frac{1}{1 + r\,\delta},\qquad D(t_2) = \frac{D(t_1)}{1 + R\,\delta},\qquad
+//! D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}
+//! $$
 //!
-//! Reference: Ametrano & Bianchetti, "Everything You Always Wanted to Know About
-//! Multiple Interest Rate Curve Bootstrapping but Were Afraid to Ask",
-//! SSRN 2219548 (2013).
-//!
-//! Bootstrapping algorithm:
-//! 1. **Short end** (deposits): $D(t) = 1/(1 + r\,\delta)$
-//! 2. **Middle** (FRAs / futures): $D(t_2) = D(t_1)/(1 + R\,\delta)$
-//! 3. **Long end** (swaps): $D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}$
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
 mod spec;
 mod validate;

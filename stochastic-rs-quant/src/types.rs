@@ -108,18 +108,12 @@ impl CalibrationLossScore {
     Self { scores }
   }
 
-  /// Get a metric value. Returns `f64::NAN` when the metric was not
-  /// computed (e.g. a calibrator that only fills `LossMetric::Rmse` on a
-  /// `LossMetric::Mae` lookup). Use [`Self::try_get`] for an explicit
-  /// `Option<f64>`.
+  /// The metric's value, NaN when it was not computed; [`Self::try_get`] gives an `Option`.
   pub fn get(&self, metric: LossMetric) -> f64 {
     self.scores.get(&metric).copied().unwrap_or(f64::NAN)
   }
 
-  /// Get a metric value as `Option<f64>` — `None` when the metric was
-  /// not computed by the calibrator. Prefer this when downstream code
-  /// needs to branch on presence (rather than treating absence as zero
-  /// or NaN).
+  /// The metric's value, `None` when the calibrator did not compute it.
   pub fn try_get(&self, metric: LossMetric) -> Option<f64> {
     self.scores.get(&metric).copied()
   }

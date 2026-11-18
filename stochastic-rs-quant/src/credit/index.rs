@@ -1,4 +1,5 @@
-//! # CDS index
+//! Untranched credit index (CDX, iTraxx): single-name CDS on one running coupon, valued name by
+//! name and aggregated by notional weight; the upfront follows the ISDA flat-hazard convention.
 //!
 //! $$
 //! \mathrm{PV}_{\text{prot}} = \sum_i w_i\,\mathrm{PV}^{(i)}_{\text{prot}},\qquad
@@ -6,17 +7,8 @@
 //! s^\star = \frac{\mathrm{PV}_{\text{prot}}}{\mathrm{RPV01}}
 //! $$
 //!
-//! An untranched credit index (CDX / iTraxx style): a weighted portfolio of
-//! single-name CDS on one common running coupon, valued name by name with
-//! the crate's ISDA-style single-name engine and aggregated by notional
-//! weight, so the index fair spread is the annuity-weighted average of the
-//! names' fair spreads. Traded indices settle upfront on a quoted spread
-//! through the ISDA standard model convention: a flat hazard rate is solved
-//! so that a running CDS at the quoted spread has zero value (recovery 40 %),
-//! and the upfront is the value of the coupon shortfall on that curve.
-//!
-//! Reference: O'Kane, D. (2008), *Modelling Single-name and Multi-name
-//! Credit Derivatives*, Wiley, Ch. 10–11; ISDA (2009), *CDS Standard Model*.
+//! Reference: O'Kane (2008), "Modelling Single-name and Multi-name Credit Derivatives", Ch. 10–11
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model"
 
 use chrono::NaiveDate;
 use ndarray::Array1;
@@ -188,10 +180,8 @@ impl CdsIndex {
     self.valuation(valuation_date, discount).fair_spread
   }
 
-  /// ISDA standard-model upfront the protection buyer pays for the index
-  /// at `quoted_spread`: the flat hazard rate that prices a running CDS at
-  /// the quoted spread to zero (with `recovery`, 40 % by convention) values
-  /// the coupon shortfall `quoted − coupon` on its risky annuity.
+  /// ISDA upfront the protection buyer pays at `quoted_spread`: the coupon shortfall
+  /// `quoted − coupon` on the risky annuity of the flat hazard that zeroes a CDS at the quote.
   pub fn isda_upfront(
     &self,
     valuation_date: NaiveDate,

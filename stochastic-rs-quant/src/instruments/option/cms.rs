@@ -1,5 +1,5 @@
-//! CMS caplet and floorlet pricing with Hagan's linear TSR convexity
-//! adjustment.
+//! CMS caplets and floorlets with Hagan's linear TSR adjustment: the natural-timing convexity
+//! plus the payment-delay term; `lambda` is a central difference of $G$ at a flat yield.
 //!
 //! $$
 //! S_{\mathrm{adj}}=S_0+S_0^{2}\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\lambda(S_0) +
@@ -9,15 +9,8 @@
 //! G(S)=\frac{1-(1+S\delta)^{-N}}{S}
 //! $$
 //!
-//! The first term is the natural-timing convexity (annuity-measure change),
-//! the second the payment-delay correction. `lambda` is computed by central
-//! finite differences on $G$ under a flat-yield assumption.
-//!
-//! Reference: Hagan, "Convexity Conundrums: Pricing CMS Swaps, Caps and
-//! Floors", Wilmott Magazine (2003).
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §13.8.
+//! Reference: Hagan (2003), "Convexity Conundrums: Pricing CMS Swaps, Caps and Floors", Wilmott
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §13.8
 
 use super::caplet::black_forward_caplet;
 use super::caplet::black_forward_floorlet;
@@ -61,10 +54,8 @@ pub fn hagan_linear_tsr_convexity_factor<T: RealExt>(
   s0 * g_prime / g0
 }
 
-/// Hagan convexity-adjusted forward CMS rate.
-///
-/// `payment_delay` is $T_{pay}-T_{fix}$ in years, zero or positive; the delay
-/// term is only applied when strictly positive.
+/// Hagan's convexity-adjusted forward CMS rate; `payment_delay` is $T_{pay}-T_{fix}$ in years,
+/// and its term applies only when the delay is positive.
 pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   s0: T,
   sigma_black: T,
@@ -193,7 +184,8 @@ impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
   }
 }
 
-/// A fixing at `t_fix <= 0` is known, so it pays its intrinsic value on `s0` without a vol or a convexity adjustment.
+/// A fixing at `t_fix <= 0` is known, so it pays its intrinsic value on `s0` without a vol or
+/// a convexity adjustment.
 #[allow(clippy::too_many_arguments)]
 fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   strike: T,

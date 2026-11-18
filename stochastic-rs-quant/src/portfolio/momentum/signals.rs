@@ -1,7 +1,4 @@
-//! Momentum signal calculations.
-//!
-//! Risk-adjusted score generation and decile aggregation operating on
-//! [`ModelEstimate`] inputs.
+//! Risk-adjusted momentum scores and decile aggregation over [`ModelEstimate`] inputs.
 
 use super::types::DecileBucket;
 use super::types::ModelEstimate;

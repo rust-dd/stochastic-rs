@@ -23,10 +23,8 @@ impl<T: RealExt> FmVol<T> {
     self.period * self.period * sum.re / T::from_usize_(2 * big_n + 1)
   }
 
-  /// Integrated covariance with another process.
-  ///
-  /// Uses Fejér-weighted coefficients. The engines must share a period and
-  /// Fourier time origin.
+  /// Integrated covariance with another process, Fejér-weighted; the two engines must share a
+  /// period and a Fourier time origin.
   pub fn integrated_covariance(&self, other: &Self) -> T {
     self
       .try_integrated_covariance(other)
@@ -115,13 +113,8 @@ impl<T: RealExt> FmVol<T> {
     Ok(self.period * self.period * sum.re / big_m_plus_1)
   }
 
-  /// Bias-corrected integrated volatility of volatility (Toscano-Livieri-
-  /// Mancino-Marmi 2024 eq.4, arXiv:2112.14529v3).
-  ///
-  /// Applies equation (4) coefficient by coefficient. For a general period,
-  /// the integrated quarticity multiplier is `(2π)² K / T`; at `T = 2π`
-  /// this becomes the paper's `2π K`. The correction can make finite-sample
-  /// estimates negative.
+  /// Bias-corrected integrated vol of vol, eq. (4) of arXiv:2112.14529v3 with the quarticity
+  /// multiplier `(2π)² K / T` (the paper's `2π K` at `T = 2π`); it can come back negative.
   pub fn integrated_volvol_bias_corrected(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_volvol_bias_corrected(m_freq)

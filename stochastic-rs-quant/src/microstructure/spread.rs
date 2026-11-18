@@ -1,35 +1,16 @@
-//! Bid-ask spread estimators from trade and quote data.
+//! Bid-ask spread estimators: Roll's from the serial covariance of price changes, the effective
+//! spread from trades and mids, and Corwin–Schultz from daily highs and lows.
 //!
-//! - **Roll (1984)**: implicit effective spread from the negative serial
-//!   covariance of trade-price changes induced by the bid-ask bounce.
-//! - **Effective spread**: realised cost from trade prices and contemporaneous
-//!   mid-quotes — $2|p_t - m_t|$ for buys and equivalent for sells.
-//! - **Corwin-Schultz (2012)**: 2-day high-low spread estimator from daily
-//!   highs and lows alone.
-//!
-//! Reference: Roll, "A Simple Implicit Measure of the Effective Bid-Ask
-//! Spread in an Efficient Market", Journal of Finance, 39(4), 1127-1139
-//! (1984). DOI: 10.1111/j.1540-6261.1984.tb03897.x
-//!
-//! Reference: Corwin, Schultz, "A Simple Way to Estimate Bid-Ask Spreads from
-//! Daily High and Low Prices", Journal of Finance, 67(2), 719-760 (2012).
-//! DOI: 10.1111/j.1540-6261.2012.01729.x
+//! Reference: Roll (1984), Journal of Finance 39(4), DOI 10.1111/j.1540-6261.1984.tb03897.x
+//! Reference: Corwin & Schultz (2012), J. Finance 67(2), DOI 10.1111/j.1540-6261.2012.01729.x
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::traits::RealExt;
 
-/// Roll (1984) implicit effective spread:
-/// $s_{Roll} = 2\sqrt{\max(0, -\widehat{\mathrm{Cov}}(\Delta p_t, \Delta p_{t-1}))}$.
-///
-/// Estimator divides by the **number of cross-product terms** $n$ (i.e. the
-/// number of $(\Delta p_t, \Delta p_{t-1})$ pairs, which equals
-/// `diffs.len() - 1` for a length-$n$ price series). This matches Roll
-/// (1984)'s original derivation. The alternative $(n-1)$ divisor (sample
-/// autocovariance) is also defensible — both estimators are consistent and
-/// differ by $O(1/n)$ on long series. The current implementation uses the
-/// Roll-1984 convention.
+/// Roll's implicit spread $2\sqrt{\max(0, -\widehat{\mathrm{Cov}}(\Delta p_t, \Delta p_{t-1}))}$;
+/// the covariance divides by the number of cross-product pairs, as in Roll (1984).
 pub fn roll_spread<T: RealExt>(prices: ArrayView1<T>) -> T {
   let n = prices.len();
   if n < 3 {
@@ -56,11 +37,8 @@ pub fn roll_spread<T: RealExt>(prices: ArrayView1<T>) -> T {
   T::from_f64_fast(2.0) * (-cov).sqrt()
 }
 
-/// Realised effective half-spread from contemporaneous trades and mids.
-///
-/// `trade_price[i]` is the executed trade price at tick `i` and `mid[i]`
-/// the prevailing mid-quote at the same instant. Returns the average
-/// $\frac{1}{N}\sum_i 2\,|p_i - m_i|$ — the realised round-trip cost.
+/// Realised effective spread $\frac{1}{N}\sum_i 2\,|p_i - m_i|$, the round-trip cost, from
+/// trade prices and the mid-quotes prevailing at the same ticks.
 pub fn effective_spread<T: RealExt>(trade_price: ArrayView1<T>, mid: ArrayView1<T>) -> T {
   assert_eq!(
     trade_price.len(),
@@ -80,20 +58,14 @@ pub fn effective_spread<T: RealExt>(trade_price: ArrayView1<T>, mid: ArrayView1<
   acc / T::from_usize_(n)
 }
 
-/// Corwin-Schultz (2012) 2-day high-low bid-ask spread estimator.
-///
-/// `high[i]`/`low[i]` are the daily high and low prices for day `i`. Returns
-/// the average 2-day spread $\bar S$ across all consecutive day pairs:
+/// Corwin–Schultz spread averaged over consecutive day pairs; $\beta$ sums the two days'
+/// squared log ranges and $\gamma$ is the squared log range of the 2-day high and low.
 ///
 /// $$
 /// S = \frac{2(e^\alpha-1)}{1+e^\alpha},
 /// \quad
 /// \alpha = \frac{\sqrt{2\beta}-\sqrt{\beta}}{3-2\sqrt 2} - \sqrt{\frac{\gamma}{3-2\sqrt 2}},
 /// $$
-///
-/// with $\beta = \mathbb E[(\ln(H_t/L_t))^2 + (\ln(H_{t+1}/L_{t+1}))^2]$ and
-/// $\gamma = \mathbb E[(\ln(H_t^{(2)}/L_t^{(2)}))^2]$ where the
-/// superscript $(2)$ denotes the 2-day high/low.
 pub fn corwin_schultz_spread<T: RealExt>(high: ArrayView1<T>, low: ArrayView1<T>) -> T {
   assert_eq!(high.len(), low.len(), "high and low must have equal length");
   let n = high.len();
@@ -158,11 +130,8 @@ mod tests {
 
   #[test]
   fn roll_recovers_known_spread_under_pure_bounce() {
-    // Roll's estimator has standard error roughly s/sqrt(2n) under the
-    // bid/ask bounce DGP. For n = 10_000 and s = 0.10 that is ≈ 7e-4, so
-    // a 0.03 tolerance is ≈ 40σ — comfortable. We tested seeds 0, 7, 11,
-    // 42, and 100 against this tolerance; all pass with margin > 25σ.
-    // If you tighten the tolerance below 0.005 you must enlarge n.
+    // Roll's standard error is about s/√(2n), 7e-4 at n = 10 000 and s = 0.10, so the 0.03
+    // tolerance is some 40σ.
     let mid = 100.0_f64;
     let s = 0.10;
     let n = 10_000;

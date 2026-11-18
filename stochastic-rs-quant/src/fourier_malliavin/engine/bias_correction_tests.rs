@@ -1,7 +1,6 @@
-//! Equation-level tests for the rate-efficient volatility-of-volatility estimator.
+//! Equation-level tests of the rate-efficient vol-of-vol estimator.
 //!
-//! Golden coefficients follow Toscano et al., arXiv:2112.14529v3,
-//! equations (11) and (51).
+//! Reference: Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3, eq. (11) and (51)
 
 use ndarray::Array1;
 use ndarray::array;

@@ -27,9 +27,7 @@ pub enum DayCountConvention {
   Thirty360,
   /// 30E/360 (European / Eurobond Basis): both dates capped at 30.
   Thirty360European,
-  /// 30E/360 ISDA: identical to 30E/360 except day-31 is rolled to 30 *only*
-  /// for non-EOM dates and February EOM is preserved (the late-2006 ISDA
-  /// 30/360 ISDA variant).
+  /// 30E/360 ISDA: as 30E/360, but February's last day counts as 30 unless it is the end date.
   Thirty360EuropeanIsda,
   /// Actual/Actual ISDA: splits the period at year boundaries and weights each
   /// segment by the actual length of its year (365 or 366).
@@ -46,11 +44,8 @@ pub enum DayCountConvention {
   /// NL/365 (No-Leap): actual days minus any Feb-29 in the interval, divided
   /// by 365. Used in some Canadian / asset-backed-security pricing.
   NoLeap365,
-  /// Act/365L (Actual/365 Leap): denominator is 366 when the period
-  /// contains a February 29 (in any year it traverses), otherwise 365.
-  /// Standard sterling money-market convention; ISDA 2006 §4.16(i).
-  /// Distinct from `ActualActualIsda` (which splits the period at the
-  /// year boundary) and from `NoLeap365` (which adjusts the numerator).
+  /// Act/365L, ISDA 2006 §4.16(i): the denominator is 366 when the period contains a 29 February
+  /// and 365 otherwise.
   Actual365Leap,
   /// Act/Act ICMA (= ISMA), ISDA 2006 §4.16(f): it needs a coupon's reference period, so
   /// `year_fraction` is NaN and [`DayCountConvention::year_fraction_icma`] takes the period.
@@ -200,9 +195,8 @@ fn thirty360_european_isda(d1: NaiveDate, d2: NaiveDate) -> i64 {
   if dd2 == 31 {
     dd2 = 30;
   }
-  // Feb-EOM (28 in non-leap, 29 in leap) → 30 for d1 only (d2 keeps actual day
-  // when it is the maturity / accrual end date — that is the "ISDA" twist
-  // versus plain 30E/360).
+  // The ISDA twist on 30E/360: February's last day becomes 30 for `d1` only; `d2` keeps its
+  // actual day when it is the end date.
   if d1.month() == 2 && (dd1 == 28 + i64::from(is_leap_year(d1.year()))) {
     dd1 = 30;
   }
@@ -283,10 +277,8 @@ fn actual_actual_isda(d1: NaiveDate, d2: NaiveDate) -> f64 {
 pub use super::date_math::days_in_month;
 pub use super::date_math::is_leap_year;
 
-/// Day count between `d1` and `d2` under the given day-count convention.
-/// Equivalent to [`DayCountConvention::day_count`] called with the same
-/// arguments; provided as a free function for symmetry with QuantLib's
-/// `dayCounter.dayCount(d1, d2)` style and Python binding ergonomics.
+/// Day count between `d1` and `d2` under `dcc`: [`DayCountConvention::day_count`] as a free
+/// function.
 pub fn days_between(d1: NaiveDate, d2: NaiveDate, dcc: DayCountConvention) -> i64 {
   dcc.day_count(d1, d2)
 }

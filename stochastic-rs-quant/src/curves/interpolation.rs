@@ -1,9 +1,7 @@
 //! Interpolation methods for yield curve construction.
 //!
-//! Reference: Hagan & West, "Interpolation Methods for Curve Construction",
-//! Applied Mathematical Finance, 13(2), 89-129 (2006).
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
-//! Wilmott Magazine (2006).
+//! Reference: Hagan & West (2006), Applied Mathematical Finance 13(2), 89–129
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
 
 use ndarray::Array1;
 
@@ -207,9 +205,8 @@ pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   (-forward_adj).exp()
 }
 
-/// Compute $\int_0^x G(s) ds$ for the Hagan-West (2006) monotone-convex
-/// interval-relative forward $G$, picking among the four region forms by
-/// the signs of $g_0, g_1$. Returns 0 on the degenerate flat case ($g_0 = g_1 = 0$).
+/// $\int_0^x G(s)\,ds$ of the Hagan–West monotone-convex interval-relative forward $G$, by the
+/// region the signs of $g_0, g_1$ select; 0 in the flat case $g_0 = g_1 = 0$.
 fn integrate_g_hagan_west<T: RealExt>(g0: T, g1: T, x: T) -> T {
   let zero = T::zero();
   let two = T::from_f64_fast(2.0);
@@ -222,9 +219,8 @@ fn integrate_g_hagan_west<T: RealExt>(g0: T, g1: T, x: T) -> T {
   let g1_plus_2g0 = g1 + two * g0;
   let g0_plus_2g1 = g0 + two * g1;
 
-  // Region 1: g₁+2g₀ and g₀+2g₁ have opposite signs (the no-correction case).
-  // G(x) = 3(g₀+g₁)x² − 2(g₁+2g₀)x + g₀
-  // ∫₀ˣ G = (g₀+g₁)x³ − (g₁+2g₀)x² + g₀ x
+  // Region 1, g₁+2g₀ and g₀+2g₁ of opposite sign: G(x) = 3(g₀+g₁)x² − 2(g₁+2g₀)x + g₀, so
+  // ∫₀ˣ G = (g₀+g₁)x³ − (g₁+2g₀)x² + g₀x.
   let region1 =
     (g1_plus_2g0 < zero && g0_plus_2g1 >= zero) || (g1_plus_2g0 > zero && g0_plus_2g1 <= zero);
   if region1 {

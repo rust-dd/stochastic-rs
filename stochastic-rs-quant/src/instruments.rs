@@ -1,19 +1,12 @@
-//! # Interest-Rate Instruments
+//! Fixed-income and vanilla swap instruments on the cash-flow and curve stack.
 //!
 //! $$
 //! V=\sum_{i=1}^{n} D(t_i)\,C_i,\qquad
 //! S^\star=\frac{\mathrm{PV}_{\mathrm{float}}}{\sum_{i=1}^{n} D(t_i)\,\alpha_i\,N_i}
 //! $$
 //!
-//! Core fixed-income and vanilla swap instruments built on top of the cash-flow
-//! and curve stack.
-//!
-//! Reference: Pallavicini & Tarenghi, "Interest-Rate Modeling with Multiple
-//! Yield Curves", arXiv:1006.4767 (2010).
-//!
-//! Reference: Ivanovski, Stojanovski & Ivanovska, "Interest Rate Risk of Bond
-//! Prices on Macedonian Stock Exchange - Empirical Test of the Duration,
-//! Modified Duration and Convexity and Bonds Valuation", arXiv:1206.6998 (2012).
+//! Reference: Pallavicini & Tarenghi (2010), arXiv:1006.4767
+//! Reference: Ivanovski, Stojanovski & Ivanovska (2012), arXiv:1206.6998
 
 pub mod bond;
 pub mod equity;

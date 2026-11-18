@@ -1,16 +1,8 @@
-//! Bump-and-reprice Greeks and bucket DV01.
+//! Bump-and-reprice Greeks on pricing closures and bucket DV01, one curve pillar shifted at a
+//! time.
 //!
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
-//! Wilmott Magazine (2006) — key-rate durations.
-//!
-//! Reference: Ho, "Key Rate Durations: Measures of Interest Rate Risk",
-//! Journal of Fixed Income, 2(2), 29–44 (1992).
-//!
-//! Sensitivities are computed with finite differences on user-supplied
-//! pricing closures.  The library ships a central-difference helper, a
-//! first-order forward-difference helper, and a `bucket_dv01` routine that
-//! shifts one pillar of a discount curve at a time, returning the per-bucket
-//! dollar value of a 1 bp move.
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Ho (1992), "Key Rate Durations", Journal of Fixed Income 2(2), 29–44
 
 use ndarray::Array1;
 
@@ -54,9 +46,7 @@ where
   (f(x0 + h) - T::from_f64_fast(2.0) * f(x0) + f(x0 - h)) / (h * h)
 }
 
-/// Generic one-sided Greek — scales the central finite-difference by a
-/// user-supplied `bump_size` (e.g. 1 bp) so the output reports PnL per unit
-/// bump without requiring any additional manual scaling.
+/// [`central_difference`] of `f` at `x0` with step `bump_size`.
 pub fn finite_difference_greek<T: RealExt, F>(f: F, x0: T, bump_size: T) -> T
 where
   F: Fn(T) -> T,
@@ -64,17 +54,8 @@ where
   central_difference(f, x0, bump_size)
 }
 
-/// Per-pillar DV01 of a valuation closure on a discount curve.
-///
-/// For each pillar `i`, the i-th zero rate is bumped up and down by `bump_size`
-/// and the closure is re-evaluated. The returned bucket entry is
-/// `(V(bump_up) - V(bump_down)) / 2`, i.e. the central-difference dollar change
-/// in PV per `bump_size` rate move at that pillar.
-///
-/// **Sign convention:** the returned value is a *signed PV sensitivity*, not
-/// the market-positive DV01. A long bond position has a *negative* bucket
-/// value (PV drops when rates rise). To recover the conventional positive
-/// "DV01 per 1 bp" quote, negate and pass `bump_size = 1 bp`.
+/// Per-pillar `(V(up) − V(down)) / 2` of `valuer` for a `bump_size` shift of that pillar's zero
+/// rate. It is a signed PV sensitivity: a long bond is negative; negate for the quoted DV01.
 pub fn bucket_dv01<T: RealExt, F>(
   curve: &DiscountCurve<T>,
   bump_size: T,

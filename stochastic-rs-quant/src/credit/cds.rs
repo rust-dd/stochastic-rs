@@ -1,20 +1,9 @@
-//! Credit Default Swap pricing under the ISDA-style hazard-rate framework.
-//!
-//! Reference: O'Kane & Turnbull, "Valuation of Credit Default Swaps", Lehman
-//! Brothers Quantitative Credit Research Quarterly (2003).
-//!
-//! Reference: ISDA, "The ISDA CDS Standard Model" (2009),
-//! <https://www.cdsmodel.com/>.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006), Chapter 22.
-//!
-//! Given a hazard-driven survival curve $Q(t)$, a risk-free discount curve
-//! $D(t)$, a constant recovery $R\in[0,1)$ and a running contractual spread
-//! $s$, the CDS legs are
+//! CDS legs on a survival curve $Q$, a discount curve $D$ and a recovery $R\in[0,1)$; the premium
+//! integral is the accrual on default, and both integrals run on a daily grid by trapezoid.
 //!
 //! $$
-//! \mathrm{PV}_{\text{prem}} = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)\,+\,\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)\right],
+//! \mathrm{PV}_{\text{prem}} = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)\,
+//! +\,\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)\right],
 //! $$
 //!
 //! $$
@@ -22,10 +11,9 @@
 //! = N(1-R)\int_0^T D(u)\,\bigl(-dQ(u)\bigr).
 //! $$
 //!
-//! The second term in the premium PV is the accrual on default.  The
-//! protection integral and the accrual piece are approximated on a daily
-//! grid (ISDA standard), splitting each coupon period by the trapezoidal rule
-//! on $D(u)Q(u)$ times the finite increment $Q(u_k)-Q(u_{k+1})$.
+//! Reference: O'Kane & Turnbull (2003), "Valuation of Credit Default Swaps", Lehman Brothers QCR
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model", <https://www.cdsmodel.com/>
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Ch. 22
 
 use std::fmt::Display;
 

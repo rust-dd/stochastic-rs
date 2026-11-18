@@ -1,22 +1,12 @@
-//! Cointegrated pairs-trading framework.
+//! Cointegrated pairs trading: an OLS hedge ratio, the spread's z-score (rolling or full
+//! sample) and entry and exit signals; test the residual with `stochastic_rs_stats`'s `adf_test`.
 //!
-//! 1. Estimate the static hedge ratio $\hat\beta$ from
-//!    $y_t = \alpha + \beta x_t + \varepsilon_t$ by OLS.
-//! 2. Form the spread $s_t = y_t - \hat\alpha - \hat\beta x_t$.
-//! 3. Standardise to a z-score using a rolling or full-sample mean and
-//!    standard deviation.
-//! 4. Emit entry / exit signals around the supplied thresholds.
+//! $$
+//! y_t = \alpha + \beta x_t + \varepsilon_t,\qquad s_t = y_t - \hat\alpha - \hat\beta x_t
+//! $$
 //!
-//! For a formal mean-reversion check the residual $\varepsilon_t$ should be
-//! tested for unit-root with [`stochastic_rs_stats::stationarity::adf::adf_test`].
-//!
-//! Reference: Engle, Granger, "Co-Integration and Error Correction:
-//! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
-//! (1987). DOI: 10.2307/1913236
-//!
-//! Reference: Gatev, Goetzmann, Rouwenhorst, "Pairs Trading: Performance of a
-//! Relative-Value Arbitrage Rule", Review of Financial Studies, 19(3),
-//! 797-827 (2006). DOI: 10.1093/rfs/hhj020
+//! Reference: Engle & Granger (1987), Econometrica 55(2), 251–276, DOI 10.2307/1913236
+//! Reference: Gatev, Goetzmann & Rouwenhorst (2006), Rev. Financ. Stud. 19(3), 10.1093/rfs/hhj020
 
 use std::fmt::Display;
 

@@ -1,24 +1,13 @@
-//! # Dual-curve bootstrap
-//!
-//! Post-crisis a tenor's forward curve is bootstrapped **against an exogenous
-//! OIS discount curve**. The pseudo-discount factors `P_x(t)` of tenor `x`
-//! only project its forwards, `F_x(t_{i−1}, t_i) = (P_x(t_{i−1}) / P_x(t_i) − 1) / δ_i`,
-//! while every cash flow is discounted with `D(t)`. A deposit on the tenor
-//! fixes `P_x(τ) = 1 / (1 + r τ)`, a FRA extends it multiplicatively, and a
-//! par swap against the tenor pins the pseudo-discount factor at its last
-//! floating date through
+//! A tenor's pseudo-discount curve `P_x` bootstrapped against an exogenous OIS curve `D`: `P_x`
+//! projects forwards, `D` discounts. The swap pillar is solved by bisection (no telescoping).
 //!
 //! $$
-//! S \sum_j \delta_j D(t_j) = \sum_i D(t_i)\left(\frac{P_x(t_{i-1})}{P_x(t_i)} - 1\right),
+//! F_x(t_{i-1}, t_i) = \frac{1}{\delta_i}\left(\frac{P_x(t_{i-1})}{P_x(t_i)} - 1\right),\qquad
+//! S \sum_j \delta_j D(t_j) = \sum_i D(t_i)\left(\frac{P_x(t_{i-1})}{P_x(t_i)} - 1\right)
 //! $$
 //!
-//! solved by bisection because the floating leg no longer telescopes once
-//! discounting and forecasting curves differ.
-//!
-//! References: Ametrano, F. M. & Bianchetti, M. (2013), *Everything You Always
-//! Wanted to Know About Multiple Interest Rate Curve Bootstrapping but Were
-//! Afraid to Ask*, SSRN 2219548, §4–5; Bianchetti, M. (2010), *Two Curves, One
-//! Price*, Risk 23(8), 66–72.
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4–5
+//! Reference: Bianchetti (2010), "Two Curves, One Price", Risk 23(8), 66–72
 
 use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;

@@ -1,11 +1,8 @@
-//! # Portfolio Momentum
+//! Momentum ranking, long/short baskets and decile analysis over any [`ModelEstimate`].
 //!
 //! $$
 //! \text{score}_i = \frac{\hat r_i - r_f}{\hat \sigma_i}
 //! $$
-//!
-//! Momentum ranking, long/short basket construction and decile analysis.
-//! Input is generic via [`ModelEstimate`], so users can plug their own model outputs.
 
 mod engine;
 mod signals;
