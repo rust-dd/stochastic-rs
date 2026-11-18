@@ -1,30 +1,16 @@
-//! # BrownianBridge
-//!
-//! A Brownian path pinned at both ends, $X_0 = x_0$ and $X_T = x_T$, driven
-//! by the singular-drift SDE
+//! A Brownian path pinned at $X_0 = x_0$ and $X_T = x_T$, the Doob h-transform of a Brownian
+//! motion; the second display is its law. `mc::brownian_bridge_qmc` is the QMC construction.
 //!
 //! $$
 //! dX_s=\frac{x_T-X_s}{T-s}\,ds+\sigma\,dW_s
 //! $$
 //!
-//! the classical Doob h-transform of a Brownian motion conditioned to hit
-//! $x_T$ at time $T$ (Karatzas & Shreve, *Brownian Motion and Stochastic
-//! Calculus*, 2nd ed., Springer 1991, §5.6.B). Equivalently, in closed form
-//! (no recursion needed to state the law):
-//!
 //! $$
 //! X_s=x_0+(x_T-x_0)\frac{s}{T}+\sigma\Bigl(W_s-\frac{s}{T}W_T\Bigr)
 //! $$
 //!
-//! a deterministic linear interpolation between the two endpoints plus a
-//! scaled Brownian motion "de-drifted" so it vanishes at both $s=0$ and
-//! $s=T$. [`BrownianBridge::x0`] / [`BrownianBridge::xt`] hold $x_0$ / $x_T$;
-//! [`BrownianBridge::sigma`] is $\sigma$.
-//!
-//! Downstream use: [`crate::mc::brownian_bridge_qmc::BrownianBridgeQmc`] runs the Brownian-bridge construction
-//! over a `stochastic_rs_distributions::qmc` sequence; this module supplies only the endpoint-pinned process itself.
-//!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §3.1, DOI: 10.1007/978-0-387-21617-1
+//! Reference: Karatzas & Shreve (1991), "Brownian Motion and Stochastic Calculus", 2nd ed., §5.6.B
+//! Reference: Glasserman (2003), Springer, §3.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -52,9 +38,7 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Pinned terminal value X_T (defaults to 0, pairing with `x0`'s own
-  /// default of 0 so the "standard bridge" cited in the module doc's
-  /// closed-form moments is the default parametrization).
+  /// Pinned terminal value X_T; `None` is 0, which with `x0`'s default is the standard bridge.
   pub xt: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
@@ -66,11 +50,10 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `BrownianBridge::default().with_sigma(0.5).with_xt(Some(-1.0))`. No
-/// persisted cache: `sampler()` builds its Gaussian source fresh from
-/// `self` every call.
+/// Every field has a `with_*` setter (`BrownianBridge::default().with_sigma(0.5)`); nothing is
+/// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_sigma(sigma);
     check_n(n);
@@ -102,35 +85,35 @@ impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
     require!(xt.is_none_or(|v| v.is_finite()), xt);
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace the pinned starting value `x0`, all else unchanged.
+  /// Replace the pinned starting value `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the pinned terminal value `xt`, all else unchanged.
+  /// Replace the pinned terminal value `xt`; panics unless `xt` is finite.
   pub fn with_xt(mut self, xt: Option<T>) -> Self {
     Self::check_xt(xt);
     self.xt = xt;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -144,20 +127,15 @@ impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
   }
 }
 
-/// σ=1, x₀=xt=0 (the module doc's own "standard bridge"), t=1, n=252 — a
-/// unit diffusion scale on the pinned-at-zero bridge that the struct doc's
-/// closed-form moments already assume by default.
+/// σ = 1, x₀ = xt = 0, t = 1, n = 252: the standard bridge at a unit diffusion scale.
 impl<T: FloatExt> Default for BrownianBridge<T, Unseeded> {
   fn default() -> Self {
     Self::new(T::one(), 252, None, None, Some(T::one()), Unseeded)
   }
 }
 
-/// The Euler engine's view of the Brownian bridge. The curve carries
-/// `1/(T − s)` at each step's own start time, from which both the drift and
-/// the exact per-step variance ratio follow; at the last step that ratio is
-/// zero and the drift is the whole remaining gap, so the device lands on the
-/// pinned endpoint for the same reason the host assigns it.
+/// The Euler engine's view. The curve carries `1/(T − s)` at each step's start, which gives the
+/// drift and the exact variance ratio; the last step has ratio zero and lands on the pinned end.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for BrownianBridge<T, S, B>
 {
@@ -237,9 +215,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -393,12 +370,8 @@ mod tests {
     );
   }
 
-  /// Var[X_s] = σ² s(T−s)/T at grid point `n-2`, one step before the
-  /// terminal pin — the region where a plain Euler discretization was
-  /// measured at ~65% relative variance error (see the struct doc); the
-  /// exact per-step recursion must hold far tighter than the interior-only
-  /// midpoint check above, since that check alone would have missed the
-  /// original bias entirely.
+  /// Var[X_s] = σ² s(T−s)/T at grid point `n-2`, one step before the pin, where a plain Euler
+  /// step has about 65% relative variance error and the midpoint check above sees none of it.
   #[test]
   fn brownian_bridge_near_terminal_variance_matches_closed_form() {
     let sigma = 0.4_f64;

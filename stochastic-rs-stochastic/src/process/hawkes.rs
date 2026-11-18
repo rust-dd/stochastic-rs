@@ -1,17 +1,9 @@
-//! # Hawkes
-//!
-//! Self-exciting point process with exponential kernel (Hawkes, 1971).
+//! Self-exciting point process with exponential kernel (Hawkes, 1971): baseline $\mu > 0$,
+//! excitation $\alpha \ge 0$, decay $\beta > 0$, stationary if $\alpha/\beta < 1$. Ogata thinning.
 //!
 //! $$
 //! \lambda(t) = \mu + \sum_{t_i < t} \alpha \, e^{-\beta(t - t_i)}
 //! $$
-//!
-//! where $\mu > 0$ is the baseline intensity, $\alpha \ge 0$ the excitation
-//! magnitude, and $\beta > 0$ the exponential decay rate. Stationarity
-//! requires $\alpha / \beta < 1$ (branching ratio strictly less than one).
-//!
-//! Simulated via Ogata's thinning algorithm with the recursive intensity
-//! update that exploits the exponential kernel's Markov property.
 //!
 
 use ndarray::Array1;
@@ -36,7 +28,7 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: T,
   /// `Events(n)`: the origin and the `n` event times after it; `Until(t)`: the events before `t`.
   pub horizon: Horizon<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -193,9 +185,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine in count mode, where every step is one event;
-  /// the horizon mode has a random length and keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine in count mode, where every step is one event; horizon mode has a
+  /// random length and stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -258,12 +249,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Hawkes`] sampling state: the owned RNG driving Ogata's thinning
-/// and the precomputed sampling regime.
-///
-/// Between events the intensity is monotone-decreasing, so the upper bound
-/// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event) is
-/// tight and acceptance is efficient.
+/// Reusable [`Hawkes`] sampling state: the RNG of Ogata's thinning and the sampling regime. The
+/// intensity falls between events, so the bound $\bar\lambda = \mu + S$ after the last is tight.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HawkesSampler<T: FloatExt> {
@@ -408,9 +395,8 @@ mod tests {
 
   #[test]
   fn hawkes_deterministic() {
-    // Inter-instance reproducibility: two separately built instances with the
-    // same seed produce the same first path. Intra-instance, successive
-    // `.sample()` calls advance the seed and yield different paths.
+    // Two instances built with one seed produce the same first path; on one instance successive
+    // `.sample()` calls advance the seed and differ.
     let h1 = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(20), Deterministic::new(123));
     let h2 = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(20), Deterministic::new(123));
     assert_eq!(h1.sample(), h2.sample());

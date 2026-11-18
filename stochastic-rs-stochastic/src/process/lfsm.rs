@@ -1,10 +1,11 @@
 //! # Lfsm
 //!
 //! $$
-//! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
+//! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)
+//! \,dL_u^{\alpha}
 //! $$
 //!
-//! Reference: Stoev, S., Taqqu, M. S. (2004), "Simulation methods for linear fractional stable motion and FARIMA using the Fast Fourier Transform", Fractals 12, 95–121, DOI 10.1142/S0218348X04002379.
+//! Reference: Stoev & Taqqu (2004), Fractals 12, 95–121, DOI 10.1142/S0218348X04002379
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -20,14 +21,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Linear fractional stable motion (Lfsm), also commonly referred to as
-/// Levy fractional stable motion in discretized form.
-///
-/// The implementation uses a one-sided moving-average discretization with
-/// alpha-stable innovations:
-///
-/// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
-/// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
+/// Linear (Lévy) fractional stable motion by a one-sided moving average of α-stable innovations:
+/// `X_i = X_{i-1} + Σ_{k<i} w_k ξ_{i-1-k}`, `w_k = dt^d ((k+1)^d − k^d)`, `d = H − 1/α`.
 #[derive(Debug, Clone)]
 pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
@@ -48,7 +43,7 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -56,6 +51,8 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
+  /// Panics unless `0 < alpha <= 2`, `-1 <= beta <= 1`, `scale > 0`, `1/alpha < hurst < 1`,
+  /// `n >= 2`, a given `t` is positive and every parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -226,9 +223,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels'
-  /// per-path history and `α ≠ 1`; a longer grid keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path history and `α ≠ 1`;
+  /// anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -283,10 +279,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// What a device runs here: the grid fits the kernels'
-  /// per-path history and the stability index is not one, whose
-  /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
-  /// carry. Anything else samples on the host.
+  /// What a device runs: a grid that fits the kernels' per-path history and `α ≠ 1`, since the
+  /// Chambers–Mallows–Stuck draw at `α = 1` is a formula the kernels do not carry.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()))
       .then_some("a grid past the kernels' per-path history, or a unit stability index")
@@ -309,8 +303,8 @@ impl<T: FloatExt> LfsmSampler<T> {
     if out.is_empty() {
       return;
     }
-    // Legacy behaviour: the degenerate `n <= 1` path returns zeros without
-    // writing `x0` (the `if n <= 1` guard preceded the `x[0] = x0` line).
+    // A one-point path is zero, not `x0`; `new` asserts `n >= 2`, so only a write to the public
+    // `n` reaches this.
     if out.len() == 1 {
       out[0] = T::zero();
       return;

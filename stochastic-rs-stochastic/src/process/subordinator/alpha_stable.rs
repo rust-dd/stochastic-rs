@@ -25,7 +25,7 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> 
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -33,6 +33,8 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> 
 }
 
 impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `0 < alpha < 1`, `c > 0`, and
+  /// every parameter is finite.
   pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       alpha.is_finite(),
@@ -71,11 +73,8 @@ impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
   }
 }
 
-/// The Euler engine's view of the positive-stable subordinator. Every
-/// exponent the transform needs depends on `α` alone, and the scale on `c`
-/// and `dt`, so all five travel as parameters and the step is one expression.
-/// The scale travels in logs, where the step already sums the transform's
-/// other factors, and where `(c·dt)^{1/α}` cannot underflow to zero first.
+/// The Euler engine's view. Every exponent depends on `α` alone and the scale on `c` and `dt`,
+/// so all five are parameters; the scale travels in logs, where `(c·dt)^{1/α}` cannot underflow.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -148,9 +147,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the transform runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the transform in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -180,10 +178,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`AlphaStableSubordinator`] sampling state: the owned uniform
-/// source driving the positive-stable increments plus precomputed scales. The
-/// scale travels as its logarithm because `(c·dt)^{1/α}` underflows to zero
-/// on its own for `α` below about 0.011 on a fine grid.
+/// Reusable [`AlphaStableSubordinator`] sampling state: the uniform source and the scales. The
+/// scale is a logarithm, since `(c·dt)^{1/α}` underflows for `α` below about 0.011 on a fine grid.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct AlphaStableSubordinatorSampler<T: FloatExt> {

@@ -23,7 +23,7 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -32,6 +32,8 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `-1 <= rho <= 1`, and `rho` is
+  /// finite.
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       rho.is_finite(),
@@ -58,9 +60,8 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   }
 }
 
-/// The Euler engine's view of a correlated Brownian pair: the shocks are
-/// drawn independently and correlated in the step, which is what the
-/// correlated-noise source does on the host.
+/// The Euler engine's view: the shocks are drawn independently and correlated in the step, as
+/// the correlated-noise source does on the host.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Cbms<T, S, B>
 {
@@ -111,10 +112,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> CbmsSampler<T, S> {
     CbmsSampler {
       n: self.n,
@@ -123,9 +122,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
