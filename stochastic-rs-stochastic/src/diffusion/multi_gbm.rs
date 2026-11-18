@@ -7,8 +7,8 @@
 //! $$
 //!
 //! $$
-//! S^{(i)}_{t+\Delta t} = S^{(i)}_t\exp\bigl((\mu_i - \tfrac12\sigma_i^2)\Delta t
-//! + \sigma_i\,\Delta W^{(i)}_t\bigr)
+//! S^{(i)}_{t+\Delta t} = S^{(i)}_t\exp\bigl((\mu_i - \tfrac12\sigma_i^2)\Delta t +
+//! \sigma_i\,\Delta W^{(i)}_t\bigr)
 //! $$
 //!
 //! Reference: Glasserman (2003), Springer, §3.2.3, DOI 10.1007/978-0-387-21617-1

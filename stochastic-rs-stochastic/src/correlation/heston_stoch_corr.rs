@@ -27,13 +27,13 @@ use crate::traits::ProcessExt;
 /// the log-price is the Cholesky split of Eq. 2.7 with $\rho_1 = 0$.
 ///
 /// $$
-/// d\rho_t = (1-\rho_t^2)\bigl[\kappa_r(\mu_r-\rho_t)-\sigma_r^2\rho_t\bigr]dt
-///   + (1-\rho_t^2)\sigma_r\,dW^\rho
+/// d\rho_t = (1-\rho_t^2)\bigl[\kappa_r(\mu_r-\rho_t)-\sigma_r^2\rho_t\bigr]dt +
+///   (1-\rho_t^2)\sigma_r\,dW^\rho
 /// $$
 ///
 /// $$
-/// dx = (r-\tfrac12 v)\,dt + \rho_t\sqrt{v}\,d\tilde W^\nu + \rho_2\sqrt{v}\,d\tilde W^\rho
-///   + \sqrt{1-\rho_t^2-\rho_2^2}\,\sqrt{v}\,d\tilde W^x
+/// dx = (r-\tfrac12 v)\,dt + \rho_t\sqrt{v}\,d\tilde W^\nu + \rho_2\sqrt{v}\,d\tilde W^\rho +
+///   \sqrt{1-\rho_t^2-\rho_2^2}\,\sqrt{v}\,d\tilde W^x
 /// $$
 #[derive(Debug, Clone)]
 pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {

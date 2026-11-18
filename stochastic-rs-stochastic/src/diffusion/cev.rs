@@ -308,8 +308,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
   /// over the increments that drove the path; undefined at an exact zero for γ < 1:
   /// $$
   /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2}
-  ///   \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t
-  ///   + \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
+  ///   \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t +
+  ///   \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
   /// $$
   pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let mut paths = Array1::<T>::zeros(self.n);

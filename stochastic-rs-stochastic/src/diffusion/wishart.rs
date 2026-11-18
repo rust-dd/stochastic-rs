@@ -2,8 +2,8 @@
 //! identity (14): Proposition 6 (Algorithm 3), Theorem 7 (Algorithm 2), Theorem 9 (Algorithm 1).
 //!
 //! $$
-//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a
-//! + a^\top dW_t^\top \sqrt{X_t}
+//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a +
+//! a^\top dW_t^\top \sqrt{X_t}
 //! $$
 //!
 //! Reference: Ahdida & Alfonsi (2013), Ann. Appl. Probab. 23(3), 1025–1073, DOI 10.1214/12-AAP863
