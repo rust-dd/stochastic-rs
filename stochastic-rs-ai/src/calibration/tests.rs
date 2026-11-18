@@ -111,6 +111,35 @@ fn self_consistent_calibration_recovers_the_parameters() {
   assert!(result.evaluations > 0);
 }
 
+/// A tolerance of 1e3 has Levenberg–Marquardt report convergence after its first trial, with a
+/// descent step still open.
+#[test]
+fn a_surrogate_fit_stopped_short_of_a_stationary_point_is_not_converged() {
+  let model = trained_heston(5);
+  let truth = box_point(
+    &heston::PARAM_LB,
+    &heston::PARAM_UB,
+    &[0.35, 0.55, 0.6, 0.4, 0.65],
+  );
+  let truth32: Vec<f32> = truth.iter().map(|&v| v as f32).collect();
+  let target: Vec<f64> = model
+    .nn()
+    .predict_surface(&truth32)
+    .unwrap()
+    .iter()
+    .map(|&v| v as f64)
+    .collect();
+  let calibrator = SurrogateCalibrator::new(&model, target)
+    .unwrap()
+    .with_tolerance(1e3);
+  let result = calibrator.calibrate(None).unwrap();
+  assert!(result.rmse > 1e-4, "rmse {}", result.rmse);
+  assert_eq!(
+    (result.converged, result.message.as_str()),
+    (false, "not stationary")
+  );
+}
+
 /// The typed Heston bridge maps the surrogate order `[v0, ρ, σ, θ, κ]` onto
 /// `HestonParams` and hands the fitted parameters to the Fourier pricer.
 #[test]

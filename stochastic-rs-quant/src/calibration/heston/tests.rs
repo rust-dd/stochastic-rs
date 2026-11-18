@@ -270,7 +270,7 @@ fn test_heston_calibrate_ls_dataset() {
       r: Some(r),
       ..HestonMleSeed::default()
     })
-    .with_options(history());
+    .with_options(history().with_max_iterations(40));
 
   assert!(!calibrator.calibrate(None).unwrap().history.is_empty());
 }

@@ -365,8 +365,8 @@ pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
   }))
 }
 
-/// `base`, then per coordinate a point 1 % inside each bound and, where the box reflects, the
-/// mirror image of `base` below the lower bound.
+/// `base`, then per coordinate each bound and, where the box reflects, `base`'s mirror image
+/// below the lower one; 1 % inside a bound, since a stencil that reaches it is one-sided.
 pub(crate) fn box_points(
   base: &Array1<f64>,
   bounds: &[(f64, f64)],
@@ -455,13 +455,20 @@ fn a_collapsed_trust_region_away_from_a_stationary_point_is_not_converged() {
     jacobian_sign: -1.0,
   };
   let (fitted, report) = minimize(line, LmOptions::default());
-  assert!(report.converged && report.stationarity > 0.5, "{report:?}");
+  assert!(!report.converged && report.stationarity > 0.5, "{report:?}");
   assert_eq!((fitted.x, report.message()), (1.0, "not stationary"));
   let fit = report
     .calibrated(fitted.x, &[3.0], &[1.0], &[], Vec::new())
     .unwrap();
   assert!(!fit.converged);
   assert_eq!(fit.message.as_deref(), Some("not stationary"));
+  let exact = report.settled(3e-8, &[3.0]);
+  assert_eq!((exact.converged, exact.message()), (true, "converged"));
+  let short = report.settled(4e-8, &[3.0]);
+  assert_eq!(
+    (short.converged, short.message()),
+    (false, "not stationary")
+  );
 }
 
 /// The minimum at `1e-12` is small against `ε‖r‖/‖J‖`, which is not a flat residual.
@@ -476,4 +483,110 @@ fn a_minimum_near_the_origin_is_not_flat() {
   let (fitted, report) = minimize(line, LmOptions::default());
   assert!(report.converged, "{report:?}");
   assert!((fitted.x - 1e-12).abs() < 1e-15, "{}", fitted.x);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Map {
+  /// Onto (−1, 1), as Heston's and CGMYSV's ρ.
+  Logistic,
+  Reflection,
+  Clamp,
+}
+
+/// `r = [θ(x) − target, 0.05]`, θ the map's image of `x` with its bound at 0 or at ±1.
+struct Mapped {
+  x: f64,
+  target: f64,
+  map: Map,
+}
+
+impl Mapped {
+  fn theta(&self) -> f64 {
+    match self.map {
+      Map::Logistic => -1.0 + 2.0 / (1.0 + (-self.x).exp()),
+      Map::Reflection => self.x.abs(),
+      Map::Clamp => self.x.max(0.0),
+    }
+  }
+}
+
+impl LeastSquaresProblem for Mapped {
+  fn set_params(&mut self, x: &Array1<f64>) {
+    self.x = x[0];
+  }
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![self.x])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![self.theta() - self.target, 0.05]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    let unit = 1.0 / (1.0 + (-self.x).exp());
+    let slope = match self.map {
+      Map::Logistic => 2.0 * unit * (1.0 - unit),
+      Map::Reflection if self.x < 0.0 => -1.0,
+      Map::Reflection | Map::Clamp => 1.0,
+    };
+    Some(Array2::from_shape_vec((2, 1), vec![slope, 0.0]).unwrap())
+  }
+}
+
+/// A tolerance of 1e3 has basin report convergence after its first trial, kept only if it
+/// lowers the cost: the first-order check then runs at a chosen point.
+fn stopped(map: Map, x: f64, target: f64) -> (f64, LmReport) {
+  let options = LmOptions {
+    tolerance: Some(1e3),
+    ..LmOptions::default()
+  };
+  let (fitted, report) = minimize(Mapped { x, target, map }, options);
+  (fitted.x, report)
+}
+
+/// The whole Gauss–Newton step lands past the minimum at a higher cost; a quarter of it does not.
+#[test]
+fn a_stop_whose_full_step_overshoots_the_minimum_is_not_stationary() {
+  for (map, x, target) in [(Map::Logistic, -2.94, -0.7), (Map::Reflection, 0.3, -0.5)] {
+    let (end, report) = stopped(map, x, target);
+    let verdict = (end, report.converged, report.message());
+    assert_eq!(verdict, (x, false, "not stationary"), "{map:?}: {report:?}");
+  }
+}
+
+#[test]
+fn a_fit_resting_on_a_bound_with_its_minimum_outside_the_box_is_converged() {
+  for map in [Map::Clamp, Map::Reflection] {
+    let (end, report) = stopped(map, 0.0, -0.5);
+    let verdict = (end, report.converged, report.message());
+    assert_eq!(verdict, (0.0, true, "converged"), "{map:?}: {report:?}");
+  }
+}
+
+/// basin's one step from `x = 14.5` ends past −700, where the logistic slope has underflowed.
+#[test]
+fn a_jacobian_that_is_flat_at_the_stop_is_a_flat_objective() {
+  let (end, report) = stopped(Map::Logistic, 14.5, -0.7);
+  assert!(end < -700.0 && !report.converged, "{end}: {report:?}");
+  assert_eq!(
+    (report.stationarity, report.message()),
+    (0.0, "flat objective")
+  );
+}
+
+#[test]
+fn the_verdict_and_the_message_agree_at_every_stop() {
+  let cases = [
+    (Map::Logistic, -2.94, -0.7),
+    (Map::Logistic, 14.5, -0.7),
+    (Map::Logistic, 0.0, -0.7),
+    (Map::Reflection, 0.3, -0.5),
+    (Map::Clamp, 0.0, -0.5),
+  ];
+  for (map, x, target) in cases {
+    let (_, report) = stopped(map, x, target);
+    let named = report.message() == "converged";
+    assert_eq!(report.converged, named, "{map:?} from {x}: {report:?}");
+  }
 }

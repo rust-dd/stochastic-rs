@@ -10,9 +10,10 @@ use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use super::transform::units;
+use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
-use crate::calibration::least_squares::column_cosines;
+use crate::calibration::least_squares::cosines;
 use crate::pricing::heston::HestonParams;
 
 const NAMES: [&str; 5] = ["v0", "kappa", "theta", "sigma", "rho"];
@@ -57,9 +58,11 @@ impl<'a> HestonProblem<'a> {
 
   /// The stop with each saturated coordinate whose descent direction points into the box moved
   /// `RESEAT` of the box inside, and the first such parameter's name; `None` when none is.
-  pub(super) fn reseated(&mut self) -> Option<(HestonParams, &'static str)> {
-    let (residuals, jacobian) = (self.residuals()?, self.jacobian()?);
-    let cosines = column_cosines(&residuals, &jacobian);
+  pub(super) fn reseated(
+    &mut self,
+    pull: Option<&Regularization>,
+  ) -> Option<(HestonParams, &'static str)> {
+    let cosines = cosines(self, pull)?;
     let mut units = units(&self.free_params());
     let mut name = None;
     for (j, unit) in units.iter_mut().enumerate() {

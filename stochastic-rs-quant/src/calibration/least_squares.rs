@@ -83,33 +83,48 @@ impl Default for LmOptions {
   }
 }
 
+impl LmOptions {
+  /// The stepper iterations a fit of `dimension` coordinates may take: `max_iterations` under
+  /// the evaluation budget.
+  pub(crate) fn iteration_cap(&self, dimension: usize) -> usize {
+    let budget = self.patience.saturating_mul(dimension.saturating_add(1));
+    self.max_iterations.map_or(budget, |n| n.min(budget))
+  }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct LmReport {
+  /// The solver stopped at a stationary point, or at a fit [`settled`](Self::settled) as exact;
+  /// `message()` is `converged` exactly then.
   pub converged: bool,
   /// Residual evaluations, the budget's unit.
   pub evaluations: usize,
   /// Stepper iterations, one that rejects its trial included: the cap's unit.
   pub iterations: usize,
-  pub reason: TerminationReason,
+  reason: TerminationReason,
   /// The start's residuals and Jacobian evaluated finite; without them the fit has no iterate.
   pub started: bool,
   /// The fit stopped where `‖Dx‖ ≤ ε‖r‖`: no step the size of `x` moves a residual's last bit.
   pub flat: bool,
-  /// MINPACK's orthogonality measure `maxⱼ |Jⱼᵀr| / (‖Jⱼ‖‖r‖)` at the returned point of a
-  /// converged fit, NaN where it could not be evaluated; 0 otherwise.
+  /// MINPACK's orthogonality measure `maxⱼ |Jⱼᵀr| / (‖Jⱼ‖‖r‖)` over the columns a step lowers
+  /// the cost along, where the solver stopped; NaN where it could not be evaluated, 0 otherwise.
   pub stationarity: f64,
 }
 
-/// The bound on a converged fit's orthogonality measure: the crate's own fits read 6.6e-4 or
-/// less at a true stop and 1.7e-2 or more where a trust region collapsed short of one.
+/// The bound on the measure of a converged fit: the crate's own fits read 6.6e-4 or less at a
+/// minimum, 1.7e-2 resting on a clamp, which stays converged, and 7.2e-2 or more short of one.
 const STATIONARY: f64 = 3e-3;
+
+/// The shares of a column's Gauss–Newton step the first-order check tries: the whole step
+/// overshoots where a bound's map bends the residual.
+const STEP_LADDER: [f64; 4] = [1.0, 0.25, 0.0625, 0.015625];
 
 /// An rmse of 1e-8 of the quotes' root mean square is the Fourier pricers' own tolerance, where
 /// the residual is noise and its angle to the Jacobian means nothing.
 const EXACT_FIT: f64 = 1e-8;
 
 /// `Jⱼᵀr / (‖Jⱼ‖‖r‖)` per column, signed; 0 for a zero column or a zero residual.
-pub(crate) fn column_cosines(residuals: &Array1<f64>, jacobian: &Array2<f64>) -> Vec<f64> {
+fn column_cosines(residuals: &Array1<f64>, jacobian: &Array2<f64>) -> Vec<f64> {
   let norm = residuals.dot(residuals).sqrt();
   let cosine = |column: ndarray::ArrayView1<f64>| {
     let scale = column.dot(&column).sqrt() * norm;
@@ -122,13 +137,46 @@ pub(crate) fn column_cosines(residuals: &Array1<f64>, jacobian: &Array2<f64>) ->
   jacobian.columns().into_iter().map(cosine).collect()
 }
 
+fn pulled_residuals<P: LeastSquaresProblem>(
+  problem: &mut P,
+  pull: Option<&Regularization>,
+) -> Option<Array1<f64>> {
+  let residuals = problem.residuals().filter(|r| !r.is_empty())?;
+  Some(match pull {
+    Some(reg) => reg.augment_residuals(residuals, &problem.natural_params()),
+    None => residuals,
+  })
+}
+
+fn pulled_jacobian<P: LeastSquaresProblem>(
+  problem: &P,
+  pull: Option<&Regularization>,
+) -> Option<Array2<f64>> {
+  let jacobian = problem.jacobian()?;
+  Some(match pull {
+    Some(reg) => reg.augment_jacobian(jacobian, reg.jacobian_rows(problem.natural_jacobian())),
+    None => jacobian,
+  })
+}
+
+/// The signed cosines of the first-order check at the problem's point, an active pull's rows
+/// included as `minimize` appends them.
+pub(crate) fn cosines<P: LeastSquaresProblem>(
+  problem: &mut P,
+  pull: Option<&Regularization>,
+) -> Option<Vec<f64>> {
+  let pull = pull.filter(|reg| reg.is_active());
+  let residuals = pulled_residuals(problem, pull)?;
+  Some(column_cosines(&residuals, &pulled_jacobian(problem, pull)?))
+}
+
 impl LmReport {
   /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
   pub fn message(&self) -> &'static str {
     match self.reason {
       _ if self.flat => "flat objective",
-      TerminationReason::SolverConverged if !self.stationary() => "not stationary",
-      TerminationReason::SolverConverged => "converged",
+      TerminationReason::SolverConverged if self.converged => "converged",
+      TerminationReason::SolverConverged => "not stationary",
       TerminationReason::MaxCostEvals | TerminationReason::MaxIter => "evaluation budget exhausted",
       TerminationReason::NumericalNoProgress => "no numerical progress",
       TerminationReason::SolverFailed => "solver failed",
@@ -136,18 +184,19 @@ impl LmReport {
     }
   }
 
-  /// Whether the returned point passes the first-order check; a NaN measure does not.
-  pub fn stationary(&self) -> bool {
-    self.stationarity <= STATIONARY
+  /// Whether the solver itself stopped on its tolerances, before the first-order check.
+  pub(crate) fn solver_converged(&self) -> bool {
+    self.reason == TerminationReason::SolverConverged
   }
 
-  /// `converged` and the stop's message for a fit with this `rmse` against `market`: a converged
-  /// fit is one that is stationary, or exact to `1e-8` of the quotes' root mean square.
-  pub fn settled(&self, rmse: f64, market: &[f64]) -> (bool, &'static str) {
+  /// The report of a fit with this `rmse` against `market`: where the solver stopped, a fit
+  /// exact to `1e-8` of the quotes' root mean square is converged without the first-order check.
+  pub fn settled(self, rmse: f64, market: &[f64]) -> Self {
     let size = (market.iter().map(|q| q * q).sum::<f64>() / market.len() as f64).sqrt();
-    match self.converged && rmse <= EXACT_FIT * size {
-      true => (true, "converged"),
-      false => (self.converged && self.stationary(), self.message()),
+    let exact = self.solver_converged() && !self.flat && rmse <= EXACT_FIT * size;
+    Self {
+      converged: self.converged || exact,
+      ..self
     }
   }
 
@@ -168,11 +217,15 @@ impl LmReport {
       });
     }
     let fit = Calibrated::repriced(params, market, model, metrics, self.converged);
-    let (converged, message) = self.settled(fit.loss.get(LossMetric::Rmse), market);
+    let settled = self.settled(fit.loss.get(LossMetric::Rmse), market);
+    let fit = Calibrated {
+      converged: settled.converged,
+      ..fit
+    };
     Ok(
-      Calibrated { converged, ..fit }
+      fit
         .with_iterations(self.iterations)
-        .with_message(message)
+        .with_message(settled.message())
         .with_history(history),
     )
   }
@@ -261,21 +314,18 @@ impl<P: LeastSquaresProblem> Objective<P> {
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
-  /// The largest `|Jⱼᵀr| / (‖Jⱼ‖‖r‖)` at `x` over the columns whose Gauss–Newton step, to either
-  /// side, lowers `‖r‖²` by half what it predicts; NaN without both evaluations.
+  /// The largest `|Jⱼᵀr| / (‖Jⱼ‖‖r‖)` at `x` over the columns with a share `t` of whose
+  /// Gauss–Newton step, to either side, `‖r‖²` falls by half the `t(2 − t)·cos²·‖r‖²` it predicts.
   fn stationarity(&self, x: &Array1<f64>) -> f64 {
-    let flat = self.flat.get();
     let rows = Residual::residual(&self, x).and_then(|r| Ok((r, Jacobian::jacobian(&self, x)?)));
-    self.flat.set(flat);
     let Ok((r, j)) = rows else {
-      return f64::NAN;
+      return if self.flat.get() { 0.0 } else { f64::NAN };
     };
     let cost = r.dot(&r);
-    let lowers = |column: usize, step: f64, cosine: f64| {
+    let lowers = |column: usize, step: f64, predicted: f64| {
       let mut beside = x.clone();
       beside[column] += step;
-      let target = cost * (1.0 - 0.5 * cosine * cosine);
-      Residual::residual(&self, &beside).is_ok_and(|q| q.dot(&q) < target)
+      Residual::residual(&self, &beside).is_ok_and(|q| q.dot(&q) < cost - 0.5 * predicted)
     };
     let cosines = column_cosines(&r, &j).into_iter().enumerate();
     f64::max_or_nan_fold(cosines.map(|(column, cosine)| {
@@ -283,7 +333,10 @@ impl<P: LeastSquaresProblem> Objective<P> {
       // step against its own sign can.
       let step = cosine * cost.sqrt() / j.column(column).dot(&j.column(column)).sqrt();
       let open = cosine.abs() > STATIONARY
-        && (lowers(column, -step, cosine) || lowers(column, step, cosine));
+        && STEP_LADDER.iter().any(|share| {
+          let predicted = share * (2.0 - share) * cosine * cosine * cost;
+          lowers(column, -share * step, predicted) || lowers(column, share * step, predicted)
+        });
       if open || cosine.is_nan() {
         cosine.abs()
       } else {
@@ -301,11 +354,7 @@ impl<P: LeastSquaresProblem> Residual for &Objective<P> {
   fn residual(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
     self.evaluations.set(self.evaluations.get() + 1);
     let mut model = self.at(x);
-    let residuals = model.residuals().filter(|r| !r.is_empty()).ok_or(())?;
-    let residuals = match &self.regularization {
-      Some(reg) => reg.augment_residuals(residuals, &model.natural_params()),
-      None => residuals,
-    };
+    let residuals = pulled_residuals(&mut *model, self.regularization.as_ref()).ok_or(())?;
     // Nonfinite trial residuals reject the step and shrink basin's trust radius.
     // A nonfinite starting point has no accepted fit to recover from.
     if self.evaluations.get() == 1 && residuals.iter().any(|v| !v.is_finite()) {
@@ -321,11 +370,7 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
 
   fn jacobian(&self, x: &Self::Param) -> Result<Self::Jacobian, Self::Error> {
     let model = self.at(x);
-    let jacobian = model.jacobian().ok_or(())?;
-    let jacobian = match &self.regularization {
-      Some(reg) => reg.augment_jacobian(jacobian, reg.jacobian_rows(model.natural_jacobian())),
-      None => jacobian,
-    };
+    let jacobian = pulled_jacobian(&*model, self.regularization.as_ref()).ok_or(())?;
     if jacobian.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
@@ -354,6 +399,7 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
 /// Runs basin with the calibrators' existing relative tolerances and residual budget.
 pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, LmReport) {
   let initial = problem.params();
+  let max_iter = options.iteration_cap(initial.len());
   let objective = Objective {
     model: RefCell::new(problem),
     coordinates: RefCell::new(None),
@@ -372,7 +418,6 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   let budget = options
     .patience
     .saturating_mul(initial.len().saturating_add(1));
-  let max_iter = options.max_iterations.map_or(budget, |n| n.min(budget));
   if options.patience == 0 || !tolerance.is_finite() || tolerance < 0.0 || initial.is_empty() {
     return (
       objective.model.into_inner(),
@@ -404,12 +449,13 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   } else {
     run(&objective, solver, initial, budget, max_iter)
   };
-  let flat = objective.flat.get();
-  let converged = reason == TerminationReason::SolverConverged;
-  let stationarity = match converged {
+  let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
     false => 0.0,
   };
+  let flat = objective.flat.get();
+  let converged =
+    reason == TerminationReason::SolverConverged && !flat && stationarity <= STATIONARY;
   let evaluations = objective.evaluations.get();
   let mut model = objective.model.into_inner();
   if flat && !started {

@@ -36,8 +36,8 @@ const SUFFICIENT_DECREASE: f64 = 1e-4;
 /// Kelley's §4 takes a third failed decrease test as stagnation.
 const MAX_RESTARTS: usize = 3;
 
-/// O'Neill's `0.001` of the start simplex's steps: the factorial test's probe, the edge of the
-/// simplex it restarts from, and the extent a simplex has contracted to when it may stop.
+/// O'Neill's `0.001` of the start simplex's steps, his factorial probe and restart edge; the
+/// crate's own choice reuses it as the extent a simplex has contracted to when it may stop.
 const FACTORIAL_STEP: f64 = 1e-3;
 
 /// A stop: the vertex costs' sample standard deviation under `tolerance·(|f₀| + tolerance)`, `f₀`

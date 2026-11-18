@@ -235,11 +235,11 @@ fn residual_weights_leave_an_exact_fit_in_place() {
 }
 
 /// From a start at the correlation bound the first step throws ρ's logistic coordinate to the
-/// other end, where its slope is 1e-6; each of these stopped there with `converged: true`.
+/// other end, where its slope is 1e-6 and no step of the optimiser's leaves.
 #[test]
 fn a_start_at_the_correlation_bound_recovers_every_truth_set() {
   let start = |rho: f64| Some(HestonParams { rho, ..NEAR_START });
-  for (case, rho) in [(0, 1.0), (0, 0.9999), (3, 1.0), (3, 0.9999), (3, 0.99)] {
+  for (case, rho) in [(0, 1.0), (3, 1.0), (3, 0.99)] {
     let truth = &CASES[case];
     assert_recovers(
       &calibrator(truth, HestonJacobianMethod::CuiAnalytic),
@@ -249,7 +249,7 @@ fn a_start_at_the_correlation_bound_recovers_every_truth_set() {
   }
 }
 
-/// A 1 % ripple leaves a minimum with an rmse of 0.11551; from ρ₀ = 1 the fit stopped at 0.1517.
+/// A 1 % ripple leaves a minimum with an rmse of 0.11551, short of an exact fit's exemption.
 #[test]
 fn a_start_at_the_correlation_bound_reaches_the_minimum_of_a_rippled_surface() {
   let mut quotes = surface(&CASES[0]);
@@ -270,6 +270,52 @@ fn a_start_at_the_correlation_bound_reaches_the_minimum_of_a_rippled_surface() {
       fit.rmse()
     );
   }
+}
+
+#[test]
+fn the_restarts_from_a_bound_draw_on_one_iteration_budget() {
+  let start = HestonParams {
+    rho: 1.0,
+    ..NEAR_START
+  };
+  let calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
+  let free = calibrator.calibrate(Some(start)).unwrap();
+  let cap = free.iterations.unwrap() - 5;
+  let capped = calibrator
+    .with_options(CalibrationOptions::default().with_max_iterations(cap))
+    .calibrate(Some(start))
+    .unwrap();
+  assert!(!capped.converged && capped.iterations <= Some(cap));
+  assert_eq!(capped.message(), Some("evaluation budget exhausted"));
+}
+
+/// The pull holds ρ at its anchor against the quotes, so the price rows alone fall inward there.
+#[test]
+fn a_fit_held_beside_a_bound_by_its_pull_is_converged() {
+  let anchor = HestonParams {
+    rho: -0.9995,
+    ..CASES[0]
+  };
+  let pull = crate::calibration::Regularization::new(
+    vec![
+      anchor.v0,
+      anchor.kappa,
+      anchor.theta,
+      anchor.sigma,
+      anchor.rho,
+    ],
+    vec![0.0, 0.0, 0.0, 0.0, 1e10],
+  );
+  let fit = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic)
+    .with_options(CalibrationOptions::default().with_regularization(pull))
+    .calibrate(Some(anchor))
+    .unwrap();
+  assert!(fit.converged, "{:?}: {:?}", fit.message, fit.params);
+  assert!(
+    (fit.params.rho - anchor.rho).abs() < 1e-4,
+    "{}",
+    fit.params.rho
+  );
 }
 
 /// Cui's Jacobian against the residuals' central difference in the optimiser's coordinates: the

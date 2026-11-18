@@ -213,7 +213,8 @@ fn the_natural_jacobian_matches_central_differences() {
   assert!(worst < 1e-6, "{worst:e}");
 }
 
-/// The iterate where the fit stalled on glibc, in `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
+/// A point where a panel of the Lewis quadrature switches inside a `1e-6` stencil of η, in
+/// `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
 const STALLED: [f64; 8] = [
   0.591203583519947,
   22.88796593498391,
@@ -225,8 +226,8 @@ const STALLED: [f64; 8] = [
   0.009934101706378984,
 ];
 
-/// At `STALLED` the Lewis price of K = 2525 jumps by 3.3e-5 within 8.75e-7 of η: a `1e-6` stencil
-/// put the η column 10 % off; a parameter step of `2e-3·|θ|` reads each column within 6.3e-3.
+/// At `STALLED` the Lewis price of K = 2525 jumps by 3.3e-5 within 8.75e-7 of η, so the
+/// Jacobian's step must bound a jump's share: `2e-3·|θ|` reads each column within 6.3e-3.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
   use crate::calibration::least_squares::tests::jacobian_error;
@@ -258,7 +259,8 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
       point[coordinate] = end;
       problem.set_params(&point);
       // The model has no price where `E[e^L]` is infinite, at the low end of `λ₊`.
-      if problem.residuals().unwrap().iter().any(|r| r.is_nan()) {
+      if (coordinate, end) == (1, -6.9) {
+        assert!(problem.residuals().unwrap().iter().all(|r| r.is_nan()));
         continue;
       }
       let error = jacobian_error(&mut problem, &point, |_, _| 1e-2);
