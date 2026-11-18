@@ -48,7 +48,7 @@ where
   pub v0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The Markov lift of `kernel` at the grid spacing, which the host steps and a device replays
   /// node by node. The grid setters rebuild it; a direct write to `n` or `t` leaves it stale.

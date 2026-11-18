@@ -53,7 +53,7 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Extent of the simulation grid: the covariance helper `rho` is defined on `[0, r]²` with a
   /// cutoff at distance `r`. Not a financial rate.
   pub r: T,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

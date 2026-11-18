@@ -53,7 +53,7 @@ pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub s0: T,
   /// Correlation of the price and volatility innovations.
   pub rho: T,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

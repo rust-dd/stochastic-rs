@@ -51,7 +51,7 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
   pub pow: HestonPow,
   /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// Noise generator (used by the [`Euler`] scheme; [`AndersenQe`] draws its
   /// own noise and leaves this untouched).

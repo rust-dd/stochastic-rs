@@ -27,7 +27,7 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: Option<T>,
   /// Standard deviation of generated noise samples.
   pub sigma: Option<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

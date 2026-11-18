@@ -61,7 +61,7 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
   cgns1: Cgns<T>,
