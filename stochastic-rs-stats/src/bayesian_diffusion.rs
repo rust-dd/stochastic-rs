@@ -30,6 +30,8 @@ use crate::traits::FloatExt;
 /// speed, `mu` the level.
 #[derive(Debug, Clone)]
 pub struct BayesianDiffusionFit {
+  /// Over the QMLE's speed it grows with the span `θT` of the path: 0.50–0.66 at up to 8, 0.78 at
+  /// 20, 0.91 at 38, 0.98–1.00 from 200.
   pub theta_mean: f64,
   pub mu_mean: f64,
   pub sigma_mean: f64,
@@ -73,8 +75,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior under the priors below, defined where the QMLE refuses, its mean speed 0.6
-/// to 0.7 of the QMLE's from 1000 points on; `Err`s, panics: its checks, [`random_walk_metropolis`]
+/// Metropolis posterior under the priors below, defined where the QMLE refuses; `Err`s, panics: its
+/// checks, [`random_walk_metropolis`]
 /// $$
 /// p(\theta) \propto \frac{\rho}{\sqrt{1-\rho^2}},\ \rho = e^{-\theta\Delta}; \qquad
 /// \mu \sim N(\bar x, (4s)^2),\ \mu > 0 \text{ for CIR}; \qquad
