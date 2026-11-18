@@ -6,12 +6,12 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::mle::DiffusionModel;
 
-fn boxed(model: impl DiffusionModel + 'static) -> Box<dyn DiffusionModel> {
+pub(super) fn boxed(model: impl DiffusionModel + 'static) -> Box<dyn DiffusionModel> {
   Box::new(model)
 }
 
 /// `σ|x|^γ` with `(σ, γ)`: CIR's root, a CEV and a CKLS above one, and CKLS at CIR's own root.
-fn power_diffusions() -> Vec<(&'static str, Box<dyn DiffusionModel>, f64, f64)> {
+pub(super) fn power_diffusions() -> Vec<(&'static str, Box<dyn DiffusionModel>, f64, f64)> {
   let seed = || Deterministic::new(0);
   let floor = VarianceBoundary::Floor;
   vec![
