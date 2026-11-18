@@ -348,3 +348,9 @@ fn a_jump_model_names_its_vol_of_variance_sigma() {
     sigma_j: 0.1,
   });
 }
+
+#[test]
+fn a_monte_carlo_estimate_is_a_plain_value() {
+  fn plain<T: Copy + PartialEq>() {}
+  plain::<stochastic_rs_stochastic::mc::McEstimate<f64>>();
+}
