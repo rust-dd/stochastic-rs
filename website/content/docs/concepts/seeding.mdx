@@ -41,6 +41,16 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
 
 `Unseeded` and `Deterministic` are the only implementations; the trait is sealed. A `Deterministic` clone is a snapshot of its state, not a shared handle.
 
+## Cloning a process
+
+Every process derives `Clone` over its `seed` field, so cloning a process with a `Deterministic` seed copies the seed's *current* counter into a fresh, independent one: the clone **snapshots** the seed and does not fork it. Sampled before either side draws anything else, the two agree bit for bit. `Unseeded` carries no state, so a clone of an unseeded process still draws fresh randomness on every call.
+
+The snapshot is deliberate, and a seeded distribution stream (`Seeded`) makes the same choice. A process is usually cloned to answer "same model, one parameter changed" (`let mut bumped = base.clone(); bumped.kappa += h;`), which isolates the effect of `h` only if both share their noise. That is the common-random-numbers technique behind finite-difference Greeks and bump-and-reprice sensitivities; a fork on clone would replace every such comparison with uncorrelated Monte Carlo noise.
+
+The trade-off: a caller who clones only to get a second, *independent* stream gets identical paths instead. For an independent stream build a fresh seed (`Deterministic::new(other)` or `Unseeded`), or call `reseed` on the clone's `seed` field before sampling it.
+
+This is the whole-struct `Clone` a caller invokes from outside. It is unrelated to the rule that a process's own `sampler()` derives its basis and never clones the seed ([ProcessExt](/docs/concepts/process-ext#how-the-parallel-methods-stay-deterministic)), and it holds however a sampler is implemented.
+
 ## Reseeding in place
 
 `SeedExt::reseed(seed)` resets a `Deterministic` source without rebuilding the process — for example a calibration loop that sweeps many seeds for one parameterised process:
