@@ -29,8 +29,7 @@ use crate::traits::ProcessExt;
 
 /// Cgmy Stochastic Volatility process (CGMYSV)
 ///
-/// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
-/// module docs for the full citation).
+/// Reference: Kim (2021), JRFM 14(2), 77, Algorithm 1, DOI 10.3390/jrfm14020077
 #[derive(Debug, Clone)]
 pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive tempering parameter λ+ > 0

@@ -1,5 +1,5 @@
 //! The standard classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi: one scale
-//! `C`, set for unit variance per unit of time. The series on `[0, T]` stops at `J` terms.
+//! `C`, set for unit variance per unit time. The series stops at `J` terms; `2CT` is its Lévy mass.
 //!
 //! $$
 //! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
@@ -13,13 +13,13 @@
 //! $$
 //!
 //! $$
-//! \Gamma_j\ \text{unit Poisson arrivals},\ E_j\sim\mathrm{Exp}(1),\ U_j,\tau_j/T\sim U(0,1),\
-//! P(V_j=\lambda_+)=P(V_j=-\lambda_-)=\tfrac12,\ 2CT=(C+C)T\ \text{the Lévy mass over the horizon}
+//! \Gamma_j-\Gamma_{j-1},\,E_j\sim\mathrm{Exp}(1),\quad U_j,\,\tau_j/T\sim U(0,1),\quad
+//! P(V_j=\lambda_+)=P(V_j=-\lambda_-)=\tfrac12
 //! $$
 //!
 //! Reference: Rosiński (2007), Thm 5.1, Stoch. Proc. Appl. 117(6), 677–707
 //! Reference: Kim, Rachev, Bianchi & Fabozzi (2010), J. Banking & Finance 34(9), 2096–2109
-//! Reference: Bianchi et al. (2010), Tempered stable distributions and processes in finance
+//! Reference: Bianchi et al. (2010), Math. Stat. Methods for Actuarial Sci. and Finance, Springer
 //!
 
 use ndarray::Array1;

@@ -340,7 +340,7 @@ fn accepts_matlab_feller_violation_under_the_floor() {
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
-/// Reference: FSDA `Heston2D.m` requires both initial variances to be positive.
+/// FSDA's `Heston2D.m` requires both initial variances to be positive.
 #[test]
 #[should_panic(expected = "v0[0] must satisfy `v0[i] > T::zero()`, got v0[0] = 0.0")]
 fn rejects_zero_initial_variance_like_matlab() {

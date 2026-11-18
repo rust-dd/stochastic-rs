@@ -73,7 +73,7 @@ fn lift_agrees_with_the_reference_convolution() {
 }
 
 /// An exponential kernel is exact at $N'=1$, and zero drift leaves only the diffusion, where lift
-/// and reference apply the same $K$: reassociation noise, `6.80e-16` measured against `1e-9`.
+/// and reference apply the same $K$: `6.80e-16` against `sampler_v3_golden.rs`'s `1e-9` floor.
 #[test]
 fn exponential_kernel_lift_matches_reference_to_machine_precision() {
   const REL_TOL: f64 = 1e-9;
@@ -165,8 +165,8 @@ fn nonzero_drift_breaks_the_machine_precision_tolerance() {
   );
 }
 
-/// Zero drift and unit diffusion give $\mathrm{Var}(X_t) = \int_0^t K(u)^2\,du$, here
-/// $c^2(1-e^{-2\beta t})/(2\beta)$. The 4% bound: $5\sqrt{2/N}$ at $N=50{,}000$ and a 0.35% bias.
+/// Zero drift, unit diffusion: $\mathrm{Var}(X_t) = \int_0^t K^2 = c^2(1-e^{-2\beta t})/(2\beta)$.
+/// 4%: $5\sqrt{2/N}$ at $N=50{,}000$ plus 0.35%, the grid's left-Riemann bias $\beta\,\delta t$.
 #[test]
 fn gaussian_case_matches_closed_form_variance() {
   let beta = 0.7_f64;

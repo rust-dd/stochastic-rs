@@ -7,8 +7,10 @@
 //! $$
 //!
 //! $$
-//! \text{embedded: } c_0+c_2\|h\|^2-\|h\|^{\alpha}\ (\text{cubic tail out to } r \text{ when }
-//! \alpha>1.5),\qquad \text{linear correction: } \sqrt{2c_2}\,t^\top Z,\ Z\sim\mathcal N(0,I_2)
+//! \operatorname{Cov}(Y_s,Y_t)=\rho(s-t),\quad \rho(h)=\begin{cases}
+//! c_0+c_2\|h\|^2-\|h\|^{\alpha},&\|h\|\le 1\\ \beta\,(r-\|h\|)^3/\|h\|,&1<\|h\|\le r
+//! \end{cases}\quad(\beta=0,\ \alpha\le 1.5),\qquad
+//! X_t=Y_t-Y_{t_1}+\sqrt{2c_2}\,t^\top Z,\quad Z\sim\mathcal N(0,I_2)
 //! $$
 //!
 //! Reference: Stein (2002), J. Comput. Graph. Statist. 11(3), 587–599

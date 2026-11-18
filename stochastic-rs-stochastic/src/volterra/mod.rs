@@ -10,10 +10,14 @@
 //! K(t) \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t},
 //! $$
 //!
+//! $$
+//! r_{\theta\text{-EM}} = \min\{1-\alpha,\ \tfrac12-\beta\},\qquad
+//! r_{\mathrm{Milstein}} = \min\{1-\alpha,\ 1-2\beta\}
+//! $$
+//!
 //! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
 //! Reference: Alfonsi & Kebaier (2021), arXiv:2102.13505
-//! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, θ-EM rate $\min\{1-\alpha,\tfrac12-\beta\}$
-//! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, Milstein rate $\min\{1-\alpha,\ 1-2\beta\}$
+//! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, the strong rates of θ-EM and Milstein
 //! Reference: Liu, Hu & Gao (2024), arXiv:2412.11126, the Milstein rate $n^{-2H}$ is optimal
 //! Reference: Bayer & Breneis (2021), arXiv:2108.05048, superpolynomial strong convergence in $N'$
 //! Reference: Bayer & Breneis (2023), arXiv:2309.07023, the weak error follows the $L^1$ error

@@ -1,4 +1,4 @@
-//! Barndorff-Nielsen–Shephard volatility: an OU variance driven by a nonnegative Lévy subordinator.
+//! BNS volatility (Barndorff-Nielsen & Shephard 2001, §2): an OU variance on a Lévy subordinator.
 //!
 //! $$
 //! \begin{aligned}
