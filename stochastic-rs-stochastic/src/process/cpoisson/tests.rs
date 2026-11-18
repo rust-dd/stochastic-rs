@@ -69,7 +69,7 @@ fn grid_increments_start_at_zero() {
 
 #[test]
 fn relative_increment_compounds_multiple_jumps() {
-  let mut rng = crate::simd_rng::rng();
+  let mut rng = stochastic_rs_core::simd_rng::rng();
   let rel = relative_jump_from_count(&ConstJump(0.1f64), 3, &mut rng);
   let expected = 1.1f64.powi(3) - 1.0;
   assert!((rel - expected).abs() < 1e-12);

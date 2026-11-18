@@ -6,7 +6,6 @@
 pub mod adg;
 pub mod black_karasinski;
 pub mod cheyette;
-pub mod cir;
 pub mod cir_2f;
 pub mod cir_pp;
 pub mod duffie_kan;

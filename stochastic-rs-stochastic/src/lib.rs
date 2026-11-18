@@ -3,7 +3,10 @@
 // unnoticed; deny so a regression fails the build instead of drifting.
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "a constructor takes its model's parameters by position, and a launch its buffers"
+)]
 // Numerical-loop indices are kept as-is; iterator chains hurt readability
 // in matrix/path index code where i, j, k carry mathematical meaning.
 #![allow(clippy::needless_range_loop)]
@@ -15,11 +18,6 @@ mod doctest_seals;
 mod linalg;
 
 pub mod traits;
-
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_distributions::traits::DistributionExt;
-pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 pub use crate::device::Backend;
 pub use crate::device::Cpu;

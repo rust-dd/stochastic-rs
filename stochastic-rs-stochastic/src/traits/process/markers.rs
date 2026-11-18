@@ -12,7 +12,7 @@ use super::*;
 ///
 /// ```
 /// use stochastic_rs_stochastic::process::bm::Bm;
-/// use stochastic_rs_stochastic::simd_rng::Deterministic;
+/// use stochastic_rs_core::simd_rng::Deterministic;
 /// use stochastic_rs_stochastic::traits::{FloatExt, OneDimensional, ProcessExt};
 ///
 /// fn last_value<T: FloatExt, P: OneDimensional<T>>(p: &P) -> T {

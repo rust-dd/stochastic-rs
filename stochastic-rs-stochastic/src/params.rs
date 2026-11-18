@@ -97,7 +97,7 @@ pub struct UseSymIsGone;
 ///
 /// ```compile_fail,E0061
 /// use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
-/// use stochastic_rs_stochastic::simd_rng::Unseeded;
+/// use stochastic_rs_core::simd_rng::Unseeded;
 /// let g = GbmLog::<f64>::new(Some(0.05), None, None, None, 0.2, 64, Some(1.0), None, Unseeded);
 /// ```
 #[cfg(doctest)]
@@ -107,7 +107,7 @@ pub struct DriftIsOneArgument;
 ///
 /// ```compile_fail,E0061
 /// use stochastic_rs_stochastic::process::poisson::Poisson;
-/// use stochastic_rs_stochastic::simd_rng::Unseeded;
+/// use stochastic_rs_core::simd_rng::Unseeded;
 /// let p = Poisson::<f64>::new(2.0, None, Some(1.0), Unseeded);
 /// ```
 #[cfg(doctest)]
@@ -117,7 +117,7 @@ pub struct HorizonIsOneArgument;
 ///
 /// ```compile_fail,E0308
 /// use stochastic_rs_stochastic::params::VarianceBoundary;
-/// use stochastic_rs_stochastic::simd_rng::Unseeded;
+/// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::volatility::HestonPow;
 /// use stochastic_rs_stochastic::volatility::heston::Heston;
 /// let h = Heston::<f64>::new(Some(100.0), Some(0.04), 2.0, 0.04, 0.5, -0.7, 0.03, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);

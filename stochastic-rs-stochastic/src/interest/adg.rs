@@ -387,7 +387,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
 #[pyo3::prelude::pyclass]
 pub struct PyAdg {
   inner: Option<Adg<f64>>,
-  seeded: Option<Adg<f64, crate::simd_rng::Deterministic>>,
+  seeded: Option<Adg<f64, stochastic_rs_core::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
