@@ -4,7 +4,7 @@
 //! X_t = X_0 + \int_0^t K(t-s)\,b(s,X_s)\,ds + \int_0^t K(t-s)\,\sigma(s,X_s)\,dW_s
 //! $$
 //!
-//! $X$ is neither Markov nor a semimartingale; [`VolterraLift`] steps [`VolterraKernel`]'s factors.
+//! A weakly singular $K$ makes $X$ neither Markov nor a semimartingale; [`VolterraLift`] steps it.
 //!
 //! $$
 //! K(t) \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t},

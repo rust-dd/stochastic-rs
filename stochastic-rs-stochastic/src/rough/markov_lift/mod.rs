@@ -11,7 +11,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! [`VolterraLift`](crate::volterra::VolterraLift) for `RlKernel<T>` and $(x)$-only coefficients.
+//! It is [`VolterraLift`](crate::volterra::VolterraLift) for `RlKernel<T>` and coefficients of $x$.
 //!
 //! Reference: Bilokon & Wong (2026), J. Appl. Probab., p. 16
 
