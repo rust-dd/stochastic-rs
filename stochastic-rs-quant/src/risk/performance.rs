@@ -98,9 +98,9 @@ pub fn information_ratio<T: RealExt>(
   validate_samples(returns, "information ratio", 2)?;
   validate_samples(benchmark, "information ratio", 2)?;
   let diff = &returns - &benchmark;
-  for (i, &excess) in diff.iter().enumerate() {
+  if let Some(i) = diff.iter().position(|excess| !excess.is_finite()) {
     finite(
-      excess,
+      diff[i],
       "information ratio",
       &format!("the excess return {i}"),
     )?;
