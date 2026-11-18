@@ -73,8 +73,8 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
   ln_d.exp()
 }
 
-/// The natural cubic spline through the pillars' zero rates, which are flat below the first
-/// pillar and linear between two; NaN for `t < 0`.
+/// The natural cubic spline through the pillars' zero rates: a flat zero rate below the first
+/// pillar, and linear in the rate when the curve has only two pillars; NaN for `t < 0`.
 pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let points = after_origin(points);
   if let Some(known) = off_grid(points, t).or_else(|| flat_short_end(points, t)) {
