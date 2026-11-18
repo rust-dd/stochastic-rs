@@ -245,6 +245,62 @@ fn a_closed_form_prices_each_leg_through_the_trait() {
   assert_eq!(legs(&BjerksundStensland2002Pricer::new(0.25), TAU), BS2002);
 }
 
+/// rc.4's values, bit for bit.
+#[test]
+fn the_other_carries_and_the_edges_keep_their_values() {
+  let at = |model: &dyn ModelPricer, s, k, r, q, tau| {
+    pair(
+      model.price_call(s, k, r, q, tau),
+      model.price_put(s, k, r, q, tau),
+    )
+  };
+  let no_dividend = pair(7.905150880530156, 9.040564741216432);
+  let futures = pair(6.127093624624524, 10.943065713228627);
+  for (coc, pinned) in [
+    (BsmCoc::Bsm1973, no_dividend),
+    (BsmCoc::Black1976, futures),
+    (BsmCoc::Asay1982, futures),
+    (BsmCoc::GarmanKohlhagen1983, MERTON),
+  ] {
+    let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, coc);
+    assert_eq!(merton.price_call_put(S, K, R, Q, TAU), pinned, "{coc:?}");
+    assert_eq!(legs(&merton, TAU), pinned, "{coc:?}");
+  }
+  let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, BsmCoc::Merton1973);
+  assert_eq!(merton.price_call_put(S, K, R, Q, 0.0), pair(0.0, 5.0));
+  let no_jumps = Merton1976Pricer::new(0.25, 0.0, 0.4, 50, BsmCoc::Merton1973);
+  assert_eq!(
+    no_jumps.price_call_put(S, K, R, Q, TAU),
+    pair(7.356284457997674, 9.980504358377694)
+  );
+
+  assert_eq!(
+    at(&BachelierPricer::new(20.0), -5.0, 2.0, R, Q, TAU),
+    pair(3.7831765246338898, 10.635125058090846)
+  );
+  assert_eq!(
+    at(
+      &BjerksundStensland2002Pricer::new(0.35),
+      42.0,
+      40.0,
+      0.04,
+      0.08,
+      0.75
+    ),
+    pair(5.286858855569344, 4.361461686435224)
+  );
+  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(7));
+  assert_eq!(
+    malliavin.price_call_put_localized(0.0, K, R, Q, TAU),
+    pair(0.0, 101.13541386068628)
+  );
+  let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);
+  assert_eq!(
+    hscm.price_call_put(S, 400.0, R, Q, 0.05),
+    pair(3.3428110535475566e-13, 299.10119897564687)
+  );
+}
+
 #[test]
 fn lambda_is_the_elasticity_of_the_option_it_is_asked_for() {
   let bsm = BsmPricer::new(0.25, BsmCoc::Merton1973);

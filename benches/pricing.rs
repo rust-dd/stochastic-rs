@@ -33,6 +33,7 @@ use stochastic_rs::quant::pricing::malliavin_thalmaier::AssetParams;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
+use stochastic_rs::quant::pricing::merton_jump::Merton1976Pricer;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
@@ -173,6 +174,22 @@ fn bsm_and_sabr(c: &mut Criterion) {
       STRIKES
         .iter()
         .map(|&k| bsm.greeks(S, k, R, Q, 1.0, OptionType::Call).vega)
+        .sum::<f64>()
+    })
+  });
+  group.finish();
+
+  let mut group = c.benchmark_group("pricing/merton_jump");
+  group
+    .sample_size(50)
+    .measurement_time(Duration::from_secs(4));
+  let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, BsmCoc::Merton1973);
+  group.bench_function("price_call_9x50_terms", |b| {
+    b.iter(|| {
+      let merton = black_box(&merton);
+      STRIKES
+        .iter()
+        .map(|&k| merton.price_call(S, k, R, Q, 1.0))
         .sum::<f64>()
     })
   });
