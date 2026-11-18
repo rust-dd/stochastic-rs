@@ -109,6 +109,15 @@ fn a_nan_correlation_is_refused_by_name() {
 }
 
 #[test]
+#[should_panic(
+  expected = "rho must satisfy `every Cholesky pivot of rho > T::zero()`, got pivot 2 = -1.3"
+)]
+fn an_indefinite_matrix_is_refused_as_a_correlation() {
+  let rho = ndarray::array![[1.0, 0.5, -1.0], [0.5, 1.0, 0.5], [-1.0, 0.5, 1.0]];
+  let _ = three_libors().with_correlation(rho);
+}
+
+#[test]
 fn a_correlation_is_factored_into_its_lower_cholesky() {
   let rho = ndarray::array![[1.0, 0.6, 0.3], [0.6, 1.0, 0.5], [0.3, 0.5, 1.0]];
   let l = three_libors()
