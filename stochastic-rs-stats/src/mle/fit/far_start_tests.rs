@@ -78,6 +78,28 @@ fn only_a_parameter_the_likelihood_does_not_hold_goes_back_to_its_start() {
   assert_eq!(fixed, stalled);
 }
 
+/// From the law's parameters in a box with three infinite ends the estimate stays by its start,
+/// which then stands in for no end: the fit is its first search, to the iteration.
+#[test]
+fn a_fit_beside_its_start_in_an_open_box_runs_no_further_search() {
+  let dt = 1.0 / 252.0;
+  let inf = f64::INFINITY;
+  let (lower, upper, start) = ([1e-4, -inf, 1e-9], [inf, inf, inf], [2.0, 1.0, 0.3]);
+  let exact = DensityApprox::Exact;
+  for seed in 101..=103 {
+    let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, seed);
+    let mut model = Ou::new(2.0, 1.0, 0.3, 100, None, None, Deterministic::new(0));
+    let problem = MleProblem::new(&mut model, path.view(), dt, exact, &lower, &upper, &start);
+    let first = search(problem, &start);
+    let bounds = lower.into_iter().zip(upper).collect::<Vec<_>>();
+    let mut model = Ou::new(2.0, 1.0, 0.3, 100, None, None, Deterministic::new(0));
+    let fit = fit_mle(&mut model, path.view(), dt, exact, Some(bounds)).unwrap();
+    assert!(fit.converged, "seed {seed}: {}", fit.message);
+    assert_eq!(fit.params.to_vec(), first.params, "seed {seed}");
+    assert_eq!(fit.iterations, first.iterations, "seed {seed}");
+  }
+}
+
 /// 50 points do not hold the speed at its lower end, and that one loose end is an optimum beside
 /// a bound, not a stall: no further search runs, and `iterations` is the first search's.
 #[test]
