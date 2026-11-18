@@ -1,8 +1,5 @@
-//! Compile-time variance-discretisation schemes for
-//! [`Heston`](super::Heston): [`Euler`] (the original full-truncation
-//! scheme) and [`AndersenQe`] (Andersen 2008's Quadratic-Exponential
-//! scheme). Split out of `heston.rs` to keep that file under the crate's
-//! 600-line cap; re-exported from `heston` so callers see no path change.
+//! Compile-time variance-discretisation schemes for [`Heston`](super::Heston): [`Euler`], the
+//! full-truncation scheme, and [`AndersenQe`], Andersen 2008's Quadratic-Exponential scheme.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -26,16 +23,11 @@ impl sealed::Sealed for Euler {}
 
 impl sealed::Sealed for AndersenQe {}
 
-/// Compile-time selector of the variance discretisation [`Heston`](super::Heston) runs: a zero-sized
-/// marker per scheme, so each is monomorphised on its own; sealed to [`Euler`] and [`AndersenQe`].
+/// Compile-time selector of the variance discretisation [`Heston`](super::Heston) runs: a
+/// zero-sized marker per scheme, monomorphised on its own; sealed to [`Euler`] and [`AndersenQe`].
 pub trait HestonScheme: sealed::Sealed + Send + Sync + 'static {
-  /// Generate `[stock path, variance path]` under this scheme, drawing from
-  /// `seed` — a basis owned by the calling
-  /// [`HestonSampler`](super::HestonSampler), derived once at its
-  /// construction, never `model.seed` directly. That indirection is what
-  /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
-  /// chunk's sampler owns a distinct basis instead of every chunk racing on
-  /// the same live `model.seed` inside the parallel region.
+  /// `[stock path, variance path]` under this scheme, drawing from `seed`: the basis the calling
+  /// [`HestonSampler`](super::HestonSampler) owns, never `model.seed`, so chunks do not race on it.
   fn simulate<T: FloatExt, S: SeedExt, B>(
     model: &Heston<T, Self, S, B>,
     seed: &S,
@@ -49,14 +41,9 @@ pub trait HestonScheme: sealed::Sealed + Send + Sync + 'static {
 #[derive(Debug, Clone, Copy)]
 pub struct Euler;
 
-/// Andersen (2008) Quadratic-Exponential scheme. Markedly lower variance bias
-/// than Euler at large vol-of-vol / when the Feller condition is violated, at
-/// essentially the same per-step cost (no Cholesky, correlation handled
-/// analytically). Defined for the square-root (CIR) variance only.
-///
-/// Reference: Andersen, L. (2008), "Simple and efficient simulation of the
-/// Heston stochastic volatility model", *Journal of Computational Finance*
-/// 11(3), 1-42 (§3.2 scheme QE, §4.2 eq. 33 for the asset).
+/// Andersen's Quadratic-Exponential scheme, for the square-root variance only: lower bias than
+/// Euler at large vol-of-vol or a violated Feller condition, at about the same cost per step.
+/// Reference: Andersen (2008), J. Comput. Finance 11(3), 1-42, §3.2 (QE), §4.2 eq. 33 (the asset)
 #[derive(Debug, Clone, Copy)]
 pub struct AndersenQe;
 
@@ -98,11 +85,8 @@ impl HestonScheme for Euler {
 
 /// The step keeps the variance non-negative by construction, so it does not read `boundary`.
 impl HestonScheme for AndersenQe {
-  /// Andersen (2008) QE step. Per step: one variance draw — quadratic branch
-  /// `V = a(b+Z_V)²` (eq. 23/27/28) when `ψ ≤ ψ_c`, else exponential
-  /// `V = Ψ⁻¹(U)` (eq. 24-26/29/30) — followed by the asset update (eq. 33).
-  /// Correlation is handled analytically through the `K` constants, so no
-  /// correlated Brownian pair is needed (unlike [`Euler`]).
+  /// Andersen (2008) QE step: `V = a(b+Z_V)²` (eq. 23/27/28) when `ψ ≤ ψ_c`, else `V = Ψ⁻¹(U)`
+  /// (eq. 24-26/29/30), then the asset (eq. 33); the `K` constants carry the correlation.
   fn simulate<T: FloatExt, S: SeedExt, B>(
     model: &Heston<T, AndersenQe, S, B>,
     seed: &S,
@@ -123,9 +107,8 @@ impl HestonScheme for AndersenQe {
     let half = T::from_f64_fast(0.5);
     let psi_c = T::from_f64_fast(1.5);
 
-    // Time-independent constants, hoisted out of the path loop (Andersen §3
-    // fn. 5). Central discretisation of ∫V du uses γ₁ = γ₂ = ½ (eq. 33), so
-    // K₃ = K₄ = ½Δ(1−ρ²).
+    // Time-independent constants, hoisted out of the path loop (Andersen §3 fn. 5). The central
+    // discretisation of ∫V du uses γ₁ = γ₂ = ½ (eq. 33), so K₃ = K₄ = ½Δ(1−ρ²).
     let e_kd = (-kappa * dt).exp(); // e^{−κΔ}
     let krho_eps = kappa * rho / eps;
     let k0 = -rho * kappa * theta * dt / eps;
@@ -141,14 +124,8 @@ impl HestonScheme for AndersenQe {
     s[0] = s0;
     v[0] = v0;
 
-    // Independent noise sub-streams: normals (Z_V for the quadratic branch and
-    // Z for the asset) via the buffered SimdNormal, a uniform stream for the
-    // exponential branch. `seed` is `HestonSampler`'s own owned basis (already
-    // chunk-decorrelated by `sampler()`'s one derive), so `normal` consumes it
-    // directly; `urng` still derives *from* it — a second, within-chunk hop
-    // that keeps the two sub-streams independent without affecting cross-chunk
-    // decorrelation, since it operates entirely on an already-decorrelated
-    // basis.
+    // Normals (Z_V and the asset's Z) and a uniform stream for the exponential branch. `normal`
+    // consumes the sampler's owned basis; `urng` derives from it, which keeps the two independent.
     let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
     let mut urng = seed.derive().rng();
 

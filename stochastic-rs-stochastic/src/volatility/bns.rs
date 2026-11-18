@@ -1,5 +1,3 @@
-//! # Barndorff-Nielsen-Shephard (BNS) stochastic volatility
-//!
 //! $$
 //! \begin{aligned}
 //! \frac{dS_t}{S_t} &= \mu\,dt + \sigma_t\,dW_t,\\
@@ -7,43 +5,20 @@
 //! \end{aligned}
 //! $$
 //!
-//! where $Z = (Z_t)_{t \ge 0}$ is a **non-negative Lévy subordinator**
-//! (Barndorff-Nielsen & Shephard 2001, *Journal of the Royal Statistical
-//! Society* Series B, §2). The volatility process is the
-//! [`non-Gaussian Ornstein-Uhlenbeck process`](https://doi.org/10.1111/1467-9868.00282)
-//! with mean-reversion rate $\lambda$; the jumps of $Z$ provide the positive shocks that
-//! keep $\sigma^2_t \ge 0$ at all times.
+//! $Z$ is a non-negative Lévy subordinator (§2), here compound Poisson at rate $\nu$ on the
+//! $\lambda$-rescaled clock with $\mathrm{Gamma}(\omega, 1)$ jumps; leverage is not implemented.
 //!
-//! ## Subordinator choice — compound Poisson + Gamma jumps
+//! $$
+//! N_i \sim \mathrm{Poisson}(\nu \cdot \lambda \cdot \Delta t),\quad
+//! \Delta Z_i = \sum_{j=1}^{N_i} Y_j,\quad
+//! \sigma^2_{t_{i+1}} = e^{-\lambda \Delta t} \sigma^2_{t_i} + \Delta Z_i,\quad
+//! S_{t_{i+1}} = S_{t_i} \exp\!\bigl((\mu - \tfrac{1}{2}\sigma^2_{t_i}) \Delta t +
+//! \sigma_{t_i} \sqrt{\Delta t}\,\varepsilon_i\bigr)
+//! $$
 //!
-//! We use the standard "BNS-Gamma" approximation: $Z$ is a compound
-//! Poisson process with Poisson intensity $\nu$ (jumps per unit time on
-//! the $\lambda$-rescaled clock) and i.i.d. Gamma jump sizes
-//! $Y_j \sim \mathrm{Gamma}(\omega, 1)$. The discretised dynamics on a
-//! grid of step $\Delta t$ are:
-//!
-//! 1. $N_i \sim \mathrm{Poisson}(\nu \cdot \lambda \cdot \Delta t)$ — number
-//!    of jumps in $[t_i, t_{i+1}]$.
-//! 2. $\Delta Z_i = \sum_{j=1}^{N_i} Y_j$, $Y_j \sim \mathrm{Gamma}(\omega, 1)$.
-//! 3. $\sigma^2_{t_{i+1}} = e^{-\lambda \Delta t} \sigma^2_{t_i} + \Delta Z_i$.
-//! 4. $S_{t_{i+1}} = S_{t_i} \exp\!\bigl((\mu - \tfrac{1}{2}\sigma^2_{t_i}) \Delta t + \sigma_{t_i} \sqrt{\Delta t}\,\varepsilon_i\bigr)$ with $\varepsilon_i \sim \mathcal{N}(0, 1)$.
-//!
-//! Pure-jump leverage ($\rho \ne 0$ between $W$ and the jumps of $Z$) is
-//! not yet implemented; the Barndorff-Nielsen-Shephard 2001b
-//! shifted-Brownian construction needs careful pre-allocation of two
-//! correlated noise streams.
-//!
-//! ## References
-//!
-//! - Barndorff-Nielsen, O.E., Shephard, N. (2001), "Non-Gaussian
-//!   Ornstein-Uhlenbeck-based models and some of their uses in financial
-//!   economics", *Journal of the Royal Statistical Society* Series B,
-//!   63(2), 167-241, DOI 10.1111/1467-9868.00282.
-//! - Arai, T. (2015), "Local risk-minimization for Barndorff-Nielsen and
-//!   Shephard models with volatility risk premium", arXiv:1506.01477.
-//! - Roberts, G.O., Papaspiliopoulos, O., Dellaportas, P. (2004),
-//!   "Bayesian inference for non-Gaussian Ornstein-Uhlenbeck stochastic
-//!   volatility processes", *JRSS* B 66(2), 369-393.
+//! Reference: Barndorff-Nielsen, Shephard (2001), JRSSB 63(2), 167-241, DOI 10.1111/1467-9868.00282
+//! Reference: Arai (2015), arXiv:1506.01477
+//! Reference: Roberts, Papaspiliopoulos & Dellaportas (2004), JRSSB 66(2), 369-393
 
 use ndarray::Array1;
 use rand::distr::Distribution;
@@ -88,6 +63,8 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Bns<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `sigma2_0 > 0`, `lambda > 0`,
+  /// `nu >= 0`, `jump_shape > 0`, and every parameter is finite.
   pub fn new(
     s0: T,
     sigma2_0: T,
@@ -171,10 +148,8 @@ impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the Barndorff-Nielsen-Shephard model. The
-/// variance decays exactly over the step, as the host takes it, and the
-/// step's jump sum is one gamma draw whose shape is the jump count times a
-/// single jump's — which is what the sum of that many gamma jumps is.
+/// The Euler engine's view: the variance decays exactly over the step, as on the host, and the
+/// step's jump sum is one gamma draw whose shape is the jump count times a single jump's.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Bns<T, S, B>
 {
@@ -239,10 +214,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
@@ -260,9 +233,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the variance's jump sum and the
-  /// asset step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps the variance's jump sum and the asset together in
+  /// its kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -340,7 +312,8 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     s[0] = self.s0;
     sigma2[0] = self.sigma2_0;
 
-    // Each stream draws from `self.seed` in a fixed order, so a `Deterministic` seed reproduces the path.
+    // Each stream draws from `self.seed` in a fixed order, so a `Deterministic` seed reproduces
+    // the path.
     let mut jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one()).seeded(&self.seed);
     let mut normal_dist = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut rng = self.seed.rng();
@@ -417,13 +390,8 @@ mod tests {
     assert!(s.iter().all(|x| *x > 0.0));
   }
 
-  /// Stationary mean of σ² under the BNS-Gamma model is
-  /// $\nu\,\omega\cdot\lambda\Delta t / (1 - e^{-\lambda\Delta t}) \to \nu\,\omega$
-  /// as $\Delta t \to 0$ (jump rate × mean jump size). A single 40-unit path
-  /// with $\lambda = 1$ holds only ~15 effective samples, so its time-average
-  /// has an ~11% standard error — far too wide for a 20% band to pass
-  /// reliably. We average 128 independently seeded paths, shrinking the
-  /// estimator's standard error to ~1% and keeping the check reproducible.
+  /// The stationary mean of σ² is $\nu\,\omega\cdot\lambda\Delta t / (1 - e^{-\lambda\Delta t})
+  /// \to \nu\,\omega$. One 40-unit path has an ~11% standard error, so 128 paths are averaged.
   #[test]
   fn bns_stationary_variance_matches_jump_intensity() {
     let nu = 4.0_f64;

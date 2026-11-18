@@ -1,18 +1,13 @@
 //! # Sabr
 //!
 //! $$
-//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
+//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad
+//! d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-//! $\alpha_t$ is the stochastic-volatility state (initial value: field
-//! `alpha0`); $\nu$ is the vol-of-vol (field `nu`); $\beta$ is the CEV
-//! exponent (field `beta`); $\rho$ is the instantaneous correlation
-//! (field `rho`).
+//! $\alpha_t$ starts at the field `alpha0`; $\nu$, $\beta$ and $\rho$ are `nu`, `beta` and `rho`.
 //!
-//! Reference: Hagan P. S., Kumar D., Lesniewski A. S., Woodward D. E.
-//! (2002) — *Managing Smile Risk*, Wilmott Magazine, September, 84–108.
-//! No DOI is on record for this issue of Wilmott Magazine (it pre-dates
-//! the magazine's DOI registration).
+//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), Wilmott Magazine, Sept., 84–108, no DOI
 //!
 
 use ndarray::Array1;
@@ -47,7 +42,7 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -58,6 +53,8 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
 impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
+  /// Panics unless `nu >= 0`, `beta >= 0 && beta <= 1`, `n >= 2`, `alpha0.is_none_or(|a| a >= 0)`,
+  /// a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     nu: T,
     beta: T,
@@ -115,23 +112,22 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     require!(alpha0.is_none_or(|a| a >= T::zero()), alpha0);
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu >= 0` and `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
     Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta >= 0 && beta <= 1` and `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `rho` is finite and in `[-1, 1]`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -139,14 +135,14 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace `f0`, all else unchanged.
+  /// Replace `f0`; panics unless `f0` is finite.
   pub fn with_f0(mut self, f0: Option<T>) -> Self {
     Self::check_f0(f0);
     self.f0 = f0;
     self
   }
 
-  /// Replace `alpha0`, all else unchanged.
+  /// Replace `alpha0`; panics unless `alpha0.is_none_or(|a| a >= 0)` and `alpha0` is finite.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
     Self::check_alpha0(alpha0);
     self.alpha0 = alpha0;
@@ -154,7 +150,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   }
 
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -162,8 +158,8 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -259,14 +255,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. `fill_paths`
-  /// then uses this owned seed directly (no further derive) — exactly one
-  /// derive from `self.seed` per chunk, matching what the legacy per-call
-  /// `derive()` consumed, so the first path reproduces the legacy stream
-  /// bit-for-bit.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk bases. `fill_paths` uses the owned seed directly, one derive from `self.seed` per chunk.
   fn sampler(&self) -> SabrSampler<T, S> {
     SabrSampler {
       n: self.n,
@@ -280,9 +270,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -385,9 +374,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
   }
 }
 
-// Python-visible parameter names stay `alpha`/`v0` (pre-existing public
-// API surface); they forward positionally into `Sabr::new`'s renamed
-// `nu`/`alpha0` parameters, so the Python signature is unaffected.
+// The Python parameter names stay `alpha`/`v0`; they forward positionally into `Sabr::new`'s
+// `nu`/`alpha0`.
 py_process_2x1d!(PySabr, Sabr,
   sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>),
@@ -440,10 +428,8 @@ mod tests {
     assert!(v.iter().all(|x| *x >= 0.0));
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc's
-  /// `dα = ν α dW₂` means `nu` is vol-of-vol and `alpha0` is the initial
-  /// volatility state. Construction must compile with those names and the
-  /// vol-of-vol must actually drive the volatility path's dispersion.
+  /// The module doc's `dα = ν α dW₂` makes `nu` the vol-of-vol and `alpha0` the initial
+  /// volatility state; the vol-of-vol must drive the volatility path's dispersion.
   #[test]
   fn sabr_nu_drives_volatility_dispersion() {
     let make = |nu: f64| {

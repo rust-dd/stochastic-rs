@@ -17,8 +17,7 @@ fn model(hurst: f64, n: usize, seed: u64) -> RoughBergomi<f64, Deterministic> {
 }
 
 /// Bennedsen–Lunde–Pakkanen (2017) Proposition 2.8: the `k = 2` weight is
-/// `Δ^α (2^{α+1} − 1)/(α+1)`; at `H = ½` every weight is one and the exact
-/// last-interval integral collapses onto the increment.
+/// `Δ^α (2^{α+1} − 1)/(α+1)`; at `H = ½` every weight is one and the exact integral the increment.
 #[test]
 fn hybrid_weights_match_the_closed_forms() {
   let (kernel, on_increment, residual_sd) =
@@ -58,9 +57,8 @@ fn the_hybrid_weights_keep_their_digits_in_single_precision() {
   }
 }
 
-/// `E[v_t] = v_0²` for every `t` (the `½ν²t^{2H}` compensator is exact
-/// when `Var[W^H_t] = t^{2H}`), and the sample variance of the implied
-/// `W^H_t` tracks `t^{2H}` — the scheme's variance error is second order.
+/// `E[v_t] = v_0²` for every `t`, since the `½ν²t^{2H}` compensator is exact when
+/// `Var[W^H_t] = t^{2H}`, and the sample variance of the implied `W^H_t` tracks `t^{2H}`.
 #[test]
 fn variance_driver_is_a_martingale_with_t_2h_variance() {
   let n = 65;
@@ -90,9 +88,8 @@ fn variance_driver_is_a_martingale_with_t_2h_variance() {
   }
 }
 
-/// The lag-one autocorrelation of the log-variance increments is the
-/// fractional-Gaussian-noise value `½(2^{2H} − 2)` at `H = 0.1`, a
-/// negative number a driver with independent increments cannot produce.
+/// The lag-one autocorrelation of the log-variance increments is fGN's `½(2^{2H} − 2)` at
+/// `H = 0.1`, a negative number independent increments cannot produce.
 #[test]
 fn log_variance_increments_are_antipersistent() {
   let n = 257;

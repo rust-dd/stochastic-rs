@@ -1,6 +1,7 @@
 use super::*;
 
-/// `scheme` is `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance step.
+/// `scheme` is `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance
+/// step.
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHeston {
@@ -149,10 +150,8 @@ impl PyHeston {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
     py_heston_dispatch!(py_dispatch, self, |inner| inner.device_fallback())

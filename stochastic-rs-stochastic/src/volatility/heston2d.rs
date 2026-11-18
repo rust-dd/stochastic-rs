@@ -1,5 +1,3 @@
-//! # Heston 2D (bivariate Heston)
-//!
 //! $$
 //! \begin{aligned}
 //! dx^i_t &= \left(\mu_i - \tfrac{1}{2} v^i_t\right) dt + \sqrt{v^i_t}\, dW^i_t \\
@@ -7,18 +5,10 @@
 //! \end{aligned}
 //! $$
 //!
-//! Two correlated Heston stochastic-volatility processes (one per asset) with
-//! a full 4-dimensional correlation structure on `(Z_1, Z_2, W_1, W_2)` where
-//! `W_i` drives the log-price `x^i` and `Z_i` drives the variance `v^i`.
+//! After `Heston2D.m` of the MATLAB FSDA toolbox: the output is log-prices `x_i`, as `FmVol`
+//! expects, and a negative Euler variance is reflected or truncated, unlike MATLAB's raw Euler.
 //!
-//! Based on `Heston2D.m` from the MATLAB FSDA toolbox (Sanfelici & Toscano,
-//! arXiv:2402.00172). The correlation-vector ordering and Euler drift/diffusion
-//! terms match MATLAB. Negative Euler variance proposals are stabilised by
-//! reflection or full truncation, so paths can differ from the raw MATLAB Euler
-//! scheme even when the random draws agree.
-//!
-//! Output is **log-prices** `x_i`, not levels `S_i = exp(x_i)`, matching MATLAB
-//! and the convention expected by `FmVol`.
+//! Reference: Sanfelici & Toscano, arXiv:2402.00172
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -50,15 +40,14 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub kappa: [T; 2],
   /// Volatility-of-volatilities `[σ_1, σ_2]`.
   pub sigma: [T; 2],
-  /// 6-element correlation vector matching the MATLAB `Heston2D.m`
-  /// convention, ordered `[ρ(Z_1,Z_2), ρ(Z_1,W_1), ρ(Z_1,W_2),
+  /// Correlation vector in MATLAB `Heston2D.m` order: `[ρ(Z_1,Z_2), ρ(Z_1,W_1), ρ(Z_1,W_2),
   /// ρ(Z_2,W_1), ρ(Z_2,W_2), ρ(W_1,W_2)]`.
   pub rho: [T; 6],
   /// Number of points (so `n - 1` time steps).
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
   /// Seed strategy.
   pub seed: S,
@@ -86,10 +75,8 @@ impl<T> From<[Array1<T>; 4]> for Heston2DPaths<T> {
   }
 }
 
-/// Lower-triangular Cholesky factor of the 4×4 correlation matrix induced by
-/// the MATLAB-ordered `rho` vector `[ρ(Z1,Z2), ρ(Z1,W1), ρ(Z1,W2), ρ(Z2,W1),
-/// ρ(Z2,W2), ρ(W1,W2)]` over the basis `(Z_1, Z_2, W_1, W_2)`. Panics if the
-/// correlation matrix is not positive semidefinite.
+/// Lower Cholesky factor of the 4×4 correlation matrix of `rho` over `(Z_1, Z_2, W_1, W_2)`;
+/// panics if the matrix is not positive semidefinite.
 fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
   // A valid rank-deficient correlation matrix can produce a tiny negative pivot after rounding.
   let tol = T::from_f64_fast(1e-10).max(T::from_f64_fast(100.0) * T::epsilon());
@@ -123,9 +110,8 @@ fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
   [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]
 }
 
-/// Validates every hard precondition except the Feller condition, which
-/// [`Heston2D::new`] checks separately (accepted, not rejected — see its
-/// doc comment).
+/// Validates every hard precondition except the Feller condition, which [`Heston2D::new`]
+/// checks separately and accepts.
 fn validate_params<T: FloatExt>(
   x0: &[T; 2],
   v0: &[T; 2],
@@ -231,6 +217,8 @@ fn warn_on_feller_violation<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
+  /// Panics unless every entry is finite, `v0 > 0`, `kappa`, `theta`, `sigma` are non-negative,
+  /// `rho` is a positive semidefinite correlation, `n >= 2` and a given `t` is positive.
   pub fn new(
     x0: [T; 2],
     v0: [T; 2],
@@ -265,9 +253,8 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
   }
 }
 
-/// The Euler engine's view of the two-asset Heston model. The Cholesky factor
-/// is computed once at construction and travels as parameters, so the kernel
-/// combines four independent shocks exactly as the host sampler does.
+/// The Euler engine's view: the Cholesky factor is computed once at construction and travels as
+/// parameters, so the kernel combines four independent shocks as the host sampler does.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
   for Heston2D<T, S, B>
 {
@@ -361,7 +348,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let n_steps = self.n - 1;
     let dt = t_total / T::from_usize_(n_steps);
     let sqrt_dt = dt.sqrt();
-    // Derived streams preserve the historical e1..e4 draw order for seeded reproducibility.
+    // The derived streams are drawn in the order e1..e4, which seeded reproducibility depends on.
     let normals =
       std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed.derive()));
     Heston2DSampler {
@@ -379,9 +366,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device all four components step in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps all four components in its kernel, the host runs
+  /// this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Heston2DPaths<T> {
     self.backend.system_sample(self)
   }
@@ -403,9 +389,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`Heston2D`] sampling state: owns the four independent Gaussian
-/// streams plus the precomputed Cholesky factor and step size so a Monte-Carlo
-/// loop reuses all four output buffers and the RNG setup.
+/// Reusable [`Heston2D`] sampling state: the four independent Gaussian streams, the Cholesky
+/// factor and the step size.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct Heston2DSampler<T: FloatExt> {

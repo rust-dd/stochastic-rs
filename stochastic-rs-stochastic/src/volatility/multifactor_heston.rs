@@ -1,5 +1,3 @@
-//! # Multifactor Heston (Christoffersen-Heston-Jacobs 2009)
-//!
 //! $$
 //! \begin{aligned}
 //! \frac{dS_t}{S_t} &= \mu\,dt + \sum_{k=1}^{K} \sqrt{V_{k,t}}\,dW^{S}_{k,t}, \\
@@ -10,27 +8,10 @@
 //! \end{aligned}
 //! $$
 //!
-//! Each variance factor $V_{k,t}$ is an independent CIR process with its
-//! own mean-reversion speed $\kappa_k$, long-run level $\theta_k$,
-//! vol-of-vol $\sigma_k$ and **asset-correlation** $\rho_k$. The asset
-//! diffusion sums the contributions of the $K$ factors.
+//! One CIR factor cannot fit the short skew, the long skew and the ATM variance term structure
+//! at once (CHJ, 2009). Asset by Euler, factors by full truncation (Lord-Koekkoek-van Dijk 2010).
 //!
-//! **Why multi-factor.** Christoffersen-Heston-Jacobs (CHJ, 2009) show
-//! that a single CIR factor cannot simultaneously fit (a) the short-end
-//! skew, (b) the long-end skew, and (c) the term structure of ATM
-//! variance — separate factors with different $\kappa_k$ and $\rho_k$
-//! disentangle these regimes.
-//!
-//! **Discretisation.** Plain explicit Euler on the asset and a
-//! full-truncation Euler on each variance factor (Lord-Koekkoek-van Dijk
-//! 2010). The asset draws $K$ correlated $(\Delta W^S_k, \Delta W^V_k)$
-//! pairs per time step through the existing
-//! [`Cgns`] generator, independent across $k$.
-//!
-//! Reference: Christoffersen, P., Heston, S., Jacobs, K. (2009),
-//! "The shape and term structure of the index option smirk: why
-//! multifactor stochastic volatility models work so well",
-//! *Management Science* 55(12), 1914-1932.
+//! Reference: Christoffersen, Heston & Jacobs (2009), Management Science 55(12), 1914-1932
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -91,6 +72,8 @@ impl<T, const K: usize> From<(Array1<T>, [Array1<T>; K])> for MultifactorHestonP
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
+  /// Panics unless every parameter is finite, `K >= 1`, each `v0`, `theta`, `sigma` entry is
+  /// non-negative, each `|rho| < 1`, `n >= 2` and a given `t` is positive.
   pub fn new(
     s0: T,
     v0: [T; K],
@@ -188,17 +171,12 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   }
 }
 
-/// How many variance factors a launch carries: the double-Heston family has
-/// two, and a one-factor model rides it with the second factor zeroed. A model
-/// with more stays on its host sampler whatever the backend.
+/// How many variance factors a launch carries: the double-Heston family has two, and a
+/// one-factor model rides it with the second zeroed; more factors stay on the host sampler.
 const DEVICE_FACTORS: usize = 2;
 
-/// The model in the double-Heston family's three slots — spot, first variance,
-/// second variance — which is what carries a launch when `K <= 2`: a one-factor
-/// model pads the second variance with zero speed, level, vol-of-vol,
-/// correlation and start, so it stays at zero and contributes nothing to the
-/// spot. It borrows rather than owns, so the seed it advances is the process's
-/// own.
+/// The model in the double-Heston family's three slots (spot and two variances), a launch for
+/// `K <= 2`; one factor pads the second variance with zeros. It borrows the process's own seed.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct MultifactorHestonLaunch<'a, T: FloatExt, const K: usize, S: SeedExt, B>(
@@ -340,10 +318,8 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
     MultifactorHestonSampler {
       n: self.n,
@@ -359,11 +335,8 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine for one or two factors, which is what the
-  /// double-Heston family carries: on a device the spot and both factors are
-  /// stepped in one kernel. A model with more factors stays on this
-  /// process's own sampler whatever the backend, since a launch has four
-  /// shocks and each factor takes two.
+  /// Through the Euler engine for one or two factors, stepped with the spot in one kernel; more
+  /// factors stay on the host sampler, since a launch has four shocks and each factor takes two.
   fn sample(&self) -> MultifactorHestonPaths<T, K> {
     if K <= DEVICE_FACTORS {
       slots_to_output(self.backend.system_sample(&MultifactorHestonLaunch(self)))
@@ -434,11 +407,8 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`MultifactorHeston`] sampling state: owns one correlated-Gaussian
-/// generator per factor plus the seed source so a Monte-Carlo loop reuses the
-/// stock buffer and all `K` variance buffers. Per-factor noise is drawn
-/// directly off the owned `seed` in factor order, so the first call
-/// reproduces the original stream bit-for-bit.
+/// Reusable [`MultifactorHeston`] sampling state: one correlated-Gaussian generator per factor
+/// and the seed source; per-factor noise is drawn off the owned `seed` in factor order.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct MultifactorHestonSampler<T: FloatExt, const K: usize, S: SeedExt> {

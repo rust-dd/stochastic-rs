@@ -20,9 +20,8 @@ fn dynamic_sabr_volatility_non_negative() {
   assert!(v.iter().all(|x| *x >= 0.0));
 }
 
-/// Empty-knot dynamic SABR with a single bucket must reproduce the
-/// classic static SABR dynamics (forward stays non-negative, vol path
-/// non-negative).
+/// Empty-knot dynamic SABR with one bucket reproduces the static SABR dynamics: the forward and
+/// the vol path stay non-negative.
 #[test]
 fn dynamic_sabr_single_bucket_reduces_to_static() {
   let p = MultifactorSabr::<f64, _>::new(
@@ -67,9 +66,7 @@ fn dynamic_sabr_bucket_lookup() {
   assert_eq!(p.bucket_at(5.0), 3);
 }
 
-/// Different β across buckets must produce a forward path whose
-/// short-end and long-end realised local-vol scale differently. We
-/// check determinism reproduces under a fixed seed.
+/// Different β across buckets; the path reproduces under a fixed seed.
 #[test]
 fn dynamic_sabr_seed_determinism() {
   let make = || {

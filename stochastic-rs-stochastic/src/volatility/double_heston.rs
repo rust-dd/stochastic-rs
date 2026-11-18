@@ -1,25 +1,18 @@
 //! # Double Heston
 //!
-//! Two-factor stochastic volatility model with independent Cox-Ingersoll-Ross
-//! variance factors.
-//!
 //! $$
 //! \begin{aligned}
 //! dS_t &= \mu S_t\,dt + \sqrt{v_{1,t}}\,S_t\,dW_{1,t}^S + \sqrt{v_{2,t}}\,S_t\,dW_{2,t}^S \\
 //! dv_{1,t} &= \kappa_1(\theta_1 - v_{1,t})\,dt + \sigma_1\sqrt{v_{1,t}}\,dW_{1,t}^v \\
-//! dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v
+//! dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v \\
+//! d\langle W_1^S,W_1^v\rangle_t &= \rho_1\,dt,\quad d\langle W_2^S,W_2^v\rangle_t=\rho_2\,dt
 //! \end{aligned}
 //! $$
-//! with $d\langle W_1^S,W_1^v\rangle_t=\rho_1\,dt$,
-//! $d\langle W_2^S,W_2^v\rangle_t=\rho_2\,dt$, and every other Brownian
-//! motion pair independent.
 //!
-//! Source:
-//! - Christoffersen, Heston & Jacobs (2009), "The Shape and Term Structure of
-//!   the Index Option Smirk", <https://doi.org/10.1287/mnsc.1090.1065>
-//! - Mehrdoust, Noorani & Hamdi (2021), "Calibration of the double Heston
-//!   model and an analytical formula in pricing American put option",
-//!   <https://doi.org/10.1016/j.cam.2021.113422>
+//! Two independent Cox-Ingersoll-Ross variance factors; every other Brownian pair is independent.
+//!
+//! Reference: Christoffersen, Heston & Jacobs (2009), DOI 10.1287/mnsc.1090.1065
+//! Reference: Mehrdoust, Noorani & Hamdi (2021), DOI 10.1016/j.cam.2021.113422
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -34,14 +27,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Double Heston stochastic volatility process.
-///
-/// The two variance factors are assumed independent of each other; only
-/// within a factor is there a correlation between the stock shock and the
-/// variance shock ($\rho_1$ and $\rho_2$).
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
+/// Double Heston stochastic volatility: the two variance factors are independent, and each
+/// correlates with its own stock shock only ($\rho_1$, $\rho_2$).
 #[derive(Debug, Clone)]
 pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
@@ -72,9 +59,9 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
   cgns1: Cgns<T>,
@@ -101,6 +88,8 @@ impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
 }
 
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
+  /// Panics unless every parameter is finite, each `v*_0`, `kappa*`, `theta*`, `sigma*` is
+  /// non-negative, each `rho*` is in `[-1, 1]`, `n >= 2` and a given `t` is positive.
   pub fn new(
     s0: T,
     v1_0: T,
@@ -215,51 +204,50 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     require!(mu.is_finite(), mu);
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v1_0`, all else unchanged.
+  /// Replace `v1_0`; panics unless `v1_0 >= 0` and `v1_0` is finite.
   pub fn with_v1_0(mut self, v1_0: T) -> Self {
     Self::check_v1_0(v1_0);
     self.v1_0 = v1_0;
     self
   }
 
-  /// Replace `v2_0`, all else unchanged.
+  /// Replace `v2_0`; panics unless `v2_0 >= 0` and `v2_0` is finite.
   pub fn with_v2_0(mut self, v2_0: T) -> Self {
     Self::check_v2_0(v2_0);
     self.v2_0 = v2_0;
     self
   }
 
-  /// Replace `kappa1`, all else unchanged.
+  /// Replace `kappa1`; panics unless `kappa1 >= 0` and `kappa1` is finite.
   pub fn with_kappa1(mut self, kappa1: T) -> Self {
     Self::check_kappa1(kappa1);
     self.kappa1 = kappa1;
     self
   }
 
-  /// Replace `theta1`, all else unchanged.
+  /// Replace `theta1`; panics unless `theta1 >= 0` and `theta1` is finite.
   pub fn with_theta1(mut self, theta1: T) -> Self {
     Self::check_theta1(theta1);
     self.theta1 = theta1;
     self
   }
 
-  /// Replace `sigma1`, all else unchanged.
+  /// Replace `sigma1`; panics unless `sigma1 >= 0` and `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
     Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
-  /// Replace `rho1`; rebuilds the first factor's cached correlated-Gaussian
-  /// generator (`cgns1`) so the new correlation actually reaches the
-  /// sampler instead of a stale one computed from the old `rho1`.
+  /// Replace `rho1` and rebuild the first factor's cached generator `cgns1`, which the sampler
+  /// reads; panics unless `rho1` is finite and in `[-1, 1]`.
   pub fn with_rho1(mut self, rho1: T) -> Self {
     Self::check_rho1(rho1);
     self.rho1 = rho1;
@@ -267,30 +255,29 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     self
   }
 
-  /// Replace `kappa2`, all else unchanged.
+  /// Replace `kappa2`; panics unless `kappa2 >= 0` and `kappa2` is finite.
   pub fn with_kappa2(mut self, kappa2: T) -> Self {
     Self::check_kappa2(kappa2);
     self.kappa2 = kappa2;
     self
   }
 
-  /// Replace `theta2`, all else unchanged.
+  /// Replace `theta2`; panics unless `theta2 >= 0` and `theta2` is finite.
   pub fn with_theta2(mut self, theta2: T) -> Self {
     Self::check_theta2(theta2);
     self.theta2 = theta2;
     self
   }
 
-  /// Replace `sigma2`, all else unchanged.
+  /// Replace `sigma2`; panics unless `sigma2 >= 0` and `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
     Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
-  /// Replace `rho2`; rebuilds the second factor's cached correlated-Gaussian
-  /// generator (`cgns2`) so the new correlation actually reaches the
-  /// sampler instead of a stale one computed from the old `rho2`.
+  /// Replace `rho2` and rebuild the second factor's cached generator `cgns2`, which the sampler
+  /// reads; panics unless `rho2` is finite and in `[-1, 1]`.
   pub fn with_rho2(mut self, rho2: T) -> Self {
     Self::check_rho2(rho2);
     self.rho2 = rho2;
@@ -298,7 +285,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
@@ -306,7 +293,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   }
 
   /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
-  /// generators, whose lengths and step sizes derive from `n`.
+  /// generators, whose lengths and step sizes derive from `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -315,8 +302,8 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds both cached
-  /// correlated-Gaussian generators' step sizes, which derive from `t`.
+  /// Replace the simulation horizon `t`; rebuilds both cached correlated-Gaussian generators' step
+  /// sizes, which derive from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -338,9 +325,8 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the double Heston model: one spot driven by two
-/// independent variance factors, each with its own correlation to the spot's
-/// share of the shock.
+/// The Euler engine's view: one spot driven by two independent variance factors, each
+/// correlated with its own share of the spot's shock.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for DoubleHeston<T, S, B>
 {
@@ -421,10 +407,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> DoubleHestonSampler<T, S> {
     DoubleHestonSampler {
       n: self.n,
@@ -446,9 +430,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> DoubleHestonPaths<T> {
     self.backend.system_sample(self)
   }
@@ -473,9 +456,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`DoubleHeston`] sampling state: owns both correlated-Gaussian
-/// generators and the seed source so a Monte-Carlo loop reuses all three
-/// output buffers.
+/// Reusable [`DoubleHeston`] sampling state: both correlated-Gaussian generators and the seed
+/// source.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct DoubleHestonSampler<T: FloatExt, S: SeedExt> {

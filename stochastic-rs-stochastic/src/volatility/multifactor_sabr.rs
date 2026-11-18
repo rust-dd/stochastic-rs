@@ -1,5 +1,3 @@
-//! # Multi-factor (dynamic) SABR with a term structure of skew
-//!
 //! $$
 //! \begin{aligned}
 //! dF_t &= \alpha_t\,F_t^{\beta(t)}\,dW^1_t,\\
@@ -8,48 +6,18 @@
 //! \end{aligned}
 //! $$
 //!
-//! where the SABR coefficients $\beta(t)$, $\nu(t)$, $\rho(t)$ are
-//! **piecewise-constant functions of time** instead of the scalar
-//! constants of the classic Hagan-Kumar-Lesniewski-Woodward (2002) SABR.
-//! Letting $\beta$ and $\rho$ vary across maturity buckets reproduces a
-//! **term structure of skew** — the smile slope at short maturities can
-//! differ from the long end, which the static SABR cannot match
-//! simultaneously.
-//!
-//! The term structure is given by `knots` — sorted breakpoints in
-//! $(0, T)$ that split $[0, T]$ into $K + 1$ buckets — and three
-//! per-bucket coefficient vectors of length $K + 1$. Bucket $k$ covers
-//! $\[\text{knots}\[k-1\], \text{knots}\[k\])$ (with the obvious open ends),
-//! and at simulation time $t_i$ the active bucket is the number of knots
-//! $\le t_i$.
-//!
-//! ## Discretisation
-//!
-//! Because $\rho(t)$ is time-varying we cannot bake a single correlation
-//! into the [`Cgns`](crate::noise::cgns::Cgns) generator. Instead we draw
-//! two independent Gaussian increment streams $z^1, z^2$ via [`Gn`] and
-//! correlate them on the fly per step:
+//! SABR with piecewise-constant $\beta(t)$, $\nu(t)$, $\rho(t)$ over the buckets `knots` cut, the
+//! active one being the number of knots $\le t_i$; the forward steps by Euler, absorbed at 0.
 //!
 //! $$
 //! \Delta W^1_i = z^1_i, \qquad
-//! \Delta W^2_i = \rho(t_i)\,z^1_i + \sqrt{1 - \rho(t_i)^2}\,z^2_i.
+//! \Delta W^2_i = \rho(t_i)\,z^1_i + \sqrt{1 - \rho(t_i)^2}\,z^2_i,\qquad
+//! \alpha_{i} = \alpha_{i-1}\exp(\nu\,\Delta W^2 - \tfrac12\nu^2\Delta t)
 //! $$
 //!
-//! The forward uses an explicit Euler step with absorption at 0
-//! (the natural SABR boundary for $\beta < 1$); the volatility uses the
-//! exact log-Euler step $\alpha_{i} = \alpha_{i-1}\exp(\nu\,\Delta W^2 -
-//! \tfrac12\nu^2\Delta t)$, which preserves non-negativity for any step
-//! size.
-//!
-//! References:
-//! - Hagan, P., Kumar, D., Lesniewski, A., Woodward, D. (2002),
-//!   "Managing smile risk", *Wilmott Magazine*, 84-108.
-//! - Fernández, J.L., Ferreiro, A.M., García, J.A. et al. (2024),
-//!   "Static and dynamic SABR stochastic volatility models: calibration
-//!   and option pricing using GPUs", arXiv:2407.20713 — dynamic
-//!   (time-dependent-parameter) SABR formulation.
-//! - Osajima, Y. (2007), "The asymptotic expansion formula of implied
-//!   volatility for dynamic SABR model", SSRN 965265.
+//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), Wilmott Magazine, 84-108
+//! Reference: Fernández, Ferreiro, García et al. (2024), arXiv:2407.20713, the dynamic SABR
+//! Reference: Osajima (2007), SSRN 965265
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -71,9 +39,8 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
   pub alpha0: Option<T>,
-  /// Sorted time breakpoints in $(0, T)$. Length `K`; produces `K + 1`
-  /// buckets. May be empty (then the model is the static SABR with the
-  /// single bucket's coefficients).
+  /// `K` sorted time breakpoints in $(0, T)$, making `K + 1` buckets; empty is the static SABR
+  /// with the single bucket's coefficients.
   pub knots: Vec<T>,
   /// Backbone exponent $\beta(t) \in [0, 1]$ per bucket. Length `K + 1`.
   pub beta: Vec<T>,
@@ -93,6 +60,8 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
+  /// Panics unless every value is finite, `beta`, `rho`, `nu` have `knots.len() + 1` entries,
+  /// each `nu >= 0`, each `|rho| < 1`, `n >= 2` and a given `t` is positive.
   pub fn new(
     f0: Option<T>,
     alpha0: Option<T>,
@@ -217,10 +186,8 @@ impl<T: FloatExt, S: SeedExt, B> MultifactorSabr<T, S, B> {
   }
 }
 
-/// The Euler engine's view: the term structure travels as three curves
-/// rather than as parameters, so the per-step bucket search the host does
-/// becomes a buffer read the kernel already pays for. The knots themselves
-/// never reach the device — they are what the tabulation resolves.
+/// The Euler engine's view: the term structure travels as three curves, so the host's per-step
+/// bucket search becomes a buffer read; the knots never reach the device.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for MultifactorSabr<T, S, B>
 {
@@ -253,10 +220,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  /// `beta`, `rho` and `nu` at each grid point, in the order the step names
-  /// them as `ct`, `ct1` and `ct2`. Step `i` uses the bucket active at
-  /// `(i - 1) dt`, which is the time the host reads, so index 0 carries the
-  /// same value as index 1 rather than a bucket no step consults.
+  /// `beta`, `rho` and `nu` at each grid point, the step's `ct`, `ct1` and `ct2`. Step `i` uses
+  /// the bucket active at `(i - 1) dt`, the time the host reads, so index 0 carries index 1's.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
     let dt = self.dt();
     let at = |i: usize| self.bucket_at(T::from_usize_(i.saturating_sub(1)) * dt);
@@ -292,10 +257,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> MultifactorSabrSampler<T, S> {
     MultifactorSabrSampler {
       n: self.n,
@@ -311,9 +274,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device both rows are stepped in the
-  /// kernel under the tabulated term structure, on the host devices it is
-  /// this process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device steps both rows in its kernel under the tabulated term
+  /// structure, the host runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -335,14 +297,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable dynamic-[`MultifactorSabr`] sampling state: owns the term-structure
-/// coefficient vectors and the seed source. `seed` is already this sampler's
-/// own chunk-decorrelated basis (derived once by `sampler()`), so the two
-/// independent Gaussian increment streams can safely tick it twice more per
-/// fill — via `self.seed.derive()`, since [`Gn::new`] needs an owned seed —
-/// without reintroducing cross-chunk correlation; the legacy consumption
-/// order is preserved, so the first call reproduces the original stream
-/// bit-for-bit.
+/// Reusable dynamic-[`MultifactorSabr`] sampling state: the coefficient vectors and the seed
+/// source, the sampler's own chunk basis, which the two [`Gn`] streams tick twice more per fill.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct MultifactorSabrSampler<T: FloatExt, S: SeedExt> {
@@ -446,10 +402,8 @@ mod tabulation {
 
   use super::MultifactorSabr;
 
-  /// The device reads the bucket the host reads at every step: curve entry
-  /// `i` is the coefficient active at `(i - 1) dt`, which is the time the
-  /// host's own loop evaluates for step `i`. A statistical comparison cannot
-  /// see a one-step phase error here, so the tabulation is pinned exactly.
+  /// Curve entry `i` is the coefficient active at `(i - 1) dt`, the time the host's loop reads
+  /// for step `i`. A statistical comparison cannot see a one-step phase error, hence the pin.
   #[test]
   fn the_curves_read_the_bucket_the_host_reads() {
     let p = MultifactorSabr::<f64>::new(

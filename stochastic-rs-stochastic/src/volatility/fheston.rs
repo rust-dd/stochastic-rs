@@ -1,29 +1,13 @@
-//! # Fheston
-//!
-//! A Heston model whose variance is driven by fractional Gaussian noise through a one-factor
-//! carrier; the literature's rough Heston is `rough::RlHeston`.
-//!
 //! $$
 //! dS_t=\mu S_tdt+\sqrt{v_t}S_tdW_t,\quad dv_t=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dB_t^H
 //! $$
 //!
-//! References:
-//! - Gatheral J., Jaisson T., Rosenbaum M. (2018) — *Volatility Is
-//!   Rough*, Quantitative Finance 18(6), 933–949,
-//!   DOI: 10.1080/14697688.2017.1393551.
-//! - El Euch O. & Rosenbaum M. (2019) — *The Characteristic Function of
-//!   Rough Heston Models*, Mathematical Finance 29(1), 3–38,
-//!   DOI: 10.1111/mafi.12173.
+//! A Heston model whose variance is driven by fractional Gaussian noise through a one-factor
+//! carrier plus an `O(n²)` memory sum, this crate's own scheme; rough Heston is `rough::RlHeston`.
 //!
-//! `fill_paths` below approximates the exact fractional-kernel Volterra
-//! convolution with a single OU-type carrier factor `zt` plus a direct
-//! (`O(n²)`) memory sum, scaled by free `c1`/`c2` coefficients — an
-//! approximate lifting scheme in the spirit of Abi Jaber & El Euch
-//! (2019) — *Multifactor Approximation of Rough Volatility Models*,
-//! SIAM Journal on Financial Mathematics 10(2), 309–349,
-//! DOI: 10.1137/18M1170236 — but it is this crate's own one-factor
-//! simplification, not a reproduction of that (or any other specific
-//! published) numerical scheme.
+//! Reference: Gatheral et al. (2018), Quant. Fin. 18(6), 933–949, DOI 10.1080/14697688.2017.1393551
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173
+//! Reference: Abi Jaber & El Euch (2019), SIAM J. Fin. Math. 10(2), 309–349, DOI 10.1137/18M1170236
 //!
 
 use ndarray::Array1;
@@ -50,13 +34,11 @@ pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub theta: T,
   /// Mean-reversion speed κ of the Markovian lifting factor `yt`.
   pub kappa: T,
-  /// Vol-of-vol ξ scaling both the local (`zt`) and memory (Volterra
-  /// integral) correction terms that lift the exact fractional kernel into
-  /// a bounded-state approximation.
+  /// Vol-of-vol ξ scaling the local (`zt`) and memory (Volterra integral) correction terms of
+  /// the bounded-state approximation of the fractional kernel.
   pub nu: T,
-  /// Calibration coefficient scaling the local correction term `zt` in the
-  /// two-term rational approximation of the fractional kernel; `None`
-  /// defaults to 1 (the untruncated coefficient).
+  /// Coefficient of the local correction term `zt` in the two-term approximation of the
+  /// fractional kernel; `None` is 1, the untruncated coefficient.
   pub c1: Option<T>,
   /// Calibration coefficient scaling the memory (Volterra-integral)
   /// correction term in the same approximation; `None` defaults to 1.
@@ -71,7 +53,7 @@ pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub s0: T,
   /// Correlation of the price and volatility innovations.
   pub rho: T,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -80,6 +62,7 @@ pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Fheston<T, S> {
   /// Starts at spot 1 with zero drift and correlation, which `with_s0`, `with_mu`, `with_rho` set.
+  /// Panics unless a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     hurst: T,
     v0: T,
@@ -158,21 +141,22 @@ impl<T: FloatExt, S: SeedExt, B> Fheston<T, S, B> {
     require!((-T::one()..=T::one()).contains(&rho), rho);
   }
 
-  /// Replace `s0`, all else unchanged; the price steps multiplicatively, so it starts positive.
+  /// Replace `s0`, which the multiplicative price step needs positive; panics unless `s0 > 0`
+  /// and `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `rho`, all else unchanged.
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -188,9 +172,8 @@ impl<T: FloatExt, S: SeedExt, B> Fheston<T, S, B> {
     }
   }
 
-  /// The memory kernel on the grid, `((m + 1) dt)^{H - 1/2} dt` at lag `m`:
-  /// what the host sums the local factor against, one weight per lag, which
-  /// the device reads as its first curve.
+  /// The memory kernel on the grid, `((m + 1) dt)^{H - 1/2} dt` at lag `m`: the host sums the
+  /// local factor against it, and the device reads it as its first curve.
   fn memory_weights(&self) -> Vec<T> {
     let dt = self.dt();
     let half = T::from_f64_fast(0.5);
@@ -295,9 +278,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels'
-  /// per-path history; a longer grid keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path history; a longer grid
+  /// stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -348,10 +330,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Fheston`] sampling state: owns the correlated-Gaussian
-/// generator, an owned already-derived seed to drive it, and the
-/// precomputed Volterra-kernel constants, so a Monte-Carlo loop reuses both
-/// output buffers.
+/// Reusable [`Fheston`] sampling state: the correlated-Gaussian generator, an already-derived
+/// seed to drive it, and the precomputed Volterra-kernel constants.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct FhestonSampler<T: FloatExt, S: SeedExt> {

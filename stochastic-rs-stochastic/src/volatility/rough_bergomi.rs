@@ -1,16 +1,11 @@
-//! # Rbergomi
-//!
 //! $$
 //! dS_t = r S_t\,dt + S_t\sqrt{v_t}\,dW^1_t,\qquad
 //! v_t = v_0^2\exp\!\Bigl(\nu W^H_t - \tfrac12\nu^2 t^{2H}\Bigr),\qquad
 //! W^H_t = \sqrt{2H}\int_0^t (t-s)^{H-1/2}\,dW^2_s
 //! $$
 //!
-//! Rough Bergomi of Bayer, Friz & Gatheral (2016) with a flat forward
-//! variance curve $\xi_0(t) = v_0^2$. The variance driver $W^H$ is the
-//! Riemann–Liouville (Volterra) fractional Brownian motion, simulated with
-//! the hybrid scheme of Bennedsen, Lunde & Pakkanen (2017) at $\kappa = 1$:
-//! on the grid $t_i = i\Delta$ the Volterra process is
+//! Rough Bergomi with a flat forward variance $\xi_0(t) = v_0^2$, by the hybrid scheme at
+//! $\kappa = 1$: the first term exact, the sum at the optimal $b_k^*$ (Proposition 2.8), $O(n^2)$.
 //!
 //! $$
 //! X_{t_i} = \int_{t_{i-1}}^{t_i} (t_i-s)^{\alpha}\,dW^2_s
@@ -20,27 +15,16 @@
 //! b_k^* = \Bigl(\frac{k^{\alpha+1}-(k-1)^{\alpha+1}}{\alpha+1}\Bigr)^{1/\alpha},
 //! $$
 //!
-//! and $W^H_{t_i} = \sqrt{2H}\,X_{t_i}$. The first term is drawn exactly:
-//! it is jointly Gaussian with the increment $\Delta W^2_i$, with
-//! $\operatorname{Cov} = \Delta^{\alpha+1}/(\alpha+1)$ and variance
-//! $\Delta^{2\alpha+1}/(2\alpha+1)$, so it is the increment's regression
-//! plus an independent residual. The remaining sum uses the kernel at the
-//! optimal discretisation points $b_k^*$ (their Proposition 2.8), which
-//! makes the scheme's covariance error second order in $\Delta$. The
-//! scheme reproduces $\operatorname{Var}(W^H_t) = t^{2H}$, hence the
-//! $\tfrac12\nu^2 t^{2H}$ compensator keeps $\mathbb E(v_t) = v_0^2$, and
-//! reduces to the plain Brownian recipe at $H = \tfrac12$. The price uses
-//! Euler steps on $S$ with $dW^1 = \rho\,dW^2 + \sqrt{1-\rho^2}\,dW^\perp$.
+//! $$
+//! W^H_{t_i} = \sqrt{2H}\,X_{t_i},\qquad
+//! \operatorname{Cov}\Bigl(\int_{t_{i-1}}^{t_i} (t_i-s)^{\alpha}\,dW^2_s,\ \Delta W^2_i\Bigr)
+//! = \frac{\Delta^{\alpha+1}}{\alpha+1},\qquad
+//! \operatorname{Var}\Bigl(\int_{t_{i-1}}^{t_i} (t_i-s)^{\alpha}\,dW^2_s\Bigr)
+//! = \frac{\Delta^{2\alpha+1}}{2\alpha+1}
+//! $$
 //!
-//! The convolution costs $O(n^2)$ per path, the same order as the
-//! Markov-lift alternatives at small $n$; for long grids see
-//! [`crate::rough::MarkovLift`] (exponential-sum kernel, $O(nN')$) and
-//! [`crate::rough::rl_heston::RlHeston`].
-//!
-//! References: Bayer, C., Friz, P. & Gatheral, J. (2016), *Pricing under
-//! rough volatility*, Quantitative Finance 16(6), 887–904; Bennedsen, M.,
-//! Lunde, A. & Pakkanen, M. S. (2017), *Hybrid scheme for Brownian
-//! semistationary processes*, Finance and Stochastics 21, 931–965, DOI 10.1007/s00780-017-0335-5.
+//! Reference: Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904
+//! Reference: Bennedsen et al. (2017), Finance Stoch. 21, 931–965, DOI 10.1007/s00780-017-0335-5
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -58,9 +42,8 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent `H ∈ (0, ½]` of the Volterra fractional Brownian
-  /// driver, simulated with the hybrid scheme (see the module doc); `H = ½`
-  /// is the Brownian case.
+  /// Hurst exponent `H ∈ (0, ½]` of the Volterra fractional Brownian driver, simulated by the
+  /// hybrid scheme; `H = ½` is the Brownian case.
   pub hurst: T,
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
@@ -78,7 +61,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -89,6 +72,8 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
+  /// Panics unless every parameter is finite, `-1 <= rho <= 1`, `n >= 2` and a given `t` is
+  /// positive.
   pub fn new(hurst: T, nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_hurst(hurst);
     Self::check_nu(nu);
@@ -139,44 +124,43 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
     require!(rho.is_finite(), rho);
   }
 
-  /// Replace `hurst`, all else unchanged.
+  /// Replace `hurst`; panics unless `hurst` is finite.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
     Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `r`, all else unchanged.
+  /// Replace `r`; panics unless `r` is finite.
   pub fn with_r(mut self, r: T) -> Self {
     Self::check_r(r);
     self.r = r;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `rho` is finite and in `[-1, 1]`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -185,7 +169,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   }
 
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -193,8 +177,8 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -260,9 +244,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.cgns.dt()
   }
 
-  /// Two curves: the scheme's weights by lag — the last interval's exact
-  /// kernel integral first, then the kernel at the optimal points — and the
-  /// deterministic exponent `ν² t^{2H} / 2` at each grid point.
+  /// Two curves: the scheme's weights by lag (the last interval's exact kernel integral, then
+  /// the kernel at the optimal points) and the deterministic exponent `ν² t^{2H} / 2` per point.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
     let dt = self.cgns.dt();
     let (kernel, on_increment, _) =
@@ -311,10 +294,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> RoughBergomiSampler<T, S> {
     let dt = self.cgns.dt();
     let (kernel, integral_on_increment, integral_residual_sd) =
@@ -335,9 +316,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels'
-  /// per-path history; a longer grid keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path history; a longer grid
+  /// stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -388,9 +368,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RoughBergomi`] sampling state: owns the correlated-Gaussian
-/// generator, the hybrid-scheme kernel weights and the seed source so a
-/// Monte-Carlo loop reuses both output buffers and the noise setup.
+/// Reusable [`RoughBergomi`] sampling state: the correlated-Gaussian generator, the
+/// hybrid-scheme kernel weights and the seed source.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
@@ -414,10 +393,8 @@ pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
 }
 
 impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
-  /// Bennedsen–Lunde–Pakkanen hybrid scheme with `κ = 1` (2017, eq. (3.6)):
-  /// the last interval's kernel integral is drawn exactly, jointly Gaussian
-  /// with the Brownian increment; earlier intervals use the kernel at the
-  /// optimal discretisation points `b_k^*` (Proposition 2.8).
+  /// Bennedsen–Lunde–Pakkanen hybrid scheme with `κ = 1` (2017, eq. (3.6)): the last interval's
+  /// kernel integral is drawn exactly, earlier ones at the optimal `b_k^*` (Proposition 2.8).
   pub(crate) fn hybrid_weights(hurst: T, dt: T, n: usize) -> (Vec<T>, T, T) {
     let alpha = hurst.to_f64().unwrap() - 0.5;
     let dt = dt.to_f64().unwrap();

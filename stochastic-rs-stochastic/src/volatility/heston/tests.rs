@@ -43,12 +43,8 @@ fn variance_path_stays_non_negative() {
   assert!(v.iter().all(|x| *x >= 0.0));
 }
 
-/// Andersen QE: variance stays non-negative even with the Feller condition
-/// violated (2κθ = 0.16 < ξ² = 0.25), the simulated E[V_T] matches the exact
-/// CIR mean θ + (v0−θ)e^{−κT}, and the driftless asset is a martingale,
-/// E[S_T] ≈ S_0. Pinned seed; tolerances cover the MC error plus the small
-/// uncorrected-martingale bias of the plain QE asset scheme (§4.3 of
-/// Andersen has an optional exact correction not applied here).
+/// Andersen QE with Feller violated (2κθ = 0.16 < ξ² = 0.25): variance non-negative, E[V_T] the
+/// exact CIR mean, and E[S_T] ≈ S_0 up to the plain scheme's bias (§4.3's fix is not applied).
 #[test]
 fn qe_variance_mean_and_asset_martingale() {
   let (s0, v0, kappa, theta, sigma, rho, mu) = (100.0_f64, 0.04, 2.0, 0.04, 0.5, -0.7, 0.0);

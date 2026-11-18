@@ -5,7 +5,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler,
   /// The path and `D_{t_i} v_T`, by Alòs and Ewald (2008, Cor. 4.2) under `2κθ ≥ σ²` for `Sqrt`,
   /// by Nualart and Itô on `ln σ(v)` for `ThreeHalves`; a zero in `v` zeroes the entries up to it.
   /// $$
-  /// D_{t_i} v_T = \sigma v_T^{p} \exp\Bigl(\sum_{k=i}^{n-2} r(v_{t_k}) \Delta t\Bigr), \quad r(v) = \begin{cases} -\frac{\kappa}{2} - \frac{\kappa\theta/2 - \sigma^2/8}{v} & p = \frac12 \\ \frac{\kappa}{2} - \frac{3\kappa\theta}{2v} - \frac{3\sigma^2 v}{8} & p = \frac32 \end{cases}
+  /// D_{t_i} v_T = \sigma v_T^{p} \exp\Bigl(\sum_{k=i}^{n-2} r(v_{t_k}) \Delta t\Bigr), \quad
+  /// r(v) = \begin{cases}
+  /// -\frac{\kappa}{2} - \frac{\kappa\theta/2 - \sigma^2/8}{v} & p = \frac12 \\
+  /// \frac{\kappa}{2} - \frac{3\kappa\theta}{2v} - \frac{3\sigma^2 v}{8} & p = \frac32
+  /// \end{cases}
   /// $$
   pub fn malliavin(&self) -> Malliavin<T, [Array1<T>; 2]> {
     let [s, v] = self.sample();

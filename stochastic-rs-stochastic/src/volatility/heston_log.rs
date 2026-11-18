@@ -7,13 +7,9 @@
 //! \end{aligned}
 //! $$
 //!
-//! where $\langle dW^S, dW^v\rangle = \rho\,dt$.
-//! Log-spot simulation guarantees $S_t > 0$.
+//! where $\langle dW^S, dW^v\rangle = \rho\,dt$; the log-spot scheme guarantees $S_t > 0$.
 //!
-//! Reference: Heston S. L. (1993) — *A Closed-Form Solution for Options
-//! with Stochastic Volatility with Applications to Bond and Currency
-//! Options*, Review of Financial Studies 6(2), 327–343,
-//! DOI: 10.1093/rfs/6.2.327.
+//! Reference: Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327
 //!
 
 use ndarray::Array1;
@@ -55,9 +51,9 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub v0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -65,6 +61,8 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
+  /// Panics unless `kappa >= 0`, `theta >= 0`, `xi >= 0`, `rho >= -1 && rho <= 1`, `s0 > 0`,
+  /// `v0 >= 0`, a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     drift: Drift<T>,
     kappa: T,
@@ -143,42 +141,43 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa >= 0` and `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta >= 0` and `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `xi`, all else unchanged.
+  /// Replace `xi`; panics unless `xi >= 0` and `xi` is finite.
   pub fn with_xi(mut self, xi: T) -> Self {
     Self::check_xi(xi);
     self.xi = xi;
     self
   }
 
-  /// Replace `rho`; a field write, since `sampler()` builds its correlated noise from `rho`.
+  /// Replace `rho`; a field write, since `sampler()` builds its correlated noise from `rho`; panics
+  /// unless `rho >= -1 && rho <= 1` and `rho` is finite.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0 > 0` and `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
@@ -191,14 +190,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -212,9 +211,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the log-price Heston model. The drift is
-/// resolved once here from whichever of the rate, carry or drift arguments
-/// the process was built with.
+/// The Euler engine's view: the drift is resolved once here from whichever of the rate, carry
+/// or drift arguments the process was built with.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for HestonLog<T, S, B>
 {
@@ -277,9 +275,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> HestonLogSampler<T> {
-    // `saturating_sub(1).max(1)` keeps the noise std finite for n ≤ 1, where
-    // the streams are never used; for n ≥ 2 it equals `n - 1`, so the std and
-    // hence the derived stream match the legacy `sample` exactly.
+    // `saturating_sub(1).max(1)` keeps the noise std finite for n ≤ 1, where the streams are
+    // never used; for n ≥ 2 it is `n - 1`.
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let sqrt_dt = dt.sqrt();
@@ -299,9 +296,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -323,9 +319,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`HestonLog`] sampling state: owns the two Gaussian streams (one
-/// driving the asset, one combined into the variance shock) and the
-/// precomputed drift / step size so a Monte-Carlo loop reuses both buffers.
+/// Reusable [`HestonLog`] sampling state: the two Gaussian streams (the asset's, and the one
+/// combined into the variance shock), the drift and the step size.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HestonLogSampler<T: FloatExt> {

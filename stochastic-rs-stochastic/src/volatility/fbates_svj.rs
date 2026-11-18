@@ -1,39 +1,17 @@
-//! # Fractional Bates SVJ
-//!
-//! Rough/fractional variance dynamics (Volterra-Heston) with Bates-style
-//! Poisson jumps in the log-price process.
-//!
 //! $$
-//! d\ln S_t = (\mu - \lambda\kappa_J - \tfrac12 v_t)\,dt + \sqrt{v_t}\,dW_t^S + Z\,dN_t
+//! d\ln S_t = (\mu - \lambda\kappa_J - \tfrac12 v_t)\,dt + \sqrt{v_t}\,dW_t^S + Z\,dN_t,\quad
+//! N_t \sim \text{Poisson}(\lambda),\ Z \sim \mathcal{N}(\nu, \omega^2),\
+//! \langle dW^S, dW^v \rangle = \rho\,dt,\ H \in (0, 0.5)
 //! $$
 //!
-//! where $v_t$ follows the rough Heston variance dynamics with Hurst
-//! exponent $H \in (0, 0.5)$, $N_t \sim \text{Poisson}(\lambda)$,
-//! $Z \sim \mathcal{N}(\nu, \omega^2)$, and
-//! $\langle dW^S, dW^v \rangle = \rho\,dt$.
+//! Rough Heston variance with Bates jumps in the log-price; returns `[S, v]`. The convolution is
+//! this crate's own one-factor carrier plus an `O(n²)` memory sum, not a published scheme.
 //!
-//! Returns `[S, v]` — price and variance paths.
-//!
-//! References:
-//! - Gatheral J., Jaisson T., Rosenbaum M. (2018) — *Volatility Is
-//!   Rough*, Quantitative Finance 18(6), 933–949,
-//!   DOI: 10.1080/14697688.2017.1393551.
-//! - El Euch O. & Rosenbaum M. (2019) — *The Characteristic Function of
-//!   Rough Heston Models*, Mathematical Finance 29(1), 3–38,
-//!   DOI: 10.1111/mafi.12173 — defines the Volterra `v_t` above.
-//! - Bates D. S. (1996), DOI: 10.1093/rfs/9.1.69, and Merton R. C.
-//!   (1976), DOI: 10.1016/0304-405X(76)90022-2, for the jump component
-//!   (see [`Bates`](crate::jump::bates::Bates)).
-//!
-//! `fill_paths` below approximates the exact fractional-kernel Volterra
-//! convolution with a single OU-type carrier factor `zt` plus a direct
-//! (`O(n²)`) memory sum, scaled by free `c1`/`c2` coefficients — an
-//! approximate lifting scheme in the spirit of Abi Jaber & El Euch
-//! (2019) — *Multifactor Approximation of Rough Volatility Models*,
-//! SIAM Journal on Financial Mathematics 10(2), 309–349,
-//! DOI: 10.1137/18M1170236 — but it is this crate's own one-factor
-//! simplification, not a reproduction of that (or any other specific
-//! published) numerical scheme.
+//! Reference: Gatheral et al. (2018), Quant. Fin. 18(6), 933–949, DOI 10.1080/14697688.2017.1393551
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173
+//! Reference: Bates (1996), DOI 10.1093/rfs/9.1.69
+//! Reference: Merton (1976), DOI 10.1016/0304-405X(76)90022-2
+//! Reference: Abi Jaber & El Euch (2019), SIAM J. Fin. Math. 10(2), 309–349, DOI 10.1137/18M1170236
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -85,6 +63,7 @@ pub struct FbatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     hurst: T,
     mu: T,
@@ -179,93 +158,91 @@ impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
     require!(omega.is_finite(), omega);
   }
 
-  /// Replace `hurst`, all else unchanged. `FbatesSvj` has no persisted
-  /// correlated-noise cache (`sampler()` builds `cgns` fresh from `rho`,
-  /// `n`, `t` on every call), so every setter here is a plain field write.
+  /// Replace `hurst`; panics unless `hurst` is finite.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `xi`, all else unchanged.
+  /// Replace `xi`; panics unless `xi` is finite.
   pub fn with_xi(mut self, xi: T) -> Self {
     Self::check_xi(xi);
     self.xi = xi;
     self
   }
 
-  /// Replace `rho`, all else unchanged.
+  /// Replace `rho`; panics unless `rho` is finite.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`; panics unless `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
     Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `omega`, all else unchanged.
+  /// Replace `omega`; panics unless `omega` is finite.
   pub fn with_omega(mut self, omega: T) -> Self {
     Self::check_omega(omega);
     self.omega = omega;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -287,9 +264,8 @@ impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
     }
   }
 
-  /// The memory kernel on the grid, `((m + 1) dt)^{H - 1/2} dt` at lag `m`:
-  /// what the host sums the local factor against, one weight per lag, which
-  /// the device reads as its first curve.
+  /// The memory kernel on the grid, `((m + 1) dt)^{H - 1/2} dt` at lag `m`: the host sums the
+  /// local factor against it, and the device reads it as its first curve.
   fn memory_weights(&self) -> Vec<T> {
     let dt = self.dt();
     let half = T::from_f64_fast(0.5);
@@ -341,9 +317,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// Lognormal jumps are normal in the log-spot the family steps, so the
-  /// kernel aggregates however many the step saw into one draw, as the host
-  /// does.
+  /// Lognormal jumps are normal in the log-spot the family steps, so the kernel aggregates a
+  /// step's jumps into one draw, as the host does.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     Some(crate::euler::JumpSizes::Normal {
       mean: self.nu,
