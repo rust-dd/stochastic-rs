@@ -1,4 +1,4 @@
-//! # Importance Sampling
+//! A standard normal expectation from draws under a shifted mean, reweighted to stay unbiased.
 //!
 //! $$
 //! \mathbb{E}_P[f(Z)] = \mathbb{E}_Q\!\left[f(Z)\,\frac{dP}{dQ}(Z)\right],\quad

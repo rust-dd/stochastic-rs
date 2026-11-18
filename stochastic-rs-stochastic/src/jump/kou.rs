@@ -1,4 +1,4 @@
-//! # Kou
+//! Kou's double-exponential jump diffusion, stepped in the log-price with log-jumps of law `D`.
 //!
 //! $$
 //! \log Y\sim p\,\mathrm{Exp}(\eta_1)-(1-p)\,\mathrm{Exp}(\eta_2),\quad

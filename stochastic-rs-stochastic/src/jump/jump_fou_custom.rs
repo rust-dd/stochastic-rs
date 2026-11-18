@@ -1,4 +1,4 @@
-//! # Jump fOU Custom
+//! Fractional Ornstein–Uhlenbeck whose jumps draw waiting times from `DT` and sizes from `DS`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t

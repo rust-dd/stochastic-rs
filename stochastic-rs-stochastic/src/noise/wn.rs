@@ -1,4 +1,4 @@
-//! # WN
+//! White noise: `n` independent normal draws of mean `mu` and deviation `sigma`, on no time grid.
 //!
 //! $$
 //! \xi_i\stackrel{iid}{\sim}\mathcal N(0,1)

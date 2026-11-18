@@ -1,4 +1,4 @@
-//! # Jump fOU
+//! Fractional Ornstein–Uhlenbeck with jumps of any size law `D` arriving at the rate `lambda`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t

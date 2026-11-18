@@ -1,4 +1,4 @@
-//! # Fractional Ou driven by Riemann–Liouville fBM (RFSV log-volatility)
+//! Fractional Ornstein–Uhlenbeck driven by Riemann–Liouville fractional Brownian motion, `H < 1/2`.
 //!
 //! $$
 //! dX_t = \kappa(\mu - X_t)\,dt + \nu\,dW^H_t,\qquad H \in (0, 1/2)

@@ -1,4 +1,4 @@
-//! # Hawkes Jump Diffusion
+//! Log-price of a geometric Brownian motion with normal log-jumps, at most one per grid step.
 //!
 //! $$
 //! \frac{dS_t}{S_{t^-}} = \mu\,dt + \sigma\,dW_t + (Y-1)\,dN_t,\quad

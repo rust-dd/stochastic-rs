@@ -1,4 +1,4 @@
-//! # Double Heston
+//! Double Heston: a spot driven by two square-root variance factors, returned as three paths.
 //!
 //! $$
 //! \begin{aligned}

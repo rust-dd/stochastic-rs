@@ -1,4 +1,4 @@
-//! # Heston
+//! Heston stochastic volatility, by the `Euler` or `AndersenQe` scheme chosen at compile time.
 //!
 //! $$
 //! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\

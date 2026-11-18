@@ -1,4 +1,4 @@
-//! # Hkde (Heston + Kou Double-Exponential Jumps)
+//! Heston's variance with Kou's double-exponential jumps in the spot, stepped in the log-spot.
 //!
 //! $$
 //! \begin{aligned}

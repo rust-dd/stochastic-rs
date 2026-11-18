@@ -1,4 +1,4 @@
-//! # Heston Log
+//! Heston stepped in the log-spot, its drift a rate, a cost of carry or a rate pair.
 //!
 //! $$
 //! \begin{aligned}

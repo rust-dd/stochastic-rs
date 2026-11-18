@@ -1,4 +1,4 @@
-//! # Control Variates
+//! Control variates: a payoff corrected by a control of known mean on the same normal draws.
 //!
 //! $$
 //! W = Y + c^*\bigl(V - \mathbb{E}\[V\]\bigr),\quad

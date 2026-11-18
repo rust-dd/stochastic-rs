@@ -1,4 +1,4 @@
-//! # Bates
+//! Bates: Heston's square-root variance with compound-Poisson relative jumps in the spot.
 //!
 //! $$
 //! \begin{aligned}dS_t&=(r-r_f-\lambda k)S_tdt+\sqrt{v_t}S_t dW_t^S+(Y-1)S_{t^-}dN_t\\

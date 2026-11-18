@@ -1,4 +1,4 @@
-//! # Levy Diffusion
+//! A constant-drift Brownian motion plus compound-Poisson jumps of any size law `D`.
 //!
 //! $$
 //! dX_t=\mu_tdt+\sigma_t dW_t+dL_t

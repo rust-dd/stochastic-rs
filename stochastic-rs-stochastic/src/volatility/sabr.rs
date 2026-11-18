@@ -1,4 +1,4 @@
-//! # Sabr
+//! SABR: a CEV forward under a driftless lognormal volatility correlated with it.
 //!
 //! $$
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad
