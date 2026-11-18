@@ -1,24 +1,18 @@
-//! # Markov-lift Volterra SDE stepper
-//!
 //! $$
-//! \begin{aligned} X_{n+1} &= X_0 + \frac{\delta t^{H+1/2} f(X_n)}{\Gamma(H+3/2)} + \frac{\sum_{l=1}^{N'} w_l\, e^{-x_l \delta t}\,(H_l^{(n)} + J_l^{(n)})}{\Gamma(H+1/2)} + \frac{\delta t^{H-1/2} g(X_n)\,\delta W_n}{\Gamma(H+1/2)} \\ H_l^{(n+1)} &= \tfrac{f(X_n)}{x_l}\bigl(1 - e^{-x_l \delta t}\bigr) + e^{-x_l \delta t}\, H_l^{(n)} \\ J_l^{(n+1)} &= e^{-x_l \delta t}\bigl(g(X_n)\,\delta W_n + J_l^{(n)}\bigr) \end{aligned}
+//! \begin{aligned}
+//! X_{n+1} &= X_0 + \frac{\delta t^{H+1/2} f(X_n)}{\Gamma(H+3/2)} +
+//! \frac{\sum_{l=1}^{N'} w_l\, e^{-x_l \delta t}\,(H_l^{(n)} + J_l^{(n)})}{\Gamma(H+1/2)} +
+//! \frac{\delta t^{H-1/2} g(X_n)\,\delta W_n}{\Gamma(H+1/2)} \\
+//! H_l^{(n+1)} &= \tfrac{f(X_n)}{x_l}\bigl(1 - e^{-x_l \delta t}\bigr) +
+//! e^{-x_l \delta t}\, H_l^{(n)} \\
+//! J_l^{(n+1)} &= e^{-x_l \delta t}\bigl(g(X_n)\,\delta W_n + J_l^{(n)}\bigr)
+//! \end{aligned}
 //! $$
 //!
-//! A Volterra-SDE simulator collapsing the full history into a bounded
-//! state of $N' \approx \log n$ exponential factors. [`MarkovLift`] is now
-//! a thin wrapper over the kernel-generic
-//! [`VolterraLift`](crate::volterra::VolterraLift), specialised to
-//! `RlKernel<T>` and to $(x)$-only coefficients; the two entry points below
-//! simply adapt arguments and delegate:
+//! Collapses the history into a bounded state of $N' \approx \log n$ exponential factors: it is
+//! [`VolterraLift`](crate::volterra::VolterraLift) for `RlKernel<T>` and $(x)$-only coefficients.
 //!
-//! - [`simulate`](MarkovLift::simulate) — single path, SIMD across the
-//!   $N'$ quadrature factors via the hidden `SimdFloatExt` lane kernels.
-//! - [`simulate_batch`](MarkovLift::simulate_batch) — $m$ paths in one
-//!   pass, SIMD across the *path* axis at each factor $l$ (BLAS-style
-//!   batch parallelism, matches the layout of the Python reference
-//!   `RoughHestonFast`).
-//!
-//! Reference: Bilokon & Wong (2026), p. 16 of J. Appl. Probab. 2026.
+//! Reference: Bilokon & Wong (2026), J. Appl. Probab., p. 16
 
 mod stepper;
 

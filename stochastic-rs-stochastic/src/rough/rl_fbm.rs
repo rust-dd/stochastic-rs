@@ -1,5 +1,3 @@
-//! # Riemann–Liouville fractional Brownian motion
-//!
 //! $$
 //! W^H_t = \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2}\,dW_s,\qquad H\in(0, 1/2)
 //! $$
@@ -54,9 +52,8 @@ fn build_markov<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt> RlFbm<T, S> {
-  /// Build an RL-fBM generator for Hurst $H$ on an $n$-point grid. The
-  /// underlying [`MarkovLift`] is constructed once here and reused by every
-  /// sampling call.
+  /// An RL-fBM generator on an $n$-point grid; the [`MarkovLift`] is built once here. Panics unless
+  /// `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive and a given `degree` is in `1..=175`.
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, degree: Option<usize>, seed: S) -> Self {
     assert!(
@@ -80,19 +77,15 @@ impl<T: FloatExt, S: SeedExt> RlFbm<T, S> {
     }
   }
 
-  /// Borrow the precomputed [`MarkovLift`] stepper, so sibling processes
-  /// (`RlFou`, `RlBlackScholes`) building their own samplers can clone the
-  /// kernel quadrature instead of reconstructing it.
+  /// The precomputed [`MarkovLift`] stepper, which `RlFou` and `RlBlackScholes` clone for their
+  /// samplers instead of rebuilding the kernel quadrature.
   pub(crate) fn markov(&self) -> &MarkovLift<T> {
     &self.markov
   }
 }
 
-/// The Euler engine's view: the lift's per-node constants and boundary terms
-/// go to the device, which keeps the `2 · degree` lift states per path and
-/// steps the very recursion [`MarkovLift::simulate`] runs here; the family is
-/// the Riemann-Liouville one with no drift, unit diffusion and the step's own
-/// shock as the driver, so the lifted value is the path.
+/// The Euler engine's view: the lift ships as node constants and boundary terms, and the device
+/// keeps `2 · degree` lift states per path. No drift, unit diffusion: the lifted value is the path.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for RlFbm<T, S, B>
 {
@@ -149,11 +142,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` for the inner [`Gn`] to own: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart — matching
-  /// `RlFou`/`RlBlackScholes`, which already build their inner `Gn` this way.
+  /// Derives `self.seed` for the inner [`Gn`], never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, as in `RlFou` and `RlBlackScholes`.
   fn sampler(&self) -> RlFbmSampler<T, S> {
     RlFbmSampler {
       n: self.n,
@@ -167,9 +157,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the lift runs in the kernel, its
-  /// state per path in the frame's own arrays, on the host devices it is this
-  /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift in its kernel, its state per path in the
+  /// frame's arrays; the host runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -199,11 +188,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`RlFbm`] sampling state: owns the cloned [`MarkovLift`] stepper
-/// (with its kernel quadrature) and the Gaussian-increment source, so a
-/// Monte-Carlo loop re-runs neither Golub–Welsch nor the per-$\delta t$ factor
-/// precomputation. Each `fill_path` advances the owned `Gn` stream, so
-/// successive calls yield independent paths.
+/// Reusable [`RlFbm`] sampling state: the cloned [`MarkovLift`] stepper with its quadrature and
+/// the Gaussian-increment source; each `fill_path` advances the owned `Gn` stream.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RlFbmSampler<T: FloatExt, S: SeedExt> {

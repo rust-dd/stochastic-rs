@@ -92,10 +92,12 @@ where
     out
   }
 
-  /// Stochastic midpoint (RK2-style) method with Gaussian noise.
-  ///
-  /// 1. Predict: $\hat{X} = X_n + \frac{1}{2} a(X_n, t_n) \Delta t + \frac{1}{2} b(X_n, t_n) \Delta W$
-  /// 2. Correct: $X_{n+1} = X_n + a(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta t + b(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta W$
+  /// Stochastic midpoint (RK2-style) method with Gaussian noise: predict, then correct.
+  /// $$
+  /// \hat{X} = X_n + \frac{1}{2} a(X_n, t_n) \Delta t + \frac{1}{2} b(X_n, t_n) \Delta W,\quad
+  /// X_{n+1} = X_n + a(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta t +
+  /// b(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta W
+  /// $$
   pub(super) fn solve_srk2_gauss(
     &self,
     x0: &Array1<T>,
@@ -143,10 +145,8 @@ where
     out
   }
 
-  /// Classical RK4 structure applied to both drift and diffusion, with Gaussian noise.
-  ///
-  /// Uses four stage evaluations with the standard $(1, 2, 2, 1)/6$ weighting for both
-  /// drift and diffusion averages. All stages share the same Brownian increment $\Delta W$.
+  /// Classical RK4 structure on drift and diffusion with Gaussian noise: four stages weighted
+  /// $(1, 2, 2, 1)/6$, all sharing one Brownian increment $\Delta W$.
   pub(super) fn solve_srk4_gauss(
     &self,
     x0: &Array1<T>,

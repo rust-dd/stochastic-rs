@@ -87,9 +87,8 @@ fn srk2_and_srk4_produce_finite_paths() {
   }
 }
 
-/// Pure drift (σ ≡ 0) collapses the SDE to an ODE; Euler should track
-/// `dx/dt = -k·x` exactly to first order and bracket the analytical
-/// `e^{-k·T}` decay.
+/// Pure drift (σ ≡ 0) makes the SDE an ODE: Euler tracks `dx/dt = -k·x` to first order and
+/// brackets the analytical `e^{-k·T}` decay.
 #[test]
 fn pure_drift_decay_tracks_exponential() {
   let k = 1.0;
