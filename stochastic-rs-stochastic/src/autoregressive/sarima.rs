@@ -50,8 +50,7 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
-  /// A SARIMA path of `n >= 1` points. Panics unless `s > 0`, `sigma >= 0` and every
-  /// coefficient is finite.
+  /// Panics unless `n >= 1`, `s > 0`, `sigma >= 0`, and `sigma` and every coefficient are finite.
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
     non_seasonal_ma_coefs: Array1<T>,

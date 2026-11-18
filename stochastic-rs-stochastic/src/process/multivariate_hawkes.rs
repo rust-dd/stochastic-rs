@@ -45,8 +45,8 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
-  /// Panics unless `alpha.shape() == [mu.len(), mu.len()]`, `beta.shape() == [mu.len(), mu.len()]`,
-  /// and every parameter is finite.
+  /// Panics unless `alpha` and `beta` are `D × D` for `D = mu.len()`, every entry is finite, and
+  /// an `Until` horizon is positive and finite.
   pub fn new(
     mu: Array1<T>,
     alpha: Array2<T>,

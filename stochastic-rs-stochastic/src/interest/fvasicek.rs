@@ -48,7 +48,8 @@ pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Fvasicek<T, S> {
-  /// Panics unless a given `t` is positive and finite and every parameter is finite.
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     hurst: T,
     theta: T,

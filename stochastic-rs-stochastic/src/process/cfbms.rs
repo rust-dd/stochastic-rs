@@ -98,8 +98,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
     require!((-T::one()..=T::one()).contains(&rho), rho);
   }
 
-  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
-  /// own assertion.
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;

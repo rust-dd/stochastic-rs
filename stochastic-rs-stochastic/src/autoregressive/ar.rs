@@ -47,8 +47,8 @@ pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ar<T, S> {
-  /// An AR(p) path of `n >= 1` points. Panics unless `sigma >= 0`, every entry of `phi` and
-  /// `x0` is finite, and `x0.len() >= phi.len().min(n)`.
+  /// AR(p). Panics unless `n >= 1`, `sigma >= 0`, `sigma` and every entry of `phi` and `x0` are
+  /// finite, and `x0.len() >= phi.len().min(n)`.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
     assert!(
       sigma.is_finite(),

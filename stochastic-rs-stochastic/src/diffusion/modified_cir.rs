@@ -5,7 +5,7 @@
 //! dX_t=-\kappa X_t\,dt+\sigma\sqrt{1+X_t^2}\,dW_t
 //! $$
 //!
-//! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242, the CIR it modifies
+//! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
 //!
 
 use ndarray::Array1;

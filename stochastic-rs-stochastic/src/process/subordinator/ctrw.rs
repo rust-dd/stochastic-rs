@@ -113,7 +113,8 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `x0` is finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `x0` and a jump `mean` are finite,
+  /// every other law parameter is positive and finite, a wait's `alpha < 1`, a jump's `alpha <= 2`.
   pub fn new(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,

@@ -55,7 +55,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   }
 
   /// [`Cir::new`](crate::diffusion::cir::Cir::new)'s Feller contract, which the setters do not
-  /// repeat. Panics unless `n >= 2`, a given `t` is positive and every parameter is finite.
+  /// repeat. Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and all is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -99,7 +99,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;

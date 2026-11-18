@@ -71,7 +71,8 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -210,7 +211,7 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
   }
 
   /// Replace `rho` and rebuild the correlated-Gaussian generator `cgns`, which would otherwise
-  /// keep the old correlation; panics unless `rho` is finite.
+  /// keep the old correlation; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;

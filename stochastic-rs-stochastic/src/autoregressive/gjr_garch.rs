@@ -48,8 +48,8 @@ pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
-  /// The GJR (1993) threshold GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0`,
-  /// `alpha[i] + gamma[i] >= 0` and `beta[j] >= 0`, and `Σα + Σγ/2 + Σβ < 1`.
+  /// Panics unless every value is finite, `n >= 1`, `omega > 0`, `alpha[i] >= 0`, `beta[j] >= 0`,
+  /// `alpha[i] + gamma[i] >= 0`, `alpha.len() == gamma.len()` and `Σα + Σγ/2 + Σβ < 1`.
   pub fn new(
     omega: T,
     alpha: Array1<T>,

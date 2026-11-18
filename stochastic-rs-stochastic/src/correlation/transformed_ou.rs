@@ -88,7 +88,8 @@ pub struct TransformedOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> TransformedOu<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `-1 < rho0 < 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     kappa: T,
     mu: T,

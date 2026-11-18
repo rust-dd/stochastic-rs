@@ -42,8 +42,8 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
-  /// Bollerslev's (1986) GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0` and
-  /// `beta[j] >= 0` (his eq. (2)), and `alpha.sum() + beta.sum() < 1` (his Theorem 1).
+  /// Bollerslev's (1986) GARCH(p, q). Panics unless every value is finite, `n >= 1`, `omega > 0`,
+  /// `alpha[i] >= 0` and `beta[j] >= 0` (his eq. (2)), and `Σα + Σβ < 1` (his Theorem 1).
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),

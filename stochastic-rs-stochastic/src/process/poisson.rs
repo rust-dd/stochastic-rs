@@ -36,8 +36,8 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`Poisson::default().with_lambda(4.0)`); nothing is cached,
 /// since `sampler()` builds its exponential inter-arrival source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
-  /// Arrivals at rate `lambda ≥ 0` up to `horizon`; panics on `Events(n ≥ 1)` at `lambda = 0`,
-  /// whose n-th arrival never comes.
+  /// Arrivals at rate `lambda` up to `horizon`. Panics unless `lambda >= 0` is finite, an `Until`
+  /// horizon is positive and finite, and `lambda > 0` under `Events(n ≥ 1)`.
   pub fn new(lambda: T, horizon: Horizon<T>, seed: S) -> Self {
     assert_rate(lambda, horizon);
     horizon.assert_valid();
@@ -51,7 +51,7 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`, or on a zero rate under an
+  /// Replace `lambda`; panics unless `lambda >= 0` is finite, and `lambda > 0` under an
   /// `Events(n ≥ 1)` horizon.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert_rate(lambda, self.horizon);

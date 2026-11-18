@@ -15,7 +15,7 @@
 //! Reference: Brace, Gatarek & Musiela (1997), Math. Finance 7(2), 127–155
 //! Reference: Jamshidian (1997), Finance Stoch. 1(4), 293–330
 //! Reference: Glasserman (2003), "Monte Carlo Methods in Financial Engineering", Springer, §3.7
-//! Reference: Glasserman & Zhao (2000), Finance Stoch. 4(1), 35–68, the predictor-corrector scheme
+//! Reference: Glasserman & Zhao (2000), Finance Stoch. 4(1), 35–68
 //! Reference: Hula (2011), "Discrete LIBOR Market Model Analogy", arXiv:1108.4260
 //!
 
@@ -63,8 +63,8 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
-  /// Independent forward factors (identity correlation). Panics unless `n >= 2`, a given `t` is
-  /// positive, `tenor` increases strictly, and `l0 > 0`, `sigma >= 0` hold `tenor.len() - 1` rates.
+  /// Identity correlation. Panics unless `n >= 2`, a given `t` is positive and finite, `tenor`,
+  /// `l0` and `sigma` pass their setters' checks, and both hold `tenor.len() - 1` entries.
   pub fn new(
     tenor: Array1<T>,
     l0: Array1<T>,
@@ -179,7 +179,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     self
   }
 
-  /// Replace `sigma`. Panics if any entry is negative.
+  /// Replace `sigma`; panics unless every entry is finite and non-negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
     Self::check_sigma(&sigma);
     self.sigma = sigma;

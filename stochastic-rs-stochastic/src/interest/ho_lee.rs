@@ -38,7 +38,8 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
-  /// Panics unless `n >= 2` and a given `t` is positive and finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `sigma` and a constant drift
+  /// are finite.
   pub fn new(drift: HoLeeDrift<T>, sigma: T, n: usize, t: Option<T>, seed: S) -> Self {
     if let HoLeeDrift::Constant(theta) = drift {
       assert!(

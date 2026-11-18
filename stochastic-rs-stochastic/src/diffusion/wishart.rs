@@ -215,8 +215,8 @@ fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mu
 }
 
 impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
-  /// `n >= 2` counts the initial point. Panics unless `a`, `b` and a symmetric `x0` are finite
-  /// `d × d`, `alpha >= d − 1` is finite, and a given `t` is positive and finite.
+  /// Panics unless `n >= 2`, `a`, `b` and a symmetric `x0` are finite `d × d` with `d >= 1`,
+  /// `alpha >= d − 1` is finite, and a given `t` is positive and finite.
   pub fn new(
     alpha: T,
     b: Array2<T>,

@@ -45,8 +45,8 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `mu`, `sigma` and `x0` are
-  /// finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `mu`, `sigma`, `x0` and a given
+  /// `sigmas` are finite, and `sigmas.len() == n - 1`.
   pub fn new(
     mu: T,
     sigma: T,

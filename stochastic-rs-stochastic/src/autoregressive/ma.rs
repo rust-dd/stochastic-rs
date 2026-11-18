@@ -38,7 +38,7 @@ pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ma<T, S> {
-  /// An MA(q) path of `n >= 1` points. Panics unless `sigma >= 0` and every entry of `theta` is
+  /// MA(q). Panics unless `n >= 1`, `sigma >= 0`, and `sigma` and every entry of `theta` are
   /// finite.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(

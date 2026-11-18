@@ -45,7 +45,8 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// Panics unless a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_hurst(hurst);
@@ -68,7 +69,7 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;

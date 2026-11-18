@@ -48,8 +48,8 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
-  /// `n >= 2` counts the initial point. Panics unless `rho` is a `k × k` correlation matrix,
-  /// `mu`, `sigma >= 0` and `x0` are finite of length `k`, and a given `t` is positive and finite.
+  /// Panics unless `n >= 2`, `rho` is a finite `k × k` positive-definite correlation matrix, `mu`,
+  /// `sigma >= 0` and `x0` are finite of length `k >= 1`, and a given `t` is positive and finite.
   pub fn new(
     mu: Array1<T>,
     sigma: Array1<T>,

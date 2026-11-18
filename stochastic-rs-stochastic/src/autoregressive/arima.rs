@@ -42,8 +42,8 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arima<T, S> {
-  /// An ARIMA(p, d, q) path of `n >= 1` points. Panics unless `sigma >= 0` and every
-  /// coefficient is finite.
+  /// ARIMA(p, d, q). Panics unless `n >= 1`, `sigma >= 0`, and `sigma` and every coefficient are
+  /// finite.
   pub fn new(
     ar_coefs: Array1<T>,
     ma_coefs: Array1<T>,

@@ -44,8 +44,8 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
-  /// Nelson's (1991) EGARCH(p, q). Panics unless `1 − Σ βⱼ xʲ` has its roots outside the unit
-  /// circle (`|beta| < 1` at order one); a log-variance beyond `exp`'s range samples `∞` or NaN.
+  /// Nelson's (1991) EGARCH(p, q). Panics unless every value is finite, `n >= 1`,
+  /// `alpha.len() == gamma.len()` and `1 − Σ βⱼ xʲ` has its roots outside the unit circle.
   pub fn new(
     omega: T,
     alpha: Array1<T>,

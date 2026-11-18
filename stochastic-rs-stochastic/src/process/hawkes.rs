@@ -36,7 +36,8 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
-  /// Panics unless `mu > 0`, `0 ≤ alpha < beta` and an `Until` horizon is positive and finite.
+  /// Panics unless `mu > 0`, `0 ≤ alpha < beta`, all three are finite and an `Until` horizon is
+  /// positive and finite.
   pub fn new(mu: T, alpha: T, beta: T, horizon: Horizon<T>, seed: S) -> Self {
     assert!(
       mu.is_finite(),

@@ -38,8 +38,8 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arch<T, S> {
-  /// Engle's (1982) ARCH(p). Panics unless `omega > 0` and every `alpha[i] >= 0`; loadings that
-  /// sum to one or more are accepted, and their variance may grow until it samples `∞` or NaN.
+  /// Engle's (1982) ARCH(p). Panics unless `n >= 1` and `omega > 0`, `alpha[i] >= 0` are finite;
+  /// loadings that sum to one or more are accepted, and their variance may reach `∞` or NaN.
   pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),

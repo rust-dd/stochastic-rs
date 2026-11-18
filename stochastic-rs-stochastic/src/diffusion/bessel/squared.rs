@@ -26,8 +26,8 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`SquaredBessel::default().with_delta(4.0)`); nothing is
 /// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
-  /// δ < 2, the analogue of a sub-Feller [`Cir`](crate::diffusion::cir::Cir), is accepted; under
-  /// [`VarianceBoundary::Floor`] it emits a `log::warn!`, never a panic.
+  /// δ < 2 is accepted and, under [`VarianceBoundary::Floor`], logged with `log::warn!`. Panics
+  /// unless `n >= 2`, a given `t` is positive and finite, and `delta` and `x0` are finite.
   pub fn new(
     delta: T,
     n: usize,

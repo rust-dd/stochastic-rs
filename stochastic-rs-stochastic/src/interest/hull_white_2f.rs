@@ -53,7 +53,8 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
-  /// Panics unless a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     a: T,

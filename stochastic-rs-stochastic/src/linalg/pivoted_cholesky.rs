@@ -2,7 +2,7 @@
 //! `c = [[c_r, 0], [k_r, 0]]`, `c_r` an invertible lower-triangular `r × r` block, `r` the rank.
 //!
 //! Reference: Golub & Van Loan, "Matrix Computations", Algorithm 4.2.4
-//! Reference: Ahdida & Alfonsi (2013), Lemma 23, which builds the exact Wishart sampler on it
+//! Reference: Ahdida & Alfonsi (2013), Lemma 23
 
 use ndarray::Array2;
 use ndarray::ArrayView2;

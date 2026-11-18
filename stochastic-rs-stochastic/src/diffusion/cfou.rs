@@ -59,8 +59,8 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// Panics unless `lambda > 0`, `a > 0`, a given `t` is positive and finite, `n >= 2`, and every
-  /// parameter is finite.
+  /// Panics unless `0 <= hurst <= 1`, `lambda > 0`, `a > 0`, `n >= 2`, a given `t` is positive and
+  /// finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -97,7 +97,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -147,8 +147,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
     require!(x2_0.is_none_or(|v| v.is_finite()), x2_0);
   }
 
-  /// Replace `lambda`. Panics if `lambda <= 0`, matching `new()`'s own
-  /// assertion.
+  /// Replace `lambda`; panics unless `lambda > 0` and finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
@@ -162,7 +161,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
     self
   }
 
-  /// Replace `a`. Panics if `a <= 0`, matching `new()`'s own assertion.
+  /// Replace `a`; panics unless `a > 0` and finite.
   pub fn with_a(mut self, a: T) -> Self {
     Self::check_a(a);
     self.a = a;

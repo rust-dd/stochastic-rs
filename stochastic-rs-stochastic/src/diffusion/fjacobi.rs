@@ -46,8 +46,8 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// Panics unless `alpha > 0`, `beta > 0`, `sigma > 0`, a given `t` is positive and finite,
-  /// `n >= 2`, `alpha < beta`, and every parameter is finite.
+  /// Panics unless `0 <= hurst <= 1`, `0 < alpha < beta`, `sigma > 0`, `n >= 2`, a given `t` is
+  /// positive and finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -85,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -132,8 +132,8 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
-  /// own assertions: to move both drift parameters up, raise `beta` first.
+  /// Replace `alpha`; panics unless `0 < alpha < beta` and finite: to move both drift parameters
+  /// up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     assert!(
@@ -145,8 +145,8 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     self
   }
 
-  /// Replace `beta`. Panics unless `0 < alpha < beta`, matching `new()`'s
-  /// own assertions: to move both drift parameters down, lower `alpha` first.
+  /// Replace `beta`; panics unless `0 < alpha < beta` and finite: to move both drift parameters
+  /// down, lower `alpha` first.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     assert!(
@@ -158,8 +158,7 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     self
   }
 
-  /// Replace `sigma`. Panics if `sigma <= 0`, matching `new()`'s own
-  /// assertion.
+  /// Replace `sigma`; panics unless `sigma > 0` and finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;

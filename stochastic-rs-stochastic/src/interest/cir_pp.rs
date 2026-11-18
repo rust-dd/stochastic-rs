@@ -64,8 +64,8 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
 /// Every field has a `with_*` setter (`CirPlusPlus::default().with_kappa(3.0)`); nothing is
 /// cached, since `sampler()` builds a transient `Cir` from `self` on every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// [`Cir::new`]'s Feller contract on the factor `x_t`: a violation under
-  /// [`VarianceBoundary::Floor`] emits a `log::warn!`, never a panic.
+  /// [`Cir::new`]'s Feller contract on `x_t`: a violation under [`VarianceBoundary::Floor`] logs a
+  /// warning. Panics unless `n >= 2`, a given `t` is positive and every parameter is finite.
   pub fn new(
     kappa: T,
     theta: T,

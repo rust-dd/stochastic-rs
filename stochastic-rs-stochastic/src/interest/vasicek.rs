@@ -50,7 +50,7 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Vasicek::default().with_theta(1.0).with_sigma(0.05)`.
 impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
-  /// Panics unless a given `t` is positive and finite and every parameter is finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_theta(theta);
     Self::check_mu(mu);

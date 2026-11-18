@@ -23,7 +23,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Asymmetric GARCH(p, q): [`GjrGarch`](crate::autoregressive::gjr_garch::GjrGarch)'s recursion
-/// with the threshold loading named `delta`; `new` enforces `Σα + Σδ/2 + Σβ < 1`.
+/// (1993) with the threshold loading named `delta`; `new` enforces `Σα + Σδ/2 + Σβ < 1`.
 #[derive(Debug, Clone)]
 pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
@@ -45,8 +45,8 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
-  /// The GJR (1993) recursion with `delta` for its threshold. Panics unless `omega > 0`, every
-  /// `alpha[i] >= 0`, `alpha[i] + delta[i] >= 0` and `beta[j] >= 0`, and `Σα + Σδ/2 + Σβ < 1`.
+  /// Panics unless every value is finite, `n >= 1`, `omega > 0`, `alpha[i] >= 0`, `beta[j] >= 0`,
+  /// `alpha[i] + delta[i] >= 0`, `alpha.len() == delta.len()` and `Σα + Σδ/2 + Σβ < 1`.
   pub fn new(
     omega: T,
     alpha: Array1<T>,
