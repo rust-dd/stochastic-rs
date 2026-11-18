@@ -71,9 +71,6 @@ const STAGES: usize = 3;
 /// Searches that may run again in the units of where the last one ended.
 const RESCALES: usize = 12;
 
-/// The ratio to its unit, either way, past which a parameter's estimate asks for new units.
-const FAR: f64 = 8.0;
-
 /// Where an L-BFGS-B search ended: the best point, the objective there and the fit signals.
 struct Search {
   params: Vec<f64>,
@@ -151,25 +148,20 @@ pub fn fit_mle(
 
     let lower = bounds.iter().map(|bound| bound.0).collect::<Vec<_>>();
     let upper = bounds.iter().map(|bound| bound.1).collect::<Vec<_>>();
-    let mut fit = search(
-      MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &init),
-      &init,
-    );
+    let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &init);
+    let mut units = problem.units();
+    let mut fit = search(problem, &init);
     let mut iterations = fit.iterations;
-    // A search that ends far from its start in some parameter ran in the wrong unit for it: it
+    // A search that ends far from its units in some parameter ran in the wrong unit for it: it
     // runs again from the estimate in the estimate's units, unless that costs likelihood.
-    let mut units = init.clone();
     for _ in 0..RESCALES {
-      let far =
-        fit.params.iter().zip(&units).any(|(&p, &u)| {
-          p != 0.0 && u != 0.0 && !(1.0 / FAR..=FAR).contains(&(p.abs() / u.abs()))
-        });
-      if !far {
+      if !units.far(&fit.params) {
         break;
       }
-      units = fit.params.clone();
-      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &units);
-      let next = search(problem, &units);
+      let from = fit.params.clone();
+      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &from);
+      units = problem.units();
+      let next = search(problem, &from);
       iterations += next.iterations;
       if next.cost > fit.cost {
         break;

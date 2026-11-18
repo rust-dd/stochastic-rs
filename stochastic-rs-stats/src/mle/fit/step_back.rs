@@ -19,11 +19,8 @@ pub(super) trait Walled {
 
 /// Moré–Thuente that steps back: a search that met a point without a value runs again under a
 /// step cap, halved until none is met, so no interpolation reads the penalty.
-/// Reference: basin 1.11, `HagerZhang`, whose non-finite trials "cause the search to contract".
+/// Reference: basin's `HagerZhang`, whose non-finite trials "cause the search to contract".
 pub(super) struct SteppingBack(pub(super) MoreThuente<f64>);
-
-/// Halvings of the cap, which leave a step no rounding distinguishes from none.
-const HALVINGS: i32 = 52;
 
 impl<P> LineSearch<P, Vec<f64>, f64> for SteppingBack
 where
@@ -51,11 +48,17 @@ where
     direction: &Vec<f64>,
     bounds: LineSearchBounds<f64>,
   ) -> Result<LineSearchResult<Vec<f64>, f64>, Self::Error> {
+    // The solver's first trial, `1/‖d‖`, is below the least step on a steep start, which would
+    // lift it there, `√ε ‖d‖` away: the least step is then that fraction of the trial.
+    let trial = bounds.initial();
+    let least = self.0.stpmin * if trial < self.0.stpmin { trial } else { 1.0 };
+    let mut search = MoreThuente {
+      stpmin: least,
+      ..self.0
+    };
     let mut run = |problem: &mut Problem<P>, bounds| {
       problem.inner().watch(true);
-      let result = self
-        .0
-        .next_with_bounds(problem, param, cost, gradient, direction, bounds);
+      let result = search.next_with_bounds(problem, param, cost, gradient, direction, bounds);
       let walled = problem.inner().walled();
       problem.inner().watch(false);
       result.map(|result| (!walled).then_some(result))
@@ -63,8 +66,9 @@ where
     if let Some(result) = run(problem, bounds)? {
       return Ok(result);
     }
-    for halving in 0..=HALVINGS {
-      let cap = bounds.initial() * 0.5_f64.powi(halving);
+    // Moré–Thuente takes no step below its least one, which ends the halving.
+    let mut cap = bounds.initial();
+    while cap > 0.0 && cap >= least {
       if let Some(result) = run(problem, LineSearchBounds::new(cap, cap))? {
         // A capped step that does not lower the cost would read as the solver's cost tolerance:
         // the wall stopped it, not a flat likelihood, so it is no step.
@@ -74,6 +78,7 @@ where
         }
         break;
       }
+      cap *= 0.5;
     }
     Ok(LineSearchResult::new(LineSearchOutcome::Failed))
   }
@@ -181,6 +186,67 @@ mod tests {
       panic!("no step")
     };
     assert!(step < 1e-3, "step {step}");
+  }
+
+  /// `10²⁰ x²/2` from 1, whose first trial `1/‖d‖ = 10⁻²⁰` lands on the minimum.
+  struct Steep;
+
+  impl Walled for Steep {
+    fn watch(&self, _on: bool) {}
+
+    fn walled(&self) -> bool {
+      false
+    }
+  }
+
+  impl CostFunction for Steep {
+    type Param = Vec<f64>;
+    type Output = f64;
+    type Error = Infallible;
+
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, Infallible> {
+      Ok(0.5e20 * x[0] * x[0])
+    }
+  }
+
+  impl Gradient for Steep {
+    type Gradient = Vec<f64>;
+
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Infallible> {
+      Ok(vec![1e20 * x[0]])
+    }
+  }
+
+  /// A first trial below Moré–Thuente's least step `√ε` is searched from the trial: lifted to
+  /// `√ε` it is a step `√ε ‖d‖ = 1.5e12` long, which the plain search returns, uphill.
+  #[test]
+  fn a_first_trial_below_the_least_step_is_not_lifted_to_it() {
+    let bounds = LineSearchBounds::new(1e-20, 1e10);
+    let (at, slope, along) = (vec![1.0], vec![1e20], vec![-1e20]);
+    let result = SteppingBack(more_thuente())
+      .next_with_bounds(
+        &mut Problem::new(Steep),
+        &at,
+        0.5e20,
+        &slope,
+        &along,
+        bounds,
+      )
+      .unwrap();
+    assert_eq!(result.outcome, LineSearchOutcome::Step(1e-20));
+    assert_eq!(result.evaluation.expect("the accepted point").cost, 0.0);
+    let plain = more_thuente()
+      .next_with_bounds(
+        &mut Problem::new(Steep),
+        &at,
+        0.5e20,
+        &slope,
+        &along,
+        bounds,
+      )
+      .unwrap();
+    assert_eq!(plain.outcome, LineSearchOutcome::Step(f64::EPSILON.sqrt()));
+    assert!(plain.evaluation.expect("the returned point").cost > 0.5e20);
   }
 
   /// With no value anywhere along the direction there is no step, and the solver ends unconverged.

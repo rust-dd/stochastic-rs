@@ -132,8 +132,8 @@ fn a_fit_is_the_same_fit_in_any_unit_of_the_path_and_of_time() {
   }
 }
 
-/// A level that starts at zero has no size to be its unit: half the box's width serves, or 1
-/// where the box has none, and the fit is the closed form's as from any other start.
+/// A level that starts at zero has no size to be its unit: half the box's width serves, or the
+/// path's spread where the box has none, and the fit is the closed form's as from any other start.
 #[test]
 fn a_parameter_that_starts_at_zero_is_fitted_in_its_boxs_unit() {
   let dt = 1.0 / 252.0;
@@ -149,6 +149,38 @@ fn a_parameter_that_starts_at_zero_is_fitted_in_its_boxs_unit() {
       "{level:?}: {short} below at {}",
       fit.params
     );
+  }
+}
+
+/// A level of `c x` from zero in a box open at either end is fitted in the path's spread: in a
+/// unit of 1 it stays at zero, converged, 2 to 6 below the closed form.
+#[test]
+fn a_zero_start_in_an_open_box_is_fitted_in_the_paths_unit() {
+  let dt = 1.0 / 252.0;
+  let inf = f64::INFINITY;
+  for c in [1e-9, 1e6, 1e9, 1e12] {
+    for seed in 101..=103 {
+      let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, seed).mapv(|v| c * v);
+      let closed = fit_ou_mle(path.view(), dt).unwrap();
+      for level in [(-inf, inf), (-inf, 100.0 * c)] {
+        let tiny = c.min(1.0);
+        let bounds = vec![(1e-4, 50.0), level, (1e-9 * tiny, 100.0 * c)];
+        for start in [
+          [2.0, 0.0, 0.3 * c],
+          [1.0, 0.0, 1e-3 * c],
+          [1.0, 0.0, 1e-6 * tiny],
+        ] {
+          let fit = fit_ou(&path, dt, start, DensityApprox::Exact, bounds.clone());
+          let short = closed.log_likelihood - fit.log_likelihood;
+          assert!(
+            fit.converged && short.abs() < 1e-3,
+            "×{c:e} seed {seed} from {start:?} in {level:?}: converged {}, {short} below at {}",
+            fit.converged,
+            fit.params
+          );
+        }
+      }
+    }
   }
 }
 

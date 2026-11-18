@@ -34,6 +34,27 @@ fn a_far_start_that_stalls_where_the_level_is_not_identified_reaches_the_closed_
   }
 }
 
+/// A level in an open box has no end to be loose at: the start's value stands in for it, so the
+/// search that slid to a speed of `1e-4` and a level of `−530` times the path's runs again.
+#[test]
+fn a_stall_in_an_open_box_is_searched_again_from_the_start() {
+  let dt = 1.0 / 252.0;
+  let c = 1e9;
+  let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, 102).mapv(|v| c * v);
+  let closed = fit_ou_mle(path.view(), dt).unwrap();
+  let open = (f64::NEG_INFINITY, f64::INFINITY);
+  let bounds = vec![(1e-4, 50.0), open, (1e-9, 100.0 * c)];
+  let mut model = Ou::new(1.0, c, 1e-3 * c, 100, None, None, Deterministic::new(0));
+  let exact = DensityApprox::Exact;
+  let fit = fit_mle(&mut model, path.view(), dt, exact, Some(bounds)).unwrap();
+  let short = closed.log_likelihood - fit.log_likelihood;
+  assert!(
+    fit.converged && short.abs() < 1e-3,
+    "{short} below at {}",
+    fit.params
+  );
+}
+
 /// A parameter whose move alone to an end of its box costs under 1.92 goes back to the start's
 /// value, and one the likelihood holds stays; with the level fixed one end is loose and none moves.
 #[test]

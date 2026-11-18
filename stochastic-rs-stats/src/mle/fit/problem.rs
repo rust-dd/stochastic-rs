@@ -44,10 +44,34 @@ pub(super) struct Units {
   high: Vec<f64>,
 }
 
+/// The ratio to its unit, either way, past which a parameter's estimate asks for new units.
+const FAR: f64 = 8.0;
+
+/// The path's standard deviation, the scale the data gives a parameter that brings none: the
+/// path's largest size where the deviations' squares underflow, 1 for a path of zeros.
+fn spread(sample: ArrayView1<f64>) -> f64 {
+  let size = sample.iter().fold(0.0_f64, |size, v| size.max(v.abs()));
+  if size == 0.0 {
+    return 1.0;
+  }
+  let n = sample.len() as f64;
+  let mean = sample.iter().map(|v| v / size).sum::<f64>() / n;
+  let variance = sample
+    .iter()
+    .map(|v| (v / size - mean).powi(2))
+    .sum::<f64>()
+    / n;
+  if variance > 0.0 {
+    size * variance.sqrt()
+  } else {
+    size
+  }
+}
+
 impl Units {
   /// The units of `start`: `|start|` for each parameter, and for one that starts at zero half
-  /// its box's width, or 1 where the box has no finite width.
-  fn new(lower: &[f64], upper: &[f64], start: &[f64]) -> Self {
+  /// its box's width, or `spread`, the path's, where the box has no finite width.
+  fn new(lower: &[f64], upper: &[f64], start: &[f64], spread: f64) -> Self {
     let scale = (0..lower.len())
       .map(|i| {
         let (low, high) = (lower[i], upper[i]);
@@ -57,7 +81,7 @@ impl Units {
         } else if low.is_finite() && high.is_finite() && high > low {
           0.5 * (high - low)
         } else {
-          1.0
+          spread
         }
       })
       .collect::<Vec<_>>();
@@ -68,6 +92,12 @@ impl Units {
       high: upper.iter().zip(&scale).map(|(h, u)| h / u).collect(),
       scale,
     }
+  }
+
+  /// Whether some parameter of `params` is more than [`FAR`] times from its unit, either way.
+  pub(super) fn far(&self, params: &[f64]) -> bool {
+    let near = 1.0 / FAR..=FAR;
+    (params.iter().zip(&self.scale)).any(|(p, unit)| *p != 0.0 && !near.contains(&(p.abs() / unit)))
   }
 
   /// The solver's coordinates of `params`, inside its box.
@@ -135,7 +165,7 @@ impl<'a> MleProblem<'a> {
       sample,
       dt,
       density,
-      units: Units::new(lower, upper, start),
+      units: Units::new(lower, upper, start, spread(sample)),
       probe: AtomicU8::new(IDLE),
     }
   }
@@ -144,8 +174,8 @@ impl<'a> MleProblem<'a> {
     self.units.clone()
   }
 
-  /// `at` with each parameter the likelihood does not hold inside its box back at `start`'s
-  /// value, one whose move alone to an end costs less than [`IDENTIFIED`]; `at` under two such.
+  /// With two or more loose moves, `at` with each parameter that has one back at `start`'s value:
+  /// a move alone to an end of its box, or to `start`'s for an infinite end, under [`IDENTIFIED`].
   pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
     let here = self.eval_nll(at);
     let mut from = at.to_vec();
@@ -158,15 +188,21 @@ impl<'a> MleProblem<'a> {
       if ends[0] >= ends[1] {
         continue;
       }
-      let loose = ends.map(|end| {
-        let mut moved = at.to_vec();
-        moved[i] = end;
-        self.eval_nll(&moved) - here < IDENTIFIED
-      });
-      if loose[0] || loose[1] {
+      // An end at infinity has no likelihood to read: the start's value stands in, once.
+      let open = ends.iter().any(|end| end.is_infinite()).then_some(start[i]);
+      let finite = ends.into_iter().filter(|end| end.is_finite());
+      let loose = finite
+        .chain(open)
+        .filter(|&to| {
+          let mut moved = at.to_vec();
+          moved[i] = to;
+          self.eval_nll(&moved) - here < IDENTIFIED
+        })
+        .count();
+      if loose > 0 {
         from[i] = start[i];
       }
-      loose_ends += usize::from(loose[0]) + usize::from(loose[1]);
+      loose_ends += loose;
     }
     // One loose end is an optimum at or beside a bound; a stall leaves two, as a speed and a level.
     if loose_ends < 2 { at.to_vec() } else { from }
