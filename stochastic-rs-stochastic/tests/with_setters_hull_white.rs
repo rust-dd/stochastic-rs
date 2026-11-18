@@ -1,9 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `HullWhite`
-//! (`interest/hull_white.rs`). No persisted cache: `sampler()` builds its
-//! Gaussian source fresh from `self.{n,t,seed}` and borrows `&self.theta`
-//! directly on every call. `theta: Fn1D<T>` has no `PartialEq` (nor
-//! `Fn1D` at all), so it is excluded from the generic field-equality
-//! snapshot and instead checked by calling it in `with_theta`'s own test.
+//! `with_*` setters on `HullWhite`, which caches nothing and borrows `&self.theta` per call.
+//! `theta: Fn1D<T>` has no `PartialEq`, so `with_theta`'s test checks it by calling it.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

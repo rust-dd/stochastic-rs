@@ -1,4 +1,4 @@
-//! # Duffie Kan
+//! Duffie–Kan two-factor affine short-rate model, without jumps.
 //!
 //! $$
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
@@ -17,19 +17,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Standard Duffie–Kan two-factor model (continuous, no jumps). The
-/// per-factor drift and diffusion-loading coefficients below (`a1..c2`,
-/// `alpha`/`beta`/`gamma`) are the concrete, fixed-numeric form of the
-/// module header's abstract `K(Θ-X)dt+√(A+BX)dW` — see each field's own
-/// doc for exactly which term it multiplies.
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DuffieKan::new(..).with_rho(-0.5).with_sigma1(0.02)`.
+/// Duffie–Kan two-factor model without jumps: `a1..c2` and `alpha`, `beta`, `gamma` are the
+/// numeric form of the module's `K(Θ-X)dt+√(A+BX)dW`; each field's doc names its term.
 #[derive(Debug, Clone)]
 pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Diffusion-loading coefficient on `r_t`, shared between both factors'
-  /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
-  /// itself scaled again by `sigma1`/`sigma2`).
+  /// Loading on `r_t` inside the shared diffusion scale `alpha*r + beta*x + gamma`, which
+  /// `sigma1` and `sigma2` scale again.
   pub alpha: T,
   /// Diffusion-loading coefficient on `x_t`, shared between both factors'
   /// diffusion scaling.
@@ -69,7 +62,7 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -78,6 +71,8 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -194,30 +189,29 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `alpha`, all else unchanged.
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `gamma`, all else unchanged.
+  /// Replace `gamma`; panics unless `gamma` is finite.
   pub fn with_gamma(mut self, gamma: T) -> Self {
     Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the correlated-Gaussian generator `cgns`, which would otherwise
+  /// keep the old correlation; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -225,78 +219,78 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
     self
   }
 
-  /// Replace `a1`, all else unchanged.
+  /// Replace `a1`; panics unless `a1` is finite.
   pub fn with_a1(mut self, a1: T) -> Self {
     Self::check_a1(a1);
     self.a1 = a1;
     self
   }
 
-  /// Replace `b1`, all else unchanged.
+  /// Replace `b1`; panics unless `b1` is finite.
   pub fn with_b1(mut self, b1: T) -> Self {
     Self::check_b1(b1);
     self.b1 = b1;
     self
   }
 
-  /// Replace `c1`, all else unchanged.
+  /// Replace `c1`; panics unless `c1` is finite.
   pub fn with_c1(mut self, c1: T) -> Self {
     Self::check_c1(c1);
     self.c1 = c1;
     self
   }
 
-  /// Replace `sigma1`, all else unchanged.
+  /// Replace `sigma1`; panics unless `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
     Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
-  /// Replace `a2`, all else unchanged.
+  /// Replace `a2`; panics unless `a2` is finite.
   pub fn with_a2(mut self, a2: T) -> Self {
     Self::check_a2(a2);
     self.a2 = a2;
     self
   }
 
-  /// Replace `b2`, all else unchanged.
+  /// Replace `b2`; panics unless `b2` is finite.
   pub fn with_b2(mut self, b2: T) -> Self {
     Self::check_b2(b2);
     self.b2 = b2;
     self
   }
 
-  /// Replace `c2`, all else unchanged.
+  /// Replace `c2`; panics unless `c2` is finite.
   pub fn with_c2(mut self, c2: T) -> Self {
     Self::check_c2(c2);
     self.c2 = c2;
     self
   }
 
-  /// Replace `sigma2`, all else unchanged.
+  /// Replace `sigma2`; panics unless `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
     Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
-  /// Replace `r0`, all else unchanged.
+  /// Replace `r0`; panics unless `r0` is finite.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
     Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// Replace `n`, the grid points along the path, and rebuild the correlated-Gaussian generator,
+  /// whose length and step size derive from it; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -304,8 +298,8 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the horizon `t` and rebuild the correlated-Gaussian generator, whose step size
+  /// derives from it; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -313,7 +307,7 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -392,10 +386,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> DuffieKanSampler<T, S> {
     DuffieKanSampler {
       n: self.n,
@@ -418,9 +410,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -442,9 +433,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`DuffieKan`] sampling state: owns the correlated-Gaussian
-/// generator and the seed source so a Monte-Carlo loop reuses both output
-/// buffers.
+/// Reusable [`DuffieKan`] sampling state: it owns the correlated-Gaussian generator and the
+/// seed source, so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct DuffieKanSampler<T: FloatExt, S: SeedExt> {

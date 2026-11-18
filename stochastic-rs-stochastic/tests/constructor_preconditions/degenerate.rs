@@ -144,7 +144,8 @@ fn a_negative_deviation_written_to_white_noise_is_refused() {
   let _ = p.sample();
 }
 
-/// A size law the kernels do not draw, so only the zero intensity makes these processes device-ready.
+/// A size law the kernels do not draw, so only the zero intensity makes these processes
+/// device-ready.
 fn jump_sizes() -> SimdUniform<f64> {
   SimdUniform::new(-0.1, 0.1)
 }

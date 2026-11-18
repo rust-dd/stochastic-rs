@@ -1,14 +1,11 @@
-//! # Wu Zhang
+//! `xn` independent forward–volatility pairs: a square-root variance scales its forward's noise.
 //!
 //! $$
 //! dv_{i,t}=\beta_i(\alpha_i-v_{i,t})dt+\nu_i\sqrt{v_{i,t}}\,dW_{i,t}^v,\quad
 //! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
 //! $$
 //!
-//! `xn` independent CEV/SABR-style forward-volatility pairs: each
-//! dimension's volatility `v_i` is a CIR-style square-root diffusion, and
-//! its forward `F_i` is driven multiplicatively by `v_i`'s own path
-//! (no cross-dimension coupling, no `dW^v`/`dW^F` correlation).
+//! Each `v_i` is CIR-style; the pairs are uncoupled, and `dW^v` and `dW^F` are independent.
 //!
 
 use ndarray::Array1;
@@ -46,7 +43,7 @@ pub struct WuZhang<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -54,6 +51,8 @@ pub struct WuZhang<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> WuZhang<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and the six arrays hold `xn`
+  /// finite entries, with `alpha`, `beta`, `nu` and `v0` non-negative.
   pub fn new(
     alpha: Array1<T>,
     beta: Array1<T>,
@@ -141,12 +140,8 @@ impl<T: FloatExt, S: SeedExt, B> WuZhang<T, S, B> {
   }
 }
 
-/// One pair's recursion. Both tails are pre-filled with `N(0, dt)` draws —
-/// the forward rate's first, then the variance's — and each step floors the
-/// variance, mean-reverts it under its square-root diffusion, floors it
-/// again, and moves the floored rate by `lambda` times the square root of
-/// the variance just stepped. Shared by the matrix sampler and the pair view
-/// so the two cannot drift.
+/// One pair's recursion on tails pre-filled with `N(0, dt)`, the rate's first: each step floors
+/// and mean-reverts the variance, floors it again, and moves the rate by `lambda · √v`.
 fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
   f: &mut [T],
   v: &mut [T],
@@ -185,12 +180,8 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
   }
 }
 
-/// One forward-rate / variance pair of the model, stepped on its own.
-/// `WuZhang` reports every pair as two rows of one matrix — the rates first,
-/// then the variances — and the engine speaks in `[Array1<T>; 2]`, so this
-/// view is what carries a launch: pair `i` under its own four scalars,
-/// started at its own levels. It borrows rather than owns, so the seed it
-/// advances is the process's own.
+/// One forward-rate and variance pair as a process of its own, which carries a launch: `WuZhang`
+/// reports rates then variances as rows of one matrix. It borrows the process's seed.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhang<T, S, B>, usize);
@@ -321,10 +312,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> WuZhangSampler<T, S> {
     WuZhangSampler {
       alpha: self.alpha.clone(),
@@ -340,11 +329,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine, one launch per pair: the pairs are
-  /// independent, so a device steps each one's whole batch in one kernel and
-  /// the matrix — rates in the first `xn` rows, variances in the next — is
-  /// assembled here. On the host devices each pair runs the same recursion
-  /// the matrix sampler does.
+  /// Through the Euler engine, one launch per independent pair, assembled here with rates in the
+  /// first `xn` rows and variances in the next; the host runs the same pair recursion.
   fn sample(&self) -> Array2<T> {
     let mut out = Array2::<T>::zeros((2 * self.xn, self.n));
     for i in 0..self.xn {
@@ -398,9 +384,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`WuZhang`] sampling state: owns the per-pair parameter vectors,
-/// the initial curves and the seed source so a Monte-Carlo loop reuses the
-/// output matrix.
+/// Reusable [`WuZhang`] sampling state: the per-pair parameters, the initial curves and the seed
+/// source, so a Monte-Carlo loop reuses the output matrix.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct WuZhangSampler<T: FloatExt, S: SeedExt> {

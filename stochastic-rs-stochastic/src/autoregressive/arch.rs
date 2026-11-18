@@ -1,7 +1,7 @@
-//! # Arch
+//! ARCH(p): the conditional variance is `omega` plus the weighted last `p` squared observations.
 //!
 //! $$
-//! \sigma_t^2=\omega+\sum_{i=1}^m\alpha_iX_{t-i}^2,\qquad X_t=\sigma_t z_t,\ z_t\sim\mathcal N(0,1)
+//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2,\qquad X_t=\sigma_t z_t,\ z_t\sim\mathcal N(0,1)
 //! $$
 //!
 
@@ -20,17 +20,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an Arch(m) model:
-///
-/// \[
-///   \sigma_t^2 = \omega + \sum_{i=1}^m \alpha_i X_{t-i}^2,
-///   \quad X_t = \sigma_t \cdot z_t, \quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// # Fields
-/// - `omega`: Constant term.
-/// - `alpha`: Array of Arch coefficients.
-/// - `n`: Number of observations.
+/// ARCH(p): the conditional variance is `omega` plus the `alpha`-weighted last `p` squared
+/// observations, started at `omega`.
 #[derive(Debug, Clone)]
 pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Omega (constant term in variance)
@@ -39,7 +30,7 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: Array1<T>,
   /// Length of series
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -47,8 +38,8 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arch<T, S> {
-  /// Engle's (1982) ARCH(m). Panics unless `omega > 0` and every `alpha[i] >= 0`; loadings that
-  /// sum to one or more are accepted, and their variance may grow until it samples `∞` or NaN.
+  /// Engle's (1982) ARCH(p). Panics unless `n >= 1` and `omega > 0`, `alpha[i] >= 0` are finite;
+  /// loadings that sum to one or more are accepted, and their variance may reach `∞` or NaN.
   pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),
@@ -98,9 +89,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::zero()
   }
 
-  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
-  /// first point: the state it starts from is the seed variance and the
-  /// not-yet-warm marker, not a value the path reports.
+  /// The series starts at `σ₀ z₀`, so the launch steps before it writes its first point: the
+  /// initial state is the seed variance and the not-yet-warm marker, not a reported value.
   fn initial_state(&self) -> [T; 4] {
     check_alpha(&self.alpha);
     [T::zero(), self.omega, T::zero(), T::zero()]
@@ -158,10 +148,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the conditional variance and the
-  /// series step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  /// What a device runs: order one, since the family carries one lag; a higher order stays on
+  /// the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1)).then_some("an order above one: the family carries a single lag")
   }
@@ -223,9 +211,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Arch`] sampling state: owns the standard-normal innovation source
-/// and the variance coefficients so a Monte-Carlo loop pays the `SimdNormal`
-/// setup once.
+/// Reusable [`Arch`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct ArchSampler<T: FloatExt> {

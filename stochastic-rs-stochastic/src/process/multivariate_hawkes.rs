@@ -1,19 +1,14 @@
-//! # Multivariate Hawkes Process
+//! D-dimensional self-exciting point process with exponential kernels and cross-excitation.
 //!
 //! $$
 //! \lambda_i(t) = \mu_i + \sum_{j=1}^{D}\sum_{T_k^j < t} \alpha_{ij}\,e^{-\beta_{ij}(t - T_k^j)},
 //! \quad i = 1,\dots,D
 //! $$
 //!
-//! D-dimensional self-exciting point process with exponential kernels and
-//! cross-excitation. Stationarity requires $\rho(\Gamma) < 1$ where
-//! $\Gamma_{ij} = \alpha_{ij}/\beta_{ij}$.
+//! Stationary when the spectral radius of `Γ`, `Γ_ij = α_ij / β_ij`, is below 1; Ogata thinning.
 //!
-//! Simulated via multivariate Ogata thinning.
-//!
-//! Reference:
-//! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
-//! - Bacry, Mastromatteo, Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
+//! Reference: Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
+//! Reference: Bacry, Mastromatteo & Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -28,19 +23,14 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// D-dimensional Hawkes process with exponential kernels.
-///
-/// Output: `ProcessExt::Output = Vec<Array1<T>>` — one `Array1<T>` of
-/// event times per component (length D), each component's vector sized to
-/// however many events it actually had (event counts differ per
-/// component, so this is not a fixed-shape `Array2<T>`).
+/// D-dimensional Hawkes process with exponential kernels. The output is one `Array1<T>` of event
+/// times per component, each as long as that component's own event count.
 #[derive(Debug, Clone)]
 pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Baseline intensities $\mu_i > 0$, length D.
   pub mu: Array1<T>,
-  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D): size of the
-  /// intensity jump on component `i` triggered by an event on component
-  /// `j`.
+  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D): the intensity jump on component `i`
+  /// that an event on component `j` triggers.
   pub alpha: Array2<T>,
   /// Decay matrix $\beta_{ij} > 0$, shape (D, D): rate at which the
   /// `j`-to-`i` excitation from `alpha` fades back toward `mu_i`.
@@ -56,6 +46,8 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
+  /// Panics unless `alpha` and `beta` are `D × D` for `D = mu.len()`, every entry is finite, and
+  /// an `Until` horizon is positive and finite.
   pub fn new(
     mu: Array1<T>,
     alpha: Array2<T>,
@@ -93,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     self.horizon = horizon;
@@ -186,11 +178,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesLaunchSampler
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for MultivariateHawkesLaunch<'_, T, S, B>
 {
-  /// The baselines, the excitation matrix and one decay per target, a missing
-  /// second component travelling with a zero baseline and zero excitations. A
-  /// configuration the family cannot carry never reaches a launch —
-  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
-  /// bypassing that guard.
+  /// The baselines, the excitation matrix and one decay per target; a missing second component
+  /// has zero baseline and excitations. [`ProcessExt::sample`] keeps any other shape on the host.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     assert!(
@@ -261,10 +250,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> MultivariateHawkesSampler<'_, T, S> {
     MultivariateHawkesSampler {
       mu: &self.mu,
@@ -275,9 +262,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine in count mode with at most two components and
-  /// one decay per target, where every step is one event; anything else keeps
-  /// the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine in count mode with at most two components and one decay per
+  /// target; anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Vec<Array1<T>> {
     if self.device_ready() {
       rows_to_components(
@@ -347,12 +333,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: count mode — the horizon mode's
-  /// length is itself random and has no grid — with at most two components,
-  /// one decay per target (`β_ij` constant along each row) and positive
-  /// baselines. The family superposes each target's exact excess clock with
-  /// the baselines' joint Poisson clock, which is what one decay per target
-  /// makes closed-form; per-pair decays keep the process on the host.
+  /// What a device runs: count mode, at most two components, positive baselines and one decay
+  /// per target, which makes each target's excess clock closed-form; per-pair decays stay on host.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = {
       let d = self.dim();
@@ -365,11 +347,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`MultivariateHawkes`] sampling state: borrows the baseline
-/// intensities, excitation and decay matrices and owns the seed source. The
-/// component count is a runtime property of `mu`, and event counts differ per
-/// path, so each call rebuilds the output `Vec`; the RNG is rebuilt from the
-/// owned seed each call, exactly as the legacy `sample` body did.
+/// Reusable [`MultivariateHawkes`] sampling state: it borrows the baselines and the two matrices
+/// and owns the seed source; each call rebuilds the output `Vec` and the RNG from that seed.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {

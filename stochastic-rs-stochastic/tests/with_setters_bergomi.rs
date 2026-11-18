@@ -146,14 +146,8 @@ fn bergomi_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `bergomi_base()` helper the bit-exact `cgns`-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `BergomiFields`
-/// mirror, not a `Bergomi { .., ..Bergomi::default() }` struct-update
-/// literal: `Bergomi` has a private `cgns` cache field, so that literal
-/// wouldn't even compile from this external test crate.
+/// A `Default`-rooted `with_r` round-trip. It compares through the `BergomiFields` mirror:
+/// `Bergomi` has a private `cgns` cache, so a struct-update literal would not compile here.
 #[test]
 fn bergomi_default_with_r_round_trip() {
   let base = Bergomi::<f64>::default();

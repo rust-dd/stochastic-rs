@@ -1,7 +1,4 @@
-//! # Heston Model with Stochastic Correlation (HSCM)
-//!
-//! Teng, Ehrhardt & Günther (2016), "On the Heston model with stochastic
-//! correlation", Int. J. Theor. Appl. Finance 19(6).
+//! Heston with stochastic correlation (HSCM): the price–variance correlation is a diffusion.
 //!
 //! $$
 //! dS = rS\,dt + \sqrt{v}\,S\,dW^S \\
@@ -9,8 +6,9 @@
 //! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X)
 //! $$
 //!
-//! With correlations (Eq. 2.4, ρ₁ = 0 assumption):
-//!   dW^S·dW^v = ρ_t dt,    dW^v·dW^ρ = ρ₂ dt
+//! The Brownian correlations are Eq. 2.4 with ρ₁ = 0: `dW^S dW^v = ρ_t dt` and `dW^v dW^ρ = ρ₂ dt`.
+//!
+//! Reference: Teng, Ehrhardt & Günther (2016), Int. J. Theor. Appl. Finance 19(6)
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -26,19 +24,18 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Single-asset Heston model with stochastic price-vol correlation.
+/// Single-asset Heston whose price-variance correlation $\rho_t$ is the modified OU of Eq. 2.10;
+/// the log-price is the Cholesky split of Eq. 2.7 with $\rho_1 = 0$.
 ///
-/// The correlation ρ_t between the asset log-return and variance
-/// innovations follows a modified Ou process (Eq. 2.10):
+/// $$
+/// d\rho_t = (1-\rho_t^2)\bigl[\kappa_r(\mu_r-\rho_t)-\sigma_r^2\rho_t\bigr]dt +
+///   (1-\rho_t^2)\sigma_r\,dW^\rho
+/// $$
 ///
-/// dρ_t = (1−ρ²)\[κ_r(μ_r−ρ_t)−σ_r²ρ_t\]dt + (1−ρ²)σ_r dW^ρ
-///
-/// The log-price Cholesky decomposition (Eq. 2.7 with ρ₁=0):
-///
-/// dx = (r−½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `HestonStochCorr::new(..).with_kappa_v(2.5).with_rho2(-0.4)`.
+/// $$
+/// dx = (r-\tfrac12 v)\,dt + \rho_t\sqrt{v}\,d\tilde W^\nu + \rho_2\sqrt{v}\,d\tilde W^\rho +
+///   \sqrt{1-\rho_t^2-\rho_2^2}\,\sqrt{v}\,d\tilde W^x
+/// $$
 #[derive(Debug, Clone)]
 pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   // Market
@@ -97,6 +94,7 @@ impl<T> From<[Array1<T>; 3]> for HestonStochCorrPaths<T> {
 }
 
 impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     r: T,
     s0: T,
@@ -191,108 +189,106 @@ impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
     require!(rho2.is_finite(), rho2);
   }
 
-  /// Replace `r`, all else unchanged.
+  /// Replace `r`; panics unless `r` is finite.
   pub fn with_r(mut self, r: T) -> Self {
     Self::check_r(r);
     self.r = r;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `kappa_v`, all else unchanged.
+  /// Replace `kappa_v`; panics unless `kappa_v` is finite.
   pub fn with_kappa_v(mut self, kappa_v: T) -> Self {
     Self::check_kappa_v(kappa_v);
     self.kappa_v = kappa_v;
     self
   }
 
-  /// Replace `mu_v`, all else unchanged.
+  /// Replace `mu_v`; panics unless `mu_v` is finite.
   pub fn with_mu_v(mut self, mu_v: T) -> Self {
     Self::check_mu_v(mu_v);
     self.mu_v = mu_v;
     self
   }
 
-  /// Replace `sigma_v`, all else unchanged.
+  /// Replace `sigma_v`; panics unless `sigma_v` is finite.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
     Self::check_sigma_v(sigma_v);
     self.sigma_v = sigma_v;
     self
   }
 
-  /// Replace `rho0`, all else unchanged.
+  /// Replace `rho0`; panics unless `rho0` is finite.
   pub fn with_rho0(mut self, rho0: T) -> Self {
     Self::check_rho0(rho0);
     self.rho0 = rho0;
     self
   }
 
-  /// Replace `kappa_r`, all else unchanged.
+  /// Replace `kappa_r`; panics unless `kappa_r` is finite.
   pub fn with_kappa_r(mut self, kappa_r: T) -> Self {
     Self::check_kappa_r(kappa_r);
     self.kappa_r = kappa_r;
     self
   }
 
-  /// Replace `mu_r`, all else unchanged.
+  /// Replace `mu_r`; panics unless `mu_r` is finite.
   pub fn with_mu_r(mut self, mu_r: T) -> Self {
     Self::check_mu_r(mu_r);
     self.mu_r = mu_r;
     self
   }
 
-  /// Replace `sigma_r`, all else unchanged.
+  /// Replace `sigma_r`; panics unless `sigma_r` is finite.
   pub fn with_sigma_r(mut self, sigma_r: T) -> Self {
     Self::check_sigma_r(sigma_r);
     self.sigma_r = sigma_r;
     self
   }
 
-  /// Replace `rho2`, all else unchanged.
+  /// Replace `rho2`; panics unless `rho2` is finite.
   pub fn with_rho2(mut self, rho2: T) -> Self {
     Self::check_rho2(rho2);
     self.rho2 = rho2;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// The Euler engine's view of the stochastic-correlation Heston model. The
-/// correlation is stepped on the unbounded variable it lives on, so `ρ₀`
-/// enters as its inverse transform and the reported value is transformed
-/// back.
+/// The Euler engine's view: the correlation is stepped on the unbounded variable it lives on, so
+/// `ρ₀` enters as its inverse transform and the reported value is transformed back.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for HestonStochCorr<T, S, B>
 {
@@ -356,10 +352,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> HestonStochCorrSampler<T, S> {
     HestonStochCorrSampler {
       r: self.r,
@@ -379,9 +373,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> HestonStochCorrPaths<T> {
     self.backend.system_sample(self)
   }
@@ -410,10 +403,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`HestonStochCorr`] sampling state: owns the seed source so a
-/// Monte-Carlo loop reuses all three output buffers. The three Gaussian streams
-/// are rebuilt per call from the (derived) seed, exactly as the legacy `sample`
-/// body did.
+/// Reusable [`HestonStochCorr`] sampling state: it owns the seed source and rebuilds the three
+/// Gaussian streams from the derived seed on every call.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {

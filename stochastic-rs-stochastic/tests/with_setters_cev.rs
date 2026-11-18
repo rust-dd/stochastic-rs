@@ -1,6 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Cev`
-//! (`diffusion/cev.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! stream fresh from `self.{mu,sigma,gamma,n,t,seed}` on every call.
+//! `with_*` setters on `Cev` (`diffusion/cev.rs`), which caches nothing: `sampler()` builds its
+//! Gaussian stream from `self.{mu,sigma,gamma,n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

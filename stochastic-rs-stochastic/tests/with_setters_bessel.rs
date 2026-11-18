@@ -1,7 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Bessel` and
-//! `SquaredBessel` (`diffusion/bessel.rs`, one source file for both). No
-//! persisted cache on either type: `sampler()` builds its Gaussian source
-//! fresh from `self.{n,t,seed}` on every call.
+//! `with_*` setters on `Bessel` and `SquaredBessel` (`diffusion/bessel.rs`). Neither caches:
+//! `sampler()` builds its Gaussian source from `self.{n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

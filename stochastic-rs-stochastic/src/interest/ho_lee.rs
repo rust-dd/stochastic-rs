@@ -1,4 +1,4 @@
-//! # Ho Lee
+//! Ho–Lee: a Gaussian short rate without mean reversion, its drift constant or off a forward curve.
 //!
 //! $$
 //! dr_t=\theta(t)dt+\sigma dW_t
@@ -30,7 +30,7 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -38,6 +38,8 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `sigma` and a constant drift
+  /// are finite.
   pub fn new(drift: HoLeeDrift<T>, sigma: T, n: usize, t: Option<T>, seed: S) -> Self {
     if let HoLeeDrift::Constant(theta) = drift {
       assert!(
@@ -66,9 +68,8 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
   }
 }
 
-/// The Euler engine's view of Ho-Lee. Both drift forms — a constant `θ` or
-/// the forward curve's slope plus `σ²t` — are one value per grid point, so
-/// both reach the device the same way.
+/// The Euler engine's view. Both drift forms, a constant `θ` or the forward curve's slope plus
+/// `σ²t`, are one value per grid point and reach the device the same way.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for HoLee<T, S, B>
 {
@@ -148,9 +149,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel
-  /// with its time-varying coefficient bound per step, on the host devices it
-  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device binds the time-varying coefficient per step in its
+  /// kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -180,9 +180,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`HoLee`] sampling state. Borrows the process for its optional
-/// forward-curve function and owns the Gaussian source so a Monte-Carlo loop
-/// pays the `SimdNormal` setup once.
+/// Reusable [`HoLee`] sampling state: it borrows the process for its forward curve and owns the
+/// Gaussian source, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HoLeeSampler<'a, T: FloatExt> {
@@ -320,10 +319,8 @@ impl PyHoLee {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
     py_dispatch_f64!(self, |inner| inner.device_fallback())
@@ -349,10 +346,8 @@ impl PyHoLee {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every callable coefficient
-  /// re-acquires it, so a Python function is called from rayon workers one
-  /// at a time.
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is released meanwhile; a
+  /// callable coefficient re-acquires it, so rayon workers call a Python function one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

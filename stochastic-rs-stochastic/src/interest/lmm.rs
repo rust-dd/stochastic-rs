@@ -1,4 +1,4 @@
-//! # Lmm — drift-coupled LIBOR Market Model under the spot-LIBOR measure
+//! LIBOR market model under Glasserman's (2003) §3.7 spot measure; log-Euler keeps forwards > 0.
 //!
 //! $$
 //! \frac{dL_n(t)}{L_n(t)} \;=\;
@@ -7,60 +7,17 @@
 //!   \;+\;\sigma_n(t)\,dW_n^{\!*}(t)
 //! $$
 //!
-//! Forward-LIBOR market model (BGM/Jamshidian/Brace-Gatarek-Musiela) with
-//! cross-forward drift coupling under the **spot-LIBOR measure**
-//! `B^*(t)` of Glasserman (2003) §3.7.
-//!
-//! Numerical scheme: **log-Euler with frozen-at-step drift** (Glasserman
-//! 2003 §3.7.1; Joshi 2003). Each step approximates
-//!
 //! ```text
 //! L_n(t+Δt) = L_n(t)·exp[(μ_n(t) − ½σ_n²) Δt + σ_n √Δt · Z_n]
 //! ```
 //!
-//! where `μ_n(t)` is the drift summation evaluated at the start of the
-//! step and `Z_n = Σ_k chol(ρ)_{n,k} ε_k` with `ε ~ N(0, I)`. Log-Euler
-//! preserves positivity (forwards stay positive, unlike a forward-Euler
-//! step) and is the standard discretization choice for caplet / swaption
-//! pricing.
+//! Drift frozen per step (§3.7.1; Joshi 2003), not Glasserman & Zhao's predictor-corrector.
 //!
-//! ## Tenor structure
-//!
-//! Tenor `T_0 < T_1 < … < T_M` (length `M+1`) defines the M forward Libors
-//! `L_n` for `n=0..M-1`, where `L_n(t)` is the simple-compounded forward
-//! rate over `[T_n, T_{n+1}]` observed at time `t ≤ T_n`. Day-count
-//! fractions `δ_n = T_{n+1} − T_n`. The active index function
-//! `η(t) = min{ n : T_n > t }` is the next reset date; only Libors with
-//! `n ≥ η(t)` are alive.
-//!
-//! ## Output
-//!
-//! `Array2<T>` of shape `(M, n_steps)`. Row `n` stores the path
-//! `L_n(t_0), L_n(t_1), …, L_n(t_{n_steps-1})`. After `t_k > T_n`,
-//! `L_n` is **frozen** at its reset value `L_n(T_n^−)` (a Libor that has
-//! already reset cannot evolve further — its value is locked in).
-//!
-//! ## Scope and references
-//!
-//! - Brace, Gatarek, Musiela (1997), "The Market Model of Interest Rate
-//!   Dynamics", Mathematical Finance 7(2), 127-155.
-//! - Jamshidian (1997), "LIBOR and swap market models and measures",
-//!   Finance and Stochastics 1(4), 293-330.
-//! - Glasserman (2003), "Monte Carlo Methods in Financial Engineering",
-//!   Springer, §3.7 ("LIBOR market model").
-//! - Glasserman, Zhao (2000), "Arbitrage-free discretization of lognormal
-//!   forward LIBOR and swap rate models", Finance and Stochastics 4(1),
-//!   35-68 — the original predictor-corrector scheme; this implementation
-//!   uses the simpler frozen-drift log-Euler.
-//! - Hula (2011), "Discrete LIBOR Market Model Analogy", arXiv:1108.4260
-//!   — discrete construction whose continuous-time limit is the LMM.
-//!
-//! Volatilities `σ_n(t)` are taken **time-homogeneous** (constant per
-//! Libor) for v0; piecewise-constant vol can be added later by extending
-//! `sigma` to `Array2<T>` of shape `(M, n_steps)`.
-//!
-//! Correlations `ρ` default to the identity (independent factors per
-//! Libor); supply a custom positive-definite matrix via `with_correlation`.
+//! Reference: Brace, Gatarek & Musiela (1997), Math. Finance 7(2), 127–155
+//! Reference: Jamshidian (1997), Finance Stoch. 1(4), 293–330
+//! Reference: Glasserman (2003), "Monte Carlo Methods in Financial Engineering", Springer, §3.7
+//! Reference: Glasserman & Zhao (2000), Finance Stoch. 4(1), 35–68
+//! Reference: Hula (2011), "Discrete LIBOR Market Model Analogy", arXiv:1108.4260
 //!
 
 use ndarray::Array1;
@@ -79,11 +36,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR measure; the module
-/// header gives the scope, the dynamics and the references.
+/// Drift-coupled LIBOR Market Model under the spot-LIBOR measure. `sample` returns `(M, n)`:
+/// row `n` is `L_n` on the grid, frozen at its reset value once the grid passes `T_n`.
 #[derive(Debug, Clone)]
 pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Tenor dates `T_0 < T_1 < … < T_M`, length `M+1`. Strictly increasing.
+  /// Tenor dates `T_0 < T_1 < … < T_M`, strictly increasing: `L_n` is the simple forward over
+  /// `[T_n, T_{n+1}]`, `δ_n = T_{n+1} − T_n`, alive while `n ≥ η(t) = min{n : T_n > t}`.
   pub tenor: Array1<T>,
   /// Initial forward Libor curve `L_n(0)` for `n=0..M-1`. Length `M`.
   /// Each entry must be positive.
@@ -98,7 +56,7 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Simulation horizon `t_horizon`. Defaults to `T_M` (last tenor date)
   /// when `None`. Must satisfy `0 < t_horizon ≤ T_M`.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -106,7 +64,8 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
-  /// Construct an LMM with independent forward factors (identity correlation).
+  /// Identity correlation. Panics unless `n >= 2`, a given `t` is positive and finite, `tenor`,
+  /// `l0` and `sigma` pass their setters' checks, and both hold `tenor.len() - 1` entries.
   pub fn new(
     tenor: Array1<T>,
     l0: Array1<T>,
@@ -201,32 +160,16 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     self
   }
 
-  /// Replace `tenor`. Panics if the new tenor has fewer than two dates or
-  /// is not strictly increasing — the same checks `new(...)` runs on its
-  /// own `tenor` argument. Does not cross-check `tenor.len() - 1` against
-  /// `l0`/`sigma`'s *current* length: eagerly doing so would make it
-  /// impossible to ever change the Libor count via chained setters (every
-  /// ordering of `.with_tenor(..).with_l0(..).with_sigma(..)` has an
-  /// intermediate state where exactly one of the three hasn't caught up
-  /// yet). A leftover mismatch by the time `.sample()` runs still panics
-  /// there, same as indexing a too-short array inside `Lmm::new`'s own
-  /// equivalent misuse would.
+  /// Replace `tenor`; panics unless it holds two or more finite, strictly increasing dates. Its
+  /// length is checked against `l0` and `sigma` at sampling, so chained setters can change it.
   pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
     Self::check_tenor(&tenor);
     self.tenor = tenor;
     self
   }
 
-  /// Replace `l0`. Panics if any entry is not strictly positive. If the new
-  /// `l0` has a different length than the current one, the cached
-  /// correlation Cholesky factor `chol` (if any) is no longer
-  /// shape-compatible and cannot be recomputed from public fields alone —
-  /// only the original `rho` matrix determines it, and that matrix is not
-  /// retained after [`with_correlation`](Lmm::with_correlation) decomposes
-  /// it — so it is invalidated (reset to `None`, the identity-correlation
-  /// default) rather than left stale. A same-length replacement leaves
-  /// `chol` untouched, since its value never depended on `l0`'s contents,
-  /// only its length.
+  /// Replace `l0`; panics unless every entry is positive and finite. A new length resets `chol`
+  /// to `None` (identity), since the `rho` it factored is not kept; the same length keeps it.
   pub fn with_l0(mut self, l0: Array1<T>) -> Self {
     Self::check_l0(&l0);
     let shape_changed = l0.len() != self.l0.len();
@@ -237,28 +180,28 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     self
   }
 
-  /// Replace `sigma`. Panics if any entry is negative.
+  /// Replace `sigma`; panics unless every entry is finite and non-negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
     Self::check_sigma(&sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace the number of simulation grid points `n`, all else unchanged.
+  /// Replace the number of simulation grid points `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -280,11 +223,8 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     }
   }
 
-  /// The number of reset dates passed at each step's start — the host loop's
-  /// `eta` — tabulated for the step that produces each grid point, with the
-  /// time accumulated step by step exactly as the host accumulates it, so a
-  /// reset landing on a grid time is crossed at the same step on both. The
-  /// rates below it are frozen; the drift sums start one below it.
+  /// The host loop's `eta`, the reset dates passed at each step's start, with time accumulated
+  /// step by step as the host does, so a reset on a grid time is crossed at the same step on both.
   fn reset_count_curve(&self) -> Vec<T> {
     let m = self.l0.len();
     let dt = self.dt();
@@ -304,9 +244,8 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the curve: the rows padded into the four slots
-/// of one launch, an absent rate travelling with a zero volatility and an
-/// identity row of the factor so it neither moves nor enters a drift.
+/// The Euler engine's view: the rows padded into one launch's four slots; an absent rate has a
+/// zero volatility and an identity row of the factor, so it neither moves nor enters a drift.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct LmmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Lmm<T, S, B>);
@@ -363,9 +302,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
   for LmmLaunch<'_, T, S, B>
 {
-  /// Padded into the four slots. A wider curve never reaches a launch —
-  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
-  /// bypassing that guard; the horizon is held to the host's own bounds.
+  /// Padded into the four slots, the horizon held to the host's bounds. [`ProcessExt::sample`]
+  /// keeps a wider curve on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     p.validate_lmm_inputs();

@@ -1,13 +1,5 @@
-//! Every process carries the sampling backend as a type parameter: each
-//! `ProcessExt` implementation is bound on a backend capability
-//! (`HostBackend`, `EulerBackend` or `FgnBackend`) and every backend-typed
-//! process exposes `on::<B2>()`. A process added without the parameter fails
-//! here rather than shipping a second, `Cpu`-only API shape.
-//!
-//! The bound is what makes an unsupported backend a compile error rather
-//! than a silent fallback: a process bound on `HostBackend` cannot be
-//! sampled once it has been re-typed onto a device, which is the whole point
-//! of naming the capability rather than accepting any `B`.
+//! Every `ProcessExt` implementation is bound on a backend capability (`HostBackend`,
+//! `EulerBackend` or `FgnBackend`) and exposes `on::<B2>()`: an unsupported backend cannot compile.
 
 use std::fs;
 use std::path::Path;
@@ -93,9 +85,8 @@ fn every_process_ext_impl_is_backend_typed() {
     }
     for (generics, name, args) in impl_headers(src) {
       impls += 1;
-      // The bound may be written through a path — `B: crate::euler::
-      // EulerBackend<T>` — so what is matched is the trait's own name at the
-      // end of the path, not the whole spelling.
+      // The bound may be written through a path (`B: crate::euler::EulerBackend<T>`), so the
+      // match is on the trait's own name at the end of the path.
       let bound_ok = generics.split("B: ").skip(1).any(|rest| {
         let bound = rest.split([',', '+']).next().unwrap_or(rest);
         let name = bound.split('<').next().unwrap_or(bound);

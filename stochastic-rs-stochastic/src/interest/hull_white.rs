@@ -1,12 +1,10 @@
-//! # Hull White
+//! Hull–White: a Gaussian short rate reverting at speed `alpha`, with a time-dependent `theta(t)`.
 //!
 //! $$
 //! dr_t=\left(\theta(t)-a r_t\right)dt+\sigma dW_t
 //! $$
 //!
-//! Reference: Hull J. & White A. (1990) — *Pricing Interest-Rate-
-//! Derivative Securities*, Review of Financial Studies 3(4), 573–592,
-//! DOI: 10.1093/rfs/3.4.573.
+//! Reference: Hull & White (1990), Rev. Financ. Stud. 3(4), 573–592, DOI 10.1093/rfs/3.4.573
 //!
 
 use ndarray::Array1;
@@ -42,26 +40,23 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Constant θ(t) ≡ 0.04 used by [`HullWhite`]'s `Default` impl — matches
-/// this file's own `const_theta` test fixture. A constant target degenerates
-/// Hull-White to the time-homogeneous case, the simplest well-defined
-/// instance to default to.
+/// The constant θ(t) ≡ 0.04 of [`HullWhite`]'s `Default`: the time-homogeneous case, and this
+/// file's `const_theta` test fixture.
 fn default_theta<T: FloatExt>(_t: T) -> T {
   T::from_f64_fast(0.04)
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `HullWhite::default().with_alpha(0.6)`. No persisted cache:
-/// `sampler()` builds its Gaussian source fresh from `self` and borrows
-/// `&self.theta` directly every call.
+/// Every field has a `with_*` setter (`HullWhite::default().with_alpha(0.6)`); nothing is
+/// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     alpha: T,
@@ -102,48 +97,48 @@ impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();
     self
   }
 
-  /// Replace `alpha`, all else unchanged.
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -240,9 +235,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel
-  /// with its time-varying coefficient bound per step, on the host devices it
-  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device binds the time-varying coefficient per step in its
+  /// kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -272,9 +266,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`HullWhite`] sampling state. Borrows the process for its
-/// time-dependent drift `θ(t)` and owns the Gaussian source so a Monte-Carlo
-/// loop pays the `SimdNormal` setup once.
+/// Reusable [`HullWhite`] sampling state: it borrows the process for `θ(t)` and owns the
+/// Gaussian source, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HullWhiteSampler<'a, T: FloatExt> {
@@ -388,10 +381,8 @@ impl PyHullWhite {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
     py_dispatch_f64!(self, |inner| inner.device_fallback())
@@ -417,10 +408,8 @@ impl PyHullWhite {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every `theta(t)` evaluation
-  /// re-acquires it, so the Python callable is called from rayon workers
-  /// one at a time.
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is released meanwhile; each
+  /// `theta(t)` call re-acquires it, so rayon workers call the Python callable one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

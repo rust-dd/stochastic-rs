@@ -1,4 +1,4 @@
-//! # Hjm
+//! HJM-style Euler simulator of short rate, bond price and forward rate; no drift restriction.
 //!
 //! $$
 //! df(t,T)=\alpha(t,T)dt+\sigma(t,T)\,dW_t
@@ -19,38 +19,24 @@ use crate::traits::Fn2D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Hjm-style Euler simulator.
-///
-/// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
-/// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
+/// HJM-style Euler simulator: `r`, `p` and `f` are user-driven SDE components, and the
+/// no-arbitrage drift restriction between `alpha` and `sigma` is not enforced.
 #[derive(Debug, Clone)]
 pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent coefficient a(t) in the short rate's drift term
   /// `a(t)·dt`.
   pub a: Fn1D<T>,
-  /// Time-dependent diffusion-scale function b(t) for the short-rate
-  /// component: `sample_inner` pre-fills `r[1..]` with fresh N(0, dt)
-  /// residuals before the update loop runs, and at step `i` this
-  /// multiplies the residual still sitting in `r[i]` just before that
-  /// slot is overwritten in place with the real path value — the same
-  /// pre-fill-then-consume pattern as e.g. `HullWhite`'s `diff_scale *
-  /// *z`. A diffusion coefficient, not a level-multiplying term.
+  /// Time-dependent diffusion scale b(t) of the short rate: at step `i` it multiplies the
+  /// N(0, dt) residual pre-filled into `r[i]`, just before the path value overwrites it.
   pub b: Fn1D<T>,
-  /// Time-dependent scaling function p(t,T) multiplying the entire
-  /// bracketed drift-plus-diffusion term of the bond-price component
-  /// (this is the model's own `p`, distinct from the `p` output array it
-  /// helps compute).
+  /// Scale p(t,T) multiplying the whole drift-plus-diffusion bracket of the bond-price
+  /// component; the model's `p`, not the `p` output array.
   pub p: Fn2D<T>,
   /// Time-dependent drift-rate function q(t,T) for the bond-price
   /// component (multiplied by `dt` inside `p`'s bracket).
   pub q: Fn2D<T>,
-  /// Time-dependent diffusion-scale function v(t,T) for the bond-price
-  /// component: `sample_inner` pre-fills `p[1..]` with fresh N(0, dt)
-  /// residuals before the update loop runs, and at step `i` this
-  /// multiplies the residual still sitting in `p[i]` just before that
-  /// slot is overwritten in place — the diffusion term inside `p`'s own
-  /// bracket, the same role `b` plays for `r` and `sigma` plays for `f`.
-  /// Not a level-multiplying term.
+  /// Time-dependent diffusion scale v(t,T) of the bond price: it multiplies the residual
+  /// pre-filled into `p[i]`, the role `b` plays for `r` and `sigma` for `f`.
   pub v: Fn2D<T>,
   /// Time-dependent forward-rate drift function α(t,T) (matches the
   /// module header's own α(t,T) — HJM drift of `f(t,T)`).
@@ -68,7 +54,7 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub f0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -91,6 +77,7 @@ impl<T> From<[Array1<T>; 3]> for HjmPaths<T> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     a: impl Into<Fn1D<T>>,
     b: impl Into<Fn1D<T>>,
@@ -142,11 +129,8 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
   }
 }
 
-/// The Euler engine's view: the seven coefficient functions are functions of
-/// time alone — every `Fn2D` is called at the fixed horizon — so the host
-/// tabulates them per grid point and the kernel steps three rows under six
-/// curves, the bond price's outer scale folded into its drift and diffusion.
-/// The callables themselves never reach the device.
+/// The Euler engine's view: every `Fn2D` is called at the fixed horizon, so the host tabulates
+/// six curves per grid point, the bond price's scale folded in; no callable reaches the device.
 impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
   /// The grid spacing the three rows share: `n - 1` increments over the
   /// horizon, and zero when the grid has no increment to take.
@@ -191,9 +175,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  /// The six coefficients at each grid point, in the order the step names
-  /// them: `a`, `b`, `p·q`, `p·v`, `alpha`, `sigma`. Step `i` reads the
-  /// value at `i · dt`, which is the time the host's own loop evaluates.
+  /// The six coefficients at each grid point, in the step's order: `a`, `b`, `p·q`, `p·v`,
+  /// `alpha`, `sigma`. Step `i` reads the value at `i · dt`, as the host's loop does.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
     let dt = self.dt();
     let t_max = self.horizon();
@@ -229,18 +212,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives a seed once, at construction, for [`HjmSampler`] to own.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. The three SDE components are
-  /// driven by user-supplied [`Fn1D`] / [`Fn2D`] callables (not clonable,
-  /// since the Python variant holds a `pyo3::Py`) so there is nothing else
-  /// reusable to hoist across calls beyond the borrowed process itself;
-  /// `sample_inner`'s three `SimdNormal::new(...).seeded(seed)` calls consume this
-  /// owned seed directly — the same three ticks the legacy code consumed
-  /// from `self.seed` per call, so the first path reproduces the legacy
-  /// stream bit-for-bit.
+  /// Derives one seed for [`HjmSampler`] to own; deriving, not cloning, decorrelates the chunks.
+  /// `sample_inner`'s three `SimdNormal` streams take three ticks of it, in that order.
   fn sampler(&self) -> HjmSampler<'_, T, S, B> {
     HjmSampler {
       hjm: self,
@@ -248,9 +221,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the three rows are stepped in the
-  /// kernel under the tabulated coefficients, on the host devices it is this
-  /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device steps the three rows in its kernel under the tabulated
+  /// coefficients, the host runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> HjmPaths<T> {
     self.backend.system_sample(self)
   }
@@ -272,9 +244,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Hjm`] sampler: borrows the process and owns a seed derived
-/// once at construction. Each SDE component's Gaussian increments are
-/// generated inside the step body from that owned seed.
+/// Reusable [`Hjm`] sampler: it borrows the process and owns a seed derived once, from which the
+/// step body draws each component's Gaussian increments.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
@@ -376,10 +347,8 @@ mod tabulation {
 
   use super::Hjm;
 
-  /// Every coefficient is tabulated at `i · dt`, the time the host's loop
-  /// evaluates at step `i`, with the bond price's outer scale folded into its
-  /// drift and diffusion exactly as the host multiplies them. A statistical
-  /// comparison cannot see a one-step shift here, so it is pinned exactly.
+  /// Every coefficient is tabulated at `i · dt`, the host loop's time at step `i`, with the bond
+  /// price's scale folded in. A statistical test cannot see a one-step shift, so this is exact.
   #[test]
   fn the_curves_are_the_host_coefficients_at_the_host_times() {
     fn a(t: f64) -> f64 {

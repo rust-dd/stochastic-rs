@@ -1,10 +1,12 @@
 //! The exact transition law of [`Cir`](super::Cir): a scaled noncentral χ² in the starting state.
 //!
 //! $$
-//! X_{s+t}\mid X_s=r\ \sim\ \frac{\sigma^2(1-e^{-\theta t})}{4\theta}\,\chi'^2_{4\theta\mu/\sigma^2}\!\left(\frac{4\theta e^{-\theta t}\,r}{\sigma^2(1-e^{-\theta t})}\right)
+//! X_{s+t}\mid X_s=r\ \sim\ \frac{\sigma^2(1-e^{-\theta t})}{4\theta}\,
+//! \chi'^2_{4\theta\mu/\sigma^2}\!\left(
+//!   \frac{4\theta e^{-\theta t}\,r}{\sigma^2(1-e^{-\theta t})}\right)
 //! $$
 //!
-//! Cox, Ingersoll, Ross (1985), Econometrica 53(2) 385–407, DOI 10.2307/1911242.
+//! Reference: Cox, Ingersoll & Ross (1985), Econometrica 53(2), 385–407, DOI 10.2307/1911242
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::non_central_chi_squared;

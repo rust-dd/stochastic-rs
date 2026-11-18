@@ -1,8 +1,5 @@
-//! TDD tests for A1-c Task 1: `Default` + `Clone` on the flagship process
-//! types. See `stochastic-rs-stochastic/src/traits/process.rs`'s `## Clone
-//! semantics` section for the pinned decision
-//! `clone_preserves_deterministic_path` below exercises, and each type's own
-//! `Default` impl doc for where its parameter values come from.
+//! `Default` and `Clone` on the flagship process types; each type's `Default` impl doc says
+//! where its parameter values come from.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -66,9 +63,8 @@ fn defaults_sample_finite() {
   assert!(ok(&Bessel::<f64>::default().sample()));
   assert!(ok(&DisplacedDiffusion::<f64>::default().sample()));
   assert!(ok(&Merton::<f64, SimdNormal<f64>>::default().sample()));
-  // `Kou` has no `Default` — see `Kou`'s own struct doc: a Gaussian jump
-  // distribution would silently ship Merton-with-Gaussian-jumps under the
-  // Kou name, since only `D` distinguishes the two samplers in this crate.
+  // `Kou` has no `Default`: a Gaussian jump law would ship Merton under the Kou name, since only
+  // `D` distinguishes the two samplers.
 
   let [s, v] = Heston::<f64>::default().sample();
   assert!(ok(&s) && ok(&v));

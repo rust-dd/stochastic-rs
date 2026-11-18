@@ -1,4 +1,4 @@
-//! # Ar
+//! AR(p): a linear recursion on the last `p` values, driven by Gaussian noise.
 //!
 //! $$
 //! X_t=\sum_{k=1}^p \phi_k X_{t-k}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
@@ -28,20 +28,7 @@ use crate::traits::ProcessExt;
 #[cfg(doctest)]
 pub struct AcronymsAreOneWord;
 
-/// Implements an AR(p) model:
-///
-/// \[
-///   X_t = \phi_1 X_{t-1} + \phi_2 X_{t-2} + \dots + \phi_p X_{t-p}
-///         + \epsilon_t,
-///   \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2).
-/// \]
-///
-/// # Fields
-/// - `phi`: Vector of AR coefficients (\(\phi_1, \ldots, \phi_p\)).
-/// - `sigma`: Standard deviation of the noise \(\epsilon_t\).
-/// - `n`: Length of the time series.
-/// - `m`: Optional batch size (for parallel sampling).
-/// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
+/// AR(p) on Gaussian noise; `x0`, when given, holds the first `phi.len()` values of the path.
 #[derive(Debug, Clone)]
 pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients
@@ -52,7 +39,7 @@ pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Optional initial conditions
   pub x0: Option<Array1<T>>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -60,7 +47,8 @@ pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ar<T, S> {
-  /// Create a new AR process with given coefficients and noise standard deviation.
+  /// AR(p). Panics unless `n >= 1`, `sigma >= 0`, `sigma` and every entry of `phi` and `x0` are
+  /// finite, and `x0.len() >= phi.len().min(n)`.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
     assert!(
       sigma.is_finite(),
@@ -174,10 +162,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
-  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  /// What a device runs: order one, since the family carries one lag; a higher order stays on
+  /// the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.phi.len() == 1)).then_some("an order above one: the family carries a single lag")
   }

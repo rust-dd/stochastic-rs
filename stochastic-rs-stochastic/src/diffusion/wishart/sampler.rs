@@ -28,9 +28,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine in two dimensions at a degree of at least
-  /// three; anything else keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the Euler engine in two dimensions at a degree of at least three; anything else
+  /// stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array3<T> {
     if self.device_ready() {
       slots_to_matrices(self.backend.system_sample(&WishartLaunch(self)))
@@ -91,12 +90,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// What a device runs here: two dimensions — the family
-  /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
-  /// rank one or two, and a degree of at least three, which keeps the path
-  /// inside the cone so the rank-adaptive branch of the host's step is never
-  /// taken and the squared Bessel draw has the degree the kernels' central
-  /// χ² supplies. Anything else samples on the host.
+  /// What a device runs: `d = 2`, a noise of rank one or two, and a degree of at least three,
+  /// which keeps the path inside the cone and the squared Bessel draw at the kernels' χ² degree.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)))
       .then_some("a Wishart outside the two-dimensional cone the kernel steps")

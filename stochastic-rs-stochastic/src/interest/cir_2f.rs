@@ -1,19 +1,14 @@
-//! # Cir 2f
+//! CIR2++: two independent CIR factors summed and shifted by a deterministic `φ(t)`.
 //!
 //! $$
-//! r_t=x_t+y_t+\varphi(t),\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\ dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
+//! r_t=x_t+y_t+\varphi(t),\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\
+//! dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
 //! $$
 //!
-//! Two-additive-factor shift-extended CIR short-rate model (CIR2++):
-//! two independent CIR factors (Cox, Ingersoll, Ross (1985),
-//! DOI: 10.2307/1911242) summed and shifted by a deterministic `φ(t)`
-//! fitted to today's term structure — the two-factor counterpart to
-//! [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s single-factor
-//! shift extension.
+//! The two-factor [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus); `φ(t)` fits today's curve.
 //!
-//! Reference: Brigo D. & Mercurio F. (2006) — *Interest Rate Models —
-//! Theory and Practice*, 2nd ed., Springer Finance,
-//! DOI: 10.1007/978-3-540-34604-3.
+//! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
+//! Reference: Brigo & Mercurio (2006), 2nd ed., Springer, DOI 10.1007/978-3-540-34604-3
 //!
 
 use ndarray::Array1;
@@ -30,10 +25,8 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Two-additive-factor shift-extended CIR short-rate model `r = x + y + φ(t)`.
-///
-/// Fields are private so the shared-grid assertion of [`new`](Self::new) cannot be bypassed: the
-/// getters hand the factors out read-only and `with_x` / `with_y` assert it again.
+/// CIR2++ `r = x + y + φ(t)`. Fields are private so that [`new`](Self::new)'s shared-grid
+/// assertion cannot be bypassed: getters lend the factors and `with_x` / `with_y` assert it again.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -114,7 +107,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
     self
   }
 
-  /// Replace the deterministic shift φ(t), all else unchanged.
+  /// Replace the deterministic shift φ(t).
   pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
     self.phi = phi.into();
     self
@@ -146,16 +139,15 @@ impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
     &self.phi
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   /// [`new`](Self::new) derives both factors' seeds from it, `x` first.
   pub fn seed(&self) -> &S {
     &self.seed
   }
 }
 
-/// The Euler engine's view of the two-factor CIR model: both factors step in
-/// the kernel and the reported short rate is their shifted sum, which is the
-/// first component the launch writes.
+/// The Euler engine's view: both factors step in the kernel, and the reported short rate, their
+/// shifted sum, is the first component the launch writes.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Cir2F<T, S, B>
 {
@@ -244,9 +236,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -276,9 +267,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cir2F`] sampling state — owns the two inner [`CirSampler`]s and
-/// the precomputed deterministic `φ(t)` curve, so each call resamples both
-/// factors and sums `x + y + φ`.
+/// Reusable [`Cir2F`] sampling state: the two inner [`CirSampler`]s and the tabulated `φ(t)`
+/// curve; each call resamples both factors and sums `x + y + φ`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct Cir2FSampler<T: FloatExt> {
@@ -392,10 +382,8 @@ mod tests {
     )
   }
 
-  /// Would fail if the fix were reverted: pre-fix, `Cir2F::sampler()` called
-  /// `self.x.sampler()`/`self.y.sampler()` directly and never read
-  /// `self.seed`, so the *sub*-`Cir`s' own seeds drove all of the output and
-  /// the outer `Cir2F::new` seed argument was dead.
+  /// The outer seed drives both factors: a `sampler()` that read the sub-`Cir`s' own seeds would
+  /// leave `Cir2F::new`'s seed argument dead.
   #[test]
   fn outer_seed_is_authoritative_over_sub_seeds() {
     let (x1, y1) = cir_pair(7, 8);
@@ -419,9 +407,8 @@ mod tests {
     );
   }
 
-  /// Would fail if `new` derived one child seed and reused it for both `x`
-  /// and `y` instead of deriving two: with identical Cir parameters on both
-  /// factors, a shared stream would make the two factors' paths identical.
+  /// `new` derives two child seeds: one shared by `x` and `y` would make two factors with
+  /// identical parameters sample identical paths.
   #[test]
   fn factors_are_independent_streams() {
     let same_params = || {

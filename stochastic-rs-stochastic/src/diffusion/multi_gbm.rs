@@ -1,19 +1,18 @@
-//! # MultiGbm
+//! `k` GBMs on the correlated Brownian motion of [`crate::noise::mcgns::Mcgns`]; output `k × n`.
 //!
 //! $$
 //! dS^{(i)}_t = \mu_i S^{(i)}_t\,dt + \sigma_i S^{(i)}_t\,dW^{(i)}_t,\qquad
 //! d\langle W^{(i)}, W^{(j)}\rangle_t = \rho_{ij}\,dt,
 //! $$
 //!
-//! `k` geometric Brownian motions driven by the correlated Brownian motion
-//! of [`crate::noise::mcgns::Mcgns`], stepped by the exact log-Euler
-//! scheme $S^{(i)}_{t+\Delta t} = S^{(i)}_t\exp\bigl((\mu_i - \tfrac12\sigma_i^2)\Delta t + \sigma_i\,\Delta W^{(i)}_t\bigr)$,
-//! which is distributionally exact on the grid. The `k × n` output holds
-//! one asset per row, starting from `x0` at time zero.
+//! Stepped by log-Euler, which is exact in law on the grid.
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial
-//! Engineering*, Springer, §3.2.3 (multidimensional geometric Brownian
-//! motion). DOI: 10.1007/978-0-387-21617-1
+//! $$
+//! S^{(i)}_{t+\Delta t} = S^{(i)}_t\exp\bigl((\mu_i - \tfrac12\sigma_i^2)\Delta t +
+//! \sigma_i\,\Delta W^{(i)}_t\bigr)
+//! $$
+//!
+//! Reference: Glasserman (2003), Springer, §3.2.3, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -41,7 +40,7 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Array1<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   driver: Mcgns<T, S>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -50,8 +49,8 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
-  /// `mu`, `sigma` and `x0` must share the length `k` of `rho`'s side; `n`
-  /// counts grid points including the initial one.
+  /// Panics unless `n >= 2`, `rho` is a finite `k × k` positive-definite correlation matrix, `mu`,
+  /// `sigma >= 0` and `x0` are finite of length `k >= 1`, and a given `t` is positive and finite.
   pub fn new(
     mu: Array1<T>,
     sigma: Array1<T>,
@@ -134,11 +133,8 @@ impl<T: FloatExt, S: SeedExt, B> MultiGbm<T, S, B> {
   }
 }
 
-/// The batch's assets in the engine's four slots. `MultiGbm` reports a
-/// `k × n` matrix and the correlated family steps four components under one
-/// Cholesky factor, so this view is what carries a launch when `k <= 4`:
-/// the assets in the first `k` slots, the rest padded to constant zero. It
-/// borrows rather than owns, so the seed it advances is the process's own.
+/// The basket in the engine's four slots, which carries a launch when `k <= 4`: the assets fill
+/// the first `k`, the rest are constant zero. It borrows, so it advances the process's seed.
 #[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct MultiGbmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultiGbm<T, S, B>);
@@ -197,9 +193,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultiGbmLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
   for MultiGbmLaunch<'_, T, S, B>
 {
-  /// Padded into the four slots. A wider basket never reaches a launch —
-  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
-  /// bypassing that guard.
+  /// Padded into the four slots. [`ProcessExt::sample`] keeps a wider basket on the host, so a
+  /// launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     let k = p.assets();
@@ -281,11 +276,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine for up to four assets, which is what the
-  /// correlated family carries: on a device the whole basket is stepped in
-  /// one kernel under its Cholesky factor. A larger basket stays on this
-  /// process's own sampler whatever the backend, since its correlation
-  /// needs more shocks than a launch has.
+  /// Through the Euler engine for up to four assets, stepped in one kernel under their Cholesky
+  /// factor; a larger basket needs more shocks than a launch has and stays on the host sampler.
   fn sample(&self) -> Array2<T> {
     if self.device_ready() {
       slots_to_matrix(

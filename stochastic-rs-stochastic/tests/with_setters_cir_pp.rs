@@ -1,9 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `CirPlusPlus`
-//! (`interest/cir_pp.rs`). No persisted cache: `sampler()` builds a
-//! transient `Cir` (and its sampler) fresh from `self`'s own fields on
-//! every call — there is no stored `Cir`/`CirSampler` field on the struct
-//! itself. `phi: Fn1D<T>` is excluded from the generic field-equality
-//! snapshot (no `PartialEq`) and checked by calling it directly instead.
+//! `with_*` setters on `CirPlusPlus`, which stores no `Cir`: `sampler()` builds a transient one.
+//! `phi: Fn1D<T>` has no `PartialEq`, so it is left out of the snapshot and checked by calling it.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

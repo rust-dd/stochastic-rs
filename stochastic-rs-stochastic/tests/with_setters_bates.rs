@@ -167,21 +167,8 @@ fn bates_with_jump_law_matches_fresh_construction() {
 
 #[test]
 fn bates_with_rho_round_trip() {
-  // KNOWN GAP, named rather than silently absent: this test cannot prove
-  // `with_rho` rebuilt the cache the way `with_horizon`'s degenerate-
-  // recurrence test (below) proves it for `dt`, using that same RNG-
-  // independent technique (pinning `v_prev = 0`, which zeroes *both* `cgn1`
-  // and `cgn2`'s contribution to price) — `rho` only ever shows up *inside*
-  // the correlated-noise combination `gn2 = rho*gn1 + c*z` (see `Cgns::
-  // sample_impl`), i.e. exclusively through the very noise an RNG-
-  // independent setup has to eliminate, which removes rho's only avenue to
-  // matter too. This is a limitation of the *technique*, not of
-  // `Bates` itself (see the module doc: the type is now fully
-  // seed-reproducible): a `Deterministic`-seeded comparison of the sampled
-  // variance path directly would also isolate rho's effect, but was not
-  // retrofitted here to keep this task's setter-round-trip scope unchanged.
-  // What is still verifiable here: the field itself changed, nothing else
-  // did, and sampling still succeeds.
+  // `rho` enters only through the correlated noise `gn2 = rho*gn1 + c*z`, which the RNG-free
+  // setup below (`v_prev = 0`) eliminates; so this checks the field, the others and a sample.
   let mut expected = bates_base();
   expected.rho = -0.4;
   let got = bates_base().with_rho(-0.4);
@@ -217,7 +204,8 @@ fn bates_with_horizon_round_trip() {
 fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates<f64, SimdNormal<f64>, S> {
   Bates::new(
     Drift::Mu(0.05),
-    0.0, // lambda: disables the drift's jump compensation term AND the jump arrivals themselves (single source of truth) — no jumps, ever
+    // lambda = 0 disables both the drift's jump compensation and the arrivals: no jumps, ever
+    0.0,
     0.0,
     0.0, // alpha: keeps v pinned at v0 = 0
     0.0,
@@ -248,10 +236,8 @@ fn bates_with_horizon_rebuilds_cgns_cache_dt_via_degenerate_recurrence() {
      the drift term), not just t"
   );
 
-  // Sanity check on the degenerate setup itself, independent of
-  // `with_horizon`: confirms the recurrence really is the closed form the
-  // doc comment above claims, not just internally self-consistent between
-  // `want` and `got`.
+  // The degenerate setup against its closed form, independently of `with_horizon`: `want` and
+  // `got` agreeing with each other would not show it.
   let dt = want_t / (n - 1) as f64;
   let expected_last = 100.0_f64 * (1.0 + 0.05 * dt).powi((n - 1) as i32);
   assert!(

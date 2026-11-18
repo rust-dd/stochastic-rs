@@ -18,10 +18,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> DuffieKanJumpExpSampler<T, S> {
     DuffieKanJumpExpSampler {
       n: self.n,
@@ -46,9 +44,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device both factors and the jump sum step
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps both factors and the jump sum in its kernel, the
+  /// host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -98,11 +95,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`DuffieKanJumpExp`] sampling state: owns the correlated-Gaussian
-/// generator and the seed source so a Monte-Carlo loop reuses both output
-/// buffers. The exponential inter-arrival driver and the Gaussian jump-size
-/// driver are rebuilt per call from the owned seed, reproducing the legacy
-/// stream on the first call and continuing it on subsequent ones.
+/// Reusable [`DuffieKanJumpExp`] sampling state: the correlated-Gaussian generator and the seed
+/// source. Each call rebuilds the inter-arrival and jump-size drivers from the owned seed.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct DuffieKanJumpExpSampler<T: FloatExt, S: SeedExt> {

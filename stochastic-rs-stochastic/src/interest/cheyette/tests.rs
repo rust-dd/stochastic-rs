@@ -1,5 +1,4 @@
-//! Tests of the Cheyette state dynamics against the Hull–White limit and the
-//! bond-reconstruction martingale identity.
+//! The Cheyette state against the Hull–White limit and the bond-reconstruction martingale identity.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 

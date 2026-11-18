@@ -1,31 +1,14 @@
-//! # DisplacedDiffusion
+//! Shifted lognormal for negative rates: the price plus the shift `beta` is a GBM.
 //!
 //! $$
 //! dS_t=\mu(S_t+\beta)\,dt+\sigma(S_t+\beta)\,dW_t
 //! $$
 //!
-//! The shifted variable `Y_t = S_t + beta` follows an ordinary geometric
-//! Brownian motion, so the model has the exact closed-form identity
-//!
 //! $$
 //! S_t+\beta=(S_0+\beta)\exp\!\left(\left(\mu-\tfrac{\sigma^2}{2}\right)t+\sigma W_t\right)
 //! $$
 //!
-//! `beta = 0` degenerates exactly to [`Gbm`](crate::diffusion::gbm::Gbm):
-//! [`GbmSampler`](crate::diffusion::gbm::GbmSampler)'s own `fill_path` steps
-//! the multiplicative recursion `S_{i+1} = S_i(1 + \mu\,dt + \sigma z_i)`
-//! rather than exponentiating each increment (the exact log-form above is
-//! used elsewhere in `Gbm` only for the analytic terminal-marginal formulas,
-//! not for path generation). `DisplacedDiffusionSampler` applies that same
-//! recursion to `Y_t = S_t + beta` and reports `Y_t - beta`, so that at
-//! `beta = 0` it reproduces `Gbm`'s path bit-for-bit under the same seed —
-//! aligning the discretization with `Gbm`'s actual stepping rule, not just
-//! its continuous-time law.
-//!
-//! This is the shifted/displaced-lognormal model used for negative-rate-
-//! tolerant Black-76-style pricers: choosing `beta > 0` keeps `S_t + beta`
-//! (and hence the model) well-defined even while `S_t` itself goes
-//! negative.
+//! It steps `diffusion::gbm::Gbm`'s recursion on `S + beta`, so `beta = 0` is `Gbm` bit for bit.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -43,27 +26,17 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Displaced (shifted-lognormal) diffusion.
-///
-/// `dS_t = mu * (S_t + beta) * dt + sigma * (S_t + beta) * dW_t`
-///
-/// See the module doc for the exact closed-form identity and the exact
-/// bit-for-bit relationship to [`Gbm`](crate::diffusion::gbm::Gbm) at
-/// `beta = 0`.
+/// Displaced (shifted-lognormal) diffusion; the module doc has the closed form and the
+/// bit-for-bit relationship to [`Gbm`](crate::diffusion::gbm::Gbm) at `beta = 0`.
 #[derive(Debug, Clone)]
 pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Constant proportional drift rate μ of the shifted variable `S_t +
-  /// beta` (same "no mean reversion" role as
-  /// [`Gbm::mu`](crate::diffusion::gbm::Gbm::mu)).
+  /// Constant proportional drift rate μ of the shifted variable `S_t + beta`; no mean reversion,
+  /// as [`Gbm::mu`](crate::diffusion::gbm::Gbm::mu).
   pub mu: T,
   /// Diffusion scale σ multiplying `(S_t + beta) dW_t`.
   pub sigma: T,
-  /// Displacement / shift β applied to the driven state before the
-  /// GBM-style dynamics act on it. `beta = 0` degenerates exactly to
-  /// [`Gbm`](crate::diffusion::gbm::Gbm). A positive `beta` is the
-  /// shifted-lognormal trick that keeps the model well-defined while `S_t`
-  /// itself is allowed to go negative (e.g. negative interest rates in
-  /// Black-76-style pricers).
+  /// Shift β applied to the state before the GBM dynamics act; `beta = 0` is
+  /// [`Gbm`](crate::diffusion::gbm::Gbm), and `beta > 0` lets `S_t` go negative.
   pub beta: T,
   /// Number of points sampled along the displaced-diffusion path.
   pub n: usize,
@@ -79,10 +52,10 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DisplacedDiffusion::default().with_beta(10.0)`. No persisted cache:
-/// `sampler()` builds its Gaussian source fresh from `self` every call.
+/// Every field has a `with_*` setter (`DisplacedDiffusion::default().with_beta(10.0)`); nothing
+/// is cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: T, t: Option<T>, seed: S) -> Self {
     Self::check_mu(mu);
     Self::check_sigma(sigma);
@@ -120,49 +93,49 @@ impl<T: FloatExt, S: SeedExt, B> DisplacedDiffusion<T, S, B> {
     require!(x0.is_finite(), x0);
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: T) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -185,9 +158,8 @@ impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of the displaced diffusion: the state is the
-/// shifted variable `Y = S + β`, which starts at `X₀ + β` and is reported
-/// with the shift taken back out.
+/// The Euler engine's view: the state is the shifted `Y = S + β`, which starts at `X₀ + β` and is
+/// reported with the shift taken back out.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for DisplacedDiffusion<T, S, B>
 {
@@ -253,9 +225,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -285,9 +256,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`DisplacedDiffusion`] sampling state: precomputed Euler scales
-/// and the owned Gaussian source (mirrors
-/// [`GbmSampler`](crate::diffusion::gbm::GbmSampler), plus the `beta` shift).
+/// Reusable [`DisplacedDiffusion`] sampling state: the Euler scales and the owned Gaussian
+/// source, as [`GbmSampler`](crate::diffusion::gbm::GbmSampler) with the `beta` shift.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct DisplacedDiffusionSampler<T: FloatExt> {
@@ -310,9 +280,8 @@ impl<T: FloatExt> DisplacedDiffusionSampler<T> {
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    // Step the shifted variable `Y = S + beta` with literally the same
-    // recursion `GbmSampler::fill_path` uses for `S`, then report `Y - beta`.
-    // At `beta = 0` this is that recursion verbatim, term for term.
+    // `GbmSampler::fill_path`'s recursion on the shifted `Y = S + beta`, reported as `Y - beta`;
+    // at `beta = 0` it is that recursion term for term.
     let mut prev_shifted = self.x0 + self.beta;
     for z in tail.iter_mut() {
       let next_shifted =

@@ -1,15 +1,10 @@
-//! # Customjt
+//! Renewal jump times: the running sum of inter-arrival draws from a law `D`, not a Poisson clock.
 //!
 //! $$
 //! T_k=\sum_{j=1}^{k}\tau_j,\quad \tau_j\sim D
 //! $$
 //!
-//! Generic renewal-process jump-time generator: cumulative sum of
-//! user-supplied inter-arrival draws `τ_j ~ D`, replacing the fixed-rate
-//! exponential clock of a standard Poisson process. Produces jump *times*
-//! only — no jump sizes and no continuous diffusion; see
-//! [`CompoundCustom`](crate::process::ccustom::CompoundCustom) for the
-//! type that attaches jump sizes on top.
+//! Times only; [`CompoundCustom`](crate::process::ccustom::CompoundCustom) adds the sizes.
 //!
 
 use std::any::Any;
@@ -38,7 +33,7 @@ where
   pub horizon: Horizon<T>,
   /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -50,6 +45,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Panics unless an `Until` horizon is positive and finite.
   pub fn new(horizon: Horizon<T>, distribution: D, seed: S) -> Self {
     horizon.assert_valid();
     CustomJt {
@@ -66,7 +62,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     self.horizon = horizon;
@@ -179,8 +175,7 @@ where
     self.sampler_impl(seed).sample()
   }
 
-  /// Build the reusable sampling state from any seed source, deriving the RNG
-  /// exactly as the legacy `sample_impl` body did per mode.
+  /// The reusable sampling state from any seed source; the RNG is derived per horizon mode.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> CustomJtSampler<'_, T, D> {
     if let Horizon::Until(_) = self.horizon {
       // Horizon mode advanced the seed once more before drawing.
@@ -212,9 +207,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  /// Poisson arrivals at the exponential law's rate. Any other law never
-  /// reaches a launch — [`ProcessExt::sample`] keeps it on the host — so
-  /// asking here is a caller bypassing that guard.
+  /// Poisson arrivals at the exponential law's rate. [`ProcessExt::sample`] keeps any other law
+  /// on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::PoissonArrivals {
       lambda: self.device_intensity().expect(
@@ -277,9 +271,8 @@ where
     self.sampler_impl(&self.seed)
   }
 
-  /// Through the Euler engine when the arrival count is fixed and the
-  /// inter-arrivals are exponential; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the arrival count is fixed and the inter-arrivals are
+  /// exponential; anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)

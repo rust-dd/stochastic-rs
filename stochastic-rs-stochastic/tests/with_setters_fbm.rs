@@ -103,14 +103,8 @@ fn fbm_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `fbm_base()` helper the bit-exact `fgn`-rebuild tests above need (those
-/// require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `FbmFields` mirror,
-/// not a `Fbm { .., ..Fbm::default() }` struct-update literal: `Fbm` has a
-/// private `fgn` cache field, so that literal wouldn't even compile from
-/// this external test crate.
+/// A `Default`-rooted `with_hurst` round-trip. It compares through the `FbmFields` mirror: `Fbm`
+/// has a private `fgn` cache, so a struct-update literal would not compile here.
 #[test]
 fn fbm_default_with_hurst_round_trip() {
   let base = Fbm::<f64>::default();

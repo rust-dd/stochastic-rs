@@ -1,13 +1,11 @@
-//! # Garch
+//! GARCH(p, q): the variance loads on past squared observations and on its own past values.
 //!
 //! $$
-//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,\qquad X_t=\sigma_t z_t
+//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,
+//! \qquad X_t=\sigma_t z_t
 //! $$
 //!
-//! Reference: Bollerslev T. (1986) — *Generalized Autoregressive
-//! Conditional Heteroskedasticity*, Journal of Econometrics 31(3),
-//! 307–327, DOI: 10.1016/0304-4076(86)90063-1.
-//!
+//! Reference: Bollerslev (1986), J. Econometrics 31(3), 307–327, DOI 10.1016/0304-4076(86)90063-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -24,25 +22,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements a general Garch(p,q) model.
-///
-/// \[
-///   \sigma_t^2
-///     = \omega
-///       + \sum_{i=1}^p \alpha_i \, X_{t-i}^2
-///       + \sum_{j=1}^q \beta_j \, \sigma_{t-j}^2,
-///   \quad X_t = \sigma_t \, z_t, \quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// # Parameters
-/// - `omega`: Constant term (\(\omega\)) in the Garch variance equation.
-/// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for past squared observations.
-/// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for past variances.
-/// - `n`:     Length of the time series.
-///
-/// # Notes
-/// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
-/// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
+/// GARCH(p, q), started at its unconditional variance `omega / (1 − Σα − Σβ)`; `new` enforces
+/// the stationarity `Σα + Σβ < 1` that makes it finite.
 #[derive(Debug, Clone)]
 pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
@@ -53,7 +34,7 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: Array1<T>,
   /// Length of the generated time series.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -61,8 +42,8 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
-  /// Bollerslev's (1986) GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0` and
-  /// `beta[j] >= 0` (his eq. (2)), and `alpha.sum() + beta.sum() < 1` (his Theorem 1).
+  /// Bollerslev's (1986) GARCH(p, q). Panics unless every value is finite, `n >= 1`, `omega > 0`,
+  /// `alpha[i] >= 0` and `beta[j] >= 0` (his eq. (2)), and `Σα + Σβ < 1` (his Theorem 1).
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),
@@ -125,9 +106,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::zero()
   }
 
-  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
-  /// first point: the state it starts from is the seed variance and the
-  /// not-yet-warm marker, not a value the path reports.
+  /// The series starts at `σ₀ z₀`, so the launch steps before it writes its first point: the
+  /// initial state is the seed variance and the not-yet-warm marker, not a reported value.
   fn initial_state(&self) -> [T; 4] {
     let denom = variance_denominator(&self.alpha, &self.beta);
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
@@ -186,10 +166,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the conditional variance and the
-  /// series step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  /// What a device runs: order (1, 1), since the family carries one lag of each; a higher order
+  /// stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1 && self.beta.len() == 1))
       .then_some("an order above (1, 1): the family carries one lag of each")
@@ -252,9 +230,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Garch`] sampling state: owns the standard-normal innovation source
-/// and the variance coefficients so a Monte-Carlo loop pays the `SimdNormal`
-/// setup once.
+/// Reusable [`Garch`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct GarchSampler<T: FloatExt> {

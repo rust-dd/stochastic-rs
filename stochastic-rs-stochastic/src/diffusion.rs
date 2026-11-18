@@ -1,14 +1,6 @@
-//! # Diffusion
+//! Continuous-path Itô diffusions on one Brownian motion, with no jumps.
 //!
-//! Continuous-path Itô diffusions `dX_t = a(t, X_t)dt + b(t, X_t)dW_t`
-//! driven by a single standard Brownian motion, with no jump component.
-//! Covers mean-reverting families (Ornstein–Uhlenbeck, CIR, Jacobi, Pearson
-//! and their fractional/nonlinear variants), non-mean-reverting log-normal
-//! families (GBM and its inhomogeneous/log-domain/displaced variants),
-//! population-growth diffusions (logistic, Gompertz, Verhulst, Kimura), and
-//! dimension-indexed radial processes (the squared and plain Bessel
-//! families). Each module's own header states its concrete `a(t, X_t)` /
-//! `b(t, X_t)`.
+//! `dX_t = a(t, X_t)dt + b(t, X_t)dW_t`; each module's header states its own `a` and `b`.
 //!
 pub mod ait_sahalia;
 pub mod bessel;

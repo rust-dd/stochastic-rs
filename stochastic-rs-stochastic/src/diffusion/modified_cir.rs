@@ -1,19 +1,12 @@
-//! # ModifiedCir
+//! CIR with `√X_t` replaced by the globally Lipschitz `√(1+X_t²)`, so `X_t` may go negative.
 //!
 //! $$
 //! dX_t=-\kappa X_t\,dt+\sigma\sqrt{1+X_t^2}\,dW_t
 //! $$
 //!
-//! A Cox-Ingersoll-Ross-style mean-reverting process (Cox, Ingersoll,
-//! Ross (1985), DOI: 10.2307/1911242) modified to replace the `√X_t`
-//! diffusion with the globally Lipschitz, linear-growth `√(1+X_t²)`.
-//! Unlike CIR, `X_t` is not constrained to stay non-negative — there is
-//! no square-root singularity at the origin to protect against, so the
-//! process is well-defined and strong-solution-unique for every real
-//! `κ`, `σ` with no Feller-type condition. No single paper naming this
-//! exact variant could be identified; it reads as a smooth,
-//! always-real-valued cousin of CIR rather than an implementation of a
-//! specific published model.
+//! No Feller condition applies; no published model of this exact form was identified.
+//!
+//! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
 //!
 
 use ndarray::Array1;
@@ -51,6 +44,7 @@ pub struct ModifiedCir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> ModifiedCir<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -144,9 +138,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

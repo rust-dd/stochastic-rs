@@ -1,35 +1,12 @@
-//! # fOU
+//! [`Ou`](crate::diffusion::ou::Ou) on fractional Gaussian noise, with a Hurst exponent `hurst`.
 //!
 //! $$
 //! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dB_t^H
 //! $$
 //!
-//! The Gaussian [`Ou`](crate::diffusion::ou::Ou) recursion driven by
-//! fractional Gaussian noise instead of a Brownian increment: `theta` is the
-//! reversion speed, `mu` the level reverted to, `hurst` the memory of the
-//! driver. A general `mu` is the standard form — the zero-mean case is
-//! `mu = 0`, not a different equation.
+//! `interest::fvasicek::Fvasicek` holds a `Fou` as `a` = `theta`, `b` = `mu`, on a child seed.
 //!
-//! ## Same SDE as [`Fvasicek`]
-//!
-//! [`Fvasicek`] is this equation under short-rate vocabulary: its `a` is
-//! this `theta` (speed), its `b` is this `mu` (level), its `r` is this `X`.
-//! It is built on this type rather than beside it — it holds a `Fou`, its
-//! sampler *is* [`FouSampler`], and both the Euler family and the fGN
-//! pipeline it reports are the ones this process reports. The separate name
-//! carries the short-rate application, not a second implementation.
-//!
-//! The random stream is the one thing not shared: [`Fvasicek::new`] derives a
-//! child seed for the embedded `Fou`, so the two built from one
-//! [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seed are
-//! independent draws of the same law.
-//!
-//! Reference: Cheridito P., Kawaguchi H., Maejima M. (2003) —
-//! *Fractional Ornstein-Uhlenbeck Processes*, Electronic Journal of
-//! Probability 8, paper 3, 1–14, DOI: 10.1214/EJP.v8-125.
-//!
-//! [`Fvasicek`]: crate::interest::fvasicek::Fvasicek
-//! [`Fvasicek::new`]: crate::interest::fvasicek::Fvasicek::new
+//! Reference: Cheridito, Kawaguchi & Maejima (2003), EJP 8, paper 3, 1–14, DOI 10.1214/EJP.v8-125
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -45,11 +22,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Fractional Ornstein-Uhlenbeck process `dX = θ(μ − X) dt + σ dB^H` on `n`
-/// points over `[0, t]`.
-///
-/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
-/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+/// Fractional OU `dX = θ(μ − X) dt + σ dB^H`. Fields are private, since the fGN driver caches a
+/// spectrum of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -75,6 +49,8 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -107,7 +83,8 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -115,7 +92,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -124,7 +101,8 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     self
   }
 
-  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -150,36 +128,35 @@ impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -222,7 +199,7 @@ impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
@@ -242,17 +219,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. `fill_path` then uses this
-  /// owned seed *directly* (no further derive) — exactly one derive from
-  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
-  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
-  /// Repeat calls on one sampler advance the same owned seed further, for
-  /// an independent path each time.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once:
+  /// one derive from `self.seed` per chunk, and each call advances the owned seed to a new path.
   fn sampler(&self) -> FouSampler<'_, T, S, B> {
     FouSampler {
       fou: self,
@@ -260,10 +228,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
-  /// these two the trait's defaults would send a mapped batch through the
-  /// host sampler while `sample_par` ran on the device — the same law, but
-  /// a different stream and none of the device's speed.
+  /// The same launch as [`sample_par`](Self::sample_par), mapped; the trait's defaults would map
+  /// a batch on the host sampler, a different stream from the device's `sample_par`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
   }
@@ -276,10 +242,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
-  /// `m` paths through the Euler engine, which on a device runs the whole
-  /// recursion in the kernel from fGN increments and on the host devices is
-  /// the process's own sampler, chunked exactly as `ProcessExt` chunks — so
-  /// the CPU stream is the one it always was.
+  /// `m` paths through the Euler engine: a device runs the recursion in its kernel from fGN
+  /// increments, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
@@ -289,12 +253,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Fou`] sampling state: borrows the process for its inner [`Fgn`]
-/// and owns a seed derived once at construction. The path is an Euler
-/// discretisation of `dX = theta(mu - X) dt + sigma dB^H` started at `x0`.
-/// Also the whole of
-/// [`Fvasicek`](crate::interest::fvasicek::Fvasicek)'s sampler,
-/// which is an alias for this type.
+/// Reusable [`Fou`] sampling state on the process's [`Fgn`] and a seed derived once: an Euler
+/// discretisation from `x0`, and all of [`Fvasicek`](crate::interest::fvasicek::Fvasicek)'s too.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {

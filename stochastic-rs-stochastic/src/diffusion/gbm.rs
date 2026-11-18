@@ -1,4 +1,4 @@
-//! # Gbm
+//! Geometric Brownian motion, with its terminal log-normal law through `DistributionExt`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0
@@ -30,9 +30,8 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Constant proportional drift rate μ. GBM has no mean reversion — `mu`
-  /// is not a long-run level; it is the constant rate at which `S_t`
-  /// grows (or shrinks) in expectation.
+  /// Constant proportional drift rate μ: the rate `S_t` grows at in expectation, not a long-run
+  /// level, since GBM has no mean reversion.
   pub mu: T,
   /// Diffusion scale σ multiplying `S_t dW_t`.
   pub sigma: T,
@@ -45,17 +44,15 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Cached parameters of the terminal log-normal: ln S_T ∼ N(`ln_mu`, `ln_sigma`).
   ln_mu: f64,
   ln_sigma: f64,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Recomputes the cached terminal-log-normal parameters `(ln_mu, ln_sigma)`
-/// from the four public fields they derive from — shared by `new()` and by
-/// every `with_*` setter that touches `mu`/`sigma`/`x0`/`t`, so the two can
-/// never drift apart.
+/// The terminal log-normal's `(ln_mu, ln_sigma)` from the four fields they derive from; `new()`
+/// and every setter of `mu`, `sigma`, `x0` or `t` call it, so the cache cannot drift.
 fn terminal_lognormal_cache<T: FloatExt>(mu: T, sigma: T, x0: T, t: Option<T>) -> (f64, f64) {
   let x0_f64 = x0.to_f64().unwrap();
   let mu_f64 = mu.to_f64().unwrap();
@@ -70,6 +67,8 @@ fn terminal_lognormal_cache<T: FloatExt>(mu: T, sigma: T, x0: T, t: Option<T>) -
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
 impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
+  /// Panics unless `sigma >= 0`, `n >= 2`, `x0 > 0`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(mu: T, sigma: T, n: usize, x0: T, t: Option<T>, seed: S) -> Self {
     Self::check_mu(mu);
     Self::check_sigma(sigma);
@@ -107,9 +106,8 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     require!(x0 > T::zero(), x0);
   }
 
-  /// Replace `mu`; rebuilds the cached terminal-log-normal parameters
-  /// (`ln_mu`/`ln_sigma`, read by [`DistributionExt`]'s moment methods) so
-  /// they stay consistent with the new `mu`.
+  /// Replace `mu` and rebuild the terminal log-normal cache [`DistributionExt`]'s moments read;
+  /// panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
@@ -117,7 +115,8 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     self
   }
 
-  /// Replace `sigma`; rebuilds the cached terminal-log-normal parameters.
+  /// Replace `sigma` and rebuild the terminal log-normal cache; panics unless `sigma >= 0` and
+  /// `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
@@ -125,7 +124,8 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     self
   }
 
-  /// Replace `x0`; rebuilds the cached terminal-log-normal parameters.
+  /// Replace `x0` and rebuild the terminal log-normal cache; panics unless `x0 > 0` and `x0` is
+  /// finite.
   pub fn with_x0(mut self, x0: T) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
@@ -133,15 +133,16 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     self
   }
 
-  /// Replace `n`, the grid points along the path; the terminal log-normal cache does not read it.
+  /// Replace `n`, the grid points along the path, which the terminal log-normal cache does not
+  /// read; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// terminal-log-normal parameters.
+  /// Replace the simulation horizon `t` and rebuild the terminal log-normal cache; panics unless
+  /// `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -149,7 +150,7 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -183,9 +184,8 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B>
     Self: 's;
 
   fn sampler(&self) -> GbmSampler<T> {
-    // `saturating_sub(1).max(1)` keeps dt finite for the degenerate n ≤ 1
-    // cases; for n ≥ 2 it equals `n - 1`, so the noise std and hence the
-    // derived stream are identical to the pre-sampler path.
+    // `saturating_sub(1).max(1)` keeps dt finite for the degenerate n ≤ 1 cases; for n ≥ 2 it
+    // is `n - 1`.
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     GbmSampler {

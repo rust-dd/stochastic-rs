@@ -220,10 +220,8 @@ fn heston_with_seed_matches_fresh_construction() {
 
 #[test]
 fn heston_setters_chain_after_default_and_after_qe() {
-  // The wave's own headline example: `Heston::default().with_kappa(3.0)
-  // .with_rho(-0.8)` must type-check and sample finitely, both for the
-  // `Euler`-scheme `default()` directly and after switching schemes via
-  // `.qe()` (setters are scheme-generic, not `Euler`-only).
+  // `Heston::default().with_kappa(3.0).with_rho(-0.8)` type-checks and samples finitely on the
+  // `Euler` default and after `.qe()`: the setters are generic over the scheme.
   let euler = Heston::<f64>::default().with_kappa(3.0).with_rho(-0.8);
   assert_eq!(euler.kappa, 3.0);
   assert_eq!(euler.rho, -0.8);

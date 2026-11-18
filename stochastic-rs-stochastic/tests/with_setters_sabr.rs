@@ -168,14 +168,8 @@ fn sabr_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `sabr_base()` helper the bit-exact `cgns`-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `SabrFields` mirror,
-/// not a `Sabr { .., ..Sabr::default() }` struct-update literal: `Sabr` has
-/// a private `cgns` cache field, so that literal wouldn't even compile from
-/// this external test crate.
+/// A `Default`-rooted `with_beta` round-trip. It compares through the `SabrFields` mirror:
+/// `Sabr` has a private `cgns` cache, so a struct-update literal would not compile here.
 #[test]
 fn sabr_default_with_beta_round_trip() {
   let base = Sabr::<f64>::default();

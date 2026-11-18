@@ -1,4 +1,4 @@
-//! # Fjacobi
+//! Jacobi diffusion on fractional Brownian motion, by an Euler scheme clamped into [0, 1].
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t(1-X_t)}\,dB_t^H
@@ -19,11 +19,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Fractional Jacobi process `dX = (α − βX) dt + σ√(X(1 − X)) dB^H` on `n`
-/// points over `[0, t]`.
-///
-/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
-/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+/// Fractional Jacobi `dX = (α − βX) dt + σ√(X(1 − X)) dB^H`. Fields are private, since the fGN
+/// driver caches a spectrum of `hurst`, `n` and `t`: getters read them, `with_*` changes them.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -49,6 +46,8 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
+  /// Panics unless `0 <= hurst <= 1`, `0 < alpha < beta`, `sigma > 0`, `n >= 2`, a given `t` is
+  /// positive and finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -85,7 +84,8 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -93,7 +93,7 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -102,7 +102,8 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     self
   }
 
-  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -131,8 +132,8 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
-  /// own assertions: to move both drift parameters up, raise `beta` first.
+  /// Replace `alpha`; panics unless `0 < alpha < beta` and finite: to move both drift parameters
+  /// up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     assert!(
@@ -144,8 +145,8 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     self
   }
 
-  /// Replace `beta`. Panics unless `0 < alpha < beta`, matching `new()`'s
-  /// own assertions: to move both drift parameters down, lower `alpha` first.
+  /// Replace `beta`; panics unless `0 < alpha < beta` and finite: to move both drift parameters
+  /// down, lower `alpha` first.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     assert!(
@@ -157,23 +158,21 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     self
   }
 
-  /// Replace `sigma`. Panics if `sigma <= 0`, matching `new()`'s own
-  /// assertion.
+  /// Replace `sigma`; panics unless `sigma > 0` and finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -215,7 +214,7 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
@@ -235,17 +234,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. `fill_path` then uses this
-  /// owned seed *directly* (no further derive) — exactly one derive from
-  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
-  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
-  /// Repeat calls on one sampler advance the same owned seed further, for
-  /// an independent path each time.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once:
+  /// one derive from `self.seed` per chunk, and each call advances the owned seed to a new path.
   fn sampler(&self) -> FjacobiSampler<'_, T, S, B> {
     FjacobiSampler {
       fjacobi: self,
@@ -253,10 +243,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
-  /// these two the trait's defaults would send a mapped batch through the
-  /// host sampler while `sample_par` ran on the device — the same law, but
-  /// a different stream and none of the device's speed.
+  /// The same launch as [`sample_par`](Self::sample_par), mapped; the trait's defaults would map
+  /// a batch on the host sampler, a different stream from the device's `sample_par`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
   }
@@ -269,9 +257,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
-  /// `m` paths through the Euler engine: on a device the whole recursion runs
-  /// in the kernel from fGN increments, on the host devices it is this
-  /// process's own sampler chunked exactly as `ProcessExt` chunks.
+  /// `m` paths through the Euler engine: a device runs the recursion in its kernel from fGN
+  /// increments, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
@@ -281,10 +268,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Fjacobi`] sampling state: borrows the process for its inner
-/// [`Fgn`] and owns a seed derived once at construction. The path is an
-/// Euler discretisation of `dX = (alpha - beta X) dt + sigma sqrt(X(1 - X))
-/// dB^H`, clamped into `[0, 1]`.
+/// Reusable [`Fjacobi`] sampling state on the process's [`Fgn`] and a seed derived once: an Euler
+/// discretisation of `dX = (alpha - beta X) dt + sigma sqrt(X(1 - X)) dB^H`, clamped into `[0, 1]`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct FjacobiSampler<'a, T: FloatExt, S: SeedExt, B> {

@@ -1,5 +1,3 @@
-//! # Process
-//!
 //! Brownian, fractional and stable motions, point processes and subordinators.
 //!
 pub mod bm;

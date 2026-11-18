@@ -1,3 +1,4 @@
+//! Continuous-time random walk: jumps at renewal waiting times, read off on a fixed output grid.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -105,7 +106,7 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -113,6 +114,8 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `x0` and a jump `mean` are finite,
+  /// every other law parameter is positive and finite, a wait's `alpha < 1`, a jump's `alpha <= 2`.
   pub fn new(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,
@@ -195,10 +198,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.dt()
   }
 
-  /// The exponential waits' rate: the arrivals in a cell of width `dt` are
-  /// Poisson with mean `rate · dt`. Any other waiting law never reaches a
-  /// launch — [`ProcessExt::sample`] keeps it on the host — so asking here is
-  /// a caller bypassing that guard.
+  /// The exponential waits' rate: arrivals in a cell of width `dt` are Poisson with mean
+  /// `rate · dt`. [`ProcessExt::sample`] keeps any other waiting law on the host.
   fn jump_intensity(&self) -> Option<T> {
     match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => Some(rate),
@@ -356,9 +357,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Ctrw`] sampling state: the owned waiting-time and jump-size
-/// distribution drivers plus the shared uniform source (used for positive-
-/// stable waiting times and Rademacher jumps).
+/// Reusable [`Ctrw`] sampling state: the waiting-time and jump-size drivers and the shared
+/// uniform source of the positive-stable waits and the Rademacher jumps.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CtrwSampler<T: FloatExt> {

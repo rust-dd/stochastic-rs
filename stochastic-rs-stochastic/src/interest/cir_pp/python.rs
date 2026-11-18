@@ -63,10 +63,8 @@ impl PyCirPlusPlus {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
     py_dispatch_f64!(self, |inner| inner.device_fallback())
@@ -92,10 +90,8 @@ impl PyCirPlusPlus {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every callable coefficient
-  /// re-acquires it, so a Python function is called from rayon workers one
-  /// at a time.
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is released meanwhile; a
+  /// callable coefficient re-acquires it, so rayon workers call a Python function one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

@@ -1,31 +1,14 @@
-//! # Wishart
+//! The Wishart process on the PSD cone (Bru 1991), `α ≥ d − 1`, exact on the grid by identity (14).
 //!
 //! $$
-//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a + a^\top dW_t^\top \sqrt{X_t}
+//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a +
+//! a^\top dW_t^\top \sqrt{X_t}
 //! $$
 //!
-//! Wishart process on the cone of positive semidefinite `d × d` matrices
-//! (Bru 1991): the matrix analogue of CIR and the stochastic covariance of
-//! the Gouriéroux–Sufana and Da Fonseca–Grasselli–Tebaldi models. `W` is a
-//! `d × d` matrix of independent Brownian motions, `a, b ∈ M_d(ℝ)`, and the
-//! degree `α ≥ d − 1` keeps the SDE well posed on the cone.
+//! Prop. 6 (Alg. 3), Thm. 7 (Alg. 2), Thm. 9 (Alg. 1); Siegel: the zero-degree χ² at `α = d − 1`.
 //!
-//! Sampled **exactly** on the grid by the Ahdida–Alfonsi splitting. The law
-//! identity (14) maps one step to `WIS_d(y, α, 0, I_dⁿ; Δt)` with
-//! `y = θ⁻¹ m x mᵀ θ⁻ᵀ`, `m = exp(Δt b)`, `θ` the extended Cholesky factor of
-//! `q_Δt / Δt` and `n = Rk(aᵀa)` (Proposition 6, Algorithm 3). That law is
-//! the composition of `n` commuting one-coordinate generators (Theorem 7,
-//! Algorithm 2), each solved in closed form by one noncentral χ² variable
-//! of degree `α − r` and `r` Gaussians after an extended Cholesky of the
-//! remaining `(d − 1) × (d − 1)` block of rank `r` (Theorem 9, Algorithm 1).
-//! There is no discretisation error for any admissible `α`, and the paths
-//! stay in the cone by construction.
-//!
-//! Reference: Ahdida, A. & Alfonsi, A. (2013), *Exact and high-order
-//! discretization schemes for Wishart processes and their affine extensions*,
-//! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
-//!
-//! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", Biometrika 66(2) 381–386, DOI 10.1093/biomet/66.2.381.
+//! Reference: Ahdida & Alfonsi (2013), Ann. Appl. Probab. 23(3), 1025–1073, DOI 10.1214/12-AAP863
+//! Reference: Siegel (1979), Biometrika 66(2), 381–386, DOI 10.1093/biomet/66.2.381
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -64,7 +47,7 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   step: StepMaps<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -110,9 +93,10 @@ impl<T: FloatExt> StepMaps<T> {
   }
 }
 
-/// `(m_t, q_t)` of Proposition 4 from one block exponential (Van Loan 1978):
-/// `exp(t [[b, aᵀa], [0, −bᵀ]]) = [[m_t, q_t m_t⁻ᵀ], [0, m_t⁻ᵀ]]`, so
-/// `q_t = ∫₀ᵗ exp(sb) aᵀa exp(sbᵀ) ds` is the top-right block times `m_tᵀ`.
+/// `(m_t, q_t)` of Proposition 4 from one block exponential (Van Loan 1978): `exp(t [[b, aᵀa],
+/// [0, −bᵀ]]) = [[m_t, q_t m_t⁻ᵀ], [0, m_t⁻ᵀ]]`, so `q_t` is the top-right block times `m_tᵀ`.
+///
+/// $$ q_t = \int_0^t e^{sb}\,a^\top a\,e^{sb^\top}\,ds $$
 fn drift_maps<T: FloatExt>(a: &Array2<T>, b: &Array2<T>, t: T) -> (Array2<T>, Array2<T>) {
   let d = a.nrows();
   let ata = a.t().dot(a);
@@ -193,9 +177,8 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
   }
 }
 
-/// Algorithm 1 in place on coordinate 0 of the symmetric PSD matrix `z`:
-/// samples `WIS_d(z, α, 0, e¹_d; Δt)`, which changes only the first row and
-/// column.
+/// Algorithm 1 in place on coordinate 0 of the symmetric PSD `z`: samples
+/// `WIS_d(z, α, 0, e¹_d; Δt)`, which changes only the first row and column.
 fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mut StepDraws<T, S>) {
   let d = z.nrows();
   let sub = z.slice(s![1.., 1..]).to_owned();
@@ -233,8 +216,8 @@ fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mu
 }
 
 impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
-  /// `a`, `b`, `x0` are `d × d`; `x0` must be symmetric positive semidefinite
-  /// and `alpha ≥ d − 1`; `n` counts grid points including the initial one.
+  /// Panics unless `n >= 2`, `a`, `b` and a symmetric `x0` are finite `d × d` with `d >= 1`,
+  /// `alpha >= d − 1` is finite, and a given `t` is positive and finite.
   pub fn new(
     alpha: T,
     b: Array2<T>,
@@ -323,10 +306,12 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
     out
   }
 
-  /// Laplace transform `E[exp(Tr(v X_t))]` of Proposition 4, eq. (10):
-  /// `exp(Tr[v (I − 2 q_t v)⁻¹ m_t x₀ m_tᵀ]) / det(I − 2 q_t v)^{α/2}`, valid
-  /// for symmetric `v` in the convergence domain, in particular for every
-  /// negative semidefinite `v`.
+  /// Laplace transform `E[exp(Tr(v X_t))]` of Proposition 4, eq. (10), for symmetric `v` in the
+  /// convergence domain, which holds every negative semidefinite `v`:
+  /// $$
+  /// \exp\bigl(\operatorname{Tr}[v (I - 2 q_t v)^{-1} m_t x_0 m_t^\top]\bigr)
+  ///   \big/ \det(I - 2 q_t v)^{\alpha/2}
+  /// $$
   pub fn laplace_transform(&self, v: &Array2<T>, t: T) -> T {
     let d = self.dim();
     let two = T::from_f64_fast(2.0);
@@ -430,9 +415,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for WishartLaunch<'_, T, S, B>
 {
-  /// The step's maps row-major. A configuration the family cannot carry
-  /// never reaches a launch — [`ProcessExt::sample`] keeps it on the host —
-  /// so asking here is a caller bypassing that guard.
+  /// The step's maps row-major. [`ProcessExt::sample`] keeps a configuration the family cannot
+  /// carry on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     assert!(
@@ -470,9 +454,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.0.dt()
   }
 
-  /// The central χ²(α − 2) each coordinate's squared Bessel draw adds to its
-  /// shifted normal's square: a gamma of shape `(α − 2) / 2` and scale two,
-  /// one per coordinate.
+  /// The central χ²(α − 2) each coordinate's squared Bessel draw adds to its shifted normal's
+  /// square: a gamma of shape `(α − 2) / 2` and scale two, one per coordinate.
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let two = T::from_usize_(2);
     let draw = ((self.0.alpha - two) / two, two, T::zero());

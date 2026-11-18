@@ -1,4 +1,4 @@
-//! # LinearSde
+//! Linear SDE with the affine drift `a + bX` and the multiplicative noise `cX`.
 //!
 //! $$
 //! dX_t=(a+bX_t)\,dt+cX_t\,dW_t
@@ -42,6 +42,7 @@ pub struct LinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> LinearSde<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       a.is_finite(),
@@ -142,9 +143,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

@@ -1,14 +1,11 @@
-//! # AitSahalia
+//! Aït-Sahalia's nonlinear drift and diffusion family by Euler–Maruyama; not its estimator.
 //!
 //! $$
-//! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt+\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
+//! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt
+//! +\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
 //! $$
 //!
-//! Reference: Aït-Sahalia Y. (1996) — *Testing Continuous-Time Models of
-//! the Spot Interest Rate*, Review of Financial Studies 9(2), 385–426,
-//! DOI: 10.1093/rfs/9.2.385. This file's Euler-Maruyama discretisation
-//! is a simulation scheme for the paper's nonlinear drift/CEV-type
-//! diffusion family, not the paper's own (non-simulation) estimator.
+//! Reference: Aït-Sahalia (1996), Rev. Financ. Stud. 9(2), 385–426, DOI 10.1093/rfs/9.2.385
 //!
 
 use ndarray::Array1;
@@ -35,10 +32,8 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub a1: T,
   /// Quadratic drift coefficient a₂.
   pub a2: T,
-  /// Constant term b₀ inside the square-rooted diffusion bracket
-  /// `√(b_0 + b_1 X_t + b_2 X_t^{b_3})` (unlike
-  /// [`NonlinearSde`](super::nonlinear_sde::NonlinearSde), this bracket
-  /// **is** square-rooted before scaling `dW_t`).
+  /// Constant term b₀ inside `√(b_0 + b_1 X_t + b_2 X_t^{b_3})`; the bracket is square-rooted,
+  /// unlike [`NonlinearSde`](super::nonlinear_sde::NonlinearSde)'s.
   pub b0: T,
   /// Linear term b₁ inside the square-rooted diffusion bracket.
   pub b1: T,
@@ -62,6 +57,7 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     am1: T,
     a0: T,
@@ -210,9 +206,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

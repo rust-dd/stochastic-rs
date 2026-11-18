@@ -1,29 +1,14 @@
-//! # GjrGarch
+//! GJR-GARCH(p, q): the variance-level threshold recursion of Glosten, Jagannathan and Runkle.
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\gamma_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
 //! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
 //!
-//! This is the variance-level threshold recursion of Glosten,
-//! Jagannathan, Runkle (1993) — commonly called "GJR-GARCH" — not
-//! Zakoian's (1994) original TGARCH, which thresholds the conditional
-//! *standard deviation* `sigma_t` rather than `sigma_t^2`. The two
-//! specifications are not algebraically equivalent. This type was
-//! previously named `Tgarch`, a name that described Zakoian's model
-//! rather than this one, while the type itself has always implemented
-//! the GJR recursion above. Zakoian's own thresholded-standard-deviation
-//! recursion is not implemented under either name.
+//! Not Zakoian's TGARCH, which thresholds the standard deviation and is not equivalent to it.
 //!
-//! References:
-//! - Glosten L. R., Jagannathan R., Runkle D. E. (1993) — *On the
-//!   Relation between the Expected Value and the Volatility of the
-//!   Nominal Excess Return on Stocks*, Journal of Finance 48(5),
-//!   1779–1801, DOI: 10.1111/j.1540-6261.1993.tb05128.x.
-//! - Zakoian J.-M. (1994) — *Threshold Heteroskedastic Models*, Journal
-//!   of Economic Dynamics and Control 18(5), 931–955,
-//!   DOI: 10.1016/0165-1889(94)90039-6.
-//!
+//! Reference: Glosten et al. (1993), JF 48(5), 1779–1801, DOI 10.1111/j.1540-6261.1993.tb05128.x
+//! Reference: Zakoian (1994), JEDC 18(5), 931–955, DOI 10.1016/0165-1889(94)90039-6
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -41,28 +26,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements the Glosten-Jagannathan-Runkle (1993) GJR-GARCH(p,q) model:
-///
-/// \[
-///   \sigma_t^2
-///     = \omega
-///       + \sum_{i=1}^p \Bigl[\alpha_i X_{t-i}^2
-///                              + \gamma_i X_{t-i}^2 \mathbf{1}_{\{X_{t-i}<0\}}\Bigr]
-///       + \sum_{j=1}^q \beta_j \sigma_{t-j}^2,
-///   \quad X_t = \sigma_t \cdot z_t, \quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// # Parameters
-/// - `omega`: Constant term (\(\omega\)).
-/// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for the positive part of squared residuals.
-/// - `gamma`: Array \(\{\gamma_1, \ldots, \gamma_p\}\) for the threshold effect (negative residuals).
-///   Must have the same length as `alpha`.
-/// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for the past variance terms.
-/// - `n`:     Length of the time series to generate.
-///
-/// # Notes
-/// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
-/// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
+/// GJR-GARCH(p, q): `gamma` adds to `alpha` on a fall, and the path starts at its unconditional
+/// variance; `new` enforces the stationarity `Σα + Σγ/2 + Σβ < 1`.
 #[derive(Debug, Clone)]
 pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
@@ -76,7 +41,7 @@ pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: Array1<T>,
   /// Length of the generated time series.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -84,8 +49,8 @@ pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
-  /// The GJR (1993) threshold GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0`,
-  /// `alpha[i] + gamma[i] >= 0` and `beta[j] >= 0`, and `Σα + Σγ/2 + Σβ < 1`.
+  /// Panics unless every value is finite, `n >= 1`, `omega > 0`, `alpha[i] >= 0`, `beta[j] >= 0`,
+  /// `alpha[i] + gamma[i] >= 0`, `alpha.len() == gamma.len()` and `Σα + Σγ/2 + Σβ < 1`.
   pub fn new(
     omega: T,
     alpha: Array1<T>,
@@ -146,9 +111,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::zero()
   }
 
-  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
-  /// first point: the state it starts from is the seed variance and the
-  /// not-yet-warm marker, not a value the path reports.
+  /// The series starts at `σ₀ z₀`, so the launch steps before it writes its first point: the
+  /// initial state is the seed variance and the not-yet-warm marker, not a reported value.
   fn initial_state(&self) -> [T; 4] {
     let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta, "gamma");
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
@@ -210,10 +174,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the conditional variance and the
-  /// series step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  /// What a device runs: order (1, 1), since the family carries one lag of each; a higher order
+  /// stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1 && self.gamma.len() == 1 && self.beta.len() == 1))
       .then_some("an order above (1, 1): the family carries one lag of each")
@@ -276,9 +238,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`GjrGarch`] sampling state: owns the standard-normal innovation
-/// source and the variance coefficients so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable [`GjrGarch`] sampling state: it owns the innovation source and the coefficients, so
+/// a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct GjrGarchSampler<T: FloatExt> {

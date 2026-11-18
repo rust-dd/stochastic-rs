@@ -1,4 +1,4 @@
-//! # Poisson
+//! Poisson process: arrival times as the running sum of exponential inter-arrival draws.
 //!
 //! $$
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
@@ -26,20 +26,18 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda: T,
   /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals before `t`.
   pub horizon: Horizon<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Poisson::default().with_lambda(4.0)`. No persisted cache:
-/// `sampler()` builds its exponential inter-arrival source fresh from
-/// `self` every call.
+/// Every field has a `with_*` setter (`Poisson::default().with_lambda(4.0)`); nothing is cached,
+/// since `sampler()` builds its exponential inter-arrival source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
-  /// Arrivals at rate `lambda ≥ 0` up to `horizon`; panics on `Events(n ≥ 1)` at `lambda = 0`,
-  /// whose n-th arrival never comes.
+  /// Arrivals at rate `lambda` up to `horizon`. Panics unless `lambda >= 0` is finite, an `Until`
+  /// horizon is positive and finite, and `lambda > 0` under `Events(n ≥ 1)`.
   pub fn new(lambda: T, horizon: Horizon<T>, seed: S) -> Self {
     assert_rate(lambda, horizon);
     horizon.assert_valid();
@@ -53,7 +51,7 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`, or on a zero rate under an
+  /// Replace `lambda`; panics unless `lambda >= 0` is finite, and `lambda > 0` under an
   /// `Events(n ≥ 1)` horizon.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert_rate(lambda, self.horizon);
@@ -61,8 +59,8 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self
   }
 
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite,
-  /// and on `Events(n ≥ 1)` at a zero rate.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite, `lambda >= 0` is
+  /// finite, and `lambda > 0` under `Events(n ≥ 1)`.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     assert_rate(self.lambda, horizon);
@@ -70,7 +68,7 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -162,9 +160,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  /// Reads `grid_points()` first so the host devices refuse a horizon-mode
-  /// process exactly as a device does, rather than quietly returning the
-  /// variable-length path the engine never described.
+  /// Reads `grid_points()` first, so the host refuses a horizon-mode process as a device does
+  /// and never returns the variable-length path the engine did not describe.
   fn host_sample(&self) -> Array1<T> {
     let _ = crate::euler::EulerCoefficients::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
@@ -191,10 +188,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     self.sampler_impl(&self.seed)
   }
 
-  /// Count mode goes through the Euler engine, which on a device sums the
-  /// inter-arrival times in the kernel. Horizon mode stays on this
-  /// process's own sampler whatever the backend: its output length is the
-  /// event count, which no fixed grid expresses.
+  /// Count mode goes through the Euler engine, where a device sums the inter-arrival times in
+  /// its kernel; horizon mode stays on the host, since its length is the event count.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)

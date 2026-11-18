@@ -1,6 +1,8 @@
 """Constructors, setters and calls report a rejected argument, input or state as `ValueError`,
 which `except Exception` catches; PyO3's `PanicException` is a `BaseException` it would miss."""
 
+import re
+
 import numpy as np
 import pytest
 import stochastic_rs as sr
@@ -25,6 +27,31 @@ def test_distribution_constructor_names_the_rejected_argument():
     want = r"scale must satisfy `scale > T::zero\(\)`, got scale = 0\.0"
     with pytest.raises(ValueError, match=want):
         sr.PyGamma(2.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    "build, message",
+    [
+        (lambda: sr.PyArch(0.1, [-0.5], 64), "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.5"),
+        (lambda: sr.PyGarch(0.1, [0.1], [0.5, -0.2], 64), "beta[1] must satisfy `beta[i] >= T::zero()`, got beta[1] = -0.2"),
+        (
+            lambda: sr.PyGjrGarch(0.1, [0.1], [-0.3], [0.5], 64),
+            "gamma[0] must satisfy `alpha[i] + gamma[i] >= T::zero()`, got alpha[0] = 0.1, gamma[0] = -0.3",
+        ),
+        (
+            lambda: sr.PyAgarch(0.1, [0.1], [-0.3], [0.5], 64),
+            "delta[0] must satisfy `alpha[i] + delta[i] >= T::zero()`, got alpha[0] = 0.1, delta[0] = -0.3",
+        ),
+        (
+            lambda: sr.PyEgarch(1.0, [0.1], [0.0], [1.0], 64),
+            "beta must satisfy `1 - Σ beta[j] x^(j+1) has every root outside the unit circle`, got beta = [1.0]",
+        ),
+    ],
+    ids=["arch", "garch", "gjr_garch", "agarch", "egarch"],
+)
+def test_the_garch_family_refuses_its_preconditions_at_construction(build, message):
+    with pytest.raises(ValueError, match=re.escape(message)):
+        build()
 
 
 def test_hand_written_process_constructor_raises_value_error():

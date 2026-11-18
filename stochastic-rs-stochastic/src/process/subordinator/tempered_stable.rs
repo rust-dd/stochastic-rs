@@ -1,3 +1,4 @@
+//! Tempered-stable subordinator: stable large jumps thinned exponentially, small jumps as a drift.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -13,11 +14,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Classical tempered-stable subordinator approximation.
-///
-/// Uses truncated-stable large jumps with exponential thinning and
-/// deterministic small-jump drift:
-/// `nu(dx) = c * exp(-mu x) * x^{-1-alpha} dx`, `x > 0`, `alpha in (0,1)`.
+/// Tempered-stable subordinator with Lévy density `nu(dx) = c exp(-mu x) x^{-1-alpha} dx`,
+/// `alpha in (0,1)`: truncated-stable large jumps thinned exponentially, small jumps as a drift.
 #[derive(Debug, Clone)]
 pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stable index in `(0,1)`.
@@ -34,7 +32,7 @@ pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cp
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -42,6 +40,8 @@ pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cp
 }
 
 impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `0 < alpha < 1`, `c > 0`,
+  /// `mu > 0`, `epsilon > 0`, and every parameter is finite.
   pub fn new(
     alpha: T,
     c: T,
@@ -107,10 +107,8 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
   }
 }
 
-/// The Euler engine's view of the tempered-stable subordinator. Every jump
-/// below the truncation contributes a deterministic drift, which is folded
-/// here; above it, the step reads the kernel's own sum over the candidates it
-/// kept.
+/// The Euler engine's view. Every jump below the truncation adds a deterministic drift, folded
+/// here; above it, the step reads the kernel's sum over the candidates it kept.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for TemperedStableSubordinator<T, S, B>
 {
@@ -200,9 +198,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the candidates are drawn and
-  /// thinned in the kernel, on the host devices it is this process's own
-  /// sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws and thins the candidates in its kernel, the host
+  /// runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -264,9 +261,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`TemperedStableSubordinator`] sampling state: the owned Poisson
-/// driver for candidate counts, the uniform source for jump sizes / thinning,
-/// and precomputed scalars.
+/// Reusable [`TemperedStableSubordinator`] sampling state: the Poisson driver of the candidate
+/// counts, the uniform source of the sizes and the thinning, and the precomputed scalars.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct TemperedStableSubordinatorSampler<T: FloatExt> {

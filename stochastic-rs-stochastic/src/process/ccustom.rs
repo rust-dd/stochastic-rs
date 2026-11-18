@@ -1,13 +1,10 @@
-//! # Ccustom
+//! A compound jump sum whose arrivals come from a [`CustomJt`] renewal law, not a Poisson clock.
 //!
 //! $$
 //! X_t=\sum_{k=1}^{N_t}J_k
 //! $$
 //!
-//! Compound jump process with a user-supplied inter-arrival-time
-//! distribution (via [`CustomJt`]) instead of a fixed-rate Poisson clock —
-//! no continuous diffusion component; this generates the pure jump sum
-//! `X_t`, meant to be added on top of a diffusion elsewhere.
+//! It has no diffusion, and is meant to be added to one.
 //!
 
 use std::any::Any;
@@ -38,7 +35,7 @@ where
   /// The arrival times, whose horizon and inter-arrival law are the process's: under `Events(n)`
   /// the rows hold the origin and the `n` jumps after it.
   pub customjt: CustomJt<T, D2>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -67,8 +64,7 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// Replace the arrivals' horizon, all else unchanged; panics on an `Until` that is not positive
-  /// and finite.
+  /// Replace the arrivals' horizon; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     self.customjt = self.customjt.with_horizon(horizon);
     self
@@ -102,9 +98,8 @@ where
   D1: Distribution<T> + Send + Sync + Any,
   D2: Distribution<T> + Send + Sync + Any,
 {
-  /// Poisson arrivals at the exponential law's rate. Any other law never
-  /// reaches a launch — [`ProcessExt::sample`] keeps it on the host — so
-  /// asking here is a caller bypassing that guard.
+  /// Poisson arrivals at the exponential law's rate. [`ProcessExt::sample`] keeps any other law
+  /// on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::CompoundPoissonEvents {
       lambda: self.device_intensity().expect(
@@ -175,10 +170,8 @@ where
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> CompoundCustomSampler<'_, T, D1, D2, S> {
     CompoundCustomSampler {
       jumps_distribution: &self.jumps_distribution,
@@ -187,10 +180,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the arrival count is fixed, the
-  /// inter-arrivals are exponential and the jump-size law is one the device
-  /// kernels draw; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the arrival count is fixed, the inter-arrivals exponential
+  /// and the jump-size law one the kernels draw; anything else stays on the host.
   fn sample(&self) -> CompoundPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
@@ -247,10 +238,8 @@ where
   }
 }
 
-/// Reusable [`CompoundCustom`] sampling state: borrows the (non-`Clone`) jump and
-/// jump-time distributions and owns the seed source. The per-call output length
-/// is event-count-dependent, so the three buffers are reallocated each call; the
-/// seed advances exactly as the legacy `sample` body did.
+/// Reusable [`CompoundCustom`] sampling state: it borrows the two laws and owns the seed source.
+/// The output length depends on the event count, so the three buffers are reallocated per call.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CompoundCustomSampler<'a, T, D1, D2, S: SeedExt>

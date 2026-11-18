@@ -1,15 +1,10 @@
-//! # RadialOu
+//! Radial OU: the norm of a multivariate OU, with `κ` absorbing the dimension's constant.
 //!
 //! $$
 //! dX_t=\left(\frac{\kappa}{X_t}-X_t\right)dt+\sigma\,dW_t
 //! $$
 //!
-//! Reference: Göing-Jaeschke A., Yor M. (2003) — *A Survey and Some
-//! Generalizations of Bessel Processes*, Bernoulli 9(2), 313–349,
-//! DOI: 10.3150/bj/1068128980 — surveys the radial Ornstein-Uhlenbeck
-//! process (the Euclidean norm of a multivariate OU process), of which
-//! this is the scalar SDE with `κ` absorbing the dimension-dependent
-//! constant.
+//! Reference: Göing-Jaeschke & Yor (2003), Bernoulli 9(2), 313–349, DOI 10.3150/bj/1068128980
 //!
 
 use ndarray::Array1;
@@ -28,9 +23,8 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct RadialOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Radial restoring-force coefficient κ in the drift `κ/X_t − X_t`,
-  /// which repels `X` away from 0 while an ordinary OU-style `-X_t` term
-  /// still pulls it back at large `|X|`.
+  /// Coefficient κ of the drift `κ/X_t − X_t`: it repels `X` from 0 while the `−X_t` term pulls
+  /// it back at large `|X|`.
   pub kappa: T,
   /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
@@ -40,7 +34,7 @@ pub struct RadialOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -48,6 +42,7 @@ pub struct RadialOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> RadialOu<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -141,9 +136,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

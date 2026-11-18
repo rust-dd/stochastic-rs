@@ -1,11 +1,8 @@
-//! # Feller
+//! Feller–logistic diffusion: CIR's square-root diffusion under a logistic drift.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)X_t\,dt+\sigma\sqrt{X_t}\,dW_t
 //! $$
-//!
-//! Feller–logistic diffusion: a CIR-style square-root diffusion term with a
-//! logistic (density-dependent) drift instead of CIR's linear drift.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -41,7 +38,7 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -49,6 +46,7 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
     theta: T,
@@ -94,9 +92,8 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
   }
 }
 
-/// The Euler engine's view of Feller's logistic diffusion. Reflection and
-/// truncation are separate families, as they are for the square-root
-/// diffusions.
+/// The Euler engine's view. Reflection and truncation are separate families, as for the
+/// square-root diffusions.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for FellerLogistic<T, S, B>
 {
@@ -169,9 +166,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

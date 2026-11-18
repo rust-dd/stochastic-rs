@@ -1,15 +1,10 @@
-//! # fCIR
+//! Euler scheme of the non-zero-mean fCIR, floored or reflected at zero as `diffusion::cir::Cir`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t}\,dB_t^H
 //! $$
 //!
-//! Reference: Mishura Y., Yurchenko-Tytarenko A. (2018) — *Fractional
-//! Cox-Ingersoll-Ross Process with Non-Zero "Mean"*, Modern Stochastics:
-//! Theory and Applications 5(1), 99–111, DOI: 10.15559/18-vmsta97 — the
-//! non-zero-mean-reverting fCIR process this file discretises by Euler
-//! scheme, floored or reflected at zero like
-//! [`Cir`](crate::diffusion::cir::Cir).
+//! Reference: Mishura & Yurchenko-Tytarenko (2018), MSTA 5(1), 99–111, DOI 10.15559/18-vmsta97
 //!
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -27,12 +22,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Fractional Cox-Ingersoll-Ross (Fcir) process.
-/// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
-/// where X(t) is the Fcir process.
-///
-/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
-/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+/// Fractional CIR `dX = θ(μ − X) dt + σ√X dB^H`. Fields are private, since the fGN driver caches
+/// a spectrum of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -61,8 +52,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// [`Cir::new`](crate::diffusion::cir::Cir::new)'s Feller contract: a violation under
-  /// [`VarianceBoundary::Floor`] emits a `log::warn!`, which the `with_*` setters do not repeat.
+  /// `Cir::new`'s Feller contract; no setter repeats it. Panics unless `0 <= hurst <= 1`, `n >= 2`,
+  /// a given `t` is positive and finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -105,7 +96,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -113,7 +105,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -122,7 +114,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     self
   }
 
-  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -148,42 +141,41 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -231,7 +223,7 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
     self.boundary
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
@@ -251,17 +243,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. `fill_path` then uses this
-  /// owned seed *directly* (no further derive) — exactly one derive from
-  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
-  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
-  /// Repeat calls on one sampler advance the same owned seed further, for
-  /// an independent path each time.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once:
+  /// one derive from `self.seed` per chunk, and each call advances the owned seed to a new path.
   fn sampler(&self) -> FcirSampler<'_, T, S, B> {
     FcirSampler {
       fcir: self,
@@ -269,10 +252,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
-  /// these two the trait's defaults would send a mapped batch through the
-  /// host sampler while `sample_par` ran on the device — the same law, but
-  /// a different stream and none of the device's speed.
+  /// The same launch as [`sample_par`](Self::sample_par), mapped; the trait's defaults would map
+  /// a batch on the host sampler, a different stream from the device's `sample_par`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
   }
@@ -285,9 +266,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
-  /// `m` paths through the Euler engine: on a device the whole recursion runs
-  /// in the kernel from fGN increments, on the host devices it is this
-  /// process's own sampler chunked exactly as `ProcessExt` chunks.
+  /// `m` paths through the Euler engine: a device runs the recursion in its kernel from fGN
+  /// increments, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
@@ -420,7 +400,8 @@ mod tests {
 
   use super::*;
 
-  /// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and stay finite.
+  /// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and
+  /// stay finite.
   #[test]
   fn fcir_accepts_sub_feller_under_reflection() {
     let fcir = Fcir::<f64, _>::new(

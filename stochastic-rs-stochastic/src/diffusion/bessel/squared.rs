@@ -1,19 +1,11 @@
 use super::*;
 
-/// Squared Bessel process BESQ(δ).
-///
-/// `dX_t = delta * dt + 2 * sqrt(|X_t|) * dW_t`
-///
-/// See the module doc for the relationship to [`Bessel`] (its square root,
-/// in law) and to [`Cir`](crate::diffusion::cir::Cir) (a time-changed,
-/// scaled instance of this process).
+/// BESQ(δ), `dX_t = δ dt + 2√|X_t| dW_t`: [`Bessel`] is its square root in law, and
+/// [`Cir`](crate::diffusion::cir::Cir) a time-changed, scaled instance.
 #[derive(Debug, Clone)]
 pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Dimension δ of the process. The literature convention is δ ≥ 0; δ ≥ 2
-  /// additionally keeps the continuous-time process strictly positive once
-  /// started away from 0 (Going-Jaeschke & Yor, 2003) — the direct analogue
-  /// of `Cir`'s Feller condition, since `Cir` is itself a time-changed,
-  /// scaled BESQ.
+  /// Dimension δ ≥ 0. δ ≥ 2 keeps the continuous-time process positive once away from 0
+  /// (Going-Jaeschke & Yor, 2003), the analogue of `Cir`'s Feller condition.
   pub delta: T,
   /// Number of points sampled along the BESQ path.
   pub n: usize,
@@ -31,12 +23,11 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `SquaredBessel::default().with_delta(4.0)`. No persisted cache:
-/// `sampler()` builds its Gaussian source fresh from `self` every call.
+/// Every field has a `with_*` setter (`SquaredBessel::default().with_delta(4.0)`); nothing is
+/// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
-  /// δ < 2, the analogue of a sub-Feller [`Cir`](crate::diffusion::cir::Cir), is accepted; under
-  /// [`VarianceBoundary::Floor`] it emits a `log::warn!`, never a panic.
+  /// δ < 2 is accepted and, under [`VarianceBoundary::Floor`], logged with `log::warn!`. Panics
+  /// unless `n >= 2`, a given `t` is positive and finite, and `delta` and `x0` are finite.
   pub fn new(
     delta: T,
     n: usize,
@@ -79,41 +70,41 @@ impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `delta`, all else unchanged.
+  /// Replace `delta`; panics unless `delta` is finite.
   pub fn with_delta(mut self, delta: T) -> Self {
     Self::check_delta(delta);
     self.delta = delta;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -135,9 +126,8 @@ impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of the squared Bessel process: the BESQ recursion
-/// itself, reported as it stands. Reflection and truncation are separate
-/// families, as they are for the square-root diffusions.
+/// The Euler engine's view: the BESQ recursion, reported as it stands. Reflection and truncation
+/// are separate families, as for the square-root diffusions.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for SquaredBessel<T, S, B>
 {
@@ -208,9 +198,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

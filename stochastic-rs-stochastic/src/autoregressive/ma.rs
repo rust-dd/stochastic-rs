@@ -1,7 +1,8 @@
-//! # Ma
+//! MA(q): Gaussian noise plus a weighted sum of its last `q` values.
 //!
 //! $$
-//! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
+//! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},
+//! \qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
 
@@ -20,18 +21,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an MA(q) model:
-///
-/// \[
-///   X_t = \epsilon_t + \theta_1 \epsilon_{t-1} + \dots + \theta_q \epsilon_{t-q},
-///   \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2).
-/// \]
-///
-/// # Fields
-/// - `theta`: MA coefficients (\(\theta_1, \ldots, \theta_q\)).
-/// - `sigma`: Standard deviation of noise \(\epsilon_t\).
-/// - `n`: Length of time series.
-/// - `m`: Optional batch size.
+/// MA(q): Gaussian noise of scale `sigma` plus its last `theta.len()` values weighted by `theta`.
 #[derive(Debug, Clone)]
 pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// MA coefficients
@@ -40,7 +30,7 @@ pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of observations
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -48,7 +38,8 @@ pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ma<T, S> {
-  /// Create a new MA(q) model with the given parameters.
+  /// MA(q). Panics unless `n >= 1`, `sigma >= 0`, and `sigma` and every entry of `theta` are
+  /// finite.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(
       sigma.is_finite(),
@@ -155,10 +146,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
-  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  /// What a device runs: order one, since the family carries one lag; a higher order stays on
+  /// the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.theta.len() == 1)).then_some("an order above one: the family carries a single lag")
   }

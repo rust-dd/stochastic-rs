@@ -1,4 +1,4 @@
-//! # Bm
+//! Standard Brownian motion: `B_0 = 0`, then the running sum of independent Gaussian increments.
 //!
 //! $$
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
@@ -27,7 +27,7 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -36,6 +36,7 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 /// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bm<T, S> {
+  /// Panics unless `n >= 2` and a given `t` is positive and finite.
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     check_n(n);
     check_t(t);
@@ -49,21 +50,21 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bm<T, S, B> {
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -77,9 +78,8 @@ impl<T: FloatExt> Default for Bm<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of Brownian motion: the additive family, whose
-/// step is the increment itself, so a device accumulates the increments in
-/// the same kernel that draws them.
+/// The Euler engine's view: the additive family, whose step is the increment itself, so a
+/// device accumulates the increments in the kernel that draws them.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Bm<T, S, B>
 {
@@ -133,9 +133,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
