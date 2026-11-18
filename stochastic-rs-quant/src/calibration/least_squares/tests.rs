@@ -254,6 +254,8 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     model: RefCell::new(Rosenbrock::new()),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
+    norm: Cell::new(0.0),
+    flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),
   };
   let x = Array1::from_vec(vec![-1.2, 1.0]);
@@ -330,4 +332,36 @@ pub(crate) fn worst_relative_error(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
     }
   };
   f64::max_or_nan_fold(a.iter().zip(b).map(ratio))
+}
+
+struct Flat;
+
+impl LeastSquaresProblem for Flat {
+  fn set_params(&mut self, _: &Array1<f64>) {}
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![1.0])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![1.0, 2.0]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    Some(Array2::zeros((2, 1)))
+  }
+}
+
+/// Moré's gradient test holds where the Jacobian is zero, with nothing fitted.
+#[test]
+fn residuals_that_no_parameter_moves_are_not_a_convergence() {
+  for pivoted_qr in [false, true] {
+    let options = LmOptions {
+      pivoted_qr,
+      ..LmOptions::default()
+    };
+    let (_, report) = minimize(Flat, options);
+    assert!(!report.converged, "{report:?}");
+    assert_eq!(report.message(), "flat objective");
+  }
 }

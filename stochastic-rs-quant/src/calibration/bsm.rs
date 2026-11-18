@@ -31,6 +31,9 @@ use crate::traits::ToModel;
 /// surface can sit anywhere above it.
 const V_MIN: f64 = 1e-6;
 
+/// The weight of a quote whose vega has underflowed, so its residual stays finite.
+const VEGA_FLOOR: f64 = 1e-8;
+
 impl ToModel for Calibrated<BsmParams> {
   type Model = BsmFourier;
 
@@ -211,11 +214,8 @@ impl LeastSquaresProblem for BsmProblem<'_> {
         OptionType::Put => put,
       };
       // Vega weighting approximates calibration in implied-volatility space.
-      let vega = model
-        .vega(s, quote.strike, r, q, quote.tau)
-        .abs()
-        .max_or_nan(1e-8);
-      residuals[idx] = (price - quote.price) / vega;
+      let vega = model.vega(s, quote.strike, r, q, quote.tau).abs();
+      residuals[idx] = (price - quote.price) / vega.max_or_nan(VEGA_FLOOR);
       if record {
         prices.push(price);
       }
@@ -228,8 +228,7 @@ impl LeastSquaresProblem for BsmProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    // For vega-weighted residuals r = (C_model - C_mkt)/Vega,
-    // dr/dsigma = 1 - r * (Vomma / Vega)
+    // r = (C − M)/max(vega, floor): r′ = 1 − r·vomma/vega above the floor, vega/floor on it.
     let BsmCalibrator {
       s,
       r,
@@ -244,11 +243,13 @@ impl LeastSquaresProblem for BsmProblem<'_> {
       let (k, tau) = (quote.strike, quote.tau);
       let c_model_i = model.price_option(s, k, r, q, tau, quote.option_type);
 
-      let vega = model.vega(s, k, r, q, tau).abs().max_or_nan(1e-8);
-      let vomma = model.vomma(s, k, r, q, tau);
-      let r_i = (c_model_i - quote.price) / vega;
-
-      J[(idx, 0)] = 1.0 - r_i * (vomma / vega);
+      let vega = model.vega(s, k, r, q, tau).abs();
+      J[(idx, 0)] = if vega > VEGA_FLOOR {
+        let vomma = model.vomma(s, k, r, q, tau);
+        1.0 - (c_model_i - quote.price) / vega * (vomma / vega)
+      } else {
+        vega / VEGA_FLOOR
+      };
     }
 
     Some(J)

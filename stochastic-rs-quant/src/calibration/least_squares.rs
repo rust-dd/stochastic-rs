@@ -92,12 +92,15 @@ pub struct LmReport {
   pub reason: TerminationReason,
   /// The start's residuals and Jacobian evaluated finite; without them the fit has no iterate.
   pub started: bool,
+  /// The fit stopped where `‖Dx‖ ≤ ε‖r‖`: no step the size of `x` moves a residual's last bit.
+  pub flat: bool,
 }
 
 impl LmReport {
   /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
   pub fn message(&self) -> &'static str {
     match self.reason {
+      _ if self.flat => "flat objective",
       TerminationReason::SolverConverged => "converged",
       TerminationReason::MaxCostEvals | TerminationReason::MaxIter => "evaluation budget exhausted",
       TerminationReason::NumericalNoProgress => "no numerical progress",
@@ -191,6 +194,9 @@ struct Objective<P> {
   model: RefCell<P>,
   coordinates: RefCell<Option<Array1<f64>>>,
   evaluations: Cell<usize>,
+  /// `‖r‖` of the last residual call, which precedes each Jacobian basin asks for at its point.
+  norm: Cell<f64>,
+  flat: Cell<bool>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
 }
@@ -226,6 +232,7 @@ impl<P: LeastSquaresProblem> Residual for &Objective<P> {
     if self.evaluations.get() == 1 && residuals.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
+    self.norm.set(residuals.dot(&residuals).sqrt());
     Ok(residuals)
   }
 }
@@ -243,6 +250,17 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
     if jacobian.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
+    // Moré's ‖Dx‖ of (8.3), D the column norms; a start at the origin is sized by ‖D‖ alone.
+    let origin = x.iter().all(|v| *v == 0.0);
+    let scaled = jacobian.columns().into_iter().zip(x).map(|(column, x)| {
+      let size = if origin { 1.0 } else { *x };
+      column.dot(&column) * size * size
+    });
+    let norm = self.norm.get();
+    if norm > 0.0 && scaled.sum::<f64>().sqrt() <= f64::EPSILON * norm {
+      self.flat.set(true);
+      return Err(());
+    }
     Ok(jacobian)
   }
 }
@@ -254,6 +272,8 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     model: RefCell::new(problem),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
+    norm: Cell::new(0.0),
+    flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
@@ -275,6 +295,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
         iterations: 0,
         reason: TerminationReason::SolverFailed,
         started: false,
+        flat: false,
       },
     );
   }
@@ -295,17 +316,23 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   } else {
     run(&objective, solver, initial, budget, max_iter)
   };
+  let flat = objective.flat.get();
+  let evaluations = objective.evaluations.get();
   let mut model = objective.model.into_inner();
+  if flat && !started {
+    model.accept();
+  }
   // A rejected or failed trial may be the last callback. Return the accepted fit.
   model.set_params(&best);
   (
     model,
     LmReport {
       converged: reason == TerminationReason::SolverConverged,
-      evaluations: objective.evaluations.get(),
+      evaluations,
       iterations,
       reason,
-      started,
+      started: started || flat,
+      flat,
     },
   )
 }
