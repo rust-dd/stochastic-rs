@@ -135,8 +135,6 @@ impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> AitSahalia<T, S, B> {}
-
 /// The Euler engine's view of the Aït-Sahalia short-rate model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for AitSahalia<T, S, B>

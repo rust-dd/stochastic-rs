@@ -82,8 +82,6 @@ impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Gompertz<T, S, B> {}
-
 /// The Euler engine's view of the Gompertz process. `X₀` is floored here as
 /// the host sampler floors it, which is what makes the step's own floor the
 /// only guard the coefficients need.

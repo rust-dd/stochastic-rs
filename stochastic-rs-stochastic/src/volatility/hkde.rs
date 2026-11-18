@@ -75,7 +75,6 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     mu: T,
     kappa: T,

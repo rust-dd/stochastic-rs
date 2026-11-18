@@ -126,8 +126,6 @@ impl<T: FloatExt, S: SeedExt> NonlinearSde<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> NonlinearSde<T, S, B> {}
-
 /// The Euler engine's view of the non-linear SDE.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for NonlinearSde<T, S, B>

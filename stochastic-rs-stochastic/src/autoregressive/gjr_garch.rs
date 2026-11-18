@@ -59,7 +59,6 @@ use crate::traits::ProcessExt;
 ///   Must have the same length as `alpha`.
 /// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for the past variance terms.
 /// - `n`:     Length of the time series to generate.
-/// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
@@ -85,6 +84,8 @@ pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
+  /// The GJR (1993) threshold GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0`,
+  /// `alpha[i] + gamma[i] >= 0` and `beta[j] >= 0`, and `Σα + Σγ/2 + Σβ < 1`.
   pub fn new(
     omega: T,
     alpha: Array1<T>,
@@ -123,8 +124,6 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> GjrGarch<T, S, B> {}
 
 /// The Euler engine's view of GJR-GARCH(1,1).
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -342,11 +341,6 @@ impl<T: FloatExt> GjrGarchSampler<T> {
 
         sigma2[t] = var_t;
       }
-      assert!(
-        sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "GjrGarch produced non-positive or non-finite conditional variance at t={}",
-        t
-      );
       // X_t = sigma_t * z_t
       out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }

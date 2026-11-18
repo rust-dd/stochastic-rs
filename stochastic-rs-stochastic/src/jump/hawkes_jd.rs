@@ -140,8 +140,6 @@ impl<T: FloatExt, S: SeedExt> HawkesJd<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HawkesJd<T, S, B> {}
-
 /// The Euler engine's view of the Hawkes jump diffusion. The intensity is a
 /// state component the family excites and mean-reverts, so the whole
 /// self-exciting loop runs in the kernel; the process reports the path alone.

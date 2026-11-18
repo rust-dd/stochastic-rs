@@ -115,8 +115,6 @@ impl<T: FloatExt, S: SeedExt> FouqueOu2D<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FouqueOu2D<T, S, B> {}
-
 /// The Euler engine's view of the two-scale Ornstein-Uhlenbeck driver. The
 /// fast factor's reciprocal scales depend on no state, so they are folded
 /// here rather than recomputed on every step.

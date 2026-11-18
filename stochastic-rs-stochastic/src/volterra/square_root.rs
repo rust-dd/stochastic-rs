@@ -425,5 +425,4 @@ where
 }
 
 #[cfg(test)]
-#[path = "square_root_tests.rs"]
 mod tests;

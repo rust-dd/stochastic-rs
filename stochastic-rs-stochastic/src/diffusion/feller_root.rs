@@ -87,8 +87,6 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FellerRoot<T, S, B> {}
-
 /// The Euler engine's view of the Feller root process. The drift's constant
 /// `θ₃³ − θ₁θ₂` depends on no state, so it is folded here and travels as one
 /// parameter rather than being recomputed on every step of every path.

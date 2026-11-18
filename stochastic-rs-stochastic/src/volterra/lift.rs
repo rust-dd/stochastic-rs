@@ -12,9 +12,7 @@
 //! $\int_0^{\delta t} K(u)\,du$ ([`VolterraKernel::integral_from_zero`]).
 //! [`MarkovLift`](crate::rough::MarkovLift) is the special
 //! case $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
-//! ([`RlKernel`](crate::rough::kernel::RlKernel)), now kept only as a thin
-//! backward-compatible wrapper around [`VolterraLift<T,
-//! RlKernel<T>>`](VolterraLift).
+//! ([`RlKernel`](crate::rough::kernel::RlKernel)), with coefficients of the state alone.
 //!
 //! Collapses the full path history into a bounded state of $N'$
 //! exponential factors, turning an $O(n^2)$ naive Volterra simulation into

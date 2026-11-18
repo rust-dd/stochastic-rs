@@ -48,7 +48,6 @@ use crate::traits::ProcessExt;
 ///   Must be the same length as `alpha`.
 /// - `beta`:  An array \(\{\beta_1, \dots, \beta_q\}\) controlling persistence of past log-variance.
 /// - `n`: The number of observations to generate.
-/// - `m`: Optional batch size for parallel sampling (unused by default).
 ///
 /// # Notes
 /// 1. We assume that `alpha` and `gamma` each have length \(p\).
@@ -74,7 +73,8 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
-  /// Create a new Egarch model with the given parameters.
+  /// Nelson's (1991) EGARCH(p, q). Panics unless `1 − Σ βⱼ xʲ` has its roots outside the unit
+  /// circle (`|beta| < 1` at order one); a log-variance beyond `exp`'s range samples `∞` or NaN.
   pub fn new(
     omega: T,
     alpha: Array1<T>,
@@ -97,6 +97,7 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
       alpha.len(),
       gamma.len()
     );
+    check_beta(&beta);
     Self {
       backend: Cpu,
       omega,
@@ -109,7 +110,25 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Egarch<T, S, B> {}
+/// Panics unless `1 − Σ βⱼ xʲ` has every root outside the unit circle: the step-down recursion's
+/// partial autocorrelations all lie in `(−1, 1)` (Barndorff-Nielsen & Schou 1973).
+#[track_caller]
+fn check_beta<T: FloatExt>(beta: &Array1<T>) {
+  let mut a = beta.to_vec();
+  let stationary = (1..=a.len()).rev().all(|k| {
+    let r = a[k - 1];
+    let lower = (0..k - 1)
+      .map(|j| (a[j] + r * a[k - 2 - j]) / (T::one() - r * r))
+      .collect::<Vec<_>>();
+    a[..k - 1].copy_from_slice(&lower);
+    r.abs() < T::one()
+  });
+  assert!(
+    stationary,
+    "beta must satisfy `1 - Σ beta[j] x^(j+1) has every root outside the unit circle`, got beta = {:?}",
+    beta.to_vec()
+  );
+}
 
 /// The Euler engine's view of EGARCH(1,1). Higher orders read back more than
 /// one lag, which the engine's four state slots do not bound.
@@ -137,6 +156,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The series starts at `σ₀ z₀` with `ln σ₀² = ω`, so the launch steps
   /// before writing its first point.
   fn initial_state(&self) -> [T; 4] {
+    check_beta(&self.beta);
     [T::zero(), self.omega, T::zero(), T::zero()]
   }
 
@@ -291,6 +311,7 @@ impl<T: FloatExt> EgarchSampler<T> {
 
     // For normal(0,1), the expected absolute value is sqrt(2/pi)
     let e_abs_z = T::from_f64_fast((2.0_f64 / std::f64::consts::PI).sqrt());
+    check_beta(&self.beta);
 
     for t in 0..n {
       if t == 0 {
@@ -323,17 +344,7 @@ impl<T: FloatExt> EgarchSampler<T> {
       }
 
       // Convert log_sigma2[t] to sigma_t and compute X_t
-      assert!(
-        log_sigma2[t].is_finite(),
-        "Egarch produced non-finite log-variance at t={}",
-        t
-      );
       let sigma_t = (log_sigma2[t].exp()).sqrt();
-      assert!(
-        sigma_t.is_finite() && sigma_t > T::zero(),
-        "Egarch produced non-positive or non-finite sigma at t={}",
-        t
-      );
       out[t] = sigma_t * z[t];
     }
   }

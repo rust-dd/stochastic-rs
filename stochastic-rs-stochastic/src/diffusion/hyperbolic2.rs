@@ -105,8 +105,6 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Hyperbolic2<T, S, B> {}
-
 /// The Euler engine's view of the hyperbolic diffusion. The drift's leading
 /// `½σ²` is folded here rather than recomputed on every step.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

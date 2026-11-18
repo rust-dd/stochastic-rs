@@ -81,8 +81,6 @@ impl<T: FloatExt, S: SeedExt> ModifiedCir<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> ModifiedCir<T, S, B> {}
-
 /// The Euler engine's view of the modified CIR process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for ModifiedCir<T, S, B>

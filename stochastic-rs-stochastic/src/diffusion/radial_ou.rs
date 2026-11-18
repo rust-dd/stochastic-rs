@@ -78,8 +78,6 @@ impl<T: FloatExt, S: SeedExt> RadialOu<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RadialOu<T, S, B> {}
-
 /// The Euler engine's view of the radial OU process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for RadialOu<T, S, B>

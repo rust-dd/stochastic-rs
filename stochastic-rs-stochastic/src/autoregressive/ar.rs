@@ -94,8 +94,6 @@ impl<T: FloatExt, S: SeedExt> Ar<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Ar<T, S, B> {}
-
 /// The Euler engine's view of an autoregression. Higher orders read back more
 /// than one lag, which the engine's four state slots do not bound.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

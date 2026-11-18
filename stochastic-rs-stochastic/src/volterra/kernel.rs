@@ -275,5 +275,4 @@ impl<T: FloatExt> VolterraKernel<T> for SumOfExponentials<T> {
 }
 
 #[cfg(test)]
-#[path = "kernel_tests.rs"]
 mod tests;

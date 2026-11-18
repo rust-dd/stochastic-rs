@@ -93,8 +93,6 @@ impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Verhulst<T, S, B> {}
-
 /// The Euler engine's view of the Verhulst process. Whether the state is
 /// confined to `[0, K]` is a property of the process, not of the step, so it
 /// picks the family rather than travelling as a parameter.

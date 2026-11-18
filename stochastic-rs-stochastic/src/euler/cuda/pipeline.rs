@@ -3,7 +3,6 @@ use std::any::TypeId;
 use super::*;
 
 /// One chunk's launch without the copy back: the caller owns the stream.
-#[allow(clippy::too_many_arguments)]
 fn launch_chunk<R>(
   stream: &Arc<CudaStream>,
   func: &CudaFunction,
@@ -159,7 +158,6 @@ where
 }
 
 /// The whole batch through the two-stream pipeline, `rows` paths per chunk.
-#[allow(clippy::too_many_arguments)]
 fn pipelined<R>(
   ordinal: usize,
   real: &'static str,
@@ -349,7 +347,6 @@ where
 }
 
 /// The pipelined batch for an explicit specification, in the precision of `T`.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn pipelined_paths<T: FloatExt>(
   ordinal: usize,
   spec: EulerSpec<T>,

@@ -39,7 +39,6 @@ use crate::traits::ProcessExt;
 /// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for past squared observations.
 /// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for past variances.
 /// - `n`:     Length of the time series.
-/// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
 /// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
@@ -62,6 +61,8 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
+  /// Bollerslev's (1986) GARCH(p, q). Panics unless `omega > 0`, every `alpha[i] >= 0` and
+  /// `beta[j] >= 0` (his eq. (2)), and `alpha.sum() + beta.sum() < 1` (his Theorem 1).
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),
@@ -86,12 +87,12 @@ impl<T: FloatExt, S: SeedExt> Garch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Garch<T, S, B> {}
-
-/// `1 − Σα − Σβ`, the unconditional variance's denominator; panics unless positive, so `new` and
-/// the samplers, which a field written after `new` reaches, share one check.
+/// The positivity conditions `α ≥ 0`, `β ≥ 0`, then the unconditional variance's denominator
+/// `1 − Σα − Σβ > 0`; one check for `new` and the samplers, which a field written later reaches.
 #[track_caller]
 fn variance_denominator<T: FloatExt>(alpha: &Array1<T>, beta: &Array1<T>) -> T {
+  assert_entries("alpha", "alpha[i] >= T::zero()", alpha, |v| v >= T::zero());
+  assert_entries("beta", "beta[i] >= T::zero()", beta, |v| v >= T::zero());
   let sum_alpha: T = alpha.iter().cloned().sum();
   let sum_beta: T = beta.iter().cloned().sum();
   let denom = T::one() - sum_alpha - sum_beta;
@@ -303,11 +304,6 @@ impl<T: FloatExt> GarchSampler<T> {
         }
         sigma2[t] = var_t;
       }
-      assert!(
-        sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "Garch produced non-positive or non-finite conditional variance at t={}",
-        t
-      );
       // X_t = sigma_t * z[t]
       out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }

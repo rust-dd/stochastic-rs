@@ -6,6 +6,8 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
 use stochastic_rs_stochastic::autoregressive::ar::Ar;
+use stochastic_rs_stochastic::autoregressive::arch::Arch;
+use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
 use stochastic_rs_stochastic::correlation::VanEmmerich;
@@ -305,6 +307,28 @@ refuses! {
     => Agarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
   a_threshold_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - 0.5 * gamma.sum() - beta.sum() > 0`, got alpha = [0.3], gamma = [0.4], beta = [0.5]"
     => GjrGarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
+  an_arch_refuses_a_negative_loading: "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.5"
+    => Arch::<f64>::new(0.1, array![-0.5], 64, Unseeded);
+  a_garch_refuses_a_negative_loading: "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.3"
+    => Garch::<f64>::new(0.1, array![-0.3], array![0.5], 64, Unseeded);
+  a_garch_refuses_a_negative_persistence: "beta[1] must satisfy `beta[i] >= T::zero()`, got beta[1] = -0.2"
+    => Garch::<f64>::new(0.1, array![0.1], array![0.5, -0.2], 64, Unseeded);
+  a_threshold_garch_refuses_a_negative_loading: "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.3"
+    => GjrGarch::<f64>::new(0.1, array![-0.3], array![0.4], array![0.5], 64, Unseeded);
+  a_threshold_garch_refuses_a_negative_loading_on_a_fall: "gamma[0] must satisfy `alpha[i] + gamma[i] >= T::zero()`, got alpha[0] = 0.1, gamma[0] = -0.3"
+    => GjrGarch::<f64>::new(0.1, array![0.1], array![-0.3], array![0.5], 64, Unseeded);
+  a_threshold_garch_refuses_a_negative_persistence: "beta[0] must satisfy `beta[i] >= T::zero()`, got beta[0] = -0.5"
+    => GjrGarch::<f64>::new(0.1, array![0.1], array![0.1], array![-0.5], 64, Unseeded);
+  an_asymmetric_garch_refuses_a_negative_loading: "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.3"
+    => Agarch::<f64>::new(0.1, array![-0.3], array![0.4], array![0.5], 64, Unseeded);
+  an_asymmetric_garch_refuses_a_negative_loading_on_a_fall: "delta[0] must satisfy `alpha[i] + delta[i] >= T::zero()`, got alpha[0] = 0.1, delta[0] = -0.3"
+    => Agarch::<f64>::new(0.1, array![0.1], array![-0.3], array![0.5], 64, Unseeded);
+  an_asymmetric_garch_refuses_a_negative_persistence: "beta[0] must satisfy `beta[i] >= T::zero()`, got beta[0] = -0.5"
+    => Agarch::<f64>::new(0.1, array![0.1], array![0.1], array![-0.5], 64, Unseeded);
+  an_egarch_refuses_a_unit_root: "beta must satisfy `1 - Σ beta[j] x^(j+1) has every root outside the unit circle`, got beta = [1.0]"
+    => Egarch::<f64>::new(1.0, array![0.1], array![0.0], array![1.0], 3000, Unseeded);
+  an_egarch_refuses_a_second_order_root_inside_the_circle: "beta must satisfy `1 - Σ beta[j] x^(j+1) has every root outside the unit circle`, got beta = [0.8, 0.3]"
+    => Egarch::<f64>::new(0.0, array![0.1], array![0.0], array![0.8, 0.3], 64, Unseeded);
   a_random_walk_refuses_a_zero_waiting_rate: "rate must satisfy `rate > T::zero() && rate.is_finite()`, got rate = 0.0"
     => Ctrw::<f64>::new(CtrwWaitingLaw::Exponential { rate: 0.0 }, CtrwJumpLaw::Normal { mean: 0.0, std: 1.0 }, 64, None, None, Unseeded);
   a_random_walk_refuses_a_stable_jump_index_above_two: "alpha must satisfy `alpha > T::zero() && alpha <= T::from_usize_(2)`, got alpha = 2.5"

@@ -126,8 +126,6 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HullWhite2F<T, S, B> {}
-
 /// The Euler engine's view of the two-factor Hull-White model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for HullWhite2F<T, S, B>

@@ -20,9 +20,9 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::diffusion::cir::Cir;
 use crate::diffusion::cir::CirSampler;
 use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;

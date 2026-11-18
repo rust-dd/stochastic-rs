@@ -7,7 +7,6 @@ use super::*;
 /// through the host, which is where most of a CUDA batch's time goes. The
 /// returned slice is a device-to-device copy of the cached output, so the
 /// per-size cache stays reusable.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn sample_f32_device(
   sqrt_eigs: &[f32],
   n: usize,

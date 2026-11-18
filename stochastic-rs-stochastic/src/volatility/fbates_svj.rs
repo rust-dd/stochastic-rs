@@ -85,7 +85,6 @@ pub struct FbatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
     mu: T,

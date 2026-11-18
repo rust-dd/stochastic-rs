@@ -54,7 +54,6 @@ impl Context {
     })
   }
 
-  #[allow(clippy::too_many_arguments)]
   fn launch(
     &mut self,
     params: [f32; crate::euler::PARAM_SLOTS],
@@ -168,7 +167,6 @@ fn update(context: &metal::Context, buffer: &mut Buffer<f32>, values: &[f32]) ->
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run<O>(
   ordinal: usize,
   params: [f32; crate::euler::PARAM_SLOTS],

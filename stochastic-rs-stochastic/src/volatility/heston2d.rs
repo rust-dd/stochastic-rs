@@ -231,7 +231,6 @@ fn warn_on_feller_violation<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     x0: [T; 2],
     v0: [T; 2],
@@ -265,8 +264,6 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Heston2D<T, S, B> {}
 
 /// The Euler engine's view of the two-asset Heston model. The Cholesky factor
 /// is computed once at construction and travels as parameters, so the kernel

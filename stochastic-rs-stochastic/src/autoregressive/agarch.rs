@@ -41,7 +41,6 @@ use crate::traits::ProcessExt;
 /// - `delta`: Array \(\{\delta_1, \ldots, \delta_p\}\) for negative-lag extra effect.
 /// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\).
 /// - `n`:     Length of the time series.
-/// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
 /// - This is essentially a [`GjrGarch`](crate::autoregressive::gjr_garch::GjrGarch)-like
@@ -68,6 +67,8 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
+  /// The GJR (1993) recursion with `delta` for its threshold. Panics unless `omega > 0`, every
+  /// `alpha[i] >= 0`, `alpha[i] + delta[i] >= 0` and `beta[j] >= 0`, and `Σα + Σδ/2 + Σβ < 1`.
   pub fn new(
     omega: T,
     alpha: Array1<T>,
@@ -106,8 +107,6 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Agarch<T, S, B> {}
 
 /// The Euler engine's view of the asymmetric GARCH(1,1), whose threshold term
 /// is the same one GJR-GARCH takes under another name.
@@ -320,11 +319,6 @@ impl<T: FloatExt> AgarchSampler<T> {
         }
         sigma2[t] = var_t;
       }
-      assert!(
-        sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "Agarch produced non-positive or non-finite conditional variance at t={}",
-        t
-      );
       out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
   }

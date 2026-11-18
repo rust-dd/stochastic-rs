@@ -60,8 +60,6 @@ impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> PoissonSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the Poisson subordinator: the counting family,
 /// whose step is the number of jumps the kernel drew.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

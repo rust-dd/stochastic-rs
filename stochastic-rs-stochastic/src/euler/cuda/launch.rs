@@ -9,7 +9,6 @@ use super::*;
 /// for the call and taken back after, where a caller that wants to own the
 /// values copies them itself. On a host with slow pages that copy is the
 /// larger part of the wall, bigger than the bus crossing it follows.
-#[allow(clippy::too_many_arguments)]
 fn run<R, O>(
   ordinal: usize,
   real: &'static str,
@@ -207,7 +206,6 @@ where
 
 /// The kernel launch for an explicit specification, with `finish` run over
 /// the `components × m × n` values it wrote, in the caller's precision.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn device_paths<T: FloatExt, O>(
   ordinal: usize,
   spec: EulerSpec<T>,

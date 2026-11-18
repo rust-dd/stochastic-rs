@@ -6,12 +6,8 @@ use crate::rough::kernel::RlKernel;
 use crate::traits::FloatExt;
 use crate::volterra::lift::VolterraLift;
 
-/// Single-path and batch Markov-lift stepper for $f,g$-driven RL-Volterra SDEs.
-///
-/// A thin, backward-compatible wrapper over the kernel-generic
-/// [`VolterraLift`]: `MarkovLift<T>` is `VolterraLift<T, RlKernel<T>>`, with
-/// `f`/`g` coefficients that take only the state (RL-Volterra SDEs in this
-/// crate are time-homogeneous) rather than `VolterraLift`'s `(t, x)` pair.
+/// The Markov-lift stepper for Riemann–Liouville Volterra SDEs: [`VolterraLift`] at [`RlKernel`],
+/// with `f` and `g` taking the state alone, since these SDEs are time-homogeneous.
 #[derive(Debug, Clone)]
 pub struct MarkovLift<T: FloatExt> {
   inner: VolterraLift<T, RlKernel<T>>,

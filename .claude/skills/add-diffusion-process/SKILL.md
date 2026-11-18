@@ -307,21 +307,10 @@ use stochastic_rs_stochastic::diffusion::foo::PyFoo;
 m.add_class::<PyFoo>()?;
 ```
 
-## 6. Backward-compat aliases
+## 6. Renames keep no alias
 
-If you rename an existing process, add an alias in
-`stochastic-rs-stochastic/src/aliases.rs` — the crate root, not a
-per-directory file:
-
-```rust
-#[deprecated(since = "2.0.0", note = "renamed to `Foo` for naming consistency")]
-pub use crate::diffusion::foo::Foo as OLDFOO;
-```
-
-The file is `#![allow(deprecated)]` at the top and currently carries the
-v1.x acronym-style names (`GBM`, `OU`, `CIR`, …) renamed to PascalCase
-in v2.0.0, scheduled for removal in v3.0.0. Keep entries alphabetised by
-module path, as the existing ones are.
+A renamed or removed process leaves no deprecated alias, shim or second path: delete the old name
+outright and record the change in `MIGRATION.md` (there is no `aliases.rs`).
 
 ## 7. Testing requirements
 

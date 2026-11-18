@@ -29,7 +29,7 @@ pub(crate) struct ExtendedCholesky<T> {
 
 impl<T: RealExt> ExtendedCholesky<T> {
   /// The invertible lower-triangular `r × r` block `c_r`.
-  pub fn c_r(&self) -> ArrayView2<'_, T> {
+  pub(crate) fn c_r(&self) -> ArrayView2<'_, T> {
     self.factor.slice(ndarray::s![..self.rank, ..])
   }
 }

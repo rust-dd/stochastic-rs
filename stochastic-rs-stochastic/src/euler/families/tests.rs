@@ -97,7 +97,6 @@ fn the_family_codes_are_pinned() {
 
 /// The generated step over the full state and noise, for the families whose
 /// state has more than one slot.
-#[allow(clippy::too_many_arguments)]
 fn step_full(
   family: Family,
   state: [f64; 4],

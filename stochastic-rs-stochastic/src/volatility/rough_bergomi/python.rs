@@ -7,8 +7,8 @@ use stochastic_rs_core::simd_rng::Deterministic;
 pub struct PyRoughBergomi {
   inner_f32: Option<RoughBergomi<f32>>,
   inner_f64: Option<RoughBergomi<f64>>,
-  seeded_f32: Option<RoughBergomi<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<RoughBergomi<f64, crate::simd_rng::Deterministic>>,
+  seeded_f32: Option<RoughBergomi<f32, stochastic_rs_core::simd_rng::Deterministic>>,
+  seeded_f64: Option<RoughBergomi<f64, stochastic_rs_core::simd_rng::Deterministic>>,
 }
 
 #[pyo3::prelude::pymethods]

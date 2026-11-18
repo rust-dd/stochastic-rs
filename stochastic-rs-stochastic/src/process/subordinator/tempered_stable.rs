@@ -107,8 +107,6 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TemperedStableSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the tempered-stable subordinator. Every jump
 /// below the truncation contributes a deterministic drift, which is folded
 /// here; above it, the step reads the kernel's own sum over the candidates it

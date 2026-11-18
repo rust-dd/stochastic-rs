@@ -32,19 +32,18 @@ pub use markers::VariableDimensional;
 ///
 /// Most process structs hold `t: Option<T>`. When `t.is_none()`, implementations
 /// fall back to `T::one()` (i.e. one unit of time, conventionally one year for
-/// finance models). This matches the convention used across the workspace and
-/// the audit document; do **not** rely on it implicitly for interest-rate or
+/// finance models). This is the convention across the workspace; do **not** rely
+/// on it implicitly for interest-rate or
 /// volatility models where the horizon meaningfully drives parameter scaling
 /// (Vasicek, CIR, HJM, Heston, Bergomi). For those, set `t` explicitly.
 ///
 /// ## Backend selection
 ///
-/// Re-type a process to a compile-time sampling backend by handing `.on` a handle
-/// `process.on::<B>()` where `B: `[`FgnBackend`](crate::device::FgnBackend) (e.g.
-/// `process.on::<Cuda>()`); the backend marker propagates to the
-/// process's noise source with no runtime branch. Only the fractional family
-/// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
-/// GPU marker only exists when its feature is compiled (the Apple ones on macOS only).
+/// `process.on::<B>()` re-types a process to a device's default handle and `with_backend(handle)`
+/// to an explicit one; every process has both, and a device marker exists only where its feature
+/// is compiled (Metal on Apple silicon only). A configuration a device cannot run samples on the
+/// host, bit-identically to [`Cpu`](crate::device::Cpu):
+/// [`device_fallback`](Self::device_fallback) names the reason.
 ///
 /// ## Sampling architecture
 ///

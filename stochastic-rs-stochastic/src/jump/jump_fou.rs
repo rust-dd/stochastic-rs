@@ -351,10 +351,12 @@ backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n
 pub struct PyJumpFou {
   inner_f32: Option<JumpFou<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<JumpFou<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32:
-    Option<JumpFou<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64:
-    Option<JumpFou<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32: Option<
+    JumpFou<f32, crate::traits::CallableDist<f32>, stochastic_rs_core::simd_rng::Deterministic>,
+  >,
+  seeded_f64: Option<
+    JumpFou<f64, crate::traits::CallableDist<f64>, stochastic_rs_core::simd_rng::Deterministic>,
+  >,
 }
 
 #[cfg(feature = "python")]

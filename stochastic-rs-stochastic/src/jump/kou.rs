@@ -432,8 +432,10 @@ where
 pub struct PyKou {
   inner_f32: Option<Kou<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<Kou<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<Kou<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<Kou<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32:
+    Option<Kou<f32, crate::traits::CallableDist<f32>, stochastic_rs_core::simd_rng::Deterministic>>,
+  seeded_f64:
+    Option<Kou<f64, crate::traits::CallableDist<f64>, stochastic_rs_core::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]

@@ -72,8 +72,6 @@ impl<T: FloatExt, S: SeedExt> Kimura<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Kimura<T, S, B> {}
-
 /// The Euler engine's view of the Kimura diffusion.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Kimura<T, S, B>

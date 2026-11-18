@@ -94,8 +94,6 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FellerLogistic<T, S, B> {}
-
 /// The Euler engine's view of Feller's logistic diffusion. Reflection and
 /// truncation are separate families, as they are for the square-root
 /// diffusions.

@@ -7,8 +7,12 @@ use stochastic_rs_core::simd_rng::Deterministic;
 pub struct PyMerton {
   inner_f32: Option<Merton<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<Merton<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<Merton<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<Merton<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32: Option<
+    Merton<f32, crate::traits::CallableDist<f32>, stochastic_rs_core::simd_rng::Deterministic>,
+  >,
+  seeded_f64: Option<
+    Merton<f64, crate::traits::CallableDist<f64>, stochastic_rs_core::simd_rng::Deterministic>,
+  >,
 }
 
 #[pyo3::prelude::pymethods]

@@ -6,7 +6,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 #[pyo3::prelude::pyclass]
 pub struct PyHjm {
   inner: Option<Hjm<f64>>,
-  seeded: Option<Hjm<f64, crate::simd_rng::Deterministic>>,
+  seeded: Option<Hjm<f64, stochastic_rs_core::simd_rng::Deterministic>>,
 }
 
 #[pyo3::prelude::pymethods]

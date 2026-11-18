@@ -69,7 +69,6 @@ fn build_markov<T: FloatExt>(
 
 impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   #[must_use]
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
     s0: T,
