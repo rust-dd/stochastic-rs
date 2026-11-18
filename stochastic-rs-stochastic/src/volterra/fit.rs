@@ -1,43 +1,7 @@
-//! # $L^1$-optimal exponential-sum fitting
+//! [`fit_l1`] keeps a kernel's nodes and refits the weights of `K(t) ≈ Σ_l w_l exp(-x_l t)`
+//! in `L¹` by iteratively reweighted least squares: the quadrature fit for paths, this for prices.
 //!
-//! The Markov lift replaces a kernel by $K(t)\approx\sum_l w_l e^{-x_l t}$, so
-//! how the fit is scored decides what the resulting simulation is good at.
-//!
-//! Quadrature-derived fits — including [`RlKernel`](crate::rough::kernel::RlKernel)'s
-//! generalised Gauss–Laguerre rule — implicitly target a squared/pointwise
-//! criterion. That is the right objective for **strong** (pathwise) error.
-//! Bayer & Breneis (2023), *Weak Markovian approximations of rough Heston*
-//! (arXiv:2309.07023), show that the **weak** error — the one that governs
-//! option prices — is instead bounded by the $L^1$ error of the kernel
-//! approximation. Fitting in $L^1$ therefore buys accuracy exactly where a
-//! pricing application spends it.
-//!
-//! [`fit_l1`] keeps the incoming kernel's nodes, which quadrature already
-//! places well, and refits only the weights. That is a linear $L^1$
-//! regression, solved here by iteratively reweighted least squares: the
-//! $L^1$ objective $\sum_i |r_i|$ is minimised as a limit of weighted
-//! least-squares problems with observation weights $1/|r_i|$.
-//!
-//! ## What this is and is not
-//!
-//! Measured at degree 40 on $[10^{-4}, 1]$, the refit lowers the $L^1$ error
-//! by **2.3× to 3.6×** across $H \in \{0.05, 0.1, 0.3, 0.45\}$, and — on this
-//! interval — its worst pointwise relative error improves too, to between
-//! 0.70 and 0.86 of the quadrature fit's. It is nevertheless free to be
-//! *locally* worse at a particular $t$: minimising an integral is not the same
-//! as bounding a maximum, and at $t = 10^{-2}$ the quadrature fit is the
-//! tighter of the two. Both properties are pinned by tests.
-//!
-//! This does not move the nodes, so it cannot rescue a fit whose nodes are
-//! badly placed to begin with. Near the singularity neither fit is accurate:
-//! at $t = 10^{-4}$ with $H = 0.05$ both are ~80% off in relative terms,
-//! because no degree-40 exponential sum tracks $t^{H-1/2}$ that close to the
-//! origin. That is a property of the representation, not of the objective, and
-//! is exactly why the lift carries a separate boundary term
-//! ([`VolterraKernel::integral_from_zero`]) for the first step rather than
-//! leaning on the sum there.
-//!
-//! Use the quadrature fit for pathwise work and this one for pricing.
+//! Reference: Bayer & Breneis (2023), arXiv:2309.07023, the weak error follows the $L^1$ error
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -46,44 +10,19 @@ use super::kernel::SumOfExponentials;
 use super::kernel::VolterraKernel;
 use crate::traits::FloatExt;
 
-/// Number of IRLS iterations. Five is enough for the weight vector to settle
-/// on the fits this crate produces; the residual change past that is below
-/// the fit error itself.
+/// Number of IRLS iterations: by five the weight change is below the fit error itself.
 const IRLS_ITERATIONS: usize = 5;
 
-/// Ridge parameter, relative to the mean diagonal of the normal matrix. The
-/// exponential basis is strongly non-orthogonal — neighbouring nodes give
-/// near-collinear columns — so the normal equations are ill-conditioned and a
-/// bare Cholesky can fail outright. This is small enough to leave the fit
-/// alone and large enough to keep the factorisation well defined.
+/// Ridge parameter, relative to the mean diagonal of the normal matrix: neighbouring nodes give
+/// near-collinear columns, and a bare Cholesky can fail on the ill-conditioned normal equations.
 const RIDGE: f64 = 1e-12;
 
 /// Floor on `|r_i|` in the IRLS observation weight, so an exactly-zero
 /// residual cannot produce an infinite weight.
 const RESIDUAL_FLOOR: f64 = 1e-300;
 
-/// Refit `kernel`'s weights to minimise the $L^1$ error of the exponential-sum
-/// approximation on `[t_min, t_max]`, keeping its nodes.
-///
-/// `grid` is the number of sample points; they are log-spaced, because for a
-/// weakly singular kernel both the kernel mass and the approximation error
-/// concentrate near zero, and a uniform grid would barely resolve the region
-/// that dominates the integral.
-///
-/// Returns the incoming weights unchanged if the normal equations cannot be
-/// factorised on the first iteration. That is reachable only through
-/// [`SumOfExponentials`] with nodes badly scaled to `[t_min, t_max]` — nodes
-/// so fast that every basis function underflows to zero across the whole grid
-/// leave a zero normal matrix, and the ridge, which scales with its mean
-/// diagonal, is then zero too. No kernel this crate constructs reaches that
-/// state at any sane degree. There is deliberately no error return; use
-/// [`l1_error`] to confirm a fit actually improved rather than assuming it.
-///
-/// # Panics
-/// - if `t_min` is not strictly positive, or `t_max <= t_min` (the fractional
-///   kernel is singular at the origin, so the interval must exclude it)
-/// - if `grid` is smaller than the kernel's degree, which would leave the
-///   weight fit underdetermined
+/// Refit `kernel`'s weights in $L^1$ on `grid` log-spaced points of `[t_min, t_max]`, unchanged
+/// if the normal equations fail; panics unless `0 < t_min < t_max` and `grid >= degree`.
 #[must_use]
 pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
   kernel: &K,
@@ -144,9 +83,8 @@ pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
 
     match weighted_least_squares(&design, &target, &obs, n_prime) {
       Some(next) => weights = next,
-      // A failed factorisation means this iteration had nothing to add; the
-      // weights from the previous one are still a valid fit, so stop rather
-      // than return something unchecked.
+      // A failed factorisation adds nothing; the previous iteration's weights are still a valid
+      // fit, so stop.
       None => break,
     }
   }
@@ -155,15 +93,8 @@ pub fn fit_l1<T: FloatExt, K: VolterraKernel<T>>(
   SumOfExponentials::new(kernel.nodes().clone(), refit)
 }
 
-/// Total $L^1$ error $\int_{t_{\min}}^{t_{\max}} |K(t) - \sum_l w_l e^{-x_l t}|\,dt$
-/// of `approx` measured against `truth`'s exact kernel, on the same log-spaced
-/// grid [`fit_l1`] fits on.
-///
-/// Exposed because a fit's whole claim is that this number is smaller, and a
-/// caller should be able to check that rather than take it on faith.
-///
-/// # Panics
-/// Under the same conditions as [`fit_l1`].
+/// Total $L^1$ error $\int_{t_{\min}}^{t_{\max}} |K(t) - \sum_l w_l e^{-x_l t}|\,dt$ of `approx`
+/// against `truth`'s exact kernel on [`fit_l1`]'s grid; panics unless `0 < t_min < t_max`.
 #[must_use]
 pub fn l1_error<T: FloatExt, K: VolterraKernel<T>, A: VolterraKernel<T>>(
   truth: &K,
@@ -203,9 +134,8 @@ pub fn l1_error<T: FloatExt, K: VolterraKernel<T>, A: VolterraKernel<T>>(
   T::from_f64_fast(total)
 }
 
-/// Log-spaced sample points on `[lo, hi]` with their trapezoidal quadrature
-/// weights, returned together so the fit and the error metric integrate
-/// against exactly the same rule.
+/// Log-spaced points on `[lo, hi]` with their trapezoidal weights, so the fit and the error
+/// metric integrate against one rule.
 fn log_grid(lo: f64, hi: f64, grid: usize) -> (Vec<f64>, Vec<f64>) {
   let ln_lo = lo.ln();
   let step = (hi.ln() - ln_lo) / (grid - 1) as f64;
@@ -230,11 +160,8 @@ fn log_grid(lo: f64, hi: f64, grid: usize) -> (Vec<f64>, Vec<f64>) {
   (t, quad)
 }
 
-/// Solve `(AᵀUA + λI) w = AᵀU b` by Cholesky, where `U = diag(obs)`.
-///
-/// Returns `None` if the ridge-regularised normal matrix still fails to
-/// factorise, which the caller treats as "this iteration contributed nothing"
-/// rather than as a hard error.
+/// Solve `(AᵀUA + λI) w = AᵀU b` by Cholesky, `U = diag(obs)`; `None` when the ridge-regularised
+/// normal matrix still does not factorise.
 fn weighted_least_squares(
   design: &Array2<f64>,
   target: &[f64],

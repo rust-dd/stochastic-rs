@@ -1,4 +1,4 @@
-//! # Heston stochastic-local volatility
+//! Heston under a leverage function and a mixing fraction `η` in `[0, 1]`, local volatility at 0.
 //!
 //! $$
 //! \begin{aligned}
@@ -8,34 +8,18 @@
 //! \end{aligned}
 //! $$
 //!
-//! The Heston model under a leverage function $L(t, S)$ and a mixing
-//! fraction $\eta \in [0, 1]$: $\eta = 0$ is a pure local-volatility model
-//! with $\sigma_{\text{LV}} = L\sqrt{V}$ deterministic, $\eta = 1$ the Heston
-//! dynamics under a leverage correction, and a calibrated $L$ makes the
-//! model reproduce the vanilla surface at every $\eta$. The leverage is an
-//! [`Fn2D`] of `(t, S)`: written as an [`Expr`] it reaches a device, and a
-//! Rust closure, a Python callable or a tabulated
-//! [`Grid2D`](crate::traits::Grid2D) — what a calibrated
-//! `LeverageSurface` converts into — keeps the process on the host.
+//! $L(t, S)$ is read at the step's start; `HestonLog` and quant's calibration run this scheme:
 //!
-//! The log-spot is stepped by Euler–Maruyama and the variance by the crate's
-//! Euler scheme with absorption at zero,
-//! $S_{n+1} = S_n \exp\bigl((\mu - \tfrac12 L^2 V_n^+)\Delta t + L\sqrt{V_n^+}\,\Delta W\bigr)$,
-//! $V_{n+1} = \max\bigl(0, V_n + \kappa(\theta - V_n^+)\Delta t + \eta\sigma\sqrt{V_n^+}\,\Delta B\bigr)$,
-//! with $L$ read at the step's start. That is
-//! [`HestonLog`](crate::volatility::heston_log::HestonLog)'s recursion, and
-//! with $\eta = 1$ and $L \equiv 1$ the two agree path for path at the same
-//! seed. It is also the recursion the quant crate's leverage calibration and
-//! its Monte Carlo pricer run, so a calibrated surface is valid here.
+//! $$
+//! S_{n+1} = S_n \exp\bigl((\mu - \tfrac12 L^2 V_n^+)\Delta t + L\sqrt{V_n^+}\,\Delta W\bigr),\quad
+//! V_{n+1} = \max\bigl(0, V_n + \kappa(\theta - V_n^+)\Delta t +
+//! \eta\sigma\sqrt{V_n^+}\,\Delta B\bigr)
+//! $$
 //!
-//! References: Jex, M., Henderson, R. & Wang, D. (1999), *Pricing exotics
-//! under the smile*, Risk 12(11), 72–75; Lipton, A. (2002), *The vol smile
-//! problem*, Risk 15(2), 61–65; Guyon, J. & Henry-Labordère, P. (2012),
-//! *Being particular about calibration*, Risk 25(1), 88–93; van der Stoep,
-//! A. W., Grzelak, L. A. & Oosterlee, C. W. (2014), *The Heston
-//! stochastic-local volatility model: efficient Monte Carlo simulation*,
-//! Int. J. Theor. Appl. Finance 17(7),
-//! <https://doi.org/10.1142/S0219024914500459>.
+//! Reference: Jex, Henderson & Wang (1999), Risk 12(11), 72–75
+//! Reference: Lipton (2002), Risk 15(2), 61–65
+//! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
+//! Reference: van der Stoep, Grzelak & Oosterlee (2014), IJTAF 17(7), DOI 10.1142/S0219024914500459
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -81,7 +65,7 @@ pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -89,6 +73,8 @@ pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
+  /// Panics unless `s0 > 0`, `v0 >= 0`, `kappa >= 0`, `theta >= 0`, `sigma >= 0`, `-1 <= rho <= 1`,
+  /// `eta >= 0`, a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     s0: T,
     v0: T,
@@ -192,83 +178,83 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
     require!(eta >= T::zero(), eta);
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0 > 0` and `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa >= 0` and `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta >= 0` and `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma >= 0` and `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `rho`, all else unchanged.
+  /// Replace `rho`; panics unless `-1 <= rho <= 1` and `rho` is finite.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace the mixing fraction `eta`, all else unchanged.
+  /// Replace the mixing fraction `eta`; panics unless `eta >= 0` and `eta` is finite.
   pub fn with_eta(mut self, eta: T) -> Self {
     Self::check_eta(eta);
     self.eta = eta;
     self
   }
 
-  /// Replace the leverage function, all else unchanged.
+  /// Replace the leverage function.
   pub fn with_leverage(mut self, leverage: impl Into<Fn2D<T>>) -> Self {
     self.leverage = leverage.into();
     self
   }
 
-  /// Replace the number of grid points `n`, all else unchanged.
+  /// Replace the number of grid points `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -284,9 +270,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
     self.eta * self.sigma
   }
 
-  /// The time the step starting at each grid point sees, `(i − 1) Δt` at
-  /// point `i`: the launch's first curve, which is the `t` the leverage is
-  /// evaluated at, exactly as the host evaluates it at the step's start.
+  /// The time the step starting at each grid point sees, `(i − 1) Δt` at point `i`: the launch's
+  /// first curve, where the leverage is evaluated, as the host does at the step's start.
   fn step_time_curve(&self) -> Vec<T> {
     let dt = self.dt();
     (0..self.n)
@@ -300,9 +285,8 @@ backend_switch!([T: FloatExt, S: SeedExt] HestonSlv<T, S> { s0, v0, kappa, theta
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for HestonSlv<T, S, B>
 {
-  /// A configuration the family cannot carry — a leverage that is not an
-  /// expression — never reaches a launch: [`ProcessExt::sample`] keeps it on
-  /// the host, so asking here is a caller bypassing that guard.
+  /// [`ProcessExt::sample`] keeps a leverage that is not an expression, which the family cannot
+  /// carry, on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.device_ready(),
@@ -374,10 +358,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// The two Gaussian streams are built in the order
-  /// [`HestonLog`](crate::volatility::heston_log::HestonLog) builds its own,
-  /// each a derivation of `self.seed`, which is what makes the unit-leverage
-  /// limit that process path for path.
+  /// The two Gaussian streams are built in `HestonLog`'s order, each derived from `self.seed`:
+  /// the unit-leverage limit is that process path for path.
   fn sampler(&self) -> HestonSlvSampler<'_, T> {
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
@@ -397,9 +379,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine when the leverage is an expression; a closure
-  /// or a grid keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the Euler engine when the leverage is an expression; a closure or a grid stays on
+  /// the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -442,20 +423,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: a leverage written as an
-  /// [`Expr`], which the kernel interprets at every
-  /// step. A Rust closure, a tabulated grid or a Python callable keeps the
-  /// process on the host.
+  /// What a device runs: a leverage written as an [`Expr`], which the kernel interprets at every
+  /// step; a Rust closure, a tabulated grid or a Python callable stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.leverage.program().is_some()))
       .then_some("a leverage that is a closure, a grid or a Python callable rather than an Expr")
   }
 }
 
-/// Reusable [`HestonSlv`] sampling state: borrows the leverage and owns the
-/// two Gaussian streams (one driving the spot, one combined into the
-/// variance shock) and the precomputed step size, so a Monte Carlo loop pays
-/// the setup once.
+/// Reusable [`HestonSlv`] sampling state: borrows the leverage and owns the two Gaussian streams
+/// (the spot's, and the one combined into the variance shock) and the step size.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HestonSlvSampler<'a, T: FloatExt> {

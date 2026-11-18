@@ -1,25 +1,5 @@
-//! Pins the decision made for the deterministic-parallelism wave's Task 3:
-//! whole-struct `Clone` on a process **snapshots** its seed strategy rather
-//! than forking it. Cloning copies the seed's *current* state into an
-//! independent copy, so the original and the clone start their next draw
-//! from the identical point — sampled immediately after cloning, with no
-//! intervening draw on either side, they replay the same path. See
-//! `ProcessExt`'s trait doc for the full rationale and the accepted
-//! tradeoff.
-//!
-//! This is unrelated to the `sampler()`-internal rule documented on
-//! `ProcessExt` ("Reproducibility requirement on implementors": a sampler
-//! must `derive()`, never `clone()`, its basis from `self.seed`). That rule
-//! governs how one process instance builds a *fresh* per-call/per-chunk
-//! basis from its own live seed field; this file is about what a caller
-//! gets from `process.clone()` itself, once, up front. Every process type
-//! in this crate that derives `Clone` today does so via a plain
-//! `#[derive(Clone)]` over a `seed: S` field, so it inherits
-//! `Deterministic::clone()`'s snapshot behaviour with no type-specific
-//! logic to diverge — these tests exercise three structurally different
-//! Clone-deriving families (a `Copy` diffusion SDE, a `Copy` noise
-//! generator, and a non-`Copy` rough/Markov-lift process) to confirm the
-//! guarantee holds uniformly rather than only in the simplest case.
+//! `Clone` on a process snapshots its seed and does not fork it: sampled right after cloning, the
+//! original and the clone replay one path. A sampler's `derive()` rule is a separate matter.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -81,9 +61,8 @@ fn rl_fbm_clone_replays_identical_path() {
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 }
 
-/// The snapshot is of the seed's *current* state, not its original
-/// construction-time value: sampling the original once before cloning
-/// moves the point the clone goes on to replay from.
+/// The snapshot is of the seed's current state, not its construction value: sampling the
+/// original once before cloning moves the point the clone replays from.
 #[test]
 fn clone_snapshots_current_state_not_construction_seed() {
   let a = ou(SEED);
@@ -103,9 +82,8 @@ fn clone_snapshots_current_state_not_construction_seed() {
   );
 }
 
-/// After the snapshot is taken, the two objects are fully independent:
-/// sampling the original does not perturb what the clone goes on to
-/// produce.
+/// After the snapshot the two objects are independent: sampling the original does not perturb
+/// the clone.
 #[test]
 fn clone_is_independent_of_original_after_snapshot() {
   let a = ou(SEED);

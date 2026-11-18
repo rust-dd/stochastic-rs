@@ -1,12 +1,5 @@
-//! # CUDA sheets
-//!
-//! The two-dimensional circulant embedding on the native CUDA runtime:
-//! Philox complex Gaussian noise scaled by the embedding's eigenvalue roots
-//! in natural order, the row transforms by a batched cuFFT plan, a
-//! transpose, the column transforms by a second batched plan, and the
-//! read-out of the leading `m × n` block less its corner plus Stein's linear
-//! correction from two more Philox normals. Templated on `float` and
-//! `double`, so an `f64` sheet is computed in double.
+//! The two-dimensional circulant embedding on CUDA, in `float` or `double`: Philox noise scaled by
+//! the eigenvalue roots, a batched cuFFT per axis around a transpose, and Stein's read-out.
 
 use std::any::TypeId;
 use std::sync::Arc;

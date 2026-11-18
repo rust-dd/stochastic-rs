@@ -16,12 +16,8 @@ const SEED: u64 = 42;
 const N: usize = 128;
 const LAMBDA: f64 = 50.0;
 
-/// `k = 0` isolates the jump half: the drift's `-lambda*k` compensator term
-/// is neutralized regardless of `lambda`'s value, so any observed
-/// difference between two `lambda` settings (or two identically-seeded
-/// objects) can only come from the jump increments themselves, not a
-/// residual deterministic drift shift — the same isolation technique the
-/// task's own RED-phase measurement used (see the task report).
+/// `k = 0` isolates the jump half: the drift's `-lambda*k` compensator vanishes, so a difference
+/// between two `lambda` settings comes from the jump increments alone.
 fn bates_with_jumps(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
   Bates::new(
     Drift::Mu(0.05),
@@ -124,10 +120,8 @@ fn bates_is_seed_reproducible_including_jumps() {
   );
 }
 
-/// Proves the golden-adjacent claim "this is not a diffusion-only
-/// comparison": the price path actually moves when jumps are switched off,
-/// so `bates_is_seed_reproducible_including_jumps` above is not vacuously
-/// passing because `s` never depended on the jump term in the first place.
+/// The price path moves when jumps are switched off, so
+/// `bates_is_seed_reproducible_including_jumps` above is not a diffusion-only comparison.
 #[test]
 fn bates_price_path_diverges_from_zero_lambda_counterfactual() {
   let [s_jumps, _] = bates_with_jumps(SEED).sample();

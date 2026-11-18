@@ -1,7 +1,8 @@
 //! # Rdts
 //!
 //! $$
-//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
+//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx
+//! \quad(\text{rapidly decaying tempered stable})
 //! $$
 //!
 
@@ -49,7 +50,8 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
-  /// Create a new Rdts process; panics at alpha = 1, where Γ((1 − α)/2) has a pole.
+  /// Panics unless `lambda_plus > 0`, `lambda_minus > 0`, `0 < alpha < 2`, `alpha != 1` (a pole of
+  /// `Γ((1 − α)/2)`), `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -147,9 +149,8 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Rdts<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate `α / (2 C T)`,
-  /// the exponential draw entering as `√E / 2` — the rapidly decreasing law's
-  /// Gaussian-tempered size — and the two sides equally likely.
+  /// The series constants, folded once: the arrival rate `α / (2 C T)`, the exponential draw
+  /// entering as `√E / 2` (the law's Gaussian-tempered size), and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
@@ -210,10 +211,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> RdtsSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // scale `C` and drift `b_t` are precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
     let t_max = self.t_max();
     let dt = self.dt();
     let c = self.tempering_constant();
@@ -236,9 +235,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -301,13 +299,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Rdts`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Rdts`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RdtsSampler<T: FloatExt, S: SeedExt> {

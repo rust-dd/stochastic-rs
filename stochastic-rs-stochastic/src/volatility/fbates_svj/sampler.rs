@@ -19,10 +19,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> FbatesSvjSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
@@ -44,17 +42,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       omega: self.omega,
       dt,
       g: T::from_f64_fast(gamma(self.hurst.to_f64().unwrap() - 0.5)),
-      // `Unseeded` baked into the Cgns exactly as the legacy `sample` did; the
-      // noise is drawn via `sample_impl(&self.seed)`, so the Cgns's own seed
-      // is irrelevant.
+      // The Cgns is built `Unseeded`: its noise is drawn through `sample_impl(&self.seed)`, so
+      // its own seed is never read.
       cgns: Cgns::new(self.rho, n_steps, self.t, Unseeded),
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels'
-  /// per-path history; a longer grid keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path history; a longer grid
+  /// stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -111,10 +107,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`FbatesSvj`] sampling state: owns the correlated-Gaussian generator
-/// and the seed source. The jump (Poisson + Normal) generators are rebuilt per
-/// fill in the legacy seed-consumption order, so the first call reproduces the
-/// original stream bit-for-bit.
+/// Reusable [`FbatesSvj`] sampling state: the correlated-Gaussian generator and the seed source.
+/// The Poisson and Normal jump generators are rebuilt per fill, in an order the streams pin.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct FbatesSvjSampler<T: FloatExt, S: SeedExt> {

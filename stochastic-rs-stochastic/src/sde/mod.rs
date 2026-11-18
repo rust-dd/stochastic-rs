@@ -1,155 +1,13 @@
-//! # Generic SDE Solver
-//!
-//! ## When to use this vs. the concrete process structs
-//!
-//! The crate ships ~140 concrete process structs (`Bm`, `Gbm`, `Heston`,
-//! `Vasicek`, …) implementing [`crate::traits::ProcessExt`]. Those are the
-//! preferred entry points for built-in models — they have hand-optimised
-//! samplers (FFT circulant embedding, Andersen QE, antithetic, GPU paths, etc.)
-//! and integrate with the broader pipeline (`ModelPricer`, visualization,
-//! Python bindings).
-//!
-//! This [`Sde`] type is the **research / custom-SDE** alternative: a
-//! flexible generic solver that takes user-supplied drift and diffusion
-//! closures and discretises them with Euler–Maruyama, Milstein, midpoint
-//! RK2, or implicit Euler. Use it when:
-//!
-//! - Your SDE is not in the catalogue of built-in processes
-//! - You want to compare integration schemes side-by-side
-//! - You're implementing a one-off model and don't need a dedicated struct
-//!
-//! Outputs flow through `Array1<T>` / `Array2<T>` and so do not require a
-//! separate `ProcessExt` impl, but they are also not auto-discoverable to
-//! the rest of the pricing / Greeks / vol-surface stack.
-//!
-//! Numerical solver for $d$-dimensional Itô stochastic differential equations of the form
+//! Solves a custom `d`-dimensional Itô SDE from closures; a built-in model has its own struct.
 //!
 //! $$
 //! dX_t^i = a^i(X_t, t)\,dt + \sum_{j=1}^{d} b^{ij}(X_t, t)\,dW_t^j, \quad i = 1, \ldots, d
 //! $$
 //!
-//! where:
-//! - $X_t \in \mathbb{R}^d$ is the state vector,
-//! - $a: \mathbb{R}^d \times \mathbb{R} \to \mathbb{R}^d$ is the drift coefficient,
-//! - $b: \mathbb{R}^d \times \mathbb{R} \to \mathbb{R}^{d \times d}$ is the diffusion matrix,
-//! - $W_t \in \mathbb{R}^d$ is a $d$-dimensional Wiener process (standard or fractional).
+//! The schemes: <https://stochastic.rust-dd.com/docs/processes#generic-sde-solver>.
 //!
-//! The solver is generic over any precision type `T` implementing [`FloatExt`] (e.g. `f32`, `f64`).
-//!
-//! ## Numerical Methods
-//!
-//! Four discretization schemes are provided via [`SdeMethod`]:
-//!
-//! ### Euler–Maruyama (`SdeMethod::Euler`)
-//!
-//! First-order strong scheme (strong order 0.5, weak order 1.0). The simplest and most widely
-//! used method. At each step:
-//!
-//! $$
-//! X_{n+1}^i = X_n^i + a^i(X_n, t_n)\,\Delta t + \sum_{j=1}^{d} b^{ij}(X_n, t_n)\,\Delta W_n^j
-//! $$
-//!
-//! where $\Delta W_n^j \sim \mathcal{N}(0, \Delta t)$ are independent Gaussian increments.
-//!
-//! **Reference:** Maruyama, G. (1955). *Continuous Markov processes and stochastic equations.*
-//! Rendiconti del Circolo Matematico di Palermo, 4, 48–90.
-//!
-//! ### Milstein (`SdeMethod::Milstein`)
-//!
-//! Second-order strong scheme (strong order 1.0, weak order 1.0) that adds a correction term
-//! from the Itô–Taylor expansion. The update formula is:
-//!
-//! $$
-//! X_{n+1}^i = X_n^i + a^i \Delta t + \sum_j b^{ij} \Delta W^j
-//!   + \sum_{j_1=1}^{d} \sum_{j_2=1}^{d} \mathcal{L}^{j_1} b^{i,j_2} \cdot I_{(j_1,j_2)}
-//!
-//! $$
-//!
-//! where the operator $\mathcal{L}^{j_1}$ is defined as:
-//!
-//! $$
-//! \mathcal{L}^{j_1} b^{i,j_2} = \sum_{k=1}^{d} b^{k,j_1}(X_n, t_n) \frac{\partial b^{i,j_2}}{\partial x_k}(X_n, t_n)
-//! $$
-//!
-//! and the double Itô integrals $I_{(j_1,j_2)}$ are approximated under the **commutative noise**
-//! assumption as:
-//!
-//! $$
-//! I_{(j,j)} = \tfrac{1}{2}\bigl((\Delta W^j)^2 - \Delta t\bigr), \quad
-//! I_{(j_1,j_2)} \approx \tfrac{1}{2}\,\Delta W^{j_1}\,\Delta W^{j_2} \text{ for } j_1 \neq j_2
-//! $$
-//!
-//! The partial derivatives $\partial b / \partial x_k$ are computed via forward finite differences
-//! with step size $\varepsilon = 10^{-7}$.
-//!
-//! **Note:** The approximation $I_{(j_1,j_2)} \approx \frac{1}{2} \Delta W^{j_1} \Delta W^{j_2}$
-//! for $j_1 \neq j_2$ is only valid for SDEs with **commutative noise** (i.e., where
-//! $\mathcal{L}^{j_1} b^{i,j_2} = \mathcal{L}^{j_2} b^{i,j_1}$). For non-commutative noise,
-//! the Lévy area must be simulated, which this implementation does not support.
-//!
-//! **Reference:** Milstein, G. N. (1974). *Approximate integration of stochastic differential
-//! equations.* Theory of Probability & Its Applications, 19(3), 557–562.
-//!
-//! ### Midpoint RK2 (`SdeMethod::SRK2`)
-//!
-//! A stochastic midpoint method inspired by the deterministic RK2 (midpoint) scheme.
-//! Evaluates drift and diffusion at an intermediate point:
-//!
-//! $$
-//! \hat{X} = X_n + \tfrac{1}{2}\,a(X_n, t_n)\,\Delta t + \tfrac{1}{2}\,b(X_n, t_n)\,\Delta W_n
-//! $$
-//! $$
-//! X_{n+1} = X_n + a(\hat{X},\, t_n + \tfrac{\Delta t}{2})\,\Delta t
-//!   + b(\hat{X},\, t_n + \tfrac{\Delta t}{2})\,\Delta W_n
-//!
-//! $$
-//!
-//! This method has the same strong convergence order as Euler–Maruyama (0.5) but can offer
-//! improved accuracy for drift-dominated problems and better weak convergence properties.
-//!
-//! ### RK4-style (`SdeMethod::SRK4`)
-//!
-//! A four-stage method applying the classical RK4 structure to both drift and diffusion.
-//! The deterministic component uses the standard RK4 weights $(1, 2, 2, 1)/6$, while the
-//! diffusion is evaluated at four points and averaged with the same weights:
-//!
-//! $$
-//! \text{drift:}\quad \bar{a} = \tfrac{1}{6}\bigl(a_1 + 2a_2 + 2a_3 + a_4\bigr)
-//! $$
-//! $$
-//! \text{diffusion:}\quad \bar{b}^{ij} = \tfrac{1}{6}\bigl(b_1^{ij} + 2b_2^{ij} + 2b_3^{ij} + b_4^{ij}\bigr)
-//! $$
-//! $$
-//! X_{n+1} = X_n + \bar{a}\,\Delta t + \sum_j \bar{b}^{ij}\,\Delta W^j
-//! $$
-//!
-//! where the four stages evaluate at $t_n$, $t_n + \Delta t/2$ (twice), and $t_n + \Delta t$
-//! using intermediate states constructed analogously to the deterministic RK4 method.
-//!
-//! **Important:** This is a heuristic extension of deterministic RK4 to SDEs using a single
-//! Brownian increment per step. It does **not** achieve strong order 4.0. Its strong convergence
-//! order is 0.5 (same as Euler–Maruyama). It can provide improved accuracy for drift-dominated
-//! or small-noise SDEs where the deterministic component benefits from higher-order treatment.
-//! For genuinely higher-order stochastic methods, see Rößler (2010) or Burrage & Platen (1994).
-//!
-//! ## Noise Models
-//!
-//! Two noise models are supported via [`NoiseModel`]:
-//!
-//! - **Gaussian** (`NoiseModel::Gaussian`): Standard Brownian motion with i.i.d.
-//!   $\mathcal{N}(0, \Delta t)$ increments.
-//! - **Fractional** (`NoiseModel::Fractional`): Fractional Brownian motion with Hurst parameter
-//!   $H \in (0, 1)$, generated via the [`Fgn`] module. Requires setting the `hursts` field with
-//!   one Hurst parameter per dimension.
-//!
-//! ## Output
-//!
-//! All methods return an [`Array3<T>`] with shape `[n_paths, steps + 1, dim]`, where:
-//! - `n_paths` is the number of independent sample paths,
-//! - `steps + 1` includes the initial condition at index 0,
-//! - `dim` is the state dimension.
-//!
-//! ## Example
+//! Reference: Maruyama (1955), Rend. Circ. Mat. Palermo 4, 48–90
+//! Reference: Milstein (1974), Theory Probab. Appl. 19(3), 557–562
 //!
 //! ```rust
 //! use ndarray::{array, Array1, Array2};
@@ -207,33 +65,24 @@ pub enum NoiseModel {
   Fractional,
 }
 
-/// Numerical discretization method for the SDE solver.
-///
-/// See the [module-level documentation](self) for the mathematical formulas and
-/// convergence properties of each method.
+/// Discretisation scheme of [`Sde::solve`]; every scheme takes one Brownian increment per step.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SdeMethod {
   /// Euler–Maruyama scheme. Strong order 0.5, weak order 1.0.
   Euler,
-  /// Milstein scheme with commutative noise approximation. Strong order 1.0, weak order 1.0.
+  /// Milstein with the commutative-noise approximation of the double Itô integrals (no Lévy area)
+  /// and forward differences at $\varepsilon = 10^{-7}$. Strong order 1.0, weak order 1.0.
   Milstein,
   /// Stochastic midpoint method (RK2-style). Strong order 0.5.
   SRK2,
-  /// Classical RK4 structure applied to both drift and diffusion. Strong order 0.5.
+  /// Classical RK4 structure on drift and diffusion. Strong order 0.5, not 4: for higher-order
+  /// stochastic schemes see Rößler (2010) or Burrage & Platen (1994).
   SRK4,
 }
 
-/// Generic solver for $d$-dimensional Itô SDEs.
-///
-/// # Type Parameters
-///
-/// - `T`: Floating-point precision type (e.g. `f32`, `f64`).
-/// - `F`: Drift function `a(x, t) -> R^d`. Takes the current state `x ∈ R^d` and time `t`,
-///   returns the drift vector.
-/// - `G`: Diffusion function `b(x, t) -> R^{d×d}`. Takes the current state and time,
-///   returns the diffusion matrix where entry `[i, j]` maps noise dimension `j` to
-///   state dimension `i`.
+/// Solver for $d$-dimensional Itô SDEs: `F` is the drift `a(x, t) -> R^d` and `G` the diffusion
+/// `b(x, t) -> R^{d×d}`, whose entry `[i, j]` maps noise dimension `j` to state dimension `i`.
 pub struct Sde<T: FloatExt, F, G, B = Cpu>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
@@ -270,14 +119,7 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// Creates a new SDE solver.
-  ///
-  /// # Arguments
-  ///
-  /// * `drift` - Drift coefficient function $a(x, t)$
-  /// * `diffusion` - Diffusion matrix function $b(x, t)$
-  /// * `noise` - Noise model (Gaussian or fractional)
-  /// * `hursts` - Optional Hurst parameters for fractional noise (one per dimension)
+  /// `hursts` holds one Hurst parameter per dimension and is read under fractional noise only.
   pub fn new(drift: F, diffusion: G, noise: NoiseModel, hursts: Option<Array1<T>>) -> Self {
     Self {
       drift,
@@ -297,8 +139,8 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// `[n_paths, steps + 1, dim]` paths from `x0` at `t0` to `t1`, `dt = (t1 − t0) / steps`, drawn
-  /// from `seed`; panics unless `t0 < t1` with a finite span and `steps ≥ 1`.
+  /// `[n_paths, steps + 1, dim]` paths from `x0` over `[t0, t1]`, drawn from `seed`; panics unless
+  /// `t0 < t1`, `t1 - t0` is finite, `steps >= 1` and, for fractional noise, `0 <= hursts[d] <= 1`.
   pub fn solve<S: SeedExt>(
     &self,
     x0: &Array1<T>,
@@ -371,19 +213,13 @@ where
     }
   }
 
-  /// Computes the Milstein correction term for the multi-dimensional case.
-  ///
-  /// For each state component $i$, computes:
-  ///
+  /// The Milstein correction of component $i$, with forward differences at
+  /// $\varepsilon = 10^{-7}$ and the commutative-noise approximation of the double Itô integrals:
   /// $$
   /// C^i = \sum_{j_1=1}^{d} \sum_{j_2=1}^{d}
   ///   \biggl[\sum_{k=1}^{d} b^{k,j_1} \frac{\partial b^{i,j_2}}{\partial x_k}\biggr]
   ///   \cdot I_{(j_1, j_2)}
   /// $$
-  ///
-  /// Partial derivatives are approximated via forward finite differences with
-  /// step size $\varepsilon = 10^{-7}$. The double Itô integrals use the commutative
-  /// noise approximation.
   pub(super) fn milstein_correction(
     &self,
     x: &Array1<T>,

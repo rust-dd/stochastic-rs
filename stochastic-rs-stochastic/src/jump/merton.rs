@@ -1,24 +1,10 @@
-//! # Merton
+//! Merton jump diffusion over any jump-size law `D`; `SimdNormal` is Merton's (1976) model.
 //!
 //! $$
 //! \frac{dS_t}{S_{t^-}}=(\mu-\lambda\kappa)dt+\sigma dW_t+(Y-1)dN_t
 //! $$
 //!
-//! ## Generic distribution parameter `D`
-//!
-//! `Merton<T, D, S>` is generic over the jump-size distribution `D`, which
-//! must implement [`rand::distr::Distribution<T>`]. Common choices:
-//!
-//! - [`SimdNormal<T>`](stochastic_rs_distributions::normal::SimdNormal)
-//!   for the classical normal-jump Merton (1976) model
-//! - [`SimdExp<T>`](stochastic_rs_distributions::exp::SimdExp) for
-//!   one-sided exponential jumps
-//! - any user-defined `Distribution<T>` that is `Send + Sync + 'static` (the
-//!   engine inspects it through `Any`)
-//!
-//! On a device the engine draws the two laws above in the kernel and
-//! recognises them at runtime; any other `D` keeps the process on the host,
-//! through the same `ProcessExt` calls.
+//! Devices draw `SimdNormal` and `SimdExp`; another `Send + Sync + 'static` law stays on the host.
 //!
 
 use std::any::Any;
@@ -54,10 +40,8 @@ where
   pub sigma: T,
   /// Jump (Poisson) intensity λ, the one rate the sampler and the engine read.
   pub lambda: T,
-  /// Jump-size compensator κ (E\[Y−1\]-like term, matching the module
-  /// header's own λκ), subtracted from the drift scaled by `lambda` —
-  /// not a mean-reversion level; Merton's jump-diffusion has no mean
-  /// reversion.
+  /// Jump-size compensator κ (the module display's `λκ`), subtracted from the drift scaled by
+  /// `lambda`; not a mean-reversion level, which Merton's jump diffusion does not have.
   pub theta: T,
   /// Number of points sampled along the Merton path.
   pub n: usize,
@@ -80,7 +64,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Jumps of law `jump_dist` arriving at rate `lambda`, their seed a child of `seed`.
+  /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
+  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive.
   pub fn new(
     alpha: T,
     sigma: T,
@@ -140,28 +125,28 @@ where
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `alpha`, all else unchanged.
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace the jump-size law, all else unchanged.
+  /// Replace the jump-size law.
   pub fn with_jump_law(mut self, law: D) -> Self {
     self.jumps.law = law;
     self
@@ -172,28 +157,28 @@ where
     &self.jumps.law
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, all else unchanged.
+  /// Replace `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace `t`, all else unchanged.
+  /// Replace `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -208,8 +193,8 @@ where
   }
 }
 
-/// `alpha = 0.03`, `sigma = 0.2`, `lambda = 1`, `theta = 0`, `x0 = 0`, `t = 1`, `n = 252` with `SimdNormal(0, 0.1)`
-/// log-jumps: the classical Merton (1976) model.
+/// `alpha = 0.03`, `sigma = 0.2`, `lambda = 1`, `theta = 0`, `x0 = 0`, `t = 1`, `n = 252`, with
+/// `SimdNormal(0, 0.1)` log-jumps: the classical Merton (1976) model.
 impl<T: FloatExt> Default for Merton<T, SimdNormal<T>, Unseeded> {
   fn default() -> Self {
     let n = 252;
@@ -292,9 +277,8 @@ where
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// The size law as the kernels draw it. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// The size law as the kernels draw it. [`ProcessExt::sample`] keeps a law they do not carry on
+  /// the host, so a launch that asks for one here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     if self.lambda <= T::zero() {
       return None;
@@ -354,9 +338,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the jump-size law is one the device
-  /// kernels draw; any other law keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the device kernels draw the jump-size law; any other law stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)

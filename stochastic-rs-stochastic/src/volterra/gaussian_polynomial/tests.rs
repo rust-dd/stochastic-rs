@@ -19,11 +19,8 @@ fn unit_diffusion(_t: f64, _x: f64) -> f64 {
   1.0
 }
 
-/// The type's defining identity: its output is exactly $p$ applied pointwise
-/// to the Gaussian Volterra path the same kernel and seed produce through
-/// [`VolterraSde`]. Asserted to machine precision rather than statistically,
-/// because it is an algebraic identity, not an approximation — the two share
-/// the same lift, the same kernel and the same derived seed.
+/// The output is $p$ applied pointwise to the Gaussian Volterra path of [`VolterraSde`] under
+/// the same kernel, lift and derived seed: an algebraic identity, asserted to machine precision.
 #[test]
 fn output_is_the_polynomial_of_the_driving_gaussian_volterra_path() {
   let coefficients = array![0.05, 0.3, -0.1, 0.02];
@@ -87,9 +84,7 @@ fn horner_matches_the_direct_power_sum() {
   }
 }
 
-/// A constant polynomial must give a constant path — the cheapest possible
-/// check that the coefficients are actually reaching the output rather than
-/// being ignored.
+/// A constant polynomial gives a constant path: the coefficients reach the output.
 #[test]
 fn a_constant_polynomial_gives_a_constant_path() {
   let gpv =
@@ -130,13 +125,9 @@ fn rejects_an_empty_polynomial() {
   );
 }
 
-/// arXiv:2212.10917's quintic OU model uses a **sparse** polynomial —
-/// $p(x)=\alpha_0+\alpha_1 x+\alpha_3 x^3+\alpha_5 x^5$, with the quadratic
-/// and quartic terms fixed at zero. A dense six-coefficient polynomial is a
-/// strictly larger family, so this pins that `quintic` builds the paper's
-/// shape and not a general degree-five one.
-///
-/// Coefficients are the calibrated instance from the paper's Figure 1.
+/// arXiv:2212.10917's quintic OU polynomial is sparse; `quintic` builds that shape, here with the
+/// calibrated coefficients of the paper's Figure 1.
+/// $$ p(x)=\alpha_0+\alpha_1 x+\alpha_3 x^3+\alpha_5 x^5 $$
 #[test]
 fn quintic_zeroes_the_quadratic_and_quartic_terms() {
   let gpv = GaussianPolynomialVolatility::quintic(

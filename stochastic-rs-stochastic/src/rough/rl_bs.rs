@@ -1,19 +1,14 @@
-//! # Fractional Black–Scholes
+//! Fractional Black–Scholes in closed form, applied pointwise to an [`RlFbm`] path: no Euler step.
 //!
 //! $$
 //! S_t = S_0\,\exp\!\left(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t\right)
 //! $$
 //!
-//! Closed-form pathwise solution of the fractional Black–Scholes SDE
-//! $dS_t = rS_t\,dt + \sigma S_t\,dW^H_t$ under Wick–Itô–Skorokhod integration
-//! (Hu & Øksendal 2003). The fBM path is generated non-cumulatively via
-//! [`RlFbm`], then the log-price formula is applied pointwise — no Euler
-//! step, no drift discretisation.
+//! Solves `dS = rS dt + σS dW^H` under Wick–Itô–Skorokhod integration (Hu & Øksendal 2003).
 //!
-//! Reference: Bilokon & Wong (2026) §5.1; Hu Y., Øksendal B. *Fractional
-//! white noise calculus and applications to finance*, IDAQP 6 (2003), 1–32;
-//! Necula C. *Option pricing in a fractional Brownian motion environment*,
-//! Working Paper (2008).
+//! Reference: Bilokon & Wong (2026), §5.1
+//! Reference: Hu & Øksendal (2003), IDAQP 6, 1–32
+//! Reference: Necula (2008), "Option pricing in a fractional Brownian motion environment"
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -54,6 +49,8 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `s0 > 0`, `sigma >= 0`, `n >= 2`,
+  /// a given `t` is positive and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -109,10 +106,8 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
   }
 }
 
-/// The Euler engine's view: the lift the inner fBm carries goes to the device
-/// as its node constants and boundary terms; the family steps the lifted fBm
-/// in its second slot and the closed-form spot in the first, with the
-/// deterministic exponent tabulated as a curve.
+/// The Euler engine's view: the inner fBm's lift ships as node constants and boundary terms; the
+/// family steps it in its second slot, the closed-form spot in the first, the exponent as a curve.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for RlBlackScholes<T, S, B>
 {
@@ -210,9 +205,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the lift and the closed form run
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and the closed form in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -242,11 +236,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RlBlackScholes`] sampling state: owns the cloned RL-fBM
-/// [`MarkovLift`] stepper and the Gaussian-increment source, plus the
-/// precomputed log-price scalars. `fill_path` regenerates the RL-fBM driver and
-/// applies the closed-form fractional Black–Scholes log-price pointwise; the
-/// owned `Gn` stream advances each call for independent paths.
+/// Reusable [`RlBlackScholes`] sampling state: the cloned RL-fBM [`MarkovLift`] stepper, the
+/// Gaussian-increment source and the log-price scalars; each call advances the owned `Gn` stream.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {

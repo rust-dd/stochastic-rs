@@ -1,12 +1,5 @@
-//! `interest/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes. Seven of
-//! these types (`Adg`, `BlackKarasinski`, `Cheyette`, `Cir2F`'s own `phi`, `CirPlusPlus`,
-//! `Hjm`, `HullWhite`, `HullWhite2F`) take an `impl Into<Fn1D<T>>`/
-//! `Fn2D<T>` curve parameter; a bare closure does not coerce to that bound
-//! on its own, so every one is passed as a named function cast explicitly
-//! to a function pointer (`fn1d_a as fn(f64) -> f64`), the same pattern
-//! this crate's own `with_setters_*` tests use for the same reason.
+//! The `interest/` slice of the reproducibility guard. A curve parameter (`impl Into<Fn1D<T>>` or
+//! `Fn2D<T>`) is passed as a named function cast to a pointer: a bare closure does not coerce.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -62,15 +55,8 @@ guard!(black_karasinski, "BlackKarasinski", |s| {
   )
 });
 
-// Sub-`Cir` seeds are fixed (7/8 — the pair `cir_2f.rs`'s own
-// `outer_seed_is_authoritative_over_sub_seeds` test uses), never derived
-// from `s`. `Cir2F::new` overwrites both anyway (see its doc), so their
-// as-constructed value is inert when the type is correct — but deriving
-// them from `s` here would route the outer seed into the sub-processes
-// independently of `Cir2F::new`'s own logic, so `check`'s discrimination
-// assertion would keep passing even if `Cir2F::new` regressed to ignoring
-// `seed` entirely. Fixed sub-seeds make that assertion depend only on
-// `Cir2F::new`'s own forwarding, which is the thing under test.
+// The sub-`Cir` seeds are fixed (7 and 8), never derived from `s`: `Cir2F::new` overwrites them,
+// and deriving them from `s` would pass `check`'s other-seed half without that forwarding.
 guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
   Cir::new(
     1.0,

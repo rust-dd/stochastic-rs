@@ -31,9 +31,8 @@ fn affine_leverage(_t: f64, s: f64) -> f64 {
   0.8 + 0.002 * s
 }
 
-/// Under full mixing and unit leverage the recursion is `HestonLog`'s, and
-/// the two Gaussian streams are built the same way, so the two processes
-/// agree to the bit at the same seed.
+/// Under full mixing and unit leverage the recursion and the two Gaussian streams are
+/// `HestonLog`'s, so the two processes agree to the bit at the same seed.
 #[test]
 fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
   let [s, v] = slv(
@@ -77,9 +76,8 @@ fn seeded_is_deterministic_and_the_seed_matters() {
   assert_ne!(a.sample(), c.sample());
 }
 
-/// A grid that tabulates an affine leverage reproduces it by bilinear
-/// interpolation, so the two coefficients drive the same path up to
-/// rounding.
+/// A grid that tabulates an affine leverage reproduces it by bilinear interpolation, so both
+/// drive the same path up to rounding.
 #[test]
 fn a_grid_leverage_matches_the_closure_it_tabulates() {
   let spots = Array1::linspace(1.0, 400.0, 400);

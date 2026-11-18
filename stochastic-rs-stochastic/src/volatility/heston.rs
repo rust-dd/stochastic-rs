@@ -1,7 +1,8 @@
 //! # Heston
 //!
 //! $$
-//! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
+//! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\
+//! dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
 //! $$
 //!
 use std::marker::PhantomData;
@@ -46,13 +47,11 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Power of the variance
-  /// If 0.5 then it is the original Heston model
-  /// If 1.5 then it is the 3/2 model
+  /// Power of the variance: 0.5 is the original Heston model, 1.5 the 3/2 model.
   pub pow: HestonPow,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// Noise generator (used by the [`Euler`] scheme; [`AndersenQe`] draws its
   /// own noise and leaves this untouched).
@@ -65,6 +64,8 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
 }
 
 impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
+  /// Panics unless `v0 >= 0`, `kappa >= 0`, `theta >= 0`, `sigma >= 0`, `-1 <= rho <= 1`, `n >= 2`,
+  /// a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     s0: T,
     v0: T,
@@ -130,13 +131,8 @@ impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
   }
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Heston::default().with_kappa(3.0).with_rho(-0.8)`. Implemented
-/// generically over `Sch: HestonScheme` (not just [`Euler`], the only
-/// scheme `new()`/`Default` produce) since `cgns` and every other field are
-/// scheme-independent — this is what lets the setters chain after
-/// [`qe()`](Heston::qe) too, e.g.
-/// `Heston::default().qe().with_kappa(3.0)`.
+/// Generic over `Sch: HestonScheme`, since `cgns` and every other field are scheme-independent:
+/// the setters chain after [`qe()`](Heston::qe) too.
 impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   fn check_s0(s0: T) {
     require!(s0.is_finite(), s0);
@@ -170,44 +166,43 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     require!(mu.is_finite(), mu);
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa >= 0` and `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta >= 0` and `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma >= 0` and `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -215,7 +210,7 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
@@ -223,7 +218,7 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   }
 
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -231,8 +226,8 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -240,25 +235,26 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     self
   }
 
-  /// Replace `pow`, all else unchanged.
+  /// Replace `pow`.
   pub fn with_pow(mut self, pow: HestonPow) -> Self {
     self.pow = pow;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 
-  /// QE's preconditions, checked at the switch and again where the scheme runs, since the fields stay public.
+  /// QE's preconditions, checked at the switch and again where the scheme runs, since the fields
+  /// stay public.
   fn assert_qe_parameters(&self) {
     assert!(
       matches!(self.pow, HestonPow::Sqrt),
@@ -369,12 +365,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, Sch: HestonScheme, S: SeedExt] Heston<T, Sch, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, boundary, seed, cgns, _scheme } via euler);
 
-/// Derives a seed once, at construction, for [`HestonSampler`] to own and
-/// pass into `Sch::simulate` — see that trait method's docs for why.
-/// Deriving (not cloning) is what decorrelates chunks: the derived value
-/// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-/// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-/// other rather than one raw stride apart.
+/// Derives a seed once, at construction, for [`HestonSampler`] to own and pass into
+/// `Sch::simulate`: the mixed next tick hash-scrambles chunk `i`'s basis against chunk `i+1`'s.
 macro_rules! heston_sampler_impl {
   ($scheme:ty) => {
     fn sampler(&self) -> HestonSampler<'_, T, $scheme, S, B> {
@@ -404,9 +396,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
   heston_sampler_impl!(Euler);
 
-  /// Through the Euler engine: on a device both components step in the
-  /// kernel, on the host devices it is this process's own scheme, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps both components in its kernel, the host runs this
+  /// process's own scheme, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -428,11 +419,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// The Euler engine's view of the quadratic-exponential scheme. The variance
-/// is drawn from a moment-matched law rather than stepped, and the branch it
-/// picks needs a uniform, which the kernel supplies per step; every constant
-/// the scheme hoists out of its own path loop is folded here for the same
-/// reason it hoists them.
+/// The Euler engine's view of the quadratic-exponential scheme: the variance is drawn from a
+/// moment-matched law whose branch needs a uniform, supplied per step; the constants fold here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Heston<T, AndersenQe, S, B>
 {
@@ -521,11 +509,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`Heston`] sampler: borrows the process and owns a seed derived
-/// once at construction. The variance discretisation runs inside the
-/// compile-time-selected [`HestonScheme`], which owns its own RNG setup
-/// beyond that seed, so each call re-dispatches to `Sch::simulate`; there is
-/// nothing else reusable to hoist across calls.
+/// Reusable [`Heston`] sampler: borrows the process and owns a seed derived once. Each call
+/// dispatches to `Sch::simulate`, which sets up its own RNG from that seed.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HestonSampler<'a, T: FloatExt, Sch: HestonScheme, S: SeedExt, B> {

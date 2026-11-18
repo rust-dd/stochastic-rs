@@ -1,25 +1,14 @@
-//! # Svcgmy (CGMYSV discrete-time approximation)
+//! CGMY on a CIR clock: `rho` is a loading on `v_t`, not a correlation, and may leave [-1, 1].
 //!
-//! Paper model — Kim Y. S. (2021), *Sample Path Generation of the
-//! Stochastic Volatility CGMY Process and Its Application to
-//! Path-Dependent Option Pricing*, Journal of Risk and Financial
-//! Management 14(2), 77, DOI: 10.3390/jrfm14020077:
 //! $$
-//! L_t = Z_{V_t} + \rho v_t, \quad V_t = \int_0^t v_s ds,
-//! $$
-//! where $Z$ is a standard Cgmy process (independent of $v$) and $v$ follows Cir:
-//! $$
+//! L_t = Z_{V_t} + \rho v_t, \quad V_t = \int_0^t v_s ds,\qquad
 //! dv_t=\kappa(\eta-v_t)dt+\zeta\sqrt{v_t}dW_t.
 //! $$
 //!
-//! This implementation generates the discrete-time approximation on a grid
-//! $t_m = m\Delta t$, using Algorithm 1 in the paper.
+//! $Z$ is a standard Cgmy independent of $v$, on `t_m = mΔt` by Algorithm 1 (`j = 1..J`, `Γ0 = 0`).
 //!
-//! Notes:
-//! - `rho` is a **loading** on $v_t$ (not a correlation), so it is not restricted to [-1, 1].
-//! - Series indices follow Algorithm 1: **j = 1..J**, with **Γ0 = 0**.
-//!
-//! Reference: Glasserman, P. (2003), *Monte Carlo Methods in Financial Engineering*, Springer, §3.4.1 (the exact CIR step), DOI 10.1007/978-0-387-21617-1.
+//! Reference: Kim (2021), JRFM 14(2), 77, Algorithm 1, DOI 10.3390/jrfm14020077
+//! Reference: Glasserman (2003), §3.4.1 (the exact CIR step), DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -40,8 +29,7 @@ use crate::traits::ProcessExt;
 
 /// Cgmy Stochastic Volatility process (CGMYSV)
 ///
-/// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
-/// module docs for the full citation).
+/// Reference: Kim (2021), JRFM 14(2), 77, Algorithm 1, DOI 10.3390/jrfm14020077
 #[derive(Debug, Clone)]
 pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive tempering parameter λ+ > 0
@@ -68,7 +56,7 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub v0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -76,6 +64,8 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
+  /// Panics unless every parameter is finite, `lambda_plus`, `lambda_minus`, `kappa`, `zeta` are
+  /// positive, `0 < alpha < 2`, `eta >= 0`, `v0 >= 0`, `n >= 2` and a given `t` is positive.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -259,9 +249,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.dt()
   }
 
-  /// The central χ²(df − 1) of the exact CIR step, a gamma of shape
-  /// `(df − 1) / 2` and scale two; none at exactly one degree of freedom,
-  /// where the step is the shifted normal's square alone.
+  /// The central χ²(df − 1) of the exact CIR step, a gamma of shape `(df − 1) / 2` and scale two;
+  /// none at exactly one degree of freedom, where the step is the shifted normal's square alone.
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let df = self.degrees_of_freedom();
     (df > T::one()).then(|| crate::euler::GammaDraws {
@@ -304,10 +293,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> SvcgmySampler<T, S> {
     SvcgmySampler {
       lambda_plus: self.lambda_plus,
@@ -326,9 +313,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the variance's exact step has a degree of
-  /// freedom to spare and the series fits the kernels' slots; anything else
-  /// keeps the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the exact variance step has a degree of freedom to spare and
+  /// the series fits the kernels' slots; anything else stays on the host's chunked sampler.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -371,21 +357,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// What a device runs here: the variance's exact step needs
-  /// at least one degree of freedom — below it the host draws a Poisson
-  /// mixture the kernels do not carry — and the series terms fit the kernels'
-  /// per-path slots. Anything else samples on the host.
+  /// What a device runs: at least one degree of freedom in the exact variance step (below it the
+  /// host draws a Poisson mixture the kernels do not carry) and series terms that fit the slots.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS))
       .then_some("degrees of freedom below one, or a series past the kernels' cells")
   }
 }
 
-/// Reusable [`Svcgmy`] sampling state: owns the scalar parameters and the seed
-/// source. The Cir noncentral-χ² driver, the series uniforms/exponentials and
-/// the arrival-time Poisson generator are rebuilt per fill in the legacy
-/// seed-consumption order, so the first call reproduces the original stream
-/// bit-for-bit.
+/// Reusable [`Svcgmy`] sampling state: the scalar parameters and the seed source. The Cir driver,
+/// the series draws and the arrival-time generator are rebuilt per fill, in a pinned order.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct SvcgmySampler<T: FloatExt, S: SeedExt> {
@@ -454,11 +435,8 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
 
-    // Γ_0=0, Γ_j = Γ_{j-1} + E'_j; we reuse Poisson-generator-as-arrival-times for Γ_j.
-    // Derives (not `Unseeded`) so Γ_j is reproducible under a `Deterministic` seed and
-    // distinct path-to-path: `self.seed` is this sampler's own already chunk-decorrelated
-    // basis (see `sampler()`), so ticking it once more per fill stays safely confined to
-    // this chunk's own sequence.
+    // Γ_0=0, Γ_j = Γ_{j-1} + E'_j, from the Poisson generator's arrival times. The seed is
+    // derived so that Γ_j is reproducible and differs path to path; it is this chunk's own basis.
     let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt

@@ -1,35 +1,20 @@
-//! # Kernel-generic Markov-lift Volterra SDE stepper
+//! The Markov lift of a Volterra equation: `N'` exponential factors, `O(nN')` in place of `O(n²)`.
 //!
 //! $$
-//! \begin{aligned} X_{n+1} &= X_0 + \Bigl(\textstyle\int_0^{\delta t} K(u)\,du\Bigr) f(t_n, X_n) + \sum_{l=1}^{N'} w_l\, e^{-x_l \delta t}\,\bigl(H_l^{(n)} + J_l^{(n)}\bigr) + K(\delta t)\, g(t_n, X_n)\,\delta W_n \\ H_l^{(n+1)} &= \tfrac{f(t_n,X_n)}{x_l}\bigl(1 - e^{-x_l \delta t}\bigr) + e^{-x_l \delta t}\, H_l^{(n)} \\ J_l^{(n+1)} &= e^{-x_l \delta t}\bigl(g(t_n,X_n)\,\delta W_n + J_l^{(n)}\bigr) \end{aligned}
+//! \begin{aligned}
+//! X_{n+1} &= X_0 + \Bigl(\textstyle\int_0^{\delta t} K(u)\,du\Bigr) f(t_n, X_n) +
+//! \sum_{l=1}^{N'} w_l\, e^{-x_l \delta t}\,\bigl(H_l^{(n)} + J_l^{(n)}\bigr) +
+//! K(\delta t)\, g(t_n, X_n)\,\delta W_n \\
+//! H_l^{(n+1)} &= \tfrac{f(t_n,X_n)}{x_l}\bigl(1 - e^{-x_l \delta t}\bigr) +
+//! e^{-x_l \delta t}\, H_l^{(n)} \\
+//! J_l^{(n+1)} &= e^{-x_l \delta t}\bigl(g(t_n,X_n)\,\delta W_n + J_l^{(n)}\bigr)
+//! \end{aligned}
 //! $$
 //!
-//! for any kernel exposing the [`VolterraKernel`] interface: nodes $x_l$
-//! and weights $w_l$ ([`VolterraKernel::nodes`], [`VolterraKernel::weights`]
-//! — the latter already carrying every normalising constant $K$ needs, per
-//! the invariant stated on that method), the kernel value $K(\delta t)$
-//! ([`VolterraKernel::evaluate`]), and its integral from the origin
-//! $\int_0^{\delta t} K(u)\,du$ ([`VolterraKernel::integral_from_zero`]).
-//! [`MarkovLift`](crate::rough::MarkovLift) is the special
-//! case $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
-//! ([`RlKernel`](crate::rough::kernel::RlKernel)), with coefficients of the state alone.
+//! For any [`VolterraKernel`], whose weights carry every normalising constant.
 //!
-//! Collapses the full path history into a bounded state of $N'$
-//! exponential factors, turning an $O(n^2)$ naive Volterra simulation into
-//! $O(nN')$. Two entry points:
-//!
-//! - [`simulate`](VolterraLift::simulate) — single path, SIMD across the
-//!   $N'$ quadrature factors via the hidden `SimdFloatExt` lane kernels.
-//! - [`simulate_batch`](VolterraLift::simulate_batch) /
-//!   [`simulate_batch_par`](VolterraLift::simulate_batch_par) — $m$ paths in
-//!   one pass, SIMD across the *path* axis at each factor $l$, the latter
-//!   additionally parallelised across path tiles with rayon.
-//!
-//! # References
-//! - Abi Jaber E., El Euch O. *Multi-factor approximation of rough
-//!   volatility models*, arXiv:1801.10359 (2018).
-//! - Bilokon P. A., Wong Y. C. C. *Efficient Simulation of Fractional
-//!   Brownian Motion*, J. Appl. Probab. (2026), doi:10.1017/jpr.2025.10071.
+//! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
+//! Reference: Bilokon & Wong (2026), J. Appl. Probab., doi:10.1017/jpr.2025.10071
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -50,11 +35,8 @@ pub struct VolterraLift<T: FloatExt, K: VolterraKernel<T>> {
   pub dt: T,
   /// $e^{-x_l \delta t}$ for each node.
   pub(crate) exp_neg_x_dt: Array1<T>,
-  /// Pre-merged $w_l\, e^{-x_l \delta t}$ (constant across steps), built
-  /// from [`VolterraKernel::weights`] alone. Those weights already carry
-  /// every normalising constant the kernel needs (see the invariant on
-  /// that method), so no further factor is applied here or at any call
-  /// site below.
+  /// Pre-merged $w_l\, e^{-x_l \delta t}$, constant across steps, from [`VolterraKernel::weights`]
+  /// alone: they carry every normalising constant, so no further factor is applied anywhere.
   pub(crate) we: Array1<T>,
   /// Pre-computed $(1 - e^{-x_l \delta t})/x_l$ for the $H_l$ update.
   pub(crate) one_minus_e_over_x: Array1<T>,
@@ -67,15 +49,8 @@ pub struct VolterraLift<T: FloatExt, K: VolterraKernel<T>> {
 }
 
 impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
-  /// Build a stepper for the given kernel and step size $\delta t > 0$.
-  ///
-  /// Every quantity is built from [`VolterraKernel`]'s trait methods alone
-  /// — `kernel.nodes()`, `kernel.weights()`, `kernel.integral_from_zero`,
-  /// `kernel.evaluate` — with no further normalising factor layered on top,
-  /// per the invariant stated on [`VolterraKernel::weights`].
-  ///
-  /// # Panics
-  /// - if $\delta t \le 0$
+  /// A stepper for `kernel` at step $\delta t$, built from [`VolterraKernel`]'s methods alone;
+  /// panics unless `dt > 0`.
   #[must_use]
   pub fn new(kernel: K, dt: T) -> Self {
     assert!(
@@ -110,10 +85,8 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
     }
   }
 
-  /// Integrate a single path. `dw` carries Brownian increments on the same
-  /// grid as the output (length $n{-}1$). `f`/`g` receive $(t_n, X_n)$ — the
-  /// *current* simulation time and state, not just the state — so
-  /// time-inhomogeneous coefficients are supported.
+  /// Integrate one path from the Brownian increments `dw` (length $n{-}1$). `f` and `g` receive
+  /// $(t_n, X_n)$, the current time and state, so coefficients may depend on time.
   pub fn simulate<F, G>(&self, x0: T, f: F, g: G, dw: &[T]) -> Array1<T>
   where
     F: Fn(T, T) -> T,
@@ -181,14 +154,8 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
     paths
   }
 
-  /// Same as [`simulate_batch`](Self::simulate_batch) but parallelises the
-  /// outer tile loop with rayon — combines per-core SIMD path-batching with
-  /// multi-core scheduling. `f`/`g` need only be `Sync`: every worker thread
-  /// calls them through a shared `&F`/`&G`, never takes ownership. `K: Sync`
-  /// is required too, since every worker thread also shares `&self` (and
-  /// thus `&self.kernel`) — every [`VolterraKernel`] shipped in this crate
-  /// is a plain `Array1<T>`/`T` struct, so this holds automatically for all
-  /// of them.
+  /// [`simulate_batch`](Self::simulate_batch) with the outer tile loop on rayon. `f`, `g` and
+  /// `K` need only be `Sync`: every worker calls them through a shared reference.
   pub fn simulate_batch_par<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T, T) -> T + Sync,
@@ -342,14 +309,8 @@ mod tests {
     }
   }
 
-  /// For a pure exponential kernel with constant `f` and `g = 0`, the
-  /// Volterra convolution $\int_0^t K(t-s) f\,ds$ has the exact closed form
-  /// $f\,c\,(1 - e^{-\beta t})/\beta$ — no exp-sum fitting error, since
-  /// [`ExponentialKernel`] *is* its own one-term exponential sum. The
-  /// Markov-lift recursion should reproduce it to near machine precision,
-  /// not just the loose fitted-kernel tolerance
-  /// `rough::markov_lift::tests::constant_drift_matches_mittag_leffler_linear_case`
-  /// needs.
+  /// A pure exponential kernel with constant `f` and `g = 0` gives $f\,c\,(1 - e^{-\beta t})/\beta$
+  /// with no fitting error, so the recursion must match to near machine precision.
   #[test]
   fn exponential_kernel_constant_drift_matches_closed_form() {
     let beta = 0.7_f64;
@@ -402,11 +363,8 @@ mod tests {
     }
   }
 
-  /// The batch simulator must produce the same path as repeated single-path
-  /// runs with matching per-row increments — mirrors
-  /// `rough::markov_lift::tests::batch_matches_single_path_row_by_row`, but
-  /// through a non-`RlKernel` kernel, to prove the batch path is itself
-  /// kernel-generic and not accidentally coupled to `RlKernel` internals.
+  /// The batch simulator equals repeated single-path runs row by row, here through a kernel that
+  /// is not `RlKernel`: the batch path is kernel-generic.
   #[test]
   fn batch_matches_single_path_row_by_row() {
     let nodes = Array1::from_vec(vec![0.4_f64, 1.1, 2.3]);
@@ -442,11 +400,8 @@ mod tests {
     }
   }
 
-  /// `simulate_batch_par` must reproduce `simulate_batch` exactly — the
-  /// rayon-parallelised outer tile loop runs the identical per-tile math,
-  /// just distributed across threads. `m = 70` spans two [`super::BATCH_TILE`]
-  /// tiles (`BATCH_TILE = 64`), exercising the tile-boundary bookkeeping
-  /// that an `m <= BATCH_TILE` case cannot.
+  /// `simulate_batch_par` reproduces `simulate_batch` exactly; `m = 70` spans two
+  /// [`super::BATCH_TILE`] tiles (64), which exercises the tile boundary.
   #[test]
   fn batch_par_matches_batch_sequential_across_tile_boundary() {
     let nodes = Array1::from_vec(vec![0.5_f64, 1.7]);

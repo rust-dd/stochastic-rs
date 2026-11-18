@@ -1,28 +1,13 @@
-//! # Brownian-bridge quasi-Monte Carlo paths
-//!
-//! Brownian motion sampled from a Sobol sequence through the Brownian-bridge
-//! construction: the first, best-equidistributed Sobol coordinate sets the
-//! terminal value $W_T$, the next one the midpoint $W_{T/2}$ conditional on
-//! both ends, and so on, filling the path by recursive bisection. Given the
-//! known values at $t_l < t_r$, the bridge point at $t_j$ is
+//! Brownian motion from a Sobol sequence by bridge bisection: the first coordinate sets `W_T`, the
+//! next the midpoint given both ends, so the leading dimensions carry the coarse features (§3.1).
 //!
 //! $$
 //! W_{t_j} = \frac{(t_r - t_j)\,W_{t_l} + (t_j - t_l)\,W_{t_r}}{t_r - t_l} +
 //!   \sqrt{\frac{(t_j - t_l)(t_r - t_j)}{t_r - t_l}}\;\Phi^{-1}(u_k),
 //! $$
 //!
-//! so the coarse, high-variance features of the path absorb the sequence's
-//! leading dimensions and the fine increments its trailing ones — the
-//! effective-dimension reduction that makes QMC pay off for path-dependent
-//! payoffs (Caflisch–Morokoff–Owen 1997; Glasserman 2003, §3.1).
-//!
-//! References:
-//! - Caflisch, R.E., Morokoff, W., Owen, A.B. (1997), "Valuation of
-//!   mortgage-backed securities using Brownian bridges to reduce effective
-//!   dimension", *Journal of Computational Finance* 1(1), 27-46.
-//!   DOI: 10.21314/JCF.1997.005
-//! - Glasserman, P. (2003), *Monte Carlo Methods in Financial Engineering*,
-//!   Springer, §3.1. DOI: 10.1007/978-0-387-21617-1
+//! Reference: Caflisch, Morokoff & Owen (1997), JCF 1(1), 27-46, DOI 10.21314/JCF.1997.005
+//! Reference: Glasserman (2003), Springer, §3.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -32,9 +17,8 @@ use stochastic_rs_distributions::special::ndtri;
 
 use crate::traits::FloatExt;
 
-/// Bisection order of the bridge: the index list `(target, left, right)`
-/// where `left`/`right` are the already-filled neighbours (`None` for the
-/// origin at time zero); the first entry is the endpoint.
+/// Bisection order of the bridge as `(target, left, right)`, the neighbours already filled
+/// (`None` is the origin at time zero); the first entry is the endpoint.
 fn bridge_schedule(steps: usize) -> Vec<(usize, Option<usize>, usize)> {
   let mut schedule = Vec::with_capacity(steps);
   schedule.push((steps - 1, None, steps - 1));
@@ -274,7 +258,8 @@ mod tests {
       .collect()
   }
 
-  /// Golden bits of a plain path: the bridge schedule, `ndtri` and the Sobol order together fix every QMC estimate.
+  /// Golden bits of a plain path: the bridge schedule, `ndtri` and the Sobol order together fix
+  /// every QMC estimate.
   #[test]
   fn a_plain_path_is_pinned_bit_for_bit() {
     let w = BrownianBridgeQmc::new(8, 1.0).paths::<f64>(4);
@@ -293,7 +278,8 @@ mod tests {
     );
   }
 
-  /// Golden bits of a scrambled path: the scramble stream joins the schedule, `ndtri` and the Sobol order.
+  /// Golden bits of a scrambled path: the scramble stream joins the schedule, `ndtri` and the
+  /// Sobol order.
   #[test]
   fn a_scrambled_path_is_pinned_bit_for_bit() {
     let w = BrownianBridgeQmc::scrambled(8, 1.0, &Deterministic::new(11)).paths::<f64>(1);
@@ -323,9 +309,8 @@ pub struct PyBrownianBridgeQmc {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBrownianBridgeQmc {
-  /// Sobol-driven Brownian paths on `steps` equispaced steps to `horizon`,
-  /// built by Brownian-bridge bisection; a `seed` switches on the Owen-type
-  /// scramble of the underlying sequence.
+  /// Sobol-driven Brownian paths on `steps` equispaced steps to `horizon`, by Brownian-bridge
+  /// bisection; a `seed` switches on the Owen-type scramble of the sequence.
   #[new]
   #[pyo3(signature = (steps, horizon, seed=None))]
   fn new(steps: usize, horizon: f64, seed: Option<u64>) -> pyo3::PyResult<Self> {

@@ -7,13 +7,11 @@
 //! \end{aligned}
 //! $$
 //!
-//! where $J_t$ follows a Kou double-exponential distribution:
-//! $\ln(1+J) \sim p\,\mathrm{Exp}(\eta_1) + (1-p)\,(-\mathrm{Exp}(\eta_2))$,
-//! and $N_t$ is Poisson with intensity $\lambda$.
+//! $J_t$ is Kou's double-exponential jump and $N_t$ a Poisson process of intensity $\lambda$:
+//! $$ \ln(1+J) \sim p\,\mathrm{Exp}(\eta_1) + (1-p)\,(-\mathrm{Exp}(\eta_2)) $$
 //!
-//! Source:
-//! - Kirkby, J.L. (PROJ_Option_Pricing_Matlab)
-//! - Kou, S.G. (2002), "A Jump-Diffusion Model for Option Pricing"
+//! Reference: Kirkby, PROJ_Option_Pricing_Matlab
+//! Reference: Kou (2002), "A Jump-Diffusion Model for Option Pricing"
 //!
 
 use ndarray::Array1;
@@ -32,10 +30,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Heston + Kou Double-Exponential jump-diffusion process.
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Hkde::new(..).with_lambda(0.8).with_rho(-0.4)`.
+/// Heston with Kou double-exponential jumps in the spot.
 #[derive(Debug, Clone)]
 pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (or risk-free rate minus dividend yield).
@@ -64,7 +59,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub s0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
   /// Seed strategy.
   pub seed: S,
@@ -75,6 +70,8 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
+  /// Panics unless `-1 <= rho <= 1`, `v0 >= 0`, `lambda >= 0`, `eta1 > 1`, `eta2 > 0`,
+  /// `s0 > 0`, a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     mu: T,
     kappa: T,
@@ -179,37 +176,36 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     require!(s0 > T::zero(), s0);
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `sigma_v`, all else unchanged.
+  /// Replace `sigma_v`; panics unless `sigma_v` is finite.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
     Self::check_sigma_v(sigma_v);
     self.sigma_v = sigma_v;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -217,56 +213,56 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace `p_up`, all else unchanged.
+  /// Replace `p_up`; panics unless `p_up` is finite.
   pub fn with_p_up(mut self, p_up: T) -> Self {
     Self::check_p_up(p_up);
     self.p_up = p_up;
     self
   }
 
-  /// Replace `eta1`, all else unchanged.
+  /// Replace `eta1`; panics unless `eta1 > 1` and `eta1` is finite.
   pub fn with_eta1(mut self, eta1: T) -> Self {
     Self::check_eta1(eta1);
     self.eta1 = eta1;
     self
   }
 
-  /// Replace `eta2`, all else unchanged.
+  /// Replace `eta2`; panics unless `eta2 > 0` and `eta2` is finite.
   pub fn with_eta2(mut self, eta2: T) -> Self {
     Self::check_eta2(eta2);
     self.eta2 = eta2;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0 > 0` and `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -274,8 +270,8 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -283,7 +279,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -298,10 +294,8 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the Kou-jump Heston model. The jump
-/// compensator is folded into the drift here, and the sizes are declared
-/// rather than drawn in the step: Kou's double-exponential has no closed-form
-/// aggregate, so the kernel sums them.
+/// The Euler engine's view: the jump compensator is folded into the drift, and the sizes are
+/// declared, not drawn in the step: Kou's law has no closed-form aggregate, so the kernel sums.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Hkde<T, S, B>
 {
@@ -380,10 +374,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> HkdeSampler<T, S> {
     HkdeSampler {
       n: self.n,
@@ -405,9 +397,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the variance, the diffusion and
-  /// the jump sum all happen in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the variance, the diffusion and the jump sum in its
+  /// kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -457,10 +448,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Hkde`] sampling state: owns the correlated-Gaussian generator and
-/// the seed source. The Poisson jump-count generator and per-jump Kou draws are
-/// rebuilt per fill in the legacy seed-consumption order, so the first call
-/// reproduces the original stream bit-for-bit.
+/// Reusable [`Hkde`] sampling state: the correlated-Gaussian generator and the seed source. The
+/// Poisson count and the Kou draws are rebuilt per fill, in an order the pinned streams read.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
@@ -483,8 +472,7 @@ pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
 }
 
 impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
-  /// Inverse CDF of Exp(η): $F^{-1}(u) = -\ln(1-u)/\eta$. Written out rather
-  /// than delegating to an external distribution so the jump draws stay on
+  /// Inverse CDF of Exp(η), $F^{-1}(u) = -\ln(1-u)/\eta$, written out so the jump draws stay on
   /// the caller's stream.
   #[inline]
   fn exp_inverse_cdf(u: f64, eta: f64) -> f64 {

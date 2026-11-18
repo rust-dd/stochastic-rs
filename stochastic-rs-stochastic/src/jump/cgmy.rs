@@ -1,32 +1,19 @@
-//! # Cgmy (Carr–Geman–Madan–Yor)
+//! CGMY by Rosiński's series, stopped at `J` terms; `C` is an input, not a variance normalisation.
 //!
-//! Lévy measure:
 //! $$
 //! \nu(dx)=C\left(e^{-Gx}x^{-1-Y}\mathbf 1_{x>0}+e^{-M|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
 //! $$
 //!
-//! This implementation uses the same (truncated) Rosiński series style representation you used,
-//! but here **C is an input parameter** (NOT implied / variance-normalized).
+//! The drift `b_T` carries the mean compensator, with its `Γ(1 − Y)`, only for `Y < 1`; else 0.
 //!
-//! Notes on drift:
-//! - The usual mean-compensator term involves Γ(1-Y), which is finite only for Y<1 (finite mean).
-//! - For Y>=1, the classical mean does not exist; here we set drift correction to 0 to avoid NaN/inf.
-//!
-//! Series (truncated at J terms):
 //! $$
 //! X(t)=\sum_{j=1}^{J}\Big(\Big(\frac{Y\Gamma_j}{2CT}\Big)^{-1/Y}\wedge
-//! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t
+//! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,\quad
+//! V_j\in\{+G,-M\},\ P(V_j=+G)=P(V_j=-M)=\tfrac12
 //! $$
-//! with V_j ∈ {+G, -M}, P(V_j=+G)=P(V_j=-M)=1/2.
 //!
-//! References:
-//! - Carr P., Geman H., Madan D. B., Yor M. (2002) — *The Fine Structure
-//!   of Asset Returns: An Empirical Investigation*, Journal of Business
-//!   75(2), 305–332, DOI: 10.1086/338705 — the CGMY model.
-//! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
-//!   Processes and their Applications 117(6), 677–707,
-//!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
-//!   representation this file's `fill_path` implements.
+//! Reference: Carr, Geman, Madan & Yor (2002), J. Business 75(2), 305–332, DOI 10.1086/338705
+//! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -72,6 +59,8 @@ pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
+  /// Panics unless a given `t` is positive and finite, `c > 0`, `lambda_plus > 0`,
+  /// `lambda_minus > 0`, `0 < alpha < 2`, `n >= 2`, `j >= 2`, and every parameter is finite.
   pub fn new(
     c: T,
     lambda_plus: T,
@@ -242,10 +231,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> CgmySampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
-    // The seed-independent drift `b_t` is precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The drift `b_t` does not read the seed and is computed here.
     let t_max = self.t_max();
     let dt = self.dt();
     let b_t = self.drift_rate();
@@ -267,9 +254,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -332,13 +318,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cgmy`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Cgmy`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CgmySampler<T: FloatExt, S: SeedExt> {

@@ -1,44 +1,15 @@
-//! # Kobol / Cts (general tempered stable family)
+//! The general tempered stable (KoBoL) family; the side weights `p`, `q` need not sum to one.
+//! [`Cgmy`](crate::jump::cgmy::Cgmy) is the case `D = C`, `p = q = 1`, `λ₊ = G`, `λ₋ = M`.
 //!
-//! Lévy measure (one common KoBoL/Cts parametrization):
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
-//! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx
+//! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,\quad
+//! D>0,\ p,q>0,\ \lambda_\pm>0,\ \alpha\in(0,2)
 //! $$
 //!
-//! - D > 0 overall scale
-//! - p, q > 0 side weights (not necessarily normalized)
-//! - λ_+ , λ_- > 0 tempering rates
-//! - α in (0,2) activity
-//!
-//! Differences vs your Cgmy code:
-//! - sign selection: P(+)=p/(p+q) instead of fixed 1/2
-//! - series constant uses D(p+q) instead of 2C
-//! - drift uses D*p and D*q (if α<1; else set 0)
-//!
-//! Cgmy is a special case of this if you set:
-//! - D = C
-//! - p = q = 1
-//! - λ_+ = G, λ_- = M
-//!
-//! then D(p+q)=2C and P(+)=1/2.
-//!
-//! References:
-//! - Koponen I. (1995) — *Analytic Approach to the Problem of
-//!   Convergence of Truncated Lévy Flights Towards the Gaussian
-//!   Stochastic Process*, Physical Review E 52(1), 1197–1199,
-//!   DOI: 10.1103/PhysRevE.52.1197 — introduced this tempered-stable
-//!   Lévy-measure family.
-//! - Boyarchenko S. I., Levendorskiĭ S. Z. (2000) — *Option Pricing for
-//!   Truncated Lévy Processes*, International Journal of Theoretical
-//!   and Applied Finance 3(3), 549–552, DOI: 10.1142/S0219024900000541
-//!   — coined "KoBoL" and applied the family to option pricing.
-//! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
-//!   Processes and their Applications 117(6), 677–707,
-//!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
-//!   representation this file's `fill_path` implements (shared with
-//!   [`Cgmy`](crate::jump::cgmy::Cgmy), of which this family is a
-//!   generalization).
+//! Reference: Koponen (1995), Phys. Rev. E 52(1), 1197–1199, DOI 10.1103/PhysRevE.52.1197
+//! Reference: Boyarchenko & Levendorskiĭ (2000), IJTAF 3(3), 549–552, DOI 10.1142/S0219024900000541
+//! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -88,6 +59,8 @@ pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
+  /// Panics unless every parameter is finite, `d`, `p`, `q`, `lambda_plus`, `lambda_minus` are
+  /// positive, `0 < alpha < 2`, `n >= 2`, `j >= 2` and a given `t` is positive.
   pub fn new(
     d: T,
     p: T,
@@ -176,9 +149,8 @@ impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
     }
   }
 
-  /// Var(X_1) exists for α<2:
-  /// Var(X_1) = D Γ(2-α) ( p λ_+^{α-2} + q λ_-^{α-2} )
-  /// If you want unit variance at t=1, choose D = 1 / [ Γ(2-α) (...) ].
+  /// The `D` of unit variance at `t = 1`, from `Var(X_1) = D Γ(2-α) (p λ₊^{α-2} + q λ₋^{α-2})`,
+  /// which exists for `α < 2`.
   pub fn d_for_unit_variance(p: T, q: T, lambda_plus: T, lambda_minus: T, alpha: T) -> T {
     let g2 = gamma(2.0 - alpha.to_f64().unwrap());
     (T::from_f64_fast(g2)
@@ -209,9 +181,8 @@ impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
     self.d * self.p + self.d * self.q
   }
 
-  /// The mean-compensating drift
-  /// `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, finite — and applied — only
-  /// below `α = 1`.
+  /// The mean-compensating drift `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, finite and applied
+  /// only below `α = 1`.
   fn drift_rate(&self) -> T {
     if self.alpha < T::one() {
       let g1 = gamma(1.0 - self.alpha.to_f64().unwrap());
@@ -227,9 +198,8 @@ impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Kobol<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate
-  /// `α / (D (p + q) T)`, the exponential draw entering plainly, and the
-  /// positive side taken with probability `p / (p + q)`.
+  /// The series constants, folded once: the arrival rate `α / (D (p + q) T)`, the exponential
+  /// draw entering plainly, and the positive side taken with probability `p / (p + q)`.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
@@ -290,10 +260,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> KobolSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // side probability, total coefficient and drift are precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The side probability, total coefficient and drift do not read it.
     let t_max = self.t_max();
     let dt = self.dt();
     let w_plus = self.positive_share();
@@ -318,9 +286,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -383,13 +350,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Kobol`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Kobol`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct KobolSampler<T: FloatExt, S: SeedExt> {

@@ -1,13 +1,17 @@
-//! # Rough Heston
+//! Rough Heston: a Riemann–Liouville Volterra–CIR variance on one Markov lift, the price by Euler.
 //!
 //! $$
-//! \begin{aligned} dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\ V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s \end{aligned}
+//! \begin{aligned}
+//! dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\
+//! V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds +
+//! \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s
+//! \end{aligned}
 //! $$
 //!
-//! The variance, a Riemann–Liouville Volterra–CIR, steps by one Markov lift with drift
-//! $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps by Euler on $W^s$.
+//! The lift takes drift $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps on $W^s$.
 //!
-//! Reference: Bilokon & Wong (2026) §5.5; El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
+//! Reference: Bilokon & Wong (2026), §5.5
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -68,6 +72,8 @@ fn build_markov<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `|rho| <= 1`, `n >= 2`, a given
+  /// `t` is positive, a given `1 <= degree <= 175` and `kappa`, `theta`, `nu`, `v0` are `>= 0`.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -156,10 +162,8 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   }
 }
 
-/// The Euler engine's view: the variance's lift goes to the device as its node
-/// constants and boundary terms — started at `v0`, floored as the host floors
-/// it — and the family steps the spot by Euler beside it, the two shocks
-/// correlated in the step exactly as the host's correlated pair is.
+/// The Euler engine's view: the variance's lift ships as node constants and boundary terms,
+/// started at `v0` and floored as on the host; the spot steps by Euler on the correlated shock.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for RlHeston<T, S, B>
 {
@@ -228,13 +232,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. `fill_paths`
-  /// then uses this owned seed directly (no further derive) — exactly one
-  /// derive from `self.seed` per chunk, matching what the legacy per-call
-  /// `derive()` consumed.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk bases. `fill_paths` uses the owned seed directly, one derive from `self.seed` per chunk.
   fn sampler(&self) -> RlHestonSampler<'_, T, S> {
     RlHestonSampler {
       n: self.n,
@@ -251,9 +250,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the lift and both components run
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and both components in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -275,9 +273,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RlHeston`] sampling state: owns the correlated-Gaussian generator
-/// and the seed source, and borrows the prebuilt Markov-lift so a Monte-Carlo
-/// loop reuses both output buffers without rebuilding the kernel.
+/// Reusable [`RlHeston`] sampling state: owns the correlated-Gaussian generator and the seed
+/// source, and borrows the prebuilt Markov lift.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
@@ -448,8 +445,7 @@ mod tests {
     );
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
-  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// The module doc calls this quantity ν, so the field is `nu`; a larger ν must widen the
   /// simulated variance dispersion.
   #[test]
   fn rl_heston_nu_drives_variance_dispersion() {

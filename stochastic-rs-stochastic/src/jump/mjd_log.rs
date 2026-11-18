@@ -1,4 +1,4 @@
-//! # MJD Log
+//! Merton jump diffusion stepped in the log-spot, which keeps `S_t > 0`.
 //!
 //! $$
 //! \ln\!\bigl(\tfrac{S_{t+dt}}{S_t}\bigr) = (\mu - \lambda\kappa_J - \tfrac12\sigma^2)\,dt
@@ -6,9 +6,7 @@
 //!
 //! $$
 //!
-//! where $K\sim\mathrm{Poisson}(\lambda\,dt)$, $Z_j\sim\mathcal{N}(\nu,\omega^2)$,
-//! and $\kappa_J = e^{\nu+\frac12\omega^2}-1$.
-//! Log-spot scheme guarantees $S_t > 0$.
+//! `K ~ Poisson(λ dt)`, `Z_j ~ N(ν, ω²)` and `κ_J = exp(ν + ω²/2) − 1`.
 //!
 
 use ndarray::Array1;
@@ -53,6 +51,8 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
+  /// Panics unless a given `t` is positive and finite, `n >= 2`, `sigma >= 0`, `lambda >= 0`,
+  /// `omega >= 0`, `s0 > 0`, and every parameter is finite.
   pub fn new(
     drift: Drift<T>,
     sigma: T,
@@ -122,7 +122,7 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
-  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  /// Replace `drift`; panics unless its rate is finite.
   pub fn with_drift(mut self, drift: Drift<T>) -> Self {
     drift.assert_finite();
     self.drift = drift;
@@ -140,10 +140,8 @@ impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
   }
 }
 
-/// The Euler engine's view of Merton's jump diffusion. The whole log-drift is
-/// folded here, as the host sampler folds it, and the jump intensity travels
-/// as a launch argument rather than a family parameter: the kernel draws the
-/// count once per step and offers it to every family that asks.
+/// The Euler engine's view: the whole log-drift is folded here, as the host sampler folds it, and
+/// the jump intensity is a launch argument, since the kernel draws one count per step.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for MjdLog<T, S, B>
 {
@@ -215,8 +213,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> MjdLogSampler<T> {
-    // The sources take their seeds from `self.seed` in a fixed order the pinned streams depend on; reuse advances them
-    // for independent paths.
+    // The sources take their seeds from `self.seed` in a fixed order the pinned streams depend on;
+    // reuse advances them for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift.rate();
@@ -249,9 +247,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the diffusion and the jump both
-  /// happen in the kernel, on the host devices it is this process's own
-  /// sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the diffusion and the jump in its kernel, the host
+  /// runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -313,8 +310,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`MjdLog`] sampling state: owns the Poisson driver and both Gaussian sources (diffusion and jump-size),
-/// so a Monte-Carlo loop pays their setup once.
+/// Reusable [`MjdLog`] sampling state: the Poisson driver and the Gaussian sources of the
+/// diffusion and of the jump sizes.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct MjdLogSampler<T: FloatExt> {

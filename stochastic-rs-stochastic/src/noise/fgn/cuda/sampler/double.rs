@@ -67,9 +67,8 @@ pub(crate) fn sample_f64_device(
     },
   )?;
 
-  // 1. Fused generate + scale
-  // One seed per batch; chunks continue the element count, so a batch
-  // produced in chunks equals one launch element for element.
+  // 1. Fused generate + scale. One seed per batch; chunks continue the element count, so a
+  // chunked batch equals one launch element for element.
   let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let first_cell = (first * traj_size) as u64;
   unsafe {
@@ -180,9 +179,8 @@ pub(super) fn sample_f64<T: FloatExt>(
     },
   )?;
 
-  // 1. Fused generate + scale
-  // One seed per batch; chunks continue the element count, so a batch
-  // produced in chunks equals one launch element for element.
+  // 1. Fused generate + scale. One seed per batch; chunks continue the element count, so a
+  // chunked batch equals one launch element for element.
   let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let first_cell = (first * traj_size) as u64;
   unsafe {
@@ -222,9 +220,8 @@ pub(super) fn sample_f64<T: FloatExt>(
       .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
   }
 
-  // 4. DtoH. Pre-fault the host buffer (large outputs) while the async kernels
-  // run, then DMA through the cached pinned staging and copy in parallel; small
-  // outputs go direct.
+  // 4. DtoH. Large outputs pre-fault the host buffer while the kernels run, then DMA through the
+  // cached pinned staging and copy in parallel; small outputs go direct.
   let len = m * out_size;
   let host = match (len * std::mem::size_of::<f64>() >= STAGING_MIN_BYTES)
     .then(|| alloc_prefaulted::<f64>(len))

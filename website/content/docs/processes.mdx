@@ -332,6 +332,58 @@ let sde = Sde::new(
 let paths = sde.solve(&array![100.0], 0.0, 1.0, 1000, 100, SdeMethod::Milstein, &Deterministic::new(42)); // [100, 1001, 1]
 ```
 
+Reach for `Sde` when the equation is not one of the built-in processes, or to compare schemes on one equation; a built-in model has its own sampler and its place in the pricing stack. Every scheme takes one Brownian increment $\Delta W_n \sim \mathcal N(0, \Delta t)$ per step, and under `NoiseModel::Fractional` the field `hursts` holds one Hurst exponent $H \in (0, 1)$ per dimension.
+
+| `SdeMethod` | Strong order | Weak order |
+|---|---|---|
+| `Euler` (Euler–Maruyama) | 0.5 | 1.0 |
+| `Milstein` | 1.0 | 1.0 |
+| `SRK2` (stochastic midpoint) | 0.5 | |
+| `SRK4` (RK4 structure) | 0.5 | |
+
+**Euler–Maruyama** (Maruyama, 1955):
+
+$$
+X_{n+1}^i = X_n^i + a^i(X_n, t_n)\,\Delta t + \sum_{j=1}^{d} b^{ij}(X_n, t_n)\,\Delta W_n^j .
+$$
+
+**Milstein** (Milstein, 1974) adds the first Itô–Taylor correction,
+
+$$
+X_{n+1}^i = X_n^i + a^i \Delta t + \sum_j b^{ij} \Delta W^j
+  + \sum_{j_1=1}^{d} \sum_{j_2=1}^{d} \mathcal{L}^{j_1} b^{i,j_2}\, I_{(j_1,j_2)},
+\qquad
+\mathcal{L}^{j_1} b^{i,j_2} = \sum_{k=1}^{d} b^{k,j_1}\,\frac{\partial b^{i,j_2}}{\partial x_k},
+$$
+
+with the double Itô integrals taken under the commutative-noise assumption,
+
+$$
+I_{(j,j)} = \tfrac{1}{2}\bigl((\Delta W^j)^2 - \Delta t\bigr), \qquad
+I_{(j_1,j_2)} \approx \tfrac{1}{2}\,\Delta W^{j_1}\,\Delta W^{j_2} \quad (j_1 \neq j_2).
+$$
+
+The off-diagonal approximation holds only when $\mathcal{L}^{j_1} b^{i,j_2} = \mathcal{L}^{j_2} b^{i,j_1}$; otherwise the Lévy area has to be simulated, which `Sde` does not do. The partial derivatives are forward finite differences with step $\varepsilon = 10^{-7}$.
+
+**Stochastic midpoint** (`SRK2`) evaluates both coefficients at an intermediate point:
+
+$$
+\hat{X} = X_n + \tfrac{1}{2}\,a(X_n, t_n)\,\Delta t + \tfrac{1}{2}\,b(X_n, t_n)\,\Delta W_n, \qquad
+X_{n+1} = X_n + a\bigl(\hat{X}, t_n + \tfrac{\Delta t}{2}\bigr)\,\Delta t + b\bigl(\hat{X}, t_n + \tfrac{\Delta t}{2}\bigr)\,\Delta W_n .
+$$
+
+**RK4 structure** (`SRK4`) averages four stages, at $t_n$, $t_n + \Delta t/2$ twice and $t_n + \Delta t$, with the weights $(1, 2, 2, 1)/6$ for the drift and the diffusion alike:
+
+$$
+X_{n+1} = X_n + \bar{a}\,\Delta t + \sum_j \bar{b}^{ij}\,\Delta W^j, \qquad
+\bar{a} = \tfrac{1}{6}(a_1 + 2a_2 + 2a_3 + a_4), \quad
+\bar{b}^{ij} = \tfrac{1}{6}\bigl(b_1^{ij} + 2b_2^{ij} + 2b_3^{ij} + b_4^{ij}\bigr).
+$$
+
+It is a heuristic: with one Brownian increment per step its strong order is 0.5, not 4. It helps where the drift dominates or the noise is small; for schemes of higher stochastic order see Rößler (2010) or Burrage & Platen (1994).
+
+References: Maruyama, G. (1955), *Continuous Markov processes and stochastic equations*, Rendiconti del Circolo Matematico di Palermo 4, 48–90; Milstein, G. N. (1974), *Approximate integration of stochastic differential equations*, Theory of Probability & Its Applications 19(3), 557–562.
+
 ## Volterra (stochastic Volterra equations)
 
 Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution. See `stochastic_rs::stochastic::volterra`.
@@ -344,3 +396,30 @@ Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution
 | `Volterra` | The Gaussian process `∫ K(t,s) dW_s` under an fBM, power-law or exponential kernel, by Markov lift for an fBM with `H < 1/2` and by the direct convolution otherwise |
 
 Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville), `ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.
+
+A weakly singular kernel makes $X$ neither Markov nor a semimartingale, so every step of the direct convolution needs the whole path. Writing $K(t) \approx \sum_{l=1}^{N'} w_l e^{-x_l t}$ turns the equation into $N' \ll n$ coupled Ornstein–Uhlenbeck-like factors, each updated from its own previous value. A `VolterraKernel` supplies the nodes and weights and two closed forms the sum cannot give for the current step, which has no history yet: $K(\delta t)$ and $\int_0^{\delta t} K(u)\,du$. `VolterraLift` is the stepper, `VolterraSde` the process built on it, and `rough::MarkovLift` the same lift for `RlKernel` and coefficients of the state alone. `volterra::reference::reference_path` is the direct $O(n^2)$ discretisation with the exact kernel: the cross-implementation oracle of the lift, and the sampler `Volterra` uses for a kernel the lift cannot represent, such as an fBM kernel with $H \ge 1/2$.
+
+### Convergence
+
+The rates of ordinary SDE schemes do not carry over. For weakly singular kernels the strong rate is $\min\{1-\alpha,\ \tfrac12-\beta\}$ for the $\theta$-Euler–Maruyama scheme and $\min\{1-\alpha,\ 1-2\beta\}$ for Milstein (Li, Huang & Hu, 2020, arXiv:2004.04916), not $1/2$ and $1$; Liu, Hu & Gao (2024, arXiv:2412.11126) show that the Milstein rate $n^{-2H}$ is optimal. `VolterraSde` evaluates its coefficients explicitly at the left point, which puts it in the Euler–Maruyama class; these rates are the literature's and are not measured for this implementation. The kernel approximation is a second, separate error: Bayer & Breneis prove superpolynomial strong convergence in $N'$ for Lipschitz coefficients (2021, arXiv:2108.05048) and that the weak error is governed by the $L^1$ error of the kernel (2023, arXiv:2309.07023).
+
+### An $L^1$ weight refit
+
+A quadrature fit such as `RlKernel`'s Gauss–Laguerre rule targets a pointwise criterion, the right one for pathwise error. `volterra::fit::fit_l1` keeps the nodes and refits the weights in $L^1$ by iteratively reweighted least squares on a log-spaced grid, the objective that bounds the weak (pricing) error; `l1_error` measures the result. Use the quadrature fit for pathwise work and the refit for pricing. Measured at degree 40 on $[10^{-4}, 1]$:
+
+| $H$ | $L^1$ error, before → after | worst pointwise relative error, before → after |
+|---|---|---|
+| 0.05 | 2.98e-2 → 1.29e-2 (2.31×) | 8.30e-1 → 7.14e-1 (0.86×) |
+| 0.10 | 2.10e-2 → 9.02e-3 (2.33×) | 7.91e-1 → 6.69e-1 (0.85×) |
+| 0.30 | 3.83e-3 → 1.35e-3 (2.83×) | 5.31e-1 → 4.19e-1 (0.79×) |
+| 0.45 | 4.16e-4 → 1.14e-4 (3.64×) | 1.68e-1 → 1.17e-1 (0.70×) |
+
+The refit can still be worse at a single $t$ (at $t = 10^{-2}$ the quadrature fit is the tighter one), and it cannot repair badly placed nodes. Near the singularity neither fit is accurate: at $t = 10^{-4}$ with $H = 0.05$ both are about 80% off, because no degree-40 exponential sum tracks $t^{H-1/2}$ that close to the origin. That is why the lift takes the first step from the closed-form boundary term and not from the sum.
+
+### The square-root process
+
+`VolterraSquareRoot` is the variance leg of the Volterra Heston model (Abi Jaber & El Euch, arXiv:1803.00477), and of rough Heston under the Riemann–Liouville kernel. $\sqrt{V}$ is not Lipschitz at the origin, and a naive step of the lifted system drives $V$ negative whenever the Feller condition fails. The process uses full truncation (Lord, Koekkoek & van Dijk, 2010, Quantitative Finance 10(2)): both coefficients are evaluated at $V^+ = \max(V, 0)$ and the reported path is floored. The output is nonnegative at any parameters, and the scheme is biased, not exact in law.
+
+Three constructions in the literature keep the law and are not implemented: the state space of the multifactor approximation as a linear image of the nonnegative orthant (Abi Jaber, Bayer & Breneis, 2024, arXiv:2412.17526); simulating the integrated process first, exact in two regimes for the classical square-root process (Abi Jaber, 2024, arXiv:2412.11264); and iVi, its Volterra generalisation, which proves weak convergence with few steps and not exactness (Abi Jaber & Attal, 2025, arXiv:2504.19885). A path that touches zero is not a defect of the scheme: Friesen, Gerhold & Wiedermann (2026, arXiv:2606.07290) give a time-dependent Feller condition and show that rough kernels can attain the boundary.
+
+`GaussianPolynomialVolatility` is the volatility $\sigma_t = p(X_t)$ alone, without the price leg; over an `ExponentialKernel` the driver $X$ is an exact Ornstein–Uhlenbeck process, the setting of the quintic model (Abi Jaber, Illand & Li, 2022, arXiv:2212.08297 and arXiv:2212.10917).

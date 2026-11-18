@@ -14,7 +14,7 @@ pub struct MarkovLift<T: FloatExt> {
 }
 
 impl<T: FloatExt> MarkovLift<T> {
-  /// Build a stepper for the given kernel and step size $\delta t > 0$.
+  /// A stepper for `kernel` at step $\delta t$; panics unless `dt > 0`.
   #[must_use]
   pub fn new(kernel: RlKernel<T>, dt: T) -> Self {
     Self {
@@ -22,9 +22,8 @@ impl<T: FloatExt> MarkovLift<T> {
     }
   }
 
-  /// The lift's precomputed per-node constants and boundary terms, which is
-  /// what a device launch ships instead of the kernel: the recursion on the
-  /// device is the one [`VolterraLift::simulate`] runs here.
+  /// The lift's per-node constants and boundary terms, which a device launch ships instead of the
+  /// kernel: the device runs the recursion of [`VolterraLift::simulate`].
   pub(crate) fn lift(&self) -> &VolterraLift<T, RlKernel<T>> {
     &self.inner
   }
@@ -39,9 +38,8 @@ impl<T: FloatExt> MarkovLift<T> {
     self.inner.simulate(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 
-  /// Integrate $m$ independent paths driven by the given Brownian increment
-  /// matrix `dw` of shape $(m, n{-}1)$. Returns an $(m, n)$ path matrix. See
-  /// [`VolterraLift::simulate_batch`] for the cache-tiling strategy.
+  /// Integrate $m$ independent paths from the Brownian increments `dw` of shape $(m, n{-}1)$ into
+  /// an $(m, n)$ matrix; [`VolterraLift::simulate_batch`] has the cache tiling.
   pub fn simulate_batch<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T,
@@ -52,9 +50,8 @@ impl<T: FloatExt> MarkovLift<T> {
       .simulate_batch(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 
-  /// Same as [`simulate_batch`](Self::simulate_batch) but parallelises the
-  /// outer tile loop with rayon — combines per-core SIMD path-batching with
-  /// multi-core scheduling. Requires `f` and `g` to be `Send + Sync`.
+  /// [`simulate_batch`](Self::simulate_batch) with the outer tile loop on rayon; `f` and `g` must
+  /// be `Send + Sync`.
   pub fn simulate_batch_par<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T + Send + Sync,

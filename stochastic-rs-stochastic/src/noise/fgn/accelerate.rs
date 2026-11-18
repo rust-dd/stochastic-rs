@@ -1,30 +1,5 @@
-//! # Accelerate / vDSP
-//!
-//! macOS-optimized Fgn sampling using Apple's Accelerate framework (vDSP FFT).
-//! Split-complex format, in-place FFT, zero external dependencies.
-//!
-//! The vDSP FFT *setup* (twiddle tables) and the split-complex scratch buffers
-//! are cached per thread and reused across calls. Creating a setup or
-//! reallocating the buffers on every `sample()` (as a naive port would) costs
-//! far more than the transform itself — the setup is an `O(N)` twiddle
-//! precompute that Apple documents as create-once / reuse. The setup is
-//! read-only during `vDSP_fft_zip`, so a per-thread cache keyed by `log2n` is
-//! safe and needs no `Send`/`Sync` wrapper.
-//!
-//! Batches are parallelised across cores at the device level (see
-//! [`crate::device`]'s `Backend for Accelerate` impl): one rayon task per
-//! `ProcessExt::chunk_count`-sized chunk (not one per path — changed when
-//! seeding was fixed to derive a basis per chunk, matching `Cpu`'s shape),
-//! each chunk calling `sample_accelerate_impl` once for its whole run of
-//! paths and reusing its worker's cached setup and scratch throughout.
-//!
-//! **Reproducibility caveat:** seed *consumption* here is thread-count
-//! independent (same mechanism as [`Cpu`](crate::device::Cpu)), but
-//! `vDSP_fft_zip`'s own floating-point output is not bit-stable across
-//! otherwise-identical calls — measured (see
-//! [`FgnBackend`](crate::device::FgnBackend)'s doc and
-//! `tests/deterministic_parallelism_accelerate.rs`). Do not rely on this
-//! backend for bit-exact reproducibility.
+//! fGN on Apple's vDSP FFT, with the setup and split-complex scratch cached per thread by `log2n`.
+//! Seed consumption ignores the thread count, but `vDSP_fft_zip` is not bit-stable call to call.
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -220,12 +195,8 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Samples `m` paths in one vDSP batch using an external `seed`, generic
-  /// over the caller's own seed strategy rather than `self.seed` — this is
-  /// what lets [`FgnBackend::generate_batch`](crate::device::FgnBackend::generate_batch)
-  /// drive the CPU-equivalent chunked, thread-count-independent path (see
-  /// `device/fgn_backend.rs`'s `Accelerate` impl) instead of racing every chunk on the
-  /// same `self.seed` atomic inside the parallel region.
+  /// `m` paths in one vDSP batch from an external `seed`, not `self.seed`, so that
+  /// `FgnBackend::generate_batch` runs chunks whose stream does not depend on the thread count.
   pub(crate) fn sample_accelerate_impl<S2: SeedExt>(
     &self,
     m: usize,

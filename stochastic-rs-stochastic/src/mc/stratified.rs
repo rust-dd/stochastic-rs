@@ -5,11 +5,9 @@
 //! U_k\sim\mathrm{Unif}(0,1),\;k=1,\dots,K
 //! $$
 //!
-//! Partitions the uniform `[0,1]` into equal strata and applies the inverse
-//! normal CDF to obtain variance-reduced normal samples.
+//! Equal strata of `[0, 1]` through the inverse normal CDF give variance-reduced normal samples.
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.3.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.3, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use ndarray::Array2;

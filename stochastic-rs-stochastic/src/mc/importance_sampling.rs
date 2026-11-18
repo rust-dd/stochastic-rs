@@ -7,8 +7,7 @@
 //!
 //! Gaussian mean-shift importance sampling.
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.6.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.6, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

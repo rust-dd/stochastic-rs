@@ -32,9 +32,8 @@ pub(crate) use single::sample_f32_device;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-/// Output transfers at or above this byte size use the pinned-staging +
-/// parallel-copy path; smaller ones go direct via `clone_dtoh`, where the
-/// staging round-trip and rayon overhead aren't worth it.
+/// Outputs of this byte size or more take the pinned-staging, parallel-copy path; smaller ones
+/// go direct through `clone_dtoh`, where staging and rayon cost more than they save.
 const STAGING_MIN_BYTES: usize = 32 << 20;
 
 /// `rows` cut until a launch of `streams` paths a row keeps every index in the kernels' `int`: a
@@ -80,13 +79,8 @@ impl LaunchArgs {
   }
 }
 
-/// Allocates an output `Vec<T>` and pre-faults its pages in parallel.
-///
-/// Call this right after the GPU kernels are launched: they run asynchronously,
-/// so faulting the fresh allocation here overlaps device compute instead of
-/// serialising as part of the post-transfer copy. The fault cost (not the PCIe
-/// transfer) is what dominates materialising a multi-hundred-MB result on the
-/// host, so hiding it under compute is the main lever left.
+/// An output `Vec<T>` with its pages pre-faulted in parallel. Call it right after the kernels
+/// launch: faulting then overlaps device compute, and the fault cost dominates a large transfer.
 fn alloc_prefaulted<T: ValidAsZeroBits + Copy>(len: usize) -> Vec<T> {
   let mut v = Vec::<T>::with_capacity(len);
   let spare = v.spare_capacity_mut();
@@ -106,10 +100,8 @@ fn alloc_prefaulted<T: ValidAsZeroBits + Copy>(len: usize) -> Vec<T> {
   v
 }
 
-/// DMAs a device buffer through the cached page-locked staging buffer at full
-/// PCIe bandwidth, then copies into `host` in parallel. `host` must already be
-/// allocated and pre-faulted (see [`alloc_prefaulted`]) so the copy is pure
-/// bandwidth with no first-touch faults.
+/// DMAs a device buffer through the cached page-locked staging buffer, then copies into `host`
+/// in parallel; `host` must be pre-faulted (see [`alloc_prefaulted`]) so the copy takes no faults.
 fn drain_into<T>(
   stream: &Arc<CudaStream>,
   d_out: &CudaSlice<T>,
@@ -139,9 +131,8 @@ where
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// `m` paths on the selected CUDA device, in chunks that fit the batch
-  /// budget: one seed for the whole batch and a running element offset, so
-  /// the result is the same whatever the budget.
+  /// `m` paths on the selected CUDA device, in chunks that fit the batch budget: one seed and a
+  /// running element offset, so the result is the same whatever the budget.
   pub(crate) fn sample_cuda_impl<S2: SeedExt>(
     &self,
     m: usize,

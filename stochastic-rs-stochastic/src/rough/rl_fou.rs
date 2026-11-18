@@ -4,13 +4,9 @@
 //! dX_t = \kappa(\mu - X_t)\,dt + \nu\,dW^H_t,\qquad H \in (0, 1/2)
 //! $$
 //!
-//! The RFSV log-volatility dynamics of Gatheral, Jaisson & Rosenbaum (2018).
-//! The noise is RL-fBM generated non-cumulatively via the Bilokon–Wong
-//! modified fast algorithm; the Ou drift is integrated with the usual Euler
-//! rule on the resulting increments $\delta W^H_n = W^H_{t_{n+1}} - W^H_{t_n}$.
+//! The RFSV log-volatility of Gatheral, Jaisson & Rosenbaum (2018), by Euler on RL-fBM increments.
 //!
-//! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.
-//! Quantitative Finance 16 (2016), 887–904.
+//! Reference: Bayer, Friz & Gatheral (2016), Quantitative Finance 16, 887–904
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -53,6 +49,8 @@ pub struct RlFou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> RlFou<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive
+  /// and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -106,9 +104,8 @@ impl<T: FloatExt, S: SeedExt> RlFou<T, S> {
   }
 }
 
-/// The Euler engine's view: the lift the inner fBm carries goes to the device
-/// as its node constants and boundary terms; the family steps the lifted fBm
-/// in its second slot and this process's own recursion in the first.
+/// The Euler engine's view: the inner fBm's lift ships as node constants and boundary terms; the
+/// family steps it in its second slot and this process's own recursion in the first.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for RlFou<T, S, B>
 {
@@ -187,9 +184,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the lift and the recursion run in
-  /// the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and the recursion in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -219,11 +215,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`RlFou`] sampling state: owns the cloned RL-fBM [`MarkovLift`]
-/// stepper and the Gaussian-increment source, plus the precomputed Euler
-/// scalars. `fill_path` regenerates the RL-fBM driver and Euler-integrates the
-/// Ou drift in place; the owned `Gn` stream advances each call for independent
-/// paths.
+/// Reusable [`RlFou`] sampling state: the cloned RL-fBM [`MarkovLift`] stepper, the
+/// Gaussian-increment source and the Euler scalars; each call advances the owned `Gn` stream.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RlFouSampler<T: FloatExt, S: SeedExt> {
@@ -320,8 +313,7 @@ mod tests {
     assert!(x.iter().all(|v| v.is_finite()));
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
-  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// The module doc calls this quantity ν, so the field is `nu`; a larger ν must widen the
   /// simulated dispersion.
   #[test]
   fn rl_fou_nu_drives_dispersion() {

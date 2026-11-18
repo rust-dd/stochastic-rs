@@ -12,15 +12,8 @@ pub struct PyVolterra {
 
 #[pyo3::prelude::pymethods]
 impl PyVolterra {
-  /// Build a Volterra process.
-  ///
-  /// # Arguments
-  /// * `kernel` — `"fbm"`, `"power_law"` (alias `"powerlaw"`), or `"exponential"`.
-  /// * `param` — the kernel's scalar parameter: Hurst $H$ for `"fbm"`,
-  ///   exponent $\gamma$ for `"power_law"`, decay $\beta$ for `"exponential"`.
-  /// * `n` — number of grid points.
-  /// * `t` — time horizon (default $1$).
-  /// * `seed` — optional u64 seed for reproducibility.
+  /// `kernel` is `"fbm"`, `"power_law"` (alias `"powerlaw"`) or `"exponential"` and `param` its
+  /// Hurst $H$, exponent $\gamma$ or decay $\beta$; `n` grid points over `t` (default 1); a `seed`.
   #[new]
   #[pyo3(signature = (kernel, param, n, t = None, seed = None))]
   fn new(

@@ -217,9 +217,8 @@ fn cuda_chunks_are_bit_identical_to_one_launch() {
   assert_ne!(whole64.row(0), whole64.row(1));
 }
 
-/// A wrapper's own seed drives its device paths: two `Fbm`s built from the
-/// same `Deterministic` seed agree, a different seed differs, and the inner
-/// `Unseeded` fGN never enters.
+/// A wrapper's own seed drives its device paths: two `Fbm`s with one `Deterministic` seed agree,
+/// another seed differs, and the inner `Unseeded` fGN never enters.
 #[test]
 fn cuda_fbm_honours_its_own_seed() {
   use stochastic_rs_core::simd_rng::Deterministic;

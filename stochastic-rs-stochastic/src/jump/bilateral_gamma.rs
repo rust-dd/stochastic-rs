@@ -1,7 +1,8 @@
 //! # BilateralGamma
 //!
 //! $$
-//! X_t=\Gamma^+_t-\Gamma^-_t,\quad \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
+//! X_t=\Gamma^+_t-\Gamma^-_t,\quad
+//! \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
 //! $$
 //!
 
@@ -20,14 +21,10 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Bilateral Gamma process.
-///
-/// Decomposes log-returns into independent positive and negative gamma jump
-/// components, each with its own shape and rate parameter.
-///
-/// Characteristic exponent:
+/// The difference of two independent gamma processes, with characteristic exponent
 /// $$
-/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
+/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}
+/// +\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
 #[derive(Debug, Clone)]
 pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -53,6 +50,8 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     alpha_p: T,
     lambda_p: T,
@@ -187,9 +186,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaSampler<T> {
-    // Positive and negative gamma sources are derived from `self.seed` in the
-    // same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The positive, then the negative gamma source are derived from `self.seed`, an order the
+    // pinned streams depend on; reuse advances both for independent paths.
     let dt = self.dt();
     BilateralGammaSampler {
       n: self.n,
@@ -199,9 +197,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -313,6 +310,8 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     sigma: T,
     alpha_p: T,
@@ -453,9 +452,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaMotionSampler<T> {
-    // Gamma sources then the Gaussian source are derived from `self.seed` in
-    // the same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; all owned sources advance on reuse for independent paths.
+    // The gamma sources, then the Gaussian one are derived from `self.seed`, an order the pinned
+    // streams depend on; reuse advances all of them for independent paths.
     let dt = self.dt();
     BilateralGammaMotionSampler {
       n: self.n,
@@ -468,9 +466,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

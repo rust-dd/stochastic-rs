@@ -1,24 +1,5 @@
-//! The bit-identity promise, held under threads fighting for the machine.
-//!
-//! Twice this week a comparison involving the fractional OU disagreed with
-//! itself — the same seed, the same backend, two calls that should be bit
-//! identical, differing in one or two of four thousand paths — and only while
-//! the machine was busy. Neither sighting reproduced on an idle machine, and
-//! the suites that saw it are expensive: the one that failed runs a hundred
-//! and sixty comparisons and takes minutes on a small runtime, so "run it a
-//! hundred times" is not a diagnosis anyone can afford.
-//!
-//! This is the cheap version of the same question. Several threads each
-//! resample the same process from the same seed, over and over, and every
-//! result is compared against a reference taken once. That is the contention
-//! the sightings had — rayon workers competing, and for the fractional
-//! processes a nested rayon region inside each of them, since the fGN
-//! pipeline's FFT is itself parallel — without the cost of the suite around
-//! it.
-//!
-//! A failure here is a real bug in `ProcessExt`'s guarantee. Passing does not
-//! prove the guarantee holds; it removes the cheapest explanation for the two
-//! sightings, which is what a test can do.
+//! The bit-identity promise under contention: several threads resample one process from one seed
+//! against a reference taken once. A failure is a bug in `ProcessExt`'s guarantee; a pass no proof.
 
 use std::sync::Arc;
 use std::thread;
@@ -81,12 +62,8 @@ where
   }
 }
 
-/// The fractional OU, which is what both sightings involved.
-///
-/// Its host sampler draws through the fGN pipeline, whose FFT is a rayon
-/// parallel call made from inside whatever rayon region the batch is already
-/// in — the one piece of nested parallelism in the crate's host path, and the
-/// first place to look for an effect that only appears under load.
+/// The fractional OU: its host sampler draws through the fGN pipeline, whose FFT is a rayon call
+/// made inside the batch's rayon region, the one nested parallelism in the crate's host path.
 #[test]
 fn the_fractional_ou_reproduces_its_seed_under_contention() {
   let build = || {
@@ -113,9 +90,8 @@ fn the_fractional_noise_reproduces_its_seed_under_contention() {
   holds("fGN", move || build().sample_par(M), reference);
 }
 
-/// A plain diffusion, as the control: it shares the chunking and the rayon
-/// region but draws its noise inline, with no nested parallel call. If this
-/// one moves too, the cause is in the chunking rather than in the pipeline.
+/// A plain diffusion as the control: the same chunking and rayon region, noise drawn inline. If
+/// this one moves too, the cause is in the chunking, not in the pipeline.
 #[test]
 fn a_plain_diffusion_reproduces_its_seed_under_contention() {
   let build = || Gbm::<f32, _>::new(0.05, 0.2, N, 100.0, Some(1.0), Deterministic::new(3));

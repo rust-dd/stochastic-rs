@@ -1,39 +1,14 @@
-//! # General stochastic Volterra equation
+//! [`VolterraLift`] as a [`ProcessExt`]: any [`VolterraKernel`], time-and-state coefficients.
 //!
 //! $$
 //! X_t = X_0 + \int_0^t K(t-s)\,b(s,X_s)\,ds + \int_0^t K(t-s)\,\sigma(s,X_s)\,dW_s
 //! $$
 //!
-//! [`VolterraSde`] is [`VolterraLift`] promoted to a first-class
-//! [`ProcessExt`]: any [`VolterraKernel`] paired with time-and-state
-//! dependent drift/diffusion coefficients, solved at $O(nN')$ by the
-//! Markov-lift stepper instead of the $O(n^2)$ direct convolution
-//! ([`reference_path`](super::reference::reference_path) is that direct
-//! discretisation, kept as this engine's cross-implementation oracle).
+//! The cited rates are the literature's for this scheme class, not measured here.
 //!
-//! **On convergence, no more than the literature supports.** This stepper's
-//! explicit, non-anticipating drift/diffusion evaluation puts it in the
-//! $\theta$-Euler–Maruyama class Li, Huang & Hu (arXiv:2004.04916, 2020)
-//! analyse for weakly singular kernels ($K(t)=t^{H-1/2}/\Gamma(H+1/2)$ or
-//! similar): for that class the strong rate is $\min\{1-\alpha,\,
-//! \tfrac12-\beta\}$, not the usual $\tfrac12$, and for the Milstein scheme
-//! (which this crate does not implement here) $n^{-2H}$ is provably optimal
-//! (Liu, Hu & Gao, arXiv:2412.11126, 2024). Neither result is re-derived or
-//! independently verified for *this* exact implementation (no rate-sweep
-//! test lives in this file); they are cited as the relevant literature, not
-//! claimed as a measured property of this code. A second, independent error
-//! source — the kernel's own exponential-sum fit ($N'$ nodes approximating
-//! $K$, see [`VolterraKernel::weights`]) — is outside what either rate
-//! covers and is bounded separately per kernel (e.g. the 5e-3 relative
-//! bound [`crate::volterra::kernel`]'s tests pin for
-//! [`RlKernel`](crate::rough::kernel::RlKernel)/[`GammaKernel`](super::kernel::GammaKernel)).
-//!
-//! # References
-//! - Abi Jaber E., El Euch O. *Multi-factor approximation of rough
-//!   volatility models*, arXiv:1801.10359 (2018).
-//! - Li M., Huang C., Hu Y. *Numerical methods for stochastic Volterra
-//!   integral equations with weakly singular kernels*, arXiv:2004.04916
-//!   (2020).
+//! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
+//! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, rate $\min\{1-\alpha,\,\tfrac12-\beta\}$
+//! Reference: Liu, Hu & Gao (2024), arXiv:2412.11126, $n^{-2H}$ is optimal for Milstein
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -52,31 +27,15 @@ use crate::traits::ProcessExt;
 use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
-/// General stochastic Volterra equation, solved by Markovian lift at
-/// $O(nN')$: $X_t = X_0 + \int_0^t K(t-s)\,b(s,X_s)\,ds + \int_0^t
-/// K(t-s)\,\sigma(s,X_s)\,dW_s$.
-///
-/// Generic over any [`VolterraKernel`] implementor, so a single type covers
-/// every kernel family this crate ships ([`ExponentialKernel`](super::kernel::ExponentialKernel),
-/// [`GammaKernel`](super::kernel::GammaKernel), [`SumOfExponentials`](super::kernel::SumOfExponentials),
-/// [`RlKernel`](crate::rough::kernel::RlKernel)) plus any externally fitted
-/// one supplied through [`SumOfExponentials`](super::kernel::SumOfExponentials).
-/// [`rough::MarkovLift`](crate::rough::MarkovLift) is the
-/// historical, `RlKernel`-specialised, $(x)$-only-coefficient special case
-/// of the same machinery.
-///
-/// No blanket `Default`: unlike a process whose fields all have an obvious
-/// canonical value, `K` has none in general (an `ExponentialKernel` needs a
-/// decay rate, an `RlKernel` needs a Hurst exponent and quadrature degree,
-/// …) — the same reason [`CompoundPoisson`](crate::process::cpoisson::CompoundPoisson)`<T,
-/// D, S>` has no `Default` for its own extra generic `D`.
+/// General stochastic Volterra equation by Markovian lift at $O(nN')$, over any
+/// [`VolterraKernel`]. No `Default`: a kernel has no canonical value.
 #[derive(Clone, Debug)]
 pub struct VolterraSde<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Kernel $K$ — exact where representable exactly (e.g. [`ExponentialKernel`](super::kernel::ExponentialKernel)),
-  /// otherwise its $N'$-term exponential-sum fit.
+  /// Kernel $K$: exact where one exists (an `ExponentialKernel`), otherwise its $N'$-term
+  /// exponential-sum fit.
   pub kernel: K,
   /// Drift coefficient $b(s, X_s)$.
   pub drift: Fn2D<T>,
@@ -88,14 +47,13 @@ where
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-  /// The Markov lift of `kernel` at this grid's step, the tables a device
-  /// launch binds; rebuilt whenever the kernel, the step count or the
-  /// horizon changes.
+  /// The Markov lift of `kernel` at this grid's step, the tables a device launch binds; rebuilt
+  /// whenever the kernel, the step count or the horizon changes.
   pub(crate) lift: VolterraLift<T, K>,
 }
 
@@ -103,11 +61,8 @@ impl<T: FloatExt, K, S: SeedExt> VolterraSde<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Build a stochastic Volterra equation solver for the given kernel,
-  /// coefficients, and grid.
-  ///
-  /// # Panics
-  /// - if `n < 2`
+  /// A solver for the given kernel, coefficients and grid; panics unless `n >= 2`, a given `x0`
+  /// is finite and a given `t` is positive and finite.
   #[must_use]
   pub fn new(
     kernel: K,
@@ -147,7 +102,7 @@ where
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `kernel`, all else unchanged.
+  /// Replace `kernel` and rebuild its Markov lift at this grid's step.
   pub fn with_kernel(mut self, kernel: K) -> Self {
     self.kernel = kernel;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
@@ -159,9 +114,8 @@ where
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 
-  /// The time the step starting at each grid point sees, `(i − 1) Δt` at
-  /// point `i`: the launch's first curve, the `t` the coefficients are
-  /// evaluated at, exactly as the host evaluates them at the left point.
+  /// The time the step starting at each grid point sees, `(i − 1) Δt` at point `i`: the launch's
+  /// first curve, where the coefficients are evaluated, as the host does at the left point.
   fn step_time_curve(&self) -> Vec<T> {
     let dt = self.step_size();
     (0..self.n)
@@ -169,19 +123,19 @@ where
       .collect()
   }
 
-  /// Replace `drift`, all else unchanged.
+  /// Replace `drift`.
   pub fn with_drift(mut self, drift: impl Into<Fn2D<T>>) -> Self {
     self.drift = drift.into();
     self
   }
 
-  /// Replace `diffusion`, all else unchanged.
+  /// Replace `diffusion`.
   pub fn with_diffusion(mut self, diffusion: impl Into<Fn2D<T>>) -> Self {
     self.diffusion = diffusion.into();
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -189,14 +143,14 @@ where
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -204,7 +158,7 @@ where
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -218,9 +172,8 @@ impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// A configuration the family cannot carry — a closure for the drift or
-  /// the diffusion — never reaches a launch: [`ProcessExt::sample`] keeps it
-  /// on the host, so asking here is a caller bypassing that guard.
+  /// [`ProcessExt::sample`] keeps a closure drift or diffusion, which the family cannot carry,
+  /// on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.device_ready(),
@@ -298,11 +251,8 @@ where
   where
     Self: 's;
 
-  /// Builds `dt` from `n`/`t` and a fresh [`VolterraLift`] from `self.kernel`
-  /// (cheap — an $O(N')$ precompute over an already-fitted kernel, not the
-  /// quadrature that built the kernel itself) plus a [`Gn`] source whose
-  /// seed is *derived*, not cloned, from `self.seed` — see [`ProcessExt`]'s
-  /// "Reproducibility requirement on implementors".
+  /// Builds a [`VolterraLift`] from `self.kernel`, an $O(N')$ precompute, and a [`Gn`] whose seed
+  /// is derived, not cloned, from `self.seed`, as [`ProcessExt`] requires of implementors.
   fn sampler(&self) -> VolterraSdeSampler<T, K, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     VolterraSdeSampler {
@@ -320,9 +270,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the drift and the diffusion are
-  /// expressions; a closure keeps the process on the host, chunked exactly
-  /// as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the drift and the diffusion are expressions; a closure stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -377,11 +326,8 @@ where
     }
   }
 
-  /// What a device runs here: a drift and a diffusion written
-  /// as [`Expr`](crate::traits::Expr)s, which the kernel interprets at every
-  /// step, and a kernel whose exponential fit has at most
-  /// [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes. Closures keep the
-  /// process on the host.
+  /// What a device runs: a drift and a diffusion written as [`Expr`](crate::traits::Expr)s and a
+  /// kernel fit of at most [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes; closures stay on host.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = {
       self.drift.program().is_some()
@@ -394,14 +340,8 @@ where
   }
 }
 
-/// Reusable [`VolterraSde`] sampling state: owns a freshly built
-/// [`VolterraLift`] (so a Monte-Carlo loop pays the $O(N')$ boundary-weight
-/// precompute once per chunk, not once per path) and the Gaussian-increment
-/// source. Cloning `drift`/`diffusion` here (rather than borrowing, as
-/// [`HullWhiteSampler`](crate::interest::hull_white::HullWhiteSampler) does
-/// for its own [`Fn1D`](crate::traits::Fn1D)) keeps this type lifetime-free,
-/// which is what lets [`Volterra`](crate::volterra::Volterra)
-/// embed it directly when delegating to this engine.
+/// Reusable [`VolterraSde`] sampling state: a [`VolterraLift`] built once per chunk and the
+/// Gaussian source. It clones `drift` and `diffusion` to stay lifetime-free for `Volterra`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct VolterraSdeSampler<T: FloatExt, K, S: SeedExt>
