@@ -7,6 +7,7 @@ use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use self::problem::Beside;
 use self::problem::MleProblem;
 use self::step_back::SteppingBack;
 use super::DiffusionModel;
@@ -33,8 +34,8 @@ pub struct MleFit {
   /// No step along one parameter gains `1e-7`, or the sum's rounding on a long path: stationary
   /// along each parameter, not global. `false` leaves the best point found in `params`.
   pub converged: bool,
-  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`, `stopped at the
-  /// edge of the law's support`, `evaluation budget exhausted`, `no numerical progress`, …
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>` (the parameter
+  /// a step off its bound gains along), `stopped at the edge of the law's support`, …
   pub message: String,
   /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 16
   /// searches. `0` when the model has no free parameters (trivially `converged = true`).
@@ -100,7 +101,9 @@ impl Stop {
   fn message(&self, names: &[&str]) -> String {
     let words = match self {
       Self::Converged => "converged",
-      Self::Search(TerminationReason::MaxIter) => "evaluation budget exhausted",
+      Self::Search(TerminationReason::MaxIter | TerminationReason::MaxCostEvals) => {
+        "evaluation budget exhausted"
+      }
       Self::Search(TerminationReason::NumericalNoProgress) => "no numerical progress",
       Self::Search(TerminationReason::SolverFailed) => "solver failed",
       Self::Search(_) | Self::Outside => "stopped without convergence",
@@ -109,6 +112,18 @@ impl Stop {
       Self::Edge => "stopped at the edge of the law's support",
     };
     words.into()
+  }
+}
+
+impl Beside {
+  /// The stop the walks read, `held` saying that the parameter of the largest gain is on a bound.
+  fn stop(&self, held: bool) -> Stop {
+    match () {
+      _ if self.gain <= STATIONARY.max(ROUNDINGS * self.rounding) => Stop::Converged,
+      _ if held => Stop::Bound(self.along),
+      _ if self.walled => Stop::Edge,
+      _ => Stop::NotStationary,
+    }
   }
 }
 
@@ -225,14 +240,10 @@ pub fn fit_mle(
       let at = &fit.params;
       let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, at);
       let beside = problem.beside(at);
-      let held = |i: &usize| lower[*i] < upper[*i] && (at[*i] <= lower[*i] || at[*i] >= upper[*i]);
+      let i = beside.along;
+      let held = lower[i] < upper[i] && (at[i] <= lower[i] || at[i] >= upper[i]);
       // The solver's own stop passes a stall: the likelihood beside the estimate decides.
-      match (0..n_params).find(held) {
-        _ if beside.gain <= STATIONARY.max(ROUNDINGS * beside.rounding) => Stop::Converged,
-        Some(held) => Stop::Bound(held),
-        None if beside.walled => Stop::Edge,
-        None => Stop::NotStationary,
-      }
+      beside.stop(held)
     } else {
       Stop::Search(fit.reason)
     };

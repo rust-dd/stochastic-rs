@@ -34,16 +34,18 @@ pub(super) fn ranked(nll: f64) -> f64 {
   }
 }
 
-/// Steps of a walk beside an estimate: `4⁶⁴` times the gradient's step, past any box that matters.
+/// Steps of a walk beside an estimate, the last `4⁶³` times the gradient's: past any box met.
 const FURTHEST: usize = 64;
 
 /// What the walks of [`MleProblem::beside`] found.
 pub(super) struct Beside {
   /// The most one of them gains in log-likelihood.
   pub(super) gain: f64,
+  /// The parameter that walk steps along.
+  pub(super) along: usize,
   /// The rounding of the summed log-likelihood at the estimate, `ε √N (1 + |ℓ|)`.
   pub(super) rounding: f64,
-  /// One of them met a point without a likelihood.
+  /// The gradient's own step, the first of a walk, met a point without a likelihood.
   pub(super) walled: bool,
 }
 
@@ -202,8 +204,8 @@ impl<'a> MleProblem<'a> {
         continue;
       }
       // An end at infinity has no likelihood to read: the start's value stands in, once, unless
-      // the estimate is still by it, where the move back says nothing.
-      let left = !(1.0 / FAR..=FAR).contains(&(at[i] / start[i]).abs());
+      // the estimate is still by it, on its side of zero, where the move back says nothing.
+      let left = !(1.0 / FAR..=FAR).contains(&(at[i] / start[i]));
       let open = (left && ends.iter().any(|end| end.is_infinite())).then_some(start[i]);
       let finite = ends.into_iter().filter(|end| end.is_finite());
       let loose = finite
@@ -235,6 +237,7 @@ impl<'a> MleProblem<'a> {
     let additions = (self.sample.len() - 1) as f64;
     let mut beside = Beside {
       gain: 0.0,
+      along: 0,
       rounding: f64::EPSILON * additions.sqrt() * (1.0 + here.abs()),
       walled: false,
     };
@@ -242,18 +245,20 @@ impl<'a> MleProblem<'a> {
       for side in [1.0, -1.0] {
         let mut step = side * f64::EPSILON.cbrt() * (1.0 + z[i].abs());
         let mut moved = z.clone();
-        for _ in 0..FURTHEST {
+        for nth in 0..FURTHEST {
           let to = (z[i] + step).clamp(low[i], high[i]);
           if to == moved[i] || !to.is_finite() {
             break;
           }
           moved[i] = to;
           let cost = self.eval_nll(&self.units.scaled(&moved));
-          beside.walled |= cost >= NO_LIKELIHOOD;
+          beside.walled |= nth == 0 && cost >= NO_LIKELIHOOD;
           if cost > here + rise {
             break;
           }
-          beside.gain = beside.gain.max(here - cost);
+          if here - cost > beside.gain {
+            (beside.gain, beside.along) = (here - cost, i);
+          }
           step *= 4.0;
         }
       }

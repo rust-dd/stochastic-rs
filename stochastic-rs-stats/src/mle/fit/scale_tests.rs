@@ -152,8 +152,8 @@ fn a_parameter_that_starts_at_zero_is_fitted_in_its_boxs_unit() {
   }
 }
 
-/// A level of `c x` from zero in a box open at either end is fitted in the path's unit: 233 of
-/// 240 fits converge within `1e-3` of the closed form, and the rest say they are not converged.
+/// A level of `c x` from zero in a box open at either end is fitted in the path's unit: of 240
+/// fits 233 on macOS converge within `1e-3` of the closed form, and the rest say why they do not.
 #[test]
 fn a_zero_start_in_an_open_box_is_fitted_in_the_paths_unit() {
   let dt = 1.0 / 252.0;
@@ -189,7 +189,8 @@ fn a_zero_start_in_an_open_box_is_fitted_in_the_paths_unit() {
       }
     }
   }
-  assert_eq!(converged, 233);
+  // Where a stall lands depends on the platform's `exp` and `ln`: the count is pinned as a range.
+  assert!((228..=238).contains(&converged), "{converged} of 240");
 }
 
 /// An estimate held by its box is the bound itself, to the bit, in whatever unit the search ran;

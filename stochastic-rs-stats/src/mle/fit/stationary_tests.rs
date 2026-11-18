@@ -58,7 +58,7 @@ fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
 }
 
 /// From a level 20 times off a CIR fit of 500 daily points slides to a speed of `1e-4`, where
-/// the level has no gradient, 3.6 and 6.8 below the fit from the law: it is not converged.
+/// the level has no gradient, 3.6 and 6.8 below the fit from the law: the level's walk gains.
 #[test]
 fn a_cir_fit_that_stalls_at_the_speeds_bound_is_not_converged() {
   let dt = 1.0 / 252.0;
@@ -73,7 +73,7 @@ fn a_cir_fit_that_stalls_at_the_speeds_bound_is_not_converged() {
     if fit.converged {
       converged.push(format!("speed {speed}: {short} below at {}", fit.params));
     }
-    assert_eq!(fit.message, "stopped at the bound of theta");
+    assert_eq!(fit.message, "not stationary");
   }
   assert!(converged.is_empty(), "{converged:#?}");
 }
@@ -144,6 +144,7 @@ fn the_walk_beside_an_estimate_gains_what_one_parameter_is_short_of() {
   assert!(optimum.gain < 1e-8 && !optimum.walled, "{}", optimum.gain);
   let off = beside([closed.theta, closed.mu, 1.01 * closed.sigma]);
   assert!((0.08..0.11).contains(&off.gain), "{}", off.gain);
+  assert_eq!(off.along, 2);
   let rounding = f64::EPSILON * 999.0_f64.sqrt() * (1.0 + closed.log_likelihood);
   assert!(
     (off.rounding / rounding - 1.0).abs() < 1e-3,
@@ -163,6 +164,34 @@ fn a_stop_is_worded_as_the_calibrators_word_theirs() {
   assert_eq!(said(Stop::Edge), "stopped at the edge of the law's support");
   let budget = Stop::Search(TerminationReason::MaxIter);
   assert_eq!(said(budget), "evaluation budget exhausted");
+  let spent = Stop::Search(TerminationReason::MaxCostEvals);
+  assert_eq!(said(spent), "evaluation budget exhausted");
   let stuck = Stop::Search(TerminationReason::NumericalNoProgress);
   assert_eq!(said(stuck), "no numerical progress");
+  let failed = Stop::Search(TerminationReason::SolverFailed);
+  assert_eq!(said(failed), "solver failed");
+  let other = Stop::Search(TerminationReason::MaxGradientEvals);
+  assert_eq!(said(other), "stopped without convergence");
+  assert_eq!(said(Stop::Outside), "stopped without convergence");
+}
+
+/// A gain counts above `1e-7` and above the sum's rounding; the bound named is that of the
+/// parameter whose walk gains, and a wall says `edge` only where none is.
+#[test]
+fn a_gain_counts_above_the_rounding_and_names_the_parameter_it_is_along() {
+  let read = |gain: f64, rounding: f64, walled: bool, held: bool| {
+    let beside = Beside {
+      gain,
+      along: 1,
+      rounding,
+      walled,
+    };
+    beside.stop(held).message(&["theta", "mu", "sigma"])
+  };
+  assert_eq!(read(1e-7, 1e-9, true, true), "converged");
+  assert_eq!(read(2e-7, 1e-9, false, false), "not stationary");
+  assert_eq!(read(2e-7, 3e-7, false, false), "converged");
+  assert_eq!(read(4e-7, 3e-7, false, true), "stopped at the bound of mu");
+  let edge = "stopped at the edge of the law's support";
+  assert_eq!(read(4e-7, 3e-7, true, false), edge);
 }
