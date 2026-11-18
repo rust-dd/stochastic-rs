@@ -120,38 +120,33 @@ impl DensityApprox {
     (x0 + mu * dt, sig * sig * dt)
   }
 
-  /// Ref: Ozaki (1992)
+  /// Ozaki's (1992, eqs. 2.6-2.9) local linearisation, `σ` at `x₀` as in `sde::dcOzaki`: NaN where
+  /// `K` has no logarithm; where `x₀μ_x = 0`, his eq. 2.12, the step's mean and Euler's variance.
+  /// $$
+  /// E = x_0 + \mu\,\frac{e^{\mu_x\Delta}-1}{\mu_x},\qquad
+  /// K = \frac{1}{\Delta}\ln\frac{E}{x_0},\qquad
+  /// V = \sigma^2\,\frac{e^{2K\Delta}-1}{2K}
+  /// $$
   fn moments_ozaki(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let mu_x = model.drift_x(x0, t0);
+    let euler = sig * sig * dt;
 
-    if mu_x.abs() < 1e-10 {
-      return Self::moments_euler(model, x0, t0, dt);
+    if mu_x == 0.0 {
+      return (x0 + mu * dt, euler);
     }
 
-    let mt = x0 + mu * ((mu_x * dt).exp() - 1.0) / mu_x;
-
-    let diff = mt - x0;
-    let kt = if x0.abs() > 1e-10 {
-      let ratio = 1.0 + diff / x0;
-      if ratio > 1e-30 {
-        (2.0 / dt) * ratio.ln()
-      } else {
-        mu_x
-      }
+    let step = mu * (mu_x * dt).exp_m1() / mu_x;
+    let k = (step / x0).ln_1p() / dt;
+    // On the drift's zero `K = 0`, and the variance is at its limit.
+    let var = if x0 == 0.0 || k == 0.0 {
+      euler
     } else {
-      mu_x
+      sig * sig * (2.0 * k * dt).exp_m1() / (2.0 * k)
     };
 
-    let exp_kt_dt = (kt * dt).exp();
-    let vt_sq = if kt.abs() > 1e-10 && exp_kt_dt > 1.0 {
-      sig * sig * (exp_kt_dt - 1.0) / kt
-    } else {
-      sig * sig * dt
-    };
-
-    (mt, vt_sq)
+    (x0 + step, var)
   }
 
   /// Ref: Shoji & Ozaki (1998)
@@ -219,7 +214,7 @@ impl DensityApprox {
     Some(-0.5 * z.ln() + ln_kernel - (2.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
   }
 
-  /// Kessler's (1997) second-order moments as `sde::dcKessler` (Iacus 2008) states them, the
+  /// Kessler's second-order moments as `sde::dcKessler` (2.0.21, with its errata) states them, the
   /// variance with its `x₀²` terms cancelled by hand; not positive, it leaves no density.
   /// $$
   /// E = x_0 + \mu\Delta + c\,\tfrac{\Delta^2}{2},\qquad

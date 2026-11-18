@@ -10,6 +10,11 @@ use stochastic_rs_stochastic::diffusion::logistic::Logistic;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 
+use super::off_zero;
+use super::power_x;
+use super::power_xx;
+use super::root_x;
+use super::root_xx;
 use crate::mle::DiffusionModel;
 
 impl<S: SeedExt> DiffusionModel for Jacobi<f64, S> {
@@ -42,6 +47,22 @@ impl<S: SeedExt> DiffusionModel for Jacobi<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * (x.abs() * (1.0 - x).abs()).sqrt()
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.beta
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_x(x * (1.0 - x), 1.0 - 2.0 * x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_xx(x * (1.0 - x), 1.0 - 2.0 * x, -2.0)
+  }
 }
 
 impl<S: SeedExt> DiffusionModel for Verhulst<f64, S> {
@@ -73,6 +94,22 @@ impl<S: SeedExt> DiffusionModel for Verhulst<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.r * (1.0 - 2.0 * x / self.k)
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * self.r / self.k
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.sigma
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   fn is_positive(&self) -> bool {
@@ -111,6 +148,22 @@ impl<S: SeedExt> DiffusionModel for FellerLogistic<f64, S> {
     self.sigma * x.abs().sqrt()
   }
 
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.kappa * (self.theta - 2.0 * x)
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * self.kappa
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.sigma, 0.5, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.sigma, 0.5, x)
+  }
+
   fn is_positive(&self) -> bool {
     true
   }
@@ -144,6 +197,22 @@ impl<S: SeedExt> DiffusionModel for Logistic<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.b * x
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    1.0 - 2.0 * self.a * x
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * self.a
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.b
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   fn is_positive(&self) -> bool {
@@ -182,6 +251,22 @@ impl<S: SeedExt> DiffusionModel for ThreeHalf<f64, S> {
     self.sigma * x.abs().powf(1.5)
   }
 
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.kappa * (self.mu - 2.0 * x)
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * self.kappa
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.sigma, 1.5, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.sigma, 1.5, x)
+  }
+
   fn is_positive(&self) -> bool {
     true
   }
@@ -218,6 +303,22 @@ impl<S: SeedExt> DiffusionModel for FellerRoot<f64, S> {
     self.theta3 * x.abs().powf(1.5)
   }
 
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.theta1 - 2.0 * x * (self.theta3.powi(3) - self.theta1 * self.theta2)
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * (self.theta3.powi(3) - self.theta1 * self.theta2)
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.theta3, 1.5, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.theta3, 1.5, x)
+  }
+
   fn is_positive(&self) -> bool {
     true
   }
@@ -252,6 +353,22 @@ impl<S: SeedExt> DiffusionModel for Kimura<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * (x.abs() * (1.0 - x).abs()).sqrt()
   }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.a * (1.0 - 2.0 * x)
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    -2.0 * self.a
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_x(x * (1.0 - x), 1.0 - 2.0 * x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_xx(x * (1.0 - x), 1.0 - 2.0 * x, -2.0)
+  }
 }
 
 impl<S: SeedExt> DiffusionModel for Gompertz<f64, S> {
@@ -278,12 +395,28 @@ impl<S: SeedExt> DiffusionModel for Gompertz<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = if x.abs() < 1e-12 { 1e-12 } else { x };
+    let safe_x = off_zero(x);
     (self.a - self.b * safe_x.abs().ln()) * safe_x
   }
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.a - self.b * (off_zero(x).abs().ln() + 1.0)
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    -self.b / off_zero(x)
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.sigma
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   fn is_positive(&self) -> bool {
