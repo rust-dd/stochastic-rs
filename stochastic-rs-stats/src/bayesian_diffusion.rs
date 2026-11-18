@@ -30,7 +30,7 @@ use crate::traits::FloatExt;
 /// speed, `mu` the level.
 #[derive(Debug, Clone)]
 pub struct BayesianDiffusionFit {
-  /// Over the QMLE's speed it grows with the span `θT` of the path: 0.50–0.66 at up to 8, 0.78 at
+  /// Over the QMLE's speed it grows with the span `θT` of the path: 0.5–0.7 at up to 8, 0.78 at
   /// 20, 0.91 at 38, 0.98–1.00 from 200.
   pub theta_mean: f64,
   pub mu_mean: f64,

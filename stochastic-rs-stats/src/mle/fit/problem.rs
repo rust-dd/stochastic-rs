@@ -47,9 +47,9 @@ pub(super) struct Units {
 /// The ratio to its unit, either way, past which a parameter's estimate asks for new units.
 const FAR: f64 = 8.0;
 
-/// The path's standard deviation, the scale the data gives a parameter that brings none: the
-/// path's largest size where the deviations' squares underflow, 1 for a path of zeros.
-fn spread(sample: ArrayView1<f64>) -> f64 {
+/// The unit the path gives a parameter that brings none, never an `Err`: its standard deviation,
+/// its largest size where the deviations' squares underflow, 1 for a path of zeros.
+fn path_unit(sample: ArrayView1<f64>) -> f64 {
   let size = sample.iter().fold(0.0_f64, |size, v| size.max(v.abs()));
   if size == 0.0 {
     return 1.0;
@@ -70,8 +70,8 @@ fn spread(sample: ArrayView1<f64>) -> f64 {
 
 impl Units {
   /// The units of `start`: `|start|` for each parameter, and for one that starts at zero half
-  /// its box's width, or `spread`, the path's, where the box has no finite width.
-  fn new(lower: &[f64], upper: &[f64], start: &[f64], spread: f64) -> Self {
+  /// its box's width, or `path_unit`, where the box has no finite width.
+  fn new(lower: &[f64], upper: &[f64], start: &[f64], path_unit: f64) -> Self {
     let scale = (0..lower.len())
       .map(|i| {
         let (low, high) = (lower[i], upper[i]);
@@ -81,7 +81,7 @@ impl Units {
         } else if low.is_finite() && high.is_finite() && high > low {
           0.5 * (high - low)
         } else {
-          spread
+          path_unit
         }
       })
       .collect::<Vec<_>>();
@@ -165,7 +165,7 @@ impl<'a> MleProblem<'a> {
       sample,
       dt,
       density,
-      units: Units::new(lower, upper, start, spread(sample)),
+      units: Units::new(lower, upper, start, path_unit(sample)),
       probe: AtomicU8::new(IDLE),
     }
   }
