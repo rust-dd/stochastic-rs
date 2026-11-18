@@ -1,33 +1,12 @@
-//! # Goodness-of-fit tests
+//! Goodness-of-fit tests against a fully specified law: Kolmogorov–Smirnov and Pearson chi-square.
 //!
-//! Tests whether a sample was drawn from a **fully specified** target
-//! distribution (every parameter fixed in advance — never fitted from
-//! the sample under test; see [`kolmogorov_smirnov`]'s module doc for
-//! why that distinction changes which critical values apply).
+//! KS needs a continuous CDF, so bin lattice data for chi-square; fit no parameter from the sample.
 //!
-//! | Test | Use on | Notes |
-//! |------|--------|-------|
-//! | [`kolmogorov_smirnov::kolmogorov_smirnov_test`] | continuous samples | `D_n` vs. Kolmogorov (1933) / Smirnov (1948) / Massey (1951) critical values |
-//! | [`chi_square::chi_square_gof_test`] | discrete / binned counts | Pearson (1900) `\chi^2`, Cochran (1954) bin-pooling ([`chi_square::pool_integer_bins`]) |
-//!
-//! ## Choosing between them
-//!
-//! KS's asymptotic theory assumes a continuous null CDF; on an integer
-//! lattice the empirical CDF's jumps coincide with the null's own jumps
-//! at every support point, so the same statistic is no longer
-//! calibrated the same way. Bin the data and use
-//! [`chi_square::chi_square_gof_test`] for any discrete distribution
-//! (Binomial, Poisson, Geometric, Hypergeometric, Skellam, …); use
-//! [`kolmogorov_smirnov::kolmogorov_smirnov_test`] directly for
-//! continuous ones.
-//!
-//! ## Cross-module pairing with [`stochastic_rs_distributions`]
-//!
-//! Both tests are written against an arbitrary `cdf` closure, so the
-//! natural reference is a distribution's own
-//! [`DistributionExt::cdf`](stochastic_rs_distributions::traits::DistributionExt::cdf) —
-//! closing the loop with that trait's own samplers rather than
-//! requiring a second, independent reference implementation:
+//! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
+//! Reference: Smirnov (1948), Annals of Mathematical Statistics 19(2), 279-281
+//! Reference: Massey (1951), JASA 46(253), 68-78
+//! Reference: Pearson (1900), Philosophical Magazine Series 5, 50(302), 157-175
+//! Reference: Cochran (1954), Biometrics 10(4), 417-451
 //!
 //! ```
 //! use ndarray::ArrayView1;

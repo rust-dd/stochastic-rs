@@ -1,5 +1,4 @@
-//! Two-step GMM of CIR on its exact transition moments, four for three parameters: stage 1 weighs
-//! them by the identity on the path over its mean, stage 2 by `Ŝ⁻¹`, and `J ~ χ²₁` is Hansen's.
+//! Two-step GMM of CIR on its exact transition moments, four conditions for three parameters.
 //!
 //! $$
 //! dX_t = \theta(\mu - X_t)\,dt + \sigma\sqrt{X_t}\,dW_t,\qquad a = e^{-\theta\Delta},\qquad
@@ -14,9 +13,11 @@
 //! u_t = e_t^2 - X_t\,\frac{\sigma^2}{\theta}(a - a^2) - \mu\,\frac{\sigma^2}{2\theta}(1 - a)^2
 //! $$
 //!
-//! Reference: Hansen, L. P. (1982), "Large sample properties of generalized method of moments estimators", Econometrica 50(4), 1029-1054.
-//! Reference: Cox, J. C., Ingersoll, J. E. & Ross, S. A. (1985), "A theory of the term structure of interest rates", Econometrica 53(2), 385-407.
-//! Reference: Chan, K. C., Karolyi, G. A., Longstaff, F. A. & Sanders, A. B. (1992), "An empirical comparison of alternative models of the short-term interest rate", Journal of Finance 47(3), 1209-1227.
+//! Stage 1 weighs by the identity, on the path over its mean, stage 2 by `Ŝ⁻¹`; `J ~ χ²₁`.
+//!
+//! Reference: Hansen (1982), Econometrica 50(4), 1029-1054
+//! Reference: Cox, Ingersoll & Ross (1985), Econometrica 53(2), 385-407
+//! Reference: Chan, Karolyi, Longstaff & Sanders (1992), Journal of Finance 47(3), 1209-1227
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;

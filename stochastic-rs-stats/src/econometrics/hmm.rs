@@ -1,17 +1,7 @@
-//! Hidden Markov Model with univariate Gaussian emissions.
+//! Hidden Markov model with univariate Gaussian emissions: forward–backward, Baum–Welch, Viterbi.
 //!
-//! Implements the forward-backward algorithm with log-space scaling, the
-//! Baum-Welch EM training procedure for $(\pi, A, \mu, \sigma)$, and the
-//! Viterbi most-likely-path decoder.
-//!
-//! Reference: Baum, Petrie, Soules, Weiss, "A Maximization Technique
-//! Occurring in the Statistical Analysis of Probabilistic Functions of Markov
-//! Chains", Annals of Mathematical Statistics, 41(1), 164-171 (1970).
-//! DOI: 10.1214/aoms/1177697196
-//!
-//! Reference: Rabiner, "A Tutorial on Hidden Markov Models and Selected
-//! Applications in Speech Recognition", Proceedings of the IEEE, 77(2),
-//! 257-286 (1989). DOI: 10.1109/5.18626
+//! Reference: Baum et al. (1970), Ann. Math. Statist. 41(1), 164-171, DOI: 10.1214/aoms/1177697196
+//! Reference: Rabiner (1989), Proceedings of the IEEE 77(2), 257-286, DOI: 10.1109/5.18626
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -55,7 +45,7 @@ pub struct GaussianHmm {
   pub stds: Array1<f64>,
 }
 
-/// A forward pass: the filtered rows, each step's densities scaled by their largest, the sums `c̃_t`
+/// A forward pass: the filtered rows, each step's densities over their largest, the sums `c̃_t`
 /// that normalise the rows and the log-likelihood `Σ_t (shift_t + ln c̃_t)`.
 struct Forward {
   alpha: Array2<f64>,
@@ -316,8 +306,8 @@ impl GaussianHmm {
       .any(|&a| a < SCALED_PASS_MIN_PROBABILITY)
   }
 
-  /// `α̂_0` from `ln π_j + ln b_j(y_0)` less their largest, which keeps a `π_j` whose product with a
-  /// scaled density would underflow; returns that largest plus `ln c̃_0`.
+  /// `α̂_0` from `ln π_j + ln b_j(y_0)` less their largest, which keeps a `π_j` whose product with
+  /// a scaled density would underflow; returns that largest plus `ln c̃_0`.
   fn first_step(&self, observation: f64, mut alpha: ArrayViewMut1<f64>, scaling: &mut f64) -> f64 {
     let k = alpha.len();
     let mut shift = f64::NEG_INFINITY;

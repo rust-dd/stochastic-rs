@@ -1,4 +1,5 @@
-//! Data-dependent failures and unchecked struct-literal fields are `Err`; validated configuration panics.
+//! Data-dependent failures and unchecked struct-literal fields are `Err`; validated configuration
+//! panics.
 
 use ndarray::Array1;
 use stochastic_rs_stats::StatsError;

@@ -1,37 +1,27 @@
-//! Two-Scale and Multi-Scale Realized Variance estimators.
-//!
-//! Decomposes the standard realized variance bias under additive noise into a
-//! "slow-scale" component obtained by sub-sampling at a coarser frequency, and
-//! a "fast-scale" RV obtained from all observations. Combining the two cancels
-//! the leading-order noise bias term.
+//! Two-scale and multi-scale realized variance, which cancel the leading noise bias of RV.
 //!
 //! $$
 //! \widehat{TSRV} = \widehat{RV}^{(K)} - \frac{\bar n_K}{n}\widehat{RV}^{(\mathrm{all})},
 //! \qquad \bar n_K = \frac{n-K+1}{K}.
 //! $$
 //!
-//! The multi-scale variant (Zhang 2006) combines $M$ sub-sampling frequencies
-//! using $a_i = \lambda + \mu/i$ where $(\lambda, \mu)$ enforce the two
-//! orthogonality constraints $\sum a_i = 1$ (consistency) and
-//! $\sum a_i/i = 0$ (noise-bias cancellation), yielding the closed form
-//! $\mu = H_M / (H_M^2 - M H_M^{(2)})$, $\lambda = -H_M^{(2)} \mu / H_M$ with
-//! $H_M = \sum_{i=1}^M 1/i$ and $H_M^{(2)} = \sum_{i=1}^M 1/i^2$.
+//! $$
+//! a_i = \lambda + \frac{\mu}{i},\qquad \sum_i a_i = 1,\quad \sum_i \frac{a_i}{i} = 0,\qquad
+//! \mu = \frac{H_M}{H_M^2 - M H_M^{(2)}},\quad \lambda = -\frac{H_M^{(2)}\mu}{H_M},\qquad
+//! H_M = \sum_{i=1}^M \frac1i,\quad H_M^{(2)} = \sum_{i=1}^M \frac1{i^2}
+//! $$
 //!
-//! Reference: Zhang, Mykland, Aït-Sahalia, "A Tale of Two Time Scales:
-//! Determining Integrated Volatility With Noisy High-Frequency Data", Journal
-//! of the American Statistical Association, 100(472), 1394-1411 (2005).
-//! DOI: 10.1198/016214505000000169
+//! The slow scale subsamples at lag `K`; the `a_i` weigh the multi-scale variant's `M` scales.
 //!
-//! Reference: Zhang, "Efficient Estimation of Stochastic Volatility Using Noisy
-//! Observations: A Multi-Scale Approach", Bernoulli, 12(6), 1019-1043 (2006).
-//! DOI: 10.3150/bj/1165269149
+//! Reference: Zhang et al. (2005), JASA 100(472), 1394-1411, DOI: 10.1198/016214505000000169
+//! Reference: Zhang (2006), Bernoulli 12(6), 1019-1043, DOI: 10.3150/bj/1165269149
 
 use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
 
 /// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
-/// `k` prices, typically `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
+/// `k` prices, by custom `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
   // At `k = 1` the slow and fast scales coincide and the estimate is identically zero.

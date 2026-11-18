@@ -1,9 +1,4 @@
-//! # Autocorrelation, partial autocorrelation, and the Ljung-Box test
-//!
-//! Sample ACF with the biased $c_0$ denominator (the statsmodels default),
-//! the Durbin-Levinson recursion for the PACF, and the Ljung-Box
-//! portmanteau statistic for testing whether a batch of sample
-//! autocorrelations is jointly zero.
+//! Sample ACF with the biased `c_0` denominator, Durbin–Levinson PACF and the Ljung–Box test.
 //!
 //! $$
 //! \hat\rho_k = \frac{\sum_{t=k}^{n-1} (x_t - \bar x)(x_{t-k} - \bar x)}
@@ -11,15 +6,9 @@
 //! Q = n(n+2) \sum_{k=1}^{h} \frac{\hat\rho_k^2}{n-k} \overset{H_0}{\sim} \chi^2_{h-\text{fit\_df}}
 //! $$
 //!
-//! References:
-//! - Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015).
-//!   *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
-//!   §2.1.4 (sample ACF), §3.2.6 (Durbin-Levinson PACF recursion).
-//! - Ljung, G. M., & Box, G. E. P. (1978). "On a Measure of Lack of Fit in
-//!   Time Series Models". *Biometrika*, 65(2), 297-303.
-//!   DOI: 10.1093/biomet/65.2.297
-//! - Durbin, J. (1960). "The Fitting of Time-Series Models". *Revue de
-//!   l'Institut International de Statistique*, 28(3), 233-244.
+//! Reference: Box, Jenkins, Reinsel & Ljung (2015), Time Series Analysis, 5th ed., §2.1.4, §3.2.6
+//! Reference: Ljung & Box (1978), Biometrika 65(2), 297-303, DOI: 10.1093/biomet/65.2.297
+//! Reference: Durbin (1960), Revue de l'Institut International de Statistique 28(3), 233-244
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -210,9 +199,7 @@ mod tests {
     }
   }
 
-  /// Self-contained AR(1) generator, mirroring
-  /// `stationarity::adf::tests::simulate_ar1` (not imported: that module is
-  /// faer-backed).
+  /// An AR(1) path with standard normal innovations.
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
       let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
@@ -225,12 +212,8 @@ mod tests {
     x
   }
 
-  /// Hand-computed: x = [1,2,3,4,5], mean x̄ = 3, deviations d = [-2,-1,0,1,2].
-  /// c0 = (-2)^2+(-1)^2+0^2+1^2+2^2 = 4+1+0+1+4 = 10.
-  /// c1 = d1*d0 + d2*d1 + d3*d2 + d4*d3
-  ///    = (-1)(-2) + (0)(-1) + (1)(0) + (2)(1) = 2+0+0+2 = 4  ⟹ ρ1 = 4/10 = 0.4.
-  /// c2 = d2*d0 + d3*d1 + d4*d2 = (0)(-2) + (1)(-1) + (2)(0) = 0-1+0 = -1 ⟹ ρ2 = -1/10 = -0.1.
-  /// c3 = d3*d0 + d4*d1 = (1)(-2) + (2)(-1) = -2-2 = -4 ⟹ ρ3 = -4/10 = -0.4.
+  /// `x = 1..5` has deviations `[-2, -1, 0, 1, 2]`: `c0 = 10`, `c1 = 4`, `c2 = -1`, `c3 = -4`, so
+  /// `ρ = [1, 0.4, -0.1, -0.4]`.
   #[test]
   fn acf_matches_hand_computation() {
     let x = Array1::<f64>::from(vec![1.0, 2.0, 3.0, 4.0, 5.0]);

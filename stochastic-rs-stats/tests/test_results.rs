@@ -1,4 +1,5 @@
-//! Every hypothesis test answers `statistic`, `p_value`, `critical_values`, `rejects_null`, and the trait agrees.
+//! Every hypothesis test answers `statistic`, `p_value`, `critical_values` and `rejects_null`, and
+//! the trait agrees.
 
 use ndarray::Array1;
 use ndarray::Array2;

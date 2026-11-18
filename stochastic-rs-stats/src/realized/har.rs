@@ -1,16 +1,16 @@
-//! Heterogeneous Autoregressive model of Realized Volatility (HAR-RV).
+//! Heterogeneous autoregressive model of realized volatility (HAR-RV).
 //!
 //! $$
-//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} + \omega_{t+1},
+//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} +
+//! \omega_{t+1},
 //! $$
-//! with $RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)}$ and
-//! $RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}$.
 //!
-//! Reference: Corsi, "A Simple Approximate Long-Memory Model of Realized
-//! Volatility", Journal of Financial Econometrics, 7(2), 174-196 (2009).
-//! DOI: 10.1093/jjfinec/nbp001
+//! $$
+//! RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)},\qquad
+//! RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}
+//! $$
 //!
-//! The OLS least-squares fit runs on the pure-Rust `faer`.
+//! Reference: Corsi (2009), JFEC 7(2), 174-196, DOI: 10.1093/jjfinec/nbp001
 
 use ndarray::Array1;
 use ndarray::Array2;

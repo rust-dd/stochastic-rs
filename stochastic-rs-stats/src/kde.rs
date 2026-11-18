@@ -5,7 +5,7 @@
 //! h=0.9\,\min\!\left(\hat\sigma,\frac{\mathrm{IQR}}{1.34}\right)n^{-1/5}
 //! $$
 //!
-//! Reference: Silverman, B. W. (1986), "Density Estimation for Statistics and Data Analysis", Chapman & Hall, §3.4.2.
+//! Reference: Silverman (1986), Density Estimation for Statistics and Data Analysis, §3.4.2
 
 use std::f64::consts::PI;
 
@@ -110,7 +110,8 @@ pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   }
 }
 
-/// Linearly interpolated sample quantile at `p ∈ [0, 1]`; NaN outside it, on an empty sample or on a NaN.
+/// Linearly interpolated sample quantile at `p ∈ [0, 1]`; NaN outside it, on an empty sample or on
+/// a NaN.
 pub fn quantile(data: ArrayView1<f64>, p: f64) -> f64 {
   if data.is_empty() || !(0.0..=1.0).contains(&p) || data.iter().any(|v| v.is_nan()) {
     return f64::NAN;
@@ -120,7 +121,8 @@ pub fn quantile(data: ArrayView1<f64>, p: f64) -> f64 {
   quantile_sorted(&sorted, p)
 }
 
-/// An exact rank or equal neighbours return the element, so an infinity is not interpolated into NaN.
+/// An exact rank or equal neighbours return the element, so an infinity is not interpolated into
+/// NaN.
 fn quantile_sorted(sorted: &[f64], p: f64) -> f64 {
   let rank = p * (sorted.len() as f64 - 1.0);
   let lower = rank.floor() as usize;

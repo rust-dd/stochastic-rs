@@ -1,13 +1,7 @@
-//! Cointegration tests — Engle-Granger 2-step here, the Johansen rank tests
-//! and VECM estimation in [`johansen`].
+//! Cointegration tests: Engle–Granger two-step here, Johansen's rank tests and VECM in `johansen`.
 //!
-//! Reference: Engle, Granger, "Co-Integration and Error Correction:
-//! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
-//! (1987). DOI: 10.2307/1913236
-//!
-//! Reference: Johansen, "Statistical Analysis of Cointegration Vectors",
-//! Journal of Economic Dynamics and Control, 12(2-3), 231-254 (1988).
-//! DOI: 10.1016/0165-1889(88)90041-3
+//! Reference: Engle & Granger (1987), Econometrica 55(2), 251-276, DOI: 10.2307/1913236
+//! Reference: Johansen (1988), JEDC 12(2-3), 231-254, DOI: 10.1016/0165-1889(88)90041-3
 
 pub mod johansen;
 

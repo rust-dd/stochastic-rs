@@ -190,16 +190,11 @@ fn pmle_heston_with_delta_panics_on_non_positive_step() {
 }
 
 #[test]
-/// Parameter recovery has a sampling distribution of its own, so a single
-/// path is a coin flip against these tolerances. Three pinned seeds with an
-/// any() over them — the best-of pattern from `integration-test-writing`
-/// SKILL section 1.2.
+/// Parameter recovery has a sampling distribution of its own, so one path is a coin flip against
+/// these tolerances: the test asks it of any of three pinned seeds.
 fn nmle_heston_recovers_reasonable_params_from_synthetic_path() {
-  // A daily step over ~16 years. The `fit_heston_nmle` default of delta =
-  // 1/(n-1) puts the whole path inside one year, where kappa and theta are
-  // barely identifiable at all — two of three seeds drove the optimiser to
-  // a boundary. Volatility of variance and correlation are estimable
-  // either way; mean reversion needs the horizon.
+  // A daily step over about 16 years: the default `delta = 1/(n-1)` puts the path inside one year,
+  // where `kappa` and `theta` are barely identifiable and two of three seeds end on a boundary.
   let n = 4096usize;
   let dt = 1.0_f64 / 252.0;
   let sqrt_dt = dt.sqrt();

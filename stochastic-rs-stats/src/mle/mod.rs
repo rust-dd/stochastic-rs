@@ -1,17 +1,11 @@
-//! # Maximum Likelihood Estimation for 1-D Diffusions
+//! Maximum likelihood for one-dimensional diffusions through a transition-density approximation.
 //!
 //! $$
-//! \hat\theta = \arg\max_\theta \sum_{i=1}^{N} \ln p(X_{t_i} \mid X_{t_{i-1}};\theta,\Delta t)
+//! \hat\theta = \arg\max_\theta \sum_{i=1}^{N} \ln p(X_{t_i} \mid X_{t_{i-1}};\theta,\Delta t),
+//! \qquad dX_t = \mu(X_t, t;\theta)\,dt + \sigma(X_t, t;\theta)\,dW_t
 //! $$
 //!
-//! This module implements MLE-based parameter estimation for univariate SDEs of the form
-//!
-//! $$
-//! dX_t = \mu(X_t, t;\theta)\,dt + \sigma(X_t, t;\theta)\,dW_t
-//! $$
-//!
-//! using several transition density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian,
-//! Kessler, exact, and Aït-Sahalia).
+//! The densities are Euler, Ozaki, Shoji–Ozaki, Elerian, Kessler, the exact one and Aït-Sahalia's.
 
 mod density;
 mod fit;

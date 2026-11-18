@@ -1,18 +1,9 @@
-//! Changepoint detection — CUSUM (Page 1954) and PELT (Killick et al. 2012).
+//! Changepoint detection: Page's two-sided CUSUM for a mean shift, and PELT.
 //!
-//! - **CUSUM** detects mean shifts via cumulative sums of standardised
-//!   deviations and signals when one of two recursive sums exceeds a
-//!   threshold.
-//! - **PELT** finds the global optimum of a penalised likelihood
-//!   objective with at most linear cost in the sample size.
+//! PELT finds the global optimum of a penalised likelihood at a cost at most linear in the sample.
 //!
-//! Reference: Page, "Continuous Inspection Schemes", Biometrika, 41(1/2),
-//! 100-115 (1954). DOI: 10.2307/2333009
-//!
-//! Reference: Killick, Fearnhead, Eckley, "Optimal Detection of Changepoints
-//! with a Linear Computational Cost", Journal of the American Statistical
-//! Association, 107(500), 1590-1598 (2012).
-//! DOI: 10.1080/01621459.2012.737745
+//! Reference: Page (1954), Biometrika 41(1/2), 100-115, DOI: 10.2307/2333009
+//! Reference: Killick et al. (2012), JASA 107(500), 1590-1598, DOI: 10.1080/01621459.2012.737745
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

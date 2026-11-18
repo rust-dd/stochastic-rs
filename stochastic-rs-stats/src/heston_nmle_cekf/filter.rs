@@ -17,11 +17,8 @@ pub use projection::HestonCekfVarianceProjection;
 use step::FloorPolicy;
 use step::step_impl;
 
-/// Prior coefficient bounds required by the consistent-EKF correction.
-///
-/// These are bounds over the admissible parameter set, not values copied from
-/// the parameters being filtered. The filter verifies that the current
-/// coefficients lie inside the supplied bounds.
+/// Prior coefficient bounds of the consistent-EKF correction: bounds over the admissible parameter
+/// set, which the filter checks the current coefficients against, not the filtered values.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonCekfConsistencyBounds {
   pub max_abs_state_transition: f64,
@@ -39,7 +36,8 @@ pub enum HestonCekfCorrection {
   },
 }
 
-/// Configuration shared by fixed-parameter CEKF steps and complete passes.
+/// Configuration of a CEKF step or pass: `r` finite; `delta`, `initial_variance` and the initial
+/// covariance bound finite, positive; `q11, q22 >= 0` with `q11 q22 >= q12²`; a `floor` positive.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonCekfFilterConfig {
   pub r: f64,
@@ -110,8 +108,8 @@ pub struct HestonCekfFilterResult {
   pub projection_diagnostics: HestonCekfProjectionDiagnostics,
 }
 
-/// Advances the CEKF by one observed log return; `Err` on a non-finite return, a non-finite or
-/// non-positive previous state or a floor hit; panics on an invalid configuration or parameters.
+/// Advances the CEKF by one log return; `Err` on a non-finite return, a bad previous state, a floor
+/// hit; panics unless `config` is in range, `kappa`, `theta`, `sigma > 0`, `|rho| <= 1`, in bounds.
 pub fn heston_cekf_step(
   previous: HestonCekfState,
   log_return: f64,
@@ -134,7 +132,7 @@ pub fn heston_cekf_step(
 }
 
 /// One CEKF pass over a price series at fixed Heston parameters; `Err` on fewer than two prices, a
-/// non-finite or non-positive price or a floor hit; panics on invalid configuration or parameters.
+/// non-finite or non-positive price or a floor hit; panics as [`heston_cekf_step`].
 pub fn filter_heston_cekf(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,

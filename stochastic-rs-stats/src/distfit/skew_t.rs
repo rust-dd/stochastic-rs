@@ -1,5 +1,4 @@
-//! Hansen skew-t maximum likelihood with location and scale,
-//! $x = \mu + \sigma z$, in $(\mu, \log\sigma, \log(\eta - 2), \operatorname{atanh}\lambda)$.
+//! Hansen skew-t maximum likelihood of `x = μ + σ z`, in `(μ, ln σ, ln(η − 2), atanh λ)`.
 
 use ndarray::Array1;
 use ndarray::Array2;

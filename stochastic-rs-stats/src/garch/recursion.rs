@@ -1,5 +1,4 @@
-//! Conditional-variance recursions and the Gaussian quasi-log-likelihood,
-//! shared by the fitter and the finite-difference inference.
+//! Conditional-variance recursions and the Gaussian quasi-log-likelihood of the fit.
 
 use super::GarchKind;
 use super::GarchSpec;
@@ -54,9 +53,8 @@ impl GarchSpec {
   }
 }
 
-/// Fills `resid` with $\varepsilon_t = r_t - \mu$ and `sigma2` with the
-/// recursion's conditional variances, `backcast` seeding every pre-sample
-/// term.
+/// Fills `resid` with $\varepsilon_t = r_t - \mu$ and `sigma2` with the conditional variances; a
+/// pre-sample square or variance is `backcast`, GJR's asymmetry term half of it, EGARCH's shock 0.
 pub(super) fn variance_path(
   spec: &GarchSpec,
   natural: &[f64],
@@ -141,9 +139,8 @@ fn log_recursion(p: &Params, resid: &[f64], backcast: f64, sigma2: &mut [f64]) {
   }
 }
 
-/// Per-observation terms $\ell_t = -\tfrac12[\log 2\pi + \log\sigma_t^2 +
-/// \varepsilon_t^2/\sigma_t^2]$ and their sum; the sum is `-inf` when some
-/// variance is not positive and finite.
+/// Per-observation $\ell_t = -\tfrac12[\log 2\pi + \log\sigma_t^2 + \varepsilon_t^2/\sigma_t^2]$
+/// and their sum, which is `-inf` when some variance is not positive and finite.
 pub(super) fn log_likelihood_terms(
   spec: &GarchSpec,
   natural: &[f64],

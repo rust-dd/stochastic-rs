@@ -419,7 +419,7 @@ fn a_level_far_above_the_variation_keeps_the_statistic() {
 }
 
 /// ERS and Leybourne–McCabe test noise of `1e-7` about a level from `1e3` to `1e8` as the same
-/// points less the level: their detrending meets the series less its mean, as ADF's, PP's and KPSS's.
+/// points less the level: their detrending meets the series less its mean.
 #[test]
 fn ers_and_leybourne_mccabe_keep_the_statistic_at_a_level_from_1e3_to_1e8() {
   let mut noise = vec![0.0; 200];

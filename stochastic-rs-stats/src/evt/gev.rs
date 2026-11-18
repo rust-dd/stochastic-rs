@@ -1,23 +1,23 @@
-//! GEV maximum likelihood for block maxima and the return-level map.
-//!
-//! For block maxima $z_1, \ldots, z_n$ the GEV log-likelihood is
+//! GEV maximum likelihood for block maxima, and the return level exceeded once in `m` blocks.
 //!
 //! $$
-//! \ell(\mu, \sigma, \xi) = -n\log\sigma - \Bigl(1 + \frac1\xi\Bigr)\sum_{i=1}^{n}\log t_i - \sum_{i=1}^{n} t_i^{-1/\xi},\qquad
+//! \ell(\mu, \sigma, \xi) = -n\log\sigma - \Bigl(1 + \frac1\xi\Bigr)\sum_{i=1}^{n}\log t_i -
+//! \sum_{i=1}^{n} t_i^{-1/\xi},\qquad
 //! t_i = 1 + \xi\,\frac{z_i - \mu}{\sigma} > 0
 //! $$
 //!
-//! (Coles 2001, eq. 3.7; the Gumbel limit
-//! $-n\log\sigma - \sum_i w_i - \sum_i e^{-w_i}$ with $w_i = (z_i - \mu)/\sigma$
-//! at $\xi = 0$, eq. 3.9). The return level $z_m$ — the level exceeded on
-//! average once every $m$ blocks — is the $1 - 1/m$ quantile (eq. 3.4):
+//! $$
+//! \ell(\mu, \sigma, 0) = -n\log\sigma - \sum_i w_i - \sum_i e^{-w_i},\qquad
+//! w_i = \frac{z_i - \mu}{\sigma}
+//! $$
 //!
 //! $$
 //! z_m = \hat\mu - \frac{\hat\sigma}{\hat\xi}\Bigl[1 - \bigl(-\log(1 - 1/m)\bigr)^{-\hat\xi}\Bigr].
 //! $$
 //!
-//! Standard errors are the inverse observed information from a
-//! central-difference Hessian at the optimum.
+//! Standard errors are the inverse observed information, a central-difference Hessian.
+//!
+//! Reference: Coles (2001), eq. 3.7, eq. 3.9 at `ξ = 0`, eq. 3.4, DOI: 10.1007/978-1-4471-3675-0
 
 use ndarray::Array1;
 use ndarray::Array2;

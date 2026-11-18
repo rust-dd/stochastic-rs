@@ -1,33 +1,20 @@
-//! Lee–Mykland nonparametric jump test on intraday log-returns.
-//!
-//! Each return is standardised by a bipower-variation estimate of the local
-//! volatility from the $K$ observations just before it (Definition 1),
+//! Lee–Mykland nonparametric jump test on intraday returns (Definition 1, Theorem 1, Lemma 1).
 //!
 //! $$
 //! \mathcal L(i) = \frac{r_i}{\hat\sigma(t_i)},\qquad
-//! \hat\sigma(t_i)^2 = \frac{1}{K-2}\sum_{j=i-K+2}^{i-1} |r_j|\,|r_{j-1}|,
+//! \hat\sigma(t_i)^2 = \frac{1}{K-2}\sum_{j=i-K+2}^{i-1} |r_j|\,|r_{j-1}|,\qquad
+//! \mathcal L(i) \approx \frac{U_i}{c},\quad c = \mathbb E|U_i| = \sqrt{2/\pi}
 //! $$
-//!
-//! so that under the no-jump null $\mathcal L(i) \approx U_i / c$ with
-//! $U_i$ standard normal and $c = \mathbb E|U_i| = \sqrt{2/\pi}$
-//! (Theorem 1). A return is declared a jump when its statistic leaves the
-//! Gumbel region of the sample maximum (Lemma 1),
 //!
 //! $$
 //! \frac{|\mathcal L(i)| - C_n}{S_n} > \beta^*,\qquad
 //! C_n = \frac{\sqrt{2\log n}}{c} - \frac{\log\pi + \log\log n}{2c\sqrt{2\log n}},\qquad
-//! S_n = \frac{1}{c\sqrt{2\log n}},
+//! S_n = \frac{1}{c\sqrt{2\log n}},\qquad \beta^* = -\log(-\log(1-\alpha))
 //! $$
 //!
-//! with $\beta^* = -\log(-\log(1-\alpha))$ and $n$ the number of return
-//! observations. The window must grow like $\Delta t^{\gamma}$ with
-//! $-1 < \gamma < -1/2$; the paper's rule of thumb picks the smallest
-//! integer above $\sqrt{252 \times \text{observations per day}}$, which is
-//! $K = 16$ for daily data ([`lee_mykland_window`]).
+//! The window `K` grows like `Δt^γ`, `−1 < γ < −1/2`; [`lee_mykland_window`] is the paper's rule.
 //!
-//! Reference: Lee, Mykland, "Jumps in Financial Markets: A New Nonparametric
-//! Test and Jump Dynamics", Review of Financial Studies, 21(6), 2535-2563
-//! (2008). DOI: 10.1093/rfs/hhm056
+//! Reference: Lee & Mykland (2008), Rev. Financ. Stud. 21(6), 2535-2563, DOI: 10.1093/rfs/hhm056
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -44,9 +31,8 @@ pub const LEE_MYKLAND_C: f64 = std::f64::consts::FRAC_2_SQRT_PI / std::f64::cons
 /// Result of the Lee–Mykland jump test over a return series.
 #[derive(Debug, Clone)]
 pub struct LeeMyklandTest {
-  /// Statistics $\mathcal L(i)$ aligned with the input; the first
-  /// `window - 1` entries are NaN because their volatility window is
-  /// incomplete.
+  /// Statistics $\mathcal L(i)$ aligned with the input; the first `window - 1` are NaN, their
+  /// volatility window being incomplete.
   pub statistics: Array1<f64>,
   /// Local volatility $\hat\sigma(t_i)$ behind each statistic, NaN where
   /// the statistic is.

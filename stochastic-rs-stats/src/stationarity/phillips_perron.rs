@@ -1,21 +1,12 @@
-//! Phillips-Perron unit-root test: the lag-0 Dickey-Fuller regression corrected for serial
-//! correlation by a Newey-West long-run variance, as the `Tau` and `Rho` statistics.
+//! Phillips–Perron unit-root test: the lag-0 Dickey–Fuller regression, Newey–West corrected.
 //!
-//! References:
-//! - Phillips P. C. B. & Perron P. (1988) — *Testing for a Unit Root in
-//!   Time Series Regression*, Biometrika 75(2), 335–346,
-//!   DOI: 10.1093/biomet/75.2.335; the origin of both statistics.
-//! - StataCorp (2025) — *Stata Time-Series Reference Manual*,
-//!   `[TS] pperron`, Methods and formulas; the finite-sample `Z_ρ` and
-//!   `Z_τ` computed here.
-//! - Hamilton J. D. (1994) — *Time Series Analysis*, Princeton University
-//!   Press, ch. 17, DOI: 10.2307/j.ctv14jx6sm, which Stata cites for them.
-//! - Sheppard K. et al. — *arch* 9.0.0, `arch.unitroot.PhillipsPerron`,
-//!   DOI: 10.5281/zenodo.593254; the regression on the series less its mean.
-//! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
-//!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
-//!   Covariance Matrix*, Econometrica 55(3), 703–708,
-//!   DOI: 10.2307/1913610.
+//! `Tau` and `Rho` are Stata's finite-sample `Z_τ`, `Z_ρ`, on the series less its mean as in arch.
+//!
+//! Reference: Phillips & Perron (1988), Biometrika 75(2), 335–346, DOI: 10.1093/biomet/75.2.335
+//! Reference: StataCorp (2025), Time-Series Reference Manual, `[TS] pperron`, Methods and formulas
+//! Reference: Hamilton (1994), Time Series Analysis, ch. 17, 10.2307/j.ctv14jx6sm, Stata's source
+//! Reference: Sheppard et al., arch 9.0.0, `arch.unitroot.PhillipsPerron`, 10.5281/zenodo.593254
+//! Reference: Newey & West (1987), Econometrica 55(3), 703–708, DOI: 10.2307/1913610
 
 use ndarray::ArrayView1;
 

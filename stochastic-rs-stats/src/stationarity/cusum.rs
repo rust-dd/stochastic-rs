@@ -1,39 +1,28 @@
-//! Brown-Durbin-Evans (1975) CUSUM and CUSUMQ structural-change tests.
+//! Brown–Durbin–Evans (1975) CUSUM and CUSUMQ structural-change tests on recursive residuals.
 //!
-//! Given the linear regression $y_t = x_t^\top \beta + \varepsilon_t$ for
-//! $t = 1, \dots, T$ with $k$ regressors, the **recursive residuals**
 //! $$
 //! w_t = \frac{y_t - x_t^\top \hat\beta_{t-1}}{\sqrt{1 + x_t^\top
-//! (X_{t-1}^\top X_{t-1})^{-1} x_t}}, \qquad t = k+1, \dots, T
+//! (X_{t-1}^\top X_{t-1})^{-1} x_t}} \overset{H_0}{\sim} \mathcal N(0, \sigma^2),
+//! \qquad t = k+1, \dots, T
 //! $$
-//! are IID $\mathcal{N}(0, \sigma^2)$ under the null of parameter constancy.
-//! Two cumulative-sum statistics monitor parameter stability:
 //!
-//! - **CUSUM** $W_t = \hat\sigma^{-1} \sum_{j=k+1}^t w_j$ — sensitive to a
-//!   shift in the conditional mean. Rejection boundary (two-sided) is
-//!   $\pm[a_\alpha \sqrt{T-k} + 2 a_\alpha (t-k)/\sqrt{T-k}]$ with
-//!   $a_\alpha \in \{1.143, 0.948, 0.850\}$ for $\alpha \in \{0.01, 0.05, 0.10\}$
-//!   (Brown-Durbin-Evans 1975, Table 1).
-//! - **CUSUMQ** $S_t = \sum_{j=k+1}^t w_j^2 / \sum_{j=k+1}^T w_j^2$ —
-//!   sensitive to a shift in the conditional variance. Boundary is parallel
-//!   to the line $E\[S_t\] = (t-k)/(T-k)$ with half-width
-//!   $c_\alpha \sqrt{2/(T-k-2)}$ where $c_\alpha \in \{1.07275, 0.84717,
-//!   0.74346\}$ (Edgerton-Wells 1994 large-sample approximation to the
-//!   Durbin 1969 exact table).
+//! $$
+//! W_t = \hat\sigma^{-1} \sum_{j=k+1}^t w_j,\qquad
+//! |W_t| \le a_\alpha \sqrt{T-k} + \frac{2 a_\alpha (t-k)}{\sqrt{T-k}},\qquad
+//! a_\alpha \in \{1.143, 0.948, 0.850\}
+//! $$
 //!
-//! Both tests reject when the corresponding cumulative path crosses its
-//! boundary; the first crossing point is reported as `breakpoint`.
+//! $$
+//! S_t = \frac{\sum_{j=k+1}^t w_j^2}{\sum_{j=k+1}^T w_j^2},\qquad
+//! \Bigl|S_t - \frac{t-k}{T-k}\Bigr| \le c_\alpha \sqrt{\frac{2}{T-k-2}},\qquad
+//! c_\alpha \in \{1.07275, 0.84717, 0.74346\}
+//! $$
 //!
-//! References:
-//! - Brown, R.L., Durbin, J., Evans, J.M. (1975), "Techniques for testing
-//!   the constancy of regression relationships over time", *JRSS B* 37(2),
-//!   149-192.
-//! - Durbin, J. (1969), "Tests for serial correlation in regression analysis
-//!   based on the periodogram of least-squares residuals", *Biometrika*
-//!   56(1), 1-15.
-//! - Edgerton, D., Wells, C. (1994), "Critical values for the CUSUMSQ
-//!   statistic in medium and large sized samples", *Oxford Bull. Econ. Stat.*
-//!   56(3), 355-365.
+//! CUSUM watches the mean (Table 1), CUSUMQ the variance; `breakpoint` is the first crossing.
+//!
+//! Reference: Brown, Durbin & Evans (1975), JRSS B 37(2), 149-192
+//! Reference: Durbin (1969), Biometrika 56(1), 1-15
+//! Reference: Edgerton & Wells (1994), Oxford Bull. Econ. Stat. 56(3), 355-365
 
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -122,9 +111,8 @@ fn cusum_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// CUSUMQ boundary coefficient $c_\alpha$ from the Edgerton-Wells (1994)
-/// large-sample approximation; the half-width of the band is
-/// $c_\alpha \sqrt{2/(T-k-2)}$.
+/// CUSUMQ boundary coefficient $c_\alpha$, Edgerton–Wells' (1994) large-sample approximation to
+/// Durbin's (1969) exact table; the band's half-width is $c_\alpha \sqrt{2/(T-k-2)}$.
 fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   if alpha <= 0.01 {
     1.07275
@@ -135,8 +123,8 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, on a
-/// non-finite or constant `y`, non-finite `x`, mismatched rows or a singular block; config panics.
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a bad
+/// `y` or `x`, mismatched rows, a singular block; panics unless `x` has a column, `0 < alpha < 1`.
 pub fn cusum_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -342,9 +330,7 @@ mod tests {
 
   #[test]
   fn cusum_no_reject_under_constant_dgp() {
-    // α = 0.01 keeps Type I error rate at ~1 %; with three seeds the joint
-    // false-positive rate is well under 5 % even before any minimum-power
-    // adjustment.
+    // `α = 0.01` keeps the type I error near 1 %, so three seeds stay well under 5 % jointly.
     let n = 200;
     let x = linear_design(n);
     for seed in [42_u64, 7, 99] {

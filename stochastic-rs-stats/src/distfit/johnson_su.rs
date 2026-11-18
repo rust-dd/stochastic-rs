@@ -1,4 +1,4 @@
-//! Johnson SU maximum likelihood in $(\gamma, \log\delta, \xi, \log\lambda)$.
+//! Johnson SU maximum likelihood in `(γ, ln δ, ξ, ln λ)`.
 
 use ndarray::Array1;
 use ndarray::Array2;

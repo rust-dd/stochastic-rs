@@ -1,27 +1,19 @@
 //! Pre-averaging estimator of integrated variance under microstructure noise.
 //!
-//! Smooths a block of $k_n$ consecutive returns with a triangular weight
-//! function $g(x) = \min(x, 1-x)$, then aggregates the squared pre-averages and
-//! debiases for the residual noise. With $\psi_1^{(g)} = 1$ and
-//! $\psi_2^{(g)} = 1/12$ for the triangular kernel, the estimator simplifies to
-//!
 //! $$
-//! \widehat{IV}^{PA} = \frac{12}{k_n}\sum_{i=0}^{n-k_n}\bar Y_i^{\,2} - \frac{6\,RV}{k_n^2},
+//! \widehat{IV}^{PA} = \frac{12}{k_n}\sum_{i=0}^{n-k_n}\bar Y_i^{\,2} - \frac{6\,RV}{k_n^2},\qquad
+//! \bar Y_i = \sum_{j=1}^{k_n-1} g(j/k_n)\,(Y_{i+j}-Y_{i+j-1}),\qquad g(x) = \min(x, 1-x)
 //! $$
 //!
-//! where $\bar Y_i = \sum_{j=1}^{k_n-1} g(j/k_n)\,(Y_{i+j}-Y_{i+j-1})$ and
-//! $RV = \sum_i (\Delta Y_i)^2$. Choosing $k_n = \lfloor \theta\sqrt n \rfloor$
-//! with $\theta = 1/3$ delivers the optimal $n^{1/4}$ rate.
+//! $$
+//! RV = \sum_i (\Delta Y_i)^2,\qquad \psi_1^{(g)} = 1,\quad \psi_2^{(g)} = \tfrac1{12},\qquad
+//! k_n = \lfloor \theta\sqrt n \rfloor
+//! $$
 //!
-//! Reference: Jacod, Li, Mykland, Podolskij, Vetter, "Microstructure Noise in
-//! the Continuous Case: The Pre-Averaging Approach", Stochastic Processes and
-//! their Applications, 119(7), 2249-2276 (2009).
-//! DOI: 10.1016/j.spa.2008.11.004
+//! `θ = 1/3` gives the optimal `n^{1/4}` rate.
 //!
-//! Reference: Christensen, Kinnebrock, Podolskij, "Pre-Averaging Estimators of
-//! the Ex-Post Covariance Matrix in Noisy Diffusion Models with Non-Synchronous
-//! Data", Journal of Econometrics, 159(1), 116-133 (2010).
-//! DOI: 10.1016/j.jeconom.2010.05.001
+//! Reference: Jacod et al. (2009), SPA 119(7), 2249-2276, DOI: 10.1016/j.spa.2008.11.004
+//! Reference: Christensen et al. (2010), J. Econom. 159(1), 116-133, 10.1016/j.jeconom.2010.05.001
 
 use ndarray::ArrayView1;
 
@@ -29,7 +21,7 @@ use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
 /// Pre-averaged variance (Jacod et al. 2009) with block `k_n = max(⌊θ√n⌋, 2)` for `theta` θ,
-/// typically `1/3..1/2`; NaN below four returns, and panics unless `theta` is finite and positive.
+/// by custom `1/3..1/2`; NaN below four returns, and panics unless `theta` is finite and positive.
 pub fn pre_averaged_variance<T: FloatExt>(returns: ArrayView1<T>, theta: T) -> T {
   let theta_f = theta.to_f64().unwrap();
   assert!(

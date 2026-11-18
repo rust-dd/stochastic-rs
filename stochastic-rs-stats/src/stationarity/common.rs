@@ -67,6 +67,8 @@ pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
   lags.saturating_mul(2).saturating_add(terms + 1)
 }
 
+/// Schwert's rule `⌊12 (n / 100)^{1/4}⌋` for the largest lag.
+/// Reference: Schwert (1989), J. Bus. Econ. Stat. 7(2), 147-159, 10.1080/07350015.1989.10509723
 pub fn schwert_max_lags(n: usize) -> usize {
   if n <= 1 {
     return 0;
@@ -436,8 +438,7 @@ pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError
 }
 
 /// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of `y`'s
-/// variance, or `(ROUNDING_MARGIN κ ε)²` at the solve's `condition` κ; `Err` as
-/// [`reject_rounded_constant`] of `y`.
+/// variance, or `(ROUNDING_MARGIN κ ε)²` at the solve's κ; `Err` as [`reject_rounded_constant`].
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64], condition: f64) -> Result<(), StatsError> {
   reject_rounded_constant(y)?;
   let mean = y.iter().sum::<f64>() / y.len() as f64;

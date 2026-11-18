@@ -1,27 +1,15 @@
-//! Detrended Fluctuation Analysis (Peng et al. 1994).
+//! Detrended fluctuation analysis (Peng et al. 1994): the log-log slope of the detrended profile.
 //!
-//! Procedure:
-//! 1. Integrate the (demeaned) input series: `Y(i) = Σ_{k≤i}(X_k - <X>)`.
-//! 2. For each log-spaced window size `s ∈ [min, max]`, slide
-//!    `N_s ≈ N/s` (optionally overlapping) segments of length `s`.
-//! 3. In each segment fit a polynomial of degree `order` and compute
-//!    the residual variance; aggregate across segments to obtain
-//!    `F²(s) = (1/N_s) Σᵥ (1/s) Σᵢ (Y_v(i) - p_v(i))²`.
-//! 4. Log-log regression `log F(s) ~ α · log s` over the chosen
-//!    window range; `α` is the DFA exponent.
-//! 5. For a series that has *not* been pre-integrated by the user
-//!    (`assume_integrated = false`): `H = α - 1` when `α > 1`, else
-//!    `H = α`.  For an FGN-like noise input (`assume_integrated =
-//!    true`): `H = α` directly.
+//! $$
+//! Y(i) = \sum_{k \le i} (X_k - \bar X),\qquad
+//! F^2(s) = \frac{1}{N_s}\sum_{v=1}^{N_s}\frac1s\sum_{i=1}^{s}\bigl(Y_v(i) - p_v(i)\bigr)^2,\qquad
+//! \log F(s) \sim \alpha \log s
+//! $$
 //!
-//! Reference: Peng C.-K., Buldyrev S. V., Havlin S., Simons M.,
-//! Stanley H. E., Goldberger A. L. (1994) — *Mosaic organization of
-//! DNA nucleotides*, Phys. Rev. E 49(2), 1685–1689,
-//! DOI: 10.1103/PhysRevE.49.1685.
+//! `p_v` is segment `v`'s degree-`order` fit; how `α` maps to `H` is on `assume_integrated`.
 //!
-//! Subsequent refinement: Kantelhardt J. W. et al. (2001) — *Detecting
-//! long-range correlations with detrended fluctuation analysis*,
-//! Physica A 295, 441–454.
+//! Reference: Peng et al. (1994), Phys. Rev. E 49(2), 1685–1689, DOI: 10.1103/PhysRevE.49.1685
+//! Reference: Kantelhardt et al. (2001), Physica A 295, 441–454
 
 use ndarray::ArrayView1;
 
@@ -48,10 +36,8 @@ pub struct Dfa {
   /// Segment overlap, in `[0, 1)`.  `0.0` = no overlap (Peng 1994),
   /// `0.5` = 50% overlap (common refinement).
   pub overlap_pct: f64,
-  /// When `true` the caller has already integrated their FGN-like
-  /// noise into an FBM-like walk and `H = α` directly; when `false`
-  /// (default) the estimator integrates internally and applies
-  /// `H = α - 1` for `α > 1`.
+  /// `true`: the input is already an integrated, FBM-like walk and `H = α`; `false` (default): the
+  /// estimator integrates it, and `H = α - 1` for `α > 1`.
   pub assume_integrated: bool,
 }
 
@@ -220,9 +206,8 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
   }
 }
 
-/// Residual sum of squares after polynomial detrending of `segment`
-/// by a polynomial of `order`.  Uses normal equations (Vandermonde
-/// least squares).
+/// Residual sum of squares of `segment` about its least-squares polynomial of degree `order`, by
+/// the Vandermonde normal equations.
 fn detrend_rss(segment: &[f64], order: usize) -> Option<f64> {
   let n = segment.len();
   if n < order + 2 {

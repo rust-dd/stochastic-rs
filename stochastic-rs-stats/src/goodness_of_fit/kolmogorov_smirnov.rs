@@ -1,73 +1,21 @@
-//! # One-sample Kolmogorov-Smirnov goodness-of-fit test
+//! One-sample Kolmogorov–Smirnov test of a continuous sample against a fully specified CDF.
 //!
-//! Tests whether a continuous sample was drawn from a **fully specified**
-//! distribution — every parameter of the null CDF `F` is fixed in advance,
-//! not fitted from `sample` itself (see "Known vs. estimated parameters"
-//! below for why that distinction changes which critical values apply).
+//! $$
+//! D_n = \sup_x \left| F_n(x) - F(x) \right| = \max_i \max\!\left(
+//! \left|\tfrac{i+1}{n} - F(x_{(i)})\right|,\ \left|F(x_{(i)}) - \tfrac{i}{n}\right| \right)
+//! $$
 //!
-//! $$ D_n = \sup_x \left| F_n(x) - F(x) \right| $$
+//! $$
+//! \Pr(\sqrt n D_n \le \lambda) \to 1 - 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2}, \qquad
+//! D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}
+//! $$
 //!
-//! where `F_n` is the sample's empirical CDF. Computed exactly (no
-//! discretisation) via the standard sorted-sample identity: with
-//! `x_{(0)} \le \dots \le x_{(n-1)}`,
+//! No finite-sample or Lilliefors correction: `F` must not be fitted from the sample under test.
 //!
-//! $$ D_n = \max_i \max\!\left( \left|\tfrac{i+1}{n} - F(x_{(i)})\right|,\ \left|F(x_{(i)}) - \tfrac{i}{n}\right| \right). $$
-//!
-//! ## Asymptotic null distribution and critical value
-//!
-//! Under `H0`, `\sqrt n D_n` converges to the Kolmogorov distribution
-//! (Kolmogorov 1933), tabulated for practical use by Smirnov (1948) and
-//! by Massey (1951) — the source of the `c(\alpha)` critical-value
-//! constants and their large-`n` critical-value formula used below:
-//!
-//! $$ \Pr(\sqrt n D_n \le \lambda) \to 1 - 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2}, \qquad D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}. $$
-//!
-//! `c(\alpha)` at the common levels — `c(0.10) = 1.224`, `c(0.05) =
-//! 1.358`, `c(0.025) = 1.48`, `c(0.01) = 1.628` — and the closed form
-//! above are Massey's (1951) large-sample approximation to the exact
-//! finite-sample table; [`ks_critical_value`]'s own tests pin these
-//! constants. No finite-sample correction (e.g. Stephens 1974's
-//! `\sqrt n \to \sqrt n + 0.12 + 0.11/\sqrt n`) is applied, so
-//! [`KolmogorovSmirnovTest::critical_values`] and
-//! [`KolmogorovSmirnovTest::p_value`] stay defined by the *same*
-//! uncorrected asymptotic formula and therefore always agree on
-//! rejection at the sample sizes this crate's own callers use (tens of
-//! thousands) — mixing a corrected p-value with an uncorrected critical
-//! value would let the two disagree at the margin.
-//!
-//! ## Known vs. estimated parameters — why the plain table applies here
-//!
-//! The critical values above are only valid when `F` is fully specified
-//! *before* looking at `sample` — if any parameter of `F` was fitted
-//! *from* `sample` (e.g. plugging in the sample's own mean/variance as
-//! a Normal's `μ`/`σ`), the true null distribution of `D_n` shifts left
-//! (the fitted CDF hugs the empirical one more closely than the truly
-//! fixed one would), so the standard table over-states how surprising a
-//! given `D_n` is and under-rejects. Lilliefors (1967) derived the
-//! (smaller, distribution-specific) corrected critical values for
-//! exactly that fitted-parameter case. This test does not implement the
-//! Lilliefors correction, and does not need to: every caller in this
-//! workspace constructs the candidate distribution with parameters
-//! chosen *before* sampling (e.g. `SimdGamma::new(2.5, 1.5).seeded(seed)`) and
-//! tests the resulting draws against that same, already-fixed `cdf` —
-//! the parameters are never re-estimated from the sample under test, so
-//! the plain (non-Lilliefors) table is the correct one. A future caller
-//! that instead fits parameters to data before calling this function
-//! would need the Lilliefors correction, not this one.
-//!
-//! References:
-//! - Kolmogorov, A.N. (1933), "Sulla determinazione empirica di una
-//!   legge di distribuzione", *Giornale dell'Istituto Italiano degli
-//!   Attuari* 4, 83-91.
-//! - Smirnov, N.V. (1948), "Table for estimating the goodness of fit of
-//!   empirical distributions", *Annals of Mathematical Statistics*
-//!   19(2), 279-281.
-//! - Massey, F.J. (1951), "The Kolmogorov-Smirnov Test for Goodness of
-//!   Fit", *Journal of the American Statistical Association* 46(253),
-//!   68-78.
-//! - Lilliefors, H.W. (1967), "On the Kolmogorov-Smirnov test for
-//!   normality with mean and variance unknown", *Journal of the
-//!   American Statistical Association* 62(318), 399-402.
+//! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
+//! Reference: Smirnov (1948), Annals of Mathematical Statistics 19(2), 279-281
+//! Reference: Massey (1951), JASA 46(253), 68-78
+//! Reference: Lilliefors (1967), JASA 62(318), 399-402
 
 use ndarray::ArrayView1;
 
@@ -116,30 +64,22 @@ impl HypothesisTest for KolmogorovSmirnovTest {
   }
 }
 
-/// Massey's (1951) large-`n` critical-value constant `c(\alpha) =
-/// \sqrt{-\tfrac12 \ln(\alpha/2)}`, solving `Q(c(\alpha)) = \alpha` for
-/// the Kolmogorov survival function `Q` (see module doc). Matches the
-/// tabulated `c(0.10)=1.224`, `c(0.05)=1.358`, `c(0.025)=1.48`,
-/// `c(0.01)=1.628` (cross-checked in this module's own tests).
+/// Massey's (1951) large-`n` constant $c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}$, which solves
+/// $Q(c) = \alpha$: `c(0.10) = 1.224`, `c(0.05) = 1.358`, `c(0.025) = 1.48`, `c(0.01) = 1.628`.
 fn ks_c_alpha(alpha: f64) -> f64 {
   (-0.5 * (alpha / 2.0).ln()).sqrt()
 }
 
-/// The two-sided asymptotic Kolmogorov-Smirnov critical value
-/// `D_{n,\alpha} = c(\alpha)/\sqrt n` (Massey 1951; see module doc).
+/// The two-sided asymptotic critical value $D_{n,\alpha} = c(\alpha)/\sqrt n$ (Massey 1951); panics
+/// unless `0 < alpha < 1` and `n >= 1`.
 pub fn ks_critical_value(alpha: f64, n: usize) -> f64 {
   assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
   assert!(n >= 1, "n must be at least 1");
   ks_c_alpha(alpha) / (n as f64).sqrt()
 }
 
-/// Kolmogorov's asymptotic survival function `Q(\lambda) = \Pr(\sqrt n
-/// D_n > \lambda)`, i.e. `2 \sum_{k=1}^{\infty} (-1)^{k-1}
-/// e^{-2k^2\lambda^2}` (Kolmogorov 1933). The series is absolutely
-/// convergent for every `\lambda > 0` (terms shrink as `e^{-2k^2
-/// \lambda^2}`); truncating once a term is negligible relative to the
-/// partial sum bounds the remaining alternating-series error by that
-/// same negligible term.
+/// Kolmogorov's survival function $Q(\lambda) = 2 \sum_{k \ge 1} (-1)^{k-1} e^{-2k^2\lambda^2}$,
+/// summed until a term is negligible against the partial sum, which bounds the alternating rest.
 fn kolmogorov_survival(lambda: f64) -> f64 {
   if lambda <= 0.0 {
     return 1.0;
@@ -228,11 +168,8 @@ mod tests {
     assert!((d_100 - c / 10.0).abs() < 1e-12);
   }
 
-  /// A true normal sample must not reject at `alpha = 0.05` — run three
-  /// pinned seeds and require the *best* (largest) p-value to still
-  /// clear `alpha`, per this workspace's multi-seed mandate for
-  /// statistical assertions (a correct test still rejects a true null at
-  /// rate `alpha`, and the SIMD stream differs across platforms).
+  /// A true normal sample is not rejected at `alpha = 0.05`: the largest p-value of three pinned
+  /// seeds clears it, as a correct test rejects a true null at rate `alpha` on any one seed.
   #[test]
   fn accepts_true_normal_sample() {
     let best_p = [42u64, 999, 2718]

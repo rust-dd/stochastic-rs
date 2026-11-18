@@ -1,28 +1,6 @@
-//! # Hurst exponent estimators
+//! Hurst-exponent estimators behind one `HurstEstimator` trait; choosing one is on the stats page.
 //!
-//! Unified [`HurstEstimator`] trait plus per-method config structs.  Each
-//! estimator returns a [`HurstFit`] carrying the point estimate, an
-//! optional standard error, sample size, and a method-specific
-//! [`HurstDiagnostic`] (log-log slope, variation ratio, …).
-//!
-//! Available estimators (in this crate):
-//!
-//! | Struct                                  | Method                                              |
-//! |-----------------------------------------|-----------------------------------------------------|
-//! | [`rs::RescaledRange`]                   | Hurst (1951) + Anis-Lloyd (1976) bias correction     |
-//! | [`dfa::Dfa`]                            | Peng et al. (1994) detrended fluctuation analysis    |
-//! | [`gph::Gph`]                            | Geweke-Porter-Hudak (1983) log-periodogram           |
-//! | [`wavelet::Wavelet`]                    | Veitch-Abry (1999) DWT + WLS regression              |
-//! | [`variations::Variations`]              | Daubechies / central-diff / `k`-th p-power variation |
-//! | [`crate::fractal_dim::Higuchi`]         | Higuchi (1988) FD adapter, `H = 2 - D`               |
-//! | [`crate::fractal_dim::Variogram`]       | Variogram FD adapter (Constantine-Hall 1994)         |
-//!
-//! The fractal-dimension estimators ([`crate::fractal_dim::Higuchi`],
-//! [`crate::fractal_dim::Variogram`]) implement **both**
-//! [`crate::fractal_dim::FractalDimEstimator`] (returns `D`) and
-//! [`HurstEstimator`] (returns `H = 2 - D`, unclamped).  Pick
-//! which output you want by importing the relevant trait or by
-//! disambiguating the call:
+//! The fractal-dimension estimators implement it too, as `H = 2 − D`: name the trait in the call.
 //!
 //! ```
 //! use stochastic_rs_core::simd_rng::Deterministic;
@@ -37,75 +15,6 @@
 //!     .hurst;
 //! assert!((0.0..=1.0).contains(&h));
 //! ```
-//!
-//! ## Choosing an estimator
-//!
-//! All seven estimate the same thing — the self-similarity exponent of
-//! the series handed to `.estimate()` — by different routes;
-//! [`Whittle::fit`] estimates something else entirely. Read the estimand
-//! before the estimator name.
-//!
-//! **Path self-similarity** ([`RescaledRange`], [`Dfa`], [`Gph`],
-//! [`Wavelet`], [`Variations`]): all five fit a log-log (or
-//! log-frequency) regression directly on the series, after optional
-//! first-differencing. They are not interchangeable up to tuning — the
-//! literature documents real differences:
-//!
-//! - [`RescaledRange`] is the oldest (Hurst 1951) and, per Weron (2002) —
-//!   already the citation backing this struct's Anis-Lloyd correction —
-//!   the least reliable of the group in finite samples. Kept for its
-//!   historical role and cheap computation, not as the recommended
-//!   default.
-//! - [`Dfa`] detrends every window with a degree-`order` polynomial before
-//!   measuring fluctuation, which is specifically why Peng et al. (1994)
-//!   and Kantelhardt et al. (2001) built it: robustness to the smooth
-//!   trends that make [`RescaledRange`] unreliable on real (as opposed to
-//!   simulated stationary) data.
-//! - [`Gph`] and [`Wavelet`] work in the frequency/scale domain and are
-//!   the only two that populate `std_err` with a closed-form asymptotic
-//!   value rather than leaving it `None` — reach for one of these two
-//!   when a confidence interval matters, not just a point estimate.
-//!   [`Wavelet`]'s `Daubechies4` filter has 2 vanishing moments, so it is
-//!   blind to a linear trend but not a quadratic one; [`Dfa`] with a
-//!   higher `order` handles trends [`Wavelet`] cannot.
-//! - [`Variations`] (Achard & Coeurjolly 2010; Brouste & Iacus 2013, arXiv:1112.3777)
-//!   is the one derived for a discretely-observed **fractional
-//!   Ornstein-Uhlenbeck**-type process rather than pure fBM/fGN
-//!   self-similarity — reach for it, specifically
-//!   `VariationKind::PowerVariation`, when the generating model is
-//!   believed to be mean-reverting-rough rather than a pure fractional
-//!   random walk. Its three [`VariationKind`] values *are* interchangeable
-//!   in the differ-only-in-tuning sense: the same log-ratio-of-two-scales
-//!   idea, different filter/kernel.
-//!
-//! **Fractal-dimension route** ([`crate::fractal_dim::Higuchi`],
-//! [`crate::fractal_dim::Variogram`]): these reach `H` from a different
-//! literature entirely — curve-length (Higuchi 1988, biophysical signal
-//! processing) and variogram-ratio (Constantine & Hall 1994, spatial
-//! statistics) fractal-dimension estimation, converted via the FBM
-//! identity `H = 2 - D`. [`fd_adapters`] reports `H = 2 - D` unclamped, so a noisy fit
-//! that pushes `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`.
-//!
-//! **A different quantity entirely** ([`Whittle::fit`]): Fukasawa,
-//! Takabatake & Westphal (2019, arXiv:1905.04852) estimate the roughness of
-//! a **latent volatility** process from log realized variance aggregated
-//! from intraday returns — not the self-similarity exponent of a series
-//! sampled directly from, say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]
-//! — so [`Whittle`] is not a [`HurstEstimator`] and returns a
-//! [`FukasawaFit`].
-//!
-//! **Data requirements** — hard validation floor, all generic over
-//! `T: `[`crate::traits::FloatExt`] (`f32` or `f64`):
-//!
-//! | Estimator | Min. obs. (defaults) |
-//! |---|---|
-//! | [`RescaledRange`] | `4 (min_window + 1)` → 68 (`2 max(min_window + 1, 8)` with `max_window`) |
-//! | [`Dfa`] | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
-//! | [`Gph`] | 64 |
-//! | [`Wavelet`] | `max(64, 2^(j_min + 3) + 1)` → 64 |
-//! | [`Variations`] | 5 (`CentralDiff`, the default) to 7 (`Daubechies`), or `2k + 1` for `PowerVariation { k, .. }` |
-//! | [`crate::fractal_dim::Higuchi`] | 3 (but see the `kmax` caveat above — the hard floor is far below what a meaningful log-log regression needs) |
-//! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -170,12 +79,8 @@ impl<T: FloatExt> HurstFit<T> {
   }
 }
 
-/// Method-specific auxiliary information returned alongside the Hurst
-/// estimate.
-///
-/// Carrying these as an enum keeps the [`HurstFit`] struct flat for
-/// the common `.hurst` access while still letting callers pattern-match
-/// on the variant to recover slope, residuals, or other diagnostics.
+/// Method-specific diagnostics beside the Hurst estimate: an enum, so that [`HurstFit`] stays flat
+/// and a caller matches on the variant for the slope or the other values.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum HurstDiagnostic<T: FloatExt> {
@@ -199,19 +104,15 @@ pub enum HurstDiagnostic<T: FloatExt> {
     /// Variation at the long stride.
     v_long: T,
   },
-  /// Fractal-dimension derived Hurst, carrying the underlying `D`
-  /// value (used by [`crate::fractal_dim::Higuchi`] /
-  /// [`crate::fractal_dim::Variogram`] when invoked through the
-  /// [`HurstEstimator`] trait).
+  /// The fractal dimension `D` behind `H = 2 − D`, from [`crate::fractal_dim::Higuchi`] or
+  /// [`crate::fractal_dim::Variogram`] through [`HurstEstimator`].
   FractalDim { d: T },
   /// No diagnostic available.
   None,
 }
 
-/// Weighted-least-squares regression `y ~ slope * x + intercept`.
-///
-/// Pass `weights = None` to fall back to OLS.  Returns
-/// `(slope, intercept, r_squared)` or `None` for a degenerate fit.
+/// Weighted least squares of `y` on `x` (OLS when `weights` is `None`): `(slope, intercept, r²)`,
+/// or `None` for a degenerate fit.
 pub(crate) fn weighted_linreg(
   x: &[f64],
   y: &[f64],

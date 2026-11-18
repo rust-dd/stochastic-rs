@@ -1,5 +1,6 @@
-//! Random-walk Metropolis on the QMLE's quasi-likelihood: `proposal_scale` acts on `ln θ`, the
-//! level (CIR's `ln μ`, OU's `(μ − x̄)/s`, `s` the path's spread) and `ln σ`.
+//! Random-walk Metropolis on the QMLE's quasi-likelihood of an OU or CIR path.
+//!
+//! `proposal_scale` acts on `ln θ`, `ln σ` and the level: CIR's `ln μ`, OU's `(μ − x̄)/s`.
 //!
 //! Reference: Eraker (2001), Journal of Business & Economic Statistics 19(2), 177-191.
 //! Reference: Robert, Casella (2004), Monte Carlo Statistical Methods, Springer, ch. 7.
@@ -75,8 +76,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior under the priors below, defined where the QMLE refuses; `Err`s, panics: its
-/// checks, [`random_walk_metropolis`]
+/// Metropolis posterior under the priors below, defined where the QMLE refuses; `Err` as the path
+/// checks and [`random_walk_metropolis`]; panics unless `0 < dt < ∞` and `n_samples >= 1`.
 /// $$
 /// p(\theta) \propto \frac{\rho}{\sqrt{1-\rho^2}},\ \rho = e^{-\theta\Delta}; \qquad
 /// \mu \sim N(\bar x, (4s)^2),\ \mu > 0 \text{ for CIR}; \qquad

@@ -1,50 +1,14 @@
-//! # Pearson chi-square goodness-of-fit test (discrete / binned data)
+//! Pearson chi-square goodness-of-fit test of binned counts against a fully specified pmf.
 //!
-//! Tests whether integer-count data was drawn from a **fully specified**
-//! probability mass function — every parameter known in advance, not
-//! fitted from the data under test (see
-//! [`crate::goodness_of_fit::kolmogorov_smirnov`]'s module doc for why
-//! that distinction matters; the same reasoning applies here).
+//! $$
+//! \chi^2 = \sum_{i=1}^{k} \frac{(O_i - E_i)^2}{E_i}, \qquad E_i = n \cdot p_i, \qquad
+//! \chi^2 \overset{H_0}{\sim} \chi^2_{k-1}
+//! $$
 //!
-//! $$ \chi^2 = \sum_{i=1}^{k} \frac{(O_i - E_i)^2}{E_i}, \qquad E_i = n \cdot p_i $$
+//! Nothing is fitted, so `k − 1` degrees of freedom; an expected count under 1 is an `Err`.
 //!
-//! Reference: Pearson, K. (1900), "On the criterion that a given system
-//! of deviations from the probable in the case of a correlated system
-//! of variables is such that it can be reasonably supposed to have
-//! arisen from random sampling", *Philosophical Magazine* Series 5,
-//! 50(302), 157-175.
-//!
-//! For a fully specified null, `\chi^2` is asymptotically
-//! `\chi^2_{k-1}` — one fewer than the bin count `k`, because the
-//! observed bin proportions are constrained to sum to 1 (Pearson 1900).
-//! This is one lower than the general `df = k - 1 - s` used when `s`
-//! parameters are additionally *estimated from the same data* — not the
-//! case here, so no further subtraction applies.
-//!
-//! ## Why chi-square rather than Kolmogorov-Smirnov here
-//!
-//! KS's asymptotic null distribution assumes a continuous `F`, so that
-//! `F_n(x) - F(x)` is driven only by sampling noise; on an integer
-//! lattice `F` has jumps at every support point and the same statistic
-//! is no longer calibrated the same way, which is exactly why a
-//! *binned* statistic is used for discrete distributions instead
-//! (Pearson 1900 predates Kolmogorov 1933 and was designed for
-//! categorical/count data from the start).
-//!
-//! ## Bin pooling rule
-//!
-//! Cochran, W.G. (1954), "Some methods for strengthening the common
-//! chi-square tests", *Biometrics* 10(4), 417-451 — the chi-square
-//! approximation degrades once expected cell counts get too small;
-//! Cochran's widely used rule of thumb is that every cell's expected
-//! count should be at least 5 (more precisely: no cell below 1, and no
-//! more than 20% of cells below 5). [`pool_integer_bins`] enforces
-//! "every bin's expected count `\ge` `min_expected`" by accumulating
-//! adjacent lattice cells until the threshold is met, folding in the two
-//! open-ended tails `(-\infty, k_{lo})` / `(k_{hi}, \infty)` as the
-//! outermost bins; [`chi_square_gof_test`] additionally answers `Err`
-//! below Cochran's stricter floor of expected count `< 1`, since below
-//! that the approximation is not considered valid at all.
+//! Reference: Pearson (1900), Philosophical Magazine Series 5, 50(302), 157-175
+//! Reference: Cochran (1954), Biometrics 10(4), 417-451
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -166,20 +130,8 @@ pub fn chi_square_gof_test(
   })
 }
 
-/// Pools an integer-lattice pmf's cells over `[k_lo, k_hi]` into bins
-/// whose expected count clears `min_expected` (Cochran 1954; see module
-/// doc), folding the two open-ended tails `(-\infty, k_{lo})` /
-/// `(k_{hi}, \infty)` in as the outermost bins so the returned bins
-/// always partition the *entire* integer line — no probability mass is
-/// dropped regardless of how tight `[k_lo, k_hi]` is chosen.
-///
-/// `cdf(k)` must return `P(K \le k)` for the candidate distribution.
-/// Bin `i` covers `[edges[i], edges[i+1])`; `edges[0] = i64::MIN` and
-/// `edges[last] = i64::MAX` are open-ended sentinels, so
-/// `edges.len() == expected_prob.len() + 1`.
-///
-/// # Panics
-/// Panics if `k_hi < k_lo` or `min_expected <= 0`.
+/// Pools `cdf`'s masses over `[k_lo, k_hi]` and both open tails into bins `[edges[i], edges[i+1])`,
+/// each of expected count `>= min_expected`; panics unless `k_lo <= k_hi` and `min_expected > 0`.
 pub fn pool_integer_bins(
   n: u64,
   k_lo: i64,
@@ -219,7 +171,7 @@ pub fn pool_integer_bins(
   (edges, probs)
 }
 
-/// Counts `samples` into the bins produced by [`pool_integer_bins`].
+/// Counts `samples` into the bins of [`pool_integer_bins`]; panics unless `edges.len() >= 2`.
 pub fn bin_observed(samples: &[i64], edges: &[i64]) -> Vec<u64> {
   assert!(edges.len() >= 2, "need at least one bin (2 edges)");
   let mut counts = vec![0u64; edges.len() - 1];
@@ -245,9 +197,8 @@ mod tests {
   use super::pool_integer_bins;
   use crate::StatsError;
 
-  /// Standard textbook table: `chi2_{0.05, df}` for df in {1, 4, 9, 10}.
-  /// Values from any standard chi-square table (e.g. NIST/SEMATECH
-  /// e-Handbook of Statistical Methods, chi-square percentage points).
+  /// `chi2_{0.05, df}` for `df` in {1, 4, 9, 10}, as in the NIST/SEMATECH e-Handbook's table of
+  /// chi-square percentage points.
   #[test]
   fn critical_value_matches_standard_table() {
     let table = [(1, 3.841), (4, 9.488), (9, 16.919), (10, 18.307)];

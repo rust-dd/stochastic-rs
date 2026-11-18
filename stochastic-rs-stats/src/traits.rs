@@ -1,4 +1,6 @@
-//! The traits the crate defines or depends on, under one path; `HypothesisTest` is defined in distributions so copulas can implement it too.
+//! The traits the crate defines or depends on, under one path.
+//!
+//! `HypothesisTest` is defined in distributions so that copulas can implement it too.
 
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::DistributionSampler;

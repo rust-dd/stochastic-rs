@@ -20,10 +20,8 @@ fn lcg(seed: u64, n: usize) -> Vec<f64> {
     .collect()
 }
 
-/// GPD(σ = 2, ξ = 0.25) excesses by inverse CDF; reference MLE from
-/// `scipy.optimize.minimize(..., method="Nelder-Mead", xatol=fatol=1e-12)`
-/// on the same negative log-likelihood (and `genpareto.fit(y, floc=0)`
-/// agreeing to 2e-5).
+/// GPD(σ = 2, ξ = 0.25) excesses by inverse CDF. The reference MLE is scipy's Nelder–Mead
+/// (`xatol=fatol=1e-12`) on the same likelihood; `genpareto.fit(y, floc=0)` agrees to 2e-5.
 fn gpd_sample() -> Array1<f64> {
   lcg(3, 2_000)
     .into_iter()
@@ -92,9 +90,8 @@ fn gpd_fit_matches_scipy() {
   );
 }
 
-/// With the threshold at zero every observation exceeds it, so the POT
-/// quantiles reduce to the GPD's own: VaR₉₉ and ES₉₉ from eq. 5.18 / 5.20
-/// at the reference optimum.
+/// With the threshold at zero every observation exceeds it, so the POT quantiles are the GPD's own:
+/// VaR₉₉ and ES₉₉ from eq. 5.18 / 5.20 at the reference optimum.
 #[test]
 fn pot_var_and_es_match_the_qrm_formulas() {
   let pot = fit_pot(gpd_sample().view(), 0.0).unwrap();
@@ -300,9 +297,8 @@ fn a_level_outside_the_unit_interval_gives_nan() {
   assert_eq!(heavy.expected_shortfall(0.99), f64::INFINITY);
 }
 
-/// Hosking–Wallis PWM on the reference GPD sample: the closed-form
-/// estimates reproduce the Python evaluation of eqs. 15-16 to rounding,
-/// and land near the σ = 2, ξ = 0.25 truth like the MLE does.
+/// Hosking–Wallis PWM on the reference GPD sample: the Python evaluation of eqs. 15-16 to rounding,
+/// and near the σ = 2, ξ = 0.25 truth as the MLE is.
 #[test]
 fn gpd_pwm_matches_the_hosking_wallis_formulas() {
   let est = fit_gpd_pwm(gpd_sample().view()).unwrap();

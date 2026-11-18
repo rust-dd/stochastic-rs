@@ -2,11 +2,8 @@ use ndarray::Array1;
 
 use super::*;
 
-/// GARCH(1,1) path ($\omega = 0.05$, $\alpha = 0.10$, $\beta = 0.85$,
-/// $\mu = 0.02$) driven by sum-of-twelve-uniform innovations from an integer
-/// LCG, bit-identical to the Python generator behind the `arch` 7.x
-/// reference numbers below (`arch_model(..., rescale=False).fit(backcast=
-/// mean((r - mean(r))**2), tol=1e-12)`).
+/// A GARCH(1,1) path (ω = 0.05, α = 0.10, β = 0.85, μ = 0.02) on twelve-uniform innovations of an
+/// LCG; `arch` 7.x fits it with `rescale=False`, `backcast=mean((r - mean(r))**2)`, `tol=1e-12`.
 fn lcg_garch_returns() -> Array1<f64> {
   let mut x: u64 = 11;
   let mut next = || {
@@ -43,9 +40,8 @@ fn assert_relative(got: f64, want: f64, tol: f64, what: &str) {
   );
 }
 
-/// The likelihood evaluated at `arch`'s optimum must reproduce its
-/// log-likelihood and conditional variances, isolating the recursion from
-/// the optimiser.
+/// The likelihood at `arch`'s optimum reproduces its log-likelihood and conditional variances,
+/// which isolates the recursion from the optimiser.
 fn check_likelihood_at(spec: GarchSpec, natural: &[f64], loglik: f64, sigma2: [f64; 3]) {
   let r = lcg_garch_returns();
   let returns: Vec<f64> = r.to_vec();

@@ -1,3 +1,7 @@
+//! Leybourne–McCabe stationarity test: KPSS's statistic on AR-prewhitened residuals, bootstrapped.
+//!
+//! Reference: Leybourne & McCabe (1994), J. Bus. Econ. Stat. 12(2), 157-166
+
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
@@ -17,7 +21,8 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 
-/// Configuration for the Leybourne-McCabe stationarity test.
+/// Configuration of the Leybourne–McCabe test, which panics unless `trend != Trend::None`,
+/// `ar_lags >= 1`, `bootstrap_samples >= 1` and `0 < alpha < 1`.
 #[derive(Debug, Clone, Copy)]
 pub struct LeybourneMcCabeConfig {
   /// Null deterministic structure: `Constant` (level) or `ConstantTrend`.
@@ -121,7 +126,7 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
 }
 
 /// Leybourne–McCabe test; `Err` below `max(40, ar_lags + 15, 2 ar_lags + 1)` points, a non-finite
-/// or constant series, a singular or exact AR fit or a failed bootstrap; panics on a bad config.
+/// or constant series, a singular or exact AR fit, a failed bootstrap; panics as `cfg`'s type says.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,

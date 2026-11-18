@@ -1,15 +1,9 @@
-//! Random-Walk Metropolis-Hastings sampler.
+//! Random-walk Metropolis–Hastings sampler of a user-supplied log-target.
 //!
-//! Generic posterior sampler driven by a user-supplied log-target. The
-//! proposal is a multivariate Gaussian random walk with diagonal step scale.
+//! The proposal is a Gaussian random walk with a diagonal step scale.
 //!
-//! Reference: Metropolis, Rosenbluth, Rosenbluth, Teller, Teller, "Equation of
-//! State Calculations by Fast Computing Machines", Journal of Chemical
-//! Physics, 21(6), 1087-1092 (1953). DOI: 10.1063/1.1699114
-//!
-//! Reference: Hastings, "Monte Carlo Sampling Methods Using Markov Chains and
-//! Their Applications", Biometrika, 57(1), 97-109 (1970).
-//! DOI: 10.1093/biomet/57.1.97
+//! Reference: Metropolis et al. (1953), J. Chem. Phys. 21(6), 1087-1092, DOI: 10.1063/1.1699114
+//! Reference: Hastings (1970), Biometrika 57(1), 97-109, DOI: 10.1093/biomet/57.1.97
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -36,8 +30,8 @@ pub struct MhResult {
   pub log_targets: Array1<f64>,
 }
 
-/// `n_samples` random-walk Metropolis draws after `burn_in` of `log_target` (`-∞` off its support),
-/// steps `proposal_scale`; `Err` unless `log_target(initial)` is finite, panics on bad config.
+/// `n_samples` random-walk Metropolis draws after `burn_in` of `log_target` (`-∞` off its support);
+/// `Err` on a non-finite start; panics unless the scales have `initial`'s length, `n_samples >= 1`.
 pub fn random_walk_metropolis<F>(
   initial: ArrayView1<f64>,
   log_target: F,

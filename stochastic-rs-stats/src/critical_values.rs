@@ -47,7 +47,7 @@ impl CriticalValues {
     self.entries.iter().find(|e| e.0 == alpha).map(|e| e.1)
   }
 
-  /// The value at the largest tabulated level ≤ `alpha`; panics when `alpha` is below every level.
+  /// The value at the largest tabulated level ≤ `alpha`; panics unless some level is `<= alpha`.
   pub fn value_at(&self, alpha: f64) -> f64 {
     let smallest = self.entries[0].0;
     assert!(

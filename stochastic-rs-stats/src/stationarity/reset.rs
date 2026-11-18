@@ -1,25 +1,18 @@
-//! Ramsey (1969) RESET (REgression Equation Specification Error Test) for
-//! functional-form misspecification.
+//! Ramsey (1969) RESET, the regression equation specification error test of functional form.
 //!
-//! Given the linear regression $y_t = x_t^\top \beta + \varepsilon_t$, fit OLS
-//! to obtain fitted values $\hat y_t$ and augment with powers
-//! $\hat y_t^2, \dots, \hat y_t^p$:
 //! $$
-//! y_t = x_t^\top \beta + \sum_{j=2}^{p} \gamma_j \hat y_t^{\,j}
-//!       + \varepsilon_t.
+//! y_t = x_t^\top \beta + \sum_{j=2}^{p} \gamma_j \hat y_t^{\,j} + \varepsilon_t,\qquad
+//! H_0: \gamma_2 = \dots = \gamma_p = 0
 //! $$
-//! Under the null of correct linear specification, $H_0: \gamma_2 = \dots =
-//! \gamma_p = 0$, the joint F-statistic
-//! $$
-//! F = \frac{(\mathrm{SSR}_r - \mathrm{SSR}_u)/q}{\mathrm{SSR}_u/(T - k - q)},
-//! \qquad q = p - 1,
-//! $$
-//! is asymptotically $F(q, T - k - q)$. The default `powers = 2..=3` matches
-//! Ramsey's original recommendation.
 //!
-//! Reference: Ramsey, J.B. (1969), "Tests for Specification Errors in
-//! Classical Linear Least Squares Regression Analysis", *JRSS B* 31(2),
-//! 350-371.
+//! $$
+//! F = \frac{(\mathrm{SSR}_r - \mathrm{SSR}_u)/q}{\mathrm{SSR}_u/(T - k - q)}
+//! \overset{H_0}{\sim} F(q, T - k - q),\qquad q = p - 1
+//! $$
+//!
+//! `ŷ` are the fitted values of `y` on `x`; the default powers, 2 and 3, are Ramsey's own.
+//!
+//! Reference: Ramsey (1969), JRSS B 31(2), 350-371
 
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -48,7 +41,7 @@ fn f_upper_tail(x: f64, d1: f64, d2: f64) -> f64 {
   (1.0 - beta_i(d1 * 0.5, d2 * 0.5, z)).clamp(0.0, 1.0)
 }
 
-/// Configuration for the RESET test.
+/// Configuration of the RESET test, which panics unless `max_power >= 2` and `0 < alpha < 1`.
 #[derive(Debug, Clone, Copy)]
 pub struct ResetConfig {
   /// Highest power of $\hat y$ added to the augmented regression. Must be
@@ -94,7 +87,7 @@ impl crate::traits::HypothesisTest for ResetTest {
 }
 
 /// Ramsey (1969) RESET; `Err` below `k + q + 2` points, a non-finite entry, constant `y`,
-/// mismatched rows, a singular or exact fit, `Numerical` on a non-finite `F`; panics on bad `cfg`.
+/// mismatched rows, a singular or exact fit, a non-finite `F`; panics as [`ResetConfig`] says.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,

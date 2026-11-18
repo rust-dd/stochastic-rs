@@ -1,4 +1,5 @@
-//! Variogram-ratio (p-power) fractal dimension from the lag-1 and lag-2 variograms:
+//! Variogram-ratio (p-power) fractal dimension from the lag-1 and lag-2 variograms.
+//!
 //! $$
 //! V_p(l) = \frac{1}{2(N - l)} \sum_{i=l}^{N-1} |X_i - X_{i-l}|^p,
 //! \quad

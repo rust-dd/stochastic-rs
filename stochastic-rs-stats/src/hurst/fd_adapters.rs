@@ -1,5 +1,6 @@
-//! [`HurstEstimator`] for the fractal-dimension estimators, `H = 2 − D` unclamped; name the trait
-//! at the call site when both are in scope:
+//! `HurstEstimator` for the fractal-dimension estimators, `H = 2 − D` unclamped.
+//!
+//! Name the trait at the call site when both are in scope:
 //!
 //! ```
 //! use stochastic_rs_core::simd_rng::Deterministic;

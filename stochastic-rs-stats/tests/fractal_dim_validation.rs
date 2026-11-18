@@ -47,12 +47,8 @@ fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
   let h = 0.78_f64;
   let n = 4096_usize;
   let t = 1.0_f64;
-  // Pinned seed + m=480 paths: the endpoint-variance estimate has sampling
-  // SD ≈ σ²·√(2/m). At m=240 that is ≈0.093, so the ±0.18 band below is only
-  // ~2σ and the test flaked on ~3.5% of unseeded runs. At m=480 the SD drops
-  // to ≈0.057 and, over a sweep of seeds, the worst |v̂−1| is 0.12 < 0.18, so
-  // the check is seed-robust rather than cherry-picked. A fixed `Deterministic`
-  // seed then makes the realised value reproducible across CI runs.
+  // `m = 480` paths under a pinned seed: the endpoint variance has SD ≈ σ²·√(2/m) ≈ 0.057, and
+  // over a sweep of seeds the worst |v̂−1| is 0.12 < 0.18; at `m = 240` the band was only 2σ.
   let m = 480_usize;
   let higuchi = Higuchi::new(32);
   let variogram = Variogram::new(2.0);

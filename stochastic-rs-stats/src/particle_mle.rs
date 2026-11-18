@@ -1,45 +1,20 @@
-//! # Particle-filter maximum likelihood for stochastic volatility
-//!
-//! Maximum-likelihood estimation of a discrete-time stochastic-volatility
-//! (SV) state-space model by maximising the **particle-filter
-//! approximation of the marginal likelihood** (Kitagawa 1996). The latent
-//! log-variance follows an AR(1),
+//! Particle-filter maximum likelihood for a discrete-time stochastic-volatility model.
 //!
 //! $$
-//! h_t = \mu + \phi(h_{t-1} - \mu) + \sigma_\eta\,\eta_t, \quad \eta_t \sim \mathcal{N}(0,1),
+//! h_t = \mu + \phi(h_{t-1} - \mu) + \sigma_\eta\,\eta_t,\qquad
+//! y_t = e^{h_t/2}\,\varepsilon_t,\qquad \eta_t, \varepsilon_t \sim \mathcal{N}(0,1)
 //! $$
 //!
-//! and the observed return is conditionally Gaussian with that variance,
-//!
 //! $$
-//! y_t = e^{h_t/2}\,\varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0,1)
-//! \;\Longrightarrow\; \log p(y_t \mid h_t)
-//! = -\tfrac{1}{2}\bigl(h_t + y_t^2 e^{-h_t} + \ln 2\pi\bigr).
+//! \log p(y_t \mid h_t) = -\tfrac{1}{2}\bigl(h_t + y_t^2 e^{-h_t} + \ln 2\pi\bigr),\qquad
+//! \hat\ell(\mu, \phi, \sigma_\eta) = \sum_t \log \hat p(y_t \mid y_{1:t-1})
 //! $$
 //!
-//! The marginal log-likelihood $\sum_t \log p(y_t \mid y_{1:t-1})$ has no
-//! closed form because $h_t$ is latent and the model is non-linear /
-//! non-Gaussian. A bootstrap particle filter
-//! ([`crate::filtering::particle::ParticleFilter`]) approximates each
-//! incremental term; summing them gives the objective the optimiser
-//! maximises over $(\mu, \phi, \sigma_\eta)$.
+//! One filter seed across the evaluations, common random numbers, keeps the surface smooth.
 //!
-//! **Common random numbers.** The PF likelihood is a Monte-Carlo estimate
-//! and would be too noisy for a deterministic optimiser if re-seeded each
-//! evaluation. We fix the filter seed across all parameter evaluations so
-//! the particle draws are shared and the likelihood surface is a smooth
-//! (if slightly biased) function of the parameters — the standard
-//! variance-reduction device for simulated-likelihood optimisation
-//! (Hürzeler-Künsch 1998, Pitt 2002).
-//!
-//! References:
-//! - Kitagawa, G. (1996), "Monte Carlo filter and smoother for
-//!   non-Gaussian nonlinear state space models", *Journal of
-//!   Computational and Graphical Statistics* 5(1), 1-25.
-//! - Pitt, M.K. (2002), "Smooth particle filters for likelihood
-//!   evaluation and maximisation", Warwick Economic Research Paper 651.
-//! - Hürzeler, M., Künsch, H.R. (1998), "Monte Carlo approximations for
-//!   general state-space models", *JCGS* 7(2), 175-193.
+//! Reference: Kitagawa (1996), J. Computational and Graphical Statistics 5(1), 1-25
+//! Reference: Pitt (2002), Warwick Economic Research Paper 651
+//! Reference: Hürzeler & Künsch (1998), JCGS 7(2), 175-193
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -72,21 +47,8 @@ pub struct ParticleMleFit {
   pub converged: bool,
 }
 
-/// Particle-filter log-likelihood of the SV model at parameters
-/// $(\mu, \phi, \sigma_\eta)$ for the return series `y`, using
-/// `n_particles` and a fixed `pf_seed` (common random numbers).
-///
-/// This is a specialised, allocation-free 1-D bootstrap filter: the latent
-/// log-variance lives in flat `Vec<f64>` buffers reused across steps, so
-/// the optimiser's inner loop performs no per-particle heap allocation
-/// (the generic [`crate::filtering::particle::ParticleFilter`] returns an
-/// `Array1` per particle, which is the right shape for general state-space
-/// work but allocation-bound for the MLE hot loop). The buffered
-/// `SimdNormal` amortises its 64-sample buffer across the per-particle
-/// propagation draws, and both the propagation normals and the
-/// systematic-resampling uniforms are seeded deterministically from
-/// `pf_seed`, giving common random numbers across parameter evaluations so
-/// the likelihood surface is smooth in $(\mu, \phi, \sigma_\eta)$.
+/// Particle-filter log-likelihood of the SV model at $(\mu, \phi, \sigma_\eta)$, a 1-D bootstrap
+/// filter on flat buffers; `pf_seed` fixes its normals and resampling uniforms across evaluations.
 fn sv_pf_loglik(
   y: &[f64],
   mu: f64,
@@ -154,8 +116,8 @@ fn observation_log_densities(h: &[f64], yt: f64, ln_2pi: f64, log_obs: &mut [f64
   f64::max_or_nan_fold(log_obs.iter().copied())
 }
 
-/// SV particle-filter MLE, 500-2000 `n_particles` (0 panics), a common-random-numbers `seed`;
-/// `Err` below 10 returns, on a non-finite or constant one or a non-finite start likelihood.
+/// SV particle-filter MLE on 500-2000 `n_particles` and a common-random-numbers `seed`; `Err` below
+/// 10 returns, a non-finite or constant one or no finite start; panics unless `n_particles >= 1`.
 pub fn fit_sv_particle_mle<T: FloatExt>(
   returns: ArrayView1<T>,
   n_particles: usize,
@@ -197,10 +159,7 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
     });
   }
 
-  // The PF likelihood is a Monte-Carlo estimate with small
-  // resampling-induced kinks, so the simplex never reaches the analytic
-  // tolerance; cap the iterations to bound runtime while still locating
-  // the optimum region.
+  // Resampling kinks keep the simplex from the analytic tolerance, so the iterations are capped.
   let (p, iters, converged) = nelder_mead(start, 250, neg_ll);
   let (mu, phi, sigma_eta) = unpack(&p);
 
@@ -238,11 +197,8 @@ mod tests {
     y
   }
 
-  /// Round-trip: simulate SV data with known parameters, then PF-MLE must
-  /// recover them. SV likelihood estimation is genuinely hard — μ (the
-  /// log-variance level) is the best-identified; φ (persistence) and
-  /// σ_η (vol-of-log-vol) carry wider sampling bands. Tolerances reflect
-  /// realistic PF-MLE accuracy on a 2000-point series.
+  /// PF-MLE recovers the parameters of simulated SV data: `μ` is the best identified, `φ` and
+  /// `σ_η` carry wider bands, and the tolerances are those of a 2000-point series.
   #[test]
   fn particle_mle_recovers_sv_params() {
     let (mu_t, phi_t, sig_t) = (-9.0, 0.9, 0.30);

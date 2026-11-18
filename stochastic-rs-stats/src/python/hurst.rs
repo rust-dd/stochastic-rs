@@ -465,8 +465,7 @@ pub struct PyVariations {
 
 #[pymethods]
 impl PyVariations {
-  /// `kind` is one of `"daubechies"`, `"central_diff"`, or
-  /// `"power_variation"`.  For `"power_variation"` pass `k` and `p`
+  /// `kind` is `"daubechies"`, `"central_diff"` or `"power_variation"`, which takes `k` and `p`
   /// (defaults `k=2`, `p=2.0`).
   #[new]
   #[pyo3(signature = (kind="central_diff", k=2, p=2.0))]

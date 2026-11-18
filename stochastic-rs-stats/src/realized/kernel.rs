@@ -1,18 +1,12 @@
-//! Realized kernels (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008).
-//!
-//! A consistent, noise-robust estimator of integrated variance under
-//! microstructure noise:
+//! Realized kernels (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008), robust to market noise.
 //!
 //! $$
-//! K(X) = \gamma_0(X) + \sum_{h=1}^{H} k\!\left(\tfrac{h-1}{H}\right)\bigl(\gamma_h(X)+\gamma_{-h}(X)\bigr),
+//! K(X) = \gamma_0(X) + \sum_{h=1}^{H} k\!\left(\tfrac{h-1}{H}\right)
+//! \bigl(\gamma_h(X)+\gamma_{-h}(X)\bigr),\qquad
+//! \gamma_h(X) = \sum_{j=|h|+1}^{n} r_j r_{j-|h|},\qquad k:\[0,1\]\to\[0,1\]
 //! $$
 //!
-//! where $\gamma_h(X) = \sum_{j=|h|+1}^{n} r_j r_{j-|h|}$ is the lag-$h$ return
-//! autocovariance and $k:\[0,1\]\to\[0,1\]$ is the chosen kernel weight.
-//!
-//! Reference: Barndorff-Nielsen, Hansen, Lunde, Shephard, "Designing Realised
-//! Kernels to Measure the Ex-Post Variation of Equity Prices in the Presence
-//! of Noise", Econometrica, 76(6), 1481-1536 (2008). DOI: 10.3982/ECTA6495
+//! Reference: Barndorff-Nielsen et al. (2008), Econometrica 76(6), 1481-1536, DOI: 10.3982/ECTA6495
 
 use std::fmt::Display;
 
@@ -36,8 +30,10 @@ pub enum KernelType {
   TukeyHanning2,
   /// Cubic kernel: $k(x) = 1 - 3x^2 + 2x^3$.
   Cubic,
-  /// Quadratic-spectral (Andrews 1991):
-  /// $k(x) = \tfrac{25}{12\pi^2 x^2}\!\left(\tfrac{\sin(6\pi x/5)}{6\pi x/5} - \cos(6\pi x/5)\right)$.
+  /// Quadratic-spectral (Andrews 1991).
+  /// $$
+  /// k(x) = \tfrac{25}{12\pi^2 x^2}\!\left(\tfrac{\sin(6\pi x/5)}{6\pi x/5} - \cos(6\pi x/5)\right)
+  /// $$
   QuadraticSpectral,
 }
 
@@ -114,10 +110,8 @@ impl KernelType {
   }
 }
 
-/// Suggested bandwidth $H^*$ for a flat-top realized kernel
-/// (BNHLS 2008, Table 4 — Parzen "rule of thumb"): $H = c \cdot n^{3/5}$
-/// with $c \approx 3.5134\,\xi^{4/5}$ and the noise-to-signal ratio $\xi^2$
-/// estimated from the data. Falls back to $\xi = 1$ for the default heuristic.
+/// Bandwidth of a flat-top realized kernel by Parzen's rule of thumb (BNHLS 2008, Table 4):
+/// $H = c\,n^{3/5}$, $c \approx 3.5134\,\xi^{4/5}$, $\xi^2$ the noise-to-signal ratio.
 pub fn parzen_default_bandwidth(n: usize, xi: f64) -> usize {
   let nn = n as f64;
   let h = 3.5134_f64 * xi.abs().powf(0.8) * nn.powf(0.6);

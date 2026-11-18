@@ -1,13 +1,8 @@
-//! Shapiro-Francia test for normality: squared correlation between the
-//! ordered sample and Blom-type expected normal order-statistic
-//! approximations. The p-value is obtained here by parametric bootstrap
-//! under the null rather than Shapiro & Francia's original
-//! normal-theory approximation formula for the mean/variance of `W`.
+//! Shapiro–Francia normality test: the squared correlation of the ordered sample and Blom scores.
 //!
-//! Reference: Shapiro S. S. & Francia R. S. (1972) — *An Approximate
-//! Analysis of Variance Test for Normality*, Journal of the American
-//! Statistical Association 67(337), 215–216,
-//! DOI: 10.1080/01621459.1972.10481232.
+//! The p-value is a parametric bootstrap under the null, not the paper's normal approximation.
+//!
+//! Reference: Shapiro & Francia (1972), JASA 67(337), 215–216, DOI: 10.1080/01621459.1972.10481232
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -159,10 +154,8 @@ mod tests {
   use super::shapiro_francia_test;
   use crate::StatsError;
 
-  /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
-  /// `fill_slice` ignores the `Rng` it is handed and draws from the
-  /// distribution's own SIMD stream, so seeding an external `StdRng` has no
-  /// effect on the data at all.
+  /// From a `Deterministic` seed: `fill_slice` draws from the distribution's own stream, so only
+  /// the constructor's seed controls the data.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
     let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0; n];
@@ -172,10 +165,8 @@ mod tests {
 
   #[test]
   fn shapiro_francia_accepts_normal_sample() {
-    // A correct test still rejects a genuine normal sample at rate `alpha`,
-    // and the SIMD stream differs between platforms, so one seed cannot be
-    // trusted to be lucky everywhere. Three independent seeds put the
-    // false-failure probability at roughly 1e-6 on any target.
+    // A correct test rejects a true normal sample at rate `alpha`, and the SIMD stream differs by
+    // platform: three independent seeds put a false failure near 1e-6 on any target.
     let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {

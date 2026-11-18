@@ -1,26 +1,26 @@
-//! Generalised-Pareto maximum likelihood for threshold excesses and the
-//! peaks-over-threshold tail model built on it.
-//!
-//! For excesses $y_i = x_i - u > 0$ the GPD log-likelihood is
+//! Generalised-Pareto maximum likelihood for threshold excesses, and the peaks-over-threshold tail.
 //!
 //! $$
-//! \ell(\sigma, \xi) = -n\log\sigma - \Bigl(1 + \frac1\xi\Bigr)\sum_{i=1}^{n}\log\Bigl(1 + \xi\frac{y_i}{\sigma}\Bigr)
+//! \ell(\sigma, \xi) = -n\log\sigma - \Bigl(1 + \frac1\xi\Bigr)
+//! \sum_{i=1}^{n}\log\Bigl(1 + \xi\frac{y_i}{\sigma}\Bigr),\qquad
+//! \ell(\sigma, 0) = -n\log\sigma - \sum_i \frac{y_i}{\sigma},\qquad y_i = x_i - u > 0
 //! $$
 //!
-//! ($-n\log\sigma - \sum_i y_i/\sigma$ at $\xi = 0$), maximised over
-//! $\sigma > 0$ with $1 + \xi y_i/\sigma > 0$ (Coles 2001, eq. 4.10). With
-//! $n_u$ of $n$ observations above $u$, the tail estimate
-//! $\hat F(x) = 1 - (n_u/n)\bigl(1 + \hat\xi(x - u)/\hat\sigma\bigr)^{-1/\hat\xi}$
-//! inverts to the Value-at-Risk and expected shortfall of McNeil, Frey and
-//! Embrechts (2015), eq. 5.18 and 5.20:
-//!
 //! $$
-//! \widehat{\mathrm{VaR}}_p = u + \frac{\hat\sigma}{\hat\xi}\Bigl[\Bigl(\frac{1-p}{n_u/n}\Bigr)^{-\hat\xi} - 1\Bigr],\qquad
-//! \widehat{\mathrm{ES}}_p = \frac{\widehat{\mathrm{VaR}}_p}{1-\hat\xi} + \frac{\hat\sigma - \hat\xi u}{1-\hat\xi}.
+//! \hat F(x) = 1 - \frac{n_u}{n}\Bigl(1 + \hat\xi\,\frac{x - u}{\hat\sigma}\Bigr)^{-1/\hat\xi}
 //! $$
 //!
-//! Standard errors are the inverse observed information from a
-//! central-difference Hessian at the optimum.
+//! $$
+//! \widehat{\mathrm{VaR}}_p = u + \frac{\hat\sigma}{\hat\xi}
+//! \Bigl[\Bigl(\frac{1-p}{n_u/n}\Bigr)^{-\hat\xi} - 1\Bigr],\qquad
+//! \widehat{\mathrm{ES}}_p = \frac{\widehat{\mathrm{VaR}}_p}{1-\hat\xi} +
+//! \frac{\hat\sigma - \hat\xi u}{1-\hat\xi}.
+//! $$
+//!
+//! Standard errors are the inverse observed information, a central-difference Hessian.
+//!
+//! Reference: Coles (2001), eq. 4.10, DOI: 10.1007/978-1-4471-3675-0
+//! Reference: McNeil, Frey & Embrechts (2015), Quantitative Risk Management, eq. 5.18 and 5.20
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -196,7 +196,7 @@ pub struct GpdPwmFit {
 /// a_0 = \bar x,\qquad a_1 = \frac1n\sum_{i=1}^{n}\frac{n - i}{n - 1}\,x_{(i)},\qquad
 /// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1}
 /// $$
-/// Hosking & Wallis (1987), Technometrics 29(3), 339-349. DOI: 10.1080/00401706.1987.10488243
+/// Reference: Hosking & Wallis (1987), Technometrics 29(3), 339-349, 10.1080/00401706.1987.10488243
 pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit, StatsError> {
   let mut y = exceedances
     .iter()
@@ -284,9 +284,8 @@ pub fn mean_excess<T: FloatExt>(data: ArrayView1<T>, thresholds: ArrayView1<f64>
     .collect()
 }
 
-/// Inverse of the central-difference Hessian of a negative log-likelihood
-/// at `theta`, with steps $10^{-4}\max(|\theta_i|, \text{scale}_i)$; NaN
-/// entries when the Hessian is singular.
+/// Inverse of the central-difference Hessian of a negative log-likelihood at `theta`, with steps
+/// $10^{-4}\max(|\theta_i|, \text{scale}_i)$; NaN entries when the Hessian is singular.
 pub(crate) fn information_inverse<F: Fn(&[f64]) -> f64>(
   nll: &F,
   theta: &[f64],

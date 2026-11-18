@@ -1,32 +1,21 @@
-//! Rescaled-range Hurst estimator with Anis-Lloyd (1976) bias
-//! correction.
+//! Rescaled-range Hurst estimator with the Anis–Lloyd (1976) bias correction.
 //!
-//! Procedure (Weron 2002, §3.1):
-//! 1. For each log-spaced window size `n_w`, split the (zero-mean,
-//!    demeaned) path into `floor(N / n_w)` non-overlapping chunks.
-//! 2. In each chunk compute the rescaled range
-//!    `R/S = (max Y_k - min Y_k) / s` where `Y_k = Σᵢ≤k (X_i - <X>)`
-//!    and `s` is the (biased) chunk standard deviation.
-//! 3. Average across chunks.  When `anis_lloyd = true` replace
-//!    `(R/S)_obs` by `(R/S)_obs - E[R/S]_iid + √(π·n_w/2)`.
-//! 4. Linear regression of `log(R/S)_corrected` on `log n_w`; slope =
-//!    Hurst exponent.
+//! $$
+//! \frac RS = \frac{\max_k Y_k - \min_k Y_k}{s},\quad Y_k = \sum_{i \le k}(X_i - \bar X),\qquad
+//! \log\Bigl(\frac RS - E\Bigl[\frac RS\Bigr]_{iid} + \sqrt{\pi n_w / 2}\Bigr) \sim H \log n_w
+//! $$
 //!
-//! Closed-form `E[R/S]_iid`:
+//! $$
+//! E\Bigl[\frac RS\Bigr]_{iid} = \frac{n - \tfrac12}{n}\,c_n \sum_{i=1}^{n-1}\sqrt{\frac{n-i}{i}},
+//! \qquad c_n = \frac{\Gamma((n-1)/2)}{\sqrt\pi\,\Gamma(n/2)}\ (n \le 340),\qquad
+//! c_n = \sqrt{\frac{2}{n\pi}}\ (n > 340)
+//! $$
 //!
-//! - `n_w ≤ 340`:
-//!   `((n-½)/n) · Γ((n-1)/2)/(√π · Γ(n/2)) · Σᵢ₌₁ⁿ⁻¹ √((n-i)/i)`
-//! - `n_w > 340`:
-//!   `((n-½)/n) · √(2/(nπ)) · Σᵢ₌₁ⁿ⁻¹ √((n-i)/i)`
+//! `R/S` averages the `⌊N / n_w⌋` chunks of a window, `s` a chunk's biased standard deviation.
 //!
-//! References:
-//! - Hurst H. E. (1951) — *Long-term storage capacity of reservoirs*,
-//!   Trans. ASCE 116, 770–799.
-//! - Anis A. A. & Lloyd E. H. (1976) — *The expected value of the
-//!   adjusted rescaled Hurst range of independent normal summands*,
-//!   Biometrika 63(1), 111–116.
-//! - Weron R. (2002) — *Estimating long-range dependence: finite sample
-//!   properties and confidence intervals*, Physica A 312, 285–299.
+//! Reference: Hurst (1951), Trans. ASCE 116, 770–799
+//! Reference: Anis & Lloyd (1976), Biometrika 63(1), 111–116
+//! Reference: Weron (2002), Physica A 312, 285–299, §3.1
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ln_gamma;
@@ -45,11 +34,8 @@ use crate::traits::FloatExt;
 pub struct RescaledRange {
   /// Apply the Anis-Lloyd (1976) bias correction.
   pub anis_lloyd: bool,
-  /// First-difference the input before estimation.  Default `true`
-  /// because R/S is defined on stationary increments (FGN-like): when
-  /// the caller hands in an FBM-like walk we must difference first.
-  /// Pass `false` when the input is already a stationary returns /
-  /// noise series.
+  /// First-difference the input before estimation (default `true`): R/S is defined on stationary
+  /// increments, so pass `false` only for a series that is already returns or noise.
   pub take_differences: bool,
   /// Smallest window in the log-log regression.
   pub min_window: usize,
