@@ -1,4 +1,4 @@
-//! Brownian motion from a Sobol sequence by bridge bisection: the first coordinate sets $W_T$, the
+//! Brownian motion from a Sobol sequence by bridge bisection: the first coordinate sets `W_T`, the
 //! next the midpoint given both ends, so the leading dimensions carry the coarse features (§3.1).
 //!
 //! $$

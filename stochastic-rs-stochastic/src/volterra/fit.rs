@@ -1,5 +1,5 @@
-//! [`fit_l1`] keeps a kernel's nodes and refits the weights of $K(t)\approx\sum_l w_l e^{-x_l t}$
-//! in $L^1$ by iteratively reweighted least squares: the quadrature fit for paths, this for prices.
+//! [`fit_l1`] keeps a kernel's nodes and refits the weights of `K(t) ≈ Σ_l w_l exp(-x_l t)`
+//! in `L¹` by iteratively reweighted least squares: the quadrature fit for paths, this for prices.
 //!
 //! Reference: Bayer & Breneis (2023), arXiv:2309.07023, the weak error follows the $L^1$ error
 

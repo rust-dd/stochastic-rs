@@ -1,4 +1,4 @@
-//! Tests for [`VolterraSde`]/[`VolterraLift`] against [`reference_path`], the permanent $O(n^2)$
+//! Tests for [`VolterraSde`]/[`VolterraLift`] against [`reference_path`], the permanent `O(n²)`
 //! cross-implementation oracle for the Markov lift (`reference.rs` says why it is kept).
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::noise::gn::Gn;
