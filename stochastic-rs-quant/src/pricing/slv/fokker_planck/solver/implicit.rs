@@ -21,7 +21,7 @@ pub(super) struct ImplicitEuler {
 impl ImplicitEuler {
   /// Solve `(I - dt (A0 + A1 + A2)) p_next = p` with every operator
   /// evaluated at the new time level, including the mixed derivative.
-  pub fn solve(
+  pub(crate) fn solve(
     &mut self,
     mesh: &Mesh,
     along_v: &Direction,

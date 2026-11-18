@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::gamma_li;
 
@@ -111,9 +112,9 @@ pub fn simulate_rbergomi_terminal_samples(
     .map(|path_idx| {
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
-      let seed_ext = crate::simd_rng::Deterministic::new(path_seed);
+      let seed_ext = stochastic_rs_core::simd_rng::Deterministic::new(path_seed);
       let mut normal =
-        crate::distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
+        stochastic_rs_distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
       let dim = engine.dim();
       let mut z = vec![0.0_f64; dim];
       let mut xi = vec![0.0_f64; dim];
@@ -227,7 +228,7 @@ fn cholesky_lower_with_jitter(mut sigma: Array2<f64>) -> Array2<f64> {
   let dim = sigma.nrows();
   let mut jitter = 1e-12;
   for _ in 0..8 {
-    if let Some(lower) = crate::linalg::spd_cholesky_lower(&sigma) {
+    if let Some(lower) = spd_cholesky_lower(sigma.view()) {
       return lower;
     }
     for i in 0..dim {

@@ -8,7 +8,7 @@
 //! 4. Emit entry / exit signals around the supplied thresholds.
 //!
 //! For a formal mean-reversion check the residual $\varepsilon_t$ should be
-//! tested for unit-root with [`crate::stats::stationarity::adf::adf_test`].
+//! tested for unit-root with [`stochastic_rs_stats::stationarity::adf::adf_test`].
 //!
 //! Reference: Engle, Granger, "Co-Integration and Error Correction:
 //! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
@@ -23,9 +23,9 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::QuantError;
-use crate::linalg::lstsq;
 
 /// Side of an open pairs position.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,7 +114,7 @@ pub fn try_pairs_signals(
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = lstsq(&design, &y_owned);
+  let sol = lstsq(design.view(), y_owned.view());
   let alpha = sol[0];
   let beta = sol[1];
   let mut spread = Array1::<f64>::zeros(n);

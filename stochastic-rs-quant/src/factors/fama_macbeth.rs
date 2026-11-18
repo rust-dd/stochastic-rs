@@ -14,9 +14,9 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::QuantError;
-use crate::linalg::lstsq;
 
 /// Result of a Fama-MacBeth two-pass regression.
 #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ pub fn try_fama_macbeth(
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = lstsq(&design_ts, &y);
+    let sol = lstsq(design_ts.view(), y.view());
     for j in 0..(k + 1) {
       betas[[asset, j]] = sol[j];
     }
@@ -87,7 +87,7 @@ pub fn try_fama_macbeth(
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = lstsq(&design_xs, &y);
+    let sol = lstsq(design_xs.view(), y.view());
     for j in 0..(k + 1) {
       gamma_series[[time, j]] = sol[j];
     }

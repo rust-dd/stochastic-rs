@@ -51,7 +51,7 @@ impl<T: FloatExt> MtGreeks<T> {
     self.try_delta_from_sampler(payoff, asset, || {
       self
         .params
-        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
     })
   }
 
@@ -139,7 +139,7 @@ impl<T: FloatExt> MtGreeks<T> {
     self.try_all_deltas_from_sampler(payoff, || {
       self
         .params
-        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
     })
   }
 

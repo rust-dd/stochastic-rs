@@ -17,10 +17,11 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::linalg::lstsq;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::params::Drift;
 
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 
@@ -101,7 +102,7 @@ impl BermudanLsmPricer {
       });
       let b_vec = Array1::from_vec(y_vals);
 
-      let beta = crate::linalg::lstsq(&a_mat, &b_vec);
+      let beta = lstsq(a_mat.view(), b_vec.view());
       for &idx in &itm {
         let s = paths[[idx, step]];
         let continuation: f64 = (0..n_b).map(|j| beta[j] * s.powi(j as i32)).sum();

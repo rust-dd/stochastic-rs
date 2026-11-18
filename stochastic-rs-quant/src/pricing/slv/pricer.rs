@@ -3,10 +3,10 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::HestonSlvParams;
 use super::LeverageSurface;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;

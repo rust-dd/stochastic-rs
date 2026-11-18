@@ -24,10 +24,11 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use owens_t::biv_norm;
 use rayon::prelude::*;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::QuantError;
 use crate::error::check_grid_shape;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
@@ -371,7 +372,7 @@ impl McRainbowPricer {
     tau: f64,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
+    let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)

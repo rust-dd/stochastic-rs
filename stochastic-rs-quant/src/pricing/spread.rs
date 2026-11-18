@@ -12,9 +12,9 @@
 //!
 use rayon::prelude::*;
 use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 

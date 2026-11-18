@@ -88,7 +88,7 @@ fn independent_stochastic_vol_delta_matches_conditional_benchmark() {
   let mut conditional_sum = 0.0;
 
   for _ in 0..n_paths {
-    let path_seed = crate::simd_rng::derive_seed(&mut seed_state);
+    let path_seed = stochastic_rs_core::simd_rng::derive_seed(&mut seed_state);
     let paths = params.sample_with_seed(path_seed);
     let integrated = (0..2)
       .map(|asset| {

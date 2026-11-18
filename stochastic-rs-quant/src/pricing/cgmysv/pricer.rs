@@ -11,11 +11,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
 use crate::OptionType;
-use crate::mc::McEstimate;
 use crate::pricing::barrier::BarrierType;
 use crate::traits::ProcessExt;
 

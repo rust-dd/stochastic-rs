@@ -16,8 +16,8 @@
 //!
 use ndarray::Array1;
 use rayon::prelude::*;
+use stochastic_rs_stochastic::mc::McEstimate;
 
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 

@@ -21,7 +21,7 @@ impl Mesh {
   /// `[0, v0]` and stretched by `v = v0 + d sinh(ξ)` above it, resolving
   /// both the attainable boundary and the Dirac start as required by
   /// Wyns & Du Toit (2016), §4. Both `0` and `v0` are exact nodes.
-  pub fn new(
+  pub(crate) fn new(
     x0: f64,
     x_half_width: f64,
     x_stretch: f64,
@@ -72,27 +72,27 @@ impl Mesh {
     }
   }
 
-  pub fn m1(&self) -> usize {
+  pub(crate) fn m1(&self) -> usize {
     self.x.len()
   }
 
-  pub fn m2(&self) -> usize {
+  pub(crate) fn m2(&self) -> usize {
     self.v.len()
   }
 
-  pub fn len(&self) -> usize {
+  pub(crate) fn len(&self) -> usize {
     self.x.len() * self.v.len()
   }
 
   /// The cell-average Dirac at `(x0, v0)`: `1 / |Ω_{i0, j0}|` on that node.
-  pub fn dirac(&self) -> Vec<f64> {
+  pub(crate) fn dirac(&self) -> Vec<f64> {
     let mut p = vec![0.0; self.len()];
     p[self.j0 * self.m1() + self.i0] = 1.0 / (self.wx[self.i0] * self.wv[self.j0]);
     p
   }
 
   /// `Σ_{i,j} ω_i ω'_j P_{i,j}`.
-  pub fn mass(&self, p: &[f64]) -> f64 {
+  pub(crate) fn mass(&self, p: &[f64]) -> f64 {
     let m1 = self.m1();
     self
       .wv
@@ -110,7 +110,7 @@ impl Mesh {
   }
 
   /// The marginal density of the log-spot, `Σ_j ω'_j P_{i,j}` per node.
-  pub fn marginal(&self, p: &[f64]) -> Vec<f64> {
+  pub(crate) fn marginal(&self, p: &[f64]) -> Vec<f64> {
     let m1 = self.m1();
     (0..m1)
       .map(|i| {
@@ -126,7 +126,7 @@ impl Mesh {
 
   /// `Σ_{i,j} ω_i ω'_j v_j P_{i,j}`, the mean of the variance under the
   /// (unnormalised) density.
-  pub fn variance_mean(&self, p: &[f64]) -> f64 {
+  pub(crate) fn variance_mean(&self, p: &[f64]) -> f64 {
     let m1 = self.m1();
     self
       .wv
@@ -148,7 +148,7 @@ impl Mesh {
   /// Wyns & Du Toit's (4.5): the trapezoid `Σ_j v_j |P_{i,j}| ω'_j /
   /// Σ_j |P_{i,j}| ω'_j` per log-spot node, `None` where the column carries
   /// no mass beyond round-off — below `threshold` of the heaviest column.
-  pub fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
+  pub(crate) fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
     let m1 = self.m1();
     let sums = (0..m1)
       .map(|i| {
