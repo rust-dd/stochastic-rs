@@ -169,10 +169,9 @@ macro_rules! euler_memory {
   /// number of reset dates passed at the step's start, `η`: a rate whose reset
   /// date has passed (`n < η`) stays where it is, and a live rate `n` takes
   /// `σ_n Σ_{j=η}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the live rates
-  /// up to itself, `ρ_nj` from the lower Cholesky factor
-  /// `L` whose rows also correlate the four shocks. An absent rate travels
-  /// with a zero volatility and an identity row and never moves nor enters a
-  /// drift.
+  /// up to itself, `ρ_nj` from the lower Cholesky factor `L` whose rows also
+  /// correlate the four shocks. An absent rate travels with a zero volatility
+  /// and an identity row and never moves nor enters a drift.
   113 => LiborMarket4 { s0, s1, s2, s3, d0, d1, d2, d3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (f0, f1, f2, f3)
     noise (z0, z1, z2, z3)

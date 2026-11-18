@@ -7,7 +7,7 @@
 //!
 //! For `γ > |β|` and `δ > 0` its invariant law is hyperbolic, `∝ exp(−γ√(δ² + (x−μ)²) + β(x−μ))`.
 //!
-//! Reference: Bibby & Sørensen (2003), eq. (4.5), DOI 10.1016/B978-044450896-6.50008-X
+//! Reference: Bibby & Sørensen (2003), DOI 10.1016/B978-044450896-6.50008-X
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -277,8 +277,8 @@ mod tests {
 
   use super::*;
 
-  /// Bibby & Sørensen (2003) eq. (4.5): the restoring term is `γ(X − μ)/√(δ² + (X − μ)²)`, zero
-  /// at `X = μ`, so with `β = 0` the first step from `μ` is the noise alone whatever `γ` is.
+  /// Bibby & Sørensen's MaPhySto report, eq. (4.5): the restoring term `γ(X − μ)/√(δ² + (X − μ)²)`
+  /// is zero at `X = μ`, so with `β = 0` the first step from `μ` is the noise alone for any `γ`.
   #[test]
   fn the_restoring_term_vanishes_at_mu() {
     let first = |gamma: f64| {
