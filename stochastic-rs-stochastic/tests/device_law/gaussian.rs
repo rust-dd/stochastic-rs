@@ -31,6 +31,8 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::map_forms_agree;
+use super::common::means_agree;
+use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 use super::common::within;
@@ -256,29 +258,28 @@ fn modified_cir_agrees_with_the_cpu_law() {
   );
 }
 
+/// Centred at `mu = 2`, four relaxation times long: a restoring term not centred on `mu` pulls
+/// the terminal mean to the origin, which a row at `mu = 0` cannot see.
 #[test]
 fn hyperbolic_diffusion_agrees_with_the_cpu_law() {
   let build = || {
     Hyperbolic2::<f32, _>::new(
       0.5,
+      2.0,
       1.0,
+      2.0,
       1.0,
-      0.0,
-      0.3,
       253,
-      Some(0.5),
-      Some(1.0),
+      Some(2.0),
+      Some(4.0),
       Deterministic::new(9),
     )
   };
+  let host = build().sample_par(M);
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "hyperbolic diffusion");
-  agrees(
-    terminal_std(&build().sample_par(M)),
-    terminal_std(&device),
-    0.05,
-    "hyperbolic diffusion terminal spread",
-  );
+  means_agree(&host, &device, "hyperbolic diffusion terminal mean");
+  spreads_agree(&host, &device, "hyperbolic diffusion terminal spread");
 }
 
 /// Parametrised as a short rate reverting to 5% at speed 3, where the
