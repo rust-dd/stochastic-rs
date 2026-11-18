@@ -22,12 +22,10 @@ impl PyDiscountCurve {
     interp: &str,
   ) -> PyResult<Self> {
     let im = parse_interpolation(interp)?;
-    let mat = maturities.as_array().to_owned();
-    let zr = zero_rates.as_array().to_owned();
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(
-        mat.view(),
-        zr.view(),
+        maturities.as_array(),
+        zero_rates.as_array(),
         im,
       ),
     })
@@ -62,8 +60,10 @@ impl PyDiscountCurve {
     maturities: numpy::PyReadonlyArray1<'py, f64>,
   ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
-    let mat = maturities.as_array().to_owned();
-    self.inner.zero_rates(mat.view()).into_pyarray(py)
+    self
+      .inner
+      .zero_rates(maturities.as_array())
+      .into_pyarray(py)
   }
 
   /// Bootstraps an OIS discount curve from par OIS quotes: one fixed-leg
@@ -226,10 +226,11 @@ impl PyNelsonSiegel {
     maturities: numpy::PyReadonlyArray1<'py, f64>,
     market_rates: numpy::PyReadonlyArray1<'py, f64>,
   ) -> Self {
-    let mat = maturities.as_array().to_owned();
-    let mr = market_rates.as_array().to_owned();
     Self {
-      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(mat.view(), mr.view()),
+      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(
+        maturities.as_array(),
+        market_rates.as_array(),
+      ),
     }
   }
 
