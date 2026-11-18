@@ -1,7 +1,8 @@
 //! # Gbm Log
 //!
 //! $$
-//! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,\quad Z\sim\mathcal{N}(0,1)
+//! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,
+//! \quad Z\sim\mathcal{N}(0,1)
 //! $$
 //!
 //! Exact log-increment scheme guarantees $S_t > 0$.
@@ -34,7 +35,7 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub s0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -42,6 +43,8 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
+  /// Panics unless a given `t` is positive and finite, `n >= 2`, `sigma >= 0`, `s0 > 0`, and every
+  /// parameter is finite.
   pub fn new(drift: Drift<T>, sigma: T, n: usize, s0: T, t: Option<T>, seed: S) -> Self {
     drift.assert_finite();
     assert!(
@@ -157,9 +160,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

@@ -29,9 +29,8 @@ pub struct NonlinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub a1: T,
   /// Quadratic drift coefficient a₂.
   pub a2: T,
-  /// Constant diffusion coefficient b₀ in `b_0 + b_1 X_t + b_2 X_t^{b_3}`
-  /// (unlike [`AitSahalia`](super::ait_sahalia::AitSahalia), this bracket is
-  /// **not** square-rooted — it is the diffusion coefficient directly).
+  /// Constant diffusion coefficient b₀ in `b_0 + b_1 X_t + b_2 X_t^{b_3}`; the bracket is the
+  /// diffusion itself, not square-rooted as [`AitSahalia`](super::ait_sahalia::AitSahalia)'s is.
   pub b0: T,
   /// Linear diffusion coefficient b₁.
   pub b1: T,
@@ -53,6 +52,7 @@ pub struct NonlinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> NonlinearSde<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     am1: T,
     a0: T,
@@ -201,9 +201,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

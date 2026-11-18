@@ -21,10 +21,8 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Linear-drift intercept (κθ combined) in the reparametrized drift
-  /// `alpha - beta·X`, equivalent to `κ(θ-X)` with `alpha = κθ`. Must be
-  /// less than `beta` so the implied θ = alpha/beta stays in (0, 1), the
-  /// Jacobi boundary requirement.
+  /// Drift intercept `alpha = κθ` in `alpha - beta·X`, i.e. `κ(θ-X)`; it must be less than
+  /// `beta` so that θ = alpha/beta stays in (0, 1), the Jacobi boundary requirement.
   pub alpha: T,
   /// Linear-drift slope (mean-reversion speed κ) in `alpha - beta·X`.
   pub beta: T,
@@ -36,7 +34,7 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -44,6 +42,8 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha > 0`, `beta > 0`,
+  /// `sigma > 0`, `alpha < beta`, and every parameter is finite.
   pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       alpha.is_finite(),
@@ -159,9 +159,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

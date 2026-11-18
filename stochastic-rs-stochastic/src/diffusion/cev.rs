@@ -28,12 +28,8 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: T,
   /// Diffusion scale σ multiplying `S_t^γ dW_t`.
   pub sigma: T,
-  /// CEV elasticity exponent γ (γ=1 recovers GBM; γ<1 fattens the
-  /// left tail, the usual equity-market calibration). At non-integer γ the
-  /// sampler raises `|S_t|` rather than `S_t` to this power: a discretized
-  /// path can cross zero for a step even at valid parameters, and
-  /// `f64::powf` of a negative base at a non-integer exponent is `NaN`,
-  /// which would otherwise poison every subsequent step.
+  /// Elasticity γ: γ = 1 is GBM, γ < 1 fattens the left tail. The sampler raises `|S_t|` to it,
+  /// since a discretized path can cross zero and `powf` of a negative base is NaN.
   pub gamma: T,
   /// Number of points sampled along the CEV path.
   pub n: usize,
@@ -41,17 +37,17 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Cev::default().with_gamma(0.5).with_sigma(0.3)`. No persisted cache:
-/// `sampler()` builds its Gaussian stream fresh from `self` every call.
+/// Every field has a `with_*` setter (`Cev::default().with_gamma(0.5).with_sigma(0.3)`); nothing
+/// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Cev<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_mu(mu);
     Self::check_sigma(sigma);
@@ -89,42 +85,42 @@ impl<T: FloatExt, S: SeedExt, B> Cev<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `gamma`, all else unchanged.
+  /// Replace `gamma`; panics unless `gamma` is finite.
   pub fn with_gamma(mut self, gamma: T) -> Self {
     Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -218,9 +214,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -312,7 +307,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
   /// A host-sampled path and Nualart's `D_{t_i} X_T`, `σ′ = γσ sgn(X)|X|^{γ−1}`, summed backward
   /// over the increments that drove the path; undefined at an exact zero for γ < 1:
   /// $$
-  /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2} \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t + \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
+  /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2}
+  ///   \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t
+  ///   + \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
   /// $$
   pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let mut paths = Array1::<T>::zeros(self.n);
@@ -390,13 +387,8 @@ mod tests {
     }
   }
 
-  /// Regression: at these valid, realistic parameters (`gamma < 1`, this
-  /// file's own "usual equity-market calibration"), Euler discretization
-  /// crosses zero routinely — before the `.abs()` fix in `fill_path`, an
-  /// equivalent 2000-path run crossed zero in 681 paths (34%), and every
-  /// one of those went `NaN` for the rest of its path via
-  /// `f64::powf(negative, non-integer)`. Every point of every path must
-  /// stay finite regardless.
+  /// Regression: at `gamma < 1` an Euler path crosses zero routinely (681 of 2000 paths), and
+  /// `powf` of a negative base at a non-integer exponent is NaN; every point must stay finite.
   #[test]
   fn cev_stays_finite_through_a_zero_crossing() {
     let cev = Cev::<f64, _>::new(
@@ -416,9 +408,8 @@ mod tests {
     }
   }
 
-  /// Same regression for `malliavin()`, which independently re-raises the
-  /// realized path to fractional powers of its own and needs its own
-  /// `.abs()` for the same reason.
+  /// The same regression for `malliavin()`, which raises the realized path to fractional powers
+  /// itself and needs its own `.abs()`.
   #[test]
   fn cev_malliavin_stays_finite_through_a_zero_crossing() {
     let cev = Cev::<f64, _>::new(

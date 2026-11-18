@@ -112,11 +112,8 @@ fn bessel_squared_matches_besq_mean() {
   );
 }
 
-/// Independent golden, not derived from the BESQ recursion `Bessel` is
-/// built on: for BES(δ) started at 0, `X_t = sqrt(t) * chi_delta`
-/// (Revuz & Yor, *Continuous Martingales and Brownian Motion*, Ch. XI
-/// §1), so `E[X_t] = sqrt(2t) * Gamma((delta+1)/2) / Gamma(delta/2)`; at
-/// `delta = 3`, `t = 1` this simplifies to `2 * sqrt(2/pi) ≈ 1.595769`.
+/// A golden independent of the BESQ recursion: BES(δ) from 0 is `√t · χ_δ` (Revuz & Yor, Ch. XI
+/// §1), so `E[X_t] = √(2t) Γ((δ+1)/2) / Γ(δ/2)`, which is `2√(2/π) ≈ 1.595769` at δ = 3, t = 1.
 #[test]
 fn bessel_mean_matches_chi_distribution_identity() {
   let delta = 3.0;

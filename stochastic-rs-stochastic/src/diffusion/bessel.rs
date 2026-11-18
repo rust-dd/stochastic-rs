@@ -1,26 +1,20 @@
-//! # SquaredBessel / Bessel
-//!
-//! The squared Bessel process of dimension δ, BESQ(δ):
+//! BESQ(δ), then BES(δ), its square root in law. The third display is
+//! [`Cir`](crate::diffusion::cir::Cir) (`theta` = κ, `mu` = θ, `sigma` = σ) as a scaled BESQ $Z$.
 //!
 //! $$
 //! dX_t=\delta\,dt+2\sqrt{|X_t|}\,dW_t
 //! $$
 //!
-//! and its square root, the Bessel process of the same dimension, BES(δ):
-//!
 //! $$
 //! dX_t=\frac{\delta-1}{2X_t}\,dt+dW_t
 //! $$
 //!
-//! `Bessel` has the same law as `sqrt(SquaredBessel)` of the same dimension
-//! δ (Revuz & Yor, *Continuous Martingales and Brownian Motion*, Ch. XI §1):
-//! if `Z` solves the first SDE then `sqrt(Z)` solves the second, in law.
-//! [`Cir`](crate::diffusion::cir::Cir) is, in turn, a time-changed and
-//! scaled squared Bessel process: writing `Cir`'s own parameters (`theta` =
-//! κ, `mu` = θ, `sigma` = σ), its path equals `e^{-κt} Z(τ(t))` for `Z`
-//! a [`SquaredBessel`] of dimension `δ = 4κθ/σ²` under the time change
-//! `τ(t) = (σ²/4κ)(e^{κt}-1)` — the two SDEs share the same `2√X` diffusion
-//! shape, only reparametrized and time-changed.
+//! $$
+//! X^{\mathrm{CIR}}_t = e^{-\kappa t} Z(\tau(t)),\quad \delta = \frac{4\kappa\theta}{\sigma^2},
+//! \quad \tau(t) = \frac{\sigma^2}{4\kappa}\bigl(e^{\kappa t}-1\bigr)
+//! $$
+//!
+//! Reference: Revuz & Yor, "Continuous Martingales and Brownian Motion", Ch. XI §1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -39,35 +33,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Bessel process BES(δ).
-///
-/// `dX_t = ((delta - 1) / (2 * X_t)) * dt + dW_t`
-///
-/// See the module doc: `Bessel` has the same law as `sqrt(`[`SquaredBessel`]`)`
-/// of the same dimension δ, and [`Cir`](crate::diffusion::cir::Cir) is a
-/// time-changed, scaled squared Bessel process.
-///
-/// The sampler below does not discretize the SDE above directly: its drift
-/// `(delta-1)/(2X)` is singular at `X = 0`, and a plain Euler step that ever
-/// floors to exactly 0 takes a division-by-near-zero drift kick on the very
-/// next step — for `n = 200`, `t = 1` that single mishandled step is already
-/// an ~5e9 excursion, large enough to dominate a terminal-mean Monte Carlo
-/// estimate outright. Instead it runs the same, singularity-free BESQ(δ)
-/// recursion [`SquaredBesselSampler`] uses internally (`2√X` vanishes
-/// smoothly at the boundary, unlike `1/X`) and reports its square root — the
-/// standard way this process is simulated in practice.
-///
-/// This sidesteps the singularity, but it is worth being precise about what
-/// "exact" means here. The *law* identity `Bessel = sqrt(SquaredBessel)`
-/// above (Revuz & Yor) is exact for the true continuous-time SDEs at every
-/// `t`, which is why sampling BESQ and taking its square root is the right
-/// thing to do at all. The *discretization* itself is not bias-free: it is
-/// Euler-Maruyama on the BESQ recursion, which carries BESQ's own
-/// O(dt)-class discretization bias, further reshaped (not removed) by the
-/// nonlinear square root. This is a consistent, convergent approximation —
-/// the bias shrinks toward 0 as `n → ∞` — not an exact transition kernel the
-/// way, say, a noncentral-χ² exact CIR sampler would be. Worth keeping in
-/// mind when choosing step counts for a calibration.
+/// BES(δ), sampled as the square root of the Euler BESQ(δ) recursion, since the drift
+/// `(δ−1)/(2X)` is singular at zero; the law identity is exact, the scheme has BESQ's O(dt) bias.
 #[derive(Debug, Clone)]
 pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Dimension δ (see [`SquaredBessel::delta`] — the same δ ≥ 2 threshold
@@ -89,13 +56,11 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Bessel::default().with_delta(4.0)`. No persisted cache: `sampler()`
-/// builds its Gaussian source fresh from `self` every call.
+/// Every field has a `with_*` setter (`Bessel::default().with_delta(4.0)`); nothing is cached,
+/// since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
-  /// Create a new Bessel process.
-  ///
-  /// The δ < 2 `log::warn!` of [`SquaredBessel::new`], under [`VarianceBoundary::Floor`].
+  /// Logs [`SquaredBessel::new`]'s δ < 2 warning under [`VarianceBoundary::Floor`]; panics unless
+  /// `n >= 2`, `t` is positive when given, and every parameter is finite.
   pub fn new(
     delta: T,
     n: usize,
@@ -138,14 +103,14 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `delta`, all else unchanged.
+  /// Replace `delta`; panics unless `delta` is finite.
   pub fn with_delta(mut self, delta: T) -> Self {
     Self::check_delta(delta);
     self.delta = delta;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
@@ -158,14 +123,14 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -194,10 +159,8 @@ impl<T: FloatExt> Default for Bessel<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of the Bessel process: the same BESQ recursion run
-/// on `X²`, reported as `√X²`, which is how the host sampler keeps the
-/// `(δ−1)/2X` singularity out of the recursion. `X₀` is a radius, so the
-/// reported first point is `|X₀|`.
+/// The Euler engine's view: the BESQ recursion on `X²`, reported as `√X²`, which keeps the
+/// `(δ−1)/2X` singularity out. `X₀` is a radius, so the first reported point is `|X₀|`.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Bessel<T, S, B>
 {
@@ -268,9 +231,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -300,10 +262,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Bessel`] sampling state: precomputed BESQ-recursion scale and
-/// the owned Gaussian source (see [`Bessel`]'s doc for why the step is taken
-/// in squared/BESQ space rather than on the Bessel SDE's singular drift
-/// directly).
+/// Reusable [`Bessel`] sampling state: the BESQ-recursion scale and the owned Gaussian source;
+/// [`Bessel`]'s doc says why the step runs in squared space.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct BesselSampler<T: FloatExt> {
@@ -327,9 +287,8 @@ impl<T: FloatExt> BesselSampler<T> {
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    // Step the underlying BESQ(delta) state (see the struct doc) and report
-    // its square root; `prev_sq` tracks X_t^2, never X_t itself, so the
-    // `(delta-1)/(2X)` singularity never enters the recursion.
+    // `prev_sq` tracks X_t², never X_t, so the `(delta-1)/(2X)` singularity stays out of the
+    // recursion; the path reports its square root.
     let mut prev_sq = self.x0 * self.x0;
     for z in tail.iter_mut() {
       let dbesq = self.delta * self.dt + self.diff_scale * prev_sq.abs().sqrt() * *z;

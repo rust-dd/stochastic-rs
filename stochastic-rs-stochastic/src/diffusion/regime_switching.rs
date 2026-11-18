@@ -4,13 +4,10 @@
 //! dS_t = (r-q)S_t\,dt + \sigma_{Z_t}\,S_t\,dW_t
 //! $$
 //!
-//! where $Z_t$ is a continuous-time Markov chain with generator matrix $Q$
-//! governing transitions between $M$ regimes, each with its own volatility $\sigma_i$.
+//! $Z_t$ is a continuous-time Markov chain on $M$ regimes with generator $Q$.
 //!
-//! Source:
-//! - Kirkby, J.L. (PROJ_Option_Pricing_Matlab)
-//! - Hamilton, J.D. (1989), "A New Approach to the Economic Analysis
-//!   of Nonstationary Time Series and the Business Cycle"
+//! Source: Kirkby, PROJ_Option_Pricing_Matlab
+//! Reference: Hamilton (1989), Econometrica 57(2), 357–384
 //!
 
 use ndarray::Array1;
@@ -28,10 +25,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Regime-switching Gbm process.
-///
-/// The stock follows Gbm in each regime with a different volatility.
-/// Regime transitions are governed by a CTMC generator matrix Q.
+/// GBM whose volatility is picked by a regime; the regimes switch by the CTMC generator `Q`.
 #[derive(Debug, Clone)]
 pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (e.g. r - q).
@@ -56,6 +50,8 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu>
 }
 
 impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `q_matrix.nrows() == vols.len()`,
+  /// `q_matrix.ncols() == vols.len()`, `initial_state < vols.len()`, and every parameter is finite.
   pub fn new(
     mu: T,
     q_matrix: Array2<T>,
@@ -221,16 +217,12 @@ fn mat_mul<T: FloatExt>(a: &Array2<T>, b: &Array2<T>) -> Array2<T> {
   c
 }
 
-/// How many regimes a launch carries: the family holds four volatilities and
-/// four rows of thresholds. A chain with more stays on its host sampler
-/// whatever the backend.
+/// Regimes a launch carries: the family holds four volatilities and four rows of thresholds. A
+/// longer chain stays on its host sampler.
 const DEVICE_REGIMES: usize = 4;
 
-/// The Euler engine's view: the one-step transition matrix `exp(Q dt)` is
-/// computed once on the host — the same matrix the host sampler uses — and
-/// travels as per-row cumulative thresholds, so the kernel's regime draw is
-/// the host's inverse CDF on a uniform of its own. The regime index rides in
-/// the second state slot.
+/// The Euler engine's view: `exp(Q dt)`, the host sampler's own matrix, travels as per-row
+/// cumulative thresholds for the kernel's inverse-CDF draw; the regime rides in the second slot.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for RegimeSwitchingDiffusion<T, S, B>
 {
@@ -317,10 +309,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> RegimeSwitchingDiffusionSampler<T, S> {
     RegimeSwitchingDiffusionSampler {
       mu: self.mu,
@@ -334,10 +324,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine for up to four regimes, which is what the
-  /// family carries: on a device the spot and the chain are stepped in one
-  /// kernel. A chain with more regimes stays on this process's own sampler
-  /// whatever the backend.
+  /// Through the Euler engine for up to four regimes, the spot and the chain stepped in one
+  /// kernel; a longer chain stays on this process's own sampler.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.vols.len() <= DEVICE_REGIMES {
       self.backend.system_sample(self)
@@ -381,11 +369,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RegimeSwitchingDiffusion`] sampling state: owns the generator
-/// matrix, per-regime volatilities and the seed source so a Monte-Carlo loop
-/// reuses both output buffers. Both the diffusion Gaussian stream and the
-/// regime-transition RNG are rebuilt per call from the derived seed, in the same
-/// order as the legacy `sample` body.
+/// Reusable [`RegimeSwitchingDiffusion`] sampling state: the generator, the volatilities and the
+/// seed source. Each call rebuilds the Gaussian stream, then the regime RNG, from the derived seed.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RegimeSwitchingDiffusionSampler<T: FloatExt, S: SeedExt> {

@@ -23,7 +23,8 @@ fn exact_moments(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> (f64, f64
   (mean, variance)
 }
 
-/// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and stay finite.
+/// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and
+/// stay finite.
 #[test]
 fn cir_accepts_sub_feller_under_reflection() {
   let cir = Cir::<f64, _>::new(
@@ -307,7 +308,8 @@ fn the_log_density_is_nan_and_infinite_where_the_density_is_nan_zero_and_infinit
   }
 }
 
-/// Twenty mean-reversion times out, the transition density has forgotten `r_t`: it is the stationary Gamma.
+/// Twenty mean-reversion times out, the transition density has forgotten `r_t`: it is the
+/// stationary Gamma.
 #[test]
 fn the_long_run_transition_is_the_stationary_law() {
   let cir = law(2.0, 0.04, 0.3);

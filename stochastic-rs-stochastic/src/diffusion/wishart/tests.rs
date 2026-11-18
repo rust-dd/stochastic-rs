@@ -1,6 +1,5 @@
-//! Tests of the exact Wishart sampler against the closed forms of Ahdida &
-//! Alfonsi (2013): the affine mean, the Laplace transform (10) and the
-//! characteristic-function values of their Table 1.
+//! The exact Wishart sampler against the closed forms of Ahdida & Alfonsi (2013): the affine
+//! mean, the Laplace transform (10) and the characteristic-function values of their Table 1.
 
 use ndarray::Array2;
 use ndarray::array;
@@ -84,14 +83,8 @@ fn laplace_transform_matches_the_monte_carlo_average() {
   assert!(best < 0.01, "Laplace transform deviation {best}");
 }
 
-/// Table 1 of Ahdida & Alfonsi (2013) for `a = I₃`, `b = 0`, `x₀ = 10 I₃`,
-/// `v = 0.09 I₃`, sampled in one exact step. The table lists
-/// `−0.527090 − 0.228251 i` (α = 3.5) and `−0.591411 − 0.036346 i` (α = 2.2);
-/// evaluating their eq. (11) at `v = ±0.09 i I₃` shows the listed imaginary
-/// sign is that of `E[exp(+i Tr(v X_1))] = E[cos] + i E[sin]`, which is what
-/// the Monte Carlo average below forms.
-/// `α = 3.5` is the regular regime; `α = 2.2` puts the squared Bessel degree
-/// at `0.2 < 1`, the Poisson-mixture branch of the noncentral χ².
+/// Table 1 of Ahdida & Alfonsi (2013) at `a = I₃`, `b = 0`, `x₀ = 10 I₃`, `v = 0.09 I₃`, in one
+/// exact step. By their eq. (11) the listed sign is that of `E[exp(+i Tr(v X_1))]`, formed below.
 #[test]
 fn characteristic_function_matches_ahdida_alfonsi_table_1() {
   for (alpha, want_re, want_im) in [
@@ -125,9 +118,8 @@ fn characteristic_function_matches_ahdida_alfonsi_table_1() {
   }
 }
 
-/// With `a = diag(1, 0)` the noise acts on one coordinate only, so the
-/// second row and column stay exactly zero and the corner is a CIR with
-/// mean `α t`.
+/// With `a = diag(1, 0)` the noise acts on one coordinate, so the second row and column stay
+/// exactly zero and the corner is a CIR with mean `α t`.
 #[test]
 fn rank_deficient_volatility_keeps_the_process_in_the_lower_rank_cone() {
   let process = Wishart::new(
@@ -155,9 +147,8 @@ fn rank_deficient_volatility_keeps_the_process_in_the_lower_rank_cone() {
   assert!((corner - 1.5).abs() < 0.08, "corner mean {corner}");
 }
 
-/// `α = d − 1` with a positive definite start drives the squared Bessel
-/// degree to zero; the Poisson-mixture boundary sampler keeps the mean
-/// `x₀ + α t I` and the paths in the cone.
+/// `α = d − 1` from a positive definite start drives the squared Bessel degree to zero; the
+/// Poisson-mixture boundary sampler keeps the mean `x₀ + α t I` and the paths in the cone.
 #[test]
 fn boundary_degree_uses_the_dimension_zero_squared_bessel() {
   let process = Wishart::new(
