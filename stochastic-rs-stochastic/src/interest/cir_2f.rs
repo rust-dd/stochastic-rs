@@ -1,10 +1,11 @@
-//! CIR2++: two independent CIR factors summed and shifted by a deterministic `φ(t)` fitted to
-//! today's curve, the two-factor [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus).
+//! CIR2++: two independent CIR factors summed and shifted by a deterministic `φ(t)`.
 //!
 //! $$
 //! r_t=x_t+y_t+\varphi(t),\ dx_t=\kappa_1(\theta_1-x_t)dt+\sigma_1\sqrt{x_t}dW_t^1,\
 //! dy_t=\kappa_2(\theta_2-y_t)dt+\sigma_2\sqrt{y_t}dW_t^2
 //! $$
+//!
+//! The two-factor [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus); `φ(t)` fits today's curve.
 //!
 //! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
 //! Reference: Brigo & Mercurio (2006), 2nd ed., Springer, DOI 10.1007/978-3-540-34604-3

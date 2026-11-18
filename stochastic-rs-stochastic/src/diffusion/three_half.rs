@@ -1,4 +1,4 @@
-//! # ThreeHalf
+//! The 3/2 model: the mean-reverting drift `κX(μ − X)` with the diffusion `σ X^{3/2}`.
 //!
 //! $$
 //! dX_t=\kappa X_t(\mu-X_t)\,dt+\sigma X_t^{3/2}\,dW_t

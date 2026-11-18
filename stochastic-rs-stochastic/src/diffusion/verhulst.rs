@@ -1,4 +1,4 @@
-//! # Verhulst
+//! Verhulst logistic growth with carrying capacity `K`, under multiplicative noise.
 //!
 //! $$
 //! dX_t=rX_t\left(1-\frac{X_t}{K}\right)dt+\sigma X_t dW_t

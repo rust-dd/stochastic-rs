@@ -1,4 +1,4 @@
-//! # Gbm
+//! Geometric Brownian motion, with its terminal log-normal law through `DistributionExt`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0

@@ -1,10 +1,11 @@
-//! The variance-level threshold recursion of Glosten, Jagannathan and Runkle, not Zakoian's
-//! TGARCH, which thresholds the standard deviation $\sigma_t$ and is not equivalent to it.
+//! GJR-GARCH(p, q): the variance-level threshold recursion of Glosten, Jagannathan and Runkle.
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\gamma_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
 //! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
+//!
+//! Not Zakoian's TGARCH, which thresholds the standard deviation and is not equivalent to it.
 //!
 //! Reference: Glosten et al. (1993), JF 48(5), 1779–1801, DOI 10.1111/j.1540-6261.1993.tb05128.x
 //! Reference: Zakoian (1994), JEDC 18(5), 931–955, DOI 10.1016/0165-1889(94)90039-6

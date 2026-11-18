@@ -1,9 +1,10 @@
-//! `kappa` is the speed and `theta` the level, where [`Cir`] names them `theta` and `mu`.
-//! At `phi ≡ 0` it samples [`Cir`]'s paths bit for bit.
+//! CIR++: a CIR factor plus a deterministic shift `phi`; `phi ≡ 0` is [`Cir`]'s path bit for bit.
 //!
 //! $$
 //! r_t=x_t+\varphi(t),\qquad dx_t=\kappa(\theta-x_t)\,dt+\sigma\sqrt{x_t}\,dW_t
 //! $$
+//!
+//! `kappa` is the speed and `theta` the level, where [`Cir`] names them `theta` and `mu`.
 //!
 //! Reference: Brigo & Mercurio (2006), 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3
 

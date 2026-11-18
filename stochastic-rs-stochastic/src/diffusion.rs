@@ -1,5 +1,6 @@
-//! Continuous-path Itô diffusions `dX_t = a(t, X_t)dt + b(t, X_t)dW_t` on one Brownian motion,
-//! with no jumps; each module's header states its own `a` and `b`.
+//! Continuous-path Itô diffusions on one Brownian motion, with no jumps.
+//!
+//! `dX_t = a(t, X_t)dt + b(t, X_t)dW_t`; each module's header states its own `a` and `b`.
 //!
 pub mod ait_sahalia;
 pub mod bessel;

@@ -1,4 +1,4 @@
-//! # Jacobi
+//! Jacobi diffusion: mean-reverting on [0, 1], its diffusion vanishing at both ends.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t(1-X_t)}\,dW_t

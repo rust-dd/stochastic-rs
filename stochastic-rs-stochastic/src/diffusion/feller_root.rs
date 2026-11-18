@@ -1,4 +1,4 @@
-//! # FellerRoot
+//! A logistic-type drift with a 3/2-power diffusion, in the three parameters `theta1..theta3`.
 //!
 //! $$
 //! dX_t=X_t(\theta_1 - X_t(\theta_3^3 - \theta_1\theta_2))\,dt+\theta_3 X_t^{3/2}\,dW_t

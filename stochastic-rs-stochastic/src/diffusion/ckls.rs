@@ -1,4 +1,4 @@
-//! # Ckls
+//! Chan–Karolyi–Longstaff–Sanders: a linear drift and a free diffusion exponent `theta4`.
 //!
 //! $$
 //! dX_t=(\theta_1+\theta_2 X_t)\,dt+\theta_3 X_t^{\theta_4}\,dW_t

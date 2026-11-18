@@ -1,4 +1,4 @@
-//! # NonlinearSde
+//! Aït-Sahalia's nonlinear drift with a diffusion bracket that is not square-rooted.
 //!
 //! $$
 //! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt+(b_0+b_1 X_t+b_2 X_t^{b_3})\,dW_t

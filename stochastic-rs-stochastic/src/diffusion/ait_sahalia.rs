@@ -1,11 +1,9 @@
-//! # AitSahalia
+//! Aït-Sahalia's nonlinear drift and diffusion family by Euler–Maruyama; not its estimator.
 //!
 //! $$
 //! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt
 //! +\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
 //! $$
-//!
-//! An Euler-Maruyama simulation of the paper's drift and diffusion family, not its estimator.
 //!
 //! Reference: Aït-Sahalia (1996), Rev. Financ. Stud. 9(2), 385–426, DOI 10.1093/rfs/9.2.385
 //!

@@ -1,5 +1,4 @@
-//! Inverse stable subordinator, simulated by inverting a directly simulated forward positive
-//! `alpha`-stable subordinator path.
+//! Inverse stable subordinator, by inverting a simulated forward positive `alpha`-stable path.
 //!
 //! Reference: Meerschaert & Straka (2013), MMNP 8(2), 1–16, DOI 10.1051/mmnp/20138201
 

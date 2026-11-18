@@ -1,3 +1,4 @@
+//! The α-stable subordinator; an increment is Kanter's Chambers–Mallows–Stuck form, summed in logs.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

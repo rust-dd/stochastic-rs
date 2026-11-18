@@ -1,9 +1,10 @@
-//! The Ornstein-Uhlenbeck process with the short rate as its state: this type holds an [`Ou`]
-//! (`a` = `theta`, `b` = `mu`) and samples through it, on a child seed [`Vasicek::new`] derives.
+//! Vasicek: the Ornstein–Uhlenbeck process with the short rate as its state.
 //!
 //! $$
 //! dr_t=a(b-r_t)dt+\sigma dW_t
 //! $$
+//!
+//! Holds an [`Ou`] (`a` = `theta`, `b` = `mu`) and samples through it, on a child seed of its own.
 //!
 //! Reference: Vasicek (1977), J. Financ. Econ. 5(2), 177–188, DOI 10.1016/0304-405X(77)90016-2
 //! Reference: Uhlenbeck & Ornstein (1930), Phys. Rev. 36(5), 823–841, DOI 10.1103/PhysRev.36.823

@@ -1,4 +1,4 @@
-//! # Quadratic
+//! A diffusion with the quadratic drift `α + βX + γX²` and the multiplicative noise `σX`.
 //!
 //! $$
 //! dX_t=(\gamma X_t^2+\beta X_t+\alpha)dt+\sigma X_t\,dW_t

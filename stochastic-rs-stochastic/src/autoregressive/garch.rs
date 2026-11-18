@@ -1,4 +1,4 @@
-//! # Garch
+//! GARCH(p, q): the variance loads on past squared observations and on its own past values.
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,

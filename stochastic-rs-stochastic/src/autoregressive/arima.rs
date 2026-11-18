@@ -1,4 +1,4 @@
-//! # Arima
+//! ARIMA(p, d, q): an ARMA recursion on Gaussian noise, integrated `d` times.
 //!
 //! $$
 //! \phi(B)(1-B)^dX_t=\theta(B)\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)

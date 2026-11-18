@@ -1,10 +1,11 @@
-//! `k` GBMs on the correlated Brownian motion of [`crate::noise::mcgns::Mcgns`], stepped by the
-//! log-Euler scheme of the second display, exact in law on the grid; the output is `k × n`.
+//! `k` GBMs on the correlated Brownian motion of [`crate::noise::mcgns::Mcgns`]; output `k × n`.
 //!
 //! $$
 //! dS^{(i)}_t = \mu_i S^{(i)}_t\,dt + \sigma_i S^{(i)}_t\,dW^{(i)}_t,\qquad
 //! d\langle W^{(i)}, W^{(j)}\rangle_t = \rho_{ij}\,dt,
 //! $$
+//!
+//! Stepped by log-Euler, which is exact in law on the grid.
 //!
 //! $$
 //! S^{(i)}_{t+\Delta t} = S^{(i)}_t\exp\bigl((\mu_i - \tfrac12\sigma_i^2)\Delta t +

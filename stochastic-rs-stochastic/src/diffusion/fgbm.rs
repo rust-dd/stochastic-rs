@@ -1,4 +1,4 @@
-//! # fGBM
+//! Geometric Brownian motion on fractional Brownian motion, by an Euler scheme from `x0`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dB_t^H

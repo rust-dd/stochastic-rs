@@ -1,4 +1,4 @@
-//! # Autoregressive
+//! Discrete-time series models: the ARMA family and the GARCH family of conditional variances.
 //!
 //! $$
 //! X_t = f(X_{t-1}, X_{t-2}, \ldots, \varepsilon_t, \varepsilon_{t-1}, \ldots)

@@ -1,9 +1,10 @@
-//! The log-rate is a Hull-White-style Gaussian process, so `r_t = exp(Y_t)` is positive with no
-//! boundary policy; it is stepped by the exact OU transition with `theta` frozen over each step.
+//! Black–Karasinski: a Gaussian log-rate, so `r_t = exp(Y_t)` is positive with no boundary policy.
 //!
 //! $$
 //! d\ln r_t=\bigl(\theta(t)-a\ln r_t\bigr)dt+\sigma\,dW_t
 //! $$
+//!
+//! Its OU transition freezes `theta` over a step: exact for a constant `theta` at any step size.
 //!
 //! Reference: Black & Karasinski (1991), "Bond and Option Pricing when Short Rates are Lognormal"
 

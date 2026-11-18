@@ -1,5 +1,6 @@
-//! The exact Wishart sampler against the closed forms of Ahdida & Alfonsi (2013): the affine
-//! mean, the Laplace transform (10) and the characteristic-function values of their Table 1.
+//! The exact Wishart sampler against the closed forms of Ahdida & Alfonsi (2013).
+//!
+//! The affine mean, the Laplace transform (10) and the characteristic function of their Table 1.
 
 use ndarray::Array2;
 use ndarray::array;

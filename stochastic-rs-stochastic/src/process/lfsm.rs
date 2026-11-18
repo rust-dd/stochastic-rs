@@ -1,4 +1,4 @@
-//! # Lfsm
+//! Linear fractional stable motion: a fractionally weighted moving average of α-stable draws.
 //!
 //! $$
 //! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)

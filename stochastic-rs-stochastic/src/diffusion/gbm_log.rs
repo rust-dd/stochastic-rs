@@ -1,11 +1,9 @@
-//! # Gbm Log
+//! GBM stepped by its exact log-increment, which keeps `S_t > 0`.
 //!
 //! $$
 //! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,
 //! \quad Z\sim\mathcal{N}(0,1)
 //! $$
-//!
-//! Exact log-increment scheme guarantees $S_t > 0$.
 //!
 
 use ndarray::Array1;

@@ -1,10 +1,11 @@
-//! The Wishart process on the PSD cone (Bru 1991), `α ≥ d − 1`, sampled exactly on the grid by
-//! identity (14): Proposition 6 (Algorithm 3), Theorem 7 (Algorithm 2), Theorem 9 (Algorithm 1).
+//! The Wishart process on the PSD cone (Bru 1991), `α ≥ d − 1`, exact on the grid by identity (14).
 //!
 //! $$
 //! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a +
 //! a^\top dW_t^\top \sqrt{X_t}
 //! $$
+//!
+//! Prop. 6 (Alg. 3), Thm. 7 (Alg. 2), Thm. 9 (Alg. 1); Siegel: the zero-degree χ² at `α = d − 1`.
 //!
 //! Reference: Ahdida & Alfonsi (2013), Ann. Appl. Probab. 23(3), 1025–1073, DOI 10.1214/12-AAP863
 //! Reference: Siegel (1979), Biometrika 66(2), 381–386, DOI 10.1093/biomet/66.2.381

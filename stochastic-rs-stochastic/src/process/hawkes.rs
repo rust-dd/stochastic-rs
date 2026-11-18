@@ -1,9 +1,10 @@
-//! Self-exciting point process with exponential kernel (Hawkes, 1971): baseline $\mu > 0$,
-//! excitation $\alpha \ge 0$, decay $\beta > 0$, stationary if $\alpha/\beta < 1$. Ogata thinning.
+//! Self-exciting point process with exponential kernel (Hawkes, 1971), sampled by Ogata thinning.
 //!
 //! $$
 //! \lambda(t) = \mu + \sum_{t_i < t} \alpha \, e^{-\beta(t - t_i)}
 //! $$
+//!
+//! Baseline `mu > 0`, excitation `alpha >= 0`, decay `beta > 0`; stationary if `alpha / beta < 1`.
 //!
 
 use ndarray::Array1;

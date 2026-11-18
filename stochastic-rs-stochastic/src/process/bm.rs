@@ -1,4 +1,4 @@
-//! # Bm
+//! Standard Brownian motion: `B_0 = 0`, then the running sum of independent Gaussian increments.
 //!
 //! $$
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)

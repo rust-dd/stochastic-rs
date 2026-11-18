@@ -1,9 +1,10 @@
-//! `theta` is the reversion speed, `mu` the level and `sigma` the noise scale. The short-rate
-//! `interest::vasicek::Vasicek` holds an `Ou` (`a` = `theta`, `b` = `mu`): one recursion for both.
+//! Ornstein–Uhlenbeck: `theta` is the reversion speed, `mu` the level and `sigma` the noise scale.
 //!
 //! $$
 //! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dW_t
 //! $$
+//!
+//! `interest::vasicek::Vasicek` holds an `Ou` (`a` = `theta`, `b` = `mu`): one recursion for both.
 //!
 //! Reference: Uhlenbeck & Ornstein (1930), Phys. Rev. 36(5), 823–841, DOI 10.1103/PhysRev.36.823
 

@@ -1,4 +1,4 @@
-//! # Pearson
+//! Pearson diffusion: a mean-reverting drift and a squared diffusion quadratic in the state.
 //!
 //! $$
 //! dX_t=\kappa(\mu-X_t)\,dt+\sqrt{2\kappa(aX_t^2+bX_t+c)}\,dW_t

@@ -1,4 +1,4 @@
-//! # Hull White
+//! Hull–White: a Gaussian short rate reverting at speed `alpha`, with a time-dependent `theta(t)`.
 //!
 //! $$
 //! dr_t=\left(\theta(t)-a r_t\right)dt+\sigma dW_t

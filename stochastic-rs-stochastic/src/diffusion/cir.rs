@@ -1,4 +1,4 @@
-//! # Cir
+//! Cox–Ingersoll–Ross square-root diffusion, floored or reflected at zero by its boundary policy.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t

@@ -1,9 +1,10 @@
-//! Renewal jump times: the cumulative sum of inter-arrival draws `τ_j ~ D`, in place of a Poisson
-//! clock. Times only; [`CompoundCustom`](crate::process::ccustom::CompoundCustom) adds the sizes.
+//! Renewal jump times: the running sum of inter-arrival draws from a law `D`, not a Poisson clock.
 //!
 //! $$
 //! T_k=\sum_{j=1}^{k}\tau_j,\quad \tau_j\sim D
 //! $$
+//!
+//! Times only; [`CompoundCustom`](crate::process::ccustom::CompoundCustom) adds the sizes.
 //!
 
 use std::any::Any;

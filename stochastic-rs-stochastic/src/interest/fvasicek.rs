@@ -1,9 +1,10 @@
-//! The fractional OU with the short rate as its state: this type holds a [`Fou`] (`a` = `theta`,
-//! `b` = `mu`) and samples through it, on a child seed that [`Fvasicek::new`] derives.
+//! Fractional Vasicek: the fractional OU with the short rate as its state.
 //!
 //! $$
 //! dr_t=a(b-r_t)dt+\sigma dB_t^H
 //! $$
+//!
+//! Holds a [`Fou`] (`a` = `theta`, `b` = `mu`) and samples through it, on a child seed of its own.
 //!
 //! Reference: Vasicek (1977), J. Financ. Econ. 5(2), 177–188, DOI 10.1016/0304-405X(77)90016-2
 //! Reference: Cheridito, Kawaguchi & Maejima (2003), EJP 8, paper 3, 1–14, DOI 10.1214/EJP.v8-125

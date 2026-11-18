@@ -1,4 +1,4 @@
-//! # Cpoisson
+//! Compound Poisson: jump sizes from any law `D`, summed at the arrivals of a Poisson clock.
 //!
 //! $$
 //! X_t=\sum_{k=1}^{N_t}Y_k,\quad N_t\sim\mathrm{Poisson}(\lambda t)

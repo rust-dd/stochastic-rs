@@ -1,5 +1,4 @@
-//! Forward-LIBOR market model under the spot-LIBOR measure of Glasserman (2003) §3.7, stepped by
-//! log-Euler with the drift frozen at each step's start (§3.7.1; Joshi 2003), so forwards stay > 0.
+//! LIBOR market model under Glasserman's (2003) §3.7 spot measure; log-Euler keeps forwards > 0.
 //!
 //! $$
 //! \frac{dL_n(t)}{L_n(t)} \;=\;
@@ -11,6 +10,8 @@
 //! ```text
 //! L_n(t+Δt) = L_n(t)·exp[(μ_n(t) − ½σ_n²) Δt + σ_n √Δt · Z_n]
 //! ```
+//!
+//! Drift frozen per step (§3.7.1; Joshi 2003), not Glasserman & Zhao's predictor-corrector.
 //!
 //! Reference: Brace, Gatarek & Musiela (1997), Math. Finance 7(2), 127–155
 //! Reference: Jamshidian (1997), Finance Stoch. 1(4), 293–330

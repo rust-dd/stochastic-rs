@@ -1,10 +1,11 @@
-//! D-dimensional self-exciting point process with exponential kernels and cross-excitation,
-//! stationary when $\rho(\Gamma) < 1$ for $\Gamma_{ij} = \alpha_{ij}/\beta_{ij}$; Ogata thinning.
+//! D-dimensional self-exciting point process with exponential kernels and cross-excitation.
 //!
 //! $$
 //! \lambda_i(t) = \mu_i + \sum_{j=1}^{D}\sum_{T_k^j < t} \alpha_{ij}\,e^{-\beta_{ij}(t - T_k^j)},
 //! \quad i = 1,\dots,D
 //! $$
+//!
+//! Stationary when the spectral radius of `Γ`, `Γ_ij = α_ij / β_ij`, is below 1; Ogata thinning.
 //!
 //! Reference: Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
 //! Reference: Bacry, Mastromatteo & Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592

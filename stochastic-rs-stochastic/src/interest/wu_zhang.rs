@@ -1,10 +1,11 @@
-//! `xn` independent forward-volatility pairs: each `v_i` is a CIR-style square-root diffusion and
-//! drives its forward `F_i` multiplicatively; pairs are uncoupled, `dW^v` and `dW^F` independent.
+//! `xn` independent forward–volatility pairs: a square-root variance scales its forward's noise.
 //!
 //! $$
 //! dv_{i,t}=\beta_i(\alpha_i-v_{i,t})dt+\nu_i\sqrt{v_{i,t}}\,dW_{i,t}^v,\quad
 //! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
 //! $$
+//!
+//! Each `v_i` is CIR-style; the pairs are uncoupled, and `dW^v` and `dW^F` are independent.
 //!
 
 use ndarray::Array1;

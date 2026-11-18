@@ -1,5 +1,4 @@
-//! Shifted lognormal for negative rates: $Y_t = S_t + \beta$ is a GBM (second display). The
-//! sampler steps `diffusion::gbm::Gbm`'s own recursion on $Y$, so `beta = 0` is `Gbm` bit for bit.
+//! Shifted lognormal for negative rates: the price plus the shift `beta` is a GBM.
 //!
 //! $$
 //! dS_t=\mu(S_t+\beta)\,dt+\sigma(S_t+\beta)\,dW_t
@@ -8,6 +7,8 @@
 //! $$
 //! S_t+\beta=(S_0+\beta)\exp\!\left(\left(\mu-\tfrac{\sigma^2}{2}\right)t+\sigma W_t\right)
 //! $$
+//!
+//! It steps `diffusion::gbm::Gbm`'s recursion on `S + beta`, so `beta = 0` is `Gbm` bit for bit.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

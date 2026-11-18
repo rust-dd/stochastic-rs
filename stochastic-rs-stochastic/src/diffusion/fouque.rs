@@ -1,10 +1,11 @@
-//! Fouque–Papanicolaou–Sircar slow–fast OU: `X` reverts on the ordinary time scale, `Y` on the
-//! fast `1/ε` one; as `ε → 0`, `Y` homogenizes to its long-run statistics.
+//! Fouque–Papanicolaou–Sircar slow–fast OU: `X` on the ordinary time scale, `Y` on the fast `1/ε`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\varepsilon\,dW_t,\quad
 //! dY_t=\tfrac{1}{\varepsilon}(\alpha-Y_t)dt+\tfrac{1}{\sqrt{\varepsilon}}\,dZ_t
 //! $$
+//!
+//! As `ε → 0`, `Y` homogenizes to its long-run statistics.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

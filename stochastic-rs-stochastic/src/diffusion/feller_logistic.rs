@@ -1,10 +1,8 @@
-//! # Feller
+//! Feller–logistic diffusion: CIR's square-root diffusion under a logistic drift.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)X_t\,dt+\sigma\sqrt{X_t}\,dW_t
 //! $$
-//!
-//! Feller–logistic diffusion: CIR's square-root diffusion under a logistic drift.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

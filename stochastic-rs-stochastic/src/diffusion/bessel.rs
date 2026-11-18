@@ -1,5 +1,4 @@
-//! BESQ(δ), then BES(δ), its square root in law. The third display is
-//! [`Cir`](crate::diffusion::cir::Cir) (`theta` = κ, `mu` = θ, `sigma` = σ) as a scaled BESQ $Z$.
+//! Squared Bessel BESQ(δ), then Bessel BES(δ), its square root in law, and CIR as a scaled BESQ.
 //!
 //! $$
 //! dX_t=\delta\,dt+2\sqrt{|X_t|}\,dW_t
@@ -8,6 +7,8 @@
 //! $$
 //! dX_t=\frac{\delta-1}{2X_t}\,dt+dW_t
 //! $$
+//!
+//! [`Cir`](crate::diffusion::cir::Cir) (`theta` = κ, `mu` = θ, `sigma` = σ) as a scaled BESQ `Z`.
 //!
 //! $$
 //! X^{\mathrm{CIR}}_t = e^{-\kappa t} Z(\tau(t)),\quad \delta = \frac{4\kappa\theta}{\sigma^2},

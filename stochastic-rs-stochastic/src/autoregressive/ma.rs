@@ -1,4 +1,4 @@
-//! # Ma
+//! MA(q): Gaussian noise plus a weighted sum of its last `q` values.
 //!
 //! $$
 //! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},

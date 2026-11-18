@@ -1,9 +1,10 @@
-//! [`Ou`](crate::diffusion::ou::Ou) on fractional Gaussian noise. `interest::fvasicek::Fvasicek`
-//! holds a `Fou` under short-rate names (`a` = `theta`, `b` = `mu`) with a child seed of its own.
+//! [`Ou`](crate::diffusion::ou::Ou) on fractional Gaussian noise, with a Hurst exponent `hurst`.
 //!
 //! $$
 //! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dB_t^H
 //! $$
+//!
+//! `interest::fvasicek::Fvasicek` holds a `Fou` as `a` = `theta`, `b` = `mu`, on a child seed.
 //!
 //! Reference: Cheridito, Kawaguchi & Maejima (2003), EJP 8, paper 3, 1–14, DOI 10.1214/EJP.v8-125
 use ndarray::Array1;

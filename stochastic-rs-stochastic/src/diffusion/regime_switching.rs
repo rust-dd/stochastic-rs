@@ -1,10 +1,8 @@
-//! # Regime-Switching Diffusion
+//! GBM whose volatility follows a continuous-time Markov chain on `M` regimes with generator `Q`.
 //!
 //! $$
 //! dS_t = (r-q)S_t\,dt + \sigma_{Z_t}\,S_t\,dW_t
 //! $$
-//!
-//! $Z_t$ is a continuous-time Markov chain on $M$ regimes with generator $Q$.
 //!
 //! Source: Kirkby, PROJ_Option_Pricing_Matlab
 //! Reference: Hamilton (1989), Econometrica 57(2), 357–384

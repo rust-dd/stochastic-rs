@@ -1,4 +1,4 @@
-//! # Cbms
+//! Two Brownian motions correlated by `rho`: the running sums of a correlated Gaussian pair.
 //!
 //! $$
 //! dX_t=L\,dW_t,\quad LL^\top=\Sigma

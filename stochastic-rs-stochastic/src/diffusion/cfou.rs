@@ -1,4 +1,4 @@
-//! # Complex fOU
+//! Complex fractional Ornstein–Uhlenbeck: decay `lambda`, rotation `omega`, on a complex fBM.
 //!
 //! $$
 //! dZ_t=-(\lambda-i\omega)Z_t\,dt+\sqrt{a}\,d\zeta_t,\qquad

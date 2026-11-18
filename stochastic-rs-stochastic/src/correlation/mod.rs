@@ -1,5 +1,6 @@
-//! Bounded stochastic correlation on (−1, 1): [`TransformedOu`] maps an OU through a bounded $f$
-//! (Section 2.1), [`VanEmmerich`] is the Jacobi-type SDE (Eq. 15), [`TengScp`] Eq. 19/20.
+//! Bounded stochastic correlation in (−1, 1): a transformed OU, a Jacobi SDE, Teng's modified OU.
+//!
+//! [`TransformedOu`] is the reference's Section 2.1, [`VanEmmerich`] Eq. 15, [`TengScp`] Eq. 19/20.
 //!
 //! Reference: Teng, Ehrhardt & Günther (2016), J. Math. Industry 6:2
 

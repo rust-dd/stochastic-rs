@@ -1,4 +1,4 @@
-//! # Poisson
+//! Poisson process: arrival times as the running sum of exponential inter-arrival draws.
 //!
 //! $$
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0

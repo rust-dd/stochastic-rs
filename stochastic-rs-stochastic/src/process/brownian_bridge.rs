@@ -1,9 +1,10 @@
-//! A Brownian path pinned at $X_0 = x_0$ and $X_T = x_T$, the Doob h-transform of a Brownian
-//! motion; the second display is its law. `mc::brownian_bridge_qmc` is the QMC construction.
+//! A Brownian path pinned at both ends, the Doob h-transform of a Brownian motion.
 //!
 //! $$
 //! dX_s=\frac{x_T-X_s}{T-s}\,ds+\sigma\,dW_s
 //! $$
+//!
+//! In closed form, as below; `mc::brownian_bridge_qmc` is the QMC construction.
 //!
 //! $$
 //! X_s=x_0+(x_T-x_0)\frac{s}{T}+\sigma\Bigl(W_s-\frac{s}{T}W_T\Bigr)

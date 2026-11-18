@@ -1,10 +1,11 @@
-//! `xn` independent latent factors, each mean-reverting at speed `θ(t)` toward the drift target
-//! `k(t)` and observed through the quadratic map `phi(t) + b(t)X + c(t)X²`.
+//! `xn` independent latent factors, each mean-reverting and observed through a quadratic map.
 //!
 //! $$
 //! dX_{i,t}=(k(t)-\theta(t)X_{i,t})dt+\sigma_i dW_{i,t},\quad
 //! r_i(t)=\phi(t)+b(t)X_{i,t}+c(t)X_{i,t}^2
 //! $$
+//!
+//! Each reverts at speed `θ(t)` toward the target `k(t)`; the map is `phi(t) + b(t)X + c(t)X²`.
 //!
 
 use ndarray::Array1;

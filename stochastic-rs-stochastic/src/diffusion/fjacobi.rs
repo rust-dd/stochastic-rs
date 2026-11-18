@@ -1,4 +1,4 @@
-//! # Fjacobi
+//! Jacobi diffusion on fractional Brownian motion, by an Euler scheme clamped into [0, 1].
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t(1-X_t)}\,dB_t^H

@@ -1,4 +1,4 @@
-//! # Egarch
+//! EGARCH(p, q): the log-variance responds to the size and to the sign of past shocks.
 //!
 //! $$
 //! \log(\sigma_t^2)=\omega+\sum_{i=1}^p[\alpha_i(|z_{t-i}|-\mathbb E|z|)+\gamma_i z_{t-i}]

@@ -1,4 +1,4 @@
-//! # LinearSde
+//! Linear SDE with the affine drift `a + bX` and the multiplicative noise `cX`.
 //!
 //! $$
 //! dX_t=(a+bX_t)\,dt+cX_t\,dW_t

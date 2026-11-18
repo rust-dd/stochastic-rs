@@ -1,4 +1,4 @@
-//! # fBM
+//! Fractional Brownian motion: the cumulative sum of fractional Gaussian noise, from zero.
 //!
 //! $$
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)

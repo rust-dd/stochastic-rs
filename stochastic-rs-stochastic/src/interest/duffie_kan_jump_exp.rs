@@ -1,4 +1,4 @@
-//! # Mod Duffie Kan
+//! Duffie–Kan with jumps on the auxiliary factor at exponential inter-arrival times.
 //!
 //! $$
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t

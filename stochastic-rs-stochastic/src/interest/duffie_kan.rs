@@ -1,4 +1,4 @@
-//! # Duffie Kan
+//! Duffie–Kan two-factor affine short-rate model, without jumps.
 //!
 //! $$
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t

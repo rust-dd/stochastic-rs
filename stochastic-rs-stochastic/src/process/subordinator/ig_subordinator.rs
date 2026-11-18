@@ -1,3 +1,4 @@
+//! Inverse-Gaussian subordinator in the BNS parameterization: scale `delta`, shape `gamma`.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

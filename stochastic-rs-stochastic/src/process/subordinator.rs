@@ -1,10 +1,8 @@
-//! # Subordinator
+//! Monotone Lévy-style drivers (stable, tempered stable, gamma, inverse Gaussian, Poisson), a CTRW.
 //!
 //! $$
 //! \mathbb E[e^{-\lambda S_t}] = e^{-t\phi(\lambda)},\qquad \lambda \ge 0
 //! $$
-//!
-//! Collection of monotone Levy-process style drivers and a Ctrw helper.
 
 pub mod alpha_stable;
 pub mod ctrw;

@@ -1,10 +1,8 @@
-//! # RadialOu
+//! Radial OU: the norm of a multivariate OU, with `κ` absorbing the dimension's constant.
 //!
 //! $$
 //! dX_t=\left(\frac{\kappa}{X_t}-X_t\right)dt+\sigma\,dW_t
 //! $$
-//!
-//! The scalar SDE of the norm of a multivariate OU, with `κ` absorbing the dimension's constant.
 //!
 //! Reference: Göing-Jaeschke & Yor (2003), Bernoulli 9(2), 313–349, DOI 10.3150/bj/1068128980
 //!

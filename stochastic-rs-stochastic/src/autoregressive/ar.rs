@@ -1,4 +1,4 @@
-//! # Ar
+//! AR(p): a linear recursion on the last `p` values, driven by Gaussian noise.
 //!
 //! $$
 //! X_t=\sum_{k=1}^p \phi_k X_{t-k}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)

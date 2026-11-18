@@ -1,4 +1,4 @@
-//! # Agarch
+//! Asymmetric GARCH(p, q): a negative observation loads the variance by an extra `delta`.
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\delta_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2

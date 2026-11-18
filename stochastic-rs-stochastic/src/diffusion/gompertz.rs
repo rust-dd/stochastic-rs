@@ -1,4 +1,4 @@
-//! # Gompertz
+//! Gompertz growth diffusion: a logarithmic pull toward an asymptotic level, multiplicative noise.
 //!
 //! $$
 //! dX_t=aX_t\ln\!\left(\frac{K}{X_t}\right)dt+\sigma X_t dW_t

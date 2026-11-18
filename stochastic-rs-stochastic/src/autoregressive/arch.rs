@@ -1,4 +1,4 @@
-//! # Arch
+//! ARCH(p): the conditional variance is `omega` plus the weighted last `p` squared observations.
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2,\qquad X_t=\sigma_t z_t,\ z_t\sim\mathcal N(0,1)

@@ -1,4 +1,4 @@
-//! # Hyperbolic2
+//! A hyperbolic-type diffusion with a skew term `beta` and a restoring term centred on `mu`.
 //!
 //! $$
 //! dX_t=\frac{\sigma^2}{2}\left(\beta-\frac{\gamma X_t}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt

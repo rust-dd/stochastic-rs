@@ -1,5 +1,6 @@
-//! Extended Cholesky of a positive semidefinite matrix by symmetric pivoting: `P q Pᵀ = c cᵀ`,
-//! `c = [[c_r, 0], [k_r, 0]]`, `c_r` an invertible lower-triangular `r × r` block, `r` the rank.
+//! Extended Cholesky of a positive semidefinite matrix by symmetric pivoting; `r` is its rank.
+//!
+//! `P q Pᵀ = c cᵀ`, `c = [[c_r, 0], [k_r, 0]]`, `c_r` an invertible lower-triangular `r × r` block.
 //!
 //! Reference: Golub & Van Loan, "Matrix Computations", Algorithm 4.2.4
 //! Reference: Ahdida & Alfonsi (2013), Lemma 23

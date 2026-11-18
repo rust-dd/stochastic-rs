@@ -1,5 +1,6 @@
-//! Scaling-and-squaring Padé-13 matrix exponential (Higham 2005, Algorithm 2.3), generic over
-//! [`RealExt`] so it needs no LAPACK; the quant crate's rating migration carries the same routine.
+//! Scaling-and-squaring Padé-13 matrix exponential (Higham 2005, Algorithm 2.3), with no LAPACK.
+//!
+//! Generic over [`RealExt`]; the quant crate's rating migration carries the same routine.
 //!
 //! Reference: Higham (2005), SIAM J. Matrix Anal. Appl. 26(4), 1179–1193, DOI 10.1137/04061101X
 

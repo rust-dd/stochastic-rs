@@ -1,4 +1,4 @@
-//! # Ho Lee
+//! Ho–Lee: a Gaussian short rate without mean reversion, its drift constant or off a forward curve.
 //!
 //! $$
 //! dr_t=\theta(t)dt+\sigma dW_t

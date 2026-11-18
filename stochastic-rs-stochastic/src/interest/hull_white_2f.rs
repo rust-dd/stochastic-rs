@@ -1,10 +1,11 @@
-//! Two-factor Hull-White in the state-space form of Brigo–Mercurio §4.2: `θ(t)` and the auxiliary
-//! factor `u_t` enter `r`'s drift directly, where G2++ sums two factors. The output is `[r, u]`.
+//! Two-factor Hull–White in the state-space form of Brigo–Mercurio §4.2; the output is `[r, u]`.
 //!
 //! $$
 //! dr_t=\bigl[\theta(t)+u_t-a\,r_t\bigr]dt+\sigma_1\,dW_t^1,\qquad
 //! du_t=-b\,u_t\,dt+\sigma_2\,dW_t^2
 //! $$
+//!
+//! `θ(t)` and the auxiliary factor `u_t` enter `r`'s drift directly, where G2++ sums two factors.
 //!
 //! Reference: Hull & White (1994), J. Derivatives 2(2), 37–48, DOI 10.3905/jod.1994.407908
 //! Reference: Brigo & Mercurio (2006), 2nd ed., Springer, §4.2, DOI 10.1007/978-3-540-34604-3

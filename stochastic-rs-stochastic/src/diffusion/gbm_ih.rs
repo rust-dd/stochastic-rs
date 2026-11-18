@@ -1,4 +1,4 @@
-//! # Gbm Ih
+//! Inhomogeneous GBM: a constant drift and a volatility given per step by `sigmas`.
 //!
 //! $$
 //! dS_t=\mu(t)S_t\,dt+\sigma(t)S_t\,dW_t

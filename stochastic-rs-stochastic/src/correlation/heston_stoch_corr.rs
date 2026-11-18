@@ -1,11 +1,12 @@
-//! Heston with stochastic correlation (HSCM); the Brownian correlations are Eq. 2.4 with ρ₁ = 0:
-//! $dW^S dW^v = \rho_t\,dt$ and $dW^v dW^\rho = \rho_2\,dt$.
+//! Heston with stochastic correlation (HSCM): the price–variance correlation is a diffusion.
 //!
 //! $$
 //! dS = rS\,dt + \sqrt{v}\,S\,dW^S \\
 //! dv = \kappa_v(\mu_v - v)\,dt + \sigma_v\sqrt{v}\,dW^v \\
 //! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X)
 //! $$
+//!
+//! The Brownian correlations are Eq. 2.4 with ρ₁ = 0: `dW^S dW^v = ρ_t dt` and `dW^v dW^ρ = ρ₂ dt`.
 //!
 //! Reference: Teng, Ehrhardt & Günther (2016), Int. J. Theor. Appl. Finance 19(6)
 

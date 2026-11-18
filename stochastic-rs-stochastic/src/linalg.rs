@@ -1,5 +1,4 @@
-//! Dense linear algebra the multi-factor processes share: the lower Cholesky factor, the
-//! correlation-matrix checks, the pivoted Cholesky and the matrix exponential.
+//! Linear algebra the multi-factor processes share: Cholesky factors, correlation checks, `expm`.
 
 mod expm;
 mod pivoted_cholesky;

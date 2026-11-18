@@ -1,10 +1,8 @@
-//! # fCIR
+//! Euler scheme of the non-zero-mean fCIR, floored or reflected at zero as `diffusion::cir::Cir`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t}\,dB_t^H
 //! $$
-//!
-//! Euler scheme of the non-zero-mean fCIR, floored or reflected at zero as `diffusion::cir::Cir`.
 //!
 //! Reference: Mishura & Yurchenko-Tytarenko (2018), MSTA 5(1), 99–111, DOI 10.15559/18-vmsta97
 //!

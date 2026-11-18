@@ -1,4 +1,4 @@
-//! # Cfbms
+//! Two fractional Brownian motions correlated by `rho`, on one Hurst exponent.
 //!
 //! $$
 //! dX_t=L\,dB_t^H,\quad LL^\top=\Sigma

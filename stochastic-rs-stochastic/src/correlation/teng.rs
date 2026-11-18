@@ -1,5 +1,4 @@
-//! Teng's modified OU stochastic correlation (Eq. 19/20, Lemma 1). The diffusion of $\rho_t$
-//! vanishes quadratically at ±1, and the stationary density is ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
+//! Teng's modified OU stochastic correlation (Eq. 19/20, Lemma 1): `tanh` of an OU-type state.
 //!
 //! $$
 //! dX_t = \kappa(\mu - \tanh(X_t))\,dt + \sigma\,dW_t, \quad \rho_t = \tanh(X_t)
@@ -9,6 +8,8 @@
 //! d\rho_t = (1-\rho_t^2)\bigl(\kappa(\mu-\rho_t) - \sigma^2\rho_t\bigr)\,dt
 //!         + (1-\rho_t^2)\sigma\,dW_t
 //! $$
+//!
+//! `ρ_t`'s diffusion vanishes quadratically at ±1; stationary density ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

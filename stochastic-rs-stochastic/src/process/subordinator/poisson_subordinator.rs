@@ -1,3 +1,4 @@
+//! Poisson subordinator: a unit-jump counting path of independent Poisson increments.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

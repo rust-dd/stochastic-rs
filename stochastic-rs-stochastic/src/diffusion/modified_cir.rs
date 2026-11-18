@@ -1,9 +1,10 @@
-//! CIR with `√X_t` replaced by the globally Lipschitz `√(1+X_t²)`: `X_t` may go negative and no
-//! Feller condition applies. No published model of this exact form was identified.
+//! CIR with `√X_t` replaced by the globally Lipschitz `√(1+X_t²)`, so `X_t` may go negative.
 //!
 //! $$
 //! dX_t=-\kappa X_t\,dt+\sigma\sqrt{1+X_t^2}\,dW_t
 //! $$
+//!
+//! No Feller condition applies; no published model of this exact form was identified.
 //!
 //! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
 //!

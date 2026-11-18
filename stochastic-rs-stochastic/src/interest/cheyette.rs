@@ -1,5 +1,4 @@
-//! One-factor quasi-Gaussian HJM with separable volatility (Andersen & Piterbarg 2010, Ch. 13);
-//! constant `σ` is Hull–White. Euler-stepped from `x_0 = y_0 = 0`, `σ` at the left grid point.
+//! One-factor quasi-Gaussian HJM with separable volatility (Andersen & Piterbarg 2010, Ch. 13).
 //!
 //! $$
 //! dx_t = (y_t - \kappa x_t)\,dt + \sigma(t, x_t)\,dW_t,\qquad
@@ -11,6 +10,8 @@
 //! G(t,T) = \frac{1-e^{-\kappa(T-t)}}{\kappa},\quad
 //! P_t(T) = \frac{P_0(T)}{P_0(t)}\exp\bigl(-G(t,T)\,x_t - \tfrac12 G(t,T)^2 y_t\bigr)
 //! $$
+//!
+//! Constant `σ` is Hull–White; Euler-stepped from `x_0 = y_0 = 0`, `σ` at the left grid point.
 //!
 //! Reference: Cheyette (1992), "Markov Representation of the Heath–Jarrow–Morton Model", BARRA
 //! Reference: Andersen & Piterbarg (2010), "Interest Rate Modeling", Vol. II, Ch. 13

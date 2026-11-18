@@ -1,9 +1,10 @@
-//! A pure compound jump sum whose inter-arrival times come from a [`CustomJt`] law, not a
-//! Poisson clock; it has no diffusion, and is meant to be added to one.
+//! A compound jump sum whose arrivals come from a [`CustomJt`] renewal law, not a Poisson clock.
 //!
 //! $$
 //! X_t=\sum_{k=1}^{N_t}J_k
 //! $$
+//!
+//! It has no diffusion, and is meant to be added to one.
 //!
 
 use std::any::Any;

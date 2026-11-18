@@ -1,3 +1,4 @@
+//! Gamma subordinator: the running sum of independent Gamma increments from `x0`.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

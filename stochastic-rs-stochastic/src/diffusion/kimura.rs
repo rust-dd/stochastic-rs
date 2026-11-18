@@ -1,4 +1,4 @@
-//! # Kimura
+//! Kimura / Wright–Fisher diffusion of a frequency on [0, 1], with selection drift `a X (1 − X)`.
 //!
 //! $$
 //! dX_t=aX_t(1-X_t)\,dt+\sigma\sqrt{X_t(1-X_t)}\,dW_t

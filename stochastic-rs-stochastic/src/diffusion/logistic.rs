@@ -1,4 +1,4 @@
-//! # Logistic
+//! Stochastic logistic growth: the drift `X(1 − aX)` under the multiplicative noise `bX`.
 //!
 //! $$
 //! dX_t=X_t(1-aX_t)\,dt+bX_t\,dW_t

@@ -1,4 +1,4 @@
-//! # Cev
+//! Constant elasticity of variance: GBM with the diffusion's price raised to the power `gamma`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t^{\gamma}\,dW_t

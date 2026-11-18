@@ -1,4 +1,4 @@
-//! # Sarima
+//! Seasonal ARIMA (p, d, q)(P, D, Q) at period `s`, on Gaussian noise.
 //!
 //! $$
 //! \Phi(B^s)\phi(B)(1-B)^d(1-B^s)^DX_t=\Theta(B^s)\theta(B)\varepsilon_t
