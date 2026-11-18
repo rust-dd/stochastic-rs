@@ -9,6 +9,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
 use crate::OptionType;
@@ -45,10 +46,11 @@ impl<D> ToModel for Calibrated<SabrParams, D> {
 }
 
 impl SabrParams {
+  /// Into the fit's box, `α = |α|` and `ν = |ν|` floored at `1e-6`; a NaN stays NaN.
   pub fn project_in_place(&mut self) {
-    self.alpha = self.alpha.abs().max(ALPHA_MIN);
+    self.alpha = self.alpha.abs().max_or_nan(ALPHA_MIN);
     self.beta = self.beta.clamp(0.0, 1.0);
-    self.nu = self.nu.abs().max(NU_MIN);
+    self.nu = self.nu.abs().max_or_nan(NU_MIN);
     self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
   }
 
@@ -187,7 +189,12 @@ struct SabrProblem<'a> {
 }
 
 impl SabrProblem<'_> {
+  /// NaN for parameters `SabrParams::new` refuses: the optimiser rejects the step, where a
+  /// pricer built from them would panic.
   fn model_prices(&self, p: &SabrParams) -> Vec<f64> {
+    if p.violation().is_some() {
+      return vec![f64::NAN; self.market.len()];
+    }
     let pricer = SabrPricer::new(*p);
     let SabrCalibrator { s, r, q, .. } = *self.calibrator;
     let quotes = self.calibrator.quotes.iter().zip(&self.forwards);
@@ -217,12 +224,12 @@ impl SabrProblem<'_> {
       let mut p_minus = *p;
       match col {
         0 => {
-          p_plus.alpha = (x + h).abs().max(ALPHA_MIN);
-          p_minus.alpha = (x - h).abs().max(ALPHA_MIN);
+          p_plus.alpha = (x + h).abs().max_or_nan(ALPHA_MIN);
+          p_minus.alpha = (x - h).abs().max_or_nan(ALPHA_MIN);
         }
         1 => {
-          p_plus.nu = (x + h).abs().max(NU_MIN);
-          p_minus.nu = (x - h).abs().max(NU_MIN);
+          p_plus.nu = (x + h).abs().max_or_nan(NU_MIN);
+          p_minus.nu = (x - h).abs().max_or_nan(NU_MIN);
         }
         2 => {
           let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);

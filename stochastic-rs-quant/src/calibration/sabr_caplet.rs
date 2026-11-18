@@ -13,6 +13,7 @@
 use std::convert::Infallible;
 
 use basin::CostFunction;
+use stochastic_rs_distributions::RealExt;
 
 use crate::QuantError;
 use crate::calibration::Calibrated;
@@ -235,14 +236,18 @@ struct SabrCapletCost {
 impl SabrCapletCost {
   fn params(&self, x: &[f64]) -> SabrParams {
     SabrParams {
-      alpha: x[0].abs().max(1e-8),
+      alpha: x[0].abs().max_or_nan(1e-8),
       beta: self.beta,
       rho: x[2].clamp(-0.9999, 0.9999),
-      nu: x[1].abs().max(1e-8),
+      nu: x[1].abs().max_or_nan(1e-8),
     }
   }
 
+  /// NaN for parameters `SabrParams::new` refuses, which `hagan_implied_vol` would panic on.
   fn model_vols(&self, params: &SabrParams) -> Vec<f64> {
+    if params.violation().is_some() {
+      return vec![f64::NAN; self.strikes.len()];
+    }
     let forward = self.forward + self.shift;
     self
       .strikes

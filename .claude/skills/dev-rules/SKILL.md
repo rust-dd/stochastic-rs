@@ -55,7 +55,7 @@ Every new module must cite its source. Add a doc comment at the top of the file 
 
 ## 7. Prefer maintained libraries over raw implementations
 
-Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `roots`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
+Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
 
 Randomness is the standing exception — see §7a.
 
@@ -224,12 +224,13 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
   `converged() == false`, never `Err`. quant returns `QuantError`, ai `anyhow::Error`, copulas
   `CopulaError`, the devices `DeviceError`;
-  `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk estimators
-  (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
-  degenerate data there becomes a `Result` is one pending decision for all of them.
+  `Calibrator::Error: Debug + Display + Send + Sync + 'static`. A short VaR sample is
+  `Err(InsufficientData)` and a non-finite one `Err(InvalidInput)` — it is data; the confidence
+  level beside it is a parameter, and panics.
 - **A numerical evaluation outside its domain or an inversion with no root → documented `NaN`**:
   a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
-  *query* with a non-positive strike or spot. A `0.0` or any other plausible number is never a
+  *query* with a non-positive strike or spot, a live Black caplet on two negative rates — the
+  formula is undefined there. A `0.0` or any other plausible number is never a
   sentinel, and a query argument never panics — only a model parameter does.
 - **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
   `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
