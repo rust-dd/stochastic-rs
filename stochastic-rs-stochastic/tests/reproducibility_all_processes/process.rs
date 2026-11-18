@@ -1,13 +1,5 @@
-//! `process/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
-//! `CompoundPoisson` and `CustomJt` are two of the eight named
-//! distribution-taking types; `CompoundCustom` is the ninth,
-//! unnamed-by-the-usual-count case mentioned there — it takes two
-//! distributions (`D1`, `D2`) plus a nested `CustomJt<T, D2>`, whose own
-//! `Unseeded` seed field is inert (its sampler drives it through an
-//! *externally* supplied seed instead, exactly like `CompoundPoisson`'s
-//! nested `Poisson` below). `Fbm` is one of the ten backend-generic types.
+//! The `process/` slice of the reproducibility guard. `CompoundCustom` takes two distributions and
+//! a nested `CustomJt`, whose own `Unseeded` field is inert: an outer seed drives its sampler.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -154,15 +146,8 @@ guard!(poisson_subordinator, "PoissonSubordinator", |s| {
   PoissonSubordinator::new(2.0, N, Some(0.0), Some(1.0), s)
 });
 
-// `c = 1.0, mu = 1.0` gives a large-jump arrival rate (`lambda0 * dt`) of
-// ~0.12/step with an acceptance probability at the minimum jump size
-// (`exp(-mu * epsilon)`) of only ~0.61, so over `N` steps this process's
-// accepted-jump count is 0 for a non-negligible fraction of seeds —
-// measured: seeds 42 and 43 both realized zero accepted jumps, making
-// `sample()` exactly the deterministic small-jump drift term for both,
-// bit-identical regardless of seed. `c = 5.0, mu = 0.3` raises the
-// candidate rate roughly fivefold and the minimum-jump acceptance to
-// ~0.86, making an empty path negligibly unlikely.
+// `c = 1.0, mu = 1.0` gives about 0.12 arrivals per step at 0.61 acceptance: seeds 42 and 43 both
+// realised zero jumps and the same drift-only path. `c = 5.0, mu = 0.3` makes that negligible.
 guard!(
   tempered_stable_subordinator,
   "TemperedStableSubordinator",

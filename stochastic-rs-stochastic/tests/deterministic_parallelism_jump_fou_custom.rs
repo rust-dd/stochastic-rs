@@ -73,9 +73,8 @@ fn jump_fou_custom_sample_par_is_thread_count_independent() {
   );
 }
 
-/// Same guarantee beyond `MAX_CHUNKS = 64`: `JumpFouCustom` goes through
-/// `ProcessExt::sample_par`'s default, so at `m = 256` several paths share
-/// one chunk's derived basis — the regime `m = 64` above cannot reach.
+/// The same guarantee beyond `MAX_CHUNKS = 64`: `JumpFouCustom` takes `sample_par`'s default, so
+/// at `m = 256` several paths share one chunk's derived basis, which `m = 64` cannot reach.
 #[test]
 fn jump_fou_custom_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;

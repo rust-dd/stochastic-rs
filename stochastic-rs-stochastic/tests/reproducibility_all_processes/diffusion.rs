@@ -1,6 +1,4 @@
-//! `diffusion/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
+//! The `diffusion/` slice of the reproducibility guard, `../reproducibility_all_processes.rs`.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -266,11 +264,8 @@ guard!(jacobi, "Jacobi", |s| Jacobi::new(
   s
 ));
 
-// `x0 = 0.0` sits exactly on the Wright–Fisher diffusion's absorbing
-// boundary: `sigma * sqrt(x0 * (1 - x0))` vanishes there, so the path stays
-// at 0 for every remaining step regardless of any Gaussian draw (correct
-// model behavior, not a sampler bug) and no seed could ever change the
-// output. `0.5` sits in the interior where the diffusion term is live.
+// `x0 = 0.0` is the Wright–Fisher diffusion's absorbing boundary, where no seed changes the
+// path; `0.5` is in the interior, where the diffusion term is live.
 guard!(kimura, "Kimura", |s| Kimura::new(
   0.1,
   0.2,

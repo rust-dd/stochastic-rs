@@ -1,12 +1,5 @@
-//! `jump/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
-//! `Bates`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
-//! the eight distribution-taking types named there, driven at `LAMBDA = 50`
-//! so a jump-component reproducibility bug cannot hide behind a
-//! diffusion-only comparison; `JumpFouCustom` is the sixth (its jump
-//! timing/size draws use two independent `SimdExp` distributions instead
-//! of one `SimdNormal`) and one of the ten backend-generic types besides.
+//! The `jump/` slice of the reproducibility guard. The distribution-taking types run at
+//! `LAMBDA = 50`; `JumpFouCustom` draws its timing and sizes from two independent `SimdExp` laws.
 
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;

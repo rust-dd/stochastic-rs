@@ -1,6 +1,4 @@
-//! `rough/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes.
+//! The `rough/` slice of the reproducibility guard, `../reproducibility_all_processes.rs`.
 
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFbm;

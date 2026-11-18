@@ -1,8 +1,5 @@
-//! `noise/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 129-type list, and shared methodology notes. `Cfgns`
-//! and `Fgn` are two of the nine backend-generic types named there,
-//! instantiated on the default `Cpu` backend (their only inherent `new()`).
+//! The `noise/` slice of the reproducibility guard; `Cfgns` and `Fgn` are built on the default
+//! `Cpu` backend, their only inherent `new()`.
 
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::noise::cgns::Cgns;

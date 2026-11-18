@@ -1,43 +1,5 @@
-//! `Accelerate` (vDSP) reproducibility, measured rather than assumed.
-//!
-//! An earlier version of this crate's docs claimed `Accelerate` carries the
-//! same bit-identical guarantee `Cpu` does, reasoning only about the
-//! seed-*consumption* layer this wave built (see `device/fgn_backend.rs`'s
-//! `FgnBackend` doc) and never measuring the actual output. That claim is wrong:
-//! the seed-consumption layer genuinely is thread-count independent (the
-//! tests below rely on that, unchanged, to prove per-path bases don't
-//! depend on scheduling) — but `vDSP_fft_zip` itself is not bit-stable
-//! across otherwise-identical calls. Measured while correcting this claim,
-//! on Apple Silicon (M4 Max, 10 P-cores + 4 E-cores):
-//!
-//! - Quiet system, 400 repeated calls (two separately-constructed,
-//!   identically-seeded objects each time) across 35 `(n, m)` combinations,
-//!   no thread-pool variation: **zero divergent elements**.
-//! - The identical 400 calls with all 16 logical threads saturated by
-//!   unrelated floating-point work (to give the OS scheduler a reason to
-//!   dispatch `vDSP_fft_zip` to different core types across calls):
-//!   **21 of 400 configurations diverged**, worst observed relative
-//!   difference `2.08e-3`.
-//! - `Cpu`, run under the identical background load and `(n, m)` sweep:
-//!   **zero divergent elements** — confirming the divergence is specific to
-//!   `Accelerate`/vDSP, not an artifact of the measurement approach.
-//!
-//! This is consistent with vDSP selecting a different vectorized code path
-//! (and therefore a different floating-point reduction order) depending on
-//! which core type executes it — Apple Silicon's P-cores and E-cores are
-//! not guaranteed to produce bit-identical results for the same
-//! floating-point computation. `Accelerate` is therefore
-//! **reproducible-effort-only**, the same tier as the GPU backends, not
-//! bit-identical like `Cpu` — see `device/fgn_backend.rs`'s `FgnBackend` doc for
-//! the corrected guarantee table.
-//!
-//! The tests below do not assert a specific divergence *rate* (it depends
-//! on system load at the moment the test runs, which this file cannot
-//! control on shared/virtualized CI hardware) — they assert the weaker,
-//! always-meaningful property: any divergence stays within a tolerance far
-//! below what a real seeding bug would produce, whether or not this
-//! particular run happens to trigger vDSP's own hardware-level
-//! nondeterminism.
+//! `Accelerate` is reproducible-effort only: seed consumption ignores the thread count, but
+//! `vDSP_fft_zip` is not bit-stable under core contention (21 of 400 runs, worst 2.08e-3 relative).
 
 #[cfg(accelerate_backend)]
 mod accelerate_reproducibility {
@@ -55,10 +17,8 @@ mod accelerate_reproducibility {
 
   const SEED: u64 = 42;
 
-  /// Generous relative-difference bound: comfortably above the worst ULP
-  /// /scheduling-noise measured while writing this test (`2.08e-3`), but
-  /// many orders of magnitude below what a real seeding bug (e.g. two
-  /// paths swapping bases) would produce.
+  /// Relative-difference bound: above the worst scheduling noise measured (`2.08e-3`), orders of
+  /// magnitude below what a seeding bug such as two paths swapping bases would produce.
   const VDSP_NOISE_TOLERANCE: f64 = 1e-2;
 
   fn fgn_accelerate(seed: u64, n: usize) -> Fgn<f32, Deterministic, Accelerate> {
@@ -93,10 +53,8 @@ mod accelerate_reproducibility {
     (max_rel, diff_count, total)
   }
 
-  /// Runs `f` with several threads spinning on unrelated floating-point
-  /// work, to give the OS scheduler a reason to dispatch across core types
-  /// mid-measurement — on this machine, a quiet system never reproduced the
-  /// divergence documented on this module; induced contention did.
+  /// Runs `f` while several threads spin on floating-point work, so the scheduler dispatches
+  /// across core types; a quiet system never reproduced the divergence, contention did.
   fn under_core_contention<R>(f: impl FnOnce() -> R) -> R {
     let stop = Arc::new(AtomicBool::new(false));
     let handles: Vec<_> = (0..12)
@@ -121,12 +79,8 @@ mod accelerate_reproducibility {
     out
   }
 
-  /// The property `Accelerate` actually offers: seed consumption — which
-  /// derived basis feeds which path — is thread-count independent, to
-  /// within the tolerance vDSP's own hardware-dependent nondeterminism
-  /// costs. A real seeding regression would blow this bound by many orders
-  /// of magnitude, not sit at the ULP/scheduling-noise scale documented on
-  /// this module.
+  /// Seed consumption, which derived basis feeds which path, is thread-count independent within
+  /// the tolerance vDSP's nondeterminism costs; a seeding regression exceeds it by far.
   #[test]
   fn accelerate_seed_consumption_is_thread_count_independent_within_vdsp_tolerance() {
     let m = 64;
@@ -149,11 +103,8 @@ mod accelerate_reproducibility {
     );
   }
 
-  /// Same property, sweeping the `(n, m)` combinations that originally
-  /// exposed the divergence, comparing two separately-constructed,
-  /// identically-seeded objects on the *same* pool under induced core
-  /// contention (no thread-count variation at all) — isolating vDSP's own
-  /// run-to-run stability from anything this crate's seeding layer does.
+  /// The same over the `(n, m)` sweep that exposed the divergence: two identically seeded
+  /// objects on one pool under core contention, which isolates vDSP's run-to-run stability.
   #[test]
   fn accelerate_repeated_calls_agree_within_vdsp_tolerance_under_core_contention() {
     let mut worst = 0.0f64;
@@ -174,10 +125,8 @@ mod accelerate_reproducibility {
     );
   }
 
-  /// Control: `Cpu`, under the identical core-contention harness and
-  /// `(n, m)` sweep, must stay exactly bit-identical — confirms the
-  /// divergence documented on this module is specific to `Accelerate`/vDSP,
-  /// not an artifact of the measurement harness itself.
+  /// Control: `Cpu` under the same contention harness and sweep stays bit-identical, so the
+  /// divergence is vDSP's and not the harness's.
   #[test]
   fn cpu_repeated_calls_are_bit_identical_under_the_same_core_contention() {
     under_core_contention(|| {
