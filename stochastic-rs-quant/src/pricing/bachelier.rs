@@ -46,16 +46,6 @@ impl BachelierPricer {
     s * ((r - q) * tau).exp()
   }
 
-  /// Call and put at the query `(s, k, r, q, tau)`.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let forward = self.forward(s, r, q, tau);
-    let disc = (-r * tau).exp();
-    (
-      disc * bachelier_forward_caplet(forward, k, tau, self.v),
-      disc * bachelier_forward_floorlet(forward, k, tau, self.v),
-    )
-  }
-
   /// Normal vega `e^{−rτ} √τ φ(d)`, shared by calls and puts.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let forward = self.forward(s, r, q, tau);
@@ -84,14 +74,13 @@ impl BachelierPricer {
 
 impl ModelPricer for BachelierPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    (-r * tau).exp() * bachelier_forward_caplet(self.forward(s, r, q, tau), k, tau, self.v)
   }
 
-  /// The carry is `r − q`, so the trait's parity default would be right;
-  /// the closed form is used anyway so the put is exact rather than
-  /// recomposed from the call.
+  /// The closed form $(K-F)\Phi(-d)+\sigma\sqrt\tau\,\varphi(d)$, not the parity default, which
+  /// recomposes the put from the call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    (-r * tau).exp() * bachelier_forward_floorlet(self.forward(s, r, q, tau), k, tau, self.v)
   }
 }
 
@@ -181,7 +170,10 @@ mod tests {
   #[test]
   fn matches_the_scipy_reference() {
     let (s, k, r, q, tau) = Q;
-    let (call, put) = BachelierPricer::new(20.0).call_put(s, k, r, q, tau);
+    let (call, put) = (
+      BachelierPricer::new(20.0).price_call(s, k, r, q, tau),
+      BachelierPricer::new(20.0).price_put(s, k, r, q, tau),
+    );
     assert!((call - 5.425620481357).abs() < 1e-10, "call {call}");
     assert!((put - 8.049840381737).abs() < 1e-10, "put {put}");
   }
@@ -201,7 +193,10 @@ mod tests {
   fn parity_and_trait_routing_hold() {
     let (s, k, r, q, tau) = Q;
     let model = BachelierPricer::new(20.0);
-    let (call, put) = model.call_put(s, k, r, q, tau);
+    let (call, put) = (
+      model.price_call(s, k, r, q, tau),
+      model.price_put(s, k, r, q, tau),
+    );
     let want = (-r * tau).exp() * (model.forward(s, r, q, tau) - k);
     assert!((call - put - want).abs() < 1e-9);
     assert_eq!(model.price_call(s, k, r, q, tau), call);

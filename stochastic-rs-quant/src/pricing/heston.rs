@@ -11,6 +11,7 @@ use num_complex::Complex64;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;
+use crate::CallPut;
 use crate::OptionType;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
@@ -87,38 +88,37 @@ impl HestonPricer {
     self.lambda
   }
 
-  /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
+  /// Call and put from one pair `P_1`, `P_2`: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
   /// past `1e5`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
   /// $$
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if tau.is_nan() || tau < 0.0 {
-      return (f64::NAN, f64::NAN);
+      return CallPut {
+        call: f64::NAN,
+        put: f64::NAN,
+      };
     }
     if tau == 0.0 {
       let payoff =
         |option_type| vanilla_payoff(option_type, s * (-q * tau).exp(), k * (-r * tau).exp());
-      return (payoff(OptionType::Call), payoff(OptionType::Put));
+      return CallPut {
+        call: payoff(OptionType::Call),
+        put: payoff(OptionType::Put),
+      };
     }
     let scale = self.rest_scale(tau, s, k, r, q);
     let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), scale)
       - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), scale);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
-    (call, put)
+    CallPut { call, put }
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on none of this model's own parameters — it inverts a price
-  /// for a volatility rather than pricing at one — but is kept here as the
-  /// inverse of [`call_put`](Self::call_put), sharing its `b = r - q`
-  /// carry convention.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the model's
+  /// parameters; NaN for a price outside the no-arbitrage bounds.
   pub fn implied_volatility(
     &self,
     c_price: f64,
@@ -131,29 +131,19 @@ impl HestonPricer {
   ) -> f64 {
     let forward = s * ((r - q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    crate::vol_surface::implied::black_implied_vol(
-      undiscounted_price,
-      forward,
-      k,
-      tau,
-      option_type == OptionType::Call,
-    )
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for HestonPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Takes the closed form rather than the trait's vanilla-parity default.
-  /// The two are *mathematically* the same here — this model's carry factor
-  /// really is $e^{-q\tau}$ — but the default associates the same three
-  /// terms in a different order, so it can land an ulp away from the value
-  /// the pre-query `calculate_call_put().1` returned. See
-  /// `heston_price_put_matches_parity_but_is_the_closed_form`.
+  /// The pair's put, not the trait's parity default, which sums the same three terms in another
+  /// order and can land an ulp away.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 
@@ -164,20 +154,12 @@ impl VanillaEuropeanCall for HestonPricer {}
 impl HestonPricer {
   /// `∂C/∂v₀ = ∂P/∂v₀` under the Fourier integral as `D_j f_j`, no finite difference; NaN for
   /// `tau ≤ 0` or a NaN `tau`, as an expired option has a value and no sensitivity.
-  pub fn call_put_initial_variance_vega(
-    &self,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    tau: f64,
-  ) -> (f64, f64) {
+  pub fn initial_variance_vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau.is_nan() || tau <= 0.0 {
-      return (f64::NAN, f64::NAN);
+      return f64::NAN;
     }
-    let vega = s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, s, k, r, q)
-      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, s, k, r, q);
-    (vega, vega)
+    s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, s, k, r, q)
+      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, s, k, r, q)
   }
 
   pub(self) fn u(&self, j: u8) -> f64 {

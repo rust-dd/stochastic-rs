@@ -61,34 +61,25 @@ impl AsianPricer {
     (v, b)
   }
 
-  /// Call and put price at one query point.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// The adjusted carry `b` with the closed form's `d1`, `d2` at one query point.
+  fn carry_d1_d2(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64, f64) {
     let (v, b) = self.averaged_vol_and_carry(r, q);
     let d1 = ((s / k).ln() + (b + 0.5 * v.powi(2) * tau)) / (v * tau.sqrt());
-    let d2 = d1 - v * tau.sqrt();
-
-    let call = s * ((b - r) * tau).exp() * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2);
-    let put = -s * ((b - r) * tau).exp() * norm_cdf(-d1) + k * (-r * tau).exp() * norm_cdf(-d2);
-
-    (call, put)
+    (b, d1, d1 - v * tau.sqrt())
   }
 }
 
 impl ModelPricer for AsianPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    let (b, d1, d2) = self.carry_d1_d2(s, k, r, q, tau);
+    s * ((b - r) * tau).exp() * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2)
   }
 
-  /// Overrides the trait's vanilla-parity default, which assumes the carry
-  /// factor is $e^{-q\tau}$. The averaged underlying's is
-  /// $e^{(b-r)\tau}$ with $b=\tfrac12(r-q-\tfrac{\sigma_A^2}{12})$, so
-  /// parity reads $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$. The two coincide only
-  /// where $b=r-q$, i.e. on the single line $r-q=-\sigma_A^2/12$ — a
-  /// measure-zero coincidence, not a convention, so the default is a
-  /// silent mispricing everywhere else. See
-  /// `asian_price_put_overrides_vanilla_parity`.
+  /// Not the parity default: the averaged underlying carries at $e^{(b-r)\tau}$ with
+  /// $b=\tfrac12(r-q-\tfrac{\sigma_A^2}{12})$, so parity reads $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    let (b, d1, d2) = self.carry_d1_d2(s, k, r, q, tau);
+    -s * ((b - r) * tau).exp() * norm_cdf(-d1) + k * (-r * tau).exp() * norm_cdf(-d2)
   }
 }
 
@@ -115,7 +106,10 @@ mod tests {
   #[test]
   fn asian_model_pricer_matches_pre_refactor_goldens() {
     let model = AsianPricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     assert!((call - 3.2776906533992545).abs() < TOL, "call {call}");
     assert!((put - 7.067347664422634).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
@@ -127,7 +121,10 @@ mod tests {
   #[test]
   fn asian_price_put_overrides_vanilla_parity() {
     let model = AsianPricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
 
     let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
     assert!(

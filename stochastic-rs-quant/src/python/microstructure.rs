@@ -225,10 +225,11 @@ impl PyOrderBook {
     size: f64,
   ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>)> {
     let s = parse_side(side)?;
-    let (id, trades) = self.inner.add_order(s, price, size);
+    let placed = self.inner.add_order(s, price, size);
     Ok((
-      id,
-      trades
+      placed.order_id,
+      placed
+        .trades
         .into_iter()
         .map(|t| (t.price, t.size, t.taker_id, t.maker_id))
         .collect(),
@@ -242,14 +243,15 @@ impl PyOrderBook {
     size: f64,
   ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>, f64)> {
     let s = parse_side(side)?;
-    let (id, trades, remaining) = self.inner.execute_order(s, size);
+    let filled = self.inner.execute_order(s, size);
     Ok((
-      id,
-      trades
+      filled.order_id,
+      filled
+        .trades
         .into_iter()
         .map(|t| (t.price, t.size, t.taker_id, t.maker_id))
         .collect(),
-      remaining,
+      filled.unfilled,
     ))
   }
 
@@ -258,11 +260,11 @@ impl PyOrderBook {
   }
 
   fn best_bid(&self) -> Option<(f64, f64)> {
-    self.inner.best_bid()
+    self.inner.best_bid().map(|l| (l.price, l.size))
   }
 
   fn best_ask(&self) -> Option<(f64, f64)> {
-    self.inner.best_ask()
+    self.inner.best_ask().map(|l| (l.price, l.size))
   }
 
   fn mid(&self) -> Option<f64> {
@@ -275,6 +277,10 @@ impl PyOrderBook {
 
   /// Returns `(bids, asks)` where each side is `[(price, total_size)]`.
   fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
-    self.inner.depth()
+    let side = |levels: Vec<crate::order_book::Level>| {
+      levels.into_iter().map(|l| (l.price, l.size)).collect()
+    };
+    let depth = self.inner.depth();
+    (side(depth.bids), side(depth.asks))
   }
 }

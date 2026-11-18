@@ -1,6 +1,7 @@
 use num_complex::Complex64;
 
 use super::*;
+use crate::CallPut;
 use crate::OptionType;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
@@ -37,7 +38,7 @@ fn carr_madan_reduces_to_heston_short_dated() {
       sigma,
       rho,
     });
-    let heston_call = heston.call_put(s, s, r, 0.0, tau).0;
+    let heston_call = heston.price_call(s, s, r, 0.0, tau);
     let hscm = HestonStochCorrPricer::new(v0, kappa, theta, sigma, rho, 10.0, rho, 1e-10, 0.0);
     let hscm_call = hscm.price_call_carr_madan(s, s, r, 0.0, tau);
     let reldiff = (heston_call - hscm_call).abs() / heston_call;
@@ -251,7 +252,7 @@ fn compare_with_standard_heston() {
     sigma,
     rho,
   });
-  let (h_call, _) = heston.call_put(s, k, r, 0.0, tau);
+  let h_call = heston.price_call(s, k, r, 0.0, tau);
 
   // HSCM with σ_r ≈ 0 should be close to Heston
   let hscm = HestonStochCorrPricer::new(
@@ -305,11 +306,11 @@ fn hscm_model_pricer_goldens() {
   let (s, k, r, q, tau) = GOLDEN_QUERY;
 
   // q = 0, the shape the pre-query struct defaulted to.
-  let (c0, p0) = m.call_put(s, k, r, 0.0, tau);
+  let CallPut { call: c0, put: p0 } = m.price_call_put(s, k, r, 0.0, tau);
   assert!((c0 - 4.82832421223066).abs() < TOL, "q=0 call {c0}");
   assert!((p0 - 5.963738072916939).abs() < TOL, "q=0 put {p0}");
 
-  let (call, put) = m.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
   assert!((call - 4.082339820498465).abs() < TOL, "call {call}");
   assert!((put - 6.706559720878488).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
@@ -332,13 +333,13 @@ fn hscm_model_pricer_goldens() {
 fn hscm_put_is_parity_and_is_floored_at_zero() {
   let m = paper_model();
   let (s, k, r, q, tau) = GOLDEN_QUERY;
-  let (call, put) = m.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
   let parity = call - s * (-q * tau).exp() + k * (-r * tau).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
 
   for t in [0.25, 0.75] {
     for kk in [0.01, 50.0, 200.0] {
-      let (c, p) = m.call_put(s, kk, r, q, t);
+      let CallPut { call: c, put: p } = m.price_call_put(s, kk, r, q, t);
       assert!(
         c >= 0.0 && p >= 0.0,
         "negative price at K={kk}, τ={t}: call={c}, put={p}"
@@ -382,14 +383,14 @@ fn hscm_preserves_nan_market_inputs() {
   ] {
     let call = m.price_call_carr_madan(s, k, r, q, tau);
     assert!(call.is_nan(), "NaN {name} must exit as NaN, got {call}");
-    let (c, p) = m.call_put(s, k, r, q, tau);
+    let CallPut { call: c, put: p } = m.price_call_put(s, k, r, q, tau);
     assert!(
       c.is_nan(),
-      "NaN {name} must leave call_put's call NaN, got {c}"
+      "NaN {name} must leave the pair's call NaN, got {c}"
     );
     assert!(
       p.is_nan(),
-      "NaN {name} must leave call_put's put NaN, got {p}"
+      "NaN {name} must leave the pair's put NaN, got {p}"
     );
   }
 }

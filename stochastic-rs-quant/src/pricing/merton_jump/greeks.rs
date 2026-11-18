@@ -98,8 +98,8 @@ impl Merton1976Pricer {
       .sum()
   }
 
-  /// Conditional prices used by the maturity differences in theta and charm.
-  /// Uses the same zero-volatility limits as `call_put`.
+  /// Conditional prices used by the maturity differences in theta and charm, at the price's own
+  /// zero-volatility limits.
   pub(super) fn series_price(
     &self,
     s: f64,
@@ -110,10 +110,10 @@ impl Merton1976Pricer {
     option_type: OptionType,
   ) -> f64 {
     self.greek_series(tau, |bsm| {
-      let (call, put) = Merton1976Pricer::term_call_put(bsm, s, k, r, q, tau);
+      let term = Merton1976Pricer::term_call_put(bsm, s, k, r, q, tau);
       match option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
+        OptionType::Call => term.call,
+        OptionType::Put => term.put,
       }
     })
   }

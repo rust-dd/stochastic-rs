@@ -54,9 +54,14 @@ impl PyBsmPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   fn delta(&self) -> f64 {
@@ -162,9 +167,10 @@ impl PyHestonPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
+    let pair = self
       .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+      .price_call_put(self.s, self.k, self.r, self.q, self.tau);
+    (pair.call, pair.put)
   }
 }
 
@@ -221,9 +227,14 @@ impl PySabrPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 
@@ -270,7 +281,7 @@ impl PyMerton1976Pricer {
         lambda_,
         gamma,
         m,
-        crate::pricing::bsm::BsmCoc::Bsm1973,
+        crate::pricing::bsm::BsmCoc::Merton1973,
       );
       Ok(Self {
         inner,
@@ -291,9 +302,10 @@ impl PyMerton1976Pricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
+    let pair = self
       .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+      .price_call_put(self.s, self.k, self.r, self.q, self.tau);
+    (pair.call, pair.put)
   }
 }
 
@@ -353,9 +365,14 @@ impl PyQuantoPricer {
 
   /// `(call, put)` in domestic currency.
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   /// Quanto forward `E_p · S · exp((r_f − q − ρ σ_S σ_E) τ)`.
@@ -413,9 +430,14 @@ impl PyBachelierPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   /// Forward `S e^{(r − q)τ}` the option is struck on.

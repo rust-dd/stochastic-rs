@@ -81,8 +81,7 @@ pub struct ChainQuote {
   pub ask: f64,
   /// Provider-supplied implied volatility (when available).
   pub implied_vol: f64,
-  /// `true` for a call, `false` for a put.
-  pub is_call: bool,
+  pub option_type: OptionType,
 }
 
 impl ChainQuote {
@@ -105,7 +104,7 @@ pub struct OptionChain {
   pub symbol: String,
   /// Spot price.
   pub s: f64,
-  /// Quotes (calls and puts intermixed; use `is_call` to split).
+  /// Quotes, calls and puts intermixed.
   pub quotes: Vec<ChainQuote>,
 }
 
@@ -122,12 +121,7 @@ impl OptionChain {
       if price <= 0.0 || price.is_nan() || !cq.tau.is_finite() || cq.tau <= 0.0 {
         continue;
       }
-      let option_type = if cq.is_call {
-        OptionType::Call
-      } else {
-        OptionType::Put
-      };
-      quotes.push(OptionQuote::new(cq.strike, cq.tau, price, option_type));
+      quotes.push(OptionQuote::new(cq.strike, cq.tau, price, cq.option_type));
       if !taus.iter().any(|&t| (t - cq.tau).abs() < 1e-12) {
         taus.push(cq.tau);
       }
@@ -245,7 +239,7 @@ mod tests {
           bid: 6.8,
           ask: 7.2,
           implied_vol: 0.2,
-          is_call: true,
+          option_type: OptionType::Call,
         },
         ChainQuote {
           strike: 105.0,
@@ -254,7 +248,7 @@ mod tests {
           bid: 1.9,
           ask: 2.1,
           implied_vol: 0.21,
-          is_call: true,
+          option_type: OptionType::Call,
         },
         // Degenerate quote (non-positive mid) — must be dropped.
         ChainQuote {
@@ -264,7 +258,7 @@ mod tests {
           bid: 0.0,
           ask: 0.0,
           implied_vol: 0.0,
-          is_call: true,
+          option_type: OptionType::Call,
         },
       ],
     };

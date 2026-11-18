@@ -225,6 +225,7 @@
 //!
 //! ```
 //! use ndarray::Array2;
+//! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::vol_surface::build_surface;
 //!
 //! let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -234,7 +235,7 @@
 //! let prices = Array2::from_shape_fn((3, 5), |(j, i)| {
 //!     (forwards[j] - strikes[i] + 10.0_f64).max(0.5_f64) + j as f64
 //! });
-//! let surface = build_surface(strikes, maturities, forwards, prices.view(), true);
+//! let surface = build_surface(strikes, maturities, forwards, prices.view(), OptionType::Call);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (3, 5));
 //! ```
 //!

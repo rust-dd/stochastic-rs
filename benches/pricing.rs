@@ -160,11 +160,11 @@ fn bsm_and_sabr(c: &mut Criterion) {
     .sample_size(50)
     .measurement_time(Duration::from_secs(4));
   let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
-  group.bench_function("call_put_9", |b| {
+  group.bench_function("price_call_9", |b| {
     b.iter(|| {
       STRIKES
         .iter()
-        .map(|&k| bsm.call_put(S, k, R, Q, 1.0).0)
+        .map(|&k| bsm.price_call(S, k, R, Q, 1.0))
         .sum::<f64>()
     })
   });
@@ -198,11 +198,11 @@ fn bsm_and_sabr(c: &mut Criterion) {
         .sum::<f64>()
     })
   });
-  group.bench_function("call_put_9", |b| {
+  group.bench_function("price_call_9", |b| {
     b.iter(|| {
       STRIKES
         .iter()
-        .map(|&k| sabr.call_put(S, k, R, Q, 1.0).0)
+        .map(|&k| sabr.price_call(S, k, R, Q, 1.0))
         .sum::<f64>()
     })
   });

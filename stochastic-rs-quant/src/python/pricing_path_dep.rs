@@ -39,9 +39,14 @@ impl PyAsianPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 
@@ -193,9 +198,14 @@ impl PyBjerksundStensland2002Pricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 

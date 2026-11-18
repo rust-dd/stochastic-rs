@@ -9,6 +9,7 @@ use stochastic_rs::quant::calibration::SabrCalibrator;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::traits::Calibrator;
+use stochastic_rs::traits::ModelPricer;
 
 #[test]
 fn a_tikhonov_anchor_pulls_the_sabr_fit() {
@@ -27,7 +28,7 @@ fn a_tikhonov_anchor_pulls_the_sabr_fit() {
       OptionQuote::new(
         k,
         tau,
-        pricer.call_put(s, k, r, 0.0, tau).0,
+        pricer.price_call(s, k, r, 0.0, tau),
         OptionType::Call,
       )
     })

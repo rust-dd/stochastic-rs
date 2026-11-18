@@ -13,6 +13,7 @@ use super::implied::ImpliedVolSurface;
 use super::model_surface::ModelSurface;
 use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
+use crate::OptionType;
 use crate::total_order::ascending;
 use crate::traits::ToModel;
 
@@ -81,26 +82,17 @@ impl VolSurfaceResult {
   }
 }
 
-/// Build a complete volatility surface from market option prices.
-///
-/// # Arguments
-/// * `strikes` - Strike prices (ascending)
-/// * `maturities` - Maturities in years (ascending)
-/// * `forwards` - Forward prices per maturity
-/// * `prices` - **Undiscounted** option price grid (N_T, N_K)
-/// * `is_call` - Whether prices are calls
-///
-/// # Returns
-/// A [`VolSurfaceResult`] containing IV surface, SVI/SSVI fits,
-/// analytics, and arbitrage diagnostics.
+/// The IV surface, SVI/SSVI fits, analytics and arbitrage diagnostics of an **undiscounted**
+/// `(N_T, N_K)` price grid on ascending axes, one forward per maturity.
 pub fn build_surface(
   strikes: Vec<f64>,
   maturities: Vec<f64>,
   forwards: Vec<f64>,
   prices: ArrayView2<f64>,
-  is_call: bool,
+  option_type: OptionType,
 ) -> VolSurfaceResult {
-  let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices, is_call);
+  let iv_surface =
+    ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices, option_type);
 
   build_surface_from_iv(&iv_surface)
 }

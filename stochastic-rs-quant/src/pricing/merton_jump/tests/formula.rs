@@ -32,10 +32,13 @@ use super::*;
 #[test]
 fn merton_gamma_zero_is_black_scholes() {
   let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973);
-  let (want_c, want_p) = bs.call_put(S, K, R, Q, TAU);
+  let (want_c, want_p) = (
+    bs.price_call(S, K, R, Q, TAU),
+    bs.price_put(S, K, R, Q, TAU),
+  );
   for &lambda in &[0.1, 0.5, 2.0, 10.0] {
     let m = Merton1976Pricer::new(0.2, lambda, 0.0, 60, BsmCoc::Bsm1973);
-    let (call, put) = m.call_put(S, K, R, Q, TAU);
+    let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
     assert!(
       (call - want_c).abs() < 1e-12,
       "lambda={lambda}: call {call}, Black-Scholes {want_c}"
@@ -97,14 +100,9 @@ fn merton_conditional_variance_averages_to_the_total() {
 /// magnitude before it fails on the rate.
 #[test]
 fn merton_dense_small_jumps_tend_to_black_scholes() {
-  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973)
-    .call_put(S, K, R, Q, TAU)
-    .0;
+  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973).price_call(S, K, R, Q, TAU);
   let gap = |lambda: f64, m: usize| {
-    (Merton1976Pricer::new(0.2, lambda, 0.4, m, BsmCoc::Bsm1973)
-      .call_put(S, K, R, Q, TAU)
-      .0
-      - bs)
+    (Merton1976Pricer::new(0.2, lambda, 0.4, m, BsmCoc::Bsm1973).price_call(S, K, R, Q, TAU) - bs)
       .abs()
   };
   let coarse = gap(50.0, 120);

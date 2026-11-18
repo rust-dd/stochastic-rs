@@ -10,7 +10,10 @@ fn sabr_pricer_basic() {
   let q = 0.022;
   let tau = 30.0 / 365.0;
   let pr = SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6));
-  let (c, p) = pr.call_put(s, k, r, q, tau);
+  let (c, p) = (
+    pr.price_call(s, k, r, q, tau),
+    pr.price_put(s, k, r, q, tau),
+  );
   assert!(c >= 0.0 && p >= 0.0);
   let d = pr.sabr_fx_forward_delta(s, k, r, q, tau, 1.0);
   assert!(d.is_finite());
@@ -44,7 +47,10 @@ fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
     "fixture drifted: expansion no longer degenerates, sigma={sigma}"
   );
 
-  let (call, put) = m.call_put(100.0, 100.0, 0.0, 0.0, 10.0);
+  let (call, put) = (
+    m.price_call(100.0, 100.0, 0.0, 0.0, 10.0),
+    m.price_put(100.0, 100.0, 0.0, 0.0, 10.0),
+  );
   assert!(call.is_nan(), "call must be NaN, got {call}");
   assert!(put.is_nan(), "put must be NaN, got {put}");
   assert!(m.price_call(100.0, 100.0, 0.0, 0.0, 10.0).is_nan());
@@ -92,7 +98,7 @@ fn golden_model() -> SabrPricer {
 #[test]
 fn sabr_model_pricer_matches_pre_refactor_goldens() {
   let m = golden_model();
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let (call, put) = (m.price_call(S, K, R, Q, TAU), m.price_put(S, K, R, Q, TAU));
   assert!((call - 2.8384773477990137).abs() < TOL, "call {call}");
   assert!((put - 5.46269724817904).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
@@ -117,7 +123,7 @@ fn sabr_model_pricer_matches_pre_refactor_goldens() {
 #[test]
 fn sabr_price_put_matches_parity_but_is_the_closed_form() {
   let m = golden_model();
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let (call, put) = (m.price_call(S, K, R, Q, TAU), m.price_put(S, K, R, Q, TAU));
   let parity = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
   assert_eq!(m.price_put(S, K, R, Q, TAU), put);

@@ -20,6 +20,7 @@
 use ndarray::Array2;
 
 use super::implied::ImpliedVolSurface;
+use crate::OptionType;
 use crate::pricing::fourier::CarrMadanPricer;
 use crate::pricing::fourier::FourierModelExt;
 use crate::traits::VanillaEuropeanCall;
@@ -94,7 +95,7 @@ pub trait ModelSurface: VanillaEuropeanCall {
       maturities.to_vec(),
       forwards,
       prices.view(),
-      true,
+      OptionType::Call,
     )
   }
 }
@@ -168,7 +169,7 @@ pub fn fourier_model_surface_fft_with(
     maturities.to_vec(),
     forwards,
     prices.view(),
-    true,
+    OptionType::Call,
   )
 }
 

@@ -52,7 +52,7 @@ impl SabrPricer {
   }
 
   /// Hagan vol at `k` against [`forward`](Self::forward); NaN for a query outside the domain, and
-  /// possibly non-positive on legal parameters (see [`call_put`](Self::call_put)).
+  /// possibly non-positive on legal parameters (see [`price_call`](Self::price_call)).
   pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     hagan_implied_vol(k, self.forward(s, r, q, tau), tau, &self.params)
   }
@@ -70,15 +70,10 @@ impl SabrPricer {
     )
   }
 
-  /// Call and put at one query point, both NaN unless [`sigma`](Self::sigma) is finite and > 0,
-  /// as where Hagan's small-τ bracket turns negative (`α 0.2, β 1, ρ −0.9, ν 3` at `τ = 10`).
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    self.call_put_at_forward(self.forward(s, r, q, tau), s, k, r, q, tau)
-  }
-
-  /// [`call_put`](Self::call_put) at the query's forward `f`, for a fit that prices each quote at
-  /// many parameter sets and computes its forward once.
-  pub(crate) fn call_put_at_forward(
+  /// The price at the query's forward `f`, for a fit that prices each quote at many parameter
+  /// sets and computes its forward once; NaN as [`price_call`](Self::price_call) is.
+  #[allow(clippy::too_many_arguments)]
+  pub(crate) fn price_at_forward(
     &self,
     f: f64,
     s: f64,
@@ -86,25 +81,17 @@ impl SabrPricer {
     r: f64,
     q: f64,
     tau: f64,
-  ) -> (f64, f64) {
+    option_type: OptionType,
+  ) -> f64 {
     let sigma = hagan_implied_vol(k, f, tau, &self.params);
     if !sigma.is_finite() || sigma <= 0.0 {
-      return (f64::NAN, f64::NAN);
+      return f64::NAN;
     }
-    BsmPricer::new(sigma, BsmCoc::Merton1973).call_put(s, k, r, q, tau)
+    BsmPricer::new(sigma, BsmCoc::Merton1973).price_option(s, k, r, q, tau, option_type)
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on none of the four Sabr parameters — it inverts a price for a
-  /// volatility rather than pricing at one, so any `SabrPricer` returns the
-  /// same answer. Kept as an inherent method on this type (rather than a
-  /// free function) because it is the inverse of
-  /// [`call_put`](Self::call_put) and shares its `b = r - q` carry
-  /// convention.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the SABR
+  /// parameters; NaN for a price outside the no-arbitrage bounds.
   pub fn implied_volatility(
     &self,
     c_price: f64,
@@ -117,40 +104,32 @@ impl SabrPricer {
   ) -> f64 {
     let forward = self.forward(s, r, q, tau);
     let undiscounted_price = c_price * (r * tau).exp();
-    crate::vol_surface::implied::black_implied_vol(
-      undiscounted_price,
-      forward,
-      k,
-      tau,
-      option_type == OptionType::Call,
-    )
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for SabrPricer {
-  /// NaN outside the domain or at a degenerate Hagan vol; see [`call_put`](SabrPricer::call_put).
+  /// NaN unless [`sigma`](SabrPricer::sigma) is finite and > 0, as where Hagan's small-τ bracket
+  /// turns negative (`α 0.2, β 1, ρ −0.9, ν 3` at `τ = 10`).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_at_forward(
+      self.forward(s, r, q, tau),
+      s,
+      k,
+      r,
+      q,
+      tau,
+      OptionType::Call,
+    )
   }
 
-  /// Takes the Black-Scholes closed-form put rather than the trait's
-  /// vanilla-parity default. The two are *mathematically* the same here —
-  /// the carry is `b = r - q`, which is exactly the case where vanilla
-  /// parity holds — but the closed form is what the pre-query
-  /// `calculate_call_put().1` returned, so delegating keeps the number
-  /// bit-identical rather than merely equal to within rounding. See
-  /// `sabr_price_put_matches_parity_but_is_the_closed_form`.
-  ///
-  /// Panics and returns [`f64::NAN`] under exactly the same conditions as
-  /// [`price_call`](SabrPricer::price_call), since both read the same
-  /// [`call_put`](SabrPricer::call_put) pair.
+  /// The Black-Scholes put at the Hagan vol, not the parity default, which rounds differently;
+  /// NaN where [`price_call`](SabrPricer::price_call) is.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_at_forward(self.forward(s, r, q, tau), s, k, r, q, tau, OptionType::Put)
   }
 }
 
-/// European vanilla call: Hagan's expansion produces a Black volatility
-/// that [`call_put`](SabrPricer::call_put) prices as a vanilla against
-/// [`forward`](SabrPricer::forward), which is the default's
-/// $Se^{(r-q)\tau}$ under another name.
+/// European vanilla call: the Black price at Hagan's volatility against
+/// [`forward`](SabrPricer::forward), the default's $Se^{(r-q)\tau}$.
 impl VanillaEuropeanCall for SabrPricer {}

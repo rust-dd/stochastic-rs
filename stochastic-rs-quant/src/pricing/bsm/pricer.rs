@@ -86,25 +86,23 @@ impl BsmPricer {
     (d1, d2)
   }
 
-  /// Call and put price at one query point: at `tau = 0` the payoff, NaN for a non-finite `v`.
+  /// One leg at one query point: at `tau = 0` the payoff, NaN for a non-finite `v`.
   ///
   /// $$
   /// C=Se^{(b-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
   /// P=-Se^{(b-r)\tau}N(-d_1)+Ke^{-r\tau}N(-d_2)
   /// $$
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  fn leg(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let carry = ((self.b(r, q) - r) * tau).exp();
     let disc = (-r * tau).exp();
     if tau == 0.0 && self.v.is_finite() {
-      let payoff = |option_type| vanilla_payoff(option_type, s * carry, k * disc);
-      return (payoff(OptionType::Call), payoff(OptionType::Put));
+      return vanilla_payoff(option_type, s * carry, k * disc);
     }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
-
-    let call = s * carry * norm_cdf(d1) - k * disc * norm_cdf(d2);
-    let put = -s * carry * norm_cdf(-d1) + k * disc * norm_cdf(-d2);
-
-    (call, put)
+    match option_type {
+      OptionType::Call => s * carry * norm_cdf(d1) - k * disc * norm_cdf(d2),
+      OptionType::Put => -s * carry * norm_cdf(-d1) + k * disc * norm_cdf(-d2),
+    }
   }
 
   /// Black volatility implied by `price` at one query point.
@@ -129,19 +127,13 @@ impl BsmPricer {
   ) -> f64 {
     let forward = s * (self.b(r, q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    crate::vol_surface::implied::black_implied_vol(
-      undiscounted_price,
-      forward,
-      k,
-      tau,
-      option_type == OptionType::Call,
-    )
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for BsmPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.leg(s, k, r, q, tau, OptionType::Call)
   }
 
   /// Overrides the trait's vanilla-parity default, which assumes the carry
@@ -152,7 +144,7 @@ impl ModelPricer for BsmPricer {
   /// `q != 0` and for [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`] at
   /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.leg(s, k, r, q, tau, OptionType::Put)
   }
 }
 

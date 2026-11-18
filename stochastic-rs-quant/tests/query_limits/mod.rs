@@ -2,6 +2,7 @@
 
 use chrono::NaiveDate;
 use ndarray::Array1;
+use stochastic_rs_quant::CallPut;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::calendar::Frequency;
@@ -198,12 +199,16 @@ fn prices_at_zero_maturity_are_intrinsic_and_greeks_are_nan() {
   let heston = heston();
   let k = 100.0;
   for s in SPOTS {
+    let bsm_pair = CallPut {
+      call: bsm.price_call(s, k, R, Q, 0.0),
+      put: bsm.price_put(s, k, R, Q, 0.0),
+    };
     let prices = [
-      ("bsm", bsm.call_put(s, k, R, Q, 0.0)),
-      ("merton", merton.call_put(s, k, R, Q, 0.0)),
-      ("heston", heston.call_put(s, k, R, Q, 0.0)),
+      ("bsm", bsm_pair),
+      ("merton", merton.price_call_put(s, k, R, Q, 0.0)),
+      ("heston", heston.price_call_put(s, k, R, Q, 0.0)),
     ];
-    for (name, (call, put)) in prices {
+    for (name, CallPut { call, put }) in prices {
       assert_eq!(call, (s - k).max(0.0), "{name} call at s = {s}");
       assert_eq!(put, (k - s).max(0.0), "{name} put at s = {s}");
     }
@@ -216,8 +221,7 @@ fn prices_at_zero_maturity_are_intrinsic_and_greeks_are_nan() {
         bsm.rho(s, k, R, Q, 0.0, ot),
         bsm.phi(s, k, R, Q, 0.0, ot),
         bsm.strike_delta(s, k, R, Q, 0.0, ot),
-        bsm.lambda(s, k, R, Q, 0.0, ot).0,
-        bsm.lambda(s, k, R, Q, 0.0, ot).1,
+        bsm.lambda(s, k, R, Q, 0.0, ot),
         heston.delta(s, k, R, Q, 0.0, ot),
         heston.rho(s, k, R, Q, 0.0, ot),
         merton.delta(s, k, R, Q, 0.0, ot),
@@ -238,7 +242,7 @@ fn prices_at_zero_maturity_are_intrinsic_and_greeks_are_nan() {
       heston.vega(s, k, R, Q, 0.0),
       heston.vanna(s, k, R, Q, 0.0),
       heston.volga(s, k, R, Q, 0.0),
-      heston.call_put_initial_variance_vega(s, k, R, Q, 0.0).0,
+      heston.initial_variance_vega(s, k, R, Q, 0.0),
       merton.gamma(s, k, R, Q, 0.0),
       merton.vega(s, k, R, Q, 0.0),
       merton.vanna(s, k, R, Q, 0.0),
@@ -405,14 +409,12 @@ fn an_expired_gap_pays_strictly_past_its_trigger_and_a_supershare_on_its_closed_
 fn heston_answers_nan_before_expiry_and_at_a_nan_tau() {
   let heston = heston();
   for tau in [-1e-9, -1.0, f64::NAN] {
-    let (call, put) = heston.call_put(110.0, 100.0, R, Q, tau);
+    let CallPut { call, put } = heston.price_call_put(110.0, 100.0, R, Q, tau);
     assert!(
       call.is_nan() && put.is_nan(),
       "tau = {tau}: ({call}, {put})"
     );
-    let vega = heston
-      .call_put_initial_variance_vega(110.0, 100.0, R, Q, tau)
-      .0;
+    let vega = heston.initial_variance_vega(110.0, 100.0, R, Q, tau);
     assert!(vega.is_nan(), "tau = {tau}: v0 vega {vega}");
     assert_all_nan(
       heston.greeks(110.0, 100.0, R, Q, tau, OptionType::Call),

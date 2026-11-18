@@ -14,7 +14,10 @@ const TOL: f64 = 1e-12;
 fn bsm_price() {
   let (s, k, r, q, tau) = Q;
   let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
-  let (call, put) = model.call_put(s, k, r, q, tau);
+  let (call, put) = (
+    model.price_call(s, k, r, q, tau),
+    model.price_put(s, k, r, q, tau),
+  );
   assert!(call > 0.0 && put > 0.0);
   assert_eq!(call, model.price_call(s, k, r, q, tau));
   assert_eq!(put, model.price_put(s, k, r, q, tau));
@@ -82,10 +85,12 @@ fn bsm_asay_currently_equals_black76() {
   let (s, k, r, q, tau) = Q;
   let black = BsmPricer::new(V, BsmCoc::Black1976);
   let asay = BsmPricer::new(V, BsmCoc::Asay1982);
-  assert_eq!(
-    black.call_put(s, k, r, q, tau),
-    asay.call_put(s, k, r, q, tau)
-  );
+  for option_type in [OptionType::Call, OptionType::Put] {
+    assert_eq!(
+      black.price_option(s, k, r, q, tau, option_type),
+      asay.price_option(s, k, r, q, tau, option_type)
+    );
+  }
 }
 
 /// [`ModelPricer::price_put`]'s default is vanilla parity
@@ -100,7 +105,10 @@ fn bsm_price_put_overrides_vanilla_parity() {
 
   for coc in [BsmCoc::Merton1973, BsmCoc::GarmanKohlhagen1983] {
     let model = BsmPricer::new(V, coc);
-    let (call, put) = model.call_put(s, k, r, q, tau);
+    let (call, put) = (
+      model.price_call(s, k, r, q, tau),
+      model.price_put(s, k, r, q, tau),
+    );
     assert!(
       (put - vanilla(call)).abs() < 1e-12,
       "{coc:?}: b = r - q, so vanilla parity must hold"
@@ -109,7 +117,10 @@ fn bsm_price_put_overrides_vanilla_parity() {
 
   for coc in [BsmCoc::Bsm1973, BsmCoc::Black1976, BsmCoc::Asay1982] {
     let model = BsmPricer::new(V, coc);
-    let (call, put) = model.call_put(s, k, r, q, tau);
+    let (call, put) = (
+      model.price_call(s, k, r, q, tau),
+      model.price_put(s, k, r, q, tau),
+    );
     assert!(
       (put - vanilla(call)).abs() > 1e-3,
       "{coc:?}: b != r - q, so the trait default would be wrong (put={put}, default={})",
@@ -165,8 +176,14 @@ fn bsm_dates_match_tau_pricing() {
   let tau = DayCountConvention::Actual365Fixed.year_fraction::<f64>(eval, expiration);
 
   let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
-  let (c_dates, p_dates) = model.call_put(100.0, 100.0, 0.05, 0.0, tau);
-  let (c_tau, p_tau) = model.call_put(100.0, 100.0, 0.05, 0.0, 1.0);
+  let (c_dates, p_dates) = (
+    model.price_call(100.0, 100.0, 0.05, 0.0, tau),
+    model.price_put(100.0, 100.0, 0.05, 0.0, tau),
+  );
+  let (c_tau, p_tau) = (
+    model.price_call(100.0, 100.0, 0.05, 0.0, 1.0),
+    model.price_put(100.0, 100.0, 0.05, 0.0, 1.0),
+  );
   // 2026-01-02 → 2027-01-02 is 365 days and 2026 is not a leap year, so
   // Act/365F gives tau == 1.0 exactly and the two prices are identical.
   assert!(
@@ -386,7 +403,10 @@ fn bsm_greeks_aggregate_matches_accessors() {
 fn merton_at_a_zero_yield_is_bsm_1973_bit_for_bit() {
   let methods = |m: &BsmPricer, (s, k, r, tau): (f64, f64, f64, f64), ot: OptionType| {
     let price = m.price_option(s, k, r, 0.0, tau, ot);
-    let (call, put) = m.call_put(s, k, r, 0.0, tau);
+    let (call, put) = (
+      m.price_call(s, k, r, 0.0, tau),
+      m.price_put(s, k, r, 0.0, tau),
+    );
     [
       price,
       call,

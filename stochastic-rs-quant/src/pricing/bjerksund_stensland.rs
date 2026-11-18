@@ -192,36 +192,19 @@ impl BjerksundStensland2002Pricer {
     // Ensure at least the European value
     f64::max(value, e_value)
   }
-
-  /// American call and put price at one query point.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let b = Self::b(r, q);
-
-    // Call: direct BS2002
-    let call = self.bs2002_call(s, k, tau, r, b, self.v);
-
-    // Put: use the Bjerksund-Stensland symmetry relation
-    // P(S, X, T, r, b, v) = C(X, S, T, r-b, -b, v)
-    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.v);
-    let put = f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.v));
-
-    (call, put)
-  }
 }
 
 impl ModelPricer for BjerksundStensland2002Pricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.bs2002_call(s, k, tau, r, Self::b(r, q), self.v)
   }
 
-  /// Overrides the trait's vanilla-parity default. Put-call parity holds
-  /// for European options only; an American put carries an early-exercise
-  /// premium the call does not, so the default would understate it. This
-  /// returns the Bjerksund-Stensland symmetry value
-  /// $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$, floored at the European put — see
-  /// `bs2002_price_put_overrides_vanilla_parity`.
+  /// The symmetry value $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$ floored at the European put, not the
+  /// parity default: an American put carries an early-exercise premium the call does not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    let b = Self::b(r, q);
+    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.v);
+    f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.v))
   }
 }
 
@@ -246,7 +229,10 @@ mod tests {
   #[test]
   fn bs2002_model_pricer_matches_pre_refactor_goldens() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     assert!((call - 7.35628449811837).abs() < TOL, "call {call}");
     assert!((put - 10.292928328280922).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
@@ -259,7 +245,10 @@ mod tests {
   #[test]
   fn bs2002_price_put_overrides_vanilla_parity() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
     assert!(
       put > vanilla + 1e-3,

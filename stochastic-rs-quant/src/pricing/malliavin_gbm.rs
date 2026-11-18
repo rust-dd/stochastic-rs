@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
+use crate::CallPut;
 use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
 use crate::traits::RealExt;
@@ -66,12 +67,13 @@ impl Degenerate {
     }
   }
 
-  fn call_put(&self, s: f64, k: f64, r: f64, tau: f64) -> (f64, f64) {
-    match self {
+  fn price_call_put(&self, s: f64, k: f64, r: f64, tau: f64) -> CallPut {
+    let (call, put) = match self {
       Self::OffDomain => (f64::NAN, f64::NAN),
       Self::ZeroHorizon => ((s - k).max_or_nan(0.0), (k - s).max_or_nan(0.0)),
       Self::ZeroSpot => (0.0, k * (-r * tau).exp()),
-    }
+    };
+    CallPut { call, put }
   }
 
   /// The spot at `t_eval` and the conditional call there, on each of `m` paths.
@@ -109,20 +111,13 @@ pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
 
 impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default for two reasons. The
-  /// arithmetic is the same put-call parity — this is a Gbm model, so the
-  /// carry factor really is $e^{-q\tau}$ — but the default would run a
-  /// **second, independent** Monte Carlo for its `price_call` term, so the
-  /// returned put would be derived from a different sample than any call
-  /// the caller had already obtained. It also drops the `max(0)` floor the
-  /// pre-query `calculate_call_put` applied. This routes through
-  /// [`call_put`](Self::call_put), which does one simulation and floors
-  /// both legs.
+  /// The pair's put, floored at zero and from the call's own simulation, which the parity default
+  /// would not give.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 
@@ -142,7 +137,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   ///   *linearly*, so a negative volatility is not absorbed — it biases the
   ///   weight and every conditional expectation built on it.
   /// - if `n_paths` is `0` — there is nothing to average, and
-  ///   `call_put_from_conditional` takes its `count == 0` branch and
+  ///   `price_call_put_from_conditional` takes its `count == 0` branch and
   ///   returns a fabricated `0.0` price.
   /// - if `n_steps` is below `2` — the step size is `tau / (n_steps - 1)`,
   ///   which is infinite at `1` (fabricating the same `0.0`) and underflows
@@ -185,15 +180,15 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 
   /// Call and put from one simulation of the plain Malliavin estimator; a zero spot or horizon
   /// prices at its limit, a negative or non-finite spot or horizon or a non-finite rate at NaN.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if let Some(limit) = Degenerate::of(s, r, q, tau) {
-      return limit.call_put(s, k, r, tau);
+      return limit.price_call_put(s, k, r, tau);
     }
     let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
 
-  fn call_put_from_conditional(
+  fn price_call_put_from_conditional(
     &self,
     s: f64,
     k: f64,
@@ -201,7 +196,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
     c_t: &Array1<f64>,
-  ) -> (f64, f64) {
+  ) -> CallPut {
     let t_eval = self.t_eval;
     assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
@@ -235,16 +230,20 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       put_0 = 0.0;
     }
 
-    (call_0, put_0)
+    CallPut {
+      call: call_0,
+      put: put_0,
+    }
   }
 
-  /// Call and put from the localized estimator, at [`call_put`](Self::call_put)'s limits.
-  pub fn call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Call and put from one simulation of the localized estimator, at
+  /// [`price_call_put`](Self::price_call_put)'s limits.
+  pub fn price_call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if let Some(limit) = Degenerate::of(s, r, q, tau) {
-      return limit.call_put(s, k, r, tau);
+      return limit.price_call_put(s, k, r, tau);
     }
     let (_s_t, c_t) = self.conditional_call_malliavin_localized(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
 
   /// Simulate Gbm paths S_t using the existing Gbm<f64> module.

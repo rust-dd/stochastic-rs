@@ -49,11 +49,15 @@ fn frozen(coc: BsmCoc) -> Merton1976Pricer {
 fn zero_total_volatility_at_the_forward_is_the_limit() {
   for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
     let m = frozen(coc);
-    let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+    let CallPut { call, put } = m.price_call_put(S, S, R, Q, FUT_TAU);
     assert_eq!(call, 0.0, "{coc:?} call");
     assert_eq!(put, 0.0, "{coc:?} put");
 
-    let raw = BsmPricer::new(0.0, coc).call_put(S, S, R, Q, FUT_TAU);
+    let bsm = BsmPricer::new(0.0, coc);
+    let raw = (
+      bsm.price_call(S, S, R, Q, FUT_TAU),
+      bsm.price_put(S, S, R, Q, FUT_TAU),
+    );
     assert!(
       raw.0.is_nan() && raw.1.is_nan(),
       "{coc:?}: the underlying zero-vol term must be NaN, else this pins nothing: {raw:?}"
@@ -100,7 +104,7 @@ fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
   let m = frozen(BsmCoc::Black1976);
   let disc = (-R * FUT_TAU).exp();
   for &k in &[90.0, 110.0] {
-    let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
+    let CallPut { call, put } = m.price_call_put(S, k, R, Q, FUT_TAU);
     // Black1976 carries at b = 0, so the forward is S itself.
     assert!(
       (call - disc * (S - k).max(0.0)).abs() < TOL,
@@ -121,8 +125,7 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
   assert_eq!(m.price_call(S, S, 0.0, Q, FUT_TAU), 0.0);
   assert!(
     BsmPricer::new(0.0, BsmCoc::Bsm1973)
-      .call_put(S, S, 0.0, Q, FUT_TAU)
-      .0
+      .price_call(S, S, 0.0, Q, FUT_TAU)
       .is_nan(),
     "Bsm1973 at r = 0 must reach the same 0/0"
   );
@@ -134,7 +137,7 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
 #[test]
 fn parity_holds_at_the_filled_in_point() {
   let m = frozen(BsmCoc::Black1976);
-  let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
+  let CallPut { call, put } = m.price_call_put(S, S, R, Q, FUT_TAU);
   assert!((call - put).abs() < TOL, "call {call} vs put {put}");
 }
 
@@ -149,7 +152,10 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
     let term = m.term_bsm(n, FUT_TAU);
     assert_eq!(
       Merton1976Pricer::term_call_put(&term, S, S, R, Q, FUT_TAU),
-      term.call_put(S, S, R, Q, FUT_TAU),
+      CallPut {
+        call: term.price_call(S, S, R, Q, FUT_TAU),
+        put: term.price_put(S, S, R, Q, FUT_TAU)
+      },
       "term {n} was intercepted"
     );
   }
@@ -414,7 +420,7 @@ fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
   let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
   for m in [frozen(BsmCoc::Black1976), corner] {
     for &k in &[S, 90.0, 110.0] {
-      let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
+      let CallPut { call, put } = m.price_call_put(S, k, R, Q, FUT_TAU);
       assert_eq!(
         m.series_price(S, k, R, Q, FUT_TAU, OptionType::Call),
         call,

@@ -33,8 +33,7 @@ fn adi_solver_reprices_the_semi_analytic_heston_call() {
     sigma,
     rho,
   })
-  .call_put(s, k, r_d, r_f, tau)
-  .0;
+  .price_call(s, k, r_d, r_f, tau);
   assert!(
     (adi - analytic).abs() / analytic < 1e-2,
     "adi {adi} vs analytic {analytic}"

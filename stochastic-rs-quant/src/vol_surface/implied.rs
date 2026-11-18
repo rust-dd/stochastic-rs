@@ -28,14 +28,14 @@ pub(crate) fn black_implied_vol(
   forward: f64,
   strike: f64,
   tau: f64,
-  is_call: bool,
+  option_type: OptionType,
 ) -> f64 {
   ImpliedBlackVolatility::builder()
     .option_price(undiscounted_price)
     .forward(forward)
     .strike(strike)
     .expiry(tau)
-    .is_call(is_call)
+    .is_call(option_type == OptionType::Call)
     .build()
     .and_then(|iv| iv.calculate_with::<Hybrid>())
     .unwrap_or(f64::NAN)
@@ -71,15 +71,15 @@ fn assert_ascending_axes(strikes: &[f64], maturities: &[f64]) {
 }
 
 impl ImpliedVolSurface {
-  /// A surface from an **undiscounted** call (`is_call`) or put price grid of shape `(N_T, N_K)`, one forward per maturity; a cell is
-  /// NaN where the price does not invert to a positive finite Black vol; panics unless both axes ascend strictly and shapes agree.
+  /// A surface from an **undiscounted** price grid of shape `(N_T, N_K)`, one forward per maturity:
+  /// NaN where a price has no Black vol; panics unless both axes ascend strictly and shapes agree.
   #[must_use]
   pub fn from_prices(
     strikes: Vec<f64>,
     maturities: Vec<f64>,
     forwards: Vec<f64>,
     prices: ArrayView2<f64>,
-    is_call: bool,
+    option_type: OptionType,
   ) -> Self {
     let nt = maturities.len();
     let nk = strikes.len();
@@ -98,7 +98,7 @@ impl ImpliedVolSurface {
         let k = strikes[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = black_implied_vol(prices[[j, i]], f, k, t, is_call);
+        let iv = black_implied_vol(prices[[j, i]], f, k, t, option_type);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;
@@ -227,7 +227,7 @@ impl ImpliedVolSurface {
     let nt = tau_set.len();
     let nk = strike_set.len();
     let mut prices = Array2::<f64>::from_elem((nt, nk), f64::NAN);
-    let mut is_call_grid = vec![true; nt * nk];
+    let mut option_types = vec![OptionType::Call; nt * nk];
     let fwd_vec: Vec<f64> = tau_set
       .iter()
       .map(|t| {
@@ -251,7 +251,7 @@ impl ImpliedVolSurface {
         .position(|k| (k - q.strike).abs() < 1e-12)
         .unwrap();
       prices[[j, i]] = q.price * (r * q.tau).exp();
-      is_call_grid[j * nk + i] = q.option_type == OptionType::Call;
+      option_types[j * nk + i] = q.option_type;
     }
 
     let mut ivs = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -269,7 +269,7 @@ impl ImpliedVolSurface {
         let k = strike_set[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = black_implied_vol(p, f, k, t, is_call_grid[j * nk + i]);
+        let iv = black_implied_vol(p, f, k, t, option_types[j * nk + i]);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;

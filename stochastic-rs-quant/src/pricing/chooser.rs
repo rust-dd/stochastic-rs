@@ -218,6 +218,7 @@ mod tests {
   fn simple_chooser_bounded_by_straddle() {
     use crate::pricing::bsm::BsmCoc;
     use crate::pricing::bsm::BsmPricer;
+    use crate::traits::ModelPricer;
 
     let s = 100.0;
     let k = 100.0;
@@ -236,11 +237,15 @@ mod tests {
     };
     let chooser_price = chooser.price();
 
-    let call = BsmPricer::new(sigma, BsmCoc::Bsm1973).call_put(s, k, r, 0.0, tau);
+    let bsm = BsmPricer::new(sigma, BsmCoc::Bsm1973);
+    let (call, put) = (
+      bsm.price_call(s, k, r, 0.0, tau),
+      bsm.price_put(s, k, r, 0.0, tau),
+    );
 
     // Chooser must be bounded between max(call,put) and call+put.
-    assert!(chooser_price > call.0.max(call.1));
-    assert!(chooser_price < call.0 + call.1);
+    assert!(chooser_price > call.max(put));
+    assert!(chooser_price < call + put);
   }
 
   /// Complex chooser with `K_call = K_put` and `T_call = T_put` should equal

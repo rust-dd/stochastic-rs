@@ -20,6 +20,8 @@
 
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::CallPut;
+
 /// Kirk's approximation for European spread options, payoff `max(F1 − F2 − X, 0)`; a two-forward
 /// query, so no [`ModelPricer`](crate::traits::ModelPricer) and `spread_*` method names instead.
 ///
@@ -27,8 +29,8 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// use stochastic_rs_quant::pricing::kirk::KirkSpreadPricer;
 ///
 /// let model = KirkSpreadPricer::new(0.35, 0.35, 0.9);
-/// let (call, put) = model.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
-/// assert!(put > call, "the spread 35 - 34 is far below the strike 3");
+/// let spread = model.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
+/// assert!(spread.put > spread.call, "the spread 35 - 34 is far below the strike 3");
 /// ```
 ///
 /// ```compile_fail
@@ -67,18 +69,9 @@ impl KirkSpreadPricer {
     Self { v1, v2, corr }
   }
 
-  /// Spread call and spread put at one query point.
-  ///
-  /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
-  /// cost), `r` the risk-free rate and `tau` the maturity in years. **This is
-  /// not the `(s, k, r, q, tau)` query** the single-underlying pricers take
-  /// at the same arity; [`KirkSpreadPricer`](Self)'s own documentation has
-  /// the reason the name carries the `spread_` prefix.
-  ///
-  /// The combined volatility is query-dependent, not model state: Kirk
-  /// weights $\sigma_2$ by $F_2/(F_2+X)$, so it is recomputed per call
-  /// rather than cached on the struct.
-  pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> (f64, f64) {
+  /// Spread call and put of forwards `f1`, `f2` at spread strike `x`, not an `(s, k, r, q, tau)`
+  /// query; Kirk's combined volatility weights $\sigma_2$ by $F_2/(F_2+X)$, so each query has its own.
+  pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> CallPut {
     // Ratio transformation: F = F1 / (F2 + X)
     let denom = f2 + x;
     let f = f1 / denom;
@@ -98,27 +91,17 @@ impl KirkSpreadPricer {
     let call = denom * (f * df * norm_cdf(d1) - df * norm_cdf(d2));
     let put = denom * (df * norm_cdf(-d2) - f * df * norm_cdf(-d1));
 
-    (call, put)
+    CallPut { call, put }
   }
 
-  /// Price the spread call $\max(F_1-F_2-X,0)$ at one query point.
-  ///
-  /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
-  /// cost), `r` the risk-free rate and `tau` the maturity in years — the
-  /// same query [`spread_call_put`](Self::spread_call_put) takes, of which
-  /// this is the first projection.
+  /// The spread call $\max(F_1-F_2-X,0)$.
   pub fn spread_call(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
-    self.spread_call_put(f1, f2, x, r, tau).0
+    self.spread_call_put(f1, f2, x, r, tau).call
   }
 
-  /// Price the spread put $\max(X-(F_1-F_2),0)$ at one query point.
-  ///
-  /// `f1` and `f2` are the two forwards, `x` the spread strike (conversion
-  /// cost), `r` the risk-free rate and `tau` the maturity in years — the
-  /// same query [`spread_call_put`](Self::spread_call_put) takes, of which
-  /// this is the second projection.
+  /// The spread put $\max(X-(F_1-F_2),0)$.
   pub fn spread_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> f64 {
-    self.spread_call_put(f1, f2, x, r, tau).1
+    self.spread_call_put(f1, f2, x, r, tau).put
   }
 }
 
@@ -138,12 +121,12 @@ mod tests {
   #[test]
   fn kirk_call_put_matches_pre_refactor_goldens() {
     let heat_rate = KirkSpreadPricer::new(0.35, 0.35, 0.90);
-    let (call, put) = heat_rate.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
+    let CallPut { call, put } = heat_rate.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
     assert!((call - 1.2691091197737148).abs() < TOL, "call {call}");
     assert!((put - 3.1715679687751486).abs() < TOL, "put {put}");
 
     let itm = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-    let (call, put) = itm.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
+    let CallPut { call, put } = itm.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
     assert!((call - 8.547483131757428).abs() < TOL, "call {call}");
     assert!((put - 3.6709335716157754).abs() < TOL, "put {put}");
   }
@@ -153,7 +136,7 @@ mod tests {
   #[test]
   fn kirk_price_legs_project_call_put() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-    let (call, put) = model.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
+    let CallPut { call, put } = model.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
     assert_eq!(model.spread_call(100.0, 90.0, 5.0, 0.05, 0.5), call);
     assert_eq!(model.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), put);
   }

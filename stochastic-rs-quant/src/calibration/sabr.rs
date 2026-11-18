@@ -12,7 +12,6 @@ use ndarray::Array2;
 use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
-use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
@@ -200,11 +199,7 @@ impl SabrProblem<'_> {
     let quotes = self.calibrator.quotes.iter().zip(&self.forwards);
     quotes
       .map(|(quote, &f)| {
-        let (call, put) = pricer.call_put_at_forward(f, s, quote.strike, r, q, quote.tau);
-        match quote.option_type {
-          OptionType::Call => call,
-          OptionType::Put => put,
-        }
+        pricer.price_at_forward(f, s, quote.strike, r, q, quote.tau, quote.option_type)
       })
       .collect()
   }

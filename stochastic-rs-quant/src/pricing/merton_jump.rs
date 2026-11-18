@@ -18,6 +18,7 @@
 //!
 use super::bsm::BsmCoc;
 use super::bsm::BsmPricer;
+use crate::CallPut;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -125,21 +126,25 @@ impl Merton1976Pricer {
 
   /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product
   /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives; the payoff at `tau = 0`.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if tau == 0.0 {
-      return self.base_bsm().call_put(s, k, r, q, tau);
+      let base = self.base_bsm();
+      return CallPut {
+        call: base.price_call(s, k, r, q, tau),
+        put: base.price_put(s, k, r, q, tau),
+      };
     }
     let mut call = 0.0;
     let mut put = 0.0;
 
     for i in 0..self.m {
       let weight = self.poisson_weight(i, tau);
-      let (c, p) = Self::term_call_put(&self.term_bsm(i, tau), s, k, r, q, tau);
-      call += c * weight;
-      put += p * weight;
+      let term = Self::term_call_put(&self.term_bsm(i, tau), s, k, r, q, tau);
+      call += term.call * weight;
+      put += term.put * weight;
     }
 
-    (call, put)
+    CallPut { call, put }
   }
 
   /// Jump-size std `z` from giving a `gamma` share of the variance `v²` to jumps; `0` at
@@ -239,67 +244,27 @@ impl Merton1976Pricer {
     }
   }
 
-  /// Call and put of one Poisson term, with the one point where the
-  /// zero-volatility term is a *removable singularity* filled in.
-  ///
-  /// A term whose [`term_vol`](Self::term_vol) is exactly `0` prices a
-  /// zero-volatility Black-Scholes call. Its
-  /// $d_1 = (\ln(S/K) + b\tau)/(\sigma\sqrt\tau) + \sigma\sqrt\tau/2$ is
-  /// $\pm\infty$ wherever $Se^{b\tau} \ne K$, which saturates both normal
-  /// CDFs and collapses the term to its discounted intrinsic forward value.
-  /// **At** the forward the leading numerator vanishes too, leaving $0/0$,
-  /// and a single `NaN` term poisons the whole Poisson sum.
-  ///
-  /// $\sigma_n = \sqrt{d^2 + z^2n/\tau}$ is zero only where the *diffusive*
-  /// component `d` is, so this is reachable at `v == 0` — the zero total
-  /// volatility `new` accepts on purpose, where every term of the series is
-  /// degenerate — and, for the `n = 0` term alone, at the pure-jump corner
-  /// `gamma == 1`, where `v² − λz²` is now exactly `0` for every intensity
-  /// rather than for the half of them that rounded that way.
-  /// `zero_total_volatility_at_the_forward_is_the_limit` is
-  /// the live pin; `an_ordinary_configuration_never_reaches_the_branch` is
-  /// the counterpart that keeps the narrowed reachability honest.
-  ///
-  /// That point is a removable singularity, not an undefined quantity. Let
-  /// $\sigma \to 0^+$ along $Se^{b\tau} = K$: then $d_1 = \sigma\sqrt\tau/2
-  /// \to 0^+$ and $d_2 = -\sigma\sqrt\tau/2 \to 0^-$, so both CDFs converge
-  /// to $\tfrac12$ and the term tends to
-  /// $\tfrac12(Se^{(b-r)\tau} - Ke^{-r\tau})$ — which is zero, because
-  /// being at the forward *is* the statement $Se^{b\tau} = K$. The branch
-  /// below writes that limit out rather than returning the constant, so a
-  /// non-finite discount rate still propagates instead of being replaced by
-  /// a confident zero. This is a degenerate limit with a value, not case 2
-  /// of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// Only the $0/0$ point is intercepted; every other term keeps the value
-  /// [`BsmPricer::call_put`] already produced, degenerate or not.
-  ///
-  /// Which strike is singular is set by the cost of carry, not by the
-  /// volatility: [`BsmCoc::Black1976`] and [`BsmCoc::Asay1982`] have
-  /// $b = 0$, putting the forward at $S$, so a degenerate configuration
-  /// loses its at-the-money point — the most-quoted one on a futures-option
-  /// surface. The three carrying conventions put it at $Se^{b\tau}$, a
-  /// strike nobody asks for exactly.
-  ///
-  /// Takes the term rather than its index so the Greeks'
-  /// [`series_price`](Self::series_price) can price through **this**
-  /// function rather than through a second copy of the same limit; the
-  /// price and the Greeks' idea of the price then cannot come apart, which
-  /// `the_greeks_price_a_degenerate_term_exactly_as_the_price_does` pins.
-  fn term_call_put(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Both legs of one Poisson term. A zero-volatility term at the forward `S e^{bτ} = K` is `0/0`
+  /// and takes its `σ → 0⁺` limit `±½(S e^{(b−r)τ} − K e^{−rτ})`, so it cannot poison the sum.
+  fn term_call_put(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if Self::term_regime(term, s, k, r, q, tau) == TermRegime::AtTheForward {
       let half_carry = 0.5 * s * ((term.b(r, q) - r) * tau).exp();
       let half_disc = 0.5 * k * (-r * tau).exp();
-      return (half_carry - half_disc, half_disc - half_carry);
+      return CallPut {
+        call: half_carry - half_disc,
+        put: half_disc - half_carry,
+      };
     }
-    term.call_put(s, k, r, q, tau)
+    CallPut {
+      call: term.price_call(s, k, r, q, tau),
+      put: term.price_put(s, k, r, q, tau),
+    }
   }
 }
 
 impl ModelPricer for Merton1976Pricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
   /// Overrides the trait's vanilla-parity default for the same reason
@@ -309,7 +274,7 @@ impl ModelPricer for Merton1976Pricer {
   /// [`BsmCoc::Bsm1973`] at `q != 0` and for [`BsmCoc::Black1976`] /
   /// [`BsmCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 

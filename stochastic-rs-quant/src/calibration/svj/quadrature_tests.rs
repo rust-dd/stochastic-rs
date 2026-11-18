@@ -2,6 +2,7 @@ use super::SvjParams;
 use super::loss::bates_call_price;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 #[test]
 fn zero_jump_svj_matches_heston_at_short_maturity() {
@@ -24,8 +25,7 @@ fn zero_jump_svj_matches_heston_at_short_maturity() {
       sigma: params.sigma_v,
       rho: params.rho,
     })
-    .call_put(100.0, k, 0.05, 0.0, tau)
-    .0;
+    .price_call(100.0, k, 0.05, 0.0, tau);
 
     assert!(
       (svj - heston).abs() < 2e-3,

@@ -5,6 +5,7 @@ use super::pricer::BsmPricer;
 use crate::OptionType;
 use crate::pricing::digital::expiry_indicator;
 use crate::traits::Greeks;
+use crate::traits::ModelPricer;
 
 /// Closed-form Greeks at the `(s, k, r, q, tau)` query of [`BsmPricer`]'s prices, each but `zeta`
 /// NaN at `tau = 0`, where an expired option has a value and no sensitivity.
@@ -201,21 +202,10 @@ impl BsmPricer {
       * (r - b + b * d1 / (self.v * tau.sqrt()) - (d1 * d2 + 1.0) / (2.0 * tau))
   }
 
-  /// Lambda (elasticity) against the call and against the put, both using
-  /// the delta of `option_type` — preserved verbatim from the pre-query
-  /// method, which likewise divided a single delta by both prices.
-  pub fn lambda(
-    &self,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    tau: f64,
-    option_type: OptionType,
-  ) -> (f64, f64) {
-    let (call, put) = self.call_put(s, k, r, q, tau);
-    let delta = self.delta(s, k, r, q, tau, option_type);
-    (delta * s / call, delta * s / put)
+  /// Lambda (elasticity) $\Delta\,S/V$ of the given option.
+  pub fn lambda(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    let price = self.price_option(s, k, r, q, tau, option_type);
+    self.delta(s, k, r, q, tau, option_type) * s / price
   }
 
   /// Phi — $\partial V/\partial q$ (dividend / carry rho).

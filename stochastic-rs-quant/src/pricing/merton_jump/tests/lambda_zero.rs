@@ -20,12 +20,19 @@ use super::*;
 #[test]
 fn merton_price_lambda_zero_equals_bs() {
   let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973);
-  let want = bs.call_put(S, K, R, Q, TAU);
+  let want = CallPut {
+    call: bs.price_call(S, K, R, Q, TAU),
+    put: bs.price_put(S, K, R, Q, TAU),
+  };
   for &gamma in &[0.0, 0.4, 1.0] {
     let m = merton(0.0, gamma, 20);
-    assert_eq!(m.call_put(S, K, R, Q, TAU), want, "gamma={gamma}");
-    assert_eq!(m.price_call(S, K, R, Q, TAU), want.0, "gamma={gamma} call");
-    assert_eq!(m.price_put(S, K, R, Q, TAU), want.1, "gamma={gamma} put");
+    assert_eq!(m.price_call_put(S, K, R, Q, TAU), want, "gamma={gamma}");
+    assert_eq!(
+      m.price_call(S, K, R, Q, TAU),
+      want.call,
+      "gamma={gamma} call"
+    );
+    assert_eq!(m.price_put(S, K, R, Q, TAU), want.put, "gamma={gamma} put");
   }
 }
 

@@ -36,7 +36,7 @@ fn malliavin_pricer_returns_finite_non_negative_prices() {
   let mut best_call = f64::INFINITY;
   let mut best_put = f64::INFINITY;
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put(S, K, R, 0.0, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put(S, K, R, 0.0, TAU);
 
     // Basic sanity checks: finite and non-negative prices
     assert!(call.is_finite(), "seed {seed}: call price should be finite");
@@ -69,7 +69,7 @@ fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
   let mut best_call = f64::INFINITY;
   let mut best_put = f64::INFINITY;
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put_localized(S, K, R, 0.0, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put_localized(S, K, R, 0.0, TAU);
 
     // Basic sanity checks: finite and non-negative prices
     assert!(
@@ -104,15 +104,12 @@ fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
   );
 }
 
-/// `price_call` and `price_put` are the two legs of `call_put`, so the
-/// put must satisfy put-call parity **against the call from its own
-/// simulation**, not against some other run's. This is what the trait's
-/// `price_put` default would break: it would run a second, independent
-/// Monte Carlo for its `price_call` term.
+/// The put satisfies put-call parity against the call from its own simulation, which the trait's
+/// parity default, a second independent Monte Carlo, would not.
 #[test]
 fn malliavin_put_is_parity_against_its_own_call() {
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put(S, K, R, 0.02, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put(S, K, R, 0.02, TAU);
     let parity = call - S * (-0.02_f64 * TAU).exp() + K * (-R * TAU).exp();
     assert!(
       (put - parity.max(0.0)).abs() < 1e-12,
@@ -144,7 +141,7 @@ fn malliavin_put_is_never_negative() {
   for seed in SEEDS {
     let p = pricer(seed);
     for &k in &[1.0, 50.0, 99.99, 150.0] {
-      let (call, put) = p.call_put(S, k, R, 0.0, TAU);
+      let CallPut { call, put } = p.price_call_put(S, k, R, 0.0, TAU);
       assert!(
         put >= 0.0,
         "seed {seed}: put at K={k} must be floored, got {put}"
@@ -223,14 +220,14 @@ fn negative_bandwidth_is_rejected() {
 fn an_all_worthless_sample_empties_the_kernel_without_poisoning_the_price() {
   for seed in SEEDS {
     let p = GbmMalliavinPricer::new(0.1, 200, 32, 0.5, Deterministic::new(seed));
-    let dead = p.call_put_localized(S, 1.0e12, R, 0.0, TAU).0;
+    let dead = p.price_call_put_localized(S, 1.0e12, R, 0.0, TAU).call;
     assert!(
       dead.is_finite() && dead >= 0.0,
       "seed {seed}: unreachable strike must price to a finite floor, got {dead}"
     );
     // The same instance, so the live strike is priced off the same seed —
     // the dead/live comparison is one sample, not two.
-    let live = p.call_put_localized(S, K, R, 0.0, TAU).0;
+    let live = p.price_call_put_localized(S, K, R, 0.0, TAU).call;
     assert!(
       live > dead,
       "seed {seed}: live strike {live} must beat dead strike {dead}"
@@ -334,22 +331,8 @@ fn the_default_seed_strategy_is_unseeded() {
   assert_eq!(bare.n_paths, 8);
 }
 
-/// `GbmMalliavinPricer::new` validates the estimator's own shape.
-///
-/// `n_paths` and `n_steps` are simulation *counts*, and both degenerate
-/// into a fabricated **0.0** price rather than a complaint: with
-/// `n_paths = 0` there is nothing to average, `call_put_from_conditional`
-/// takes its `count == 0` branch and returns the discounted average of an
-/// empty sample; with `n_steps = 1` the step size `tau / (n_steps - 1)` is
-/// infinite and the same zero comes out the other end. `n_steps = 0` is the
-/// loud one — `n_steps - 1` underflows — so of the three degenerate counts
-/// only one announced itself.
-///
-/// `t_eval` keeps its accessor guard: the constructor can only check the
-/// half of `0 < t_eval < tau` that does not need the query, since `tau`
-/// arrives per call. The two messages are deliberately different — neither
-/// is a substring of the other — so a test anchored on one cannot be
-/// satisfied by the other firing.
+/// `n_paths = 0` and `n_steps = 1` would price a fabricated `0.0`, so `new` rejects them; `t_eval`
+/// keeps a query-time guard too, with a different message, since `tau` arrives per call.
 mod construction_validation {
   use super::*;
 
@@ -435,7 +418,10 @@ mod degenerate_queries {
     let put = K * (-R * TAU).exp();
     assert_eq!(p.price_call(0.0, K, R, 0.0, TAU), 0.0);
     assert_eq!(p.price_put(0.0, K, R, 0.0, TAU), put);
-    assert_eq!(p.call_put_localized(0.0, K, R, 0.0, TAU), (0.0, put));
+    assert_eq!(
+      p.price_call_put_localized(0.0, K, R, 0.0, TAU),
+      CallPut { call: 0.0, put }
+    );
     let (s_t, c_t) = p.conditional_call_malliavin(0.0, K, R, 0.0, TAU);
     assert!(s_t.iter().chain(&c_t).all(|x| *x == 0.0));
   }
@@ -443,8 +429,20 @@ mod degenerate_queries {
   #[test]
   fn a_zero_horizon_prices_at_the_intrinsic_value() {
     let p = model();
-    assert_eq!(p.call_put(110.0, 100.0, R, 0.0, 0.0), (10.0, 0.0));
-    assert_eq!(p.call_put_localized(90.0, 100.0, R, 0.0, 0.0), (0.0, 10.0));
+    assert_eq!(
+      p.price_call_put(110.0, 100.0, R, 0.0, 0.0),
+      CallPut {
+        call: 10.0,
+        put: 0.0
+      }
+    );
+    assert_eq!(
+      p.price_call_put_localized(90.0, 100.0, R, 0.0, 0.0),
+      CallPut {
+        call: 0.0,
+        put: 10.0
+      }
+    );
     let (s_t, c_t) = p.conditional_call_malliavin_localized(110.0, 100.0, R, 0.0, 0.0);
     assert!(s_t.iter().all(|x| *x == 110.0) && c_t.iter().all(|x| *x == 10.0));
   }
@@ -461,7 +459,7 @@ mod degenerate_queries {
       (S, R, 0.0, f64::NAN),
     ];
     for (s, r, q, tau) in queries {
-      let (call, put) = p.call_put(s, K, r, q, tau);
+      let CallPut { call, put } = p.price_call_put(s, K, r, q, tau);
       let (s_t, c_t) = p.conditional_call_malliavin(s, K, r, q, tau);
       assert!(
         call.is_nan() && put.is_nan(),

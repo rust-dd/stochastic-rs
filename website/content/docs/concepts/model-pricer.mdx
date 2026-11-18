@@ -32,7 +32,7 @@ pub trait ModelPricer {
 
 The struct holds **model parameters only** — `BsmPricer` holds a volatility and a cost-of-carry convention, `HestonPricer` holds $(v_0,\kappa,\theta,\sigma,\rho)$. The contract (spot, strike, rate, dividend yield, maturity) is not baked in; every price query passes its own `(s, k, r, q, tau)`. One model instance therefore prices a whole strike/maturity grid — vol-surface construction, calibration — with no `&dyn` and no `Box<dyn>`.
 
-Many implementors also expose an inherent `call_put(s, k, r, q, tau) -> (f64, f64)` returning both legs from one evaluation.
+A pricer whose one computation yields both legs (`HestonPricer`, `Merton1976Pricer`, `HestonStochCorrPricer`, `GbmMalliavinPricer`) also has an inherent `price_call_put(s, k, r, q, tau) -> CallPut { call, put }`.
 
 ## Override `price_put` unless parity holds
 

@@ -7,7 +7,7 @@
 //! then convert to a volatility-space derivative via the chain rule
 //! `σ = √v0`: `∂P/∂σ = 2√v0 · ∂P/∂v0` and its higher partials. The
 //! `∂P/∂v0` building block itself is the analytic
-//! [`HestonPricer::call_put_initial_variance_vega`] rather than a finite
+//! [`HestonPricer::initial_variance_vega`] rather than a finite
 //! difference, for precision — vanna/volga/veta then finite-difference
 //! *that* analytic function instead of double finite-differencing the raw
 //! price.
@@ -66,14 +66,6 @@ impl HestonPricer {
     bumped
   }
 
-  /// `∂(price)/∂v0`, analytic (no finite difference) via
-  /// [`call_put_initial_variance_vega`](HestonPricer::call_put_initial_variance_vega).
-  /// Identical for call and put per that method's own doc, which is why the
-  /// four Greeks built on it take no option type.
-  fn v0_vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put_initial_variance_vega(s, k, r, q, tau).0
-  }
-
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 {
@@ -105,7 +97,7 @@ impl HestonPricer {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
     }
-    2.0 * self.params.v0.sqrt() * self.v0_vega(s, k, r, q, tau)
+    2.0 * self.params.v0.sqrt() * self.initial_variance_vega(s, k, r, q, tau)
   }
 
   /// Theta — $\partial V/\partial t$ (calendar convention, $-\partial/\partial\tau$).
@@ -143,8 +135,9 @@ impl HestonPricer {
       return f64::NAN;
     }
     let h = Self::h_s(s);
-    let p_s_v0 =
-      (self.v0_vega(s + h, k, r, q, tau) - self.v0_vega(s - h, k, r, q, tau)) / (2.0 * h);
+    let p_s_v0 = (self.initial_variance_vega(s + h, k, r, q, tau)
+      - self.initial_variance_vega(s - h, k, r, q, tau))
+      / (2.0 * h);
     2.0 * self.params.v0.sqrt() * p_s_v0
   }
 
@@ -175,10 +168,10 @@ impl HestonPricer {
       return f64::NAN;
     }
     let h = self.h_v();
-    let p_v0v0 = (self.with_v0_bump(h).v0_vega(s, k, r, q, tau)
-      - self.with_v0_bump(-h).v0_vega(s, k, r, q, tau))
+    let p_v0v0 = (self.with_v0_bump(h).initial_variance_vega(s, k, r, q, tau)
+      - self.with_v0_bump(-h).initial_variance_vega(s, k, r, q, tau))
       / (2.0 * h);
-    4.0 * self.params.v0 * p_v0v0 + 2.0 * self.v0_vega(s, k, r, q, tau)
+    4.0 * self.params.v0 * p_v0v0 + 2.0 * self.initial_variance_vega(s, k, r, q, tau)
   }
 
   /// Veta $\partial^2 V/\partial\sigma\,\partial t$: NaN at `v0 == 0`, where $\sigma=\sqrt{v_0}$
@@ -191,8 +184,9 @@ impl HestonPricer {
     if !(tau.is_finite() && tau > h) {
       return f64::NAN;
     }
-    let p_tau_v0 =
-      (self.v0_vega(s, k, r, q, tau + h) - self.v0_vega(s, k, r, q, tau - h)) / (2.0 * h);
+    let p_tau_v0 = (self.initial_variance_vega(s, k, r, q, tau + h)
+      - self.initial_variance_vega(s, k, r, q, tau - h))
+      / (2.0 * h);
     -2.0 * self.params.v0.sqrt() * p_tau_v0
   }
 

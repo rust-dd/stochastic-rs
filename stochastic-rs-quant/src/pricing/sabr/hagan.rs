@@ -4,6 +4,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::sabr::SabrParams;
+use crate::traits::ModelPricer;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
@@ -160,7 +161,11 @@ fn smallest_positive_root([p3, p2, p1, p0]: [f64; 4], seed: f64) -> f64 {
 pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
   // Garman-Kohlhagen puts the foreign rate in the model's dividend slot,
   // so the query's `(r, q)` pair is `(r_d, r_f)`.
-  BsmPricer::new(sigma, BsmCoc::GarmanKohlhagen1983).call_put(s, k, r_d, r_f, tau)
+  let bsm = BsmPricer::new(sigma, BsmCoc::GarmanKohlhagen1983);
+  (
+    bsm.price_call(s, k, r_d, r_f, tau),
+    bsm.price_put(s, k, r_d, r_f, tau),
+  )
 }
 
 /// Delta on forward with premium included

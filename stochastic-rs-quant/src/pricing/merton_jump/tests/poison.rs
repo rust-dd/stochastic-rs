@@ -58,16 +58,8 @@ fn an_inadmissible_gamma_announces_itself_in_the_greeks_too() {
   }
 }
 
-/// The third route, and the one nothing else in the file covers: at
-/// `λτ ≈ 5e8` the Poisson weight's running product overflows to `∞` while
-/// `e^{-λτ}` underflows to `0`, so the weight itself is `0 · ∞ = NaN` with
-/// no degenerate term anywhere in sight. `call_put` has no floor, so the
-/// price was already `NaN`; the Greeks reported `0.0`. `σ_n` is an ordinary
-/// positive number in every term, so no limit is claimed and the poisoned
-/// weight multiplies straight through.
-///
-/// One intensity short of that the weights are merely tiny and both sides
-/// come back finite, so this is the boundary and not the whole regime.
+/// At `λτ ≈ 5e8` the Poisson weight is `0 · ∞ = NaN` with no degenerate term in sight: the price
+/// and every Greek are NaN, while one intensity short of it both stay finite.
 #[test]
 fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
   let m = Merton1976Pricer::new(0.2, 1.0e9, 0.4, 50, BsmCoc::Bsm1973);

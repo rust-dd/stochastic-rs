@@ -495,3 +495,51 @@ def test_bsm_calibrator_prices_with_its_dividend_yield_and_a_ragged_slice_is_an_
     assert converged and abs(sigma - 0.25) < 1e-8 and rmse < 1e-8
     with pytest.raises(ValueError, match="equal length"):
         sr.MarketSlice(strikes, prices[:2], [True] * 3, tau)
+
+
+CALL_PUT_QUERY = dict(s=100.0, k=105.0, r=0.05, tau=0.75, q=0.02)
+HESTON_MODEL = dict(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
+
+
+@pytest.mark.parametrize(
+    "pricer, pair",
+    [
+        (lambda: sr.BSMPricer(v=0.25, **CALL_PUT_QUERY), (7.356284457997674, 9.980504358377694)),
+        (lambda: sr.BachelierPricer(v=20.0, **CALL_PUT_QUERY), (5.425620481356887, 8.049840381736892)),
+        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.2776906533992545, 7.067347664422634)),
+        (lambda: sr.BjerksundStensland2002Pricer(v=0.25, **CALL_PUT_QUERY), (7.35628449811837, 10.292928328280922)),
+        (
+            lambda: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, **CALL_PUT_QUERY),
+            (8.111646452569918, 12.84376640716852),
+        ),
+        (lambda: sr.HestonPricer(**HESTON_MODEL, **CALL_PUT_QUERY), (5.164008255606987, 7.788228155987014)),
+        (lambda: sr.HestonPricer(lambda_=0.1, **HESTON_MODEL, **CALL_PUT_QUERY), (5.081933443027005, 7.706153343407038)),
+        (
+            lambda: sr.SabrPricer(alpha=0.2, beta=1.0, nu=0.4, rho=-0.3, **CALL_PUT_QUERY),
+            (5.633121359954366, 8.257341260334393),
+        ),
+        (
+            lambda: sr.Merton1976Pricer(v=0.25, lambda_=1.0, gamma=0.4, **{**CALL_PUT_QUERY, "q": None}),
+            (7.905150880530156, 9.040564741216432),
+        ),
+    ],
+)
+def test_call_put_returns_each_pricers_pinned_pair(pricer, pair):
+    assert pricer().call_put() == pytest.approx(pair, rel=1e-12)
+
+
+def test_merton_pricer_prices_with_its_dividend_yield():
+    query = dict(s=100.0, v=0.25, k=105.0, r=0.05, lambda_=1.0, gamma=0.4, tau=0.75)
+    with_yield = sr.Merton1976Pricer(q=0.02, **query)
+    assert with_yield.call_put() == pytest.approx((7.15321711897312, 9.777437019353142), rel=1e-12)
+    assert with_yield.price() == with_yield.call_put()[0]
+    assert sr.Merton1976Pricer(q=0.02, option_type="put", **query).price() == with_yield.call_put()[1]
+
+
+def test_a_degenerate_sabr_vol_and_an_expired_option_keep_their_pairs():
+    degenerate = sr.SabrPricer(s=100.0, k=105.0, r=0.05, alpha=0.2, beta=1.0, nu=3.0, rho=-0.9, tau=10.0)
+    assert all(math.isnan(leg) for leg in degenerate.call_put())
+    expired = dict(s=100.0, k=105.0, r=0.05, tau=0.0)
+    assert sr.BSMPricer(v=0.25, **expired).call_put() == (0.0, 5.0)
+    assert sr.HestonPricer(**HESTON_MODEL, **expired).call_put() == (0.0, 5.0)
+    assert sr.Merton1976Pricer(v=0.25, lambda_=1.0, gamma=0.4, **{**expired, "k": 95.0}).call_put() == (5.0, 0.0)

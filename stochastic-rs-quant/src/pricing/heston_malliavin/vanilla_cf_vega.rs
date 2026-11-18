@@ -6,10 +6,10 @@ use super::VanillaPortfolio;
 use super::invalid_input;
 use super::simulation::assert_model;
 use super::variance_vega::effective_initial_variance_bump;
-use crate::OptionType;
 use crate::QuantError;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 /// Bump controls for deterministic Heston characteristic-function vega.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,12 +115,7 @@ fn portfolio_initial_variance_vega(
   for (index, leg) in portfolio.legs().iter().enumerate() {
     check_leg(index, leg)?;
     let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, model.params.v0);
-    let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
-    let leg_value = match leg.kind {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    };
-    value += leg.quantity * leg_value;
+    value += leg.quantity * pricer.initial_variance_vega(s, k, r, q, tau);
   }
   if value.is_finite() {
     Ok(value)
@@ -159,12 +154,7 @@ fn portfolio_price(
   for (index, leg) in portfolio.legs().iter().enumerate() {
     check_leg(index, leg)?;
     let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, initial_variance);
-    let (call, put) = pricer.call_put(s, k, r, q, tau);
-    let leg_price = match leg.kind {
-      OptionType::Call => call,
-      OptionType::Put => put,
-    };
-    price += leg.quantity * leg_price;
+    price += leg.quantity * pricer.price_option(s, k, r, q, tau, leg.kind);
   }
   if price.is_finite() {
     Ok(price)
