@@ -2,6 +2,7 @@
 //! zero or not finite is an `Err`.
 
 use ndarray::Array1;
+use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
@@ -9,6 +10,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::econometrics::cointegration::EngleGrangerConfig;
 use stochastic_rs_stats::econometrics::cointegration::engle_granger_test;
+use stochastic_rs_stats::econometrics::granger::granger_causality_test;
 use stochastic_rs_stats::stationarity::LagSelection;
 use stochastic_rs_stats::stationarity::Trend;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
@@ -22,6 +24,8 @@ use stochastic_rs_stats::stationarity::leybourne_mccabe::leybourne_mccabe_test;
 use stochastic_rs_stats::stationarity::phillips_perron::PhillipsPerronConfig;
 use stochastic_rs_stats::stationarity::phillips_perron::PpTestType;
 use stochastic_rs_stats::stationarity::phillips_perron::phillips_perron_test;
+use stochastic_rs_stats::stationarity::reset::ResetConfig;
+use stochastic_rs_stats::stationarity::reset::reset_test;
 
 /// A random walk of step 0.01 plus white noise of 0.02, 400 points.
 fn series(seed: u64) -> Array1<f64> {
@@ -300,6 +304,64 @@ fn an_exact_fit_is_degenerate_data_at_every_level_and_scale() {
   }
 }
 
+/// Doubles within an ulp of `0.7` are the rounding of a constant to every test, and the same steps
+/// eight ulps apart are a series to test.
+#[test]
+fn a_series_of_neighbouring_doubles_is_a_constant_series_for_every_test() {
+  let ulp = f64::EPSILON / 2.0;
+  let mut noise = vec![0.0; 200];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(5))
+    .fill_slice(&mut noise);
+  let steps = Array1::from_iter(noise.iter().map(|e| e.signum()));
+  let y = steps.mapv(|j| 0.7 + j * ulp);
+  let x = series(7).slice(ndarray::s![..200]).to_owned();
+  let design = Array2::from_shape_fn((200, 2), |(i, j)| if j == 0 { 1.0 } else { x[i] });
+  let answers = [
+    ("ADF", adf_test(y.view(), AdfConfig::default()).err()),
+    ("ERS", ers_dfgls_test(y.view(), ErsConfig::default()).err()),
+    (
+      "PP",
+      phillips_perron_test(y.view(), PhillipsPerronConfig::default()).err(),
+    ),
+    ("KPSS", kpss_test(y.view(), KpssConfig::default()).err()),
+    (
+      "LM",
+      leybourne_mccabe_test(y.view(), LeybourneMcCabeConfig::default()).err(),
+    ),
+    (
+      "Engle-Granger y",
+      engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).err(),
+    ),
+    (
+      "Engle-Granger x",
+      engle_granger_test(x.view(), y.view(), EngleGrangerConfig::default()).err(),
+    ),
+    (
+      "Granger y",
+      granger_causality_test(y.view(), x.view(), 2, 0.05).err(),
+    ),
+    (
+      "Granger x",
+      granger_causality_test(x.view(), y.view(), 2, 0.05).err(),
+    ),
+    (
+      "RESET",
+      reset_test(y.view(), design.view(), ResetConfig::default()).err(),
+    ),
+  ];
+  for (what, answer) in answers {
+    assert_eq!(
+      answer,
+      Some(StatsError::DegenerateData("constant series")),
+      "{what}"
+    );
+  }
+  let wide = steps.mapv(|j| 0.7 + 4.0 * j * ulp);
+  assert!(adf_test(wide.view(), AdfConfig::default()).is_ok());
+  assert!(kpss_test(wide.view(), KpssConfig::default()).is_ok());
+}
+
 /// Noise of `1e-7` about `1e8` tests as the same points less `1e8`, a subtraction that is exact.
 #[test]
 fn a_level_far_above_the_variation_keeps_the_statistic() {
@@ -352,6 +414,57 @@ fn a_level_far_above_the_variation_keeps_the_statistic() {
           .is_ok_and(|s| (s - less_level).abs() <= 1e-12 * less_level.abs()),
         "ADF {trend:?} {lag_selection:?}: {at_level:?} at 1e8 against {less_level}"
       );
+    }
+  }
+}
+
+/// ERS and Leybourne–McCabe test noise of `1e-7` about a level from `1e3` to `1e8` as the same
+/// points less the level: their detrending meets the series less its mean, as ADF's, PP's and KPSS's.
+#[test]
+fn ers_and_leybourne_mccabe_keep_the_statistic_at_a_level_from_1e3_to_1e8() {
+  let mut noise = vec![0.0; 200];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(3))
+    .fill_slice(&mut noise);
+  for level in [1e3, 1e4, 1e5, 1e6, 1e7, 1e8] {
+    let y = Array1::from_iter(noise.iter().map(|e| level + 1e-7 * e));
+    let w = y.mapv(|v| v - level);
+    for trend in [Trend::Constant, Trend::ConstantTrend] {
+      for lag_selection in [LagSelection::Aic, LagSelection::Fixed(2)] {
+        let cfg = ErsConfig {
+          trend,
+          lag_selection,
+          ..ErsConfig::default()
+        };
+        let (at_level, less_level) = (
+          ers_dfgls_test(y.view(), cfg).map(|r| r.statistic),
+          ers_dfgls_test(w.view(), cfg).unwrap().statistic,
+        );
+        assert!(
+          at_level
+            .as_ref()
+            .is_ok_and(|s| (s - less_level).abs() <= 1e-12 * less_level.abs()),
+          "ERS {trend:?} {lag_selection:?}: {at_level:?} at {level:e} against {less_level}"
+        );
+      }
+      for ar_lags in [1, 2] {
+        let cfg = LeybourneMcCabeConfig {
+          trend,
+          ar_lags,
+          ..LeybourneMcCabeConfig::default()
+        };
+        let (at_level, less_level) = (
+          leybourne_mccabe_test(y.view(), cfg).map(|r| (r.statistic, r.p_value.unwrap())),
+          leybourne_mccabe_test(w.view(), cfg).unwrap(),
+        );
+        assert!(
+          at_level.as_ref().is_ok_and(|(s, p)| {
+            (s - less_level.statistic).abs() <= 1e-12 * less_level.statistic
+              && (p - less_level.p_value.unwrap()).abs() <= 0.005
+          }),
+          "LM {trend:?} at {ar_lags} lags: {at_level:?} at {level:e} against {less_level:?}"
+        );
+      }
     }
   }
 }

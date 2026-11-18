@@ -7,7 +7,6 @@ use stochastic_rs_distributions::linalg::solve;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
-use crate::input::reject_constant;
 use crate::input::validate;
 use crate::traits::RealExt;
 
@@ -381,6 +380,24 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
 /// below this fraction is refused, as is a series whose variance an explosive tail dominates.
 const EXACT_FIT: f64 = 1e-24;
 
+/// A series whose range is within this many `ε` of its largest magnitude is a constant's rounding:
+/// neighbouring doubles, as a constant through two or three rounded operations leaves.
+const ROUNDING_RANGE: f64 = 4.0;
+
+/// `DegenerateData("constant series")` when `max − min <= ROUNDING_RANGE ε max|y|`: the variance
+/// of such a series is rounding, which no relative rule can tell from a signal.
+pub fn reject_rounded_constant(y: &[f64]) -> Result<(), StatsError> {
+  let (low, high) = y
+    .iter()
+    .fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), &v| {
+      (low.min(v), high.max(v))
+    });
+  if high - low <= ROUNDING_RANGE * f64::EPSILON * low.abs().max(high.abs()) {
+    return Err(StatsError::DegenerateData("constant series"));
+  }
+  Ok(())
+}
+
 /// `y` less its mean: a fit with a constant is the same, and keeps every digit of a variation that
 /// is small against the level, as arch's `PhillipsPerron` does; scale `y` first, the sum overflows.
 pub fn centred(y: &[f64]) -> Vec<f64> {
@@ -404,12 +421,12 @@ pub fn unit_scaled(mut y: Vec<f64>) -> (Vec<f64>, f64) {
   (y, unit)
 }
 
-/// [`unit_scaled`] `y` with `min_n` finite points or more and not constant; the length comes first,
-/// as a series too short to compare is vacuously constant.
+/// [`unit_scaled`] `y` with `min_n` finite points or more and more than a constant's rounding; the
+/// length comes first, as a series too short to compare is vacuously constant.
 pub fn prepared_with_unit(y: ArrayView1<f64>, min_n: usize) -> Result<(Vec<f64>, f64), StatsError> {
   let y = as_slice_or_copy(y);
   validate(&y, min_n)?;
-  reject_constant(&y, "constant series")?;
+  reject_rounded_constant(&y)?;
   Ok(unit_scaled(y.into_owned()))
 }
 
@@ -419,8 +436,10 @@ pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError
 }
 
 /// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of `y`'s
-/// variance, or `(ROUNDING_MARGIN κ ε)²` at the solve's `condition` κ; `y` must not be constant.
+/// variance, or `(ROUNDING_MARGIN κ ε)²` at the solve's `condition` κ; `Err` as
+/// [`reject_rounded_constant`] of `y`.
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64], condition: f64) -> Result<(), StatsError> {
+  reject_rounded_constant(y)?;
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
   // Over the largest deviation, so that no square overflows.
@@ -551,6 +570,23 @@ mod tests {
     assert_eq!(reject_exact_fit(&y, &residuals, 1.0), Ok(()));
     assert_eq!(reject_exact_fit(&y, &residuals, 1e4), Ok(()));
     assert_eq!(reject_exact_fit(&y, &residuals, 1e5), exact);
+  }
+
+  /// Neighbouring doubles about `0.7` are a constant's rounding whatever the residuals; the same
+  /// steps four ulps apart are a series.
+  #[test]
+  fn a_series_of_neighbouring_doubles_is_a_constant_series() {
+    let ulp = f64::EPSILON / 2.0;
+    let steps = [0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, -1.0, 0.0, 1.0];
+    let residuals = steps.map(|j| 0.4 * j * ulp + 0.1 * ulp);
+    assert_eq!(
+      reject_exact_fit(&steps.map(|j| 0.7 + j * ulp), &residuals, 1.0),
+      Err(StatsError::DegenerateData("constant series"))
+    );
+    assert_eq!(
+      reject_exact_fit(&steps.map(|j| 0.7 + 4.0 * j * ulp), &residuals, 1.0),
+      Ok(())
+    );
   }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.

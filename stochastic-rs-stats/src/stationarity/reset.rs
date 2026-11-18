@@ -118,6 +118,10 @@ pub fn reset_test(
   // `y` at a power of two, which `F` does not see, keeps the powers of `ŷ` in range.
   let y_slice = prepared(y, k + q + 2)?;
   validate_rows(x)?;
+  // A constant column absorbs `y`'s mean, so `F` is that of `y` less it: an exact subtraction,
+  // which keeps the digits the level would round away.
+  let constant = has_constant_column(x);
+  let y_slice = if constant { centred(&y_slice) } else { y_slice };
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
@@ -129,7 +133,7 @@ pub fn reset_test(
   let fitted = x.dot(&beta_r).to_vec();
   // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ and the constant lie in its span, so
   // those of the standardised ŷ span the same columns: the same `F`, without their collinearity.
-  let powered = if has_constant_column(x) {
+  let powered = if constant {
     standardised(&fitted)
   } else {
     // Without a constant the raw powers define the test, Singular from ŷ at 1e3 times its spread.
@@ -372,8 +376,32 @@ mod tests {
       assert!(
         got
           .as_ref()
-          .is_ok_and(|f| (f - reference).abs() <= 1e-6 * reference),
+          .is_ok_and(|f| (f - reference).abs() <= 1e-11 * reference),
         "level {level:e}: {got:?} against {reference}"
+      );
+    }
+  }
+
+  /// A small `F` at a level of `1e5`, where the level's rounding in `y` took eight of its digits.
+  #[test]
+  fn a_small_statistic_matches_its_double_double_value_at_a_level() {
+    let cases = [
+      (300, 5, 0.00813005555155731),
+      (1000, 7, 0.07390520170749103),
+    ];
+    for (n, seed, reference) in cases {
+      let (x, e) = (
+        normal_pair(n, 1.0, seed).0,
+        normal_pair(n, 0.5, seed + 300).0,
+      );
+      let y = 1e5 + 2.0 * &x + 0.5 * &e;
+      let xm = design_with_intercept(&x);
+      let got = reset_test(y.view(), xm.view(), ResetConfig::default()).map(|r| r.statistic);
+      assert!(
+        got
+          .as_ref()
+          .is_ok_and(|f| (f - reference).abs() <= 1e-10 * reference),
+        "n = {n}, seed {seed}: {got:?} against {reference}"
       );
     }
   }

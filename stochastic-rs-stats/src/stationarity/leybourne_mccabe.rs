@@ -145,7 +145,9 @@ pub fn leybourne_mccabe_test(
   let needed = 40
     .max(cfg.ar_lags.saturating_add(15))
     .max(min_sample_size(cfg.ar_lags, Trend::None));
-  let y = prepared(y, needed)?;
+  // Less its mean first, an exact subtraction: detrending then meets the series near zero, where a
+  // second mean or a trend's constant does not round the variation away.
+  let y = centred(&prepared(y, needed)?);
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let fit = prewhitened(&y, include_trend, cfg.ar_lags)?;

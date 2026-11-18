@@ -9,6 +9,7 @@ use ndarray::ArrayView1;
 
 use super::common::LagSelection;
 use super::common::Trend;
+use super::common::centred;
 use super::common::choose_lag_for_adf;
 use super::common::dfgls_critical_values;
 use super::common::fit_adf;
@@ -132,7 +133,9 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = dfgls_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = prepared(y, 20)?;
+  // GLS detrending absorbs a level in exact arithmetic; less its mean, an exact subtraction, the
+  // series keeps the digits a constant estimated at that level would round away.
+  let y = centred(&prepared(y, 20)?);
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
