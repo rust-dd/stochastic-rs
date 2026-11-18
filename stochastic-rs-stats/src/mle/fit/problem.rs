@@ -185,8 +185,8 @@ impl<'a> MleProblem<'a> {
     self.units.clone()
   }
 
-  /// With two or more loose moves, `at` with each parameter that has one back at `start`'s value:
-  /// a move alone to an end of its box, or to `start`'s for an infinite end, under [`IDENTIFIED`].
+  /// With two or more loose moves, `at` with each such parameter back at `start`'s value: a move
+  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`IDENTIFIED`].
   pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
     let here = self.eval_nll(at);
     let mut from = at.to_vec();
@@ -199,8 +199,10 @@ impl<'a> MleProblem<'a> {
       if ends[0] >= ends[1] {
         continue;
       }
-      // An end at infinity has no likelihood to read: the start's value stands in, once.
-      let open = ends.iter().any(|end| end.is_infinite()).then_some(start[i]);
+      // An end at infinity has no likelihood to read: the start's value stands in, once, unless
+      // the estimate is still by it, where the move back says nothing.
+      let left = !(1.0 / FAR..=FAR).contains(&(at[i] / start[i]).abs());
+      let open = (left && ends.iter().any(|end| end.is_infinite())).then_some(start[i]);
       let finite = ends.into_iter().filter(|end| end.is_finite());
       let loose = finite
         .chain(open)
