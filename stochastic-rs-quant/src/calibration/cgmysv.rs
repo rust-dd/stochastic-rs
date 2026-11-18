@@ -6,7 +6,7 @@
 //!
 //! Calibrates the CGMYSV stochastic volatility model parameters
 //! $(\alpha,\lambda_+,\lambda_-,\kappa,\eta,\zeta,\rho,v_0)$ to observed
-//! option prices using Fourier pricing (Gil-Pelaez) and Levenberg-Marquardt.
+//! option prices using Fourier pricing (Lewis) and Levenberg-Marquardt.
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001
 
@@ -278,9 +278,9 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
   fn jacobian(&self) -> Option<Array2<f64>> {
     let n = self.calibrator.quotes.len();
     let mut jac = Array2::zeros((n, N_PARAMS));
-    let h = 1e-6;
-
     for j in 0..N_PARAMS {
+      // The Lewis integral is adaptive to 1e-8, so a smaller step differences its noise.
+      let h = 1e-5_f64.max(1e-3 * self.params[j].abs());
       let mut p_up = self.params.clone();
       let mut p_dn = self.params.clone();
       p_up[j] += h;

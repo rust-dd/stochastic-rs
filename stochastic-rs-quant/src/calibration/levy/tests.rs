@@ -314,3 +314,24 @@ fn a_capped_fit_counts_the_optimiser_iterations() {
   assert_eq!(fit.iterations, Some(1));
   assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
 }
+
+/// Variance Gamma's `(σ, θ, ν)` box clamps, so no coordinate reflects.
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
+  use super::calibrator::LevyProblem;
+  use crate::calibration::least_squares::tests::box_points;
+  use crate::calibration::least_squares::tests::jacobian_error;
+  let quotes = calls(&STRIKES, &VG_REF, 1.0);
+  let calibrator = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, quotes);
+  let mut problem = LevyProblem::new(&calibrator, vec![0.2, -0.1, 0.5]);
+  let bounds = [(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)];
+  for base in [
+    ndarray::array![0.2, -0.1, 0.5],
+    ndarray::array![1.2, 0.6, 3.0],
+  ] {
+    for (label, point) in box_points(&base, &bounds, &[false; 3]) {
+      let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(1e-2));
+      assert!(error < 2e-2, "{label} of {base}: {error:e}");
+    }
+  }
+}

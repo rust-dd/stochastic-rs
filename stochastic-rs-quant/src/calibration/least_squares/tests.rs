@@ -254,6 +254,9 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     model: RefCell::new(Rosenbrock::new()),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
+    norm: Cell::new(0.0),
+    sizes: RefCell::new(Array1::zeros(2)),
+    flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),
   };
   let x = Array1::from_vec(vec![-1.2, 1.0]);
@@ -330,4 +333,260 @@ pub(crate) fn worst_relative_error(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
     }
   };
   f64::max_or_nan_fold(a.iter().zip(b).map(ratio))
+}
+
+/// MINPACK's `chkder` as a test: the worst column's `‖J − D‖/‖D‖` at `x`, `D` the central
+/// difference of the residuals over `step(x_j)`; two zero columns read 0.
+pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
+  problem: &mut P,
+  x: &Array1<f64>,
+  step: impl Fn(usize, f64) -> f64,
+) -> f64 {
+  let mut at = |y: &Array1<f64>| {
+    problem.set_params(y);
+    problem.residuals().expect("residuals beside the point")
+  };
+  let columns = (0..x.len())
+    .map(|column| {
+      let h = step(column, x[column]);
+      let (mut up, mut down) = (x.clone(), x.clone());
+      up[column] += h;
+      down[column] -= h;
+      (at(&up) - at(&down)) / (2.0 * h)
+    })
+    .collect::<Vec<_>>();
+  problem.set_params(x);
+  let jacobian = problem.jacobian().expect("a Jacobian at the point");
+  let norm = |v: &Array1<f64>| v.dot(v).sqrt();
+  f64::max_or_nan_fold(columns.iter().enumerate().map(|(j, difference)| {
+    let gap = norm(&(&jacobian.column(j) - difference));
+    let scale = norm(difference);
+    if scale == 0.0 { gap } else { gap / scale }
+  }))
+}
+
+/// `base`, then per coordinate each bound and, where the box reflects, `base`'s mirror image
+/// below the lower one; 1 % inside a bound, since a stencil that reaches it is one-sided.
+pub(crate) fn box_points(
+  base: &Array1<f64>,
+  bounds: &[(f64, f64)],
+  reflecting: &[bool],
+) -> Vec<(String, Array1<f64>)> {
+  let mut points = vec![("base".to_string(), base.clone())];
+  for (j, &(lower, upper)) in bounds.iter().enumerate() {
+    let inset = 0.01 * (upper - lower);
+    let mirror = reflecting[j].then_some(("mirror", 2.0 * lower - base[j]));
+    let sides = [("lower", lower + inset), ("upper", upper - inset)];
+    for (side, value) in sides.into_iter().chain(mirror) {
+      let mut point = base.clone();
+      point[j] = value;
+      points.push((format!("{side} {j}"), point));
+    }
+  }
+  points
+}
+
+struct Flat;
+
+impl LeastSquaresProblem for Flat {
+  fn set_params(&mut self, _: &Array1<f64>) {}
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![1.0])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![1.0, 2.0]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    Some(Array2::zeros((2, 1)))
+  }
+}
+
+/// Moré's gradient test holds where the Jacobian is zero, with nothing fitted.
+#[test]
+fn residuals_that_no_parameter_moves_are_not_a_convergence() {
+  for pivoted_qr in [false, true] {
+    let options = LmOptions {
+      pivoted_qr,
+      ..LmOptions::default()
+    };
+    let (_, report) = minimize(Flat, options);
+    assert!(!report.converged, "{report:?}");
+    assert_eq!(report.message(), "flat objective");
+  }
+}
+
+/// `r = [slope·(x − target), offset]` with the Jacobian's sign as given.
+struct Line {
+  x: f64,
+  target: f64,
+  offset: f64,
+  jacobian_sign: f64,
+}
+
+impl LeastSquaresProblem for Line {
+  fn set_params(&mut self, x: &Array1<f64>) {
+    self.x = x[0];
+  }
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![self.x])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![self.x - self.target, self.offset]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    Some(Array2::from_shape_vec((2, 1), vec![self.jacobian_sign, 0.0]).unwrap())
+  }
+}
+
+/// Every trial of a wrong-signed Jacobian goes uphill, the trust region collapses, and Moré's
+/// (8.3) passes at the start.
+#[test]
+fn a_collapsed_trust_region_away_from_a_stationary_point_is_not_converged() {
+  let line = Line {
+    x: 1.0,
+    target: 3.0,
+    offset: 1.0,
+    jacobian_sign: -1.0,
+  };
+  let (fitted, report) = minimize(line, LmOptions::default());
+  assert!(!report.converged && report.stationarity > 0.5, "{report:?}");
+  assert_eq!((fitted.x, report.message()), (1.0, "not stationary"));
+  let fit = report
+    .calibrated(fitted.x, &[3.0], &[1.0], &[], Vec::new())
+    .unwrap();
+  assert!(!fit.converged);
+  assert_eq!(fit.message.as_deref(), Some("not stationary"));
+  let exact = report.settled(3e-8, &[3.0]);
+  assert_eq!((exact.converged, exact.message()), (true, "converged"));
+  let short = report.settled(4e-8, &[3.0]);
+  assert_eq!(
+    (short.converged, short.message()),
+    (false, "not stationary")
+  );
+}
+
+/// The minimum at `1e-12` is small against `ε‖r‖/‖J‖`, which is not a flat residual.
+#[test]
+fn a_minimum_near_the_origin_is_not_flat() {
+  let line = Line {
+    x: 1.0,
+    target: 1e-12,
+    offset: 1e5,
+    jacobian_sign: 1.0,
+  };
+  let (fitted, report) = minimize(line, LmOptions::default());
+  assert!(report.converged, "{report:?}");
+  assert!((fitted.x - 1e-12).abs() < 1e-15, "{}", fitted.x);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Map {
+  /// Onto (−1, 1), as Heston's and CGMYSV's ρ.
+  Logistic,
+  Reflection,
+  Clamp,
+}
+
+/// `r = [θ(x) − target, 0.05]`, θ the map's image of `x` with its bound at 0 or at ±1.
+struct Mapped {
+  x: f64,
+  target: f64,
+  map: Map,
+}
+
+impl Mapped {
+  fn theta(&self) -> f64 {
+    match self.map {
+      Map::Logistic => -1.0 + 2.0 / (1.0 + (-self.x).exp()),
+      Map::Reflection => self.x.abs(),
+      Map::Clamp => self.x.max(0.0),
+    }
+  }
+}
+
+impl LeastSquaresProblem for Mapped {
+  fn set_params(&mut self, x: &Array1<f64>) {
+    self.x = x[0];
+  }
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![self.x])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![self.theta() - self.target, 0.05]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    let unit = 1.0 / (1.0 + (-self.x).exp());
+    let slope = match self.map {
+      Map::Logistic => 2.0 * unit * (1.0 - unit),
+      Map::Reflection if self.x < 0.0 => -1.0,
+      Map::Reflection | Map::Clamp => 1.0,
+    };
+    Some(Array2::from_shape_vec((2, 1), vec![slope, 0.0]).unwrap())
+  }
+}
+
+/// A tolerance of 1e3 has basin report convergence after its first trial, kept only if it
+/// lowers the cost: the first-order check then runs at a chosen point.
+fn stopped(map: Map, x: f64, target: f64) -> (f64, LmReport) {
+  let options = LmOptions {
+    tolerance: Some(1e3),
+    ..LmOptions::default()
+  };
+  let (fitted, report) = minimize(Mapped { x, target, map }, options);
+  (fitted.x, report)
+}
+
+/// The whole Gauss–Newton step lands past the minimum at a higher cost; a quarter of it does not.
+#[test]
+fn a_stop_whose_full_step_overshoots_the_minimum_is_not_stationary() {
+  for (map, x, target) in [(Map::Logistic, -2.94, -0.7), (Map::Reflection, 0.3, -0.5)] {
+    let (end, report) = stopped(map, x, target);
+    let verdict = (end, report.converged, report.message());
+    assert_eq!(verdict, (x, false, "not stationary"), "{map:?}: {report:?}");
+  }
+}
+
+#[test]
+fn a_fit_resting_on_a_bound_with_its_minimum_outside_the_box_is_converged() {
+  for map in [Map::Clamp, Map::Reflection] {
+    let (end, report) = stopped(map, 0.0, -0.5);
+    let verdict = (end, report.converged, report.message());
+    assert_eq!(verdict, (0.0, true, "converged"), "{map:?}: {report:?}");
+  }
+}
+
+/// basin's one step from `x = 14.5` ends past −700, where the logistic slope has underflowed.
+#[test]
+fn a_jacobian_that_is_flat_at_the_stop_is_a_flat_objective() {
+  let (end, report) = stopped(Map::Logistic, 14.5, -0.7);
+  assert!(end < -700.0 && !report.converged, "{end}: {report:?}");
+  assert_eq!(
+    (report.stationarity, report.message()),
+    (0.0, "flat objective")
+  );
+}
+
+#[test]
+fn the_verdict_and_the_message_agree_at_every_stop() {
+  let cases = [
+    (Map::Logistic, -2.94, -0.7),
+    (Map::Logistic, 14.5, -0.7),
+    (Map::Logistic, 0.0, -0.7),
+    (Map::Reflection, 0.3, -0.5),
+    (Map::Clamp, 0.0, -0.5),
+  ];
+  for (map, x, target) in cases {
+    let (_, report) = stopped(map, x, target);
+    let named = report.message() == "converged";
+    assert_eq!(report.converged, named, "{map:?} from {x}: {report:?}");
+  }
 }

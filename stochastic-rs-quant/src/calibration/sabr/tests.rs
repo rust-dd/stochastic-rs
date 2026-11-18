@@ -182,3 +182,38 @@ fn a_start_written_through_the_field_is_validated_like_an_explicit_one() {
     "{err}"
   );
 }
+
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_at_reflected_coordinates() {
+  use crate::calibration::least_squares::tests::jacobian_error;
+  let truth = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.4,
+    nu: 0.6,
+  };
+  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, smile(truth, 0.02, 0.01, 0.5));
+  let mut problem = SabrProblem {
+    calibrator: &calibrator,
+    market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+    forwards: vec![forward_fx(100.0, 0.5, 0.02, 0.01); calibrator.quotes.len()],
+    params: DEFAULT_START,
+    reflections: Array1::ones(3),
+    trail: Trail::new(),
+  };
+  // `(α, ν, ρ)`: the start, the truth, a far point, each reflected in α and ν, beside ρ's bounds.
+  let points = [
+    DEFAULT_START.as_lm_vec(),
+    truth.as_lm_vec(),
+    ndarray::array![1.5, 3.0, 0.7],
+    ndarray::array![-0.2, 0.6, -0.4],
+    ndarray::array![0.2, -0.6, -0.4],
+    ndarray::array![-1.5, -3.0, 0.7],
+    ndarray::array![0.2, 0.6, -0.98],
+    ndarray::array![0.2, 0.6, 0.98],
+  ];
+  for point in points {
+    let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(0.1));
+    assert!(error < 2e-2, "{point}: {error:e}");
+  }
+}

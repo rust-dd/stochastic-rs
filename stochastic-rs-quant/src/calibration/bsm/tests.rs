@@ -3,6 +3,7 @@
 use super::*;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::tests::jacobian_error;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 
@@ -234,4 +235,63 @@ fn a_non_finite_start_is_an_error() {
 )]
 fn with_start_panics_on_a_non_finite_sigma() {
   let _ = synthetic(0.2).with_start(BsmParams { sigma: f64::NAN });
+}
+
+/// At these starts every vega is below `1e-50`, so no residual moves with σ.
+#[test]
+fn a_start_where_no_quote_has_a_vega_is_not_convergence() {
+  for start in [1e-6, 1e-3, 50.0, 1e3, 1e6] {
+    let fit = synthetic(start).calibrate(None).unwrap();
+    assert!(!fit.converged, "start {start}: {:?}", fit.params);
+    assert_eq!(fit.params.sigma, start);
+    assert_eq!(fit.message(), Some("flat objective"), "start {start}");
+  }
+}
+
+/// 19, 20 and 22.4 pass through a reflected iterate, where the Jacobian needs the reflection sign.
+#[test]
+fn a_start_up_to_ninety_times_the_truth_recovers_sigma() {
+  for start in [5.0, 19.0, 20.0, 22.4] {
+    let fit = synthetic(start).calibrate(None).unwrap();
+    let sigma = fit.params.sigma;
+    assert!(
+      fit.converged && (sigma - TRUE_SIGMA).abs() < 1e-8,
+      "start {start}: {sigma}, {:?}",
+      fit.message()
+    );
+  }
+}
+
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_at_a_reflected_coordinate() {
+  let calibrator = synthetic(0.2);
+  let mut problem = BsmProblem::new(&calibrator, BsmParams { sigma: 0.2 });
+  // The start, the truth, a far point, and each of them reflected.
+  for x in [0.2, TRUE_SIGMA, 12.2458, -0.2, -TRUE_SIGMA, -12.2458] {
+    let error = jacobian_error(&mut problem, &ndarray::array![x], |_, x| 1e-6 * x.abs());
+    assert!(error < 1e-4, "x = {x}: {error}");
+  }
+}
+
+/// Below the vega floor the weight is constant, so the row's slope is vega over the floor.
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_on_both_sides_of_the_vega_floor() {
+  let calibrator = synthetic(0.2);
+  for sigma in [0.2, 0.02, 0.01] {
+    let at = |sigma: f64| {
+      let mut problem = BsmProblem::new(&calibrator, BsmParams { sigma });
+      (problem.residuals().unwrap(), problem.jacobian().unwrap())
+    };
+    let h = 1e-6 * sigma;
+    let slope = (at(sigma + h).0 - at(sigma - h).0) / (2.0 * h);
+    let (residuals, jacobian) = at(sigma);
+    for (row, expected) in slope.iter().enumerate() {
+      let scale = expected.abs().max(residuals[row].abs() * 1e-9).max(1e-12);
+      assert!(
+        (jacobian[(row, 0)] - expected).abs() < 1e-4 * scale,
+        "sigma {sigma}, row {row}: {} vs {expected}",
+        jacobian[(row, 0)]
+      );
+    }
+  }
 }

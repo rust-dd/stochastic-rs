@@ -75,6 +75,7 @@ fn calibrator(eta: f64) -> HestonSlvCalibrator {
 fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() {
   let result = calibrator(1.0).calibrate(None).unwrap();
   assert!(result.converged());
+  assert_eq!(result.message(), Some("converged"));
   assert!(result.diagnostics.is_none(), "the parameters were pinned");
   let lev = &result.params.leverage;
   let mut central = Vec::new();

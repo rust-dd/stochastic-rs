@@ -122,16 +122,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
     let mut values = start.map_or_else(|| default_params(self.model_type), |start| start.values);
     project_params(self.model_type, &mut values);
     let lm = self.options.lm(false, param_count(self.model_type))?;
-    let problem = LevyProblem {
-      calibrator: self,
-      params: LevyParams {
-        values,
-        model_type: self.model_type,
-      },
-      market: self.quotes.iter().map(|quote| quote.price).collect(),
-      trail: Trail::new(),
-    };
-    let (fitted, report) = minimize(problem, lm);
+    let (fitted, report) = minimize(LevyProblem::new(self, values), lm);
     let model = fitted.compute_model_prices();
     report.calibrated(
       fitted.params,
@@ -143,14 +134,26 @@ impl crate::traits::Calibrator for LevyCalibrator {
   }
 }
 
-struct LevyProblem<'a> {
+pub(super) struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
   params: LevyParams,
   market: Vec<f64>,
   trail: Trail<LevyParams>,
 }
 
-impl LevyProblem<'_> {
+impl<'a> LevyProblem<'a> {
+  pub(super) fn new(calibrator: &'a LevyCalibrator, values: Vec<f64>) -> Self {
+    Self {
+      calibrator,
+      params: LevyParams {
+        values,
+        model_type: calibrator.model_type,
+      },
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
+    }
+  }
+
   fn price(&self, params: &[f64], quote: &OptionQuote) -> f64 {
     let LevyCalibrator {
       model_type,

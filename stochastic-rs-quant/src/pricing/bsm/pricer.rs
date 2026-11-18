@@ -1,5 +1,3 @@
-use implied_vol::DefaultSpecialFn;
-use implied_vol::ImpliedBlackVolatility;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
@@ -131,15 +129,13 @@ impl BsmPricer {
   ) -> f64 {
     let forward = s * (self.b(r, q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(
+      undiscounted_price,
+      forward,
+      k,
+      tau,
+      option_type == OptionType::Call,
+    )
   }
 }
 

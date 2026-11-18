@@ -27,7 +27,7 @@ faer = { version = "0.24.4", default-features = false, features = ["std", "rayon
 faer-ext = { version = "0.8.0", features = ["ndarray"] }
 flate2 = "1.1.2"
 gauss-quad = "0.3.1"
-implied-vol = "2.0.0"
+implied-vol = "2.1.0"
 kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
@@ -49,7 +49,6 @@ quadrature = "0.1.2"
 rand = "0.10.3"
 rand_distr = "0.6.0"
 rayon = "1.11.0"
-roots = "0.0.8"
 slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.

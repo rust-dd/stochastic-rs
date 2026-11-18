@@ -14,7 +14,7 @@ pub(crate) const SIGMA_MIN: f64 = 1e-8;
 pub(crate) const P_KAPPA: (f64, f64) = (0.1, 20.0);
 pub(crate) const P_THETA: (f64, f64) = (0.001, 0.4);
 pub(super) const P_SIGMA: (f64, f64) = (0.01, 3.0);
-pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
+pub(crate) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

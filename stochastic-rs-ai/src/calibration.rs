@@ -232,6 +232,7 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       .iter()
       .fold(0.0_f64, |acc, e| acc.max_or_nan(e.abs()));
     let in_bounds = problem.x.iter().all(|x| x.abs() <= 1.0 + 1e-9);
+    let report = report.settled(rmse, &self.market);
     Ok(SurrogateCalibrationResult {
       params: problem.theta().iter().map(|&t| t as f64).collect(),
       rmse,

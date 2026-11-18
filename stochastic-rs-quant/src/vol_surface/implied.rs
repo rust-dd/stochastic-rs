@@ -6,13 +6,12 @@
 //! maturities $T$, inverts the Black-Scholes formula to obtain
 //! $\sigma_{\mathrm{imp}}(K_i, T_j)$.
 //!
-//! Uses the [`implied_vol`] crate (Jäckel's rational approximation) for
-//! robust, high-precision inversion.
+//! Uses the [`implied_vol`] crate's `Hybrid` solver: Jäckel's rational approximation with FlashIV.
 //!
-//! Reference: Jäckel (2017), "Let's Be Rational"
+//! Reference: Jäckel (2015), "Let's Be Rational", Wilmott 2015(75), 40–53
 
-use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
+use implied_vol::solver::Hybrid;
 use ndarray::Array2;
 
 use crate::OptionQuote;
@@ -20,6 +19,26 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::quote::validate_quotes;
 use crate::total_order::ascending;
+
+/// Black implied volatility of an undiscounted price on a forward: `0.0` at the intrinsic price,
+/// `+∞` at the forward (the strike for a put), NaN outside them. Jäckel (2015), Wilmott 2015(75).
+pub(crate) fn black_implied_vol(
+  undiscounted_price: f64,
+  forward: f64,
+  strike: f64,
+  tau: f64,
+  is_call: bool,
+) -> f64 {
+  ImpliedBlackVolatility::builder()
+    .option_price(undiscounted_price)
+    .forward(forward)
+    .strike(strike)
+    .expiry(tau)
+    .is_call(is_call)
+    .build()
+    .and_then(|iv| iv.calculate_with::<Hybrid>())
+    .unwrap_or(f64::NAN)
+}
 
 /// Implied volatility surface built from market data.
 #[derive(Clone, Debug)]
@@ -78,15 +97,7 @@ impl ImpliedVolSurface {
         let k = strikes[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = ImpliedBlackVolatility::builder()
-          .option_price(prices[[j, i]])
-          .forward(f)
-          .strike(k)
-          .expiry(t)
-          .is_call(is_call)
-          .build()
-          .and_then(|v| v.calculate::<DefaultSpecialFn>())
-          .unwrap_or(f64::NAN);
+        let iv = black_implied_vol(prices[[j, i]], f, k, t, is_call);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;
@@ -257,15 +268,7 @@ impl ImpliedVolSurface {
         let k = strike_set[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = ImpliedBlackVolatility::builder()
-          .option_price(p)
-          .forward(f)
-          .strike(k)
-          .expiry(t)
-          .is_call(is_call_grid[j * nk + i])
-          .build()
-          .and_then(|v| v.calculate::<DefaultSpecialFn>())
-          .unwrap_or(f64::NAN);
+        let iv = black_implied_vol(p, f, k, t, is_call_grid[j * nk + i]);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;
@@ -458,140 +461,4 @@ impl ImpliedVolSurface {
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::array;
-
-  use super::*;
-
-  /// `from_provider` against a mock chain of present-value mids, the OTM put at K = 90: the
-  /// recovered vols must equal the σ that priced them.
-  #[test]
-  fn from_provider_recovers_surface_from_mock_chain() {
-    use stochastic_rs_distributions::special::norm_cdf;
-
-    use crate::market::provider::ChainQuote;
-    use crate::market::provider::MockProvider;
-    use crate::market::provider::OptionChain;
-
-    let s = 100.0_f64;
-    let r = 0.04_f64;
-    let sigma = 0.22_f64;
-    let strikes = [90.0_f64, 100.0, 110.0];
-    let taus = [0.5_f64, 1.0];
-
-    let mut quotes = Vec::new();
-    for &t in &taus {
-      let f = s * (r * t).exp();
-      for &k in &strikes {
-        let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-        let d2 = d1 - sigma * t.sqrt();
-        let is_call = k > 90.0;
-        let undiscounted = if is_call {
-          f * norm_cdf(d1) - k * norm_cdf(d2)
-        } else {
-          k * norm_cdf(-d2) - f * norm_cdf(-d1)
-        };
-        let price = (-r * t).exp() * undiscounted;
-        quotes.push(ChainQuote {
-          strike: k,
-          tau: t,
-          last: price,
-          bid: price,
-          ask: price,
-          implied_vol: sigma,
-          is_call,
-        });
-      }
-    }
-    let mut mp = MockProvider::new();
-    mp.insert_option_chain(OptionChain {
-      symbol: "ACME".to_string(),
-      s,
-      quotes,
-    });
-
-    let surface = ImpliedVolSurface::from_provider(&mp, "ACME", r, 0.0).unwrap();
-    for j in 0..taus.len() {
-      for i in 0..strikes.len() {
-        let iv = surface.ivs[[j, i]];
-        assert!(
-          (iv - sigma).abs() < 1e-10,
-          "recovered iv={iv} vs σ={sigma} at T={}, K={}",
-          taus[j],
-          strikes[i]
-        );
-      }
-    }
-  }
-
-  /// `from_provider` propagates a provider error for a missing symbol.
-  #[test]
-  fn from_provider_errors_on_missing_symbol() {
-    use crate::market::provider::MockProvider;
-
-    let mp = MockProvider::new();
-    let res = ImpliedVolSurface::from_provider(&mp, "NOPE", 0.05, 0.0);
-    assert!(res.is_err());
-  }
-
-  #[test]
-  fn from_prices_round_trip() {
-    use stochastic_rs_distributions::special::norm_cdf;
-
-    let s = 100.0;
-    let r = 0.05;
-    let sigma = 0.20;
-
-    let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-    let maturities = vec![0.25, 0.50, 1.0];
-    let forwards: Vec<f64> = maturities.iter().map(|&t| s * f64::exp(r * t)).collect();
-
-    let mut prices = Array2::<f64>::zeros((maturities.len(), strikes.len()));
-    for (j, &t) in maturities.iter().enumerate() {
-      let f = forwards[j];
-      for (i, &k) in strikes.iter().enumerate() {
-        let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-        let d2 = d1 - sigma * t.sqrt();
-        // Undiscounted Black price
-        prices[[j, i]] = f * norm_cdf(d1) - k * norm_cdf(d2);
-      }
-    }
-
-    let surface = ImpliedVolSurface::from_prices(
-      strikes.clone(),
-      maturities.clone(),
-      forwards.clone(),
-      &prices,
-      true,
-    );
-
-    for j in 0..maturities.len() {
-      for i in 0..strikes.len() {
-        let iv = surface.ivs[[j, i]];
-        assert!(
-          (iv - sigma).abs() < 1e-6,
-          "iv={iv} vs sigma={sigma} at T={}, K={}",
-          maturities[j],
-          strikes[i]
-        );
-      }
-    }
-  }
-
-  #[test]
-  fn smile_slice_filters_nans() {
-    let surface = ImpliedVolSurface {
-      strikes: vec![90.0, 100.0, 110.0],
-      maturities: vec![0.5],
-      forwards: vec![100.0],
-      ivs: array![[0.22, f64::NAN, 0.20]],
-      total_variance: array![[0.0242, f64::NAN, 0.02]],
-      log_moneyness: array![[(90.0_f64 / 100.0).ln(), 0.0, (110.0_f64 / 100.0).ln()]],
-    };
-
-    let slice = surface.smile_slice(0);
-    assert_eq!(slice.implied_vols.len(), 2);
-    assert!((slice.implied_vols[0] - 0.22).abs() < 1e-12);
-    assert!((slice.implied_vols[1] - 0.20).abs() < 1e-12);
-  }
-}
+mod tests;

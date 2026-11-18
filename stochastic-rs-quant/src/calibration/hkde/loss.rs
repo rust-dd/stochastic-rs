@@ -4,6 +4,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use super::calibrator::HkdeCalibrator;
+use super::params::BOX;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
 use super::params::HkdeParams;
@@ -17,6 +18,8 @@ use crate::QuantError;
 use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
+use crate::calibration::periodic_slopes;
+use crate::calibration::scale_columns;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
@@ -28,6 +31,8 @@ pub(super) struct HkdeProblem<'a> {
   calibrator: &'a HkdeCalibrator,
   sqrt_weights: Vec<f64>,
   params: HkdeParams,
+  /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
   pub(super) market: Vec<f64>,
   pub(super) trail: Trail<HkdeParams>,
 }
@@ -50,6 +55,7 @@ impl<'a> HkdeProblem<'a> {
       calibrator,
       sqrt_weights,
       params: start,
+      reflections: Array1::ones(9),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::negated(),
     })
@@ -166,6 +172,7 @@ impl<'a> HkdeProblem<'a> {
 
 impl LeastSquaresProblem for HkdeProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
     self.params = HkdeParams::from(params.clone()).projected();
   }
 
@@ -185,7 +192,8 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.numeric_jacobian(&self.effective_params()))
+    let jacobian = self.numeric_jacobian(&self.effective_params());
+    Some(scale_columns(jacobian, &self.reflections))
   }
 
   fn accept(&mut self) {

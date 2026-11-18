@@ -553,4 +553,24 @@ mod tests {
       }
     }
   }
+
+  /// The unconstrained raw-SVI Jacobian at a start, at the truth and at a far point.
+  #[test]
+  fn the_jacobian_is_the_slope_of_the_residuals() {
+    use crate::calibration::least_squares::tests::jacobian_error;
+    let truth = SviRawParams::<f64>::new(0.04, 0.4, -0.4, 0.1, 0.2);
+    let ks = vec![-0.4, -0.2, -0.1, 0.0, 0.1, 0.2, 0.4];
+    let ws = ks.iter().map(|&k| truth.total_variance(k)).collect();
+    let params = truth.into_dvector();
+    let mut problem = SviLmProblem { ks, ws, params };
+    let points = [
+      ndarray::array![0.01, 0.1, 0.0, 0.0, 0.1],
+      ndarray::array![0.04, 0.4, -0.4, 0.1, 0.2],
+      ndarray::array![0.5, 3.0, 0.9, -1.0, 2.0],
+    ];
+    for point in points {
+      let error = jacobian_error(&mut problem, &point, |_, _| 1e-6);
+      assert!(error < 1e-8, "{point}: {error:e}");
+    }
+  }
 }

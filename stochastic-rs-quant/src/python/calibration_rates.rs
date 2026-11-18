@@ -87,8 +87,8 @@ impl PyHullWhiteSwaptionCalibrator {
     })?
   }
 
-  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let start = initial_guess.map(|(mean_reversion, sigma)| HullWhiteParams {
@@ -159,8 +159,8 @@ impl PyBlackKarasinskiSwaptionCalibrator {
     })?
   }
 
-  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let start = initial_guess.map(|(mean_reversion, sigma)| BlackKarasinskiParams {
@@ -205,17 +205,17 @@ pub struct PyG2ppSwaptionCalibrator {
 
 #[pymethods]
 impl PyG2ppSwaptionCalibrator {
-  /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ;
-  /// the tree has `(2L + 1)²` nodes on level `L`, so keep `steps_per_year` modest.
+  /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ; the
+  /// tree has `(2L + 1)²` nodes on level `L`; `max_iters=None` is the fit's own cap, 1000.
   #[new]
-  #[pyo3(signature = (quotes, curve, initial_rate, notional=1.0, steps_per_year=4, max_iters=400))]
+  #[pyo3(signature = (quotes, curve, initial_rate, notional=1.0, steps_per_year=4, max_iters=None))]
   fn new(
     quotes: Vec<(f64, f64, f64, f64, String)>,
     curve: &PyDiscountCurve,
     initial_rate: f64,
     notional: f64,
     steps_per_year: usize,
-    max_iters: usize,
+    max_iters: Option<usize>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let this = Self {
@@ -231,15 +231,18 @@ impl PyG2ppSwaptionCalibrator {
           rho: -0.5,
           phi: initial_rate,
         },
-        options: CalibrationOptions::default().with_max_iterations(max_iters),
+        options: match max_iters {
+          Some(cap) => CalibrationOptions::default().with_max_iterations(cap),
+          None => CalibrationOptions::default(),
+        },
       };
       this.calibrator();
       Ok(this)
     })?
   }
 
-  /// Returns `(a, b, sigma, eta, rho, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(a, b, sigma, eta, rho, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(
     &self,

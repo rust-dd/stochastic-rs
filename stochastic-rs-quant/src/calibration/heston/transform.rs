@@ -56,6 +56,29 @@ pub(super) fn from_optimizer_coordinates(coordinates: &Array1<f64>) -> HestonPar
   }
 }
 
+/// Each parameter's place in its box, 0 at the lower bound and 1 at the upper.
+pub(super) fn units(params: &HestonParams) -> [f64; PARAMETER_COUNT] {
+  let physical = [
+    params.v0,
+    params.kappa,
+    params.theta,
+    params.sigma,
+    params.rho,
+  ];
+  std::array::from_fn(|j| (physical[j] - BOUNDS[j].0) / (BOUNDS[j].1 - BOUNDS[j].0))
+}
+
+pub(super) fn at_units(units: [f64; PARAMETER_COUNT]) -> HestonParams {
+  let value = |j: usize| BOUNDS[j].0 + (BOUNDS[j].1 - BOUNDS[j].0) * units[j];
+  HestonParams {
+    v0: value(0),
+    kappa: value(1),
+    theta: value(2),
+    sigma: value(3),
+    rho: value(4),
+  }
+}
+
 pub(super) fn canonicalize(params: &HestonParams) -> HestonParams {
   from_optimizer_coordinates(&to_optimizer_coordinates(params))
 }

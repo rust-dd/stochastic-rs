@@ -14,12 +14,15 @@ use crate::OptionType;
 use crate::calibration::clip_negative;
 use crate::calibration::heston::params::KAPPA_MIN;
 use crate::calibration::heston::params::P_KAPPA;
+use crate::calibration::heston::params::P_RHO;
 use crate::calibration::heston::params::P_THETA;
 use crate::calibration::heston::params::RHO_BOUND;
 use crate::calibration::heston::params::SIGMA_MIN;
 use crate::calibration::heston::params::THETA_MIN;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
+use crate::calibration::periodic_slopes;
+use crate::calibration::scale_columns;
 use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
@@ -85,6 +88,8 @@ pub(super) fn double_heston_call_price(
 pub(super) struct DoubleHestonProblem<'a> {
   calibrator: &'a DoubleHestonCalibrator,
   params: DoubleHestonParams,
+  /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
   pub(super) market: Vec<f64>,
   pub(super) trail: Trail<DoubleHestonParams>,
 }
@@ -94,6 +99,7 @@ impl<'a> DoubleHestonProblem<'a> {
     Self {
       calibrator,
       params: start,
+      reflections: Array1::ones(10),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::new(),
     }
@@ -209,6 +215,8 @@ impl<'a> DoubleHestonProblem<'a> {
 
 impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
+    let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
+    self.reflections = periodic_slopes(params, &[factor, factor].concat());
     self.params = DoubleHestonParams::from(params.clone()).projected();
   }
 
@@ -228,7 +236,8 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.numeric_jacobian(&self.effective_params()))
+    let jacobian = self.numeric_jacobian(&self.effective_params());
+    Some(scale_columns(jacobian, &self.reflections))
   }
 
   fn accept(&mut self) {
