@@ -126,7 +126,7 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
     self.resync()
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.resync()

@@ -44,6 +44,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Panics on an `Until` horizon that is not positive and finite.
   pub fn new(horizon: Horizon<T>, distribution: D, seed: S) -> Self {
     horizon.assert_valid();
     CustomJt {
