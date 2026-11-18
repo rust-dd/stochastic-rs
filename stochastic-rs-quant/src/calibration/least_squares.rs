@@ -119,9 +119,9 @@ const STATIONARY: f64 = 3e-3;
 /// overshoots where a bound's map bends the residual.
 const STEP_LADDER: [f64; 4] = [1.0, 0.25, 0.0625, 0.015625];
 
-/// An rmse of 1e-8 of the quotes' root mean square is the Fourier pricers' own tolerance, where
-/// the residual is noise and its angle to the Jacobian means nothing.
-const EXACT_FIT: f64 = 1e-8;
+/// The pricers' relative accuracy, the Fourier integrals' own tolerance: an rmse this share of
+/// the quotes' root mean square is noise, and its angle to the Jacobian means nothing.
+const PRICER_ACCURACY: f64 = 1e-8;
 
 /// `Jⱼᵀr / (‖Jⱼ‖‖r‖)` per column, signed; 0 for a zero column or a zero residual.
 fn column_cosines(residuals: &Array1<f64>, jacobian: &Array2<f64>) -> Vec<f64> {
@@ -189,11 +189,11 @@ impl LmReport {
     self.reason == TerminationReason::SolverConverged
   }
 
-  /// The report of a fit with this `rmse` against `market`: where the solver stopped, a fit
-  /// exact to `1e-8` of the quotes' root mean square is converged without the first-order check.
-  pub fn settled(self, rmse: f64, market: &[f64]) -> Self {
+  /// Where the solver stopped, a fit whose `rmse` is within `accuracy` of `market`'s root mean
+  /// square is converged: the pricers' accuracy is `1e-8`, an f32 surrogate's `8·f32::EPSILON`.
+  pub fn settled(self, rmse: f64, market: &[f64], accuracy: f64) -> Self {
     let size = (market.iter().map(|q| q * q).sum::<f64>() / market.len() as f64).sqrt();
-    let exact = self.solver_converged() && !self.flat && rmse <= EXACT_FIT * size;
+    let exact = self.solver_converged() && !self.flat && rmse <= accuracy * size;
     Self {
       converged: self.converged || exact,
       ..self
@@ -217,7 +217,7 @@ impl LmReport {
       });
     }
     let fit = Calibrated::repriced(params, market, model, metrics, self.converged);
-    let settled = self.settled(fit.loss.get(LossMetric::Rmse), market);
+    let settled = self.settled(fit.loss.get(LossMetric::Rmse), market, PRICER_ACCURACY);
     let fit = Calibrated {
       converged: settled.converged,
       ..fit
