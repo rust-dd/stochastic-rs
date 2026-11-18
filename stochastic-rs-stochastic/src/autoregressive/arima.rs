@@ -20,13 +20,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an Arima(p, d, q) process using explicit backshift notation:
-///
-/// \[
-///   \phi(B)\,(1 - B)^d X_t = \theta(B)\,\epsilon_t,
-/// \]
-/// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
-/// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
+/// ARIMA(p, d, q) in backshift form: `ar_coefs` and `ma_coefs` are the polynomials $\phi(B)$
+/// and $\theta(B)$, and `d` the number of differences $(1 - B)$.
 #[derive(Debug, Clone)]
 pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
@@ -39,7 +34,7 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Final length of time series
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -47,7 +42,8 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arima<T, S> {
-  /// Create a new Arima model with the given parameters.
+  /// An ARIMA(p, d, q) path of `n >= 1` points. Panics unless `sigma >= 0` and every
+  /// coefficient is finite.
   pub fn new(
     ar_coefs: Array1<T>,
     ma_coefs: Array1<T>,
@@ -171,9 +167,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the series fits the kernels'
-  /// per-path history; a longer series keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the series fits the kernels' per-path history; a longer
+  /// series stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -261,10 +256,8 @@ impl<T: FloatExt> ArimaSampler<T> {
   }
 }
 
-/// The ARIMA(p, d, q) recursion as a linear filter of its innovations: the
-/// single-pass ARMA(p, q) recursion with shared noise, then `d` inverse
-/// differences. Linear in `noise`, so run on a unit impulse it yields the
-/// impulse response a device convolves the innovations with.
+/// The ARIMA recursion as a linear filter: one ARMA(p, q) pass on shared noise, then `d` inverse
+/// differences. Run on a unit impulse it gives the response a device convolves innovations with.
 pub(crate) fn arima_filter<T: FloatExt>(
   noise: &Array1<T>,
   ar_coefs: &Array1<T>,

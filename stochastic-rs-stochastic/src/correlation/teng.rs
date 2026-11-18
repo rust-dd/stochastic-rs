@@ -1,18 +1,14 @@
-//! Teng Modified Ou stochastic correlation (Eq. 19/20, Lemma 1).
+//! Teng's modified OU stochastic correlation (Eq. 19/20, Lemma 1). The diffusion of $\rho_t$
+//! vanishes quadratically at ±1, and the stationary density is ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
 //!
 //! $$
 //! dX_t = \kappa(\mu - \tanh(X_t))\,dt + \sigma\,dW_t, \quad \rho_t = \tanh(X_t)
 //! $$
 //!
-//! The SCP ρ_t = tanh(X_t) satisfies:
-//!
 //! $$
 //! d\rho_t = (1-\rho_t^2)\bigl(\kappa(\mu-\rho_t) - \sigma^2\rho_t\bigr)\,dt
 //!         + (1-\rho_t^2)\sigma\,dW_t
 //! $$
-//!
-//! Diffusion vanishes *quadratically* at ±1 (stronger confinement).
-//! Closed-form stationary density: f(ρ̃) ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -28,26 +24,16 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Teng modified-Ou stochastic correlation process.
-///
-/// Simulates in X-space via the modified Ou (Eq. 19):
-/// dX_t = κ(μ − tanh(X_t)) dt + σ dW_t
-///
-/// Output ρ_t = tanh(X_t) ∈ (−1, 1).
+/// Teng's correlation process, simulated in X-space by the modified OU of Eq. 19; the path
+/// reports $\rho_t = \tanh(X_t) \in (-1, 1)$.
 #[derive(Debug, Clone)]
 pub struct TengScp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ > 0).
   pub kappa: T,
   /// Long-run correlation level (μ ∈ (−1, 1)).
   pub mu: T,
-  /// Correlation volatility (σ > 0). Not validated by [`TengScp::new`]: at
-  /// `sigma = 0`, [`density_a`](TengScp::density_a)/
-  /// [`density_b`](TengScp::density_b)/
-  /// [`stationary_density_unnorm`](TengScp::stationary_density_unnorm) all
-  /// divide by `sigma * sigma`, so those (but not path simulation itself,
-  /// which never divides by `sigma`) return non-finite values — see
-  /// [`stationary_density_unnorm`](TengScp::stationary_density_unnorm)'s own
-  /// doc for the exact breakdown.
+  /// Correlation volatility σ. [`TengScp::new`] accepts `sigma = 0`, where the paths are finite
+  /// and the three stationary-density methods divide by `sigma * sigma`.
   pub sigma: T,
   /// Initial correlation (ρ₀ ∈ (−1, 1)).
   pub rho0: T,
@@ -63,6 +49,7 @@ pub struct TengScp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> TengScp<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -109,34 +96,22 @@ impl<T: FloatExt, S: SeedExt, B> TengScp<T, S, B> {
     self.kappa * self.mu / self.kappa_star()
   }
 
-  /// Stationary density exponents (Eq. 33/37):
-  /// a = (κ − σ²)/σ², b = κμ/σ².
-  ///
-  /// At `sigma = 0` this divides by zero: `+inf` for `kappa > 0` (its own
-  /// required domain), not `NaN` — a positive value divided by exact zero
-  /// is a well-defined signed infinity in IEEE 754.
+  /// Stationary-density exponent a = (κ − σ²)/σ² (Eq. 33/37, with b = κμ/σ²); `+inf` at
+  /// `sigma = 0` with `kappa > 0`, a positive value over an exact zero.
   pub fn density_a(&self) -> T {
     let s2 = self.sigma * self.sigma;
     (self.kappa - s2) / s2
   }
 
-  /// At `sigma = 0`: `NaN` if `mu = 0` (a literal `0/0`), otherwise a
-  /// signed infinity matching `mu`'s sign — see [`density_a`](Self::density_a)'s
-  /// own doc for why a nonzero numerator over zero is infinite, not `NaN`.
+  /// Stationary-density exponent b = κμ/σ²; at `sigma = 0` it is NaN when `mu = 0` (a `0/0`)
+  /// and an infinity of `mu`'s sign otherwise.
   pub fn density_b(&self) -> T {
     let s2 = self.sigma * self.sigma;
     self.kappa * self.mu / s2
   }
 
-  /// Evaluate the (unnormalised) stationary density at ρ̃ ∈ (−1, 1).
-  ///
-  /// f(ρ̃) ∝ (1+ρ̃)^{a+b} (1−ρ̃)^{a−b}   (Eq. 39)
-  ///
-  /// At `sigma = 0` this is `NaN` for *every* `mu`, even though `density_a`
-  /// and `density_b` individually are merely infinite for `mu != 0`: `a` is
-  /// always `+inf` there, and `a + b` / `a - b` hits `inf + (-inf)` or
-  /// `inf - inf` for one of the two combinations regardless of `b`'s sign,
-  /// which is `NaN` even though neither `a` nor `b` alone was.
+  /// Unnormalised stationary density f(ρ̃) ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b} at ρ̃ ∈ (−1, 1) (Eq. 39).
+  /// NaN at `sigma = 0` for every `mu`: `a = +inf`, and `a + b` or `a − b` is `inf − inf`.
   pub fn stationary_density_unnorm(&self, rho: T) -> T {
     let a = self.density_a();
     let b = self.density_b();
@@ -153,9 +128,8 @@ impl<T: FloatExt, S: SeedExt, B> TengScp<T, S, B> {
   }
 }
 
-/// The Euler engine's view of Teng's stochastic correlation process. The
-/// state is the unbounded variable the recursion runs on, so `ρ₀` enters as
-/// its inverse transform and the reported value is transformed back.
+/// The Euler engine's view: the state is the unbounded variable the recursion runs on, so `ρ₀`
+/// enters as its inverse transform and the reported value is transformed back.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for TengScp<T, S, B>
 {
@@ -225,9 +199,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -257,10 +230,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`TengScp`] sampling state: owns the Gaussian source and the
-/// precomputed step size. `fill_path` Euler-steps the modified Ou in X-space
-/// (`dX = κ(μ − tanh X)dt + σ dW`) and outputs `ρ = tanh(X)` in place; the owned
-/// source advances each call for independent paths.
+/// Reusable [`TengScp`] sampling state: the Gaussian source and the step size. `fill_path` steps
+/// the modified OU in X-space and writes `ρ = tanh(X)`; each call advances the source.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct TengScpSampler<T: FloatExt> {
@@ -366,10 +337,8 @@ mod tests {
     assert!(d_at_mu > d_at_0);
   }
 
-  /// Backs the doc comments on `sigma`/`density_a`/`density_b`/
-  /// `stationary_density_unnorm`: `TengScp::new` does not validate that
-  /// `sigma` is positive, so this must actually reach the documented
-  /// non-finite outputs rather than just claim to.
+  /// `TengScp::new` accepts `sigma = 0`, so the non-finite values the density docs state are
+  /// reached, not only claimed.
   #[test]
   fn zero_sigma_density_functions_are_non_finite() {
     let zero_mu = TengScp::new(8.0_f64, 0.0, 0.0, 0.0, 10, Some(1.0), Unseeded);

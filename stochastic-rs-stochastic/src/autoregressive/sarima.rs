@@ -20,39 +20,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements a Sarima model, often denoted:
-///
-/// Sarima(p, d, q) (P, D, Q)_s
-///
-/// using the "backshift" definition:
-/// \[
-///   \Phi(B^s)\,\phi(B)\,(1 - B)^d (1 - B^s)^D\,X_t
-///     = \Theta(B^s)\,\theta(B)\,\epsilon_t,
-/// \]
-/// where:
-/// - \(\phi(B)\) and \(\theta(B)\) capture the non-seasonal AR/MA parts (orders p,q),
-/// - \(\Phi(B^s)\) and \(\Theta(B^s)\) capture the seasonal AR/MA parts (orders P,Q) with season length \(s\),
-/// - \(d\) is the non-seasonal differencing order,
-/// - \(D\) is the seasonal differencing order,
-/// - \(\epsilon_t\) is white noise with std dev \(\sigma\).
-///
-/// # Fields
-/// - `non_seasonal_ar_coefs` (\(\phi\)): array of length p.
-/// - `non_seasonal_ma_coefs` (\(\theta\)): array of length q.
-/// - `seasonal_ar_coefs` (\(\Phi\)): array of length P.
-/// - `seasonal_ma_coefs` (\(\Theta\)): array of length Q.
-/// - `d`: Non-seasonal differencing order.
-/// - `seasonal_d`: Seasonal differencing order.
-/// - `s`: Season length.
-/// - `sigma`: Std dev of the white noise.
-/// - `n`: Length of the final time series.
-/// - `m`: Optional batch size (unused by default).
-///
-/// # Implementation Notes
-/// 1. We multiply the non-seasonal and seasonal AR polynomials (and likewise the MA polynomials)
-///    to produce the combined polynomial with cross-terms.
-/// 2. A single-pass SARMA recursion generates the "fully differenced" data.
-/// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
+/// SARIMA(p, d, q)(P, D, Q)ₛ. The seasonal and plain polynomials are multiplied with their
+/// cross-terms, run as one SARMA pass, then the seasonal and the plain differences are inverted.
 #[derive(Debug, Clone)]
 pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Non-seasonal AR coefficients, length p
@@ -73,7 +42,7 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Final length of the time series
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -81,7 +50,8 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
-  /// Create a new Sarima model
+  /// A SARIMA path of `n >= 1` points. Panics unless `s > 0`, `sigma >= 0` and every
+  /// coefficient is finite.
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
     non_seasonal_ma_coefs: Array1<T>,
@@ -187,9 +157,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::one()
   }
 
-  /// The impulse response of this SARIMA's own recursion, so the device's
-  /// convolution of the innovations is that recursion exactly, seasonal
-  /// terms and differencing included.
+  /// The impulse response of this SARIMA's own recursion, so the device's convolution of the
+  /// innovations is that recursion exactly, seasonal terms and differencing included.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
     Some(vec![super::arima::impulse_response(self.n, |unit| {
       sarima_filter(
@@ -246,9 +215,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the series fits the kernels'
-  /// per-path history; a longer series keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the series fits the kernels' per-path history; a longer
+  /// series stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -311,9 +279,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Sarima`] sampling state: owns the Gaussian innovation source and
-/// the seasonal/non-seasonal ARMA coefficients so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable [`Sarima`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct SarimaSampler<T: FloatExt> {
@@ -350,11 +317,8 @@ impl<T: FloatExt> SarimaSampler<T> {
   }
 }
 
-/// The SARIMA recursion as a linear filter of its innovations: the combined
-/// seasonal × non-seasonal polynomials run as one SARMA pass, then the
-/// seasonal and the plain inverse differences. Linear in `noise`, so run on a
-/// unit impulse it yields the impulse response a device convolves the
-/// innovations with.
+/// The SARIMA recursion as a linear filter: one SARMA pass on the combined polynomials, then the
+/// inverse differences. Run on a unit impulse it gives the response a device convolves with.
 pub(crate) fn sarima_filter<T: FloatExt>(
   noise: &Array1<T>,
   non_seasonal_ar_coefs: &Array1<T>,
@@ -367,15 +331,10 @@ pub(crate) fn sarima_filter<T: FloatExt>(
 ) -> Array1<T> {
   let n = noise.len();
 
-  // Multiply φ(B) and Φ(Bˢ) to get the combined AR polynomial.
-  // φ(B) = 1 - φ_1 B - ... - φ_p B^p
-  // Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
-  // Product polynomial has terms at lags: i + j*s for all combinations.
+  // φ(B)Φ(Bˢ) with φ(B) = 1 − Σ φᵢ Bⁱ and Φ(Bˢ) = 1 − Σ Φⱼ Bʲˢ: a term at every lag i + j·s.
   let ar_lags = multiply_ar_polynomials(non_seasonal_ar_coefs, seasonal_ar_coefs, s);
 
-  // Multiply θ(B) and Θ(Bˢ) to get the combined MA polynomial.
-  // θ(B) = 1 + θ_1 B + ... + θ_q B^q
-  // Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
+  // θ(B)Θ(Bˢ) with θ(B) = 1 + Σ θᵢ Bⁱ and Θ(Bˢ) = 1 + Σ Θⱼ Bʲˢ.
   let ma_lags = multiply_ma_polynomials(non_seasonal_ma_coefs, seasonal_ma_coefs, s);
 
   // Single-pass SARMA recursion:
@@ -429,14 +388,8 @@ impl<T: FloatExt> PathSampler<T> for SarimaSampler<T> {
   }
 }
 
-/// Multiply the non-seasonal AR polynomial φ(B) with the seasonal AR polynomial Φ(Bˢ).
-///
-/// φ(B) = 1 - φ_1 B - ... - φ_p B^p
-/// Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
-///
-/// Returns a vector of (lag, coefficient) pairs for the product polynomial
-/// (excluding the constant term 1). The coefficients are the positive form
-/// used in the recursion: W_t = sum(coef * W_{t-lag}) + ...
+/// (lag, coefficient) pairs of φ(B)Φ(Bˢ) without the constant 1, signed as the recursion reads
+/// them: `W_t = Σ coef · W_{t−lag} + …`.
 fn multiply_ar_polynomials<T: FloatExt>(
   non_seasonal: &Array1<T>,
   seasonal: &Array1<T>,
@@ -476,13 +429,7 @@ fn multiply_ar_polynomials<T: FloatExt>(
     .collect()
 }
 
-/// Multiply the non-seasonal MA polynomial θ(B) with the seasonal MA polynomial Θ(Bˢ).
-///
-/// θ(B) = 1 + θ_1 B + ... + θ_q B^q
-/// Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
-///
-/// Returns a vector of (lag, coefficient) pairs for the product polynomial
-/// (excluding the constant term 1).
+/// (lag, coefficient) pairs of θ(B)Θ(Bˢ) without the constant 1.
 fn multiply_ma_polynomials<T: FloatExt>(
   non_seasonal: &Array1<T>,
   seasonal: &Array1<T>,

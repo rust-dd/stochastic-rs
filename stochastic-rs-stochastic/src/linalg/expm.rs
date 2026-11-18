@@ -1,11 +1,7 @@
-//! Scaling-and-squaring Padé-13 matrix exponential (Higham 2005,
-//! Algorithm 2.3), shared by the matrix-valued processes; the same routine
-//! the quant crate's rating-migration code carries, generic over [`RealExt`]
-//! so it needs no LAPACK backend.
+//! Scaling-and-squaring Padé-13 matrix exponential (Higham 2005, Algorithm 2.3), generic over
+//! [`RealExt`] so it needs no LAPACK; the quant crate's rating migration carries the same routine.
 //!
-//! Reference: Higham, N. J. (2005), *The scaling and squaring method for the
-//! matrix exponential revisited*, SIAM J. Matrix Anal. Appl. 26(4),
-//! 1179–1193. DOI: 10.1137/04061101X
+//! Reference: Higham (2005), SIAM J. Matrix Anal. Appl. 26(4), 1179–1193, DOI 10.1137/04061101X
 
 use ndarray::Array2;
 
@@ -99,9 +95,8 @@ fn pade13<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   invert_matrix(&denom).dot(&numer)
 }
 
-/// Gauss–Jordan inverse with partial pivoting; the matrices here are small
-/// (a handful of assets or factors), so the O(n³) dense form is the right
-/// tool.
+/// Gauss–Jordan inverse with partial pivoting; O(n³) dense is right for the handful of assets
+/// or factors these matrices hold.
 pub(crate) fn invert_matrix<T: RealExt>(a: &Array2<T>) -> Array2<T> {
   let n = a.nrows();
   assert_eq!(n, a.ncols(), "matrix must be square for inversion");
@@ -163,10 +158,8 @@ mod tests {
 
   use super::*;
 
-  /// Two-state generator `Q = [[-α, α], [β, -β]]` has the closed form
-  /// `expm(Q) = (1/λ) [[β + α e^{-λ}, α (1 − e^{-λ})], [β (1 − e^{-λ}), α + β e^{-λ}]]`
-  /// with `λ = α + β`; the quant crate checks the same numbers against
-  /// scipy 1.11.4 at rtol 1e-12.
+  /// The two-state generator `Q = [[-α, α], [β, -β]]` has, with `λ = α + β`, `expm(Q) =
+  /// (1/λ) [[β + α e^{-λ}, α (1 − e^{-λ})], [β (1 − e^{-λ}), α + β e^{-λ}]]` (scipy 1.11.4 agrees).
   fn two_state_closed_form(alpha: f64, beta: f64) -> Array2<f64> {
     let lam = alpha + beta;
     let e = (-lam).exp();

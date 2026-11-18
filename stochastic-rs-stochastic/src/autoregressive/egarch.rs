@@ -5,10 +5,7 @@
 //! +\sum_{j=1}^q\beta_j\log(\sigma_{t-j}^2)
 //! $$
 //!
-//! Reference: Nelson D. B. (1991) — *Conditional Heteroskedasticity in
-//! Asset Returns: A New Approach*, Econometrica 59(2), 347–370,
-//! DOI: 10.2307/2938260.
-//!
+//! Reference: Nelson (1991), Econometrica 59(2), 347–370, DOI 10.2307/2938260
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -25,34 +22,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an Egarch(p,q) model:
-///
-/// \[
-///   \ln(\sigma_t^2)
-///     = \omega
-///       + \sum_{i=1}^p \Bigl[\alpha_i \bigl(\lvert z_{t-i}\rvert - E\lvert z\rvert\bigr)
-///                            + \gamma_i \, z_{t-i}\Bigr]
-///       + \sum_{j=1}^q \beta_j \,\ln(\sigma_{t-j}^2),
-///   \quad X_t = \sigma_t \cdot z_t,\quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// where
-///
-/// - \( z_{t-i} = \frac{X_{t-i}}{\sigma_{t-i}} \) is the standardized residual,
-/// - \( E\lvert z\rvert = \sqrt{2/\pi} \) under a standard normal assumption.
-///
-/// # Parameters
-/// - `omega`: The constant term \(\omega\) in the log-variance equation.
-/// - `alpha`: An array \(\{\alpha_1, \dots, \alpha_p\}\) controlling the magnitude effect.
-/// - `gamma`: An array \(\{\gamma_1, \dots, \gamma_p\}\) for the sign (asymmetry) effect.
-///   Must be the same length as `alpha`.
-/// - `beta`:  An array \(\{\beta_1, \dots, \beta_q\}\) controlling persistence of past log-variance.
-/// - `n`: The number of observations to generate.
-///
-/// # Notes
-/// 1. We assume that `alpha` and `gamma` each have length \(p\).
-/// 2. We assume that `beta` has length \(q\).
-/// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
+/// EGARCH(p, q) on standardized residuals $z_t = X_t/\sigma_t$ with $E|z| = \sqrt{2/\pi}$;
+/// `alpha` loads the magnitude, `gamma` the sign, and `new` enforces a stationary `beta`.
 #[derive(Debug, Clone)]
 pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term (\(\omega\)) in log-variance
@@ -65,7 +36,7 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: Array1<T>,
   /// Number of observations
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -213,10 +184,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the log-variance and the series
-  /// step together in the kernel, on the host devices it is this process's
-  /// own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  /// What a device runs: order (1, 1), since the family carries one lag of each; a higher order
+  /// stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1 && self.gamma.len() == 1 && self.beta.len() == 1))
       .then_some("an order above (1, 1): the family carries one lag of each")
@@ -279,9 +248,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Egarch`] sampling state: owns the standard-normal innovation
-/// source and the log-variance coefficients so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable [`Egarch`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct EgarchSampler<T: FloatExt> {

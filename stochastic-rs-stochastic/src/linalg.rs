@@ -1,8 +1,5 @@
-//! Dense linear-algebra glue shared by the multi-factor processes: a
-//! generic lower Cholesky factor, the correlation-matrix checks every
-//! correlated driver performs, the extended (pivoted) Cholesky and the
-//! matrix exponential the matrix-valued diffusions build on, so each model
-//! no longer carries its own copy.
+//! Dense linear algebra the multi-factor processes share: the lower Cholesky factor, the
+//! correlation-matrix checks, the pivoted Cholesky and the matrix exponential.
 
 mod expm;
 mod pivoted_cholesky;
@@ -16,9 +13,8 @@ pub(crate) use pivoted_cholesky::swap_symmetric;
 
 use crate::traits::FloatExt;
 
-/// Lower-triangular Cholesky factor $L$ with $LL^\top = A$ of a symmetric
-/// positive-definite matrix, by the standard inner-product recursion; a
-/// non-positive pivot panics with the offending index.
+/// Lower-triangular factor $L$ with $LL^\top = \rho$ by the inner-product recursion; panics
+/// unless `rho` is square and every pivot is positive, i.e. `rho` is positive-definite.
 pub(crate) fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
   let m = rho.nrows();
   assert!(
@@ -85,9 +81,8 @@ pub(crate) fn determinant<T: FloatExt>(a: &Array2<T>) -> T {
   det
 }
 
-/// Checks that `rho` is a correlation matrix: square, symmetric, unit
-/// diagonal and entries in $[-1, 1]$. Positive-definiteness is left to the
-/// Cholesky factorisation that follows.
+/// Panics unless `rho` is square, symmetric and unit-diagonal with entries in $[-1, 1]$;
+/// positive-definiteness is left to the Cholesky factorisation that follows.
 pub(crate) fn validate_correlation<T: FloatExt>(rho: &Array2<T>) {
   let m = rho.nrows();
   assert!(

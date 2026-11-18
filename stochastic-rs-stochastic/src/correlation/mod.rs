@@ -1,16 +1,7 @@
-//! # Stochastic Correlation Processes
+//! Bounded stochastic correlation on (−1, 1): [`TransformedOu`] maps an OU through a bounded $f$
+//! (Section 2.1), [`VanEmmerich`] is the Jacobi-type SDE (Eq. 15), [`TengScp`] Eq. 19/20.
 //!
-//! Bounded stochastic correlation models on (−1, 1) following
-//! Teng, Ehrhardt & Günther (2016) "Modelling stochastic correlation",
-//! *Journal of Mathematics in Industry* 6:2.
-//!
-//! ## Models
-//!
-//! - [`TransformedOu`]: ρ_t = f(X_t) where dX = κ(μ−X)dt + σ dW
-//!   (Section 2.1; supports [`Transformation::Tanh`] and [`Transformation::Arctan`])
-//! - [`VanEmmerich`]: dρ = κ(μ−ρ)dt + σ√(1−ρ²) dW  (Eq. 15)
-//! - [`TengScp`]: Modified Ou in X-space, ρ = tanh(X)  (Eq. 19/20)
-//!
+//! Reference: Teng, Ehrhardt & Günther (2016), J. Math. Industry 6:2
 
 pub mod heston_stoch_corr;
 pub mod teng;

@@ -1,4 +1,4 @@
-//! # Agrach
+//! # Agarch
 //!
 //! $$
 //! \sigma_t^2=\omega+\sum_{i=1}^p(\alpha_i+\delta_i\mathbf 1_{\{X_{t-i}<0\}})X_{t-i}^2
@@ -22,30 +22,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// A generic Asymmetric Garch(p,q) model (A-Garch),
-/// allowing a separate "delta" term for negative-lag effects.
-///
-/// One possible form:
-/// \[
-///   \sigma_t^2
-///     = \omega
-///       + \sum_{i=1}^p \Bigl[\alpha_i X_{t-i}^2
-///                             + \delta_i X_{t-i}^2 \mathbf{1}_{\{X_{t-i}<0\}}\Bigr]
-///       + \sum_{j=1}^q \beta_j \sigma_{t-j}^2,
-///   \quad X_t = \sigma_t \cdot z_t, \quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// # Parameters
-/// - `omega`: Constant term \(\omega\).
-/// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for positive squared terms.
-/// - `delta`: Array \(\{\delta_1, \ldots, \delta_p\}\) for negative-lag extra effect.
-/// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\).
-/// - `n`:     Length of the time series.
-///
-/// # Notes
-/// - This is essentially a [`GjrGarch`](crate::autoregressive::gjr_garch::GjrGarch)-like
-///   structure but with different naming (`delta`).
-/// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
+/// Asymmetric GARCH(p, q): [`GjrGarch`](crate::autoregressive::gjr_garch::GjrGarch)'s recursion
+/// with the threshold loading named `delta`; `new` enforces `Σα + Σδ/2 + Σβ < 1`.
 #[derive(Debug, Clone)]
 pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
@@ -59,7 +37,7 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: Array1<T>,
   /// Length of the generated time series.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -130,9 +108,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::zero()
   }
 
-  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
-  /// first point: the state it starts from is the seed variance and the
-  /// not-yet-warm marker, not a value the path reports.
+  /// The series starts at `σ₀ z₀`, so the launch steps before it writes its first point: the
+  /// initial state is the seed variance and the not-yet-warm marker, not a reported value.
   fn initial_state(&self) -> [T; 4] {
     let denom = variance_denominator(&self.alpha, &self.delta, &self.beta, "delta");
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
@@ -192,10 +169,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the conditional variance and the
-  /// series step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  /// What a device runs: order (1, 1), since the family carries one lag of each; a higher order
+  /// stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1 && self.delta.len() == 1 && self.beta.len() == 1))
       .then_some("an order above (1, 1): the family carries one lag of each")
@@ -258,9 +233,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Agarch`] sampling state: owns the standard-normal innovation
-/// source and the variance coefficients so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable [`Agarch`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct AgarchSampler<T: FloatExt> {
