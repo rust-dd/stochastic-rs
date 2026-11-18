@@ -108,7 +108,7 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
     require!(r0.is_none_or(|v| v.is_finite()), r0);
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();
     self
@@ -149,7 +149,7 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

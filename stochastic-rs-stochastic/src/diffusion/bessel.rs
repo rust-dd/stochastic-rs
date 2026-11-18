@@ -61,7 +61,7 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   /// Logs [`SquaredBessel::new`]'s δ < 2 warning under [`VarianceBoundary::Floor`]; panics unless
-  /// `n >= 2`, `t` is positive when given, and every parameter is finite.
+  /// `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     delta: T,
     n: usize,
@@ -118,7 +118,7 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
@@ -138,7 +138,7 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

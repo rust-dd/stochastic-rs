@@ -107,7 +107,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
     self
   }
 
-  /// Replace the deterministic shift φ(t), all else unchanged.
+  /// Replace the deterministic shift φ(t).
   pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
     self.phi = phi.into();
     self

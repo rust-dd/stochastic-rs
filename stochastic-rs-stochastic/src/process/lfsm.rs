@@ -52,7 +52,7 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
   /// Panics unless `0 < alpha <= 2`, `-1 <= beta <= 1`, `scale > 0`, `1/alpha < hurst < 1`,
-  /// `n >= 2`, a given `t` is positive and every parameter is finite.
+  /// `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,

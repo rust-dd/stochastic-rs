@@ -73,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -105,8 +105,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

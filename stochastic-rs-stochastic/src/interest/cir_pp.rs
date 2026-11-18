@@ -65,8 +65,8 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
 /// Every field has a `with_*` setter (`CirPlusPlus::default().with_kappa(3.0)`); nothing is
 /// cached, since `sampler()` builds a transient `Cir` from `self` on every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// [`Cir::new`]'s Feller contract on `x_t`: a violation under [`VarianceBoundary::Floor`] logs a
-  /// warning. Panics unless `n >= 2`, a given `t` is positive and every parameter is finite.
+  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns under [`VarianceBoundary::Floor`].
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
     theta: T,
@@ -146,7 +146,7 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
     self
   }
 
-  /// Replace the deterministic shift `phi`, all else unchanged.
+  /// Replace the deterministic shift `phi`.
   pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
     self.phi = phi.into();
     self
@@ -159,7 +159,7 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
@@ -179,7 +179,7 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

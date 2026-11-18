@@ -64,8 +64,7 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// Replace the arrivals' horizon, all else unchanged; panics on an `Until` that is not positive
-  /// and finite.
+  /// Replace the arrivals' horizon; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     self.customjt = self.customjt.with_horizon(horizon);
     self

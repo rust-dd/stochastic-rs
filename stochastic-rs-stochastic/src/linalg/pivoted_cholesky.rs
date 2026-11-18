@@ -34,8 +34,8 @@ impl<T: RealExt> ExtendedCholesky<T> {
   }
 }
 
-/// Extended Cholesky of a symmetric matrix; panics when a Schur complement turns significantly
-/// negative, i.e. unless the matrix is positive semidefinite.
+/// Extended Cholesky of a symmetric matrix; panics unless `q` is square and positive semidefinite:
+/// once the pivots fall to the tolerance, no remaining diagonal is under its negative.
 pub(crate) fn extended_cholesky<T: RealExt>(q: &Array2<T>) -> ExtendedCholesky<T> {
   let d = q.nrows();
   assert_eq!(q.ncols(), d, "matrix must be square");

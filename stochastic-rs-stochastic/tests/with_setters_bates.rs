@@ -204,7 +204,8 @@ fn bates_with_horizon_round_trip() {
 fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates<f64, SimdNormal<f64>, S> {
   Bates::new(
     Drift::Mu(0.05),
-    0.0, // lambda: disables the drift's jump compensation term AND the jump arrivals themselves (single source of truth) — no jumps, ever
+    // lambda = 0 disables both the drift's jump compensation and the arrivals: no jumps, ever
+    0.0,
     0.0,
     0.0, // alpha: keeps v pinned at v0 = 0
     0.0,

@@ -59,8 +59,8 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self
   }
 
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite,
-  /// and on `Events(n ≥ 1)` at a zero rate.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite, `lambda >= 0` is
+  /// finite, and `lambda > 0` under `Events(n ≥ 1)`.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     assert_rate(self.lambda, horizon);
@@ -68,7 +68,7 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

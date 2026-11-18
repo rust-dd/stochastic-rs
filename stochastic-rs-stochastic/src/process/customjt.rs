@@ -45,7 +45,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Panics on an `Until` horizon that is not positive and finite.
+  /// Panics unless an `Until` horizon is positive and finite.
   pub fn new(horizon: Horizon<T>, distribution: D, seed: S) -> Self {
     horizon.assert_valid();
     CustomJt {
@@ -62,7 +62,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     self.horizon = horizon;

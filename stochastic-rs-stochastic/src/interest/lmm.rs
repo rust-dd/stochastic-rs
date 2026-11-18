@@ -201,7 +201,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

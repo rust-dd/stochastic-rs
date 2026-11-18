@@ -9,7 +9,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::*;
 
 /// Symmetric with a non-negative spectrum, judged by the extended Cholesky's
-/// own tolerance (it panics on a significantly negative Schur complement).
+/// own tolerance (it panics unless every Schur complement's diagonal is non-negative within it).
 fn assert_in_the_cone(x: &Array2<f64>) {
   assert_symmetric(x, "path matrix");
   let _ = extended_cholesky(x);

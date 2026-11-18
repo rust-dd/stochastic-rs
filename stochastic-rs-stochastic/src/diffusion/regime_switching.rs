@@ -5,7 +5,7 @@
 //! $$
 //!
 //! Source: Kirkby, PROJ_Option_Pricing_Matlab
-//! Reference: Hamilton (1989), Econometrica 57(2), 357–384
+//! Reference: Hamilton (1989), Econometrica 57(2), 357–384, DOI 10.2307/1912559
 //!
 
 use ndarray::Array1;

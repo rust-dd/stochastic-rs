@@ -85,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
     self.horizon = horizon;

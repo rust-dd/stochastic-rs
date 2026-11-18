@@ -58,8 +58,8 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`Cir::default().with_theta(3.0).with_sigma(0.3)`); nothing
 /// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
-  /// A sub-Feller `2·theta·mu < sigma²` is accepted; under [`VarianceBoundary::Floor`] it logs a
-  /// warning. Panics unless `n >= 2`, a given `t` is positive and every parameter is finite.
+  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns under [`VarianceBoundary::Floor`].
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta: T,
     mu: T,
@@ -144,7 +144,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
@@ -164,7 +164,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

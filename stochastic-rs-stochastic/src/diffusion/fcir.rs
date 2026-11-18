@@ -52,8 +52,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// [`Cir::new`](crate::diffusion::cir::Cir::new)'s Feller contract, which the setters do not
-  /// repeat. Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and all is finite.
+  /// `Cir::new`'s Feller contract; no setter repeats it. Panics unless `0 <= hurst <= 1`, `n >= 2`,
+  /// a given `t` is positive and finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -105,7 +105,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -169,14 +169,13 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

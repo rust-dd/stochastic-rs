@@ -107,7 +107,7 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
   }
 
   /// Replace `mu` and rebuild the terminal log-normal cache [`DistributionExt`]'s moments read;
-  /// panics unless `mu.is_finite()`.
+  /// panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
@@ -150,7 +150,7 @@ impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

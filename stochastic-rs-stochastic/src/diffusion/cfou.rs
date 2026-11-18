@@ -32,8 +32,6 @@ use crate::traits::ProcessExt;
 /// Complex fractional Ornstein-Uhlenbeck process. Fields are private, since the fGN driver caches
 /// a spectrum of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
 ///
-/// Reference: Alazemi, Alsenafi, Chen & Zhou (2024), arXiv:2406.18004
-///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::diffusion::cfou::Cfou;
@@ -105,7 +103,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -182,8 +180,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -428,8 +425,6 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 
 /// Reusable [`Cfou`] sampling state on the process's [`Fgn`] and a seed derived once. The step is
 /// `Z_{k+1} = Z_k − (λ − iω) Z_k dt + √a Δζ_k`, `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / √2`.
-///
-/// Reference: Alazemi, Alsenafi, Chen & Zhou (2024), arXiv:2406.18004
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {

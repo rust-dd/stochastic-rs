@@ -79,7 +79,7 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {
-  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  /// Replace `drift`; panics unless its rate is finite.
   pub fn with_drift(mut self, drift: Drift<T>) -> Self {
     drift.assert_finite();
     self.drift = drift;

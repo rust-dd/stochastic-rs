@@ -21,7 +21,7 @@ pub use transformed_ou::TransformedOu;
 pub use van_emmerich::VanEmmerich;
 
 /// `[dW₁, dW₂]`, each scaled by `√dt`, with `Corr(dW₁[i], dW₂[i]) = rho_path[i]` (Teng et al. 2016,
-/// Eq. 43); panics if an entry lies outside `[-1, 1]`. A constant ρ samples faster through `Cgns`.
+/// Eq. 43); panics unless `-1 <= rho_path[i] <= 1` for every `i`. A constant ρ is faster on `Cgns`.
 pub fn stochastic_correlated_bm<S: SeedExt>(
   rho_path: &Array1<f64>,
   t: Option<f64>,
