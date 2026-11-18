@@ -157,7 +157,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Replace the seed strategy's value, all else unchanged. Neither cached
+  /// Replace the seed strategy's value. Neither cached
   /// array depends on the seed, so this is a plain field write.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;

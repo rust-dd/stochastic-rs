@@ -54,8 +54,8 @@ impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatility<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Panics if `n < 2`, if `t` is not positive and finite, or if `coefficients` is empty
-  /// or holds a non-finite entry.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `coefficients` is non-empty
+  /// with every entry finite.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
     check_t(t);
@@ -110,8 +110,7 @@ where
     );
   }
 
-  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
-  /// non-finite entry.
+  /// Replace the polynomial; panics unless `coefficients` is non-empty with every entry finite.
   #[must_use]
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
     Self::check_coefficients(&coefficients);
@@ -119,7 +118,7 @@ where
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged; panics if `n < 2`.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -137,7 +136,7 @@ where
     self
   }
 
-  /// Replace the seed strategy, all else unchanged.
+  /// Replace the seed strategy.
   #[must_use]
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;

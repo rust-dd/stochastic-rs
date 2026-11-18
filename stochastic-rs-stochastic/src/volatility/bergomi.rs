@@ -55,7 +55,8 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_nu(nu);
     Self::check_v0(v0);
@@ -155,7 +156,7 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

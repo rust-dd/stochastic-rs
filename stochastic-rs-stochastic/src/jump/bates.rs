@@ -172,21 +172,21 @@ where
     require!(v0 >= T::zero(), v0);
   }
 
-  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  /// Replace `drift`; panics unless its rate is finite.
   pub fn with_drift(mut self, drift: Drift<T>) -> Self {
     drift.assert_finite();
     self.drift = drift;
     self
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace the jump law, all else unchanged: `k` stays, so set it to the new law's mean.
+  /// Replace the jump law: `k` stays, so set it to the new law's mean.
   pub fn with_jump_law(mut self, law: D) -> Self {
     self.jumps.law = law;
     self
@@ -248,7 +248,7 @@ where
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self

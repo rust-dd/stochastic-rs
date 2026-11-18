@@ -53,8 +53,8 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
 impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
-  /// Panics unless `nu >= 0`, `beta >= 0 && beta <= 1`, `n >= 2`, `alpha0.is_none_or(|a| a >= 0)`,
-  /// a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `nu >= 0`, `0 <= beta <= 1`, `-1 <= rho <= 1`, `n >= 2`, a given `alpha0` is
+  /// non-negative, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     nu: T,
     beta: T,
@@ -119,7 +119,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace `beta`; panics unless `beta >= 0 && beta <= 1` and `beta` is finite.
+  /// Replace `beta`; panics unless `0 <= beta <= 1`.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
@@ -142,7 +142,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace `alpha0`; panics unless `alpha0.is_none_or(|a| a >= 0)` and `alpha0` is finite.
+  /// Replace `alpha0`; panics unless a given `alpha0` is non-negative and finite.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
     Self::check_alpha0(alpha0);
     self.alpha0 = alpha0;
@@ -167,7 +167,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

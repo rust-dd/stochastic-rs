@@ -63,7 +63,8 @@ impl<T: FloatExt, K, S: SeedExt> VolterraSquareRoot<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Panics if `n < 2`, if `kappa` or `nu` is not positive, or if `theta` or `v0` is negative.
+  /// Panics unless `kappa > 0`, `nu > 0`, `theta >= 0`, `v0 >= 0`, `n >= 2`, a given `t` is
+  /// positive and finite, and every parameter is finite.
   #[must_use]
   pub fn new(kernel: K, kappa: T, theta: T, nu: T, n: usize, v0: T, t: Option<T>, seed: S) -> Self {
     Self::check_kappa(kappa);
@@ -167,7 +168,7 @@ where
     self
   }
 
-  /// Replace the seed strategy, all else unchanged.
+  /// Replace the seed strategy.
   #[must_use]
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;

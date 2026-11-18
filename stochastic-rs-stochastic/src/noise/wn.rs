@@ -35,7 +35,7 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
-  /// Panics unless `n >= 1`, `sigma.is_none_or(|s| s >= 0)` and every parameter is finite.
+  /// Panics unless `n >= 1`, a given `sigma` is non-negative and every parameter is finite.
   pub fn new(n: usize, mu: Option<T>, sigma: Option<T>, seed: S) -> Self {
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(

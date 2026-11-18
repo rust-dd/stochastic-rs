@@ -61,7 +61,7 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
-  /// Panics unless `kappa >= 0`, `theta >= 0`, `xi >= 0`, `rho >= -1 && rho <= 1`, `s0 > 0`,
+  /// Panics unless `kappa >= 0`, `theta >= 0`, `xi >= 0`, `-1 <= rho <= 1`, `s0 > 0`,
   /// `v0 >= 0`, a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     drift: Drift<T>,
@@ -134,7 +134,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     require!(v0 >= T::zero(), v0);
   }
 
-  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  /// Replace `drift`; panics unless its rate is finite.
   pub fn with_drift(mut self, drift: Drift<T>) -> Self {
     drift.assert_finite();
     self.drift = drift;
@@ -163,7 +163,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   }
 
   /// Replace `rho`; a field write, since `sampler()` builds its correlated noise from `rho`; panics
-  /// unless `rho >= -1 && rho <= 1` and `rho` is finite.
+  /// unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -184,7 +184,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
@@ -204,7 +204,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

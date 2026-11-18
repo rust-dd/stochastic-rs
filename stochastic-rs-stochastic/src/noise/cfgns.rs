@@ -64,7 +64,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
+  /// Replace `hurst`; panics unless `0 <= hurst <= 1`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
@@ -98,15 +98,14 @@ impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
     require!((-T::one()..=T::one()).contains(&rho), rho);
   }
 
-  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
-  /// own assertion.
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// Replace the seed strategy's value. `fgn`'s own
   /// seed is a never-read dummy, so this does not touch it.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;

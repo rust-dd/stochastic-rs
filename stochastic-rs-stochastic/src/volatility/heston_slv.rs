@@ -234,7 +234,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
     self
   }
 
-  /// Replace the leverage function, all else unchanged.
+  /// Replace the leverage function.
   pub fn with_leverage(mut self, leverage: impl Into<Fn2D<T>>) -> Self {
     self.leverage = leverage.into();
     self
@@ -254,7 +254,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

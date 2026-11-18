@@ -21,7 +21,8 @@ where
     require!(hurst.is_finite(), hurst);
   }
 
-  /// Panics unless a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     hurst: T,
     theta: T,
@@ -58,7 +59,7 @@ where
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -66,7 +67,7 @@ where
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -135,19 +136,19 @@ where
     self
   }
 
-  /// Replace the inter-arrival law, all else unchanged.
+  /// Replace the inter-arrival law.
   pub fn with_jump_time_law(mut self, law: DT) -> Self {
     self.jump_times = law;
     self
   }
 
-  /// Replace the jump-size law, all else unchanged.
+  /// Replace the jump-size law.
   pub fn with_jump_size_law(mut self, law: DS) -> Self {
     self.jump_sizes = law;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// Replace the seed strategy's value. `fgn`'s own
   /// seed is a never-read dummy, so this does not touch it.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;

@@ -22,7 +22,7 @@ where
   }
 
   /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
-  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive.
+  /// every parameter is finite, `0 <= hurst <= 1`, `lambda >= 0`, `n >= 2` and a given `t > 0`.
   pub fn new(
     hurst: T,
     theta: T,
@@ -60,7 +60,7 @@ where
   }
 
   /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `hurst` is finite.
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     Self::check_hurst(hurst);
     self.hurst = hurst;
@@ -68,7 +68,7 @@ where
     self
   }
 
-  /// Replace `n`; panics if `n < 2`.
+  /// Replace `n`; panics unless `n >= 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -134,14 +134,14 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace the jump-size law, all else unchanged.
+  /// Replace the jump-size law.
   pub fn with_jump_law(mut self, law: D) -> Self {
     self.jumps.law = law;
     self

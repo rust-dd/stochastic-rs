@@ -77,7 +77,7 @@ impl<T> From<[Array1<T>; 4]> for Heston2DPaths<T> {
 }
 
 /// Lower Cholesky factor of the 4×4 correlation matrix of `rho` over `(Z_1, Z_2, W_1, W_2)`;
-/// panics if the matrix is not positive semidefinite.
+/// panics unless the matrix is positive semidefinite.
 fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
   // A valid rank-deficient correlation matrix can produce a tiny negative pivot after rounding.
   let tol = T::from_f64_fast(1e-10).max(T::from_f64_fast(100.0) * T::epsilon());

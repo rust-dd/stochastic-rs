@@ -64,8 +64,8 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
 }
 
 impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
-  /// Panics unless `v0 >= 0`, `kappa >= 0`, `theta >= 0`, `sigma >= 0`, `n >= 2`, a given `t` is
-  /// positive and finite, and every parameter is finite.
+  /// Panics unless `v0 >= 0`, `kappa >= 0`, `theta >= 0`, `sigma >= 0`, `-1 <= rho <= 1`, `n >= 2`,
+  /// a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     s0: T,
     v0: T,
@@ -235,19 +235,19 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     self
   }
 
-  /// Replace `pow`, all else unchanged.
+  /// Replace `pow`.
   pub fn with_pow(mut self, pow: HestonPow) -> Self {
     self.pow = pow;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

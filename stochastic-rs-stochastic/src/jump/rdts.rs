@@ -50,7 +50,8 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
-  /// Create a new Rdts process; panics at alpha = 1, where Γ((1 − α)/2) has a pole.
+  /// Panics unless `lambda_plus > 0`, `lambda_minus > 0`, `0 < alpha < 2`, `alpha != 1` (a pole of
+  /// `Γ((1 − α)/2)`), `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,

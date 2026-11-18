@@ -123,13 +123,13 @@ where
       .collect()
   }
 
-  /// Replace `drift`, all else unchanged.
+  /// Replace `drift`.
   pub fn with_drift(mut self, drift: impl Into<Fn2D<T>>) -> Self {
     self.drift = drift.into();
     self
   }
 
-  /// Replace `diffusion`, all else unchanged.
+  /// Replace `diffusion`.
   pub fn with_diffusion(mut self, diffusion: impl Into<Fn2D<T>>) -> Self {
     self.diffusion = diffusion.into();
     self
@@ -158,7 +158,7 @@ where
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self

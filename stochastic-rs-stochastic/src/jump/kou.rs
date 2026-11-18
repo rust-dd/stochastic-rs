@@ -123,14 +123,14 @@ where
     require!(lambda >= T::zero(), lambda);
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace the jump-size law, all else unchanged.
+  /// Replace the jump-size law.
   pub fn with_jump_law(mut self, law: D) -> Self {
     self.jumps.law = law;
     self

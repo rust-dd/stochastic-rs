@@ -67,7 +67,8 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cts<T, S> {
-  /// Create a new Cts process; panics at alpha = 1, where Γ(1 − α) has a pole.
+  /// Panics unless `lambda_plus > 0`, `lambda_minus > 0`, `0 < alpha < 2`, `alpha != 1` (a pole of
+  /// `Γ(1 − α)`), `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,

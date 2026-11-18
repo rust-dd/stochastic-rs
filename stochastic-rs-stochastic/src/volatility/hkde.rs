@@ -70,7 +70,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
-  /// Panics unless `rho >= -1 && rho <= 1`, `v0 >= 0`, `lambda >= 0`, `eta1 > 1`, `eta2 > 0`,
+  /// Panics unless `-1 <= rho <= 1`, `v0 >= 0`, `lambda >= 0`, `eta1 > 1`, `eta2 > 0`,
   /// `s0 > 0`, a given `t` is positive and finite, `n >= 2`, and every parameter is finite.
   pub fn new(
     mu: T,
@@ -220,7 +220,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
@@ -255,7 +255,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
@@ -279,7 +279,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
