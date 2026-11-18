@@ -6,7 +6,7 @@
 //!
 //! Calibrates the CGMYSV stochastic volatility model parameters
 //! $(\alpha,\lambda_+,\lambda_-,\kappa,\eta,\zeta,\rho,v_0)$ to observed
-//! option prices using Fourier pricing (Gil-Pelaez) and Levenberg-Marquardt.
+//! option prices using Fourier pricing (Lewis) and Levenberg-Marquardt.
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001
 

@@ -294,8 +294,8 @@ impl PySabrCapletCalibrator {
     })?
   }
 
-  /// Returns `(alpha, beta, nu, rho, rmse, converged)`; `converged` means the simplex cost spread
-  /// fell below 1e-10, and reaching 600 iterations or a nonfinite cost gives `false`.
+  /// Returns `(alpha, beta, nu, rho, rmse, converged)`; `converged` is `false` at 600 iterations
+  /// and for a stagnated, collapsed, flat or nonfinite simplex.
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, bool)> {
     use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;

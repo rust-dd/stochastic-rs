@@ -87,8 +87,8 @@ impl PyHullWhiteSwaptionCalibrator {
     })?
   }
 
-  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let start = initial_guess.map(|(mean_reversion, sigma)| HullWhiteParams {
@@ -159,8 +159,8 @@ impl PyBlackKarasinskiSwaptionCalibrator {
     })?
   }
 
-  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(mean_reversion, sigma, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let start = initial_guess.map(|(mean_reversion, sigma)| BlackKarasinskiParams {
@@ -238,8 +238,8 @@ impl PyG2ppSwaptionCalibrator {
     })?
   }
 
-  /// Returns `(a, b, sigma, eta, rho, rmse, converged)`; `converged` means the simplex spread fell
-  /// below 1e-10, and an iteration limit or nonfinite simplex costs give `false`.
+  /// Returns `(a, b, sigma, eta, rho, rmse, converged)`; `converged` is `false` at the iteration
+  /// cap and for a stagnated, collapsed, flat or nonfinite simplex.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(
     &self,

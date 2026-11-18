@@ -40,10 +40,10 @@ pub(crate) const BOUNDS: [(f64, f64); 9] = [
   (-0.99, 0.99), // rho2
 ];
 
-/// A mild-skew, short-tenor SPX-style start in `HscmParams` order.
 /// scipy's SLSQP default `ftol`, an absolute change of the objective, as the Python reference ran.
 const DEFAULT_FTOL: f64 = 1e-6;
 
+/// A mild-skew, short-tenor SPX-style start in `HscmParams` order.
 const DEFAULT_START: [f64; 9] = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
 
 const NAMES: [&str; 9] = [
@@ -189,8 +189,8 @@ pub struct HscmCalibrator {
   /// `None` starts from (2, 0.04, 0.3, 0.04, 5, −0.5, 0.2, −0.7, 0.3); a start is clamped to
   /// `BOUNDS`.
   pub start: Option<HscmParams>,
-  /// SLSQP: `max_iterations` caps its evaluations (default 500) and `tolerance` is its `ftol_rel`;
-  /// `patience`, `record_history` and `regularization` are `Unsupported`.
+  /// SLSQP: `max_iterations` caps its evaluations (default 500), `tolerance` is the absolute change
+  /// of the objective it stops on (default 1e-6); the other knobs are `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -261,15 +261,9 @@ impl crate::traits::Calibrator for HscmCalibrator {
       });
     }
     let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
-    let tolerance = match self.options.tolerance {
-      Some(ftol_rel) => StopTols {
-        ftol_rel,
-        ..StopTols::default()
-      },
-      None => StopTols {
-        ftol_abs: DEFAULT_FTOL,
-        ..StopTols::default()
-      },
+    let tolerance = StopTols {
+      ftol_abs: self.options.tolerance.unwrap_or(DEFAULT_FTOL),
+      ..StopTols::default()
     };
     let (status, x, final_objective) = match slsqp::minimize(
       slsqp_objective,
@@ -373,11 +367,28 @@ mod tests {
   }
 
   #[test]
-  fn a_default_fit_stops_on_slsqps_own_tolerance() {
-    let fit = from_guess(CalibrationOptions::default().with_max_iterations(60)).unwrap();
+  fn a_default_fit_stops_on_slsqps_own_tolerance_within_a_percent_of_three_quotes() {
+    let fit = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START))
+      .with_start(HscmParams::from_values(&GUESS))
+      .calibrate(None)
+      .unwrap();
     let message = fit.message.as_deref().unwrap();
     assert!(fit.converged, "{message}");
     assert!(message.starts_with("slsqp ftol reached"), "{message}");
+    assert!(fit.loss.get(LossMetric::Rmse) < 5e-2, "{:?}", fit.loss);
+  }
+
+  /// `tolerance` is the absolute change of the objective, the default's kind.
+  #[test]
+  fn the_default_tolerance_is_a_tolerance_of_1e_6() {
+    let capped = CalibrationOptions::default().with_max_iterations(60);
+    let default = from_guess(capped.clone()).unwrap();
+    let explicit = from_guess(capped.with_tolerance(1e-6)).unwrap();
+    assert!(default.converged && explicit.converged);
+    assert_eq!(
+      (default.params, default.message),
+      (explicit.params, explicit.message)
+    );
   }
 
   #[test]

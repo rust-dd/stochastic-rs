@@ -4,9 +4,10 @@
 //! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
 //! $$
 //!
-use num_complex::Complex64;
 use std::f64::consts::FRAC_1_PI;
 use std::ops::Range;
+
+use num_complex::Complex64;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;

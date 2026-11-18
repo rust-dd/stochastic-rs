@@ -20,8 +20,8 @@ use crate::QuantError;
 use crate::calibration::quote::validate_quotes;
 use crate::total_order::ascending;
 
-/// Black implied volatility of an undiscounted price on a forward; NaN for a price no volatility
-/// attains, `0.0` for the intrinsic price at zero expiry. Jäckel (2015), Wilmott 2015(75), 40–53.
+/// Black implied volatility of an undiscounted price on a forward: `0.0` at the intrinsic price,
+/// `+∞` at the forward (the strike for a put), NaN outside them. Jäckel (2015), Wilmott 2015(75).
 pub(crate) fn black_implied_vol(
   undiscounted_price: f64,
   forward: f64,

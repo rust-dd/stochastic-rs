@@ -154,10 +154,10 @@ fn black_implied_vol_round_trips_the_reference_table() {
   }
   assert_eq!(black_implied_vol(10.0, 100.0, 90.0, 0.0, true), 0.0);
   assert!(black_implied_vol(10.5, 100.0, 90.0, 0.0, true).is_nan());
-  let at_intrinsic = black_implied_vol(60.0, 100.0, 40.0, 0.1, true);
-  assert!(
-    at_intrinsic.is_nan() || at_intrinsic == 0.0,
-    "{at_intrinsic}"
+  assert_eq!(black_implied_vol(60.0, 100.0, 40.0, 0.1, true), 0.0);
+  assert_eq!(
+    black_implied_vol(100.0, 100.0, 40.0, 0.1, true),
+    f64::INFINITY
   );
   assert!(black_implied_vol(101.0, 100.0, 40.0, 0.1, true).is_nan());
 }
