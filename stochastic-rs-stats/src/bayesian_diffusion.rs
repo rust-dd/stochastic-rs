@@ -1,5 +1,5 @@
-//! Random-walk Metropolis on the QMLE's quasi-likelihood: `proposal_scale` and a `N(·, 4²)` prior
-//! act on `ln θ`, the level (CIR's `ln μ`, OU's `(μ − x̄)/s`, `s` the path's spread) and `ln σ`.
+//! Random-walk Metropolis on the QMLE's quasi-likelihood: `proposal_scale` acts on `ln θ`, the
+//! level (CIR's `ln μ`, OU's `(μ − x̄)/s`, `s` the path's spread) and `ln σ`.
 //!
 //! Reference: Eraker, B. (2001), "MCMC analysis of diffusion models with application to finance", Journal of Business & Economic Statistics 19(2), 177-191.
 //! Reference: Robert, C. P. & Casella, G. (2004), Monte Carlo Statistical Methods, Springer, ch. 7 (random-walk Metropolis).
@@ -72,8 +72,14 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior, priors `ln θ ~ N(0, 4²)` and `ln σ ~ N(ln σ₀, 4²)` about the data's `σ₀`;
-/// defined where the QMLE refuses; `Err`s and panics as its checks and [`random_walk_metropolis`].
+/// Metropolis posterior under the priors below, defined where the QMLE refuses, its mean speed 0.6
+/// to 0.7 of the QMLE's from 1000 points on; `Err`s, panics: its checks, [`random_walk_metropolis`]
+/// $$
+/// p(\theta) \propto \frac{\rho}{\sqrt{1-\rho^2}},\ \rho = e^{-\theta\Delta}; \qquad
+/// \mu \sim N(\bar x, (4s)^2),\ \mu > 0 \text{ for CIR}; \qquad
+/// \ln\sigma \sim N(\ln\sigma_0, 4^2)
+/// $$
+/// Reference: Lee (2005), J. Korean Data & Information Science Society 16(1), 71-78, Lemma.
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -87,9 +93,9 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   // At unit scale, as the QMLE: the chain's steps and its prior then hold in any unit of the path.
   let (x, unit) = unit_scaled(diffusion_path(series, kind, 4)?);
   let carrier = Carrier::new(&x, kind)?;
-  let [_, level, ln_sigma] = ar1_start(&x, dt, kind, carrier)?;
-  // The speed about 1, the level about the path's mean and `σ` about the regression's `σ₀`.
-  let prior_mean = [0.0_f64, level, ln_sigma];
+  let start = ar1_start(&x, dt, kind, carrier)?;
+  let [_, level, ln_sigma] = start;
+  let level_prior = LevelPrior::new(&x, carrier, level)?;
   let tau = 4.0_f64;
   let inv_2tau2 = 1.0 / (2.0 * tau * tau);
 
@@ -100,14 +106,12 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
       return f64::NEG_INFINITY;
     }
     let ll = quasi_log_likelihood(&x, dt, kind, theta, mu, sigma);
-    let log_prior = -inv_2tau2
-      * ((q[0] - prior_mean[0]).powi(2)
-        + (q[1] - prior_mean[1]).powi(2)
-        + (q[2] - prior_mean[2]).powi(2));
+    let log_prior = speed_log_prior(q[0], dt) + level_prior.ln_density(q[1], mu)
+      - inv_2tau2 * (q[2] - ln_sigma).powi(2);
     ll + log_prior
   };
 
-  let init = Array1::from(vec![prior_mean[0], prior_mean[1], prior_mean[2]]);
+  let init = Array1::from(start.to_vec());
   let scale = Array1::from(vec![
     proposal_scale[0],
     proposal_scale[1],
@@ -153,6 +157,55 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   })
 }
 
+/// Jeffreys' log-prior of the speed in `q = ln θ`, up to a constant: that of the Gaussian
+/// autoregression's coefficient `ρ = e^{−θΔ}`, whose information in `n` steps is `n/(1 − ρ²)`.
+/// $$
+/// \pi(\rho) \propto (1-\rho^2)^{-1/2}, \qquad
+/// \ln\pi(q) = q - \theta\Delta - \tfrac12\ln\left(1 - e^{-2\theta\Delta}\right)
+/// $$
+/// Reference: Lee (2005), as above; Berger, Yang (1994), Econometric Theory 10, 461-482 (abstract).
+fn speed_log_prior(ln_theta: f64, dt: f64) -> f64 {
+  let rate = ln_theta.exp() * dt;
+  if rate == 0.0 {
+    // The limit `(2θΔ)^{−1/2}` in `q`, where the speed itself underflows.
+    return 0.5 * (ln_theta - (2.0 * dt).ln());
+  }
+  ln_theta - rate - 0.5 * (-(-2.0 * rate).exp_m1()).ln()
+}
+
+/// `μ ~ N(x̄, (4s)²)` in the chain's level coordinate: OU's `(μ − x̄)/s`, and CIR's `ln μ`, which
+/// keeps `μ > 0` and brings its Jacobian `μ`.
+#[derive(Clone, Copy)]
+enum LevelPrior {
+  Standardised { centre: f64 },
+  Log { mean: f64, spread: f64 },
+}
+
+impl LevelPrior {
+  /// `Err` for a CIR path whose spread is not finite and positive, as OU's carrier.
+  fn new(x: &[f64], carrier: Carrier, centre: f64) -> Result<Self, StatsError> {
+    match carrier {
+      Carrier::Standardised { .. } => Ok(Self::Standardised { centre }),
+      Carrier::Log { mean } => {
+        let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+        if !spread.is_finite() || spread == 0.0 {
+          return Err(StatsError::Numerical {
+            stage: "starting point",
+          });
+        }
+        Ok(Self::Log { mean, spread })
+      }
+    }
+  }
+
+  fn ln_density(self, q: f64, mu: f64) -> f64 {
+    match self {
+      Self::Standardised { centre } => -(q - centre).powi(2) / 32.0,
+      Self::Log { mean, spread } => q - ((mu - mean) / spread).powi(2) / 32.0,
+    }
+  }
+}
+
 fn mean(v: &[f64]) -> f64 {
   v.iter().sum::<f64>() / v.len() as f64
 }
@@ -166,6 +219,8 @@ fn credible_interval(v: &mut [f64]) -> (f64, f64) {
   (lo, hi)
 }
 
+#[cfg(test)]
+mod prior_tests;
 #[cfg(test)]
 mod scale_tests;
 
