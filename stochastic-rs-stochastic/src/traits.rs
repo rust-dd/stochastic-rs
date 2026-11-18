@@ -1,4 +1,4 @@
-//! Process traits: `ProcessExt` and its markers in [`process`], [`PathSampler`] in [`sampler`].
+//! Process traits: `ProcessExt` and its markers in [`process`], `PathSampler` in [`sampler`].
 //!
 //! Upstream traits are re-exported, so a call site writes `crate::traits::FloatExt`.
 

@@ -74,7 +74,7 @@ impl<T, const K: usize> From<(Array1<T>, [Array1<T>; K])> for MultifactorHestonP
 
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   /// Panics unless every parameter is finite, `K >= 1`, each `v0`, `kappa`, `theta`, `sigma` entry
-  /// is non-negative, each `|rho| < 1`, `n >= 2` and a given `t` is positive.
+  /// is non-negative, each `|rho| < 1`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     s0: T,
     v0: [T; K],

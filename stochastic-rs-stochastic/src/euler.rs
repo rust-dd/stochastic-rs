@@ -5,7 +5,7 @@
 //! Z_i \sim \mathcal N(0, 1)
 //! $$
 //!
-//! Only [`EulerBackend`] is public: <https://stochastic.rust-dd.com/docs/processes#euler-engine>.
+//! Only [`EulerBackend`] is stable: <https://stochastic.rust-dd.com/docs/processes#euler-engine>.
 //!
 //! Reference: Kloeden & Platen (1992), Numerical Solution of SDEs, Springer, §10.2 (Euler–Maruyama)
 //! Reference: Lord, Koekkoek & van Dijk (2010), Quant. Fin. 10(2), 177–194 (full truncation, CIR)

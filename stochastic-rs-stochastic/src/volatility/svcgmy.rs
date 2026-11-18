@@ -65,7 +65,7 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
   /// Panics unless every parameter is finite, `lambda_plus`, `lambda_minus`, `kappa`, `zeta` are
-  /// positive, `0 < alpha < 2`, `eta >= 0`, `v0 >= 0`, `n >= 2` and a given `t` is positive.
+  /// positive, `0 < alpha < 2`, `eta, v0 >= 0`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,

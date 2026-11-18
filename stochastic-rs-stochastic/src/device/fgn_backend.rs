@@ -22,8 +22,8 @@ use crate::traits::process::chunk_count;
 #[cfg(accelerate_backend)]
 use crate::traits::process::chunk_lens;
 
-/// The fGN capability of a [`Backend`], by circulant embedding; `seed` is the caller's, not
-/// `fgn.seed`. One seed and `m` give identical bits on [`Cpu`] only: each impl states its own.
+/// Circulant-embedding fGN from the caller's `seed`, not `fgn.seed`; bit-identical on [`Cpu`] only.
+/// See <https://stochastic.rust-dd.com/docs/concepts/backends#reproducibility-per-backend>.
 pub trait FgnBackend<T: FloatExt>: Backend {
   /// One fGN increment vector, or why the device could not produce it.
   fn try_generate<S: SeedExt, S2: SeedExt>(

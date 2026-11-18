@@ -203,7 +203,7 @@ where
 }
 
 // Fractional Lévy Ornstein–Uhlenbeck inner product (unstable).
-// Reference: Fink & Klüppelberg (2011), Bernoulli 17(1), DOI 10.3150/10-BEJ281
+// Reference: Fink & Klüppelberg (2011), Bernoulli 17(1), 484–506, DOI 10.3150/10-BEJ281
 pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   assert!(
     d > 0.0 && d < 1.0,
