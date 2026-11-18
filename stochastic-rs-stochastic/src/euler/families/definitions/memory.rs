@@ -4,15 +4,8 @@ macro_rules! euler_memory {
       $emit;
       ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
-  /// The rough Heston model in the two-term rational approximation of its
-  /// kernel — a mean-reverting factor `y`, a local factor `z` and the memory
-  /// integral of `z` under `(t − s)^{H − 1/2}` — with the integral kept as
-  /// the history block's exact convolution of the pushed `z` against the
-  /// kernel weights the host tabulates as `ct`, so the device runs the host's
-  /// own O(n²) scheme. The variance reported is
-  /// `y + c1 ν z + c2 ν ∫ / Γ(H − 1/2)`; the spot steps in the log under the
-  /// truncated previous variance, its shock correlated with the factor's
-  /// through `rho`.
+  /// Rough Heston in the two-term rational approximation of its kernel; the history block
+  /// convolves the pushed `z` with the weights in `ct`. Reports `y + c1 ν z + c2 ν ∫ / Γ(H − 1/2)`.
   105 => RoughHestonMemory { mu, theta, ek, nu, c1, c2, inv_g, rho }
     state (s, v, y, z)
     noise (dw, dq)
@@ -30,10 +23,8 @@ macro_rules! euler_memory {
     report { s, v }
     history { push (z) weights ($ct) },
 
-  /// The fractional Bates model:
-  /// [`RoughHestonMemory`](Family::RoughHestonMemory) with unit calibration
-  /// coefficients, `xi` for the vol-of-vol, a jump-compensated drift and
-  /// normal jumps in the log-spot summed by the step's `js`.
+  /// The fractional Bates model: [`RoughHestonMemory`](Family::RoughHestonMemory) with unit
+  /// calibration coefficients, `xi` for the vol-of-vol, a compensated drift and normal jumps `js`.
   106 => FractionalBatesMemory { mu_c, theta, ek, xi, inv_g, rho }
     state (s, v, y, z)
     noise (dw, dq)
@@ -51,14 +42,8 @@ macro_rules! euler_memory {
     report { s, v }
     history { push (z) weights ($ct) },
 
-  /// Rough Bergomi under the hybrid scheme: the Volterra driver of the
-  /// log-variance is the history block's convolution of the correlated shock
-  /// with the scheme's weights — the last interval's exact kernel integral
-  /// first, then the kernel at the optimal points — plus an independent
-  /// residual of standard-normal size (`de / √dt`, since `residual_sd`
-  /// already carries the interval's `dt^{H}`), and the variance is
-  /// `v0² exp(ν √(2H) X − ½ ν² t^{2H})` with the deterministic exponent
-  /// tabulated as `ct1`. The spot steps by Euler under the previous variance.
+  /// Rough Bergomi under the hybrid scheme: the history block's convolution plus a residual
+  /// (`de / √dt`) drive `v0² exp(ν √(2H) X − ½ ν² t^{2H})`, the exponent's last term being `ct1`.
   107 => RoughBergomiMemory { r, a, v0sq, residual_sd, rho }
     state (s, v, x)
     noise (dw, dq, de)
@@ -90,11 +75,8 @@ macro_rules! euler_memory {
       weights ($ct)
     },
 
-  /// A moving-average filter of white noise: the state is the convolution of
-  /// the pushed innovations `σ z` with the weight curve, which the host fills
-  /// with the impulse response of whatever linear recursion it declares — an
-  /// ARMA with its differencing, seasonal or not — so the device runs that
-  /// recursion exactly, at any order. The first point is itself a draw.
+  /// A moving-average filter of white noise: the pushed innovations `σ z` convolved with the
+  /// impulse response the host tabulates, so any ARMA recursion is exact. The first point is drawn.
   109 => MovingAverageFilter { sigma }
     state (x)
     noise (dz)
@@ -102,16 +84,8 @@ macro_rules! euler_memory {
     report { x }
     history { push (sigma * dz / sqrt($dt)) weights ($ct) },
 
-  /// A tempered-stable process by its shot-noise series (Rosiński 2007):
-  /// the launch draws `J` terms per path before the steps — the arrival
-  /// `Γ_j` of a unit-rate Poisson process, an `Exp(1)`, a uniform, the side
-  /// by a uniform against `w_plus`, and a uniform arrival time — sizes each
-  /// as `min((Γ_j rate)^{-1/α}, e_scale E^{e_pow} U^{1/α} / λ_side)` on the
-  /// side's sign and sums it into the grid cell its time falls in; the step
-  /// then adds the cell's jumps and the compensating drift `b_t dt`. CGMY,
-  /// the classical and the rapidly decreasing tempered stable laws and KoBoL
-  /// differ only in the folded `rate`, the exponential's scale and power and
-  /// the side probability.
+  /// A tempered-stable process by its shot-noise series (Rosiński 2007): each term is sized
+  /// `min((Γ_j rate)^{-1/α}, e_scale E^{e_pow} U^{1/α} / λ_side)` and filed in its time's cell.
   110 => TemperedStableSeries { b_t, rate, inv_alpha, e_scale, e_pow, w_plus, lambda_plus, lambda_minus }
     state (x)
     noise (dz)
@@ -128,12 +102,8 @@ macro_rules! euler_memory {
       )
     },
 
-  /// A Gaussian Volterra process by the reference quadrature: the path is the
-  /// convolution of the Brownian increments with the kernel on the grid,
-  /// `X_i = Σ_{k<i} K((i − k) dt) ΔW_k`, so the pushed value is the increment
-  /// itself and the weights the host tabulates as `ct` are `K((m + 1) dt)` by
-  /// lag. Any kernel the host can evaluate rides it; the rough ones take the
-  /// Markov lift instead.
+  /// A Gaussian Volterra process by the reference quadrature, `X_i = Σ_{k<i} K((i − k) dt) ΔW_k`:
+  /// the pushed value is the increment and the weights in `ct` are `K((m + 1) dt)` by lag.
   111 => VolterraReference { }
     state (x)
     noise (dz)
@@ -141,14 +111,8 @@ macro_rules! euler_memory {
     report { x }
     history { push (dz) weights ($ct) },
 
-  /// A Hawkes process with exponential excitation, one event per step, by the
-  /// exact recursion of Dassios and Zhao (2013): with `s` the excess intensity
-  /// just after the last event, the wait to the next is the smaller of an
-  /// `Exp(mu)` from the baseline and the excitation's own arrival, which is
-  /// `−ln(d) / beta` for `d = 1 + beta ln(u) / s` when that is positive and
-  /// never otherwise; the excess then decays over the wait and jumps by
-  /// `alpha`. The state keeps the time and the excess, the path records the
-  /// times.
+  /// A Hawkes process, one event per step, by the exact recursion of Dassios and Zhao (2013): the
+  /// wait is the smaller of `Exp(mu)` and `−ln(d) / beta`, `d = 1 + beta ln(u) / s`, when `d > 0`.
   112 => HawkesEvents { mu, alpha, beta }
     state (t, s)
     noise (dz)
@@ -164,15 +128,8 @@ macro_rules! euler_memory {
     }
     report { t },
 
-  /// Up to four forward LIBOR rates under the spot measure, by the log-Euler
-  /// step with the drift frozen at the step's start. The curve `ct` is the
-  /// number of reset dates passed at the step's start, `η`: a rate whose reset
-  /// date has passed (`n < η`) stays where it is, and a live rate `n` takes
-  /// `σ_n Σ_{j=max(η−1, 0)}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the rates
-  /// between the last reset and itself, `ρ_nj` from the lower Cholesky factor
-  /// `L` whose rows also correlate the four shocks. An absent rate travels
-  /// with a zero volatility and an identity row and never moves nor enters a
-  /// drift.
+  /// Up to four forward LIBOR rates under the spot measure, by log-Euler with the drift frozen at
+  /// the step's start. `ct` is `η`, the resets passed: rate `n < η` stays, a live one is coupled.
   113 => LiborMarket4 { s0, s1, s2, s3, d0, d1, d2, d3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (f0, f1, f2, f3)
     noise (z0, z1, z2, z3)
@@ -229,13 +186,8 @@ macro_rules! euler_memory {
       )
     },
 
-  /// CGMY under a CIR stochastic volatility (Kim 2021): the variance takes
-  /// the exact square-root step — a non-central χ² as the square of a shifted
-  /// normal plus a central χ²(df − 1), which is the frame's gamma draw `gm` —
-  /// and the log-price is a tempered-stable series whose terms are sized in
-  /// their own step, each arrival's bound scaled by the variance at its time,
-  /// plus the compensating drift `bcoef · v · dt`. The state keeps the jump
-  /// part `y` and the variance; the path records `y + ρ v` and `v`.
+  /// CGMY under a CIR variance (Kim 2021): the variance takes the exact square-root step, and
+  /// each series term is sized in its own step against the variance. Records `y + ρ v` and `v`.
   115 => StochasticVolatilityCgmy { rate0, inv_alpha, lambda_plus, lambda_minus, bcoef, twoc, ek, rho }
     state (y, v)
     noise (dz)
