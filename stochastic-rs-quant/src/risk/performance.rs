@@ -80,7 +80,7 @@ pub fn sortino_ratio<T: RealExt>(
 }
 
 /// Annualised Information Ratio against `benchmark`, NaN for a constant excess series; errors as
-/// [`sharpe_ratio`]'s over the excess returns, and `DimensionMismatch` for unequal lengths.
+/// [`sharpe_ratio`]'s, `Numerical` for an excess that overflows, `DimensionMismatch` for lengths.
 ///
 /// $$\mathrm{IR}=\frac{\overline{r-r_b}}{\sigma_{r-r_b}}\sqrt{k}.$$
 pub fn information_ratio<T: RealExt>(
@@ -95,8 +95,16 @@ pub fn information_ratio<T: RealExt>(
       got: benchmark.len(),
     });
   }
-  let diff = &returns.to_owned() - &benchmark.to_owned();
-  validate_samples(diff.view(), "information ratio", 2)?;
+  validate_samples(returns, "information ratio", 2)?;
+  validate_samples(benchmark, "information ratio", 2)?;
+  let diff = &returns - &benchmark;
+  for (i, &excess) in diff.iter().enumerate() {
+    finite(
+      excess,
+      "information ratio",
+      &format!("the excess return {i}"),
+    )?;
+  }
   if is_constant(diff.view()) {
     return Ok(T::nan());
   }
@@ -125,4 +133,31 @@ pub fn calmar_ratio<T: RealExt>(
     return Ok(T::nan());
   }
   Ok(annualised_return / mdd_abs)
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+
+  /// Finite returns whose excess over the benchmark overflows are `Numerical`, not an invalid
+  /// sample; a non-finite return or benchmark value stays `InvalidInput`.
+  #[test]
+  fn an_excess_return_that_overflows_is_numerical() {
+    let returns = array![1e308, 0.01, -0.02];
+    let benchmark = array![-1e308, 0.0, 0.0];
+    let err = information_ratio(returns.view(), benchmark.view(), 252.0).unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "information ratio: the excess return 0 of finite samples overflows to inf"
+    );
+    for (r, b) in [
+      (array![0.01, f64::NAN, 0.0], array![0.0, 0.0, 0.0]),
+      (array![0.01, 0.02, 0.0], array![0.0, f64::INFINITY, 0.0]),
+    ] {
+      let err = information_ratio(r.view(), b.view(), 252.0).unwrap_err();
+      assert!(matches!(err, QuantError::InvalidInput { .. }), "{err}");
+    }
+  }
 }
