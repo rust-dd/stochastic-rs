@@ -56,7 +56,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Jumps of law `jump_dist` arriving at rate `lambda`, their seed a child of `seed`.
+  /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
+  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive.
   pub fn new(
     gamma: T,
     sigma: T,
@@ -184,9 +185,8 @@ where
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// The size law as the kernels draw it. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// The size law as the kernels draw it. [`ProcessExt::sample`] keeps a law they do not carry on
+  /// the host, so a launch that asks for one here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     if self.lambda <= T::zero() {
       return None;
@@ -245,9 +245,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the jump-size law is one the device
-  /// kernels draw; any other law keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the device kernels draw the jump-size law; any other law stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)

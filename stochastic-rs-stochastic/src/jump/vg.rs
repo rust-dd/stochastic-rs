@@ -24,19 +24,13 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift-in-subordinated-time θ (matches the module header's own θ,
-  /// multiplying the gamma-subordinator increment `G_t`) — a skewness
-  /// parameter, not a mean-reversion level; VG is a pure Lévy process
-  /// with no mean reversion, despite the field's name.
+  /// Drift θ in subordinated time (the module display's θ, multiplying the gamma increment
+  /// `G_t`): a skewness parameter, not a mean-reversion level, which a Lévy process lacks.
   pub mu: T,
-  /// Diffusion scale σ multiplying `√(G_t) W_{G_t}`, the
-  /// Brownian-subordinated component riding on top of the gamma
-  /// time-change.
+  /// Diffusion scale σ of `√(G_t) W_{G_t}`, the Brownian component riding the gamma time change.
   pub sigma: T,
-  /// Variance rate ν of the gamma subordinator `G_t ~ Gamma(t/ν, ν)` —
-  /// controls kurtosis/tail thickness of the VG increments, not a
-  /// vol-of-vol in the Heston sense (there is no separate volatility
-  /// process here).
+  /// Variance rate ν of the gamma subordinator `G_t ~ Gamma(t/ν, ν)`: the kurtosis of the
+  /// increments, not a vol-of-vol, since there is no separate volatility process.
   pub nu: T,
   /// Number of points sampled along the VG path.
   pub n: usize,
@@ -51,11 +45,10 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Vg::default().with_nu(0.25).with_sigma(0.3)`. No persisted cache:
-/// `sampler()` builds its gamma subordinator and Gaussian source fresh
-/// from `self` every call.
+/// No cache: `sampler()` builds its gamma subordinator and Gaussian source from `self` each call.
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
+  /// Panics unless `nu > 0`, `n >= 2`, a given `t` is positive and finite, and every parameter is
+  /// finite.
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_mu(mu);
     Self::check_sigma(sigma);
@@ -94,42 +87,42 @@ impl<T: FloatExt, S: SeedExt, B> Vg<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
     Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu > 0` and `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
     Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -227,9 +220,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> VgSampler<T> {
-    // Gamma subordinator and standard-normal source derived from `self.seed`
-    // in the same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The gamma subordinator, then the normal source are derived from `self.seed`, an order the
+    // pinned streams depend on; reuse advances both for independent paths.
     let dt = self.dt();
     VgSampler {
       n: self.n,
@@ -241,9 +233,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

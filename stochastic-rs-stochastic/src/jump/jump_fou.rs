@@ -4,16 +4,10 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
 //! $$
 //!
-//! Composition of a fractional Ornstein-Uhlenbeck diffusion (Cheridito,
-//! Kawaguchi, Maejima (2003), *Fractional Ornstein-Uhlenbeck Processes*,
-//! Electronic Journal of Probability 8, paper 3, 1–14,
-//! DOI: 10.1214/EJP.v8-125) with an additive, independent
-//! compound-Poisson jump term `dJ_t` in the style of Merton (1976) —
-//! *Option Pricing When Underlying Stock Returns Are Discontinuous*,
-//! Journal of Financial Economics 3(1-2), 125–144,
-//! DOI: 10.1016/0304-405X(76)90022-2. This exact combination (fOU base
-//! plus an independent jump driver) is this crate's own composition
-//! rather than a single named model from one paper.
+//! A fractional OU diffusion plus an independent compound-Poisson `dJ_t`: this crate's composition.
+//!
+//! Reference: Cheridito, Kawaguchi & Maejima (2003), EJP 8, paper 3, 1–14, DOI 10.1214/EJP.v8-125
+//! Reference: Merton (1976), J. Financ. Econ. 3(1-2), 125–144, DOI 10.1016/0304-405X(76)90022-2
 //!
 mod params;
 
@@ -106,9 +100,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the jump-size law is one the device
-  /// kernels draw; any other law keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the device kernels draw the jump-size law; any other law stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.fgn.backend, self)
@@ -177,10 +170,8 @@ where
   }
 }
 
-/// Reusable [`JumpFou`] sampling state: borrows `fgn` for its `Arc`-shared
-/// FFT plan/eigenvalues and the jump-size distribution, and owns the
-/// Gaussian source and a separately-derived jump seed, so a Monte-Carlo loop
-/// pays the fGn `SimdNormal` setup once and reuses the FFT plan.
+/// Reusable [`JumpFou`] sampling state: borrows `fgn`'s shared FFT plan and the jump-size law,
+/// and owns the Gaussian source and a separately derived jump seed.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct JumpFouSampler<'a, T, D, S: SeedExt, B>
@@ -318,9 +309,8 @@ where
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// The size law as the kernels draw it. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// The size law as the kernels draw it. [`ProcessExt::sample`] keeps a law they do not carry on
+  /// the host, so a launch that asks for one here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     if self.lambda <= T::zero() {
       return None;

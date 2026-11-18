@@ -22,18 +22,14 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Skewness-in-subordinated-time β (matches the module header's own β,
-  /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
-  /// process with **no mean reversion** — despite the field's name, this
-  /// is not a target level.
+  /// Skewness β in subordinated time (the module display's β, multiplying the IG increment
+  /// `I_t`); not a target level, since NIG is a pure Lévy process with no mean reversion.
   pub theta: T,
   /// Diffusion scale σ multiplying `√(I_t) dW_t`, the Brownian-subordinated
   /// component riding on top of the IG time-change.
   pub sigma: T,
-  /// Variance-rate of the inverse-Gaussian subordinator (its shape
-  /// parameter is `dt²/kappa`) — controls the IG time-change's dispersion,
-  /// akin to `nu` in [`Vg`](super::vg::Vg). Despite the letter, this is
-  /// **not** a mean-reversion speed; NIG has no mean reversion.
+  /// Variance rate of the inverse-Gaussian subordinator, whose shape is `dt²/kappa`, akin to
+  /// `nu` in [`Vg`](super::vg::Vg); not a mean-reversion speed, which NIG does not have.
   pub kappa: T,
   /// Number of points sampled along the NIG path.
   pub n: usize,
@@ -49,6 +45,8 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `kappa > 0`, and every parameter
+  /// is finite.
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       theta.is_finite(),
@@ -156,10 +154,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> NigSampler<T> {
-    // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa). The IG subordinator and
-    // the standard-normal source are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // `G_dt ~ IG(mean = dt, shape = dt²/kappa)`. The IG subordinator, then the normal source are
+    // derived from `self.seed`, an order the pinned streams depend on; reuse advances both.
     let dt = self.dt();
     let shape = dt * dt / self.kappa;
     NigSampler {
@@ -172,9 +168,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

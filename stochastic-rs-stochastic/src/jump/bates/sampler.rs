@@ -40,9 +40,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the jump-size law is one the device
-  /// kernels draw; any other law keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the device kernels draw the jump-size law; any other law stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)

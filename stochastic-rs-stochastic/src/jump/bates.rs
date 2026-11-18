@@ -1,12 +1,11 @@
 //! # Bates
 //!
 //! $$
-//! \begin{aligned}dS_t&=(r-r_f-\lambda k)S_tdt+\sqrt{v_t}S_t dW_t^S+(Y-1)S_{t^-}dN_t\\dv_t&=\kappa(\theta-v_t)dt+\sigma\sqrt{v_t}dW_t^v\end{aligned}
+//! \begin{aligned}dS_t&=(r-r_f-\lambda k)S_tdt+\sqrt{v_t}S_t dW_t^S+(Y-1)S_{t^-}dN_t\\
+//! dv_t&=\kappa(\theta-v_t)dt+\sigma\sqrt{v_t}dW_t^v\end{aligned}
 //! $$
 //!
-//! Reference: Bates D. S. (1996) — *Jumps and Stochastic Volatility:
-//! Exchange Rate Processes Implicit in Deutsche Mark Options*, Review of
-//! Financial Studies 9(1), 69–107, DOI: 10.1093/rfs/9.1.69.
+//! Reference: Bates (1996), Rev. Financ. Stud. 9(1), 69–107, DOI 10.1093/rfs/9.1.69
 //!
 
 use std::any::Any;
@@ -46,9 +45,8 @@ where
   /// The compensator `E[Y − 1]` of the jump law, subtracted from the drift times `lambda`; only
   /// that value keeps the price a martingale ([`LogNormalJump::mean`] for the lognormal law).
   pub k: T,
-  /// Variance-drift intercept (κθ combined) in the reparametrized variance
-  /// recursion `dv = (alpha − beta·v)dt + ...`, equivalent to `κ(θ−v)`
-  /// with `alpha = κθ`.
+  /// Variance-drift intercept in `dv = (alpha − beta·v)dt + …`, which is `κ(θ−v)dt` with
+  /// `alpha = κθ`.
   pub alpha: T,
   /// Variance-drift slope (mean-reversion speed κ) in the same
   /// reparametrized recursion.
@@ -66,7 +64,7 @@ where
   pub v0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
   /// Correlated-Gaussian generator of the price/variance diffusion; the sampler drives it through
   /// `cgns.sample_impl(&self.seed)`, so its own `Unseeded` seed is never read.
@@ -84,7 +82,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Jumps of law `jump_dist` arriving at rate `lambda`, their seed a child of `seed`.
+  /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
+  /// every parameter is finite, `lambda >= 0`, `v0 >= 0`, `|rho| <= 1`, `n >= 2`, a given `t > 0`.
   pub fn new(
     drift: Drift<T>,
     lambda: T,
@@ -198,37 +197,36 @@ where
     &self.jumps.law
   }
 
-  /// Replace `k`, all else unchanged.
+  /// Replace `k`; panics unless `k` is finite.
   pub fn with_k(mut self, k: T) -> Self {
     Self::check_k(k);
     self.k = k;
     self
   }
 
-  /// Replace `alpha`, all else unchanged.
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `rho` is finite and in `[-1, 1]`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -236,14 +234,14 @@ where
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
@@ -256,7 +254,8 @@ where
     self
   }
 
-  /// Replace `n`; rebuilds the correlated-Gaussian generator, whose length follows `n`.
+  /// Replace `n`; rebuilds the correlated-Gaussian generator, whose length follows `n`; panics
+  /// unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -264,7 +263,8 @@ where
     self
   }
 
-  /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`.
+  /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`; panics unless
+  /// `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -375,9 +375,8 @@ where
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// The size law as the kernels draw it. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// The size law as the kernels draw it. [`ProcessExt::sample`] keeps a law they do not carry on
+  /// the host, so a launch that asks for one here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     if self.lambda <= T::zero() {
       return None;

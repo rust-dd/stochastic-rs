@@ -97,9 +97,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the inter-arrivals are exponential and
-  /// the jump-size law is one the device kernels draw; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the inter-arrivals are exponential and the device kernels draw
+  /// the jump-size law; anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.fgn.backend, self)
@@ -168,10 +167,8 @@ where
   }
 }
 
-/// Reusable [`JumpFouCustom`] sampling state: borrows `fgn` for its
-/// `Arc`-shared FFT plan/eigenvalues and the inter-arrival / jump-size
-/// distributions, and owns the Gaussian source and jump RNG, so a
-/// Monte-Carlo loop pays the fGn `SimdNormal` setup once.
+/// Reusable [`JumpFouCustom`] sampling state: borrows `fgn`'s shared FFT plan and the two jump
+/// laws, and owns the Gaussian source and the jump RNG.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct JumpFouCustomSampler<'a, T, DT, DS, B>
@@ -202,9 +199,8 @@ where
   B: FgnBackend<T>,
 {
   fn fill_path(&mut self, out: &mut [T]) {
-    // Match the legacy `n <= 1` path: return an all-zeros buffer (x0 is only
-    // applied once there are at least two points). `array1_from_fill` does not
-    // zero, so write it explicitly.
+    // A one-point path is zero, not `x0`, which is applied from two points on. `array1_from_fill`
+    // does not zero, so the zero is written here.
     if out.len() <= 1 {
       if let Some(first) = out.first_mut() {
         *first = T::zero();
@@ -333,10 +329,8 @@ where
     Some(self.fgn.fgn_spec(1))
   }
 
-  /// The Poisson intensity the exponential inter-arrival law amounts to. A
-  /// law that is not exponential never reaches a launch — [`ProcessExt::sample`]
-  /// keeps such a process on the host — so asking here is a caller bypassing
-  /// that guard.
+  /// The Poisson intensity of the exponential inter-arrival law. [`ProcessExt::sample`] keeps any
+  /// other law on the host, so a launch that asks here bypassed that guard.
   fn jump_intensity(&self) -> Option<T> {
     Some(self.device_intensity().expect(
       "JumpFouCustom: the inter-arrival distribution is not exponential, which is the only \

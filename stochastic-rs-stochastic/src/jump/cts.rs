@@ -1,35 +1,25 @@
-//! # Cts
-//!
-//! The standard classical tempered stable process of Kim, Rachev, Bianchi &
-//! Fabozzi: one scale `C` on both sides,
+//! The standard classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi: one scale
+//! `C`, set for unit variance per unit of time. The series on `[0, T]` stops at `J` terms.
 //!
 //! $$
-//! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}+e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,
+//! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
+//! +e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,\quad
+//! C=\left(\Gamma(2-\alpha)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\right)^{-1}
 //! $$
-//!
-//! with `C = (Γ(2 − α)(λ₊^{α−2} + λ₋^{α−2}))^{-1}` so that the variance over
-//! a unit of time is one. Sampled by Rosiński's (2007, Thm 5.1) shot-noise
-//! series on `[0, T]`, truncated at `J` terms:
 //!
 //! $$
 //! X_t=\sum_{j=1}^{J}\Big(\Big(\frac{\alpha\Gamma_j}{2CT}\Big)^{-1/\alpha}\wedge
 //! E_j\,U_j^{1/\alpha}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,
 //! $$
 //!
-//! `Γ_j` the arrivals of a unit Poisson process, `E_j` unit exponentials,
-//! `U_j` and `τ_j/T` uniforms, `V_j ∈ {λ₊, −λ₋}` with probability one half
-//! each. The arrival bound divides by the total mass of the Lévy measure over
-//! the horizon, `(C + C) T = 2CT`, as Rosiński's theorem does through
-//! `H(Γ_j / T, V_j)` — the constant `Cgmy`, `Kobol` and `Rdts` carry too.
+//! $$
+//! \Gamma_j\ \text{unit Poisson arrivals},\ E_j\sim\mathrm{Exp}(1),\ U_j,\tau_j/T\sim U(0,1),\
+//! P(V_j=\lambda_+)=P(V_j=-\lambda_-)=\tfrac12,\ 2CT=(C+C)T\ \text{the Lévy mass over the horizon}
+//! $$
 //!
-//! References: Rosiński, J. (2007), *Tempering stable processes*, Stoch.
-//! Proc. Appl. 117(6), 677–707; Kim, Y. S., Rachev, S. T., Bianchi, M. L. &
-//! Fabozzi, F. J. (2010), *Tempered stable and tempered infinitely divisible
-//! GARCH models*, J. Banking & Finance 34(9), 2096–2109; Bianchi, M. L.,
-//! Rachev, S. T., Kim, Y. S. & Fabozzi, F. J. (2010), *Tempered stable
-//! distributions and processes in finance: numerical analysis*, in
-//! Mathematical and Statistical Methods for Actuarial Sciences and Finance,
-//! Springer.
+//! Reference: Rosiński (2007), Thm 5.1, Stoch. Proc. Appl. 117(6), 677–707
+//! Reference: Kim, Rachev, Bianchi & Fabozzi (2010), J. Banking & Finance 34(9), 2096–2109
+//! Reference: Bianchi et al. (2010), Tempered stable distributions and processes in finance
 //!
 
 use ndarray::Array1;
@@ -174,9 +164,8 @@ impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Cts<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate `α / (2 C T)`, as
-  /// the host divides by the scale alone, the exponential draw entering
-  /// plainly, and the two sides equally likely.
+  /// The series constants, folded once: the arrival rate `α / (2 C T)`, as the host divides by the
+  /// scale alone, the exponential draw entering plainly, and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
@@ -237,10 +226,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> CtsSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // scale `C` and drift `b_t` are precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
     let t_max = self.t_max();
     let dt = self.dt();
     let c = self.tempering_constant();
@@ -263,9 +250,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -328,13 +314,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cts`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Cts`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CtsSampler<T: FloatExt, S: SeedExt> {
