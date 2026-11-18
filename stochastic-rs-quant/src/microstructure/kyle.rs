@@ -14,7 +14,7 @@
 //! $$
 //!
 //! Reference: Kyle (1985), Econometrica 53(6), 1315–1335, DOI 10.2307/1913210
-//! Reference: Cetin & Larsen (2023), arXiv:2307.09392, Theorem 2.1
+//! Reference: Cetin & Larsen (2023), arXiv:2307.09392, Theorem 2.1, eq. 2.4
 
 use crate::traits::RealExt;
 

@@ -1,11 +1,11 @@
-//! Transient impact propagators: the mid-price change is past signed flow convolved with a
-//! decaying kernel $G$; $\delta = 0$ acts on trade signs, $\delta = 1$ on signed volume.
+//! Transient impact propagators: the mid-price change is past signed flow convolved with a decaying
+//! kernel $G$: on trade signs at $\delta=0$, on signed volume at $\delta=1$ (Almgren et al. 2005).
 //!
 //! $$
 //! p_t - p_0 = \sum_{s\le t} G(t - s)\,\varepsilon_s\,|v_s|^\delta + \xi_t
 //! $$
 //!
-//! Reference: Bouchaud, Gefen, Potters & Wyart (2004), Quant. Finance 4(2), 176–190
+//! Reference: Bouchaud et al. (2004), Quant. Finance 4(2), 176–190, DOI 10.1080/14697680400000022
 //! Reference: Gatheral (2010), Quantitative Finance 10(7), 749–759, DOI 10.1080/14697680903373692
 
 use std::fmt::Display;

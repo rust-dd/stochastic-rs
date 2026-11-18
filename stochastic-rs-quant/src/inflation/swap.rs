@@ -8,6 +8,9 @@
 //! \text{YYIIS:}\quad N\left[\frac{I(T_i)}{I(T_{i-1})} - 1\right]\tau_i
 //! \ \text{against}\ N \cdot K \cdot \tau_i
 //! $$
+//!
+//! Reference: Mercurio (2005), Quant. Finance 5, §6 (YoY convexity), DOI 10.1080/14697680500148851
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §16.5 (YoY convexity)
 use ndarray::Array1;
 
 use super::InflationCurve;

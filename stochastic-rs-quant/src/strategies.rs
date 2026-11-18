@@ -1,5 +1,5 @@
-//! Trading strategies behind the `Strategy` trait: one `MarketBar` in, one `StrategyAction`
-//! out, and a minimal `Backtest` driver that returns a `BacktestResult`.
+//! A [`Strategy`](crate::strategies::Strategy) maps a [`MarketBar`](crate::strategies::MarketBar)
+//! to a `StrategyAction`; [`Backtest`](crate::strategies::Backtest) runs it to a `BacktestResult`.
 //!
 //! $$
 //! V_0=\mathbb E^{\mathbb Q}\!\left[e^{-\int_0^T r_tdt}\,\Pi(X_T)\right]

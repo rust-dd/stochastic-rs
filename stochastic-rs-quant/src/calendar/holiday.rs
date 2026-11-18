@@ -206,7 +206,6 @@ impl Calendar {
   }
 }
 
-// Easter computation via the Anonymous Gregorian (Meeus/Jones/Butcher) algorithm.
 /// Western Easter Sunday of a Gregorian year (the Meeus–Jones–Butcher algorithm); Good Friday,
 /// Easter Monday and the other movable feasts are offsets from it.
 pub fn easter_sunday(year: i32) -> NaiveDate {

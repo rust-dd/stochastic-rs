@@ -1,10 +1,8 @@
-//! # Portfolio Data Utilities
+//! Helpers for return preprocessing and correlation/covariance construction.
 //!
 //! $$
 //! \Sigma_{ij} = \sigma_i \sigma_j \rho_{ij}
 //! $$
-//!
-//! Helpers for return preprocessing and correlation/covariance construction.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -49,7 +47,7 @@ fn pearson(x: &[f64], y: &[f64]) -> f64 {
   }
 }
 
-/// Convert close prices to log-return series.
+/// Log returns of consecutive closes; a pair with a non-positive or NaN close is dropped.
 pub fn log_returns_series(closes: &[f64]) -> Array1<f64> {
   let mut out = Vec::with_capacity(closes.len().saturating_sub(1));
   for i in 1..closes.len() {

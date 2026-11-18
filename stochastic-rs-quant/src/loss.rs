@@ -1,4 +1,4 @@
-//! # Loss
+//! Absolute, squared and relative error means between market and model values.
 //!
 //! $$
 //! L=\frac1n\sum_{i=1}^n \ell(y_i,\hat y_i)

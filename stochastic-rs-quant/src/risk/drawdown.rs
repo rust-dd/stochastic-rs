@@ -157,7 +157,7 @@ mod tests {
 
   use super::*;
 
-  /// A NaN compares below every peak, so both durations counted it as under water.
+  /// A NaN is refused, not counted as under water, though it compares below every peak.
   #[test]
   fn a_duration_refuses_an_empty_series_and_a_non_finite_value() {
     for duration in [max_drawdown_duration, max_peak_to_recovery_duration] {

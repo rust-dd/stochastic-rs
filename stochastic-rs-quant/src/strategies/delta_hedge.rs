@@ -1,4 +1,4 @@
-//! # Delta Hedge
+//! Delta hedge of one option position: its share count, cost, running profit and moneyness.
 //!
 //! $$
 //! \Delta_t=\partial_S V(t,S_t),\quad d\Pi_t=dV_t-\Delta_t dS_t

@@ -10,7 +10,7 @@
 //!
 //! Reference: Almgren & Chriss (2001), J. Risk 3(2), 5–39, DOI 10.21314/JOR.2001.041
 //! Reference: Kyle (1985), Econometrica 53(6), 1315–1335, DOI 10.2307/1913210
-//! Reference: Bouchaud, Gefen, Potters & Wyart (2004), Quant. Finance 4(2), 176–190
+//! Reference: Bouchaud et al. (2004), Quant. Finance 4(2), 176–190, DOI 10.1080/14697680400000022
 //! Reference: Obizhaeva & Wang (2013), J. Financial Markets 16(1), DOI 10.1016/j.finmar.2012.09.001
 //! Reference: Roll (1984), Journal of Finance 39(4), DOI 10.1111/j.1540-6261.1984.tb03897.x
 //! Reference: Hasbrouck (1991), Journal of Finance 46(1), DOI 10.1111/j.1540-6261.1991.tb03749.x

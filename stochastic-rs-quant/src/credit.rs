@@ -9,7 +9,7 @@
 //! Reference: Merton (1974), Journal of Finance 29(2), DOI 10.1111/j.1540-6261.1974.tb03058.x
 //! Reference: Jarrow, Lando & Turnbull (1997), Rev. Financ. Stud. 10(2), DOI 10.1093/rfs/10.2.481
 //! Reference: O'Kane & Turnbull (2003), "Valuation of Credit Default Swaps", Lehman Brothers QCR
-//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Ch. 22
+//! Reference: Brigo & Mercurio (2006), 2nd ed., Ch. 22, DOI 10.1007/978-3-540-34604-3
 //! Reference: Pfeuffer, dos Reis & Smith (2018), arXiv:1809.09889
 
 pub mod bootstrap;

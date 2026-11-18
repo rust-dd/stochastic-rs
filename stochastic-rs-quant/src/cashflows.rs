@@ -5,7 +5,7 @@
 //! C_i=N_i\,\alpha_i\,L_i
 //! $$
 //!
-//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Springer
+//! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
 //! Reference: Henrard (2013), arXiv:1304.4474
 
 use crate::curves::DiscountCurve;

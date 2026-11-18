@@ -7,7 +7,7 @@
 //! $$
 //!
 //! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
-//! Reference: Nelson & Siegel (1987), "Parsimonious Modeling of Yield Curves", J. Business 60(4)
+//! Reference: Nelson & Siegel (1987), Journal of Business 60(4), 473–489
 //! Reference: Svensson (1994), "Estimating and Interpreting Forward Interest Rates", IMF WP 94/114
 //! Reference: Bianchetti (2009), "Two Curves, One Price", arXiv:0905.2770
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548

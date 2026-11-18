@@ -12,7 +12,7 @@
 //! $$
 //!
 //! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §35.8
-//! Reference: Brigo, Morini & Pallavicini (2013), "Counterparty Credit Risk…", Wiley, §13
+//! Reference: Brigo et al. (2013), "Counterparty Credit Risk, Collateral and Funding", Wiley, §13
 
 use crate::traits::RealExt;
 

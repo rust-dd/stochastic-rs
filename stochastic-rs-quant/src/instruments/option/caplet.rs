@@ -10,7 +10,7 @@
 //!   d=\frac{F-K}{\sigma\sqrt{\tau}}
 //! $$
 //!
-//! Reference: Black (1976), "The Pricing of Commodity Contracts", J. Financial Economics 3(1-2)
+//! Reference: Black (1976), "The Pricing of Commodity Contracts", J. Financ. Econ. 3(1-2), 167–179
 //! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5
 
 use stochastic_rs_distributions::special::norm_cdf;

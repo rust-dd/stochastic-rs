@@ -1,10 +1,8 @@
-//! # Portfolio Engine
+//! High-level orchestration API for optimizer selection and momentum pipelines.
 //!
 //! $$
 //! \mathbf{w}^\* = \operatorname{Optimize}(\mu, \Sigma, \rho)
 //! $$
-//!
-//! High-level orchestration API for optimizer selection and momentum pipelines.
 
 use super::momentum::DecileBucket;
 use super::momentum::ModelEstimate;

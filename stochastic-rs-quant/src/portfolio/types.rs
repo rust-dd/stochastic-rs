@@ -1,10 +1,8 @@
-//! # Portfolio Types
+//! Shared enums and result containers for portfolio optimization.
 //!
 //! $$
 //! \mathbf{w}^\*=\arg\max_{\mathbf{w}} \frac{\mathbb E\left[R_p\right]-r_f}{\sigma_p}
 //! $$
-//!
-//! Shared enums and result containers for portfolio optimization.
 
 use crate::error::QuantError;
 

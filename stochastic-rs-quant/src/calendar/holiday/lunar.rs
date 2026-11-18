@@ -36,13 +36,13 @@ enum LunarHoliday {
   ChungYeung,
   /// SGX: the two days of Chinese New Year.
   ChineseNewYear,
-  /// SGX: Vesak Day.
+  /// SGX: Vesak Day; an ungazetted year is estimated as day 15 of lunar month 4.
   Vesak,
-  /// SGX: Hari Raya Puasa (Eid al-Fitr).
+  /// SGX: Hari Raya Puasa (Eid al-Fitr); ungazetted, by MABIMS: altitude ≥ 3°, elongation ≥ 6.4°.
   EidAlFitr,
-  /// SGX: Hari Raya Haji (Eid al-Adha).
+  /// SGX: Hari Raya Haji (Eid al-Adha); ungazetted, by the same MABIMS criterion at sunset.
   EidAlAdha,
-  /// SGX: Deepavali.
+  /// SGX: Deepavali; ungazetted, on Naraka Chaturdashi with the Lahiri ayanamsa.
   Deepavali,
 }
 

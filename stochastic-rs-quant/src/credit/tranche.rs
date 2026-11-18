@@ -6,10 +6,10 @@
 //! p_i(t \mid Y) = \Phi\!\left(\frac{\Phi^{-1}(p_i(t)) - \sqrt{\rho}\,Y}{\sqrt{1-\rho}}\right)
 //! $$
 //!
-//! Reference: Andersen, Sidenius & Basu (2003), "All your hedges in one basket", Risk 16(11)
+//! Reference: Andersen, Sidenius & Basu (2003), "All your hedges in one basket", Risk 16(11), 67–72
 //! Reference: Laurent & Gregory (2005), Journal of Risk 7(4), 103–122
 //! Reference: Vasicek (2002), "Loan portfolio value", Risk 15(12), 160–162
-//! Reference: O'Kane (2008), "Modelling Single-name and Multi-name Credit Derivatives", Ch. 12, 17
+//! Reference: O'Kane (2008), "Modelling Single- and Multi-name Credit Derivatives", Ch. 12, 17–18
 
 use std::num::NonZeroUsize;
 

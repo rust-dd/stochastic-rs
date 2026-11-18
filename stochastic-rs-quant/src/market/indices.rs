@@ -1,13 +1,10 @@
 //! Named overnight and IBOR benchmarks (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor) with their
 //! day-count and calendar conventions, and the shared [`FixingHistory`] their coupons read.
 //!
-//! Reference: ISDA 2006 Definitions, standard floating rate options.
-//!
-//! Reference: ARRC, "SOFR Floating Rate Notes Conventions Matrix" (2019).
-//!
-//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013), Euribor conventions and curve tagging.
-//!
-//! Reference: Gellert & Schlögl, arXiv:2101.04308 (2021), SOFR dynamics and fixing history.
+//! Reference: ISDA 2006 Definitions, standard floating rate options
+//! Reference: ARRC (2019), "SOFR Floating Rate Notes Conventions Matrix"
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, Euribor conventions and curve tagging
+//! Reference: Gellert & Schlögl (2021), arXiv:2101.04308, SOFR dynamics and fixing history
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -265,7 +262,7 @@ pub mod overnight {
   use super::*;
 
   /// SOFR — Secured Overnight Financing Rate (USD). Actual/360, US calendar.
-  /// Reference: ARRC SOFR conventions (2019).
+  /// Reference: ARRC (2019), SOFR conventions
   pub fn sofr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SOFR", DayCountConvention::Actual360);
     NamedOvernightIndex::new(
