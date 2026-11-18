@@ -37,7 +37,7 @@ pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   /// Sampling reads [`fou`](Self::fou)'s child seed, derived from this one in [`Fvasicek::new`].
   pub seed: S,
   /// The wrapped fractional OU, which carries the sampling state.

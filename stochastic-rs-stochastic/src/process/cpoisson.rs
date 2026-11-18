@@ -37,7 +37,7 @@ where
   /// Poisson driver defining jump arrival intensity and timeline; under `Events(n)` the rows hold
   /// the origin and the `n` jumps after it.
   pub poisson: Poisson<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

@@ -32,7 +32,7 @@ where
   pub horizon: Horizon<T>,
   /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

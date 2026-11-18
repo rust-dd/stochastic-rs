@@ -35,7 +35,7 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B 
   pub u_steps: usize,
   /// Optional upper bound for inverse-domain `u`.
   pub u_max: Option<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).

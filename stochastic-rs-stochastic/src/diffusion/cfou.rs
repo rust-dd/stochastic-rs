@@ -230,7 +230,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
     self.t
   }
 
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }

@@ -138,7 +138,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
     &self.phi
   }
 
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   /// [`new`](Self::new) derives both factors' seeds from it, `x` first.
   pub fn seed(&self) -> &S {
     &self.seed

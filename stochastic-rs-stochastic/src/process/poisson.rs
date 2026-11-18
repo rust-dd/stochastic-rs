@@ -26,7 +26,7 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda: T,
   /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals before `t`.
   pub horizon: Horizon<T>,
-  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
