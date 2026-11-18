@@ -162,12 +162,7 @@ fn g2pp_reprices_synthetic_quotes() {
   };
   let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
     .with_options(CalibrationOptions::default().with_max_iterations(300));
-  // From this start the simplex collapses in the (σ, η, ρ) valley 4.4 % off the quotes; a second
-  // Nelder–Mead pass from where it stopped reprices them to 0.5 %.
-  let first = calibrator.calibrate(None).expect("calibration runs");
-  let result = calibrator
-    .calibrate(Some(first.params))
-    .expect("calibration runs");
+  let result = calibrator.calibrate(None).expect("calibration runs");
   let (rmse, worst) = (result.rmse() / scale, result.max_error.unwrap() / scale);
   assert!(
     rmse < 2e-2 && worst < 3e-2,
@@ -266,4 +261,24 @@ fn the_tree_calibrators_refuse_patience() {
   };
   let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).with_options(options);
   assert_eq!(g2.calibrate(None).unwrap_err(), refused);
+}
+
+/// A simplex vertex past `|ρ| = 0.999` prices at its mirror image, not on a flat face.
+#[test]
+fn g2pp_reflects_a_correlation_past_its_bound() {
+  let curve = flat_curve();
+  let quotes = grid(&[(1.0, 2.0)]);
+  let start = G2ppParams {
+    mean_reversion_x: 0.5,
+    mean_reversion_y: 0.05,
+    sigma_x: 0.01,
+    sigma_y: 0.006,
+    rho: -0.7,
+    phi: 0.03,
+  };
+  let cost = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start).cost(0.03, None);
+  let rho = |x: f64| cost.params(&[0.5, 0.05, 0.01, 0.006, x]).rho;
+  assert_eq!(rho(-0.7), -0.7);
+  assert!((rho(-1.2) + 0.798).abs() < 1e-15 && (rho(1.2) - 0.798).abs() < 1e-15);
+  assert!(rho(-1.2) != rho(-1.3));
 }

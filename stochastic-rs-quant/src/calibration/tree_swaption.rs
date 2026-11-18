@@ -34,6 +34,7 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
+use crate::calibration::periodic_map;
 use crate::calibration::quote::check_finite_start;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
@@ -377,7 +378,7 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
     for i in 0..5 {
       let mut v = x0.to_vec();
       v[i] = if i == 4 {
-        (x0[4] * 0.5).clamp(-0.9, 0.9)
+        x0[4] - 0.25_f64.copysign(x0[4])
       } else {
         x0[i] * 1.5
       };
@@ -402,15 +403,15 @@ struct G2ppCost {
 }
 
 impl G2ppCost {
-  /// Positive reversions and volatilities, correlation clamped inside
-  /// `(−1, 1)`.
+  /// Positive reversions and volatilities; a correlation past ±0.999 is reflected back, since a
+  /// clamp would leave the simplex a flat face to collapse on.
   fn params(&self, x: &[f64]) -> G2ppParams {
     G2ppParams {
       mean_reversion_x: x[0].abs().max(1e-6),
       mean_reversion_y: x[1].abs().max(1e-6),
       sigma_x: x[2].abs().max(1e-6),
       sigma_y: x[3].abs().max(1e-6),
-      rho: x[4].clamp(-0.999, 0.999),
+      rho: periodic_map(x[4], -0.999, 0.999),
       phi: self.phi,
     }
   }
