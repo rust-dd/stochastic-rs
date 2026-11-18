@@ -41,6 +41,9 @@ pub(crate) const BOUNDS: [(f64, f64); 9] = [
 ];
 
 /// A mild-skew, short-tenor SPX-style start in `HscmParams` order.
+/// scipy's SLSQP default `ftol`, an absolute change of the objective, as the Python reference ran.
+const DEFAULT_FTOL: f64 = 1e-6;
+
 const DEFAULT_START: [f64; 9] = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
 
 const NAMES: [&str; 9] = [
@@ -258,10 +261,16 @@ impl crate::traits::Calibrator for HscmCalibrator {
       });
     }
     let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
-    let tolerance = self.options.tolerance.map(|ftol_rel| StopTols {
-      ftol_rel,
-      ..StopTols::default()
-    });
+    let tolerance = match self.options.tolerance {
+      Some(ftol_rel) => StopTols {
+        ftol_rel,
+        ..StopTols::default()
+      },
+      None => StopTols {
+        ftol_abs: DEFAULT_FTOL,
+        ..StopTols::default()
+      },
+    };
     let (status, x, final_objective) = match slsqp::minimize(
       slsqp_objective,
       &x_init,
@@ -269,7 +278,7 @@ impl crate::traits::Calibrator for HscmCalibrator {
       &cons,
       data.clone(),
       self.options.max_iterations.unwrap_or(500),
-      tolerance,
+      Some(tolerance),
     ) {
       Ok((status, x_opt, fval)) => (Ok(status), x_opt, fval),
       Err((status, x_opt, fval)) => (Err(status), x_opt, fval),
@@ -361,6 +370,14 @@ mod tests {
       message.starts_with("slsqp max evaluations reached, objective "),
       "{message}"
     );
+  }
+
+  #[test]
+  fn a_default_fit_stops_on_slsqps_own_tolerance() {
+    let fit = from_guess(CalibrationOptions::default().with_max_iterations(60)).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    assert!(fit.converged, "{message}");
+    assert!(message.starts_with("slsqp ftol reached"), "{message}");
   }
 
   #[test]

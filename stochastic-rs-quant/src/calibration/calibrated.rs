@@ -171,8 +171,8 @@ impl<P> CalibrationHistory<P> {
 pub struct CalibrationOptions {
   /// Iteration cap; `None` keeps each optimiser's own, for Levenberg–Marquardt its budget.
   pub max_iterations: Option<usize>,
-  /// `None` keeps the optimiser's own: Levenberg–Marquardt 30 ε relative, Nelder–Mead 1e-10 spread,
-  /// SLSQP none, so it stops only at its cap or on a failure.
+  /// `None` keeps the optimiser's own: Levenberg–Marquardt 30 ε relative, Nelder–Mead a spread of
+  /// 1e-10 of the start's cost, SLSQP a 1e-6 change of its objective.
   pub tolerance: Option<f64>,
   /// Levenberg–Marquardt budget: `patience · (n + 1)` evaluations for `n` parameters; default 100.
   pub patience: usize,

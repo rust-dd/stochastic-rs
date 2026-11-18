@@ -338,14 +338,7 @@ pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
   let times: Vec<f64> = points.iter().map(|p| p.time).collect();
   let rates: Vec<f64> = points
     .iter()
-    .map(|p| {
-      let t = p.time;
-      if t <= 0.0 {
-        0.0
-      } else {
-        -p.discount_factor.ln() / t
-      }
-    })
+    .map(|p| -p.discount_factor.ln() / p.time)
     .collect();
   CurveSnapshot {
     times,

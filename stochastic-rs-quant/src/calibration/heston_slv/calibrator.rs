@@ -486,9 +486,17 @@ impl Calibrator for HestonSlvCalibrator {
       q: self.q,
     };
     let mut fit = Calibrated::repriced(fit, &market, &model, self.options.loss_metrics, true);
-    fit.converged = heston_fit.as_ref().is_none_or(|f| f.converged)
-      && leverage_finite
-      && fit.max_error.is_some_and(f64::is_finite);
-    Ok(fit.with_diagnostics(heston_fit))
+    let stalled = heston_fit.as_ref().filter(|f| !f.converged);
+    let message = match stalled {
+      Some(heston) => format!(
+        "heston fit: {}",
+        heston.message.as_deref().unwrap_or("not converged")
+      ),
+      None if !leverage_finite => "leverage not finite".into(),
+      None if !fit.max_error.is_some_and(f64::is_finite) => "repricing error not finite".into(),
+      None => "converged".into(),
+    };
+    fit.converged = message == "converged";
+    Ok(fit.with_message(message).with_diagnostics(heston_fit))
   }
 }
