@@ -95,8 +95,8 @@ Never hand-write a kernel: the CUDA and Metal bodies are generated (`grep -c "fa
 src/euler/{cuda,metal}.rs` → `0` for both).
 
 **2a. Declare the family** in the fitting chunk of `src/euler/families/definitions/`,
-with the next free integer code. Read the module doc of `src/euler/families.rs` — it
-is the DSL specification. The host and CUDA generator `euler_families!` lives in
+with the next free integer code. The DSL is specified under "The family DSL" at the end of
+this section. The host and CUDA generator `euler_families!` lives in
 `src/euler/families/codegen.rs`; the Metal kernel crate expands the same declarations
 in `stochastic-rs-metal-kernels/src/euler/families/codegen.rs`. The vocabulary pair is
 in `src/euler/families/vocabulary.rs`, mirrored by the kernel crate's `vocabulary.rs`.
@@ -216,6 +216,28 @@ every family into the C body, families counted by `cat src/euler/families/defini
 A probe needs no series or table work of its own: `Probe::series_terms` and
 `Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
 
+### The family DSL
+
+A family is written in a subset that is simultaneously a valid Rust expression and a valid C expression: infix arithmetic, parentheses and a small vocabulary of functions. The shared `definitions` chunks feed the host and C generator (`families/codegen.rs`) and the Rust Metal kernel generator in `stochastic-rs-metal-kernels`, preserving each formula's operation order.
+
+`euler::family_parity` launches every declared family on the device present and checks dimensions and finiteness. Its migration fixture also pins exact Metal paths across every family and launch shape.
+
+A step or report may open with `bind name = expr;` lines before its final expression. Each becomes a `let` on the host and a `const REAL` in the emitted C, which is how a family names a clamped or guarded state once and then reads like the host sampler it came from.
+
+A step or report may read `u`, `u2`, `u3` and `u4`, four uniforms in `(0, 1)` for the step, `nj`, the number of jumps it saw, `js`, the sum of their sizes, `gm` and `gm2`, one or two Gamma draws, and `ct`, the step's value of a time-varying coefficient the host supplies as one value per grid point. A family that never names it costs nothing for it.
+
+The names a step may use are fixed: `x` for the state, `dt` for the step size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian noise, the fractional increment itself for fGN, which is what lets one declaration serve both — and the family's own parameters, which the generated code binds as locals from the parameter buffer in declaration order. The `report` expression maps the state to what the path records and is evaluated at `t = 0` as well, where no noise exists.
+
+A family with a `history { push (..) weights (ctK) }` clause reads `cv`, the convolution of what it has pushed so far with the weights the launch tabulated in curve slot `K`, indexed by lag: at the step that produces grid point `i` the frame appends the pushed value `p_i` (evaluated on the pre-step state, this step's noise and uniforms) and hands the step `cv = Σ_{k≤i} w_k p_{i-k}`. That is the exact O(n²) scheme of a moving average over the whole past — a Volterra integral on the grid, an ARMA filter, a fractional stable motion — for grids up to `HISTORY_SLOTS` points.
+
+A family with a `series { size (..) }` clause reads `sj`, the sum of the terms that fell into the step's grid cell: before the steps the frame draws, per path, as many terms as the launch's `series_terms()` names — for each, `gj` the arrival of a unit-rate Poisson process, `ej` an `Exp(1)`, `uj` and `uv` two uniforms, and a uniform arrival time on the horizon — sizes each with the clause's expression and adds it to the cell its time falls in. That is the shot-noise series representation of a Lévy process, the sort with a rejection-free size bound, run without the host's sort: cells are addressed, not ordered. Grids up to `SERIES_SLOTS` points. A clause written `series { live size (..) }` sizes each term in the step of its cell instead, where the size may read the state — a scale that follows a simulated variance — and the frame keeps the arrivals per term rather than the sums per cell, so the term count is what the slots then bound.
+
+A family with a `table { increment (..) }` clause reads `iv`, the inverse of a monotone table at the step's time: before the steps the frame builds, per path, a table of as many points as the launch's `table_spec()` names over `[0, u_max]` — each increment from the clause's expression of the two uniforms `uj`, `uv` and the spacing `tv` — trying up to ten extents, each double the last, until the table reaches the horizon, exactly as the host does; each step then finds the first table value at or past its time and interpolates the abscissa linearly. That is the inverse subordinator, the first-passage clock of a positive process. Tables up to `TABLE_SLOTS` points; the grid is free.
+
+The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`, `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal `lit`, the comparisons `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host implementation in `vocabulary::ops` (compiled for tests only, where `host_step` and `host_report` evaluate the declarations) and a CUDA definition in `vocabulary::C_PRELUDE`, the two kept together in `families/vocabulary.rs`; the Metal kernel crate mirrors them in its own `vocabulary` module. Anything outside it fails to compile on the host, which is the intended way to find out that a kernel could not have run it either.
+
+`families/definitions/` stores the table in code order, one chunk per kind of family. `families/tests` pins the generated host step and report against closed forms.
+
 ## 3. The mandatory dispatch overrides
 
 **A process on the engine MUST override `sample`, `sample_par`, `sample_map`,
@@ -327,13 +349,14 @@ not statistics; the fallback must be bit-identical to the plain host build
 nothing until it has been made to fail:
 
 ```bash
-  cp stochastic-rs-stochastic/src/euler/families.rs /tmp/families.bak
+  F=stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs  # the chunk that declares it
+  cp $F /tmp/families.bak
   # in the new family scale one term by `lit(3.0)`, literal on the RIGHT:
   #   `sigma * dz`  ->  `sigma * dz * lit(3.0)`
   cargo test -p stochastic-rs-stochastic --features metal --test device_law foo_agrees
   # it MUST fail. If it passes, the statistic is blind — pick another one.
-  cp /tmp/families.bak stochastic-rs-stochastic/src/euler/families.rs
-  cmp /tmp/families.bak stochastic-rs-stochastic/src/euler/families.rs && echo reverted
+  cp /tmp/families.bak $F
+  cmp /tmp/families.bak $F && echo reverted
 ```
 
 **4c. Chunk invariance** for an fGN-fed family. Chunking has no statistical
@@ -409,9 +432,7 @@ source file): a `use` in the `// Stochastic — <dir>` banner group, then
 ident unless `#[pyclass(name = "..")]` renames it, and the macro-generated classes carry
 no rename, so it really is `sr.PyFoo`.
 
-No live pytest enumerates classes or asserts a count, so nothing there breaks —
-`tests/python_bindings_smoke.py` at the repo root has a hardcoded name list but is
-stale, outside `testpaths`, and run by neither pytest nor CI; do not add to it. Add a
+No live pytest enumerates classes or asserts a count, so nothing there breaks. Add a
 case to `stochastic-rs-py/tests/test_stochastic.py` in the seed-determinism / path-shape
 style if the process is user-facing. Build from the repo root with `maturin develop
 --release` (`pyproject.toml` `[tool.maturin] manifest-path =
@@ -593,7 +614,7 @@ no host-only form — check the nine documented ways round the cap:
 - [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`; each impl preceded by its `crate::traits::Sealed` marker
 - [ ] `sampler()` derives (`self.seed.derive()`), constructs no `Unseeded`, races no shared atomic
 - [ ] `backend_switch!` with the right arm and **every** field named
-- [ ] Family declared in `families.rs`; the six DSL traps checked
+- [ ] Family declared in its `families/definitions/` chunk; the six DSL traps checked
 - [ ] `EulerSpec` variant + `encode()` arm; ≤ 20 params, ≤ 8 curves, ≤ 4 states, ≤ 4 noises
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
