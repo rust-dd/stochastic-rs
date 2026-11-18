@@ -64,8 +64,8 @@ impl PySurvivalCurve {
       }
       Ok(Self {
         inner: SurvivalCurve::from_hazard_rates(
-          &Array1::from_vec(times),
-          &Array1::from_vec(hazard_rates),
+          Array1::from_vec(times).view(),
+          Array1::from_vec(hazard_rates).view(),
           interpolation(method)?,
         ),
       })
@@ -99,8 +99,8 @@ impl PySurvivalCurve {
     }
     Ok(Self {
       inner: SurvivalCurve::from_survival_probs(
-        &Array1::from_vec(times),
-        &Array1::from_vec(survival_probs),
+        Array1::from_vec(times).view(),
+        Array1::from_vec(survival_probs).view(),
         interpolation(method)?,
       ),
     })
@@ -116,8 +116,8 @@ impl PySurvivalCurve {
     }
     Ok(Self {
       inner: SurvivalCurve::from_default_probs(
-        &Array1::from_vec(times),
-        &Array1::from_vec(default_probs),
+        Array1::from_vec(times).view(),
+        Array1::from_vec(default_probs).view(),
         interpolation(method)?,
       ),
     })
@@ -149,14 +149,14 @@ impl PySurvivalCurve {
   fn survival_probabilities(&self, times: Vec<f64>) -> Vec<f64> {
     self
       .inner
-      .survival_probabilities(&Array1::from_vec(times))
+      .survival_probabilities(Array1::from_vec(times).view())
       .to_vec()
   }
 
   fn default_probabilities(&self, times: Vec<f64>) -> Vec<f64> {
     self
       .inner
-      .default_probabilities(&Array1::from_vec(times))
+      .default_probabilities(Array1::from_vec(times).view())
       .to_vec()
   }
 

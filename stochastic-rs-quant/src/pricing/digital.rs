@@ -59,34 +59,8 @@ pub struct CashOrNothingPricer {
 }
 
 impl CashOrNothingPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  ///
-  /// `cash` is a contract term with no invalid value — a negative payout is
-  /// a short digital — so it is deliberately unchecked.
+  /// Panics for a negative `sigma`, which flips `d1` into a finite wrong price; a NaN `sigma` is
+  /// kept, since an unlinked engine handle reads NaN and must price NaN. `cash` is unchecked.
   pub fn new(cash: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -206,31 +180,7 @@ pub struct AssetOrNothingPricer {
 }
 
 impl AssetOrNothingPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
+  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
   pub fn new(sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -336,35 +286,8 @@ pub struct GapPricer {
 }
 
 impl GapPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  ///
-  /// `k2` is the payoff strike — a contract term, not a market or model
-  /// quantity — so like [`CashOrNothingPricer`]'s `cash` it has no invalid
-  /// value and is unchecked.
+  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
+  /// The payoff strike `k2` is a contract term and unchecked.
   pub fn new(k2: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -434,42 +357,8 @@ pub struct SuperSharePricer {
 }
 
 impl SuperSharePricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  /// - if `x_high` is not strictly positive, or `NaN` — the upper band edge
-  ///   is a price level, and a non-positive one is not a band.
-  ///
-  /// `x_high` is a contract term the caller states outright, with no
-  /// handle behind it, so unlike `sigma` it has no missing-data reading and
-  /// a `NaN` is rejected along with the non-positive values.
-  ///
-  /// An *inverted* band (`x_high` below the query's `k`) is deliberately
-  /// **not** rejected here even though it prices negative: `k` is the query
-  /// strike, so no single argument to this constructor is invalid in that
-  /// case — it is a model/query combination, which this layer cannot see.
+  /// Panics for a negative `sigma` (NaN is kept, as on [`CashOrNothingPricer::new`]) and unless
+  /// `x_high > 0`; a band inverted against the query's `k` prices negative and is not refused.
   pub fn new(x_high: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,

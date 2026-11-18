@@ -7,6 +7,11 @@ use super::TwoFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
+use crate::calibration::tree_swaption::G2ppParams;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::g2pp_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -32,27 +37,17 @@ pub struct G2ppTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> G2ppTreeModel<T> {
-  /// Construct a G2++ tree model.
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    initial_x: T,
-    initial_y: T,
-    phi: T,
-    mean_reversion_x: T,
-    mean_reversion_y: T,
-    sigma_x: T,
-    sigma_y: T,
-    rho: T,
-  ) -> Self {
+  /// The two factors' time-0 values, then the calibrated parameters with their constant shift.
+  pub fn new(initial_x: T, initial_y: T, params: G2ppParams) -> Self {
     Self {
       initial_x,
       initial_y,
-      phi,
-      mean_reversion_x,
-      mean_reversion_y,
-      sigma_x,
-      sigma_y,
-      rho,
+      phi: T::from_f64_fast(params.phi),
+      mean_reversion_x: T::from_f64_fast(params.mean_reversion_x),
+      mean_reversion_y: T::from_f64_fast(params.mean_reversion_y),
+      sigma_x: T::from_f64_fast(params.sigma_x),
+      sigma_y: T::from_f64_fast(params.sigma_y),
+      rho: T::from_f64_fast(params.rho),
     }
   }
 }
@@ -187,16 +182,33 @@ impl<T: RealExt> G2ppTree<T> {
   }
 }
 
+impl<T: RealExt> BermudanTree<T> for G2ppTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    g2pp_valuation(swaption, self)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::Axis;
 
   use super::*;
 
+  fn unit_vol_params(a: f64, b: f64, rho: f64) -> G2ppParams {
+    G2ppParams {
+      mean_reversion_x: a,
+      mean_reversion_y: b,
+      sigma_x: 1.0,
+      sigma_y: 1.0,
+      rho,
+      phi: 0.0,
+    }
+  }
+
   /// `Corr(x_T, y_T)` of the tree: the root's unit mass carried forward through the joint tables.
   fn terminal_correlation(a: f64, b: f64, rho: f64, t: f64, steps: usize) -> f64 {
     let tree = G2ppTree::new(
-      G2ppTreeModel::new(0.0, 0.0, 0.0, a, b, 1.0, 1.0, rho),
+      G2ppTreeModel::new(0.0, 0.0, unit_vol_params(a, b, rho)),
       t,
       steps,
     );

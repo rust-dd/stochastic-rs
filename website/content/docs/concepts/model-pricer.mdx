@@ -74,7 +74,7 @@ A pricer's Greeks follow the same model/query split as its prices: **inherent me
 
 ## `TimeExt` — dates to `tau`
 
-`ModelPricer` takes `tau` in years. When the contract is given as dates, `TimeExt::tau_or_from_dates()` derives $\tau$ from either an explicit `tau` or an `(eval, expiration)` pair under a day-count convention, and `tau_with_dcc(dcc)` overrides the convention. Convert at the call site, then price.
+`ModelPricer` takes `tau` in years. An instrument holds a `Maturity`, either `Tau(years)` or `Dates { eval, expiry }`; `TimeExt::tau()` resolves it to $\tau$ under the instrument's day count (Actual/365 Fixed by default), and `tau_with_dcc(dcc)` overrides the convention. Convert at the call site, then price.
 
 The instruments `EuropeanOption` and `DigitalOption` implement it; pricers do not, since they hold model state and receive $\tau$ as a query argument.
 

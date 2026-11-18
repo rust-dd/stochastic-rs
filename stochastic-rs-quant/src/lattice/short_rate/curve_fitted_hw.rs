@@ -10,6 +10,10 @@ use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::curves::DiscountCurve;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::one_factor_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -156,4 +160,10 @@ fn fit_alpha_schedule<T: RealExt>(
   }
 
   alpha
+}
+
+impl<T: RealExt> BermudanTree<T> for CurveFittedHullWhiteTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    one_factor_valuation(swaption, &self.tree, &self.model)
+  }
 }

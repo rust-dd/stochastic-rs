@@ -5,6 +5,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::MultiHestonParams;
 use super::MultiHestonPaths;
@@ -45,7 +47,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
 
 impl<T: FloatExt> MultiHestonPaths<T> {
   /// Malliavin covariance matrix `gamma_F` of the conditional log-Euler model.
-  pub fn malliavin_cov(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
+  pub fn malliavin_cov(&self, cross_corr: ArrayView2<T>, tau: T) -> Array2<T> {
     assert!(
       self.supports_conditional_malliavin_weights(),
       "conditional Malliavin covariance is not exact for stochastic leverage paths"
@@ -102,11 +104,11 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// treating the anticipating coefficient as an ordinary Itô integrand.
   pub fn try_malliavin_weights(
     &self,
-    gamma_inv: &Array2<T>,
+    gamma_inv: ArrayView2<T>,
     param_asset: usize,
     r: T,
     tau: T,
-    spots: &Array1<T>,
+    spots: ArrayView1<T>,
   ) -> Result<Array1<T>, QuantError> {
     let d = self.n_assets;
     if !self.supports_conditional_malliavin_weights() {
@@ -194,7 +196,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// use the fallible method and keep the weights as an [`Array1`].
   pub fn malliavin_weights(
     &self,
-    gamma_inv: &Array2<T>,
+    gamma_inv: ArrayView2<T>,
     param_asset: usize,
     r: T,
     tau: T,
@@ -206,21 +208,21 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         param_asset,
         r,
         tau,
-        &Array1::from_iter(spots.iter().copied()),
+        Array1::from_iter(spots.iter().copied()).view(),
       )
       .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
   /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
-  pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
+  pub fn gamma_inv(&self, cross_corr: ArrayView2<T>, tau: T) -> Array2<T> {
     self
       .try_gamma_inv(cross_corr, tau)
       .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible inverse of the Malliavin covariance matrix.
-  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Result<Array2<T>, QuantError> {
+  pub fn try_gamma_inv(&self, cross_corr: ArrayView2<T>, tau: T) -> Result<Array2<T>, QuantError> {
     if !self.supports_conditional_malliavin_weights() {
       return Err(QuantError::Unsupported {
         what: "the exact conditional Malliavin covariance on stochastic leverage paths",
@@ -242,7 +244,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
       cross_corr.dim(),
     )?;
     check_tau(tau)?;
-    crate::linalg::inverse_t(&self.malliavin_cov(cross_corr, tau)).ok_or_else(|| {
+    crate::linalg::inverse_t(self.malliavin_cov(cross_corr, tau).view()).ok_or_else(|| {
       QuantError::Numerical {
         what: "the Malliavin covariance matrix",
         reason: "it is singular".to_string(),

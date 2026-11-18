@@ -59,8 +59,8 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 
 fn flat(rate: f64) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &array![0.5, 1.0, 2.0, 5.0],
-    &array![rate, rate, rate, rate],
+    array![0.5, 1.0, 2.0, 5.0].view(),
+    array![rate, rate, rate, rate].view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -267,8 +267,8 @@ fn a_standard_cds_pays_on_the_rolls_and_a_vanilla_one_keeps_its_plain_schedule()
 #[test]
 fn a_standard_cds_and_a_vanilla_one_from_one_step_in_agree_on_the_fair_spread() {
   let survival = SurvivalCurve::from_hazard_rates(
-    &array![1.0, 3.0, 5.0, 10.0],
-    &array![0.02, 0.02, 0.02, 0.02],
+    array![1.0, 3.0, 5.0, 10.0].view(),
+    array![0.02, 0.02, 0.02, 0.02].view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
   let (discount, step_in) = (flat(0.03), d(2026, 5, 10));
@@ -318,8 +318,8 @@ fn a_standard_cds_and_a_vanilla_one_from_one_step_in_agree_on_the_fair_spread() 
 #[test]
 fn a_cds_skips_a_schedule_period_that_ends_before_its_effective_date() {
   let survival = SurvivalCurve::from_hazard_rates(
-    &array![1.0, 3.0, 5.0, 10.0],
-    &array![0.02, 0.02, 0.02, 0.02],
+    array![1.0, 3.0, 5.0, 10.0].view(),
+    array![0.02, 0.02, 0.02, 0.02].view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
   let (discount, valuation_date, effective) = (flat(0.03), d(2026, 5, 1), d(2026, 8, 1));

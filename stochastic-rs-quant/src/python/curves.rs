@@ -25,7 +25,11 @@ impl PyDiscountCurve {
     let mat = maturities.as_array().to_owned();
     let zr = zero_rates.as_array().to_owned();
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(&mat, &zr, im),
+      inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(
+        mat.view(),
+        zr.view(),
+        im,
+      ),
     })
   }
 
@@ -59,7 +63,7 @@ impl PyDiscountCurve {
   ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     let mat = maturities.as_array().to_owned();
-    self.inner.zero_rates(&mat).into_pyarray(py)
+    self.inner.zero_rates(mat.view()).into_pyarray(py)
   }
 
   /// Bootstraps an OIS discount curve from par OIS quotes: one fixed-leg
@@ -188,11 +192,10 @@ impl PyMultiCurve {
   /// Fair fixed rate of a swap against `tenor` on the shared payment `schedule` (first entry =
   /// start); `None` for a tenor with no curve or under two dates.
   fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> PyResult<Option<f64>> {
-    Ok(
-      self
-        .inner
-        .fair_swap_rate(parse_tenor(tenor)?, &ndarray::Array1::from_vec(schedule)),
-    )
+    Ok(self.inner.fair_swap_rate(
+      parse_tenor(tenor)?,
+      ndarray::Array1::from_vec(schedule).view(),
+    ))
   }
 }
 
@@ -226,7 +229,7 @@ impl PyNelsonSiegel {
     let mat = maturities.as_array().to_owned();
     let mr = market_rates.as_array().to_owned();
     Self {
-      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(&mat, &mr),
+      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(mat.view(), mr.view()),
     }
   }
 

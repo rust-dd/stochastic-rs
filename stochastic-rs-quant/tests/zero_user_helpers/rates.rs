@@ -44,8 +44,8 @@ fn dirty_price_from_option_adjusted_spread_is_the_z_spread_price_less_the_option
   );
   let times = array![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &times.mapv(|_| 0.04),
+    times.view(),
+    times.mapv(|_| 0.04).view(),
     InterpolationMethod::LinearOnZeroRates,
   );
   let (valuation, dcc) = (d(2024, 4, 15), DayCountConvention::Actual365Fixed);

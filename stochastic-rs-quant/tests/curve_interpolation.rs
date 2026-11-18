@@ -15,8 +15,8 @@ const MONOTONE_CONVEX: InterpolationMethod = InterpolationMethod::MonotoneConvex
 
 fn user(method: InterpolationMethod) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &array![0.5, 1.0, 2.0, 5.0],
-    &array![0.03, 0.032, 0.035, 0.04],
+    array![0.5, 1.0, 2.0, 5.0].view(),
+    array![0.03, 0.032, 0.035, 0.04].view(),
     method,
   )
 }
@@ -170,7 +170,8 @@ fn monotone_convex_starts_at_the_origin_as_hagan_and_west_do() {
     (below - 0.032).abs() < 1e-6 && (above - 0.032).abs() < 1e-6,
     "the forward is continuous at the first pillar: {below}, {above}"
   );
-  let one_pillar = DiscountCurve::from_zero_rates(&array![2.0], &array![0.03], MONOTONE_CONVEX);
+  let one_pillar =
+    DiscountCurve::from_zero_rates(array![2.0].view(), array![0.03].view(), MONOTONE_CONVEX);
   assert!((one_pillar.discount_factor(0.7) - (-0.021_f64).exp()).abs() < 1e-15);
 }
 

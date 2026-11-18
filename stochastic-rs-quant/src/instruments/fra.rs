@@ -191,8 +191,8 @@ mod tests {
     let times = Array1::from(vec![0.25_f64, 0.5, 1.0, tenor_years]);
     let rates = Array1::from(vec![r; 4]);
     DiscountCurve::from_zero_rates(
-      &times,
-      &rates,
+      times.view(),
+      rates.view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     )
   }

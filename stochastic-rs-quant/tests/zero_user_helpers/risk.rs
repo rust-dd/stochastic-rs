@@ -42,8 +42,8 @@ fn gaussian_var_es_is_the_pair_of_its_parts() {
 fn probability_of_default_before_is_one_minus_survival() {
   let hazard = 0.02_f64;
   let curve = SurvivalCurve::from_hazard_rates(
-    &array![1.0, 5.0],
-    &array![hazard, hazard],
+    array![1.0, 5.0].view(),
+    array![hazard, hazard].view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
   for t in [0.5, 1.0, 3.0, 5.0] {

@@ -126,8 +126,7 @@ impl ToShortRateModel for Calibrated<BlackKarasinskiParams> {
   type Model = BlackKarasinskiTreeModel<f64>;
 
   fn to_short_rate_model(&self) -> Self::Model {
-    let p = &self.params;
-    BlackKarasinskiTreeModel::new(p.initial_rate, p.mean_reversion, p.long_run_rate, p.sigma)
+    BlackKarasinskiTreeModel::new(self.params)
   }
 }
 
@@ -230,7 +229,12 @@ struct BlackKarasinskiCost {
 impl BlackKarasinskiCost {
   fn price_series(&self, a: f64, sigma: f64) -> (Vec<f64>, Vec<f64>) {
     let curve = self.curve_points.rebuild();
-    let model = BlackKarasinskiTreeModel::new(self.initial_rate, a, self.long_run_rate, sigma);
+    let model = BlackKarasinskiTreeModel::new(BlackKarasinskiParams {
+      mean_reversion: a,
+      sigma,
+      initial_rate: self.initial_rate,
+      long_run_rate: self.long_run_rate,
+    });
     let mut model_prices = Vec::with_capacity(self.quotes.len());
     let mut market_prices = Vec::with_capacity(self.quotes.len());
     for quote in &self.quotes {
@@ -238,7 +242,7 @@ impl BlackKarasinskiCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = BlackKarasinskiTree::new(model.clone(), horizon, steps);
-      model_prices.push(swaption.price_on_tree(&tree.tree, &tree.model));
+      model_prices.push(swaption.npv(&tree));
       market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
@@ -290,17 +294,7 @@ impl ToShortRateModel for Calibrated<G2ppParams> {
   type Model = G2ppTreeModel<f64>;
 
   fn to_short_rate_model(&self) -> Self::Model {
-    let p = &self.params;
-    G2ppTreeModel::new(
-      0.0,
-      0.0,
-      p.phi,
-      p.mean_reversion_x,
-      p.mean_reversion_y,
-      p.sigma_x,
-      p.sigma_y,
-      p.rho,
-    )
+    G2ppTreeModel::new(0.0, 0.0, self.params)
   }
 }
 
@@ -420,16 +414,7 @@ impl G2ppCost {
 
   fn price_series(&self, p: &G2ppParams) -> (Vec<f64>, Vec<f64>) {
     let curve = self.curve_points.rebuild();
-    let model = G2ppTreeModel::new(
-      0.0,
-      0.0,
-      p.phi,
-      p.mean_reversion_x,
-      p.mean_reversion_y,
-      p.sigma_x,
-      p.sigma_y,
-      p.rho,
-    );
+    let model = G2ppTreeModel::new(0.0, 0.0, *p);
     let mut model_prices = Vec::with_capacity(self.quotes.len());
     let mut market_prices = Vec::with_capacity(self.quotes.len());
     for quote in &self.quotes {
@@ -437,7 +422,7 @@ impl G2ppCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = G2ppTree::new(model.clone(), horizon, steps);
-      model_prices.push(swaption.price_on_g2pp(&tree));
+      model_prices.push(swaption.npv(&tree));
       market_prices.push(market.market_price);
     }
     (market_prices, model_prices)

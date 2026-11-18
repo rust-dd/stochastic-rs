@@ -83,6 +83,10 @@ impl HestonPricer {
     self.params
   }
 
+  pub fn vol_risk_premium(&self) -> f64 {
+    self.lambda
+  }
+
   /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
   /// past `1e5`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
   ///

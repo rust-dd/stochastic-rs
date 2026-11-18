@@ -147,8 +147,8 @@ fn parallel_shift_adds_constant_to_every_zero_rate() {
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.02_f64, 0.025, 0.03, 0.035];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let shifted = CurveShift::Parallel(0.01_f64).apply(&curve);
@@ -167,8 +167,8 @@ fn bucket_dv01_matches_zero_coupon_bond_duration() {
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 
@@ -205,8 +205,8 @@ fn stress_test_applies_scenarios_and_collects_pnl() {
   let times = array![1.0_f64, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03];
   let base_curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 

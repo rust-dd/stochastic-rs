@@ -248,8 +248,8 @@ impl CdsIndex {
 /// Flat-hazard survival curve out to fifty years.
 pub fn flat_survival(hazard: f64) -> SurvivalCurve<f64> {
   SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0, 30.0, 50.0]),
-    &Array1::from_vec(vec![hazard; 5]),
+    Array1::from_vec(vec![1.0, 5.0, 10.0, 30.0, 50.0]).view(),
+    Array1::from_vec(vec![hazard; 5]).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   )
 }

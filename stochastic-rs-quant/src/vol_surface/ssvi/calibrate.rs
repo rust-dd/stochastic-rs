@@ -58,7 +58,7 @@ pub fn calibrate_ssvi<T: RealExt>(
     },
   );
 
-  let mut p64 = SsviParams::<f64>::from_dvector(&result.params);
+  let mut p64 = SsviParams::<f64>::from_dvector(result.params.view());
   // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
   // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
   // projection when no positive θ is available (degenerate input).
@@ -97,7 +97,7 @@ impl LeastSquaresProblem for SsviLmProblem {
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
-    let p = SsviParams::<f64>::from_dvector(&self.params);
+    let p = SsviParams::<f64>::from_dvector(self.params.view());
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
     let mut r = Array1::zeros(n);
     let mut idx = 0;
@@ -125,7 +125,7 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// \end{aligned}
   /// $$
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let p = SsviParams::<f64>::from_dvector(&self.params);
+    let p = SsviParams::<f64>::from_dvector(self.params.view());
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
     let mut jac = Array2::zeros((n, 3));
 

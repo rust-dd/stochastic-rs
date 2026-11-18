@@ -35,7 +35,7 @@ fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
 fn full_pipeline() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
 
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
 
   assert_eq!(result.svi_params.len(), 3);
   assert_eq!(result.analytics.len(), 3);
@@ -62,7 +62,7 @@ fn full_pipeline() {
 #[test]
 fn pipeline_local_vol() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
 
   let ks: Vec<f64> = (-10..=10).map(|i| i as f64 * 0.05).collect();
   let ts = vec![0.3, 0.5, 0.75];
@@ -310,7 +310,8 @@ fn to_model_trait_works_with_pipeline() {
 #[test]
 fn smile_slice_svi_fit() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, &prices, true);
+  let iv_surface =
+    ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices.view(), true);
 
   let slice = iv_surface.smile_slice(1);
   let svi = slice.fit_svi(None);
@@ -337,7 +338,7 @@ fn all_nan_surface_reports_nothing_checkable() {
     vec![90.0, 100.0, 110.0],
     vec![0.5, 1.0],
     vec![100.0, 100.0],
-    &prices,
+    prices.view(),
     true,
   );
 
@@ -373,7 +374,7 @@ fn all_nan_surface_reports_nothing_checkable() {
 #[test]
 fn checkable_surface_still_answers() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(strikes, maturities, forwards, prices.view(), true);
 
   for (_, min_g) in &result.butterfly_checks {
     assert!(min_g.is_finite(), "every slice must have been evaluated");

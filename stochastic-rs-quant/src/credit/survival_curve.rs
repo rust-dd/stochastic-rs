@@ -18,6 +18,7 @@
 use std::fmt::Display;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::total_order::ascending;
 use crate::traits::RealExt;
@@ -92,8 +93,8 @@ impl<T: RealExt> SurvivalCurve<T> {
   /// Build from parallel arrays of times and survival probabilities; panics as
   /// [`new`](Self::new) does.
   pub fn from_survival_probs(
-    times: &Array1<T>,
-    survivals: &Array1<T>,
+    times: ArrayView1<T>,
+    survivals: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let points = times
@@ -110,19 +111,19 @@ impl<T: RealExt> SurvivalCurve<T> {
   /// Build from parallel arrays of times and cumulative default probabilities; panics as
   /// [`new`](Self::new) does.
   pub fn from_default_probs(
-    times: &Array1<T>,
-    defaults: &Array1<T>,
+    times: ArrayView1<T>,
+    defaults: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let survivals: Array1<T> = defaults.mapv(|p| T::one() - p);
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
   /// Build from times and piecewise-constant forward hazards, `hazards[i]` on $[t_{i-1}, t_i)$ and
   /// the first on $[0, t_0)$; panics on unequal lengths and as [`new`](Self::new) does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     assert_eq!(
@@ -139,7 +140,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       survivals[i] = cum_log.exp();
       prev_t = times[i];
     }
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
   /// Number of calibrated points (including the anchor at `t=0`).
@@ -244,12 +245,12 @@ impl<T: RealExt> SurvivalCurve<T> {
   }
 
   /// Survival probabilities at the requested maturities.
-  pub fn survival_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn survival_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.survival_probability(t)))
   }
 
   /// Default probabilities at the requested maturities.
-  pub fn default_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn default_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.default_probability(t)))
   }
 }
@@ -270,8 +271,8 @@ impl<T: RealExt> HazardRateCurve<T> {
   /// Build from parallel arrays of times and piecewise-constant hazards; panics as
   /// [`SurvivalCurve::from_hazard_rates`] does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     Self::new(SurvivalCurve::from_hazard_rates(times, hazards, method))

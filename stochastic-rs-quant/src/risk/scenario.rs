@@ -104,7 +104,7 @@ impl<T: RealExt> CurveShift<T> {
       }
     };
 
-    DiscountCurve::from_zero_rates(&times, &shifted_rates, base.method())
+    DiscountCurve::from_zero_rates(times.view(), shifted_rates.view(), base.method())
   }
 }
 

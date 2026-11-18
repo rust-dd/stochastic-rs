@@ -23,7 +23,7 @@
 
 pub mod irs;
 
-use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use crate::QuantError;
 use crate::credit::survival_curve::SurvivalCurve;
@@ -52,13 +52,13 @@ impl ExposureProfile {
   ///
   /// Panics on invalid dimensions, dates, quantiles or non-finite MtM values.
   /// Use [`Self::try_from_mtm`] to handle invalid input without panicking.
-  pub fn from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> Self {
+  pub fn from_mtm(mtm: ArrayView2<f64>, times: Vec<f64>, quantile: f64) -> Self {
     Self::try_from_mtm(mtm, times, quantile).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Reduces finite mark-to-market values to an exposure profile.
   pub fn try_from_mtm(
-    mtm: &Array2<f64>,
+    mtm: ArrayView2<f64>,
     times: Vec<f64>,
     quantile: f64,
   ) -> Result<Self, QuantError> {

@@ -25,9 +25,9 @@ fn product_rule_adds_the_off_diagonal_weight_correction() {
     n_steps: 2,
     conditional_weights_exact: true,
   };
-  let gamma_inv = paths.gamma_inv(&Array2::<f64>::eye(2), tau);
+  let gamma_inv = paths.gamma_inv(Array2::<f64>::eye(2).view(), tau);
   let weights = paths
-    .try_malliavin_weights(&gamma_inv, 0, r, tau, &spots)
+    .try_malliavin_weights(gamma_inv.view(), 0, r, tau, spots.view())
     .unwrap();
   let terminal = paths.terminal_prices_array();
   let tangent = terminal[0] / spots[0];
@@ -94,15 +94,15 @@ fn paths_with_stochastic_leverage_reject_conditional_weights() {
   };
   let paths = params.sample_with_seed(0x1e_ee_01);
   let covariance_error = paths
-    .try_gamma_inv(&Array2::<f64>::eye(2), params.tau)
+    .try_gamma_inv(Array2::<f64>::eye(2).view(), params.tau)
     .unwrap_err();
   let error = paths
     .try_malliavin_weights(
-      &Array2::<f64>::eye(2),
+      Array2::<f64>::eye(2).view(),
       0,
       params.r,
       params.tau,
-      &array![100.0, 100.0],
+      array![100.0, 100.0].view(),
     )
     .unwrap_err();
 

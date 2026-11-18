@@ -31,7 +31,11 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn approx(a: f64, b: f64, tol: f64) {

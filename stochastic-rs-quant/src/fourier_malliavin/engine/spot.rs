@@ -29,7 +29,7 @@ impl<T: RealExt> FmVol<T> {
     self.validate_m_window(big_m)?;
     let c_v = self.vol_coeffs(big_m);
     Ok(fejer_inversion(
-      &c_v,
+      c_v.view(),
       big_m,
       self.period,
       tau,
@@ -62,7 +62,7 @@ impl<T: RealExt> FmVol<T> {
     self.validate_m_window(big_m)?;
     let c_v = self.vol_coeffs(big_m);
     Ok(fejer_inversion(
-      &c_v,
+      c_v.view(),
       big_m,
       self.period,
       tau,
@@ -96,9 +96,9 @@ impl<T: RealExt> FmVol<T> {
       .ok_or_else(|| window_overflow("N + M"))?;
     self.validate_stored_frequency(required)?;
     other.validate_stored_frequency(big_n)?;
-    let c_c = convolution_coefficients(&other.dx, &self.dx, self.period, big_n, big_m);
+    let c_c = convolution_coefficients(other.dx.view(), self.dx.view(), self.period, big_n, big_m);
     Ok(fejer_inversion(
-      &c_c,
+      c_c.view(),
       big_m,
       self.period,
       tau,
@@ -154,7 +154,7 @@ impl<T: RealExt> FmVol<T> {
     }
 
     Ok(fejer_inversion(
-      &c_lev,
+      c_lev.view(),
       big_l,
       self.period,
       tau,
@@ -190,7 +190,8 @@ impl<T: RealExt> FmVol<T> {
       c_dv[j] = Complex::<T>::new(T::zero(), T::from_f64_fast(k as f64) * const_) * c_v[j];
     }
 
-    let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
+    let c_v2 =
+      convolution_coefficients(self.dx.view(), self.dx.view(), self.period, self.n_freq, mm);
     let len_mm = 2 * mm + 1;
     let mut c_dv2 = Array1::<Complex<T>>::zeros(len_mm);
     for (j, k) in (-(mm as i64)..=(mm as i64)).enumerate() {
@@ -212,7 +213,7 @@ impl<T: RealExt> FmVol<T> {
     }
 
     Ok(fejer_inversion(
-      &c_w,
+      c_w.view(),
       big_l,
       self.period,
       tau,
@@ -252,7 +253,7 @@ impl<T: RealExt> FmVol<T> {
     self.validate_ml_window(big_m, big_l)?;
     let corrected = self.bias_corrected_volvol_coefficients(big_m, big_l);
     Ok(fejer_inversion(
-      &corrected,
+      corrected.view(),
       big_l,
       self.period,
       tau,
@@ -287,7 +288,8 @@ impl<T: RealExt> FmVol<T> {
 
     let c_v = self.vol_coeffs(big_m);
 
-    let c_v2 = convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, mm);
+    let c_v2 =
+      convolution_coefficients(self.dx.view(), self.dx.view(), self.period, self.n_freq, mm);
     let center_v2 = mm;
     let len_l = 2 * big_l + 1;
     let mut c_q = Array1::<Complex<T>>::zeros(len_l);
@@ -302,7 +304,7 @@ impl<T: RealExt> FmVol<T> {
     }
 
     Ok(fejer_inversion(
-      &c_q,
+      c_q.view(),
       big_l,
       self.period,
       tau,

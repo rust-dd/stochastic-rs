@@ -3,12 +3,13 @@
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::calendar::Maturity;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
 //! use stochastic_rs_quant::pricing::engines::{AnalyticBsEngine, AnalyticHestonEngine};
 //! use stochastic_rs_quant::pricing::heston::HestonParams;
 //! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
-//! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+//! let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
 //! let bs  = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r   = bs.calculate(&opt);
 //! if let Some(g) = r.greeks() {

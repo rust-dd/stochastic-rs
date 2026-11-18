@@ -100,7 +100,7 @@ fn from_prices_round_trip() {
     strikes.clone(),
     maturities.clone(),
     forwards.clone(),
-    &prices,
+    prices.view(),
     true,
   );
 

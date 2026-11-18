@@ -15,7 +15,7 @@ fn nelson_siegel_fit_recovers_its_generating_parameters() {
   let truth = NelsonSiegel::new(0.06, -0.02, 0.01, 1.5);
   let taus = maturities();
   let rates = taus.mapv(|tau| truth.zero_rate(tau));
-  let fit = NelsonSiegel::fit(&taus, &rates);
+  let fit = NelsonSiegel::fit(taus.view(), rates.view());
   for (&tau, &rate) in taus.iter().zip(&rates) {
     assert!((fit.zero_rate(tau) - rate).abs() < 1e-12, "tau = {tau}");
   }
@@ -34,7 +34,7 @@ fn svensson_fit_recovers_its_generating_parameters() {
   let truth = Svensson::new(0.05, -0.02, 0.01, 0.015, 1.5, 3.0);
   let taus = maturities();
   let rates = taus.mapv(|tau| truth.zero_rate(tau));
-  let fit = Svensson::fit(&taus, &rates);
+  let fit = Svensson::fit(taus.view(), rates.view());
   for (&tau, &rate) in taus.iter().zip(&rates) {
     assert!((fit.zero_rate(tau) - rate).abs() < 1e-12, "tau = {tau}");
   }

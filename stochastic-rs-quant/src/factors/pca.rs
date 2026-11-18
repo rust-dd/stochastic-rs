@@ -70,7 +70,7 @@ pub fn try_pca_decompose<T: RealExt>(
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
     }
   }
-  let (u, sigma, vt) = svd_thin(&centred).ok_or_else(|| QuantError::Numerical {
+  let (u, sigma, vt) = svd_thin(centred.view()).ok_or_else(|| QuantError::Numerical {
     what: "svd",
     reason: "the decomposition of the centred returns did not converge".to_string(),
   })?;

@@ -13,8 +13,8 @@ use crate::traits::Calibrator;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -98,8 +98,8 @@ fn black_karasinski_bridge_keeps_the_two_rates_apart() {
 #[test]
 fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
   let curve = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![1.0, 3.0, 5.0]),
-    &Array1::from_vec(vec![0.02, 0.02, -0.01]),
+    Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+    Array1::from_vec(vec![0.02, 0.02, -0.01]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let mut quotes = grid(&[(1.0, 2.0), (2.0, 3.0)]);

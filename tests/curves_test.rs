@@ -445,8 +445,11 @@ fn linear_on_zero_rates_interpolates_correctly() {
 fn from_zero_rates_consistency() {
   let times = array![0.5, 1.0, 2.0, 5.0];
   let rates = array![0.03, 0.04, 0.05, 0.06];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
 
   for i in 0..times.len() {
     let df = (-(rates[i] as f64) * (times[i] as f64)).exp();
@@ -480,7 +483,9 @@ fn multi_curve_fair_swap_rate_single_curve() {
   mc.add_forecast(RateTenor::SixMonths, forecast);
 
   let schedule = array![0.0, 0.5, 1.0];
-  let fair_rate = mc.fair_swap_rate(RateTenor::SixMonths, &schedule).unwrap();
+  let fair_rate = mc
+    .fair_swap_rate(RateTenor::SixMonths, schedule.view())
+    .unwrap();
   let par_rate = mc.discount.par_rate(1.0, Frequency::SemiAnnual);
 
   approx(fair_rate, par_rate, 1e-4);
@@ -566,7 +571,7 @@ fn multi_curve_pv_floating_leg() {
   let schedule = array![0.0, 0.5, 1.0];
   let notional = 1_000_000.0;
   let pv = mc
-    .pv_floating_leg(RateTenor::SixMonths, &schedule, notional)
+    .pv_floating_leg(RateTenor::SixMonths, schedule.view(), notional)
     .unwrap();
 
   // Manual: PV = D_ois(0.5) * 0.5 * F_fc(0,0.5) * N + D_ois(1) * 0.5 * F_fc(0.5,1) * N

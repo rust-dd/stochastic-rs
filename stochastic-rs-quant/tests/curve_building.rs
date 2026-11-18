@@ -41,8 +41,8 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 
 fn flat(rate: f64) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &array![0.5, 1.0, 5.0, 10.0],
-    &array![rate, rate, rate, rate],
+    array![0.5, 1.0, 5.0, 10.0].view(),
+    array![rate, rate, rate, rate].view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -270,8 +270,8 @@ fn one_bootstrap_entry_and_a_flat_zero_short_end() {
     }
   }
   let user = DiscountCurve::<f64>::from_zero_rates(
-    &array![0.5, 2.0],
-    &array![0.03, 0.032],
+    array![0.5, 2.0].view(),
+    array![0.03, 0.032].view(),
     InterpolationMethod::LinearOnZeroRates,
   );
   assert!(
@@ -553,8 +553,8 @@ fn a_discount_curve_needs_distinct_times() {
 )]
 fn a_discount_curve_needs_times_from_the_origin_on() {
   DiscountCurve::from_zero_rates(
-    &array![-1.0, 1.0],
-    &array![0.03, 0.03],
+    array![-1.0, 1.0].view(),
+    array![0.03, 0.03].view(),
     InterpolationMethod::LinearOnZeroRates,
   );
 }

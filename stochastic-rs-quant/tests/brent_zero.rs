@@ -22,8 +22,8 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 
 fn curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }

@@ -22,8 +22,12 @@ impl PyHullWhiteCallableBond {
     steps: usize,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let model =
-        crate::lattice::HullWhiteTreeModel::new(initial_rate, mean_reversion, theta, sigma);
+      let model = crate::lattice::HullWhiteTreeModel::new(crate::calibration::HullWhiteParams {
+        mean_reversion,
+        sigma,
+        initial_rate,
+        theta,
+      });
       Self {
         tree: crate::lattice::HullWhiteTree::new(model, horizon, steps),
       }

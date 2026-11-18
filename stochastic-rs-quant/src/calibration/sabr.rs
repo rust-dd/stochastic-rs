@@ -274,7 +274,7 @@ impl LeastSquaresProblem for SabrProblem<'_> {
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     let jacobian = self.numeric_jacobian(&self.params);
-    Some(scale_columns(jacobian, &self.reflections))
+    Some(scale_columns(jacobian, self.reflections.view()))
   }
 
   fn accept(&mut self) {

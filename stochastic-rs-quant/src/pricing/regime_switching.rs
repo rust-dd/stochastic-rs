@@ -22,6 +22,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use num_complex::Complex64;
 
 use super::fourier::CosEngine;
@@ -196,8 +198,8 @@ impl CosPricer {
     r: f64,
     q_div: f64,
     t: f64,
-    q_matrix: &Array2<f64>,
-    vols: &Array1<f64>,
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
     initial_state: usize,
   ) -> f64 {
     let query = (s, k, r, q_div, t);
@@ -212,8 +214,8 @@ impl CosPricer {
     r: f64,
     q_div: f64,
     t: f64,
-    q_matrix: &Array2<f64>,
-    vols: &Array1<f64>,
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
     initial_state: usize,
   ) -> f64 {
     let query = (s, k, r, q_div, t);
@@ -223,14 +225,14 @@ impl CosPricer {
   fn price(
     &self,
     (s, k, r, q_div, t): (f64, f64, f64, f64, f64),
-    q_matrix: &Array2<f64>,
-    vols: &Array1<f64>,
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
     initial_state: usize,
     option_type: OptionType,
   ) -> f64 {
     let model = RegimeSwitchingModel {
-      q_matrix: q_matrix.clone(),
-      vols: vols.clone(),
+      q_matrix: q_matrix.to_owned(),
+      vols: vols.to_owned(),
       initial_state,
     };
     CosEngine {
@@ -450,7 +452,7 @@ mod tests {
     let pricer = CosPricer::default();
     let q_mat = array![[0.0]];
     let vols = array![0.2];
-    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
     assert!(
       price > 0.0,
       "COS single-regime call price should be positive, got={price}"
@@ -462,7 +464,7 @@ mod tests {
     let pricer = CosPricer::default();
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
-    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
     assert!(
       price > 0.0,
       "COS two-regime call price should be positive, got={price}"
@@ -475,9 +477,9 @@ mod tests {
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
 
-    let p1 = pricer.price_call(100.0, 90.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
-    let p2 = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
-    let p3 = pricer.price_call(100.0, 110.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let p1 = pricer.price_call(100.0, 90.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
+    let p2 = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
+    let p3 = pricer.price_call(100.0, 110.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
 
     assert!(
       p1 > p2 && p2 > p3,
@@ -497,7 +499,7 @@ mod tests {
     let q_mat = array![[0.0]];
     let vols = array![0.2];
 
-    let cos_call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let cos_call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
 
     let model = RegimeSwitchingModel {
       q_matrix: q_mat,
@@ -518,8 +520,8 @@ mod tests {
     let pricer = CosPricer::default();
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
-    let call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 0.0, &q_mat, &vols, 0);
-    let put = pricer.price_put(100.0, 100.0, 0.05, 0.01, 0.0, &q_mat, &vols, 0);
+    let call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
+    let put = pricer.price_put(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
     assert!(call.is_nan() && put.is_nan(), "call {call}, put {put}");
   }
 
@@ -535,8 +537,8 @@ mod tests {
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
 
-    let call = pricer.price_call(s, k, r, q_div, t, &q_mat, &vols, 0);
-    let put = pricer.price_put(s, k, r, q_div, t, &q_mat, &vols, 0);
+    let call = pricer.price_call(s, k, r, q_div, t, q_mat.view(), vols.view(), 0);
+    let put = pricer.price_put(s, k, r, q_div, t, q_mat.view(), vols.view(), 0);
 
     let lhs = call - put;
     let rhs = s * (-q_div * t).exp() - k * (-r * t).exp();

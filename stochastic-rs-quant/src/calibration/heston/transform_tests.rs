@@ -73,16 +73,16 @@ fn assert_jacobians_close(left: &Array2<f64>, right: &Array2<f64>) {
 fn bounded_transform_is_finite_monotone_and_round_trips() {
   let params = non_feller_params();
   let coordinates = to_optimizer_coordinates(&params);
-  let round_trip = from_optimizer_coordinates(&coordinates);
+  let round_trip = from_optimizer_coordinates(coordinates.view());
   assert!((round_trip.v0 - params.v0).abs() < 1e-12);
   assert!((round_trip.kappa - params.kappa).abs() < 1e-12);
   assert!((round_trip.theta - params.theta).abs() < 1e-12);
   assert!((round_trip.sigma - params.sigma).abs() < 1e-12);
   assert!((round_trip.rho - params.rho).abs() < 1e-12);
 
-  let mut previous = from_optimizer_coordinates(&Array1::from_elem(5, -4.0));
+  let mut previous = from_optimizer_coordinates(Array1::from_elem(5, -4.0).view());
   for coordinate in [-2.0, 0.0, 2.0, 4.0] {
-    let current = from_optimizer_coordinates(&Array1::from_elem(5, coordinate));
+    let current = from_optimizer_coordinates(Array1::from_elem(5, coordinate).view());
     assert!(current.v0 > previous.v0);
     assert!(current.kappa > previous.kappa);
     assert!(current.theta > previous.theta);
@@ -136,7 +136,7 @@ fn analytic_jacobian_includes_the_optimizer_chain_rule() {
   let (_, physical_jacobian) = calibrator
     .compute_model_prices_and_residual_jacobian_cui(&params)
     .unwrap();
-  let analytic_optimizer = apply_chain_rule(physical_jacobian, &coordinates);
+  let analytic_optimizer = apply_chain_rule(physical_jacobian, coordinates.view());
   let numeric_optimizer = calibrator.numeric_optimizer_jacobian(&params);
   assert_jacobians_close(&analytic_optimizer, &numeric_optimizer);
 }

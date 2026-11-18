@@ -24,9 +24,7 @@ pub struct AnalyticHestonEngine {
   pub s: Handle<SimpleQuote<f64>>,
   pub r: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
-  pub params: HestonParams,
-  /// Heston's market price of volatility risk `λ`; `None` is `λ = 0`.
-  pub lambda: Option<f64>,
+  pricer: HestonPricer,
   /// Relative bump used for finite-difference Greeks (default 1e-3).
   pub bump: f64,
 }
@@ -43,8 +41,7 @@ impl AnalyticHestonEngine {
       s,
       r,
       dividend_yield,
-      params: params.checked(),
-      lambda: None,
+      pricer: HestonPricer::new(params),
       bump: 1e-3,
     }
   }
@@ -59,19 +56,23 @@ impl AnalyticHestonEngine {
     )
   }
 
-  /// Current value of a market handle, or [`f64::NAN`] when the handle is
-  /// unlinked — the same missing-data answer as
-  /// [`AnalyticBsEngine::read_quote`](crate::pricing::engines::AnalyticBsEngine)
-  /// and as [`TimeExt::tau_or_from_dates`] gives for a missing maturity.
-  /// Reading an unset handle as `0.0` priced at a spot or rate the caller
-  /// never supplied.
+  /// Sets Heston's `λ` (default `0`); panics unless `lambda` is finite.
+  pub fn with_vol_risk_premium(mut self, lambda: f64) -> Self {
+    self.pricer = self.pricer.with_vol_risk_premium(lambda);
+    self
+  }
+
+  /// The model the engine prices with, parameters and `λ` checked once at construction.
+  pub fn pricer(&self) -> HestonPricer {
+    self.pricer
+  }
+
+  /// Current value of a market handle; NaN when it is unlinked, as in `AnalyticBsEngine`.
   fn read_quote(handle: &Handle<SimpleQuote<f64>>) -> f64 {
     handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
-  /// The model carries no query, so the engine resolves one from its own
-  /// market handles and the instrument — `EuropeanOption` implements
-  /// [`TimeExt`](crate::traits::TimeExt), so it resolves its own τ.
+  /// The model, re-built only for a bumped `v0`, and the query from the handles and `opt`.
   fn model_and_query(
     &self,
     s_override: Option<f64>,
@@ -79,17 +80,18 @@ impl AnalyticHestonEngine {
     tau_override: Option<f64>,
     opt: &EuropeanOption,
   ) -> (HestonPricer, f64, f64, f64, f64, f64) {
-    let mut model = HestonPricer::new(HestonParams {
-      v0: v0_override.unwrap_or(self.params.v0),
-      ..self.params
-    });
-    if let Some(lambda) = self.lambda {
-      model = model.with_vol_risk_premium(lambda);
-    }
+    let model = match v0_override {
+      Some(v0) => HestonPricer::new(HestonParams {
+        v0,
+        ..self.pricer.params()
+      })
+      .with_vol_risk_premium(self.pricer.vol_risk_premium()),
+      None => self.pricer,
+    };
     let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s));
     let r = Self::read_quote(&self.r);
     let q = Self::read_quote(&self.dividend_yield);
-    let tau = tau_override.unwrap_or_else(|| opt.tau_or_from_dates());
+    let tau = tau_override.unwrap_or_else(|| opt.tau());
     (model, s, opt.strike, r, q, tau)
   }
 
@@ -104,10 +106,10 @@ impl AnalyticHestonEngine {
     model.price_option(s, k, r, q, tau, opt.option_type)
   }
 
-  /// Bump-and-revalue delta, gamma, vega and theta: all NaN at `tau = 0`, vega at `v0 <= 0`, theta
+  /// Bump-and-revalue delta, gamma, vega and theta: all NaN at `tau = 0`, vega at `v0 = 0`, theta
   /// unless `tau` is finite and above `bump`; the other five fields stay NaN.
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
-    let tau = opt.tau_or_from_dates();
+    let tau = opt.tau();
     if tau == 0.0 {
       return Greeks::nan();
     }
@@ -119,7 +121,7 @@ impl AnalyticHestonEngine {
     let delta = (p_up - p_dn) / (2.0 * h_s);
     let gamma = (p_up - 2.0 * p0 + p_dn) / (h_s * h_s);
 
-    let v0 = self.params.v0;
+    let v0 = self.pricer.params().v0;
     let h_v = v0.abs().max(1e-3) * self.bump;
     let p_v_up = self.price_at(None, Some(v0 + h_v), None, opt);
     let p_v_dn = self.price_at(None, Some((v0 - h_v).max(1e-12)), None, opt);
@@ -134,10 +136,7 @@ impl AnalyticHestonEngine {
     let theta = if tau.is_finite() && tau > self.bump {
       let h_t = tau * self.bump;
       let p_t_dn = self.price_at(None, None, Some(tau - h_t), opt);
-      // Calendar convention θ = ∂P/∂t, matching `GreeksExt::theta`'s own
-      // doc and every other in-tree Greeks impl (`BsmPricer`,
-      // `Merton1976Pricer`, `HestonPricer`, `AnalyticBsEngine`). Since
-      // τ = T-t, ∂P/∂t = -∂P/∂τ ≈ -(p0 - p_t_dn)/h_t = (p_t_dn - p0)/h_t.
+      // Calendar θ = ∂P/∂t = −∂P/∂τ ≈ (p_t_dn − p0)/h_t, the sign every other Greeks impl uses.
       (p_t_dn - p0) / h_t
     } else {
       f64::NAN
@@ -167,6 +166,7 @@ impl PricingEngine<EuropeanOption> for AnalyticHestonEngine {
 mod tests {
   use super::*;
   use crate::OptionType;
+  use crate::calendar::Maturity;
   use crate::pricing::engines::AnalyticBsEngine;
   use crate::traits::PricingResult;
 
@@ -180,7 +180,7 @@ mod tests {
 
   #[test]
   fn heston_call_atm_positive() {
-    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let params = P;
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
     let r = engine.calculate(&opt);
@@ -194,7 +194,7 @@ mod tests {
   #[test]
   fn heston_zero_vol_of_vol_collapses_to_bs() {
     // sigma → 0 with v0 = theta freezes variance at v0 → Heston ≈ BS(σ=√v0).
-    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let v0 = 0.04;
     let params = HestonParams {
       v0,
@@ -214,7 +214,7 @@ mod tests {
   /// (`f64::max` drops the NaN), so the NaN arrives through the re-valuation.
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
-    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let params = P;
     let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
     let quotes = [100.0, 0.05, 0.0];
@@ -236,7 +236,11 @@ mod tests {
   #[test]
   fn an_expired_option_npvs_its_payoff_and_has_no_greek() {
     let engine = AnalyticHestonEngine::with_constants(110.0, 0.05, 0.0, P);
-    let res = engine.calculate(&EuropeanOption::new_tau(100.0, OptionType::Call, 0.0));
+    let res = engine.calculate(&EuropeanOption::new(
+      100.0,
+      OptionType::Call,
+      Maturity::Tau(0.0),
+    ));
     assert_eq!(res.npv(), 10.0);
     let greeks = res.greeks().unwrap().as_array();
     assert!(greeks.iter().all(|g| g.is_nan()), "{greeks:?}");
@@ -244,14 +248,37 @@ mod tests {
 
   #[test]
   fn heston_put_call_parity() {
-    let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
+    let call = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
+    let put = EuropeanOption::new(100.0, OptionType::Put, Maturity::Tau(1.0));
     let params = P;
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.02, params);
     let c = engine.calculate(&call).npv();
     let p = engine.calculate(&put).npv();
     let parity = 100.0 * (-0.02_f64).exp() - 100.0 * (-0.05_f64).exp();
     assert!((c - p - parity).abs() < 1e-2);
+  }
+
+  /// `λ` goes through the pricer's own check, and the engine prices as that pricer does.
+  #[test]
+  fn the_engine_prices_with_the_pricer_it_holds() {
+    let engine =
+      AnalyticHestonEngine::with_constants(100.0, 0.05, 0.02, P).with_vol_risk_premium(0.3);
+    let opt = EuropeanOption::new(105.0, OptionType::Put, Maturity::Tau(0.75));
+    let direct = HestonPricer::new(P).with_vol_risk_premium(0.3);
+    assert_eq!(engine.pricer().vol_risk_premium(), 0.3);
+    assert_eq!(
+      engine.calculate(&opt).npv(),
+      direct.price_option(100.0, 105.0, 0.05, 0.02, 0.75, OptionType::Put)
+    );
+    let unset = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.02, P);
+    assert!(engine.calculate(&opt).npv() != unset.calculate(&opt).npv());
+  }
+
+  #[test]
+  #[should_panic(expected = "lambda must satisfy `lambda.is_finite()`, got lambda = NaN")]
+  fn a_nan_vol_risk_premium_is_refused_at_the_builder() {
+    let _ =
+      AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, P).with_vol_risk_premium(f64::NAN);
   }
 
   /// A literal handed to the engine meets `HestonParams::new`'s checks, by name; `κ < 0`, zero
@@ -294,9 +321,7 @@ mod tests {
       sigma: 1e-12,
       rho: -1.0,
     };
-    assert_eq!(
-      AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, edges).params,
-      edges
-    );
+    let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, edges);
+    assert_eq!(engine.pricer().params(), edges);
   }
 }

@@ -184,7 +184,9 @@ impl CgmysvPricer {
 
       let x_mat = Array2::from_shape_vec((n_itm, n_basis), x_data)
         .expect("design matrix holds n_itm * n_basis entries");
-      let Some(beta) = crate::linalg::lstsq_svd(&x_mat, &Array1::from_vec(y_vec), 1e-10) else {
+      let Some(beta) =
+        crate::linalg::lstsq_svd(x_mat.view(), Array1::from_vec(y_vec).view(), 1e-10)
+      else {
         continue;
       };
 

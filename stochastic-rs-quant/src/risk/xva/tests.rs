@@ -16,16 +16,16 @@ use crate::curves::InterpolationMethod;
 
 fn flat_discount(r: f64) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![r; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![r; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
 
 fn flat_hazard(h: f64) -> SurvivalCurve<f64> {
   SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![h, h, h]),
+    Array1::from_vec(vec![1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![h, h, h]).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   )
 }
@@ -54,7 +54,7 @@ const TIMES: [f64; 4] = [0.5, 1.0, 1.5, 2.0];
 fn nonfinite_mtm_is_rejected_instead_of_becoming_zero_exposure() {
   for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
     let mtm = Array2::from_shape_vec((2, 1), vec![100.0, invalid]).unwrap();
-    let error = ExposureProfile::try_from_mtm(&mtm, vec![1.0], 0.95).unwrap_err();
+    let error = ExposureProfile::try_from_mtm(mtm.view(), vec![1.0], 0.95).unwrap_err();
     assert!(error.to_string().contains("MtM values must be finite"));
   }
 }
@@ -62,7 +62,7 @@ fn nonfinite_mtm_is_rejected_instead_of_becoming_zero_exposure() {
 #[test]
 fn nonfinite_exposure_dates_are_rejected() {
   let mtm = Array2::zeros((1, 1));
-  assert!(ExposureProfile::try_from_mtm(&mtm, vec![f64::INFINITY], 0.95).is_err());
+  assert!(ExposureProfile::try_from_mtm(mtm.view(), vec![f64::INFINITY], 0.95).is_err());
 }
 
 /// `E[max(σW_t, 0)] = σ√t / √(2π)` and the PFE quantile is `σ√t Φ⁻¹(q)`.
@@ -73,7 +73,7 @@ fn brownian_profile_matches_the_closed_forms() {
     .into_iter()
     .map(|seed| {
       let profile = ExposureProfile::from_mtm(
-        &brownian_mtm(sigma, &TIMES, 40_000, seed),
+        brownian_mtm(sigma, &TIMES, 40_000, seed).view(),
         TIMES.to_vec(),
         0.95,
       );
@@ -160,5 +160,9 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
 #[test]
 #[should_panic(expected = "MtM columns, one per exposure date")]
 fn rejects_mismatched_dates() {
-  let _ = ExposureProfile::from_mtm(&Array2::<f64>::zeros((3, 2)), vec![1.0, 2.0, 3.0], 0.95);
+  let _ = ExposureProfile::from_mtm(
+    Array2::<f64>::zeros((3, 2)).view(),
+    vec![1.0, 2.0, 3.0],
+    0.95,
+  );
 }

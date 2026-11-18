@@ -10,6 +10,8 @@ use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
+use stochastic_rs::quant::calibration::G2ppParams;
+use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::cashflows::FloatingIndex;
 use stochastic_rs::quant::cashflows::IborIndex;
 use stochastic_rs::quant::cashflows::Leg;
@@ -35,7 +37,11 @@ use stochastic_rs::quant::lattice::HullWhiteTreeModel;
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn bench_cap_npv(c: &mut Criterion) {
@@ -177,7 +183,12 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
   let horizon: f64 = 10.0;
   let steps: usize = 100;
   let dt: f64 = horizon / steps as f64;
-  let model = HullWhiteTreeModel::new(0.04_f64, 0.1, 0.04, 0.015);
+  let model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: 0.1,
+    sigma: 0.015,
+    initial_rate: 0.04,
+    theta: 0.04,
+  });
   let tree = HullWhiteTree::new(model, horizon, steps);
   let coupon_levels: Vec<usize> = (5..=steps).step_by(5).collect();
   let accrual_factors = vec![dt * 5.0; coupon_levels.len()];
@@ -192,15 +203,18 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
   );
 
   c.bench_function("option_bermudan_swaption_hw_tree_100steps", |b| {
-    b.iter(|| bermudan.price_on(&tree))
+    b.iter(|| bermudan.npv(&tree))
   });
 }
 
 fn bench_jamshidian_hw_swaption(c: &mut Criterion) {
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
   let expiry = 1.0_f64;
   let coupon_times: Vec<f64> = (1..=20).map(|i| expiry + 0.5 * i as f64).collect();
   let accrual_factors = vec![0.5_f64; coupon_times.len()];
@@ -223,7 +237,18 @@ fn bench_bermudan_swaption_g2pp_tree(c: &mut Criterion) {
   let horizon: f64 = 10.0;
   let steps: usize = 60;
   let dt: f64 = horizon / steps as f64;
-  let model = G2ppTreeModel::new(0.0_f64, 0.0, 0.04, 0.1, 0.5, 0.01, 0.005, -0.3);
+  let model = G2ppTreeModel::new(
+    0.0_f64,
+    0.0,
+    G2ppParams {
+      mean_reversion_x: 0.1,
+      mean_reversion_y: 0.5,
+      sigma_x: 0.01,
+      sigma_y: 0.005,
+      rho: -0.3,
+      phi: 0.04,
+    },
+  );
   let tree = G2ppTree::new(model, horizon, steps);
   let coupon_levels: Vec<usize> = (6..=steps).step_by(6).collect();
   let accrual_factors = vec![dt * 6.0; coupon_levels.len()];
@@ -236,7 +261,7 @@ fn bench_bermudan_swaption_g2pp_tree(c: &mut Criterion) {
     coupon_schedule,
   );
   c.bench_function("option_bermudan_swaption_g2pp_tree_60steps", |b| {
-    b.iter(|| swpn.price_on_g2pp(&tree))
+    b.iter(|| swpn.npv(&tree))
   });
 }
 

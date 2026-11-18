@@ -1,4 +1,5 @@
 use super::*;
+use crate::calendar::Maturity;
 use crate::instruments::equity::EuropeanOption;
 use crate::pricing::engines::AnalyticHestonEngine;
 use crate::traits::Greeks;
@@ -163,7 +164,7 @@ fn heston_greeks_match_engine_bumps() {
   let direct = atm_pricer();
   let (s, k, r, q, tau) = ATM_QUERY;
   let ot = OptionType::Call;
-  let opt = EuropeanOption::new_tau(100.0, ot, ATM_TAU);
+  let opt = EuropeanOption::new(100.0, ot, Maturity::Tau(ATM_TAU));
   let params = P;
   let mut engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
 

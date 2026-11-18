@@ -181,15 +181,8 @@ impl HestonPricer {
     4.0 * self.params.v0 * p_v0v0 + 2.0 * self.v0_vega(s, k, r, q, tau)
   }
 
-  /// Veta — $\partial^2 V/\partial\sigma\partial t$ (vega decay).
-  ///
-  /// Returns `NaN` at `v0 == 0` (the $\sigma=\sqrt{v_0}$ chain rule is
-  /// undefined) and for a `tau` that is non-finite or not larger than the
-  /// central-difference step `H_TAU` — the down-bump would evaluate the
-  /// price past expiry. A non-finite `tau` reaches here legitimately from
-  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt::tau_or_from_dates)
-  /// when the instrument carries neither an explicit τ nor a date pair, so it
-  /// propagates as `NaN` rather than panicking.
+  /// Veta $\partial^2 V/\partial\sigma\,\partial t$: NaN at `v0 == 0`, where $\sigma=\sqrt{v_0}$ has
+  /// no chain rule, and for a `tau` that is not finite or not above the step `H_TAU`.
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;

@@ -13,6 +13,7 @@
 use implied_vol::ImpliedBlackVolatility;
 use implied_vol::solver::Hybrid;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use crate::OptionQuote;
 use crate::OptionType;
@@ -77,7 +78,7 @@ impl ImpliedVolSurface {
     strikes: Vec<f64>,
     maturities: Vec<f64>,
     forwards: Vec<f64>,
-    prices: &Array2<f64>,
+    prices: ArrayView2<f64>,
     is_call: bool,
   ) -> Self {
     let nt = maturities.len();

@@ -11,6 +11,7 @@
 
 use crate::calendar::Frequency;
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::interpolation;
 use super::types::Compounding;
@@ -61,8 +62,8 @@ impl<T: RealExt> DiscountCurve<T> {
 
   /// Build from parallel arrays of times and discount factors; panics as [`new`](Self::new) does.
   pub fn from_arrays(
-    times: &Array1<T>,
-    discount_factors: &Array1<T>,
+    times: ArrayView1<T>,
+    discount_factors: ArrayView1<T>,
     method: InterpolationMethod,
   ) -> Self {
     let points: Vec<CurvePoint<T>> = times
@@ -79,8 +80,8 @@ impl<T: RealExt> DiscountCurve<T> {
   /// Build from parallel arrays of times and zero rates (continuous compounding); panics as
   /// [`new`](Self::new) does.
   pub fn from_zero_rates(
-    times: &Array1<T>,
-    rates: &Array1<T>,
+    times: ArrayView1<T>,
+    rates: ArrayView1<T>,
     method: InterpolationMethod,
   ) -> Self {
     let points: Vec<CurvePoint<T>> = times
@@ -188,12 +189,12 @@ impl<T: RealExt> DiscountCurve<T> {
   }
 
   /// Extract zero rates at the given maturities.
-  pub fn zero_rates(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn zero_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(maturities.iter().map(|&t| self.zero_rate(t)).collect())
   }
 
   /// Extract discount factors at the given maturities.
-  pub fn discount_factors(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn discount_factors(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(
       maturities
         .iter()
@@ -204,7 +205,7 @@ impl<T: RealExt> DiscountCurve<T> {
 
   /// Forward rates over consecutive `maturities`, as [`forward_rate`](Self::forward_rate) gives
   /// them; empty for fewer than two.
-  pub fn forward_rates(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn forward_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(
       maturities
         .windows(2)

@@ -17,8 +17,8 @@ use stochastic_rs::traits::ToShortRateModel;
 fn black_karasinski_fits_a_small_swaption_grid() {
   // Flat 3 % curve and two ATM payer swaptions quoted in Black-76 vol.
   let curve = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let quote = |expiry: f64, tenor: f64, black_vol: f64| SwaptionQuote {

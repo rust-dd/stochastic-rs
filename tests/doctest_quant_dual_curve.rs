@@ -14,8 +14,8 @@ use stochastic_rs::quant::curves::bootstrap;
 fn dual_curve_bootstrap_recovers_the_tenor_basis() {
   // Exogenous OIS discount curve (flat 2 %) and a 3M tenor trading 50 bp above it.
   let ois = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.25, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.02; 4]),
+    Array1::from_vec(vec![0.25, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.02; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let tenor_df = |t: f64| (-0.025_f64 * t).exp();

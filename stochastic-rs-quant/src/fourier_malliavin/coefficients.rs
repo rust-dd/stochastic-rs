@@ -3,6 +3,7 @@
 //! See Sanfelici & Toscano (2024), arXiv:2402.00172, §2 for the mathematical details.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex;
@@ -107,8 +108,8 @@ pub fn fourier_coefficients_dx_uniform<T: RealExt>(
 /// `max_freq ≥ n_freq + m_freq`.
 /// Returns coefficients for `k = −m_freq, …, m_freq` (length `2*m_freq+1`).
 pub fn convolution_coefficients<T: RealExt>(
-  dx_a: &Array1<Complex<T>>,
-  dx_b: &Array1<Complex<T>>,
+  dx_a: ArrayView1<Complex<T>>,
+  dx_b: ArrayView1<Complex<T>>,
   period: T,
   n_freq: usize,
   m_freq: usize,
@@ -168,6 +169,6 @@ mod tests {
   #[should_panic(expected = "dx_a must not be empty")]
   fn convolution_rejects_empty_input_before_computing_centers() {
     let empty = Array1::<Complex<f64>>::zeros(0);
-    let _ = convolution_coefficients(&empty, &empty, 1.0, 1, 1);
+    let _ = convolution_coefficients(empty.view(), empty.view(), 1.0, 1, 1);
   }
 }

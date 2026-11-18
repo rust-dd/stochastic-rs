@@ -77,8 +77,8 @@ fn a_snell_lattice_without_a_step_is_a_precondition() {
 #[test]
 fn the_discount_curve_has_no_zero_sentinels() {
   let curve = DiscountCurve::<f64>::from_zero_rates(
-    &Array1::from_vec(vec![1.0, 2.0, 5.0]),
-    &Array1::from_vec(vec![0.03; 3]),
+    Array1::from_vec(vec![1.0, 2.0, 5.0]).view(),
+    Array1::from_vec(vec![0.03; 3]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   assert!(curve.simple_forward_rate(2.0, 1.0).is_nan());
@@ -88,9 +88,17 @@ fn the_discount_curve_has_no_zero_sentinels() {
   assert!(curve.forward_rate(1.0, 1.0).is_nan());
   assert!((curve.forward_rate(1.0, 2.0) - 0.03).abs() < 1e-12);
   assert!(curve.forward_rate(f64::NAN, 2.0).is_nan() && curve.forward_rate(1.0, f64::NAN).is_nan());
-  assert_eq!(curve.forward_rates(&Array1::from_vec(vec![1.0])).len(), 0);
-  assert_eq!(curve.forward_rates(&Array1::from_vec(vec![])).len(), 0);
-  let forwards = curve.forward_rates(&Array1::from_vec(vec![1.0, 2.0, 2.0]));
+  assert_eq!(
+    curve
+      .forward_rates(Array1::from_vec(vec![1.0]).view())
+      .len(),
+    0
+  );
+  assert_eq!(
+    curve.forward_rates(Array1::from_vec(vec![]).view()).len(),
+    0
+  );
+  let forwards = curve.forward_rates(Array1::from_vec(vec![1.0, 2.0, 2.0]).view());
   assert!((forwards[0] - 0.03).abs() < 1e-12 && forwards[1].is_nan());
   assert!(curve.par_rate(0.0, Frequency::SemiAnnual).is_nan());
   assert!(curve.par_rate(-1.0, Frequency::SemiAnnual).is_nan());
@@ -417,8 +425,8 @@ fn heston_answers_nan_before_expiry_and_at_a_nan_tau() {
 fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
   let flat = |rate: f64| {
     DiscountCurve::<f64>::from_zero_rates(
-      &Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]),
-      &Array1::from_vec(vec![rate; 4]),
+      Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]).view(),
+      Array1::from_vec(vec![rate; 4]).view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     )
   };
@@ -426,44 +434,46 @@ fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
   curves.add_forecast(RateTenor::ThreeMonths, flat(0.045));
   let schedule = Array1::from_vec(vec![0.5, 1.0, 2.0]);
   let repeated = Array1::from_vec(vec![0.5, 1.0, 1.0, 2.0]);
-  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, &schedule, 1.0);
+  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, schedule.view(), 1.0);
   assert!(pv.is_some_and(f64::is_finite), "{pv:?}");
   assert_eq!(
-    curves.pv_floating_leg(RateTenor::ThreeMonths, &repeated, 1.0),
+    curves.pv_floating_leg(RateTenor::ThreeMonths, repeated.view(), 1.0),
     pv
   );
-  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, &schedule);
+  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, schedule.view());
   assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
   assert_eq!(
-    curves.fair_swap_rate(RateTenor::ThreeMonths, &repeated),
+    curves.fair_swap_rate(RateTenor::ThreeMonths, repeated.view()),
     rate
   );
   assert_eq!(
-    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0])),
+    curves.fair_swap_rate(RateTenor::ThreeMonths, Array1::from_vec(vec![1.0]).view()),
     None
   );
   assert_eq!(
-    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![])),
+    curves.fair_swap_rate(RateTenor::ThreeMonths, Array1::from_vec(vec![]).view()),
     None
   );
-  let empty_period =
-    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0, 1.0]));
+  let empty_period = curves.fair_swap_rate(
+    RateTenor::ThreeMonths,
+    Array1::from_vec(vec![1.0, 1.0]).view(),
+  );
   assert!(empty_period.is_some_and(f64::is_nan), "{empty_period:?}");
 }
 
 #[test]
 fn a_multi_curve_leg_over_a_backward_period_is_nan() {
   let flat = DiscountCurve::<f64>::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]),
-    &Array1::from_vec(vec![0.04; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]).view(),
+    Array1::from_vec(vec![0.04; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let mut curves = MultiCurve::new(flat.clone());
   curves.add_forecast(RateTenor::ThreeMonths, flat);
   let backward = Array1::from_vec(vec![0.5, 2.0, 1.0]);
-  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, &backward, 1.0);
+  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, backward.view(), 1.0);
   assert!(pv.is_some_and(f64::is_nan), "{pv:?}");
-  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, &backward);
+  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, backward.view());
   assert!(rate.is_some_and(f64::is_nan), "{rate:?}");
 }
 
@@ -496,8 +506,8 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     );
   }
   let ois = DiscountCurve::<f64>::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 2.0]),
-    &Array1::from_vec(vec![0.02; 3]),
+    Array1::from_vec(vec![0.5, 1.0, 2.0]).view(),
+    Array1::from_vec(vec![0.02; 3]).view(),
     method,
   );
   let swap = BootstrapInstrument::SwapWithSchedule {

@@ -3,6 +3,11 @@
 use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use crate::calibration::hw_swaption::HullWhiteParams;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::one_factor_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -20,13 +25,12 @@ pub struct HullWhiteTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> HullWhiteTreeModel<T> {
-  /// Construct a Hull-White tree model.
-  pub fn new(initial_rate: T, mean_reversion: T, theta: T, sigma: T) -> Self {
+  pub fn new(params: HullWhiteParams) -> Self {
     Self {
-      initial_rate,
-      mean_reversion,
-      theta,
-      sigma,
+      initial_rate: T::from_f64_fast(params.initial_rate),
+      mean_reversion: T::from_f64_fast(params.mean_reversion),
+      theta: T::from_f64_fast(params.theta),
+      sigma: T::from_f64_fast(params.sigma),
     }
   }
 }
@@ -74,5 +78,11 @@ impl<T: RealExt> HullWhiteTree<T> {
   /// Price a zero-coupon bond maturing at the tree horizon.
   pub fn zero_coupon_bond_price(&self) -> T {
     price_one_factor_zcb(&self.tree, &self.model)
+  }
+}
+
+impl<T: RealExt> BermudanTree<T> for HullWhiteTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    one_factor_valuation(swaption, &self.tree, &self.model)
   }
 }
