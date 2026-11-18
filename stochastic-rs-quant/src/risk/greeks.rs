@@ -46,14 +46,6 @@ where
   (f(x0 + h) - T::from_f64_fast(2.0) * f(x0) + f(x0 - h)) / (h * h)
 }
 
-/// [`central_difference`] of `f` at `x0` with step `bump_size`.
-pub fn finite_difference_greek<T: RealExt, F>(f: F, x0: T, bump_size: T) -> T
-where
-  F: Fn(T) -> T,
-{
-  central_difference(f, x0, bump_size)
-}
-
 /// Per-pillar `(V(up) − V(down)) / 2` of `valuer` for a `bump_size` shift of that pillar's zero
 /// rate. It is a signed PV sensitivity: a long bond is negative; negate for the quoted DV01.
 pub fn bucket_dv01<T: RealExt, F>(

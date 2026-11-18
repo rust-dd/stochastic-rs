@@ -123,15 +123,23 @@ impl<T: RealExt> NotionalSchedule<T> {
     }
   }
 
-  /// Linearly amortizing profile.
+  /// Linear profile falling from `start` to `end`; panics unless `start >= end`.
   pub fn amortizing(periods: usize, start: T, end: T) -> Self {
+    assert!(
+      start >= end,
+      "start must satisfy `start >= end`, got start = {start:?}, end = {end:?}"
+    );
     Self {
       notionals: linear_profile(periods, start, end),
     }
   }
 
-  /// Linearly accreting profile.
+  /// Linear profile rising from `start` to `end`; panics unless `start <= end`.
   pub fn accreting(periods: usize, start: T, end: T) -> Self {
+    assert!(
+      start <= end,
+      "start must satisfy `start <= end`, got start = {start:?}, end = {end:?}"
+    );
     Self {
       notionals: linear_profile(periods, start, end),
     }
