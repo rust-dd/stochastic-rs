@@ -8,6 +8,10 @@ use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
 use crate::calibration::tree_swaption::G2ppParams;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::g2pp_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -175,6 +179,12 @@ impl<T: RealExt> G2ppTree<T> {
     }
 
     values[[0, 0]]
+  }
+}
+
+impl<T: RealExt> BermudanTree<T> for G2ppTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    g2pp_valuation(swaption, self)
   }
 }
 

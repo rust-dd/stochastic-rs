@@ -4,6 +4,10 @@ use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::calibration::tree_swaption::BlackKarasinskiParams;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::one_factor_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -75,5 +79,11 @@ impl<T: RealExt> BlackKarasinskiTree<T> {
   /// Price a zero-coupon bond maturing at the tree horizon.
   pub fn zero_coupon_bond_price(&self) -> T {
     price_one_factor_zcb(&self.tree, &self.model)
+  }
+}
+
+impl<T: RealExt> BermudanTree<T> for BlackKarasinskiTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    one_factor_valuation(swaption, &self.tree, &self.model)
   }
 }

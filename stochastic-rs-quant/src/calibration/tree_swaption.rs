@@ -242,7 +242,7 @@ impl BlackKarasinskiCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = BlackKarasinskiTree::new(model.clone(), horizon, steps);
-      model_prices.push(swaption.price_on_tree(&tree.tree, &tree.model));
+      model_prices.push(swaption.npv(&tree));
       market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
@@ -422,7 +422,7 @@ impl G2ppCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = G2ppTree::new(model.clone(), horizon, steps);
-      model_prices.push(swaption.price_on_g2pp(&tree));
+      model_prices.push(swaption.npv(&tree));
       market_prices.push(market.market_price);
     }
     (market_prices, model_prices)

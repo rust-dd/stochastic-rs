@@ -19,7 +19,9 @@ pub mod swaption;
 pub mod types;
 pub mod volatility;
 
+pub use bermudan::BermudanDates;
 pub use bermudan::BermudanSwaption;
+pub use bermudan::BermudanTree;
 pub use cap::Cap;
 pub use cap::Collar;
 pub use cap::Floor;

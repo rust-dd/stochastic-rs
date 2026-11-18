@@ -199,7 +199,7 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
   );
 
   c.bench_function("option_bermudan_swaption_hw_tree_100steps", |b| {
-    b.iter(|| bermudan.price_on(&tree))
+    b.iter(|| bermudan.npv(&tree))
   });
 }
 
@@ -254,7 +254,7 @@ fn bench_bermudan_swaption_g2pp_tree(c: &mut Criterion) {
     coupon_schedule,
   );
   c.bench_function("option_bermudan_swaption_g2pp_tree_60steps", |b| {
-    b.iter(|| swpn.price_on_g2pp(&tree))
+    b.iter(|| swpn.npv(&tree))
   });
 }
 

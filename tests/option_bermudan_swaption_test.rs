@@ -11,6 +11,7 @@ use stochastic_rs::quant::calibration::G2ppParams;
 use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
+use stochastic_rs::quant::instruments::BermudanDates;
 use stochastic_rs::quant::instruments::BermudanSwaption;
 use stochastic_rs::quant::instruments::ExerciseSchedule;
 use stochastic_rs::quant::instruments::JamshidianHullWhiteSwaption;
@@ -69,8 +70,8 @@ fn bermudan_swaption_dominates_european_at_common_grid() {
     coupon_schedule,
   );
 
-  let european_npv = european.price_on(&tree);
-  let bermudan_npv = bermudan.price_on(&tree);
+  let european_npv = european.npv(&tree);
+  let bermudan_npv = bermudan.npv(&tree);
 
   assert!(
     bermudan_npv >= european_npv - 1e-10,
@@ -192,8 +193,8 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
     ExerciseSchedule::new(coupon_levels),
     coupon_schedule,
   );
-  let hw_price = swpn.price_on(&hw_tree);
-  let g2pp_price = swpn.price_on_g2pp(&g2pp_tree);
+  let hw_price = swpn.npv(&hw_tree);
+  let g2pp_price = swpn.npv(&g2pp_tree);
   let rel = (hw_price - g2pp_price).abs() / hw_price.max(1e-10);
   assert!(
     rel < 0.05,
@@ -228,7 +229,7 @@ fn bench_g2pp_bermudan(rho: f64) -> f64 {
     ExerciseSchedule::new(coupon_levels),
     coupon_schedule,
   );
-  swpn.price_on_g2pp(&tree)
+  swpn.npv(&tree)
 }
 
 /// Pinned at the bench's ρ = −0.3; past |ρ| = 1/3 the price keeps falling with ρ, as the short
@@ -258,19 +259,16 @@ fn calendar_bermudan_matches_manual_levels() {
 
   let exercise_dates: Vec<NaiveDate> = (1..=4).map(|i| d(2024 + i, 1, 15)).collect();
   let coupon_dates: Vec<NaiveDate> = (1..=5).map(|i| d(2024 + i, 1, 15)).collect();
-  let accruals = vec![1.0_f64; coupon_dates.len()];
-  let swpn_cal = BermudanSwaption::from_calendar(
-    SwaptionDirection::Payer,
-    0.04_f64,
-    1.0,
-    valuation,
-    DayCountConvention::Actual365Fixed,
-    dt,
-    &exercise_dates,
-    &coupon_dates,
-    &accruals,
-  );
-  let price_cal = swpn_cal.price_on(&tree);
+  let accrual_factors = vec![1.0_f64; coupon_dates.len()];
+  let dates = BermudanDates {
+    valuation_date: valuation,
+    day_count: DayCountConvention::Actual365Fixed,
+    exercise_dates,
+    coupon_dates,
+    accrual_factors,
+  };
+  let swpn_cal = BermudanSwaption::from_dates(SwaptionDirection::Payer, 0.04_f64, 1.0, &dates, dt);
+  let price_cal = swpn_cal.npv(&tree);
   assert!(price_cal >= 0.0 && price_cal.is_finite());
 }
 
@@ -298,7 +296,7 @@ fn bermudan_payer_zero_value_deep_out_of_the_money() {
     ExerciseSchedule::new(coupon_levels),
     coupon_schedule,
   );
-  let npv = bermudan.price_on(&tree);
+  let npv = bermudan.npv(&tree);
   assert!(
     npv < 1e-4,
     "deep-OTM payer swaption should be near zero, got {npv:.6}"
