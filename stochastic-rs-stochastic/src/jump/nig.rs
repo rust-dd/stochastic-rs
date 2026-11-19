@@ -4,9 +4,9 @@
 //! X_t=x_0+\theta I_t+\sigma W_{I_t},\quad \mathbb{E}(I_t)=t,\quad \mathrm{Var}(I_t)=\kappa t
 //! $$
 //!
-//! The NIG Lévy process at `μ = 0`, with `β = θ/σ²`, `δ = σ/√κ` and `α = √(β² + 1/(κσ²))`.
+//! For `σ > 0`, the NIG Lévy process at `μ = 0`: `β = θ/σ²`, `δ = σ/√κ`, `α = √(β² + 1/(κσ²))`.
 //!
-//! Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), 1–13, DOI 10.1111/1467-9469.00045
+//! Reference: Barndorff-Nielsen & Shephard (2001), Theory Probab. Math. Statist. 65, 1–19
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -27,8 +27,7 @@ use crate::traits::ProcessExt;
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift θ per unit of the clock `I_t`, which skews the law; NIG has no mean reversion.
   pub theta: T,
-  /// Diffusion scale σ multiplying `√(I_t) dW_t`, the Brownian-subordinated
-  /// component riding on top of the IG time-change.
+  /// Diffusion scale σ multiplying `W_{I_t}`, the Brownian motion run on the IG clock.
   pub sigma: T,
   /// Variance rate of the inverse-Gaussian subordinator, whose shape is `dt²/kappa`, akin to
   /// `nu` in [`Vg`](super::vg::Vg); not a mean-reversion speed, which NIG does not have.

@@ -62,7 +62,7 @@ fn variance_gamma_matches_the_madan_carr_chang_transform() {
 
 /// Normal inverse Gaussian, `φ(u) = exp((t/κ)(1 − √(1 − 2iuθκ + σ²u²κ)))`: Brownian motion with
 /// drift `θ` under an inverse-Gaussian clock, in the constructor's `(θ, σ, κ)` parameters.
-/// Reference: Barndorff-Nielsen (1997), §3
+/// Reference: Barndorff-Nielsen & Shephard (2001), Theory Probab. Math. Statist. 65, 1–19
 #[test]
 fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
   let (theta, sigma, kappa) = (0.15, 0.5, 0.4);

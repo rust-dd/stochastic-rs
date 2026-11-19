@@ -1,9 +1,13 @@
-//! Rapidly decreasing tempered stable process by a shot-noise series stopped at `j` terms.
+//! Kim, Rachev, Bianchi & Fabozzi's standard rapidly decreasing tempered stable process, mean zero
+//! and unit variance per unit time, by a shot-noise series stopped at `j` terms.
 //!
 //! $$
-//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx
+//! \nu(dx)=C\left(e^{-\lambda_+^2x^2/2}\mathbf 1_{x>0}+e^{-\lambda_-^2x^2/2}\mathbf 1_{x<0}\right)
+//! |x|^{-1-\alpha}dx,\quad
+//! C=\left(2^{-\alpha/2}\Gamma(1-\alpha/2)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\right)^{-1}
 //! $$
 //!
+//! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -23,8 +27,6 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Rdts process (Rapidly Decreasing Tempered Stable process)
-/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 #[derive(Debug, Clone)]
 pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive jump rate lambda_plus (corresponds to G)
