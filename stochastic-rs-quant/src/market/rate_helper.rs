@@ -20,7 +20,7 @@ use crate::curves::BootstrapInstrument;
 use crate::curves::BootstrapSpec;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
-use crate::curves::bootstrap;
+use crate::curves::bootstrap::bootstrap_numbered;
 use crate::traits::RealExt;
 
 mod ois;
@@ -315,8 +315,8 @@ impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   }
 }
 
-/// [`bootstrap()`] over the quoted helpers, skipping the rest; its errors, with `InvalidQuote`
-/// at the helper's own index.
+/// [`bootstrap()`](fn@crate::curves::bootstrap) over the quoted helpers, skipping the rest; its
+/// errors name each quote by the helper's own index.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
@@ -327,13 +327,7 @@ pub fn build_curve<T: RealExt>(
     .enumerate()
     .filter_map(|(index, helper)| Some((index, helper.to_instrument(valuation_date)?)))
     .unzip();
-  bootstrap(BootstrapSpec::new(&instruments, method)).map_err(|error| match error {
-    QuantError::InvalidQuote { index, reason } => QuantError::InvalidQuote {
-      index: origin[index],
-      reason,
-    },
-    other => other,
-  })
+  bootstrap_numbered(BootstrapSpec::new(&instruments, method), Some(&origin))
 }
 
 #[cfg(test)]

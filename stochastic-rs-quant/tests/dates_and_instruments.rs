@@ -521,8 +521,8 @@ fn the_brazil_settlement_calendar_and_its_business_252_count_match_quantlib() {
 fn a_par_rate_and_a_cms_convexity_take_a_frequency() {
   let annual = flat(0.03).par_rate(5.0, Frequency::Annual);
   assert!((annual - (0.03_f64.exp() - 1.0)).abs() < 1e-12, "{annual}");
-  let lambda = hagan_linear_tsr_convexity_factor::<f64>(0.03, 10.0, Frequency::SemiAnnual);
-  assert!(lambda.is_finite() && lambda < 0.0, "{lambda}");
+  let theta = hagan_linear_tsr_convexity_factor::<f64>(0.03, 10.0, Frequency::SemiAnnual, 0.0);
+  assert!((theta - 0.14786727340953114).abs() < 1e-14, "{theta}");
 }
 
 #[derive(Debug)]

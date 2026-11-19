@@ -57,7 +57,7 @@ impl ToModel for Calibrated<SabrCapletParams> {
 }
 
 impl Calibrated<SabrCapletParams> {
-  /// The fit as a [`ShiftedSabrVolatility`], which applies the shift to forward and strike itself.
+  /// The fit as a [`ShiftedSabrVolatility`]: Black prices it on the shifted forward and strike.
   pub fn to_shifted_volatility(&self) -> ShiftedSabrVolatility<f64> {
     let SabrCapletParams { sabr, shift } = self.params;
     ShiftedSabrVolatility::new(sabr.alpha, sabr.beta, sabr.rho, sabr.nu, shift)

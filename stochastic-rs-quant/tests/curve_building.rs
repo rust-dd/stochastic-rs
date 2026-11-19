@@ -486,24 +486,32 @@ fn a_read_below_the_first_pillar_moves_the_pillars_after_it_except_under_log_lin
     let curve = bootstrap(BootstrapSpec::new(&quotes, method)).unwrap();
     [0.25, 0.5, 1.0, 2.0].map(|t| curve.discount_factor(t))
   };
-  // The 1Y and 2Y swaps pay at 0.25, before the 6M pillar.
-  assert_eq!(
+  // The 1Y and 2Y swaps pay at 0.25, before the 6M pillar; the reads pass through libm and a root.
+  let close = |got: [f64; 4], want: [f64; 4]| {
+    let worst = got
+      .iter()
+      .zip(want)
+      .map(|(g, w)| (g - w).abs())
+      .fold(0.0, f64::max);
+    assert!(worst <= 1e-15, "{got:?} against {want:?}");
+  };
+  close(
     pillars(InterpolationMethod::LinearOnZeroRates),
     [
       0.9925833339709303,
       0.9852216748768474,
-      0.9695789361618652,
-      0.9362657494680776
-    ]
+      0.9695820741914576,
+      0.9363028823658401,
+    ],
   );
-  assert_eq!(
+  close(
     pillars(InterpolationMethod::LogLinearOnDiscountFactors),
     [
       0.9925833339709303,
       0.9852216748768474,
-      0.9695789361618652,
-      0.9362668653346841
-    ]
+      0.9695831158726758,
+      0.9363136704879836,
+    ],
   );
 }
 

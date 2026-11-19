@@ -1,5 +1,5 @@
 //! A tenor's pseudo-discount curve `P_x` bootstrapped against an exogenous OIS curve `D`: `P_x`
-//! projects forwards, `D` discounts. The swap pillar is solved by bisection (no telescoping).
+//! projects forwards, `D` discounts. The swap pillar is a root on the curve holding it.
 //!
 //! $$
 //! F_x(t_{i-1}, t_i) = \frac{1}{\delta_i}\left(\frac{P_x(t_{i-1})}{P_x(t_i)} - 1\right),\qquad
@@ -9,6 +9,7 @@
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4–5
 //! Reference: Bianchetti (2010), "Two Curves, One Price", Risk 23(8), 66–72
 
+use super::bootstrap::trial_node;
 use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;
 use super::types::CurvePoint;
@@ -17,7 +18,7 @@ use crate::QuantError;
 use crate::traits::RealExt;
 
 /// The pseudo-discount factor at the swap's maturity that sets its value on `discount` to zero,
-/// given the earlier `points`; `Optimizer` when the search bracket holds no root.
+/// given the earlier `points`; `Optimizer` when no root is found.
 pub(super) fn swap_node<T: RealExt>(
   points: &[CurvePoint<T>],
   rate: T,
@@ -29,16 +30,32 @@ pub(super) fn swap_node<T: RealExt>(
 ) -> Result<T, QuantError> {
   let maturity = fixed_times.last().copied().unwrap_or_else(T::nan);
   let fixed_pv = fixed_leg_pv(rate, fixed_times, discount);
-  let residual = |p: T| {
-    let mut trial = points.to_vec();
-    trial.push(CurvePoint {
-      time: maturity,
-      discount_factor: p,
-    });
-    floating_leg_pv(float_times, &trial, discount, method) - fixed_pv
+  let discounts: Vec<T> = float_times
+    .iter()
+    .map(|t| discount.discount_factor(*t))
+    .collect();
+  let (time, previous) = points
+    .last()
+    .map_or((T::zero(), T::one()), |p| (p.time, p.discount_factor));
+  // The forecast curve's forward over the gap taken as the discount curve's.
+  let carried = previous * discount.discount_factor(maturity) / discount.discount_factor(time);
+  let start = if carried.is_finite() && carried > T::zero() {
+    carried
+  } else {
+    previous
   };
-  let previous = points.last().map_or_else(T::one, |p| p.discount_factor);
-  solve_last_pseudo_discount(residual, previous).ok_or_else(|| QuantError::Optimizer {
+  let node = CurvePoint {
+    time: maturity,
+    discount_factor: start,
+  };
+  let mut trial: Vec<CurvePoint<T>> = points.iter().copied().chain([node]).collect();
+  let slot = trial.len() - 1;
+  let residual = |p: T| {
+    trial[slot].discount_factor = p;
+    let floating = floating_leg_pv(float_times, &discounts, &trial, method);
+    (floating - fixed_pv, None)
+  };
+  trial_node(start, residual).ok_or_else(|| QuantError::Optimizer {
     what: "bootstrap",
     reason: format!(
       "no pseudo-discount factor brackets swap quote {index}: it is inconsistent with the earlier pillars"
@@ -57,58 +74,22 @@ fn fixed_leg_pv<T: RealExt>(rate: T, fixed_times: &[T], discount: &DiscountCurve
   rate * pv
 }
 
-/// `Σ_i D(t_i) (P_x(t_{i−1}) / P_x(t_i) − 1)` with the pseudo-discount
-/// factors read off `points`.
+/// `Σ_i D(t_i) (P_x(t_{i−1}) / P_x(t_i) − 1)` on the given `D(t_i)`, the pseudo-discount factors
+/// read off `points`.
 fn floating_leg_pv<T: RealExt>(
   float_times: &[T],
+  discounts: &[T],
   points: &[CurvePoint<T>],
-  discount: &DiscountCurve<T>,
   method: InterpolationMethod,
 ) -> T {
   let mut pv = T::zero();
   let mut prev_p = T::one();
-  for t in float_times {
+  for (t, d) in float_times.iter().zip(discounts) {
     let p = interpolate_discount_factor(points, *t, method);
-    pv += discount.discount_factor(*t) * (prev_p / p - T::one());
+    pv += *d * (prev_p / p - T::one());
     prev_p = p;
   }
   pv
-}
-
-/// Bisection on the last pseudo-discount factor: the floating leg is
-/// decreasing in it, so the residual changes sign once on the bracket.
-fn solve_last_pseudo_discount<T: RealExt>(residual: impl Fn(T) -> T, previous: T) -> Option<T> {
-  let two = T::from_f64_fast(2.0);
-  let mut lo = previous * T::from_f64_fast(1e-6);
-  let mut hi = previous * two;
-  let mut f_lo = residual(lo);
-  let mut f_hi = residual(hi);
-  let mut widen = 0;
-  while f_lo.signum() == f_hi.signum() && widen < 60 {
-    lo = lo / two;
-    hi = hi * two;
-    f_lo = residual(lo);
-    f_hi = residual(hi);
-    widen += 1;
-  }
-  if f_lo.signum() == f_hi.signum() || f_lo.is_nan() || f_hi.is_nan() {
-    return None;
-  }
-  let tol = T::from_f64_fast(1e-15);
-  for _ in 0..200 {
-    let mid = (lo + hi) / two;
-    let f_mid = residual(mid);
-    if f_mid == T::zero() || (hi - lo).abs() <= tol * hi.abs() {
-      return Some(mid);
-    }
-    if f_mid.signum() == f_lo.signum() {
-      lo = mid;
-      f_lo = f_mid;
-    } else {
-      hi = mid;
-    }
-  }
-  Some((lo + hi) / two)
 }
 
 #[cfg(test)]
