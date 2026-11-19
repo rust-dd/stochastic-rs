@@ -406,7 +406,7 @@ fn assert_same_pillars(via_f64: &DiscountCurve<f64>, via_r64: &DiscountCurve<R64
 }
 
 /// `f64`'s curve bit for bit, its four gapped swaps solved in a few reads of their payments past
-/// the last pillar (439 calls), where a Brent root of each whole quote took 2,341.
+/// the last pillar: 439 calls to `exp` and `ln` in all.
 #[test]
 fn a_realext_only_scalar_bootstraps_the_bench_ladder_in_a_few_hundred_exp_and_ln_calls() {
   let method = InterpolationMethod::LogLinearOnDiscountFactors;
@@ -418,8 +418,8 @@ fn a_realext_only_scalar_bootstraps_the_bench_ladder_in_a_few_hundred_exp_and_ln
   assert!(calls <= 500, "{calls} calls to exp and ln");
 }
 
-/// A 3M forecast curve 50 bp over a flat 2 % OIS curve: a few trial curves per swap (870 calls),
-/// where a bisection took about 54 and 12,726 calls in all.
+/// A 3M forecast curve 50 bp over a flat 2 % OIS curve, a few trial curves per swap: 870 calls to
+/// `exp` and `ln` in all.
 #[test]
 fn a_realext_only_scalar_bootstraps_a_forecast_curve_in_a_few_trial_curves_per_swap() {
   fn ois<T: RealExt>() -> DiscountCurve<T> {

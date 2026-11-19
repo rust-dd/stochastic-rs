@@ -1,4 +1,5 @@
-//! Merton's queries and Jamshidian's swaption at their limits: the payoff at maturity, NaN past it.
+//! Merton's and Jamshidian's queries at their limits, their constructors' preconditions, and the
+//! rate helpers' error positions: the payoff at maturity, NaN off the domain, a panic on bad input.
 
 use chrono::NaiveDate;
 use ndarray::array;
