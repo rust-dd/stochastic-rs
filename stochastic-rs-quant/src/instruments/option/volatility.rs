@@ -8,6 +8,7 @@
 //! $$
 //!
 //! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine
+//! Reference: Rubinstein (1983), J. Finance 38(1), 213–217, DOI: 10.1111/j.1540-6261.1983.tb03636.x
 
 use super::types::VolatilityQuoteKind;
 use crate::pricing::sabr::SabrParams;
@@ -22,6 +23,11 @@ pub trait VolatilityModel<T: RealExt>: Send + Sync {
 
   /// Quote family of the returned volatility.
   fn quote_kind(&self) -> VolatilityQuoteKind;
+
+  /// The shift `d` of a displaced lognormal vol: Black-76 prices the rates `F + d` and `K + d`.
+  fn displacement(&self) -> T {
+    T::zero()
+  }
 }
 
 /// Constant lognormal (Black-76) volatility.
@@ -158,6 +164,10 @@ impl<T: RealExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
 
   fn quote_kind(&self) -> VolatilityQuoteKind {
     VolatilityQuoteKind::Lognormal
+  }
+
+  fn displacement(&self) -> T {
+    self.shift
   }
 }
 

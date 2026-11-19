@@ -112,12 +112,13 @@ pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   kind: InterestRateOptionKind,
 ) -> T {
   let sigma = vol.implied_volatility(forward, strike, tau);
+  let shift = vol.displacement();
   let forward_value = match (vol.quote_kind(), kind) {
     (VolatilityQuoteKind::Lognormal, InterestRateOptionKind::Cap) => {
-      black_forward_caplet(forward, strike, tau, sigma)
+      black_forward_caplet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Lognormal, InterestRateOptionKind::Floor) => {
-      black_forward_floorlet(forward, strike, tau, sigma)
+      black_forward_floorlet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Normal, InterestRateOptionKind::Cap) => {
       bachelier_forward_caplet(forward, strike, tau, sigma)
@@ -133,6 +134,7 @@ pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
 mod tests {
   use super::*;
   use crate::instruments::option::volatility::SabrVolatility;
+  use crate::instruments::option::volatility::ShiftedSabrVolatility;
 
   #[test]
   fn a_nan_rate_or_a_live_nan_vol_is_nan_not_a_clamped_value() {
@@ -164,6 +166,50 @@ mod tests {
     };
     assert!(cap(-0.002, 1.0).is_nan());
     assert!((cap(0.03, -0.5) - 9700.0).abs() < 1e-6);
+  }
+
+  /// Black-76 on `F + d` and `K + d` at the smile's vol, by mpmath with Hagan's A.69a written out.
+  #[test]
+  fn a_shifted_sabr_vol_prices_black_on_the_displaced_rates() {
+    let vol = ShiftedSabrVolatility::new(0.03_f64, 0.5, -0.2, 0.4, 0.03);
+    let rows = [
+      (
+        -0.01,
+        0.21948481714764004,
+        2887.580801986125,
+        462.58080198612515,
+      ),
+      (
+        0.0,
+        0.18274701476126484,
+        483.65242839036875,
+        2908.6524283903686,
+      ),
+      (
+        0.01,
+        0.18506642444813012,
+        57.53427247223141,
+        7332.534272472231,
+      ),
+    ];
+    for (strike, sigma, cap, floor) in rows {
+      let price = |kind| caplet_price(-0.005, strike, 2.0, 1e6, 0.5, 0.97, &vol, kind);
+      let got = vol.implied_volatility(-0.005, strike, 2.0);
+      assert!(
+        (got - sigma).abs() <= 1e-14 * sigma,
+        "K = {strike}: vol {got}"
+      );
+      for (kind, want) in [
+        (InterestRateOptionKind::Cap, cap),
+        (InterestRateOptionKind::Floor, floor),
+      ] {
+        let got = price(kind);
+        assert!(
+          (got - want).abs() <= 1e-12 * want,
+          "K = {strike}, {kind}: {got}"
+        );
+      }
+    }
   }
 
   #[test]

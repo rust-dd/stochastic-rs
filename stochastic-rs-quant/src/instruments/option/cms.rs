@@ -115,7 +115,7 @@ pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
-  /// Present value; NaN under a lognormal vol on a forward at or below 0.
+  /// Present value; NaN under a lognormal vol whose displacement leaves the forward at or below 0.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -164,7 +164,7 @@ pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
-  /// Present value; NaN under a lognormal vol on a forward at or below 0.
+  /// Present value; NaN under a lognormal vol whose displacement leaves the forward at or below 0.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -277,9 +277,15 @@ fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   }
   let real = |x: T| x.to_f64().unwrap_or(f64::NAN);
   let (n, delta, lag) = periods(swap_years, fixed_freq, payment_delay);
-  let (s, k) = (real(s0), real(strike));
+  let kind = vol.quote_kind();
+  // A displaced lognormal vol prices `S + d` and `K + d`; G's slope stays at the forward `S₀`.
+  let shift = match kind {
+    VolatilityQuoteKind::Lognormal => real(vol.displacement()),
+    VolatilityQuoteKind::Normal => 0.0,
+  };
+  let (s, k) = (real(s0) + shift, real(strike) + shift);
   let model = FirstOrder {
-    kind: vol.quote_kind(),
+    kind,
     s,
     t: real(t_fix),
     slope: real(log_slope(s0, n, delta, lag)),

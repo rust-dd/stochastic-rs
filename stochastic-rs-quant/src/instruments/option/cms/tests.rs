@@ -4,6 +4,7 @@ use super::*;
 use crate::instruments::option::types::VolatilityQuoteKind;
 use crate::instruments::option::volatility::BlackVolatility;
 use crate::instruments::option::volatility::SabrVolatility;
+use crate::instruments::option::volatility::ShiftedSabrVolatility;
 
 /// A vol that falls with the strike, of either quote family.
 #[derive(Debug, Clone, Copy)]
@@ -322,6 +323,25 @@ fn a_lognormal_vol_on_a_forward_at_or_below_zero_prices_nan() {
       close(c.convexity_adjustment, adjustment, 1e-13, &row);
       assert!(c.npv.is_nan() && p.npv.is_nan(), "{row}: {c:?} {p:?}");
     }
+  }
+}
+
+/// A displaced smile prices (3.5b) to (3.5d) with the lognormal on `S + d` and the slope `G′/G` at
+/// `S₀`: mpmath, with Hagan's A.69a written out.
+#[test]
+fn a_displaced_lognormal_vol_prices_the_cms_on_the_shifted_rate() {
+  let vol = ShiftedSabrVolatility::new(0.03_f64, 0.5, -0.2, 0.4, 0.03);
+  let rows = [
+    (-0.01, 0.006161750236958094, 0.0009027851396009933),
+    (0.0, 0.001072430693946422, 0.005813465596589321),
+    (0.01, 0.00013349035478529207, 0.014874525257428191),
+  ];
+  for (strike, caplet, floorlet) in rows {
+    let (c, p) = pair(-0.005, strike, 2.0, TEN_SEMI, vol);
+    let row = format!("K = {strike}");
+    close(c.convexity_adjustment, 0.00025896509735710084, 1e-12, &row);
+    close(c.npv, caplet, 1e-12, &row);
+    close(p.npv, floorlet, 1e-12, &row);
   }
 }
 
