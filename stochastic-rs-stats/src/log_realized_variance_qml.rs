@@ -181,7 +181,7 @@ pub struct LogRealizedVarianceParameterUncertainty {
 /// Statistical quality gates for accepting a fitted model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LogRealizedVarianceQmlQuality {
-  /// The selected deterministic Nelder-Mead start converged.
+  /// The selected start's simplex met a `1e-10` spread of its values, as `diagnostics.converged`.
   pub optimizer_converged: bool,
   /// No parameter is within the structural boundary tolerance.
   pub parameters_interior: bool,
