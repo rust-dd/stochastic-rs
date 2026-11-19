@@ -115,8 +115,7 @@ pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
-  /// Present value; under a lognormal vol, a forward at or below 0 is read as
-  /// [`black_forward_caplet`] reads it.
+  /// Present value; NaN under a lognormal vol on a forward at or below 0.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -165,8 +164,7 @@ pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
-  /// Present value; under a lognormal vol, a forward at or below 0 is read as
-  /// [`black_forward_floorlet`] reads it.
+  /// Present value; NaN under a lognormal vol on a forward at or below 0.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -290,16 +288,8 @@ fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   // Hagan §3: the swaplet takes the at-the-money vol and the option out of the money its strike's.
   let adjustment = model.swaplet(real(vol.implied_volatility(s0, s0, t_fix)));
   let forward_value = match (is_caplet, k >= s) {
-    // (3.5c) needs a positive forward; at or below 0 a Black rate keeps its side of 0, so the
-    // adjusted forward takes the Black caplet's sign-preserving reading.
-    _ if model.kind == VolatilityQuoteKind::Lognormal && (s.is_nan() || s <= 0.0) => {
-      let black = if is_caplet {
-        black_forward_caplet::<f64>
-      } else {
-        black_forward_floorlet::<f64>
-      };
-      black(s + adjustment, k, model.t, at_strike)
-    }
+    // A lognormal rate is positive: (3.5c) and (3.5d) have no value at a forward at or below 0.
+    _ if model.kind == VolatilityQuoteKind::Lognormal && (s.is_nan() || s <= 0.0) => f64::NAN,
     (true, true) => model.caplet(k, at_strike),
     (true, false) => s + adjustment - k + model.floorlet(k, at_strike),
     (false, true) if k > s => k - s - adjustment + model.caplet(k, at_strike),

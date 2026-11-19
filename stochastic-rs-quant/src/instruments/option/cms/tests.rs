@@ -311,31 +311,18 @@ fn caplet_less_floorlet_is_one_swaplet_at_every_strike_under_a_smile() {
   }
 }
 
-/// The Black caplet's reading of a forward at or below 0: the payoff on the adjusted forward where
-/// the strike is across 0, NaN for two negative rates; the adjustment column is mpmath's.
+/// (3.5c) and (3.5d) under a lognormal vol need a positive forward: at or below 0 they give no
+/// value, while the swaplet's (3.5b) keeps its closed form, whose column is mpmath's.
 #[test]
-fn a_lognormal_vol_on_a_forward_at_or_below_zero_reads_it_as_the_black_caplet_does() {
-  let rows = [
-    (0.0, 0.02, 0.0, 0.0, 0.02),
-    (
-      -0.01,
-      0.02,
-      1.0571087557228397e-4,
-      0.0,
-      0.029894289124427716,
-    ),
-    (-0.01, 0.0, 1.0571087557228397e-4, 0.0, 0.009894289124427716),
-    (0.0, -0.01, 0.0, 0.01, 0.0),
-  ];
-  for (s0, strike, adjustment, caplet, floorlet) in rows {
-    let (c, p) = pair(s0, strike, 2.0, TEN_SEMI, flat(0.3));
-    let row = format!("S0 = {s0}, K = {strike}");
-    close(c.convexity_adjustment, adjustment, 1e-13, &row);
-    close(c.npv, caplet, 1e-15, &row);
-    close(p.npv, floorlet, 1e-15, &row);
+fn a_lognormal_vol_on_a_forward_at_or_below_zero_prices_nan() {
+  for (s0, adjustment) in [(0.0, 0.0), (-0.01, 1.0571087557228397e-4)] {
+    for strike in [0.02, 0.0, -0.01, -0.02] {
+      let (c, p) = pair(s0, strike, 2.0, TEN_SEMI, flat(0.3));
+      let row = format!("S0 = {s0}, K = {strike}");
+      close(c.convexity_adjustment, adjustment, 1e-13, &row);
+      assert!(c.npv.is_nan() && p.npv.is_nan(), "{row}: {c:?} {p:?}");
+    }
   }
-  let (c, p) = pair(-0.01, -0.02, 2.0, TEN_SEMI, flat(0.3));
-  assert!(c.npv.is_nan() && p.npv.is_nan(), "{c:?} {p:?}");
 }
 
 #[test]
