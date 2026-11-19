@@ -268,14 +268,14 @@ fn bench_exotics(c: &mut Criterion) {
   group.bench_function("barrier_up_out_call", |b| {
     b.iter(|| black_box(&barrier).price(black_box(&up_out), S, R, Q, 1.0))
   });
-  let double = DoubleBarrierPricer::new(0.25).with_terms(50);
+  let double = DoubleBarrierPricer::new(0.25);
   let corridor = DoubleBarrierOption {
     strike: 100.0,
     lower: 70.0,
     upper: 130.0,
     option_type: OptionType::Call,
   };
-  group.bench_function("double_barrier_50_terms", |b| {
+  group.bench_function("double_barrier", |b| {
     b.iter(|| black_box(&double).price(black_box(&corridor), S, R, Q, 1.0))
   });
   let lookback = LookbackPricer::new(0.25);

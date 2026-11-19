@@ -36,6 +36,7 @@ use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
 
+mod exotic_edges;
 mod exotics;
 
 const R: f64 = 0.05;

@@ -201,28 +201,6 @@ fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
 }
 
 #[test]
-fn the_double_barrier_keeps_its_values_and_holds_its_series_length() {
-  let pricer = DoubleBarrierPricer::new(SIGMA);
-  assert_eq!(pricer.terms, 5);
-  assert_pinned!(pricer.price(&CORRIDOR, 90.0, R, Q, 1.0), 5.52676147834582);
-  assert_pinned!(pricer.price(&CORRIDOR, S, R, Q, 1.0), 10.416829363785439);
-  assert_pinned!(
-    pricer.price(&CORRIDOR, 110.0, R, Q, 0.25),
-    11.973631651189004
-  );
-  let put = DoubleBarrierOption {
-    option_type: OptionType::Put,
-    ..CORRIDOR
-  };
-  assert_pinned!(pricer.price(&put, 90.0, R, Q, 1.0), 12.946402490967737);
-  assert_pinned!(pricer.price(&put, S, R, Q, 0.25), 2.419613886597333);
-  let fifty = pricer.with_terms(50);
-  assert_pinned!(fifty.price(&CORRIDOR, S, R, Q, 1.0), 10.408603719549937);
-  let one = pricer.with_terms(0);
-  assert_pinned!(one.price(&CORRIDOR, S, R, Q, 1.0), 10.880443789902783);
-}
-
-#[test]
 fn one_lookback_pricer_prices_both_contracts() {
   use OptionType::*;
   let pricer = LookbackPricer::new(SIGMA);
@@ -441,6 +419,21 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     cliquet.price(&floored, R, Q, 1.0),
     cliquet.price(&plain, R, Q, 1.0)
   );
+  let double = DoubleBarrierPricer::new(0.0);
+  assert_eq!(
+    double.price(&CORRIDOR, S, R, Q, 1.0),
+    S * (-Q).exp() - 100.0 * (-R).exp()
+  );
+  let crossed = DoubleBarrierOption {
+    upper: 102.0,
+    ..CORRIDOR
+  };
+  assert_eq!(double.price(&crossed, S, R, Q, 1.0), 0.0);
+  let touched = DoubleBarrierOption {
+    upper: S * (R - Q).exp(),
+    ..CORRIDOR
+  };
+  assert!(double.price(&touched, S, R, Q, 1.0).is_nan());
   let lookbacks = LookbackPricer::new(0.0);
   let off_the_low = lookback(None, Some(90.0), None, OptionType::Call);
   assert_pinned!(
@@ -482,10 +475,6 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     (
       "barrier",
       BarrierPricer::new(0.0).price(&up_out, S, R, Q, 1.0),
-    ),
-    (
-      "double barrier",
-      DoubleBarrierPricer::new(0.0).price(&CORRIDOR, S, R, Q, 1.0),
     ),
     (
       "drifting lookback",

@@ -17,6 +17,7 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::ln_norm_cdf;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
@@ -194,92 +195,160 @@ impl BarrierPricer {
   }
 }
 
-/// Double-barrier knock-out pricer (Ikeda–Kunitomo series approximation).
+/// Double knock-out on flat barriers: Kunitomo–Ikeda's series as Haug (2007, p. 156) gives it, the
+/// strike bounded to the corridor by `α` and `β` (Vector Risk 2017); a put flips both legs.
 ///
 /// $$
-/// V_0=\sum_{n=-N}^{N}\bigl[\text{image}_n^+-\text{image}_n^-\bigr]
+/// c=Se^{-qT}\sum_{n}\Bigl[\bigl(\tfrac{U^n}{L^n}\bigr)^{\mu_1}\bigl(N(d_1)-N(d_2)\bigr)
+/// -\bigl(\tfrac{L^{n+1}}{U^nS}\bigr)^{\mu_1}\bigl(N(d_3)-N(d_4)\bigr)\Bigr]
+/// -Ke^{-rT}\sum_{n}\Bigl[\bigl(\tfrac{U^n}{L^n}\bigr)^{\mu_1-2}\bigl(N(d_1')-N(d_2')\bigr)
+/// -\bigl(\tfrac{L^{n+1}}{U^nS}\bigr)^{\mu_1-2}\bigl(N(d_3')-N(d_4')\bigr)\Bigr],
+/// $$
+/// $$
+/// d_{1,2}=\frac{\ln\frac{SU^{2n}}{\{\alpha,\beta\}L^{2n}}+(b+\frac{\sigma^2}{2})T}
+/// {\sigma\sqrt T},\quad
+/// d_{3,4}=\frac{\ln\frac{L^{2n+2}}{\{\alpha,\beta\}SU^{2n}}+(b+\frac{\sigma^2}{2})T}
+/// {\sigma\sqrt T},\quad
+/// d'=d-\sigma\sqrt T,\quad \mu_1=\frac{2b}{\sigma^2}+1,\quad
+/// (\alpha,\beta)=\begin{cases}(\max(K,L),\,U)&\text{call}\\(L,\,\min(K,U))&\text{put}\end{cases}
 /// $$
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DoubleBarrierPricer {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// The series runs over `n = -terms..=terms`.
-  pub terms: i32,
 }
 
 impl DoubleBarrierPricer {
-  /// Five series terms on either side; panics unless `sigma` is finite and `>= 0`. At `0` a spot
-  /// inside the corridor is NaN before expiry.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the deterministic path's payoff, NaN where
+  /// that path ends on a bound.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
-    Self { sigma, terms: 5 }
+    Self { sigma }
   }
 
-  /// Panics unless `terms >= 0`.
-  pub fn with_terms(self, terms: i32) -> Self {
-    assert!(
-      terms >= 0,
-      "terms must satisfy `terms >= 0`, got terms = {terms:?}"
-    );
-    Self { terms, ..self }
-  }
-
-  /// Ikeda–Kunitomo price at `(s, r, q, tau)`, floored at zero; a spot on or outside the corridor
-  /// has knocked out, `tau = 0` pays the payoff, and a negative or NaN `tau` or bound is NaN.
+  /// Price at `(s, r, q, tau)`: 0 on or outside the corridor, the payoff at `tau = 0`, and NaN for
+  /// a negative or NaN `tau`, a NaN bound or rate, a spot `<= 0`, or a `lower <= 0` before expiry.
   pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let DoubleBarrierOption {
       strike: k,
-      lower: h_l,
-      upper: h_u,
+      lower: l,
+      upper: u,
       option_type,
     } = *option;
-    if !(s > 0.0 && tau >= 0.0) || h_l.is_nan() || h_u.is_nan() || r.is_nan() || q.is_nan() {
+    if !(s > 0.0 && tau >= 0.0) || l.is_nan() || u.is_nan() || r.is_nan() || q.is_nan() {
       return f64::NAN;
     }
-    if s <= h_l || s >= h_u {
+    if tau > 0.0 && l <= 0.0 {
+      return f64::NAN;
+    }
+    if s <= l || s >= u {
       return 0.0;
     }
     if tau == 0.0 {
       return vanilla_payoff(option_type, s, k);
     }
-    let sigma = self.sigma;
-
-    let sigma2 = sigma * sigma;
-    let sqrt_t = tau.sqrt();
-    let sigma_sqrt_t = sigma * sqrt_t;
-    let mu = (r - q - 0.5 * sigma2) / sigma2;
-    let l = (h_u / h_l).ln();
-
-    let phi = match option_type {
-      OptionType::Call => 1.0,
-      OptionType::Put => -1.0,
-    };
-
-    let mut price = 0.0;
-
-    for n in -self.terms..=self.terms {
-      let nf = n as f64;
-      let shift = 2.0 * nf * l;
-
-      let d1n = ((s / k).ln() + shift + (1.0 + mu) * sigma2 * tau) / sigma_sqrt_t;
-      let d2n = ((h_l * h_l / (s * k)).ln() + shift + (1.0 + mu) * sigma2 * tau) / sigma_sqrt_t;
-
-      let hs_pow = (h_l / s).powf(2.0 * nf);
-      let hs_ref = (h_l / s).powf(2.0 * nf * (mu + 1.0));
-
-      let direct = hs_pow
-        * (phi * s * (-q * tau).exp() * norm_cdf(phi * d1n)
-          - phi * k * (-r * tau).exp() * norm_cdf(phi * d1n - phi * sigma_sqrt_t));
-
-      let reflected = hs_ref
-        * (phi * s * (-q * tau).exp() * norm_cdf(phi * d2n)
-          - phi * k * (-r * tau).exp() * norm_cdf(phi * d2n - phi * sigma_sqrt_t));
-
-      price += direct - reflected;
+    let discounted = |s_now: f64| vanilla_payoff(option_type, s_now, k * (-r * tau).exp());
+    if self.sigma == 0.0 {
+      let forward = s * ((r - q) * tau).exp();
+      return if forward == l || forward == u {
+        f64::NAN
+      } else if forward < l || forward > u {
+        0.0
+      } else {
+        discounted(s * (-q * tau).exp())
+      };
     }
+    let (alpha, beta) = match option_type {
+      OptionType::Call => (k.max_or_nan(l), u),
+      OptionType::Put => (l, k.min_or_nan(u)),
+    };
+    if alpha.is_nan() || beta.is_nan() {
+      return f64::NAN;
+    }
+    if alpha >= beta {
+      return 0.0;
+    }
+    self.image_series(option_type, (s, k, l, u), (alpha, beta), r, q, tau)
+  }
 
+  /// Haug's series with each power joined to its normal difference in logs, where neither can
+  /// overflow, out to `n = ±N` for `N` below.
+  fn image_series(
+    &self,
+    option_type: OptionType,
+    (s, k, l, u): (f64, f64, f64, f64),
+    (alpha, beta): (f64, f64),
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> f64 {
+    let sigma = self.sigma;
+    let sd = sigma * tau.sqrt();
+    let b = r - q;
+    let mu1 = 2.0 * b / (sigma * sigma) + 1.0;
+    let drift = (b + 0.5 * sigma * sigma) * tau / sd;
+    let (ln_s, ln_l, ln_u) = (s.ln(), l.ln(), u.ln());
+    let (ln_alpha, ln_beta) = (alpha.ln(), beta.ln());
+    let width = ln_u - ln_l;
+    let z = sd / width;
+    if z > IMAGE_SPREAD_CUTOFF {
+      return 0.0;
+    }
+    let n_max = (1.0 + 0.5 * IMAGE_DECAY * z * z).sqrt().ceil() as i32;
+    let (mut asset, mut cash) = (0.0, 0.0);
+    for n in -n_max..=n_max {
+      let n = f64::from(n);
+      let shift = 2.0 * n * width;
+      let mirror = 2.0 * (n + 1.0) * ln_l - 2.0 * n * ln_u - ln_s;
+      let d1 = (ln_s - ln_alpha + shift) / sd + drift;
+      let d2 = (ln_s - ln_beta + shift) / sd + drift;
+      let d3 = (mirror - ln_alpha) / sd + drift;
+      let d4 = (mirror - ln_beta) / sd + drift;
+      let direct = n * width;
+      let reflected = (n + 1.0) * ln_l - n * ln_u - ln_s;
+      asset += weighted(mu1 * direct, d1, d2) - weighted(mu1 * reflected, d3, d4);
+      cash += weighted((mu1 - 2.0) * direct, d1 - sd, d2 - sd)
+        - weighted((mu1 - 2.0) * reflected, d3 - sd, d4 - sd);
+    }
+    let (spot, strike) = (s * (-q * tau).exp(), k * (-r * tau).exp());
+    let price = match option_type {
+      OptionType::Call => spot * asset - strike * cash,
+      OptionType::Put => strike * cash - spot * asset,
+    };
     price.max_or_nan(0.0)
   }
+}
+
+/// `2(N + 1)(N − 1)/z² ≥ IMAGE_DECAY` leaves out only images below `e^{-40}` of the leading ones.
+const IMAGE_DECAY: f64 = 40.0;
+
+/// Past `z = σ√T / ln(U/L) = 27` the survival probability is below `2e^{-π²z²/2} < e^{-3590}`.
+const IMAGE_SPREAD_CUTOFF: f64 = 27.0;
+
+/// `e^{ln_coef} (N(x) − N(y))` for `x ≥ y`, joined in logs.
+fn weighted(ln_coef: f64, x: f64, y: f64) -> f64 {
+  if x == y {
+    return 0.0;
+  }
+  (ln_coef + ln_norm_diff(x, y)).exp()
+}
+
+/// `ln(N(x) − N(y))` for `x ≥ y`, read from the tail where both terms are small.
+fn ln_norm_diff(x: f64, y: f64) -> f64 {
+  let (upper, lower) = if y >= 0.0 {
+    (ln_norm_cdf(-y), ln_norm_cdf(-x))
+  } else if x <= 0.0 {
+    (ln_norm_cdf(x), ln_norm_cdf(y))
+  } else {
+    return (norm_cdf(x) - norm_cdf(y)).ln();
+  };
+  let gap = lower - upper;
+  upper
+    + if gap > -std::f64::consts::LN_2 {
+      (-gap.exp_m1()).ln()
+    } else {
+      (-gap.exp()).ln_1p()
+    }
 }
 
 /// Monte Carlo barrier option pricer using Gbm path simulation.
