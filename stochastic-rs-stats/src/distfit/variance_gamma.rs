@@ -42,7 +42,7 @@ pub struct VarianceGammaFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The joint and the profile search each met a `1e-10` simplex spread, in its run or restart.
   pub converged: bool,
 }
 

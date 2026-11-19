@@ -58,7 +58,7 @@ pub struct GpdFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values, which a stall passes too.
   pub converged: bool,
 }
 

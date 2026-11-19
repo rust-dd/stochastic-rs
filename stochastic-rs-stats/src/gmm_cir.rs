@@ -49,7 +49,7 @@ pub struct GmmCirFit {
   pub j_pvalue: f64,
   /// Simplex iterations over both stages.
   pub iterations: usize,
-  /// Whether both stages converged.
+  /// Both stages' simplexes met a `1e-10` spread of their values, which a stall passes too.
   pub converged: bool,
 }
 

@@ -1,4 +1,4 @@
-//! One-sample Kolmogorov–Smirnov test of a continuous sample against a fully specified CDF.
+//! One-sample Kolmogorov–Smirnov test against a fully specified CDF, with the asymptotic p-value.
 //!
 //! $$
 //! D_n = \sup_x \left| F_n(x) - F(x) \right| = \max_i \max\!\left(
@@ -10,7 +10,7 @@
 //! \qquad D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad Q(c(\alpha)) = \alpha
 //! $$
 //!
-//! No finite-sample or Lilliefors correction: `F` must not be fitted from the sample under test.
+//! Nothing is fitted, so a constant sample tests as any; `F` must not come from it (Lilliefors).
 //!
 //! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
 //! Reference: Smirnov (1948), Ann. Math. Stat. 19(2), 279-281, DOI: 10.1214/aoms/1177730256

@@ -159,8 +159,8 @@ where
     1.0 / normalised.iter().map(|w| w * w).sum::<f64>()
   }
 
-  /// One step on `y_t`; returns the incremental log-likelihood, whose sum over the data is the
-  /// particle marginal log-likelihood (Kitagawa 1996), the objective of [`crate::particle_mle`].
+  /// One step on `y_t`: its incremental log-likelihood, whose sum is the particle marginal one
+  /// (Kitagawa 1996), [`crate::particle_mle`]'s objective; panics if `transition` resizes a state.
   /// $$
   /// \log p(y_t \mid y_{1:t-1}) \approx \log \sum_i w_{t-1,i}\,p(y_t \mid x_{t,i})
   /// $$

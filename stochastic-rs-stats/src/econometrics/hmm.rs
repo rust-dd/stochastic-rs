@@ -1,5 +1,7 @@
 //! Hidden Markov model with univariate Gaussian emissions: forward–backward, Baum–Welch, Viterbi.
 //!
+//! Only `baum_welch` estimates and refuses a constant series; the others score the model as given.
+//!
 //! Reference: Baum et al. (1970), Ann. Math. Statist. 41(1), 164-171, DOI: 10.1214/aoms/1177697196
 //! Reference: Rabiner (1989), Proceedings of the IEEE 77(2), 257-286, DOI: 10.1109/5.18626
 
@@ -28,7 +30,7 @@ pub struct HmmFit {
   pub iterations: usize,
   /// Final log-likelihood after the last iteration.
   pub log_likelihood: f64,
-  /// `true` if the convergence criterion was met before `max_iter`.
+  /// An EM step changed the log-likelihood by less than `tol` within `max_iter` steps.
   pub converged: bool,
 }
 

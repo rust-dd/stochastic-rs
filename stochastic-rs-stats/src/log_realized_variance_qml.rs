@@ -126,7 +126,7 @@ pub struct LogRealizedVarianceQmlDiagnostics {
   pub selected_iterations: usize,
   /// Sum of iterations over all deterministic starts.
   pub total_iterations: usize,
-  /// Whether the selected maximum-likelihood start converged.
+  /// The selected start's simplex met a `1e-10` spread of its values within its iteration budget.
   pub converged: bool,
 }
 

@@ -4,7 +4,7 @@
 //!
 //! Reference: Anderson–Darling (1952), Ann. Math. Stat. 23(2), 193–212, 10.1214/aoms/1177729437
 //! Reference: Stephens (1974), JASA 69(347), 730–737, DOI: 10.1080/01621459.1974.10480196
-//! Reference: Stephens (1986), Goodness-of-Fit Techniques, Table 4.9, ISBN 0-8247-7487-6
+//! Reference: Stephens (1986), Goodness-of-Fit Techniques, Table 4.9 via nortest, ISBN 0824774876
 //! Reference: Gross & Ligges (2015), nortest 1.0-4, `ad.test`, DOI: 10.32614/CRAN.package.nortest
 
 use ndarray::ArrayView1;

@@ -5,7 +5,7 @@
 //! h=0.9\,\min\!\left(\hat\sigma,\frac{\mathrm{IQR}}{1.34}\right)n^{-1/5}
 //! $$
 //!
-//! Reference: Silverman (1986), Density Estimation for Statistics and Data Analysis, §3.4.2
+//! Reference: Silverman (1986), Density Estimation, §3.4.2, DOI: 10.1201/9781315140919
 
 use std::f64::consts::PI;
 

@@ -206,7 +206,7 @@ pub struct GarchFit {
   pub backcast: f64,
   /// Simplex iterations plus L-BFGS polishing iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
   /// Number of observations.
   pub nobs: usize,

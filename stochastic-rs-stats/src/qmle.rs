@@ -55,6 +55,7 @@ pub struct QmleFit {
   pub log_likelihood: f64,
   /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
+  /// The simplex met a `1e-10` spread of its values, a stall included; `true` for the closed form.
   pub converged: bool,
 }
 

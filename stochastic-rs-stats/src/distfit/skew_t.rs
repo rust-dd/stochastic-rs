@@ -40,7 +40,7 @@ pub struct SkewTFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
 }
 

@@ -1,7 +1,5 @@
 // docs: stats#adf-stationarity-test
-//! Backs the ADF example on the statistics catalog page. `adf_test` lives
-//! under the `stationarity` module (OLS regression via
-//! `ndarray-linalg`), so the whole file is gated on that feature.
+//! Backs the ADF example on the statistics catalog page.
 
 use ndarray::ArrayView1;
 use stochastic_rs::simd_rng::Deterministic;

@@ -1,4 +1,6 @@
 //! Spectral analysis utilities (periodogram and FFT-based spectrum search).
+//!
+//! A constant signal has a periodogram too: its power sits at 0 Hz, which detrending removes.
 
 use std::f64::consts::PI;
 

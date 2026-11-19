@@ -43,7 +43,7 @@ pub struct ParticleMleFit {
   pub log_likelihood: f64,
   /// Nelder-Mead iterations.
   pub iterations: usize,
-  /// Whether the optimiser converged.
+  /// The simplex met a `1e-10` spread of its values within 250 iterations, a stall included.
   pub converged: bool,
 }
 

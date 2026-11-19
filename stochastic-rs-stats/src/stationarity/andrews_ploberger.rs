@@ -76,8 +76,8 @@ impl Default for AndrewsPlobergerConfig {
 pub struct AndrewsPlobergerTest {
   /// Test statistic.
   pub statistic: f64,
-  /// Upper bound on the p-value: `0.01`, `0.05`, `0.10` or `1.0`, the smallest tabulated level
-  /// whose critical value the statistic reaches.
+  /// Upper bound on the p-value, the smallest of `0.01`, `0.05`, `0.10` whose critical value the
+  /// statistic reaches, else `1.0`: a rejection at a tabulated `alpha` reads `p_value == alpha`.
   pub p_value: Option<f64>,
   pub critical_values: Option<CriticalValues>,
   /// Whether the parameter-constancy null is rejected at `alpha`; `None` off the table.
