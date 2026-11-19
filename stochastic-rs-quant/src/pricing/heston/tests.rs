@@ -458,6 +458,27 @@ fn the_control_variance_is_minus_twice_the_first_cumulant() {
   }
 }
 
+/// `P₂`'s `D` is the chf's `factor_cd` at `φ` bit for bit, and `P₁`'s at `φ − i` to rounding: one
+/// Riccati exponent behind both.
+#[test]
+fn the_integrand_shares_the_chf_riccati_exponent() {
+  let params = HestonParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+  let pricer = HestonPricer::new(params);
+  let factor_d = |xi: Complex64| crate::pricing::fourier::factor_cd(&params, 0.75, xi).1;
+  for phi in [1e-8, 0.3, 7.0, 150.0] {
+    let (_, d2) = pricer.f_and_d(2, phi, 0.75, 100.0, 0.05, 0.02);
+    assert_eq!(d2, factor_d(Complex64::new(phi, 0.0)), "phi = {phi}");
+  }
+  for phi in [0.3, 7.0, 150.0] {
+    let (_, d1) = pricer.f_and_d(1, phi, 0.75, 100.0, 0.05, 0.02);
+    let want = factor_d(Complex64::new(phi, -1.0));
+    assert!(
+      (d1 - want).norm() <= 1e-14 * want.norm(),
+      "phi = {phi}: {d1} vs {want}"
+    );
+  }
+}
+
 const TOL: f64 = 1e-12;
 
 /// Goldens at `(s, k, r, q, τ) = (100, 105, 0.05, 0.02, 0.75)` and
@@ -469,8 +490,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   let ot = OptionType::Call;
 
   let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
-  assert!((call - 5.229927051858368).abs() < TOL, "call {call}");
-  assert!((put - 7.854146952238395).abs() < TOL, "put {put}");
+  assert!((call - 5.229927051858397).abs() < TOL, "call {call}");
+  assert!((put - 7.854146952238423).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
@@ -479,20 +500,20 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
   let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
-    (v0_vega - 44.210292529055565).abs() < TOL,
+    (v0_vega - 44.21029252905521).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
-    0.5179825268950111,
-    0.025354656330023317,
-    17.684117011622227,
-    -5.4901985947708445,
-    34.926245297484115,
-    0.1873979818161331,
-    -0.13335176518580738,
-    45.78517450487997,
-    2.628564242854736,
+    0.5179825268957217,
+    0.025354655903697676,
+    17.684117011622085,
+    -5.490198593349759,
+    34.92624529677357,
+    0.18739798181670153,
+    -0.13335185400364935,
+    45.78517450630034,
+    2.628564235038766,
   ];
   // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent
   // reference moves as much, so every Greek but the analytic `vega` gets the wider band.

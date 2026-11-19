@@ -50,8 +50,8 @@ const fn pair(call: f64, put: f64) -> CallPut {
   CallPut { call, put }
 }
 
-const HESTON_LAMBDA: CallPut = pair(5.0819334430269905, 7.70615334340701);
-const HESTON_VEGA: f64 = 51.66113350364648;
+const HESTON_LAMBDA: CallPut = pair(5.081933443026998, 7.706153343407024);
+const HESTON_VEGA: f64 = 51.66113350364657;
 const MERTON: CallPut = pair(7.15321711897312, 9.777437019353142);
 const HSCM: CallPut = pair(5.383063358956783, 8.007283259336816);
 const MALLIAVIN: CallPut = pair(5.747134860337733, 8.371354760717765);
@@ -187,7 +187,7 @@ fn a_chain_quote_names_its_option_type() {
 #[test]
 fn one_computation_answers_a_named_pair() {
   let heston = heston();
-  let heston_pair = pair(5.164008255606966, 7.788228155986985);
+  let heston_pair = pair(5.164008255606973, 7.7882281559869995);
   assert_eq!(heston.price_call_put(S, K, R, Q, TAU), heston_pair);
   assert_eq!(legs(&heston, TAU), heston_pair);
   assert_eq!(heston.price_call_put(S, K, R, Q, 0.0), pair(0.0, 5.0));

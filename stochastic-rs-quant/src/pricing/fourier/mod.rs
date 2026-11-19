@@ -32,6 +32,7 @@ pub use frft::frft;
 pub use heston::DoubleHestonFourier;
 pub use heston::HestonFourier;
 pub(crate) use heston::factor_cd;
+pub(crate) use heston::riccati_cd;
 pub use hybrid::BatesFourier;
 pub use hybrid::HkdeFourier;
 pub use hybrid::HkdeParams;

@@ -7,9 +7,7 @@ use super::FourierModelExt;
 use super::heston_cumulants;
 use crate::pricing::heston::HestonParams;
 
-/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`: the Little-Trap form with `g̃`
-/// multiplied out by its denominator `κ − iρσξ + d`, which is 0 at `ξ = −i` when `ρσ > κ`.
-/// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`.
 pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, Complex64) {
   let HestonParams {
     kappa,
@@ -19,10 +17,20 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
     ..
   } = *p;
   let i = Complex64::i();
-  let sigma2 = sigma * sigma;
   let beta = kappa - rho * sigma * i * xi;
-  let moment = i * xi + xi * xi;
+  riccati_cd(beta, i * xi + xi * xi, kappa * theta, sigma * sigma, t)
+}
 
+/// `(C, D)` solving `C' = κθD`, `D' = ½σ²D² − βD − ½m` from zero: the Little-Trap form with `g̃`
+/// multiplied out by its denominator `β + d`, which is 0 at `ξ = −i` when `ρσ > κ`.
+/// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+pub(crate) fn riccati_cd(
+  beta: Complex64,
+  moment: Complex64,
+  kappa_theta: f64,
+  sigma2: f64,
+  t: f64,
+) -> (Complex64, Complex64) {
   let d = (beta * beta + sigma2 * moment).sqrt();
   let exp_dt = (-d * t).exp();
   let decay = if d == Complex64::ZERO {
@@ -32,7 +40,7 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
   };
   let denom = (beta + d) * decay + 2.0 * exp_dt;
 
-  let c_val = (kappa * theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
+  let c_val = (kappa_theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
   let d_val = -moment * decay / denom;
 
   (c_val, d_val)
