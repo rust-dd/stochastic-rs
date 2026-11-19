@@ -5,9 +5,8 @@
 //! $$
 //!
 //! Source:
-//! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers"
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., the standard
-//!   barrier options' sixteen combinations of `A`–`F`
+//! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
+//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", §4.17.1, ISBN 0071389970
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
 use rayon::prelude::*;

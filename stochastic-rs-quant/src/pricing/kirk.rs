@@ -118,10 +118,7 @@ mod tests {
   /// aarch64-darwin dev machine and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
-  /// Values captured from `PricerExt::calculate_call_put()` **before** the
-  /// model/query reshape, at `KirkSpreadPricer::new(f1, f2, x, r, v1, v2,
-  /// corr, Some(tau), None, None)`. The reshape and the later `spread_*`
-  /// rename are API changes only, so these must not move.
+  /// Two pinned spread pairs: a change of call shape must not move a price.
   #[test]
   fn kirk_call_put_matches_pre_refactor_goldens() {
     let heat_rate = KirkSpreadPricer::new(0.35, 0.35, 0.90);

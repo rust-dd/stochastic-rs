@@ -7,6 +7,7 @@
 //!
 //! Source:
 //! - Rubinstein, M. (1991), "Options for the Undecided", *RISK Magazine* 4(4)
+//! - Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine* 4(2), 13
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
 //!
 use owens_t::biv_norm;
@@ -18,8 +19,7 @@ use crate::pricing::exotic::ComplexChooserOption;
 use crate::pricing::exotic::ForwardStartOption;
 use crate::pricing::exotic::assert_sigma;
 
-/// Black–Scholes prices of the simple and complex choosers (Rubinstein 1991) and of the forward
-/// start (Rubinstein 1990).
+/// Black–Scholes prices of Rubinstein's (1991) simple and complex choosers and forward start.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChooserPricer {
   /// Annualised Black–Scholes volatility.
