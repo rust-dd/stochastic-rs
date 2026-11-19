@@ -52,7 +52,7 @@ pub struct BarrierPricer {
 }
 
 impl BarrierPricer {
-  /// Panics unless `sigma` is finite and positive.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` an unbreached barrier is NaN before expiry.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }
@@ -209,7 +209,8 @@ pub struct DoubleBarrierPricer {
 }
 
 impl DoubleBarrierPricer {
-  /// Five series terms on either side; panics unless `sigma` is finite and positive.
+  /// Five series terms on either side; panics unless `sigma` is finite and `>= 0`. At `0` a spot
+  /// inside the corridor is NaN before expiry.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma, terms: 5 }

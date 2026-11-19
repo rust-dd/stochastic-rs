@@ -27,7 +27,8 @@ pub struct ChooserPricer {
 }
 
 impl ChooserPricer {
-  /// Panics unless `sigma` is finite and positive.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the simple chooser and the forward start
+  /// price their deterministic limits, NaN at the money forward, and the complex chooser NaN.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }

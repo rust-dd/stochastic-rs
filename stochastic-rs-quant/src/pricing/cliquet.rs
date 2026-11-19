@@ -41,7 +41,8 @@ pub struct CliquetPricer {
 }
 
 impl CliquetPricer {
-  /// Panics unless `sigma` is finite and positive.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the deterministic limit, NaN where a local
+  /// bound equals the period's forward return.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }

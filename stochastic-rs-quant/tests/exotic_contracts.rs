@@ -358,3 +358,119 @@ fn the_variance_swap_functions_take_the_query() {
   };
   assert!((VarianceSwapPricer::pnl(0.06, &terms) - 2_000.0).abs() < 1e-9);
 }
+
+fn assert_the_single_volatility_rule(what: &str, build: fn(f64)) {
+  build(0.0);
+  for sigma in [-0.25, f64::INFINITY, f64::NAN] {
+    let panic = std::panic::catch_unwind(|| build(sigma)).expect_err(what);
+    let message = panic.downcast_ref::<String>().cloned().unwrap_or_default();
+    let rule =
+      format!("sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}");
+    assert_eq!(message, rule, "{what}");
+  }
+}
+
+#[test]
+fn every_exotic_pricer_takes_a_finite_non_negative_sigma() {
+  assert_the_single_volatility_rule("barrier", |sigma| {
+    let _ = BarrierPricer::new(sigma);
+  });
+  assert_the_single_volatility_rule("double barrier", |sigma| {
+    let _ = DoubleBarrierPricer::new(sigma);
+  });
+  assert_the_single_volatility_rule("lookback", |sigma| {
+    let _ = LookbackPricer::new(sigma);
+  });
+  assert_the_single_volatility_rule("chooser", |sigma| {
+    let _ = ChooserPricer::new(sigma);
+  });
+  assert_the_single_volatility_rule("compound", |sigma| {
+    let _ = CompoundPricer::new(sigma);
+  });
+  assert_the_single_volatility_rule("cliquet", |sigma| {
+    let _ = CliquetPricer::new(sigma);
+  });
+}
+
+#[test]
+fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
+  let chooser = ChooserPricer::new(0.0);
+  let simple = ChooserOption {
+    strike: 100.0,
+    choice_time: 0.5,
+  };
+  let forward_less_strike = S * (-Q).exp() - 100.0 * (-R).exp();
+  assert_eq!(
+    chooser.price_simple(&simple, S, R, Q, 1.0),
+    forward_less_strike
+  );
+  let forward_start = ForwardStartOption {
+    moneyness: 1.0,
+    start_time: 0.25,
+    option_type: OptionType::Call,
+  };
+  let started = S * (-Q * 0.25).exp() * ((-Q * 0.75).exp() - (-R * 0.75).exp());
+  assert_pinned!(
+    chooser.price_forward_start(&forward_start, S, R, Q, 1.0),
+    started
+  );
+  let floored = CliquetOption {
+    notional: 100.0,
+    periods: 12,
+    local_floor: Some(0.0),
+    local_cap: None,
+    global_floor: None,
+    global_cap: None,
+  };
+  let plain = CliquetOption {
+    local_floor: None,
+    ..floored
+  };
+  let cliquet = CliquetPricer::new(0.0);
+  assert_eq!(
+    cliquet.price(&floored, R, Q, 1.0),
+    cliquet.price(&plain, R, Q, 1.0)
+  );
+  let lookbacks = LookbackPricer::new(0.0);
+  let off_the_low = lookback(None, Some(90.0), None, OptionType::Call);
+  assert_pinned!(
+    lookbacks.price(&off_the_low, S, R, R, 1.0),
+    10.0 * (-R).exp()
+  );
+
+  let complex = ComplexChooserOption {
+    call_strike: 105.0,
+    call_tau: 1.0,
+    put_strike: 95.0,
+    put_tau: 0.75,
+    choice_time: 0.4,
+  };
+  let call_on_call = CompoundOption {
+    outer_strike: 5.0,
+    outer_tau: 0.25,
+    inner_strike: 100.0,
+    compound_type: CompoundType::CallOnCall,
+  };
+  let up_out = barrier(BarrierType::UpAndOut, OptionType::Call, 0.0);
+  for (what, price) in [
+    (
+      "barrier",
+      BarrierPricer::new(0.0).price(&up_out, S, R, Q, 1.0),
+    ),
+    (
+      "double barrier",
+      DoubleBarrierPricer::new(0.0).price(&CORRIDOR, S, R, Q, 1.0),
+    ),
+    (
+      "drifting lookback",
+      lookbacks.price(&off_the_low, S, R, Q, 1.0),
+    ),
+    ("complex chooser", chooser.price_complex(&complex, S, R, Q)),
+    (
+      "compound",
+      CompoundPricer::new(0.0).price(&call_on_call, S, R, Q, 1.0),
+    ),
+  ] {
+    assert!(price.is_nan(), "{what}: {price}");
+  }
+}

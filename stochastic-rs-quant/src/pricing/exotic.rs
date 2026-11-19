@@ -103,11 +103,11 @@ pub struct AutocallableNote {
   pub memory: bool,
 }
 
-/// The volatility the closed-form exotic pricers divide by.
+/// The single-volatility rule; at `sigma = 0` a closed form answers its deterministic limit or NaN.
 #[track_caller]
 pub(crate) fn assert_sigma(sigma: f64) {
   assert!(
-    sigma.is_finite() && sigma > 0.0,
-    "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = {sigma:?}"
+    sigma.is_finite() && sigma >= 0.0,
+    "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
   );
 }

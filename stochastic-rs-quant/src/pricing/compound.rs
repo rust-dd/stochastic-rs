@@ -58,7 +58,7 @@ pub struct CompoundPricer {
 }
 
 impl CompoundPricer {
-  /// Panics unless `sigma` is finite and positive.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }

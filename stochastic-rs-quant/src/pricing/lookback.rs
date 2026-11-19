@@ -29,7 +29,8 @@ pub struct LookbackPricer {
 }
 
 impl LookbackPricer {
-  /// Panics unless `sigma` is finite and positive.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but a carry within `1e-10` of 0 prices
+  /// its deterministic limit while the spot is off the extreme the payoff compares it with.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }

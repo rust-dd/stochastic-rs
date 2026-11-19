@@ -105,7 +105,9 @@ fn double_barrier_refuses_a_negative_series_length() {
 }
 
 #[test]
-#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
-fn a_closed_form_barrier_divides_by_sigma() {
-  let _ = BarrierPricer::new(0.0);
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"
+)]
+fn a_closed_form_barrier_refuses_a_negative_sigma() {
+  let _ = BarrierPricer::new(-0.25);
 }

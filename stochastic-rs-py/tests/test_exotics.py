@@ -108,10 +108,25 @@ def test_the_variance_swap_pricer_keeps_its_strikes():
         lambda sigma: sr.CliquetPricer(s=100.0, notional=100.0, m=12, t=1.0, r=0.04, q=0.01, sigma=sigma),
     ],
 )
-def test_an_exotic_pricer_refuses_a_volatility_it_cannot_divide_by(build):
-    for sigma in (0.0, -0.25, math.inf, math.nan):
-        with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`"):
+def test_an_exotic_pricer_takes_a_finite_non_negative_volatility(build):
+    build(0.0)
+    for sigma in (-0.25, math.inf, math.nan):
+        with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`"):
             build(sigma)
+
+
+def test_an_exotic_pricer_at_zero_volatility_prices_its_deterministic_limit_or_nan():
+    chooser = sr.SimpleChooserPricer(s=100.0, k=100.0, r=0.05, q=0.02, sigma=0.0, t1=0.5, t=1.0)
+    assert chooser.price() == pytest.approx(2.896924880604118, **LIBM)
+    floored = sr.CliquetPricer(s=100.0, notional=100.0, m=12, t=1.0, r=0.04, q=0.01, sigma=0.0, local_floor=0.0)
+    assert floored.price() == pytest.approx(2.8859742821983847, **LIBM)
+    for pricer in [
+        sr.BarrierPricer(h=130.0, t=1.0, barrier_type="up_out", **{**BARRIER, "sigma": 0.0}),
+        sr.DoubleBarrierPricer(s=100.0, t=1.0, **{**CORRIDOR, "sigma": 0.0}),
+        sr.FloatingLookbackPricer(t=1.0, **{**LOOKBACK, "sigma": 0.0}),
+        sr.CompoundPricer(s=100.0, k1=5.0, k2=100.0, t1=0.25, t2=1.0, r=0.05, q=0.02, sigma=0.0, compound_type="coc"),
+    ]:
+        assert math.isnan(pricer.price())
 
 
 def test_a_breached_or_expired_barrier_pays_out_and_a_query_outside_the_domain_is_nan():
