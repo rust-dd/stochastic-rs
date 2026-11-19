@@ -43,7 +43,8 @@ enum Horizon {
 }
 
 impl MertonStructural {
-  /// Construct a Merton model.
+  /// Panics unless `asset_value`, `debt_face_value` and `asset_volatility` are finite and
+  /// positive and `risk_free_rate` and `asset_payout` finite.
   pub fn new(
     asset_value: f64,
     debt_face_value: f64,
@@ -51,9 +52,30 @@ impl MertonStructural {
     risk_free_rate: f64,
     asset_payout: f64,
   ) -> Self {
-    assert!(asset_value > 0.0, "asset_value must be positive");
-    assert!(debt_face_value > 0.0, "debt_face_value must be positive");
-    assert!(asset_volatility > 0.0, "asset_volatility must be positive");
+    assert!(
+      asset_value.is_finite() && asset_value > 0.0,
+      "asset_value must satisfy `asset_value.is_finite() && asset_value > 0.0`, got asset_value = \
+       {asset_value:?}"
+    );
+    assert!(
+      debt_face_value.is_finite() && debt_face_value > 0.0,
+      "debt_face_value must satisfy `debt_face_value.is_finite() && debt_face_value > 0.0`, got \
+       debt_face_value = {debt_face_value:?}"
+    );
+    assert!(
+      asset_volatility.is_finite() && asset_volatility > 0.0,
+      "asset_volatility must satisfy `asset_volatility.is_finite() && asset_volatility > 0.0`, got \
+       asset_volatility = {asset_volatility:?}"
+    );
+    assert!(
+      risk_free_rate.is_finite(),
+      "risk_free_rate must satisfy `risk_free_rate.is_finite()`, got risk_free_rate = \
+       {risk_free_rate:?}"
+    );
+    assert!(
+      asset_payout.is_finite(),
+      "asset_payout must satisfy `asset_payout.is_finite()`, got asset_payout = {asset_payout:?}"
+    );
     Self {
       asset_value,
       debt_face_value,

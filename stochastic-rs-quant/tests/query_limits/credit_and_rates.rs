@@ -186,3 +186,43 @@ fn a_rate_helpers_errors_name_every_quote_by_the_helpers_own_position() {
     other => panic!("{other:?}"),
   }
 }
+
+#[test]
+#[should_panic(
+  expected = "asset_value must satisfy `asset_value.is_finite() && asset_value > 0.0`, got asset_value = inf"
+)]
+fn an_infinite_merton_asset_value_is_a_precondition() {
+  let _ = MertonStructural::new(f64::INFINITY, 80.0, 0.3, 0.05, 0.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "debt_face_value must satisfy `debt_face_value.is_finite() && debt_face_value > 0.0`, got debt_face_value = -1.0"
+)]
+fn a_negative_merton_face_value_is_a_precondition() {
+  let _ = MertonStructural::new(100.0, -1.0, 0.3, 0.05, 0.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "asset_volatility must satisfy `asset_volatility.is_finite() && asset_volatility > 0.0`, got asset_volatility = NaN"
+)]
+fn a_nan_merton_asset_volatility_is_a_precondition() {
+  let _ = MertonStructural::new(100.0, 80.0, f64::NAN, 0.05, 0.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "risk_free_rate must satisfy `risk_free_rate.is_finite()`, got risk_free_rate = NaN"
+)]
+fn a_nan_merton_rate_is_a_precondition() {
+  let _ = MertonStructural::new(100.0, 80.0, 0.3, f64::NAN, 0.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "asset_payout must satisfy `asset_payout.is_finite()`, got asset_payout = inf"
+)]
+fn an_infinite_merton_payout_is_a_precondition() {
+  let _ = MertonStructural::new(100.0, 80.0, 0.3, 0.05, f64::INFINITY);
+}
