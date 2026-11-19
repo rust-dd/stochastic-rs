@@ -15,16 +15,21 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::DoubleBarrierOption;
 use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::std_err_from_sums;
+use crate::traits::ModelPricer;
 
 /// Barrier type for single-barrier options.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +58,8 @@ impl BarrierPricer {
     Self { sigma }
   }
 
-  /// Reiner–Rubinstein price of `option` at the query `(s, r, q, tau)`.
+  /// Reiner–Rubinstein price at `(s, r, q, tau)`; a spot on or past the barrier has knocked out to
+  /// the rebate or in to the vanilla, `tau = 0` pays out, and a negative or NaN `tau` is NaN.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let BarrierOption {
       strike: k,
@@ -62,6 +68,24 @@ impl BarrierPricer {
       barrier_type,
       option_type,
     } = *option;
+    if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
+    let breached = match barrier_type {
+      BarrierType::DownAndIn | BarrierType::DownAndOut => s <= h,
+      BarrierType::UpAndIn | BarrierType::UpAndOut => s >= h,
+    };
+    match (breached, knock_in) {
+      (true, false) => return rebate,
+      (true, true) => {
+        let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
+        return vanilla.price_option(s, k, r, q, tau, option_type);
+      }
+      (false, false) if tau == 0.0 => return vanilla_payoff(option_type, s, k),
+      (false, true) if tau == 0.0 => return rebate,
+      _ => {}
+    }
     let sigma = self.sigma;
 
     let sigma2 = sigma * sigma;
@@ -200,7 +224,8 @@ impl DoubleBarrierPricer {
     Self { terms, ..self }
   }
 
-  /// Ikeda–Kunitomo price of `option` at the query `(s, r, q, tau)`, floored at zero.
+  /// Ikeda–Kunitomo price at `(s, r, q, tau)`, floored at zero; a spot on or outside the corridor
+  /// has knocked out, `tau = 0` pays the payoff, and a negative or NaN `tau` is NaN.
   pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let DoubleBarrierOption {
       strike: k,
@@ -208,6 +233,15 @@ impl DoubleBarrierPricer {
       upper: h_u,
       option_type,
     } = *option;
+    if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if s <= h_l || s >= h_u {
+      return 0.0;
+    }
+    if tau == 0.0 {
+      return vanilla_payoff(option_type, s, k);
+    }
     let sigma = self.sigma;
 
     let sigma2 = sigma * sigma;
@@ -244,7 +278,7 @@ impl DoubleBarrierPricer {
       price += direct - reflected;
     }
 
-    price.max(0.0)
+    price.max_or_nan(0.0)
   }
 }
 

@@ -100,21 +100,15 @@ fn heston_discrete_correction_vanishes_with_n() {
   assert!((k_disc_fine - k_cont).abs() < (k_disc_coarse - k_cont).abs());
 }
 
-/// A non-positive maturity is invalid input, not a not-computable point:
-/// there is no window to annualise over. It returned `0.0` before, which
-/// `bsm_fair_strike_is_sigma_squared` shows is a value the same type also
-/// produces as a genuine answer.
+/// A maturity that is not positive leaves no window to annualise over.
 #[test]
-#[should_panic(expected = "maturity tau must be strictly positive (got 0)")]
-fn replication_rejects_a_nonpositive_maturity() {
-  let _ = VarianceSwapPricer::fair_strike_replication(
-    &[90.0, 100.0, 110.0],
-    &[1.0, 2.0, 1.0],
-    100.0,
-    0.0,
-    0.0,
-    0.0,
-  );
+fn replication_is_nan_at_a_maturity_that_is_not_positive() {
+  for tau in [0.0, -1.0, f64::NAN] {
+    let strikes = [90.0, 100.0, 110.0];
+    let got =
+      VarianceSwapPricer::fair_strike_replication(&strikes, &[1.0, 2.0, 1.0], 100.0, 0.0, 0.0, tau);
+    assert!(got.is_nan(), "tau={tau}: {got}");
+  }
 }
 
 /// The trapezoidal weights read `strikes[i±1]`, so one strike is not a
@@ -280,49 +274,45 @@ fn replication_weights_reject_an_empty_strip() {
 }
 
 #[test]
-#[should_panic(expected = "maturity must be strictly positive (got 0)")]
-fn replication_weights_reject_a_zero_maturity() {
-  let _ = replication_weights(&[90.0, 100.0, 110.0], 0.0);
-}
-
-#[test]
-#[should_panic(expected = "maturity must be strictly positive (got -1)")]
-fn replication_weights_reject_a_negative_maturity() {
-  let _ = replication_weights(&[90.0, 100.0, 110.0], -1.0);
-}
-
-/// `replication_weights` and `fair_strike_replication` are meant to be used
-/// together — one hedges what the other prices — so they must agree about
-/// which inputs are errors. They did not: the sibling panicked on a
-/// one-point strip and a non-positive maturity while this one returned an
-/// all-zero weight vector, which replicates nothing and prices a zero
-/// strike downstream with no signal.
-#[test]
-fn the_replication_pair_rejects_the_same_inputs() {
-  for (strikes, tau) in [
-    (vec![100.0], 1.0),
-    (vec![90.0, 100.0, 110.0], 0.0),
-    (vec![90.0, 100.0, 110.0], -1.0),
-  ] {
-    let prices = vec![1.0; strikes.len()];
-    let sibling = std::panic::catch_unwind(|| {
-      VarianceSwapPricer::fair_strike_replication(&strikes, &prices, 100.0, 0.0, 0.0, tau)
-    })
-    .is_err();
-    let weights = std::panic::catch_unwind(|| replication_weights(&strikes, tau)).is_err();
-    assert_eq!(
-      sibling, weights,
-      "strikes={strikes:?} tau={tau}: fair_strike_replication panicked={sibling}, \
-       replication_weights panicked={weights}"
+fn replication_weights_are_nan_at_a_maturity_that_is_not_positive() {
+  for maturity in [0.0, -1.0, f64::NAN] {
+    let weights = replication_weights(&[90.0, 100.0, 110.0], maturity);
+    assert!(
+      weights.iter().all(|w| w.is_nan()),
+      "maturity={maturity}: {weights:?}"
     );
-    assert!(sibling, "strikes={strikes:?} tau={tau} must be rejected");
+  }
+}
+
+/// One hedges what the other prices, so both refuse a one-strike strip and both answer a maturity
+/// that is not positive with NaN.
+#[test]
+fn the_replication_pair_agrees_on_its_inputs() {
+  let one_strike = |tau: f64| {
+    let strike = std::panic::catch_unwind(|| {
+      VarianceSwapPricer::fair_strike_replication(&[100.0], &[1.0], 100.0, 0.0, 0.0, tau)
+    });
+    let weights = std::panic::catch_unwind(|| replication_weights(&[100.0], tau));
+    (strike.is_err(), weights.is_err())
+  };
+  assert_eq!(one_strike(1.0), (true, true));
+  for tau in [0.0, -1.0] {
+    let strikes = [90.0, 100.0, 110.0];
+    let strike =
+      VarianceSwapPricer::fair_strike_replication(&strikes, &[1.0; 3], 100.0, 0.0, 0.0, tau);
+    let weights = replication_weights(&strikes, tau);
+    assert!(
+      strike.is_nan() && weights.iter().all(|w| w.is_nan()),
+      "tau={tau}"
+    );
   }
 }
 
 #[test]
-#[should_panic(expected = "maturity tau must be non-negative (got -1)")]
-fn heston_fair_strike_rejects_a_negative_maturity() {
-  let _ = VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.04, -1.0);
+fn heston_fair_strike_is_nan_at_a_negative_or_nan_maturity() {
+  for tau in [-1.0, f64::NAN] {
+    assert!(VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.04, tau).is_nan());
+  }
 }
 
 /// `tau == 0` is the genuine $T \to 0$ limit of

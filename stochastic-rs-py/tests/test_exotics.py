@@ -112,3 +112,44 @@ def test_an_exotic_pricer_refuses_a_volatility_it_cannot_divide_by(build):
     for sigma in (0.0, -0.25, math.inf, math.nan):
         with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`"):
             build(sigma)
+
+
+def test_a_breached_or_expired_barrier_pays_out_and_a_query_outside_the_domain_is_nan():
+    knocked_out = dict(s=75.0, k=100.0, h=80.0, r=0.05, q=0.0, sigma=0.2, barrier_type="down_out", option_type="put")
+    assert sr.BarrierPricer(t=0.5, **knocked_out).price() == 0.0
+    assert sr.BarrierPricer(t=0.0, **knocked_out).price() == 0.0
+    up_out = dict(s=135.0, k=100.0, h=130.0, r=0.05, q=0.02, sigma=0.25, t=1.0, barrier_type="up_out", rebate=3.0)
+    assert sr.BarrierPricer(**up_out).price() == 3.0
+    knocked_in = sr.BarrierPricer(s=75.0, k=100.0, h=80.0, r=0.05, q=0.02, sigma=0.25, t=1.0, barrier_type="down_in")
+    vanilla = sr.BSMPricer(s=75.0, v=0.25, k=100.0, r=0.05, tau=1.0, q=0.02)
+    assert knocked_in.price() == pytest.approx(vanilla.price(), **LIBM)
+    for barrier_type, option_type, rebate, payoff in [
+        ("up_in", "call", 3.0, 3.0),
+        ("up_out", "put", 0.0, 0.0),
+        ("down_out", "call", 0.0, 0.0),
+    ]:
+        h = 130.0 if barrier_type.startswith("up") else 80.0
+        kw = dict(h=h, t=0.0, barrier_type=barrier_type, option_type=option_type, rebate=rebate, **BARRIER)
+        assert sr.BarrierPricer(**kw).price() == payoff
+    for t in (-1.0, math.nan):
+        assert math.isnan(sr.BarrierPricer(h=130.0, t=t, barrier_type="up_out", **BARRIER).price())
+        assert math.isnan(sr.DoubleBarrierPricer(s=100.0, t=t, **CORRIDOR).price())
+        assert math.isnan(sr.FloatingLookbackPricer(t=t, **LOOKBACK).price())
+
+
+def test_the_double_barrier_and_the_lookbacks_pay_out_at_expiry():
+    assert sr.DoubleBarrierPricer(s=110.0, t=0.0, **CORRIDOR).price() == 10.0
+    assert sr.DoubleBarrierPricer(s=90.0, t=0.0, option_type="put", **CORRIDOR).price() == 10.0
+    assert sr.DoubleBarrierPricer(s=140.0, t=1.0, **CORRIDOR).price() == 0.0
+    assert sr.DoubleBarrierPricer(s=60.0, t=1.0, option_type="put", **CORRIDOR).price() == 0.0
+    assert sr.FloatingLookbackPricer(t=0.0, **LOOKBACK).price() == 0.0
+    assert sr.FixedLookbackPricer(k=90.0, t=0.0, **LOOKBACK).price() == 10.0
+    assert sr.FixedLookbackPricer(k=110.0, t=0.0, option_type="put", **LOOKBACK).price() == 10.0
+
+
+def test_the_variance_swap_strikes_are_nan_for_a_maturity_outside_their_domain():
+    strikes = [90.0, 100.0, 110.0]
+    for t in (0.0, -1.0, math.nan):
+        assert math.isnan(sr.VarianceSwapPricer(100.0, 0.05, 0.02, t).fair_strike_replication(strikes, [1.0, 2.0, 1.0]))
+    assert math.isnan(sr.VarianceSwapPricer(100.0, 0.05, 0.02, -1.0).fair_strike_heston(0.04, 1.5, 0.06))
+    assert sr.VarianceSwapPricer(100.0, 0.05, 0.02, 0.0).fair_strike_heston(0.04, 1.5, 0.06) == 0.04

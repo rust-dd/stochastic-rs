@@ -48,7 +48,7 @@ impl VarianceSwapPricer {
   }
 
   /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip, `K_0` nearest the forward,
-  /// floored at 0 unless NaN; panics on bad lengths or `tau ≤ 0` (strike order/NaN: debug only).
+  /// floored at 0 unless NaN, and NaN unless `tau > 0`; panics on bad lengths (order: debug only).
   pub fn fair_strike_replication(
     strikes: &[f64],
     otm_prices: &[f64],
@@ -67,10 +67,9 @@ impl VarianceSwapPricer {
       n >= 2,
       "static replication needs at least 2 strikes (got {n})"
     );
-    assert!(
-      tau > 0.0,
-      "maturity tau must be strictly positive (got {tau})"
-    );
+    if tau.is_nan() || tau <= 0.0 {
+      return f64::NAN;
+    }
     debug_assert!(
       strikes.windows(2).all(|w| w[0] <= w[1]),
       "strikes must be sorted ascending"
@@ -109,9 +108,11 @@ impl VarianceSwapPricer {
   }
 
   /// Brockhaus–Long continuous-monitoring fair strike, which reads only `v0`, `kappa` and `theta`;
-  /// `v0` at `tau = 0`, the genuine limit, and a panic for a negative or NaN `tau`.
+  /// `v0` at `tau = 0`, the genuine limit, and NaN for a negative or NaN `tau`.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, tau: f64) -> f64 {
-    assert!(tau >= 0.0, "maturity tau must be non-negative (got {tau})");
+    if tau.is_nan() || tau < 0.0 {
+      return f64::NAN;
+    }
     if tau == 0.0 {
       return v0;
     }
@@ -170,17 +171,16 @@ impl VarianceSwapPricer {
 }
 
 /// Log-contract replication weights $\frac{2}{T}\frac{\Delta K_i}{K_i^2}$ (Demeterfi et al. eq. 28)
-/// in `strikes` order; panics on fewer than two strikes or a non-positive `maturity`.
+/// in `strikes` order; panics on fewer than two strikes, all NaN unless `maturity > 0`.
 pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   let n = strikes.len();
   assert!(
     n >= 2,
     "static replication needs at least 2 strikes (got {n})"
   );
-  assert!(
-    maturity > 0.0,
-    "maturity must be strictly positive (got {maturity})"
-  );
+  if maturity.is_nan() || maturity <= 0.0 {
+    return vec![f64::NAN; n];
+  }
 
   let mut w = vec![0.0; n];
   for i in 0..n {
@@ -222,9 +222,12 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike with a short-maturity convexity correction for its
-  /// dispersion; panics unless the variance strike is positive (κ → 0 too); NaN for a NaN `sigma`.
+  /// Heston vol strike: the variance strike less a short-maturity convexity correction; panics
+  /// unless that strike is positive (κ → 0 too), NaN for a NaN `sigma` or a negative or NaN `tau`.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau < 0.0 {
+      return f64::NAN;
+    }
     let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
     assert!(
       k_var > 0.0,

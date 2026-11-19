@@ -13,6 +13,7 @@
 //! - Conze, A. & Viswanathan, R. (1991), "Path Dependent Options: The Case of Lookback Options"
 //! - Haug, E.G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
@@ -34,11 +35,30 @@ impl LookbackPricer {
     Self { sigma }
   }
 
-  /// Price of `option` at the query `(s, r, q, tau)`.
+  /// Price of `option` at the query `(s, r, q, tau)`; at `tau = 0` its payoff on the running
+  /// extremes, and NaN for a negative or NaN `tau`.
   pub fn price(&self, option: &LookbackOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if tau == 0.0 {
+      return Self::payoff(option, s);
+    }
     match option.strike {
       None => self.floating(option, s, r, q, tau),
       Some(k) => self.fixed(option, k, s, r, q, tau),
+    }
+  }
+
+  /// The running minimum and maximum each include the spot.
+  fn payoff(option: &LookbackOption, s: f64) -> f64 {
+    let low = option.running_min.unwrap_or(s).min_or_nan(s);
+    let high = option.running_max.unwrap_or(s).max_or_nan(s);
+    match (option.strike, option.option_type) {
+      (None, OptionType::Call) => s - low,
+      (None, OptionType::Put) => high - s,
+      (Some(k), OptionType::Call) => (high - k).max_or_nan(0.0),
+      (Some(k), OptionType::Put) => (k - low).max_or_nan(0.0),
     }
   }
 
