@@ -21,8 +21,8 @@ use super::types::SwaptionDirection;
 use crate::curves::DiscountCurve;
 use crate::traits::RealExt;
 
-/// Hull-White swaption by Jamshidian's decomposition, the notional repaid with the last coupon; at
-/// `tau = 0` the swap's value floored at 0, NaN for a negative or NaN `tau`; panics on a bad leg.
+/// Hull-White swaption by Jamshidian, the notional repaid with the last coupon; at `tau = 0` the
+/// swap's value floored at 0, NaN for a negative or NaN `tau` or no root `r*`; panics on a bad leg.
 #[allow(clippy::too_many_arguments)]
 pub fn price_jamshidian_hull_white<T: RealExt>(
   direction: SwaptionDirection,
@@ -94,7 +94,7 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
     let p_to = curve.discount_factor(t_to);
     let p_from = curve.discount_factor(t_from);
     if p_from <= T::zero() {
-      return T::zero();
+      return T::nan();
     }
     let b_val = b_fn(t_from, t_to);
     let f_val = f_market(t_from);
@@ -111,6 +111,7 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
   };
 
   let mut r_star = f_market(t0);
+  let mut solved = false;
   for _ in 0..200 {
     let mut f_val = -notional;
     let mut fp_val = T::zero();
@@ -121,14 +122,19 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
       f_val += cashflows[i] * v;
       fp_val += cashflows[i] * (-b_i) * v;
     }
-    if fp_val.abs() < T::from_f64_fast(1e-16) {
+    let dr = f_val / fp_val;
+    if f_val == T::zero() || !dr.is_finite() {
+      solved = f_val == T::zero();
       break;
     }
-    let dr = f_val / fp_val;
     r_star -= dr;
     if dr.abs() < T::from_f64_fast(1e-12) {
+      solved = true;
       break;
     }
+  }
+  if !solved {
+    return T::nan();
   }
 
   let p0 = curve.discount_factor(t0);
@@ -149,19 +155,22 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
     };
     let sigma_p = variance_p.sqrt();
 
-    let contribution = if sigma_p <= T::zero() || x_i <= T::zero() || p0 <= T::zero() {
-      let put_intrinsic = (x_i * p0 - p_ti).max(T::zero());
-      let call_intrinsic = (p_ti - x_i * p0).max(T::zero());
+    if !(x_i > T::zero() && p0 > T::zero()) {
+      return T::nan();
+    }
+    let contribution = if sigma_p <= T::zero() {
+      let put_intrinsic = (x_i * p0 - p_ti).max_or_nan(T::zero());
+      let call_intrinsic = (p_ti - x_i * p0).max_or_nan(T::zero());
       match direction {
         SwaptionDirection::Payer => cashflows[i] * put_intrinsic,
         SwaptionDirection::Receiver => cashflows[i] * call_intrinsic,
       }
     } else {
-      let sp = sigma_p.to_f64().unwrap_or(0.0);
-      let ln_term = (p_ti / (x_i * p0)).to_f64().unwrap_or(0.0).ln();
+      let sp = sigma_p.to_f64().unwrap_or(f64::NAN);
+      let ln_term = (p_ti / (x_i * p0)).to_f64().unwrap_or(f64::NAN).ln();
       let h = ln_term / sp + 0.5 * sp;
-      let xp0 = (x_i * p0).to_f64().unwrap_or(0.0);
-      let pti = p_ti.to_f64().unwrap_or(0.0);
+      let xp0 = (x_i * p0).to_f64().unwrap_or(f64::NAN);
+      let pti = p_ti.to_f64().unwrap_or(f64::NAN);
       match direction {
         SwaptionDirection::Payer => {
           let zbp = xp0 * norm_cdf(-h + sp) - pti * norm_cdf(-h);
@@ -203,7 +212,7 @@ pub struct JamshidianHullWhiteSwaption<T: RealExt> {
 }
 
 impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
-  /// Build a Jamshidian-priced European swaption under Hull-White.
+  /// Panics unless `mean_reversion` is finite and `sigma` finite and not negative.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     direction: SwaptionDirection,
@@ -215,6 +224,15 @@ impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
     mean_reversion: T,
     sigma: T,
   ) -> Self {
+    assert!(
+      mean_reversion.is_finite(),
+      "mean_reversion must satisfy `mean_reversion.is_finite()`, got mean_reversion = \
+       {mean_reversion:?}"
+    );
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       direction,
       strike,

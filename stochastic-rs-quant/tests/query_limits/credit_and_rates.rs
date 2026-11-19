@@ -8,6 +8,7 @@ use stochastic_rs_quant::credit::MertonStructural;
 use stochastic_rs_quant::curves::BootstrapInstrument;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::instruments::option::JamshidianHullWhiteSwaption;
 use stochastic_rs_quant::instruments::option::SwaptionDirection;
 use stochastic_rs_quant::instruments::option::price_jamshidian_hull_white;
 use stochastic_rs_quant::market::RateHelper;
@@ -225,4 +226,87 @@ fn a_nan_merton_rate_is_a_precondition() {
 )]
 fn an_infinite_merton_payout_is_a_precondition() {
   let _ = MertonStructural::new(100.0, 80.0, 0.3, 0.05, f64::INFINITY);
+}
+
+/// `P(0, 800)` underflows to 0 on a 100 % curve, and Hull–White's `A(T₀, Tᵢ)` divides by it.
+#[test]
+fn a_jamshidian_swaption_on_a_discount_factor_that_underflows_is_nan() {
+  let curve = DiscountCurve::from_zero_rates(
+    array![1.0, 10.0].view(),
+    array![1.0, 1.0].view(),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let coupons: Vec<f64> = (1..=4).map(|i| 800.0 + 0.5 * f64::from(i)).collect();
+  for direction in [SwaptionDirection::Payer, SwaptionDirection::Receiver] {
+    let price = price_jamshidian_hull_white(
+      direction, 0.03, 1e6, 800.0, &coupons, &[0.5; 4], 0.05, 0.01, &curve,
+    );
+    assert!(price.is_nan(), "{direction}: {price}");
+  }
+}
+
+/// At a strike of −300 % every cash flow of the coupon bond is negative: it never prices at par.
+#[test]
+fn a_jamshidian_swaption_with_no_critical_rate_is_nan() {
+  for direction in [SwaptionDirection::Payer, SwaptionDirection::Receiver] {
+    let price = jamshidian(direction, -3.0, 1.0);
+    assert!(price.is_nan(), "{direction}: {price}");
+  }
+}
+
+/// A NaN read of the curve reaches the deterministic limit `σ = 0` too, where `max` dropped it.
+#[test]
+fn a_nan_curve_read_is_nan_at_zero_volatility() {
+  let curve = DiscountCurve::from_arrays(
+    array![1.0, 5.0, 10.0].view(),
+    array![0.97, f64::NAN, 0.67].view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
+  let coupons: Vec<f64> = (1..=10).map(|i| 1.0 + 0.5 * f64::from(i)).collect();
+  let price = price_jamshidian_hull_white(
+    SwaptionDirection::Payer,
+    0.03,
+    1e6,
+    1.0,
+    &coupons,
+    &[0.5; 10],
+    0.05,
+    0.0,
+    &curve,
+  );
+  assert!(price.is_nan(), "{price}");
+}
+
+#[test]
+#[should_panic(
+  expected = "mean_reversion must satisfy `mean_reversion.is_finite()`, got mean_reversion = NaN"
+)]
+fn a_nan_hull_white_mean_reversion_is_a_precondition() {
+  let _ = JamshidianHullWhiteSwaption::new(
+    SwaptionDirection::Payer,
+    0.03,
+    1e6,
+    1.0,
+    vec![1.5, 2.0],
+    vec![0.5, 0.5],
+    f64::NAN,
+    0.01,
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = -0.01"
+)]
+fn a_negative_hull_white_sigma_is_a_precondition() {
+  let _ = JamshidianHullWhiteSwaption::new(
+    SwaptionDirection::Payer,
+    0.03,
+    1e6,
+    1.0,
+    vec![1.5, 2.0],
+    vec![0.5, 0.5],
+    0.05,
+    -0.01,
+  );
 }
