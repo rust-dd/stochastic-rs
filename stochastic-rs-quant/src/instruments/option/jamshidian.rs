@@ -21,14 +21,8 @@ use super::types::SwaptionDirection;
 use crate::curves::DiscountCurve;
 use crate::traits::RealExt;
 
-/// Analytic Hull-White European swaption priced via Jamshidian decomposition.
-///
-/// * `coupon_times` and `accrual_factors` describe the underlying fixed leg
-///   (time from today to each coupon payment and its accrual fraction). The
-///   final coupon time is the swap maturity $T_n$; the notional redemption is
-///   implicitly added at that date.
-/// * `mean_reversion` is $a$, `sigma` is $\sigma$ in the Hull-White SDE.
-/// * `curve` supplies the initial market discount factors $P^M(0,\cdot)$.
+/// Hull-White swaption by Jamshidian's decomposition, the notional repaid with the last coupon; at
+/// `tau = 0` the swap's value floored at 0, NaN for a negative or NaN `tau`; panics on a bad leg.
 #[allow(clippy::too_many_arguments)]
 pub fn price_jamshidian_hull_white<T: RealExt>(
   direction: SwaptionDirection,
@@ -50,7 +44,9 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
     accrual_factors.len(),
     "coupon_times and accrual_factors must have equal length"
   );
-  assert!(tau > T::zero(), "tau must be strictly positive");
+  if tau.is_nan() || tau < T::zero() {
+    return T::nan();
+  }
   for &t in coupon_times {
     assert!(t >= tau, "coupon times must be on or after `tau`");
   }
@@ -65,6 +61,18 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
       if i == n - 1 { base + notional } else { base }
     })
     .collect();
+
+  if tau == T::zero() {
+    let mut bond = T::zero();
+    for (cashflow, t) in cashflows.iter().zip(coupon_times) {
+      bond += *cashflow * curve.discount_factor(*t);
+    }
+    let swap = match direction {
+      SwaptionDirection::Payer => notional - bond,
+      SwaptionDirection::Receiver => bond - notional,
+    };
+    return swap.max_or_nan(T::zero());
+  }
 
   let b_fn = |t_from: T, t_to: T| -> T {
     let tau = t_to - t_from;
@@ -232,5 +240,77 @@ impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
       self.sigma,
       curve,
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+  use crate::curves::InterpolationMethod;
+
+  fn curve() -> DiscountCurve<f64> {
+    let times = array![0.0, 1.0, 5.0, 10.0];
+    let rates = array![0.03, 0.03, 0.035, 0.04];
+    DiscountCurve::from_zero_rates(
+      times.view(),
+      rates.view(),
+      InterpolationMethod::LinearOnZeroRates,
+    )
+  }
+
+  fn price(direction: SwaptionDirection, strike: f64, tau: f64) -> f64 {
+    let coupon_times = (1..=10)
+      .map(|i| tau + 0.5 * f64::from(i))
+      .collect::<Vec<f64>>();
+    let accruals = [0.5; 10];
+    price_jamshidian_hull_white(
+      direction,
+      strike,
+      1e6,
+      tau,
+      &coupon_times,
+      &accruals,
+      0.05,
+      0.01,
+      &curve(),
+    )
+  }
+
+  /// The swap's value on today's curve, `N (1 - P(T_n) - K Σ δ_i P(T_i))`, floored at zero.
+  #[test]
+  fn at_expiry_zero_the_swaption_is_the_swaps_intrinsic_value() {
+    let curve = curve();
+    let annuity = (1..=10)
+      .map(|i| 0.5 * curve.discount_factor(0.5 * f64::from(i)))
+      .sum::<f64>();
+    for strike in [0.02, 0.05] {
+      let swap = 1e6 * (1.0 - curve.discount_factor(5.0) - strike * annuity);
+      let payer = price(SwaptionDirection::Payer, strike, 0.0);
+      let receiver = price(SwaptionDirection::Receiver, strike, 0.0);
+      assert!(
+        (payer - swap.max(0.0)).abs() < 1e-9,
+        "K = {strike}: {payer}"
+      );
+      assert!(
+        (receiver - (-swap).max(0.0)).abs() < 1e-9,
+        "K = {strike}: {receiver}"
+      );
+      let live = price(SwaptionDirection::Payer, strike, 1e-10);
+      assert!(
+        (live - payer).abs() < 1e-2,
+        "K = {strike}: {live} near expiry"
+      );
+    }
+  }
+
+  #[test]
+  fn a_negative_or_nan_expiry_is_nan() {
+    for tau in [-0.5, f64::NAN] {
+      for direction in [SwaptionDirection::Payer, SwaptionDirection::Receiver] {
+        assert!(price(direction, 0.03, tau).is_nan(), "tau = {tau}");
+      }
+    }
   }
 }
