@@ -36,6 +36,7 @@ mod recursion;
 #[cfg(test)]
 mod tests;
 mod transform;
+mod units;
 
 use std::convert::Infallible;
 
@@ -53,6 +54,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Conditional-variance recursion to fit.
@@ -181,9 +183,9 @@ pub struct GarchFit {
   pub std_errors: Array1<f64>,
   /// Bollerslev–Wooldridge robust standard errors, aligned with `params`.
   pub robust_std_errors: Array1<f64>,
-  /// Inverse-Hessian covariance $(-H)^{-1}$.
+  /// Inverse-Hessian covariance $(-H)^{-1}$, `±∞` past the double range.
   pub covariance: Array2<f64>,
-  /// Sandwich covariance $H^{-1} J H^{-1}$.
+  /// Sandwich covariance $H^{-1} J H^{-1}$, `±∞` past the double range.
   pub robust_covariance: Array2<f64>,
   /// Fitted conditional variances $\hat\sigma_t^2$.
   pub conditional_variance: Array1<f64>,
@@ -210,8 +212,8 @@ pub struct GarchFit {
   pub nobs: usize,
 }
 
-/// Gaussian QMLE of `spec` on `returns` (NaN standard errors at a singular Hessian); `Err` below 20
-/// returns, on a non-finite one or a zero or overflowing variance, and panics unless `spec.p >= 1`.
+/// Gaussian QMLE of `spec` at unit scale (NaN errors at a singular Hessian); `Err` below 20 points,
+/// a non-finite one, constant returns or a fit past the double range; panics unless `spec.p >= 1`.
 pub fn fit_garch<T: FloatExt>(
   returns: ArrayView1<T>,
   spec: GarchSpec,
@@ -223,15 +225,10 @@ pub fn fit_garch<T: FloatExt>(
     .collect::<Vec<f64>>();
   validate(&r, 20)?;
   reject_constant(&r, "zero-variance returns")?;
+  let (r, unit) = unit_scaled(r);
   let n = r.len();
   let mean = r.iter().sum::<f64>() / n as f64;
   let backcast = r.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
-  // Past the constant check a zero backcast is an underflow, not zero variance.
-  if !(backcast > 0.0 && backcast.is_finite()) {
-    return Err(StatsError::Numerical {
-      stage: "backcast variance",
-    });
-  }
 
   let problem = Problem {
     spec,
@@ -245,23 +242,43 @@ pub fn fit_garch<T: FloatExt>(
     nelder_mead_vec(&theta_nm, 5_000, |theta| problem.objective(theta));
   let (theta, iters_lbfgs) = problem.polish(theta_nm);
 
-  let natural = transform::to_natural(&spec, &theta);
-  let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &natural, &r, backcast);
+  let fitted = transform::to_natural(&spec, &theta);
+  let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
+  if !(fitted.iter().all(|v| v.is_finite()) && log_likelihood.is_finite()) {
+    return Err(StatsError::Numerical { stage: "estimate" });
+  }
   let mut residuals = vec![0.0; n];
   let mut sigma2 = vec![0.0; n];
-  recursion::variance_path(&spec, &natural, &r, backcast, &mut residuals, &mut sigma2);
+  recursion::variance_path(&spec, &fitted, &r, backcast, &mut residuals, &mut sigma2);
   let standardized: Vec<f64> = residuals
     .iter()
     .zip(&sigma2)
     .map(|(e, v)| e / v.sqrt())
     .collect();
-
   let scales = transform::natural_scales(&spec, backcast);
-  let inference = inference::sandwich(&spec, &natural, &r, backcast, &scales);
+  let inference = inference::sandwich(&spec, &fitted, &r, backcast, &scales);
+
+  let natural = units::params(&spec, &fitted, unit)?;
+  let variance = |v: f64| v / unit / unit;
+  let backcast = variance(backcast);
+  let sigma2 = sigma2.into_iter().map(variance).collect::<Vec<f64>>();
+  let residuals = residuals
+    .into_iter()
+    .map(|e| e / unit)
+    .collect::<Vec<f64>>();
+  let lost = !(backcast > 0.0 && backcast.is_finite())
+    || !sigma2.iter().all(|&v| v > 0.0 && v.is_finite())
+    || !residuals.iter().all(|v| v.is_finite());
+  if lost {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  let log_likelihood = log_likelihood + n as f64 * unit.ln();
+  let (covariance, std_errors) = units::covariance(&spec, &inference.covariance, unit);
+  let (robust_covariance, robust_std_errors) =
+    units::covariance(&spec, &inference.robust_covariance, unit);
   let k = natural.len();
-  let std_errors = Array1::from_iter((0..k).map(|i| inference.covariance[[i, i]].sqrt()));
-  let robust_std_errors =
-    Array1::from_iter((0..k).map(|i| inference.robust_covariance[[i, i]].sqrt()));
 
   let split = spec.split(&natural);
   let alpha = Array1::from(split.alpha.to_vec());
@@ -283,8 +300,8 @@ pub fn fit_garch<T: FloatExt>(
     params: Array1::from(natural),
     std_errors,
     robust_std_errors,
-    covariance: inference.covariance,
-    robust_covariance: inference.robust_covariance,
+    covariance,
+    robust_covariance,
     conditional_variance: Array1::from(sigma2),
     residuals: Array1::from(residuals),
     standardized_residuals: Array1::from(standardized),

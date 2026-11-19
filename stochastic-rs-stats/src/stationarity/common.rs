@@ -406,6 +406,12 @@ pub fn unit_scaled(mut y: Vec<f64>) -> (Vec<f64>, f64) {
   (y, unit)
 }
 
+/// `v`, read off data times `unit`, divided by `unit` `power` times: one factor at a time, so that
+/// none overflows where the quotient does not.
+pub fn per_unit(v: f64, unit: f64, power: usize) -> f64 {
+  (0..power).fold(v, |v, _| v / unit)
+}
+
 /// [`unit_scaled`] `y` with `min_n` finite points or more and more than a constant's rounding; the
 /// length comes first, as a series too short to compare is vacuously constant.
 pub fn prepared_with_unit(y: ArrayView1<f64>, min_n: usize) -> Result<(Vec<f64>, f64), StatsError> {

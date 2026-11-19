@@ -8,10 +8,12 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 
+use super::Sample;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
 use crate::StatsError;
+use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
@@ -28,7 +30,7 @@ pub struct VarianceGammaFit {
   pub mu: f64,
   /// Standard errors of `[sigma, nu, theta, mu]`.
   pub std_errors: Array1<f64>,
-  /// Inverse observed information for `[sigma, nu, theta, mu]`.
+  /// Inverse observed information for `[sigma, nu, theta, mu]`, `±∞` past the double range.
   pub covariance: Array2<f64>,
   /// Maximised log-likelihood.
   pub log_likelihood: f64,
@@ -56,12 +58,12 @@ fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
   })
 }
 
-/// Variance-gamma maximum-likelihood fit of `data`; `Err` below 10 observations, on a non-finite
-/// one or a constant sample.
+/// Variance-gamma maximum likelihood of `data` at unit scale; `Err` below 10 observations, on a
+/// non-finite one, a constant sample or an estimate past the double range.
 pub fn fit_variance_gamma<T: FloatExt>(
   data: ArrayView1<T>,
 ) -> Result<VarianceGammaFit, StatsError> {
-  let (x, mean, sd) = sample(data, 10)?;
+  let Sample { x, mean, sd, unit } = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0].exp(), p[1].exp(), p[2], p[3]);
   let mut starts = Vec::new();
   for nu0 in [0.3_f64, 1.0] {
@@ -81,18 +83,26 @@ pub fn fit_variance_gamma<T: FloatExt>(
   let log_likelihood = -log_density(&x, natural[0], natural[1], natural[2], natural[3]);
   let nll = |p: &[f64]| log_density(&x, p[0], p[1], p[2], p[3]);
   let covariance = information_inverse(&nll, &natural, &[natural[0], natural[1], sd, sd]);
-  let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
+  let fit = fit_in_data_units(
+    natural,
+    &covariance,
+    log_likelihood,
+    x.len(),
+    unit,
+    [1, 0, 1, 1],
+  )?;
+  let [sigma, nu, theta, mu] = fit.params;
   let n = x.len() as f64;
   Ok(VarianceGammaFit {
-    sigma: natural[0],
-    nu: natural[1],
-    theta: natural[2],
-    mu: natural[3],
-    std_errors,
-    covariance,
-    log_likelihood,
-    aic: 8.0 - 2.0 * log_likelihood,
-    bic: 4.0 * n.ln() - 2.0 * log_likelihood,
+    sigma,
+    nu,
+    theta,
+    mu,
+    std_errors: fit.std_errors,
+    covariance: fit.covariance,
+    log_likelihood: fit.log_likelihood,
+    aic: 8.0 - 2.0 * fit.log_likelihood,
+    bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
     iterations,
     converged,

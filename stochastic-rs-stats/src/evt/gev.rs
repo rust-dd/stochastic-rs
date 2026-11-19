@@ -23,12 +23,14 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use super::gpd::fit_in_data_units;
 use super::gpd::information_inverse;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
 
@@ -47,7 +49,7 @@ pub struct GevFit {
   pub xi: f64,
   /// Standard errors of `[mu, sigma, xi]`.
   pub std_errors: Array1<f64>,
-  /// Inverse observed information for `[mu, sigma, xi]`.
+  /// Inverse observed information for `[mu, sigma, xi]`, `±∞` past the double range.
   pub covariance: Array2<f64>,
   /// Maximised log-likelihood.
   pub log_likelihood: f64,
@@ -106,8 +108,8 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
   n * sigma.ln() + (1.0 / xi + 1.0) * log_terms + power_terms
 }
 
-/// GEV maximum-likelihood fit to block maxima; `Err` below 10 maxima, on a non-finite maximum or a
-/// constant sample. A singular Hessian at the optimum gives NaN standard errors.
+/// GEV maximum likelihood of block maxima at unit scale; `Err` below 10, on a non-finite maximum, a
+/// constant sample or an estimate past the double range; NaN errors at a singular Hessian.
 pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError> {
   let z = maxima
     .iter()
@@ -115,12 +117,10 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError>
     .collect::<Vec<f64>>();
   validate(&z, 10)?;
   reject_constant(&z, "constant block maxima")?;
+  let (z, unit) = unit_scaled(z);
   let n = z.len();
   let mean = z.iter().sum::<f64>() / n as f64;
   let sd = (z.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)).sqrt();
-  if sd == 0.0 {
-    return Err(StatsError::DegenerateData("constant block maxima"));
-  }
 
   let objective = |p: &[f64]| negative_log_likelihood(&z, p[0], p[1].exp(), p[2]);
   let sigma0 = 6.0_f64.sqrt() * sd / std::f64::consts::PI;
@@ -137,16 +137,24 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError>
 
   let nll = |p: &[f64]| negative_log_likelihood(&z, p[0], p[1], p[2]);
   let covariance = information_inverse(&nll, &[mu, sigma, xi], &[sd, sd, 1.0]);
-  let std_errors = Array1::from_iter((0..3).map(|i| covariance[[i, i]].sqrt()));
+  let fit = fit_in_data_units(
+    [mu, sigma, xi],
+    &covariance,
+    log_likelihood,
+    n,
+    unit,
+    [1, 1, 0],
+  )?;
+  let [mu, sigma, xi] = fit.params;
   Ok(GevFit {
     mu,
     sigma,
     xi,
-    std_errors,
-    covariance,
-    log_likelihood,
-    aic: 6.0 - 2.0 * log_likelihood,
-    bic: 3.0 * (n as f64).ln() - 2.0 * log_likelihood,
+    std_errors: fit.std_errors,
+    covariance: fit.covariance,
+    log_likelihood: fit.log_likelihood,
+    aic: 6.0 - 2.0 * fit.log_likelihood,
+    bic: 3.0 * (n as f64).ln() - 2.0 * fit.log_likelihood,
     nobs: n,
     iterations: iters + iters_restart,
     converged: converged || converged_restart,

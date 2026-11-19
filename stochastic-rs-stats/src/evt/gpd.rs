@@ -33,6 +33,8 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::per_unit;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// GPD maximum-likelihood fit to threshold excesses.
@@ -44,7 +46,7 @@ pub struct GpdFit {
   pub xi: f64,
   /// Standard errors of `[sigma, xi]`.
   pub std_errors: Array1<f64>,
-  /// Inverse observed information for `[sigma, xi]`.
+  /// Inverse observed information for `[sigma, xi]`, `±∞` past the double range.
   pub covariance: Array2<f64>,
   /// Maximised log-likelihood.
   pub log_likelihood: f64,
@@ -126,8 +128,8 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   n * sigma.ln() + (1.0 / xi + 1.0) * acc
 }
 
-/// GPD maximum-likelihood fit to excesses; `Err` below 10, on a negative or non-finite excess or a
-/// constant sample. A singular Hessian at the optimum gives NaN standard errors.
+/// GPD maximum likelihood at unit scale; `Err` below 10 excesses, on a negative or non-finite one,
+/// a constant sample or an estimate past the double range; NaN errors at a singular Hessian.
 pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsError> {
   let y = exceedances
     .iter()
@@ -135,12 +137,10 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsE
     .collect::<Vec<f64>>();
   validate_domain(&y, 10, "finite and >= 0", |v| v >= 0.0)?;
   reject_constant(&y, "constant excesses")?;
+  let (y, unit) = unit_scaled(y);
   let n = y.len();
   let mean = y.iter().sum::<f64>() / n as f64;
   let var = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / n as f64;
-  if mean == 0.0 || var == 0.0 {
-    return Err(StatsError::DegenerateData("constant excesses"));
-  }
 
   let objective = |p: &[f64]| negative_log_likelihood(&y, p[0].exp(), p[1]);
   let ratio = mean * mean / var;
@@ -160,15 +160,16 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsE
 
   let nll = |p: &[f64]| negative_log_likelihood(&y, p[0], p[1]);
   let covariance = information_inverse(&nll, &[sigma, xi], &[mean, 1.0]);
-  let std_errors = Array1::from_iter((0..2).map(|i| covariance[[i, i]].sqrt()));
+  let fit = fit_in_data_units([sigma, xi], &covariance, log_likelihood, n, unit, [1, 0])?;
+  let [sigma, xi] = fit.params;
   Ok(GpdFit {
     sigma,
     xi,
-    std_errors,
-    covariance,
-    log_likelihood,
-    aic: 4.0 - 2.0 * log_likelihood,
-    bic: 2.0 * (n as f64).ln() - 2.0 * log_likelihood,
+    std_errors: fit.std_errors,
+    covariance: fit.covariance,
+    log_likelihood: fit.log_likelihood,
+    aic: 4.0 - 2.0 * fit.log_likelihood,
+    bic: 2.0 * (n as f64).ln() - 2.0 * fit.log_likelihood,
     nobs: n,
     iterations: iters + iters_restart,
     converged: converged || converged_restart,
@@ -190,20 +191,21 @@ pub struct GpdPwmFit {
   pub nobs: usize,
 }
 
-/// Hosking–Wallis probability-weighted-moment GPD estimates over the order statistics `x(i)`; `Err`
-/// below 2, on a negative or non-finite excess or a constant sample.
+/// Hosking–Wallis PWM estimates of the GPD from the order statistics `x(i)`; `Err` below 2, on a
+/// negative or non-finite excess, a constant sample or an estimate past the double range.
 /// $$
 /// a_0 = \bar x,\qquad a_1 = \frac1n\sum_{i=1}^{n}\frac{n - i}{n - 1}\,x_{(i)},\qquad
 /// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1}
 /// $$
 /// Reference: Hosking & Wallis (1987), Technometrics 29(3), 339-349, 10.1080/00401706.1987.10488243
 pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit, StatsError> {
-  let mut y = exceedances
+  let y = exceedances
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
     .collect::<Vec<f64>>();
   validate_domain(&y, 2, "finite and >= 0", |v| v >= 0.0)?;
   reject_constant(&y, "constant excesses")?;
+  let (mut y, unit) = unit_scaled(y);
   let n = y.len();
   y.sort_by(f64::total_cmp);
   let nf = n as f64;
@@ -215,9 +217,11 @@ pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit,
     .sum::<f64>()
     / nf;
   let denominator = a0 - 2.0 * a1;
+  let estimate = [2.0 * a0 * a1 / denominator, 2.0 - a0 / denominator, a0, a1];
+  let [sigma, xi, a0, a1] = params_in_data_units(estimate, unit, [1, 0, 1, 1])?;
   Ok(GpdPwmFit {
-    sigma: 2.0 * a0 * a1 / denominator,
-    xi: 2.0 - a0 / denominator,
+    sigma,
+    xi,
     a0,
     a1,
     nobs: n,
@@ -282,6 +286,64 @@ pub fn mean_excess<T: FloatExt>(data: ArrayView1<T>, thresholds: ArrayView1<f64>
       }
     })
     .collect()
+}
+
+/// A maximum-likelihood fit to the data times `unit`, read in the data's own units.
+pub(crate) struct DataUnits<const K: usize> {
+  pub(crate) params: [f64; K],
+  pub(crate) std_errors: Array1<f64>,
+  pub(crate) covariance: Array2<f64>,
+  pub(crate) log_likelihood: f64,
+}
+
+/// `params` fitted to the data times `unit`, in the data's units (`params[i]` as `unit^powers[i]`);
+/// `Numerical` where one is not finite, or leaves the double range or rounds to zero there.
+pub(crate) fn params_in_data_units<const K: usize>(
+  params: [f64; K],
+  unit: f64,
+  powers: [usize; K],
+) -> Result<[f64; K], StatsError> {
+  if !params.iter().all(|p| p.is_finite()) {
+    return Err(StatsError::Numerical { stage: "estimate" });
+  }
+  let mapped: [f64; K] = std::array::from_fn(|i| per_unit(params[i], unit, powers[i]));
+  if (0..K).any(|i| !mapped[i].is_finite() || (mapped[i] == 0.0 && params[i] != 0.0)) {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  Ok(mapped)
+}
+
+/// [`params_in_data_units`], the covariance and `ℓ + n ln unit`; a standard error is rooted at unit
+/// scale, so it stays finite where its variance leaves the double range.
+pub(crate) fn fit_in_data_units<const K: usize>(
+  params: [f64; K],
+  covariance: &Array2<f64>,
+  log_likelihood: f64,
+  nobs: usize,
+  unit: f64,
+  powers: [usize; K],
+) -> Result<DataUnits<K>, StatsError> {
+  if !log_likelihood.is_finite() {
+    return Err(StatsError::Numerical { stage: "estimate" });
+  }
+  let mapped = params_in_data_units(params, unit, powers)?;
+  let scaled = |i: usize, j: usize| {
+    per_unit(
+      per_unit(covariance[[i, j]], unit, powers[i]),
+      unit,
+      powers[j],
+    )
+  };
+  Ok(DataUnits {
+    params: mapped,
+    std_errors: Array1::from_iter(
+      (0..K).map(|i| per_unit(covariance[[i, i]].sqrt(), unit, powers[i])),
+    ),
+    covariance: Array2::from_shape_fn((K, K), |(i, j)| scaled(i, j)),
+    log_likelihood: log_likelihood + nobs as f64 * unit.ln(),
+  })
 }
 
 /// Inverse of the central-difference Hessian of a negative log-likelihood at `theta`, with steps
