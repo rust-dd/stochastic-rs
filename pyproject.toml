@@ -10,7 +10,11 @@ dynamic = ["version"]
 dependencies = ["numpy"]
 readme = "stochastic-rs-py/README.md"
 license = {text = "MIT"}
-license-files = ["LICENSE", "stochastic-rs-quant/LICENSE-THIRD-PARTY"]
+license-files = [
+  "LICENSE",
+  "stochastic-rs-distributions/src/qmc/JOE_KUO_LICENSE",
+  "stochastic-rs-quant/LICENSE-THIRD-PARTY",
+]
 keywords = [
   "quantitative-finance",
   "option-pricing",
