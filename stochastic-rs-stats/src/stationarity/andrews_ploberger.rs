@@ -25,11 +25,11 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::linalg::inverse;
 use stochastic_rs_distributions::linalg::solve;
 
+use super::common::reject_rounded_constant;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::traits::RealExt;
@@ -131,7 +131,7 @@ pub fn andrews_ploberger_test(
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, 3 * k + 4)?;
   validate_rows(x)?;
-  reject_constant(&y_slice, "constant series")?;
+  reject_rounded_constant(&y_slice)?;
 
   let t_total = y.len();
   let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);

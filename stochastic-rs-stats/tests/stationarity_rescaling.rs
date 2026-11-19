@@ -15,6 +15,10 @@ use stochastic_rs_stats::stationarity::LagSelection;
 use stochastic_rs_stats::stationarity::Trend;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
 use stochastic_rs_stats::stationarity::adf::adf_test;
+use stochastic_rs_stats::stationarity::andrews_ploberger::AndrewsPlobergerConfig;
+use stochastic_rs_stats::stationarity::andrews_ploberger::andrews_ploberger_test;
+use stochastic_rs_stats::stationarity::cusum::CusumConfig;
+use stochastic_rs_stats::stationarity::cusum::cusum_test;
 use stochastic_rs_stats::stationarity::ers_dfgls::ErsConfig;
 use stochastic_rs_stats::stationarity::ers_dfgls::ers_dfgls_test;
 use stochastic_rs_stats::stationarity::kpss::KpssConfig;
@@ -348,6 +352,14 @@ fn a_series_of_neighbouring_doubles_is_a_constant_series_for_every_test() {
     (
       "RESET",
       reset_test(y.view(), design.view(), ResetConfig::default()).err(),
+    ),
+    (
+      "CUSUM",
+      cusum_test(y.view(), design.view(), CusumConfig::default()).err(),
+    ),
+    (
+      "Andrews-Ploberger",
+      andrews_ploberger_test(y.view(), design.view(), AndrewsPlobergerConfig::default()).err(),
     ),
   ];
   for (what, answer) in answers {
