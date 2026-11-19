@@ -69,8 +69,8 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
             assert with_origin.discount_factor(t) == curve.discount_factor(t)
     schedules, par = [[0.5], [0.5, 1.0], [0.5, 1.0, 1.5, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]], [0.03, 0.031, 0.033, 0.036]
     between_pillars = {
-        "cubic": [0.9970267065196697, 0.9775546034999668, 0.9534069436114718, 0.9025143601848119, 0.8692672813661254],
-        "monotone_convex": [0.997074211487444, 0.9775518541513034, 0.9532662540703966, 0.9031137188144021, 0.8697358250631962],
+        "cubic": [0.9970267065196697, 0.9775543514599756, 0.95341309136086, 0.9026089232232755, 0.8694864074212039],
+        "monotone_convex": [0.997074211487444, 0.9775513069916826, 0.953270279696725, 0.903217911261217, 0.8699591028427767],
     }
     for interp, pins in between_pillars.items():
         curve = sr.DiscountCurve.bootstrap_ois(schedules, par, interp=interp)
@@ -87,10 +87,10 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9925833339709303,
         0.9881597638602578,
         0.9852216748768474,
-        0.977369010870871,
-        0.9695789361618652,
-        0.9527773251157939,
-        0.9362668653346841,
+        0.9773711175149336,
+        0.9695831158726758,
+        0.9528031937739929,
+        0.9363136704879836,
     ]
     linear = sr.DiscountCurve.bootstrap_ois(schedules, rates, interp="linear")
     assert [linear.discount_factor(t) for t in reads] == [
@@ -99,10 +99,10 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9925833339709303,
         0.9881597638602578,
         0.9852216748768474,
-        0.9775053832958263,
-        0.9695789361618652,
-        0.9532615040945362,
-        0.9362657494680776,
+        0.9775065696759145,
+        0.9695820741914576,
+        0.9532779954762216,
+        0.9363028823658401,
     ]
     swaps = [(0.032, [1.0], [0.25, 0.5, 0.75, 1.0]), (0.034, [1.0, 2.0], [0.25 * i for i in range(1, 9)])]
     forecast = sr.DiscountCurve.bootstrap_forecast(flat(0.02), [(0.5, 0.03)], [], swaps, interp="log_df")

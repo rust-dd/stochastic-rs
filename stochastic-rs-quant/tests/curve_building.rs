@@ -492,8 +492,8 @@ fn a_read_below_the_first_pillar_moves_the_pillars_after_it_except_under_log_lin
     [
       0.9925833339709303,
       0.9852216748768474,
-      0.9695789361618652,
-      0.9362657494680776
+      0.9695820741914576,
+      0.9363028823658401
     ]
   );
   assert_eq!(
@@ -501,8 +501,8 @@ fn a_read_below_the_first_pillar_moves_the_pillars_after_it_except_under_log_lin
     [
       0.9925833339709303,
       0.9852216748768474,
-      0.9695789361618652,
-      0.9362668653346841
+      0.9695831158726758,
+      0.9363136704879836
     ]
   );
 }

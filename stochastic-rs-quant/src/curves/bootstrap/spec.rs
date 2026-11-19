@@ -27,8 +27,7 @@ impl<T: RealExt> Default for IterativeOptions<T> {
 pub struct BootstrapSpec<'a, T: RealExt> {
   pub instruments: &'a [BootstrapInstrument<T>],
   pub method: InterpolationMethod,
-  /// Bisection in `(0, 1)` when a `Swap`'s direct solve leaves that interval; `None` keeps the
-  /// direct solve.
+  /// Bisection in `(0, 1)` when a `Swap`'s solved node leaves that interval; `None` keeps it.
   pub iterative: Option<IterativeOptions<T>>,
   /// An exogenous discount curve: the result is the tenor's pseudo-discount (forecast) curve
   /// against it.
@@ -36,7 +35,7 @@ pub struct BootstrapSpec<'a, T: RealExt> {
 }
 
 impl<'a, T: RealExt> BootstrapSpec<'a, T> {
-  /// A single-curve bootstrap with the direct solve.
+  /// A single-curve bootstrap without the bisection.
   pub fn new(instruments: &'a [BootstrapInstrument<T>], method: InterpolationMethod) -> Self {
     Self {
       instruments,
