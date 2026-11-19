@@ -175,15 +175,24 @@ def test_the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_a_query_outsid
     assert sr.CliquetPricer(t=0.0, local_floor=0.0, **cliquet).price() == 0.0
     assert sr.CliquetPricer(t=0.0, local_floor=0.01, **cliquet).price() == 100.0 * 12.0 * 0.01
     assert math.isnan(sr.CliquetPricer(t=-1.0, **cliquet).price())
-    chooser = dict(k=100.0, r=0.05, q=0.02, sigma=0.25, t1=0.5)
-    assert sr.SimpleChooserPricer(s=110.0, t=0.0, **chooser).price() == 10.0
-    assert sr.SimpleChooserPricer(s=100.0, t=0.0, **chooser).price() == 0.0
-    assert math.isnan(sr.SimpleChooserPricer(s=100.0, t=-1.0, **chooser).price())
+    chooser = dict(k=100.0, r=0.05, q=0.02, sigma=0.25)
+    assert sr.SimpleChooserPricer(s=110.0, t1=0.0, t=0.0, **chooser).price() == 10.0
+    assert sr.SimpleChooserPricer(s=100.0, t1=0.0, t=0.0, **chooser).price() == 0.0
+    for t1, t in [(0.0, -1.0), (0.5, 0.0), (1.5, 1.0), (-0.1, 1.0)]:
+        assert math.isnan(sr.SimpleChooserPricer(s=100.0, t1=t1, t=t, **chooser).price())
     compound = dict(s=100.0, k1=5.0, k2=100.0, r=0.05, q=0.02, sigma=0.25, compound_type="coc")
-    for t1, t2 in [(0.0, 1.0), (0.25, 0.1), (0.25, math.nan)]:
+    for t1, t2 in [(0.25, 0.1), (0.25, math.nan), (-0.25, 1.0)]:
         assert math.isnan(sr.CompoundPricer(t1=t1, t2=t2, **compound).price())
     strip = sr.VarianceSwapPricer(0.0, 0.05, 0.02, 0.5)
     assert math.isnan(strip.fair_strike_replication([90.0, 100.0, 110.0], [1.0, 2.0, 1.0]))
     assert math.isnan(sr.FixedLookbackPricer(k=90.0, t=1.0, s_max=math.nan, **LOOKBACK).price())
     assert math.isnan(sr.BarrierPricer(h=math.nan, t=0.0, barrier_type="up_out", **BARRIER).price())
     assert math.isnan(sr.DoubleBarrierPricer(s=110.0, t=0.0, **{**CORRIDOR, "h_lower": math.nan}).price())
+
+
+def test_a_compound_decided_at_0_prices_its_exercise_value():
+    compound = dict(k1=5.0, k2=100.0, t1=0.0, r=0.05, q=0.02, sigma=0.25)
+    call_on_call = sr.CompoundPricer(s=100.0, t2=1.0, compound_type="coc", **compound)
+    assert call_on_call.price() == pytest.approx(6.123761928058123, **LIBM)
+    assert sr.CompoundPricer(s=100.0, t2=1.0, compound_type="pop", **compound).price() == 0.0
+    assert sr.CompoundPricer(s=110.0, t2=0.0, compound_type="pop", **compound).price() == 5.0

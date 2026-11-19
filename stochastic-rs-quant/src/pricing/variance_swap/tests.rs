@@ -178,7 +178,7 @@ fn vol_swap_rejects_a_zero_variance_strike() {
   let _ = VolatilitySwapPricer::fair_strike_from_var(0.0, 0.001);
 }
 
-/// A NaN vol-of-vol, which the `k_var > 0` guard cannot see, prices NaN rather than the
+/// A NaN vol-of-vol, which the variance strike's guard cannot see, prices NaN rather than the
 /// dispersion-free `sqrt(k_var)`.
 #[test]
 fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
@@ -211,9 +211,9 @@ fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
       .downcast_ref::<String>()
       .cloned()
       .unwrap_or_else(|| (*err.downcast_ref::<&str>().unwrap_or(&"")).to_string());
-    assert!(
-      msg.contains("heston variance strike must be strictly positive"),
-      "kappa={kappa} gave the wrong panic: {msg}"
+    assert_eq!(
+      msg, "k_var must satisfy `k_var >= 0.0`, got k_var = -0.04",
+      "kappa={kappa}"
     );
   }
 }

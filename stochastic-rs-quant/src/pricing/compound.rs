@@ -15,8 +15,12 @@ use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::CompoundOption;
 use crate::pricing::exotic::assert_sigma;
+use crate::traits::ModelPricer;
 
 /// Compound option type. The outer option has strike $K_1$, maturity $T_1$;
 /// the inner option has strike $K_2$, maturity $T_2 > T_1$.
@@ -58,14 +62,15 @@ pub struct CompoundPricer {
 }
 
 impl CompoundPricer {
-  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but at `outer_tau = 0` the exercise
+  /// value on the inner leg's deterministic limit, NaN at the money forward.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }
   }
 
   /// Geske's price of `option` at the query `(s, r, q, tau)`, `tau` being the inner maturity; NaN
-  /// unless `0 < outer_tau <= tau`.
+  /// unless `0 <= outer_tau <= tau`, and at `outer_tau = 0` the outer payoff on the inner leg.
   pub fn price(&self, option: &CompoundOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let CompoundOption {
       outer_strike: k1,
@@ -73,8 +78,13 @@ impl CompoundPricer {
       inner_strike: k2,
       compound_type,
     } = *option;
-    if !(0.0 < t1 && t1 <= tau) {
+    if !(0.0 <= t1 && t1 <= tau) {
       return f64::NAN;
+    }
+    if t1 == 0.0 {
+      let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
+      let inner = vanilla.price_option(s, k2, r, q, tau, compound_type.inner());
+      return vanilla_payoff(compound_type.outer(), inner, k1);
     }
     let t2 = tau;
     let v = self.sigma;

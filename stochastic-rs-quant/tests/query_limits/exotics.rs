@@ -256,7 +256,7 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
     let price = compound.price(&call_on_call, 100.0, R, Q, tau);
     assert!(price.is_nan(), "tau {tau}: {price}");
   }
-  for outer_tau in [0.0, -0.25, f64::NAN] {
+  for outer_tau in [-0.25, f64::NAN] {
     let option = CompoundOption {
       outer_tau,
       ..call_on_call
@@ -277,7 +277,6 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
   for (choice_time, call_tau, put_tau) in [
     (0.9, 1.0, 0.75),
     (1.2, 1.0, 0.75),
-    (0.0, 1.0, 0.75),
     (-0.1, 1.0, 0.75),
     (f64::NAN, 1.0, 0.75),
     (0.4, 0.0, 0.75),
@@ -297,6 +296,86 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
     ..complex
   };
   assert!(chooser.price_complex(&at_the_put, 100.0, R, Q).is_finite());
+}
+
+/// The first spot in each loop is rc.4's `S*` (call on a call, chooser), where it divided 0 by 0.
+#[test]
+fn a_compound_or_complex_chooser_decided_at_0_answers_its_exercise_value() {
+  use CompoundType::*;
+  let near_rc4 = |got: f64, rc4: f64| (got - rc4).abs() <= 1e-13 * rc4.abs().max(1.0);
+  let vanilla = BsmPricer::new(SIGMA, BsmCoc::Merton1973);
+  let compound = CompoundPricer::new(SIGMA);
+  let decided_at_0 = |compound_type| CompoundOption {
+    outer_strike: 5.0,
+    outer_tau: 0.0,
+    inner_strike: 100.0,
+    compound_type,
+  };
+  let call_on_call = compound.price(&decided_at_0(CallOnCall), 100.0, R, Q, 1.0);
+  assert!(near_rc4(call_on_call, 6.123761928058123), "{call_on_call}");
+  assert_eq!(
+    compound.price(&decided_at_0(PutOnPut), 100.0, R, Q, 1.0),
+    0.0
+  );
+  for (compound_type, at_expiry) in [
+    (CallOnCall, [0.0, 0.0, 5.0]),
+    (CallOnPut, [5.0, 0.0, 0.0]),
+    (PutOnCall, [5.0, 5.0, 0.0]),
+    (PutOnPut, [0.0, 5.0, 5.0]),
+  ] {
+    let option = decided_at_0(compound_type);
+    for s in [87.30032211200975, 90.0, 100.0, 110.0] {
+      let inner = vanilla.price_option(s, 100.0, R, Q, 1.0, compound_type.inner());
+      let exercise = match compound_type.outer() {
+        OptionType::Call => (inner - 5.0).max(0.0),
+        OptionType::Put => (5.0 - inner).max(0.0),
+      };
+      assert_eq!(
+        compound.price(&option, s, R, Q, 1.0),
+        exercise,
+        "{compound_type:?} {s}"
+      );
+    }
+    for (s, payoff) in [90.0, 100.0, 110.0].into_iter().zip(at_expiry) {
+      assert_eq!(
+        compound.price(&option, s, R, Q, 0.0),
+        payoff,
+        "{compound_type:?} {s}"
+      );
+    }
+  }
+
+  let chooser = ChooserPricer::new(SIGMA);
+  let complex = ComplexChooserOption {
+    call_strike: 105.0,
+    call_tau: 1.0,
+    put_strike: 95.0,
+    put_tau: 0.75,
+    choice_time: 0.0,
+  };
+  let better_leg = chooser.price_complex(&complex, 100.0, R, Q);
+  assert!(near_rc4(better_leg, 8.941175726631428), "{better_leg}");
+  for (call_tau, put_tau) in [(1.0, 0.75), (0.0, 0.75), (1.0, 0.0), (0.0, 0.0)] {
+    let option = ComplexChooserOption {
+      call_tau,
+      put_tau,
+      ..complex
+    };
+    for s in [95.46222107518649, 90.0, 100.0, 110.0] {
+      let call = vanilla.price_call(s, 105.0, R, Q, call_tau);
+      let put = vanilla.price_put(s, 95.0, R, Q, put_tau);
+      let price = chooser.price_complex(&option, s, R, Q);
+      assert_eq!(price, call.max(put), "{option:?} {s}");
+    }
+  }
+  let both_expire = ComplexChooserOption {
+    call_tau: 0.0,
+    put_tau: 0.0,
+    ..complex
+  };
+  for (s, payoff) in [(90.0, 5.0), (100.0, 0.0), (110.0, 5.0)] {
+    assert_eq!(chooser.price_complex(&both_expire, s, R, Q), payoff, "{s}");
+  }
 }
 
 #[test]
@@ -329,7 +408,7 @@ fn the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_are_nan_before_it() 
   let chooser = ChooserPricer::new(SIGMA);
   let option = ChooserOption {
     strike: 100.0,
-    choice_time: 0.5,
+    choice_time: 0.0,
   };
   for (s, better_leg) in [(90.0, 10.0), (100.0, 0.0), (110.0, 10.0)] {
     assert_eq!(
@@ -347,6 +426,35 @@ fn the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_are_nan_before_it() 
 }
 
 #[test]
+fn a_simple_chooser_deciding_outside_0_to_tau_is_nan() {
+  let chooser = ChooserPricer::new(SIGMA);
+  for (choice_time, tau) in [
+    (1.5, 1.0),
+    (-0.1, 1.0),
+    (f64::NAN, 1.0),
+    (0.5, 0.0),
+    (-0.1, 0.0),
+  ] {
+    let option = ChooserOption {
+      strike: 100.0,
+      choice_time,
+    };
+    for s in [90.0, 100.0, 110.0] {
+      let price = chooser.price_simple(&option, s, R, Q, tau);
+      assert!(price.is_nan(), "{choice_time} {tau} {s}: {price}");
+    }
+  }
+  for choice_time in [0.0, 0.5, 1.0] {
+    let option = ChooserOption {
+      strike: 100.0,
+      choice_time,
+    };
+    let price = chooser.price_simple(&option, 100.0, R, Q, 1.0);
+    assert!(price.is_finite(), "{choice_time}: {price}");
+  }
+}
+
+#[test]
 fn the_replication_strike_needs_a_positive_spot_and_the_vol_strike_expires_at_sqrt_v0() {
   let strikes = [60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0];
   let otm = [0.02, 0.11, 0.48, 1.57, 5.2, 2.31, 0.83, 0.25, 0.07];
@@ -360,6 +468,19 @@ fn the_replication_strike_needs_a_positive_spot_and_the_vol_strike_expires_at_sq
   for v0 in [0.0, 0.04, 0.09] {
     let at_expiry = VolatilitySwapPricer::fair_strike_heston(v0, 1.5, 0.04, 0.3, 0.0);
     assert_eq!(at_expiry, v0.sqrt(), "{v0}");
+  }
+}
+
+/// `kappa * tau` under 2^-53 rounds the mean-reversion factor to 1, so `v0 = 0` gives a 0 strike.
+#[test]
+fn a_heston_variance_strike_of_0_is_a_vol_strike_of_0_and_a_nan_one_is_nan() {
+  for (v0, theta, tau) in [(0.0, 0.04, 1e-20), (0.0, 0.0, 1.0)] {
+    let strike = VolatilitySwapPricer::fair_strike_heston(v0, 1.5, theta, 0.3, tau);
+    assert_eq!(strike, 0.0, "{v0} {theta} {tau}");
+  }
+  for (v0, kappa, tau) in [(f64::NAN, 1.5, 1.0), (0.04, 0.0, f64::INFINITY)] {
+    let strike = VolatilitySwapPricer::fair_strike_heston(v0, kappa, 0.04, 0.3, tau);
+    assert!(strike.is_nan(), "{v0} {kappa} {tau}: {strike}");
   }
 }
 

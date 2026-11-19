@@ -11,13 +11,17 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
 //!
 use owens_t::biv_norm;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::exotic::ChooserOption;
 use crate::pricing::exotic::ComplexChooserOption;
 use crate::pricing::exotic::ForwardStartOption;
 use crate::pricing::exotic::assert_sigma;
+use crate::traits::ModelPricer;
 
 /// Black–Scholes prices of Rubinstein's (1991) simple and complex choosers and forward start.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,21 +31,21 @@ pub struct ChooserPricer {
 }
 
 impl ChooserPricer {
-  /// Panics unless `sigma` is finite and `>= 0`; at `0` the simple chooser and the forward start
-  /// price their deterministic limits, NaN at the money forward, and the complex chooser NaN.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` each price is its deterministic limit, NaN
+  /// at the money forward, but the complex chooser is NaN unless `choice_time = 0`.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }
   }
 
   /// The simple chooser $W$ above at the query `(s, r, q, tau)`; at `tau = 0` the better leg's
-  /// payoff `|s - strike|`, and NaN for a negative or NaN `tau`.
+  /// payoff `|s - strike|`, and NaN unless `0 <= choice_time <= tau`.
   pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let ChooserOption {
       strike: k,
       choice_time: t1,
     } = *option;
-    if tau.is_nan() || tau < 0.0 {
+    if !(0.0 <= t1 && t1 <= tau) {
       return f64::NAN;
     }
     if tau == 0.0 {
@@ -61,8 +65,8 @@ impl ChooserPricer {
       + k * (-r * tau).exp() * norm_cdf(-y + v * sqrt_t1)
   }
 
-  /// The complex chooser at `(s, r, q)`, its maturities the contract's, through the spot $S^*$ at
-  /// which the call and put are equal; NaN unless `0 < choice_time <= min(call_tau, put_tau)`.
+  /// The complex chooser at `(s, r, q)` through the spot $S^*$ where its legs are equal, the better
+  /// leg at `choice_time = 0`; NaN unless `0 <= choice_time <= min(call_tau, put_tau)`.
   pub fn price_complex(&self, option: &ComplexChooserOption, s: f64, r: f64, q: f64) -> f64 {
     let ComplexChooserOption {
       call_strike: k_call,
@@ -71,8 +75,13 @@ impl ChooserPricer {
       put_tau: t_put,
       choice_time: t1,
     } = *option;
-    if !(0.0 < t1 && t1 <= t_call && t1 <= t_put) {
+    if !(0.0 <= t1 && t1 <= t_call && t1 <= t_put) {
       return f64::NAN;
+    }
+    if t1 == 0.0 {
+      let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
+      let call = vanilla.price_call(s, k_call, r, q, t_call);
+      return call.max_or_nan(vanilla.price_put(s, k_put, r, q, t_put));
     }
     let v = self.sigma;
     let v2 = v * v;

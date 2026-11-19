@@ -451,6 +451,22 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     inner_strike: 100.0,
     compound_type: CompoundType::CallOnCall,
   };
+  let decided_at_0 = CompoundOption {
+    outer_tau: 0.0,
+    ..call_on_call
+  };
+  assert_pinned!(
+    CompoundPricer::new(0.0).price(&decided_at_0, 110.0, R, Q, 1.0),
+    110.0 * (-Q).exp() - 100.0 * (-R).exp() - 5.0
+  );
+  let chosen_at_0 = ComplexChooserOption {
+    choice_time: 0.0,
+    ..complex
+  };
+  assert_pinned!(
+    chooser.price_complex(&chosen_at_0, 110.0, R, Q),
+    110.0 * (-Q).exp() - 105.0 * (-R).exp()
+  );
   let up_out = barrier(BarrierType::UpAndOut, OptionType::Call, 0.0);
   for (what, price) in [
     (
