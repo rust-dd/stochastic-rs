@@ -26,6 +26,7 @@
 //! - Demeterfi, K., Derman, E., Kamal, M. & Zou, J. (1999),
 //!   "More Than You Ever Wanted to Know About Volatility Swaps", Goldman Sachs.
 //! - Brockhaus, O. & Long, D. (2000), "Volatility Swaps Made Simple", Risk 13.
+//! - Swishchuk, A. & Wang, Z. (2017), arXiv:1712.02735, eqs. 10–13: Brockhaus–Long for Heston.
 //! - Bernard, C. & Cui, Z. (2013), "Prices and Asymptotics for Discrete
 //!   Variance Swaps", arXiv:1305.7092.
 //! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",
@@ -225,7 +226,7 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 1 % of `E√V` while `Var(V) ≤ K²/2` and
+  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 0.5 % of `E√V` while `Var(V) ≤ K²/4` and
   /// NaN past `Var(V) = 8K²`, where it turns negative; panics on a negative variance strike `K`.
   pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
     let k_var = VarianceSwapPricer::fair_strike_heston(params, tau);
