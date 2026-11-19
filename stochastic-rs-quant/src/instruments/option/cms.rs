@@ -1,61 +1,70 @@
-//! CMS caplets and floorlets with Hagan's linear TSR adjustment: the natural-timing convexity
-//! plus the payment-delay term; `lambda` is a central difference of $G$ at a flat yield.
+//! CMS caplets and floorlets by Hagan's standard model: the swaption value plus a first-order
+//! convexity correction, with the bond-math `G` linearised at the forward swap rate.
 //!
 //! $$
-//! S_{\mathrm{adj}}=S_0+S_0^{2}\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\lambda(S_0) +
-//!   S_0\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\Delta\,\tfrac{S_0}{1+S_0\Delta},
-//!   \qquad
-//! \lambda(S_0)=\frac{S_0\,G'(S_0)}{G(S_0)},\;
-//! G(S)=\frac{1-(1+S\delta)^{-N}}{S}
+//! G(S)=\frac{S}{(1+S/q)^{\Delta}}\,\frac{1}{1-(1+S/q)^{-n}},\qquad
+//! \frac{V_{\mathrm{cap}}}{D(t_p)}=\frac{C(K)}{L_0}
+//!   +\frac{G'(S_0)}{G(S_0)}\,\mathbb{E}\bigl[(S-S_0)(S-K)^+\bigr]
 //! $$
 //!
-//! Reference: Hagan (2003), "Convexity Conundrums: Pricing CMS Swaps, Caps and Floors", Wilmott
-//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §13.8
+//! Reference: Hagan (2003), "Convexity Conundrums: Pricing CMS Swaps, Caps, and Floors", Wilmott
 
+use stochastic_rs_distributions::special::norm_cdf;
+
+use super::caplet::bachelier_forward_caplet;
+use super::caplet::bachelier_forward_floorlet;
 use super::caplet::black_forward_caplet;
 use super::caplet::black_forward_floorlet;
+use super::types::VolatilityQuoteKind;
 use super::volatility::VolatilityModel;
 use crate::calendar::Frequency;
 use crate::traits::RealExt;
 
-/// Flat-yield annuity-to-par function $G(S)=(1-(1+S\delta)^{-N})/S$.
-fn g_function<T: RealExt>(s: T, n: T, delta: T) -> T {
-  if s.abs() <= T::from_f64_fast(1e-12) {
-    return n * delta;
+/// $G'(S)/G(S)$ of Hagan's (2.13a), `n` periods of `delta` years paid `lag` periods on; by its
+/// series below $|nS\delta| = 10^{-3}$, where the closed form cancels; NaN unless $n, 1+S\delta>0$.
+fn log_slope<T: RealExt>(s: T, n: T, delta: T, lag: T) -> T {
+  let c = T::from_f64_fast;
+  let one = T::one();
+  let x = s * delta;
+  if !(n > T::zero() && one + x > T::zero()) {
+    return T::nan();
   }
-  let discount = T::one() / (T::one() + s * delta);
-  (T::one() - discount.powf(n)) / s
+  let per_x = if (n * x).abs() < c(1e-3) {
+    let c0 = (n + one) / c(2.0) - lag;
+    let c1 = lag - (n + one) * (n + c(5.0)) / c(12.0);
+    let c2 = (n + one) * (n + c(3.0)) / c(8.0) - lag;
+    let c3 = lag + (n + one) * (n * n * n - n * n - c(109.0) * n - c(251.0)) / c(720.0);
+    c0 + x * (c1 + x * (c2 + x * c3))
+  } else {
+    (one - (x * lag + n * x / (n * x.ln_1p()).exp_m1()) / (one + x)) / x
+  };
+  delta * per_x
 }
 
-/// Hagan linear-TSR convexity factor $\lambda = S_0\,G'(S_0)/G(S_0)$.
-///
-/// `swap_years` is the tenor of the CMS-referenced swap; `fixed_freq` is its fixed-leg frequency.
+/// `(n, δ, Δ)` of (2.13a) and (2.13b) for a swap of `swap_years` paid `payment_delay` years on.
+fn periods<T: RealExt>(swap_years: T, fixed_freq: Frequency, payment_delay: T) -> (T, T, T) {
+  let per_year = T::from_f64_fast(f64::from(fixed_freq.periods_per_year()));
+  (
+    swap_years * per_year,
+    T::one() / per_year,
+    payment_delay * per_year,
+  )
+}
+
+/// Hagan's convexity factor $S_0\,G'(S_0)/G(S_0)$ of the standard model (2.13a), for a payment
+/// `payment_delay` years after the swap starts; NaN unless `swap_years` and $1+S_0/q$ are positive.
 pub fn hagan_linear_tsr_convexity_factor<T: RealExt>(
   s0: T,
   swap_years: T,
   fixed_freq: Frequency,
+  payment_delay: T,
 ) -> T {
-  let per_year = T::from_f64_fast(fixed_freq.periods_per_year() as f64);
-  let delta = T::one() / per_year;
-  let n = swap_years * per_year;
-  let bump = s0.abs() * T::from_f64_fast(1e-4);
-  let eps = if bump > T::from_f64_fast(1e-8) {
-    bump
-  } else {
-    T::from_f64_fast(1e-8)
-  };
-  let g0 = g_function(s0, n, delta);
-  if g0.abs() < T::from_f64_fast(1e-14) {
-    return T::zero();
-  }
-  let g_plus = g_function(s0 + eps, n, delta);
-  let g_minus = g_function(s0 - eps, n, delta);
-  let g_prime = (g_plus - g_minus) / (T::from_f64_fast(2.0) * eps);
-  s0 * g_prime / g0
+  let (n, delta, lag) = periods(swap_years, fixed_freq, payment_delay);
+  s0 * log_slope(s0, n, delta, lag)
 }
 
-/// Hagan's convexity-adjusted forward CMS rate; `payment_delay` is $T_{pay}-T_{fix}$ in years,
-/// and its term applies only when the delay is positive.
+/// The rate a CMS swaplet adds to the forward under Black's model, Hagan's (3.5b) over
+/// $D(t_p)$; `payment_delay` is $T_{pay}-T_{fix}$ in years.
 pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   s0: T,
   sigma_black: T,
@@ -64,15 +73,8 @@ pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   fixed_freq: Frequency,
   payment_delay: T,
 ) -> T {
-  let lambda = hagan_linear_tsr_convexity_factor(s0, swap_years, fixed_freq);
-  let variance = sigma_black * sigma_black * t_fix;
-  let natural = s0 * s0 * variance * lambda;
-  let delay = if payment_delay > T::zero() {
-    s0 * variance * payment_delay * s0 / (T::one() + s0 * payment_delay)
-  } else {
-    T::zero()
-  };
-  natural + delay
+  let factor = hagan_linear_tsr_convexity_factor(s0, swap_years, fixed_freq, payment_delay);
+  s0 * factor * (sigma_black * sigma_black * t_fix).exp_m1()
 }
 
 /// A CMS caplet's or floorlet's value with the rate it is priced on.
@@ -80,13 +82,14 @@ pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
 pub struct CmsValuation<T: RealExt> {
   /// Forward swap rate before the adjustment.
   pub forward_swap_rate: T,
-  /// Hagan's convexity adjustment, added to the forward; zero once the rate has fixed.
+  /// What a CMS swaplet adds to the forward, (3.5b) or (3.6b) at the at-the-money vol; zero once
+  /// the rate has fixed.
   pub convexity_adjustment: T,
   pub npv: T,
 }
 
-/// CMS caplet struck at `strike` with Hagan convexity adjustment applied to
-/// the forward CMS rate before Black-76 pricing.
+/// CMS caplet: Hagan's (3.5c), or (3.6c) under a normal vol, at the strike's vol; in the money,
+/// the swaplet at the at-the-money vol plus the floorlet, by (2.21b).
 #[derive(Debug, Clone)]
 pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$.
@@ -107,12 +110,13 @@ pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
   pub fixed_freq: Frequency,
   /// Payment delay $T_{pay}-T_{fix}$ in years (0 for natural timing).
   pub payment_delay: T,
-  /// Volatility model for $\sigma_B(S_0,K,T_{fix})$.
+  /// Volatility model for $\sigma(S_0,K,T_{fix})$, lognormal or normal by its quote kind.
   pub vol: V,
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
-  /// Present value.
+  /// Present value; under a lognormal vol, a forward at or below 0 is read as
+  /// [`black_forward_caplet`] reads it.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -135,7 +139,7 @@ impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
   }
 }
 
-/// CMS floorlet — put on the convexity-adjusted forward CMS rate.
+/// CMS floorlet: Hagan's (3.5d), or (3.6d) under a normal vol, with [`CmsCaplet`]'s parity rule.
 #[derive(Debug, Clone)]
 pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
   /// Fixed strike $K$.
@@ -161,7 +165,8 @@ pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
 }
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
-  /// Present value.
+  /// Present value; under a lognormal vol, a forward at or below 0 is read as
+  /// [`black_forward_floorlet`] reads it.
   pub fn npv(&self) -> T {
     self.valuation().npv
   }
@@ -181,6 +186,70 @@ impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
       &self.vol,
       false,
     )
+  }
+}
+
+/// Hagan's first-order formulas over $D(t_p)$ at one forward, fixing time and $G'(S_0)/G(S_0)$.
+struct FirstOrder {
+  kind: VolatilityQuoteKind,
+  s: f64,
+  t: f64,
+  slope: f64,
+}
+
+impl FirstOrder {
+  /// `σ²τ`, zero at a vol that is not positive, as the Black and Bachelier values treat it.
+  fn variance(&self, sigma: f64) -> f64 {
+    if sigma <= 0.0 {
+      0.0
+    } else {
+      sigma * sigma * self.t
+    }
+  }
+
+  /// The swaplet's rate over the forward, (3.5b) or (3.6b).
+  fn swaplet(&self, sigma: f64) -> f64 {
+    let v = self.variance(sigma);
+    match self.kind {
+      VolatilityQuoteKind::Lognormal => self.slope * self.s * self.s * v.exp_m1(),
+      VolatilityQuoteKind::Normal => self.slope * v,
+    }
+  }
+
+  /// $E[(S-S_0)(S-K)^+]$ for `sign = 1` and $E[(S_0-S)(K-S)^+]$ for `sign = -1`: the brackets of
+  /// (3.5c) and (3.5d), or $a^2\tau\,N(\pm(S_0-K)/a\sqrt\tau)$ of (3.6c) and (3.6d).
+  fn quadratic_payoff(&self, k: f64, sigma: f64, sign: f64) -> f64 {
+    let (s, v) = (self.s, self.variance(sigma));
+    if v == 0.0 {
+      return 0.0;
+    }
+    let root = v.sqrt();
+    match self.kind {
+      VolatilityQuoteKind::Lognormal => {
+        let moneyness = if k > 0.0 { (s / k).ln() } else { f64::INFINITY };
+        let n = |lambda: f64| norm_cdf(sign * (moneyness + lambda * v) / root);
+        s * s * v.exp() * n(1.5) - s * (s + k) * n(0.5) + s * k * n(-0.5)
+      }
+      VolatilityQuoteKind::Normal => v * norm_cdf(sign * (s - k) / root),
+    }
+  }
+
+  /// (3.5c) or (3.6c).
+  fn caplet(&self, k: f64, sigma: f64) -> f64 {
+    let swaption = match self.kind {
+      VolatilityQuoteKind::Lognormal => black_forward_caplet(self.s, k, self.t, sigma),
+      VolatilityQuoteKind::Normal => bachelier_forward_caplet(self.s, k, self.t, sigma),
+    };
+    swaption + self.slope * self.quadratic_payoff(k, sigma, 1.0)
+  }
+
+  /// (3.5d) or (3.6d).
+  fn floorlet(&self, k: f64, sigma: f64) -> f64 {
+    let swaption = match self.kind {
+      VolatilityQuoteKind::Lognormal => black_forward_floorlet(self.s, k, self.t, sigma),
+      VolatilityQuoteKind::Normal => bachelier_forward_floorlet(self.s, k, self.t, sigma),
+    };
+    swaption - self.slope * self.quadratic_payoff(k, sigma, -1.0)
   }
 }
 
@@ -208,92 +277,40 @@ fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
       npv: notional * accrual * discount * moneyness.max_or_nan(T::zero()),
     };
   }
-  let sigma = vol.implied_volatility(s0, strike, t_fix);
-  let ca =
-    hagan_linear_tsr_convexity_adjustment(s0, sigma, t_fix, swap_years, fixed_freq, payment_delay);
-  let s_adj = s0 + ca;
-  let forward_value = if is_caplet {
-    black_forward_caplet(s_adj, strike, t_fix, sigma)
-  } else {
-    black_forward_floorlet(s_adj, strike, t_fix, sigma)
+  let real = |x: T| x.to_f64().unwrap_or(f64::NAN);
+  let (n, delta, lag) = periods(swap_years, fixed_freq, payment_delay);
+  let (s, k) = (real(s0), real(strike));
+  let model = FirstOrder {
+    kind: vol.quote_kind(),
+    s,
+    t: real(t_fix),
+    slope: real(log_slope(s0, n, delta, lag)),
+  };
+  let at_strike = real(vol.implied_volatility(s0, strike, t_fix));
+  // Hagan §3: the swaplet takes the at-the-money vol and the option out of the money its strike's.
+  let adjustment = model.swaplet(real(vol.implied_volatility(s0, s0, t_fix)));
+  let forward_value = match (is_caplet, k >= s) {
+    // (3.5c) needs a positive forward; at or below 0 a Black rate keeps its side of 0, so the
+    // adjusted forward takes the Black caplet's sign-preserving reading.
+    _ if model.kind == VolatilityQuoteKind::Lognormal && !(s > 0.0) => {
+      let black = if is_caplet {
+        black_forward_caplet::<f64>
+      } else {
+        black_forward_floorlet::<f64>
+      };
+      black(s + adjustment, k, model.t, at_strike)
+    }
+    (true, true) => model.caplet(k, at_strike),
+    (true, false) => s + adjustment - k + model.floorlet(k, at_strike),
+    (false, true) if k > s => k - s - adjustment + model.caplet(k, at_strike),
+    (false, _) => model.floorlet(k, at_strike),
   };
   CmsValuation {
     forward_swap_rate: s0,
-    convexity_adjustment: ca,
-    npv: notional * accrual * discount * forward_value,
+    convexity_adjustment: T::from_f64_fast(adjustment),
+    npv: notional * accrual * discount * T::from_f64_fast(forward_value),
   }
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::instruments::option::volatility::SabrVolatility;
-
-  #[test]
-  fn a_known_fixing_pays_its_intrinsic_value_without_the_vol_model() {
-    let vol = SabrVolatility::new(0.035_f64, 0.5, -0.2, 0.4);
-    let caplet = |t_fix: f64| {
-      CmsCaplet {
-        strike: 0.02,
-        notional: 1e6,
-        accrual_factor: 1.0,
-        discount_factor: 0.97,
-        forward_cms: 0.03,
-        t_fix,
-        swap_years: 10.0,
-        fixed_freq: Frequency::SemiAnnual,
-        payment_delay: 0.0,
-        vol,
-      }
-      .npv()
-    };
-    let floorlet = |t_fix: f64| {
-      CmsFloorlet {
-        strike: 0.04,
-        notional: 1e6,
-        accrual_factor: 1.0,
-        discount_factor: 0.97,
-        forward_cms: 0.03,
-        t_fix,
-        swap_years: 10.0,
-        fixed_freq: Frequency::SemiAnnual,
-        payment_delay: 0.0,
-        vol,
-      }
-      .npv()
-    };
-    for t_fix in [-0.5, 0.0] {
-      assert!((caplet(t_fix) - 9700.0).abs() < 1e-6, "t_fix = {t_fix}");
-      assert!((floorlet(t_fix) - 9700.0).abs() < 1e-6, "t_fix = {t_fix}");
-    }
-    assert!(caplet(0.5).is_finite() && caplet(0.5) != caplet(0.0));
-  }
-
-  #[test]
-  fn convexity_factor_is_negative_for_standard_swap() {
-    let lambda = hagan_linear_tsr_convexity_factor(0.04_f64, 10.0, Frequency::SemiAnnual);
-    assert!(lambda < 0.0, "lambda should be negative, got {lambda}");
-    assert!(lambda.is_finite());
-  }
-
-  #[test]
-  fn convexity_factor_goes_to_zero_for_short_swap() {
-    let lambda_long =
-      hagan_linear_tsr_convexity_factor(0.04_f64, 20.0, Frequency::SemiAnnual).abs();
-    let lambda_short =
-      hagan_linear_tsr_convexity_factor(0.04_f64, 1.0, Frequency::SemiAnnual).abs();
-    assert!(
-      lambda_long > lambda_short,
-      "longer swap must show stronger convexity, long={lambda_long} short={lambda_short}"
-    );
-  }
-
-  #[test]
-  fn payment_delay_adds_positive_adjustment() {
-    let nat =
-      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, Frequency::SemiAnnual, 0.0);
-    let delayed =
-      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, Frequency::SemiAnnual, 0.5);
-    assert!(delayed > nat, "delay must push adjustment upwards");
-  }
-}
+mod tests;
