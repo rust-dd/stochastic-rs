@@ -1,4 +1,4 @@
-//! Barrier options: Reiner–Rubinstein for one barrier, Ikeda–Kunitomo for two, and Monte Carlo.
+//! Barrier options: Reiner–Rubinstein for one barrier, Kunitomo–Ikeda for two, and Monte Carlo.
 //!
 //! $$
 //! V_0=e^{-rT}\,\mathbb E^{\mathbb Q}\!\left[\Pi(S_T)\,\mathbf{1}_{\{\tau_H>T\}}\right]
@@ -7,7 +7,8 @@
 //! Reference: Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
 //! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
 //! Reference: Vector Risk (2017), "Single Barrier Option", v8.0.7905, p. 2: Haug's §4.17.1, p. 152
-//! Reference: Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Boundaries"
+//! Reference: Kunitomo & Ikeda (1992), Math. Finance 2(4), DOI 10.1111/j.1467-9965.1992.tb00033.x
+//! Reference: Vector Risk (2017), "Double Barrier Option", v8.0.7970: Haug (1998), §2.10.2, p. 72
 //!
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;

@@ -5,10 +5,12 @@
 //!     -Se^{-qT}N(-y) + Ke^{-rT}N(-y + \sigma\sqrt{t_1})
 //! $$
 //!
-//! Reference: Rubinstein, M. (1991), "Options for the Undecided", *RISK Magazine* 4(4)
+//! Reference: Rubinstein, M. (1991), "Options for the Undecided", *Risk* 4(4), 43
 //! Reference: Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine*
 //! Reference: Vector Risk (2017), "Forward Start Option", v8.0.7905, p. 2: Rubinstein's 4(2), 13
-//! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
+//! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
+//! Reference: Vector Risk (2017), "Simple Chooser Option", v8.0.7905, p. 1: Haug's §4.12.1, p. 128
+//! Reference: Vector Risk (2017), "Complex Chooser Option", v8.0.7905, p. 2: Haug's §4.12.2, p. 129
 //!
 use owens_t::biv_norm;
 use stochastic_rs_distributions::RealExt;
