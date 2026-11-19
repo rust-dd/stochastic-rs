@@ -1,5 +1,6 @@
 //! The tanh-sinh rule on one panel, its error read from the last level difference.
-//! Takahasi & Mori (1974), Publ. RIMS Kyoto Univ. 9, 721–741; levels as in `quadrature` 0.1.2.
+//! Reference: Takahasi & Mori (1974), Publ. RIMS 9, 721–741, (3.3), DOI 10.2977/prims/1195192451
+//! Ported from `quadrature` 0.1.2 and J. D. Cook's C++, both BSD: notices in `LICENSE-THIRD-PARTY`.
 
 use std::f64::consts::PI;
 

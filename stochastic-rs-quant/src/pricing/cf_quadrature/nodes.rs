@@ -1,5 +1,6 @@
-//! Tanh-sinh nodes on `[-1, 1]` at steps `1` to `1/64` over `|t| ≤ 3`, each correctly rounded from
-//! mpmath at 50 digits: bit for bit the table of `quadrature` 0.1.2, J. D. Cook's rule.
+//! Tanh-sinh nodes on `[-1, 1]` at steps `1` to `1/64` over `|t| ≤ 3`, each correctly rounded.
+//! Reference: Takahasi & Mori (1974), Publ. RIMS 9, 721–741, (3.3), DOI 10.2977/prims/1195192451
+//! Ported from `quadrature` 0.1.2 and J. D. Cook's C++, both BSD: notices in `LICENSE-THIRD-PARTY`.
 
 /// `(h·½π·cosh t / cosh²(½π·sinh t), tanh(½π·sinh t))` at the `t > 0` each level adds: `1, 2, 3` at
 /// `h = 1`, then the odd multiples of `h = 2⁻ˡ`.

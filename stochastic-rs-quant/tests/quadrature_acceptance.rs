@@ -24,7 +24,7 @@ fn call(params: HestonParams, s: f64, k: f64, tau: f64) -> f64 {
 }
 
 /// `(params, s, k, τ, call)` at `r = 0.05`, `q = 0`. The squared difference left the first seven
-/// `1.8e-5`, `2.3e-6`, `3.4e-7`, `4.3e-7`, `6.3e-8`, `6.8e-5`, `1.3e-5` off; the last is now worst.
+/// `1.8e-5`, `2.3e-6`, `3.4e-7`, `4.3e-7`, `6.3e-8`, `6.8e-5`, `1.3e-5` off, and the last `3.1e-9`.
 const CELLS: [(HestonParams, f64, f64, f64, f64); 8] = [
   (BASE, 73.5, 100.0, 0.25, 7.156_161_445_821_137e-5),
   (BASE, 86.0, 100.0, 0.1, 3.425_079_336_968_455_6e-3),
@@ -47,7 +47,7 @@ fn heston_cells_the_squared_difference_passed_unresolved_match_mpmath() {
   }
 }
 
-/// `σ = 8`, `ρ = −0.99` far out of the money a few hours from expiry, where mpmath's value is below
+/// `σ = 8`, `ρ = −0.99` far out of the money 16 hours from expiry, where mpmath's value is below
 /// `1e-28`: the squared difference priced it `0.0344`.
 #[test]
 fn a_vol_of_vol_of_8_far_from_the_money_prices_zero() {
