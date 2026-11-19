@@ -42,7 +42,7 @@ pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> Result<HillFit, S
   assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, 0)?;
   let mut positive = x.into_iter().filter(|v| *v > 0.0).collect::<Vec<f64>>();

@@ -49,7 +49,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variogram {
 
 /// `H = 2 − D` (the fBm identity), reported unclamped so a fit outside `(0, 1)` stays visible.
 fn fd_to_hurst<T: FloatExt>(fd: crate::fractal_dim::FdFit<T>) -> Result<HurstFit<T>, StatsError> {
-  let d = fd.d.to_f64().unwrap_or(f64::NAN);
+  let d = fd.d.to_f64().unwrap();
   if !d.is_finite() {
     return Err(StatsError::DegenerateData("non-finite fractal dimension"));
   }

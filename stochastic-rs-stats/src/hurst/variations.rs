@@ -157,7 +157,7 @@ pub(crate) fn filtered_variation<T: FloatExt>(x: ArrayView1<T>, a: &[f64], dilat
   for i in 0..(n - span) {
     let mut d = 0.0;
     for (k, &ak) in a.iter().enumerate() {
-      d += ak * x[i + k * dilation].to_f64().unwrap_or(0.0);
+      d += ak * x[i + k * dilation].to_f64().unwrap();
     }
     v += d * d;
   }
@@ -186,7 +186,7 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
 ) -> Result<(f64, f64, f64), StatsError> {
   let n = x.len();
-  let to = |i: usize| x[i].to_f64().unwrap_or(0.0);
+  let to = |i: usize| x[i].to_f64().unwrap();
   let sum1: f64 = (0..(n - 4))
     .map(|i| {
       let d = to(i + 4) - 2.0 * to(i + 2) + to(i);
@@ -245,7 +245,7 @@ pub(crate) fn power_variation<T: FloatExt>(
     let mut d = 0.0;
     for j in 0..=k {
       let coeff = diff_coeff(k, j);
-      d += coeff * x[i + j * stride].to_f64().unwrap_or(0.0);
+      d += coeff * x[i + j * stride].to_f64().unwrap();
     }
     v += d.abs().powf(p);
   }

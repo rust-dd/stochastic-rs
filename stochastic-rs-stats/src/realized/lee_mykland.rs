@@ -70,10 +70,7 @@ pub fn lee_mykland_test<T: FloatExt>(
   validate_view(returns, window)?;
   let n = returns.len();
 
-  let r: Vec<f64> = returns
-    .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+  let r: Vec<f64> = returns.iter().map(|x| x.to_f64().unwrap()).collect();
   let mut statistics = Array1::<f64>::from_elem(n, f64::NAN);
   let mut local_volatility = Array1::<f64>::from_elem(n, f64::NAN);
   let scale = 1.0 / (window - 2) as f64;

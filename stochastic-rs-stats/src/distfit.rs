@@ -59,7 +59,7 @@ pub(crate) fn sample<T: FloatExt>(
 ) -> Result<Sample, StatsError> {
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, minimum)?;
   reject_constant(&x, "constant sample")?;

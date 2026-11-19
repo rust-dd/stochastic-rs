@@ -223,5 +223,4 @@ pub struct LogRealizedVarianceQmlFit {
 }
 
 #[cfg(test)]
-#[path = "log_realized_variance_qml/tests.rs"]
 mod tests;

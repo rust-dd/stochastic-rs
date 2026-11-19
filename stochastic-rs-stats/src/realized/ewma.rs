@@ -47,13 +47,13 @@ pub fn ewma_variance<T: FloatExt>(
   let n = returns.len();
 
   let mut variance = Array1::<f64>::zeros(n);
-  let r0 = returns[0].to_f64().unwrap_or(f64::NAN);
+  let r0 = returns[0].to_f64().unwrap();
   variance[0] = r0 * r0;
   for t in 1..n {
-    let r = returns[t - 1].to_f64().unwrap_or(f64::NAN);
+    let r = returns[t - 1].to_f64().unwrap();
     variance[t] = lambda * variance[t - 1] + (1.0 - lambda) * r * r;
   }
-  let last_r = returns[n - 1].to_f64().unwrap_or(f64::NAN);
+  let last_r = returns[n - 1].to_f64().unwrap();
   let forecast = lambda * variance[n - 1] + (1.0 - lambda) * last_r * last_r;
 
   Ok(EwmaResult {

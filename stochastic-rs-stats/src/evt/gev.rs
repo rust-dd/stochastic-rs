@@ -113,7 +113,7 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
 pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError> {
   let z = maxima
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .map(|x| x.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&z, 10)?;
   reject_constant(&z, "constant block maxima")?;
@@ -168,10 +168,7 @@ pub fn block_maxima<T: FloatExt>(data: ArrayView1<T>, block_size: usize) -> Arra
     block_size >= 1,
     "block_size must satisfy `block_size >= 1`, got block_size = {block_size:?}"
   );
-  let x: Vec<f64> = data
-    .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
-    .collect();
+  let x: Vec<f64> = data.iter().map(|v| v.to_f64().unwrap()).collect();
   x.chunks_exact(block_size)
     .map(|block| f64::max_or_nan_fold(block.iter().copied()))
     .collect()

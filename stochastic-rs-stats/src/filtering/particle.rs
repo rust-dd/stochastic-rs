@@ -62,6 +62,21 @@ where
   rng: SimdRng,
 }
 
+impl<F, G> std::fmt::Debug for ParticleFilter<F, G>
+where
+  F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
+  G: Fn(ArrayView1<f64>, ArrayView1<f64>) -> f64,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ParticleFilter")
+      .field("particles", &self.particles)
+      .field("log_weights", &self.log_weights)
+      .field("resampling", &self.resampling)
+      .field("effective_threshold", &self.effective_threshold)
+      .finish_non_exhaustive()
+  }
+}
+
 impl<F, G> ParticleFilter<F, G>
 where
   F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
@@ -346,5 +361,20 @@ mod tests {
     assert_eq!(pf.max_log_weight(), -0.5);
     pf.log_weights[2] = f64::NAN;
     assert!(pf.max_log_weight().is_nan());
+  }
+
+  /// The two closures and the generator have no `Debug`, so the filter shows its state only.
+  #[test]
+  fn the_filter_debugs_its_state_without_its_closures() {
+    let init = |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
+    let transition = |prev: ArrayView1<f64>, _rng: &mut SimdRng| prev.to_owned();
+    let log_obs = |_x: ArrayView1<f64>, _y: ArrayView1<f64>| 0.0;
+    let pf = ParticleFilter::new(2, init, transition, log_obs, 7);
+    let text = format!("{pf:?}");
+    assert!(text.starts_with("ParticleFilter { particles: "), "{text}");
+    assert!(
+      text.contains("resampling: Systematic") && text.ends_with(", .. }"),
+      "{text}"
+    );
   }
 }

@@ -133,7 +133,7 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
 pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsError> {
   let y = exceedances
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .map(|x| x.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate_domain(&y, 10, "finite and >= 0", |v| v >= 0.0)?;
   reject_constant(&y, "constant excesses")?;
@@ -201,7 +201,7 @@ pub struct GpdPwmFit {
 pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit, StatsError> {
   let y = exceedances
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .map(|x| x.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate_domain(&y, 2, "finite and >= 0", |v| v >= 0.0)?;
   reject_constant(&y, "constant excesses")?;
@@ -237,7 +237,7 @@ pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> Result<PotFi
   );
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, 0)?;
   let exceedances = x
@@ -265,10 +265,7 @@ pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> Result<PotFi
 /// Mean excess $e(u) = \mathbb E[X - u \mid X > u]$ at each threshold, the mean-residual-life plot
 /// that picks one; NaN where nothing exceeds $u$, and at every $u$ when `data` holds a NaN.
 pub fn mean_excess<T: FloatExt>(data: ArrayView1<T>, thresholds: ArrayView1<f64>) -> Array1<f64> {
-  let x: Vec<f64> = data
-    .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
-    .collect();
+  let x: Vec<f64> = data.iter().map(|v| v.to_f64().unwrap()).collect();
   if x.iter().any(|v| v.is_nan()) {
     return Array1::from_elem(thresholds.len(), f64::NAN);
   }

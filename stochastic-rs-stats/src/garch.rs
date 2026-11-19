@@ -221,7 +221,7 @@ pub fn fit_garch<T: FloatExt>(
   spec.validate();
   let r = returns
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .map(|x| x.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&r, 20)?;
   reject_constant(&r, "zero-variance returns")?;

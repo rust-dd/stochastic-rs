@@ -101,8 +101,8 @@ fn compute_with_diagnostic<T: FloatExt>(
 
       let mut ll = 0.0_f64;
       for j in 1..=n_max {
-        let a = x[m + j * k].to_f64().unwrap_or(f64::NAN);
-        let b = x[m + (j - 1) * k].to_f64().unwrap_or(f64::NAN);
+        let a = x[m + j * k].to_f64().unwrap();
+        let b = x[m + (j - 1) * k].to_f64().unwrap();
         ll += (a - b).abs();
       }
 

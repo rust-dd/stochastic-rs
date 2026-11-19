@@ -3,7 +3,10 @@
 //! Each class takes numpy arrays and answers a result object: a test's decision or an estimate.
 
 #![cfg(feature = "python")]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "a constructor's arguments are its Python keyword signature"
+)]
 
 mod changepoint;
 mod cointegration;
