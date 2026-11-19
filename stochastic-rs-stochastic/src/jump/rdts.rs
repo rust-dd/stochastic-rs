@@ -2,7 +2,6 @@
 //!
 //! $$
 //! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx
-//! \quad(\text{rapidly decaying tempered stable})
 //! $$
 //!
 

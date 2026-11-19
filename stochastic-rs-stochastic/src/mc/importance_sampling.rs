@@ -5,8 +5,6 @@
 //! \frac{dP}{dQ}(z)=\exp\!\bigl(-z\!\cdot\!\theta+\tfrac{|\theta|^2}{2}\bigr)
 //! $$
 //!
-//! Gaussian mean-shift importance sampling.
-//!
 //! Reference: Glasserman (2003), Springer, §4.6, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;

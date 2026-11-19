@@ -257,8 +257,8 @@ fn modified_cir_agrees_with_the_cpu_law() {
   );
 }
 
-/// Centred at `mu = 2`, four relaxation times long: a restoring term not centred on `mu` pulls
-/// the terminal mean to the origin, which a row at `mu = 0` cannot see.
+/// At `mu = 2`, `t = 4` is four relaxation times only at the centre, where the drift is steepest:
+/// the mean covers 82 % of its way to the law's 2.48; an uncentred term pulls it toward the origin.
 #[test]
 fn hyperbolic_diffusion_agrees_with_the_cpu_law() {
   let build = || {

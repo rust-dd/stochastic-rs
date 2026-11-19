@@ -1,9 +1,12 @@
 //! Normal inverse Gaussian process: a drifted Brownian motion on an inverse-Gaussian clock.
 //!
 //! $$
-//! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)
+//! X_t=x_0+\theta I_t+\sigma W_{I_t},\quad \mathbb{E}(I_t)=t,\quad \mathrm{Var}(I_t)=\kappa t
 //! $$
 //!
+//! The NIG Lévy process at `μ = 0`, with `β = θ/σ²`, `δ = σ/√κ` and `α = √(β² + 1/(κσ²))`.
+//!
+//! Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), 1–13, DOI 10.1111/1467-9469.00045
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -22,8 +25,7 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Skewness β in subordinated time (the module display's β, multiplying the IG increment
-  /// `I_t`); not a target level, since NIG is a pure Lévy process with no mean reversion.
+  /// Drift θ per unit of the clock `I_t`, which skews the law; NIG has no mean reversion.
   pub theta: T,
   /// Diffusion scale σ multiplying `√(I_t) dW_t`, the Brownian-subordinated
   /// component riding on top of the IG time-change.

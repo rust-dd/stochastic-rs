@@ -1,6 +1,6 @@
-//! Continuous-path Itô diffusions on one Brownian motion, with no jumps.
+//! Continuous-path diffusions, scalar to matrix-valued, on Brownian or fractional Brownian motion.
 //!
-//! `dX_t = a(t, X_t)dt + b(t, X_t)dW_t`; each module's header states its own `a` and `b`.
+//! Most solve `dX_t = a(t, X_t)dt + b(t, X_t)dW_t`; each module's header states its own equation.
 //!
 pub mod ait_sahalia;
 pub mod bessel;
