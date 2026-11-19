@@ -89,7 +89,7 @@ pub struct PeriodogramResult {
   /// FFT size used.
   pub nfft: usize,
   /// Original sample size.
-  pub sample_size: usize,
+  pub nobs: usize,
 }
 
 /// Single spectral peak.
@@ -260,7 +260,7 @@ pub fn periodogram_fft(
     spectrum,
     resolution_hz,
     nfft,
-    sample_size: n,
+    nobs: n,
   })
 }
 
@@ -594,5 +594,13 @@ mod tests {
       ..PeriodogramConfig::default()
     };
     let _ = periodogram_fft(ndarray::Array1::<f64>::linspace(0.0, 1.0, 10).view(), cfg);
+  }
+
+  /// The sample size is `nobs`, as everywhere in the crate: the signal's length, not `nfft`'s.
+  #[test]
+  fn the_periodogram_counts_its_points_as_nobs() {
+    let x = ndarray::Array1::<f64>::linspace(0.0, 1.0, 10);
+    let p = periodogram_fft(x.view(), PeriodogramConfig::default()).unwrap();
+    assert_eq!((p.nobs, p.nfft), (10, 16));
   }
 }

@@ -53,11 +53,15 @@ pub(crate) fn scalar_chi_square_best_p<T: ToPrimitive, D: Distribution<T>>(
       let xs = (0..N)
         .map(|_| d.sample(&mut rng).to_i64().expect("draw fits i64"))
         .collect::<Vec<_>>();
-      let observed = bin_observed(&xs, &edges);
-      chi_square_gof_test(&observed, &probs, ChiSquareGofConfig::default())
-        .unwrap()
-        .p_value
-        .unwrap()
+      let observed = bin_observed(ArrayView1::from(&xs), ArrayView1::from(&edges));
+      chi_square_gof_test(
+        ArrayView1::from(&observed),
+        ArrayView1::from(&probs),
+        ChiSquareGofConfig::default(),
+      )
+      .unwrap()
+      .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }

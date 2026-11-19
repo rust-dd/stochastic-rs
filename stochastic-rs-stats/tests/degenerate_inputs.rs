@@ -450,12 +450,17 @@ fn hypothesis_tests_answer_err_on_degenerate_input() {
 #[test]
 fn chi_square_answers_err_on_too_few_bins_and_a_value_on_flat_counts() {
   assert_eq!(
-    chi_square_gof_test(&[], &[], ChiSquareGofConfig::default()).unwrap_err(),
+    chi_square_gof_test(
+      ArrayView1::from(&[]),
+      ArrayView1::from(&[]),
+      ChiSquareGofConfig::default()
+    )
+    .unwrap_err(),
     StatsError::InsufficientData { needed: 2, got: 0 }
   );
   let flat = chi_square_gof_test(
-    &[3; 400],
-    &[1.0 / 400.0; 400],
+    ArrayView1::from(&[3; 400]),
+    ArrayView1::from(&[1.0 / 400.0; 400]),
     ChiSquareGofConfig::default(),
   );
   assert!(flat.is_ok(), "{flat:?}");
