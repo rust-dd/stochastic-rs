@@ -128,11 +128,7 @@ impl Merton1976Pricer {
   /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives; the payoff at `tau = 0`.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if tau == 0.0 {
-      let base = self.base_bsm();
-      return CallPut {
-        call: base.price_call(s, k, r, q, tau),
-        put: base.price_put(s, k, r, q, tau),
-      };
+      return self.base_bsm().price_call_put(s, k, r, q, tau);
     }
     let mut call = 0.0;
     let mut put = 0.0;
@@ -255,10 +251,7 @@ impl Merton1976Pricer {
         put: half_disc - half_carry,
       };
     }
-    CallPut {
-      call: term.price_call(s, k, r, q, tau),
-      put: term.price_put(s, k, r, q, tau),
-    }
+    term.price_call_put(s, k, r, q, tau)
   }
 }
 
