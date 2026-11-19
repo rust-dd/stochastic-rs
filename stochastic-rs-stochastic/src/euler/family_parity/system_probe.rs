@@ -74,10 +74,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     // exactly as the frame does.
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
-    // The series a `series` family sums into its grid cells, from a uniform
-    // stream of its own, exactly as the frame's preamble does; a live family
-    // keeps the terms and sizes them in the step of their cell against the
-    // state there.
+    // The series a `series` family sums into its grid cells, from its own uniform stream as in
+    // the frame's preamble; a live family keeps the terms and sizes them in their cell's step.
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {

@@ -1,4 +1,4 @@
-//! # Levy Diffusion
+//! A constant-drift Brownian motion plus compound-Poisson jumps of any size law `D`.
 //!
 //! $$
 //! dX_t=\mu_tdt+\sigma_t dW_t+dL_t
@@ -57,7 +57,7 @@ where
   D: Distribution<T> + Send + Sync,
 {
   /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
-  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive.
+  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     gamma: T,
     sigma: T,

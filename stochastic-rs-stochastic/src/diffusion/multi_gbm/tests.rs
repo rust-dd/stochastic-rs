@@ -128,3 +128,19 @@ fn rejects_mismatched_parameter_lengths() {
     Unseeded,
   );
 }
+
+#[test]
+#[should_panic(
+  expected = "rho must satisfy `every Cholesky pivot of rho > T::zero()`, got pivot 2 = -1.3"
+)]
+fn rejects_an_indefinite_correlation_matrix() {
+  let _ = MultiGbm::new(
+    array![0.0_f64, 0.0, 0.0],
+    array![0.2, 0.2, 0.2],
+    array![[1.0_f64, 0.5, -1.0], [0.5, 1.0, 0.5], [-1.0, 0.5, 1.0]],
+    8,
+    array![1.0, 1.0, 1.0],
+    None,
+    Unseeded,
+  );
+}

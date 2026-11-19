@@ -64,7 +64,8 @@ pub struct FbatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `-1 <= rho <= 1` and every
+  /// parameter is finite.
   pub fn new(
     hurst: T,
     mu: T,
@@ -145,6 +146,7 @@ impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
 
   fn check_rho(rho: T) {
     require!(rho.is_finite(), rho);
+    require!(rho >= -T::one() && rho <= T::one(), rho);
   }
 
   fn check_lambda(lambda: T) {
@@ -208,7 +210,7 @@ impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
     self
   }
 
-  /// Replace `rho`; panics unless `rho` is finite.
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;

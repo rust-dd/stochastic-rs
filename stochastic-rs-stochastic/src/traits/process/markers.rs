@@ -2,13 +2,8 @@ use ndarray::Array2;
 
 use super::*;
 
-/// Marker for processes whose [`ProcessExt::sample`] returns a single
-/// 1D trajectory `Array1<T>`.
-///
-/// Auto-implemented via a blanket impl for any `P: ProcessExt<T, Output = Array1<T>>`,
-/// so the user only needs to query the marker — no manual `impl` lines on each
-/// process struct. Use this in generic code that should only operate on single-path
-/// processes (e.g. `Bm`, `Ou`, `Gbm`, `Vasicek`).
+/// Marker for processes whose [`ProcessExt::sample`] returns one path `Array1<T>`, such as `Bm`,
+/// `Ou` and `Gbm`; implemented from `Output` alone.
 ///
 /// ```
 /// use stochastic_rs_stochastic::process::bm::Bm;
@@ -41,10 +36,7 @@ impl<T: FloatExt, P, const N: usize> MultiDimensional<T, N> for P where
 {
 }
 
-/// Convenience marker for the common 2-state case `[Array1<T>; 2]`.
-///
-/// Subtrait of [`MultiDimensional<T, 2>`]. Useful for asset-plus-variance
-/// stochastic-vol models like `Heston`, `Bergomi`, `Sabr`.
+/// [`MultiDimensional<T, 2>`] by name, for asset-plus-variance models such as `Heston` and `Sabr`.
 pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
 
 impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
@@ -55,26 +47,14 @@ pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}
 
-/// Marker for processes whose [`ProcessExt::sample`] returns a runtime-sized
-/// collection of 1D trajectories `Vec<Array1<T>>`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = Vec<Array1<T>>>`.
-/// Used when the dimensionality `D` is determined by a runtime parameter and
-/// each component carries its own (possibly variable-length) trace —
-/// e.g. [`crate::process::multivariate_hawkes::MultivariateHawkes`], whose
-/// per-component event-time vectors have process-dependent lengths.
+/// Marker for processes whose [`ProcessExt::sample`] returns `Vec<Array1<T>>`, one trace of its own
+/// length per component, as `MultivariateHawkes`'s event times; implemented from `Output` alone.
 pub trait VariableDimensional<T: FloatExt>: ProcessExt<T, Output = Vec<Array1<T>>> {}
 
 impl<T: FloatExt, P> VariableDimensional<T> for P where P: ProcessExt<T, Output = Vec<Array1<T>>> {}
 
-/// Marker for processes whose [`ProcessExt::sample`] returns a complex-valued
-/// 1D trajectory `Array1<Complex<T>>`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = Array1<Complex<T>>>`.
-/// Used by complex-state diffusions such as
-/// [`crate::diffusion::cfou::Cfou`], where the joint dynamics of two
-/// real OU components are expressed as a single complex Ornstein-Uhlenbeck
-/// `Z_t = X_1(t) + i X_2(t)`.
+/// Marker for processes whose [`ProcessExt::sample`] returns a complex path `Array1<Complex<T>>`,
+/// as `Cfou`'s `Z_t = X_1(t) + i X_2(t)`; implemented from `Output` alone.
 pub trait ComplexPathOutput<T: FloatExt>:
   ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
 {

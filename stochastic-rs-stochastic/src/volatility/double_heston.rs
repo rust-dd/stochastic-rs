@@ -1,4 +1,4 @@
-//! # Double Heston
+//! Double Heston: a spot driven by two square-root variance factors, returned as three paths.
 //!
 //! $$
 //! \begin{aligned}
@@ -89,7 +89,7 @@ impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
 
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   /// Panics unless every parameter is finite, each `v*_0`, `kappa*`, `theta*`, `sigma*` is
-  /// non-negative, each `-1 <= rho* <= 1`, `n >= 2` and a given `t` is positive.
+  /// non-negative, each `-1 <= rho* <= 1`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     s0: T,
     v1_0: T,

@@ -1,8 +1,5 @@
-//! Device laws of the processes whose step reads the whole past — the rough
-//! volatility models' memory integrals, the fractional stable motion's moving
-//! average, the ARIMA recursions — which the engine's history block convolves
-//! exactly as the host does, so the comparisons here are between one scheme
-//! run on two machines.
+//! Device laws of the processes whose step reads the whole past (rough volatility, fractional
+//! stable motion, ARIMA): the history block convolves as the host does, one scheme on two machines.
 
 use ndarray::Array1;
 use ndarray::array;
@@ -207,9 +204,8 @@ fn rough_bergomi_agrees_with_the_cpu_law() {
   );
 }
 
-/// The stable innovations have no variance, so the spread is read off the
-/// quartiles — at the horizon and a quarter of the way in, since the ratio of
-/// the two is what the self-similarity index sets.
+/// The stable innovations have no variance, so the spread is read off the quartiles, at the
+/// horizon and a quarter of the way in: their ratio is what the self-similarity index sets.
 #[test]
 fn lfsm_agrees_with_the_cpu_law() {
   let build = || {

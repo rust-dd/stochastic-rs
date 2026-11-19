@@ -1,4 +1,4 @@
-//! # Stratified Sampling
+//! Stratified standard normals, one uniform per stratum, each column of a sample on its own.
 //!
 //! $$
 //! Z_k = \Phi^{-1}\!\left(\frac{k-1+U_k}{K}\right),\quad

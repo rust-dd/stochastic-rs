@@ -99,6 +99,18 @@ match Metal::default().probe() {
 
 `probe()` opens the device behind the handle and describes it (`backend`, `name`, `precisions`, `ordinal`). The plain `sample()` / `sample_par(m)` calls panic with the device's error if something still fails at launch time (an allocation, typically); `try_sample()` / `try_sample_par(m)` return `Result<_, DeviceError>` instead (always `Ok` on the host devices, bit-identical to the plain calls). `DeviceError` is `#[non_exhaustive]` with `Unavailable`, `Compile`, `Launch`, `OutOfMemory` and `Config`. From Python, a device failure is a `RuntimeError` with the same message.
 
+## Reproducibility per backend
+
+A process is generic over its backend, so the type alone does not say what a `Deterministic` seed guarantees on a given `B`.
+
+| Backend | Same seed and same `m` |
+|---|---|
+| `Cpu` | Bit-identical on any machine and under any Rayon thread-pool size. |
+| `Accelerate` | **Not bit-identical, as measured.** Seed consumption (which derived basis feeds which path) is independent of the thread count, by the mechanism `Cpu` uses: `m` paths are split into `min(m, 64)` chunks with one basis per chunk. The output of `vDSP_fft_zip` is not bit-stable across otherwise identical calls: on an M4 Max, 400 repeated `Fgn` calls over varied `(n, m)` on an idle system showed no divergence, and the same sweep with every core saturated by unrelated work showed 21 of 400 configurations diverge (worst relative difference `2.08e-3`), consistent with the P-core / E-core scheduler sending the FFT to different core types. `Cpu` under the same load stayed bit-exact throughout. See `tests/deterministic_parallelism_accelerate.rs`. |
+| `Cuda` / `Metal` | **Not guaranteed.** Each batch call draws one launch seed from the process's own seed and keys the kernels' Philox-4x32-10 on it, with every normal's counter its batch-global cell. Two `Deterministic` processes built from one seed value therefore produce the same device paths, consecutive calls advance the stream, a chunked batch equals one launch, and the output does not depend on the host thread pool. Bit-identity across driver versions, vendors or repeated runs on one device is untested and not promised. |
+
+Treat `Accelerate` and the GPUs as reproducible effort only. The seed a backend consumes is the calling process's, not the one inside an embedded `Fgn`, which is what makes a wrapper whose inner noise is `Unseeded` (`Fbm`, the `Fou` family) reproducible on a device too. On `Cpu`, `Fgn` derives one basis per path instead of per chunk: each path's FFT is itself a nested Rayon region, and grouping paths into chunks roughly doubled the wall time at `m = 1000`.
+
 ## Precision
 
 Apple GPUs have no `f64`, so `Metal` is **`f32` only**: an `f64` process on it is a compile error. `Cuda`, `Accelerate` and `Cpu` follow the process's `T` in `f32` and `f64`.

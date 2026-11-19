@@ -26,9 +26,8 @@ pub(crate) fn terminal_mean(paths: &[Array1<f32>]) -> f64 {
   paths.iter().map(|p| p[last] as f64).sum::<f64>() / paths.len() as f64
 }
 
-/// The standard deviation of the paths' last point. The statistic to compare
-/// on when a process reverts to zero, where a relative error on the mean is
-/// the ratio of two numbers that are both nearly zero.
+/// The standard deviation of the paths' last point: the statistic for a process that reverts to
+/// zero, where a relative error on the mean is a ratio of two numbers near zero.
 pub(crate) fn terminal_std(paths: &[Array1<f32>]) -> f64 {
   let last = paths[0].len() - 1;
   let mean = terminal_mean(paths);
@@ -48,13 +47,8 @@ pub(crate) fn agrees(host: f64, device: f64, tol: f64, what: &str) {
   );
 }
 
-/// Host and device agree on a terminal mean, within five standard errors of
-/// what the two samples allow.
-///
-/// The same argument as [`spreads_agree`]: a relative tolerance is a guess
-/// about a quantity whose own noise is `σ/√M` per side, and for a mean near
-/// zero — a square-root process at `v₀ = 0.04`, a rate reverting to `0.04` —
-/// the ratio of two small numbers says nothing about agreement.
+/// Host and device agree on a terminal mean within five standard errors of the two samples: a
+/// relative tolerance says nothing for a mean near zero, as [`spreads_agree`] argues.
 pub(crate) fn means_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
   let last = |paths: &[Array1<f32>]| {
     let last = paths[0].len() - 1;
@@ -80,16 +74,8 @@ pub(crate) fn means_agree_values(host: &[f64], device: &[f64], what: &str) {
   );
 }
 
-/// Host and device agree on a terminal spread, within five standard errors
-/// of what that spread's own noise allows.
-///
-/// A relative tolerance is the wrong instrument for a heavy-tailed statistic:
-/// the standard error of a sample standard deviation is `σ√((κ−1)/4M)`, so a
-/// terminal value with a kurtosis near twenty carries ±3.4 % per side at four
-/// thousand paths and ±4.9 % between two independent samples. A fixed 6 %
-/// band on that is one and a quarter standard errors — a coin toss dressed as
-/// a check, and it is what the Cheyette case used to be. Here the band comes
-/// from the two samples' own kurtoses.
+/// Host and device agree on a terminal spread within five standard errors, from the samples'
+/// own kurtoses: a spread's standard error is `σ√((κ−1)/4M)`, ±3.4 % at `κ = 20`, `M = 4000`.
 pub(crate) fn spreads_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
   let noise = |paths: &[Array1<f32>]| {
     let last = paths[0].len() - 1;
@@ -128,11 +114,8 @@ pub(crate) fn within(paths: &[Array1<f32>], lo: f32, hi: f32, what: &str) {
   );
 }
 
-/// `sample_map_view` and `sample_map` return the same numbers.
-///
-/// The view form exists to spare the device batch a second traversal — the
-/// owning form copies every row out of the launch buffer before the callback
-/// sees it — so what has to be pinned is that sparing it changes nothing.
+/// `sample_map_view` and `sample_map` return the same numbers: sparing the device batch the
+/// owning form's row copy changes nothing.
 pub(crate) fn map_forms_agree<P>(process: impl Fn() -> P, what: &str)
 where
   P: ProcessExt<f32, Output = Array1<f32>>,

@@ -1,11 +1,5 @@
-//! What a process will say about where it runs, before it runs there.
-//!
-//! Two questions a caller has no other way to answer. Which handle is this
-//! process holding — the type parameter records the *marker*, not the
-//! ordinal or the batch budget the handle carries — and will this
-//! configuration reach a kernel at all, or fall back to the host sampler at
-//! an order of magnitude's cost. The second one used to be a bare `bool`;
-//! the reason is what makes it actionable.
+//! What a process says about where it runs before it runs there: which handle it holds (the type
+//! records the marker, not the ordinal or budget) and why a configuration falls back to the host.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -55,9 +49,8 @@ fn a_process_reports_the_backend_it_holds() {
   assert!(info.precisions.contains(&"f64"));
 }
 
-/// The fractional processes carry their backend inside the noise pipeline
-/// rather than in a field of their own; the accessor is the same either way,
-/// which is the point of having one.
+/// The fractional processes carry their backend inside the noise pipeline, not in a field of
+/// their own; the accessor is the same either way.
 #[test]
 fn a_fractional_process_reports_its_backend_too() {
   let fgn = Fgn::<f64, _>::new(0.7, 128, Some(1.0), Deterministic::new(2));
@@ -65,9 +58,8 @@ fn a_fractional_process_reports_its_backend_too() {
   assert_eq!(fgn.probe().expect("cpu").backend, "Cpu");
 }
 
-/// A configuration the kernels carry whole says nothing; one they cannot
-/// says why. The reason travels with the process, so a caller can print it
-/// rather than discovering the fallback in a profile.
+/// A configuration the kernels carry whole says nothing; one they cannot says why, so a caller
+/// can print the reason instead of finding the fallback in a profile.
 #[test]
 fn a_configuration_past_the_kernels_names_its_reason() {
   let first = Ar::<f64, _>::new(array![0.5], 1.0, 128, None, Deterministic::new(3));

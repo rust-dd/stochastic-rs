@@ -5,9 +5,8 @@ use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 use super::*;
 
-/// SABR steps its volatility by the exact log-normal solution, so the device
-/// path must stay positive for the same reason the host's does, and the
-/// forward is driftless.
+/// SABR steps its volatility by the exact log-normal solution, so the device path stays
+/// positive as the host's does, and the forward is driftless.
 #[test]
 fn sabr_agrees_with_the_cpu_law() {
   let build = || {
@@ -41,9 +40,8 @@ fn sabr_agrees_with_the_cpu_law() {
   );
 }
 
-/// The Bergomi variance is a function of the running sum of its increments,
-/// which the device steps as state of its own; what the comparison pins is
-/// that this reproduces the host's cumulative form.
+/// The Bergomi variance is a function of the running sum of its increments, which the device
+/// steps as state of its own; this pins that it reproduces the host's cumulative form.
 #[test]
 fn bergomi_agrees_with_the_cpu_law() {
   let build = || {
@@ -78,15 +76,8 @@ fn bergomi_agrees_with_the_cpu_law() {
   );
 }
 
-/// The dynamic SABR is the first family whose coefficients all arrive as
-/// curves: the host resolves its term structure per grid point and the kernel
-/// reads three of them per step. Two knots are used, so the tabulation has to
-/// change value twice, and a launch that bound only the first curve — or
-/// combined the shocks under the wrong one — shows up in the spreads below.
-/// A bucket read one step out of phase does not: it moves every statistic
-/// here by less than the noise floor, so the tabulation's phase is pinned
-/// exactly, against the host's own bucket lookup, in the module's unit tests
-/// rather than statistically.
+/// The dynamic SABR reads three curves per step over two knots, so a launch binding the wrong
+/// curve shows in the spreads. A bucket one step out of phase does not: unit tests pin that.
 #[test]
 fn dynamic_sabr_agrees_with_the_cpu_law() {
   let build = || {
@@ -102,11 +93,8 @@ fn dynamic_sabr_agrees_with_the_cpu_law() {
       Deterministic::new(83),
     )
   };
-  // Four times the usual batch: the volatility is log-normal, and the sample
-  // standard deviation of a log-normal is tail-driven — at `M` paths it moves
-  // by several percent between seeds on the host alone, which is wider than
-  // the agreement this case is meant to assert. The tolerance stays tight and
-  // the path count carries it.
+  // Four times the usual batch: a log-normal's sample standard deviation is tail-driven and
+  // moves by several percent between seeds at `M` paths, wider than the agreement asserted.
   const PATHS: usize = 4 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -137,10 +125,8 @@ fn dynamic_sabr_agrees_with_the_cpu_law() {
     0.06,
     "dynamic SABR terminal volatility",
   );
-  // The volatility's spread is what pins `nu(t)`: its *mean* is `alpha0`
-  // whatever `nu` is, since the exact step for `d(alpha) = nu alpha dW` is a
-  // martingale — so a launch reading the wrong curve into `nu` passes a mean
-  // comparison and fails this one.
+  // The volatility's spread pins `nu(t)`: its mean is `alpha0` whatever `nu` is, since the
+  // exact step for `d(alpha) = nu alpha dW` is a martingale.
   agrees(
     spread(&host, 1),
     spread(&device, 1),

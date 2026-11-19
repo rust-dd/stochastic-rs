@@ -1,11 +1,5 @@
-//! Geometric Brownian motion, against the moments of the log-normal law.
-//!
-//! `Gbm` steps Euler-Maruyama on the price, `S ← S(1 + μΔt + σΔW)`, so the
-//! chain's own moments are exact products over its `m` steps,
-//! `E[S_T] = S₀(1 + μΔt)ᵐ` and `E[S_T²] = S₀²((1 + μΔt)² + σ²Δt)ᵐ`, and
-//! each case holds the diffusion's closed form widened by exactly the gap to
-//! them. `GbmLog` steps the logarithm exactly, so its law is the diffusion's
-//! own and needs no widening.
+//! Geometric Brownian motion against the log-normal moments. `Gbm` steps Euler-Maruyama, so each
+//! band is widened by the gap to the chain's exact moments; `GbmLog` is exact and needs none.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;

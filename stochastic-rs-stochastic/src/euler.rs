@@ -1,56 +1,14 @@
-//! # Euler engine
+//! Device-side Euler–Maruyama path generation: one device thread per path, Philox normals.
 //!
 //! $$
 //! X_{i+1} = X_i + b(X_i)\,\Delta t + \sigma(X_i)\sqrt{\Delta t}\,Z_i,\qquad
-//! Z_i \sim \mathcal N(0, 1)\ \text{i.i.d.}
+//! Z_i \sim \mathcal N(0, 1)
 //! $$
 //!
-//! Device-side path generation for the diffusions whose coefficients are a
-//! handful of scalars. The backend is a type parameter of the process, as
-//! for the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou`, `Cir` are switched
-//! with `.on::<B>()` and then sampled through [`ProcessExt`] as usual —
-//! `gbm.on::<Metal>().sample_par(m)`.
+//! Only [`EulerBackend`] is stable: <https://stochastic.rust-dd.com/docs/processes#euler-engine>.
 //!
-//! - [`Cpu`] (and `Accelerate`, a CPU device) is **the process's own
-//!   sampler**, so nothing is re-implemented on the host: GBM keeps its exact
-//!   log-normal scheme, OU and CIR their SIMD Euler steppers.
-//! - The GPU back-ends run one device thread per path with the whole
-//!   Euler–Maruyama recursion in the kernel and Box–Muller normals from
-//!   Philox-4x32-10 on `(path, step, site, index)`: `Cuda` (feature `cuda`: cudarc +
-//!   NVRTC, `f32` or `f64` after `T`) and `Metal` (feature `metal`:
-//!   Rust device kernels compiled by metal-oxide, `f32`).
-//!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
-//!
-//! The device seed is drawn from the process's own seed source, so the same
-//! `Deterministic` seed value gives the same device paths, consecutive calls
-//! advance the stream and an `Unseeded` process draws fresh entropy, exactly
-//! as on the host. The device
-//! kernels share one generator keyed on the whole seed, so the device back-ends agree with each
-//! other seed for seed up to libm rounding; the host path is the process's
-//! own stream, so CPU and device paths agree in distribution, not bit for bit.
-//!
-//! A process joins the engine by describing its coefficients as an
-//! [`EulerSpec`] through [`EulerCoefficients`].
-//!
-//! ## What is public here
-//!
-//! [`EulerBackend`] is the capability a generic bound names — `B:
-//! EulerBackend<T>` says a process runs on the device `B` through this
-//! engine — and it is the one item of this module a caller writes. Everything
-//! else — the family specification [`EulerSpec`], the launch hooks
-//! [`EulerCoefficients`] and [`EulerSystem`], the lift, table and program
-//! specifications, the slot caps, the kernel-implementor trait
-//! [`EulerKernel`] — is the engine's own machinery: public so the crate's
-//! sub-modules, tests and probes can reach it, hidden from the rendered
-//! documentation, and not covered by the crate's stability promise. A
-//! process reaches a device by declaring a family in this crate's table, not
-//! by implementing these traits from outside.
-//!
-//! References: Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of
-//! Stochastic Differential Equations*, Springer, §10.2 (Euler–Maruyama);
-//! Lord, R., Koekkoek, R. & van Dijk, D. (2010), *A comparison of biased
-//! simulation schemes for stochastic volatility models*, Quantitative Finance
-//! 10(2), 177–194 (full truncation, used by the device kernels for CIR).
+//! Reference: Kloeden & Platen (1992), Numerical Solution of SDEs, Springer, §10.2 (Euler–Maruyama)
+//! Reference: Lord, Koekkoek & van Dijk (2010), Quant. Fin. 10(2), 177–194 (full truncation, CIR)
 
 use ndarray::Array1;
 use ndarray::Array2;

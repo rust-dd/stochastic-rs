@@ -16,9 +16,8 @@ fn step_uniforms(
   out
 }
 
-/// Dassios and Zhao's exact recursion: the wait is the smaller of the
-/// baseline's exponential and the excitation's own arrival, which never
-/// comes once `1 + β ln u / s` is not positive.
+/// Dassios and Zhao's exact recursion: the wait is the smaller of the baseline's exponential and
+/// the excitation's own arrival, which never comes once `1 + β ln u / s` is not positive.
 #[test]
 fn hawkes_step_is_the_dassios_zhao_recursion() {
   let (mu, alpha, beta) = (1.0_f64, 0.5_f64, 1.5_f64);

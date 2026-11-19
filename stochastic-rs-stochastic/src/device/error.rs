@@ -1,13 +1,7 @@
 use std::fmt;
 
-/// Why a device could not serve a request.
-///
-/// Returned by [`Backend::probe`](super::Backend::probe) and the `try_*` device calls
-/// ([`FgnBackend::try_generate_batch`](super::FgnBackend::try_generate_batch),
-/// [`crate::euler::EulerBackend::try_euler_paths`], `try_sample_par` on the
-/// device-capable processes). The plain `sample*` calls panic with the same
-/// message when the device fails, so probing first turns an environmental
-/// failure into a `Result` instead of a panic.
+/// Why a device could not serve a request: what [`Backend::probe`](super::Backend::probe) and the
+/// `try_*` calls return, and the message the plain `sample*` calls panic with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DeviceError {
@@ -17,11 +11,8 @@ pub enum DeviceError {
   Compile(String),
   /// A kernel launch, allocation or copy failed at run time.
   Launch(String),
-  /// The device ran out of memory. Separate from [`Launch`](Self::Launch)
-  /// because it is the one device failure a caller can do something about:
-  /// the batch loops below halve their chunk and try again, and a chunk of
-  /// this engine is bit-identical however the batch is cut, so the retry
-  /// returns the same numbers rather than an approximation of them.
+  /// The device ran out of memory: the one failure a caller can act on. The batch loops halve
+  /// their chunk and retry, and a chunk is bit-identical however the batch is cut.
   OutOfMemory(String),
   /// An environment variable the handle reads holds a value it cannot use.
   Config(String),

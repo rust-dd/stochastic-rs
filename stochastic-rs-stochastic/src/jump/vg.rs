@@ -1,4 +1,4 @@
-//! # Vg
+//! Variance gamma: a Brownian motion on a gamma clock, `mu` its drift per unit of that clock.
 //!
 //! $$
 //! X_t=\theta G_t+\sigma W_{G_t},\quad G_t\sim\Gamma(\nu^{-1}t,\nu)

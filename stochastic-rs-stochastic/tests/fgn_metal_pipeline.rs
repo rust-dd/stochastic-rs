@@ -1,6 +1,7 @@
 //! Independent fGN laws and direct-transform references supplement the recorded bit fixtures.
-//! Davies & Harte (1987), DOI: 10.1093/biomet/74.1.95;
-//! Dietrich & Newsam (1997), DOI: 10.1137/S1064827592240555.
+//!
+//! Reference: Davies & Harte (1987), DOI 10.1093/biomet/74.1.95
+//! Reference: Dietrich & Newsam (1997), DOI 10.1137/S1064827592240555
 
 #![cfg(metal_backend)]
 
@@ -33,10 +34,8 @@ fn rho(k: usize) -> f64 {
   0.5 * (p(k as f64 + 1.0) - 2.0 * p(k as f64) + p(k as f64 - 1.0))
 }
 
-/// Second moment and the first `lags` autocorrelations, pooled over `rows`
-/// and taken around the known mean of zero. Subtracting a *sample* mean
-/// instead biases the autocorrelation of a long-memory series downward by
-/// several percent at these row counts — the estimator, not the sampler.
+/// Second moment and the first `lags` autocorrelations, pooled over `rows` around the known mean
+/// of zero: a sample mean biases a long-memory autocorrelation down by several percent here.
 fn moments(rows: &[Vec<f64>], lags: usize) -> (f64, Vec<f64>) {
   let count = rows.iter().map(|r| r.len()).sum::<usize>() as f64;
   let var = rows.iter().flatten().map(|x| x * x).sum::<f64>() / count;
@@ -266,30 +265,8 @@ fn column_corr(cols: &[[f32; 2]]) -> f64 {
   sxy / (sxx * syy).sqrt()
 }
 
-/// The real and imaginary halves of a circulant-embedding transform are two
-/// independent fGn paths — their cross-covariance is `Σ λ_k sin(2π(j−l)k/M)`,
-/// which vanishes term by term because the eigenvalues of a symmetric
-/// circulant are symmetric (Dietrich & Newsam 1997). That holds only because
-/// the input noise is *proper* complex, and it is the one thing about pairing
-/// no per-path statistic can see.
-///
-/// **It also cannot be seen by pooling a cross-correlation over lags**, which
-/// is worth spelling out because it is the obvious test and it does not work.
-/// Feed the two halves the same normal — `Z_k = √λ_k a_k (1+i)` — and the
-/// output is `Re = ReW − ImW`, `Im = ReW + ImW`: each half still has variance
-/// `γ_0` and autocovariance `γ_{j−l}` exactly, so every marginal check passes,
-/// and their cross-covariance is `γ_{j+l}`, which depends on the *sum* of the
-/// indices. Averaged over a fixed lag that is `O(n^{2H−2})` — 0.013 at
-/// `n = 512`, under any band a pooled test could safely use. Measured: the
-/// pooled version of this test passes on that mutation.
-///
-/// What separates them is the same-index cross-correlation taken column by
-/// column, which is `ρ(2i)` under the mutation and zero under the real thing:
-/// **1.0 at the first column**. Twenty thousand pairs put its standard error
-/// at 1/√20000 ≈ 0.007, so the band below is five of them and the mutation
-/// misses it by a factor of thirty. The lag sweep stays as a second net for
-/// the failures that *are* lag-shaped — the second row being the first one
-/// again, or read backwards.
+/// The two halves of a circulant-embedding transform are independent fGn paths (Dietrich & Newsam
+/// 1997). Checked column by column: a shared-normal mutation gives 1.0 there and hides when pooled.
 #[test]
 fn the_two_rows_of_a_pair_are_independent() {
   const N: usize = 256;
@@ -354,10 +331,8 @@ fn the_two_rows_of_a_pair_are_independent() {
   );
 }
 
-/// Rows pair up, so a batch whose length or whose chunk boundary is odd is
-/// the case the pairing can get wrong: the launch has to compute the
-/// transform in front of it, drop the half it does not own, and still return
-/// exactly the rows asked for.
+/// Rows pair up, so an odd batch length or chunk boundary is where pairing can go wrong: the
+/// launch computes the transform, drops the half it does not own and returns the rows asked for.
 #[test]
 fn odd_batches_and_odd_chunks_equal_one_launch() {
   for n in [512usize, 4096] {
@@ -400,12 +375,8 @@ fn odd_batches_and_odd_chunks_equal_one_launch() {
   }
 }
 
-/// The map form reads the device's own output buffer rather than a copy of
-/// it, and reads it in parallel, so the vector it returns has to stay indexed
-/// by path and not by whichever chunk finished first. Pinned against the
-/// owning batch, over a budget small enough to force several launches. Each
-/// call is reseeded first: a batch draws one launch seed from the process and
-/// that draw advances the stream, so two calls in a row are meant to differ.
+/// The map form reads the device's output buffer in parallel, so its result must stay indexed by
+/// path: pinned against the owning batch over several launches, each call reseeded first.
 #[test]
 fn the_lending_map_returns_rows_in_path_order() {
   const M: usize = 257;

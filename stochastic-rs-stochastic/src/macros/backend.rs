@@ -15,8 +15,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
-      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, a `Metal` with a batch budget, or
+      /// `Cuda::from_env()?` for `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -24,15 +24,14 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
-      /// opens, and the one way to read back a choice the type alone does not record.
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what
+      /// [`probe`](Self::probe) opens, and the one way to read back a choice the type omits.
       pub fn backend(&self) -> &B {
         &self.fgn.backend
       }
 
-      /// What the device behind this process reports — its name, the scalars
-      /// it computes in, its ordinal — or why it cannot be used. The CPU
-      /// devices always answer `Ok`.
+      /// What the device behind this process reports (name, scalars, ordinal), or why it cannot be
+      /// used; the CPU devices always answer `Ok`.
       pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
       where
         B: $crate::device::Backend,
@@ -73,8 +72,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
-      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, a `Metal` with a batch budget, or
+      /// `Cuda::from_env()?` for `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $($bound)+>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -82,15 +81,14 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
-      /// opens, and the one way to read back a choice the type alone does not record.
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what
+      /// [`probe`](Self::probe) opens, and the one way to read back a choice the type omits.
       pub fn backend(&self) -> &B {
         &self.backend
       }
 
-      /// What the device behind this process reports — its name, the scalars
-      /// it computes in, its ordinal — or why it cannot be used. The CPU
-      /// devices always answer `Ok`.
+      /// What the device behind this process reports (name, scalars, ordinal), or why it cannot be
+      /// used; the CPU devices always answer `Ok`.
       pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
       where
         B: $crate::device::Backend,

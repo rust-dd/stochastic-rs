@@ -1,4 +1,4 @@
-//! # GN
+//! Gaussian noise: `n` independent Brownian increments of variance `t / n`, with no leading zero.
 //!
 //! $$
 //! \Delta W_i\sim\mathcal N(0,\Delta t)

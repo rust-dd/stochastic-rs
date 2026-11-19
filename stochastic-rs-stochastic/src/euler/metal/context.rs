@@ -106,9 +106,8 @@ impl Context {
     let pipeline = &self.pipelines[&shape];
     let width = pipeline.max_threads_per_block().min(256) as u32;
     let config = DynamicLaunchConfig::for_elements(args.paths, width).map_err(device_error)?;
-    // SAFETY: launch_paths validates shape counts and every input's extent. Each
-    // guarded thread owns one complete path in every output plane. All buffers
-    // belong to the same ordered context and no CPU view survives the launch.
+    // SAFETY: launch_paths validates shape counts and every input's extent; each guarded thread
+    // owns one complete path in every output plane; no CPU view survives the launch.
     unsafe {
       Launch::new(
         Ok(pipeline),

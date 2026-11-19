@@ -1,8 +1,5 @@
-//! The processes whose coefficients are functions of time and state written as
-//! expressions: the kernel interprets each coefficient's compiled program at
-//! every step, so what the device has to reproduce is the host sampler's law
-//! under the very same expression — and a coefficient written as a closure has
-//! to stay on the host, bit-identically to the `Cpu` build.
+//! The processes whose coefficients are expressions of time and state: the kernel interprets
+//! each compiled program per step, and a closure coefficient stays on the host, bit for bit.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -40,10 +37,8 @@ fn native_diffusion(_t: f32, x: f32) -> f32 {
   0.3 + 0.1 * x.abs()
 }
 
-/// The Cheyette state under a displaced local volatility written as an
-/// expression: the device's `x` plane is centred where the host's is and
-/// spreads as the host's does, and its `y` plane — the accumulated variance
-/// — agrees in mean and spread.
+/// The Cheyette state under a displaced local volatility written as an expression: the `x`
+/// plane and the `y` plane, the accumulated variance, agree with the host in mean and spread.
 #[test]
 fn cheyette_with_an_expression_volatility_agrees_with_the_cpu_law() {
   let build = || {
@@ -87,10 +82,8 @@ fn cheyette_with_an_expression_volatility_agrees_with_the_cpu_law() {
   spreads_agree(&hy, &dy, "Cheyette y terminal spread");
 }
 
-/// With the diffusion at zero the Volterra equation is deterministic, so the
-/// device's lift has to reproduce the host's path point for point: the same
-/// kernel tables, the same start added back, the drift program evaluated at
-/// the same time and state — the wiring, checked without noise in the way.
+/// With zero diffusion the Volterra equation is deterministic, so the device's lift reproduces
+/// the host's path point for point: the wiring, checked without noise in the way.
 #[test]
 fn a_noiseless_volterra_equation_agrees_point_for_point() {
   let build = || {
@@ -116,9 +109,8 @@ fn a_noiseless_volterra_equation_agrees_point_for_point() {
   }
 }
 
-/// A Volterra equation under an exponential kernel with an expression drift
-/// and diffusion, on the kernel's Markov lift: the terminal mean and spread
-/// agree with the host's lift.
+/// A Volterra equation under an exponential kernel with an expression drift and diffusion, on
+/// the kernel's Markov lift: the terminal mean and spread agree with the host's lift.
 #[test]
 fn volterra_sde_with_expression_coefficients_agrees_with_the_cpu_law() {
   let build = || {
@@ -155,11 +147,8 @@ fn affine_leverage(_t: f32, s: f32) -> f32 {
   1.2 - 0.003 * s
 }
 
-/// The SLV spot under a leverage written as an expression that falls with
-/// the spot, and half the vol-of-vol: the spot's terminal spread reads the
-/// leverage, the mixing and the correlation, the variance's terminal mean
-/// and spread read the reversion and the mixed vol-of-vol, and none may go
-/// negative — the family truncates.
+/// The SLV spot under an expression leverage that falls with the spot, at half the vol-of-vol:
+/// spot spread, variance mean and spread agree, and no variance is negative (full truncation).
 #[test]
 fn heston_slv_with_an_expression_leverage_agrees_with_the_cpu_law() {
   let build = || {

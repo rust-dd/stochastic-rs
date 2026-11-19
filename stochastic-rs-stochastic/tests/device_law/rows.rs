@@ -1,9 +1,5 @@
-//! The models that report a matrix of independent rows — a batch of forward
-//! rates, a batch of affine factors — each row a small family of its own with
-//! per-row scalars. They reach a device one launch per row, so what these
-//! cases pin beyond the law is that row `i` got row `i`'s scalar and its own
-//! stream: a launch that reused one row's parameter, or one row's seed, for
-//! every row would keep each row's marginal plausible and still be wrong.
+//! The models that report a matrix of independent rows, one launch per row: beyond the law,
+//! these pin that row `i` got its own scalar and stream, which every marginal alone would miss.
 
 use ndarray::Array2;
 use ndarray::array;
@@ -38,9 +34,8 @@ fn row_spread(paths: &[Array2<f32>], row: usize) -> f64 {
     .sqrt()
 }
 
-/// Correlation between two rows' terminal values across the batch: the rows
-/// are independent, so a launch that seeded every row alike shows up here as
-/// a correlation near one while every marginal stays right.
+/// Correlation between two rows' terminal values across the batch: the rows are independent,
+/// so a launch that seeded every row alike shows a correlation near one with right marginals.
 fn row_corr(paths: &[Array2<f32>], a: usize, b: usize) -> f64 {
   let last = paths[0].ncols() - 1;
   let (ma, mb) = (row_mean(paths, a), row_mean(paths, b));
@@ -54,11 +49,8 @@ fn row_corr(paths: &[Array2<f32>], a: usize, b: usize) -> f64 {
   sab / (saa * sbb).sqrt()
 }
 
-/// Each factor mean-reverts under two shared curves and is observed through a
-/// quadratic map of three more, with its own diffusion scale and start. The
-/// curves are given slopes large enough that a slot read from its neighbour
-/// — `k` for `theta`, `b` for `c` — moves the terminal mean well past the
-/// tolerance, and the scales are distinct so a reused one moves the spread.
+/// Each factor reverts under two shared curves and is observed through a quadratic map of three
+/// more. Steep curves and distinct scales make a slot or scale read from its neighbour visible.
 #[test]
 fn adg_agrees_with_the_cpu_law() {
   fn k(t: f32) -> f32 {
@@ -129,11 +121,8 @@ fn adg_agrees_with_the_cpu_law() {
   }
 }
 
-/// Each pair is a rate driven by its own square-root variance; the matrix
-/// holds the rates in the first `xn` rows and the variances in the next. The
-/// variance's terminal mean is what pins `alpha` and `beta`, its spread
-/// `nu`, and the rate's spread `lambda` times the variance level — so each of
-/// the four per-pair scalars has a statistic that moves if it is misread.
+/// Each pair is a rate driven by its own square-root variance, rates in the first `xn` rows.
+/// The variance's mean pins `alpha` and `beta`, its spread `nu`, the rate's spread `lambda`.
 #[test]
 fn wu_zhang_agrees_with_the_cpu_law() {
   let build = || {
@@ -150,11 +139,8 @@ fn wu_zhang_agrees_with_the_cpu_law() {
       Deterministic::new(47),
     )
   };
-  // Four times the usual batch: the second pair's variance sits near the
-  // Feller boundary (`2 beta alpha = 0.12` against `nu^2 = 0.09`), so its
-  // terminal mean's standard error at `M` paths is a third of the tolerance
-  // below, which is too thin to call an agreement between two independent
-  // draws. The tolerance stays; the path count carries it.
+  // Four times the usual batch: the second pair's variance sits near the Feller boundary
+  // (`2 beta alpha = 0.12` against `nu^2 = 0.09`), and at `M` paths its mean's error is too wide.
   const PATHS: usize = 4 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -200,9 +186,8 @@ fn wu_zhang_agrees_with_the_cpu_law() {
   }
 }
 
-/// Terminal log-returns of a basket: the mean is `(mu - sigma^2 / 2) t`, the
-/// spread `sigma sqrt(t)` and the cross-correlation `rho`, all exactly, so
-/// each of the three parameter sets has a statistic that pins it.
+/// Terminal log-returns of a basket: mean `(mu - sigma^2 / 2) t`, spread `sigma sqrt(t)` and
+/// cross-correlation `rho`, all exact, so each parameter set has a statistic that pins it.
 fn log_returns(paths: &[Array2<f32>], row: usize) -> Vec<f64> {
   let last = paths[0].ncols() - 1;
   paths
@@ -223,9 +208,8 @@ fn corr(a: &[f64], b: &[f64]) -> f64 {
   sab / (saa * sbb).sqrt()
 }
 
-/// Three correlated assets in one launch under one Cholesky factor. The
-/// correlations are the point: a launch that combined the shocks through the
-/// wrong factor — or through none — keeps every marginal exactly right.
+/// Three correlated assets in one launch under one Cholesky factor: a launch that combined the
+/// shocks through the wrong factor, or none, keeps every marginal right and loses these.
 #[test]
 fn multi_gbm_agrees_with_the_cpu_law() {
   let build = || {
@@ -279,9 +263,8 @@ fn multi_gbm_agrees_with_the_cpu_law() {
   }
 }
 
-/// A basket too wide for a launch stays on the host whatever the backend,
-/// and says nothing about it: the shape and the law are those of the
-/// sampler, which this pins so the fallback cannot silently break.
+/// A basket too wide for a launch stays on the host on any backend, silently: this pins the
+/// sampler's shape and law so the fallback cannot break unnoticed.
 #[test]
 fn multi_gbm_wider_than_four_assets_still_samples() {
   let rho = Array2::<f32>::eye(5);
@@ -304,9 +287,8 @@ fn multi_gbm_wider_than_four_assets_still_samples() {
   );
 }
 
-/// Three correlated noise streams, every point a draw: the per-stream spread
-/// is `sqrt(dt)` and the cross-correlation over all points is the requested
-/// one, which a wrong or missing factor loses while keeping the spreads.
+/// Three correlated noise streams, every point a draw: the per-stream spread is `sqrt(dt)` and
+/// the cross-correlation over all points the requested one, which a wrong factor loses.
 #[test]
 fn mcgns_agrees_with_the_cpu_law() {
   let build = || {
@@ -352,12 +334,8 @@ fn mcgns_agrees_with_the_cpu_law() {
   }
 }
 
-/// Three forwards under the spot measure's drift coupling, with unequal
-/// accruals so a launch reading one rate's period for all would move: the
-/// first has reset at the origin and never moves, the second freezes at its
-/// reset a third of the way in, the third five sixths in. Each live rate's
-/// terminal mean carries the coupled drift and its spread its own volatility,
-/// and the freezes are exact.
+/// Three forwards under the spot measure's drift coupling with unequal accruals: the first has
+/// reset and never moves, the others freeze exactly at their resets, a third and five sixths in.
 #[test]
 fn lmm_agrees_with_the_cpu_law() {
   let build = || {
@@ -405,10 +383,8 @@ fn lmm_agrees_with_the_cpu_law() {
   }
 }
 
-/// With a correlation matrix the shocks are combined through its Cholesky
-/// factor and the drifts through the correlations it implies; the
-/// correlation of two live forwards' log-returns is the one statistic a
-/// launch dropping either would move.
+/// With a correlation matrix the shocks go through its Cholesky factor and the drifts through
+/// its correlations; two live forwards' log-return correlation moves if either is dropped.
 #[test]
 fn lmm_correlated_forwards_agree_with_the_cpu_law() {
   let build = || {
@@ -429,9 +405,8 @@ fn lmm_correlated_forwards_agree_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  // Over the window both forwards are live — up to the second's reset a
-  // third of the way in — where the correlation is the matrix's own; after
-  // it the third moves alone and the terminal correlation dilutes.
+  // Over the window where both forwards are live, up to the second's reset a third of the way
+  // in, the correlation is the matrix's own; after it the third moves alone and dilutes it.
   let shared = |paths: &[Array2<f32>], row: usize| -> Vec<f64> {
     paths
       .iter()
@@ -452,13 +427,8 @@ fn lmm_correlated_forwards_agree_with_the_cpu_law() {
   );
 }
 
-/// The drift coupling itself, made large enough to see: at rates of a half
-/// with unit accruals and a volatility of a half, a forward's drift from the
-/// rates below it is of the order of its own `σ²/2`, so the mean log-return of
-/// a live forward — near `−σ² T / 2` without the coupling — moves by a
-/// multiple of its standard error when the coupling is wrong. Once without a
-/// correlation, where only a rate's own term survives, and once with one,
-/// where the cross terms `ρ_nj` carry the rest.
+/// The drift coupling made large enough to see (rates and volatility a half, unit accruals), so
+/// a wrong coupling moves a live forward's mean log-return; without and with a correlation.
 #[test]
 fn lmm_drift_coupling_agrees_with_the_cpu_law() {
   for correlated in [false, true] {
@@ -498,10 +468,8 @@ fn lmm_drift_coupling_agrees_with_the_cpu_law() {
   }
 }
 
-/// A tenor whose first reset lies ahead: every forward is live at first, the
-/// first one included, and freezes only once its date has passed — the
-/// convention a device curve that froze the first forward from the start
-/// would break.
+/// A tenor whose first reset lies ahead: every forward is live at first and freezes only once
+/// its date has passed, which a device curve that froze the first from the start would break.
 #[test]
 fn lmm_forward_starting_tenor_agrees_with_the_cpu_law() {
   let build = || {

@@ -1,4 +1,4 @@
-//! # BilateralGamma
+//! Bilateral gamma: the difference of two gamma processes, alone or beside a Brownian motion.
 //!
 //! $$
 //! X_t=\Gamma^+_t-\Gamma^-_t,\quad

@@ -14,20 +14,8 @@ use super::handles::Metal;
 use crate::sheet::fbs::Fbs;
 use crate::traits::FloatExt;
 
-/// The sheet-sampling capability of a [`Backend`]: the two-dimensional
-/// circulant embedding behind [`Fbs`]. The host devices run the process's own
-/// sampler; a GPU runs the embedding's noise transform as a pipeline of its
-/// own — complex Gaussian noise scaled by the eigenvalues' square roots, a
-/// row transform, a transpose, a column transform, and the read-out of the
-/// leading block less its corner plus the low-rank correction — in `f32`
-/// (Metal) or `f32` and `f64` (CUDA). The GPU pipelines take a grid
-/// whose embedding sides `2(m − 1)` and `2(n − 1)` are powers of two; the
-/// process keeps any other grid on the host itself.
-///
-/// Reproducibility per backend is as [`FgnBackend`](super::FgnBackend) states it: a GPU draws
-/// one launch seed per batch from the process's own seed and keys every normal's Philox draw
-/// on it, so a `Deterministic` sheet reproduces its device sheets and a batch produced in
-/// chunks equals one launch sheet for sheet.
+/// The sheet capability of a [`Backend`], the 2-D circulant embedding behind [`Fbs`]. A GPU needs
+/// embedding sides `2(m − 1)` and `2(n − 1)` that are powers of two; other grids stay on the host.
 pub trait SheetBackend<T: FloatExt>: Backend {
   /// One sheet, or why the device could not produce it.
   fn try_sheet<S: SeedExt>(&self, fbs: &Fbs<T, S, Self>) -> Result<Array2<T>, DeviceError>;
@@ -53,9 +41,8 @@ pub trait SheetBackend<T: FloatExt>: Backend {
   }
 }
 
-/// The host devices sample a sheet through the process's own sampler,
-/// chunked exactly as [`crate::traits::ProcessExt`] chunks, so a `Cpu` build
-/// and a device build that falls back to the host agree to the bit.
+/// The host devices sample a sheet through the process's own sampler, chunked as `ProcessExt`
+/// chunks, so a `Cpu` build and a device build that falls back to the host agree to the bit.
 macro_rules! host_sheet_backend {
   ($marker:ty) => {
     impl<T: FloatExt> SheetBackend<T> for $marker {
@@ -87,10 +74,8 @@ host_sheet_backend!(Cpu);
 #[cfg(accelerate_backend)]
 host_sheet_backend!(Accelerate);
 
-/// Generates a [`SheetBackend`] impl for a GPU marker whose `$sampler` returns
-/// the batch's sheets. Each marker and its impl are gated on the backend's
-/// cfg, and each marker implements the capability for the scalars its
-/// kernels compute in.
+/// A [`SheetBackend`] impl for a GPU marker whose `$sampler` returns the batch's sheets, gated on
+/// the backend's cfg, for the scalars its kernels compute in.
 macro_rules! gpu_sheet_backend {
   ($cfg:meta, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
     $(

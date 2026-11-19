@@ -1,59 +1,17 @@
 use super::*;
 
-/// Upper bound on the number of chunks [`ProcessExt::sample_par`] /
-/// [`ProcessExt::sample_map`] split `m` paths into.
-///
-/// `chunk_count`'s prologue (building every chunk's sampler, sequentially,
-/// on the calling thread — see [`ProcessExt::chunked_samplers`]) costs at
-/// most `MAX_CHUNKS` sampler constructions, however large `m` is. That
-/// bound matters because `sampler()` is not always cheap: the worst in-tree
-/// case (`Cir2F`, whose `sampler()` evaluates a user-supplied `Fn1D` — a
-/// Python callback, for the `Fn1D::Py` variant — once per grid point) would
-/// otherwise pay a *sequential, GIL-round-tripping* construction cost that
-/// grows with `m` (the previous rule, `m.div_ceil(8)`, made `sample_par(1000)`
-/// build 125 chunks — 125 sequential constructions — instead of a number
-/// bounded by the machine's core count). 64 is comfortably above real-world
-/// hardware-thread counts, so `m >= 64` still saturates any realistic rayon
-/// pool, while `m < 64` gets one chunk per path (full parallelism for small
-/// `m`, the other end `m.div_ceil(8)` got wrong by forcing `m <= 8` fully
-/// serial).
+/// Upper bound on the chunks of `sample_par` / `sample_map`: each costs one sequential `sampler()`
+/// call, which is not cheap for `Cir2F` with a Python `Fn1D`; 64 still saturates any rayon pool.
 const MAX_CHUNKS: usize = 64;
 
-/// Number of chunks to split `m` paths into.
-///
-/// A pure function of `m` alone. **Must never read
-/// `rayon::current_num_threads()`**: the chunk count fixes how many times
-/// [`sampler()`](ProcessExt::sampler) (and
-/// [`advance_chunk_seed()`](ProcessExt::advance_chunk_seed)) is called
-/// before any chunk starts running, which fixes how many times a
-/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
-/// shared seed state advances. If that count depended on the ambient
-/// thread-pool size, the same seed and the same `m` could produce different
-/// output on two machines (or two test runs) with different pool sizes —
-/// exactly the defect this module fixes.
-///
-/// `pub(crate)` rather than private: the `accelerate` feature's `Backend`
-/// impl (`device/fgn_backend.rs`) reuses it verbatim for `Fgn`/`Fbm`'s own `sample_par`
-/// overrides on that backend, which bypass this trait to reach the batched
-/// backend path but must split `m` the same data-derived way to get the
-/// same thread-count-independence guarantee. The default `Cpu` backend
-/// does not reuse it — measurement showed grouping several paths per
-/// `MAX_CHUNKS`-capped chunk regressed wall time roughly 2× at `m = 1000`
-/// there, because each path's own FFT call is itself a nested rayon
-/// parallel region (see `device/fgn_backend.rs`'s `Cpu::generate_batch` doc), so `Cpu`
-/// instead derives one basis per **path**, uncapped.
+/// Number of chunks for `m` paths, a function of `m` alone: reading `rayon::current_num_threads()`
+/// would make one seed give different output under different pools. `Accelerate`'s fGN reuses it.
 pub(crate) fn chunk_count(m: usize) -> usize {
   m.min(MAX_CHUNKS)
 }
 
-/// Splits `m` into `chunks` contiguous run lengths, as even as possible (the
-/// first `m % chunks` chunks get one extra path), yielded in chunk order.
-///
-/// `chunks == 0` only ever arises from `chunk_count(0)`; the `checked_div`/
-/// `checked_rem` fall back to `0` there (rather than relying on every caller
-/// to check `m` first) so this function stays total instead of panicking on
-/// the `m / 0` that a plain division would perform. `pub(crate)` for the
-/// same reason as `chunk_count` above.
+/// Splits `m` into `chunks` contiguous lengths in chunk order, the first `m % chunks` one longer.
+/// Total: `chunks == 0`, which only `chunk_count(0)` gives, yields nothing and divides nothing.
 pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
   let base = m.checked_div(chunks).unwrap_or(0);
   let rem = m.checked_rem(chunks).unwrap_or(0);
@@ -92,10 +50,8 @@ pub(crate) fn sample_map_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized, R: Send
         })
         .collect::<Vec<_>>()
     })
-    // Chunks run on rayon, but `Vec::into_par_iter()` → `.map()` is an
-    // `IndexedParallelIterator`, so `.collect()` restores chunk order
-    // regardless of completion order; flattening then reproduces the
-    // exact global path order (chunk 0's paths, then chunk 1's, ...).
+    // An indexed parallel iterator collects in chunk order whatever the completion order, so the
+    // flattened result is the global path order.
     .collect::<Vec<_>>()
     .into_iter()
     .flatten()
@@ -124,10 +80,8 @@ pub(crate) fn sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
     .collect()
 }
 
-/// [`sample_par_chunked`] through the sampler's fallible `try_sample`: the
-/// same chunks, the same per-chunk samplers in the same order, so a host
-/// process yields bit-identical paths and a device process reports its
-/// failure instead of panicking.
+/// [`sample_par_chunked`] through `try_sample`: the same chunks and samplers in the same order, so
+/// a host process yields bit-identical paths and a device process reports its failure.
 pub(crate) fn try_sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
   p: &P,
   m: usize,

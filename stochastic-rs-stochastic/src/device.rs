@@ -1,5 +1,6 @@
-//! Compile-time sampling backends, picked by `process.on::<Cuda>()` without a runtime branch; a
-//! marker exists only where it builds, `Metal` on Apple Silicon macOS and `Accelerate` on macOS.
+//! Compile-time sampling backends, picked by `process.on::<Cuda>()` without a runtime branch.
+//!
+//! A marker exists only where it builds: `Metal` on Apple Silicon macOS, `Accelerate` on macOS.
 
 mod chunks;
 mod env;
@@ -54,14 +55,11 @@ pub fn release_host_scratch() {
   rayon::broadcast(|_| release());
 }
 
-/// A compile-time device marker, sealed to the handles this module declares: `probe` is the one run-time
-/// question it answers, the sampling stays a compile-time choice (`.on::<B>()`, zero runtime branching).
+/// A compile-time device marker, sealed to this module's handles: `probe` is its one run-time
+/// question, and sampling stays a compile-time choice (`.on::<B>()`, no run-time branch).
 pub trait Backend: sealed::Sealed + Clone + Send + Sync {
-  /// Opens the device behind this marker and describes it, or says why it
-  /// cannot be used (no device, runtime missing, kernels failing to
-  /// compile). The CPU devices are always `Ok`. A `sample*` call on a device
-  /// that fails this probe panics with the same error; the `try_*` calls
-  /// return it.
+  /// Opens and describes the device, or says why it cannot be used; the CPU devices are always
+  /// `Ok`. A `sample*` call on a device that fails it panics with this error; `try_*` returns it.
   fn probe(&self) -> Result<DeviceInfo, DeviceError>;
 }
 
@@ -74,5 +72,5 @@ mod sealed {
 }
 
 /// Host capability: the process samples on the CPU through its own sampler. Every process accepts
-/// at least the host devices in `on::<B2>()`; the family is sealed, so a wider bound later breaks nobody.
+/// the host devices in `on::<B2>()`; the family is sealed, so a wider bound later breaks nobody.
 pub trait HostBackend: Backend {}

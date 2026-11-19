@@ -26,10 +26,8 @@ macro_rules! py_dispatch_f64 {
   };
 }
 
-/// `py_dispatch_f64!` on the class's device. A class whose parameters
-/// include a Python callable has no `float32` slot, so only the devices that
-/// compute in double precision can appear here — which is exactly the set
-/// `py_on_device_f64!` handles.
+/// `py_dispatch_f64!` on the class's device. A class with a Python callable has no `float32` slot,
+/// so only the double-precision devices appear here, the set `py_on_device_f64!` handles.
 #[cfg(feature = "python")]
 macro_rules! py_device_dispatch_f64 {
   ($self:expr, |$p:ident| $body:expr) => {
@@ -60,10 +58,8 @@ macro_rules! py_dispatch {
   };
 }
 
-/// One `sample*` body over a `float64` slot on the class's device: the host
-/// slot as is, a device slot re-typed on a clone sharing its seed state. The
-/// single-precision devices never reach here — `Device::parse` rejects them
-/// for a `float64` process.
+/// One `sample*` body over a `float64` slot on the class's device: the host slot as is, a device
+/// slot re-typed on a clone sharing its seed state. `Device::parse` rejects the `f32` devices.
 #[cfg(feature = "python")]
 macro_rules! py_on_device_f64 {
   ($device:expr, $inner:ident, |$p:ident| $body:expr) => {

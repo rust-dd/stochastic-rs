@@ -1,4 +1,4 @@
-//! # Fractional Ou driven by Riemann–Liouville fBM (RFSV log-volatility)
+//! Fractional Ornstein–Uhlenbeck driven by Riemann–Liouville fractional Brownian motion, `H < 1/2`.
 //!
 //! $$
 //! dX_t = \kappa(\mu - X_t)\,dt + \nu\,dW^H_t,\qquad H \in (0, 1/2)
@@ -50,7 +50,7 @@ pub struct RlFou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> RlFou<T, S> {
   /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive
-  /// and a given `1 <= degree <= 175`.
+  /// and finite, and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,

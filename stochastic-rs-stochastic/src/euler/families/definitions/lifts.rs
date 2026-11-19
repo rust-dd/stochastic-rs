@@ -4,11 +4,8 @@ macro_rules! euler_lifts {
       $emit;
       ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
-  /// Riemann-Liouville fractional Brownian motion under the Markov lift of
-  /// its kernel: no drift, unit diffusion, driven by the step's own shock,
-  /// and the state *is* the lifted value the frame hands back as `lv`. The
-  /// same declaration serves any rough Volterra kernel whose nodes and
-  /// weights the host supplies through `lift_spec()`.
+  /// Riemann-Liouville fBm under its kernel's Markov lift: no drift, unit diffusion, and the
+  /// state is the lifted value `lv`. Serves any rough kernel the host supplies in `lift_spec()`.
   94 => RiemannLiouville { }
     state (x)
     noise (dz)
@@ -16,10 +13,8 @@ macro_rules! euler_lifts {
     report { x }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
 
-  /// A mean-reverting process driven by Riemann-Liouville fBm: the lifted
-  /// fBm rides in the second slot and the state takes its increment,
-  /// `x + kappa (mu - x) dt + nu (B_{i} - B_{i-1})`, exactly as the host
-  /// feeds the lift's path into its own Euler loop.
+  /// A mean-reverting process driven by Riemann-Liouville fBm: the lifted fBm rides in the second
+  /// slot and the state takes its increment, `x + kappa (mu - x) dt + nu (B_{i} - B_{i-1})`.
   95 => RiemannLiouvilleOu { kappa, mu, nu }
     state (x, b)
     noise (dz)
@@ -30,10 +25,8 @@ macro_rules! euler_lifts {
     report { x, b }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
 
-  /// Black-Scholes under Riemann-Liouville fBm in closed form: the spot is
-  /// `s0 exp(r t - sigma^2 t^{2H} / 2 + sigma B_t)`, with the deterministic
-  /// part tabulated as the curve `ct` at each grid point and the lifted fBm
-  /// in the second slot.
+  /// Black-Scholes under Riemann-Liouville fBm in closed form,
+  /// `s0 exp(r t - sigma^2 t^{2H} / 2 + sigma B_t)`: the deterministic part is the curve `ct`.
   96 => RiemannLiouvilleBlackScholes { s0, sigma }
     state (s, b)
     noise (dz)
@@ -44,12 +37,8 @@ macro_rules! euler_lifts {
     report { s, b }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
 
-  /// The rough Heston model: a square-root variance whose mean reversion and
-  /// diffusion enter through the Markov lift of a rough kernel, so the lifted
-  /// value is the next variance, and a spot stepped by Euler under the
-  /// truncated variance. The variance's shock is correlated with the spot's
-  /// through `rho`; the state carries the raw lifted variance and reports it
-  /// truncated, as the host does.
+  /// Rough Heston: a square-root variance through a rough kernel's Markov lift, its shock
+  /// correlated with the Euler spot's by `rho`. The state holds the raw variance, reported clamped.
   97 => RiemannLiouvilleHeston { mu, kappa, theta, nu, rho }
     state (s, v)
     noise (ds, dq)
@@ -64,21 +53,16 @@ macro_rules! euler_lifts {
       shock (rho * ds + sqrt(negate(rho * rho - lit(1.0))) * dq)
     },
 
-  /// A diffusion with additive compound-Poisson jumps, `x + drift dt + sigma
-  /// dW + J`, the jump sum `js` under whatever size law the host declares.
-  /// Merton's and Kou's jump diffusions and the Lévy diffusion all step this,
-  /// differing only in the drift they hand over per step — compensated for
-  /// the jumps in the first two, the bare `gamma dt` in the third.
+  /// A diffusion with additive compound-Poisson jumps, `x + drift dt + sigma dW + J`. Merton, Kou
+  /// and the Lévy diffusion step it, differing in the per-step drift (compensated or `gamma dt`).
   98 => AdditiveJumpDiffusion { drift_dt, sigma }
     state (x)
     noise (dw)
     step { x + drift_dt + sigma * dw + $js }
     report { x },
 
-  /// Bates (1996) by Euler in the spot rather than the log-spot: the drift
-  /// arrives compensated, the jump multiplies the spot by `1 + js` with `js`
-  /// under a product size law, `∏ (1 + y_j) − 1`, and the variance is
-  /// truncated at zero.
+  /// Bates (1996) by Euler in the spot: the drift arrives compensated, the jump multiplies the
+  /// spot by `1 + js` under the product law `∏ (1 + y_j) − 1`, and the variance is truncated.
   99 => Bates1996 { drift_c, alpha, beta, sigma, rho }
     state (s, v)
     noise (dw, dq)
@@ -104,10 +88,8 @@ macro_rules! euler_lifts {
     }
     report { s, v },
 
-  /// An event-indexed compound Poisson path: every step is one arrival, so
-  /// the first slot advances by an exponential waiting time, the third takes
-  /// the arrival's single size — `js` under a one-per-step law — and the
-  /// second accumulates it.
+  /// An event-indexed compound Poisson path, one arrival per step: the first slot advances by an
+  /// exponential wait, the third takes the arrival's size `js`, the second accumulates it.
   101 => CompoundPoissonEvents { lambda }
     state (t, c, j)
     noise (dz)
@@ -118,21 +100,16 @@ macro_rules! euler_lifts {
     }
     report { t, c, j },
 
-  /// A fractional Ornstein-Uhlenbeck process with compound-Poisson jumps:
-  /// the fractional increments come from the device's embedding and the jump
-  /// sum from the step's own draw.
+  /// A fractional Ornstein-Uhlenbeck process with compound-Poisson jumps: the fractional
+  /// increments come from the device's embedding and the jump sum from the step's own draw.
   102 => JumpFractionalOu { theta, mu, sigma }
     state (x)
     noise (dz)
     step { x + theta * (mu - x) * $dt + sigma * dz + $js }
     report { x },
 
-  /// A square-root Volterra process under the Markov lift of its kernel:
-  /// mean reversion and diffusion enter through the lift, the lifted value
-  /// is the next state, and the state is reported truncated at zero as the
-  /// host does — rough Heston's variance when the kernel is
-  /// Riemann-Liouville. One difference of kind: the host's truncation lets a
-  /// NaN through so a caller sees it, `positive` here maps it to zero.
+  /// A square-root Volterra process under its kernel's Markov lift, reported truncated at zero.
+  /// Unlike the host's truncation, which lets a NaN through, `positive` maps it to zero.
   103 => VolterraSquareRoot { kappa, theta, nu }
     state (v)
     noise (dz)
@@ -144,10 +121,8 @@ macro_rules! euler_lifts {
       shock (dz)
     },
 
-  /// A polynomial of a Gaussian Volterra process: the state is the lifted
-  /// Gaussian — no drift, unit diffusion — and the report evaluates the
-  /// polynomial by Horner's rule over up to eight coefficients in rising
-  /// order, the unused ones zero.
+  /// A polynomial of a Gaussian Volterra process: the state is the lifted Gaussian, and the
+  /// report evaluates up to eight coefficients in rising order by Horner's rule.
   104 => GaussianPolynomialVolatility { c0, c1, c2, c3, c4, c5, c6, c7 }
     state (x)
     noise (dz)

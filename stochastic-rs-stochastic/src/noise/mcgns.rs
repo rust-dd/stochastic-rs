@@ -422,6 +422,15 @@ mod tests {
   fn rejects_a_covariance_matrix() {
     let _ = Mcgns::new(array![[2.0_f64, 0.5], [0.5, 1.0]], 8, None, Unseeded);
   }
+
+  #[test]
+  #[should_panic(
+    expected = "rho must satisfy `every Cholesky pivot of rho > T::zero()`, got pivot 2 = -1.3"
+  )]
+  fn rejects_an_indefinite_correlation_matrix() {
+    let rho = array![[1.0_f64, 0.5, -1.0], [0.5, 1.0, 0.5], [-1.0, 0.5, 1.0]];
+    let _ = Mcgns::new(rho, 8, None, Unseeded);
+  }
 }
 
 #[cfg(feature = "python")]

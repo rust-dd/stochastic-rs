@@ -1,5 +1,3 @@
-//! # Numerical utilities
-//!
 //! The Itô, isonormal and Monte Carlo helpers, each also at its defining path.
 //!
 //! ```

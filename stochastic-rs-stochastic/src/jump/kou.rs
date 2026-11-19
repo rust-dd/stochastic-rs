@@ -1,4 +1,4 @@
-//! # Kou
+//! Kou's double-exponential jump diffusion, stepped in the log-price with log-jumps of law `D`.
 //!
 //! $$
 //! \log Y\sim p\,\mathrm{Exp}(\eta_1)-(1-p)\,\mathrm{Exp}(\eta_2),\quad
@@ -64,7 +64,7 @@ where
   D: Distribution<T> + Send + Sync,
 {
   /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
-  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive.
+  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     alpha: T,
     sigma: T,

@@ -1,6 +1,5 @@
-//! The multi-component processes: the engine steps every component in one
-//! kernel, so what a device has to reproduce is each component's own law and
-//! the boundary its family promises.
+//! The multi-component processes: the engine steps every component in one kernel, so a device
+//! must reproduce each component's own law and the boundary its family promises.
 
 use ndarray::Array1;
 use stochastic_rs_stochastic::traits::ProcessExt;

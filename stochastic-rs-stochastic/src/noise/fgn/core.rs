@@ -1,4 +1,4 @@
-//! # Core
+//! The `Fgn` struct, its cached circulant spectrum and FFT plan, and the setters that rebuild them.
 //!
 //! $$
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)

@@ -1,4 +1,4 @@
-//! # Rdts
+//! Rapidly decreasing tempered stable process by a shot-noise series stopped at `j` terms.
 //!
 //! $$
 //! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx

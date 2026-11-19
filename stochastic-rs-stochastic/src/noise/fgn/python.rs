@@ -1,4 +1,4 @@
-//! # Python
+//! The Python class of `Fgn`, in `f32` or `f64` by its `dtype` argument.
 //!
 //! $$
 //! \varepsilon \sim \mathcal N(0,\Sigma)\ \text{with optional fractional covariance shaping}

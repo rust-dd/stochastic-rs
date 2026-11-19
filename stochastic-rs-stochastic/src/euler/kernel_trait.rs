@@ -2,10 +2,8 @@ use ndarray::ArrayView2;
 
 use super::*;
 
-/// The device primitive of the Euler engine: one launch under one seed.
-/// Implement it for a device handle and [`EulerBackend`] follows through
-/// `kernel_euler_backend!`; the host handles implement [`EulerBackend`]
-/// directly.
+/// The device primitive of the Euler engine: one launch under one seed. A device handle that
+/// implements it gets [`EulerBackend`] from `kernel_euler_backend!`; the host handles do not.
 #[doc(hidden)]
 pub trait EulerKernel<T: FloatExt>: Backend {
   /// Paths `first .. first + m` of the launch stream seeded by `seed`, column 0 the initial value;
@@ -18,19 +16,8 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array2<T>, DeviceError>;
 
-  /// [`euler_kernel`](Self::euler_kernel) with the launch *lent* to `f`
-  /// rather than handed over: `f` reads an `m × n` view and returns what it
-  /// made of it, and the paths never have to be copied anywhere.
-  ///
-  /// A unified-memory device overrides this — its kernel writes where the
-  /// CPU already reads, so the copy the owning form has to make is pure
-  /// loss. It is not a small share: at two hundred thousand paths over a
-  /// thousand points the batch is eight hundred megabytes, and copying it
-  /// out took three times what the kernel that produced it did. The default
-  /// is the copy, which is what a device behind a bus pays anyway.
-  ///
-  /// The view is valid only for the call; a device may reuse the memory
-  /// behind it as soon as `f` returns.
+  /// [`euler_kernel`](Self::euler_kernel) with the launch lent to `f` as an `m × n` view valid
+  /// only for the call. The default copies; a unified-memory device overrides it to lend in place.
   fn euler_kernel_lend<P: EulerCoefficients<T>, O>(
     &self,
     process: &P,

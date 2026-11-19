@@ -112,7 +112,8 @@ macro_rules! euler_families {
 
     /// Evaluates every component from the pre-step state using the shared formula.
     /// Parameters, state and noise follow declaration order.
-    #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
+    #[cfg(test)]
+    #[allow(unused_variables, unused_mut, unused_assignments)]
     pub(crate) fn host_step<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -175,7 +176,8 @@ macro_rules! euler_families {
     }
 
     /// Evaluates reports from state and parameters in declaration order.
-    #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
+    #[cfg(test)]
+    #[allow(unused_variables, unused_mut, unused_assignments)]
     pub(crate) fn host_report<T: FloatExt>(
       family: Family,
       state: &[T],

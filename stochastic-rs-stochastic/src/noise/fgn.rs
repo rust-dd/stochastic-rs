@@ -1,4 +1,4 @@
-//! # fGN
+//! Fractional Gaussian noise by Davies–Harte circulant embedding, on the host or a device.
 //!
 //! $$
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)

@@ -1,4 +1,4 @@
-//! # Cgns
+//! Two Gaussian increment streams of variance `dt`, correlated by `rho`.
 //!
 //! $$
 //! Z_t=L\varepsilon_t,\quad \varepsilon_t\sim\mathcal N(0,I),\ LL^\top=\Sigma

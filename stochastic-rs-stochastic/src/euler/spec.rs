@@ -11,16 +11,14 @@ pub enum EulerSpec<T: FloatExt> {
   GeometricBrownian { mu: T, sigma: T },
   /// `dX = θ(μ − X) dt + σ dW`.
   OrnsteinUhlenbeck { theta: T, mu: T, sigma: T },
-  /// `dX = κ(θ − X) dt + σ√X dW`, stepped with full truncation (Lord,
-  /// Koekkoek & van Dijk 2010): the recursion runs on an auxiliary process
-  /// whose positive part enters drift, diffusion and the reported path.
+  /// `dX = κ(θ − X) dt + σ√X dW` with full truncation (Lord, Koekkoek & van Dijk 2010): an
+  /// auxiliary process whose positive part enters drift, diffusion and the reported path.
   SquareRoot { kappa: T, theta: T, sigma: T },
   /// `dX = dW`: the increment accumulates. With fractional increments this is
   /// fractional Brownian motion.
   Additive,
-  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step — the
-  /// fractional CIR recursion, which truncates the result rather than
-  /// stepping on a truncated state.
+  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step: the fractional CIR
+  /// recursion, which truncates the result, not the state it steps on.
   ReflectedSquareRoot { theta: T, mu: T, sigma: T },
   /// The same with the symmetric reflection: the step's absolute value.
   MirroredSquareRoot { theta: T, mu: T, sigma: T },
@@ -359,10 +357,8 @@ pub enum EulerSpec<T: FloatExt> {
     two_lam: T,
     four_mu_lam: T,
   },
-  /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform.
-  /// The scale is `ln((c·dt)^{1/α})`, not the scale itself: the step sums the
-  /// transform's factors in logs, and `(c·dt)^{1/α}` underflows to zero for
-  /// small `α` before any of them does.
+  /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform. The scale is passed
+  /// as `ln((c·dt)^{1/α})`: the step sums logs, and `(c·dt)^{1/α}` underflows for small `α`.
   StableSubordinator {
     alpha: T,
     inv_alpha: T,
@@ -488,9 +484,8 @@ pub enum EulerSpec<T: FloatExt> {
   },
   /// Up to four correlated Gaussian noises under one lower Cholesky factor.
   CorrelatedNoises4 { l: [T; 10] },
-  /// A log-normal spot under a Markov chain of up to four volatility regimes:
-  /// one volatility per regime and, per row of the one-step transition
-  /// matrix, the three cumulative thresholds the successor is drawn against.
+  /// A log-normal spot under a Markov chain of up to four volatility regimes: one volatility
+  /// per regime and, per transition-matrix row, three cumulative thresholds for the successor.
   RegimeSwitching {
     mu: T,
     sigma: [T; 4],
@@ -534,9 +529,8 @@ pub enum EulerSpec<T: FloatExt> {
     sigma: T,
     rho: T,
   },
-  /// An event-indexed compound Poisson path — arrival times, cumulative
-  /// jumps and the jumps themselves — one arrival per step, the size under a
-  /// one-per-step law.
+  /// An event-indexed compound Poisson path (arrival times, cumulative jumps and the jumps),
+  /// one arrival per step, the size under a one-per-step law.
   CompoundPoissonEvents { lambda: T },
   /// A fractional Ornstein-Uhlenbeck process with compound-Poisson jumps.
   JumpFractionalOu { theta: T, mu: T, sigma: T },
@@ -545,9 +539,8 @@ pub enum EulerSpec<T: FloatExt> {
   /// A polynomial of a Gaussian Volterra process under the launch's Markov
   /// lift, up to eight coefficients in rising order, the unused ones zero.
   GaussianPolynomialVolatility { coefficients: [T; 8] },
-  /// Rough Heston in the two-term rational approximation of its kernel, the
-  /// memory integral of the local factor kept exactly by the history block
-  /// against the weights the launch tabulates as its first curve.
+  /// Rough Heston in the two-term rational approximation of its kernel; the history block keeps
+  /// the local factor's memory integral exactly, against the weights in the launch's first curve.
   RoughHestonMemory {
     mu: T,
     theta: T,
@@ -558,9 +551,8 @@ pub enum EulerSpec<T: FloatExt> {
     inv_g: T,
     rho: T,
   },
-  /// The fractional Bates model: [`RoughHestonMemory`](EulerSpec::RoughHestonMemory)
-  /// with unit calibration coefficients, a jump-compensated drift and normal
-  /// jumps in the log-spot.
+  /// The fractional Bates model: [`RoughHestonMemory`](EulerSpec::RoughHestonMemory) with unit
+  /// calibration coefficients, a jump-compensated drift and normal jumps in the log-spot.
   FractionalBatesMemory {
     mu_c: T,
     theta: T,
@@ -569,9 +561,8 @@ pub enum EulerSpec<T: FloatExt> {
     inv_g: T,
     rho: T,
   },
-  /// Rough Bergomi under the hybrid scheme, its Volterra driver the history
-  /// block's convolution (weights in the first curve) plus an independent
-  /// residual, the deterministic exponent in the second curve.
+  /// Rough Bergomi under the hybrid scheme: the Volterra driver is the history block's
+  /// convolution (first curve) plus an independent residual; the exponent is the second curve.
   RoughBergomiMemory {
     r: T,
     a: T,
@@ -593,11 +584,8 @@ pub enum EulerSpec<T: FloatExt> {
   /// A moving-average filter of white noise whose weights — the impulse
   /// response of the host's linear recursion — travel as the first curve.
   MovingAverageFilter { sigma: T },
-  /// A tempered-stable process by its shot-noise series, the term sizes'
-  /// constants folded on the host: `rate` scales the arrival bound, the
-  /// exponential draw enters as `e_scale E^{e_pow}`, and a side is positive
-  /// with probability `w_plus` at tempering `lambda_plus`, negative at
-  /// `lambda_minus`.
+  /// A tempered-stable process by its shot-noise series. `rate` scales the arrival bound, the
+  /// exponential enters as `e_scale E^{e_pow}`, and a side is positive with probability `w_plus`.
   TemperedStableSeries {
     b_t: T,
     rate: T,
@@ -614,10 +602,8 @@ pub enum EulerSpec<T: FloatExt> {
   /// A Hawkes process with exponential excitation, one event per step, by the
   /// exact two-uniform recursion.
   HawkesEvents { mu: T, alpha: T, beta: T },
-  /// A bivariate Hawkes process, one event per step, by the superposition of
-  /// each target's exact excess clock and the baselines' joint Poisson clock:
-  /// the two baselines, the excitation matrix row-major (`α_ij`: onto target
-  /// `i` from source `j`) and one decay per target.
+  /// A bivariate Hawkes process, one event per step, by superposing each target's exact excess
+  /// clock and the baselines' Poisson clock. `alpha` is row-major, `α_ij` onto `i` from `j`.
   HawkesEvents2 {
     mu: [T; 2],
     alpha: [T; 4],
@@ -629,9 +615,8 @@ pub enum EulerSpec<T: FloatExt> {
   /// A stochastic Volterra equation under the Markov lift of its kernel, the
   /// drift and diffusion the launch's two programs compute from `(t, x)`.
   VolterraProgram,
-  /// The inverse of an α-stable subordinator by the table block: the direct
-  /// subordinator's Chambers–Mallows–Stuck constants folded on the host, the
-  /// table's extent and resolution from the launch's `table_spec()`.
+  /// The inverse of an α-stable subordinator by the table block: the subordinator's
+  /// Chambers–Mallows–Stuck constants, with the table's extent and resolution from `table_spec()`.
   InverseStableSubordinator {
     alpha: T,
     c: T,
@@ -640,9 +625,8 @@ pub enum EulerSpec<T: FloatExt> {
     tail_exp: T,
     pi: T,
   },
-  /// The Heston stochastic-local volatility model `(s, v)` under the leverage
-  /// the launch's first program computes from `(t, s)`, the vol-of-vol
-  /// already mixed by `η`.
+  /// The Heston stochastic-local volatility model `(s, v)` under the leverage the launch's first
+  /// program computes from `(t, s)`, the vol-of-vol already mixed by `η`.
   HestonSlv {
     mu: T,
     kappa: T,
@@ -650,10 +634,8 @@ pub enum EulerSpec<T: FloatExt> {
     sigma: T,
     rho: T,
   },
-  /// CGMY under an exactly stepped CIR variance, the series sized in the step
-  /// of each term's cell against the variance there: the arrival bound's rate
-  /// at unit variance `rate0 = α / (2 C T)`, the drift coefficient `bcoef` per
-  /// unit variance, the CIR step's `2c` and `e^{−κ Δt}`, and the loading `ρ`.
+  /// CGMY under an exactly stepped CIR variance, each term sized in its cell's step against the
+  /// variance there. `rate0 = α / (2 C T)` is the arrival bound's rate at unit variance.
   StochasticVolatilityCgmy {
     rate0: T,
     inv_alpha: T,
@@ -664,20 +646,16 @@ pub enum EulerSpec<T: FloatExt> {
     ek: T,
     rho: T,
   },
-  /// The two-dimensional Wishart process by its exact step: the three `2 × 2`
-  /// maps of the law identity — `m = exp(Δt b)`, the extended Cholesky factor
-  /// `θ` of `q / Δt` and its inverse — row-major, and whether the noise has
-  /// rank two.
+  /// The two-dimensional Wishart process by its exact step: row-major `m = exp(Δt b)`, the
+  /// extended Cholesky factor `θ` of `q / Δt` and its inverse, and whether the noise has rank two.
   WishartTwo {
     m: [T; 4],
     theta: [T; 4],
     theta_inv: [T; 4],
     two: T,
   },
-  /// Up to four forward LIBOR rates under the spot measure's drift coupling:
-  /// their volatilities, their accrual periods, and the lower Cholesky factor
-  /// of their correlation in row-major lower-triangle order; the active reset
-  /// index travels as the launch's first curve.
+  /// Up to four forward LIBOR rates under the spot measure's drift coupling: volatilities,
+  /// accruals and the correlation's lower Cholesky factor; the reset index is the first curve.
   LiborMarket4 {
     sigma: [T; 4],
     delta: [T; 4],

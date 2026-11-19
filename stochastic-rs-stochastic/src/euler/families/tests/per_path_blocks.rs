@@ -12,9 +12,8 @@ fn a_family_declares_at_most_one_per_path_block() {
   }
 }
 
-/// Rosiński's term size: the arrival bound `(Γ rate)^{-1/α}` against the
-/// tempered draw `e_scale E^{e_pow} U^{1/α} / λ_side`, on the side the
-/// uniform picks.
+/// Rosiński's term size: the arrival bound `(Γ rate)^{-1/α}` against the tempered draw
+/// `e_scale E^{e_pow} U^{1/α} / λ_side`, on the side the uniform picks.
 #[test]
 fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
   let (rate, alpha, e_scale, e_pow, w_plus, lp, lm) = (0.25, 0.5, 0.5, 0.5, 0.4, 2.0, 6.0);
@@ -54,9 +53,8 @@ fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
   );
 }
 
-/// The live series of the stochastic-volatility CGMY reads the variance: the
-/// arrival bound's rate is `rate0 / v`, so a larger variance admits larger
-/// terms, and the family says so of itself.
+/// The live series of the stochastic-volatility CGMY reads the variance: the arrival bound's
+/// rate is `rate0 / v`, so a larger variance admits larger terms.
 #[test]
 fn live_series_size_reads_the_variance_slot() {
   assert!(Family::StochasticVolatilityCgmy.series_live());

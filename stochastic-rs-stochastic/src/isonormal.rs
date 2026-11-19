@@ -1,19 +1,10 @@
-//! # Isonormal
+//! Isonormal Gaussian process `W` over a Hilbert space, whose inner product is its covariance.
 //!
 //! $$
 //! \mathbb{E}[W(h)W(g)] = \langle h, g \rangle_{\mathcal H}
 //! $$
 //!
-//! ## Precision
-//!
-//! This module is **`f64`-only by design**. The path generator relies on
-//! `ndrustfft::FftHandler<f64>` and `num_complex::Complex64`, and
-//! `gauss_quad::GaussLegendre` (used by [`l2_unit_inner_product`]) is
-//! parameterised over `f64`. None of these have a stable `f32` analogue
-//! in the current dependency stack, so the entire module commits to
-//! `f64`. Generic-precision Hilbert-space samplers should use
-//! [`crate::noise::fgn::Fgn`] or the strongly-typed
-//! [`crate::traits::ProcessExt`] processes instead.
+//! `f64` only: `ndrustfft`, `Complex64` and `gauss_quad` have no `f32` twin; `Fgn` is generic.
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::concatenate;
@@ -211,8 +202,8 @@ where
   quad.integrate(0.0, 1.0, integrand)
 }
 
-// Fractional Lévy Ornstein-Uhlenbeck inner product function (Unstable)
-// https://projecteuclid.org/journals/bernoulli/volume-17/issue-1/Fractional-L%C3%A9vy-driven-OrnsteinUhlenbeck-processes-and-stochastic-differential-equations/10.3150/10-BEJ281.pdf
+// Fractional Lévy Ornstein–Uhlenbeck inner product (unstable).
+// Reference: Fink & Klüppelberg (2011), Bernoulli 17(1), 484–506, DOI 10.3150/10-BEJ281
 pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   assert!(
     d > 0.0 && d < 1.0,

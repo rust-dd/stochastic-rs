@@ -1,4 +1,4 @@
-//! # Antithetic Variates
+//! Antithetic variates: each standard normal draw is paired with its negation and averaged.
 //!
 //! $$
 //! \hat{\mu}_{\mathrm{AV}} = \frac{1}{N}\sum_{i=1}^{N}

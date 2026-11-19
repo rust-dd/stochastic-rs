@@ -1,16 +1,6 @@
-//! Every family, launched on a device without a process that happens to use
-//! it.
+//! Every family launched on a device through a probe, a process that is nothing but a family.
 //!
-//! The kernels the CUDA and Metal back-ends run are generated from the family
-//! declarations, so a family that compiles is a family those two can step;
-//! what is left to check is that the declaration means on the device what it
-//! means on the host.
-//!
-//! What closes that gap is [`Probe`], a process that is nothing but a family,
-//! and [`family_name`], whose `match` carries no wildcard: a new
-//! [`EulerSpec`] variant fails to compile here until it is named, which is
-//! the prompt to add it to [`every_family`] as well. From there the tests
-//! launch all of them and compare the two kernels point for point.
+//! [`family_name`] matches [`EulerSpec`] without a wildcard, so a new family must be probed.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -96,9 +86,8 @@ impl ProbePrograms {
   }
 }
 
-/// A small Markov lift for the probes: a Riemann-Liouville kernel at
-/// `H = 0.3` on twelve nodes, its per-node constants and boundary terms taken
-/// from the same `VolterraLift` the host samplers step with.
+/// A small Markov lift for the probes: a Riemann-Liouville kernel at `H = 0.3` on twelve nodes,
+/// its constants and boundary terms from the `VolterraLift` the host samplers step with.
 #[derive(Clone)]
 pub(crate) struct ProbeLift {
   decay: Vec<f32>,
@@ -122,31 +111,25 @@ fn probe_lift(dt: f32) -> ProbeLift {
   }
 }
 
-/// The curve every probe carries: a family that reads none ignores it, and
-/// one that does gets a value that varies along the path, so a kernel binding
-/// the wrong step would show up as a different law.
-/// The jump intensity every probe declares: enough that a step sees a jump
-/// now and then, low enough that the count stays small.
-/// The series terms every series probe draws per path: a few per cell on
-/// the probes' short grid, so a cell that gets none is the exception.
+/// The series terms every series probe draws per path: a few per cell on the probes' short
+/// grid, so a cell that gets none is the exception.
 const PROBE_TERMS: u32 = 64;
 
 /// The table points every table probe builds per path.
 const PROBE_TABLE: u32 = 64;
 
+/// The jump intensity every probe declares: a step sees a jump now and then, and few of them.
 const PROBE_INTENSITY: f32 = 3.0;
 
-/// The size law every probe declares. Double-exponential rather than normal
-/// because it is the one the kernel sums in a loop, so the loop runs on both
-/// kernels whether or not the family under test reads the sum.
-/// The Gamma draws every probe declares. Two of them, with the first shape
-/// below one so the boost branch runs and the second above it so the plain
-/// rejection loop does.
+/// The Gamma draws every probe declares: the first shape below one so the boost branch runs,
+/// the second above it so the plain rejection loop does.
 const PROBE_GAMMAS: GammaDraws<f32> = GammaDraws {
   first: (0.4, 1.5, 0.0),
   second: Some((2.5, 0.8, 0.0)),
 };
 
+/// The size law every probe declares: double-exponential, the one the kernel sums in a loop,
+/// so the loop runs on both kernels whether or not the family reads the sum.
 const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
   p_up: 0.4,
   eta_up: 25.0,
@@ -200,11 +183,8 @@ fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
   }
 }
 
-/// One ramp per curve slot, each with its own level and slope, so every slot
-/// the kernels bind carries a value no other slot carries and a family that
-/// reads `ct3` is checked against the host reading `ct3` and nothing else.
-/// The series sum a step reads: the filed cell for a preamble-sized family,
-/// the terms of the cell sized against the current state for a live one.
+/// The series sum a step reads: the filed cell for a preamble-sized family, the terms of the
+/// cell sized against the current state for a live one.
 fn cell_sum(
   family: super::families::Family,
   state: &[f32],
@@ -247,6 +227,8 @@ fn series_draws(term: u32) -> (f32, f32, f32, f32, f32) {
   )
 }
 
+/// One ramp per curve slot, each with its own level and slope, so a family that reads `ct3` is
+/// checked against the host reading `ct3` and no other slot.
 fn probe_curves() -> Vec<Vec<f32>> {
   (0..crate::euler::CURVE_SLOTS)
     .map(|k| {
@@ -256,9 +238,8 @@ fn probe_curves() -> Vec<Vec<f32>> {
     .collect()
 }
 
-/// The name of a family, matched without a wildcard on purpose: a new
-/// [`EulerSpec`] variant fails to compile here until it is named, which is
-/// the prompt to give it an entry in [`every_family`].
+/// The name of a family, matched without a wildcard: a new [`EulerSpec`] variant fails to
+/// compile here until it is named, the prompt to give it an entry in [`every_family`].
 fn family_name(spec: &EulerSpec<f32>) -> &'static str {
   match spec {
     EulerSpec::GeometricBrownian { .. } => "GeometricBrownian",
@@ -454,9 +435,8 @@ fn every_family_has_a_probe() {
   }
 }
 
-/// The kernels the native back-ends run are generated, so what this checks is
-/// that each generated body compiles into a launchable kernel and produces a
-/// path that stays in the reals.
+/// The native back-ends' kernels are generated, so this checks that each generated body
+/// compiles into a launchable kernel and produces a finite path.
 #[cfg(device_backend)]
 #[test]
 fn every_family_runs_on_the_device() {

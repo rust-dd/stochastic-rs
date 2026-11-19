@@ -76,16 +76,8 @@ fn normal_inverse_gaussian_agrees_with_the_cpu_law() {
   );
 }
 
-/// The inverse-Gaussian clock stays positive on a grid fine enough to expose
-/// the draw's cancellation, on the device and on the host alike.
-///
-/// Michael-Schucany-Haas takes the small root as a difference of two terms
-/// that agree to more digits the finer the grid is: at `n = 253` the two
-/// still differ in single precision, at `n = 2048` they do not, and the root
-/// came out zero or negative — a clock that runs backwards, and a NaN as soon
-/// as the normal inverse Gaussian takes its square root. Every path was NaN
-/// on the device and a quarter of them on the host before the roots were
-/// rewritten as a sum and a quotient.
+/// The inverse-Gaussian clock stays positive on a fine grid. Michael-Schucany-Haas's small root
+/// as a difference cancels to zero or below at `n = 2048` in `f32`; a sum and a quotient do not.
 #[test]
 fn the_inverse_gaussian_clock_survives_a_fine_grid() {
   const FINE: usize = 2_048;
@@ -125,10 +117,8 @@ fn the_inverse_gaussian_clock_survives_a_fine_grid() {
   );
 }
 
-/// A positive-stable subordinator is non-decreasing, and its increments are
-/// heavy-tailed enough that the terminal mean is dominated by rare large
-/// jumps. What is compared is therefore the median, which the tail does not
-/// move, alongside the monotonicity the transform guarantees.
+/// A positive-stable subordinator is non-decreasing and so heavy-tailed that rare jumps
+/// dominate the terminal mean; the median, which the tail does not move, is compared instead.
 #[test]
 fn stable_subordinator_agrees_with_the_cpu_law() {
   let build = || {
@@ -163,10 +153,8 @@ fn stable_subordinator_agrees_with_the_cpu_law() {
   );
 }
 
-/// A gamma subordinator is non-decreasing and positive, and its terminal mean
-/// is `ν t / λ`. The kernel draws it by Marsaglia-Tsang, whose rejection loop
-/// is bounded; what this pins is that the bounded loop still produces the
-/// law.
+/// A gamma subordinator is non-decreasing and positive with terminal mean `ν t / λ`; this pins
+/// that the kernel's bounded Marsaglia-Tsang rejection loop still produces the law.
 #[test]
 fn gamma_subordinator_agrees_with_the_cpu_law() {
   let build =
@@ -270,10 +258,8 @@ fn bilateral_gamma_motion_agrees_with_the_cpu_law() {
   );
 }
 
-/// A tempered-stable subordinator: the kernel draws the candidates above the
-/// truncation and keeps each with the tempering probability, so the sum it
-/// builds is the thinned one the host builds by the same test. The path is
-/// non-decreasing because every kept jump is positive.
+/// A tempered-stable subordinator: the kernel keeps each candidate above the truncation with
+/// the tempering probability, the host's own test, and every kept jump is positive.
 #[test]
 fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
   let build = || {
@@ -304,17 +290,8 @@ fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
   );
 }
 
-/// A small scale keeps the kernel's stable subordinator on the host's law
-/// rather than collapsing it to zero.
-///
-/// The kernel folds the transform's scale as `(c·dt)^{1/α}`, and in `f32` that
-/// factor underflows to zero long before the path it scales does: at `α = 0.2`
-/// and `c·dt = 9.8e-10` it is `8.8e-46`, zero as a float, while the terminal
-/// value near `(c·T)^{1/α} = 1e-30` is an ordinary single. Every device path
-/// was then identically zero against a host that was still right — the host
-/// folds in `f64`, so only the kernel copy of the transform showed it. The
-/// same fold in the kernel's own precision turned 7.9 % of the points of an
-/// `α = 0.1` device path into NaN.
+/// A small scale keeps the kernel's stable subordinator on the host's law: `(c·dt)^{1/α}`
+/// underflows in `f32` (`8.8e-46` at `α = 0.2`, `c·dt = 9.8e-10`), so the kernel folds it in logs.
 #[test]
 fn a_small_scale_keeps_the_stable_subordinator_on_the_cpu_law() {
   let build = || {
@@ -356,11 +333,8 @@ fn a_small_scale_keeps_the_stable_subordinator_on_the_cpu_law() {
   );
 }
 
-/// The inverse stable subordinator is the first-passage clock of a stable
-/// subordinator built on a table in its own argument: the kernel builds the
-/// same table from the same positive-stable increments and interpolates the
-/// same way, so the clock's terminal law — mean and spread — and its
-/// monotonicity have to agree.
+/// The inverse stable subordinator is a stable subordinator's first-passage clock on a table:
+/// the kernel builds and interpolates the same table, so mean, spread and monotonicity agree.
 #[test]
 fn inverse_alpha_stable_subordinator_agrees_with_the_cpu_law() {
   let build = || {

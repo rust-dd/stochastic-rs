@@ -1,9 +1,5 @@
-//! The processes whose increment is a draw rather than a step: a Poisson
-//! count, an inverse-Gaussian subordinator, and Brownian motion under that
-//! clock. Each is one expression in the kernel because its sampler needs no
-//! rejection — a Poisson count by Knuth's product of uniforms, an
-//! inverse-Gaussian draw by Michael-Schucany-Haas — so what these cases pin
-//! is that the device draws the same law the host's own sampler draws.
+//! The processes whose increment is a draw, not a step: a Poisson count (Knuth's product of
+//! uniforms) and an inverse-Gaussian clock (Michael-Schucany-Haas), each rejection-free.
 
 use stochastic_rs_stochastic::traits::ProcessExt;
 

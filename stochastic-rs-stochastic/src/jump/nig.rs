@@ -1,4 +1,4 @@
-//! # Nig
+//! Normal inverse Gaussian process: a drifted Brownian motion on an inverse-Gaussian clock.
 //!
 //! $$
 //! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)

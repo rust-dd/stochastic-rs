@@ -13,9 +13,8 @@ use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonP
 
 use super::*;
 
-/// The spot is a martingale under a zero drift and the variance reverts to
-/// theta, so both components have a terminal mean two independent streams can
-/// agree on. The variance also may not go negative: its family truncates.
+/// The spot is a martingale under zero drift and the variance reverts to theta, so both
+/// terminal means can agree across streams; the truncating family keeps the variance non-negative.
 #[test]
 fn heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -223,9 +222,8 @@ fn stochastic_correlation_heston_agrees_with_the_cpu_law() {
   }
 }
 
-/// Two Heston assets under one Cholesky factor: four components in one
-/// launch. Both variances stay non-negative and every component's terminal
-/// mean must agree.
+/// Two Heston assets under one Cholesky factor, four components in one launch: both variances
+/// stay non-negative and every component's terminal mean agrees.
 #[test]
 fn two_asset_heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -266,9 +264,8 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
   }
 }
 
-/// The quadratic-exponential scheme draws its variance from a moment-matched
-/// law with two branches, and the kernel picks between them with a uniform of
-/// its own. The variance is non-negative by construction on both branches.
+/// The quadratic-exponential scheme draws its variance from a moment-matched law with two
+/// branches, picked by the kernel's own uniform; both branches are non-negative by construction.
 #[test]
 fn andersen_qe_heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -312,10 +309,8 @@ fn andersen_qe_heston_agrees_with_the_cpu_law() {
   );
 }
 
-/// The two-factor model rides the double-Heston family with its factors in
-/// the family's own slots. Beyond the spot and variance laws, each factor's
-/// correlation with the spot is compared, since a launch that dropped or
-/// swapped a `rho_k` keeps every marginal exactly right and moves only that.
+/// The two-factor model rides the double-Heston family. Each factor's correlation with the spot
+/// is compared too: a dropped or swapped `rho_k` keeps every marginal right and moves only that.
 #[test]
 fn multifactor_heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -408,9 +403,8 @@ fn multifactor_heston_agrees_with_the_cpu_law() {
   }
 }
 
-/// One factor rides the same family with the second factor zeroed, and three
-/// factors stay on the host whatever the backend: both must still produce
-/// the model's own shape and law.
+/// One factor rides the same family with the second zeroed, and three factors stay on the host
+/// on any backend: both still produce the model's shape and law.
 #[test]
 fn multifactor_heston_other_factor_counts_still_sample() {
   let one = MultifactorHeston::<f32, 1, _>::new(

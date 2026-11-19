@@ -11,9 +11,8 @@ use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::*;
 
-/// Kou's double-exponential jump sizes have no closed-form aggregate, so the
-/// kernel sums them in a bounded loop. What this pins is that the sum it
-/// builds carries the same law the host's own per-jump draws build.
+/// Kou's double-exponential jump sizes have no closed-form aggregate, so the kernel sums them
+/// in a bounded loop; this pins that the sum carries the law of the host's per-jump draws.
 #[test]
 fn kou_jump_heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -59,10 +58,8 @@ fn kou_jump_heston_agrees_with_the_cpu_law() {
   );
 }
 
-/// The jump-augmented Duffie-Kan model. The host walks its jump times
-/// sequentially and the device draws a Poisson count per step; the waiting
-/// time is memoryless, so the two are the same law, which is what the second
-/// factor's terminal mean pins.
+/// The jump-augmented Duffie-Kan model: the host walks its jump times and the device draws a
+/// Poisson count per step, the same law for a memoryless wait; the second factor's mean pins it.
 #[test]
 fn jump_duffie_kan_agrees_with_the_cpu_law() {
   let build = || {
@@ -100,16 +97,8 @@ fn jump_duffie_kan_agrees_with_the_cpu_law() {
   }
 }
 
-/// The Barndorff-Nielsen-Shephard variance is driven by a compound-Poisson
-/// subordinator of gamma jumps, which the kernel draws as one gamma whose
-/// shape is the step's jump count times a single jump's.
-///
-/// The variance this model reaches is large — of order one, not of order a
-/// percent — so the spot is a lognormal whose log has a standard deviation
-/// near two, and whose *mean* is therefore set by a handful of paths in the
-/// right tail. What is compared for the spot is the mean of its logarithm,
-/// which is the drift the two sides actually share; the variance itself is
-/// compared directly.
+/// The BNS variance is driven by gamma jumps the kernel draws as one gamma of `count` times
+/// the shape. The variance is of order one, so the spot is compared through its mean logarithm.
 #[test]
 fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
   let build = || {
@@ -153,9 +142,8 @@ fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
   );
 }
 
-/// Bates (1996) in the spot: the jumps multiply the spot by `1 + Y` for a
-/// normal `Y`, compounded across the jumps a step sees, which the kernels
-/// draw as a product law rather than an aggregated sum.
+/// Bates (1996) in the spot: the jumps multiply the spot by `1 + Y` for a normal `Y`,
+/// compounded across a step's jumps, which the kernels draw as a product law, not a sum.
 #[test]
 fn bates_1996_agrees_with_the_cpu_law() {
   for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
@@ -215,11 +203,8 @@ fn bates_1996_agrees_with_the_cpu_law() {
   }
 }
 
-/// Where the Feller condition fails the two boundary treatments part: the
-/// truncated variance sits at zero for a good share of paths while the
-/// reflected one bounces off it. Each variant has to agree with its own host
-/// on that share, and the two shares have to differ — which is what pins the
-/// variant a launch runs, not just the shared drift.
+/// Where the Feller condition fails, the truncated variance sits at zero for a share of paths
+/// and the reflected one bounces: each agrees with its own host and the two shares differ.
 #[test]
 fn bates_1996_reflection_moves_the_boundary() {
   let share_at_zero = |paths: &[[Array1<f32>; 2]]| {
@@ -264,12 +249,8 @@ fn bates_1996_reflection_moves_the_boundary() {
   );
 }
 
-/// Several jumps a step is where a product law differs from a sum: with an
-/// intensity above one per step, `∏(1 + Y) − 1` carries the cross terms a sum
-/// drops, and with positive exponential sizes those terms lift the mean
-/// log-spot by about a quarter over the horizon — a margin a summing kernel
-/// would miss and a statistic whose standard error here is a hundredth of it,
-/// where the spot's own mean sits under a tail too heavy to pin.
+/// Several jumps a step is where a product law differs from a sum: `∏(1 + Y) − 1` carries the
+/// cross terms, which lift the mean log-spot by about a quarter here, a hundred standard errors.
 #[test]
 fn bates_1996_compounds_several_jumps_a_step() {
   let build = || {
@@ -307,13 +288,8 @@ fn bates_1996_compounds_several_jumps_a_step() {
   );
 }
 
-/// CGMY under a CIR variance: the variance takes the exact square-root step
-/// on both machines, so its terminal law is one law; the jumps are sized in
-/// their own step against that variance, so the log-price's spread — larger
-/// where the variance ran high — is what pins the live sizing. The jump law
-/// has a kurtosis above twenty at these parameters, so the spread is read off
-/// the quartiles, which a heavy tail leaves alone, and the mean is held
-/// against the interquartile range.
+/// CGMY under an exactly stepped CIR variance: the log-price's spread pins the live sizing. The
+/// jump law's kurtosis exceeds twenty, so spread and mean are held against the quartiles.
 #[test]
 fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
   let build = || {
@@ -396,9 +372,8 @@ fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
   );
 }
 
-/// Below one degree of freedom the host draws the variance from a Poisson
-/// mixture the kernels do not carry, so the device build samples on the host
-/// and is the host build to the bit.
+/// Below one degree of freedom the host draws the variance from a Poisson mixture the kernels
+/// do not carry, so the device build samples on the host and is the host build to the bit.
 #[test]
 fn a_thin_variance_keeps_the_stochastic_volatility_cgmy_on_the_host() {
   let build = || {

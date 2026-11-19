@@ -413,9 +413,8 @@ impl Distribution<f32> for Halves {
   }
 }
 
-/// A device build with a size law the kernels cannot draw samples on the
-/// host, and is then the host build to the bit: the same seed, the same
-/// sampler, the same chunking.
+/// A device build with a size law the kernels cannot draw samples on the host and is the host
+/// build to the bit: the same seed, sampler and chunking.
 #[test]
 fn an_unrecognised_jump_law_keeps_the_process_on_the_host() {
   let build = || {
@@ -456,9 +455,8 @@ fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
     .sqrt()
 }
 
-/// Exponential waits make the arrivals in a cell the Poisson count the
-/// kernels draw, and normal sizes the law they aggregate; the mean grows as
-/// `rate · mean · t` and the spread as `√(rate t (mean² + std²))`.
+/// Exponential waits make a cell's arrivals the Poisson count the kernels draw, with normal
+/// sizes aggregated: mean `rate · mean · t`, spread `√(rate t (mean² + std²))`.
 #[test]
 fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
   let build = || {
@@ -493,9 +491,8 @@ fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
   );
 }
 
-/// Rademacher sizes are the one law the kernels sum by coin flips; a wrong
-/// sign convention or a dropped flip would move the spread, `scale √(rate t)`,
-/// while the mean stays at zero either way.
+/// Rademacher sizes are the one law the kernels sum by coin flips: a wrong sign convention or
+/// a dropped flip moves the spread `scale √(rate t)` while the mean stays zero.
 #[test]
 fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
   let build = || {
@@ -532,9 +529,8 @@ fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
   );
 }
 
-/// A waiting law without the memoryless property has no per-cell Poisson
-/// count, so the device build samples on the host and is the host build to
-/// the bit.
+/// A waiting law without the memoryless property has no per-cell Poisson count, so the device
+/// build samples on the host and is the host build to the bit.
 #[test]
 fn ctrw_with_gamma_waits_keeps_the_process_on_the_host() {
   let build = || {

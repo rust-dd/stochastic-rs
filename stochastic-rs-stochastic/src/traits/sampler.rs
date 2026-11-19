@@ -16,9 +16,8 @@ pub trait PathSampler<T: FloatExt>: Send + crate::traits::Sealed {
   /// One-shot sample: allocates the output and fills it.
   fn sample(&mut self) -> Self::Output;
 
-  /// [`sample`](Self::sample), reporting a device failure as a
-  /// [`DeviceError`] instead of panicking. A sampler that never reaches a
-  /// device keeps this default, which cannot fail.
+  /// [`sample`](Self::sample) that returns a device failure as a [`DeviceError`]; a sampler that
+  /// never reaches a device keeps this default, which cannot fail.
   fn try_sample(&mut self) -> Result<Self::Output, DeviceError> {
     Ok(self.sample())
   }

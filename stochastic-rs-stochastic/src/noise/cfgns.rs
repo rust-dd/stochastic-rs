@@ -1,4 +1,4 @@
-//! # Cfgns
+//! Two fractional Gaussian noises of one Hurst exponent, correlated by `rho`.
 //!
 //! $$
 //! Z_t=L\eta_t^H,\quad \operatorname{Cov}(\eta_i^H,\eta_j^H)=\gamma_H(i-j)

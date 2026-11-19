@@ -13,12 +13,8 @@ use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 
 use super::*;
 
-/// Riemann-Liouville fBm through the Markov lift, the first family whose
-/// state lives outside the four slots: the frame carries the lift's node
-/// states per path. Horizon 4 rather than 1 so the terminal spread `t^H`
-/// (1.52 at `H = 0.3`) is told apart from Brownian motion's `sqrt(t)` (2.00) —
-/// a launch that dropped the history sum and kept only the boundary term
-/// would look Brownian.
+/// Riemann-Liouville fBm through the Markov lift, whose node states the frame carries per path.
+/// Horizon 4 tells the spread `t^H` (1.52 at `H = 0.3`) from Brownian motion's `sqrt(t)` (2.00).
 #[test]
 fn rl_fbm_agrees_with_the_cpu_law() {
   let build = || RlFbm::<f32, _>::new(0.3, N, Some(4.0), None, Deterministic::new(29));
@@ -35,9 +31,8 @@ fn rl_fbm_agrees_with_the_cpu_law() {
     0.06,
     "RL-fBm terminal spread",
   );
-  // The spread a quarter of the way in pins the roughness, not just the
-  // scale: `(t/4)^H / t^H = 4^-H` is 0.66 at `H = 0.3` and 0.5 for Brownian
-  // motion.
+  // The spread a quarter of the way in pins the roughness, not just the scale:
+  // `(t/4)^H / t^H = 4^-H` is 0.66 at `H = 0.3` and 0.5 for Brownian motion.
   let quarter = |paths: &[Array1<f32>]| {
     let k = paths[0].len() / 4;
     let n = paths.len() as f64;
@@ -141,11 +136,8 @@ fn rl_black_scholes_agrees_with_the_cpu_law() {
   agrees(sd(&h), sd(&d), 0.06, "RL-Black-Scholes log-return spread");
 }
 
-/// The rough Heston puts the lift on the variance and correlates its shock
-/// with the spot's. The variance's terminal mean pins `kappa` and `theta`, its
-/// spread `nu` and the roughness, and the spot/variance correlation `rho` —
-/// the one statistic a launch that dropped the correlation keeps every
-/// marginal of.
+/// The rough Heston puts the lift on the variance. Its terminal mean pins `kappa` and `theta`,
+/// its spread `nu` and the roughness, and the spot/variance correlation pins `rho`.
 #[test]
 fn rl_heston_agrees_with_the_cpu_law() {
   let build = || {
@@ -228,10 +220,8 @@ fn rl_heston_agrees_with_the_cpu_law() {
   );
 }
 
-/// The general Volterra process's lift branch is fBm under the Markov lift —
-/// the family `RlFbm` rides — while a kernel outside the rough range takes the
-/// reference convolution, which the history block runs in the kernel against
-/// the kernel tabulated on the grid.
+/// The general Volterra process: the lift branch is fBm under the Markov lift, and a kernel
+/// outside the rough range takes the reference convolution, run by the history block.
 #[test]
 fn volterra_lift_and_reference_agree_with_the_cpu_law() {
   let build = || {
@@ -275,9 +265,8 @@ fn volterra_lift_and_reference_agree_with_the_cpu_law() {
     0.06,
     "Volterra reference terminal spread",
   );
-  // A quarter of the way in as well: a second point on the path's spread,
-  // which a launch that convolved with the wrong lags would move by a
-  // different amount than the terminal one.
+  // A second point on the path's spread: a launch that convolved with the wrong lags would move
+  // the quarter-way spread by a different amount than the terminal one.
   let quarter = |paths: &[Array1<f32>]| {
     let k = paths[0].len() / 4;
     let n = paths.len() as f64;

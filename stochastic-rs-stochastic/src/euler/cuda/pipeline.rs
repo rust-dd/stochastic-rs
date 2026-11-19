@@ -57,9 +57,8 @@ where
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
   let sqrt_dt = dt.sqrt();
-  // The kernel always binds the increment pointer; an unused slot gets one
-  // element rather than a null. A supplied slice was written on this device by
-  // the fGN pipeline and is bound where it lies.
+  // The kernel always binds the increment pointer, so an unused slot gets one element, not a
+  // null. A supplied slice was written on this device by the fGN pipeline and is bound in place.
   let owned;
   let d_incs = match increments {
     Some((slice, _)) => slice,
@@ -210,14 +209,8 @@ where
   } = ensure_kernels(ordinal, shape, real)?;
   let planes = components as usize;
   let mut host = vec![R::zero(); planes * m * n];
-  /// Synchronises both streams before the page-locked buffers can be freed.
-  ///
-  /// A chunk's copy back is enqueued and left in flight while the next chunk
-  /// computes, so any `?` in the loop below unwinds with a device-to-host
-  /// transfer still running. Freeing its destination then hands the driver a
-  /// page it no longer owns; cudarc's own pinned slice synchronises in its
-  /// `Drop` for the same reason. Declared *after* the buffers so it drops
-  /// *before* them.
+  /// Synchronises both streams before the page-locked buffers are freed: a `?` in the loop can
+  /// unwind with a copy back still in flight. Declared after the buffers so it drops before them.
   struct DrainOnDrop([Arc<CudaStream>; 2]);
 
   impl Drop for DrainOnDrop {
@@ -228,9 +221,8 @@ where
     }
   }
 
-  // Both staging buffers come from the cache: pinning pages is a syscall
-  // that scales with the allocation, and at the default budget these are a
-  // gigabyte each — paid on every pipelined batch before this.
+  // Both staging buffers come from the cache: pinning pages is a syscall that scales with the
+  // allocation, a gigabyte each at the default budget.
   let staging = {
     let mut guard = KERNELS.lock();
     let kernels = lender(&mut guard, &context)?;
@@ -259,9 +251,8 @@ where
       }
       Ok(())
     };
-  // The two output buffers the pipeline alternates between, sized for the
-  // largest chunk and kept across calls: allocating them per chunk is what
-  // made a Metal batch three times slower than its kernel.
+  // The two output buffers the pipeline alternates between, sized for the largest chunk and
+  // kept across calls: allocating them per chunk cost more than the kernel.
   let mut buffers = {
     let mut guard = KERNELS.lock();
     let kernels = lender(&mut guard, &context)?;
@@ -290,9 +281,8 @@ where
       first,
       n,
       len,
-      // The pipelined batch is Gaussian only: `euler_kernel_batch` routes a
-      // fractional process around it, chunk by chunk through `euler_kernel`,
-      // so no increment buffer ever meets this launch.
+      // The pipelined batch is Gaussian only: `euler_kernel_batch` routes a fractional process
+      // chunk by chunk through `euler_kernel`, so no increment buffer meets this launch.
       None,
       curve,
       n_curves,
