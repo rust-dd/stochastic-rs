@@ -6,8 +6,8 @@
 //! $$
 //!
 //! $$
-//! \Pr(\sqrt n D_n \le \lambda) \to 1 - 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2}, \qquad
-//! D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}
+//! \Pr(\sqrt n D_n > \lambda) \to Q(\lambda) = 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2},
+//! \qquad D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad Q(c(\alpha)) = \alpha
 //! $$
 //!
 //! No finite-sample or Lilliefors correction: `F` must not be fitted from the sample under test.
@@ -64,14 +64,25 @@ impl HypothesisTest for KolmogorovSmirnovTest {
   }
 }
 
-/// Massey's (1951) large-`n` constant $c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}$, which solves
-/// $Q(c) = \alpha$: `c(0.10) = 1.224`, `c(0.05) = 1.358`, `c(0.025) = 1.48`, `c(0.01) = 1.628`.
+/// $c(\alpha)$ with $Q(c) = \alpha$, bisected below Massey's (1951) one-term
+/// $\sqrt{-\tfrac12 \ln(\alpha/2)}$, where the terms of $Q$ past its first sum to less than zero.
 fn ks_c_alpha(alpha: f64) -> f64 {
-  (-0.5 * (alpha / 2.0).ln()).sqrt()
+  let (mut low, mut high) = (0.0_f64, (-0.5 * (alpha / 2.0).ln()).sqrt());
+  loop {
+    let mid = 0.5 * (low + high);
+    if mid <= low || mid >= high {
+      return high;
+    }
+    if kolmogorov_survival(mid) > alpha {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
 }
 
-/// The two-sided asymptotic critical value $D_{n,\alpha} = c(\alpha)/\sqrt n$ (Massey 1951); panics
-/// unless `0 < alpha < 1` and `n >= 1`.
+/// The two-sided asymptotic critical value $D_{n,\alpha} = c(\alpha)/\sqrt n$, where the p-value
+/// meets `alpha`; panics unless `0 < alpha < 1` and `n >= 1`.
 pub fn ks_critical_value(alpha: f64, n: usize) -> f64 {
   assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
   assert!(n >= 1, "n must be at least 1");
@@ -145,6 +156,7 @@ mod tests {
 
   use super::KolmogorovSmirnovConfig;
   use super::kolmogorov_smirnov_test;
+  use super::kolmogorov_survival;
   use super::ks_critical_value;
 
   /// Massey (1951) / Smirnov (1948) tabulated `c(\alpha)` constants —
@@ -166,6 +178,21 @@ mod tests {
     let c = ks_critical_value(0.05, 1);
     let d_100 = ks_critical_value(0.05, 100);
     assert!((d_100 - c / 10.0).abs() < 1e-12);
+  }
+
+  /// The critical value is the edge of the region `p < alpha` that `rejects_null` reads: a hair
+  /// past it rejects and a hair short of it does not.
+  #[test]
+  fn the_critical_value_is_where_the_p_value_crosses_alpha() {
+    for alpha in [0.001, 0.01, 0.05, 0.10, 0.25, 0.5, 0.9] {
+      let c = ks_critical_value(alpha, 1);
+      let past = kolmogorov_survival(c * (1.0 + 1e-9));
+      let short = kolmogorov_survival(c * (1.0 - 1e-9));
+      assert!(
+        past < alpha && short > alpha,
+        "alpha {alpha}: Q = {past} past {c} and {short} short of it"
+      );
+    }
   }
 
   /// A true normal sample is not rejected at `alpha = 0.05`: the largest p-value of three pinned
