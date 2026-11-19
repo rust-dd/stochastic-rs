@@ -37,7 +37,7 @@ impl LookbackPricer {
   }
 
   /// Price of `option` at the query `(s, r, q, tau)`; at `tau = 0` its payoff on the running
-  /// extremes, and NaN for a negative or NaN `tau`.
+  /// extremes, and NaN for a negative or NaN `tau` or a NaN running extreme.
   pub fn price(&self, option: &LookbackOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
       return f64::NAN;
@@ -116,7 +116,7 @@ impl LookbackPricer {
     match option.option_type {
       OptionType::Call => {
         let s_max = option.running_max.unwrap_or(s);
-        let m = s_max.max(k);
+        let m = s_max.max_or_nan(k);
         let floating_put = LookbackOption {
           strike: None,
           running_min: None,
@@ -127,7 +127,7 @@ impl LookbackPricer {
       }
       OptionType::Put => {
         let s_min = option.running_min.unwrap_or(s);
-        let m = s_min.min(k);
+        let m = s_min.min_or_nan(k);
         let floating_call = LookbackOption {
           strike: None,
           running_min: Some(m),

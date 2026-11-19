@@ -48,7 +48,7 @@ impl VarianceSwapPricer {
   }
 
   /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip, `K_0` nearest the forward,
-  /// floored at 0 unless NaN, and NaN unless `tau > 0`; panics on bad lengths (order: debug only).
+  /// floored at 0 unless NaN, NaN unless `s, tau > 0`; panics on bad lengths (order: debug only).
   pub fn fair_strike_replication(
     strikes: &[f64],
     otm_prices: &[f64],
@@ -67,7 +67,7 @@ impl VarianceSwapPricer {
       n >= 2,
       "static replication needs at least 2 strikes (got {n})"
     );
-    if tau.is_nan() || tau <= 0.0 {
+    if !(s > 0.0 && tau > 0.0) {
       return f64::NAN;
     }
     debug_assert!(
@@ -222,18 +222,21 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike less a short-maturity convexity correction; panics
-  /// unless that strike is positive (κ → 0 too), NaN for a NaN `sigma` or a negative or NaN `tau`.
+  /// Heston vol strike: the variance strike less a convexity correction, `√v0` at `tau = 0`; panics
+  /// on a negative strike or a zero one past it; NaN for a NaN `sigma` or negative or NaN `tau`.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     if tau.is_nan() || tau < 0.0 {
       return f64::NAN;
     }
     let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
+    if tau == 0.0 && k_var >= 0.0 {
+      return k_var.sqrt();
+    }
     assert!(
       k_var > 0.0,
       "heston variance strike must be strictly positive (got {k_var} from v0={v0}, theta={theta})"
     );
-    if kappa.abs() < 1e-10 || tau <= 0.0 {
+    if kappa.abs() < 1e-10 {
       return k_var.sqrt();
     }
     let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))

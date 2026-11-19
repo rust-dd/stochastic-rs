@@ -64,7 +64,8 @@ impl CompoundPricer {
     Self { sigma }
   }
 
-  /// Geske's price of `option` at the query `(s, r, q, tau)`, `tau` being the inner maturity.
+  /// Geske's price of `option` at the query `(s, r, q, tau)`, `tau` being the inner maturity; NaN
+  /// unless `0 < outer_tau <= tau`.
   pub fn price(&self, option: &CompoundOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let CompoundOption {
       outer_strike: k1,
@@ -72,6 +73,9 @@ impl CompoundPricer {
       inner_strike: k2,
       compound_type,
     } = *option;
+    if !(0.0 < t1 && t1 <= tau) {
+      return f64::NAN;
+    }
     let t2 = tau;
     let v = self.sigma;
     let v2 = v * v;

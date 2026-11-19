@@ -168,3 +168,22 @@ def test_the_variance_swap_strikes_are_nan_for_a_maturity_outside_their_domain()
         assert math.isnan(sr.VarianceSwapPricer(100.0, 0.05, 0.02, t).fair_strike_replication(strikes, [1.0, 2.0, 1.0]))
     assert math.isnan(sr.VarianceSwapPricer(100.0, 0.05, 0.02, -1.0).fair_strike_heston(0.04, 1.5, 0.06))
     assert sr.VarianceSwapPricer(100.0, 0.05, 0.02, 0.0).fair_strike_heston(0.04, 1.5, 0.06) == 0.04
+
+
+def test_the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_a_query_outside_the_domain_is_nan():
+    cliquet = dict(s=100.0, notional=100.0, m=12, r=0.04, q=0.01, sigma=0.25)
+    assert sr.CliquetPricer(t=0.0, local_floor=0.0, **cliquet).price() == 0.0
+    assert sr.CliquetPricer(t=0.0, local_floor=0.01, **cliquet).price() == 100.0 * 12.0 * 0.01
+    assert math.isnan(sr.CliquetPricer(t=-1.0, **cliquet).price())
+    chooser = dict(k=100.0, r=0.05, q=0.02, sigma=0.25, t1=0.5)
+    assert sr.SimpleChooserPricer(s=110.0, t=0.0, **chooser).price() == 10.0
+    assert sr.SimpleChooserPricer(s=100.0, t=0.0, **chooser).price() == 0.0
+    assert math.isnan(sr.SimpleChooserPricer(s=100.0, t=-1.0, **chooser).price())
+    compound = dict(s=100.0, k1=5.0, k2=100.0, r=0.05, q=0.02, sigma=0.25, compound_type="coc")
+    for t1, t2 in [(0.0, 1.0), (0.25, 0.1), (0.25, math.nan)]:
+        assert math.isnan(sr.CompoundPricer(t1=t1, t2=t2, **compound).price())
+    strip = sr.VarianceSwapPricer(0.0, 0.05, 0.02, 0.5)
+    assert math.isnan(strip.fair_strike_replication([90.0, 100.0, 110.0], [1.0, 2.0, 1.0]))
+    assert math.isnan(sr.FixedLookbackPricer(k=90.0, t=1.0, s_max=math.nan, **LOOKBACK).price())
+    assert math.isnan(sr.BarrierPricer(h=math.nan, t=0.0, barrier_type="up_out", **BARRIER).price())
+    assert math.isnan(sr.DoubleBarrierPricer(s=110.0, t=0.0, **{**CORRIDOR, "h_lower": math.nan}).price())

@@ -6,7 +6,15 @@ use stochastic_rs_quant::pricing::barrier::BarrierType;
 use stochastic_rs_quant::pricing::barrier::DoubleBarrierPricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
+use stochastic_rs_quant::pricing::chooser::ChooserPricer;
+use stochastic_rs_quant::pricing::cliquet::CliquetPricer;
+use stochastic_rs_quant::pricing::compound::CompoundPricer;
+use stochastic_rs_quant::pricing::compound::CompoundType;
 use stochastic_rs_quant::pricing::exotic::BarrierOption;
+use stochastic_rs_quant::pricing::exotic::ChooserOption;
+use stochastic_rs_quant::pricing::exotic::CliquetOption;
+use stochastic_rs_quant::pricing::exotic::ComplexChooserOption;
+use stochastic_rs_quant::pricing::exotic::CompoundOption;
 use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
@@ -233,4 +241,155 @@ fn the_variance_swap_strikes_answer_a_maturity_outside_their_domain_with_nan() {
     VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.0),
     0.04
   );
+}
+
+#[test]
+fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
+  let compound = CompoundPricer::new(SIGMA);
+  let call_on_call = CompoundOption {
+    outer_strike: 5.0,
+    outer_tau: 0.25,
+    inner_strike: 100.0,
+    compound_type: CompoundType::CallOnCall,
+  };
+  for tau in [0.1, 0.0, -1.0, f64::NAN] {
+    let price = compound.price(&call_on_call, 100.0, R, Q, tau);
+    assert!(price.is_nan(), "tau {tau}: {price}");
+  }
+  for outer_tau in [0.0, -0.25, f64::NAN] {
+    let option = CompoundOption {
+      outer_tau,
+      ..call_on_call
+    };
+    let price = compound.price(&option, 100.0, R, Q, 1.0);
+    assert!(price.is_nan(), "outer_tau {outer_tau}: {price}");
+  }
+  assert!(compound.price(&call_on_call, 100.0, R, Q, 0.25).is_finite());
+
+  let chooser = ChooserPricer::new(SIGMA);
+  let complex = ComplexChooserOption {
+    call_strike: 105.0,
+    call_tau: 1.0,
+    put_strike: 95.0,
+    put_tau: 0.75,
+    choice_time: 0.4,
+  };
+  for (choice_time, call_tau, put_tau) in [
+    (0.9, 1.0, 0.75),
+    (1.2, 1.0, 0.75),
+    (0.0, 1.0, 0.75),
+    (-0.1, 1.0, 0.75),
+    (f64::NAN, 1.0, 0.75),
+    (0.4, 0.0, 0.75),
+    (0.4, 1.0, f64::NAN),
+  ] {
+    let option = ComplexChooserOption {
+      choice_time,
+      call_tau,
+      put_tau,
+      ..complex
+    };
+    let price = chooser.price_complex(&option, 100.0, R, Q);
+    assert!(price.is_nan(), "{option:?}: {price}");
+  }
+  let at_the_put = ComplexChooserOption {
+    choice_time: 0.75,
+    ..complex
+  };
+  assert!(chooser.price_complex(&at_the_put, 100.0, R, Q).is_finite());
+}
+
+#[test]
+fn the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_are_nan_before_it() {
+  let cliquet = CliquetPricer::new(SIGMA);
+  for (local_floor, local_cap, zero_length_return) in [
+    (None, None, 0.0),
+    (Some(0.0), None, 0.0),
+    (Some(-0.01), Some(0.04), 0.0),
+    (Some(0.01), None, 0.01),
+    (None, Some(-0.01), -0.01),
+  ] {
+    let option = CliquetOption {
+      notional: 100.0,
+      periods: 12,
+      local_floor,
+      local_cap,
+      global_floor: None,
+      global_cap: None,
+    };
+    let payoff = 100.0 * 12.0 * zero_length_return;
+    assert_eq!(cliquet.price(&option, R, Q, 0.0), payoff, "{option:?}");
+    for tau in [-1.0, f64::NAN] {
+      assert!(
+        cliquet.price(&option, R, Q, tau).is_nan(),
+        "{option:?} {tau}"
+      );
+    }
+  }
+  let chooser = ChooserPricer::new(SIGMA);
+  let option = ChooserOption {
+    strike: 100.0,
+    choice_time: 0.5,
+  };
+  for (s, better_leg) in [(90.0, 10.0), (100.0, 0.0), (110.0, 10.0)] {
+    assert_eq!(
+      chooser.price_simple(&option, s, R, Q, 0.0),
+      better_leg,
+      "{s}"
+    );
+  }
+  for tau in [-1.0, f64::NAN] {
+    assert!(
+      chooser.price_simple(&option, 100.0, R, Q, tau).is_nan(),
+      "{tau}"
+    );
+  }
+}
+
+#[test]
+fn the_replication_strike_needs_a_positive_spot_and_the_vol_strike_expires_at_sqrt_v0() {
+  let strikes = [60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0];
+  let otm = [0.02, 0.11, 0.48, 1.57, 5.2, 2.31, 0.83, 0.25, 0.07];
+  for s in [0.0, -1.0, f64::NAN] {
+    let strike = VarianceSwapPricer::fair_strike_replication(&strikes, &otm, s, R, Q, 0.5);
+    assert!(strike.is_nan(), "{s}: {strike}");
+  }
+  assert!(
+    VarianceSwapPricer::fair_strike_replication(&strikes, &otm, 100.0, R, Q, 0.5).is_finite()
+  );
+  for v0 in [0.0, 0.04, 0.09] {
+    let at_expiry = VolatilitySwapPricer::fair_strike_heston(v0, 1.5, 0.04, 0.3, 0.0);
+    assert_eq!(at_expiry, v0.sqrt(), "{v0}");
+  }
+}
+
+#[test]
+fn a_nan_running_extreme_barrier_or_corridor_bound_prices_nan() {
+  let pricer = LookbackPricer::new(SIGMA);
+  for tau in [1.0, 0.0] {
+    for option in [
+      lookback(Some(90.0), (None, Some(f64::NAN)), true),
+      lookback(Some(110.0), (Some(f64::NAN), None), false),
+      lookback(None, (Some(f64::NAN), None), true),
+      lookback(None, (None, Some(f64::NAN)), false),
+    ] {
+      let price = pricer.price(&option, 100.0, R, Q, tau);
+      assert!(price.is_nan(), "{option:?} {tau}: {price}");
+    }
+    for barrier_type in [BarrierType::UpAndOut, BarrierType::DownAndIn] {
+      let option = barrier(barrier_type, OptionType::Call, f64::NAN);
+      let price = BarrierPricer::new(SIGMA).price(&option, 110.0, R, Q, tau);
+      assert!(price.is_nan(), "{barrier_type:?} {tau}: {price}");
+    }
+    for (lower, upper) in [(f64::NAN, 130.0), (70.0, f64::NAN)] {
+      let option = DoubleBarrierOption {
+        strike: 100.0,
+        lower,
+        upper,
+        option_type: OptionType::Call,
+      };
+      let price = DoubleBarrierPricer::new(SIGMA).price(&option, 110.0, R, Q, tau);
+      assert!(price.is_nan(), "{lower} {upper} {tau}: {price}");
+    }
+  }
 }

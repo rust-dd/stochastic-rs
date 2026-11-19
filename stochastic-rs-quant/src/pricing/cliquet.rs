@@ -20,6 +20,7 @@
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
 use rayon::prelude::*;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
@@ -48,11 +49,17 @@ impl CliquetPricer {
     Self { sigma }
   }
 
-  /// The summed period payoffs paid at `tau` and discounted once; the returns need no spot. NaN
-  /// for a global floor or cap, which only [`McCliquetPricer`] prices.
+  /// The summed period payoffs paid at `tau`, the zero-length periods' at `tau = 0`; NaN for a
+  /// negative or NaN `tau` or a global floor or cap, which only [`McCliquetPricer`] prices.
   pub fn price(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> f64 {
-    if option.global_floor.is_some() || option.global_cap.is_some() {
+    let global = option.global_floor.is_some() || option.global_cap.is_some();
+    if global || tau.is_nan() || tau < 0.0 {
       return f64::NAN;
+    }
+    if tau == 0.0 {
+      let floor = option.local_floor.unwrap_or(f64::NEG_INFINITY);
+      let cap = option.local_cap.unwrap_or(f64::INFINITY);
+      return option.notional * option.periods as f64 * 0.0_f64.max_or_nan(floor).min_or_nan(cap);
     }
     let period_tau = tau / option.periods as f64;
     let per_period = self.expected_period_payoff(option, r, q, period_tau);

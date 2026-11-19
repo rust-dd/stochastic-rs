@@ -34,12 +34,19 @@ impl ChooserPricer {
     Self { sigma }
   }
 
-  /// The simple chooser $W$ above at the query `(s, r, q, tau)`.
+  /// The simple chooser $W$ above at the query `(s, r, q, tau)`; at `tau = 0` the better leg's
+  /// payoff `|s - strike|`, and NaN for a negative or NaN `tau`.
   pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let ChooserOption {
       strike: k,
       choice_time: t1,
     } = *option;
+    if tau.is_nan() || tau < 0.0 {
+      return f64::NAN;
+    }
+    if tau == 0.0 {
+      return (s - k).abs();
+    }
     let v = self.sigma;
     let v2 = v * v;
     let b = r - q;
@@ -54,8 +61,8 @@ impl ChooserPricer {
       + k * (-r * tau).exp() * norm_cdf(-y + v * sqrt_t1)
   }
 
-  /// The complex chooser at the query `(s, r, q)`, its maturities being the contract's: a
-  /// bisection for the spot $S^*$ where the call and the put are worth the same, then $M_2$ twice.
+  /// The complex chooser at `(s, r, q)`, its maturities the contract's, through the spot $S^*$ at
+  /// which the call and put are equal; NaN unless `0 < choice_time <= min(call_tau, put_tau)`.
   pub fn price_complex(&self, option: &ComplexChooserOption, s: f64, r: f64, q: f64) -> f64 {
     let ComplexChooserOption {
       call_strike: k_call,
@@ -64,6 +71,9 @@ impl ChooserPricer {
       put_tau: t_put,
       choice_time: t1,
     } = *option;
+    if !(0.0 < t1 && t1 <= t_call && t1 <= t_put) {
+      return f64::NAN;
+    }
     let v = self.sigma;
     let v2 = v * v;
     let b = r - q;
