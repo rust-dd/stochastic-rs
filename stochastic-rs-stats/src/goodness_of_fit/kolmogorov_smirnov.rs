@@ -24,6 +24,7 @@ use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 use crate::input::validate;
 use crate::traits::HypothesisTest;
+use crate::traits::RealExt;
 
 /// Configuration for [`kolmogorov_smirnov_test`].
 #[derive(Debug, Clone, Copy)]
@@ -109,7 +110,7 @@ fn kolmogorov_survival(lambda: f64) -> f64 {
 }
 
 /// One-sample Kolmogorov–Smirnov test against a fully specified continuous `cdf`; `Err` below 2
-/// points or on a non-finite one, and panics unless `0 < alpha < 1`.
+/// points, on a non-finite one or a `cdf` value NaN or off `[0, 1]`; panics unless `0 < alpha < 1`.
 pub fn kolmogorov_smirnov_test(
   sample: ArrayView1<f64>,
   mut cdf: impl FnMut(f64) -> f64,
@@ -123,12 +124,20 @@ pub fn kolmogorov_smirnov_test(
   let n_f = n as f64;
 
   let mut d = 0.0_f64;
+  let mut off = Vec::new();
   for (i, &x) in sorted.iter().enumerate() {
-    let f = cdf(x).clamp(0.0, 1.0);
+    let f = cdf(x);
+    if !(0.0..=1.0).contains(&f) {
+      off.push(x);
+      continue;
+    }
     let i_f = i as f64;
     let d_plus = ((i_f + 1.0) / n_f - f).abs();
     let d_minus = (f - i_f / n_f).abs();
-    d = d.max(d_plus.max(d_minus));
+    d = d.max_or_nan(d_plus.max_or_nan(d_minus));
+  }
+  if !off.is_empty() {
+    return Err(off_the_unit_interval(sample, &off));
   }
 
   let p_value = kolmogorov_survival(n_f.sqrt() * d);
@@ -142,6 +151,21 @@ pub fn kolmogorov_smirnov_test(
     rejects_null: p_value < cfg.alpha,
     nobs: n,
   })
+}
+
+/// `InvalidObservation` at the first observation of `sample` in `off`, sorted: those whose `cdf`
+/// left `[0, 1]`.
+fn off_the_unit_interval(sample: ArrayView1<f64>, off: &[f64]) -> StatsError {
+  let (index, &value) = sample
+    .iter()
+    .enumerate()
+    .find(|(_, v)| off.binary_search_by(|o| o.total_cmp(v)).is_ok())
+    .expect("every point of `off` is drawn from the sample");
+  StatsError::InvalidObservation {
+    index,
+    value,
+    constraint: "0 <= cdf(x) <= 1",
+  }
 }
 
 #[cfg(test)]
@@ -158,6 +182,7 @@ mod tests {
   use super::kolmogorov_smirnov_test;
   use super::kolmogorov_survival;
   use super::ks_critical_value;
+  use crate::StatsError;
 
   /// Massey (1951) / Smirnov (1948) tabulated $c(\alpha)$ constants —
   /// `ks_critical_value(alpha, 1)` returns $c(\alpha)$ unscaled.
@@ -236,5 +261,38 @@ mod tests {
     .unwrap();
     assert!(res.rejects_null, "expected rejection, got {res:?}");
     assert!(res.statistic > res.critical_values.as_ref().unwrap().at(0.05).unwrap());
+  }
+  /// A `cdf` NaN at one point, NaN everywhere or above 1 is refused at the first such observation
+  /// of the sample, not dropped from the supremum or clamped into it.
+  #[test]
+  fn a_cdf_off_the_unit_interval_is_invalid_observation() {
+    let x = [0.3, -0.5, 0.9, -0.5, 0.1];
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
+    let cfg = KolmogorovSmirnovConfig::default();
+    let refused = |index: usize, value: f64| StatsError::InvalidObservation {
+      index,
+      value,
+      constraint: "0 <= cdf(x) <= 1",
+    };
+    let nan_at_one = |v: f64| {
+      if v < 0.0 {
+        f64::NAN
+      } else {
+        normal.cdf(v).unwrap()
+      }
+    };
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), nan_at_one, cfg).unwrap_err(),
+      refused(1, -0.5)
+    );
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), |_| f64::NAN, cfg).unwrap_err(),
+      refused(0, 0.3)
+    );
+    let above_one = |v: f64| if v > 0.5 { 1.5 } else { normal.cdf(v).unwrap() };
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), above_one, cfg).unwrap_err(),
+      refused(2, 0.9)
+    );
   }
 }
