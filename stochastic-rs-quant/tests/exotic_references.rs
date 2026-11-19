@@ -4,7 +4,16 @@ use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::pricing::barrier::DoubleBarrierPricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
+use stochastic_rs_quant::pricing::chooser::ChooserPricer;
+use stochastic_rs_quant::pricing::cliquet::CliquetPricer;
+use stochastic_rs_quant::pricing::compound::CompoundPricer;
+use stochastic_rs_quant::pricing::compound::CompoundType;
+use stochastic_rs_quant::pricing::exotic::ChooserOption;
+use stochastic_rs_quant::pricing::exotic::CliquetOption;
+use stochastic_rs_quant::pricing::exotic::ComplexChooserOption;
+use stochastic_rs_quant::pricing::exotic::CompoundOption;
 use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
+use stochastic_rs_quant::pricing::exotic::ForwardStartOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
@@ -107,6 +116,85 @@ fn the_lookbacks_match_quantlib_and_their_driftless_limit() {
       option_type: option_type(words[0]),
     };
     let price = LookbackPricer::new(x(6)).price(&option, x(1), x(4), x(5), x(7));
+    assert_close(price, quantlib, 1e-13, &words);
+  }
+}
+
+/// QuantLib for the simple chooser; mpmath for the complex one, since QuantLib 1.43's engine takes
+/// each leg's remaining time as `T - 2t` and its bivariate normal to six digits.
+#[test]
+fn the_choosers_match_quantlib_and_the_complex_one_mpmath() {
+  for (words, quantlib) in rows("chs") {
+    let x = |i| number(&words, i);
+    let option = ChooserOption {
+      strike: x(1),
+      choice_time: x(5),
+    };
+    let price = ChooserPricer::new(x(4)).price_simple(&option, x(0), x(2), x(3), x(6));
+    assert_close(price, quantlib, 1e-13, &words);
+  }
+  for (words, mpmath) in rows("chc") {
+    let x = |i| number(&words, i);
+    let option = ComplexChooserOption {
+      call_strike: x(1),
+      call_tau: x(2),
+      put_strike: x(3),
+      put_tau: x(4),
+      choice_time: x(5),
+    };
+    let price = ChooserPricer::new(x(8)).price_complex(&option, x(0), x(6), x(7));
+    assert_close(price, mpmath, 1e-13, &words);
+  }
+}
+
+/// Geske in mpmath, since QuantLib 1.43's engine reads Drezner's (1978) six-digit bivariate normal
+/// and is off by up to 2.2e-5 here; the crate is within 1.7e-14.
+#[test]
+fn the_compound_matches_geske_in_mpmath() {
+  for (words, mpmath) in rows("cmp") {
+    let x = |i| number(&words, i);
+    let compound_type = match words[0] {
+      "coc" => CompoundType::CallOnCall,
+      "cop" => CompoundType::CallOnPut,
+      "poc" => CompoundType::PutOnCall,
+      _ => CompoundType::PutOnPut,
+    };
+    let option = CompoundOption {
+      outer_strike: x(2),
+      outer_tau: x(3),
+      inner_strike: x(4),
+      compound_type,
+    };
+    let price = CompoundPricer::new(x(7)).price(&option, x(1), x(5), x(6), x(8));
+    assert_close(price, mpmath, 1e-13, &words);
+  }
+}
+
+/// QuantLib's `ForwardEuropeanEngine`, and its `AnalyticPerformanceEngine` for one period, which a
+/// cliquet floored at `f` pays as `f` plus the forward start struck at `1 + f`.
+#[test]
+fn the_forward_start_and_a_one_period_cliquet_match_quantlib() {
+  for (words, quantlib) in rows("fws") {
+    let x = |i| number(&words, i);
+    let option = ForwardStartOption {
+      moneyness: x(2),
+      start_time: x(3),
+      option_type: option_type(words[0]),
+    };
+    let price = ChooserPricer::new(x(6)).price_forward_start(&option, x(1), x(4), x(5), x(7));
+    assert_close(price, quantlib, 1e-13, &words);
+  }
+  for (words, quantlib) in rows("clq1") {
+    let x = |i| number(&words, i);
+    let option = CliquetOption {
+      notional: 1.0,
+      periods: 1,
+      local_floor: Some(x(0)),
+      local_cap: None,
+      global_floor: None,
+      global_cap: None,
+    };
+    let price = CliquetPricer::new(x(3)).price(&option, x(1), x(2), x(4));
     assert_close(price, quantlib, 1e-13, &words);
   }
 }
