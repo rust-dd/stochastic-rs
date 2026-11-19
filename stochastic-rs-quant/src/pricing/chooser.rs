@@ -17,6 +17,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::OptionType;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::ChooserOption;
 use crate::pricing::exotic::ComplexChooserOption;
 use crate::pricing::exotic::ForwardStartOption;
@@ -38,8 +39,8 @@ impl ChooserPricer {
     Self { sigma }
   }
 
-  /// The simple chooser $W$ above at the query `(s, r, q, tau)`; at `tau = 0` the better leg's
-  /// payoff `|s - strike|`, and NaN for a NaN rate or unless `0 <= choice_time <= tau`.
+  /// The simple chooser $W$ above at `(s, r, q, tau)`, the better leg at `choice_time = 0` and its
+  /// payoff `|s - strike|` at `tau = 0`; NaN for a NaN rate or unless `0 <= choice_time <= tau`.
   pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let ChooserOption {
       strike: k,
@@ -50,6 +51,10 @@ impl ChooserPricer {
     }
     if tau == 0.0 {
       return (s - k).abs();
+    }
+    if t1 == 0.0 {
+      let legs = BsmPricer::new(self.sigma, BsmCoc::Merton1973).price_call_put(s, k, r, q, tau);
+      return legs.call.max_or_nan(legs.put);
     }
     let v = self.sigma;
     let v2 = v * v;
@@ -141,8 +146,8 @@ impl ChooserPricer {
     call - put
   }
 
-  /// The forward start at the query `(s, r, q, tau)`, its strike fixed at `start_time` as
-  /// `moneyness` times the spot then.
+  /// The forward start at `(s, r, q, tau)`, struck at `start_time` at `moneyness` times that spot;
+  /// its payoff at `tau = 0`; NaN for a NaN rate, a negative spot or a `start_time` off `[0, tau]`.
   pub fn price_forward_start(
     &self,
     option: &ForwardStartOption,
@@ -156,10 +161,23 @@ impl ChooserPricer {
       start_time: t1,
       option_type,
     } = *option;
+    if !(0.0 <= t1 && t1 <= tau) || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if tau == 0.0 {
+      return vanilla_payoff(option_type, s, alpha * s);
+    }
+    if s < 0.0 {
+      return f64::NAN;
+    }
     let remaining_tau = tau - t1;
     let v = self.sigma;
     let v2 = v * v;
     let b = r - q;
+    if remaining_tau == 0.0 {
+      let carried = s * ((b - r) * t1).exp();
+      return vanilla_payoff(option_type, carried, alpha * carried);
+    }
     let d1 = ((-alpha.ln()) + (b + 0.5 * v2) * remaining_tau) / (v * remaining_tau.sqrt());
     let d2 = d1 - v * remaining_tau.sqrt();
     let coc1 = ((b - r) * t1).exp();

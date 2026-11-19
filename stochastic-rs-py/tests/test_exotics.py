@@ -201,3 +201,8 @@ def test_a_compound_decided_at_0_prices_its_exercise_value():
 
 def test_the_exotics_answer_at_their_edges():
     assert sr.VarianceSwapPricer(100.0, 0.05, 0.02, math.inf).fair_strike_heston(0.04, 0.0, 0.04) == 0.04
+    deciding_now = sr.SimpleChooserPricer(s=100.0, k=100.0, r=0.03, q=0.03, sigma=0.25, t1=0.0, t=1.0)
+    assert deciding_now.price() == pytest.approx(9.653647626602911, **LIBM)
+    assert sr.DoubleBarrierPricer(s=0.0, t=0.0, **CORRIDOR).price() == 0.0
+    expired_put = sr.FixedLookbackPricer(s=0.0, k=100.0, r=0.05, q=0.02, sigma=0.25, t=0.0, option_type="put")
+    assert expired_put.price() == 100.0

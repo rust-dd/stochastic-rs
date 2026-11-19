@@ -59,7 +59,7 @@ impl BarrierPricer {
   }
 
   /// Reiner–Rubinstein price; a spot on or past the barrier has knocked out to the rebate or in to
-  /// the vanilla, `tau = 0` pays out, and a negative or NaN `tau` or a NaN barrier is NaN.
+  /// the vanilla, `tau = 0` pays out, and NaN for a negative or NaN `tau` or a NaN barrier or spot.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let BarrierOption {
       strike: k,
@@ -68,7 +68,10 @@ impl BarrierPricer {
       barrier_type,
       option_type,
     } = *option;
-    if !(s > 0.0 && tau >= 0.0) || h.is_nan() || r.is_nan() || q.is_nan() {
+    if s.is_nan() || tau.is_nan() || tau < 0.0 || h.is_nan() || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if tau > 0.0 && s <= 0.0 {
       return f64::NAN;
     }
     let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
@@ -227,7 +230,7 @@ impl DoubleBarrierPricer {
   }
 
   /// Price at `(s, r, q, tau)`: 0 on or outside the corridor, the payoff at `tau = 0`, and NaN for
-  /// a negative or NaN `tau`, a NaN bound or rate, a spot `<= 0`, or a `lower <= 0` before expiry.
+  /// a negative or NaN `tau`, a NaN bound or rate, or a spot or `lower` not positive before expiry.
   pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let DoubleBarrierOption {
       strike: k,
@@ -235,10 +238,17 @@ impl DoubleBarrierPricer {
       upper: u,
       option_type,
     } = *option;
-    if !(s > 0.0 && tau >= 0.0) || l.is_nan() || u.is_nan() || r.is_nan() || q.is_nan() {
+    if s.is_nan()
+      || tau.is_nan()
+      || tau < 0.0
+      || l.is_nan()
+      || u.is_nan()
+      || r.is_nan()
+      || q.is_nan()
+    {
       return f64::NAN;
     }
-    if tau > 0.0 && l <= 0.0 {
+    if tau > 0.0 && !(s > 0.0 && l > 0.0) {
       return f64::NAN;
     }
     if s <= l || s >= u {
