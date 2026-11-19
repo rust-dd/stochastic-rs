@@ -40,6 +40,17 @@ fn flat_short_end<T: RealExt>(points: &[CurvePoint<T>], t: T) -> Option<T> {
   (t < first.time).then(|| (first.discount_factor.ln() * (t / first.time)).exp())
 }
 
+/// `D(t)` a share `w` of the way between two pillars, from their `ln D` (log-linear) or zero
+/// rates; the bootstrap's trial segment reads through it too.
+#[inline]
+pub(super) fn between_pillars<T: RealExt>(log_linear: bool, left: T, right: T, w: T, t: T) -> T {
+  if log_linear {
+    (left * (T::one() - w) + right * w).exp()
+  } else {
+    (-(left + w * (right - left)) * t).exp()
+  }
+}
+
 /// $D(t) = e^{-r(t)\,t}$ with $r$ linear between the pillars' zero rates $r_i = -\ln D_i / t_i$
 /// and flat below the first; NaN for `t < 0`.
 pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
@@ -54,8 +65,7 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let r1 = -p1.discount_factor.ln() / p1.time;
 
   let w = (t - p0.time) / (p1.time - p0.time);
-  let r = r0 + w * (r1 - r0);
-  (-r * t).exp()
+  between_pillars(false, r0, r1, w, t)
 }
 
 /// $\ln D(t)$ linear between pillars and from $(0, 1)$, so the forward rate is piecewise
@@ -69,8 +79,7 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
   let (p0, p1) = (&points[idx], &points[idx + 1]);
 
   let w = (t - p0.time) / (p1.time - p0.time);
-  let ln_d = p0.discount_factor.ln() * (T::one() - w) + p1.discount_factor.ln() * w;
-  ln_d.exp()
+  between_pillars(true, p0.discount_factor.ln(), p1.discount_factor.ln(), w, t)
 }
 
 /// The natural cubic spline through the pillars' zero rates: a flat zero rate below the first

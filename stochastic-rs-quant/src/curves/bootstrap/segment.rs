@@ -1,5 +1,6 @@
 //! The last interval of a local interpolation, its right pillar at the trial node.
 
+use crate::curves::interpolation::between_pillars;
 use crate::curves::types::CurvePoint;
 use crate::curves::types::InterpolationMethod;
 use crate::traits::RealExt;
@@ -66,12 +67,7 @@ impl<T: RealExt> Segment<T> {
   pub(super) fn read(&self, t: T) -> (T, T) {
     let w = (t - self.t0) / (self.t1 - self.t0);
     let elasticity = if self.log_linear { w } else { w * t / self.t1 };
-    let d = if self.log_linear {
-      (self.left * (T::one() - w) + self.right * w).exp()
-    } else {
-      let r = self.left + w * (self.right - self.left);
-      (-r * t).exp()
-    };
+    let d = between_pillars(self.log_linear, self.left, self.right, w, t);
     (d, elasticity)
   }
 }
