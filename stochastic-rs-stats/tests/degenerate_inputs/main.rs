@@ -227,8 +227,12 @@ pub fn hypothesis_tests() -> Vec<Entry> {
       err(|x| granger_causality_test(x, x, 1, 0.05)),
       SERIES,
     ),
-    ("bns", err(|x| bns_jump_test(x, 0.05)), None),
-    ("lee_mykland", err(|x| lee_mykland_test(x, 16, 0.05)), None),
+    ("bns", err(|x| bns_jump_test(x, 0.05)), SERIES),
+    (
+      "lee_mykland",
+      err(|x| lee_mykland_test(x, 16, 0.05)),
+      SERIES,
+    ),
     ("acf", err(|x| acf(x, 20)), SERIES),
     ("pacf", err(|x| pacf(x, 20)), SERIES),
     (

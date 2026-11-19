@@ -10,7 +10,9 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
+use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate_view;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
@@ -118,14 +120,15 @@ impl crate::traits::HypothesisTest for BnsJumpTest {
   }
 }
 
-/// Barndorff-Nielsen / Shephard jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns,
-/// on a non-finite one or a zero bipower variation, and panics unless `0 < alpha < 1`.
+/// BNS jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns, on a non-finite one, a
+/// constant series or a zero bipower variation, and panics unless `0 < alpha < 1`.
 pub fn bns_jump_test<T: FloatExt>(
   returns: ArrayView1<T>,
   alpha: f64,
 ) -> Result<BnsJumpTest, StatsError> {
   assert_alpha(alpha);
   validate_view(returns, 3)?;
+  reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();
@@ -279,6 +282,16 @@ mod tests {
       bns_jump_test(r.view(), 0.05).unwrap_err(),
       StatsError::DegenerateData("zero bipower variation")
     );
+  }
+
+  #[test]
+  fn constant_and_zero_returns_are_a_constant_series() {
+    for r in [Array1::from_elem(200, 0.001), Array1::<f64>::zeros(200)] {
+      assert_eq!(
+        bns_jump_test(r.view(), 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]
