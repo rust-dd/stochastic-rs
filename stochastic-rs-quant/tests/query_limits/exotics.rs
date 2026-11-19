@@ -303,7 +303,7 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
   assert!(chooser.price_complex(&at_the_put, 100.0, R, Q).is_finite());
 }
 
-/// The first spot in each loop is rc.4's `S*` (call on a call, chooser), where it divided 0 by 0.
+/// Each loop's first spot is the critical `S*`, where the closed form divides 0 by 0.
 #[test]
 fn a_compound_or_complex_chooser_decided_at_0_answers_its_exercise_value() {
   use CompoundType::*;

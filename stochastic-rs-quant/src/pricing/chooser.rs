@@ -1,15 +1,14 @@
-//! # Chooser
+//! The simple and complex choosers and the forward start under Black–Scholes, in closed form.
 //!
 //! $$
 //! W = Se^{-qT}N(d) - Ke^{-rT}N(d - \sigma\sqrt T)
 //!     -Se^{-qT}N(-y) + Ke^{-rT}N(-y + \sigma\sqrt{t_1})
 //! $$
 //!
-//! Source:
-//! - Rubinstein, M. (1991), "Options for the Undecided", *RISK Magazine* 4(4)
-//! - Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine*
-//! - Vector Risk (2017), "Forward Start Option", v8.0.7905, p. 2, citing Rubinstein's 4(2), 13
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
+//! Reference: Rubinstein, M. (1991), "Options for the Undecided", *RISK Magazine* 4(4)
+//! Reference: Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine*
+//! Reference: Vector Risk (2017), "Forward Start Option", v8.0.7905, p. 2: Rubinstein's 4(2), 13
+//! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
 //!
 use owens_t::biv_norm;
 use stochastic_rs_distributions::RealExt;

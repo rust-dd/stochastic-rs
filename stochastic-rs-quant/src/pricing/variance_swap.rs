@@ -222,8 +222,8 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike's root less a convexity correction, none at `tau = 0`
-  /// or a zero strike; panics on a negative variance strike, NaN where it or `sigma` is NaN.
+  /// Heston vol strike: the variance strike's root less a convexity correction (none at `tau = 0`,
+  /// a zero strike or kappa ≈ 0); NaN where either is NaN, panics on a negative variance strike.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
     if k_var.is_nan() {
