@@ -32,12 +32,21 @@ use crate::traits::RealExt;
 /// A curve with one pillar per instrument, by increasing maturity. `InsufficientData` for no
 /// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` for a solve with no root.
 pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve<T>, QuantError> {
+  bootstrap_numbered(spec, None)
+}
+
+/// [`bootstrap`], each error naming the instrument at `i` as quote `numbers[i]`.
+pub(crate) fn bootstrap_numbered<T: RealExt>(
+  spec: BootstrapSpec<'_, T>,
+  numbers: Option<&[usize]>,
+) -> Result<DiscountCurve<T>, QuantError> {
   let BootstrapSpec {
     instruments,
     method,
     iterative,
     discount,
   } = spec;
+  let number = |index: usize| numbers.map_or(index, |numbers| numbers[index]);
   if instruments.is_empty() {
     return Err(QuantError::InsufficientData {
       what: "instruments",
@@ -46,7 +55,7 @@ pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve
     });
   }
   for (index, instrument) in instruments.iter().enumerate() {
-    validate::check(index, instrument, discount.is_some())?;
+    validate::check(number(index), instrument, discount.is_some())?;
   }
   let mut order: Vec<usize> = (0..instruments.len()).collect();
   order.sort_by(|&a, &b| ascending(&instruments[a].maturity(), &instruments[b].maturity()));
@@ -55,10 +64,10 @@ pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve
     .find(|w| instruments[w[0]].maturity() == instruments[w[1]].maturity())
   {
     return Err(QuantError::InvalidQuote {
-      index: pair[1],
+      index: number(pair[1]),
       reason: format!(
         "maturity must differ from quote {}'s, got maturity = {:?} for both",
-        pair[0],
+        number(pair[0]),
         instruments[pair[1]].maturity()
       ),
     });
@@ -66,7 +75,7 @@ pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve
 
   let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(order.len());
   for index in order {
-    let instrument = &instruments[index];
+    let (instrument, quote) = (&instruments[index], number(index));
     let discount_factor = match (instrument, discount) {
       (
         BootstrapInstrument::SwapWithSchedule {
@@ -82,13 +91,13 @@ pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve
         float_times,
         discount,
         method,
-        index,
+        quote,
       )?,
-      _ => single_curve_node(&points, instrument, method, iterative, index)?,
+      _ => single_curve_node(&points, instrument, method, iterative, quote)?,
     };
     if !(discount_factor.is_finite() && discount_factor > T::zero()) {
       return Err(QuantError::InvalidQuote {
-        index,
+        index: quote,
         reason: format!(
           "the quote implies a discount factor that is not finite and positive, got {discount_factor:?}"
         ),
