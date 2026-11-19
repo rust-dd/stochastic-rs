@@ -36,6 +36,8 @@ use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
 
+mod credit_and_rates;
+
 const R: f64 = 0.05;
 const Q: f64 = 0.01;
 const SPOTS: [f64; 3] = [90.0, 100.0, 110.0];
