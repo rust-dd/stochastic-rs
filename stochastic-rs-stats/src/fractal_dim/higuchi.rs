@@ -16,6 +16,8 @@ use super::FdDiagnostic;
 use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
+use crate::hurst::to_f64_vec;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Higuchi fractal-dimension estimator.
@@ -80,6 +82,7 @@ fn compute_with_diagnostic<T: FloatExt>(
       constraint: "kmax >= 2",
     });
   }
+  reject_constant(&to_f64_vec(x), "constant series")?;
 
   let k_upper = kmax.min(n_times - 1);
   let mut x_reg = Array1::<f64>::zeros(k_upper);

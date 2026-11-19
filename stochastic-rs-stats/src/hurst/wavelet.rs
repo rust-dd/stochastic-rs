@@ -27,6 +27,7 @@ use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// The Daubechies-4 scaling (low-pass) filter, `Σ hₖ = √2` and `Σ h²ₖ = 1`; not Brouste & Iacus's
@@ -112,6 +113,7 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
     }
 
     let signal_raw = to_f64_vec::<T>(x);
+    reject_constant(&signal_raw, "constant series")?;
     let signal: Vec<f64> = if self.take_differences {
       signal_raw.windows(2).map(|w| w[1] - w[0]).collect()
     } else {

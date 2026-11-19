@@ -25,6 +25,7 @@ use stochastic_rs_distributions::special::gamma;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::more_thuente;
 
@@ -79,12 +80,13 @@ impl Whittle {
     whittle
   }
 
-  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points, on a
-  /// non-finite one or objective; panics unless `m >= 1`, `delta > 0` is finite and `0 < psi < π`.
+  /// Fukasawa–Takabatake–Westphal's fit to log RV; `Err` below 30 points, on a non-finite point or
+  /// objective or a constant series; panics unless `m >= 1`, `0 < delta < ∞` and `0 < psi < π`.
   pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
     self.assert_config();
     let log_rv = as_slice_or_copy(log_rv);
     validate(&log_rv, 30)?;
+    reject_constant(&log_rv, "constant series")?;
     run_estimate(
       &log_rv,
       self.m,

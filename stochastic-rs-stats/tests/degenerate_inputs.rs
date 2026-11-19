@@ -1,5 +1,5 @@
 //! Too little or non-finite data is an `Err` (NaN from a realized measure), never a panic inside
-//! a fit or a test, and every entry's answer to a constant series is pinned.
+//! a fit or a test, and every entry answers a constant and its rounding alike.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -27,6 +27,8 @@ use stochastic_rs_stats::evt::fit_gpd;
 use stochastic_rs_stats::evt::fit_gpd_pwm;
 use stochastic_rs_stats::evt::fit_hill;
 use stochastic_rs_stats::evt::fit_pot;
+use stochastic_rs_stats::fractal_dim::Higuchi;
+use stochastic_rs_stats::fractal_dim::Variogram;
 use stochastic_rs_stats::garch::GarchSpec;
 use stochastic_rs_stats::garch::fit_garch;
 use stochastic_rs_stats::gmm_cir::fit_cir_gmm;
@@ -40,6 +42,15 @@ use stochastic_rs_stats::heston_mle::fit_heston_pmle;
 use stochastic_rs_stats::heston_mle::fit_heston_pmle_with_delta;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 use stochastic_rs_stats::heston_nmle_cekf::fit_heston_nmle_cekf;
+use stochastic_rs_stats::hurst::Dfa;
+use stochastic_rs_stats::hurst::Gph;
+use stochastic_rs_stats::hurst::HurstEstimator;
+use stochastic_rs_stats::hurst::RescaledRange;
+use stochastic_rs_stats::hurst::VariationKind;
+use stochastic_rs_stats::hurst::Variations;
+use stochastic_rs_stats::hurst::Wavelet;
+use stochastic_rs_stats::hurst::Whittle;
+use stochastic_rs_stats::kde::silverman_bandwidth;
 use stochastic_rs_stats::mle::DensityApprox;
 use stochastic_rs_stats::mle::fit_mle;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
@@ -107,8 +118,6 @@ const SERIES: Option<StatsError> = Some(StatsError::DegenerateData("constant ser
 const SAMPLE: Option<StatsError> = Some(StatsError::DegenerateData("constant sample"));
 
 const EXCESSES: Option<StatsError> = Some(StatsError::DegenerateData("constant excesses"));
-
-const JOHANSEN: Option<StatsError> = Some(StatsError::Singular("S00"));
 
 const VARIANCE: Option<StatsError> = Some(StatsError::DegenerateData("constant variance series"));
 
@@ -178,7 +187,7 @@ pub fn hypothesis_tests() -> Vec<Entry> {
     (
       "lo_mackinlay",
       err(|x| lo_mackinlay_test(x, LoMacKinlayConfig::default())),
-      Some(StatsError::DegenerateData("zero-variance increments")),
+      SERIES,
     ),
     (
       "cusum",
@@ -239,9 +248,9 @@ pub fn hypothesis_tests() -> Vec<Entry> {
     (
       "johansen",
       err(|x| johansen_test(pair(x).view(), 2)),
-      JOHANSEN,
+      SERIES,
     ),
-    ("vecm", err(|x| fit_vecm(pair(x).view(), 2, 1)), JOHANSEN),
+    ("vecm", err(|x| fit_vecm(pair(x).view(), 2, 1)), SERIES),
   ]
 }
 
@@ -296,6 +305,8 @@ fn check(entries: Vec<Entry>) {
   let mut with_nan = Array1::<f64>::linspace(-1.0, 1.0, 400);
   with_nan[7] = f64::NAN;
   let constant = Array1::<f64>::from_elem(400, 0.3);
+  let ulp = 0.7 * f64::EPSILON;
+  let neighbours = Array1::<f64>::from_iter((0..400).map(|j| 0.7 + (j % 3) as f64 * ulp));
   for (name, f, on_constant) in entries {
     assert!(
       matches!(f(empty.view()), Some(StatsError::InsufficientData { .. })),
@@ -314,6 +325,11 @@ fn check(entries: Vec<Entry>) {
       f(constant.view()),
       on_constant,
       "{name}: the answer to a constant series"
+    );
+    assert_eq!(
+      f(neighbours.view()),
+      on_constant,
+      "{name}: the answer to neighbouring doubles, a constant's rounding"
     );
   }
 }
@@ -533,4 +549,47 @@ fn realized_measures_answer_nan_below_their_minimum_length_and_on_a_nan() {
   }
   let zeros = Array1::<f64>::zeros(5);
   assert!(realized_skewness(zeros.view()).is_nan() && realized_kurtosis(zeros.view()).is_nan());
+}
+
+/// The Hurst and fractal-dimension estimators, Whittle's fit and Silverman's bandwidth refuse a
+/// constant series and its rounding alike.
+#[test]
+fn the_hurst_estimators_refuse_a_constant_and_its_rounding() {
+  let estimators: Vec<(&str, Box<dyn HurstEstimator<f64>>)> = vec![
+    ("dfa", Box::new(Dfa::default())),
+    ("rs", Box::new(RescaledRange::default())),
+    ("gph", Box::new(Gph::default())),
+    ("wavelet", Box::new(Wavelet::default())),
+    ("variogram", Box::new(Variogram::default())),
+    ("higuchi", Box::new(Higuchi::default())),
+  ];
+  let path = Some(StatsError::DegenerateData("constant or zero-variance path"));
+  let ulp = 0.7 * f64::EPSILON;
+  let neighbours = Array1::<f64>::from_iter((0..512).map(|j| 0.7 + (j % 3) as f64 * ulp));
+  for x in [Array1::<f64>::from_elem(512, 0.3), neighbours] {
+    for (name, estimator) in &estimators {
+      let want = if *name == "variogram" {
+        path.clone()
+      } else {
+        SERIES
+      };
+      assert_eq!(estimator.estimate(x.view()).err(), want, "{name}");
+    }
+    for kind in [
+      VariationKind::Daubechies,
+      VariationKind::CentralDiff,
+      VariationKind::PowerVariation { k: 2, p: 2.0 },
+    ] {
+      assert_eq!(
+        Variations::new(kind).estimate(x.view()).err(),
+        path,
+        "{kind:?}"
+      );
+    }
+    assert_eq!(Whittle::default().fit(x.view()).err(), SERIES);
+    assert_eq!(
+      silverman_bandwidth(x.view()).err(),
+      Some(StatsError::DegenerateData("zero spread"))
+    );
+  }
 }

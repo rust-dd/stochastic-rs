@@ -46,6 +46,7 @@ pub use whittle::Whittle;
 /// The self-similarity exponent of the series itself: [`RescaledRange`], [`Dfa`], [`Gph`],
 /// [`Wavelet`], [`Variations`], and `H = 2 − D` from [`crate::fractal_dim`]'s two estimators.
 pub trait HurstEstimator<T: FloatExt> {
+  /// `H` of `x`; `Err` on a constant series, a configuration out of range or too few points.
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError>;
 }
 

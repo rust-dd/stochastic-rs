@@ -29,11 +29,11 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::linalg::inverse;
 
-use super::common::reject_rounded_constant;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::traits::RealExt;
@@ -145,7 +145,7 @@ pub fn cusum_test(
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, k + 2)?;
   validate_rows(x)?;
-  reject_rounded_constant(&y_slice)?;
+  reject_constant(&y_slice, "constant series")?;
 
   let t_total = y.len();
   let w = recursive_residuals(y, x)?;

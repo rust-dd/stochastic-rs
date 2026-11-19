@@ -90,10 +90,18 @@ pub(crate) fn validate_rows<T: FloatExt>(x: ArrayView2<'_, T>) -> Result<(), Sta
   Ok(())
 }
 
-/// `Err(DegenerateData(what))` when every value equals the first; exact, as a rounded mean lets a
-/// constant series through a variance check.
-pub(crate) fn reject_constant<T: PartialEq>(y: &[T], what: &'static str) -> Result<(), StatsError> {
-  if y.windows(2).all(|w| w[0] == w[1]) {
+/// A series whose range is within this many `ε` of its largest magnitude is a constant's rounding:
+/// neighbouring doubles, as a constant through two or three rounded operations leaves.
+const ROUNDING_RANGE: f64 = 4.0;
+
+/// `Err(DegenerateData(what))` below 2 points or when `max − min <= ROUNDING_RANGE ε max|y|`: the
+/// variance of such a series is rounding, which no relative rule can tell from a signal.
+pub(crate) fn reject_constant<T: FloatExt>(y: &[T], what: &'static str) -> Result<(), StatsError> {
+  let low = T::min_or_nan_fold(y.iter().copied());
+  let high = T::max_or_nan_fold(y.iter().copied());
+  let bound = T::from_f64_fast(ROUNDING_RANGE) * T::epsilon() * low.abs().max(high.abs());
+  // A non-finite end is no constant's rounding: `validate` answers for it.
+  if y.len() < 2 || (low.is_finite() && high.is_finite() && high - low <= bound) {
     return Err(StatsError::DegenerateData(what));
   }
   Ok(())

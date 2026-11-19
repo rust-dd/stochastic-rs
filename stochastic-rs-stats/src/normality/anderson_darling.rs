@@ -14,6 +14,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Anderson-Darling normality test.
@@ -99,9 +100,7 @@ pub fn anderson_darling_normal_test(
   sorted.sort_by(f64::total_cmp);
   let n = sorted.len();
   let n_f = n as f64;
-  if sorted[0] == sorted[n - 1] {
-    return Err(StatsError::DegenerateData("constant sample"));
-  }
+  reject_constant(&sorted, "constant sample")?;
 
   let (mean, sd) = mean_sd(&sorted);
   // `ln Φ` and `ln Φ(−z)` keep the far tails, where `Φ` itself rounds to 0 or 1.

@@ -10,6 +10,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Jarque-Bera normality test.
@@ -60,9 +61,7 @@ pub fn jarque_bera_test(
   assert_alpha(cfg.alpha);
   let sample = as_slice_or_copy(sample);
   validate(&sample, 8)?;
-  if sample.iter().all(|&v| v == sample[0]) {
-    return Err(StatsError::DegenerateData("constant sample"));
-  }
+  reject_constant(&sample, "constant sample")?;
 
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;

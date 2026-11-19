@@ -15,6 +15,8 @@ use super::FdDiagnostic;
 use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
+use crate::hurst::to_f64_vec;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Variogram-ratio fractal-dimension estimator.
@@ -81,6 +83,7 @@ fn compute_with_diagnostic<T: FloatExt>(
       constraint: "p > 0",
     });
   }
+  reject_constant(&to_f64_vec(x), "constant or zero-variance path")?;
 
   let sum1: f64 = (1..x.len())
     .map(|i| {

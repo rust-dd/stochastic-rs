@@ -33,8 +33,8 @@ pub struct EwmaResult {
   pub nobs: usize,
 }
 
-/// EWMA (RiskMetrics) conditional variance of a return series; `Err` below 2 observations or on a
-/// non-finite one, and panics unless `0 < lambda < 1`.
+/// EWMA (RiskMetrics) conditional variance of returns, `r²` on constant ones; `Err` below 2
+/// observations or on a non-finite one, and panics unless `0 < lambda < 1`.
 pub fn ewma_variance<T: FloatExt>(
   returns: ArrayView1<T>,
   lambda: f64,
