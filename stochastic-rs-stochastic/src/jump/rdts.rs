@@ -124,11 +124,12 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// The scale `C = (Γ(2 - α) (λ₊^{α-2} + λ₋^{α-2}))^{-1}` that normalises
-  /// the law's variance to one.
+  /// The standard RDTS's scale `C = (2^{-α/2} Γ(1 - α/2) (λ₊^{α-2} + λ₋^{α-2}))^{-1}`, under which
+  /// `X_1` has variance one.
   fn tempering_constant(&self) -> T {
-    let g = gamma(2.0 - self.alpha.to_f64().unwrap());
-    (T::from_f64_fast(g)
+    let g = gamma(1.0 - self.alpha.to_f64().unwrap() / 2.0);
+    (T::from_usize_(2).powf(-self.alpha / T::from_usize_(2))
+      * T::from_f64_fast(g)
       * (self.lambda_plus.powf(self.alpha - T::from_usize_(2))
         + self.lambda_minus.powf(self.alpha - T::from_usize_(2))))
     .powi(-1)
@@ -149,13 +150,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Rdts<T, S, B>
 {
   /// The series constants, folded once: the arrival rate `α / (2 C T)`, the exponential draw
-  /// entering as `√E / 2` (the law's Gaussian-tempered size), and the two sides equally likely.
+  /// entering as `√(2E)` (the law's Gaussian-tempered size), and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
       rate: self.alpha / (T::from_usize_(2) * self.tempering_constant() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
-      e_scale: T::from_f64_fast(0.5),
+      e_scale: T::from_f64_fast(std::f64::consts::SQRT_2),
       e_pow: T::from_f64_fast(0.5),
       w_plus: T::from_f64_fast(0.5),
       lambda_plus: self.lambda_plus,
@@ -353,10 +354,11 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
       let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
 
-      // Rdts: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
-      let term2 =
-        T::from_f64_fast(0.5) * e[j].powf(T::from_f64_fast(0.5)) * u[j].powf(T::one() / self.alpha)
-          / v_j.abs();
+      // `P(√(2E) > λx) = e^{−λ²x²/2}`: the minimum tempers the stable size as `ν` does.
+      let term2 = T::from_f64_fast(std::f64::consts::SQRT_2)
+        * e[j].powf(T::from_f64_fast(0.5))
+        * u[j].powf(T::one() / self.alpha)
+        / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
@@ -383,7 +385,6 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
         k += 1;
       }
 
-      // direkt formula: x(t_i) = x0 + sum_{tau_j<=t_i} jump_j + b_t * t_i
       out[i] = self.x0 + cum_jumps + b_t * t_i;
     }
   }

@@ -55,6 +55,19 @@ pub(crate) fn holds(estimate: Estimate, theory: f64, what: &str) {
   );
 }
 
+/// [`holds`] for the best of several estimates, one per pinned seed: a right law fails only when
+/// every seed misses, at the band's rate raised to the number of seeds.
+pub(crate) fn holds_on_one_of(estimates: &[Estimate], theory: f64, what: &str) {
+  let z = |e: &Estimate| ((e.mean - theory) / e.se).abs();
+  let best = estimates.iter().map(z).fold(f64::INFINITY, f64::min);
+  assert!(
+    best < 5.0,
+    "{what}: the law says {theory}, the best of {} seeds is {best:.1} standard errors away: {:?}",
+    estimates.len(),
+    estimates.iter().map(|e| (e.mean, e.se)).collect::<Vec<_>>()
+  );
+}
+
 /// Each path's last point — one independent draw of the law at the horizon.
 pub(crate) fn terminals(paths: &[Array1<f64>]) -> Vec<f64> {
   paths.iter().map(|p| p[p.len() - 1]).collect()
