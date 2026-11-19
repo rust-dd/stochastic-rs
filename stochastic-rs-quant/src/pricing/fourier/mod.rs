@@ -26,6 +26,7 @@ pub use bsm::BsmFourier;
 pub use cos::CosEngine;
 pub use cumulants::Cumulants;
 pub(crate) use cumulants::heston_cumulants;
+pub(crate) use cumulants::mean_integrated_variance;
 pub use frft::FrftCarrMadanPricer;
 pub use frft::frft;
 pub use heston::DoubleHestonFourier;

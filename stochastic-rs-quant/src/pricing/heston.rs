@@ -11,6 +11,7 @@ use num_complex::Complex64;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;
+use super::fourier::mean_integrated_variance;
 use crate::CallPut;
 use crate::OptionType;
 use crate::pricing::digital::vanilla_payoff;
@@ -204,16 +205,13 @@ impl HestonPricer {
     ((big_c + big_d * v0 + i * phi * s.ln()).exp(), big_d)
   }
 
-  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`: its Gaussian control variate's variance.
+  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`, its Gaussian control variate's variance: the
+  /// model's own `−2c₁` at `b_j`.
   fn mean_integrated_variance(&self, j: u8, tau: f64) -> f64 {
-    let x = self.b(j) * tau;
-    let (level, slope) = if x.abs() < 1e-4 {
-      (1.0 - 0.5 * x, 0.5 - x / 6.0)
-    } else {
-      let level = -(-x).exp_m1() / x;
-      (level, (1.0 - level) / x)
-    };
-    tau * (self.params.v0 * level + self.params.kappa * self.params.theta * tau * slope)
+    let HestonParams {
+      v0, kappa, theta, ..
+    } = self.params;
+    mean_integrated_variance(v0, self.b(j), kappa * theta, tau)
   }
 
   pub(self) fn re(

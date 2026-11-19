@@ -406,6 +406,58 @@ mod construction_validation {
   }
 }
 
+/// `E₂[∫₀^τ v] = τ(v0·ℓ + κθτ·s)` against mpmath at 40 digits across `|x| = 1e-3`, `x = κτ`:
+/// `ℓ = (1 − e⁻ˣ)/x` alone at `θ = 0`, `s = (x − 1 + e⁻ˣ)/x²` alone at `v0 = 0`.
+#[test]
+fn the_integrated_variance_mean_holds_its_digits_at_any_b_tau() {
+  // (x, ℓ(x), s(x))
+  let cases = [
+    (1e-6, 0.9999995000001667, 0.499999833333375),
+    (9.9e-5, 0.9999505016334596, 0.4999835004083669),
+    (1.0225e-3, 0.9994889242065078, 0.4998296268871867),
+    (-1.1e-3, 1.0005502017221373, 0.5001833837610937),
+    (1e-2, 0.9950166250831947, 0.49833749168053576),
+    (-1e-5, 1.0000050000166667, 0.5000016666708333),
+    (-0.5, 1.2974425414002564, 0.5948850828005126),
+    (2.0, 0.43233235838169365, 0.28383382080915315),
+  ];
+  for (x, level, slope) in cases {
+    let kappa = 1.5_f64.copysign(x);
+    let tau = x / kappa;
+    let mean = |v0: f64, theta: f64| {
+      HestonPricer::new(HestonParams::new(v0, kappa, theta, 0.3, -0.7))
+        .mean_integrated_variance(2, tau)
+    };
+    let got_level = mean(1.0, 0.0) / tau;
+    let got_slope = mean(0.0, 1.0) / (kappa * tau * tau);
+    assert!(
+      (got_level / level - 1.0).abs() < 4e-13,
+      "x = {x}: level {got_level} vs {level}"
+    );
+    assert!(
+      (got_slope / slope - 1.0).abs() < 4e-13,
+      "x = {x}: slope {got_slope} vs {slope}"
+    );
+  }
+}
+
+/// The control variance is the model's own `−2c₁`, one function for both, bit for bit.
+#[test]
+fn the_control_variance_is_minus_twice_the_first_cumulant() {
+  for (kappa, tau) in [
+    (1.5, 1e-6),
+    (1.5, 0.3),
+    (1.5, 2.0),
+    (0.5, 1e-3),
+    (-0.4, 3.0),
+  ] {
+    let params = HestonParams::new(0.04, kappa, 0.09, 0.3, -0.7);
+    let control = HestonPricer::new(params).mean_integrated_variance(2, tau);
+    let c1 = crate::pricing::fourier::heston_cumulants(&params, tau).c1;
+    assert_eq!(control, -2.0 * c1, "kappa = {kappa}, tau = {tau}");
+  }
+}
+
 const TOL: f64 = 1e-12;
 
 /// Goldens at `(s, k, r, q, τ) = (100, 105, 0.05, 0.02, 0.75)` and
