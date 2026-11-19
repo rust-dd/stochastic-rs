@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "86111627f68dd5c6ab7431d938a89c970597873a08202c7d477e3c3fc08ebd95",
+  "artifact": "d24a82d2e12f7e867454d887bf4154b0d60a18c946689c4c528db0088c3d314a",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -45,14 +45,14 @@
     "../stochastic-rs-metal-kernels/src/random.rs": "0479df598ed024be5d574c71746c691987d2c94ffae5f88577bf08edc2f18304",
     "../stochastic-rs-metal-kernels/src/sheet.rs": "241f236ddb91af1c20bf1be8c24fcb2204e3947bed3519d505475f78ceb199f4",
     "../stochastic-rs-metal-kernels/src/tile.rs": "3a5923926b67cc647bdd9bf8b52713e25cd81e07a982d1dcc51f4f586a4d19c4",
-    "src/euler/families/definitions/diffusions.rs": "5d0cb17fae3f39ecf96176406d5bb601f2ee2793cb772a189593b4dd9ce8e679",
-    "src/euler/families/definitions/jump_schemes.rs": "58d8b665f341f4d82baa54c7bdc8d273ef3da1ffe972818c0d2042805d126485",
-    "src/euler/families/definitions/lifts.rs": "33b5da234f3abb87c5e869f5aaefff14d4434b32babf01555b8c9dbd53f93e0c",
-    "src/euler/families/definitions/memory.rs": "055f7656beb18f12a1c420e737c3cc4598b63158b3d5aeddca6d77b85c6038b9",
+    "src/euler/families/definitions/diffusions.rs": "92b037b596ef9d29a62ba241a48603bbf35c4b484193d0a89d9fa974789163d1",
+    "src/euler/families/definitions/jump_schemes.rs": "81c0f5dd8c09f2ed34c16400c8a1f5f712cb6f260097c57cf28d35efa7eacbab",
+    "src/euler/families/definitions/lifts.rs": "411ab89924ef88f302444fff5d19e8aab581181d22abb6e76d8d77b828552909",
+    "src/euler/families/definitions/memory.rs": "f33d44ffd762dc9928e9306d4706bb5260bf869b4db72797c5c9901163ac107a",
     "src/euler/families/definitions/mod.rs": "c1bd9295a5f67047a9e2e8e95e61065bdb69f513022b5a3ff2d116426fb8af79",
-    "src/euler/families/definitions/multifactor.rs": "4ae5edcc55aa5d7d44c53cbb8eff8d57de3985703668b839bf83632db2e61bdb",
-    "src/euler/families/definitions/systems.rs": "812e2d0d9d673610ce510fcf86b86948e9cca855c26f73cf497eb15fb223d049",
-    "src/euler/families/definitions/transformations.rs": "8fe0e99eee344dc0f21fe76f4f7de527f452bc3ce42245b8b666e883b4043ed1",
-    "src/euler/philox.rs": "3db631930b41eca90d61db5ab1f1e9e14d618f349cb1218be4f2a7c059af3ec3"
+    "src/euler/families/definitions/multifactor.rs": "f746daf71e0c2b7e43680d969c3482af875ef71828aa96638774a042a4a0946c",
+    "src/euler/families/definitions/systems.rs": "67b9e4693b2579cce4ea78de47adbeb0b5209c4338fdbcc091143bc0d75e11c6",
+    "src/euler/families/definitions/transformations.rs": "2b8d773886cae4d38c4db4a9f8e112ce938ceca42cdf497305dec9973554864d",
+    "src/euler/philox.rs": "7b1bf9374093c0ecaa4515c61c452fb1041fafff63e95698524c71a2a10fec9b"
   }
 }
