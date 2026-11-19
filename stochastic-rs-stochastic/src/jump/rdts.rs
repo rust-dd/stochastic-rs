@@ -29,10 +29,10 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
 pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: T, // G
-  /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: T, // M
+  /// Gaussian tempering parameter λ₊ of the positive jumps.
+  pub lambda_plus: T,
+  /// Gaussian tempering parameter λ₋ of the negative jumps.
+  pub lambda_minus: T,
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
   pub alpha: T,
   /// Number of time steps

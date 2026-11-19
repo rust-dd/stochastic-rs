@@ -524,7 +524,7 @@ Mostly consistent: the diffusion scale of a Brownian driver. Two notes:
 | Role | Models (field) |
 |---|---|
 | Jump (Poisson) intensity — arrival rate | `Merton`, `Kou`, `Bates`, `MjdLog`, `JumpFou`, `LevyDiffusion` (`lambda`) |
-| Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, i.e. G/M) — an exponential decay rate of the jump-size density, not an arrival rate | `Cgmy`, `Cts`, `Rdts`, `Kobol`, `BilateralGamma` (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
+| Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, CGMY's M/G) — the jump-size density's decay, exponential (Gaussian for `Rdts`), not an arrival rate | `Cgmy`, `Cts`, `Rdts`, `Kobol`, `BilateralGamma` (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
 
 In the Hawkes family, `lambda_t` is the modeled self-exciting intensity **state**, not an input parameter; the input baseline is a separate `mu` field.
 

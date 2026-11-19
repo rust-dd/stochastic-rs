@@ -17,8 +17,8 @@
 //! P(V_j=\lambda_+)=P(V_j=-\lambda_-)=\tfrac12
 //! $$
 //!
-//! Reference: Rosiński (2007), Thm 5.1, Stoch. Proc. Appl. 117(6), 677–707
-//! Reference: Kim, Rachev, Bianchi & Fabozzi (2010), J. Banking & Finance 34(9), 2096–2109
+//! Reference: Rosiński (2007), Thm 5.1, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 //! Reference: Bianchi et al. (2010), Math. Stat. Methods for Actuarial Sci. and Finance, Springer
 //!
 
@@ -41,14 +41,12 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Cts process (Classical Tempered Stable process)
-/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-///
 #[derive(Debug, Clone)]
 pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: T, // G
-  /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: T, // M
+  /// Tempering rate λ₊ of the positive jumps, CGMY's M.
+  pub lambda_plus: T,
+  /// Tempering rate λ₋ of the negative jumps, CGMY's G.
+  pub lambda_minus: T,
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
   pub alpha: T,
   /// Number of time steps
