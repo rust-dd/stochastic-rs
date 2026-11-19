@@ -202,20 +202,24 @@ fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
   assert!(k.is_nan(), "a NaN sigma must exit as NaN, got {k}");
 }
 
-/// The poison check must not disturb the dispersion it is guarding: a
-/// finite vol-of-vol still lowers the strike below `sqrt(k_var)` by the
-/// convexity correction, and `sigma = 0` still lands exactly on it.
+/// The realised variance varies even when `v0 = theta`, so a vol-of-vol lowers the strike below
+/// `sqrt(k_var)`, and `sigma = 0` lands exactly on it.
 #[test]
-fn vol_swap_heston_is_unchanged_by_the_poison_check() {
+fn vol_swap_heston_lowers_the_root_by_the_variance_of_the_realised_variance() {
   let naive = 0.04_f64.sqrt();
-  let dispersed = VolatilitySwapPricer::fair_strike_heston(&heston(0.09, 1.5, 0.04), 1.0);
-  assert!(dispersed.is_finite() && dispersed > 0.0, "{dispersed}");
-  let flat = VolatilitySwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.04), 1.0);
-  assert!((flat - naive).abs() < 1e-15, "{flat} vs {naive}");
+  for params in [heston(0.09, 1.5, 0.04), heston(0.04, 1.5, 0.04)] {
+    let k_var = VarianceSwapPricer::fair_strike_heston(&params, 1.0);
+    let dispersed = VolatilitySwapPricer::fair_strike_heston(&params, 1.0);
+    assert!(dispersed > 0.0 && dispersed < k_var.sqrt(), "{dispersed}");
+  }
+  let flat = HestonParams {
+    sigma: 0.0,
+    ..heston(0.04, 1.5, 0.04)
+  };
+  assert_eq!(VolatilitySwapPricer::fair_strike_heston(&flat, 1.0), naive);
 }
 
-/// Both branches of `VolatilitySwapPricer::fair_strike_heston`, κ → 0 included, reject the same
-/// inputs.
+/// Both mean-reversion branches of the variance strike, κ → 0 included, reject the same inputs.
 #[test]
 fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
   for &kappa in &[1e-12, 1.5] {

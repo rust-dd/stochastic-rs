@@ -197,3 +197,7 @@ def test_a_compound_decided_at_0_prices_its_exercise_value():
     assert call_on_call.price() == pytest.approx(6.123761928058123, **LIBM)
     assert sr.CompoundPricer(s=100.0, t2=1.0, compound_type="pop", **compound).price() == 0.0
     assert sr.CompoundPricer(s=110.0, t2=0.0, compound_type="pop", **compound).price() == 5.0
+
+
+def test_the_exotics_answer_at_their_edges():
+    assert sr.VarianceSwapPricer(100.0, 0.05, 0.02, math.inf).fair_strike_heston(0.04, 0.0, 0.04) == 0.04

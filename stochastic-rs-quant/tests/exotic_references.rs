@@ -6,7 +6,9 @@ use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
+use stochastic_rs_quant::pricing::variance_swap::VolatilitySwapPricer;
 use stochastic_rs_quant::traits::ModelPricer;
 
 const TABLE: &str = include_str!("fixtures/exotic_references.txt");
@@ -106,5 +108,22 @@ fn the_lookbacks_match_quantlib_and_their_driftless_limit() {
     };
     let price = LookbackPricer::new(x(6)).price(&option, x(1), x(4), x(5), x(7));
     assert_close(price, quantlib, 1e-13, &words);
+  }
+}
+
+/// Brockhaus–Long's convexity strike with the CIR `Var(V)`, in mpmath at 40 digits.
+#[test]
+fn the_heston_vol_strike_matches_brockhaus_long_in_mpmath() {
+  for (words, mpmath) in rows("vs") {
+    let x = |i| number(&words, i);
+    let params = HestonParams {
+      v0: x(0),
+      kappa: x(1),
+      theta: x(2),
+      sigma: x(3),
+      rho: -0.7,
+    };
+    let strike = VolatilitySwapPricer::fair_strike_heston(&params, x(4));
+    assert_close(strike, mpmath, 1e-13, &words);
   }
 }

@@ -107,8 +107,8 @@ impl VarianceSwapPricer {
     if fair.is_nan() { fair } else { fair.max(0.0) }
   }
 
-  /// Brockhaus–Long continuous-monitoring fair strike, which reads only `v0`, `kappa` and `theta`;
-  /// `v0` at `tau = 0`, the genuine limit, and NaN for a negative or NaN `tau`.
+  /// Brockhaus–Long continuous-monitoring fair strike, reading `v0`, `kappa` and `theta`: `v0` at
+  /// `tau = 0`, at `kappa = 0` and at `v0 = theta`, and NaN for a negative or NaN `tau`.
   pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
     let HestonParams {
       v0, kappa, theta, ..
@@ -116,11 +116,11 @@ impl VarianceSwapPricer {
     if tau.is_nan() || tau < 0.0 {
       return f64::NAN;
     }
-    if tau == 0.0 {
+    if tau == 0.0 || v0 == theta {
       return v0;
     }
-    let factor = discrete::mean_reversion_factor(kappa * tau);
-    theta + (v0 - theta) * factor
+    let x = if kappa == 0.0 { 0.0 } else { kappa * tau };
+    theta + (v0 - theta) * discrete::mean_reversion_factor(x)
   }
 
   /// [`fair_strike_heston`](Self::fair_strike_heston) plus Bernard–Cui's first-order correction
@@ -225,16 +225,9 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike's root less a convexity correction (none at `tau = 0`,
-  /// a zero strike or kappa ≈ 0); NaN where either is NaN, panics on a negative variance strike.
+  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 1 % of `E√V` while `Var(V) ≤ K²/2` and
+  /// NaN past `Var(V) = 8K²`, where it turns negative; panics on a negative variance strike `K`.
   pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
-    let HestonParams {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      ..
-    } = *params;
     let k_var = VarianceSwapPricer::fair_strike_heston(params, tau);
     if k_var.is_nan() {
       return f64::NAN;
@@ -243,17 +236,12 @@ impl VolatilitySwapPricer {
       k_var >= 0.0,
       "k_var must satisfy `k_var >= 0.0`, got k_var = {k_var:?}"
     );
-    if tau == 0.0 || k_var == 0.0 || kappa.abs() < 1e-10 {
+    if tau == 0.0 || k_var == 0.0 {
       return k_var.sqrt();
     }
-    let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))
-      / (2.0 * kappa.powi(3) * tau * tau);
-    let floored = if dispersion.is_nan() {
-      dispersion
-    } else {
-      dispersion.max(0.0)
-    };
-    Self::fair_strike_from_var(k_var, floored)
+    let k_vol =
+      Self::fair_strike_from_var(k_var, discrete::realized_variance_variance(params, tau));
+    if k_vol < 0.0 { f64::NAN } else { k_vol }
   }
 }
 
