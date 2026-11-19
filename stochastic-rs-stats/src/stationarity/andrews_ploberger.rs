@@ -14,9 +14,9 @@
 //!
 //! Tables: `π₀ = 0.15`, `k ≤ 5` (Andrews 1993 Table 1; Andrews–Ploberger 1994 Tables II and III).
 //!
-//! Reference: Andrews (1993), Econometrica 61(4), 821-856
-//! Reference: Andrews & Ploberger (1994), Econometrica 62(6), 1383-1414
-//! Reference: Hansen (1997), J. Bus. Econ. Stat. 15(1), 60-67
+//! Reference: Andrews (1993), Econometrica 61(4), 821-856, DOI: 10.2307/2951764
+//! Reference: Andrews & Ploberger (1994), Econometrica 62(6), 1383-1414, DOI: 10.2307/2951753
+//! Reference: Hansen (1997), J. Bus. Econ. Stat. 15(1), 60-67, DOI: 10.1080/07350015.1997.10524687
 
 use ndarray::Array1;
 use ndarray::Array2;

@@ -1,6 +1,6 @@
 //! Leybourne–McCabe stationarity test: KPSS's statistic on AR-prewhitened residuals, bootstrapped.
 //!
-//! Reference: Leybourne & McCabe (1994), J. Bus. Econ. Stat. 12(2), 157-166
+//! Reference: Leybourne & McCabe (1994), JBES 12(2), 157-166, DOI: 10.1080/07350015.1994.10510004
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;

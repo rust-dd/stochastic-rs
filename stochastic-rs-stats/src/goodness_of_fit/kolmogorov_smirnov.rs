@@ -13,9 +13,9 @@
 //! No finite-sample or Lilliefors correction: `F` must not be fitted from the sample under test.
 //!
 //! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
-//! Reference: Smirnov (1948), Annals of Mathematical Statistics 19(2), 279-281
-//! Reference: Massey (1951), JASA 46(253), 68-78
-//! Reference: Lilliefors (1967), JASA 62(318), 399-402
+//! Reference: Smirnov (1948), Ann. Math. Stat. 19(2), 279-281, DOI: 10.1214/aoms/1177730256
+//! Reference: Massey (1951), JASA 46(253), 68-78, DOI: 10.1080/01621459.1951.10500769
+//! Reference: Lilliefors (1967), JASA 62(318), 399-402, DOI: 10.1080/01621459.1967.10482916
 
 use ndarray::ArrayView1;
 

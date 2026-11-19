@@ -2,7 +2,7 @@
 //!
 //! `proposal_scale` acts on `ln θ`, `ln σ` and the level: CIR's `ln μ`, OU's `(μ − x̄)/s`.
 //!
-//! Reference: Eraker (2001), Journal of Business & Economic Statistics 19(2), 177-191.
+//! Reference: Eraker (2001), J. Bus. Econ. Stat. 19(2), 177-191, DOI: 10.1198/073500101316970403
 //! Reference: Robert, Casella (2004), Monte Carlo Statistical Methods, Springer, ch. 7.
 
 use ndarray::Array1;

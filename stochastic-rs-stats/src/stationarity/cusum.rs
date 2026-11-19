@@ -20,9 +20,9 @@
 //!
 //! CUSUM watches the mean (Table 1), CUSUMQ the variance; `breakpoint` is the first crossing.
 //!
-//! Reference: Brown, Durbin & Evans (1975), JRSS B 37(2), 149-192
-//! Reference: Durbin (1969), Biometrika 56(1), 1-15
-//! Reference: Edgerton & Wells (1994), Oxford Bull. Econ. Stat. 56(3), 355-365
+//! Reference: Brown et al. (1975), JRSS B 37(2), 149-192, DOI: 10.1111/j.2517-6161.1975.tb01532.x
+//! Reference: Durbin (1969), Biometrika 56(1), 1-15, DOI: 10.1093/biomet/56.1.1
+//! Reference: Edgerton & Wells (1994), OBES 56(3), 355-365, 10.1111/j.1468-0084.1994.mp56003007.x
 
 use ndarray::Array2;
 use ndarray::ArrayView1;

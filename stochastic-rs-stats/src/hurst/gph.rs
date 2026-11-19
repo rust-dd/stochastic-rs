@@ -13,7 +13,7 @@
 //!
 //! The first `m` frequencies enter, `α = 0.6` by default; the standard error is Hurvich–Deo's.
 //!
-//! Reference: Geweke & Porter-Hudak (1983), J. Time Series Analysis 4(4), 221–238
+//! Reference: Geweke & Porter-Hudak (1983), JTSA 4(4), 221–238, 10.1111/j.1467-9892.1983.tb00371.x
 
 use std::f64::consts::PI;
 

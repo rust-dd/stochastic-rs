@@ -15,9 +15,9 @@
 //!
 //! Stage 1 weighs by the identity, on the path over its mean, stage 2 by `Ŝ⁻¹`; `J ~ χ²₁`.
 //!
-//! Reference: Hansen (1982), Econometrica 50(4), 1029-1054
-//! Reference: Cox, Ingersoll & Ross (1985), Econometrica 53(2), 385-407
-//! Reference: Chan, Karolyi, Longstaff & Sanders (1992), Journal of Finance 47(3), 1209-1227
+//! Reference: Hansen (1982), Econometrica 50(4), 1029-1054, DOI: 10.2307/1912775
+//! Reference: Cox, Ingersoll & Ross (1985), Econometrica 53(2), 385-407, DOI: 10.2307/1911242
+//! Reference: Chan et al. (1992), J. Fin. 47(3), 1209-1227, DOI: 10.1111/j.1540-6261.1992.tb04011.x
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;

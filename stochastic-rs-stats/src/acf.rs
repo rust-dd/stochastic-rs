@@ -8,7 +8,7 @@
 //!
 //! Reference: Box, Jenkins, Reinsel & Ljung (2015), Time Series Analysis, 5th ed., §2.1.4, §3.2.6
 //! Reference: Ljung & Box (1978), Biometrika 65(2), 297-303, DOI: 10.1093/biomet/65.2.297
-//! Reference: Durbin (1960), Revue de l'Institut International de Statistique 28(3), 233-244
+//! Reference: Durbin (1960), Rev. Inst. Int. Stat. 28(3), 233-244, DOI: 10.2307/1401322
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

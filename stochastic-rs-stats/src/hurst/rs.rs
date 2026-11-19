@@ -13,9 +13,9 @@
 //!
 //! `R/S` averages the `⌊N / n_w⌋` chunks of a window, `s` a chunk's biased standard deviation.
 //!
-//! Reference: Hurst (1951), Trans. ASCE 116, 770–799
-//! Reference: Anis & Lloyd (1976), Biometrika 63(1), 111–116
-//! Reference: Weron (2002), Physica A 312, 285–299, §3.1
+//! Reference: Hurst (1951), Trans. ASCE 116, 770–799, DOI: 10.1061/TACEAT.0006518
+//! Reference: Anis & Lloyd (1976), Biometrika 63(1), 111–116, DOI: 10.1093/biomet/63.1.111
+//! Reference: Weron (2002), Physica A 312, 285–299, DOI: 10.1016/S0378-4371(02)00961-5, §3.1
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ln_gamma;

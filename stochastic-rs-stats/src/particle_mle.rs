@@ -12,9 +12,9 @@
 //!
 //! One filter seed across the evaluations, common random numbers, keeps the surface smooth.
 //!
-//! Reference: Kitagawa (1996), J. Computational and Graphical Statistics 5(1), 1-25
+//! Reference: Kitagawa (1996), JCGS 5(1), 1-25, DOI: 10.1080/10618600.1996.10474692
 //! Reference: Pitt (2002), Warwick Economic Research Paper 651
-//! Reference: Hürzeler & Künsch (1998), JCGS 7(2), 175-193
+//! Reference: Hürzeler & Künsch (1998), JCGS 7(2), 175-193, DOI: 10.1080/10618600.1998.10474769
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;

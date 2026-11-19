@@ -3,10 +3,10 @@
 //! KS needs a continuous CDF, so bin lattice data for chi-square; fit no parameter from the sample.
 //!
 //! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
-//! Reference: Smirnov (1948), Annals of Mathematical Statistics 19(2), 279-281
-//! Reference: Massey (1951), JASA 46(253), 68-78
-//! Reference: Pearson (1900), Philosophical Magazine Series 5, 50(302), 157-175
-//! Reference: Cochran (1954), Biometrics 10(4), 417-451
+//! Reference: Smirnov (1948), Ann. Math. Stat. 19(2), 279-281, DOI: 10.1214/aoms/1177730256
+//! Reference: Massey (1951), JASA 46(253), 68-78, DOI: 10.1080/01621459.1951.10500769
+//! Reference: Pearson (1900), Phil. Mag. Series 5, 50(302), 157-175, DOI: 10.1080/14786440009463897
+//! Reference: Cochran (1954), Biometrics 10(4), 417-451, DOI: 10.2307/3001616
 //!
 //! ```
 //! use ndarray::ArrayView1;

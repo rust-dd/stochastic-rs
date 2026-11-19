@@ -5,7 +5,7 @@
 //! \quad
 //! D = 2 - \frac{1}{p} \cdot \frac{\log V_p(2) - \log V_p(1)}{\log 2}.
 //! $$
-//! Reference: Constantine, Hall (1994), "Characterizing surface smoothness …", JRSS-B 56(1).
+//! Reference: Constantine & Hall (1994), JRSS B 56(1), 97-113, 10.1111/j.2517-6161.1994.tb01963.x
 
 use std::f64::consts::LN_2;
 

@@ -7,8 +7,8 @@
 //!
 //! Nothing is fitted, so `k − 1` degrees of freedom; an expected count under 1 is an `Err`.
 //!
-//! Reference: Pearson (1900), Philosophical Magazine Series 5, 50(302), 157-175
-//! Reference: Cochran (1954), Biometrics 10(4), 417-451
+//! Reference: Pearson (1900), Phil. Mag. Series 5, 50(302), 157-175, DOI: 10.1080/14786440009463897
+//! Reference: Cochran (1954), Biometrics 10(4), 417-451, DOI: 10.2307/3001616
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;

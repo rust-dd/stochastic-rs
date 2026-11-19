@@ -12,7 +12,7 @@
 //!
 //! `ŷ` are the fitted values of `y` on `x`; the default powers, 2 and 3, are Ramsey's own.
 //!
-//! Reference: Ramsey (1969), JRSS B 31(2), 350-371
+//! Reference: Ramsey (1969), JRSS B 31(2), 350-371, DOI: 10.1111/j.2517-6161.1969.tb00796.x
 
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;

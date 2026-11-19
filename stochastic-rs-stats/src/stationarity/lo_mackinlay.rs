@@ -13,7 +13,7 @@
 //!
 //! `Z₁` assumes IID innovations, `Z₂` allows heteroskedasticity; both are two-sided `N(0, 1)`.
 //!
-//! Reference: Lo & MacKinlay (1988), Review of Financial Studies 1(1), 41-66
+//! Reference: Lo & MacKinlay (1988), Rev. Financ. Stud. 1(1), 41-66, DOI: 10.1093/rfs/1.1.41
 
 use ndarray::ArrayView1;
 

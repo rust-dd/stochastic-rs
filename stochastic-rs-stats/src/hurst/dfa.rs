@@ -9,7 +9,7 @@
 //! `p_v` is segment `v`'s degree-`order` fit; how `α` maps to `H` is on `assume_integrated`.
 //!
 //! Reference: Peng et al. (1994), Phys. Rev. E 49(2), 1685–1689, DOI: 10.1103/PhysRevE.49.1685
-//! Reference: Kantelhardt et al. (2001), Physica A 295, 441–454
+//! Reference: Kantelhardt et al. (2001), Physica A 295, 441–454, DOI: 10.1016/S0378-4371(01)00144-3
 
 use ndarray::ArrayView1;
 
