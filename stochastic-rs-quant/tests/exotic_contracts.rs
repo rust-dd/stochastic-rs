@@ -76,6 +76,7 @@ fn an_exotic_pricer_holds_the_model_the_contract_holds_the_terms_and_the_query_t
   let out_plus_in = pricer.price(&up_out, S, R, Q, tau) + pricer.price(&up_in, S, R, Q, tau);
   let call = vanilla.price_call(S, 100.0, R, Q, tau);
   assert!((out_plus_in - call).abs() < 1e-10, "{out_plus_in}");
+  assert!(pricer.price(&up_out, 125.0, R, Q, tau) < pricer.price(&up_out, S, R, Q, tau));
 
   let floating = lookback(None, Some(S), None, OptionType::Call);
   let at_the_low = LookbackPricer::new(SIGMA).price(&floating, S, R, Q, tau);
@@ -94,9 +95,7 @@ fn the_barrier_prices_keep_their_values() {
   use OptionType::*;
   let pricer = BarrierPricer::new(SIGMA);
   for (barrier_type, option_type, plain, with_rebate) in [
-    (UpAndIn, Call, 6.436584456764569, 8.455776261906534),
     (UpAndIn, Put, 0.14288692243022005, 2.162078727572185),
-    (UpAndOut, Call, 4.687177471293554, 5.54111046936928),
     (UpAndOut, Put, 8.083950125023785, 8.93788312309951),
     (DownAndIn, Call, 0.3854876045521558, 2.1726177751007674),
     (DownAndIn, Put, 7.055231729522353, 8.842361900070964),
@@ -111,6 +110,62 @@ fn the_barrier_prices_keep_their_values() {
       pricer.price(&rebate_option, S, R, Q, 1.0),
       with_rebate,
       "{tag}"
+    );
+  }
+}
+
+/// QuantLib 1.43's `AnalyticBarrierEngine` at the same queries, on either side of the strike.
+#[test]
+fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
+  use BarrierType::*;
+  use OptionType::*;
+  let pricer = BarrierPricer::new(SIGMA);
+  for (barrier_type, option_type, s, h, rebate, quantlib) in [
+    (UpAndIn, Call, 100.0, 130.0, 0.0, 8.99025449535496),
+    (UpAndIn, Call, 100.0, 130.0, 3.0, 11.009446300496926),
+    (UpAndIn, Put, 100.0, 130.0, 0.0, 0.14288692243021436),
+    (UpAndIn, Put, 100.0, 130.0, 3.0, 2.162078727572179),
+    (UpAndOut, Call, 100.0, 130.0, 0.0, 2.133507432703177),
+    (UpAndOut, Call, 100.0, 130.0, 3.0, 2.987440430778903),
+    (UpAndOut, Put, 100.0, 130.0, 0.0, 8.083950125023785),
+    (UpAndOut, Put, 100.0, 130.0, 3.0, 8.93788312309951),
+    (DownAndIn, Call, 100.0, 80.0, 0.0, 0.3854876045521596),
+    (DownAndIn, Call, 100.0, 80.0, 3.0, 2.172617775100772),
+    (DownAndIn, Put, 100.0, 80.0, 0.0, 7.055231729522349),
+    (DownAndIn, Put, 100.0, 80.0, 3.0, 8.842361900070962),
+    (DownAndOut, Call, 100.0, 80.0, 0.0, 10.73827432350598),
+    (DownAndOut, Call, 100.0, 80.0, 3.0, 11.832547421874402),
+    (DownAndOut, Put, 100.0, 80.0, 0.0, 1.1716053179316501),
+    (DownAndOut, Put, 100.0, 80.0, 3.0, 2.2658784163000725),
+    (UpAndIn, Call, 85.0, 90.0, 0.0, 4.182205922933827),
+    (UpAndIn, Call, 85.0, 90.0, 3.0, 4.700960551162889),
+    (UpAndIn, Put, 85.0, 90.0, 0.0, 10.186397171875639),
+    (UpAndIn, Put, 85.0, 90.0, 3.0, 10.7051518001047),
+    (UpAndOut, Call, 85.0, 90.0, 0.0, 0.0),
+    (UpAndOut, Call, 85.0, 90.0, 3.0, 2.4346478236860243),
+    (UpAndOut, Put, 85.0, 90.0, 0.0, 5.801863970055376),
+    (UpAndOut, Put, 85.0, 90.0, 3.0, 8.2365117937414),
+    (DownAndIn, Call, 120.0, 110.0, 0.0, 11.599214600577708),
+    (DownAndIn, Call, 120.0, 110.0, 3.0, 12.372360115828785),
+    (DownAndIn, Put, 120.0, 110.0, 0.0, 2.898197848493051),
+    (DownAndIn, Put, 120.0, 110.0, 3.0, 3.6713433637441284),
+    (DownAndOut, Call, 120.0, 110.0, 0.0, 13.799881594654599),
+    (DownAndOut, Call, 120.0, 110.0, 3.0, 15.961366390480972),
+    (DownAndOut, Put, 120.0, 110.0, 0.0, 0.0),
+    (DownAndOut, Put, 120.0, 110.0, 3.0, 2.1614847958263743),
+  ] {
+    let option = BarrierOption {
+      strike: 100.0,
+      barrier: h,
+      rebate,
+      barrier_type,
+      option_type,
+    };
+    let price = pricer.price(&option, s, R, Q, 1.0);
+    let tag = format!("{barrier_type:?} {option_type:?} s={s} h={h} rebate={rebate}");
+    assert!(
+      (price - quantlib).abs() <= 1e-12 * quantlib.abs().max(1.0),
+      "{tag}: {price}"
     );
   }
 }

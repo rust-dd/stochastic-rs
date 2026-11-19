@@ -6,6 +6,8 @@
 //!
 //! Source:
 //! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers"
+//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., the standard
+//!   barrier options' sixteen combinations of `A`–`F`
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
 use rayon::prelude::*;
@@ -127,28 +129,28 @@ impl BarrierPricer {
         if k > h {
           a + e
         } else {
-          a - b + d + e
+          b - c + d + e
         }
       }
       (BarrierType::UpAndOut, OptionType::Call) => {
         if k > h {
           f
         } else {
-          b - d + f
+          a - b + c - d + f
         }
       }
       (BarrierType::DownAndIn, OptionType::Put) => {
         if k > h {
           b - c + d + e
         } else {
-          a - b + d + e
+          a + e
         }
       }
       (BarrierType::DownAndOut, OptionType::Put) => {
         if k > h {
           a - b + c - d + f
         } else {
-          b - d + f
+          f
         }
       }
       (BarrierType::UpAndIn, OptionType::Put) => {
