@@ -16,10 +16,22 @@ use stochastic_rs::quant::pricing::BasketAverageType;
 use stochastic_rs::quant::pricing::KnockInStyle;
 use stochastic_rs::quant::pricing::McBasketPricer;
 use stochastic_rs::quant::pricing::McCliquetPricer;
+use stochastic_rs::quant::pricing::barrier::BarrierPricer;
 use stochastic_rs::quant::pricing::barrier::BarrierType;
+use stochastic_rs::quant::pricing::barrier::DoubleBarrierPricer;
 use stochastic_rs::quant::pricing::barrier::McBarrierPricer;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
+use stochastic_rs::quant::pricing::chooser::ChooserPricer;
+use stochastic_rs::quant::pricing::cliquet::CliquetPricer;
+use stochastic_rs::quant::pricing::compound::CompoundPricer;
+use stochastic_rs::quant::pricing::compound::CompoundType;
+use stochastic_rs::quant::pricing::exotic::BarrierOption;
+use stochastic_rs::quant::pricing::exotic::CliquetOption;
+use stochastic_rs::quant::pricing::exotic::ComplexChooserOption;
+use stochastic_rs::quant::pricing::exotic::CompoundOption;
+use stochastic_rs::quant::pricing::exotic::DoubleBarrierOption;
+use stochastic_rs::quant::pricing::exotic::LookbackOption;
 use stochastic_rs::quant::pricing::fourier::CarrMadanPricer;
 use stochastic_rs::quant::pricing::fourier::CosEngine;
 use stochastic_rs::quant::pricing::fourier::FourierModelExt;
@@ -29,6 +41,7 @@ use stochastic_rs::quant::pricing::fourier::KouFourier;
 use stochastic_rs::quant::pricing::fourier::LewisPricer;
 use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::pricing::lookback::LookbackPricer;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::AssetParams;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
@@ -239,6 +252,78 @@ fn bsm_and_sabr(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_exotics(c: &mut Criterion) {
+  let mut group = c.benchmark_group("pricing/exotics");
+  group
+    .sample_size(50)
+    .measurement_time(Duration::from_secs(4));
+  let barrier = BarrierPricer::new(0.25);
+  let up_out = BarrierOption {
+    strike: 100.0,
+    barrier: 130.0,
+    rebate: 0.0,
+    barrier_type: BarrierType::UpAndOut,
+    option_type: OptionType::Call,
+  };
+  group.bench_function("barrier_up_out_call", |b| {
+    b.iter(|| black_box(&barrier).price(black_box(&up_out), S, R, Q, 1.0))
+  });
+  let double = DoubleBarrierPricer::new(0.25).with_terms(50);
+  let corridor = DoubleBarrierOption {
+    strike: 100.0,
+    lower: 70.0,
+    upper: 130.0,
+    option_type: OptionType::Call,
+  };
+  group.bench_function("double_barrier_50_terms", |b| {
+    b.iter(|| black_box(&double).price(black_box(&corridor), S, R, Q, 1.0))
+  });
+  let lookback = LookbackPricer::new(0.25);
+  let floating = LookbackOption {
+    strike: None,
+    running_min: None,
+    running_max: None,
+    option_type: OptionType::Call,
+  };
+  group.bench_function("lookback_floating", |b| {
+    b.iter(|| black_box(&lookback).price(black_box(&floating), S, R, Q, 1.0))
+  });
+  let chooser = ChooserPricer::new(0.3);
+  let complex = ComplexChooserOption {
+    call_strike: 105.0,
+    call_tau: 1.0,
+    put_strike: 95.0,
+    put_tau: 0.75,
+    choice_time: 0.4,
+  };
+  group.bench_function("chooser_complex", |b| {
+    b.iter(|| black_box(&chooser).price_complex(black_box(&complex), S, R, Q))
+  });
+  let compound = CompoundPricer::new(0.25);
+  let call_on_call = CompoundOption {
+    outer_strike: 5.0,
+    outer_tau: 0.25,
+    inner_strike: 100.0,
+    compound_type: CompoundType::CallOnCall,
+  };
+  group.bench_function("compound_call_on_call", |b| {
+    b.iter(|| black_box(&compound).price(black_box(&call_on_call), S, R, Q, 1.0))
+  });
+  let cliquet = CliquetPricer::new(0.25);
+  let collar = CliquetOption {
+    notional: 100.0,
+    periods: 12,
+    local_floor: Some(0.0),
+    local_cap: Some(0.05),
+    global_floor: None,
+    global_cap: None,
+  };
+  group.bench_function("cliquet_12_periods", |b| {
+    b.iter(|| black_box(&cliquet).price(black_box(&collar), R, Q, 1.0))
+  });
+  group.finish();
+}
+
 fn bench_mc_exotics(c: &mut Criterion) {
   let mut group = c.benchmark_group("pricing/mc_exotics");
   group
@@ -380,6 +465,7 @@ criterion_group!(
   heston_pricer,
   fourier,
   bsm_and_sabr,
+  bench_exotics,
   bench_mc_exotics,
   bench_malliavin_thalmaier
 );

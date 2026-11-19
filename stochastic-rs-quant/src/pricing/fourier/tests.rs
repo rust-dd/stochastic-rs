@@ -289,31 +289,6 @@ fn carr_madan_cumulant_sized_finite_positive_long_maturity_skew() {
 }
 
 #[test]
-fn barrier_down_and_out_call_vs_haug() {
-  use crate::OptionType;
-  use crate::pricing::barrier::BarrierPricer;
-  use crate::pricing::barrier::BarrierType;
-  let p = BarrierPricer {
-    s: 100.0,
-    k: 100.0,
-    h: 90.0,
-    r: 0.05,
-    q: 0.0,
-    sigma: 0.2,
-    tau: 1.0,
-    rebate: 0.0,
-    barrier_type: BarrierType::DownAndOut,
-    option_type: OptionType::Call,
-  };
-  let price = p.price();
-  let expected = 8.66547165824566;
-  assert!(
-    (price - expected).abs() < TOL_TIGHT,
-    "Barrier DO call: got={price}, expected={expected}"
-  );
-}
-
-#[test]
 fn hkde_zero_jumps_equals_heston() {
   let heston = HestonFourier::new(HestonParams {
     v0: 0.04,

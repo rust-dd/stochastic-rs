@@ -333,33 +333,32 @@ const BLANKET_IMPLS: &[(&str, &str)] = &[
 
 const MULTI_ASSET: &str = "multi-asset: no single (s, k) query point";
 const PATH_DEPENDENT: &str = "path-dependent: contract parameters live in the struct";
+const EXOTIC: &str = "exotic: the contract is an argument beside the (s, r, q, tau) query";
 const FOURIER_ENGINE: &str = "Fourier engine: takes the model per call rather than being one";
 const NON_OPTION: &str = "not a single-underlying option pricer";
 
-// Pricers whose call shape cannot be `price_call(s, k, r, q, tau)`: multi-asset and path-dependent
-// contracts, Fourier engines that take the model per call, and non-option pricers.
+// Pricers whose call shape cannot be `price_call(s, k, r, q, tau)`: multi-asset, path-dependent and
+// exotic contracts, Fourier engines that take the model per call, and non-option pricers.
 const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("ArithmeticBasketLevyPricer", MULTI_ASSET),
   ("AutocallablePricer", PATH_DEPENDENT),
-  ("BarrierPricer", PATH_DEPENDENT),
+  ("BarrierPricer", EXOTIC),
   ("BermudanLsmPricer", PATH_DEPENDENT),
   ("CarrMadanPricer", FOURIER_ENGINE),
   ("CashflowPricer", NON_OPTION),
   ("CgmysvPricer", FOURIER_ENGINE),
-  ("CliquetPricer", PATH_DEPENDENT),
-  ("ComplexChooserPricer", PATH_DEPENDENT),
-  ("CompoundPricer", PATH_DEPENDENT),
+  ("ChooserPricer", EXOTIC),
+  ("CliquetPricer", EXOTIC),
+  ("CompoundPricer", EXOTIC),
   ("CosEngine", FOURIER_ENGINE),
   ("CosPricer", FOURIER_ENGINE),
-  ("DoubleBarrierPricer", PATH_DEPENDENT),
-  ("FixedLookbackPricer", PATH_DEPENDENT),
-  ("FloatingLookbackPricer", PATH_DEPENDENT),
-  ("ForwardStartPricer", PATH_DEPENDENT),
+  ("DoubleBarrierPricer", EXOTIC),
   ("FrftCarrMadanPricer", FOURIER_ENGINE),
   ("GeometricBasketPricer", MULTI_ASSET),
   ("GilPelaezPricer", FOURIER_ENGINE),
   ("KirkSpreadPricer", MULTI_ASSET),
   ("LewisPricer", FOURIER_ENGINE),
+  ("LookbackPricer", EXOTIC),
   ("McBarrierPricer", PATH_DEPENDENT),
   ("MargrabePricer", MULTI_ASSET),
   ("McBasketPricer", MULTI_ASSET),
@@ -367,9 +366,8 @@ const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("McRainbowPricer", MULTI_ASSET),
   ("McSpreadPricer", MULTI_ASSET),
   ("PortfolioEngine", NON_OPTION),
-  ("SimpleChooserPricer", PATH_DEPENDENT),
   ("StulzRainbowPricer", MULTI_ASSET),
-  ("VarianceSwapPricer", PATH_DEPENDENT),
+  ("VarianceSwapPricer", EXOTIC),
   ("VolatilitySwapPricer", PATH_DEPENDENT),
 ];
 

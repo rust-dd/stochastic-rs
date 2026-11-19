@@ -13,107 +13,83 @@ use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::exotic::ChooserOption;
+use crate::pricing::exotic::ComplexChooserOption;
+use crate::pricing::exotic::ForwardStartOption;
+use crate::pricing::exotic::assert_sigma;
 
-/// Simple chooser: at time $t_1 < T$ the holder picks between a call and a
-/// put, both with strike $K$ and maturity $T$.
-///
-/// $$
-/// W = Se^{-qT}N(d) - Ke^{-rT}N(d-\sigma\sqrt T) -
-///   Se^{-qT}N(-y) + Ke^{-rT}N(-y+\sigma\sqrt{t_1})
-/// $$
-#[derive(Debug, Clone)]
-pub struct SimpleChooserPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike of both call and put.
-  pub k: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
+/// Black–Scholes prices of the simple and complex choosers (Rubinstein 1991) and of the forward
+/// start (Rubinstein 1990).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChooserPricer {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Choice time (must be strictly less than `tau`).
-  pub t1: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
 }
 
-impl SimpleChooserPricer {
-  pub fn price(&self) -> f64 {
-    let v = self.sigma;
-    let v2 = v * v;
-    let b = self.r - self.q;
-    let sqrt_t = self.tau.sqrt();
-    let sqrt_t1 = self.t1.sqrt();
-    let d = ((self.s / self.k).ln() + (b + 0.5 * v2) * self.tau) / (v * sqrt_t);
-    let y = ((self.s / self.k).ln() + b * self.tau + 0.5 * v2 * self.t1) / (v * sqrt_t1);
-
-    self.s * (-self.q * self.tau).exp() * norm_cdf(d)
-      - self.k * (-self.r * self.tau).exp() * norm_cdf(d - v * sqrt_t)
-      - self.s * (-self.q * self.tau).exp() * norm_cdf(-y)
-      + self.k * (-self.r * self.tau).exp() * norm_cdf(-y + v * sqrt_t1)
+impl ChooserPricer {
+  /// Panics unless `sigma` is finite and positive.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma }
   }
-}
 
-/// Complex chooser: at time $t_1$ pick between a call $(K_c, T_c)$ and a put
-/// $(K_p, T_p)$ where both maturities exceed $t_1$.
-///
-/// Requires solving for the critical underlying price $S^\*$ at the choice
-/// time where the call value equals the put value, then a bivariate normal
-/// integral.
-#[derive(Debug, Clone)]
-pub struct ComplexChooserPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Annualised Black–Scholes volatility.
-  pub sigma: f64,
-  /// Choice time.
-  pub t1: f64,
-  /// Call strike.
-  pub k_call: f64,
-  /// Call maturity.
-  pub t_call: f64,
-  /// Put strike.
-  pub k_put: f64,
-  /// Put maturity.
-  pub t_put: f64,
-}
-
-impl ComplexChooserPricer {
-  pub fn price(&self) -> f64 {
+  /// The simple chooser $W$ above at the query `(s, r, q, tau)`.
+  pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let ChooserOption {
+      strike: k,
+      choice_time: t1,
+    } = *option;
     let v = self.sigma;
     let v2 = v * v;
-    let b = self.r - self.q;
-    let s_star = self.critical_price();
+    let b = r - q;
+    let sqrt_t = tau.sqrt();
+    let sqrt_t1 = t1.sqrt();
+    let d = ((s / k).ln() + (b + 0.5 * v2) * tau) / (v * sqrt_t);
+    let y = ((s / k).ln() + b * tau + 0.5 * v2 * t1) / (v * sqrt_t1);
+
+    s * (-q * tau).exp() * norm_cdf(d)
+      - k * (-r * tau).exp() * norm_cdf(d - v * sqrt_t)
+      - s * (-q * tau).exp() * norm_cdf(-y)
+      + k * (-r * tau).exp() * norm_cdf(-y + v * sqrt_t1)
+  }
+
+  /// The complex chooser at the query `(s, r, q)`, its maturities being the contract's: a
+  /// bisection for the spot $S^*$ where the call and the put are worth the same, then $M_2$ twice.
+  pub fn price_complex(&self, option: &ComplexChooserOption, s: f64, r: f64, q: f64) -> f64 {
+    let ComplexChooserOption {
+      call_strike: k_call,
+      call_tau: t_call,
+      put_strike: k_put,
+      put_tau: t_put,
+      choice_time: t1,
+    } = *option;
+    let v = self.sigma;
+    let v2 = v * v;
+    let b = r - q;
+    let s_star = self.critical_price(option, s, r, q);
 
     let cdf = |x: f64, y: f64, rho: f64| -> f64 { biv_norm(-x, -y, rho) };
 
-    let d1 = ((self.s / s_star).ln() + (b + 0.5 * v2) * self.t1) / (v * self.t1.sqrt());
-    let d2 = d1 - v * self.t1.sqrt();
-    let y1 =
-      ((self.s / self.k_call).ln() + (b + 0.5 * v2) * self.t_call) / (v * self.t_call.sqrt());
-    let y2 = ((self.s / self.k_put).ln() + (b + 0.5 * v2) * self.t_put) / (v * self.t_put.sqrt());
-    let rho1 = (self.t1 / self.t_call).sqrt();
-    let rho2 = (self.t1 / self.t_put).sqrt();
+    let d1 = ((s / s_star).ln() + (b + 0.5 * v2) * t1) / (v * t1.sqrt());
+    let d2 = d1 - v * t1.sqrt();
+    let y1 = ((s / k_call).ln() + (b + 0.5 * v2) * t_call) / (v * t_call.sqrt());
+    let y2 = ((s / k_put).ln() + (b + 0.5 * v2) * t_put) / (v * t_put.sqrt());
+    let rho1 = (t1 / t_call).sqrt();
+    let rho2 = (t1 / t_put).sqrt();
 
-    self.s * ((b - self.r) * self.t_call).exp() * cdf(d1, y1, rho1)
-      - self.k_call * (-self.r * self.t_call).exp() * cdf(d2, y1 - v * self.t_call.sqrt(), rho1)
-      - self.s * ((b - self.r) * self.t_put).exp() * cdf(-d1, -y2, rho2)
-      + self.k_put * (-self.r * self.t_put).exp() * cdf(-d2, -y2 + v * self.t_put.sqrt(), rho2)
+    s * ((b - r) * t_call).exp() * cdf(d1, y1, rho1)
+      - k_call * (-r * t_call).exp() * cdf(d2, y1 - v * t_call.sqrt(), rho1)
+      - s * ((b - r) * t_put).exp() * cdf(-d1, -y2, rho2)
+      + k_put * (-r * t_put).exp() * cdf(-d2, -y2 + v * t_put.sqrt(), rho2)
   }
 
-  /// Critical price: solve $C(S^*, t_1) = P(S^*, t_1)$ via bisection.
-  fn critical_price(&self) -> f64 {
+  /// Bisection for $C(S^*, t_1) = P(S^*, t_1)$.
+  fn critical_price(&self, option: &ComplexChooserOption, s: f64, r: f64, q: f64) -> f64 {
     let mut lo = 1e-6;
-    let mut hi = 1e6_f64.max(self.s * 100.0);
+    let mut hi = 1e6_f64.max(s * 100.0);
     for _ in 0..200 {
       let mid = 0.5 * (lo + hi);
-      let diff = self.put_call_diff(mid);
+      let diff = self.put_call_diff(option, mid, r, q);
       if diff.abs() < 1e-10 {
         return mid;
       }
@@ -126,64 +102,52 @@ impl ComplexChooserPricer {
     0.5 * (lo + hi)
   }
 
-  fn put_call_diff(&self, s: f64) -> f64 {
+  /// Call less put at the choice time, at a trial spot `s_t1`.
+  fn put_call_diff(&self, option: &ComplexChooserOption, s_t1: f64, r: f64, q: f64) -> f64 {
+    let s = s_t1;
     let v = self.sigma;
     let v2 = v * v;
-    let b = self.r - self.q;
-    let tau_c = self.t_call - self.t1;
-    let tau_p = self.t_put - self.t1;
-    let d1c = ((s / self.k_call).ln() + (b + 0.5 * v2) * tau_c) / (v * tau_c.sqrt());
+    let b = r - q;
+    let tau_c = option.call_tau - option.choice_time;
+    let tau_p = option.put_tau - option.choice_time;
+    let d1c = ((s / option.call_strike).ln() + (b + 0.5 * v2) * tau_c) / (v * tau_c.sqrt());
     let d2c = d1c - v * tau_c.sqrt();
-    let d1p = ((s / self.k_put).ln() + (b + 0.5 * v2) * tau_p) / (v * tau_p.sqrt());
+    let d1p = ((s / option.put_strike).ln() + (b + 0.5 * v2) * tau_p) / (v * tau_p.sqrt());
     let d2p = d1p - v * tau_p.sqrt();
-    let call = s * ((b - self.r) * tau_c).exp() * norm_cdf(d1c)
-      - self.k_call * (-self.r * tau_c).exp() * norm_cdf(d2c);
-    let put = self.k_put * (-self.r * tau_p).exp() * norm_cdf(-d2p)
-      - s * ((b - self.r) * tau_p).exp() * norm_cdf(-d1p);
+    let call = s * ((b - r) * tau_c).exp() * norm_cdf(d1c)
+      - option.call_strike * (-r * tau_c).exp() * norm_cdf(d2c);
+    let put = option.put_strike * (-r * tau_p).exp() * norm_cdf(-d2p)
+      - s * ((b - r) * tau_p).exp() * norm_cdf(-d1p);
     call - put
   }
-}
 
-/// Forward-start option (Rubinstein 1990). Strike fixes at time $t_1$ as
-/// $K = \alpha S_{t_1}$.
-#[derive(Debug, Clone)]
-pub struct ForwardStartPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike multiplier.
-  pub alpha: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Volatility (assumed constant from $t_1$ to $T$).
-  pub sigma: f64,
-  /// Strike-fixing time.
-  pub t1: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Call or put payoff.
-  pub option_type: OptionType,
-}
-
-impl ForwardStartPricer {
-  pub fn price(&self) -> f64 {
-    let remaining_tau = self.tau - self.t1;
+  /// The forward start at the query `(s, r, q, tau)`, its strike fixed at `start_time` as
+  /// `moneyness` times the spot then.
+  pub fn price_forward_start(
+    &self,
+    option: &ForwardStartOption,
+    s: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> f64 {
+    let ForwardStartOption {
+      moneyness: alpha,
+      start_time: t1,
+      option_type,
+    } = *option;
+    let remaining_tau = tau - t1;
     let v = self.sigma;
     let v2 = v * v;
-    let b = self.r - self.q;
-    let d1 = ((-self.alpha.ln()) + (b + 0.5 * v2) * remaining_tau) / (v * remaining_tau.sqrt());
+    let b = r - q;
+    let d1 = ((-alpha.ln()) + (b + 0.5 * v2) * remaining_tau) / (v * remaining_tau.sqrt());
     let d2 = d1 - v * remaining_tau.sqrt();
-    let coc1 = ((b - self.r) * self.t1).exp();
-    let coc_tau = ((b - self.r) * remaining_tau).exp();
-    let disc = (-self.r * remaining_tau).exp();
-    match self.option_type {
-      OptionType::Call => {
-        self.s * coc1 * (coc_tau * norm_cdf(d1) - self.alpha * disc * norm_cdf(d2))
-      }
-      OptionType::Put => {
-        self.s * coc1 * (self.alpha * disc * norm_cdf(-d2) - coc_tau * norm_cdf(-d1))
-      }
+    let coc1 = ((b - r) * t1).exp();
+    let coc_tau = ((b - r) * remaining_tau).exp();
+    let disc = (-r * remaining_tau).exp();
+    match option_type {
+      OptionType::Call => s * coc1 * (coc_tau * norm_cdf(d1) - alpha * disc * norm_cdf(d2)),
+      OptionType::Put => s * coc1 * (alpha * disc * norm_cdf(-d2) - coc_tau * norm_cdf(-d1)),
     }
   }
 }
@@ -196,24 +160,15 @@ mod tests {
   /// T=0.5, r=0.08, b=0.08, sigma=0.25 → 6.1071
   #[test]
   fn simple_chooser_haug() {
-    let p = SimpleChooserPricer {
-      s: 50.0,
-      k: 50.0,
-      r: 0.08,
-      q: 0.0,
-      sigma: 0.25,
-      t1: 0.25,
-      tau: 0.5,
+    let option = ChooserOption {
+      strike: 50.0,
+      choice_time: 0.25,
     };
-    let price = p.price();
+    let price = ChooserPricer::new(0.25).price_simple(&option, 50.0, 0.08, 0.0, 0.5);
     assert!((price - 6.1071).abs() < 0.01, "chooser={price}");
   }
 
-  /// Simple chooser with $t_1 \to 0$ should equal a long straddle (call+put)
-  /// only at maturity decision; with $t_1 \to T$ the holder waits and gets
-  /// $\max(C_T, P_T)$ which equals the straddle. With $t_1=0$ the holder
-  /// commits immediately so picks the better one ATM, payoff equals
-  /// max(call, put) ≈ at-the-money put or call.
+  /// The chooser lies between the better of the call and the put and the straddle.
   #[test]
   fn simple_chooser_bounded_by_straddle() {
     use crate::pricing::bsm::BsmCoc;
@@ -226,16 +181,11 @@ mod tests {
     let sigma = 0.25;
     let tau = 1.0;
 
-    let chooser = SimpleChooserPricer {
-      s,
-      k,
-      r,
-      q: 0.0,
-      sigma,
-      t1: 0.5,
-      tau,
+    let option = ChooserOption {
+      strike: k,
+      choice_time: 0.5,
     };
-    let chooser_price = chooser.price();
+    let chooser_price = ChooserPricer::new(sigma).price_simple(&option, s, r, 0.0, tau);
 
     let bsm = BsmPricer::new(sigma, BsmCoc::Bsm1973);
     let (call, put) = (
@@ -243,7 +193,6 @@ mod tests {
       bsm.price_put(s, k, r, 0.0, tau),
     );
 
-    // Chooser must be bounded between max(call,put) and call+put.
     assert!(chooser_price > call.max(put));
     assert!(chooser_price < call + put);
   }
@@ -255,32 +204,24 @@ mod tests {
     let s = 100.0;
     let r = 0.05;
     let q = 0.02;
-    let sigma = 0.3;
     let t1 = 0.4;
     let tau = 1.0;
     let k = 95.0;
 
-    let simple = SimpleChooserPricer {
-      s,
-      k,
-      r,
-      q,
-      sigma,
-      t1,
-      tau,
+    let pricer = ChooserPricer::new(0.3);
+    let simple = ChooserOption {
+      strike: k,
+      choice_time: t1,
     };
-    let complex = ComplexChooserPricer {
-      s,
-      r,
-      q,
-      sigma,
-      t1,
-      k_call: k,
-      t_call: tau,
-      k_put: k,
-      t_put: tau,
+    let complex = ComplexChooserOption {
+      call_strike: k,
+      call_tau: tau,
+      put_strike: k,
+      put_tau: tau,
+      choice_time: t1,
     };
-    let diff = (simple.price() - complex.price()).abs();
+    let diff =
+      (pricer.price_simple(&simple, s, r, q, tau) - pricer.price_complex(&complex, s, r, q)).abs();
     assert!(diff < 0.01, "diff={diff}");
   }
 
@@ -288,21 +229,14 @@ mod tests {
   /// volatility.
   #[test]
   fn forward_start_atm_positive() {
-    let base = ForwardStartPricer {
-      s: 100.0,
-      alpha: 1.0,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.20,
-      t1: 0.25,
-      tau: 1.0,
+    let option = ForwardStartOption {
+      moneyness: 1.0,
+      start_time: 0.25,
       option_type: OptionType::Call,
     };
-    let high = ForwardStartPricer {
-      sigma: 0.40,
-      ..base.clone()
-    };
-    assert!(base.price() > 0.0);
-    assert!(high.price() > base.price());
+    let base = ChooserPricer::new(0.20).price_forward_start(&option, 100.0, 0.05, 0.0, 1.0);
+    let high = ChooserPricer::new(0.40).price_forward_start(&option, 100.0, 0.05, 0.0, 1.0);
+    assert!(base > 0.0);
+    assert!(high > base);
   }
 }
