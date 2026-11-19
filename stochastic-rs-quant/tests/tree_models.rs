@@ -87,15 +87,20 @@ fn a_tree_model_reads_each_field_of_its_params() {
   assert_eq!((single.initial_rate, single.sigma), (0.03_f32, 0.012_f32));
 }
 
-/// Pinned on rc.4 for the same numbers, bit for bit.
-#[test]
-fn the_trees_price_a_zero_coupon_bond_as_before() {
-  assert_eq!(hw_tree().zero_coupon_bond_price(), HW_ZCB);
-  assert_eq!(bk_tree().zero_coupon_bond_price(), BK_ZCB);
-  assert_eq!(g2_tree().zero_coupon_bond_price(), G2_ZCB);
+/// rc.4's values, to the last bits libm may change between platforms.
+fn assert_pinned(got: f64, pinned: f64) {
+  let close = (got - pinned).abs() <= 1e-13 * pinned.abs().max(1.0);
+  assert!(close, "{got} against {pinned}");
 }
 
-/// Every tree answers one `valuation`, with rc.4's prices bit for bit.
+#[test]
+fn the_trees_price_a_zero_coupon_bond_as_before() {
+  assert_pinned(hw_tree().zero_coupon_bond_price(), HW_ZCB);
+  assert_pinned(bk_tree().zero_coupon_bond_price(), BK_ZCB);
+  assert_pinned(g2_tree().zero_coupon_bond_price(), G2_ZCB);
+}
+
+/// Every tree answers one `valuation`, at rc.4's prices.
 #[test]
 fn a_bermudan_swaption_prices_on_any_bermudan_tree() {
   let pins = [
@@ -109,11 +114,12 @@ fn a_bermudan_swaption_prices_on_any_bermudan_tree() {
   ];
   for (direction, hw, bk, g2) in pins {
     let swaption = swaption(direction);
-    assert_eq!(swaption.npv(&hw_tree()), hw);
-    assert_eq!(swaption.npv(&bk_tree()), bk);
-    assert_eq!(swaption.npv(&g2_tree()), g2);
+    assert_pinned(swaption.npv(&hw_tree()), hw);
+    assert_pinned(swaption.npv(&bk_tree()), bk);
+    let on_g2 = swaption.npv(&g2_tree());
+    assert_pinned(on_g2, g2);
     let valuation = swaption.valuation(&g2_tree());
-    assert_eq!((valuation.npv, valuation.exercise_count), (g2, 4));
+    assert_eq!((valuation.npv, valuation.exercise_count), (on_g2, 4));
   }
 }
 
@@ -123,14 +129,15 @@ fn a_curve_fitted_tree_and_a_generic_caller_price_through_the_trait() {
     tree.bermudan_valuation(swaption).npv
   }
   let payer = swaption(SwaptionDirection::Payer);
-  assert_eq!(npv_on(&hw_tree(), &payer), HW_PAYER);
+  assert_eq!(npv_on(&hw_tree(), &payer), payer.npv(&hw_tree()));
+  assert_pinned(npv_on(&hw_tree(), &payer), HW_PAYER);
   let curve = stochastic_rs_quant::curves::DiscountCurve::from_zero_rates(
     ndarray::array![1.0, 5.0].view(),
     ndarray::array![0.03, 0.035].view(),
     stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
   );
   let fitted = CurveFittedHullWhiteTree::new(0.1, 0.012, &curve, 5.0, 20);
-  assert_eq!(payer.npv(&fitted), 0.1040235044511398);
+  assert_pinned(payer.npv(&fitted), 0.1040235044511398);
 }
 
 struct OwnTree(HullWhiteTree<f64>);
@@ -144,7 +151,7 @@ impl BermudanTree<f64> for OwnTree {
 #[test]
 fn a_callers_own_tree_prices_through_the_one_factor_helper() {
   let payer = swaption(SwaptionDirection::Payer);
-  assert_eq!(payer.npv(&OwnTree(hw_tree())), HW_PAYER);
+  assert_eq!(payer.npv(&OwnTree(hw_tree())), payer.npv(&hw_tree()));
 }
 
 #[test]
@@ -160,7 +167,9 @@ fn a_bermudan_swaption_snaps_its_dates_to_tree_levels() {
   let swaption = BermudanSwaption::from_dates(SwaptionDirection::Payer, 0.045, 100.0, &dates, 0.25);
   assert_eq!(swaption.exercise_schedule.levels, [4, 8, 12, 16]);
   assert_eq!(swaption.coupon_schedule.levels, [4, 8, 12, 16, 20]);
-  assert_eq!(swaption.npv(&hw_tree()), HW_PAYER);
+  let on_levels = crate::swaption(SwaptionDirection::Payer);
+  assert_eq!(swaption.npv(&hw_tree()), on_levels.npv(&hw_tree()));
+  assert_pinned(swaption.npv(&hw_tree()), HW_PAYER);
 }
 
 const HW_ZCB: f64 = 0.844_900_258_875_831_1;

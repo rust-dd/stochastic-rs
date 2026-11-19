@@ -28,6 +28,18 @@ const R: f64 = 0.05;
 const Q: f64 = 0.02;
 const SIGMA: f64 = 0.25;
 
+/// A pinned value went through libm, whose last bits differ between platforms.
+macro_rules! assert_pinned {
+  ($got:expr, $pinned:expr) => {
+    assert_pinned!($got, $pinned, "")
+  };
+  ($got:expr, $pinned:expr, $($context:tt)+) => {{
+    let (got, pinned): (f64, f64) = ($got, $pinned);
+    let close = (got - pinned).abs() <= 1e-13 * pinned.abs().max(1.0);
+    assert!(close, "{got} against {pinned}: {}", format!($($context)+));
+  }};
+}
+
 const CORRIDOR: DoubleBarrierOption = DoubleBarrierOption {
   strike: 100.0,
   lower: 70.0,
@@ -104,9 +116,9 @@ fn the_barrier_prices_keep_their_values() {
   ] {
     let tag = format!("{barrier_type:?} {option_type:?}");
     let plain_option = barrier(barrier_type, option_type, 0.0);
-    assert_eq!(pricer.price(&plain_option, S, R, Q, 1.0), plain, "{tag}");
+    assert_pinned!(pricer.price(&plain_option, S, R, Q, 1.0), plain, "{tag}");
     let rebate_option = barrier(barrier_type, option_type, 3.0);
-    assert_eq!(
+    assert_pinned!(
       pricer.price(&rebate_option, S, R, Q, 1.0),
       with_rebate,
       "{tag}"
@@ -174,9 +186,9 @@ fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
 fn the_double_barrier_keeps_its_values_and_holds_its_series_length() {
   let pricer = DoubleBarrierPricer::new(SIGMA);
   assert_eq!(pricer.terms, 5);
-  assert_eq!(pricer.price(&CORRIDOR, 90.0, R, Q, 1.0), 5.52676147834582);
-  assert_eq!(pricer.price(&CORRIDOR, S, R, Q, 1.0), 10.416829363785439);
-  assert_eq!(
+  assert_pinned!(pricer.price(&CORRIDOR, 90.0, R, Q, 1.0), 5.52676147834582);
+  assert_pinned!(pricer.price(&CORRIDOR, S, R, Q, 1.0), 10.416829363785439);
+  assert_pinned!(
     pricer.price(&CORRIDOR, 110.0, R, Q, 0.25),
     11.973631651189004
   );
@@ -184,12 +196,12 @@ fn the_double_barrier_keeps_its_values_and_holds_its_series_length() {
     option_type: OptionType::Put,
     ..CORRIDOR
   };
-  assert_eq!(pricer.price(&put, 90.0, R, Q, 1.0), 12.946402490967737);
-  assert_eq!(pricer.price(&put, S, R, Q, 0.25), 2.419613886597333);
+  assert_pinned!(pricer.price(&put, 90.0, R, Q, 1.0), 12.946402490967737);
+  assert_pinned!(pricer.price(&put, S, R, Q, 0.25), 2.419613886597333);
   let fifty = pricer.with_terms(50);
-  assert_eq!(fifty.price(&CORRIDOR, S, R, Q, 1.0), 10.408603719549937);
+  assert_pinned!(fifty.price(&CORRIDOR, S, R, Q, 1.0), 10.408603719549937);
   let one = pricer.with_terms(0);
-  assert_eq!(one.price(&CORRIDOR, S, R, Q, 1.0), 10.880443789902783);
+  assert_pinned!(one.price(&CORRIDOR, S, R, Q, 1.0), 10.880443789902783);
 }
 
 #[test]
@@ -212,10 +224,10 @@ fn one_lookback_pricer_prices_both_contracts() {
       13.18603194400309,
     ),
   ] {
-    assert_eq!(pricer.price(&option, S, R, Q, 1.0), pinned, "{option:?}");
+    assert_pinned!(pricer.price(&option, S, R, Q, 1.0), pinned, "{option:?}");
   }
   let driftless = lookback(None, None, None, Call);
-  assert_eq!(pricer.price(&driftless, S, R, R, 1.0), 12.730787441362034);
+  assert_pinned!(pricer.price(&driftless, S, R, R, 1.0), 12.730787441362034);
 }
 
 #[test]
@@ -225,13 +237,13 @@ fn one_chooser_pricer_prices_the_three_contracts() {
     choice_time: 0.25,
   };
   let haug_price = ChooserPricer::new(0.25).price_simple(&haug, 50.0, 0.08, 0.0, 0.5);
-  assert_eq!(haug_price, 6.10707749816234);
+  assert_pinned!(haug_price, 6.10707749816234);
   let pricer = ChooserPricer::new(0.3);
   let simple = ChooserOption {
     strike: 95.0,
     choice_time: 0.4,
   };
-  assert_eq!(
+  assert_pinned!(
     pricer.price_simple(&simple, S, R, Q, 1.0),
     19.398120558726195
   );
@@ -242,20 +254,20 @@ fn one_chooser_pricer_prices_the_three_contracts() {
     put_tau: 0.75,
     choice_time: 0.4,
   };
-  assert_eq!(pricer.price_complex(&complex, S, R, Q), 15.285108413576715);
+  assert_pinned!(pricer.price_complex(&complex, S, R, Q), 15.285108413576715);
   let same = ComplexChooserOption {
     call_strike: 95.0,
     put_tau: 1.0,
     ..complex
   };
-  assert_eq!(pricer.price_complex(&same, S, R, Q), 19.398120558726188);
+  assert_pinned!(pricer.price_complex(&same, S, R, Q), 19.398120558726188);
   let forward_start = ForwardStartOption {
     moneyness: 1.1,
     start_time: 0.25,
     option_type: OptionType::Call,
   };
   let pricer = ChooserPricer::new(SIGMA);
-  assert_eq!(
+  assert_pinned!(
     pricer.price_forward_start(&forward_start, S, R, Q, 1.0),
     5.5564185611989085
   );
@@ -263,7 +275,7 @@ fn one_chooser_pricer_prices_the_three_contracts() {
     option_type: OptionType::Put,
     ..forward_start
   };
-  assert_eq!(
+  assert_pinned!(
     pricer.price_forward_start(&forward_start, S, R, Q, 1.0),
     12.959502437827553
   );
@@ -285,7 +297,7 @@ fn the_compound_and_cliquet_prices_keep_their_values() {
       compound_type,
     };
     let price = pricer.price(&option, S, R, Q, 1.0);
-    assert_eq!(price, pinned, "{compound_type:?}");
+    assert_pinned!(price, pinned, "{compound_type:?}");
   }
 
   let pricer = CliquetPricer::new(SIGMA);
@@ -303,23 +315,23 @@ fn the_compound_and_cliquet_prices_keep_their_values() {
       global_floor: None,
       global_cap: None,
     };
-    assert_eq!(pricer.price(&option, 0.04, 0.01, 1.0), pinned);
+    assert_pinned!(pricer.price(&option, 0.04, 0.01, 1.0), pinned);
   }
 }
 
 #[test]
 fn the_variance_swap_functions_take_the_query() {
-  assert_eq!(
+  assert_pinned!(
     VarianceSwapPricer::fair_strike_bsm(0.2),
     0.04000000000000001
   );
-  assert_eq!(
+  assert_pinned!(
     VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.5),
     0.04592977473976039
   );
   let strikes = [60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0];
   let otm = [0.02, 0.11, 0.48, 1.57, 5.2, 2.31, 0.83, 0.25, 0.07];
-  assert_eq!(
+  assert_pinned!(
     VarianceSwapPricer::fair_strike_replication(&strikes, &otm, S, R, Q, 0.5),
     0.043994906076447834
   );
