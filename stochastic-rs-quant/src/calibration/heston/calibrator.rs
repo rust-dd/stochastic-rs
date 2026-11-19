@@ -39,9 +39,9 @@ pub struct HestonMleSeed {
 /// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
 #[derive(Clone, Debug)]
 pub struct HestonCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  pub(super) s: f64,
+  pub(super) r: f64,
+  pub(super) q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None`: the MLE seed when `mle_seed` is set, else the fallback (0.04, 1.5, 0.04, 0.5, −0.5).
   pub start: Option<HestonParams>,
@@ -72,6 +72,18 @@ impl HestonCalibrator {
       feller_projection: false,
       mle_seed: None,
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start` passes [`HestonParams::new`]; the fit starts from its projection onto

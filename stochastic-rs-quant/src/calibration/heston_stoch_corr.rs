@@ -183,9 +183,9 @@ fn slsqp_stop(status: Result<SuccessStatus, FailStatus>) -> (&'static str, bool)
 /// HSCM fit to vanilla quotes by SLSQP inside `BOUNDS`, on the squared relative price errors.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (2, 0.04, 0.3, 0.04, 5, −0.5, 0.2, −0.7, 0.3); a start is clamped to
   /// `BOUNDS`.
@@ -207,6 +207,18 @@ impl HscmCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless every value of `start` is finite.

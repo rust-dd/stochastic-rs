@@ -98,9 +98,9 @@ impl SabrParams {
 /// Levenberg–Marquardt fit of `(α, ν, ρ)` to vanilla quotes at the start's fixed `β`.
 #[derive(Clone, Debug)]
 pub struct SabrCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from `α = 0.2, β = 1, ρ = 0, ν = 0.8`.
   pub start: Option<SabrParams>,
@@ -120,6 +120,18 @@ impl SabrCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start` passes [`SabrParams::new`]; its `β` stays fixed through the fit.

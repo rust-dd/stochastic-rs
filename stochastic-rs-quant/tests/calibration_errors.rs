@@ -312,3 +312,80 @@ fn every_calibrator_is_send_and_sync() {
   assert_send_sync::<RBergomiCalibrator>();
   assert_send_sync::<HestonSlvCalibrator>();
 }
+
+/// The spot and the rates are set once, by the `new` that checks them, and read back by getter.
+#[test]
+fn every_calibrator_reads_back_the_spot_and_rates_its_new_checked() {
+  use ndarray::Array2;
+  use stochastic_rs_quant::calibration::heston_slv::HestonSlvCalibrator;
+  use stochastic_rs_quant::calibration::rbergomi::RBergomiCalibrationConfig;
+  use stochastic_rs_quant::calibration::rbergomi::RBergomiCalibrator;
+  use stochastic_rs_quant::calibration::rbergomi::RBergomiParams;
+  use stochastic_rs_quant::calibration::rbergomi::RBergomiXi0;
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileCalibrator;
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileQuotes;
+  let (s, r, q) = (S, R, 0.01);
+  let read = [
+    {
+      let c = BsmCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = HestonCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = SabrCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = SvjCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = DoubleHestonCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = HkdeCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = LevyCalibrator::new(LevyModelType::MertonJd, s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = CgmysvCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let c = HscmCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let grid = Array2::zeros((2, 3));
+      let c = HestonSlvCalibrator::new(s, r, q, vec![90.0, 100.0, 110.0], vec![0.5, 1.0], grid);
+      (c.s(), c.r(), c.q())
+    },
+    {
+      let start = RBergomiParams {
+        hurst: 0.1,
+        rho: -0.7,
+        eta: 1.5,
+        xi0: RBergomiXi0::Constant(0.04),
+      };
+      let config = RBergomiCalibrationConfig::default();
+      let c = RBergomiCalibrator::new(s, r, q, start, Vec::new(), config);
+      (c.s(), c.r(), c.q())
+    },
+  ];
+  assert_eq!(read, [(s, r, q); 11]);
+  let smile = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.1,
+    sigma_rr: 0.01,
+    sigma_bf: 0.005,
+  };
+  let c = SabrSmileCalibrator::new(1.1, 0.03, 0.01, 1.0, smile);
+  assert_eq!((c.s(), c.r_d(), c.r_f()), (1.1, 0.03, 0.01));
+}

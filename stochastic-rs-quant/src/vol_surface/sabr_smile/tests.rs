@@ -72,7 +72,7 @@ fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
       result.params.rho,
     ];
     let mut problem = bounded_problem();
-    problem.s = calibrator.s;
+    problem.s = calibrator.s();
     problem.bounds_lo[..4].fill(calibrator.strike_lo);
     problem.bounds_hi[..4].fill(calibrator.strike_hi);
     for i in 0..x.len() {

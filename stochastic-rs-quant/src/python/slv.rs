@@ -335,12 +335,12 @@ impl PyHestonSlvCalibrator {
     self.heston_start.map(|heston| HestonSlvFit {
       params: HestonSlvParams { heston, eta: c.eta },
       leverage: LeverageSurface::new(
-        Array1::from_elem(1, c.s),
+        Array1::from_elem(1, c.s()),
         Array1::from_elem(1, 1.0),
         ndarray::Array2::ones((1, 1)),
       ),
-      r: c.r,
-      q: c.q,
+      r: c.r(),
+      q: c.q(),
     })
   }
 }

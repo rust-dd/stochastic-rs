@@ -60,11 +60,11 @@ pub struct SmileStrikes {
 #[derive(Clone, Debug)]
 pub struct SabrSmileCalibrator {
   /// Spot FX rate.
-  pub s: f64,
+  pub(super) s: f64,
   /// Domestic rate r_d
-  pub r_d: f64,
+  pub(super) r_d: f64,
   /// Foreign rate r_f
-  pub r_f: f64,
+  pub(super) r_f: f64,
   /// Cev exponent (0 = normal, 1 = lognormal)
   pub beta: f64,
   /// Quotes for one tenor
@@ -124,6 +124,18 @@ impl SabrSmileCalibrator {
       strike_hi: s * 2.0,
       success_tol: 1e-3,
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r_d(&self) -> f64 {
+    self.r_d
+  }
+
+  pub fn r_f(&self) -> f64 {
+    self.r_f
   }
 
   /// Override the short-tenor cutoff (in years).

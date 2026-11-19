@@ -12,9 +12,9 @@ use crate::pricing::heston::HestonParams;
 /// Double-Heston fit to vanilla quotes by Levenberg–Marquardt on a central-difference Jacobian.
 #[derive(Clone, Debug)]
 pub struct DoubleHestonCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  pub(super) s: f64,
+  pub(super) r: f64,
+  pub(super) q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from a fast factor (0.02, 3, 0.02, 0.3, −0.6) and a slow one
   /// (0.02, 0.5, 0.02, 0.15, −0.3), projected.
@@ -36,6 +36,18 @@ impl DoubleHestonCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics, naming the factor, unless both pass [`HestonParams::new`]; the fit starts from the

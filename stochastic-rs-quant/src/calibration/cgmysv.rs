@@ -43,9 +43,9 @@ impl ToModel for Calibrated<CgmysvParams> {
 /// CGMYSV fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates on the bounds.
 #[derive(Clone, Debug)]
 pub struct CgmysvCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.5, 20, 5, 1, 0.05, 0.3, −1, 0.01); a start is clamped to the bounds.
   pub start: Option<CgmysvParams>,
@@ -65,6 +65,18 @@ impl CgmysvCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless every value of `start` is finite.

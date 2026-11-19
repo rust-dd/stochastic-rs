@@ -78,9 +78,9 @@ impl From<Array1<f64>> for BsmParams {
 /// residuals, each quote priced at the carry `r − q`.
 #[derive(Clone, Debug)]
 pub struct BsmCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// Reflected onto `[1e-6, ∞)` before the first evaluation.
   pub start: BsmParams,
@@ -100,6 +100,18 @@ impl BsmCalibrator {
       start: BsmParams { sigma: 0.2 },
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start.sigma` is finite; the start is stored reflected onto `[1e-6, ∞)`.
