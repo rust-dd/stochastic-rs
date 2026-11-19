@@ -40,7 +40,7 @@ fn bounded_whittle_cost_and_gradient_use_feasible_parameters() {
 fn bounded_whittle_refinement_returns_feasible_parameters_and_cost() {
   let problem = bounded_problem();
   for initial in [[0.2, 1.0], [0.6, 15.0], [-0.1, -1.0]] {
-    let (h, v, cost) = run_lbfgs(&problem, initial[0], initial[1]);
+    let (h, v, cost, _) = run_lbfgs(&problem, initial[0], initial[1]);
     assert!((problem.lower[0]..=problem.upper[0]).contains(&h));
     assert!((problem.lower[1]..=problem.upper[1]).contains(&v));
     assert!(cost.is_finite());
@@ -231,4 +231,13 @@ fn a_non_finite_objective_is_a_numerical_error() {
       stage: "whittle objective"
     }
   );
+}
+
+/// L-BFGS-B stops on a tolerance from the grid's point on an ordinary log-RV path.
+#[test]
+fn the_fit_says_its_search_converged() {
+  let log_rv =
+    Array1::from_iter((0..300).map(|i| ((i * 37 % 101) as f64 / 101.0 - 0.5) + 0.01 * i as f64));
+  let fit = Whittle::new(1, 1.0 / 250.0).fit(log_rv.view()).unwrap();
+  assert!(fit.converged, "{fit:?}");
 }

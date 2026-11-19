@@ -28,6 +28,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::more_thuente;
+use crate::optim::stopped_on_tolerance;
 
 /// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
@@ -36,6 +37,8 @@ pub struct FukasawaFit {
   pub eta: f64,
   pub neg_log_lik: f64,
   pub nobs: usize,
+  /// L-BFGS-B, from the grid's best point, stopped on a tolerance and not on its 200 iterations.
+  pub converged: bool,
 }
 
 /// Whittle config: intraday bars `m`, day fraction `δ`, numerical constants. The default is daily
@@ -370,7 +373,7 @@ impl BoxConstraints for WhittleProblem {
   }
 }
 
-fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64) {
+fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64, bool) {
   let init = vec![h_init, v_init];
   let solver = Lbfgsb::with_line_search(more_thuente())
     .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
@@ -380,8 +383,9 @@ fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f
     .max_iter(200)
     .run()
     .expect("Whittle objective is infallible");
+  let converged = stopped_on_tolerance(result.reason);
   let best = problem.clamp(result.best_param());
-  (best[0], best[1], problem.eval(&best))
+  (best[0], best[1], problem.eval(&best), converged)
 }
 
 fn run_estimate(
@@ -432,7 +436,7 @@ fn run_estimate(
     lower: vec![0.005, 0.01],
     upper: vec![0.495, 12.0],
   };
-  let (h_r, v_r, nll_r) = run_lbfgs(&problem, best_h, best_v);
+  let (h_r, v_r, nll_r, converged) = run_lbfgs(&problem, best_h, best_v);
   if nll_r < best_nll {
     best_nll = nll_r;
     best_h = h_r;
@@ -449,6 +453,7 @@ fn run_estimate(
     eta,
     neg_log_lik: best_nll,
     nobs: n,
+    converged,
   })
 }
 

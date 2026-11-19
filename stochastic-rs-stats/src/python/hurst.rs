@@ -40,6 +40,11 @@ impl PyFukasawaHurst {
   fn n_obs(&self) -> usize {
     self.inner.nobs
   }
+
+  #[getter]
+  fn converged(&self) -> bool {
+    self.inner.converged
+  }
 }
 
 #[pyclass(name = "FouEstimate", unsendable)]

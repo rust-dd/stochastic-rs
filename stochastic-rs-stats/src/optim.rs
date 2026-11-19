@@ -5,6 +5,7 @@
 use std::cmp::Ordering;
 
 use basin::MoreThuente;
+use basin::TerminationReason;
 
 /// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
 pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
@@ -21,6 +22,16 @@ pub(crate) fn best_start<P: AsRef<[f64]>>(
     .map(|start| (objective(start.as_ref()), start))
     .min_by(|a, b| nan_last(a.0, b.0))
     .map(|(_, start)| start)
+}
+
+/// Whether a basin search stopped on one of its tolerances, not on a budget or a failure.
+pub(crate) fn stopped_on_tolerance(reason: TerminationReason) -> bool {
+  matches!(
+    reason,
+    TerminationReason::CostTolerance
+      | TerminationReason::ProjectedGradientTolerance
+      | TerminationReason::SolverConverged
+  )
 }
 
 /// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.

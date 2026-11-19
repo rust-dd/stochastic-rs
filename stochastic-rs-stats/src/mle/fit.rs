@@ -15,6 +15,7 @@ use super::density::DensityApprox;
 use crate::StatsError;
 use crate::input::validate_view;
 use crate::optim::more_thuente;
+use crate::optim::stopped_on_tolerance;
 
 /// Result of maximum likelihood estimation.
 #[derive(Clone, Debug)]
@@ -167,13 +168,11 @@ fn resolve_fit_outcome(
   reason: TerminationReason,
   iterations: u64,
 ) -> (Vec<f64>, bool, usize) {
-  let converged = matches!(
-    reason,
-    TerminationReason::CostTolerance
-      | TerminationReason::ProjectedGradientTolerance
-      | TerminationReason::SolverConverged
-  );
-  (best_param, converged, iterations as usize)
+  (
+    best_param,
+    stopped_on_tolerance(reason),
+    iterations as usize,
+  )
 }
 
 /// L-BFGS-B MLE of `model`, left at the estimate, in the start's units, up to 16 searches; `Err`
