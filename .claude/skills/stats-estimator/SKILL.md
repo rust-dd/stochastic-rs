@@ -169,6 +169,8 @@ mod tests {
 }
 ```
 
+- A recovery test like this one, against the simulated law's own parameter, sits beside the
+  reference test, never in its place.
 - The seed goes to the workspace's own constructor; a `StdRng` handed to a `Simd*` distribution
   is discarded (`integration-test-writing` §1.1).
 - A statistical assertion asks the best of three pinned seeds, as a correct test rejects a true
