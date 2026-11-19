@@ -40,8 +40,26 @@ impl Cumulants {
 /// in `t` takes over; the two agree to 3.8e-12 at the switch.
 const SERIES_BELOW: f64 = 1.0;
 
-/// `c1` from Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of the
-/// Little-Trap chf, grouped by powers of `e^{−κt}`.
+/// `E[∫₀ᵗ v] = t(v0·ℓ + κθt·s)` for `dv = (κθ − bv)dt + σ√v dW`, `x = bt`: `ℓ = (1 − e⁻ˣ)/x` by
+/// `expm1`, `s = (1 − ℓ)/x` by four terms below `|x| = 1e-3`, where `1 − ℓ` cancels.
+pub(crate) fn mean_integrated_variance(v0: f64, b: f64, kappa_theta: f64, t: f64) -> f64 {
+  let x = b * t;
+  let (level, slope) = if x == 0.0 {
+    (1.0, 0.5)
+  } else if x.abs() < 1e-3 {
+    (
+      -(-x).exp_m1() / x,
+      0.5 - x / 6.0 + x * x / 24.0 - x * x * x / 120.0,
+    )
+  } else {
+    let level = -(-x).exp_m1() / x;
+    (level, (1.0 - level) / x)
+  };
+  t * (v0 * level + kappa_theta * t * slope)
+}
+
+/// `c1 = −½E[∫v]`, Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of
+/// the Little-Trap chf, grouped by powers of `e^{−κt}`.
 /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848.
 pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
   let HestonParams {
@@ -51,11 +69,14 @@ pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
     sigma,
     rho,
   } = *p;
+  let c1 = -0.5 * mean_integrated_variance(v0, kappa, kappa * theta, t);
   if (kappa * t).abs() < SERIES_BELOW {
-    return heston_cumulants_series(p, t);
+    return Cumulants {
+      c1,
+      ..heston_cumulants_series(p, t)
+    };
   }
   let ekt = (-kappa * t).exp();
-  let c1 = (1.0 - ekt) * (theta - v0) / (2.0 * kappa) - 0.5 * theta * t;
 
   let kappa2 = kappa * kappa;
   let kappa3 = kappa2 * kappa;

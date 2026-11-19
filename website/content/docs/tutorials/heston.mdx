@@ -194,7 +194,7 @@ A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified b
 - **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$, $\sigma > 0$ and $S_0 > 0$, which `.qe()` asserts. In Python, `PyHeston(..., scheme="qe")` selects it.
 - **One parameter set.** `HestonPricer::new`, `HestonAdiPricer::new`, `HestonFourier::new` and `AnalyticHestonEngine` all take one `HestonParams { v0, kappa, theta, sigma, rho }` and panic, naming the field, on a value outside its domain; the process keeps its own order, `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `HestonPricer::with_vol_risk_premium(lambda)` sets the market price of volatility risk, 0 by default.
 - **`HestonFourier` holds no rates.** Its characteristic function is drift-free; `price_call(s, k, r, q, tau)` takes the carry and the discounting from its arguments.
-- **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-5}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
+- **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-9}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
 - **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32>`); the pricers, calibrators and estimators work in `f64`.
 
 ## FAQ

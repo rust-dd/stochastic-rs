@@ -406,6 +406,82 @@ mod construction_validation {
   }
 }
 
+/// `E₂[∫₀^τ v] = τ(v0·ℓ + κθτ·s)` against mpmath at 40 digits across `|x| = 1e-3`, `x = κτ`:
+/// `ℓ = (1 − e⁻ˣ)/x` alone at `θ = 0`, `s = (x − 1 + e⁻ˣ)/x²` alone at `v0 = 0`.
+#[test]
+fn the_integrated_variance_mean_holds_its_digits_at_any_b_tau() {
+  // (x, ℓ(x), s(x))
+  let cases = [
+    (1e-6, 0.9999995000001667, 0.499999833333375),
+    (9.9e-5, 0.9999505016334596, 0.4999835004083669),
+    (1.0225e-3, 0.9994889242065078, 0.4998296268871867),
+    (-1.1e-3, 1.0005502017221373, 0.5001833837610937),
+    (1e-2, 0.9950166250831947, 0.49833749168053576),
+    (-1e-5, 1.0000050000166667, 0.5000016666708333),
+    (-0.5, 1.2974425414002564, 0.5948850828005126),
+    (2.0, 0.43233235838169365, 0.28383382080915315),
+    // The scan's worst: 4.23e-13 with macOS's expm1, 1.6e-14 with glibc's. Past the switch an ulp
+    // of expm1 moves `s` by 4.2e-13 relative, so the band admits any expm1 within two ulps.
+    (-1.0114e-3, 1.0005058705314434, 0.5001686092973714),
+  ];
+  for (x, level, slope) in cases {
+    let kappa = 1.5_f64.copysign(x);
+    let tau = x / kappa;
+    let mean = |v0: f64, theta: f64| {
+      HestonPricer::new(HestonParams::new(v0, kappa, theta, 0.3, -0.7))
+        .mean_integrated_variance(2, tau)
+    };
+    let got_level = mean(1.0, 0.0) / tau;
+    let got_slope = mean(0.0, 1.0) / (kappa * tau * tau);
+    assert!(
+      (got_level / level - 1.0).abs() < 1e-12,
+      "x = {x}: level {got_level} vs {level}"
+    );
+    assert!(
+      (got_slope / slope - 1.0).abs() < 1e-12,
+      "x = {x}: slope {got_slope} vs {slope}"
+    );
+  }
+}
+
+/// The control variance is the model's own `−2c₁`, one function for both, bit for bit.
+#[test]
+fn the_control_variance_is_minus_twice_the_first_cumulant() {
+  for (kappa, tau) in [
+    (1.5, 1e-6),
+    (1.5, 0.3),
+    (1.5, 2.0),
+    (0.5, 1e-3),
+    (-0.4, 3.0),
+  ] {
+    let params = HestonParams::new(0.04, kappa, 0.09, 0.3, -0.7);
+    let control = HestonPricer::new(params).mean_integrated_variance(2, tau);
+    let c1 = crate::pricing::fourier::heston_cumulants(&params, tau).c1;
+    assert_eq!(control, -2.0 * c1, "kappa = {kappa}, tau = {tau}");
+  }
+}
+
+/// `P₂`'s `D` is the chf's `factor_cd` at `φ` bit for bit, and `P₁`'s at `φ − i` to rounding: one
+/// Riccati exponent behind both.
+#[test]
+fn the_integrand_shares_the_chf_riccati_exponent() {
+  let params = HestonParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+  let pricer = HestonPricer::new(params);
+  let factor_d = |xi: Complex64| crate::pricing::fourier::factor_cd(&params, 0.75, xi).1;
+  for phi in [1e-8, 0.3, 7.0, 150.0] {
+    let (_, d2) = pricer.f_and_d(2, phi, 0.75, 100.0, 0.05, 0.02);
+    assert_eq!(d2, factor_d(Complex64::new(phi, 0.0)), "phi = {phi}");
+  }
+  for phi in [0.3, 7.0, 150.0] {
+    let (_, d1) = pricer.f_and_d(1, phi, 0.75, 100.0, 0.05, 0.02);
+    let want = factor_d(Complex64::new(phi, -1.0));
+    assert!(
+      (d1 - want).norm() <= 1e-14 * want.norm(),
+      "phi = {phi}: {d1} vs {want}"
+    );
+  }
+}
+
 const TOL: f64 = 1e-12;
 
 /// Goldens at `(s, k, r, q, τ) = (100, 105, 0.05, 0.02, 0.75)` and
@@ -417,8 +493,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   let ot = OptionType::Call;
 
   let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
-  assert!((call - 5.229927051858368).abs() < TOL, "call {call}");
-  assert!((put - 7.854146952238395).abs() < TOL, "put {put}");
+  assert!((call - 5.229927051858397).abs() < TOL, "call {call}");
+  assert!((put - 7.854146952238423).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
@@ -427,20 +503,20 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
   let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
-    (v0_vega - 44.210292529055565).abs() < TOL,
+    (v0_vega - 44.21029252905521).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
-    0.5179825268950111,
-    0.025354656330023317,
-    17.684117011622227,
-    -5.4901985947708445,
-    34.926245297484115,
-    0.1873979818161331,
-    -0.13335176518580738,
-    45.78517450487997,
-    2.628564242854736,
+    0.5179825268957217,
+    0.025354655903697676,
+    17.684117011622085,
+    -5.490198593349759,
+    34.92624529677357,
+    0.18739798181670153,
+    -0.13335185400364935,
+    45.78517450630034,
+    2.628564235038766,
   ];
   // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent
   // reference moves as much, so every Greek but the analytic `vega` gets the wider band.
