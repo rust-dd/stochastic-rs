@@ -2742,12 +2742,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quadrature"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2054ccb02f454fcb2bc81e343aa0a171636a6331003fd5ec24c47a10966634b7"
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3460,7 +3454,6 @@ dependencies = [
  "owens-t",
  "plotly",
  "pyo3",
- "quadrature",
  "rayon",
  "slsqp",
  "stochastic-rs-core",

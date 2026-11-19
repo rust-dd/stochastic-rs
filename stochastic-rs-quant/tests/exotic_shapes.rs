@@ -50,7 +50,7 @@ const fn pair(call: f64, put: f64) -> CallPut {
   CallPut { call, put }
 }
 
-const HESTON_LAMBDA: CallPut = pair(5.081933443027005, 7.706153343407038);
+const HESTON_LAMBDA: CallPut = pair(5.0819334430269905, 7.70615334340701);
 const HESTON_VEGA: f64 = 51.66113350364648;
 const MERTON: CallPut = pair(7.15321711897312, 9.777437019353142);
 const HSCM: CallPut = pair(5.383063358956783, 8.007283259336816);
@@ -187,7 +187,7 @@ fn a_chain_quote_names_its_option_type() {
 #[test]
 fn one_computation_answers_a_named_pair() {
   let heston = heston();
-  let heston_pair = pair(5.164008255606987, 7.788228155987014);
+  let heston_pair = pair(5.164008255606966, 7.788228155986985);
   assert_eq!(heston.price_call_put(S, K, R, Q, TAU), heston_pair);
   assert_eq!(legs(&heston, TAU), heston_pair);
   assert_eq!(heston.price_call_put(S, K, R, Q, 0.0), pair(0.0, 5.0));
@@ -317,7 +317,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let bates = BatesFourier::new(svj);
   assert_eq!(bates.params(), svj);
-  assert_eq!(bates.price_call(S, K, R, Q, TAU), 5.684829693931341);
+  assert_eq!(bates.price_call(S, K, R, Q, TAU), 5.6848296939312775);
   let hkde_params = HkdeParams {
     v0: 0.04,
     kappa: 1.5,
@@ -331,7 +331,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let hkde = HkdeFourier::new(hkde_params);
   assert_eq!(hkde.params(), hkde_params);
-  assert_eq!(hkde.price_call(S, K, R, Q, TAU), 6.559356757760902);
+  assert_eq!(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838);
 }
 
 #[test]

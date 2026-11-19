@@ -1,22 +1,10 @@
-//! Convergence-controlled quadrature for characteristic-function inversion.
-//!
-//! The Heston, Gil-Pelaez, Lewis and Carr-Madan pricers all invert a
-//! characteristic function by integrating an oscillatory-but-decaying integrand
-//! over `[a, ∞)`. The integrand's envelope only becomes negligible once `φ` is
-//! past its decay length, which grows like `1/√(v·τ)` as the maturity `τ` or
-//! the variance `v` shrink. A hardcoded finite upper limit therefore truncates
-//! a non-negligible tail for short-dated or low-variance options, which
-//! under-prices them by 15-35% and can even return arbitrage-violating negative
-//! call prices.
-//!
-//! [`integrate_to_convergence`] accumulates tanh-sinh panels, refines each one
-//! until the rule's own error estimate is met, and stops once the integrand's
-//! envelope can no longer move the answer, so the effective upper limit adapts
-//! to the actual decay length for any `(τ, v, moneyness)`.
+//! Quadrature for characteristic-function inversion over `[a, ∞)`: tanh-sinh panels, walked until
+//! the integrand's envelope can no longer move the answer, since a fixed upper limit truncates it.
 
 use std::cell::Cell;
 
-use quadrature::double_exponential;
+mod nodes;
+mod tanh_sinh;
 
 /// Starting panel width. Wide enough that a smooth integrand clears it in one
 /// tanh-sinh pass, narrow enough that the rule's fixed ~350-point budget still
@@ -34,24 +22,15 @@ const MAX_PANELS: usize = 128;
 /// Backstop on bisection depth, i.e. at most 64 sub-panels per panel.
 const MAX_DEPTH: u32 = 6;
 
-/// Integrate one panel, bisecting until the tanh-sinh rule's own error
-/// estimate meets `target`.
-///
-/// `double_exponential::integrate` reports an `error_estimate` scaled to the
-/// panel, so it is directly comparable to an absolute target. Discarding it —
-/// which is what this module did before — is what let a panel contribute
-/// `8761.8` to an integral whose true value was `0.95` while reporting an
-/// error estimate of `6716`.
-///
-/// The target is halved at each level so the budget summed over the sub-panels
-/// is still `target`.
+/// One panel, bisected until the rule's last level difference meets `target`, which halves with
+/// each bisection so the sub-panels' budget still sums to it; also the bisection depth used.
 fn refine<F>(f: &F, lo: f64, hi: f64, target: f64, depth: u32) -> (f64, u32)
 where
   F: Fn(f64) -> f64,
 {
-  let out = double_exponential::integrate(f, lo, hi, target);
-  if out.error_estimate <= target || depth == 0 {
-    return (out.integral, 0);
+  let (integral, difference) = tanh_sinh::integrate(f, lo, hi, target);
+  if difference <= target || depth == 0 {
+    return (integral, 0);
   }
   let mid = 0.5 * (lo + hi);
   let (left, dl) = refine(f, lo, mid, 0.5 * target, depth - 1);
@@ -119,13 +98,7 @@ where
 mod tests {
   use super::*;
 
-  /// The third-party `double_exponential::integrate` rewrites every
-  /// non-finite sample to `0.0` before the rule ever sees it, so an
-  /// integrand that is `NaN` everywhere integrates to exactly `0.0` — a
-  /// plausible number carrying no trace of the undefined input that produced
-  /// it. That is the [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails)'s fourth
-  /// option, and this wrapper is the only place the crate controls.
+  /// The rule counts a non-finite sample as zero, so the walk is what reports a NaN integrand.
   #[test]
   fn a_nan_integrand_does_not_integrate_to_zero() {
     let v = integrate_to_convergence(|_| f64::NAN, 1e-8, 1e-8);
@@ -146,6 +119,19 @@ mod tests {
       v.is_nan(),
       "a partially NaN integrand must exit as NaN, got {v}"
     );
+  }
+
+  /// One panel of a walk, `[24, 56]`: the square of its level difference would pass it 1.5e-5 off.
+  #[test]
+  fn a_panel_is_not_accepted_on_a_squared_level_difference() {
+    let (w, a, phase) = (0.454_f64, 0.2_f64, 1.0_f64);
+    let primitive = |x: f64| {
+      (-a * x).exp() * (w * (w * x + phase).sin() - a * (w * x + phase).cos()) / (a * a + w * w)
+    };
+    let f = |x: f64| (w * x + phase).cos() * (-a * x).exp();
+    let (got, _) = refine(&f, 24.0, 56.0, 1e-10, MAX_DEPTH);
+    let want = primitive(56.0) - primitive(24.0);
+    assert!((got - want).abs() < 1e-10, "{got} vs {want}");
   }
 
   /// The poison check must leave an integrand that was never poisoned alone.
