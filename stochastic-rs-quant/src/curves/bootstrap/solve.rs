@@ -34,6 +34,10 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
       (None, Some((xp, fp))) => (x - f * (x - xp) / (f - fp), false),
       (None, None) => (x * (T::one() + T::from_f64_fast(2f64.powi(-26))), true),
     };
+    let converged = |n: T| !probe && n.is_finite() && (n - x).abs() <= tolerance * n.abs();
+    if converged(next) && next > T::zero() {
+      return Some(next);
+    }
     let next = match bracket {
       Some([lo, hi]) if !(next > lo.0.min(hi.0) && next < lo.0.max(hi.0)) => {
         T::from_f64_fast(0.5) * (lo.0 + hi.0)
@@ -43,7 +47,7 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
     if !(next.is_finite() && next > T::zero()) {
       break;
     }
-    if !probe && (next - x).abs() <= tolerance * next.abs() {
+    if converged(next) {
       return Some(next);
     }
     previous = Some((x, f));
