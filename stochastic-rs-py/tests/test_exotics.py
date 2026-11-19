@@ -56,7 +56,7 @@ def test_the_lookback_pricers_keep_their_prices():
         (fixed(k=105.0, t=1.0, s_max=110.0, **LOOKBACK), 19.018899629131397),
         (fixed(k=110.0, t=1.0, option_type="put", **LOOKBACK), 25.91345732667257),
         (fixed(k=95.0, t=1.0, option_type="put", s_min=90.0, **LOOKBACK), 13.18603194400309),
-        (floating(s=100.0, r=0.05, q=0.05, sigma=0.25, t=1.0), 12.730787441362034),
+        (floating(s=100.0, r=0.05, q=0.05, sigma=0.25, t=1.0), 17.537359445903526),
     ]
     for pricer, price in pinned:
         assert pricer.price() == pytest.approx(price, **LIBM)

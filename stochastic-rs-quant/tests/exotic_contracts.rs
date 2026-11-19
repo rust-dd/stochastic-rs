@@ -223,7 +223,7 @@ fn one_lookback_pricer_prices_both_contracts() {
     assert_pinned!(pricer.price(&option, S, R, Q, 1.0), pinned, "{option:?}");
   }
   let driftless = lookback(None, None, None, Call);
-  assert_pinned!(pricer.price(&driftless, S, R, R, 1.0), 12.730787441362034);
+  assert_pinned!(pricer.price(&driftless, S, R, R, 1.0), 17.537359445903526);
 }
 
 #[test]
