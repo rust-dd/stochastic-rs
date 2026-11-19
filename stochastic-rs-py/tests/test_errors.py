@@ -166,3 +166,10 @@ def test_a_regularization_anchor_that_is_not_finite_is_refused_at_construction()
     anchor = [0.04, float("nan"), 0.04, 0.5, -0.5]
     with pytest.raises(ValueError, match=r"anchor 1 must satisfy `anchor\.is_finite\(\)`, got anchor = NaN"):
         sr.HestonCalibrator(slices, 100.0, 0.02, regularization=(anchor, [1.0] * 5))
+
+
+def test_a_swaption_quote_outside_its_domain_names_its_tau():
+    curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0]), np.full(3, 0.03), interp="log_df")
+    calibrator = sr.HullWhiteSwaptionCalibrator([(-1.0, 2.0, 0.2, 0.5, "payer")], curve, initial_rate=0.03, theta=0.03)
+    with pytest.raises(ValueError, match=r"quote 0 cannot be used: tau must satisfy `tau\.is_finite\(\) && tau > 0\.0`, got tau = -1\.0$"):
+        calibrator.calibrate()

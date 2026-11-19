@@ -1,5 +1,5 @@
 //! One shape per concept: a named pair where a pricer yields both legs, structs from the order
-//! book, and an enum where a flag named the option type.
+//! book, and an enum for the option type.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -183,7 +183,6 @@ fn a_chain_quote_names_its_option_type() {
   assert_eq!(quote.option_type, OptionType::Put);
 }
 
-/// Each pair as pinned before the block, bit for bit.
 #[test]
 fn one_computation_answers_a_named_pair() {
   let heston = heston();
@@ -220,7 +219,6 @@ fn one_computation_answers_a_named_pair() {
   assert_eq!(kirk.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), KIRK.put);
 }
 
-/// Each leg as pinned before the block, bit for bit.
 #[test]
 fn a_closed_form_prices_each_leg_through_the_trait() {
   for (coc, at_tau, at_expiry) in BSM {
@@ -245,7 +243,6 @@ fn a_closed_form_prices_each_leg_through_the_trait() {
   assert_eq!(legs(&BjerksundStensland2002Pricer::new(0.25), TAU), BS2002);
 }
 
-/// rc.4's values, bit for bit.
 #[test]
 fn the_other_carries_and_the_edges_keep_their_values() {
   let at = |model: &dyn ModelPricer, s, k, r, q, tau| {
