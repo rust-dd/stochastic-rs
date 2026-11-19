@@ -402,22 +402,15 @@ impl GaussianHmm {
   }
 
   /// Baum–Welch EM, up to `max_iter` steps, until the gain is below `tol`; panics as `new`; `Err`,
-  /// the last full update kept, on 0 states, < 2, non-finite or constant points, or under/overflow.
+  /// the last full update kept, on fewer than 2, non-finite or constant points, or under/overflow.
   pub fn baum_welch(
     &mut self,
     observations: ArrayView1<f64>,
     max_iter: usize,
     tol: f64,
   ) -> Result<HmmFit, StatsError> {
-    let k = self.n_states();
-    if k == 0 {
-      return Err(StatsError::InvalidParameter {
-        name: "initial.len()",
-        value: 0.0,
-        constraint: "initial.len() >= 1",
-      });
-    }
     self.assert_parameters();
+    let k = self.n_states();
     let y = as_slice_or_copy(observations);
     validate(&y, 2)?;
     reject_constant(&y, "constant series")?;

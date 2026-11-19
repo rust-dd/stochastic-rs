@@ -81,9 +81,9 @@ impl Whittle {
   }
 
   /// Fukasawa–Takabatake–Westphal's fit to log RV; `Err` below 30 points, on a non-finite point or
-  /// objective or a constant series; panics unless `m >= 1`, `0 < delta < ∞` and `0 < psi < π`.
+  /// objective, a constant series, or unless `m >= 1`, `0 < delta < ∞` and `0 < psi < π`.
   pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
-    self.assert_config();
+    self.check_config()?;
     let log_rv = as_slice_or_copy(log_rv);
     validate(&log_rv, 30)?;
     reject_constant(&log_rv, "constant series")?;
@@ -97,7 +97,29 @@ impl Whittle {
     )
   }
 
-  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` repeats for a struct literal.
+  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` answers for a struct literal.
+  fn check_config(&self) -> Result<(), StatsError> {
+    let Self { m, delta, psi, .. } = *self;
+    let invalid = |name, value, constraint| {
+      Err(StatsError::InvalidParameter {
+        name,
+        value,
+        constraint,
+      })
+    };
+    if m < 1 {
+      return invalid("m", m as f64, "m >= 1");
+    }
+    if !(delta.is_finite() && delta > 0.0) {
+      return invalid("delta", delta, "0.0 < delta < inf");
+    }
+    if !(psi > 0.0 && psi < PI) {
+      return invalid("psi", psi, "0.0 < psi < pi");
+    }
+    Ok(())
+  }
+
+  /// [`Whittle::check_config`] as the panic of `new` and of the Python constructor.
   #[track_caller]
   pub(crate) fn assert_config(&self) {
     let Self { m, delta, psi, .. } = *self;
