@@ -63,11 +63,13 @@ fn cir_walk(path: &Array1<f64>, dt: f64, at: &[f64], density: DensityApprox) -> 
   let mut model = cir(at[0], at[1], at[2]);
   let bounds = model.param_bounds();
   let (lower, upper): (Vec<f64>, Vec<f64>) = bounds.into_iter().unzip();
-  let beside = MleProblem::new(&mut model, path.view(), dt, density, &lower, &upper, at).beside(at);
-  let i = beside.along;
-  let held = lower[i] < upper[i] && (at[i] <= lower[i] || at[i] >= upper[i]);
-  let message = beside.stop(held).message(&model.param_names());
-  (beside, message)
+  let (beside, stop) = verdict(
+    &MleProblem::new(&mut model, path.view(), dt, density, &lower, &upper, at),
+    at,
+    &lower,
+    &upper,
+  );
+  (beside, stop.message(&model.param_names()))
 }
 
 /// From a level 20 times off, a CIR search ends where its platform's rounding takes it, at the
