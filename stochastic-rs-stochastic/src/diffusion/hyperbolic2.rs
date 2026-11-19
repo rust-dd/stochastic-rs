@@ -51,8 +51,8 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, `delta > 0`, `gamma > |beta|`, and
-  /// every parameter is finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `delta > 0`, `delta * delta > 0`,
+  /// `gamma > |beta|`, and every parameter is finite.
   pub fn new(
     beta: T,
     gamma: T,
@@ -96,6 +96,10 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
     assert!(
       delta > T::zero(),
       "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      delta * delta > T::zero(),
+      "delta must satisfy `delta * delta > T::zero()`, got delta = {delta:?}"
     );
     assert!(
       gamma > beta.abs(),
@@ -312,6 +316,13 @@ mod tests {
   #[should_panic(expected = "delta must satisfy `delta > T::zero()`, got delta = 0.0")]
   fn new_refuses_a_zero_delta() {
     let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 0.0, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
+  }
+
+  /// A positive `δ` whose square underflows to zero leaves the restoring term `0/0` at `x = μ`.
+  #[test]
+  #[should_panic(expected = "delta must satisfy `delta * delta > T::zero()`, got delta = 1e-200")]
+  fn new_refuses_a_delta_whose_square_underflows() {
+    let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 1e-200, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
   }
 
   /// The hyperbolic law's density is integrable only for `γ > |β|`; here `γ = |β|`, `β < 0`.
