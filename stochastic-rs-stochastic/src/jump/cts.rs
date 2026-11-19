@@ -51,7 +51,7 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Jumps
+  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,

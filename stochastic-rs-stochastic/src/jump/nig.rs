@@ -6,7 +6,7 @@
 //!
 //! For `σ > 0`, the NIG Lévy process at `μ = 0`: `β = θ/σ²`, `δ = σ/√κ`, `α = √(β² + 1/(κσ²))`.
 //!
-//! Reference: Barndorff-Nielsen & Shephard (2001), Theory Probab. Math. Statist. 65, 1–19
+//! Reference: Barndorff-Nielsen & Shephard (2002), Theory Probab. Math. Statist. 65, 1–20
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

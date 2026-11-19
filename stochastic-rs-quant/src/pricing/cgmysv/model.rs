@@ -22,9 +22,9 @@ use crate::pricing::fourier::FourierModelExt;
 pub struct CgmysvParams {
   /// Activity parameter $\alpha \in (0,2)$ (Y in Cgmy notation).
   pub alpha: f64,
-  /// Positive tempering $\lambda_+ > 0$ (G in Cgmy notation).
+  /// Positive tempering $\lambda_+ > 0$ (M in CGMY notation).
   pub lambda_plus: f64,
-  /// Negative tempering $\lambda_- > 0$ (M in Cgmy notation).
+  /// Negative tempering $\lambda_- > 0$ (G in CGMY notation).
   pub lambda_minus: f64,
   /// Cir mean reversion rate $\kappa > 0$.
   pub kappa: f64,

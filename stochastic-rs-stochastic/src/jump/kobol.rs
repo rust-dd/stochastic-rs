@@ -1,5 +1,5 @@
 //! The general tempered stable (KoBoL) family; the side weights `p`, `q` need not sum to one.
-//! [`Cgmy`](crate::jump::cgmy::Cgmy) is the case `D = C`, `p = q = 1`, `λ₊ = G`, `λ₋ = M`.
+//! [`Cgmy`](crate::jump::cgmy::Cgmy) is the case `D = C`, `p = q = 1`, `λ₊ = M`, `λ₋ = G`.
 //!
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}

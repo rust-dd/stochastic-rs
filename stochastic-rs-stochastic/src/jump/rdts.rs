@@ -1,5 +1,5 @@
 //! Kim, Rachev, Bianchi & Fabozzi's standard rapidly decreasing tempered stable process, mean zero
-//! and unit variance per unit time, by a shot-noise series stopped at `j` terms.
+//! and unit variance per unit time, by a shot-noise series stopped at `j` terms (less at α > 1).
 //!
 //! $$
 //! \nu(dx)=C\left(e^{-\lambda_+^2x^2/2}\mathbf 1_{x>0}+e^{-\lambda_-^2x^2/2}\mathbf 1_{x<0}\right)
@@ -37,7 +37,7 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Jumps
+  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,

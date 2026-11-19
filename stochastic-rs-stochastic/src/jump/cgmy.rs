@@ -1,7 +1,7 @@
 //! CGMY by Rosiński's series, stopped at `J` terms; `C` is an input, not a variance normalisation.
 //!
 //! $$
-//! \nu(dx)=C\left(e^{-Gx}x^{-1-Y}\mathbf 1_{x>0}+e^{-M|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
+//! \nu(dx)=C\left(e^{-Mx}x^{-1-Y}\mathbf 1_{x>0}+e^{-G|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
 //! $$
 //!
 //! The drift `b_T` carries the mean compensator, with its `Γ(1 − Y)`, only for `Y < 1`; else 0.
@@ -9,7 +9,7 @@
 //! $$
 //! X(t)=\sum_{j=1}^{J}\Big(\Big(\frac{Y\Gamma_j}{2CT}\Big)^{-1/Y}\wedge
 //! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,\quad
-//! V_j\in\{+G,-M\},\ P(V_j=+G)=P(V_j=-M)=\tfrac12
+//! V_j\in\{+M,-G\},\ P(V_j=+M)=P(V_j=-G)=\tfrac12
 //! $$
 //!
 //! Reference: Carr, Geman, Madan & Yor (2002), J. Business 75(2), 305–332, DOI 10.1086/338705
@@ -37,10 +37,10 @@ use crate::traits::ProcessExt;
 pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall jump intensity scale C > 0
   pub c: T,
-  /// Positive tempering parameter G > 0
-  pub lambda_plus: T, // G
-  /// Negative tempering parameter M > 0
-  pub lambda_minus: T, // M
+  /// Tempering rate of the positive jumps, CGMY's M > 0.
+  pub lambda_plus: T,
+  /// Tempering rate of the negative jumps, CGMY's G > 0.
+  pub lambda_minus: T,
   /// Activity parameter Y in (0, 2)
   pub alpha: T, // Y
   /// Number of time steps
