@@ -131,7 +131,7 @@ within 100 columns, and a `Reference:` line keeps its locator (`§`, `eq.`, `Tab
 pages) and its DOI or arXiv id; shorten the title or the journal name to make it fit.
 
 ```rust
-//! Foo (1999) estimator of the tail index from the `k` largest observations.
+//! Hill (1975) estimator of the tail index from the `k` largest observations.
 //!
 //! $$
 //! \hat\xi_k = \frac1k\sum_{i=1}^{k}\log X_{(i)} - \log X_{(k+1)}
@@ -139,7 +139,7 @@ pages) and its DOI or arXiv id; shorten the title or the journal name to make it
 //!
 //! The standard error is `ξ̂_k / √k`, the limit's.
 //!
-//! Reference: Foo & Bar (1999), Annals of Statistics 3(5), 1163-1174, DOI: 10.1214/aos/1176343247
+//! Reference: Hill (1975), Annals of Statistics 3(5), 1163-1174, DOI: 10.1214/aos/1176343247
 ```
 
 An item doc is at most two lines. It states what the name cannot: a unit, a convention, which
@@ -159,9 +159,9 @@ mod tests {
   use stochastic_rs_stochastic::process::fbm::Fbm;
   use stochastic_rs_stochastic::traits::ProcessExt;
 
-  /// Foo & Bar (1999), Table 3 row 2: `H = 0.7` within `0.02` on 5000 points.
+  /// The law's own `H = 0.7`, within `0.02` on 5000 points of a pinned `Fbm`.
   #[test]
-  fn the_estimate_matches_table_3() {
+  fn the_estimate_recovers_the_laws_hurst_exponent() {
     let series = Fbm::<f64, _>::new(0.7, 5_000, None, Deterministic::new(42)).sample();
     let fit = fit_foo(series.view(), 1.0).unwrap();
     assert!((fit.theta - 0.7).abs() < 0.02, "H = {}", fit.theta);

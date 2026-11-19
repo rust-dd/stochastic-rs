@@ -234,7 +234,7 @@ The `stationarity` module holds nine `HypothesisTest` implementors on `ArrayView
 | `leybourne_mccabe::leybourne_mccabe_test` (LM) | (trend-)stationarity | 1 series | 40 |
 | `andrews_ploberger::andrews_ploberger_test` | regression-parameter constancy | series + design matrix | `3k + 4` |
 | `cusum::cusum_test` | regression-parameter constancy | series + design matrix | `k + 2` |
-| `lo_mackinlay::lo_mackinlay_test` | random walk (`VR(q) = 1`) | 1 series | `4q` |
+| `lo_mackinlay::lo_mackinlay_test` | random walk (`VR(q) = 1`) | 1 series | `4q + 1` (`4q` returns) |
 | `reset::reset_test` | correct linear functional form | series + design matrix | `k + q + 2` |
 
 `k` is the number of design-matrix columns and `q` the aggregation horizon (Lo–MacKinlay) or the number of extra powers (RESET). The lag-dependent tests need more than their floor when the largest lag asks for it.
@@ -293,7 +293,7 @@ The estimators fall into three groups.
   - `RescaledRange` is the oldest (Hurst 1951) and, per Weron (2002), the least reliable in finite samples; it is cheap, not the recommended default.
   - `Dfa` detrends every window with a degree-`order` polynomial, which is why Peng et al. (1994) and Kantelhardt et al. (2001) built it: robustness to the smooth trends that mislead `RescaledRange`.
   - `Gph` (Geweke & Porter-Hudak 1983) and `Wavelet` (Veitch & Abry 1999) work in the frequency and scale domains and are the two that fill `std_err`. `Wavelet`'s Daubechies-4 filter has two vanishing moments, so it is blind to a linear trend but not to a quadratic one, which `Dfa` at a higher `order` removes.
-  - `Variations` (Achard & Coeurjolly 2010; Brouste & Iacus 2013, arXiv:1112.3777) is derived for a discretely observed fractional Ornstein–Uhlenbeck-type process; its three `VariationKind` values differ only in the filter.
+  - `Variations` (Achard & Coeurjolly 2010; Brouste & Iacus 2013, arXiv:1112.3777) is derived for a discretely observed fractional Ornstein–Uhlenbeck-type process; its three `VariationKind` values differ in the filter and, for `PowerVariation`, the power.
 - **Fractal-dimension route** (`fractal_dim::Higuchi`, `fractal_dim::Variogram`): curve length (Higuchi 1988) and the variogram ratio (Constantine & Hall 1994), converted by the fBM identity `H = 2 - D`. The adapter reports `2 - D` unclamped, so a noisy `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`. Both types implement `FractalDimEstimator` and `HurstEstimator`, so import the trait whose output you want.
 - **A different quantity** (`Whittle::fit`): Fukasawa, Takabatake & Westphal (2019, arXiv:1905.04852) estimate the roughness of a latent volatility process from log realized variance aggregated from intraday returns, not the self-similarity of a sampled path. `Whittle` is therefore not a `HurstEstimator`, and it returns a `FukasawaFit`.
 
@@ -313,7 +313,7 @@ Data requirements, the hard validation floor for `f32` or `f64` input:
 
 `goodness_of_fit` tests a sample against a **fully specified** law, through any `cdf` closure such as a distribution's `DistributionExt::cdf`.
 
-- `kolmogorov_smirnov::kolmogorov_smirnov_test` is for continuous samples. Its p-value and critical value both come from Kolmogorov's (1933) limit with Massey's (1951) constants and no finite-sample correction, so the two always agree on rejection.
+- `kolmogorov_smirnov::kolmogorov_smirnov_test` is for continuous samples. Its p-value and critical value both come from Kolmogorov's (1933) limit, with no finite-sample correction, and the critical value solves `Q(c) = alpha` for the survival function `Q` the p-value reads, so the two agree on rejection.
 - `chi_square::chi_square_gof_test` is for discrete or binned counts: on an integer lattice the null CDF jumps at every support point and the KS statistic is not calibrated. `chi_square::pool_integer_bins` pools adjacent cells until each expects at least `min_expected` counts (Cochran's 1954 rule of thumb is 5), and the test answers `Err` when a bin expects fewer than 1.
 
 Neither test corrects for parameters fitted from the sample under test. A fitted CDF hugs the empirical one, so the plain tables under-reject; Lilliefors (1967) gives the corrected KS values, and a fitted chi-square loses one degree of freedom per estimated parameter.
