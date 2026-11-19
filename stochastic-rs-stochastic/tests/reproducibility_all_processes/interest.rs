@@ -2,6 +2,7 @@
 //! `Fn2D<T>`) is passed as a named function cast to a pointer: a bare closure does not coerce.
 
 use ndarray::Array1;
+use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 // `Cir2F` needs two full `Cir<T, S>` sub-processes — the crate's most
 // constructor-heavy type — pulled in from the diffusion family.
@@ -28,6 +29,7 @@ use crate::common::N;
 use crate::common::fn1d_a;
 use crate::common::fn2d_a;
 use crate::common::guard;
+use crate::common::variant;
 
 guard!(adg, "Adg", |s| Adg::new(
   fn1d_a as fn(f64) -> f64,
@@ -204,6 +206,22 @@ guard!(lmm, "Lmm", |s| Lmm::new(
   Some(2.0),
   s
 ));
+
+// The correlated spot drift, which the guard above, with no correlation, never runs.
+variant!(lmm_correlated, "LmmCorrelated", |s| Lmm::new(
+  Array1::from(vec![0.0, 0.5, 1.0, 1.5, 2.0]),
+  Array1::from(vec![0.03, 0.035, 0.04, 0.045]),
+  Array1::from(vec![0.20, 0.20, 0.20, 0.20]),
+  N,
+  Some(2.0),
+  s
+)
+.with_correlation(array![
+  [1.0, 0.7, 0.4, 0.2],
+  [0.7, 1.0, 0.7, 0.4],
+  [0.4, 0.7, 1.0, 0.7],
+  [0.2, 0.4, 0.7, 1.0]
+]));
 
 guard!(vasicek, "Vasicek", |s| Vasicek::new(
   3.0,

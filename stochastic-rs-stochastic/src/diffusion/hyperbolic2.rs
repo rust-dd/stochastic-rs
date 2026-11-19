@@ -51,7 +51,8 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
-  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `delta > 0`, `delta * delta > 0`,
+  /// `gamma > |beta|`, and every parameter is finite.
   pub fn new(
     beta: T,
     gamma: T,
@@ -91,6 +92,18 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      delta * delta > T::zero(),
+      "delta must satisfy `delta * delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma > beta.abs(),
+      "gamma must satisfy `gamma > beta.abs()`, got gamma = {gamma:?}, beta = {beta:?}"
     );
     Self {
       backend: Cpu,
@@ -295,7 +308,30 @@ mod tests {
       )
       .sample()[1]
     };
-    assert_eq!(first(0.0), first(5.0));
+    assert_eq!(first(0.5), first(5.0));
+  }
+
+  /// With `δ = 0` the restoring term is `0/0` at `x = μ`, where a path from `x0 = mu` starts.
+  #[test]
+  #[should_panic(expected = "delta must satisfy `delta > T::zero()`, got delta = 0.0")]
+  fn new_refuses_a_zero_delta() {
+    let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 0.0, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
+  }
+
+  /// A positive `δ` whose square underflows to zero leaves the restoring term `0/0` at `x = μ`.
+  #[test]
+  #[should_panic(expected = "delta must satisfy `delta * delta > T::zero()`, got delta = 1e-200")]
+  fn new_refuses_a_delta_whose_square_underflows() {
+    let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 1e-200, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
+  }
+
+  /// The hyperbolic law's density is integrable only for `γ > |β|`; here `γ = |β|`, `β < 0`.
+  #[test]
+  #[should_panic(
+    expected = "gamma must satisfy `gamma > beta.abs()`, got gamma = 0.5, beta = -0.5"
+  )]
+  fn new_refuses_a_gamma_at_most_the_skew() {
+    let _ = Hyperbolic2::<f64>::new(-0.5, 0.5, 1.0, 0.0, 0.2, 24, None, None, Unseeded);
   }
 
   /// With `β = 0` the invariant hyperbolic law is symmetric about `μ`, the long-run mean.

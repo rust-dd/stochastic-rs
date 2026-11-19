@@ -210,3 +210,15 @@ macro_rules! guard {
   };
 }
 pub(crate) use guard;
+
+/// A `guard!` for a configuration its process's own guard leaves out; another name keeps the
+/// `guard!` lines one per process, as `CLAUDE.md` counts them.
+macro_rules! variant {
+  ($test_fn:ident, $display:literal, $make:expr) => {
+    #[test]
+    fn $test_fn() {
+      crate::common::check($display, $make);
+    }
+  };
+}
+pub(crate) use variant;

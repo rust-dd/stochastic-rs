@@ -448,7 +448,7 @@ Coverage note: these tables survey only `stochastic-rs-stochastic`. The same let
 | Long-run **variance level** (θ in the model's own SDE) | `Heston`, `RlHeston`, and the wider Heston family (`theta`) |
 | Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | `HullWhite`, `HullWhite2F`, `BlackKarasinski` (`theta: Fn1D<T>`); the same role is played by `Adg`'s `k` field, which is named differently |
 | Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | `Merton`, `Kou` (`theta`); the same role is played by `Bates`'s `k` field |
-| Skewness-in-subordinated-time (β in the model's own SDE) — **not** mean reversion; NIG has none | `Nig` (`theta`) |
+| Drift per unit of subordinated time, which skews the law (θ in the model's own display; Barndorff-Nielsen's β is θ/σ²) — **not** mean reversion; NIG has none | `Nig` (`theta`) |
 
 `Ckls`'s `theta1..theta4` are a separate, non-colliding convention: the Chan–Karolyi–Longstaff–Sanders paper itself numbers its four coefficients θ₁–θ₄ (drift intercept, drift slope, diffusion scale, diffusion elasticity) — not an instance of the single-θ ambiguity above.
 
@@ -524,7 +524,7 @@ Mostly consistent: the diffusion scale of a Brownian driver. Two notes:
 | Role | Models (field) |
 |---|---|
 | Jump (Poisson) intensity — arrival rate | `Merton`, `Kou`, `Bates`, `MjdLog`, `JumpFou`, `LevyDiffusion` (`lambda`) |
-| Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, i.e. G/M) — an exponential decay rate of the jump-size density, not an arrival rate | `Cgmy`, `Cts`, `Rdts`, `Kobol`, `BilateralGamma` (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
+| Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, CGMY's M/G) — the jump-size density's decay, exponential (Gaussian for `Rdts`), not an arrival rate | `Cgmy`, `Cts`, `Rdts`, `Kobol`, `BilateralGamma` (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
 
 In the Hawkes family, `lambda_t` is the modeled self-exciting intensity **state**, not an input parameter; the input baseline is a separate `mu` field.
 

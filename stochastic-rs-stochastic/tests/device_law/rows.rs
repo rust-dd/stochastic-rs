@@ -14,6 +14,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use super::common::Device;
 use super::common::M;
 use super::common::agrees;
+use super::common::means_agree_values;
 
 const N: usize = 253;
 
@@ -455,14 +456,10 @@ fn lmm_drift_coupling_agrees_with_the_cpu_law() {
     let device = build().on::<Device>().sample_par(PATHS);
     let host = build().sample_par(PATHS);
     for row in 1..3 {
-      let mean = |paths: &[Array2<f32>]| {
-        let r = log_returns(paths, row);
-        r.iter().sum::<f64>() / r.len() as f64
-      };
-      let (h, d) = (mean(&host), mean(&device));
-      assert!(
-        (h - d).abs() < 0.02,
-        "LMM forward {row} mean log-return (correlated: {correlated}): host {h}, device {d}"
+      means_agree_values(
+        &log_returns(&host, row),
+        &log_returns(&device, row),
+        &format!("LMM forward {row} mean log-return (correlated: {correlated})"),
       );
     }
   }

@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::nig::Nig;
+use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
@@ -14,7 +15,11 @@ use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::Poiss
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::characteristic_function_holds;
+use super::common::holds_on_one_of;
 use super::common::increments;
+use super::common::over_paths;
+use super::common::spread_over_paths;
+use super::common::terminals;
 use super::common::transform_holds;
 
 /// Grid points per path. One more than the unit steps each path contributes.
@@ -57,7 +62,7 @@ fn variance_gamma_matches_the_madan_carr_chang_transform() {
 
 /// Normal inverse Gaussian, `φ(u) = exp((t/κ)(1 − √(1 − 2iuθκ + σ²u²κ)))`: Brownian motion with
 /// drift `θ` under an inverse-Gaussian clock, in the constructor's `(θ, σ, κ)` parameters.
-/// Reference: Barndorff-Nielsen (1997), §3
+/// Reference: Barndorff-Nielsen & Shephard (2002), Theory Probab. Math. Statist. 65, 1–20
 #[test]
 fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
   let (theta, sigma, kappa) = (0.15, 0.5, 0.4);
@@ -104,6 +109,32 @@ fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
     let plus = Complex64::new(1.0, -u / lambda_p).powf(-alpha_p);
     let minus = Complex64::new(1.0, u / lambda_m).powf(-alpha_m);
     characteristic_function_holds(&sample, u, plus * minus, "bilateral gamma");
+  }
+}
+
+/// The standard RDTS of Kim, Rachev, Bianchi & Fabozzi (2010): mean 0 by the drift, variance 1
+/// by the scale `C`. At `α < 1` the terms past 256 shift both by under a tenth of a standard error.
+#[test]
+fn rapidly_decreasing_tempered_stable_has_the_standard_mean_and_variance() {
+  for (alpha, lambda_plus, lambda_minus) in [(0.5, 2.0, 3.0), (0.3, 1.5, 4.0)] {
+    let x1 = [2718, 999, 42].map(|seed| {
+      let rdts = Rdts::<f64, _>::new(
+        lambda_plus,
+        lambda_minus,
+        alpha,
+        2,
+        256,
+        None,
+        None,
+        Deterministic::new(seed),
+      );
+      terminals(&rdts.sample_par(4_096))
+    });
+    let at = format!("RDTS at α = {alpha}, λ = ({lambda_plus}, {lambda_minus})");
+    let means = x1.each_ref().map(|x| over_paths(x));
+    holds_on_one_of(&means, 0.0, &format!("{at}: mean"));
+    let variances = x1.each_ref().map(|x| spread_over_paths(x));
+    holds_on_one_of(&variances, 1.0, &format!("{at}: variance"));
   }
 }
 

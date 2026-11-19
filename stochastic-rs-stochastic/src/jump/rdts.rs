@@ -1,10 +1,13 @@
-//! Rapidly decreasing tempered stable process by a shot-noise series stopped at `j` terms.
+//! Kim, Rachev, Bianchi & Fabozzi's standard rapidly decreasing tempered stable process, mean zero
+//! and unit variance per unit time, by a shot-noise series stopped at `j` terms (less at α > 1).
 //!
 //! $$
-//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx
-//! \quad(\text{rapidly decaying tempered stable})
+//! \nu(dx)=C\left(e^{-\lambda_+^2x^2/2}\mathbf 1_{x>0}+e^{-\lambda_-^2x^2/2}\mathbf 1_{x<0}\right)
+//! |x|^{-1-\alpha}dx,\quad
+//! C=\left(2^{-\alpha/2}\Gamma(1-\alpha/2)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\right)^{-1}
 //! $$
 //!
+//! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -24,19 +27,17 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Rdts process (Rapidly Decreasing Tempered Stable process)
-/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 #[derive(Debug, Clone)]
 pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: T, // G
-  /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: T, // M
+  /// Gaussian tempering parameter λ₊ of the positive jumps.
+  pub lambda_plus: T,
+  /// Gaussian tempering parameter λ₋ of the negative jumps.
+  pub lambda_minus: T,
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Jumps
+  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -125,11 +126,12 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// The scale `C = (Γ(2 - α) (λ₊^{α-2} + λ₋^{α-2}))^{-1}` that normalises
-  /// the law's variance to one.
+  /// The standard RDTS's scale `C = (2^{-α/2} Γ(1 - α/2) (λ₊^{α-2} + λ₋^{α-2}))^{-1}`, under which
+  /// `X_1` has variance one.
   fn tempering_constant(&self) -> T {
-    let g = gamma(2.0 - self.alpha.to_f64().unwrap());
-    (T::from_f64_fast(g)
+    let g = gamma(1.0 - self.alpha.to_f64().unwrap() / 2.0);
+    (T::from_usize_(2).powf(-self.alpha / T::from_usize_(2))
+      * T::from_f64_fast(g)
       * (self.lambda_plus.powf(self.alpha - T::from_usize_(2))
         + self.lambda_minus.powf(self.alpha - T::from_usize_(2))))
     .powi(-1)
@@ -150,13 +152,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Rdts<T, S, B>
 {
   /// The series constants, folded once: the arrival rate `α / (2 C T)`, the exponential draw
-  /// entering as `√E / 2` (the law's Gaussian-tempered size), and the two sides equally likely.
+  /// entering as `√(2E)` (the law's Gaussian-tempered size), and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
       rate: self.alpha / (T::from_usize_(2) * self.tempering_constant() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
-      e_scale: T::from_f64_fast(0.5),
+      e_scale: T::from_f64_fast(std::f64::consts::SQRT_2),
       e_pow: T::from_f64_fast(0.5),
       w_plus: T::from_f64_fast(0.5),
       lambda_plus: self.lambda_plus,
@@ -354,10 +356,11 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
       let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
 
-      // Rdts: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
-      let term2 =
-        T::from_f64_fast(0.5) * e[j].powf(T::from_f64_fast(0.5)) * u[j].powf(T::one() / self.alpha)
-          / v_j.abs();
+      // `P(√(2E) > λx) = e^{−λ²x²/2}`: the minimum tempers the stable size as `ν` does.
+      let term2 = T::from_f64_fast(std::f64::consts::SQRT_2)
+        * e[j].powf(T::from_f64_fast(0.5))
+        * u[j].powf(T::one() / self.alpha)
+        / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
@@ -384,7 +387,6 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
         k += 1;
       }
 
-      // direkt formula: x(t_i) = x0 + sum_{tau_j<=t_i} jump_j + b_t * t_i
       out[i] = self.x0 + cum_jumps + b_t * t_i;
     }
   }

@@ -43,6 +43,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
 use crate::common::guard;
+use crate::common::variant;
 
 guard!(ait_sahalia, "AitSahalia", |s| AitSahalia::new(
   0.01,
@@ -253,6 +254,11 @@ guard!(hyperbolic2, "Hyperbolic2", |s| Hyperbolic2::new(
   Some(1.0),
   s
 ));
+
+// A restoring term centred off the origin, which the guard above, at `mu = 0`, cannot tell apart.
+variant!(hyperbolic2_off_origin, "Hyperbolic2OffOrigin", |s| {
+  Hyperbolic2::new(0.1, 1.0, 1.0, 1.5, 0.2, N, Some(1.0), Some(1.0), s)
+});
 
 guard!(jacobi, "Jacobi", |s| Jacobi::new(
   0.5,
