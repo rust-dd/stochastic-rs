@@ -187,9 +187,14 @@ fn a_ladder_with_a_pillar_at_every_payment_keeps_the_direct_formula() {
   let d3 = (1.0 - 0.04 * (d1 + d2)) / (1.0 + 0.04);
   for method in [LOG_LINEAR, LINEAR_ZERO, InterpolationMethod::MonotoneConvex] {
     let curve = built(&inst, method);
-    assert_eq!(curve.discount_factor(1.5), d1 / (1.0 + 0.033 * 0.5));
-    assert_eq!(curve.discount_factor(2.0), d2);
-    assert_eq!(curve.discount_factor(3.0), d3);
+    let nodes: Vec<f64> = curve.points().iter().map(|p| p.discount_factor).collect();
+    assert_eq!(nodes[..3], [d1, d1 / (1.0 + 0.033 * 0.5), d2]);
+    // `D(2)` is read at the last pillar through `exp` and `ln`.
+    assert!(
+      (nodes[3] - d3).abs() <= 1e-15,
+      "{method:?}: {} against {d3}",
+      nodes[3]
+    );
   }
 }
 

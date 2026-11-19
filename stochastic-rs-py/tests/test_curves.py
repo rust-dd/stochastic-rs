@@ -18,6 +18,11 @@ def flat(rate):
     return sr.DiscountCurve.from_zero_rates(np.array([0.25, 1.0, 5.0, 10.0]), np.full(4, rate), interp="log_df")
 
 
+def assert_close(got, want):
+    """A bootstrapped read passes through libm and a root: 1e-15, not the last bit."""
+    assert len(got) == len(want) and all(abs(g - w) <= 1e-15 for g, w in zip(got, want)), (got, want)
+
+
 def test_multi_curve_reads_a_tenor_string_and_rejects_one_that_names_no_tenor():
     ois, forecast = flat(0.02), flat(0.025)
     for tenor in ["3M", "3m", "O/N", "ON", "1M", "6M", "12M", "1Y"]:
@@ -74,14 +79,14 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
     }
     for interp, pins in between_pillars.items():
         curve = sr.DiscountCurve.bootstrap_ois(schedules, par, interp=interp)
-        assert [curve.discount_factor(t) for t in (0.1, 0.75, 1.5, 3.0, 4.0)] == pins
+        assert_close([curve.discount_factor(t) for t in (0.1, 0.75, 1.5, 3.0, 4.0)], pins)
 
 
 def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_its_first_pillar():
     schedules, rates = [[0.5], [0.25, 0.5, 0.75, 1.0], [0.25 * i for i in range(1, 9)]], [0.03, 0.031, 0.033]
     reads = (0.05, 0.1, 0.25, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0)
     log_df = sr.DiscountCurve.bootstrap_ois(schedules, rates, interp="log_df")
-    assert [log_df.discount_factor(t) for t in reads] == [
+    assert_close([log_df.discount_factor(t) for t in reads], [
         0.9985122465546779,
         0.9970267065196697,
         0.9925833339709303,
@@ -91,9 +96,9 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9695831158726758,
         0.9528031937739929,
         0.9363136704879836,
-    ]
+    ])
     linear = sr.DiscountCurve.bootstrap_ois(schedules, rates, interp="linear")
-    assert [linear.discount_factor(t) for t in reads] == [
+    assert_close([linear.discount_factor(t) for t in reads], [
         0.9985122465546779,
         0.9970267065196697,
         0.9925833339709303,
@@ -103,19 +108,19 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9695820741914576,
         0.9532779954762216,
         0.9363028823658401,
-    ]
+    ])
     swaps = [(0.032, [1.0], [0.25, 0.5, 0.75, 1.0]), (0.034, [1.0, 2.0], [0.25 * i for i in range(1, 9)])]
     forecast = sr.DiscountCurve.bootstrap_forecast(flat(0.02), [(0.5, 0.03)], [], swaps, interp="log_df")
-    assert [forecast.discount_factor(t) for t in (0.1, 0.25, 0.5, 1.0, 1.5, 2.0)] == [
+    assert_close([forecast.discount_factor(t) for t in (0.1, 0.25, 0.5, 1.0, 1.5, 2.0)], [
         0.9970267065196697,
         0.9925833339709303,
         0.9852216748768474,
         0.9688515555947406,
         0.9517530767743727,
         0.9349563552008011,
-    ]
+    ])
     forecast = sr.DiscountCurve.bootstrap_forecast(flat(0.02), [(0.5, 0.03)], [], swaps, interp="linear")
-    assert [forecast.discount_factor(t) for t in (1.0, 2.0)] == [0.9688504774188735, 0.9349496554140198]
+    assert_close([forecast.discount_factor(t) for t in (1.0, 2.0)], [0.9688504774188735, 0.9349496554140198])
 
 
 def test_a_bootstrap_quote_that_gives_no_pillar_raises_value_error():
