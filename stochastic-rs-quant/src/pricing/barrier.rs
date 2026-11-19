@@ -6,7 +6,8 @@
 //!
 //! Source:
 //! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", §4.17.1, ISBN 0071389970
+//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
+//! - Vector Risk (2017), "Single Barrier Option", v8.0.7905, p. 2, citing Haug's §4.17.1, p. 152
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
 use rayon::prelude::*;

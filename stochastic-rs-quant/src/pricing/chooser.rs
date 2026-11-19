@@ -7,7 +7,8 @@
 //!
 //! Source:
 //! - Rubinstein, M. (1991), "Options for the Undecided", *RISK Magazine* 4(4)
-//! - Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine* 4(2), 13
+//! - Rubinstein, M. (1991), "Pay Now, Choose Later", *RISK Magazine*
+//! - Vector Risk (2017), "Forward Start Option", v8.0.7905, p. 2, citing Rubinstein's 4(2), 13
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.2
 //!
 use owens_t::biv_norm;
