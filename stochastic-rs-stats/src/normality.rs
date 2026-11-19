@@ -1,19 +1,6 @@
-//! # Normality tests
+//! Normality tests: Jarque–Bera on moments, Anderson–Darling on tails, Shapiro–Francia on shape.
 //!
-//! Three classical normality tests for samples on the real line:
-//!
-//! | Test | Power on | Notes |
-//! |------|----------|-------|
-//! | [`jarque_bera::jarque_bera_test`] | skewness + excess kurtosis | $\chi^2_2$ asymptotic, very fast |
-//! | [`anderson_darling::anderson_darling_normal_test`] | tail behaviour | Stephens p-value, hard on heavy tails |
-//! | [`shapiro_francia::shapiro_francia_test`] | full shape | bootstrap p-value, slowest but powerful |
-//!
-//! ## Cross-module pairing with [`stochastic_rs_distributions`]
-//!
-//! The [`stochastic_rs_distributions::normal::SimdNormal`] sampler from the
-//! `distributions` crate is the canonical generator for normal samples; the
-//! tests here are the canonical *checkers* for whether a sample looks
-//! normal. End-to-end roundtrip:
+//! [`stochastic_rs_distributions::normal::SimdNormal`] generates the sample these tests check:
 //!
 //! ```
 //! use ndarray::ArrayView1;
@@ -35,9 +22,6 @@
 //!     .expect("5 000 finite draws");
 //! assert!(!res.rejects_null, "JB should not reject a true normal sample");
 //! ```
-//!
-//! Use the same pattern with `SimdLogNormal`, `SimdStudentT`, etc. to
-//! quantify how strongly each test rejects departures from normality.
 
 pub mod anderson_darling;
 pub mod jarque_bera;

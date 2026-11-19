@@ -1,17 +1,9 @@
-//! Unscented Kalman Filter (UKF) — single forward step.
+//! Unscented Kalman filter, one forward step.
 //!
-//! Approximates the moments of a non-linear stochastic state-space model by
-//! propagating $2n+1$ deterministically-chosen sigma points through the
-//! transition $f$ and measurement $h$ functions, then computing weighted
-//! sample mean and covariance.
+//! `2n + 1` sigma points go through the transition and the measurement; the step is their moments.
 //!
-//! Reference: Julier, Uhlmann, "Unscented Filtering and Nonlinear Estimation",
-//! Proceedings of the IEEE, 92(3), 401-422 (2004).
-//! DOI: 10.1109/JPROC.2003.823141
-//!
-//! Reference: Wan, van der Merwe, "The Unscented Kalman Filter for Nonlinear
-//! Estimation", IEEE Adaptive Systems for Signal Processing, Communications,
-//! and Control Symposium 2000, 153-158. DOI: 10.1109/ASSPCC.2000.882463
+//! Reference: Julier & Uhlmann (2004), Proc. IEEE 92(3), 401-422, DOI: 10.1109/JPROC.2003.823141
+//! Reference: Wan & van der Merwe (2000), IEEE AS-SPCC, 153-158, DOI: 10.1109/ASSPCC.2000.882463
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -55,7 +47,7 @@ impl Default for UkfTuning {
 }
 
 /// One UKF predict-update of `prior` with sigma points set by `tuning`; `Err` on a non-PD prior or
-/// a singular innovation covariance, and panics on mismatched shapes or a `tuning` out of range.
+/// a singular innovation covariance; panics unless the shapes agree and `tuning` is in its range.
 pub fn unscented_kalman_step<F, H>(
   prior: &UkfState,
   transition: F,

@@ -1,16 +1,9 @@
-//! Anderson-Darling test for normality, using the Stephens (1974)
-//! finite-sample correction and p-value approximation for the case
-//! where both the mean and variance are estimated from the sample.
+//! Anderson–Darling test for normality with the mean and the variance estimated from the sample.
 //!
-//! References:
-//! - Anderson T. W. & Darling D. A. (1952) — *Asymptotic Theory of
-//!   Certain "Goodness of Fit" Criteria Based on Stochastic Processes*,
-//!   Ann. Math. Statist. 23(2), 193–212, DOI: 10.1214/aoms/1177729437.
-//! - Stephens M. A. (1974) — *EDF Statistics for Goodness of Fit and
-//!   Some Comparisons*, J. Amer. Statist. Assoc. 69(347), 730–737,
-//!   DOI: 10.1080/01621459.1974.10480196 — source of the
-//!   `1 + 0.75/n + 2.25/n²` adjustment and the piecewise p-value
-//!   approximation used below.
+//! The `1 + 0.75/n + 2.25/n²` adjustment and the piecewise p-value are Stephens' (1974).
+//!
+//! Reference: Anderson–Darling (1952), Ann. Math. Stat. 23(2), 193–212, 10.1214/aoms/1177729437
+//! Reference: Stephens (1974), JASA 69(347), 730–737, DOI: 10.1080/01621459.1974.10480196
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -145,15 +138,8 @@ mod tests {
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {
-    // Run with several seeds to avoid flaky failures: the A-D test rejects a
-    // true normal ~1% of the time, and SimdNormal outputs differ across
-    // platforms (SIMD vs scalar fallback), so a single seed can be unlucky on
-    // some CI targets.
-    //
-    // The seed has to reach the distribution constructor. `fill_slice` ignores
-    // the `Rng` argument and draws from the distribution's own SIMD stream, so
-    // the earlier `StdRng::seed_from_u64` here controlled nothing and the three
-    // "seeds" were three unseeded draws.
+    // The best of three seeds: the test rejects a true normal about 1% of the time and the stream
+    // differs by platform; the seed goes to the constructor, the one place `fill_slice` reads it.
     let best_p = [42u64, 123, 999]
       .into_iter()
       .map(|seed| {

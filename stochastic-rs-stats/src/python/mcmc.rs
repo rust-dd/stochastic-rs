@@ -10,13 +10,8 @@ type Chain<'py> = (
   f64,
 );
 
-/// Random-walk Metropolis-Hastings with a Python-callable log target.
-///
-/// `log_target` is a Python function `numpy.ndarray -> float` that may return
-/// `-inf` to encode hard constraints. The chain runs in pure Python-callback
-/// mode (single-threaded, GIL-bound), so it is most useful for low-dimensional
-/// parameter spaces. For performance-critical work consider porting the
-/// log-density to Rust and exposing it as a closed-form distribution instead.
+/// Random-walk Metropolis–Hastings on a Python `log_target(numpy.ndarray) -> float`, which may
+/// return `-inf` for a hard constraint; every step calls back under the GIL, single-threaded.
 #[pyfunction]
 #[pyo3(signature = (initial, log_target, proposal_scale, n_samples, burn_in=1000, seed=42))]
 pub fn random_walk_metropolis<'py>(

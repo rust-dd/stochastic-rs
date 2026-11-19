@@ -1,10 +1,6 @@
 //! PyO3 wrappers for `stochastic-rs-stats`.
 //!
-//! Hypothesis tests (Jarque-Bera, Anderson-Darling, Shapiro-Francia, ADF, KPSS),
-//! Hurst-exponent estimators (Fukasawa, fOU v1/v2), Heston MLE, and the realised
-//! variance / bipower-variation / jump tests, all exposed as `#[pyclass]` types
-//! that take a numpy array and return a result object with the test statistic
-//! and either a p-value or boolean rejection flag.
+//! Each class takes numpy arrays and answers a result object: a test's decision or an estimate.
 
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]

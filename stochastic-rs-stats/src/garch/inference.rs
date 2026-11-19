@@ -1,6 +1,6 @@
-//! Finite-difference Hessian and outer-product-of-scores at the optimum,
-//! combined into the inverse-Hessian and Bollerslev–Wooldridge sandwich
-//! covariances.
+//! The inverse-Hessian and Bollerslev–Wooldridge sandwich covariances at the optimum.
+//!
+//! The Hessian and the per-observation scores are central differences in the natural parameters.
 
 use ndarray::Array2;
 use stochastic_rs_distributions::linalg::inverse;

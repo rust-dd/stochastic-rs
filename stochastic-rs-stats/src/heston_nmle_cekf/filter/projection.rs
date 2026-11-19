@@ -6,16 +6,9 @@ pub enum HestonCekfPositiveStatePolicy {
   /// Returns a typed error when the posterior variance reaches the floor.
   #[default]
   Strict,
-  /// Projects the finite posterior mean onto `[floor, +infinity)`.
-  ///
-  /// In one state dimension this is the solution of the covariance-weighted
-  /// constrained least-squares problem
-  /// `argmin_v (v - raw)^2 / P` subject to `v >= floor`.
-  /// The unconstrained CEKF covariance bound is retained: an active inequality
-  /// is not treated as a zero-uncertainty equality constraint.
-  ///
-  /// See Gupta and Hauser, *Kalman Filtering with Equality and Inequality
-  /// State Constraints*, Eq. 64: <https://arxiv.org/abs/0709.2791>
+  /// Projects the posterior mean onto `[floor, +∞)`, `argmin_v (v - raw)² / P` over `v >= floor`;
+  /// the CEKF covariance bound stays, as an active inequality is not a zero-uncertainty equality.
+  /// Reference: Gupta & Hauser, Eq. 64, <https://arxiv.org/abs/0709.2791>
   Project { floor: f64 },
 }
 

@@ -1,3 +1,7 @@
+//! Leybourne–McCabe stationarity test: KPSS's statistic on AR-prewhitened residuals, bootstrapped.
+//!
+//! Reference: Leybourne & McCabe (1994), JBES 12(2), 157-166, DOI: 10.1080/07350015.1994.10510004
+
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
@@ -17,7 +21,8 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 
-/// Configuration for the Leybourne-McCabe stationarity test.
+/// Configuration of the Leybourne–McCabe test, which panics unless `trend != Trend::None`,
+/// `ar_lags >= 1`, `bootstrap_samples >= 1` and `0 < alpha < 1`.
 #[derive(Debug, Clone, Copy)]
 pub struct LeybourneMcCabeConfig {
   /// Null deterministic structure: `Constant` (level) or `ConstantTrend`.
@@ -121,7 +126,7 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
 }
 
 /// Leybourne–McCabe test; `Err` below `max(40, ar_lags + 15, 2 ar_lags + 1)` points, a non-finite
-/// or constant series, a singular or exact AR fit or a failed bootstrap; panics on a bad config.
+/// or constant series, a singular or exact AR fit, a failed bootstrap; panics as `cfg`'s type says.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
@@ -145,7 +150,9 @@ pub fn leybourne_mccabe_test(
   let needed = 40
     .max(cfg.ar_lags.saturating_add(15))
     .max(min_sample_size(cfg.ar_lags, Trend::None));
-  let y = prepared(y, needed)?;
+  // Less its mean first, an exact subtraction: detrending then meets the series near zero, where a
+  // second mean or a trend's constant does not round the variation away.
+  let y = centred(&prepared(y, needed)?);
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let fit = prewhitened(&y, include_trend, cfg.ar_lags)?;
@@ -238,8 +245,8 @@ mod tests {
   /// non-stationary alternative, so the null must be rejected.
   #[test]
   fn leybourne_mccabe_rejects_random_walk() {
-    // 900 points and 160 bootstrap replicates gave too little power to reject
-    // reliably; a longer series plus the best-of-three seeds fixes that.
+    // Power grows with the length, so the walk is 2,500 points long; the test asks any of three
+    // seeds to reject, so that no one draw decides it.
     let runs = [0x1E7B0Bu64, 0x1E7B0C, 0x1E7B0D].map(|seed| {
       let x = simulate_random_walk(2500, seed);
       let cfg = LeybourneMcCabeConfig {

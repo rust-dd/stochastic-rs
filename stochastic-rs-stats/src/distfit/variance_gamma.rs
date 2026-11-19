@@ -1,6 +1,6 @@
-//! Variance-gamma maximum likelihood in $(\log\sigma, \log\nu, \theta, \mu)$
-//! through the Bessel-form density, with a profile pass over the smooth
-//! parameters once the cusp in $\mu$ has been located.
+//! Variance-gamma maximum likelihood through the Bessel-form density, in `(ln σ, ln ν, θ, μ)`.
+//!
+//! A profile pass over the smooth parameters follows once the cusp in `μ` has been located.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -70,10 +70,8 @@ pub fn fit_variance_gamma<T: FloatExt>(
     }
   }
   let (theta, iterations, converged) = minimise(&starts, objective);
-  // The VG log-density has a cusp at x = μ, so the likelihood's maximum in
-  // μ sits on a data point where the joint simplex stalls; with μ pinned
-  // there the remaining parameters are smooth and a second simplex pass
-  // recovers the last digits.
+  // The VG log-density has a cusp at `x = μ`, so the maximum in μ sits on a data point where the
+  // joint simplex stalls; with μ pinned there a second pass recovers the last digits.
   let mu = theta[3];
   let profile = |p: &[f64]| log_density(&x, p[0].exp(), p[1].exp(), p[2], mu);
   let (smooth, iters_profile, converged_profile) = minimise(&[theta[..3].to_vec()], profile);

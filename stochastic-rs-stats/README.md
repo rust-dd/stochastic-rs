@@ -11,8 +11,9 @@ workspace. Every estimator is anchored to a published paper.
 
 ## What is in it
 
-- **Hurst exponent** — Fukasawa, rescaled range, DFA, GPH, wavelet,
-  Whittle, variogram and Higuchi fractal dimension.
+- **Hurst exponent** — rescaled range, DFA, GPH, wavelet, variations,
+  variogram and Higuchi fractal dimension; `Whittle::fit` for the roughness
+  of volatility from realized variance.
 - **Maximum likelihood** — 1-D diffusions with six transition-density
   approximations, plus QMLE, GMM for CIR, Heston MLE, particle MLE and a
   non-linear-marginal CEKF for Heston.

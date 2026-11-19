@@ -1,12 +1,6 @@
-//! Granger causality test based on a VAR(p) F-test of nested OLS.
+//! Granger causality: the F-test of `y` on its own lags against `y` on its own and `x`'s lags.
 //!
-//! Tests $H_0$: lags of $X$ do not Granger-cause $Y$ versus $H_1$ that they
-//! do, comparing restricted ($Y$ on its own lags) and unrestricted ($Y$ on
-//! its own lags + lags of $X$) regression sums of squares.
-//!
-//! Reference: Granger, "Investigating Causal Relations by Econometric Models
-//! and Cross-Spectral Methods", Econometrica, 37(3), 424-438 (1969).
-//! DOI: 10.2307/1912791
+//! Reference: Granger (1969), Econometrica 37(3), 424-438, DOI: 10.2307/1912791
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -48,7 +42,7 @@ impl crate::traits::HypothesisTest for GrangerTest {
 }
 
 /// Does `x` Granger-cause `y`? `Err` below `3 lags + 3` points, a non-finite or constant series,
-/// unequal lengths, a singular or exact fit, `Numerical` on a non-finite `F`; panics on bad config.
+/// unequal lengths, a bad fit or `F`; panics unless `lags >= 1` and `0 < alpha < 1`.
 pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,

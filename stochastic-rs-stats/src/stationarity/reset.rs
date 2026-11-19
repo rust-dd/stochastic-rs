@@ -1,25 +1,18 @@
-//! Ramsey (1969) RESET (REgression Equation Specification Error Test) for
-//! functional-form misspecification.
+//! Ramsey (1969) RESET, the regression equation specification error test of functional form.
 //!
-//! Given the linear regression $y_t = x_t^\top \beta + \varepsilon_t$, fit OLS
-//! to obtain fitted values $\hat y_t$ and augment with powers
-//! $\hat y_t^2, \dots, \hat y_t^p$:
 //! $$
-//! y_t = x_t^\top \beta + \sum_{j=2}^{p} \gamma_j \hat y_t^{\,j}
-//!       + \varepsilon_t.
+//! y_t = x_t^\top \beta + \sum_{j=2}^{p} \gamma_j \hat y_t^{\,j} + \varepsilon_t,\qquad
+//! H_0: \gamma_2 = \dots = \gamma_p = 0
 //! $$
-//! Under the null of correct linear specification, $H_0: \gamma_2 = \dots =
-//! \gamma_p = 0$, the joint F-statistic
-//! $$
-//! F = \frac{(\mathrm{SSR}_r - \mathrm{SSR}_u)/q}{\mathrm{SSR}_u/(T - k - q)},
-//! \qquad q = p - 1,
-//! $$
-//! is asymptotically $F(q, T - k - q)$. The default `powers = 2..=3` matches
-//! Ramsey's original recommendation.
 //!
-//! Reference: Ramsey, J.B. (1969), "Tests for Specification Errors in
-//! Classical Linear Least Squares Regression Analysis", *JRSS B* 31(2),
-//! 350-371.
+//! $$
+//! F = \frac{(\mathrm{SSR}_r - \mathrm{SSR}_u)/q}{\mathrm{SSR}_u/(T - k - q)}
+//! \overset{H_0}{\sim} F(q, T - k - q),\qquad q = p - 1
+//! $$
+//!
+//! `ŷ` are the fitted values of `y` on `x`; the default powers, 2 and 3, are Ramsey's own.
+//!
+//! Reference: Ramsey (1969), JRSS B 31(2), 350-371, DOI: 10.1111/j.2517-6161.1969.tb00796.x
 
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -48,7 +41,7 @@ fn f_upper_tail(x: f64, d1: f64, d2: f64) -> f64 {
   (1.0 - beta_i(d1 * 0.5, d2 * 0.5, z)).clamp(0.0, 1.0)
 }
 
-/// Configuration for the RESET test.
+/// Configuration of the RESET test, which panics unless `max_power >= 2` and `0 < alpha < 1`.
 #[derive(Debug, Clone, Copy)]
 pub struct ResetConfig {
   /// Highest power of $\hat y$ added to the augmented regression. Must be
@@ -94,7 +87,7 @@ impl crate::traits::HypothesisTest for ResetTest {
 }
 
 /// Ramsey (1969) RESET; `Err` below `k + q + 2` points, a non-finite entry, constant `y`,
-/// mismatched rows, a singular or exact fit, `Numerical` on a non-finite `F`; panics on bad `cfg`.
+/// mismatched rows, a singular or exact fit, a non-finite `F`; panics as [`ResetConfig`] says.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -118,6 +111,10 @@ pub fn reset_test(
   // `y` at a power of two, which `F` does not see, keeps the powers of `ŷ` in range.
   let y_slice = prepared(y, k + q + 2)?;
   validate_rows(x)?;
+  // A constant column absorbs `y`'s mean, so `F` is that of `y` less it: an exact subtraction,
+  // which keeps the digits the level would round away.
+  let constant = has_constant_column(x);
+  let y_slice = if constant { centred(&y_slice) } else { y_slice };
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
@@ -129,7 +126,7 @@ pub fn reset_test(
   let fitted = x.dot(&beta_r).to_vec();
   // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ and the constant lie in its span, so
   // those of the standardised ŷ span the same columns: the same `F`, without their collinearity.
-  let powered = if has_constant_column(x) {
+  let powered = if constant {
     standardised(&fitted)
   } else {
     // Without a constant the raw powers define the test, Singular from ŷ at 1e3 times its spread.
@@ -372,8 +369,32 @@ mod tests {
       assert!(
         got
           .as_ref()
-          .is_ok_and(|f| (f - reference).abs() <= 1e-6 * reference),
+          .is_ok_and(|f| (f - reference).abs() <= 1e-11 * reference),
         "level {level:e}: {got:?} against {reference}"
+      );
+    }
+  }
+
+  /// A small `F` at a level of `1e5`, where the level's rounding in `y` took eight of its digits.
+  #[test]
+  fn a_small_statistic_matches_its_double_double_value_at_a_level() {
+    let cases = [
+      (300, 5, 0.00813005555155731),
+      (1000, 7, 0.07390520170749103),
+    ];
+    for (n, seed, reference) in cases {
+      let (x, e) = (
+        normal_pair(n, 1.0, seed).0,
+        normal_pair(n, 0.5, seed + 300).0,
+      );
+      let y = 1e5 + 2.0 * &x + 0.5 * &e;
+      let xm = design_with_intercept(&x);
+      let got = reset_test(y.view(), xm.view(), ResetConfig::default()).map(|r| r.statistic);
+      assert!(
+        got
+          .as_ref()
+          .is_ok_and(|f| (f - reference).abs() <= 1e-10 * reference),
+        "n = {n}, seed {seed}: {got:?} against {reference}"
       );
     }
   }

@@ -1,15 +1,13 @@
-//! Exponentially weighted moving-average (EWMA / RiskMetrics) variance.
+//! Exponentially weighted moving-average (EWMA, RiskMetrics) variance.
 //!
 //! $$
-//! \hat\sigma_t^2 = \lambda\,\hat\sigma_{t-1}^2 + (1-\lambda)\,r_{t-1}^2,
+//! \hat\sigma_t^2 = \lambda\,\hat\sigma_{t-1}^2 + (1-\lambda)\,r_{t-1}^2,\qquad
+//! \hat\sigma_1^2 = r_1^2
 //! $$
-//! seeded with $\hat\sigma_1^2 = r_1^2$ so the recursion is defined from the
-//! second observation without a burn-in convention.
 //!
-//! Reference: J.P. Morgan / Reuters, *RiskMetrics — Technical Document*,
-//! 4th ed. (1996), §5.2; the decay $\lambda = 0.94$ is the document's
-//! recommended value for daily returns and is exposed as
-//! [`RISKMETRICS_DAILY_LAMBDA`].
+//! The seed needs no burn-in; the document's daily `λ = 0.94` is [`RISKMETRICS_DAILY_LAMBDA`].
+//!
+//! Reference: J.P. Morgan / Reuters (1996), RiskMetrics — Technical Document, 4th ed., §5.2
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

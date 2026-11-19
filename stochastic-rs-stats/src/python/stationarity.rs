@@ -12,9 +12,8 @@ pub struct PyADFTest {
 
 #[pymethods]
 impl PyADFTest {
-  /// `deterministic`: "n" (none), "c" (constant), or "ct" (constant + trend).
-  /// `lag_selection`: "aic" (default), "bic", or a non-negative integer literal
-  /// for a fixed lag order.
+  /// `deterministic` is "n" (none), "c" (constant) or "ct" (constant and trend); `lag_selection`
+  /// is "aic" (default), "bic" or a non-negative integer literal for a fixed lag.
   #[new]
   #[pyo3(signature = (y, deterministic="c", lag_selection="aic", max_lags=None, alpha=0.05))]
   fn new<'py>(

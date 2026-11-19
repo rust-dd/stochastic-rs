@@ -371,6 +371,22 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
       Array1::from(vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),
       "constant series",
     ),
+    // A regressand of neighbouring doubles is a constant's rounding, with a variance of its own.
+    (
+      Array1::from_iter([0.0, 1.0, -1.0, 1.0, 0.0, -1.0].map(|j| 0.7 + j * f64::EPSILON / 2.0)),
+      "constant series",
+    ),
+    (
+      Array1::from(vec![
+        1.0,
+        0.7,
+        0.7 + f64::EPSILON,
+        0.7,
+        0.7 - f64::EPSILON / 2.0,
+        0.7,
+      ]),
+      "constant series",
+    ),
     // Both read the path at unit scale, so its sums and squares stay in the double range.
     (
       Array1::from(vec![6e153, -6e153, 6e153, -6e153]),

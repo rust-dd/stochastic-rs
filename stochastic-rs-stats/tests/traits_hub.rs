@@ -1,4 +1,5 @@
-//! The crate's own `traits` module names every trait it exports; the umbrella hub reads them from here.
+//! The crate's own `traits` module names every trait it exports; the umbrella hub reads them from
+//! here.
 
 #![allow(unused_imports)]
 

@@ -22,36 +22,28 @@ pub(super) fn gaussian_ln_pdf(x: f64, mean: f64, var: f64) -> f64 {
 }
 
 /// Transition-density approximation method.
-///
-/// # References
-/// - Euler: Maruyama, G. (1955). *Rendiconti del Circolo Matematico di Palermo*,
-///   4(1), 48-90. <https://doi.org/10.1007/BF02846028>
-/// - Ozaki: Ozaki, T. (1992). *Statistica Sinica*, 2(1), 113-135.
-///   <https://www.jstor.org/stable/24304999>
-/// - Shoji-Ozaki: Shoji, I. & Ozaki, T. (1998). *Biometrika*, 85(1), 240-243.
-///   <https://doi.org/10.1093/biomet/85.1.240>
-/// - Elerian: Elerian, O., Chib, S. & Shephard, N. (2001). *Econometrica*, 69(4),
-///   959-993. <https://doi.org/10.1111/1468-0262.00226>
-/// - Kessler: Kessler, M. (1997). *Scand. J. Statist.*, 24(2), 211-229.
-///   <https://doi.org/10.1111/1467-9469.00059>
-/// - Aït-Sahalia: Aït-Sahalia, Y. (2002). *Econometrica*, 70(1), 223-262.
-///   <https://doi.org/10.1111/1468-0262.00274>
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum DensityApprox {
   /// Exact closed-form density (must be implemented by the model).
   Exact,
   /// Euler-Maruyama (Gaussian with Euler moments).
+  /// Reference: Maruyama (1955), Rend. Circ. Mat. Palermo 4(1), 48-90, DOI: 10.1007/BF02846028
   Euler,
   /// Ozaki local-linearisation; NaN where a step carries the state across zero.
+  /// Reference: Ozaki (1992), Stat. Sinica 2(1), 113-135, <https://www.jstor.org/stable/24304999>
   Ozaki,
   /// Shoji-Ozaki (second-order drift correction).
+  /// Reference: Shoji & Ozaki (1998), Biometrika 85(1), 240-243, DOI: 10.1093/biomet/85.1.240
   ShojiOzaki,
   /// Elerian / Milstein density.
+  /// Reference: Elerian et al. (2001), Econometrica 69(4), 959-993, DOI: 10.1111/1468-0262.00226
   Elerian,
   /// Kessler second-order moment expansion.
+  /// Reference: Kessler (1997), Scand. J. Statist. 24(2), 211-229, DOI: 10.1111/1467-9469.00059
   Kessler,
   /// Aït-Sahalia Hermite expansion (must be implemented by the model).
+  /// Reference: Aït-Sahalia (2002), Econometrica 70(1), 223-262, DOI: 10.1111/1468-0262.00274
   AitSahalia,
 }
 
@@ -59,7 +51,7 @@ const NO_EXACT: &str = "Exact density not implemented for this model";
 
 impl DensityApprox {
   /// The transition density `p(xt | x0)` over `dt` from `t0`: `0.0` outside the method's support,
-  /// NaN where it has none, as at a variance not above zero; panics if `model` lacks the method.
+  /// NaN where it has none, as at a variance not above zero; panics unless `model` has the method.
   pub fn density(&self, model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     if let Some((mean, var)) = self.normal_moments(model, x0, t0, dt) {
       return gaussian_pdf(xt, mean, var);

@@ -1,13 +1,8 @@
 //! Heston consistent extended Kalman filtering and NMLE parameter estimation.
 //!
-//! The fixed-parameter filter and the alternating batch estimator are
-//! separate APIs. This keeps filtering semantics independent from
-//! parameter-update and convergence semantics.
+//! The fixed-parameter filter and the alternating batch estimator are separate entry points.
 //!
-//! Reference: Wang, X., He, X., Bao, Y., Zhao, Y. (2018), "Parameter estimates
-//! of Heston stochastic volatility model with MLE and consistent EKF
-//! algorithm", *Science China Information Sciences* 61.
-//! DOI: 10.1007/s11432-017-9215-8
+//! Reference: Wang, He, Bao & Zhao (2018), Sci. China Inf. Sci. 61, DOI: 10.1007/s11432-017-9215-8
 
 use crate::heston_mle::HestonMleFit;
 

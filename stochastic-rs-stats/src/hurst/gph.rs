@@ -1,20 +1,19 @@
-//! Geweke-Porter-Hudak (1983) log-periodogram regression.
+//! Geweke–Porter-Hudak (1983) log-periodogram regression for the fractional integration `d`.
 //!
-//! Procedure:
-//! 1. (Optional) First-difference the input series so the regression
-//!    operates on an FGN-like (zero-mean stationary) input.
-//! 2. Compute the periodogram `I(λⱼ) = |Σₜ Z_t e^{-iλⱼt}|² / (2πn)`
-//!    at the Fourier frequencies `λⱼ = 2πj/n`.
-//! 3. Take the first `m = ⌊n^α⌋` frequencies (default `α = 0.6`).
-//! 4. Regress `log I(λⱼ) = c - d · log(4 sin²(λⱼ/2)) + εⱼ`; the
-//!    coefficient `d` is the fractional integration parameter.
-//! 5. Map to Hurst: `H = d + ½`.
+//! $$
+//! I(\lambda_j) = \frac{1}{2\pi n}\Bigl|\sum_t Z_t e^{-i\lambda_j t}\Bigr|^2,\quad
+//! \lambda_j = \frac{2\pi j}{n},\qquad
+//! \log I(\lambda_j) = c - d \log\bigl(4\sin^2(\lambda_j/2)\bigr) + \varepsilon_j,\quad
+//! j \le m = \lfloor n^\alpha \rfloor
+//! $$
 //!
-//! Asymptotic standard error: `SE(d̂) = π / √(24m)` (Hurvich-Deo).
+//! $$
+//! H = d + \tfrac12,\qquad \mathrm{SE}(\hat d) = \frac{\pi}{\sqrt{24 m}}
+//! $$
 //!
-//! Reference: Geweke J. & Porter-Hudak S. (1983) — *The estimation and
-//! application of long memory time series models*, J. Time Series
-//! Analysis 4(4), 221–238.
+//! The first `m` frequencies enter, `α = 0.6` by default; the standard error is Hurvich–Deo's.
+//!
+//! Reference: Geweke & Porter-Hudak (1983), JTSA 4(4), 221–238, 10.1111/j.1467-9892.1983.tb00371.x
 
 use std::f64::consts::PI;
 
@@ -33,9 +32,8 @@ use crate::traits::FloatExt;
 pub struct Gph {
   /// Bandwidth exponent for `m = ⌊n^α⌋`; typical `α ∈ [0.5, 0.8]`.
   pub bandwidth_alpha: f64,
-  /// When `true`, first-difference the input before estimation (use
-  /// when the input is an FBM-like walk; leave `false` when it is
-  /// already FGN-like noise).
+  /// First-difference the input before estimation: `true` for an FBM-like walk, `false` for a
+  /// series that is already FGN-like noise.
   pub take_differences: bool,
 }
 

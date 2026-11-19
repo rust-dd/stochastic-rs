@@ -1,8 +1,8 @@
-//! Rabiner's scaled forward-backward recursions (§V.A) on logarithms, every sum by log-sum-exp,
-//! so that no state's weight leaves the double range whatever the transitions.
+//! Rabiner's scaled forward–backward recursions (§V.A) on logarithms, every sum by log-sum-exp.
 //!
-//! Reference: Rabiner, "A Tutorial on Hidden Markov Models and Selected Applications in Speech
-//! Recognition", Proceedings of the IEEE, 77(2), 257-286 (1989). DOI: 10.1109/5.18626
+//! No state's weight leaves the double range, whatever the transitions.
+//!
+//! Reference: Rabiner (1989), Proceedings of the IEEE 77(2), 257-286, DOI: 10.1109/5.18626
 
 use ndarray::Array1;
 use ndarray::Array2;

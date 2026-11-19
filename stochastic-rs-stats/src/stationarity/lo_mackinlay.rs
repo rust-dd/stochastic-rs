@@ -1,29 +1,19 @@
-//! Lo-MacKinlay (1988) variance-ratio test for random-walk (unit-root)
-//! behaviour of asset prices.
+//! Lo–MacKinlay (1988) variance-ratio test of the random-walk hypothesis for log prices.
 //!
-//! Under the null $H_0$ that log-prices follow a random walk with drift,
-//! the $q$-period return variance equals $q$ times the one-period variance,
-//! so the variance ratio
 //! $$
-//! VR(q) = \frac{\widehat{\mathrm{Var}}(r_t(q))}{q \cdot \widehat{\mathrm{Var}}(r_t)}
+//! VR(q) = \frac{\widehat{\mathrm{Var}}(r_t(q))}{q \cdot \widehat{\mathrm{Var}}(r_t)} \to 1,\qquad
+//! Z_1(q) = \frac{\sqrt{nq}\,(VR(q)-1)}{\sqrt{\phi(q)}},\quad \phi(q) = \frac{2(2q-1)(q-1)}{3q}
 //! $$
-//! satisfies $VR(q) \to 1$ in probability. Two test statistics are computed
-//! from the same overlapping-window variance estimator:
 //!
-//! - **M1(q)** assumes IID innovations (homoskedasticity):
-//!   $Z_1(q) = \sqrt{nq}\,(VR(q)-1)/\sqrt{\phi(q)}$ with
-//!   $\phi(q) = 2(2q-1)(q-1)/(3q)$.
-//! - **M2(q)** is robust to conditional heteroskedasticity:
-//!   $Z_2(q) = \sqrt{nq}\,(VR(q)-1)/\sqrt{\phi^*(q)}$ with
-//!   $\phi^*(q) = \sum_{j=1}^{q-1} [2(q-j)/q]^2 \delta(j)$ and
-//!   $\delta(j) = \frac{\sum_t (r_t-\bar r)^2 (r_{t-j}-\bar r)^2}{[\sum_t (r_t-\bar r)^2]^2}$.
+//! $$
+//! Z_2(q) = \frac{\sqrt{nq}\,(VR(q)-1)}{\sqrt{\phi^*(q)}},\quad
+//! \phi^*(q) = \sum_{j=1}^{q-1} \Bigl[\frac{2(q-j)}{q}\Bigr]^2 \delta(j),\quad
+//! \delta(j) = \frac{\sum_t (r_t-\bar r)^2 (r_{t-j}-\bar r)^2}{[\sum_t (r_t-\bar r)^2]^2}
+//! $$
 //!
-//! Both statistics are asymptotically $\mathcal{N}(0,1)$ under $H_0$. A
-//! two-sided test rejects when $|Z_k| > z_{1-\alpha/2}$.
+//! `Z₁` assumes IID innovations, `Z₂` allows heteroskedasticity; both are two-sided `N(0, 1)`.
 //!
-//! Reference: Lo, A.W. and MacKinlay, A.C. (1988), "Stock Market Prices Do
-//! Not Follow Random Walks: Evidence from a Simple Specification Test",
-//! *Review of Financial Studies* 1(1), 41-66.
+//! Reference: Lo & MacKinlay (1988), Rev. Financ. Stud. 1(1), 41-66, DOI: 10.1093/rfs/1.1.41
 
 use ndarray::ArrayView1;
 
@@ -125,11 +115,8 @@ pub fn lo_mackinlay_test(
     return Err(StatsError::DegenerateData("zero-variance increments"));
   }
 
-  // q-period overlapping variance (Lo-Mac eq.7) with the small-sample
-  // unbiased denominator m = q (nq - q + 1) (1 - q/nq). The `q` factor in m
-  // already absorbs the per-period rescaling, so σ_c²(q) is on the same
-  // one-period scale as σ_a²(1) — VR = σ_c²(q) / σ_a²(1) directly, with no
-  // additional q-factor.
+  // Overlapping `q`-period variance (Lo-Mac eq.7) with the unbiased denominator `m`, whose `q`
+  // puts it on the one-period scale: `VR = σ_c²(q) / σ_a²(1)` with no further factor.
   let m = q_f * (nq_f - q_f + 1.0) * (1.0 - q_f / nq_f);
   let mut var_q = 0.0_f64;
   for t in q..=nq {
@@ -166,9 +153,8 @@ pub fn lo_mackinlay_test(
       phi_robust += weight * weight * delta_j;
     }
   }
-  // φ* picks up an extra √(nq) scaling because δ(j) is normalised by the
-  // squared sum of all returns rather than the sample variance (Lo-Mac eq.17
-  // vs eq.18); multiply through by nq to recover the same scale as φ.
+  // `δ(j)` is normalised by the squared sum of all returns, not the sample variance (Lo-Mac eq.17
+  // vs eq.18), so `φ*` takes a factor `nq` to stand on `φ`'s scale.
   phi_robust *= nq_f;
   let z_robust = if phi_robust > 0.0 {
     nq_f.sqrt() * (variance_ratio - 1.0) / phi_robust.sqrt()

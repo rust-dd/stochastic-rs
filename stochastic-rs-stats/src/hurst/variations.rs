@@ -1,17 +1,16 @@
-//! Variations-ratio Hurst estimators: a filter's variation at its dilation over that at lag 1, as
-//! Brouste & Iacus's plain sums for the two filters and Coeurjolly's means for the power variation.
+//! Variations-ratio Hurst estimators: a filter's variation at its dilation over that at lag 1.
 //!
 //! $$
 //! \hat H=\tfrac12\log_2\frac{V_{\mathbf a^2}}{V_{\mathbf a}},\qquad
 //! \hat H=\frac1p\log_2\frac{V_{k,p}(2)/(n-2k)}{V_{k,p}(1)/(n-k)},\qquad
-//! \text{each ratio}\to2^{pH}\ (p=2\text{ for the filters})
+//! \frac{V_{\mathbf a^2}}{V_{\mathbf a}}\to 2^{2H},\qquad \frac{V_{k,p}(2)}{V_{k,p}(1)}\to 2^{pH}
 //! $$
 //!
-//! Reference: Achard, S. & Coeurjolly, J.-F. (2010), "Discrete variations of the fractional Brownian motion in the presence of outliers and an additive noise", Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2 (restating Coeurjolly 2001); Coeurjolly's `dvfBm` R package.
+//! The filters take Brouste & Iacus's sums (arXiv:1112.3777), the power variation `dvfBm`'s means.
 //!
-//! Reference: Brouste, A. & Iacus, S. M. (2013), "Parameter estimation for the discretely observed fractional Ornstein–Uhlenbeck process and the Yuima R package", Computational Statistics 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6, arXiv:1112.3777.
-//!
-//! Reference: Istas, J. & Lang, G. (1997), "Quadratic variations and estimation of the local Hölder index of a Gaussian process", Annales de l'Institut Henri Poincaré (B) Probability and Statistics 33(4), 407–436, DOI 10.1016/S0246-0203(97)80099-4.
+//! Reference: Achard & Coeurjolly (2010), Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2
+//! Reference: Brouste & Iacus (2013), Comput. Stat. 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6
+//! Reference: Istas & Lang (1997), Ann. IHP (B) 33(4), 407–436, DOI 10.1016/S0246-0203(97)80099-4
 
 use std::f64::consts::SQRT_2;
 
@@ -36,10 +35,8 @@ pub enum VariationKind {
   PowerVariation { k: usize, p: f64 },
 }
 
-/// Variations-ratio Hurst estimator.
-///
-/// Three flavours selectable via [`VariationKind`].  None of them
-/// allocate beyond the auxiliary filter buffer.
+/// Variations-ratio Hurst estimator, in the three flavours of [`VariationKind`]; it allocates
+/// nothing beyond the filter buffer.
 #[derive(Clone, Copy, Debug)]
 pub struct Variations {
   pub kind: VariationKind,

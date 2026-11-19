@@ -31,11 +31,8 @@ fn three_walks() -> Array2<f64> {
   s
 }
 
-/// A cointegrated three-variable system (two series sharing one random
-/// walk, a third independent) built from an integer LCG so the Rust and
-/// Python inputs are bit-identical. Reference values below come from
-/// `statsmodels` 0.14: `coint_johansen(y, det_order=0, k_ar_diff=lags-1)`
-/// and `VECM(y, k_ar_diff=lags-1, coint_rank=r, deterministic="co").fit()`.
+/// Two series on one random walk and a third apart, from an integer LCG. Against statsmodels 0.14's
+/// `coint_johansen(y, det_order=0, k_ar_diff=lags-1)` and `VECM(.., deterministic="co").fit()`.
 fn lcg_system() -> Array2<f64> {
   let mut x: u64 = 7;
   let mut next = || {

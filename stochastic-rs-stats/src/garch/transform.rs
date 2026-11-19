@@ -1,19 +1,17 @@
-//! Bijection between the unconstrained optimisation coordinates and the
-//! natural parameters, so neither the simplex nor L-BFGS can leave the
-//! stationarity region:
+//! Bijection from unconstrained coordinates onto the stationarity region, which no step can leave.
 //!
-//! - GARCH / GJR: $\omega = e^{\theta_\omega}$; the persistence
-//!   $s = \sigma(\theta_s) \in (0, 1)$ is split by a softmax whose first
-//!   logit is pinned at zero — GARCH over the $p + q$ coefficients,
-//!   $\alpha_i = s w_i$, $\beta_j = s w_{p+j}$; GJR over $2p + q$ slots,
-//!   $\alpha_i = 2 s w_i$, $\alpha_i + \gamma_i = 2 s w_{p+i}$,
-//!   $\beta_j = s w_{2p+j}$, which is exactly $\alpha_i \ge 0$,
-//!   $\alpha_i + \gamma_i \ge 0$, $\beta_j \ge 0$ and
-//!   $\sum\alpha_i + \tfrac12\sum\gamma_i + \sum\beta_j = s$.
-//! - EGARCH: $\omega$, $\alpha_i$, $\gamma_i$ free; $\sum\beta_j =
-//!   \tanh(\theta_s) \in (-1, 1)$ split by a softmax, so the $\beta_j$ share
-//!   the sign of their sum.
-//! - $\mu$ is free throughout.
+//! $$
+//! \begin{aligned}
+//! \text{GARCH}:&\quad \omega = e^{\theta_\omega},\quad s = \sigma(\theta_s) \in (0, 1),\quad
+//! \alpha_i = s w_i,\quad \beta_j = s w_{p+j},\\
+//! \text{GJR}:&\quad \alpha_i = 2 s w_i,\quad \alpha_i + \gamma_i = 2 s w_{p+i},\quad
+//! \beta_j = s w_{2p+j},\quad \sum\alpha_i + \tfrac12\sum\gamma_i + \sum\beta_j = s,\\
+//! \text{EGARCH}:&\quad \sum\beta_j = \tanh(\theta_s) \in (-1, 1),\quad
+//! \beta_j = w_j \tanh(\theta_s),
+//! \end{aligned}
+//! $$
+//!
+//! `w` is a softmax whose first logit is pinned at zero; `μ`, and EGARCH's `ω`, `α`, `γ`, are free.
 
 use super::GarchKind;
 use super::GarchSpec;
@@ -140,9 +138,8 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
   theta
 }
 
-/// Typical magnitude of each natural parameter, used to scale the
-/// finite-difference steps: $\sqrt{\bar\sigma^2}$ for $\mu$, $\bar\sigma^2$
-/// for a level-recursion $\omega$, one for everything else.
+/// Typical magnitude of each natural parameter, the scale of its finite-difference step:
+/// $\sqrt{\bar\sigma^2}$ for $\mu$, $\bar\sigma^2$ for a level-recursion $\omega$, one otherwise.
 pub(super) fn natural_scales(spec: &GarchSpec, backcast: f64) -> Vec<f64> {
   let mut scales = Vec::with_capacity(spec.n_params());
   if spec.mean == MeanSpec::Constant {

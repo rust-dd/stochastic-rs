@@ -1,5 +1,4 @@
-//! Adapted Whittle estimate of the roughness `H` of log-volatility from log realized variance:
-//! §3.2's Paxson spectral sum, low-frequency terms `A¹`, `A²` (eq. 16), L-BFGS-B from a grid start.
+//! Adapted Whittle estimate of the roughness `H` of log-volatility from log realized variance.
 //!
 //! $$
 //! \hat H = \arg\min_{(H,\nu)} U_n(H,\nu), \quad
@@ -8,7 +7,9 @@
 //!       + A^1_{H,\nu}(\psi) + A^2_{H,\nu}(\psi)
 //! $$
 //!
-//! Reference: Fukasawa, M., Takabatake, T. & Westphal, R. (2019), "Is Volatility Rough?", arXiv:1905.04852.
+//! §3.2's Paxson spectral sum, the low-frequency terms `A¹`, `A²` (eq. 16), L-BFGS-B from a grid.
+//!
+//! Reference: Fukasawa, Takabatake & Westphal (2019), "Is Volatility Rough?", arXiv:1905.04852
 
 use std::convert::Infallible;
 use std::f64::consts::PI;
@@ -36,10 +37,8 @@ pub struct FukasawaFit {
   pub nobs: usize,
 }
 
-/// Whittle estimator config (intraday bars + day fraction + numerical
-/// tuning constants).  [`Whittle::default`] is daily data (`m = 1`,
-/// `δ = 1/250`) — note this matches the high-bias setting of Fukasawa
-/// Table 1; pass `m ≥ 72` for accurate intraday RV input.
+/// Whittle config: intraday bars `m`, day fraction `δ`, numerical constants. The default is daily
+/// (`m = 1`, `δ = 1/250`), the high-bias case of Fukasawa Table 1; intraday RV wants `m ≥ 72`.
 #[derive(Clone, Copy, Debug)]
 pub struct Whittle {
   /// Number of intraday observations per day.

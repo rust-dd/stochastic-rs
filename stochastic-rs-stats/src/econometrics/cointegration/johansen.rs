@@ -1,46 +1,36 @@
-//! Johansen cointegration: the trace and maximum-eigenvalue rank tests and
-//! the maximum-likelihood VECM estimate at a chosen rank.
-//!
-//! The vector error-correction model with an unrestricted constant,
+//! Johansen cointegration: the trace and maximum-eigenvalue rank tests, and the ML VECM at a rank.
 //!
 //! $$
 //! \Delta y_t = \mu + \Pi y_{t-1} + \sum_{i=1}^{p-1}\Gamma_i\,\Delta y_{t-i} + \varepsilon_t,
 //! \qquad \Pi = \alpha\beta',
 //! $$
 //!
-//! is concentrated on the residuals $R_{0t}$, $R_{1t}$ of $\Delta y_t$ and
-//! $y_{t-1}$ regressed on the constant and the lagged differences, with
-//! product moments $S_{ij} = T^{-1}\sum_t R_{it}R_{jt}'$. The ordered
-//! eigenvalues $\hat\lambda_1 \ge \dots \ge \hat\lambda_K$ of
-//! $|\lambda S_{11} - S_{10}S_{00}^{-1}S_{01}| = 0$ give the two rank
-//! statistics for $H(r)$ against $H(K)$ and $H(r+1)$,
+//! $$
+//! R_{0t} = \Delta y_t - \hat E[\Delta y_t \mid 1, \Delta y_{t-1}, \ldots, \Delta y_{t-p+1}],\qquad
+//! R_{1t} = y_{t-1} - \hat E[y_{t-1} \mid 1, \Delta y_{t-1}, \ldots, \Delta y_{t-p+1}],
+//! $$
+//!
+//! $$
+//! S_{ij} = T^{-1}\sum_t R_{it}R_{jt}',\qquad
+//! |\lambda S_{11} - S_{10}S_{00}^{-1}S_{01}| = 0,\qquad
+//! \hat\lambda_1 \ge \dots \ge \hat\lambda_K,
+//! $$
 //!
 //! $$
 //! \lambda_{\mathrm{trace}}(r) = -T\sum_{i=r+1}^{K}\log(1-\hat\lambda_i),\qquad
 //! \lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1}),
 //! $$
 //!
-//! and the ML estimates $\hat\beta = (\hat v_1, \ldots, \hat v_r)$ with
-//! $\hat V' S_{11}\hat V = I$ and $\hat\alpha = S_{01}\hat\beta$; the
-//! short-run matrices and the constant follow by regressing
-//! $\Delta y_t - \hat\Pi y_{t-1}$ on the remaining regressors.
+//! $$
+//! \hat\beta = (\hat v_1, \ldots, \hat v_r),\qquad \hat V' S_{11}\hat V = I,\qquad
+//! \hat\alpha = S_{01}\hat\beta .
+//! $$
 //!
-//! Critical values are the 5% asymptotic quantiles of MacKinnon, Haug and
-//! Michelis for the unrestricted-constant case — the tables `statsmodels`
-//! and EViews ship — indexed by $K - r$ and tabulated up to $K - r = 12$.
+//! Reference: Johansen (1988), JEDC 12(2-3), 231-254, DOI: 10.1016/0165-1889(88)90041-3
+//! Reference: Johansen (1991), Econometrica 59(6), 1551-1580, DOI: 10.2307/2938278
+//! Reference: MacKinnon, Haug & Michelis (1999), J. Appl. Econometrics 14(5), 563-577, [DOI][mhm]
 //!
-//! Reference: Johansen, "Statistical Analysis of Cointegration Vectors",
-//! Journal of Economic Dynamics and Control, 12(2-3), 231-254 (1988).
-//! DOI: 10.1016/0165-1889(88)90041-3
-//!
-//! Reference: Johansen, "Estimation and Hypothesis Testing of Cointegration
-//! Vectors in Gaussian Vector Autoregressive Models", Econometrica, 59(6),
-//! 1551-1580 (1991). DOI: 10.2307/2938278
-//!
-//! Reference: MacKinnon, Haug, Michelis, "Numerical Distribution Functions
-//! of Likelihood Ratio Tests for Cointegration", Journal of Applied
-//! Econometrics, 14(5), 563-577 (1999).
-//! DOI: 10.1002/(SICI)1099-1255(199909/10)14:5<563::AID-JAE530>3.0.CO;2-R
+//! [mhm]: https://doi.org/10.1002/(SICI)1099-1255(199909/10)14:5<563::AID-JAE530>3.0.CO;2-R
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -61,9 +51,8 @@ const TRACE_CRITICAL_5PCT: [f64; 12] = [
   285.1402, 334.9795,
 ];
 
-/// 5% critical values of the maximum-eigenvalue statistic for
-/// $K - r = 1, \ldots, 12$ (MacKinnon–Haug–Michelis 1999, unrestricted
-/// constant).
+/// 5% critical values of the maximum-eigenvalue statistic for $K - r = 1, \ldots, 12$
+/// (MacKinnon–Haug–Michelis 1999, unrestricted constant).
 const MAX_EIG_CRITICAL_5PCT: [f64; 12] = [
   3.8415, 14.2639, 21.1314, 27.5858, 33.8777, 40.0763, 46.2299, 52.3622, 58.4332, 64.5040, 70.5392,
   76.5734,
@@ -125,9 +114,8 @@ pub struct VecmFit {
   pub nobs: usize,
 }
 
-/// The concentrated regression both entry points share: $\Delta y_t$,
-/// $y_{t-1}$, the constant-plus-lagged-differences block, $S_{01}$ and the
-/// ordered eigen-solution.
+/// The concentrated regression both entry points share: $\Delta y_t$, $y_{t-1}$, the
+/// constant-plus-lagged-differences block, $S_{01}$ and the ordered eigen-solution.
 struct Concentrated {
   z0: Array2<f64>,
   z1: Array2<f64>,
@@ -198,10 +186,8 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
   })
 }
 
-/// Eigenpairs of $|\lambda S_{11} - M| = 0$ through the Cholesky-whitened
-/// symmetric problem $L^{-1} M L^{-\top} w = \lambda w$ with $S_{11} = LL'$:
-/// eigenvalues descending and clamped to $[0, 1)$, eigenvectors
-/// $V = L^{-\top} W$ so that $V' S_{11} V = I$.
+/// Eigenpairs of $|\lambda S_{11} - M| = 0$ through $L^{-1} M L^{-\top} w = \lambda w$ with
+/// $S_{11} = LL'$: eigenvalues descending in $[0, 1)$, $V = L^{-\top} W$ so that $V' S_{11} V = I$.
 fn ordered_eigen(
   m: &Array2<f64>,
   s11: &Array2<f64>,
@@ -273,7 +259,7 @@ fn sequential_rank(statistics: &Array1<f64>, critical: &Array1<f64>) -> usize {
 }
 
 /// Johansen trace and max-eigenvalue tests of a `(t, k)` series at VAR order `lags`; `Err` below 2
-/// series or `lags (k + 1) + 1` rows, on a non-finite entry or no finite fit; panics if `lags = 0`.
+/// series or `lags (k + 1) + 1` rows, a non-finite entry, no finite fit; panics unless `lags >= 1`.
 pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> Result<JohansenTest, StatsError> {
   let c = concentrate(series, lags)?;
   let k = c.eigenvalues.len();

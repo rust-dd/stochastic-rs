@@ -1,14 +1,12 @@
-//! Elliott-Rothenberg-Stock (1996) efficient (GLS-detrended) unit-root
-//! test, also known as DF-GLS.
+//! Elliott–Rothenberg–Stock (1996) efficient unit-root test on the GLS-detrended series (DF-GLS).
 //!
-//! Reference: Elliott G., Rothenberg T. J., Stock J. H. (1996) —
-//! *Efficient Tests for an Autoregressive Unit Root*, Econometrica
-//! 64(4), 813–836, DOI: 10.2307/2171846.
+//! Reference: Elliott, Rothenberg & Stock (1996), Econometrica 64(4), 813–836, DOI: 10.2307/2171846
 
 use ndarray::ArrayView1;
 
 use super::common::LagSelection;
 use super::common::Trend;
+use super::common::centred;
 use super::common::choose_lag_for_adf;
 use super::common::dfgls_critical_values;
 use super::common::fit_adf;
@@ -132,7 +130,9 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = dfgls_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = prepared(y, 20)?;
+  // GLS detrending absorbs a level in exact arithmetic; less its mean, an exact subtraction, the
+  // series keeps the digits a constant estimated at that level would round away.
+  let y = centred(&prepared(y, 20)?);
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {

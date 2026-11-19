@@ -1,4 +1,5 @@
-//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`:
+//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`.
+//!
 //! $$
 //! L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
 //!          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,

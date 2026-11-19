@@ -1,11 +1,6 @@
-//! Monte-Carlo FBM validation for every shipped Hurst estimator.
+//! Monte-Carlo validation of every Hurst estimator on `m = 16` Davies–Harte FBM paths, `n = 8192`.
 //!
-//! For each `H ∈ {0.3, 0.5, 0.7}` we draw `m = 16` exact FBM paths
-//! (Davies-Harte) of length `n = 8192` and check that every estimator
-//! returns within tolerance of the true `H`.  Tolerance is per-method
-//! because not all estimators are equally efficient (`Wavelet` is
-//! tighter than `RescaledRange`, `Whittle` is intended for rough-vol
-//! log-RV and not bare FBM).
+//! The tolerance at each `H ∈ {0.3, 0.5, 0.7}` is per method; `Whittle` is for log-RV, not FBM.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Unseeded;

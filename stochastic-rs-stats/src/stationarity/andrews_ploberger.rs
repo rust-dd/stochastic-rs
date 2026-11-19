@@ -1,39 +1,22 @@
-//! Andrews (1993) and Andrews-Ploberger (1994) tests for parameter
-//! constancy in a linear regression with unknown breakpoint.
+//! Andrews (1993) and Andrews–Ploberger (1994) tests of parameter constancy at an unknown break.
 //!
-//! Given $y_t = x_t^\top \beta + \varepsilon_t$, $t = 1, \dots, T$, and a
-//! candidate split at fraction $\tau$ with breakpoint $t_\tau = \lfloor \tau
-//! T \rfloor$, fit OLS separately on the two subsamples and compute the
-//! Wald statistic for the joint restriction $\beta_1 = \beta_2$:
 //! $$
 //! W(\tau) = (\hat\beta_1 - \hat\beta_2)^\top
 //!           [\hat V(\hat\beta_1) + \hat V(\hat\beta_2)]^{-1}
-//!           (\hat\beta_1 - \hat\beta_2).
+//!           (\hat\beta_1 - \hat\beta_2),\qquad t_\tau = \lfloor \tau T \rfloor,\quad
+//!           \tau \in [\pi_0, 1-\pi_0]
 //! $$
-//! Three aggregation statistics over $\tau \in [\pi_0, 1-\pi_0]$ are
-//! supported:
 //!
-//! - **Sup-Wald** $\;\sup_\tau W(\tau)$ — Quandt (1960) / Andrews (1993).
-//! - **Exp-Wald** $\;\ln\!\big(\tfrac{1}{N}\sum_\tau e^{W(\tau)/2}\big)$ —
-//!   Andrews-Ploberger (1994), optimal under a Pitman-drift alternative
-//!   with large $\xi$.
-//! - **Avg-Wald** $\;\tfrac{1}{N}\sum_\tau W(\tau)$ — Andrews-Ploberger
-//!   (1994), optimal under small $\xi$.
+//! $$
+//! \sup_\tau W(\tau),\qquad \ln\Bigl(\tfrac{1}{N}\sum_\tau e^{W(\tau)/2}\Bigr),\qquad
+//! \tfrac{1}{N}\sum_\tau W(\tau)
+//! $$
 //!
-//! Asymptotic critical values are taken from the canonical tables for
-//! $\pi_0 = 0.15$ (Andrews 1993 Table 1 for Sup-Wald; Andrews-Ploberger
-//! 1994 Tables II and III for Exp-Wald and Avg-Wald). For any other `pi0` or `k > 5` the
-//! statistic is computed, but its p-value bracket, critical values and decision are `None`.
+//! Tables: `π₀ = 0.15`, `k ≤ 5` (Andrews 1993 Table 1; Andrews–Ploberger 1994 Tables II and III).
 //!
-//! References:
-//! - Andrews, D.W.K. (1993), "Tests for Parameter Instability and
-//!   Structural Change with Unknown Change Point", *Econometrica* 61(4),
-//!   821-856.
-//! - Andrews, D.W.K., Ploberger, W. (1994), "Optimal Tests when a
-//!   Nuisance Parameter is Present Only under the Alternative",
-//!   *Econometrica* 62(6), 1383-1414.
-//! - Hansen, B.E. (1997), "Approximate Asymptotic P Values for
-//!   Structural-Change Tests", *J. Bus. Econ. Stat.* 15(1), 60-67.
+//! Reference: Andrews (1993), Econometrica 61(4), 821-856, DOI: 10.2307/2951764
+//! Reference: Andrews & Ploberger (1994), Econometrica 62(6), 1383-1414, DOI: 10.2307/2951753
+//! Reference: Hansen (1997), J. Bus. Econ. Stat. 15(1), 60-67, DOI: 10.1080/07350015.1997.10524687
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -42,11 +25,11 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::linalg::inverse;
 use stochastic_rs_distributions::linalg::solve;
 
+use super::common::reject_rounded_constant;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::traits::RealExt;
@@ -55,15 +38,17 @@ use crate::traits::RealExt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AndrewsPlobergerStatistic {
-  /// $\sup_\tau W(\tau)$ — Andrews (1993) Sup-Wald.
+  /// $\sup_\tau W(\tau)$, the Sup-Wald of Quandt (1960) and Andrews (1993).
   Sup,
-  /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$ — Andrews-Ploberger Exp-Wald.
+  /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$, Andrews–Ploberger's Exp-Wald, optimal against a
+  /// Pitman drift with large $\xi$.
   Exp,
-  /// $(1/N) \sum_\tau W(\tau)$ — Andrews-Ploberger Avg-Wald.
+  /// $(1/N) \sum_\tau W(\tau)$, Andrews–Ploberger's Avg-Wald, optimal under small $\xi$.
   Avg,
 }
 
-/// Configuration for the Andrews / Andrews-Ploberger test.
+/// Configuration of the Andrews / Andrews–Ploberger test, which panics unless `0 < pi0 < 0.5`,
+/// `0 < alpha < 1` (`alpha >= 0.01` on its table) and `x` has a column.
 #[derive(Debug, Clone, Copy)]
 pub struct AndrewsPlobergerConfig {
   /// Aggregation choice.
@@ -116,7 +101,7 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
 }
 
 /// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite or
-/// constant `y`, a non-finite `x`, mismatched rows or a NaN Wald path; bad config panics.
+/// constant `y`, a non-finite `x`, mismatched rows, a NaN Wald path; panics as `cfg`'s type says.
 pub fn andrews_ploberger_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -146,7 +131,7 @@ pub fn andrews_ploberger_test(
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, 3 * k + 4)?;
   validate_rows(x)?;
-  reject_constant(&y_slice, "constant series")?;
+  reject_rounded_constant(&y_slice)?;
 
   let t_total = y.len();
   let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);

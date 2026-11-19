@@ -127,6 +127,16 @@ impl Beside {
   }
 }
 
+/// The walks beside `at` and the stop they give a search that converged there: the solver's own
+/// stop passes a stall, so the likelihood beside the estimate decides.
+fn verdict(problem: &MleProblem<'_>, at: &[f64], lower: &[f64], upper: &[f64]) -> (Beside, Stop) {
+  let beside = problem.beside(at);
+  let i = beside.along;
+  let held = lower[i] < upper[i] && (at[i] <= lower[i] || at[i] >= upper[i]);
+  let stop = beside.stop(held);
+  (beside, stop)
+}
+
 /// One L-BFGS-B search of at most 200 iterations from `start`, with an empty memory, in the
 /// problem's units: there the gradient tolerance is relative to each parameter's size.
 fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
@@ -166,8 +176,8 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, in the start's units, up to 16 searches; check
-/// `converged`. `Err` below 2 points, a non-finite one or log-likelihood; panics on a bound count.
+/// L-BFGS-B MLE of `model`, left at the estimate, in the start's units, up to 16 searches; `Err`
+/// below 2 points, a non-finite one or likelihood; panics unless `bounds` has a pair per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
@@ -239,11 +249,7 @@ pub fn fit_mle(
     let stop = if fit.converged {
       let at = &fit.params;
       let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, at);
-      let beside = problem.beside(at);
-      let i = beside.along;
-      let held = lower[i] < upper[i] && (at[i] <= lower[i] || at[i] >= upper[i]);
-      // The solver's own stop passes a stall: the likelihood beside the estimate decides.
-      beside.stop(held)
+      verdict(&problem, at, &lower, &upper).1
     } else {
       Stop::Search(fit.reason)
     };

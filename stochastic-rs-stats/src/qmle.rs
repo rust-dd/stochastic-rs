@@ -1,14 +1,15 @@
-//! Gaussian quasi-likelihood of `dX = θ(μ − X) dt + σ X^γ dW`, OU's `γ = 0` and CIR's `γ = ½`: each
-//! transition a normal with the model's exact conditional mean and variance, for OU its exact law.
+//! Gaussian quasi-likelihood of `dX = θ(μ − X) dt + σ X^γ dW`, OU's `γ = 0` and CIR's `γ = ½`.
 //!
 //! $$
 //! \ell(\psi) = -\tfrac{1}{2}\sum_{t}\Bigl[\ln\bigl(2\pi\,v(X_t;\psi)\bigr) +
 //! \frac{\bigl(X_{t+\Delta} - m(X_t;\psi)\bigr)^2}{v(X_t;\psi)}\Bigr]
 //! $$
 //!
-//! Reference: Kessler, M. (1997), "Estimation of an ergodic diffusion from discrete observations", Scandinavian Journal of Statistics 24(2), 211-229.
-//! Reference: Bibby, B. M. & Sørensen, M. (1995), "Martingale estimation functions for discretely observed diffusion processes", Bernoulli 1(1/2), 17-39.
-//! Reference: White, H. (1982), "Maximum likelihood estimation of misspecified models", Econometrica 50(1), 1-25.
+//! Each transition is a normal with the model's exact conditional mean and variance: OU's law.
+//!
+//! Reference: Kessler (1997), Scand. J. Stat. 24(2), 211-229, DOI: 10.1111/1467-9469.00059
+//! Reference: Bibby & Sørensen (1995), Bernoulli 1(1/2), 17-39, DOI: 10.2307/3318679
+//! Reference: White (1982), Econometrica 50(1), 1-25, DOI: 10.2307/1912526
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -22,6 +23,7 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
 use crate::stationarity::common::reject_exact_fit;
+use crate::stationarity::common::reject_rounded_constant;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -450,10 +452,10 @@ impl Ar1 {
   pub(crate) fn of(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
     let m = x.len() - 1;
     let (lagged, next) = (&x[..m], &x[1..]);
-    // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
-    // nothing but rounding.
-    reject_constant(lagged, "constant series")?;
-    reject_constant(next, "constant series")?;
+    // The regressor's spread is the slope's denominator, and a regressand that is a constant, or
+    // its rounding, leaves the slope nothing but rounding.
+    reject_rounded_constant(lagged)?;
+    reject_rounded_constant(next)?;
     let mf = m as f64;
 
     // About the means, as raw sums cancel where the level dwarfs the spread.

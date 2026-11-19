@@ -1,20 +1,9 @@
-//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen / Shephard jump test.
+//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen–Shephard jump test.
 //!
-//! Reference: Barndorff-Nielsen, Shephard, "Power and Bipower Variation with
-//! Stochastic Volatility and Jumps", Journal of Financial Econometrics, 2(1),
-//! 1-37 (2004). DOI: 10.1093/jjfinec/nbh001
-//!
-//! Reference: Barndorff-Nielsen, Shephard, "Econometrics of Testing for Jumps
-//! in Financial Economics Using Bipower Variation", Journal of Financial
-//! Econometrics, 4(1), 1-30 (2006). DOI: 10.1093/jjfinec/nbi022
-//!
-//! Reference: Andersen, Dobrev, Schaumburg, "Jump-Robust Volatility Estimation
-//! Using Nearest Neighbor Truncation", Journal of Econometrics, 169(1), 75-93
-//! (2012). DOI: 10.1016/j.jeconom.2012.01.011
-//!
-//! Reference: Huang, Tauchen, "The Relative Contribution of Jumps to Total
-//! Price Variance", Journal of Financial Econometrics, 3(4), 456-499 (2005).
-//! DOI: 10.1093/jjfinec/nbi025
+//! Reference: Barndorff-Nielsen & Shephard (2004), JFEC 2(1), 1-37, DOI: 10.1093/jjfinec/nbh001
+//! Reference: Barndorff-Nielsen & Shephard (2006), JFEC 4(1), 1-30, DOI: 10.1093/jjfinec/nbi022
+//! Reference: Andersen et al. (2012), J. Econom. 169(1), 75-93, DOI: 10.1016/j.jeconom.2012.01.011
+//! Reference: Huang & Tauchen (2005), JFEC 3(4), 456-499, DOI: 10.1093/jjfinec/nbi025
 
 use ndarray::ArrayView1;
 
@@ -235,9 +224,8 @@ mod tests {
 
   #[test]
   fn jump_test_rejects_a_single_moderate_jump() {
-    // One jump of ~15 sigma in a 256-return window: unmistakable to the eye,
-    // but small enough that a denominator built from non-jump-robust realized
-    // quarticity would swamp it and hide the rejection.
+    // One jump of about 15 sigma in 256 returns: plain to the eye, yet a denominator on a
+    // quarticity that is not jump-robust would swamp it and hide the rejection.
     let mut r = iid_normal(17, 256, 0.005);
     r[128] = 0.077;
     let test = bns_jump_test(r.view(), 0.01).unwrap();

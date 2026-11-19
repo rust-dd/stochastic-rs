@@ -57,25 +57,60 @@ fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
   assert!(converged.is_empty(), "{converged:#?}");
 }
 
-/// From a level 20 times off a CIR fit of 500 daily points slides to a speed of `1e-4`, where
-/// the level has no gradient, 3.6 and 6.8 below the fit from the law: the level's walk gains.
+/// What the walks beside `at` read on a CIR `path`, and the stop and message they give a search
+/// that converged there.
+fn cir_walk(path: &Array1<f64>, dt: f64, at: &[f64], density: DensityApprox) -> (Beside, String) {
+  let mut model = cir(at[0], at[1], at[2]);
+  let bounds = model.param_bounds();
+  let (lower, upper): (Vec<f64>, Vec<f64>) = bounds.into_iter().unzip();
+  let (beside, stop) = verdict(
+    &MleProblem::new(&mut model, path.view(), dt, density, &lower, &upper, at),
+    at,
+    &lower,
+    &upper,
+  );
+  (beside, stop.message(&model.param_names()))
+}
+
+/// From a level 20 times off, a CIR search ends where its platform's rounding takes it, at the
+/// optimum or stalled at a speed of `1e-4`: either way the verdict is the walk's beside the fit.
 #[test]
-fn a_cir_fit_that_stalls_at_the_speeds_bound_is_not_converged() {
+fn a_cir_fit_from_a_far_level_answers_as_the_walk_beside_it() {
   let dt = 1.0 / 252.0;
-  let mut converged = vec![];
   for (speed, density) in [(0.5, DensityApprox::Ozaki), (8.0, DensityApprox::Elerian)] {
     let path = cir_path([speed, 1.0, 0.5], dt, 500, 2003);
-    let best = fit_cir(&path, dt, [speed, 1.0, 0.5], density);
     let fit = fit_cir(&path, dt, [1.0, 0.05, 0.2], density);
-    let short = best.log_likelihood - fit.log_likelihood;
-    assert!(short > 3.0, "speed {speed}: {short} below");
-    assert_eq!(fit.params[0], 1e-4, "speed {speed}");
-    if fit.converged {
-      converged.push(format!("speed {speed}: {short} below at {}", fit.params));
-    }
-    assert_eq!(fit.message, "not stationary");
+    let (beside, message) = cir_walk(&path, dt, fit.params.as_slice().unwrap(), density);
+    assert_eq!(
+      (fit.converged, &fit.message),
+      (message == "converged", &message),
+      "speed {speed}: a gain of {:e} beside {}",
+      beside.gain,
+      fit.params
+    );
   }
-  assert!(converged.is_empty(), "{converged:#?}");
+}
+
+/// The points such a search stalls at: the speed on its bound, where the level has no gradient,
+/// and `σ` fitted. No search runs here; the level's walk gains `1.5e-3`, far above the bar.
+#[test]
+fn a_point_stalled_at_the_speeds_bound_is_not_stationary() {
+  let dt = 1.0 / 252.0;
+  let cases = [
+    (0.5, DensityApprox::Ozaki, [1e-4, 0.0592, 0.5134]),
+    (8.0, DensityApprox::Elerian, [1e-4, 0.0560, 0.5089]),
+  ];
+  for (speed, density, stalled) in cases {
+    let path = cir_path([speed, 1.0, 0.5], dt, 500, 2003);
+    let (beside, message) = cir_walk(&path, dt, &stalled, density);
+    assert!(
+      beside.along == 1 && (1e-4..1e-2).contains(&beside.gain),
+      "speed {speed}: a gain of {:e} along parameter {}",
+      beside.gain,
+      beside.along
+    );
+    assert_eq!(message, "not stationary", "speed {speed}");
+  }
 }
 
 /// From a `σ` of `1e-6` on data at `1e9` the staged search returns `σ` in a unit where its

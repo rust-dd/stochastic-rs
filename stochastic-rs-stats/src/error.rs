@@ -10,7 +10,8 @@ pub enum StatsError {
   InsufficientData { needed: usize, got: usize },
   /// Two inputs that must agree in length or shape do not.
   DimensionMismatch { expected: usize, got: usize },
-  /// An observation outside the input's domain: non-finite, or non-positive where positivity is needed.
+  /// An observation outside the input's domain: non-finite, or non-positive where positivity is
+  /// needed.
   InvalidObservation {
     index: usize,
     value: f64,
@@ -18,7 +19,8 @@ pub enum StatsError {
   },
   /// The data carry nothing the method can use: a constant series, zero variance, no valid scales.
   DegenerateData(&'static str),
-  /// A configuration value outside its range, for estimators built by struct literal and checked at `estimate`.
+  /// A configuration value outside its range, for estimators built by struct literal and checked
+  /// at `estimate`.
   InvalidParameter {
     name: &'static str,
     value: f64,

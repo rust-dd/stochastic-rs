@@ -21,7 +21,8 @@ use crate::StatsError;
 use crate::heston_mle::HestonMleFit;
 use crate::heston_mle::fit_heston_nmle_with_delta;
 
-/// Configuration of the alternating batch estimator (published API).
+/// Configuration of the batch estimator: `r` finite; `delta`, `tol`, `initial_v0`, `initial_p0`
+/// finite, positive; `max_iters > 0`; `q11, q22 >= 0` with `q11 q22 >= q12²`; bounds non-negative.
 #[derive(Clone, Debug)]
 pub struct HestonNmleCekfConfig {
   pub r: f64,
@@ -84,8 +85,8 @@ pub struct HestonNmleCekfFit {
   pub converged: bool,
 }
 
-/// Damped CEKF/NMLE fixed point (`converged` is that loop's); config panics; `Err` below 4 prices,
-/// on a non-finite or non-positive one, a non-finite step, a failed refit or a `PriorBounds` exit.
+/// Damped CEKF/NMLE fixed point (`converged` is that loop's); `Err` below 4 prices, a bad price or
+/// step, a failed refit or a `PriorBounds` exit; panics unless `config` is in its type's ranges.
 pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,

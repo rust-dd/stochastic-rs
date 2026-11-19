@@ -1,6 +1,4 @@
-//! fOU estimates `(H, σ, θ)` by method: two as Brouste & Iacus print them (plain sums over full
-//! windows of `N + 1` points), the power variation as Coeurjolly and Hu, Nualart & Zhou do; `θ`
-//! reads their zero-level moment about the fitted mean `μ̂`, as the crate's `Fou` carries a level.
+//! fOU estimates `(H, σ, θ)` by method, as Brouste & Iacus and Hu, Nualart & Zhou print them.
 //!
 //! $$
 //! V_{\mathbf a}=\sum_{i=0}^{N-K}\Bigl(\sum_{k=0}^{K}a_kX_{i+k}\Bigr)^2,\qquad
@@ -13,9 +11,10 @@
 //! \hat\mu_2=\frac1N\sum_{n=1}^{N}(X_n-\hat\mu)^2
 //! $$
 //!
-//! Reference: Brouste, A. & Iacus, S. M. (2013), "Parameter estimation for the discretely observed fractional Ornstein–Uhlenbeck process and the Yuima R package", Computational Statistics 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6, arXiv:1112.3777.
+//! Sums run over full windows of `N + 1` points; `θ`'s moment is about `μ̂`, as `Fou` has a level.
 //!
-//! Reference: Hu, Y., Nualart, D. & Zhou, H. (2019), "Parameter estimation for fractional Ornstein–Uhlenbeck processes of general Hurst parameter", Statistical Inference for Stochastic Processes 22(1), 111–142, DOI 10.1007/s11203-017-9168-2, arXiv:1703.09372.
+//! Reference: Brouste & Iacus (2013), Comput. Stat. 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6
+//! Reference: Hu, Nualart & Zhou (2019), SISP 22(1), 111–142, DOI 10.1007/s11203-017-9168-2
 
 use ndarray::ArrayView1;
 use ndarray::s;
@@ -31,10 +30,7 @@ use crate::input::mean_in_order;
 use crate::input::reject_constant;
 use crate::input::validate;
 
-/// Structured result of an fOU parameter estimator.
-///
-/// Build with [`From<(f64, f64, f64, f64)>`] — the estimator output tuple
-/// is converted positionally as `(hurst, sigma, mu, theta)`.
+/// An fOU estimate; `From<(f64, f64, f64, f64)>` reads the tuple as `(hurst, sigma, mu, theta)`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FouFit {
   pub hurst: f64,
@@ -67,8 +63,8 @@ pub enum FilterType {
   Daubechies,
 }
 
-/// Brouste & Iacus's `H`, `σ` as printed, `θ` about `μ̂`, filter `a`; `Err` below 7 points (6 with
-/// an override), on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Brouste–Iacus `H`, `σ`, `θ` about `μ̂` by filter `a`; `Err` below 7 points (6 with `H` given),
+/// bad or flat data or no usable estimate; panics unless `0 < delta < ∞`, `0 < hurst_override < 1`.
 pub fn fit_fou_filtered_variations(
   path: ArrayView1<f64>,
   filter_type: FilterType,
@@ -118,8 +114,8 @@ pub fn fit_fou_filtered_variations(
   })
 }
 
-/// Brouste & Iacus's `H`, `σ` as printed, `θ` about `μ̂`, second difference; `Err` below five
-/// points, on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Brouste & Iacus's `H`, `σ`, `θ` about `μ̂` by second differences; `Err` below five points, bad
+/// or flat data or no usable estimate; panics unless `0 < delta < ∞` and `0 < hurst_override < 1`.
 pub fn fit_fou_central_differences(
   path: ArrayView1<f64>,
   delta: Option<f64>,
@@ -168,10 +164,8 @@ pub fn fit_fou_central_differences(
   })
 }
 
-/// Hu–Nualart–Zhou (4.2) `σ`, (5.22) `θ` about `μ̂`, at Coeurjolly's `H`; `Err` below `2k + 1`
-/// points (`k + 2` with an override), on bad or flat data or no usable `H`, `σ`, `θ`; panics on bad
-/// input.
-/// Reference: Achard, S. & Coeurjolly, J.-F. (2010), "Discrete variations of the fractional Brownian motion in the presence of outliers and an additive noise", Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2 (restating Coeurjolly 2001); Coeurjolly's `dvfBm` R package, for `H` from variations normalised by their counts; Hu, Nualart & Zhou (2019), arXiv:1703.09372, (4.2) and (5.22).
+/// `dvfBm`'s `H`, Hu–Nualart–Zhou's `σ`, `θ` about `μ̂`; `Err` below `2k + 1` points (`k + 2` with
+/// `H`), bad or flat data; panics unless `k >= 1`, `0 < hurst_override < 1`, the rest in `(0, ∞)`.
 ///
 /// $$
 /// V_{k,p}(s)=\sum_{i=0}^{n-ks}\Bigl|\sum_{j=0}^{k}(-1)^{k-j}\tbinom kj X_{i+js}\Bigr|^p,\qquad
@@ -180,8 +174,12 @@ pub fn fit_fou_central_differences(
 ///
 /// $$
 /// |\hat\sigma|^p=\frac{\Delta^{1-p\hat H}\,V_{k,p}(1)}{c_{k,p}\,T},\quad T=n\Delta,\qquad
-/// \hat\theta=\Bigl(\frac{\sum_{i=1}^{n}(X_i-\hat\mu)^2}{n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
+/// \hat\theta=\Bigl(\frac{\sum_{i=1}^{n}(X_i-\hat\mu)^2}
+/// {n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
 /// $$
+///
+/// Reference: Achard & Coeurjolly (2010), Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2
+/// Reference: Hu, Nualart & Zhou (2019), arXiv:1703.09372, (4.2) and (5.22)
 pub fn fit_fou_power_variation(
   path: ArrayView1<f64>,
   delta: Option<f64>,
@@ -301,8 +299,8 @@ fn hurst_from_ratio(hurst: f64) -> Result<f64, StatsError> {
   }
 }
 
-/// Brouste & Iacus's `λ̂`, its second moment `μ̂₂` taken about the fitted mean, which their model
-/// fixes at zero.
+/// Brouste & Iacus's `λ̂` (arXiv:1112.3777), its second moment `μ̂₂` taken about the fitted mean,
+/// which their model fixes at zero.
 fn brouste_iacus_drift(
   path: ArrayView1<f64>,
   mu: f64,
