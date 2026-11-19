@@ -111,10 +111,10 @@ fn legs(model: &impl ModelPricer, tau: f64) -> CallPut {
   pair(call, put)
 }
 
-/// A pinned value went through libm, whose last bits differ between platforms.
+/// A pinned value went through libm, whose last bits differ between platforms; each leg is held at
+/// its own scale.
 fn assert_pinned(got: CallPut, pinned: CallPut, what: &str) {
-  let scale = pinned.call.abs().max(pinned.put.abs()).max(1.0);
-  let close = |a: f64, b: f64| (a - b).abs() <= 1e-13 * scale;
+  let close = |a: f64, b: f64| (a - b).abs() <= 1e-13 * b.abs().max(1.0);
   let both = close(got.call, pinned.call) && close(got.put, pinned.put);
   assert!(both, "{what}: {got:?} against {pinned:?}");
 }

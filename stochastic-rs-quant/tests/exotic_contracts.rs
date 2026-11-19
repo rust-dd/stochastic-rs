@@ -126,7 +126,8 @@ fn the_barrier_prices_keep_their_values() {
   }
 }
 
-/// QuantLib 1.43's `AnalyticBarrierEngine` at the same queries, on either side of the strike.
+/// QuantLib 1.43's `AnalyticBarrierEngine` with the strike on either side of the barrier, each type
+/// in and out of the money.
 #[test]
 fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
   use BarrierType::*;
@@ -165,6 +166,22 @@ fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
     (DownAndOut, Call, 120.0, 110.0, 3.0, 15.961366390480972),
     (DownAndOut, Put, 120.0, 110.0, 0.0, 0.0),
     (DownAndOut, Put, 120.0, 110.0, 3.0, 2.1614847958263743),
+    (UpAndIn, Call, 115.0, 130.0, 0.0, 19.94076805843762),
+    (UpAndIn, Call, 115.0, 130.0, 3.0, 21.018566086276795),
+    (UpAndIn, Put, 115.0, 130.0, 0.0, 0.5834893136142469),
+    (UpAndIn, Put, 115.0, 130.0, 3.0, 1.6612873414534235),
+    (UpAndOut, Call, 115.0, 130.0, 0.0, 1.4742260642964768),
+    (UpAndOut, Call, 115.0, 130.0, 3.0, 3.312072145058389),
+    (UpAndOut, Put, 115.0, 130.0, 0.0, 3.2315998289143675),
+    (UpAndOut, Put, 115.0, 130.0, 3.0, 5.06944590967628),
+    (DownAndIn, Call, 90.0, 80.0, 0.0, 1.0427550284203695),
+    (DownAndIn, Call, 90.0, 80.0, 3.0, 2.0728008193297844),
+    (DownAndIn, Put, 90.0, 80.0, 0.0, 12.175514463558237),
+    (DownAndIn, Put, 90.0, 80.0, 3.0, 13.205560254467652),
+    (DownAndOut, Call, 90.0, 80.0, 0.0, 5.032584929221177),
+    (DownAndOut, Call, 90.0, 80.0, 3.0, 6.920785980996042),
+    (DownAndOut, Put, 90.0, 80.0, 0.0, 0.8048873465467201),
+    (DownAndOut, Put, 90.0, 80.0, 3.0, 2.6930883983215845),
   ] {
     let option = BarrierOption {
       strike: 100.0,

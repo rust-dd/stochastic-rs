@@ -333,7 +333,7 @@ const BLANKET_IMPLS: &[(&str, &str)] = &[
 
 const MULTI_ASSET: &str = "multi-asset: no single (s, k) query point";
 const PATH_DEPENDENT: &str = "path-dependent: contract parameters live in the struct";
-const EXOTIC: &str = "exotic: the contract is an argument beside the (s, r, q, tau) query";
+const EXOTIC: &str = "exotic: the contract and the query it reads are arguments";
 const FOURIER_ENGINE: &str = "Fourier engine: takes the model per call rather than being one";
 const NON_OPTION: &str = "not a single-underlying option pricer";
 
@@ -368,7 +368,7 @@ const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("PortfolioEngine", NON_OPTION),
   ("StulzRainbowPricer", MULTI_ASSET),
   ("VarianceSwapPricer", EXOTIC),
-  ("VolatilitySwapPricer", PATH_DEPENDENT),
+  ("VolatilitySwapPricer", EXOTIC),
 ];
 
 /// Re-derives the inventory from `src/**/*.rs` and diffs it against the lists
