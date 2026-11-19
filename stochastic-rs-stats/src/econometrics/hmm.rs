@@ -175,7 +175,11 @@ impl GaussianHmm {
   pub fn filter_step(&self, prev: ArrayView1<f64>, observation: f64) -> Array1<f64> {
     self.assert_parameters();
     let k = self.n_states();
-    assert_eq!(prev.len(), k, "prev must have one entry per state");
+    assert!(
+      prev.len() == k,
+      "prev must satisfy `prev.len() == k`, got prev.len() = {}, k = {k}",
+      prev.len()
+    );
     let mut predicted = Array1::<f64>::zeros(k);
     for j in 0..k {
       let mut acc = 0.0;

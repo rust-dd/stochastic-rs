@@ -63,8 +63,16 @@ where
 {
   let UkfTuning { alpha, beta, kappa } = tuning;
   let n = prior.mean.len();
-  assert_eq!(prior.covariance.dim(), (n, n));
-  assert_eq!(process_cov.dim(), (n, n));
+  assert!(
+    prior.covariance.dim() == (n, n),
+    "prior.covariance must satisfy `prior.covariance.dim() == (n, n)`, got prior.covariance.dim() = {:?}, n = {n}",
+    prior.covariance.dim()
+  );
+  assert!(
+    process_cov.dim() == (n, n),
+    "process_cov must satisfy `process_cov.dim() == (n, n)`, got process_cov.dim() = {:?}, n = {n}",
+    process_cov.dim()
+  );
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
   assert_tuning(tuning, n, lambda);
   let scale = (n as f64 + lambda).sqrt();
@@ -98,7 +106,11 @@ where
   for i in 0..n_sigma {
     let row = sigma.row(i);
     let propagated = transition(row);
-    assert_eq!(propagated.len(), n);
+    assert!(
+      propagated.len() == n,
+      "transition's output must satisfy `output.len() == n`, got output.len() = {}, n = {n}",
+      propagated.len()
+    );
     for j in 0..n {
       x_pred[[i, j]] = propagated[j];
     }
@@ -125,11 +137,19 @@ where
   }
 
   let m = observation.len();
-  assert_eq!(measurement_cov.dim(), (m, m));
+  assert!(
+    measurement_cov.dim() == (m, m),
+    "measurement_cov must satisfy `measurement_cov.dim() == (m, m)`, got measurement_cov.dim() = {:?}, m = {m}",
+    measurement_cov.dim()
+  );
   let mut z_pred_set = Array2::<f64>::zeros((n_sigma, m));
   for i in 0..n_sigma {
     let z = measurement(x_pred.row(i));
-    assert_eq!(z.len(), m);
+    assert!(
+      z.len() == m,
+      "measurement's output must satisfy `output.len() == m`, got output.len() = {}, m = {m}",
+      z.len()
+    );
     for j in 0..m {
       z_pred_set[[i, j]] = z[j];
     }

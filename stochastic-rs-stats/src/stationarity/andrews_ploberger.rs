@@ -161,7 +161,7 @@ pub fn andrews_ploberger_test(
     statistic,
     p_value: row.map(|row| p_value_bracket(statistic, row)),
     critical_values,
-    rejects_null: critical.map(|c| statistic >= c),
+    rejects_null: rejects(statistic, critical),
     statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
@@ -309,6 +309,11 @@ fn critical_row(kind: AndrewsPlobergerStatistic, k: usize, pi0: f64) -> Option<(
     AndrewsPlobergerStatistic::Exp => exp_wald_critical(k),
     AndrewsPlobergerStatistic::Avg => avg_wald_critical(k),
   }
+}
+
+/// Past the critical value strictly, as every other test of the crate decides.
+fn rejects(statistic: f64, critical: Option<f64>) -> Option<bool> {
+  critical.map(|c| statistic > c)
 }
 
 fn p_value_bracket(stat: f64, (c10, c5, c1): (f64, f64, f64)) -> f64 {
@@ -551,5 +556,13 @@ mod tests {
     assert!((c10 - 9.31).abs() < 1e-6);
     assert!((c5 - 11.79).abs() < 1e-6);
     assert!((c1 - 15.46).abs() < 1e-6);
+  }
+
+  /// A statistic at its critical value does not reject; off the table there is no decision.
+  #[test]
+  fn a_statistic_at_its_critical_value_does_not_reject() {
+    assert_eq!(rejects(11.79, Some(11.79)), Some(false));
+    assert_eq!(rejects(11.790000000000001, Some(11.79)), Some(true));
+    assert_eq!(rejects(11.79, None), None);
   }
 }

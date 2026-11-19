@@ -85,8 +85,8 @@ fn ks_c_alpha(alpha: f64) -> f64 {
 /// The two-sided asymptotic critical value $D_{n,\alpha} = c(\alpha)/\sqrt n$, where the p-value
 /// meets `alpha`; panics unless `0 < alpha < 1` and `n >= 1`.
 pub fn ks_critical_value(alpha: f64, n: usize) -> f64 {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
-  assert!(n >= 1, "n must be at least 1");
+  assert_alpha(alpha);
+  assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
   ks_c_alpha(alpha) / (n as f64).sqrt()
 }
 

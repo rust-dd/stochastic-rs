@@ -59,11 +59,8 @@ impl HypothesisTest for ChiSquareGofTest {
 /// Upper-tail chi-square critical value: the `c` with `P(X > c) = alpha` for `X ~ ChiSquared(df)`
 /// (`SimdChiSquared::quantile(1 - alpha)`); panics unless `0 < alpha < 1` and `df >= 1`.
 pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
-  assert!(
-    df >= 1,
-    "chi-square test needs at least 1 degree of freedom"
-  );
+  assert_alpha(alpha);
+  assert!(df >= 1, "df must satisfy `df >= 1`, got df = {df:?}");
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
   SimdChiSquared::<f64>::new(df as f64)
@@ -142,8 +139,14 @@ pub fn pool_integer_bins(
   cdf: impl Fn(i64) -> f64,
   min_expected: f64,
 ) -> (Vec<i64>, Vec<f64>) {
-  assert!(k_hi >= k_lo, "k_hi must be >= k_lo");
-  assert!(min_expected > 0.0, "min_expected must be positive");
+  assert!(
+    k_hi >= k_lo,
+    "k_hi must satisfy `k_hi >= k_lo`, got k_hi = {k_hi:?}, k_lo = {k_lo:?}"
+  );
+  assert!(
+    min_expected > 0.0,
+    "min_expected must satisfy `min_expected > 0.0`, got min_expected = {min_expected:?}"
+  );
 
   let n_f = n as f64;
   let pmf = |k: i64| (cdf(k) - cdf(k - 1)).max(0.0);
@@ -176,7 +179,11 @@ pub fn pool_integer_bins(
 
 /// Counts `samples` into the bins of [`pool_integer_bins`]; panics unless `edges.len() >= 2`.
 pub fn bin_observed(samples: ArrayView1<i64>, edges: ArrayView1<i64>) -> Vec<u64> {
-  assert!(edges.len() >= 2, "need at least one bin (2 edges)");
+  assert!(
+    edges.len() >= 2,
+    "edges must satisfy `edges.len() >= 2`, got edges.len() = {}",
+    edges.len()
+  );
   let edges = as_slice_or_copy(edges);
   let mut counts = vec![0u64; edges.len() - 1];
   let last = counts.len() - 1;

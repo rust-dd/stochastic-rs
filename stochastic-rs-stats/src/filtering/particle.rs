@@ -155,7 +155,11 @@ where
     for i in 0..n {
       let prev = self.particles.row(i);
       let propagated = (self.transition)(prev, &mut self.rng);
-      assert_eq!(propagated.len(), d, "transition must preserve state dim");
+      assert!(
+        propagated.len() == d,
+        "transition's output must satisfy `output.len() == d`, got output.len() = {}, d = {d}",
+        propagated.len()
+      );
       for j in 0..d {
         new_particles[[i, j]] = propagated[j];
       }
