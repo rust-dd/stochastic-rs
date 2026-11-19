@@ -79,8 +79,8 @@ impl crate::traits::HypothesisTest for LoMacKinlayTest {
   }
 }
 
-/// Lo–MacKinlay (1988) variance-ratio test; `Err` below `4 q` returns, on a non-finite input or on
-/// zero-variance increments, and panics unless `q >= 2` and `0 < alpha < 1`.
+/// Lo–MacKinlay (1988) variance-ratio test; `Err` below `4 q` returns, on a non-finite input, a
+/// constant log-price path or zero-variance increments; panics unless `q >= 2` and `0 < alpha < 1`.
 pub fn lo_mackinlay_test(
   series: ArrayView1<f64>,
   cfg: LoMacKinlayConfig,
@@ -90,6 +90,7 @@ pub fn lo_mackinlay_test(
   let raw = as_slice_or_copy(series);
   let returns: Vec<f64> = if cfg.input_is_log_prices {
     validate(&raw, cfg.q * 4 + 1)?;
+    reject_constant(&raw, "constant series")?;
     (1..raw.len()).map(|i| raw[i] - raw[i - 1]).collect()
   } else {
     validate(&raw, cfg.q * 4)?;
@@ -273,13 +274,19 @@ mod tests {
     );
   }
 
+  /// A constant log-price path, or one within its rounding, is a constant series.
   #[test]
   fn constant_prices_are_degenerate_data() {
-    let prices = ndarray::Array1::<f64>::from_elem(40, 0.3);
-    assert_eq!(
-      lo_mackinlay_test(prices.view(), LoMacKinlayConfig::default()).unwrap_err(),
-      crate::StatsError::DegenerateData("zero-variance increments")
-    );
+    let ulp = 0.3 * f64::EPSILON;
+    for prices in [
+      ndarray::Array1::<f64>::from_elem(40, 0.3),
+      ndarray::Array1::from_iter((0..40).map(|j| 0.3 + (j % 3) as f64 * ulp)),
+    ] {
+      assert_eq!(
+        lo_mackinlay_test(prices.view(), LoMacKinlayConfig::default()).unwrap_err(),
+        crate::StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]

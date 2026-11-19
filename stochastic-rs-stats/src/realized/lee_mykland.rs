@@ -20,7 +20,9 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::StatsError;
+use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate_view;
 use crate::traits::FloatExt;
 
@@ -56,7 +58,7 @@ pub struct LeeMyklandTest {
 }
 
 /// Lee–Mykland test of each return against the bipower volatility of the `window` before it; `Err`
-/// below `window` or on a non-finite return, panics unless `window >= 3` and `0 < alpha < 1`.
+/// below `window`, on non-finite or constant returns; panics unless `window >= 3`, `0 < alpha < 1`.
 pub fn lee_mykland_test<T: FloatExt>(
   returns: ArrayView1<T>,
   window: usize,
@@ -68,12 +70,10 @@ pub fn lee_mykland_test<T: FloatExt>(
   );
   assert_alpha(alpha);
   validate_view(returns, window)?;
+  reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
 
-  let r: Vec<f64> = returns
-    .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+  let r: Vec<f64> = returns.iter().map(|x| x.to_f64().unwrap()).collect();
   let mut statistics = Array1::<f64>::from_elem(n, f64::NAN);
   let mut local_volatility = Array1::<f64>::from_elem(n, f64::NAN);
   let scale = 1.0 / (window - 2) as f64;
@@ -260,6 +260,16 @@ mod tests {
       lee_mykland_test(array![0.01_f64, 0.02, 0.03].view(), 5, 0.01).unwrap_err(),
       StatsError::InsufficientData { needed: 5, got: 3 }
     );
+  }
+
+  #[test]
+  fn constant_and_zero_returns_are_a_constant_series() {
+    for r in [Array1::from_elem(200, 0.001), Array1::<f64>::zeros(200)] {
+      assert_eq!(
+        lee_mykland_test(r.view(), 16, 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]

@@ -126,7 +126,7 @@ pub struct LogRealizedVarianceQmlDiagnostics {
   pub selected_iterations: usize,
   /// Sum of iterations over all deterministic starts.
   pub total_iterations: usize,
-  /// Whether the selected maximum-likelihood start converged.
+  /// The selected start's simplex met a `1e-10` spread of its values within its iteration budget.
   pub converged: bool,
 }
 
@@ -181,7 +181,7 @@ pub struct LogRealizedVarianceParameterUncertainty {
 /// Statistical quality gates for accepting a fitted model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LogRealizedVarianceQmlQuality {
-  /// The selected deterministic Nelder-Mead start converged.
+  /// The selected start's simplex met a `1e-10` spread of its values, as `diagnostics.converged`.
   pub optimizer_converged: bool,
   /// No parameter is within the structural boundary tolerance.
   pub parameters_interior: bool,
@@ -223,5 +223,4 @@ pub struct LogRealizedVarianceQmlFit {
 }
 
 #[cfg(test)]
-#[path = "log_realized_variance_qml/tests.rs"]
 mod tests;

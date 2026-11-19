@@ -36,13 +36,13 @@ pub struct HillFit {
   pub nobs: usize,
 }
 
-/// Hill estimator on the `k` largest positive entries of `data` (non-positive ones are ignored);
-/// `Err` on a non-finite entry or at most `k` positive ones, and panics unless `k >= 1`.
+/// Hill estimator on the `k` largest positive entries of `data`, `ξ̂ = 0` if they tie; `Err` on a
+/// non-finite entry or at most `k` positive ones (others are ignored); panics unless `k >= 1`.
 pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> Result<HillFit, StatsError> {
   assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, 0)?;
   let mut positive = x.into_iter().filter(|v| *v > 0.0).collect::<Vec<f64>>();

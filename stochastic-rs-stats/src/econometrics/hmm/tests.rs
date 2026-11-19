@@ -449,8 +449,9 @@ fn an_empty_series_gives_the_empty_answers() {
   assert!(hmm.viterbi(empty.view()).unwrap().is_empty());
 }
 
-/// The fields are public, so a model without states can bypass `new`.
+/// The fields are public, so a model without states can bypass `new`; it panics as `new` does.
 #[test]
+#[should_panic(expected = "initial.len() must satisfy `initial.len() >= 1`, got initial.len() = 0")]
 fn baum_welch_rejects_a_struct_literal_model_without_states() {
   let mut hmm = GaussianHmm {
     initial: Array1::zeros(0),
@@ -458,16 +459,7 @@ fn baum_welch_rejects_a_struct_literal_model_without_states() {
     means: Array1::zeros(0),
     stds: Array1::zeros(0),
   };
-  assert_eq!(
-    hmm
-      .baum_welch(array![0.1, 0.4, -0.2].view(), 5, 1e-6)
-      .unwrap_err(),
-    StatsError::InvalidParameter {
-      name: "initial.len()",
-      value: 0.0,
-      constraint: "initial.len() >= 1"
-    }
-  );
+  let _ = hmm.baum_welch(array![0.1, 0.4, -0.2].view(), 5, 1e-6);
 }
 
 #[test]

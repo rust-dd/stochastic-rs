@@ -15,6 +15,8 @@ use super::FdDiagnostic;
 use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
+use crate::hurst::to_f64_vec;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Variogram-ratio fractal-dimension estimator.
@@ -73,7 +75,7 @@ fn compute_with_diagnostic<T: FloatExt>(
     });
   }
 
-  let p_f64 = p.to_f64().unwrap_or(f64::NAN);
+  let p_f64 = p.to_f64().unwrap();
   if !(p_f64 > 0.0 && p_f64.is_finite()) {
     return Err(StatsError::InvalidParameter {
       name: "p",
@@ -81,16 +83,17 @@ fn compute_with_diagnostic<T: FloatExt>(
       constraint: "p > 0",
     });
   }
+  reject_constant(&to_f64_vec(x), "constant or zero-variance path")?;
 
   let sum1: f64 = (1..x.len())
     .map(|i| {
-      let d = x[i].to_f64().unwrap_or(f64::NAN) - x[i - 1].to_f64().unwrap_or(f64::NAN);
+      let d = x[i].to_f64().unwrap() - x[i - 1].to_f64().unwrap();
       d.abs().powf(p_f64)
     })
     .sum();
   let sum2: f64 = (2..x.len())
     .map(|i| {
-      let d = x[i].to_f64().unwrap_or(f64::NAN) - x[i - 2].to_f64().unwrap_or(f64::NAN);
+      let d = x[i].to_f64().unwrap() - x[i - 2].to_f64().unwrap();
       d.abs().powf(p_f64)
     })
     .sum();

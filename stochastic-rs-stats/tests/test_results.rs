@@ -3,6 +3,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
@@ -147,8 +148,8 @@ fn every_test_result_answers_through_the_trait() {
   agrees(&ks, ks.statistic, ks.rejects_null);
   assert_eq!(ks.critical_values.as_ref().unwrap().entries().len(), 1);
   let chi = chi_square_gof_test(
-    &[40, 35, 25],
-    &[0.4, 0.35, 0.25],
+    ArrayView1::from(&[40, 35, 25]),
+    ArrayView1::from(&[0.4, 0.35, 0.25]),
     ChiSquareGofConfig::default(),
   )
   .unwrap();

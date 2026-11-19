@@ -22,6 +22,17 @@ workspace. Every estimator is anchored to a published paper.
 - **Stationarity** — ADF, KPSS, Phillips-Perron, ERS-DFGLS,
   Leybourne-McCabe, Lo-MacKinlay, Andrews-Ploberger, CUSUM, RESET.
 - **Normality** — Jarque-Bera, Anderson-Darling, Shapiro-Francia.
+- **Goodness of fit** — Kolmogorov-Smirnov and Pearson chi-square against a
+  given law.
+- **Dependence** — ACF, PACF and the Ljung-Box test.
+- **Volatility models** — GARCH, GJR-GARCH and EGARCH by Gaussian QMLE.
+- **Extremes** — GEV and GPD maximum likelihood, peaks over threshold, Hill.
+- **Return laws** — Johnson SU, Hansen skew-t and variance-gamma by maximum
+  likelihood.
+- **Fractional OU** — the fOU parameters from filtered, central and power
+  variations.
+- **Densities** — Gaussian kernel density with Silverman's bandwidth, sample
+  quantiles.
 - **Econometrics** — cointegration, Granger causality, hidden Markov
   models, changepoint detection.
 - **Filtering** — particle filter, unscented Kalman filter, MCMC.

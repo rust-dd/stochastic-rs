@@ -40,27 +40,34 @@ use crate::input::validate;
 use crate::optim::best_start;
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
-/// The sample as `f64` with its mean and standard deviation; `Err` below `minimum`, on a
-/// non-finite observation or a constant sample.
+/// The sample times `unit`, the power of two nearest the inverse of its largest magnitude, with its
+/// mean and standard deviation there.
+pub(crate) struct Sample {
+  pub(crate) x: Vec<f64>,
+  pub(crate) mean: f64,
+  pub(crate) sd: f64,
+  pub(crate) unit: f64,
+}
+
+/// The [`Sample`] of `data`; `Err` below `minimum`, on a non-finite observation or a constant one.
 pub(crate) fn sample<T: FloatExt>(
   data: ArrayView1<T>,
   minimum: usize,
-) -> Result<(Vec<f64>, f64, f64), StatsError> {
+) -> Result<Sample, StatsError> {
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, minimum)?;
   reject_constant(&x, "constant sample")?;
+  let (x, unit) = unit_scaled(x);
   let n = x.len();
   let mean = x.iter().sum::<f64>() / n as f64;
   let sd = (x.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)).sqrt();
-  if sd == 0.0 {
-    return Err(StatsError::DegenerateData("constant sample"));
-  }
-  Ok((x, mean, sd))
+  Ok(Sample { x, mean, sd, unit })
 }
 
 /// The best of `starts`, a Nelder–Mead simplex with one restart, then an L-BFGS polish kept only if

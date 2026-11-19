@@ -20,6 +20,7 @@ use super::log_spaced_windows;
 use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Detrended fluctuation analysis Hurst estimator.
@@ -116,6 +117,7 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
     }
 
     let xs = to_f64_vec::<T>(x);
+    reject_constant(&xs, "constant series")?;
     let mean: f64 = xs.iter().sum::<f64>() / xs.len() as f64;
 
     // Integrate (or skip integration when the caller already did so).

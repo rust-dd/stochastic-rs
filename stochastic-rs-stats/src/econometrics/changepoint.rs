@@ -1,6 +1,6 @@
 //! Changepoint detection: Page's two-sided CUSUM for a mean shift, and PELT.
 //!
-//! PELT finds the global optimum of a penalised likelihood at a cost at most linear in the sample.
+//! PELT finds the global optimum at a cost at most linear in the sample; a constant has no change.
 //!
 //! Reference: Page (1954), Biometrika 41(1/2), 100-115, DOI: 10.2307/2333009
 //! Reference: Killick et al. (2012), JASA 107(500), 1590-1598, DOI: 10.1080/01621459.2012.737745

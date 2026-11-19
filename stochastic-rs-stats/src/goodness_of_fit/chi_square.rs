@@ -10,8 +10,11 @@
 //! Reference: Pearson (1900), Phil. Mag. Series 5, 50(302), 157-175, DOI: 10.1080/14786440009463897
 //! Reference: Cochran (1954), Biometrics 10(4), 417-451, DOI: 10.2307/3001616
 
+use ndarray::ArrayView1;
+
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::traits::HypothesisTest;
 
@@ -56,11 +59,8 @@ impl HypothesisTest for ChiSquareGofTest {
 /// Upper-tail chi-square critical value: the `c` with `P(X > c) = alpha` for `X ~ ChiSquared(df)`
 /// (`SimdChiSquared::quantile(1 - alpha)`); panics unless `0 < alpha < 1` and `df >= 1`.
 pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
-  assert!(
-    df >= 1,
-    "chi-square test needs at least 1 degree of freedom"
-  );
+  assert_alpha(alpha);
+  assert!(df >= 1, "df must satisfy `df >= 1`, got df = {df:?}");
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
   SimdChiSquared::<f64>::new(df as f64)
@@ -71,8 +71,8 @@ pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
 /// Pearson's chi-square test of counts against a fully specified null's masses; `Err` below 2 bins
 /// or an expected count below 1; panics unless lengths match, masses sum to 1 and `0 < alpha < 1`.
 pub fn chi_square_gof_test(
-  observed: &[u64],
-  expected_prob: &[f64],
+  observed: ArrayView1<u64>,
+  expected_prob: ArrayView1<f64>,
   cfg: ChiSquareGofConfig,
 ) -> Result<ChiSquareGofTest, StatsError> {
   assert!(
@@ -139,8 +139,14 @@ pub fn pool_integer_bins(
   cdf: impl Fn(i64) -> f64,
   min_expected: f64,
 ) -> (Vec<i64>, Vec<f64>) {
-  assert!(k_hi >= k_lo, "k_hi must be >= k_lo");
-  assert!(min_expected > 0.0, "min_expected must be positive");
+  assert!(
+    k_hi >= k_lo,
+    "k_hi must satisfy `k_hi >= k_lo`, got k_hi = {k_hi:?}, k_lo = {k_lo:?}"
+  );
+  assert!(
+    min_expected > 0.0,
+    "min_expected must satisfy `min_expected > 0.0`, got min_expected = {min_expected:?}"
+  );
 
   let n_f = n as f64;
   let pmf = |k: i64| (cdf(k) - cdf(k - 1)).max(0.0);
@@ -172,11 +178,16 @@ pub fn pool_integer_bins(
 }
 
 /// Counts `samples` into the bins of [`pool_integer_bins`]; panics unless `edges.len() >= 2`.
-pub fn bin_observed(samples: &[i64], edges: &[i64]) -> Vec<u64> {
-  assert!(edges.len() >= 2, "need at least one bin (2 edges)");
+pub fn bin_observed(samples: ArrayView1<i64>, edges: ArrayView1<i64>) -> Vec<u64> {
+  assert!(
+    edges.len() >= 2,
+    "edges must satisfy `edges.len() >= 2`, got edges.len() = {}",
+    edges.len()
+  );
+  let edges = as_slice_or_copy(edges);
   let mut counts = vec![0u64; edges.len() - 1];
   let last = counts.len() - 1;
-  for &x in samples {
+  for &x in samples.iter() {
     let idx = (edges.partition_point(|&e| e <= x) - 1).min(last);
     counts[idx] += 1;
   }
@@ -185,6 +196,7 @@ pub fn bin_observed(samples: &[i64], edges: &[i64]) -> Vec<u64> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::SimdDistribution;
@@ -249,11 +261,15 @@ mod tests {
         let samples = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
         let (edges, expected_prob) =
           pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64).unwrap(), 5.0);
-        let observed = bin_observed(&samples, &edges);
-        chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
-          .unwrap()
-          .p_value
-          .unwrap()
+        let observed = bin_observed(ArrayView1::from(&samples), ArrayView1::from(&edges));
+        chi_square_gof_test(
+          ArrayView1::from(&observed),
+          ArrayView1::from(&expected_prob),
+          ChiSquareGofConfig::default(),
+        )
+        .unwrap()
+        .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -265,7 +281,12 @@ mod tests {
   #[test]
   fn one_bin_is_insufficient_data() {
     assert_eq!(
-      chi_square_gof_test(&[10], &[1.0], ChiSquareGofConfig::default()).unwrap_err(),
+      chi_square_gof_test(
+        ArrayView1::from(&[10]),
+        ArrayView1::from(&[1.0]),
+        ChiSquareGofConfig::default()
+      )
+      .unwrap_err(),
       StatsError::InsufficientData { needed: 2, got: 1 }
     );
   }
@@ -273,7 +294,12 @@ mod tests {
   #[test]
   fn an_expected_count_below_one_is_degenerate_data() {
     assert_eq!(
-      chi_square_gof_test(&[3, 1], &[0.9, 0.1], ChiSquareGofConfig::default()).unwrap_err(),
+      chi_square_gof_test(
+        ArrayView1::from(&[3, 1]),
+        ArrayView1::from(&[0.9, 0.1]),
+        ChiSquareGofConfig::default()
+      )
+      .unwrap_err(),
       StatsError::DegenerateData("a bin's expected count is below 1")
     );
   }
@@ -283,7 +309,11 @@ mod tests {
     expected = "expected_prob must satisfy `expected_prob.len() == observed.len()`, got expected_prob.len() = 2, observed.len() = 3"
   )]
   fn unequal_lengths_are_a_precondition() {
-    let _ = chi_square_gof_test(&[1, 2, 3], &[0.5, 0.5], ChiSquareGofConfig::default());
+    let _ = chi_square_gof_test(
+      ArrayView1::from(&[1, 2, 3]),
+      ArrayView1::from(&[0.5, 0.5]),
+      ChiSquareGofConfig::default(),
+    );
   }
 
   #[test]
@@ -291,7 +321,11 @@ mod tests {
     expected = "expected_prob must satisfy `(expected_prob.iter().sum() - 1.0).abs() < 1e-6`, got expected_prob.iter().sum() = 0.9"
   )]
   fn masses_off_one_are_a_precondition() {
-    let _ = chi_square_gof_test(&[10, 20], &[0.4, 0.5], ChiSquareGofConfig::default());
+    let _ = chi_square_gof_test(
+      ArrayView1::from(&[10, 20]),
+      ArrayView1::from(&[0.4, 0.5]),
+      ChiSquareGofConfig::default(),
+    );
   }
 
   /// Poisson(10) samples tested against Poisson(16)'s bins must reject.
@@ -308,9 +342,33 @@ mod tests {
       |k| reference.cdf(k.max(0) as f64).unwrap(),
       5.0,
     );
-    let observed = bin_observed(&samples, &edges);
-    let res =
-      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).unwrap();
+    let observed = bin_observed(ArrayView1::from(&samples), ArrayView1::from(&edges));
+    let res = chi_square_gof_test(
+      ArrayView1::from(&observed),
+      ArrayView1::from(&expected_prob),
+      ChiSquareGofConfig::default(),
+    )
+    .unwrap();
     assert!(res.rejects_null, "expected rejection, got {res:?}");
+  }
+
+  /// A strided view of the samples is binned as its copy, and the counts are tested as a view.
+  #[test]
+  fn a_strided_view_is_binned_as_its_copy() {
+    let samples = ndarray::Array1::from_iter((0..40_i64).map(|k| k % 7));
+    let edges = ndarray::Array1::from(vec![i64::MIN, 2, 4, i64::MAX]);
+    let strided = samples.slice(ndarray::s![..;2]);
+    let observed = bin_observed(strided, edges.view());
+    assert_eq!(
+      observed,
+      bin_observed(strided.to_owned().view(), edges.view())
+    );
+    let probs = ndarray::Array1::from(vec![0.3, 0.3, 0.4]);
+    let test = chi_square_gof_test(
+      ndarray::ArrayView1::from(&observed),
+      probs.view(),
+      ChiSquareGofConfig::default(),
+    );
+    assert!(test.unwrap().statistic.is_finite());
   }
 }

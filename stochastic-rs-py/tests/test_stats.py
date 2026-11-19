@@ -84,6 +84,13 @@ def test_vecm_shapes_and_pi_factorisation():
     assert abs(ratio + 1.0 / 0.7) < 0.1
 
 
+def test_fukasawa_hurst_says_whether_its_search_converged():
+    i = np.arange(300)
+    log_rv = ((i * 37) % 101) / 101.0 - 0.5 + 0.01 * i
+    fit = sr.FukasawaHurst.from_log_rv(log_rv, 1, 1.0 / 250.0)
+    assert fit.converged is True
+
+
 def test_garch_fit_recovers_persistence_below_one():
     rng = np.random.default_rng(7)
     n = 1500

@@ -1,5 +1,7 @@
 //! Hidden Markov model with univariate Gaussian emissions: forward–backward, Baum–Welch, Viterbi.
 //!
+//! Only `baum_welch` estimates and refuses a constant series; the others score the model as given.
+//!
 //! Reference: Baum et al. (1970), Ann. Math. Statist. 41(1), 164-171, DOI: 10.1214/aoms/1177697196
 //! Reference: Rabiner (1989), Proceedings of the IEEE 77(2), 257-286, DOI: 10.1109/5.18626
 
@@ -28,7 +30,7 @@ pub struct HmmFit {
   pub iterations: usize,
   /// Final log-likelihood after the last iteration.
   pub log_likelihood: f64,
-  /// `true` if the convergence criterion was met before `max_iter`.
+  /// An EM step changed the log-likelihood by less than `tol` within `max_iter` steps.
   pub converged: bool,
 }
 
@@ -175,7 +177,11 @@ impl GaussianHmm {
   pub fn filter_step(&self, prev: ArrayView1<f64>, observation: f64) -> Array1<f64> {
     self.assert_parameters();
     let k = self.n_states();
-    assert_eq!(prev.len(), k, "prev must have one entry per state");
+    assert!(
+      prev.len() == k,
+      "prev must satisfy `prev.len() == k`, got prev.len() = {}, k = {k}",
+      prev.len()
+    );
     let mut predicted = Array1::<f64>::zeros(k);
     for j in 0..k {
       let mut acc = 0.0;
@@ -402,22 +408,15 @@ impl GaussianHmm {
   }
 
   /// Baum–Welch EM, up to `max_iter` steps, until the gain is below `tol`; panics as `new`; `Err`,
-  /// the last full update kept, on 0 states, < 2, non-finite or constant points, or under/overflow.
+  /// the last full update kept, on fewer than 2, non-finite or constant points, or under/overflow.
   pub fn baum_welch(
     &mut self,
     observations: ArrayView1<f64>,
     max_iter: usize,
     tol: f64,
   ) -> Result<HmmFit, StatsError> {
-    let k = self.n_states();
-    if k == 0 {
-      return Err(StatsError::InvalidParameter {
-        name: "initial.len()",
-        value: 0.0,
-        constraint: "initial.len() >= 1",
-      });
-    }
     self.assert_parameters();
+    let k = self.n_states();
     let y = as_slice_or_copy(observations);
     validate(&y, 2)?;
     reject_constant(&y, "constant series")?;

@@ -16,6 +16,7 @@ pub use variogram::Variogram;
 /// A fractal-dimension estimator: it owns its configuration and reads one series into an [`FdFit`];
 /// implemented by [`Higuchi`] and [`Variogram`].
 pub trait FractalDimEstimator<T: FloatExt> {
+  /// `D` of `x`; `Err` on a constant series, a configuration out of range or too few points.
   fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError>;
 }
 

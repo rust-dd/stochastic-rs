@@ -261,6 +261,7 @@ mod tests {
         false
       }
     }
+
     impl CostFunction for Slope {
       type Param = Vec<f64>;
       type Output = f64;
@@ -270,6 +271,7 @@ mod tests {
         Ok(x[0])
       }
     }
+
     impl Gradient for Slope {
       type Gradient = Vec<f64>;
 

@@ -82,11 +82,12 @@ pub struct HestonNmleCekfFit {
   pub vol_path: Array1<f64>,
   pub cov_path: Array1<f64>,
   pub iterations: usize,
+  /// The damped fixed point moved every parameter by less than `tol` within `max_iters` passes.
   pub converged: bool,
 }
 
-/// Damped CEKF/NMLE fixed point (`converged` is that loop's); `Err` below 4 prices, a bad price or
-/// step, a failed refit or a `PriorBounds` exit; panics unless `config` is in its type's ranges.
+/// Damped CEKF/NMLE fixed point; `Err` below 4 prices, a bad price or step, a failed refit or a
+/// `PriorBounds` exit; panics unless `config` is in its type's ranges.
 pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,

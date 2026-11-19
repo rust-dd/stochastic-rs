@@ -67,11 +67,15 @@ fn perturbation_demo_chi_square_catches_mismatched_rate() {
         |k| wrong_reference.cdf(k as f64).unwrap(),
         5.0,
       );
-      let observed = bin_observed(&xs, &edges);
-      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
-        .unwrap()
-        .p_value
-        .unwrap()
+      let observed = bin_observed(ArrayView1::from(&xs), ArrayView1::from(&edges));
+      chi_square_gof_test(
+        ArrayView1::from(&observed),
+        ArrayView1::from(&expected_prob),
+        ChiSquareGofConfig::default(),
+      )
+      .unwrap()
+      .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max);
   assert!(

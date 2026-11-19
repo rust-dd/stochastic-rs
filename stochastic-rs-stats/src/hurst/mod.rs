@@ -46,6 +46,7 @@ pub use whittle::Whittle;
 /// The self-similarity exponent of the series itself: [`RescaledRange`], [`Dfa`], [`Gph`],
 /// [`Wavelet`], [`Variations`], and `H = 2 − D` from [`crate::fractal_dim`]'s two estimators.
 pub trait HurstEstimator<T: FloatExt> {
+  /// `H` of `x`; `Err` on a constant series, a configuration out of range or too few points.
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError>;
 }
 
@@ -193,5 +194,5 @@ pub(crate) fn log_spaced_windows(min: usize, max: usize, n: usize) -> Vec<usize>
 
 /// Read `x` as a contiguous `f64` slice when possible, else copy.
 pub(crate) fn to_f64_vec<T: FloatExt>(x: ArrayView1<T>) -> Vec<f64> {
-  x.iter().map(|v| v.to_f64().unwrap_or(f64::NAN)).collect()
+  x.iter().map(|v| v.to_f64().unwrap()).collect()
 }

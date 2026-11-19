@@ -5,7 +5,7 @@
 //! h=0.9\,\min\!\left(\hat\sigma,\frac{\mathrm{IQR}}{1.34}\right)n^{-1/5}
 //! $$
 //!
-//! Reference: Silverman (1986), Density Estimation for Statistics and Data Analysis, §3.4.2
+//! Reference: Silverman (1986), Density Estimation, §3.4.2, DOI: 10.1201/9781315140919
 
 use std::f64::consts::PI;
 
@@ -15,6 +15,7 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::mean_in_order;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
 
@@ -90,6 +91,7 @@ impl GaussianKde {
 pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let sample = as_slice_or_copy(data);
   validate(&sample, 2)?;
+  reject_constant(&sample, "zero spread")?;
   let nf = data.len() as f64;
   let mean = mean_in_order(data);
   let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();

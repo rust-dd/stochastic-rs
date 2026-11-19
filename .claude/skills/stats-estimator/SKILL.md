@@ -43,16 +43,19 @@ pub fn fit_foo<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<FooFit, St
   (`mean_in_order`) so that a view and its copy round alike.
 - **Generic over `T: FloatExt`** where the arithmetic allows it; the regression-based tests take
   `f64`. Lift to `f64` for accumulation.
-- **The return type is `Result<_, StatsError>`.** A broken precondition of the call (a
-  configuration value out of range, `dt <= 0`, a `Trend::None` a test cannot take) panics with
-  ``<arg> must satisfy `<pred>`, got <arg> = {value:?}``. Anything the data decide is an `Err`:
-  `InsufficientData`, `InvalidObservation`, `DimensionMismatch`, `DegenerateData` (a constant
+- **The return type is `Result<_, StatsError>`.** A broken precondition of the call (an argument
+  or a model parameter out of range, `dt <= 0`, a `Trend::None` a test cannot take) panics with
+  ``<arg> must satisfy `<pred>`, got <arg> = {value:?}``; the field of a struct-literal estimator,
+  checked at `estimate` or `fit`, is `Err(InvalidParameter)` (§8). Anything the data decide is an
+  `Err`: `InsufficientData`, `InvalidObservation`, `DimensionMismatch`, `DegenerateData` (a constant
   series, an exact fit), `Singular`, `Numerical { stage }`. Nothing answers `0.0` or a floor as a
   stand-in.
 - **A pure realized measure** that answers one `T` answers `T::nan()` below its minimum length.
 - **Validate first**, with the helpers in `input.rs` (`validate`, `validate_domain`,
   `validate_rows`, `reject_constant`, `assert_alpha`), in the order length, finiteness,
-  degeneracy.
+  degeneracy. `reject_constant` is the crate's one near-constant rule: a range within `4 ε` of the
+  largest magnitude is a constant's rounding and refused as the constant itself. A method on which a
+  constant is no degeneracy (PELT's no change, an EWMA's `r²`) says why in its doc.
 
 ## 2. The result struct
 
@@ -119,7 +122,7 @@ A regression inside a test goes through `stationarity::common` (`ols`, `fit_adf`
 `regress_on_deterministics`, `newey_west_long_run_variance`): `ols` refuses a design past its
 condition bound as `Singular("OLS design")`, and `reject_exact_fit` refuses an exact fit as
 `DegenerateData("zero residual variance")`. Enter through `prepared(y, min_n)`, which validates,
-refuses a constant series and scales by a power of two, and centre the series
+refuses a constant series by `reject_constant` and scales by a power of two, and centre the series
 (`centred`) before any regression with a constant, so that a level far above the variation does
 not round it away.
 
@@ -175,9 +178,9 @@ mod tests {
   is discarded (`integration-test-writing` §1.1).
 - A statistical assertion asks the best of three pinned seeds, as a correct test rejects a true
   null at rate `alpha` and the SIMD stream differs by platform.
-- Pin the degenerate rows in `tests/degenerate_inputs.rs` (empty, a NaN at an index, a constant
-  series) and the refusal of an exact fit; pin scale and level invariance where the statistic has
-  them (`tests/stationarity_rescaling.rs`).
+- Pin the degenerate rows in `tests/degenerate_inputs/main.rs` (empty, a NaN at an index, a
+  constant series) and the refusal of an exact fit; pin scale and level invariance where the
+  statistic has them (`tests/stationarity_rescaling.rs`, `tests/fit_rescaling.rs`).
 
 ## 7. Python wrapper
 
@@ -193,7 +196,7 @@ use pyo3::prelude::*;
 
 use super::stats_error;
 
-#[pyclass(name = "FooTest", unsendable)]
+#[pyclass(name = "FooTest")]
 pub struct PyFooTest {
   inner: crate::foo::FooTest,
 }
@@ -222,8 +225,10 @@ See `python-bindings` for registration and the pytest rows.
 ## 8. Anti-patterns
 
 - A tuple return, a `0.0` or `1e-30` stand-in, an `unwrap` on data.
-- A panic inside a fit on something the data decide, or an `Err` for a configuration value the
-  caller wrote.
+- A panic inside a fit on something the data decide.
+- A configuration on the wrong channel. The fields of a struct-literal estimator (`Dfa`,
+  `Whittle`), checked at `estimate` or `fit`, answer `Err(InvalidParameter)`; a model's parameters
+  (`GaussianHmm`) and a call's arguments (`fit_fou_power_variation`'s `k`) panic, as `new` does.
 - A second regression helper beside `stationarity::common`, or a direct `faer` call.
 - A statistic computed at the series' level where a constant is in the regression: centre first.
 - `statrs` for distribution math: use `stochastic_rs_distributions::DistributionExt`.
@@ -239,8 +244,9 @@ See `python-bindings` for registration and the pytest rows.
   `Whittle::fit` returns a `FukasawaFit` and is not a `HurstEstimator`.
 - `qmle::fit_ou_mle`, `qmle::fit_diffusion_qmle`, `gmm_cir::fit_cir_gmm`: fits that scale the path
   by a power of two and answer in the data's units.
-- `evt::fit_gpd`, `garch::fit_garch`, `distfit::fit_johnson_su`: maximum likelihood with
-  inverse-information standard errors and a scipy or `arch` reference test.
+- `evt::fit_gpd`, `garch::fit_garch`, `distfit::fit_johnson_su`: maximum likelihood at unit scale,
+  read back in the data's units (`evt::gpd::fit_in_data_units`), with inverse-information standard
+  errors and a scipy or `arch` reference test.
 
 ## Related skills
 

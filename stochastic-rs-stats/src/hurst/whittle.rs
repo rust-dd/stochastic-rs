@@ -25,8 +25,10 @@ use stochastic_rs_distributions::special::gamma;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::more_thuente;
+use crate::optim::stopped_on_tolerance;
 
 /// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
@@ -35,6 +37,8 @@ pub struct FukasawaFit {
   pub eta: f64,
   pub neg_log_lik: f64,
   pub nobs: usize,
+  /// L-BFGS-B, from the grid's best point, stopped on a tolerance and not on its 200 iterations.
+  pub converged: bool,
 }
 
 /// Whittle config: intraday bars `m`, day fraction `δ`, numerical constants. The default is daily
@@ -79,12 +83,13 @@ impl Whittle {
     whittle
   }
 
-  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points, on a
-  /// non-finite one or objective; panics unless `m >= 1`, `delta > 0` is finite and `0 < psi < π`.
+  /// Fukasawa–Takabatake–Westphal's fit to log RV; `Err` below 30 points, on a non-finite point or
+  /// objective, a constant series, or unless `m >= 1`, `0 < delta < ∞` and `0 < psi < π`.
   pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
-    self.assert_config();
+    self.check_config()?;
     let log_rv = as_slice_or_copy(log_rv);
     validate(&log_rv, 30)?;
+    reject_constant(&log_rv, "constant series")?;
     run_estimate(
       &log_rv,
       self.m,
@@ -95,7 +100,29 @@ impl Whittle {
     )
   }
 
-  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` repeats for a struct literal.
+  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` answers for a struct literal.
+  fn check_config(&self) -> Result<(), StatsError> {
+    let Self { m, delta, psi, .. } = *self;
+    let invalid = |name, value, constraint| {
+      Err(StatsError::InvalidParameter {
+        name,
+        value,
+        constraint,
+      })
+    };
+    if m < 1 {
+      return invalid("m", m as f64, "m >= 1");
+    }
+    if !(delta.is_finite() && delta > 0.0) {
+      return invalid("delta", delta, "0.0 < delta < inf");
+    }
+    if !(psi > 0.0 && psi < PI) {
+      return invalid("psi", psi, "0.0 < psi < pi");
+    }
+    Ok(())
+  }
+
+  /// [`Whittle::check_config`] as the panic of `new` and of the Python constructor.
   #[track_caller]
   pub(crate) fn assert_config(&self) {
     let Self { m, delta, psi, .. } = *self;
@@ -346,7 +373,7 @@ impl BoxConstraints for WhittleProblem {
   }
 }
 
-fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64) {
+fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64, bool) {
   let init = vec![h_init, v_init];
   let solver = Lbfgsb::with_line_search(more_thuente())
     .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
@@ -356,8 +383,9 @@ fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f
     .max_iter(200)
     .run()
     .expect("Whittle objective is infallible");
+  let converged = stopped_on_tolerance(result.reason);
   let best = problem.clamp(result.best_param());
-  (best[0], best[1], problem.eval(&best))
+  (best[0], best[1], problem.eval(&best), converged)
 }
 
 fn run_estimate(
@@ -408,7 +436,7 @@ fn run_estimate(
     lower: vec![0.005, 0.01],
     upper: vec![0.495, 12.0],
   };
-  let (h_r, v_r, nll_r) = run_lbfgs(&problem, best_h, best_v);
+  let (h_r, v_r, nll_r, converged) = run_lbfgs(&problem, best_h, best_v);
   if nll_r < best_nll {
     best_nll = nll_r;
     best_h = h_r;
@@ -425,6 +453,7 @@ fn run_estimate(
     eta,
     neg_log_lik: best_nll,
     nobs: n,
+    converged,
   })
 }
 

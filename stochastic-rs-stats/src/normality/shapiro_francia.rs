@@ -15,6 +15,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Shapiro-Francia normality test.
@@ -111,9 +112,7 @@ pub fn shapiro_francia_test(
 
   let mut obs = sample.to_vec();
   obs.sort_by(f64::total_cmp);
-  if obs[0] == obs[obs.len() - 1] {
-    return Err(StatsError::DegenerateData("constant sample"));
-  }
+  reject_constant(&obs, "constant sample")?;
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();

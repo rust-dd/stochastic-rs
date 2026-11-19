@@ -25,11 +25,11 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::linalg::inverse;
 use stochastic_rs_distributions::linalg::solve;
 
-use super::common::reject_rounded_constant;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::traits::RealExt;
@@ -76,8 +76,8 @@ impl Default for AndrewsPlobergerConfig {
 pub struct AndrewsPlobergerTest {
   /// Test statistic.
   pub statistic: f64,
-  /// Upper bound on the p-value: `0.01`, `0.05`, `0.10` or `1.0`, the smallest tabulated level
-  /// whose critical value the statistic reaches.
+  /// Upper bound on the p-value, the smallest of `0.01`, `0.05`, `0.10` whose critical value the
+  /// statistic reaches, else `1.0`: a rejection at a tabulated `alpha` reads `p_value == alpha`.
   pub p_value: Option<f64>,
   pub critical_values: Option<CriticalValues>,
   /// Whether the parameter-constancy null is rejected at `alpha`; `None` off the table.
@@ -131,7 +131,7 @@ pub fn andrews_ploberger_test(
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, 3 * k + 4)?;
   validate_rows(x)?;
-  reject_rounded_constant(&y_slice)?;
+  reject_constant(&y_slice, "constant series")?;
 
   let t_total = y.len();
   let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);
@@ -161,7 +161,7 @@ pub fn andrews_ploberger_test(
     statistic,
     p_value: row.map(|row| p_value_bracket(statistic, row)),
     critical_values,
-    rejects_null: critical.map(|c| statistic >= c),
+    rejects_null: rejects(statistic, critical),
     statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
@@ -309,6 +309,11 @@ fn critical_row(kind: AndrewsPlobergerStatistic, k: usize, pi0: f64) -> Option<(
     AndrewsPlobergerStatistic::Exp => exp_wald_critical(k),
     AndrewsPlobergerStatistic::Avg => avg_wald_critical(k),
   }
+}
+
+/// Past the critical value strictly, as every other test of the crate decides.
+fn rejects(statistic: f64, critical: Option<f64>) -> Option<bool> {
+  critical.map(|c| statistic > c)
 }
 
 fn p_value_bracket(stat: f64, (c10, c5, c1): (f64, f64, f64)) -> f64 {
@@ -551,5 +556,13 @@ mod tests {
     assert!((c10 - 9.31).abs() < 1e-6);
     assert!((c5 - 11.79).abs() < 1e-6);
     assert!((c1 - 15.46).abs() < 1e-6);
+  }
+
+  /// A statistic at its critical value does not reject; off the table there is no decision.
+  #[test]
+  fn a_statistic_at_its_critical_value_does_not_reject() {
+    assert_eq!(rejects(11.79, Some(11.79)), Some(false));
+    assert_eq!(rejects(11.790000000000001, Some(11.79)), Some(true));
+    assert_eq!(rejects(11.79, None), None);
   }
 }

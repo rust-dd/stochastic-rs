@@ -19,8 +19,12 @@ use ndarray::ArrayView1;
 use super::HurstDiagnostic;
 use super::HurstEstimator;
 use super::HurstFit;
+use super::to_f64_vec;
 use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
+
+const PATH: &str = "constant or zero-variance path";
 
 /// Selector for the underlying variation kernel used by [`Variations`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +69,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
         if n < 7 {
           return Err(StatsError::InsufficientData { needed: 7, got: n });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -80,6 +85,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
         if n < 5 {
           return Err(StatsError::InsufficientData { needed: 5, got: n });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -113,6 +119,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
             got: n,
           });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -150,7 +157,7 @@ pub(crate) fn filtered_variation<T: FloatExt>(x: ArrayView1<T>, a: &[f64], dilat
   for i in 0..(n - span) {
     let mut d = 0.0;
     for (k, &ak) in a.iter().enumerate() {
-      d += ak * x[i + k * dilation].to_f64().unwrap_or(0.0);
+      d += ak * x[i + k * dilation].to_f64().unwrap();
     }
     v += d * d;
   }
@@ -165,11 +172,11 @@ pub(crate) fn daubechies_h_inner<T: FloatExt>(
   let v1 = filtered_variation(x, &a, 1);
   let v2 = filtered_variation(x, &a, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   let h = 0.5 * (v2 / v1).log2();
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, v1, v2))
 }
@@ -179,7 +186,7 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
 ) -> Result<(f64, f64, f64), StatsError> {
   let n = x.len();
-  let to = |i: usize| x[i].to_f64().unwrap_or(0.0);
+  let to = |i: usize| x[i].to_f64().unwrap();
   let sum1: f64 = (0..(n - 4))
     .map(|i| {
       let d = to(i + 4) - 2.0 * to(i + 2) + to(i);
@@ -193,11 +200,11 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
     })
     .sum();
   if !(sum1 > 0.0 && sum2 > 0.0 && sum1.is_finite() && sum2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   let h = 0.5 * (sum1 / sum2).log2();
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, sum2, sum1))
 }
@@ -211,11 +218,11 @@ pub(crate) fn power_variation_h_inner<T: FloatExt>(
   let v1 = power_variation::<T>(x, k, p, 1);
   let v2 = power_variation::<T>(x, k, p, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   let h = power_variation_hurst(v1, v2, x.len(), k, p);
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, v1, v2))
 }
@@ -238,7 +245,7 @@ pub(crate) fn power_variation<T: FloatExt>(
     let mut d = 0.0;
     for j in 0..=k {
       let coeff = diff_coeff(k, j);
-      d += coeff * x[i + j * stride].to_f64().unwrap_or(0.0);
+      d += coeff * x[i + j * stride].to_f64().unwrap();
     }
     v += d.abs().powf(p);
   }

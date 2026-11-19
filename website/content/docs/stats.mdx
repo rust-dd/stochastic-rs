@@ -7,7 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat struct: an estimate (`*Fit`) with estimator-specific fields, or a hypothesis test (`*Test`) with the four fields every test shares (see [Common pattern](#common-pattern)).
+The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat struct: an estimate (`*Fit`) with estimator-specific fields, or a hypothesis test (`*Test`) with the four fields every `HypothesisTest` shares (see [Common pattern](#common-pattern)).
 
 ## Sub-modules
 
@@ -320,7 +320,7 @@ Neither test corrects for parameters fitted from the sample under test. A fitted
 
 ## Common pattern
 
-Every hypothesis test shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`, and answers through `HypothesisTest`; estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
+Every hypothesis test that answers through `HypothesisTest` shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`; `JohansenTest`, which tests every cointegrating rank, and `LeeMyklandTest`, which tests every return, carry their own fields instead. Estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
 
 ```rust
 // RescaledRange, Dfa, Gph, Wavelet, Variations all return this:
@@ -331,7 +331,7 @@ pub struct HurstFit<T: FloatExt = f64> {
   pub diagnostic: HurstDiagnostic<T>,
 }
 
-// while every test leads with the four shared fields, then its own:
+// while every HypothesisTest leads with the four shared fields, then its own:
 pub struct AdfTest {
   pub statistic: f64,
   pub p_value: Option<f64>,                    // None: no p-value table is shipped

@@ -62,6 +62,21 @@ where
   rng: SimdRng,
 }
 
+impl<F, G> std::fmt::Debug for ParticleFilter<F, G>
+where
+  F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
+  G: Fn(ArrayView1<f64>, ArrayView1<f64>) -> f64,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ParticleFilter")
+      .field("particles", &self.particles)
+      .field("log_weights", &self.log_weights)
+      .field("resampling", &self.resampling)
+      .field("effective_threshold", &self.effective_threshold)
+      .finish_non_exhaustive()
+  }
+}
+
 impl<F, G> ParticleFilter<F, G>
 where
   F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
@@ -144,8 +159,8 @@ where
     1.0 / normalised.iter().map(|w| w * w).sum::<f64>()
   }
 
-  /// One step on `y_t`; returns the incremental log-likelihood, whose sum over the data is the
-  /// particle marginal log-likelihood (Kitagawa 1996), the objective of [`crate::particle_mle`].
+  /// One step on `y_t`: its incremental log-likelihood, whose sum is the particle marginal one
+  /// (Kitagawa 1996), [`crate::particle_mle`]'s objective; panics if `transition` resizes a state.
   /// $$
   /// \log p(y_t \mid y_{1:t-1}) \approx \log \sum_i w_{t-1,i}\,p(y_t \mid x_{t,i})
   /// $$
@@ -155,7 +170,11 @@ where
     for i in 0..n {
       let prev = self.particles.row(i);
       let propagated = (self.transition)(prev, &mut self.rng);
-      assert_eq!(propagated.len(), d, "transition must preserve state dim");
+      assert!(
+        propagated.len() == d,
+        "transition's output must satisfy `output.len() == d`, got output.len() = {}, d = {d}",
+        propagated.len()
+      );
       for j in 0..d {
         new_particles[[i, j]] = propagated[j];
       }
@@ -342,5 +361,20 @@ mod tests {
     assert_eq!(pf.max_log_weight(), -0.5);
     pf.log_weights[2] = f64::NAN;
     assert!(pf.max_log_weight().is_nan());
+  }
+
+  /// The two closures and the generator have no `Debug`, so the filter shows its state only.
+  #[test]
+  fn the_filter_debugs_its_state_without_its_closures() {
+    let init = |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
+    let transition = |prev: ArrayView1<f64>, _rng: &mut SimdRng| prev.to_owned();
+    let log_obs = |_x: ArrayView1<f64>, _y: ArrayView1<f64>| 0.0;
+    let pf = ParticleFilter::new(2, init, transition, log_obs, 7);
+    let text = format!("{pf:?}");
+    assert!(text.starts_with("ParticleFilter { particles: "), "{text}");
+    assert!(
+      text.contains("resampling: Systematic") && text.ends_with(", .. }"),
+      "{text}"
+    );
   }
 }

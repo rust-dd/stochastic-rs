@@ -40,7 +40,7 @@ fn bounded_whittle_cost_and_gradient_use_feasible_parameters() {
 fn bounded_whittle_refinement_returns_feasible_parameters_and_cost() {
   let problem = bounded_problem();
   for initial in [[0.2, 1.0], [0.6, 15.0], [-0.1, -1.0]] {
-    let (h, v, cost) = run_lbfgs(&problem, initial[0], initial[1]);
+    let (h, v, cost, _) = run_lbfgs(&problem, initial[0], initial[1]);
     assert!((problem.lower[0]..=problem.upper[0]).contains(&h));
     assert!((problem.lower[1]..=problem.upper[1]).contains(&v));
     assert!(cost.is_finite());
@@ -139,49 +139,72 @@ fn panic_text(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     .expect("a text panic payload")
 }
 
+/// A struct literal's field out of range is `InvalidParameter` from `fit`, as the other
+/// estimators' fields are; `new`'s arguments panic.
 #[test]
-fn the_configuration_panics_in_the_predicate_form() {
+fn a_field_out_of_range_is_invalid_parameter_and_an_argument_panics() {
   let log_rv = Array1::<f64>::linspace(-1.0, 1.0, 40);
   let psi = |psi| Whittle {
     psi,
     ..Whittle::new(72, 1.0 / 250.0)
   };
-  let psi_range = "psi must satisfy `0.0 < psi < 3.141592653589793`, got psi =";
   let cases = [
     (
       Whittle {
         m: 0,
         ..Whittle::default()
       },
-      "m must satisfy `m >= 1`, got m = 0".to_string(),
+      "m",
+      0.0,
+      "m >= 1",
     ),
     (
       Whittle {
-        delta: f64::NAN,
+        delta: f64::INFINITY,
         ..Whittle::default()
       },
-      "delta must satisfy `delta.is_finite()`, got delta = NaN".to_string(),
+      "delta",
+      f64::INFINITY,
+      "0.0 < delta < inf",
     ),
     (
       Whittle {
         delta: 0.0,
         ..Whittle::default()
       },
-      "delta must satisfy `delta > 0.0`, got delta = 0.0".to_string(),
+      "delta",
+      0.0,
+      "0.0 < delta < inf",
     ),
-    (psi(0.0), format!("{psi_range} 0.0")),
+    (psi(0.0), "psi", 0.0, "0.0 < psi < pi"),
     (
       psi(std::f64::consts::PI),
-      format!("{psi_range} 3.141592653589793"),
+      "psi",
+      std::f64::consts::PI,
+      "0.0 < psi < pi",
     ),
-    (psi(f64::NAN), format!("{psi_range} NaN")),
   ];
-  for (whittle, message) in cases {
-    let log_rv = log_rv.clone();
-    let text = panic_text(move || {
-      let _ = whittle.fit(log_rv.view());
-    });
-    assert_eq!(text, message);
+  for (whittle, name, value, constraint) in cases {
+    assert_eq!(
+      whittle.fit(log_rv.view()).unwrap_err(),
+      StatsError::InvalidParameter {
+        name,
+        value,
+        constraint
+      }
+    );
+  }
+  for whittle in [
+    Whittle {
+      delta: f64::NAN,
+      ..Whittle::default()
+    },
+    psi(f64::NAN),
+  ] {
+    assert!(matches!(
+      whittle.fit(log_rv.view()),
+      Err(StatsError::InvalidParameter { value, .. }) if value.is_nan()
+    ));
   }
   assert_eq!(
     panic_text(|| {
@@ -208,4 +231,13 @@ fn a_non_finite_objective_is_a_numerical_error() {
       stage: "whittle objective"
     }
   );
+}
+
+/// L-BFGS-B stops on a tolerance from the grid's point on an ordinary log-RV path.
+#[test]
+fn the_fit_says_its_search_converged() {
+  let log_rv =
+    Array1::from_iter((0..300).map(|i| ((i * 37 % 101) as f64 / 101.0 - 0.5) + 0.01 * i as f64));
+  let fit = Whittle::new(1, 1.0 / 250.0).fit(log_rv.view()).unwrap();
+  assert!(fit.converged, "{fit:?}");
 }

@@ -23,7 +23,6 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
 use crate::stationarity::common::reject_exact_fit;
-use crate::stationarity::common::reject_rounded_constant;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -56,6 +55,7 @@ pub struct QmleFit {
   pub log_likelihood: f64,
   /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
+  /// The simplex met a `1e-10` spread of its values, a stall included; `true` for the closed form.
   pub converged: bool,
 }
 
@@ -454,8 +454,8 @@ impl Ar1 {
     let (lagged, next) = (&x[..m], &x[1..]);
     // The regressor's spread is the slope's denominator, and a regressand that is a constant, or
     // its rounding, leaves the slope nothing but rounding.
-    reject_rounded_constant(lagged)?;
-    reject_rounded_constant(next)?;
+    reject_constant(lagged, "constant series")?;
+    reject_constant(next, "constant series")?;
     let mf = m as f64;
 
     // About the means, as raw sums cancel where the level dwarfs the spread.
