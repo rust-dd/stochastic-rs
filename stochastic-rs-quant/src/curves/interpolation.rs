@@ -6,7 +6,6 @@
 use ndarray::Array1;
 
 use super::types::CurvePoint;
-use super::types::InterpolationMethod;
 use crate::traits::RealExt;
 
 /// The pillars after `t = 0`; one at `t = 0` is ignored, since the curve is 1 there.
@@ -49,7 +48,14 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
     return known;
   }
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
-  Segment::of(false, &points[idx], &points[idx + 1]).at(t)
+  let (p0, p1) = (&points[idx], &points[idx + 1]);
+
+  let r0 = -p0.discount_factor.ln() / p0.time;
+  let r1 = -p1.discount_factor.ln() / p1.time;
+
+  let w = (t - p0.time) / (p1.time - p0.time);
+  let r = r0 + w * (r1 - r0);
+  (-r * t).exp()
 }
 
 /// $\ln D(t)$ linear between pillars and from $(0, 1)$, so the forward rate is piecewise
@@ -60,93 +66,11 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
     return known;
   }
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
-  Segment::of(true, &points[idx], &points[idx + 1]).at(t)
-}
+  let (p0, p1) = (&points[idx], &points[idx + 1]);
 
-/// Two adjacent pillars under a method that reads only them in between, logarithms taken once.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Segment<T> {
-  log_linear: bool,
-  t0: T,
-  t1: T,
-  left: T,
-  right: T,
-}
-
-impl<T: RealExt> Segment<T> {
-  /// `None` under `CubicSplineOnZeroRates` and `MonotoneConvex`, whose reads take every pillar.
-  pub(crate) fn new(
-    p0: &CurvePoint<T>,
-    p1: &CurvePoint<T>,
-    method: InterpolationMethod,
-  ) -> Option<Self> {
-    match method {
-      InterpolationMethod::LogLinearOnDiscountFactors => Some(Self::of(true, p0, p1)),
-      InterpolationMethod::LinearOnZeroRates => Some(Self::of(false, p0, p1)),
-      _ => None,
-    }
-  }
-
-  #[inline]
-  fn of(log_linear: bool, p0: &CurvePoint<T>, p1: &CurvePoint<T>) -> Self {
-    Self {
-      log_linear,
-      t0: p0.time,
-      t1: p1.time,
-      left: Self::end(log_linear, p0),
-      right: Self::end(log_linear, p1),
-    }
-  }
-
-  #[inline]
-  fn end(log_linear: bool, p: &CurvePoint<T>) -> T {
-    if log_linear {
-      p.discount_factor.ln()
-    } else {
-      -p.discount_factor.ln() / p.time
-    }
-  }
-
-  /// The segment with its right pillar at `discount_factor`.
-  #[inline]
-  pub(crate) fn ending_at(self, discount_factor: T) -> Self {
-    let right = CurvePoint {
-      time: self.t1,
-      discount_factor,
-    };
-    Self {
-      right: Self::end(self.log_linear, &right),
-      ..self
-    }
-  }
-
-  #[inline]
-  fn at(&self, t: T) -> T {
-    self.value(t, self.weight(t))
-  }
-
-  /// `D(t)` between the pillars and its elasticity `∂ ln D(t) / ∂ ln D₁` to the right one.
-  #[inline]
-  pub(crate) fn read(&self, t: T) -> (T, T) {
-    let w = self.weight(t);
-    let elasticity = if self.log_linear { w } else { w * t / self.t1 };
-    (self.value(t, w), elasticity)
-  }
-
-  #[inline]
-  fn weight(&self, t: T) -> T {
-    (t - self.t0) / (self.t1 - self.t0)
-  }
-
-  #[inline]
-  fn value(&self, t: T, w: T) -> T {
-    if self.log_linear {
-      (self.left * (T::one() - w) + self.right * w).exp()
-    } else {
-      let r = self.left + w * (self.right - self.left);
-      (-r * t).exp()
-    }
-  }
+  let w = (t - p0.time) / (p1.time - p0.time);
+  let ln_d = p0.discount_factor.ln() * (T::one() - w) + p1.discount_factor.ln() * w;
+  ln_d.exp()
 }
 
 /// The natural cubic spline through the pillars' zero rates: a flat zero rate below the first
@@ -383,8 +307,9 @@ fn integrate_g_hagan_west<T: RealExt>(g0: T, g1: T, x: T) -> T {
 pub fn interpolate_discount_factor<T: RealExt>(
   points: &[CurvePoint<T>],
   t: T,
-  method: InterpolationMethod,
+  method: super::types::InterpolationMethod,
 ) -> T {
+  use super::types::InterpolationMethod;
   match method {
     InterpolationMethod::LinearOnZeroRates => linear_on_zero_rates(points, t),
     InterpolationMethod::LogLinearOnDiscountFactors => log_linear_on_discount_factors(points, t),

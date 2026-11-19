@@ -9,6 +9,7 @@
 //! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
+mod segment;
 mod solve;
 mod spec;
 mod validate;
@@ -18,9 +19,9 @@ pub use spec::IterativeOptions;
 
 pub(super) use solve::trial_node;
 
+use self::segment::Segment;
 use super::discount_curve::DiscountCurve;
 use super::dual_curve;
-use super::interpolation::Segment;
 use super::interpolation::interpolate_discount_factor;
 use super::types::BootstrapInstrument;
 use super::types::CurvePoint;

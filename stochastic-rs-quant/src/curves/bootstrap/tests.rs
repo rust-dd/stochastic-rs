@@ -199,6 +199,32 @@ fn a_ladder_with_a_pillar_at_every_payment_keeps_the_direct_formula() {
 }
 
 #[test]
+fn a_segment_reads_what_the_curve_reads_between_its_pillars() {
+  let p0 = CurvePoint {
+    time: 0.75,
+    discount_factor: 0.981,
+  };
+  for method in [LOG_LINEAR, LINEAR_ZERO] {
+    for x in [0.893, 0.91, 1.02] {
+      let p1 = CurvePoint {
+        time: 3.5,
+        discount_factor: x,
+      };
+      let start = CurvePoint {
+        discount_factor: 0.5,
+        ..p1
+      };
+      let segment = Segment::new(&p0, &start, method).unwrap().ending_at(x);
+      for k in 1..100 {
+        let t = 0.75 + 2.75 * k as f64 / 100.0;
+        let curve = interpolate_discount_factor(&[p0, p1], t, method);
+        assert_eq!(segment.read(t).0, curve, "{method:?}, x = {x}, t = {t}");
+      }
+    }
+  }
+}
+
+#[test]
 fn the_iterative_solve_refuses_a_consistent_node_above_one() {
   let inst = [six_month_deposit(-0.002), annual_swap(5.0, -0.001)];
   let spec = BootstrapSpec::new(&inst, LOG_LINEAR);
