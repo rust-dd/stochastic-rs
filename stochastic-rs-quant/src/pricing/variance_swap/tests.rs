@@ -7,6 +7,16 @@ const R: f64 = 0.05;
 const Q: f64 = 0.0;
 const TAU: f64 = 1.0;
 
+fn heston(v0: f64, kappa: f64, theta: f64) -> HestonParams {
+  HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma: 0.3,
+    rho: -0.7,
+  }
+}
+
 fn replicate(strikes: &[f64], otm_prices: &[f64]) -> f64 {
   VarianceSwapPricer::fair_strike_replication(strikes, otm_prices, S, R, Q, TAU)
 }
@@ -56,15 +66,15 @@ fn vol_swap_zero_dispersion_recovers_sqrt_var() {
 
 #[test]
 fn heston_fair_strike_equals_v0_when_at_long_run_mean() {
-  let k_var = VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.04, TAU);
+  let k_var = VarianceSwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.04), TAU);
   assert!((k_var - 0.04).abs() < 1e-12);
 }
 
 #[test]
 fn heston_fair_strike_blends_v0_to_theta() {
   // V0 = 0.09 (high IV), θ = 0.04 (low LR), strong κ → fair K close to θ
-  let k_strong = VarianceSwapPricer::fair_strike_heston(0.09, 5.0, 0.04, TAU);
-  let k_weak = VarianceSwapPricer::fair_strike_heston(0.09, 0.1, 0.04, TAU);
+  let k_strong = VarianceSwapPricer::fair_strike_heston(&heston(0.09, 5.0, 0.04), TAU);
+  let k_weak = VarianceSwapPricer::fair_strike_heston(&heston(0.09, 0.1, 0.04), TAU);
   assert!(k_strong < k_weak);
   assert!(k_weak <= 0.09);
   assert!(k_strong > 0.04);
@@ -72,13 +82,15 @@ fn heston_fair_strike_blends_v0_to_theta() {
 
 #[test]
 fn heston_kappa_zero_limit_equals_v0() {
-  assert!((VarianceSwapPricer::fair_strike_heston(0.04, 0.0, 0.10, TAU) - 0.04).abs() < 1e-12);
+  assert!(
+    (VarianceSwapPricer::fair_strike_heston(&heston(0.04, 0.0, 0.10), TAU) - 0.04).abs() < 1e-12
+  );
 }
 
 #[test]
 fn heston_long_t_limit_approaches_theta() {
   // T → ∞ with κ > 0 ⇒ factor → 0, K_var → θ.
-  let k_var = VarianceSwapPricer::fair_strike_heston(0.09, 2.0, 0.04, 50.0);
+  let k_var = VarianceSwapPricer::fair_strike_heston(&heston(0.09, 2.0, 0.04), 50.0);
   assert!(
     (k_var - 0.04).abs() < 0.01,
     "K_var={k_var} should approach θ=0.04"
@@ -94,7 +106,7 @@ fn heston_discrete_correction_vanishes_with_n() {
     sigma: 0.3,
     rho: -0.7,
   };
-  let k_cont = VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.04, TAU);
+  let k_cont = VarianceSwapPricer::fair_strike_heston(&heston, TAU);
   let k_disc_fine = VarianceSwapPricer::fair_strike_heston_discrete(&heston, 100_000, R, Q, TAU);
   let k_disc_coarse = VarianceSwapPricer::fair_strike_heston_discrete(&heston, 12, R, Q, TAU);
   assert!((k_disc_fine - k_cont).abs() < (k_disc_coarse - k_cont).abs());
@@ -182,7 +194,11 @@ fn vol_swap_rejects_a_zero_variance_strike() {
 /// dispersion-free `sqrt(k_var)`.
 #[test]
 fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
-  let k = VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, f64::NAN, 1.0);
+  let params = HestonParams {
+    sigma: f64::NAN,
+    ..heston(0.04, 1.5, 0.04)
+  };
+  let k = VolatilitySwapPricer::fair_strike_heston(&params, 1.0);
   assert!(k.is_nan(), "a NaN sigma must exit as NaN, got {k}");
 }
 
@@ -192,9 +208,9 @@ fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
 #[test]
 fn vol_swap_heston_is_unchanged_by_the_poison_check() {
   let naive = 0.04_f64.sqrt();
-  let dispersed = VolatilitySwapPricer::fair_strike_heston(0.09, 1.5, 0.04, 0.3, 1.0);
+  let dispersed = VolatilitySwapPricer::fair_strike_heston(&heston(0.09, 1.5, 0.04), 1.0);
   assert!(dispersed.is_finite() && dispersed > 0.0, "{dispersed}");
-  let flat = VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, 0.3, 1.0);
+  let flat = VolatilitySwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.04), 1.0);
   assert!((flat - naive).abs() < 1e-15, "{flat} vs {naive}");
 }
 
@@ -204,7 +220,7 @@ fn vol_swap_heston_is_unchanged_by_the_poison_check() {
 fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
   for &kappa in &[1e-12, 1.5] {
     let err = std::panic::catch_unwind(|| {
-      VolatilitySwapPricer::fair_strike_heston(-0.04, kappa, -0.04, 0.3, 1.0)
+      VolatilitySwapPricer::fair_strike_heston(&heston(-0.04, kappa, -0.04), 1.0)
     })
     .unwrap_err();
     let msg = err
@@ -311,7 +327,7 @@ fn the_replication_pair_agrees_on_its_inputs() {
 #[test]
 fn heston_fair_strike_is_nan_at_a_negative_or_nan_maturity() {
   for tau in [-1.0, f64::NAN] {
-    assert!(VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.04, tau).is_nan());
+    assert!(VarianceSwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.04), tau).is_nan());
   }
 }
 
@@ -321,7 +337,7 @@ fn heston_fair_strike_is_nan_at_a_negative_or_nan_maturity() {
 #[test]
 fn heston_fair_strike_zero_maturity_stays_the_v0_limit() {
   assert_eq!(
-    VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.10, 0.0),
+    VarianceSwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.10), 0.0),
     0.04
   );
 }

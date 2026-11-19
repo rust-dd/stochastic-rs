@@ -109,7 +109,10 @@ impl VarianceSwapPricer {
 
   /// Brockhaus–Long continuous-monitoring fair strike, which reads only `v0`, `kappa` and `theta`;
   /// `v0` at `tau = 0`, the genuine limit, and NaN for a negative or NaN `tau`.
-  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, tau: f64) -> f64 {
+  pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
+    let HestonParams {
+      v0, kappa, theta, ..
+    } = *params;
     if tau.is_nan() || tau < 0.0 {
       return f64::NAN;
     }
@@ -136,7 +139,7 @@ impl VarianceSwapPricer {
       sigma,
       rho,
     } = *params;
-    let cont = Self::fair_strike_heston(v0, kappa, theta, tau);
+    let cont = Self::fair_strike_heston(params, tau);
     if n_obs == 0 {
       return cont;
     }
@@ -224,8 +227,15 @@ impl VolatilitySwapPricer {
 
   /// Heston vol strike: the variance strike's root less a convexity correction (none at `tau = 0`,
   /// a zero strike or kappa ≈ 0); NaN where either is NaN, panics on a negative variance strike.
-  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
-    let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
+  pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
+    let HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      ..
+    } = *params;
+    let k_var = VarianceSwapPricer::fair_strike_heston(params, tau);
     if k_var.is_nan() {
       return f64::NAN;
     }

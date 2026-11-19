@@ -19,6 +19,7 @@ use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::ForwardStartOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
 use stochastic_rs_quant::pricing::exotic::VarianceSwapTerms;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
 use stochastic_rs_quant::pricing::variance_swap::VarianceSwapPricer;
 use stochastic_rs_quant::traits::ModelPricer;
@@ -343,7 +344,16 @@ fn the_variance_swap_functions_take_the_query() {
     0.04000000000000001
   );
   assert_pinned!(
-    VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.5),
+    VarianceSwapPricer::fair_strike_heston(
+      &HestonParams {
+        v0: 0.04,
+        kappa: 1.5,
+        theta: 0.06,
+        sigma: 0.3,
+        rho: -0.7,
+      },
+      0.5
+    ),
     0.04592977473976039
   );
   let strikes = [60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0];
