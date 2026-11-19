@@ -71,15 +71,15 @@ fn built(inst: &[BootstrapInstrument<f64>], method: InterpolationMethod) -> Disc
 fn a_swap_with_payments_past_the_last_pillar_reprices_on_the_built_curve() {
   let rows = [
     (0.03, 5.0, 0.04, LOG_LINEAR, 0.8215788082556382),
-    (0.03, 5.0, 0.04, LINEAR_ZERO, 0.82051918397382101),
-    (0.03, 10.0, 0.04, LOG_LINEAR, 0.67493438610148555),
-    (0.03, 10.0, 0.04, LINEAR_ZERO, 0.67087617352328416),
-    (0.01, 10.0, 0.05, LOG_LINEAR, 0.61093498871819592),
-    (0.01, 10.0, 0.05, LINEAR_ZERO, 0.59126701597237496),
-    (0.05, 5.0, 0.02, LOG_LINEAR, 0.90632594397279343),
-    (0.05, 5.0, 0.02, LINEAR_ZERO, 0.90809194530939676),
-    (0.03, 2.0, 0.04, LOG_LINEAR, 0.92444115480131176),
-    (0.03, 2.0, 0.04, LINEAR_ZERO, 0.92432420759201162),
+    (0.03, 5.0, 0.04, LINEAR_ZERO, 0.8205191839738211),
+    (0.03, 10.0, 0.04, LOG_LINEAR, 0.6749343861014856),
+    (0.03, 10.0, 0.04, LINEAR_ZERO, 0.6708761735232842),
+    (0.01, 10.0, 0.05, LOG_LINEAR, 0.610934988718196),
+    (0.01, 10.0, 0.05, LINEAR_ZERO, 0.591267015972375),
+    (0.05, 5.0, 0.02, LOG_LINEAR, 0.9063259439727934),
+    (0.05, 5.0, 0.02, LINEAR_ZERO, 0.9080919453093967),
+    (0.03, 2.0, 0.04, LOG_LINEAR, 0.9244411548013117),
+    (0.03, 2.0, 0.04, LINEAR_ZERO, 0.9243242075920116),
     (-0.002, 5.0, -0.001, LOG_LINEAR, 1.0050161522500663),
     (-0.002, 5.0, -0.001, LINEAR_ZERO, 1.0050195048883834),
   ];
@@ -153,7 +153,7 @@ fn an_fra_or_a_future_starting_past_the_last_pillar_reprices_on_the_built_curve(
   };
   for (method, node) in [
     (LOG_LINEAR, 0.946964316490626),
-    (LINEAR_ZERO, 0.94929387552488394),
+    (LINEAR_ZERO, 0.949293875524884),
   ] {
     for quote in [fra.clone(), future.clone()] {
       let curve = built(&[six_month_deposit(0.03), quote], method);

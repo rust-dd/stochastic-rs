@@ -292,7 +292,7 @@ fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   let forward_value = match (is_caplet, k >= s) {
     // (3.5c) needs a positive forward; at or below 0 a Black rate keeps its side of 0, so the
     // adjusted forward takes the Black caplet's sign-preserving reading.
-    _ if model.kind == VolatilityQuoteKind::Lognormal && !(s > 0.0) => {
+    _ if model.kind == VolatilityQuoteKind::Lognormal && (s.is_nan() || s <= 0.0) => {
       let black = if is_caplet {
         black_forward_caplet::<f64>
       } else {

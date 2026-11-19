@@ -131,7 +131,7 @@ fn a_known_fixing_pays_its_intrinsic_value_without_the_vol_model() {
 fn the_lognormal_adjustment_is_hagans_3_5b() {
   let semi = Frequency::SemiAnnual;
   let rows = [
-    (0.04, 0.3, 2.0, 10.0, semi, 0.0, 0.0015225616437607361),
+    (0.04, 0.3, 2.0, 10.0, semi, 0.0, 0.001522561643760736),
     (0.04, 0.3, 2.0, 10.0, semi, 0.5, 0.0013678813589593163),
     (0.04, 0.2, 5.0, 10.0, semi, 0.0, 0.0017092782403205616),
     (
@@ -154,7 +154,7 @@ fn the_lognormal_adjustment_is_hagans_3_5b() {
       6.669980775910413e-5,
     ),
     (1e-6, 0.3, 2.0, 10.0, semi, 0.0, 1.0353889993260826e-12),
-    (-0.005, 0.3, 2.0, 10.0, semi, 0.25, 2.4919638640968519e-5),
+    (-0.005, 0.3, 2.0, 10.0, semi, 0.25, 2.491963864096852e-5),
   ];
   for (s0, sigma, t_fix, years, freq, delay, want) in rows {
     let got = hagan_linear_tsr_convexity_adjustment(s0, sigma, t_fix, years, freq, delay);
@@ -166,7 +166,7 @@ fn the_lognormal_adjustment_is_hagans_3_5b() {
 #[test]
 fn the_first_order_adjustment_is_near_the_whole_g() {
   let got = hagan_linear_tsr_convexity_adjustment(0.04, 0.3, 2.0, 10.0, Frequency::SemiAnnual, 0.0);
-  let whole = 0.0016523916960148579;
+  let whole = 0.001652391696014858;
   assert!(got < whole && got > 0.9 * whole, "{got:e}");
 }
 
@@ -182,7 +182,7 @@ fn the_lognormal_caplet_and_floorlet_are_hagans_3_5c_and_3_5d() {
       0.3,
       2.0,
       delayed,
-      0.0042297191786478963,
+      0.004229719178647897,
       0.01278449767728787,
     ),
     (
@@ -200,8 +200,8 @@ fn the_lognormal_caplet_and_floorlet_are_hagans_3_5c_and_3_5d() {
       0.3,
       2.0,
       TEN_SEMI,
-      0.0077330577316029085,
-      0.0062104960878421725,
+      0.007733057731602908,
+      0.006210496087842172,
     ),
     (
       0.04,
@@ -209,8 +209,8 @@ fn the_lognormal_caplet_and_floorlet_are_hagans_3_5c_and_3_5d() {
       0.3,
       2.0,
       TEN_SEMI,
-      0.00068328648776730284,
-      0.039160724844006567,
+      0.0006832864877673029,
+      0.03916072484400657,
     ),
     (
       0.03,
@@ -218,7 +218,7 @@ fn the_lognormal_caplet_and_floorlet_are_hagans_3_5c_and_3_5d() {
       0.4,
       10.0,
       annual,
-      0.053941893712651651,
+      0.05394189371265165,
       0.012953670754346662,
     ),
   ];
@@ -263,7 +263,7 @@ fn a_normal_vol_prices_by_hagans_3_6b_to_3_6d() {
       five,
       0.00032508259701985524,
       0.0029431039495012014,
-      0.0056180213524813461,
+      0.005618021352481346,
     ),
     (
       0.0,
@@ -273,7 +273,7 @@ fn a_normal_vol_prices_by_hagans_3_6b_to_3_6d() {
       five,
       0.000324,
       0.0033597473065004815,
-      0.0050357473065004815,
+      0.005035747306500481,
     ),
   ];
   for (s0, strike, sigma, t_fix, swap, adjustment, caplet, floorlet) in rows {
@@ -340,7 +340,7 @@ fn a_lognormal_vol_on_a_forward_at_or_below_zero_reads_it_as_the_black_caplet_do
 
 #[test]
 fn a_non_positive_strike_on_a_positive_forward_always_pays() {
-  let adjustment = 0.0015225616437607361;
+  let adjustment = 0.001522561643760736;
   for strike in [0.0, -0.01] {
     let (c, p) = pair(0.04, strike, 2.0, TEN_SEMI, flat(0.3));
     close(
@@ -373,14 +373,14 @@ fn a_zero_vol_pays_the_intrinsic_value_and_a_nan_vol_is_nan() {
 fn the_convexity_factor_is_the_log_slope_of_hagans_g() {
   let semi = Frequency::SemiAnnual;
   let rows = [
-    (0.04, 10.0, semi, 0.0, 0.19300552695509049, 1e-14),
-    (0.04, 10.0, semi, 0.5, 0.17339768381783559, 1e-14),
+    (0.04, 10.0, semi, 0.0, 0.1930055269550905, 1e-14),
+    (0.04, 10.0, semi, 0.5, 0.1733976838178356, 1e-14),
     (
       0.03,
       30.0,
       Frequency::Annual,
       0.0,
-      0.38778856348778888,
+      0.3877885634877889,
       1e-14,
     ),
     (0.04, 1.0, semi, 0.0, 0.029314696175499903, 1e-13),
@@ -392,7 +392,7 @@ fn the_convexity_factor_is_the_log_slope_of_hagans_g() {
       0.023483746115733764,
       1e-13,
     ),
-    (1e-6, 10.0, semi, 0.0, 5.2499890625075469e-6, 1e-14),
+    (1e-6, 10.0, semi, 0.0, 5.249989062507547e-6, 1e-14),
     (-0.005, 10.0, semi, 0.25, -0.025271242091982589, 1e-13),
   ];
   for (s0, years, freq, delay, want, rel) in rows {
