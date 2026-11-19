@@ -54,6 +54,20 @@ def test_the_garch_family_refuses_its_preconditions_at_construction(build, messa
         build()
 
 
+@pytest.mark.parametrize(
+    "beta, gamma, delta, message",
+    [
+        (0.0, 1.0, 0.0, "delta must satisfy `delta > T::zero()`, got delta = 0.0"),
+        (0.0, 1.0, 1e-200, "delta must satisfy `delta * delta > T::zero()`, got delta = 1e-200"),
+        (-0.5, 0.5, 1.0, "gamma must satisfy `gamma > beta.abs()`, got gamma = 0.5, beta = -0.5"),
+    ],
+    ids=["zero_delta", "delta_square_underflows", "gamma_at_most_the_skew"],
+)
+def test_the_hyperbolic_diffusion_refuses_parameters_outside_its_law(beta, gamma, delta, message):
+    with pytest.raises(ValueError, match=re.escape(message)):
+        sr.PyHyperbolic2(beta, gamma, delta, 0.0, 0.2, 24)
+
+
 def test_hand_written_process_constructor_raises_value_error():
     with pytest.raises(ValueError, match=r"sigma\.len\(\) must satisfy `sigma\.len\(\) == rho\.nrows\(\)`, got sigma\.len\(\) = 1"):
         sr.PyMultiGbm([0.05, 0.03], [0.2], np.eye(2), 16, [100.0, 100.0])
