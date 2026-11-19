@@ -189,3 +189,14 @@ SINGLE_VOL_QUERY = dict(s=100.0, k=105.0, r=0.05, tau=0.75)
 def test_a_single_vol_pricer_refuses_an_infinite_sigma(build):
     with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`, got sigma = inf$"):
         build(float("inf"))
+
+
+def test_kirk_checks_each_volatility_and_the_correlation_in_one_wording():
+    query = dict(f1=100.0, f2=90.0, x=5.0, r=0.05, tau=0.5)
+    with pytest.raises(ValueError, match=r"sigma1 must satisfy `sigma1\.is_finite\(\) && sigma1 >= 0\.0`, got sigma1 = -0\.3$"):
+        sr.KirkSpreadPricer(v1=-0.3, v2=0.25, corr=0.7, **query)
+    with pytest.raises(ValueError, match=r"sigma2 must satisfy `sigma2\.is_finite\(\) && sigma2 >= 0\.0`, got sigma2 = inf$"):
+        sr.KirkSpreadPricer(v1=0.3, v2=float("inf"), corr=0.7, **query)
+    with pytest.raises(ValueError, match=r"corr must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&corr\)`, got corr = 1\.7$"):
+        sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=1.7, **query)
+    assert sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=0.7, **query).price() == pytest.approx(8.547483131757428, rel=1e-12)

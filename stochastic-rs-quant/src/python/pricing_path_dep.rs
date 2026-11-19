@@ -540,7 +540,7 @@ impl PyMcBarrierPricer {
   }
 }
 
-/// The Rust model holds `(v1, v2, corr)` only, so the wrapper carries the
+/// The Rust model holds `(sigma1, sigma2, corr)` only, so the wrapper carries the
 /// `(f1, f2, x, r, tau)` query the Python-visible no-argument methods are
 /// defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "KirkSpreadPricer", unsendable)]
