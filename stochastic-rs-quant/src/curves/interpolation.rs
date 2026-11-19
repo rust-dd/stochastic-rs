@@ -49,7 +49,7 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
     return known;
   }
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
-  Segment::of(false, &points[idx], &points[idx + 1]).read(t).0
+  Segment::of(false, &points[idx], &points[idx + 1]).at(t)
 }
 
 /// $\ln D(t)$ linear between pillars and from $(0, 1)$, so the forward rate is piecewise
@@ -60,7 +60,7 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
     return known;
   }
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
-  Segment::of(true, &points[idx], &points[idx + 1]).read(t).0
+  Segment::of(true, &points[idx], &points[idx + 1]).at(t)
 }
 
 /// Two adjacent pillars under a method that reads only them in between, logarithms taken once.
@@ -87,6 +87,7 @@ impl<T: RealExt> Segment<T> {
     }
   }
 
+  #[inline]
   fn of(log_linear: bool, p0: &CurvePoint<T>, p1: &CurvePoint<T>) -> Self {
     Self {
       log_linear,
@@ -97,6 +98,7 @@ impl<T: RealExt> Segment<T> {
     }
   }
 
+  #[inline]
   fn end(log_linear: bool, p: &CurvePoint<T>) -> T {
     if log_linear {
       p.discount_factor.ln()
@@ -106,6 +108,7 @@ impl<T: RealExt> Segment<T> {
   }
 
   /// The segment with its right pillar at `discount_factor`.
+  #[inline]
   pub(crate) fn ending_at(self, discount_factor: T) -> Self {
     let right = CurvePoint {
       time: self.t1,
@@ -117,14 +120,31 @@ impl<T: RealExt> Segment<T> {
     }
   }
 
+  #[inline]
+  fn at(&self, t: T) -> T {
+    self.value(t, self.weight(t))
+  }
+
   /// `D(t)` between the pillars and its elasticity `∂ ln D(t) / ∂ ln D₁` to the right one.
+  #[inline]
   pub(crate) fn read(&self, t: T) -> (T, T) {
-    let w = (t - self.t0) / (self.t1 - self.t0);
+    let w = self.weight(t);
+    let elasticity = if self.log_linear { w } else { w * t / self.t1 };
+    (self.value(t, w), elasticity)
+  }
+
+  #[inline]
+  fn weight(&self, t: T) -> T {
+    (t - self.t0) / (self.t1 - self.t0)
+  }
+
+  #[inline]
+  fn value(&self, t: T, w: T) -> T {
     if self.log_linear {
-      ((self.left * (T::one() - w) + self.right * w).exp(), w)
+      (self.left * (T::one() - w) + self.right * w).exp()
     } else {
       let r = self.left + w * (self.right - self.left);
-      ((-r * t).exp(), w * t / self.t1)
+      (-r * t).exp()
     }
   }
 }
