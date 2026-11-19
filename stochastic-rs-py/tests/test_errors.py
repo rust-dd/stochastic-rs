@@ -180,3 +180,37 @@ def test_a_regularization_anchor_that_is_not_finite_is_refused_at_construction()
     anchor = [0.04, float("nan"), 0.04, 0.5, -0.5]
     with pytest.raises(ValueError, match=r"anchor 1 must satisfy `anchor\.is_finite\(\)`, got anchor = NaN"):
         sr.HestonCalibrator(slices, 100.0, 0.02, regularization=(anchor, [1.0] * 5))
+
+
+def test_a_swaption_quote_outside_its_domain_names_its_tau():
+    curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0]), np.full(3, 0.03), interp="log_df")
+    calibrator = sr.HullWhiteSwaptionCalibrator([(-1.0, 2.0, 0.2, 0.5, "payer")], curve, initial_rate=0.03, theta=0.03)
+    with pytest.raises(ValueError, match=r"quote 0 cannot be used: tau must satisfy `tau\.is_finite\(\) && tau > 0\.0`, got tau = -1\.0$"):
+        calibrator.calibrate()
+
+
+SINGLE_VOL_QUERY = dict(s=100.0, k=105.0, r=0.05, tau=0.75)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda v: sr.AsianPricer(v=v, **SINGLE_VOL_QUERY),
+        lambda v: sr.BjerksundStensland2002Pricer(v=v, **SINGLE_VOL_QUERY),
+        lambda v: sr.Merton1976Pricer(v=v, lambda_=1.0, gamma=0.4, **SINGLE_VOL_QUERY),
+    ],
+)
+def test_a_single_vol_pricer_refuses_an_infinite_sigma(build):
+    with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`, got sigma = inf$"):
+        build(float("inf"))
+
+
+def test_kirk_checks_each_volatility_and_the_correlation_in_one_wording():
+    query = dict(f1=100.0, f2=90.0, x=5.0, r=0.05, tau=0.5)
+    with pytest.raises(ValueError, match=r"sigma1 must satisfy `sigma1\.is_finite\(\) && sigma1 >= 0\.0`, got sigma1 = -0\.3$"):
+        sr.KirkSpreadPricer(v1=-0.3, v2=0.25, corr=0.7, **query)
+    with pytest.raises(ValueError, match=r"sigma2 must satisfy `sigma2\.is_finite\(\) && sigma2 >= 0\.0`, got sigma2 = inf$"):
+        sr.KirkSpreadPricer(v1=0.3, v2=float("inf"), corr=0.7, **query)
+    with pytest.raises(ValueError, match=r"corr must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&corr\)`, got corr = 1\.7$"):
+        sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=1.7, **query)
+    assert sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=0.7, **query).price() == pytest.approx(8.547483131757428, rel=1e-12)

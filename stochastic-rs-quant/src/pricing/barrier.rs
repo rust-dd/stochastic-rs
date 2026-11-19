@@ -1,25 +1,34 @@
-//! # Barrier
+//! Barrier options: Reiner–Rubinstein for one barrier, Ikeda–Kunitomo for two, and Monte Carlo.
 //!
 //! $$
 //! V_0=e^{-rT}\,\mathbb E^{\mathbb Q}\!\left[\Pi(S_T)\,\mathbf{1}_{\{\tau_H>T\}}\right]
 //! $$
 //!
-//! Source:
-//! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers"
-//! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
+//! Reference: Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
+//! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
+//! Reference: Vector Risk (2017), "Single Barrier Option", v8.0.7905, p. 2: Haug's §4.17.1, p. 152
+//! Reference: Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Boundaries"
 //!
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::exotic::BarrierOption;
+use crate::pricing::exotic::DoubleBarrierOption;
+use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::std_err_from_sums;
+use crate::traits::ModelPricer;
 
 /// Barrier type for single-barrier options.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,52 +44,59 @@ pub enum BarrierType {
 /// $$
 /// \text{Down-and-out call}=\begin{cases}A-C+F&K>H\\B-D+F&K\le H\end{cases}
 /// $$
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BarrierPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike price.
-  pub k: f64,
-  /// Barrier level.
-  pub h: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Rebate paid when barrier is hit.
-  pub rebate: f64,
-  /// Up or down, knock-in or knock-out.
-  pub barrier_type: BarrierType,
-  /// Call or put payoff.
-  pub option_type: OptionType,
 }
 
 impl BarrierPricer {
-  /// Price the barrier option using Reiner–Rubinstein closed-form formulas.
-  pub fn price(&self) -> f64 {
-    let s = self.s;
-    let k = self.k;
-    let h = self.h;
-    let r = self.r;
-    let q = self.q;
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` an unbreached barrier is NaN before expiry.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma }
+  }
+
+  /// Reiner–Rubinstein price; a spot on or past the barrier has knocked out to the rebate or in to
+  /// the vanilla, `tau = 0` pays out, and a negative or NaN `tau` or a NaN barrier is NaN.
+  pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let BarrierOption {
+      strike: k,
+      barrier: h,
+      rebate,
+      barrier_type,
+      option_type,
+    } = *option;
+    if !(s > 0.0 && tau >= 0.0) || h.is_nan() || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
+    let breached = match barrier_type {
+      BarrierType::DownAndIn | BarrierType::DownAndOut => s <= h,
+      BarrierType::UpAndIn | BarrierType::UpAndOut => s >= h,
+    };
+    match (breached, knock_in) {
+      (true, false) => return rebate,
+      (true, true) => {
+        let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
+        return vanilla.price_option(s, k, r, q, tau, option_type);
+      }
+      (false, false) if tau == 0.0 => return vanilla_payoff(option_type, s, k),
+      (false, true) if tau == 0.0 => return rebate,
+      _ => {}
+    }
     let sigma = self.sigma;
-    let t = self.tau;
-    let rebate = self.rebate;
 
     let sigma2 = sigma * sigma;
-    let sqrt_t = t.sqrt();
+    let sqrt_t = tau.sqrt();
     let sigma_sqrt_t = sigma * sqrt_t;
 
-    let phi = match self.option_type {
+    let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
 
-    let eta = match self.barrier_type {
+    let eta = match barrier_type {
       BarrierType::DownAndIn | BarrierType::DownAndOut => 1.0,
       BarrierType::UpAndIn | BarrierType::UpAndOut => -1.0,
     };
@@ -96,20 +112,20 @@ impl BarrierPricer {
 
     let hs = h / s;
 
-    let a = phi * s * (-q * t).exp() * norm_cdf(phi * x1)
-      - phi * k * (-r * t).exp() * norm_cdf(phi * x1 - phi * sigma_sqrt_t);
+    let a = phi * s * (-q * tau).exp() * norm_cdf(phi * x1)
+      - phi * k * (-r * tau).exp() * norm_cdf(phi * x1 - phi * sigma_sqrt_t);
 
-    let b = phi * s * (-q * t).exp() * norm_cdf(phi * x2)
-      - phi * k * (-r * t).exp() * norm_cdf(phi * x2 - phi * sigma_sqrt_t);
+    let b = phi * s * (-q * tau).exp() * norm_cdf(phi * x2)
+      - phi * k * (-r * tau).exp() * norm_cdf(phi * x2 - phi * sigma_sqrt_t);
 
-    let c = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y1)
-      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y1 - eta * sigma_sqrt_t);
+    let c = phi * s * (-q * tau).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y1)
+      - phi * k * (-r * tau).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y1 - eta * sigma_sqrt_t);
 
-    let d = phi * s * (-q * t).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y2)
-      - phi * k * (-r * t).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y2 - eta * sigma_sqrt_t);
+    let d = phi * s * (-q * tau).exp() * hs.powf(2.0 * (mu + 1.0)) * norm_cdf(eta * y2)
+      - phi * k * (-r * tau).exp() * hs.powf(2.0 * mu) * norm_cdf(eta * y2 - eta * sigma_sqrt_t);
 
     let e = rebate
-      * (-r * t).exp()
+      * (-r * tau).exp()
       * (norm_cdf(eta * x2 - eta * sigma_sqrt_t)
         - hs.powf(2.0 * mu) * norm_cdf(eta * y2 - eta * sigma_sqrt_t));
 
@@ -117,7 +133,7 @@ impl BarrierPricer {
       * (hs.powf(mu + lambda) * norm_cdf(eta * z)
         + hs.powf(mu - lambda) * norm_cdf(eta * z - 2.0 * eta * lambda * sigma_sqrt_t));
 
-    match (self.barrier_type, self.option_type) {
+    match (barrier_type, option_type) {
       (BarrierType::DownAndIn, OptionType::Call) => {
         if k > h {
           c + e
@@ -136,28 +152,28 @@ impl BarrierPricer {
         if k > h {
           a + e
         } else {
-          a - b + d + e
+          b - c + d + e
         }
       }
       (BarrierType::UpAndOut, OptionType::Call) => {
         if k > h {
           f
         } else {
-          b - d + f
+          a - b + c - d + f
         }
       }
       (BarrierType::DownAndIn, OptionType::Put) => {
         if k > h {
           b - c + d + e
         } else {
-          a - b + d + e
+          a + e
         }
       }
       (BarrierType::DownAndOut, OptionType::Put) => {
         if k > h {
           a - b + c - d + f
         } else {
-          b - d + f
+          f
         }
       }
       (BarrierType::UpAndIn, OptionType::Put) => {
@@ -183,80 +199,86 @@ impl BarrierPricer {
 /// $$
 /// V_0=\sum_{n=-N}^{N}\bigl[\text{image}_n^+-\text{image}_n^-\bigr]
 /// $$
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DoubleBarrierPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike price.
-  pub k: f64,
-  /// Upper barrier.
-  pub h_upper: f64,
-  /// Lower barrier.
-  pub h_lower: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Call or put payoff.
-  pub option_type: OptionType,
+  /// The series runs over `n = -terms..=terms`.
+  pub terms: i32,
 }
 
 impl DoubleBarrierPricer {
-  /// Price using 5 series terms.
-  pub fn price(&self) -> f64 {
-    self.price_with_terms(5)
+  /// Five series terms on either side; panics unless `sigma` is finite and `>= 0`. At `0` a spot
+  /// inside the corridor is NaN before expiry.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma, terms: 5 }
   }
 
-  /// Price with a specified number of series terms.
-  pub fn price_with_terms(&self, num_terms: i32) -> f64 {
-    let s = self.s;
-    let k = self.k;
-    let h_u = self.h_upper;
-    let h_l = self.h_lower;
-    let r = self.r;
-    let q = self.q;
+  /// Panics unless `terms >= 0`.
+  pub fn with_terms(self, terms: i32) -> Self {
+    assert!(
+      terms >= 0,
+      "terms must satisfy `terms >= 0`, got terms = {terms:?}"
+    );
+    Self { terms, ..self }
+  }
+
+  /// Ikeda–Kunitomo price at `(s, r, q, tau)`, floored at zero; a spot on or outside the corridor
+  /// has knocked out, `tau = 0` pays the payoff, and a negative or NaN `tau` or bound is NaN.
+  pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let DoubleBarrierOption {
+      strike: k,
+      lower: h_l,
+      upper: h_u,
+      option_type,
+    } = *option;
+    if !(s > 0.0 && tau >= 0.0) || h_l.is_nan() || h_u.is_nan() || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if s <= h_l || s >= h_u {
+      return 0.0;
+    }
+    if tau == 0.0 {
+      return vanilla_payoff(option_type, s, k);
+    }
     let sigma = self.sigma;
-    let t = self.tau;
 
     let sigma2 = sigma * sigma;
-    let sqrt_t = t.sqrt();
+    let sqrt_t = tau.sqrt();
     let sigma_sqrt_t = sigma * sqrt_t;
     let mu = (r - q - 0.5 * sigma2) / sigma2;
     let l = (h_u / h_l).ln();
 
-    let phi = match self.option_type {
+    let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
     };
 
     let mut price = 0.0;
 
-    for n in -num_terms..=num_terms {
+    for n in -self.terms..=self.terms {
       let nf = n as f64;
       let shift = 2.0 * nf * l;
 
-      let d1n = ((s / k).ln() + shift + (1.0 + mu) * sigma2 * t) / sigma_sqrt_t;
-      let d2n = ((h_l * h_l / (s * k)).ln() + shift + (1.0 + mu) * sigma2 * t) / sigma_sqrt_t;
+      let d1n = ((s / k).ln() + shift + (1.0 + mu) * sigma2 * tau) / sigma_sqrt_t;
+      let d2n = ((h_l * h_l / (s * k)).ln() + shift + (1.0 + mu) * sigma2 * tau) / sigma_sqrt_t;
 
       let hs_pow = (h_l / s).powf(2.0 * nf);
       let hs_ref = (h_l / s).powf(2.0 * nf * (mu + 1.0));
 
       let direct = hs_pow
-        * (phi * s * (-q * t).exp() * norm_cdf(phi * d1n)
-          - phi * k * (-r * t).exp() * norm_cdf(phi * d1n - phi * sigma_sqrt_t));
+        * (phi * s * (-q * tau).exp() * norm_cdf(phi * d1n)
+          - phi * k * (-r * tau).exp() * norm_cdf(phi * d1n - phi * sigma_sqrt_t));
 
       let reflected = hs_ref
-        * (phi * s * (-q * t).exp() * norm_cdf(phi * d2n)
-          - phi * k * (-r * t).exp() * norm_cdf(phi * d2n - phi * sigma_sqrt_t));
+        * (phi * s * (-q * tau).exp() * norm_cdf(phi * d2n)
+          - phi * k * (-r * tau).exp() * norm_cdf(phi * d2n - phi * sigma_sqrt_t));
 
       price += direct - reflected;
     }
 
-    price.max(0.0)
+    price.max_or_nan(0.0)
   }
 }
 
@@ -389,121 +411,4 @@ impl McBarrierPricer {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  // BSM vanilla call: S=100,K=100,r=0.05,q=0,sigma=0.2,T=1 → 10.4506
-  const BSM_VANILLA_CALL: f64 = 10.4506;
-  // BSM vanilla put: S=100,K=100,r=0.05,q=0,sigma=0.2,T=1 → 5.5735
-  const BSM_VANILLA_PUT: f64 = 5.5735;
-
-  fn base(barrier_type: BarrierType, option_type: OptionType, h: f64) -> BarrierPricer {
-    BarrierPricer {
-      s: 100.0,
-      k: 100.0,
-      h,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      rebate: 0.0,
-      barrier_type,
-      option_type,
-    }
-  }
-
-  #[test]
-  fn in_out_parity_down_call() {
-    let di = base(BarrierType::DownAndIn, OptionType::Call, 90.0).price();
-    let do_ = base(BarrierType::DownAndOut, OptionType::Call, 90.0).price();
-    assert!(
-      (di + do_ - BSM_VANILLA_CALL).abs() < 0.1,
-      "DI+DO={}",
-      di + do_
-    );
-  }
-
-  #[test]
-  fn in_out_parity_up_call() {
-    let ui = base(BarrierType::UpAndIn, OptionType::Call, 110.0).price();
-    let uo = base(BarrierType::UpAndOut, OptionType::Call, 110.0).price();
-    assert!(
-      (ui + uo - BSM_VANILLA_CALL).abs() < 0.1,
-      "UI+UO={}",
-      ui + uo
-    );
-  }
-
-  #[test]
-  fn in_out_parity_down_put() {
-    let di = base(BarrierType::DownAndIn, OptionType::Put, 90.0).price();
-    let do_ = base(BarrierType::DownAndOut, OptionType::Put, 90.0).price();
-    assert!(
-      (di + do_ - BSM_VANILLA_PUT).abs() < 0.1,
-      "DI+DO={}",
-      di + do_
-    );
-  }
-
-  #[test]
-  fn in_out_parity_up_put() {
-    let ui = base(BarrierType::UpAndIn, OptionType::Put, 110.0).price();
-    let uo = base(BarrierType::UpAndOut, OptionType::Put, 110.0).price();
-    assert!((ui + uo - BSM_VANILLA_PUT).abs() < 0.1, "UI+UO={}", ui + uo);
-  }
-
-  #[test]
-  fn down_and_out_call_haug() {
-    // Haug (2007): S=100, K=100, H=90, r=0.05, σ=0.2, T=1 → 8.6655
-    let price = base(BarrierType::DownAndOut, OptionType::Call, 90.0).price();
-    assert!((price - 8.6655).abs() < 0.05, "DO call={price}");
-  }
-
-  #[test]
-  fn knockout_less_than_vanilla() {
-    let do_ = base(BarrierType::DownAndOut, OptionType::Call, 90.0).price();
-    let uo = base(BarrierType::UpAndOut, OptionType::Call, 110.0).price();
-    assert!(do_ < BSM_VANILLA_CALL + 0.5, "DO call={do_}");
-    assert!(uo < BSM_VANILLA_CALL + 0.5, "UO call={uo}");
-    assert!(do_ > 0.0);
-    assert!(uo > 0.0);
-  }
-
-  #[test]
-  fn double_barrier_knockout() {
-    let p = DoubleBarrierPricer {
-      s: 100.0,
-      k: 100.0,
-      h_upper: 120.0,
-      h_lower: 80.0,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
-    // Ikeda-Kunitomo series with narrow barriers can overshoot with few terms
-    assert!(price > 0.0, "double barrier={price}");
-  }
-
-  #[test]
-  fn double_barrier_wide_converges_to_vanilla() {
-    let p = DoubleBarrierPricer {
-      s: 100.0,
-      k: 100.0,
-      h_upper: 500.0,
-      h_lower: 1.0,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
-    assert!(
-      (price - BSM_VANILLA_CALL).abs() < 0.5,
-      "wide double barrier={price}"
-    );
-  }
-}
+mod tests;

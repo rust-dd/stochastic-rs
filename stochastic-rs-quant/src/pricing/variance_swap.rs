@@ -31,40 +31,32 @@
 //! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",
 //!   in *Volatility: New Estimation Techniques for Pricing Derivatives*.
 
+use crate::pricing::exotic::VarianceSwapTerms;
+use crate::pricing::heston::HestonParams;
 use crate::total_order::ascending;
 
 mod discrete;
 
-/// Variance-swap pricer.
-///
-/// State stores the forward-curve inputs (spot, rates, maturity); pricing
-/// methods consume external option strips or model parameters.
-#[derive(Debug, Clone, Copy)]
-pub struct VarianceSwapPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Continuously-compounded risk-free rate.
-  pub r: f64,
-  /// Continuous dividend yield.
-  pub q: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-}
+/// Variance-swap fair strikes, realised variance and P&L; each takes the query it needs.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct VarianceSwapPricer;
 
 impl VarianceSwapPricer {
-  /// Forward $F = S_0 e^{(r-q)T}$.
-  pub fn forward(&self) -> f64 {
-    self.s * ((self.r - self.q) * self.tau).exp()
-  }
-
   /// Black–Scholes fair strike: $K_{\text{var}} = \sigma^2$.
-  pub fn fair_strike_bsm(&self, sigma: f64) -> f64 {
+  pub fn fair_strike_bsm(sigma: f64) -> f64 {
     sigma * sigma
   }
 
   /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip, `K_0` nearest the forward,
-  /// floored at 0 unless NaN; panics on bad lengths or `tau ≤ 0` (strike order/NaN: debug only).
-  pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
+  /// floored at 0 unless NaN, NaN unless `s, tau > 0`; panics on bad lengths (order: debug only).
+  pub fn fair_strike_replication(
+    strikes: &[f64],
+    otm_prices: &[f64],
+    s: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> f64 {
     assert_eq!(
       strikes.len(),
       otm_prices.len(),
@@ -75,11 +67,9 @@ impl VarianceSwapPricer {
       n >= 2,
       "static replication needs at least 2 strikes (got {n})"
     );
-    assert!(
-      self.tau > 0.0,
-      "maturity tau must be strictly positive (got {})",
-      self.tau
-    );
+    if !(s > 0.0 && tau > 0.0) {
+      return f64::NAN;
+    }
     debug_assert!(
       strikes.windows(2).all(|w| w[0] <= w[1]),
       "strikes must be sorted ascending"
@@ -89,8 +79,8 @@ impl VarianceSwapPricer {
       "strikes must be finite (no NaN)"
     );
 
-    let fwd = self.forward();
-    let disc = (self.r * self.tau).exp();
+    let fwd = s * ((r - q) * tau).exp();
+    let disc = (r * tau).exp();
 
     let k0_idx = strikes
       .iter()
@@ -112,69 +102,47 @@ impl VarianceSwapPricer {
       integral += dk * otm_prices[i] / (strikes[i] * strikes[i]);
     }
 
-    let drift = (self.r - self.q) * self.tau;
-    let fair = (2.0 / self.tau) * (drift - (fwd / k0 - 1.0) - (k0 / self.s).ln() + disc * integral);
+    let drift = (r - q) * tau;
+    let fair = (2.0 / tau) * (drift - (fwd / k0 - 1.0) - (k0 / s).ln() + disc * integral);
     if fair.is_nan() { fair } else { fair.max(0.0) }
   }
 
-  /// Heston closed-form fair variance strike (Brockhaus–Long 2000).
-  ///
-  /// Continuous-monitoring expected integrated variance,
-  /// $E\!\left[\frac{1}{T}\int_0^T V_t\,dt\right]$, depends only on
-  /// `(v0, kappa, theta, T)` — not on `(rho, sigma, r, q)`.
-  ///
-  /// At `tau == 0` the factor $\frac{1-e^{-\kappa T}}{\kappa T}$ tends to 1
-  /// and the strike is `v0`. That branch is a genuine limit and stays.
-  ///
-  /// # Panics
-  /// Panics if `self.tau` is negative — or `NaN`, which fails the same test.
-  /// A negative maturity is not a market state, and the `tau <= 0.0` branch
-  /// this replaces returned `v0` for one: a plausible variance strike,
-  /// numerically identical to the correct $T \to 0$ answer, for an input that
-  /// has no answer at all. Case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails), and the same
-  /// guard its neighbour
-  /// [`fair_strike_replication`](Self::fair_strike_replication) already
-  /// carries.
-  pub fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
-    let tau = self.tau;
-    assert!(tau >= 0.0, "maturity tau must be non-negative (got {tau})");
+  /// Brockhaus–Long continuous-monitoring fair strike, which reads only `v0`, `kappa` and `theta`;
+  /// `v0` at `tau = 0`, the genuine limit, and NaN for a negative or NaN `tau`.
+  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau < 0.0 {
+      return f64::NAN;
+    }
     if tau == 0.0 {
-      // Limit T → 0 of (1 - e^{-κT})/(κT) is 1, so K_var → v0.
       return v0;
     }
     let factor = discrete::mean_reversion_factor(kappa * tau);
     theta + (v0 - theta) * factor
   }
 
-  /// Discrete-monitoring correction to the continuous Heston fair strike
-  /// (Bernard–Cui 2013, leading-order in $T/N$).
-  ///
-  /// Uses the full first-order coefficient from Bernard–Cui, Proposition 6.1:
-  /// $\frac{T}{N}[(r-q)^2-(r-q)K_c+\frac14\overline{E[V^2]}
-  /// -\frac12\rho\sigma K_c]$. The omitted remainder is $O(N^{-2})$.
-  /// A zero observation count selects the continuous-monitoring limit.
-  ///
-  /// # Panics
-  /// Panics on a negative `self.tau`, via
-  /// [`fair_strike_heston`](Self::fair_strike_heston).
+  /// [`fair_strike_heston`](Self::fair_strike_heston) plus Bernard–Cui's first-order correction
+  /// for `n_obs` observations (Proposition 6.1); `n_obs = 0` is the continuous limit.
   pub fn fair_strike_heston_discrete(
-    &self,
-    v0: f64,
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    rho: f64,
+    params: &HestonParams,
     n_obs: usize,
+    r: f64,
+    q: f64,
+    tau: f64,
   ) -> f64 {
-    let cont = self.fair_strike_heston(v0, kappa, theta);
+    let HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    } = *params;
+    let cont = Self::fair_strike_heston(v0, kappa, theta, tau);
     if n_obs == 0 {
       return cont;
     }
-    let tau = self.tau;
     let dt = tau / n_obs as f64;
     let mean_square = discrete::mean_square_variance(v0, kappa, theta, sigma, tau);
-    let drift = self.r - self.q;
+    let drift = r - q;
     let bias = dt * (drift * drift - drift * cont + 0.25 * mean_square - 0.5 * rho * sigma * cont);
     cont + bias
   }
@@ -197,23 +165,22 @@ impl VarianceSwapPricer {
   }
 
   /// P&L of a long variance-swap position, $N \times (\hat\sigma^2 - K_{\text{var}})$.
-  pub fn pnl(realized_var: f64, fair_strike: f64, notional: f64) -> f64 {
-    notional * (realized_var - fair_strike)
+  pub fn pnl(realized_var: f64, terms: &VarianceSwapTerms) -> f64 {
+    terms.notional * (realized_var - terms.strike_variance)
   }
 }
 
 /// Log-contract replication weights $\frac{2}{T}\frac{\Delta K_i}{K_i^2}$ (Demeterfi et al. eq. 28)
-/// in `strikes` order; panics on fewer than two strikes or a non-positive `maturity`.
+/// in `strikes` order; panics on fewer than two strikes, all NaN unless `maturity > 0`.
 pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   let n = strikes.len();
   assert!(
     n >= 2,
     "static replication needs at least 2 strikes (got {n})"
   );
-  assert!(
-    maturity > 0.0,
-    "maturity must be strictly positive (got {maturity})"
-  );
+  if maturity.is_nan() || maturity <= 0.0 {
+    return vec![f64::NAN; n];
+  }
 
   let mut w = vec![0.0; n];
   for i in 0..n {
@@ -255,21 +222,18 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike with a short-maturity convexity correction for its
-  /// dispersion; panics unless the variance strike is positive (κ → 0 too); NaN for a NaN `sigma`.
+  /// Heston vol strike: the variance strike's root less a convexity correction (none at `tau = 0`,
+  /// a zero strike or kappa ≈ 0); NaN where either is NaN, panics on a negative variance strike.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
-    let pricer = VarianceSwapPricer {
-      s: 1.0,
-      r: 0.0,
-      q: 0.0,
-      tau,
-    };
-    let k_var = pricer.fair_strike_heston(v0, kappa, theta);
+    let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
+    if k_var.is_nan() {
+      return f64::NAN;
+    }
     assert!(
-      k_var > 0.0,
-      "heston variance strike must be strictly positive (got {k_var} from v0={v0}, theta={theta})"
+      k_var >= 0.0,
+      "k_var must satisfy `k_var >= 0.0`, got k_var = {k_var:?}"
     );
-    if kappa.abs() < 1e-10 || tau <= 0.0 {
+    if tau == 0.0 || k_var == 0.0 || kappa.abs() < 1e-10 {
       return k_var.sqrt();
     }
     let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))

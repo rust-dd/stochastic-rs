@@ -96,12 +96,12 @@ enum TermRegime {
 }
 
 impl Merton1976Pricer {
-  /// Panics unless `sigma ≥ 0`, `lambda` is finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
+  /// Panics unless `sigma` and `lambda` are finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
   /// `lambda = 0` the model is Black-Scholes at volatility `sigma`.
   pub fn new(sigma: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
     assert!(
-      sigma >= 0.0,
-      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       lambda.is_finite() && lambda >= 0.0,
@@ -111,10 +111,7 @@ impl Merton1976Pricer {
       (0.0..=1.0).contains(&gamma),
       "gamma must satisfy `(0.0..=1.0).contains(&gamma)`, got gamma = {gamma:?}"
     );
-    assert!(
-      m >= 1,
-      "Merton1976Pricer::new: m must be at least 1 (got {m})"
-    );
+    assert!(m >= 1, "m must satisfy `m >= 1`, got m = {m:?}");
     Self {
       sigma,
       lambda,
@@ -128,11 +125,7 @@ impl Merton1976Pricer {
   /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives; the payoff at `tau = 0`.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if tau == 0.0 {
-      let base = self.base_bsm();
-      return CallPut {
-        call: base.price_call(s, k, r, q, tau),
-        put: base.price_put(s, k, r, q, tau),
-      };
+      return self.base_bsm().price_call_put(s, k, r, q, tau);
     }
     let mut call = 0.0;
     let mut put = 0.0;
@@ -255,10 +248,7 @@ impl Merton1976Pricer {
         put: half_disc - half_carry,
       };
     }
-    CallPut {
-      call: term.price_call(s, k, r, q, tau),
-      put: term.price_put(s, k, r, q, tau),
-    }
+    term.price_call_put(s, k, r, q, tau)
   }
 }
 

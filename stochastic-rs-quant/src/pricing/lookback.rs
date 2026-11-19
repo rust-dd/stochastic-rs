@@ -13,77 +13,94 @@
 //! - Conze, A. & Viswanathan, R. (1991), "Path Dependent Options: The Case of Lookback Options"
 //! - Haug, E.G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::exotic::LookbackOption;
+use crate::pricing::exotic::assert_sigma;
 
-/// Floating-strike lookback option pricer (Goldman–Sosin–Gatto 1979).
-///
-/// A floating-strike lookback call gives the right to buy at the observed
-/// minimum; a put gives the right to sell at the observed maximum.
-#[derive(Debug, Clone)]
-pub struct FloatingLookbackPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Observed minimum price (for calls; defaults to `s`).
-  pub s_min: Option<f64>,
-  /// Observed maximum price (for puts; defaults to `s`).
-  pub s_max: Option<f64>,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
+/// Goldman–Sosin–Gatto (1979) for a floating strike, Conze–Viswanathan (1991) for a fixed one: a
+/// floating call buys at the running low, a fixed call pays the running high over the strike.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LookbackPricer {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Call or put payoff.
-  pub option_type: OptionType,
 }
 
-impl FloatingLookbackPricer {
-  pub fn price(&self) -> f64 {
-    let s = self.s;
-    let r = self.r;
-    let q = self.q;
+impl LookbackPricer {
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but a carry within `1e-10` of 0 prices
+  /// its deterministic limit while the spot is off the extreme the payoff compares it with.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma }
+  }
+
+  /// Price of `option` at the query `(s, r, q, tau)`; at `tau = 0` its payoff on the running
+  /// extremes, and NaN for a negative or NaN `tau` or a NaN running extreme.
+  pub fn price(&self, option: &LookbackOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if tau == 0.0 {
+      return Self::payoff(option, s);
+    }
+    match option.strike {
+      None => self.floating(option, s, r, q, tau),
+      Some(k) => self.fixed(option, k, s, r, q, tau),
+    }
+  }
+
+  /// The running minimum and maximum each include the spot.
+  fn payoff(option: &LookbackOption, s: f64) -> f64 {
+    let low = option.running_min.unwrap_or(s).min_or_nan(s);
+    let high = option.running_max.unwrap_or(s).max_or_nan(s);
+    match (option.strike, option.option_type) {
+      (None, OptionType::Call) => s - low,
+      (None, OptionType::Put) => high - s,
+      (Some(k), OptionType::Call) => (high - k).max_or_nan(0.0),
+      (Some(k), OptionType::Put) => (k - low).max_or_nan(0.0),
+    }
+  }
+
+  fn floating(&self, option: &LookbackOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
     let sigma = self.sigma;
-    let t = self.tau;
-    let sqrt_t = t.sqrt();
+    let sqrt_t = tau.sqrt();
     let sigma2 = sigma * sigma;
 
-    match self.option_type {
+    match option.option_type {
       OptionType::Call => {
-        let s_min = self.s_min.unwrap_or(s);
-        let a1 = ((s / s_min).ln() + (b + 0.5 * sigma2) * t) / (sigma * sqrt_t);
+        let s_min = option.running_min.unwrap_or(s);
+        let a1 = ((s / s_min).ln() + (b + 0.5 * sigma2) * tau) / (sigma * sqrt_t);
 
-        let term1 = s * (-q * t).exp() * norm_cdf(a1);
-        let term2 = s_min * (-r * t).exp() * norm_cdf(a1 - sigma * sqrt_t);
+        let term1 = s * (-q * tau).exp() * norm_cdf(a1);
+        let term2 = s_min * (-r * tau).exp() * norm_cdf(a1 - sigma * sqrt_t);
 
         let premium = if b.abs() < 1e-10 {
-          s * (-r * t).exp() * sigma * sqrt_t * norm_cdf(a1).max(0.0) * sigma
+          s * (-r * tau).exp() * sigma * sqrt_t * norm_cdf(a1).max(0.0) * sigma
         } else {
-          let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
+          let coeff = s * (-r * tau).exp() * sigma2 / (2.0 * b);
           let bracket = (s / s_min).powf(-2.0 * b / sigma2)
             * norm_cdf(-a1 + 2.0 * b * sqrt_t / sigma)
-            - (b * t).exp() * norm_cdf(-a1);
+            - (b * tau).exp() * norm_cdf(-a1);
           coeff * bracket
         };
 
         term1 - term2 + premium
       }
       OptionType::Put => {
-        let s_max = self.s_max.unwrap_or(s);
-        let b1 = ((s / s_max).ln() + (b + 0.5 * sigma2) * t) / (sigma * sqrt_t);
+        let s_max = option.running_max.unwrap_or(s);
+        let b1 = ((s / s_max).ln() + (b + 0.5 * sigma2) * tau) / (sigma * sqrt_t);
 
-        let term1 = s_max * (-r * t).exp() * norm_cdf(-b1 + sigma * sqrt_t);
-        let term2 = s * (-q * t).exp() * norm_cdf(-b1);
+        let term1 = s_max * (-r * tau).exp() * norm_cdf(-b1 + sigma * sqrt_t);
+        let term2 = s * (-q * tau).exp() * norm_cdf(-b1);
 
         let premium = if b.abs() < 1e-10 {
-          s * (-r * t).exp() * sigma * sqrt_t * norm_cdf(-b1).max(0.0) * sigma
+          s * (-r * tau).exp() * sigma * sqrt_t * norm_cdf(-b1).max(0.0) * sigma
         } else {
-          let coeff = s * (-r * t).exp() * sigma2 / (2.0 * b);
-          let bracket = (b * t).exp() * norm_cdf(b1)
+          let coeff = s * (-r * tau).exp() * sigma2 / (2.0 * b);
+          let bracket = (b * tau).exp() * norm_cdf(b1)
             - (s / s_max).powf(-2.0 * b / sigma2) * norm_cdf(b1 - 2.0 * b * sqrt_t / sigma);
           coeff * bracket
         };
@@ -92,69 +109,32 @@ impl FloatingLookbackPricer {
       }
     }
   }
-}
 
-/// Fixed-strike lookback option pricer (Conze–Viswanathan 1991).
-///
-/// A fixed-strike lookback call pays $\max(S_{\max}-K,0)$;
-/// a put pays $\max(K-S_{\min},0)$.
-#[derive(Debug, Clone)]
-pub struct FixedLookbackPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Strike price.
-  pub k: f64,
-  /// Observed minimum price (for puts).
-  pub s_min: Option<f64>,
-  /// Observed maximum price (for calls).
-  pub s_max: Option<f64>,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Annualised Black–Scholes volatility.
-  pub sigma: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Call or put payoff.
-  pub option_type: OptionType,
-}
-
-impl FixedLookbackPricer {
-  /// Price using the identity:
-  /// - Call: `floating_put(S, m) + S·e^{-qT} - K·e^{-rT}` where `m = max(S_max, K)`
-  /// - Put:  `floating_call(S, m) + K·e^{-rT} - S·e^{-qT}` where `m = min(S_min, K)`
-  pub fn price(&self) -> f64 {
-    match self.option_type {
+  /// A fixed call is the floating put at `m = max(S_max, K)` plus `S e^{-qτ} − K e^{-rτ}`, a fixed
+  /// put the floating call at `m = min(S_min, K)` plus `K e^{-rτ} − S e^{-qτ}`.
+  fn fixed(&self, option: &LookbackOption, k: f64, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    match option.option_type {
       OptionType::Call => {
-        let s_max = self.s_max.unwrap_or(self.s);
-        let m = s_max.max(self.k);
-        let fp = FloatingLookbackPricer {
-          s: self.s,
-          s_min: None,
-          s_max: Some(m),
-          r: self.r,
-          q: self.q,
-          sigma: self.sigma,
-          tau: self.tau,
+        let s_max = option.running_max.unwrap_or(s);
+        let m = s_max.max_or_nan(k);
+        let floating_put = LookbackOption {
+          strike: None,
+          running_min: None,
+          running_max: Some(m),
           option_type: OptionType::Put,
         };
-        fp.price() + self.s * (-self.q * self.tau).exp() - self.k * (-self.r * self.tau).exp()
+        self.floating(&floating_put, s, r, q, tau) + s * (-q * tau).exp() - k * (-r * tau).exp()
       }
       OptionType::Put => {
-        let s_min = self.s_min.unwrap_or(self.s);
-        let m = s_min.min(self.k);
-        let fc = FloatingLookbackPricer {
-          s: self.s,
-          s_min: Some(m),
-          s_max: None,
-          r: self.r,
-          q: self.q,
-          sigma: self.sigma,
-          tau: self.tau,
+        let s_min = option.running_min.unwrap_or(s);
+        let m = s_min.min_or_nan(k);
+        let floating_call = LookbackOption {
+          strike: None,
+          running_min: Some(m),
+          running_max: None,
           option_type: OptionType::Call,
         };
-        fc.price() + self.k * (-self.r * self.tau).exp() - self.s * (-self.q * self.tau).exp()
+        self.floating(&floating_call, s, r, q, tau) + k * (-r * tau).exp() - s * (-q * tau).exp()
       }
     }
   }
@@ -164,20 +144,25 @@ impl FixedLookbackPricer {
 mod tests {
   use super::*;
 
+  fn lookback(
+    strike: Option<f64>,
+    running_min: Option<f64>,
+    running_max: Option<f64>,
+    option_type: OptionType,
+  ) -> LookbackOption {
+    LookbackOption {
+      strike,
+      running_min,
+      running_max,
+      option_type,
+    }
+  }
+
   #[test]
   fn floating_call_intrinsic_bound() {
     // Floating lookback call ≥ discounted intrinsic value (S - S_min)
-    let p = FloatingLookbackPricer {
-      s: 100.0,
-      s_min: Some(90.0),
-      s_max: None,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
+    let option = lookback(None, Some(90.0), None, OptionType::Call);
+    let price = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
     let intrinsic = (100.0 - 90.0) * (-0.05_f64).exp();
     assert!(price > 0.0);
     assert!(price >= intrinsic, "price={price} < intrinsic={intrinsic}");
@@ -186,17 +171,8 @@ mod tests {
   #[test]
   fn floating_call_goldman_sosin_gatto() {
     // S=100, S_min=100, r=0.10, σ=0.10, T=0.5 → 8.2687 (Haug formula)
-    let p = FloatingLookbackPricer {
-      s: 100.0,
-      s_min: Some(100.0),
-      s_max: None,
-      r: 0.10,
-      q: 0.0,
-      sigma: 0.10,
-      tau: 0.5,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
+    let option = lookback(None, Some(100.0), None, OptionType::Call);
+    let price = LookbackPricer::new(0.10).price(&option, 100.0, 0.10, 0.0, 0.5);
     assert!(
       (price - 8.2687).abs() < 0.01,
       "floating call={price}, expected≈8.2687"
@@ -205,17 +181,8 @@ mod tests {
 
   #[test]
   fn floating_put_positive() {
-    let p = FloatingLookbackPricer {
-      s: 100.0,
-      s_min: None,
-      s_max: Some(110.0),
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Put,
-    };
-    let price = p.price();
+    let option = lookback(None, None, Some(110.0), OptionType::Put);
+    let price = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
     assert!(price > 0.0, "floating lookback put={price}");
     // Put must be ≥ discounted intrinsic (S_max - S)
     let intrinsic = (110.0 - 100.0) * (-0.05_f64).exp();
@@ -224,35 +191,17 @@ mod tests {
 
   #[test]
   fn floating_call_more_volatile_is_more_expensive() {
-    let base = FloatingLookbackPricer {
-      s: 100.0,
-      s_min: Some(100.0),
-      s_max: None,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Call,
-    };
-    let high_vol = FloatingLookbackPricer { sigma: 0.4, ..base };
-    assert!(high_vol.price() > base.price());
+    let option = lookback(None, Some(100.0), None, OptionType::Call);
+    let base = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
+    let high_vol = LookbackPricer::new(0.4).price(&option, 100.0, 0.05, 0.0, 1.0);
+    assert!(high_vol > base);
   }
 
   #[test]
   fn fixed_call_geq_vanilla() {
     // Fixed-strike lookback call ≥ vanilla call (since payoff = max(S_max - K, 0) ≥ max(S_T - K, 0))
-    let p = FixedLookbackPricer {
-      s: 100.0,
-      k: 100.0,
-      s_min: None,
-      s_max: Some(100.0),
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Call,
-    };
-    let price = p.price();
+    let option = lookback(Some(100.0), None, Some(100.0), OptionType::Call);
+    let price = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
     // BSM vanilla call ≈ 10.45
     assert!(
       price > 10.0,
@@ -262,18 +211,8 @@ mod tests {
 
   #[test]
   fn fixed_put_geq_vanilla() {
-    let p = FixedLookbackPricer {
-      s: 100.0,
-      k: 100.0,
-      s_min: Some(100.0),
-      s_max: None,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.2,
-      tau: 1.0,
-      option_type: OptionType::Put,
-    };
-    let price = p.price();
+    let option = lookback(Some(100.0), Some(100.0), None, OptionType::Put);
+    let price = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
     // BSM vanilla put ≈ 5.57
     assert!(
       price > 5.0,

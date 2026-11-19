@@ -12,9 +12,9 @@ use crate::pricing::fourier::HkdeParams;
 /// square root of its quote's inverse Black vega (Agazzotti et al. 2025, eq. 13).
 #[derive(Clone, Debug)]
 pub struct HkdeCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  pub(super) s: f64,
+  pub(super) r: f64,
+  pub(super) q: f64,
   /// The weights are read off these prices when a fit starts.
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.04, 1.5, 0.04, 0.3, −0.5, 0.5, 0.4, 10, 5), projected.
@@ -35,6 +35,18 @@ impl HkdeCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start` passes `HkdeFourier::new`'s checks; the fit starts from its projection

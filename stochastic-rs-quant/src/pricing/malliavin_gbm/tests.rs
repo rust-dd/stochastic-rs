@@ -337,19 +337,19 @@ mod construction_validation {
   use super::*;
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn new_rejects_zero_paths() {
     let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Unseeded);
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 1)")]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 2`, got n_steps = 1")]
   fn new_rejects_a_single_time_step() {
     let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5, Unseeded);
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 0)")]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 2`, got n_steps = 0")]
   fn new_rejects_zero_time_steps() {
     let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5, Unseeded);
   }
@@ -374,9 +374,19 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: t_eval must be strictly positive (got -0.5)")]
+  #[should_panic(
+    expected = "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = -0.5"
+  )]
   fn new_rejects_non_positive_t_eval() {
     let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5, Unseeded);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = inf"
+  )]
+  fn new_rejects_an_infinite_t_eval() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 100, f64::INFINITY, Unseeded);
   }
 
   /// The `t_eval < tau` half is unreachable from the constructor and stays
@@ -398,7 +408,7 @@ mod construction_validation {
   /// rather than the seed parameter quietly shifting an argument past
   /// them.
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn the_numeric_guards_still_fire_with_a_pinned_seed() {
     let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Deterministic::new(SEEDS[0]));
   }

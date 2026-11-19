@@ -43,30 +43,34 @@ use crate::CallPut;
 #[derive(Debug, Clone, Copy)]
 pub struct KirkSpreadPricer {
   /// Volatility of asset 1
-  pub v1: f64,
+  pub sigma1: f64,
   /// Volatility of asset 2
-  pub v2: f64,
+  pub sigma2: f64,
   /// Correlation between asset 1 and asset 2
   pub corr: f64,
 }
 
 impl KirkSpreadPricer {
-  /// Panics unless `v1, v2 ≥ 0` and `corr ∈ [-1, 1]`: at `corr < -1` the radicand stays positive
-  /// and the price comes back finite and an order of magnitude wrong.
-  pub fn new(v1: f64, v2: f64, corr: f64) -> Self {
+  /// Panics unless `sigma1`, `sigma2` are finite and `≥ 0` and `corr ∈ [-1, 1]`: at `corr < -1`
+  /// the radicand stays positive and the price comes back finite and an order of magnitude wrong.
+  pub fn new(sigma1: f64, sigma2: f64, corr: f64) -> Self {
     assert!(
-      v1 >= 0.0,
-      "KirkSpreadPricer::new: v1 must be a non-negative volatility (got {v1})"
+      sigma1.is_finite() && sigma1 >= 0.0,
+      "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = {sigma1:?}"
     );
     assert!(
-      v2 >= 0.0,
-      "KirkSpreadPricer::new: v2 must be a non-negative volatility (got {v2})"
+      sigma2.is_finite() && sigma2 >= 0.0,
+      "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = {sigma2:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&corr),
-      "KirkSpreadPricer::new: corr must be in [-1, 1] (got {corr})"
+      "corr must satisfy `(-1.0..=1.0).contains(&corr)`, got corr = {corr:?}"
     );
-    Self { v1, v2, corr }
+    Self {
+      sigma1,
+      sigma2,
+      corr,
+    }
   }
 
   /// Spread call and put of forwards `f1`, `f2` at spread strike `x`, not an `(s, k, r, q, tau)`
@@ -78,8 +82,8 @@ impl KirkSpreadPricer {
     let f_temp = f2 / denom;
 
     // Combined volatility (Kirk's approximation)
-    let v = (self.v1.powi(2) + (self.v2 * f_temp).powi(2)
-      - 2.0 * self.corr * self.v1 * self.v2 * f_temp)
+    let v = (self.sigma1.powi(2) + (self.sigma2 * f_temp).powi(2)
+      - 2.0 * self.corr * self.sigma1 * self.sigma2 * f_temp)
       .sqrt();
 
     // Black-76 style pricing (b = 0 for futures)
@@ -114,10 +118,7 @@ mod tests {
   /// aarch64-darwin dev machine and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
-  /// Values captured from `PricerExt::calculate_call_put()` **before** the
-  /// model/query reshape, at `KirkSpreadPricer::new(f1, f2, x, r, v1, v2,
-  /// corr, Some(tau), None, None)`. The reshape and the later `spread_*`
-  /// rename are API changes only, so these must not move.
+  /// Two pinned spread pairs: a change of call shape must not move a price.
   #[test]
   fn kirk_call_put_matches_pre_refactor_goldens() {
     let heat_rate = KirkSpreadPricer::new(0.35, 0.35, 0.90);
@@ -176,21 +177,21 @@ mod tests {
   /// entirely plausible. (`ρ = +5` does turn the radicand negative and
   /// yields `NaN`, so only one side of the invalid range announced itself.)
   #[test]
-  #[should_panic(expected = "KirkSpreadPricer::new: corr must be in [-1, 1] (got -5)")]
+  #[should_panic(expected = "corr must satisfy `(-1.0..=1.0).contains(&corr)`, got corr = -5.0")]
   fn new_rejects_correlation_below_minus_one() {
     let _ = KirkSpreadPricer::new(0.35, 0.35, -5.0);
   }
 
   #[test]
-  #[should_panic(expected = "KirkSpreadPricer::new: corr must be in [-1, 1] (got 5)")]
+  #[should_panic(expected = "corr must satisfy `(-1.0..=1.0).contains(&corr)`, got corr = 5.0")]
   fn new_rejects_correlation_above_one() {
     let _ = KirkSpreadPricer::new(0.35, 0.35, 5.0);
   }
 
-  /// `v1 = -0.35` would price the call at `7.8656` instead of `1.2691`.
+  /// `sigma1 = -0.35` would price the call at `7.8656` instead of `1.2691`.
   #[test]
   #[should_panic(
-    expected = "KirkSpreadPricer::new: v1 must be a non-negative volatility (got -0.35)"
+    expected = "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = -0.35"
   )]
   fn new_rejects_negative_first_volatility() {
     let _ = KirkSpreadPricer::new(-0.35, 0.35, 0.9);
@@ -198,10 +199,24 @@ mod tests {
 
   #[test]
   #[should_panic(
-    expected = "KirkSpreadPricer::new: v2 must be a non-negative volatility (got -0.35)"
+    expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = -0.35"
   )]
   fn new_rejects_negative_second_volatility() {
     let _ = KirkSpreadPricer::new(0.35, -0.35, 0.9);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = inf"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = KirkSpreadPricer::new(0.35, f64::INFINITY, 0.9);
+  }
+
+  #[test]
+  fn the_volatilities_are_sigma1_and_sigma2() {
+    let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
+    assert_eq!((model.sigma1, model.sigma2), (0.30, 0.25));
   }
 
   /// The admissible edges the validation must not swallow: perfect

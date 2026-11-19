@@ -32,12 +32,12 @@ pub struct AsianPricer {
 }
 
 impl AsianPricer {
-  /// Panics unless `sigma >= 0`, as a negative volatility prices a negative call; at `sigma == 0`
-  /// the averaged underlying is deterministic and the price is its discounted intrinsic forward.
+  /// Panics unless `sigma` is finite and `>= 0`, as a negative one prices a negative call; at
+  /// `sigma == 0` the average is deterministic and priced at its discounted intrinsic value.
   pub fn new(sigma: f64) -> Self {
     assert!(
-      sigma >= 0.0,
-      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     Self { sigma }
   }
@@ -154,15 +154,27 @@ mod tests {
   /// underlying becomes deterministic and the closed form returns its
   /// discounted intrinsic forward value.
   #[test]
-  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.25")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"
+  )]
   fn new_rejects_negative_volatility() {
     let _ = AsianPricer::new(-0.25);
   }
 
   #[test]
-  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+  )]
   fn new_rejects_nan_volatility() {
     let _ = AsianPricer::new(f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = AsianPricer::new(f64::INFINITY);
   }
 
   #[test]

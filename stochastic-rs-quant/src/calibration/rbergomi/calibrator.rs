@@ -29,10 +29,10 @@ impl<D> ToModel for Calibrated<RBergomiParams, D> {
 /// rBergomi fit to terminal-price samples by projected Adam on the mean Wasserstein-1 distance.
 #[derive(Clone, Debug)]
 pub struct RBergomiCalibrator {
-  pub s: f64,
-  pub r: f64,
+  s: f64,
+  r: f64,
   /// Continuous dividend yield (or foreign rate for FX).
-  pub q: f64,
+  q: f64,
   /// Projected onto the parameter box when a fit starts.
   pub start: RBergomiParams,
   /// Sorted by maturity in `new`; `calibrate` reports a slice by its index in this order.
@@ -90,6 +90,18 @@ impl RBergomiCalibrator {
       config,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   pub fn with_options(mut self, options: CalibrationOptions) -> Self {

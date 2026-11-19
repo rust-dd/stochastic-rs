@@ -1,5 +1,6 @@
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::CallPut;
 use crate::OptionType;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
@@ -86,22 +87,36 @@ impl BsmPricer {
     (d1, d2)
   }
 
-  /// One leg at one query point: at `tau = 0` the payoff, NaN for a non-finite `sigma`.
+  /// The carried spot `S e^{(b−r)τ}`, the discounted strike and `(d₁, d₂)`, which are `None` at
+  /// `tau = 0` under a finite `sigma`, where a leg is its payoff.
+  fn terms(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64, Option<(f64, f64)>) {
+    let carry = ((self.b(r, q) - r) * tau).exp();
+    let disc = (-r * tau).exp();
+    let at_expiry = tau == 0.0 && self.sigma.is_finite();
+    let d = (!at_expiry).then(|| self.d1_d2(s, k, r, q, tau));
+    (s * carry, k * disc, d)
+  }
+
+  /// One leg from [`terms`](Self::terms): at `tau = 0` the payoff, NaN for a non-finite `sigma`.
   ///
   /// $$
   /// C=Se^{(b-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
   /// P=-Se^{(b-r)\tau}N(-d_1)+Ke^{-r\tau}N(-d_2)
   /// $$
-  fn leg(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    let carry = ((self.b(r, q) - r) * tau).exp();
-    let disc = (-r * tau).exp();
-    if tau == 0.0 && self.sigma.is_finite() {
-      return vanilla_payoff(option_type, s * carry, k * disc);
+  fn leg((spot, strike, d): (f64, f64, Option<(f64, f64)>), option_type: OptionType) -> f64 {
+    match (d, option_type) {
+      (None, _) => vanilla_payoff(option_type, spot, strike),
+      (Some((d1, d2)), OptionType::Call) => spot * norm_cdf(d1) - strike * norm_cdf(d2),
+      (Some((d1, d2)), OptionType::Put) => -spot * norm_cdf(-d1) + strike * norm_cdf(-d2),
     }
-    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
-    match option_type {
-      OptionType::Call => s * carry * norm_cdf(d1) - k * disc * norm_cdf(d2),
-      OptionType::Put => -s * carry * norm_cdf(-d1) + k * disc * norm_cdf(-d2),
+  }
+
+  /// Both legs off one `(d₁, d₂)`, each bit for bit what `price_call` and `price_put` answer.
+  pub(crate) fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    let terms = self.terms(s, k, r, q, tau);
+    CallPut {
+      call: Self::leg(terms, OptionType::Call),
+      put: Self::leg(terms, OptionType::Put),
     }
   }
 
@@ -126,7 +141,7 @@ impl BsmPricer {
 
 impl ModelPricer for BsmPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.leg(s, k, r, q, tau, OptionType::Call)
+    Self::leg(self.terms(s, k, r, q, tau), OptionType::Call)
   }
 
   /// Overrides the trait's vanilla-parity default, which assumes the carry
@@ -137,7 +152,7 @@ impl ModelPricer for BsmPricer {
   /// `q != 0` and for [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`] at
   /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.leg(s, k, r, q, tau, OptionType::Put)
+    Self::leg(self.terms(s, k, r, q, tau), OptionType::Put)
   }
 }
 

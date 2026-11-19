@@ -24,9 +24,9 @@ use crate::calibration::quote::validate_quotes;
 #[derive(Clone, Debug)]
 pub struct LevyCalibrator {
   pub model_type: LevyModelType,
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from the model's default parameters.
   pub start: Option<LevyParams>,
@@ -47,6 +47,18 @@ impl LevyCalibrator {
       start: None,
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start.model_type == self.model_type`, `start.values.len()` is the model's

@@ -339,30 +339,6 @@ fn small_surface() -> HestonSlvCalibrator {
     .with_particle_method(method().with_particles(500))
 }
 
-/// A field write skips `new`'s panic; the spot and the rates are then the grid's data.
-#[test]
-fn a_written_spot_or_rate_is_invalid_input_with_heston_fitted_or_pinned() {
-  let writes: [(fn(&mut HestonSlvCalibrator), &str); 3] = [
-    (|c| c.s = -1.0, "spot"),
-    (|c| c.r = f64::NAN, "rates"),
-    (|c| c.q = f64::INFINITY, "rates"),
-  ];
-  for pinned in [false, true] {
-    for (write, what) in writes {
-      let mut calibrator = small_surface();
-      if pinned {
-        calibrator = calibrator.with_heston_params(heston());
-      }
-      write(&mut calibrator);
-      let err = calibrator.calibrate(None).unwrap_err();
-      assert!(
-        matches!(&err, QuantError::InvalidInput { what: w, .. } if *w == what),
-        "pinned {pinned}: {err}"
-      );
-    }
-  }
-}
-
 #[test]
 fn pinned_parameters_refuse_the_knobs_only_the_heston_fit_reads() {
   use crate::calibration::CalibrationOptions;

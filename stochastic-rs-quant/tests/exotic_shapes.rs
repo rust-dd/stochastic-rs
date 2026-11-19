@@ -1,5 +1,5 @@
 //! One shape per concept: a named pair where a pricer yields both legs, structs from the order
-//! book, and an enum where a flag named the option type.
+//! book, and an enum for the option type.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -111,6 +111,19 @@ fn legs(model: &impl ModelPricer, tau: f64) -> CallPut {
   pair(call, put)
 }
 
+/// A pinned value went through libm, whose last bits differ between platforms; each leg is held at
+/// its own scale.
+fn assert_pinned(got: CallPut, pinned: CallPut, what: &str) {
+  let close = |a: f64, b: f64| (a - b).abs() <= 1e-13 * b.abs().max(1.0);
+  let both = close(got.call, pinned.call) && close(got.put, pinned.put);
+  assert!(both, "{what}: {got:?} against {pinned:?}");
+}
+
+fn assert_pinned_value(got: f64, pinned: f64, what: &str) {
+  let close = (got - pinned).abs() <= 1e-13 * pinned.abs().max(1.0);
+  assert!(close, "{what}: {got} against {pinned}");
+}
+
 #[test]
 fn the_order_book_answers_with_structs() {
   let mut book = OrderBook::new();
@@ -183,76 +196,151 @@ fn a_chain_quote_names_its_option_type() {
   assert_eq!(quote.option_type, OptionType::Put);
 }
 
-/// Each pair as pinned before the block, bit for bit.
 #[test]
 fn one_computation_answers_a_named_pair() {
   let heston = heston();
   let heston_pair = pair(5.164008255606973, 7.7882281559869995);
-  assert_eq!(heston.price_call_put(S, K, R, Q, TAU), heston_pair);
-  assert_eq!(legs(&heston, TAU), heston_pair);
-  assert_eq!(heston.price_call_put(S, K, R, Q, 0.0), pair(0.0, 5.0));
+  let named = heston.price_call_put(S, K, R, Q, TAU);
+  assert_eq!(named, legs(&heston, TAU));
+  assert_pinned(named, heston_pair, "heston");
+  assert_pinned(
+    heston.price_call_put(S, K, R, Q, 0.0),
+    pair(0.0, 5.0),
+    "heston at expiry",
+  );
   let CallPut { call, put } = heston
     .with_vol_risk_premium(0.1)
     .price_call_put(S, K, R, Q, TAU);
-  assert_eq!((call, put), (HESTON_LAMBDA.call, HESTON_LAMBDA.put));
-  assert_eq!(heston.initial_variance_vega(S, K, R, Q, TAU), HESTON_VEGA);
+  assert_pinned(pair(call, put), HESTON_LAMBDA, "heston lambda");
+  let vega = heston.initial_variance_vega(S, K, R, Q, TAU);
+  assert_pinned_value(vega, HESTON_VEGA, "heston vega");
 
   let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, BsmCoc::Merton1973);
-  assert_eq!(merton.price_call_put(S, K, R, Q, TAU), MERTON);
-  assert_eq!(legs(&merton, TAU), MERTON);
+  let named = merton.price_call_put(S, K, R, Q, TAU);
+  assert_eq!(named, legs(&merton, TAU));
+  assert_pinned(named, MERTON, "merton");
 
   let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);
-  assert_eq!(hscm.price_call_put(S, K, R, Q, TAU), HSCM);
-  assert_eq!(legs(&hscm, TAU), HSCM);
+  let named = hscm.price_call_put(S, K, R, Q, TAU);
+  assert_eq!(named, legs(&hscm, TAU));
+  assert_pinned(named, HSCM, "hscm");
 
   let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(7));
-  assert_eq!(malliavin.price_call_put(S, K, R, Q, TAU), MALLIAVIN);
-  assert_eq!(legs(&malliavin, TAU), MALLIAVIN);
-  assert_eq!(
-    malliavin.price_call_put_localized(S, K, R, Q, TAU),
-    MALLIAVIN_LOCALIZED
-  );
-  assert_eq!(malliavin.price_call_put(S, K, R, Q, 0.0), pair(0.0, 5.0));
+  let named = malliavin.price_call_put(S, K, R, Q, TAU);
+  assert_eq!(named, legs(&malliavin, TAU));
+  assert_pinned(named, MALLIAVIN, "malliavin");
+  let localized = malliavin.price_call_put_localized(S, K, R, Q, TAU);
+  assert_pinned(localized, MALLIAVIN_LOCALIZED, "malliavin localized");
+  let expired = malliavin.price_call_put(S, K, R, Q, 0.0);
+  assert_pinned(expired, pair(0.0, 5.0), "malliavin at expiry");
 
   let kirk = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-  assert_eq!(kirk.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5), KIRK);
-  assert_eq!(kirk.spread_call(100.0, 90.0, 5.0, 0.05, 0.5), KIRK.call);
-  assert_eq!(kirk.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), KIRK.put);
+  let named = kirk.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
+  assert_pinned(named, KIRK, "kirk");
+  assert_eq!(kirk.spread_call(100.0, 90.0, 5.0, 0.05, 0.5), named.call);
+  assert_eq!(kirk.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), named.put);
 }
 
-/// Each leg as pinned before the block, bit for bit.
 #[test]
 fn a_closed_form_prices_each_leg_through_the_trait() {
   for (coc, at_tau, at_expiry) in BSM {
     let model = BsmPricer::new(0.25, coc);
-    assert_eq!(legs(&model, TAU), at_tau, "{coc:?}");
-    assert_eq!(legs(&model, 0.0), at_expiry, "{coc:?} at expiry");
+    assert_pinned(legs(&model, TAU), at_tau, &format!("{coc:?}"));
+    assert_pinned(legs(&model, 0.0), at_expiry, &format!("{coc:?} at expiry"));
   }
-  assert_eq!(
-    legs(&SabrPricer::new(SabrParams::new(0.2, 1.0, -0.3, 0.4)), TAU),
-    SABR
+  let sabr = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.3, 0.4));
+  assert_pinned(legs(&sabr, TAU), SABR, "sabr");
+  let sabr_beta = SabrPricer::new(SabrParams::new(2.0, 0.5, -0.3, 0.4));
+  assert_pinned(legs(&sabr_beta, TAU), SABR_BETA, "sabr beta");
+  assert_pinned(
+    legs(&BachelierPricer::new(20.0), TAU),
+    BACHELIER,
+    "bachelier",
   );
-  assert_eq!(
-    legs(&SabrPricer::new(SabrParams::new(2.0, 0.5, -0.3, 0.4)), TAU),
-    SABR_BETA
+  assert_pinned(legs(&AsianPricer::new(0.25), TAU), ASIAN, "asian");
+  let quanto = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 1.5);
+  assert_pinned(legs(&quanto, TAU), QUANTO, "quanto");
+  let bs2002 = BjerksundStensland2002Pricer::new(0.25);
+  assert_pinned(legs(&bs2002, TAU), BS2002, "bs2002");
+}
+
+#[test]
+fn the_other_carries_and_the_edges_keep_their_values() {
+  let at = |model: &dyn ModelPricer, s, k, r, q, tau| {
+    pair(
+      model.price_call(s, k, r, q, tau),
+      model.price_put(s, k, r, q, tau),
+    )
+  };
+  let no_dividend = pair(7.905150880530156, 9.040564741216432);
+  let futures = pair(6.127093624624524, 10.943065713228627);
+  for (coc, pinned) in [
+    (BsmCoc::Bsm1973, no_dividend),
+    (BsmCoc::Black1976, futures),
+    (BsmCoc::Asay1982, futures),
+    (BsmCoc::GarmanKohlhagen1983, MERTON),
+  ] {
+    let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, coc);
+    let named = merton.price_call_put(S, K, R, Q, TAU);
+    assert_eq!(named, legs(&merton, TAU), "{coc:?}");
+    assert_pinned(named, pinned, &format!("{coc:?}"));
+  }
+  let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, BsmCoc::Merton1973);
+  let expired = merton.price_call_put(S, K, R, Q, 0.0);
+  assert_pinned(expired, pair(0.0, 5.0), "merton at expiry");
+  let no_jumps = Merton1976Pricer::new(0.25, 0.0, 0.4, 50, BsmCoc::Merton1973);
+  let black_scholes = pair(7.356284457997674, 9.980504358377694);
+  assert_pinned(
+    no_jumps.price_call_put(S, K, R, Q, TAU),
+    black_scholes,
+    "merton without jumps",
   );
-  assert_eq!(legs(&BachelierPricer::new(20.0), TAU), BACHELIER);
-  assert_eq!(legs(&AsianPricer::new(0.25), TAU), ASIAN);
-  assert_eq!(
-    legs(&QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 1.5), TAU),
-    QUANTO
+
+  let below_zero = at(&BachelierPricer::new(20.0), -5.0, 2.0, R, Q, TAU);
+  assert_pinned(
+    below_zero,
+    pair(3.7831765246338898, 10.635125058090846),
+    "bachelier",
   );
-  assert_eq!(legs(&BjerksundStensland2002Pricer::new(0.25), TAU), BS2002);
+  let in_the_money = at(
+    &BjerksundStensland2002Pricer::new(0.35),
+    42.0,
+    40.0,
+    0.04,
+    0.08,
+    0.75,
+  );
+  assert_pinned(
+    in_the_money,
+    pair(5.286858855569344, 4.361461686435224),
+    "bs2002",
+  );
+  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(7));
+  let zero_spot = malliavin.price_call_put_localized(0.0, K, R, Q, TAU);
+  assert_pinned(
+    zero_spot,
+    pair(0.0, 101.13541386068628),
+    "malliavin at zero spot",
+  );
+  let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);
+  let far_out = hscm.price_call_put(S, 400.0, R, Q, 0.05);
+  assert_pinned(
+    far_out,
+    pair(3.3428110535475566e-13, 299.10119897564687),
+    "hscm",
+  );
 }
 
 #[test]
 fn lambda_is_the_elasticity_of_the_option_it_is_asked_for() {
   let bsm = BsmPricer::new(0.25, BsmCoc::Merton1973);
-  assert_eq!(bsm.lambda(S, K, R, Q, TAU, OptionType::Call), LAMBDA_CALL);
-  assert_eq!(bsm.lambda(S, K, R, Q, TAU, OptionType::Put), LAMBDA_PUT);
+  let call = bsm.lambda(S, K, R, Q, TAU, OptionType::Call);
+  assert_pinned_value(call, LAMBDA_CALL, "call");
+  let lambda_put = bsm.lambda(S, K, R, Q, TAU, OptionType::Put);
+  assert_pinned_value(lambda_put, LAMBDA_PUT, "put");
   let put = bsm.price_put(S, K, R, Q, TAU);
   let delta = bsm.delta(S, K, R, Q, TAU, OptionType::Put);
-  assert_eq!(LAMBDA_PUT, delta * S / put);
+  assert_eq!(lambda_put, delta * S / put);
 }
 
 #[test]
@@ -317,7 +405,11 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let bates = BatesFourier::new(svj);
   assert_eq!(bates.params(), svj);
-  assert_eq!(bates.price_call(S, K, R, Q, TAU), 5.6848296939312775);
+  assert_pinned_value(
+    bates.price_call(S, K, R, Q, TAU),
+    5.6848296939312775,
+    "bates",
+  );
   let hkde_params = HkdeParams {
     v0: 0.04,
     kappa: 1.5,
@@ -331,7 +423,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let hkde = HkdeFourier::new(hkde_params);
   assert_eq!(hkde.params(), hkde_params);
-  assert_eq!(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838);
+  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838, "hkde");
 }
 
 #[test]

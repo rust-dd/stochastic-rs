@@ -79,11 +79,11 @@ impl Default for LeverageMethod {
 #[derive(Clone, Debug)]
 pub struct HestonSlvCalibrator {
   /// Spot.
-  pub s: f64,
+  s: f64,
   /// Risk-free rate.
-  pub r: f64,
+  r: f64,
   /// Dividend yield.
-  pub q: f64,
+  q: f64,
   /// Strikes, ascending.
   pub strikes: Vec<f64>,
   /// Maturities in years, ascending.
@@ -131,6 +131,18 @@ impl HestonSlvCalibrator {
       method: LeverageMethod::default(),
       options: CalibrationOptions::default(),
     }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// The mixing fraction $\eta$: `0` is pure local volatility, `1` Heston under a leverage
@@ -226,18 +238,6 @@ impl HestonSlvCalibrator {
         needed: 2,
         got: nt,
       });
-    }
-    if !(self.s.is_finite() && self.s > 0.0) {
-      return Err(QuantError::invalid(
-        "spot",
-        format!("must be finite and positive, got {}", self.s),
-      ));
-    }
-    if !(self.r.is_finite() && self.q.is_finite()) {
-      return Err(QuantError::invalid(
-        "rates",
-        format!("must be finite, got r = {}, q = {}", self.r, self.q),
-      ));
     }
     if !(self.eta.is_finite() && (0.0..=1.0).contains(&self.eta)) {
       return Err(QuantError::invalid(
