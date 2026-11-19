@@ -16,8 +16,8 @@ use crate::optim::nelder_mead;
 const START_COUNT: usize = 7;
 const OBJECTIVE_PENALTY: f64 = 1e300;
 
-/// Gaussian QML fit of the log-RV state space; an unconverged best start is `Ok`, see `quality`.
-/// `Err` on too few or non-positive RV or no finite start; panics unless `config` is in its range.
+/// Gaussian QML fit of the log-RV state space, `Ok` if unconverged (see `quality`); `Err` on
+/// too few, non-finite or non-positive RV or no finite start; panics unless `config` is in range.
 pub fn fit_log_realized_variance_qml(
   realized_variance: ArrayView1<f64>,
   config: LogRealizedVarianceQmlConfig,

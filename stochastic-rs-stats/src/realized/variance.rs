@@ -1,8 +1,10 @@
 //! Realized variance, semivariance and higher realized moments.
 //!
 //! Reference: Andersen & Bollerslev (1998), Int. Econ. Rev. 39(4), 885-905, DOI: 10.2307/2527343
-//! Reference: Barndorff-Nielsen et al. (2010), DOI: 10.1093/acprof:oso/9780199549498.003.0007
+//! Reference: Barndorff-Nielsen et al. (2010), Volatility & Time Series Econom., 117-136, [DOI][b]
 //! Reference: Amaya et al. (2015), JFE 118(1), 135-167, DOI: 10.1016/j.jfineco.2015.02.009
+//!
+//! [b]: https://doi.org/10.1093/acprof:oso/9780199549498.003.0007
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -41,8 +43,8 @@ pub fn realized_volatility<T: FloatExt>(returns: ArrayView1<T>, annualisation: T
   (annualisation * realized_variance(returns)).sqrt()
 }
 
-/// Realized semivariances `(RV⁻, RV⁺)` below and above `threshold` (`0` by custom), a return equal
-/// to it in neither; NaN for no returns or a NaN one, and panics unless `threshold` is finite.
+/// Realized semivariances `(RV⁻, RV⁺)` below and above `threshold` (`0` by convention), a return
+/// equal to it in neither; NaN for no returns or a NaN one; panics unless `threshold` is finite.
 pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) -> (T, T) {
   assert!(
     threshold.is_finite(),

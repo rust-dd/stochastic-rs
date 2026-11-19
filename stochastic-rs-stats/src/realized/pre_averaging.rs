@@ -20,8 +20,8 @@ use ndarray::ArrayView1;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
-/// Pre-averaged variance (Jacod et al. 2009) with block `k_n = max(⌊θ√n⌋, 2)` for `theta` θ,
-/// by custom `1/3..1/2`; NaN below four returns, and panics unless `theta` is finite and positive.
+/// Pre-averaged variance (Jacod et al. 2009) with block `k_n = max(⌊θ√n⌋, 2)` for `theta` θ, by
+/// convention `1/3..1/2`; NaN below four returns, and panics unless `theta` is finite and positive.
 pub fn pre_averaged_variance<T: FloatExt>(returns: ArrayView1<T>, theta: T) -> T {
   let theta_f = theta.to_f64().unwrap();
   assert!(

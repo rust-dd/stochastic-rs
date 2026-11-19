@@ -43,10 +43,10 @@ impl Default for KolmogorovSmirnovConfig {
 pub struct KolmogorovSmirnovTest {
   /// The `D_n` statistic.
   pub statistic: f64,
-  /// Asymptotic p-value from the Kolmogorov distribution's survival
-  /// function at `\sqrt n \cdot` `statistic` (uncorrected, see module doc).
+  /// Asymptotic p-value, Kolmogorov's survival function $Q$ at $\sqrt n$ times `statistic`
+  /// (uncorrected, see module doc).
   pub p_value: Option<f64>,
-  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` at the `alpha` the test was run with.
+  /// $D_{n,\alpha} = c(\alpha)/\sqrt n$ at the `alpha` the test was run with.
   pub critical_values: Option<CriticalValues>,
   /// Whether the null (sample ~ the given `cdf`) is rejected at `alpha`.
   pub rejects_null: bool,
@@ -90,7 +90,7 @@ pub fn ks_critical_value(alpha: f64, n: usize) -> f64 {
 }
 
 /// Kolmogorov's survival function $Q(\lambda) = 2 \sum_{k \ge 1} (-1)^{k-1} e^{-2k^2\lambda^2}$,
-/// summed until a term is negligible against the partial sum, which bounds the alternating rest.
+/// summed until a term falls below `1e-12`, which bounds the alternating rest.
 fn kolmogorov_survival(lambda: f64) -> f64 {
   if lambda <= 0.0 {
     return 1.0;
@@ -159,8 +159,8 @@ mod tests {
   use super::kolmogorov_survival;
   use super::ks_critical_value;
 
-  /// Massey (1951) / Smirnov (1948) tabulated `c(\alpha)` constants —
-  /// `ks_critical_value(alpha, 1)` returns `c(\alpha)` unscaled.
+  /// Massey (1951) / Smirnov (1948) tabulated $c(\alpha)$ constants —
+  /// `ks_critical_value(alpha, 1)` returns $c(\alpha)$ unscaled.
   #[test]
   fn critical_value_matches_massey_table() {
     let table = [(0.10, 1.224), (0.05, 1.358), (0.025, 1.48), (0.01, 1.628)];

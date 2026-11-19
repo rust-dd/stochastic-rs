@@ -47,8 +47,8 @@ fn fbm_hurst_and_fractal_dimension_from_fgn_increments() {
   let h = 0.78_f64;
   let n = 4096_usize;
   let t = 1.0_f64;
-  // `m = 480` paths under a pinned seed: the endpoint variance has SD ≈ σ²·√(2/m) ≈ 0.057, and
-  // over a sweep of seeds the worst |v̂−1| is 0.12 < 0.18; at `m = 240` the band was only 2σ.
+  // `m = 480` paths under a pinned seed: the endpoint variance has SD ≈ σ²·√(2/m) ≈ 0.065, which
+  // puts the 0.18 band at 2.8σ, and over a sweep of seeds the worst |v̂−1| is 0.12.
   let m = 480_usize;
   let higuchi = Higuchi::new(32);
   let variogram = Variogram::new(2.0);

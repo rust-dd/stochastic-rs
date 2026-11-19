@@ -123,8 +123,8 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a bad
-/// `y` or `x`, mismatched rows, a singular block; panics unless `x` has a column, `0 < alpha < 1`.
+/// CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a non-finite or constant `y`, a
+/// non-finite `x`, mismatched rows, a singular block; panics unless `k >= 1` and `0 < alpha < 1`.
 pub fn cusum_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,

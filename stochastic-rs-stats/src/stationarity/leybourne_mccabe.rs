@@ -245,8 +245,8 @@ mod tests {
   /// non-stationary alternative, so the null must be rejected.
   #[test]
   fn leybourne_mccabe_rejects_random_walk() {
-    // 900 points and 160 bootstrap replicates gave too little power to reject
-    // reliably; a longer series plus the best-of-three seeds fixes that.
+    // Power grows with the length, so the walk is 2,500 points long; the test asks any of three
+    // seeds to reject, so that no one draw decides it.
     let runs = [0x1E7B0Bu64, 0x1E7B0C, 0x1E7B0D].map(|seed| {
       let x = simulate_random_walk(2500, seed);
       let cfg = LeybourneMcCabeConfig {

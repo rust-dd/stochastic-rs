@@ -21,7 +21,7 @@ use ndarray::ArrayView1;
 use crate::traits::FloatExt;
 
 /// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
-/// `k` prices, by custom `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
+/// `k` prices, by convention `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
   // At `k = 1` the slow and fast scales coincide and the estimate is identically zero.

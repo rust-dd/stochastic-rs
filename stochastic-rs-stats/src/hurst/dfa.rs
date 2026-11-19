@@ -37,7 +37,7 @@ pub struct Dfa {
   /// `0.5` = 50% overlap (common refinement).
   pub overlap_pct: f64,
   /// `true`: the input is already an integrated, FBM-like walk and `H = α`; `false` (default): the
-  /// estimator integrates it, and `H = α - 1` for `α > 1`.
+  /// estimator integrates it, and `H = α - 1` for `α > 1`, else `H = α`.
   pub assume_integrated: bool,
 }
 

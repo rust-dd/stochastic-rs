@@ -14,7 +14,7 @@
 //! `d_{j,k}` are periodic Daubechies-4 DWT details; `g_j` is Eq. 21's bias under Gaussianity.
 //!
 //! Reference: Veitch & Abry (1999), IEEE Trans. Inf. Theory 45(3), 878–897, DOI: 10.1109/18.761330
-//! Reference: Abry et al. (2003), Self-similarity … through the wavelet lens
+//! Reference: Abry et al. (2003), Theory and Applications of Long-Range Dependence, 527–556
 
 use std::f64::consts::LN_2;
 

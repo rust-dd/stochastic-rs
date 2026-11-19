@@ -31,11 +31,11 @@ impl Default for ChiSquareGofConfig {
 /// Pearson chi-square goodness-of-fit test (null: the given pmf), decided by its p-value.
 #[derive(Debug, Clone)]
 pub struct ChiSquareGofTest {
-  /// The `\chi^2` statistic.
+  /// The $\chi^2$ statistic.
   pub statistic: f64,
-  /// p-value: `P(\chi^2_{df} > statistic)`.
+  /// p-value, the $\chi^2_{df}$ upper tail at `statistic`.
   pub p_value: Option<f64>,
-  /// The upper-tail `\chi^2_{df}` critical value at the `alpha` the test was run with.
+  /// The upper-tail $\chi^2_{df}$ critical value at the `alpha` the test was run with.
   pub critical_values: Option<CriticalValues>,
   /// Whether the null is rejected at `alpha`.
   pub rejects_null: bool,

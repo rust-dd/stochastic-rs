@@ -14,7 +14,9 @@
 //! Reference: Jacod et al. (2009), SPA 119(7), 2249-2276, DOI: 10.1016/j.spa.2008.11.004
 //! Reference: Lee & Mykland (2008), Rev. Financ. Stud. 21(6), 2535-2563, DOI: 10.1093/rfs/hhm056
 //! Reference: Corsi (2009), JFEC 7(2), 174-196, DOI: 10.1093/jjfinec/nbp001
-//! Reference: Barndorff-Nielsen et al. (2010), DOI: 10.1093/acprof:oso/9780199549498.003.0007
+//! Reference: Barndorff-Nielsen et al. (2010), Volatility & Time Series Econom., 117-136, [DOI][b]
+//!
+//! [b]: https://doi.org/10.1093/acprof:oso/9780199549498.003.0007
 
 pub mod bipower;
 pub mod ewma;

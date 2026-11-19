@@ -38,8 +38,8 @@ pub fn log_chi_square_moments(block_degrees_of_freedom: usize) -> LogChiSquareMo
   math::measurement_moments(block_degrees_of_freedom)
 }
 
-/// Bounds of the QML search: `min_mu < max_mu` with a finite difference, `-1 < min_phi < max_phi <
-/// 1` and `0 < min_q < max_q < ∞`.
+/// Bounds of the QML search: `min_mu < max_mu` with a finite difference,
+/// `-1 < min_phi < max_phi < 1` and `0 < min_q < max_q < ∞`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LogRealizedVarianceQmlBounds {
   /// Smallest admissible stationary mean log variance.

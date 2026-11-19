@@ -26,8 +26,8 @@ pub struct HestonMleFit {
   pub rho: f64,
 }
 
-/// Wang et al. (2018) closed-form Heston NMLE from `(S_t, V_t)` over unit time; `Err` on unequal
-/// lengths, < 4 points, constant lagged `V` or a non-positive datum; panics unless `r` is finite.
+/// Wang et al. (2018) closed-form Heston NMLE over unit time; `Err` on unequal lengths, < 4 points,
+/// constant lagged `V`, a datum or estimate not finite and `> 0`; panics unless `r` is finite.
 /// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61, 042202. DOI: 10.1007/s11432-017-9215-8
 pub fn fit_heston_nmle(
   s: ArrayView1<f64>,
