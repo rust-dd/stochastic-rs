@@ -190,6 +190,7 @@ mod tests {
       StatsError::DegenerateData("constant sample")
     );
   }
+
   /// nortest's `ad.test` on the same formula, mpmath at 40 digits; within `1e-12` for libm's `exp`.
   #[test]
   fn the_p_value_is_stephens_table_on_a_grid_of_the_adjusted_statistic() {

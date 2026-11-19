@@ -90,6 +90,7 @@ def test_fukasawa_hurst_says_whether_its_search_converged():
     fit = sr.FukasawaHurst.from_log_rv(log_rv, 1, 1.0 / 250.0)
     assert fit.converged is True
 
+
 def test_garch_fit_recovers_persistence_below_one():
     rng = np.random.default_rng(7)
     n = 1500

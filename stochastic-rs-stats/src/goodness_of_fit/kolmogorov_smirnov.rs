@@ -262,6 +262,7 @@ mod tests {
     assert!(res.rejects_null, "expected rejection, got {res:?}");
     assert!(res.statistic > res.critical_values.as_ref().unwrap().at(0.05).unwrap());
   }
+
   /// A `cdf` NaN at one point, NaN everywhere or above 1 is refused at the first such observation
   /// of the sample, not dropped from the supremum or clamped into it.
   #[test]

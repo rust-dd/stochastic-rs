@@ -178,9 +178,9 @@ mod tests {
   is discarded (`integration-test-writing` §1.1).
 - A statistical assertion asks the best of three pinned seeds, as a correct test rejects a true
   null at rate `alpha` and the SIMD stream differs by platform.
-- Pin the degenerate rows in `tests/degenerate_inputs.rs` (empty, a NaN at an index, a constant
-  series) and the refusal of an exact fit; pin scale and level invariance where the statistic has
-  them (`tests/stationarity_rescaling.rs`, `tests/fit_rescaling.rs`).
+- Pin the degenerate rows in `tests/degenerate_inputs/main.rs` (empty, a NaN at an index, a
+  constant series) and the refusal of an exact fit; pin scale and level invariance where the
+  statistic has them (`tests/stationarity_rescaling.rs`, `tests/fit_rescaling.rs`).
 
 ## 7. Python wrapper
 
