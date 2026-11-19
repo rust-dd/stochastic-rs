@@ -61,8 +61,8 @@ pub struct FiniteDifferencePricer {
 }
 
 impl FiniteDifferencePricer {
-  /// Panics unless `sigma >= 0`, `t_n >= 1` and `s_n >= 2`: the implicit schemes need an interior
-  /// spot node beside the two boundaries.
+  /// Panics unless `sigma` is finite and `>= 0`, `t_n >= 1` and `s_n >= 2`: the implicit schemes
+  /// need an interior spot node beside the two boundaries.
   pub fn new(
     sigma: f64,
     t_n: usize,
@@ -71,17 +71,11 @@ impl FiniteDifferencePricer {
     method: FiniteDifferenceMethod,
   ) -> Self {
     assert!(
-      sigma >= 0.0,
-      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    assert!(
-      t_n >= 1,
-      "FiniteDifferencePricer::new: t_n must be at least 1 (got {t_n})"
-    );
-    assert!(
-      s_n >= 2,
-      "FiniteDifferencePricer::new: s_n must be at least 2 (got {s_n})"
-    );
+    assert!(t_n >= 1, "t_n must satisfy `t_n >= 1`, got t_n = {t_n:?}");
+    assert!(s_n >= 2, "s_n must satisfy `s_n >= 2`, got s_n = {s_n:?}");
     Self {
       sigma,
       t_n,

@@ -4,21 +4,33 @@
 use super::*;
 
 #[test]
-#[should_panic(expected = "Merton1976Pricer::new: m must be at least 1 (got 0)")]
+#[should_panic(expected = "m must satisfy `m >= 1`, got m = 0")]
 fn new_rejects_an_empty_series() {
   let _ = merton(0.5, 0.4, 0);
 }
 
 #[test]
-#[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.2")]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.2"
+)]
 fn new_rejects_negative_volatility() {
   let _ = Merton1976Pricer::new(-0.2, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
 
 #[test]
-#[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+)]
 fn new_rejects_nan_volatility() {
   let _ = Merton1976Pricer::new(f64::NAN, 0.5, 0.4, 10, BsmCoc::Bsm1973);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+)]
+fn new_rejects_an_infinite_volatility() {
+  let _ = Merton1976Pricer::new(f64::INFINITY, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
 
 #[test]

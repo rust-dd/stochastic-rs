@@ -173,3 +173,19 @@ def test_a_swaption_quote_outside_its_domain_names_its_tau():
     calibrator = sr.HullWhiteSwaptionCalibrator([(-1.0, 2.0, 0.2, 0.5, "payer")], curve, initial_rate=0.03, theta=0.03)
     with pytest.raises(ValueError, match=r"quote 0 cannot be used: tau must satisfy `tau\.is_finite\(\) && tau > 0\.0`, got tau = -1\.0$"):
         calibrator.calibrate()
+
+
+SINGLE_VOL_QUERY = dict(s=100.0, k=105.0, r=0.05, tau=0.75)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda v: sr.AsianPricer(v=v, **SINGLE_VOL_QUERY),
+        lambda v: sr.BjerksundStensland2002Pricer(v=v, **SINGLE_VOL_QUERY),
+        lambda v: sr.Merton1976Pricer(v=v, lambda_=1.0, gamma=0.4, **SINGLE_VOL_QUERY),
+    ],
+)
+def test_a_single_vol_pricer_refuses_an_infinite_sigma(build):
+    with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`, got sigma = inf$"):
+        build(float("inf"))

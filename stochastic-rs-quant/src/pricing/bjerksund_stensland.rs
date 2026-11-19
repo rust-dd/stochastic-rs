@@ -50,12 +50,12 @@ pub struct BjerksundStensland2002Pricer {
 }
 
 impl BjerksundStensland2002Pricer {
-  /// Panics unless `sigma >= 0`, as a negative volatility prices the intrinsic value unmarked;
-  /// `sigma == 0` is the deterministic limit.
+  /// Panics unless `sigma` is finite and `>= 0`, as a negative one prices the intrinsic value
+  /// unmarked; `sigma == 0` is the deterministic limit.
   pub fn new(sigma: f64) -> Self {
     assert!(
-      sigma >= 0.0,
-      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     Self { sigma }
   }
@@ -267,15 +267,27 @@ mod tests {
   /// perfectly ordinary answer for a deep-in-the-money American call and
   /// nothing marks it as wrong. The reference at `σ = +0.35` is `5.2869`.
   #[test]
-  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.35")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.35"
+  )]
   fn new_rejects_negative_volatility() {
     let _ = BjerksundStensland2002Pricer::new(-0.35);
   }
 
   #[test]
-  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+  )]
   fn new_rejects_nan_volatility() {
     let _ = BjerksundStensland2002Pricer::new(f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = BjerksundStensland2002Pricer::new(f64::INFINITY);
   }
 
   #[test]

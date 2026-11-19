@@ -130,7 +130,7 @@ impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
 impl<S: SeedExt> GbmMalliavinPricer<S> {
   /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
-  /// `n_paths >= 1`, `n_steps >= 2` and `t_eval > 0`; `t_eval < tau` is checked per query.
+  /// `n_paths >= 1`, `n_steps >= 2` and `t_eval` is finite and `> 0`; `t_eval < tau` is per query.
   pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
     assert!(
       sigma.is_finite() && sigma >= 0.0,
@@ -138,15 +138,15 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     );
     assert!(
       n_paths >= 1,
-      "GbmMalliavinPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     assert!(
       n_steps >= 2,
-      "GbmMalliavinPricer::new: n_steps must be at least 2 (got {n_steps})"
+      "n_steps must satisfy `n_steps >= 2`, got n_steps = {n_steps:?}"
     );
     assert!(
-      t_eval > 0.0,
-      "GbmMalliavinPricer::new: t_eval must be strictly positive (got {t_eval})"
+      t_eval.is_finite() && t_eval > 0.0,
+      "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = {t_eval:?}"
     );
     Self {
       sigma,

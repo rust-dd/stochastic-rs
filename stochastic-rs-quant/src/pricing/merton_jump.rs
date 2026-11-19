@@ -96,12 +96,12 @@ enum TermRegime {
 }
 
 impl Merton1976Pricer {
-  /// Panics unless `sigma ≥ 0`, `lambda` is finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
+  /// Panics unless `sigma` and `lambda` are finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
   /// `lambda = 0` the model is Black-Scholes at volatility `sigma`.
   pub fn new(sigma: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
     assert!(
-      sigma >= 0.0,
-      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       lambda.is_finite() && lambda >= 0.0,
@@ -111,10 +111,7 @@ impl Merton1976Pricer {
       (0.0..=1.0).contains(&gamma),
       "gamma must satisfy `(0.0..=1.0).contains(&gamma)`, got gamma = {gamma:?}"
     );
-    assert!(
-      m >= 1,
-      "Merton1976Pricer::new: m must be at least 1 (got {m})"
-    );
+    assert!(m >= 1, "m must satisfy `m >= 1`, got m = {m:?}");
     Self {
       sigma,
       lambda,
