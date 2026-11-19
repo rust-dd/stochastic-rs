@@ -40,13 +40,13 @@ impl ChooserPricer {
   }
 
   /// The simple chooser $W$ above at the query `(s, r, q, tau)`; at `tau = 0` the better leg's
-  /// payoff `|s - strike|`, and NaN unless `0 <= choice_time <= tau`.
+  /// payoff `|s - strike|`, and NaN for a NaN rate or unless `0 <= choice_time <= tau`.
   pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let ChooserOption {
       strike: k,
       choice_time: t1,
     } = *option;
-    if !(0.0 <= t1 && t1 <= tau) {
+    if !(0.0 <= t1 && t1 <= tau) || r.is_nan() || q.is_nan() {
       return f64::NAN;
     }
     if tau == 0.0 {
@@ -76,7 +76,7 @@ impl ChooserPricer {
       put_tau: t_put,
       choice_time: t1,
     } = *option;
-    if !(0.0 <= t1 && t1 <= t_call && t1 <= t_put) {
+    if !(0.0 <= t1 && t1 <= t_call && t1 <= t_put) || t1.is_infinite() {
       return f64::NAN;
     }
     if t1 == 0.0 {

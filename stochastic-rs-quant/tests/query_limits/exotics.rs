@@ -256,13 +256,17 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
     let price = compound.price(&call_on_call, 100.0, R, Q, tau);
     assert!(price.is_nan(), "tau {tau}: {price}");
   }
-  for outer_tau in [-0.25, f64::NAN] {
+  for (outer_tau, tau) in [
+    (-0.25, 1.0),
+    (f64::NAN, 1.0),
+    (f64::INFINITY, f64::INFINITY),
+  ] {
     let option = CompoundOption {
       outer_tau,
       ..call_on_call
     };
-    let price = compound.price(&option, 100.0, R, Q, 1.0);
-    assert!(price.is_nan(), "outer_tau {outer_tau}: {price}");
+    let price = compound.price(&option, 100.0, R, Q, tau);
+    assert!(price.is_nan(), "outer_tau {outer_tau} tau {tau}: {price}");
   }
   assert!(compound.price(&call_on_call, 100.0, R, Q, 0.25).is_finite());
 
@@ -281,6 +285,7 @@ fn a_compound_or_complex_chooser_decided_outside_its_legs_is_nan() {
     (f64::NAN, 1.0, 0.75),
     (0.4, 0.0, 0.75),
     (0.4, 1.0, f64::NAN),
+    (f64::INFINITY, f64::INFINITY, f64::INFINITY),
   ] {
     let option = ComplexChooserOption {
       choice_time,
@@ -421,6 +426,24 @@ fn the_cliquet_and_the_simple_chooser_pay_out_at_expiry_and_are_nan_before_it() 
     assert!(
       chooser.price_simple(&option, 100.0, R, Q, tau).is_nan(),
       "{tau}"
+    );
+  }
+  let floored = CliquetOption {
+    notional: 100.0,
+    periods: 12,
+    local_floor: Some(0.01),
+    local_cap: None,
+    global_floor: None,
+    global_cap: None,
+  };
+  for (r, q) in [(f64::NAN, Q), (R, f64::NAN)] {
+    let at_expiry = [
+      cliquet.price(&floored, r, q, 0.0),
+      chooser.price_simple(&option, 110.0, r, q, 0.0),
+    ];
+    assert!(
+      at_expiry.iter().all(|p| p.is_nan()),
+      "{r} {q}: {at_expiry:?}"
     );
   }
 }

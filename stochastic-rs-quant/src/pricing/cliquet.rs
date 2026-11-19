@@ -49,11 +49,11 @@ impl CliquetPricer {
     Self { sigma }
   }
 
-  /// The summed period payoffs paid at `tau`, the zero-length periods' at `tau = 0`; NaN for a
-  /// negative or NaN `tau` or a global floor or cap, which only [`McCliquetPricer`] prices.
+  /// The summed period payoffs paid at `tau`, the zero-length periods' at `tau = 0`; NaN for a NaN
+  /// rate, a negative or NaN `tau` or a global bound, which only [`McCliquetPricer`] prices.
   pub fn price(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> f64 {
     let global = option.global_floor.is_some() || option.global_cap.is_some();
-    if global || tau.is_nan() || tau < 0.0 {
+    if global || tau.is_nan() || tau < 0.0 || r.is_nan() || q.is_nan() {
       return f64::NAN;
     }
     if tau == 0.0 {

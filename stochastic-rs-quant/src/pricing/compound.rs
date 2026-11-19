@@ -78,7 +78,7 @@ impl CompoundPricer {
       inner_strike: k2,
       compound_type,
     } = *option;
-    if !(0.0 <= t1 && t1 <= tau) {
+    if !(0.0 <= t1 && t1 <= tau) || t1.is_infinite() {
       return f64::NAN;
     }
     if t1 == 0.0 {
