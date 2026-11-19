@@ -1,4 +1,4 @@
-//! A diffusion with the bounded drift `−κ X / √(1 + X²)`, whose stationary law is hyperbolic.
+//! A diffusion with the bounded drift `−κ X / √(1 + X²)`; hyperbolic stationary law for `κ > 0`.
 //!
 //! $$
 //! dX_t=-\kappa\frac{X_t}{\sqrt{1+X_t^2}}\,dt+\sigma\,dW_t

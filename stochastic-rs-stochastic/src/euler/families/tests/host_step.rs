@@ -106,7 +106,7 @@ fn the_structured_families_match_their_models() {
   );
 
   // Hyperbolic diffusion: ½σ² folded out of the drift.
-  let (beta, gamma, delta, m, sigma) = (0.5, 1.0, 1.0, 0.0, 0.3);
+  let (beta, gamma, delta, m, sigma) = (0.5, 1.0, 1.0, 0.4, 0.3);
   close(
     step1(
       Family::HyperbolicDiffusion,
@@ -115,7 +115,11 @@ fn the_structured_families_match_their_models() {
       dt,
       dz,
     ),
-    x + 0.5 * sigma * sigma * (beta - gamma * x / (delta * delta + (x - m) * (x - m)).sqrt()) * dt
+    x + 0.5
+      * sigma
+      * sigma
+      * (beta - gamma * (x - m) / (delta * delta + (x - m) * (x - m)).sqrt())
+      * dt
       + sigma * dz,
   );
 
@@ -186,7 +190,7 @@ fn libor_market_step_freezes_reset_rates_and_steps_the_live_ones() {
   let f = [0.03_f64, 0.035, 0.04, 0.0];
   let dz = [0.1_f64, -0.2, 0.3, 0.0];
   let dt = 0.01;
-  // One reset date passed: rate 0 is frozen, the drift sums start at it.
+  // One reset date passed: rate 0 is frozen and the drift sums start after it.
   let next = step_full(
     Family::LiborMarket4,
     f,
@@ -224,4 +228,47 @@ fn libor_market_step_freezes_reset_rates_and_steps_the_live_ones() {
     dz,
   );
   assert!(next[0] > f[0]);
+}
+
+/// Glasserman & Zhao (2000) eq. (8): with one reset date passed the correlated drift sums from
+/// rate 1, so the frozen rate 0 is in no live rate's drift.
+#[test]
+fn libor_market_drift_sums_from_the_first_live_rate() {
+  let (sigma, delta) = ([0.4_f64, 0.3, 0.5, 0.0], [1.0_f64, 0.5, 0.75, 0.0]);
+  let l = [1.0, 0.6, 0.8, 0.3, 0.2, 0.93, 0.0, 0.0, 0.0, 1.0];
+  let rho = |n: usize, j: usize| -> f64 {
+    let row = |i: usize| i * (i + 1) / 2;
+    (0..=j).map(|p| l[row(n) + p] * l[row(j) + p]).sum()
+  };
+  let mut params = Vec::new();
+  params.extend_from_slice(&sigma);
+  params.extend_from_slice(&delta);
+  params.extend_from_slice(&l);
+  let f = [0.3_f64, 0.25, 0.35, 0.0];
+  let dz = [0.1_f64, -0.2, 0.3, 0.0];
+  let dt = 0.01;
+  let next = step_full(
+    Family::LiborMarket4,
+    f,
+    &params,
+    dt,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    dz,
+  );
+  assert_eq!(next[0], f[0]);
+  for n in 1..3 {
+    let drift = sigma[n]
+      * (1..=n)
+        .map(|j| rho(n, j) * delta[j] * sigma[j] * f[j] / (1.0 + delta[j] * f[j]))
+        .sum::<f64>();
+    let shock: f64 = (0..=n).map(|p| l[n * (n + 1) / 2 + p] * dz[p]).sum();
+    close(
+      next[n],
+      f[n] * ((drift - sigma[n] * sigma[n] / 2.0) * dt + sigma[n] * shock).exp(),
+    );
+  }
 }

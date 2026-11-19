@@ -129,16 +129,15 @@ macro_rules! euler_memory {
     report { t },
 
   /// Up to four forward LIBOR rates under the spot measure, by log-Euler with the drift frozen at
-  /// the step's start. `ct` is `η`, the resets passed: rate `n < η` stays, a live one is coupled.
+  /// the step's start. `ct` is `η`, the resets passed: `n < η` stays, a live `n` sums `j = η..=n`.
   113 => LiborMarket4 { s0, s1, s2, s3, d0, d1, d2, d3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (f0, f1, f2, f3)
     noise (z0, z1, z2, z3)
     step {
-      bind ei = max($ct - lit(1.0), lit(0.0));
-      bind a0 = leq(ei, lit(0.0));
-      bind a1 = leq(ei, lit(1.0));
-      bind a2 = leq(ei, lit(2.0));
-      bind a3 = leq(ei, lit(3.0));
+      bind a0 = leq($ct, lit(0.0));
+      bind a1 = leq($ct, lit(1.0));
+      bind a2 = leq($ct, lit(2.0));
+      bind a3 = leq($ct, lit(3.0));
       bind g0 = a0 * d0 * s0 * f0 / (d0 * f0 + lit(1.0));
       bind g1 = a1 * d1 * s1 * f1 / (d1 * f1 + lit(1.0));
       bind g2 = a2 * d2 * s2 * f2 / (d2 * f2 + lit(1.0));

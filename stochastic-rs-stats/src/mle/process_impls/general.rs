@@ -202,7 +202,7 @@ impl<S: SeedExt> DiffusionModel for Hyperbolic2<f64, S> {
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
     let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
-    0.5 * self.sigma * self.sigma * (self.beta - self.gamma * x / r)
+    0.5 * self.sigma * self.sigma * (self.beta - self.gamma * (x - self.mu) / r)
   }
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
@@ -211,17 +211,12 @@ impl<S: SeedExt> DiffusionModel for Hyperbolic2<f64, S> {
 
   fn drift_x(&self, x: f64, _t: f64) -> f64 {
     let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
-    -0.5 * self.sigma * self.sigma * self.gamma * (1.0 / r - x * (x - self.mu) / r.powi(3))
+    -0.5 * self.sigma * self.sigma * self.gamma * self.delta * self.delta / r.powi(3)
   }
 
   fn drift_xx(&self, x: f64, _t: f64) -> f64 {
     let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
-    let u = x - self.mu;
-    -0.5
-      * self.sigma
-      * self.sigma
-      * self.gamma
-      * (3.0 * x * u * u / r.powi(5) - (u + x + u) / r.powi(3))
+    1.5 * self.sigma * self.sigma * self.gamma * self.delta * self.delta * (x - self.mu) / r.powi(5)
   }
 }
 

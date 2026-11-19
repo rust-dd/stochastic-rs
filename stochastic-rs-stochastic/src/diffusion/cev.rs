@@ -1,4 +1,4 @@
-//! Constant elasticity of variance: GBM with the diffusion's price raised to the power `gamma`.
+//! Constant elasticity of variance: GBM whose diffusion scales with `S^gamma`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t^{\gamma}\,dW_t

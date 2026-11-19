@@ -1,4 +1,4 @@
-//! Monotone Lévy-style drivers (stable, tempered stable, gamma, inverse Gaussian, Poisson), a CTRW.
+//! Monotone drivers: stable, its inverse, tempered stable, gamma, inverse Gaussian, Poisson; CTRW.
 //!
 //! $$
 //! \mathbb E[e^{-\lambda S_t}] = e^{-t\phi(\lambda)},\qquad \lambda \ge 0

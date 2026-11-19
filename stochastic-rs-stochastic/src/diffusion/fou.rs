@@ -1,4 +1,4 @@
-//! [`Ou`](crate::diffusion::ou::Ou) on fractional Gaussian noise, with a Hurst exponent `hurst`.
+//! [`Ou`](crate::diffusion::ou::Ou) driven by fractional Gaussian noise.
 //!
 //! $$
 //! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dB_t^H
