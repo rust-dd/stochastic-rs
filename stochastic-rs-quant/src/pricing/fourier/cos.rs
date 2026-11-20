@@ -5,6 +5,11 @@
 
 use std::f64::consts::PI;
 
+use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayViewMut1;
+use ndarray::aview_mut1;
+use ndarray::aview1;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
@@ -57,12 +62,68 @@ impl CosEngine {
     }
 
     let x = (s0 / k).ln() + (r - q) * t;
-    let a = x + cumulants.c1 - half_width;
-    let b = x + cumulants.c1 + half_width;
-    let bma = b - a;
+    let mut put = [0.0];
+    self.put_sums(
+      model,
+      t,
+      cumulants.c1 - half_width,
+      2.0 * half_width,
+      aview1(&[x]),
+      aview1(&[k]),
+      aview_mut1(&mut put),
+    );
+    discounted(put[0], s0, k, r, q, t, option_type)
+  }
 
-    let i_unit = Complex64::i();
-    let mut put = 0.0;
+  /// [`CosEngine::price`] at each strike, bit for bit, on one pass over the `chf`: the range is as
+  /// wide at every strike, so its nodes `kπ/(b − a)` are shared and only the payoff terms differ.
+  /// Fang & Oosterlee (2008), §3.3, price a strike vector on one common range.
+  pub fn price_strikes<M: FourierModelExt>(
+    &self,
+    model: &M,
+    s0: f64,
+    strikes: ArrayView1<f64>,
+    r: f64,
+    q: f64,
+    t: f64,
+    option_type: OptionType,
+  ) -> Array1<f64> {
+    let cumulants = model.cumulants(t);
+    let half_width = cumulants.truncation_half_width(self.l);
+    if !half_width.is_finite() {
+      return Array1::from_elem(strikes.len(), f64::NAN);
+    }
+
+    let xs = strikes.mapv(|k| (s0 / k).ln() + (r - q) * t);
+    let mut puts = Array1::<f64>::zeros(strikes.len());
+    self.put_sums(
+      model,
+      t,
+      cumulants.c1 - half_width,
+      2.0 * half_width,
+      xs.view(),
+      strikes,
+      puts.view_mut(),
+    );
+    puts
+      .iter()
+      .zip(strikes)
+      .map(|(&put, &k)| discounted(put, s0, k, r, q, t, option_type))
+      .collect()
+  }
+
+  /// Adds each strike's undiscounted put series to `puts`, on `[a, a + bma]` with `a = x + lower`;
+  /// `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at every strike, so each term calls `chf` once.
+  fn put_sums<M: FourierModelExt>(
+    &self,
+    model: &M,
+    t: f64,
+    lower: f64,
+    bma: f64,
+    xs: ArrayView1<f64>,
+    strikes: ArrayView1<f64>,
+    mut puts: ArrayViewMut1<f64>,
+  ) {
     for k_idx in 0..self.n.unwrap_or(MAX_TERMS) {
       let kf = k_idx as f64;
       let u = kf * PI / bma;
@@ -71,24 +132,37 @@ impl CosEngine {
       if self.n.is_none() && k_idx >= MIN_TERMS && phi.norm_sqr() < CHF_FLOOR * CHF_FLOOR {
         break;
       }
-      let phi_y = phi * (i_unit * u * x).exp();
-      let f_k = (phi_y * (-i_unit * u * a).exp()).re;
+      let f_k = (phi * Complex64::new(0.0, -u * lower).exp()).re;
 
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
-      put += weight * f_k * put_coefficient(kf, a, b, bma, k);
+      for ((put, &x), &strike) in puts.iter_mut().zip(xs).zip(strikes) {
+        let a = x + lower;
+        *put += weight * f_k * put_coefficient(kf, a, a + bma, bma, strike);
+      }
     }
-
-    let put = (-r * t).exp() * put;
-    // The call's coefficients grow like `e^b`, the put's stay below `K`: Le Floc'h (2020), §3.
-    let price = match option_type {
-      OptionType::Call => put + s0 * (-q * t).exp() - k * (-r * t).exp(),
-      OptionType::Put => put,
-    };
-    if price.is_nan() {
-      return f64::NAN;
-    }
-    price.max(0.0)
   }
+}
+
+/// The call's coefficients grow like `e^b`, the put's stay below `K`, so a call is the put and
+/// parity: Le Floc'h (2020), §3. A NaN stays NaN; any other price is floored at zero.
+fn discounted(
+  put_sum: f64,
+  s0: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  t: f64,
+  option_type: OptionType,
+) -> f64 {
+  let put = (-r * t).exp() * put_sum;
+  let price = match option_type {
+    OptionType::Call => put + s0 * (-q * t).exp() - k * (-r * t).exp(),
+    OptionType::Put => put,
+  };
+  if price.is_nan() {
+    return f64::NAN;
+  }
+  price.max(0.0)
 }
 
 /// Put payoff coefficient $V_k$ on $[a,b]\cap(-\infty,0]$, Fang-Oosterlee (2008) Eq. (30)
@@ -349,5 +423,137 @@ mod tests {
       );
       assert!((put - want_p).abs() < 1e-9, "K={k} put: {put} vs {want_p}");
     }
+  }
+
+  fn fang_oosterlee_heston() -> HestonFourier {
+    HestonFourier::new(HestonParams {
+      v0: 0.0175,
+      kappa: 1.5768,
+      theta: 0.0398,
+      sigma: 0.5751,
+      rho: -0.5711,
+    })
+  }
+
+  /// A strike array is `price` at each strike, bit for bit: both sum the same terms in one order.
+  fn assert_strikes_are_prices<M: FourierModelExt>(model: &M) {
+    let strikes = ndarray::Array1::linspace(40.0, 250.0, 43);
+    for engine in [CosEngine::default(), CosEngine::new(512, 12.0)] {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        for t in [0.05, 1.0, 10.0] {
+          let prices =
+            engine.price_strikes(model, 100.0, strikes.view(), 0.05, 0.01, t, option_type);
+          for (&price, &k) in prices.iter().zip(&strikes) {
+            assert_eq!(
+              price,
+              engine.price(model, 100.0, k, 0.05, 0.01, t, option_type),
+              "K={k}, T={t}"
+            );
+          }
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn price_strikes_is_price_at_every_strike() {
+    assert_strikes_are_prices(&BsmFourier { sigma: 0.2 });
+    assert_strikes_are_prices(&fang_oosterlee_heston());
+    assert_strikes_are_prices(&KouFourier {
+      sigma: 0.15,
+      lambda: 3.0,
+      p_up: 0.2,
+      eta1: 25.0,
+      eta2: 10.0,
+    });
+  }
+
+  /// Fang & Oosterlee (2008) Table 2: three GBM calls in one computation, the reference values
+  /// printed to nine decimals.
+  #[test]
+  fn price_strikes_reproduces_the_gbm_strike_vector_of_fang_oosterlee() {
+    let prices = CosEngine::default().price_strikes(
+      &BsmFourier { sigma: 0.25 },
+      100.0,
+      ndarray::array![80.0, 100.0, 120.0].view(),
+      0.1,
+      0.0,
+      0.1,
+      OptionType::Call,
+    );
+    for (price, want) in prices.iter().zip([20.799226309, 3.659968453, 0.044577814]) {
+      assert!((price - want).abs() < 1e-9, "{price} vs {want}");
+    }
+  }
+
+  /// Fang & Oosterlee (2008) Tables 4–6: the 21 Heston strikes of Table 6, with `K = 100` at the
+  /// printed references; the `T = 1` one is a Carr–Madan value, held here to seven decimals.
+  #[test]
+  fn price_strikes_holds_the_heston_references_of_fang_oosterlee() {
+    let strikes = ndarray::Array1::linspace(50.0, 150.0, 21);
+    for (t, want, tolerance) in [(1.0, 5.785155450, 1e-7), (10.0, 22.318945791, 1e-9)] {
+      let prices = CosEngine::default().price_strikes(
+        &fang_oosterlee_heston(),
+        100.0,
+        strikes.view(),
+        0.0,
+        0.0,
+        t,
+        OptionType::Call,
+      );
+      assert_eq!(strikes[10], 100.0);
+      assert!(
+        (prices[10] - want).abs() < tolerance,
+        "T={t}: {} vs {want}",
+        prices[10]
+      );
+    }
+  }
+
+  /// One strike outside the domain is NaN alone; a range with no width is NaN at every strike.
+  #[test]
+  fn price_strikes_keeps_nan_to_the_strikes_it_belongs_to() {
+    let model = BsmFourier { sigma: 0.25 };
+    let engine = CosEngine::default();
+    let strikes = ndarray::array![90.0, -1.0, 110.0];
+    let prices = engine.price_strikes(
+      &model,
+      100.0,
+      strikes.view(),
+      0.05,
+      0.0,
+      1.0,
+      OptionType::Put,
+    );
+    assert!(prices[1].is_nan());
+    assert_eq!(
+      prices[0],
+      engine.price(&model, 100.0, 90.0, 0.05, 0.0, 1.0, OptionType::Put)
+    );
+    assert_eq!(
+      prices[2],
+      engine.price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Put)
+    );
+
+    let degenerate = engine.price_strikes(
+      &model,
+      100.0,
+      strikes.view(),
+      0.05,
+      0.0,
+      0.0,
+      OptionType::Put,
+    );
+    assert!(degenerate.iter().all(|price| price.is_nan()));
+    let none = engine.price_strikes(
+      &model,
+      100.0,
+      ndarray::Array1::<f64>::zeros(0).view(),
+      0.05,
+      0.0,
+      1.0,
+      OptionType::Put,
+    );
+    assert!(none.is_empty());
   }
 }
