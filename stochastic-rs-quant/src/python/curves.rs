@@ -247,6 +247,120 @@ impl PyNelsonSiegel {
   }
 }
 
+/// Nelson-Siegel-Svensson curve (Svensson 1994): the zero rate, the instantaneous forward and the
+/// discount factor in closed form, at one maturity or on a maturity array.
+#[pyclass(name = "Svensson", unsendable)]
+pub struct PySvensson {
+  inner: crate::curves::svensson::Svensson<f64>,
+}
+
+#[pymethods]
+impl PySvensson {
+  #[new]
+  fn new(
+    beta0: f64,
+    beta1: f64,
+    beta2: f64,
+    beta3: f64,
+    lambda1: f64,
+    lambda2: f64,
+  ) -> PyResult<Self> {
+    for (name, lambda) in [("lambda1", lambda1), ("lambda2", lambda2)] {
+      if !(lambda.is_finite() && lambda > 0.0) {
+        return Err(PyValueError::new_err(format!(
+          "{name} must be finite and > 0, got {name} = {lambda:?}"
+        )));
+      }
+    }
+    Ok(Self {
+      inner: crate::curves::svensson::Svensson::new(beta0, beta1, beta2, beta3, lambda1, lambda2),
+    })
+  }
+
+  /// Fit to market zero rates: a grid over both decays with the betas by least squares at each
+  /// node. The four betas need at least four points.
+  #[staticmethod]
+  fn fit_curve<'py>(
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+    market_rates: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> PyResult<Self> {
+    let (maturities, market_rates) = (maturities.as_array(), market_rates.as_array());
+    if maturities.len() != market_rates.len() {
+      return Err(PyValueError::new_err(format!(
+        "maturities and market_rates must have one length, got {} and {}",
+        maturities.len(),
+        market_rates.len()
+      )));
+    }
+    if maturities.len() < 4 {
+      return Err(PyValueError::new_err(format!(
+        "a Svensson fit needs at least 4 points, got {}",
+        maturities.len()
+      )));
+    }
+    Ok(Self {
+      inner: <crate::curves::svensson::Svensson<f64>>::fit(maturities, market_rates),
+    })
+  }
+
+  /// Returns `(beta0, beta1, beta2, beta3, lambda1, lambda2)`.
+  fn params(&self) -> (f64, f64, f64, f64, f64, f64) {
+    let c = &self.inner;
+    (c.beta0, c.beta1, c.beta2, c.beta3, c.lambda1, c.lambda2)
+  }
+
+  fn zero_rate(&self, tau: f64) -> f64 {
+    self.inner.zero_rate(tau)
+  }
+
+  fn forward_rate(&self, tau: f64) -> f64 {
+    self.inner.forward_rate(tau)
+  }
+
+  fn discount_factor(&self, tau: f64) -> f64 {
+    self.inner.discount_factor(tau)
+  }
+
+  /// Vectorised zero rates on a maturity array.
+  fn zero_rates<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.zero_rate(tau))
+      .into_pyarray(py)
+  }
+
+  /// Vectorised instantaneous forward rates on a maturity array.
+  fn forward_rates<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.forward_rate(tau))
+      .into_pyarray(py)
+  }
+
+  /// Vectorised discount factors on a maturity array.
+  fn discount_factors<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.discount_factor(tau))
+      .into_pyarray(py)
+  }
+}
+
 #[pyclass(name = "ZeroCouponInflationCurve", unsendable)]
 pub struct PyZeroCouponInflationCurve {
   inner: crate::inflation::curve::ZeroCouponInflationCurve<f64>,
