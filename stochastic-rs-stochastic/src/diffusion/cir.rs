@@ -58,7 +58,7 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`Cir::default().with_theta(3.0).with_sigma(0.3)`); nothing
 /// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
-  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns unless reflected.
+  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns unless fully truncated.
   /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta: T,
@@ -76,11 +76,13 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     check_n(n);
     Self::check_x0(x0);
     check_t(t);
-    if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
+    if T::from_usize_(2) * theta * mu < sigma.powi(2)
+      && boundary != VarianceBoundary::FullTruncation
+    {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         under VarianceBoundary::{boundary:?}; the path sits at zero on every \
-         boundary hit instead of reflecting"
+         under VarianceBoundary::{boundary:?}; the Euler path reaches zero and this \
+         boundary biases it there, full truncation least"
       );
     }
 

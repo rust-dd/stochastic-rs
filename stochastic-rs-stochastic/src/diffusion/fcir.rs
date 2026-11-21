@@ -73,11 +73,13 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     Self::check_x0(x0);
     check_t(t);
     check_n(n);
-    if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
+    if T::from_usize_(2) * theta * mu < sigma.powi(2)
+      && boundary != VarianceBoundary::FullTruncation
+    {
       log::warn!(
         "Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         under VarianceBoundary::{boundary:?}; the path sits at zero on every \
-         boundary hit instead of reflecting"
+         under VarianceBoundary::{boundary:?}; the Euler path reaches zero and this \
+         boundary biases it there, full truncation least"
       );
     }
 

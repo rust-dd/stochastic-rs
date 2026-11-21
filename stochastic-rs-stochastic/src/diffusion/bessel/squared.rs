@@ -26,7 +26,7 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`SquaredBessel::default().with_delta(4.0)`); nothing is
 /// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
-  /// δ < 2 is accepted and, unless reflected, logged with `log::warn!`. Panics
+  /// δ < 2 is accepted and, unless fully truncated, logged with `log::warn!`. Panics
   /// unless `n >= 2`, a given `t` is positive and finite, and `delta` and `x0` are finite.
   pub fn new(
     delta: T,
@@ -40,11 +40,11 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     check_n(n);
     Self::check_x0(x0);
     check_t(t);
-    if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
+    if delta < T::from_usize_(2) && boundary != VarianceBoundary::FullTruncation {
       log::warn!(
         "SquaredBessel::new: dimension below the strict-positivity \
-         threshold (delta < 2) under VarianceBoundary::{boundary:?}; the path sits \
-         at zero on every boundary hit instead of reflecting"
+         threshold (delta < 2) under VarianceBoundary::{boundary:?}; the Euler path \
+         reaches zero and this boundary biases it there, full truncation least"
       );
     }
 

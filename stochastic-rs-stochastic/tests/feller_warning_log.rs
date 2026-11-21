@@ -48,7 +48,7 @@ fn drain() -> Vec<(Level, String)> {
 }
 
 #[test]
-fn boundary_violations_warn_through_log_unless_reflected() {
+fn boundary_violations_warn_through_log_unless_fully_truncated() {
   log::set_logger(&CAPTURE).unwrap();
   log::set_max_level(LevelFilter::Warn);
 
@@ -80,13 +80,10 @@ fn boundary_violations_warn_through_log_unless_reflected() {
     ));
   };
 
-  build(VarianceBoundary::Reflect);
+  build(VarianceBoundary::FullTruncation);
   assert!(drain().is_empty());
 
-  for boundary in [
-    VarianceBoundary::FullTruncation,
-    VarianceBoundary::Absorption,
-  ] {
+  for boundary in [VarianceBoundary::Absorption, VarianceBoundary::Reflect] {
     build(boundary);
     let records = drain();
     assert_eq!(records.len(), 7, "{records:?}");

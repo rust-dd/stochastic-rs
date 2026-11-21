@@ -65,7 +65,7 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
 /// Every field has a `with_*` setter (`CirPlusPlus::default().with_kappa(3.0)`); nothing is
 /// cached, since `sampler()` builds a transient `Cir` from `self` on every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns unless reflected.
+  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns unless fully truncated.
   /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
@@ -84,11 +84,12 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     check_n(n);
     Self::check_x0(x0);
     check_t(t);
-    if T::from_usize_(2) * kappa * theta < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
+    let sub_feller = T::from_usize_(2) * kappa * theta < sigma.powi(2);
+    if sub_feller && boundary != VarianceBoundary::FullTruncation {
       log::warn!(
         "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
-         under VarianceBoundary::{boundary:?}; the underlying CIR factor sits at zero on \
-         every boundary hit instead of reflecting"
+         under VarianceBoundary::{boundary:?}; the Euler path of the CIR factor reaches \
+         zero and this boundary biases it there, full truncation least"
       );
     }
 

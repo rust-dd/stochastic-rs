@@ -193,14 +193,14 @@ fn validate_params<T: FloatExt>(
 }
 
 /// A `log::warn!` per asset whose variance violates Feller's `2·kappa·theta ≥ sigma²` unless
-/// reflected, as [`crate::diffusion::cir::Cir::new`] warns.
+/// fully truncated, as [`crate::diffusion::cir::Cir::new`] warns.
 fn warn_on_feller_violation<T: FloatExt>(
   kappa: &[T; 2],
   theta: &[T; 2],
   sigma: &[T; 2],
   boundary: VarianceBoundary,
 ) {
-  if boundary == VarianceBoundary::Reflect {
+  if boundary == VarianceBoundary::FullTruncation {
     return;
   }
   for i in 0..2 {
@@ -209,7 +209,7 @@ fn warn_on_feller_violation<T: FloatExt>(
       log::warn!(
         "Heston2D::new: asset {i} does not satisfy the Feller \
          condition (2*kappa*theta < sigma^2) under VarianceBoundary::{boundary:?}; \
-         its variance sits at zero on every boundary hit instead of reflecting"
+         its Euler variance reaches zero and this boundary biases it there, full truncation least"
       );
     }
   }
