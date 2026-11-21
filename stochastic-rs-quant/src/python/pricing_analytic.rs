@@ -235,8 +235,8 @@ impl PySabrPricer {
   }
 }
 
-/// Merton (1976) prices and Greeks at the stored `(s, k, r, q, tau)` and option type; `q` is
-/// unused, as this class fixes `BsmCoc::Bsm1973`, whose carry is `r`.
+/// Merton (1976) prices at the stored `(s, k, r, q, tau)` and option type; `q`, default 0, is the
+/// dividend yield: this class carries at `BsmCoc::Merton1973`, `b = r − q`.
 #[pyclass(name = "Merton1976Pricer", unsendable)]
 pub struct PyMerton1976Pricer {
   inner: crate::pricing::merton_jump::Merton1976Pricer,
