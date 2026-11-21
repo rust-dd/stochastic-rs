@@ -103,10 +103,11 @@ impl<S: SeedExt> CgmysvPricer<S> {
     (s_paths, v_paths)
   }
 
-  /// The estimate off the simulation: `payoff` at `tau = 0`; NaN past expiry, for an infinite `tau`
-  /// or a NaN query, and before expiry for a spot or strike that is not positive.
+  /// The estimate off the simulation: `payoff` at `tau = 0`; NaN past expiry, for a NaN query and,
+  /// before expiry, for a non-finite one or a spot or strike that is not positive.
   fn off_paths(&self, k: f64, tau: f64, payoff: impl FnOnce() -> f64) -> Option<McEstimate<f64>> {
-    let off = || off_domain(&[self.s, k], &[self.r, self.q], tau);
+    let finite = [self.s, k, self.r, self.q].iter().all(|x| x.is_finite());
+    let off = || !finite || off_domain(&[self.s, k], &[self.r, self.q], tau);
     let value = expired(tau, &[self.r, self.q], payoff).or_else(|| off().then_some(f64::NAN));
     value.map(pathless)
   }

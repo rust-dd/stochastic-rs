@@ -50,6 +50,10 @@ fn the_cgmysv_entry_points_are_nan_for_a_query_off_their_domain() {
     (110.0, -5.0, R, TAU),
     (110.0, K, R, inf),
     (110.0, nan, R, 0.0),
+    (inf, K, R, TAU),
+    (110.0, inf, R, TAU),
+    (110.0, K, inf, TAU),
+    (110.0, K, -inf, TAU),
   ] {
     for leg in TYPES {
       let model = cgmysv(s, r);
