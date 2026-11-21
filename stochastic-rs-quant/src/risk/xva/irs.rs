@@ -117,13 +117,13 @@ impl HullWhiteSwapExposure {
     (1.0 - curve.discount_factor(*self.payment_times.last().expect("non-empty"))) / annuity
   }
 
-  /// Mark-to-market matrix (paths × payment dates) from `paths` simulated
-  /// short-rate paths seeded by `seed`.
+  /// Mark-to-market matrix (paths × payment dates) of `paths` short-rate paths drawn from a child
+  /// of `seed`, which advances.
   pub fn mtm_matrix<S: SeedExt>(
     &self,
     curve: &DiscountCurve<f64>,
     paths: usize,
-    seed: S,
+    seed: &S,
   ) -> Array2<f64> {
     let maturity = *self.payment_times.last().expect("non-empty");
     let steps = ((maturity * self.steps_per_year as f64).round() as usize).max(1);
@@ -135,7 +135,7 @@ impl HullWhiteSwapExposure {
       steps + 1,
       Some(0.0),
       Some(maturity),
-      seed,
+      seed.derive(),
     );
     let factor_paths = process.sample_par(paths);
     let a = self.mean_reversion;
@@ -160,7 +160,7 @@ impl HullWhiteSwapExposure {
     curve: &DiscountCurve<f64>,
     paths: usize,
     quantile: f64,
-    seed: S,
+    seed: &S,
   ) -> ExposureProfile {
     ExposureProfile::from_mtm(
       self.mtm_matrix(curve, paths, seed).view(),

@@ -30,7 +30,7 @@ fn cva_of_a_par_swap_under_hull_white() {
   swap.fixed_rate = swap.par_rate(&curve);
 
   // Exposure profile on the payment dates from 4 000 Hull–White short-rate paths.
-  let profile = swap.profile(&curve, 4_000, 0.95, Deterministic::new(7));
+  let profile = swap.profile(&curve, 4_000, 0.95, &Deterministic::new(7));
   assert!(profile.peak_epe() > 0.0 && profile.epe[4] == 0.0);
 
   // CVA against a 2 % flat hazard at 60 % LGD, and the symmetric FVA at a 50 bp funding spread.
