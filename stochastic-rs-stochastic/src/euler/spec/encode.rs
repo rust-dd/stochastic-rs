@@ -808,8 +808,8 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::TwoFactorSquareRootSchemes(p) => {
         (Family::TwoFactorSquareRootSchemes.code(), pad(p))
       }
-      EulerSpec::SquaredBesselStateFullTruncation(p) => {
-        (Family::SquaredBesselStateFullTruncation.code(), pad(p))
+      EulerSpec::SquaredBesselFullTruncation(p) => {
+        (Family::SquaredBesselFullTruncation.code(), pad(p))
       }
       EulerSpec::BesselFromSquaredFullTruncation(p) => {
         (Family::BesselFromSquaredFullTruncation.code(), pad(p))

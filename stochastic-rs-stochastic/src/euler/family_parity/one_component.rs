@@ -488,7 +488,7 @@ pub(super) fn every_family() -> Vec<Probe> {
       EulerSpec::ShiftedSquareRootFullTruncation([0.5, 0.04, 1.0]),
       0.04,
     ),
-    p(EulerSpec::SquaredBesselStateFullTruncation([0.5, 2.0]), 0.1),
+    p(EulerSpec::SquaredBesselFullTruncation([0.5, 2.0]), 0.1),
     p(EulerSpec::BesselFromSquaredFullTruncation([0.5, 2.0]), 0.1),
   ]
 }

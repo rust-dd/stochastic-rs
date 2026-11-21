@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "ec91a307067bfb40d8376e286c3d9854a7ca294889a4e899d4c8acb527cd5ded",
+  "artifact": "0b52ec31f9118e8cabc9b7304df8828926b27f2c238c722d55e651f88ef2cb39",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -26,7 +26,7 @@
     "../stochastic-rs-metal-kernels/src/euler/args.rs": "cb9f5c1cf531151fe3fd102c97f846af8face76aee8cabacde116267c8b6db40",
     "../stochastic-rs-metal-kernels/src/euler/draws.rs": "4d5165dcac16ddfdd1628d33bbd0e2dd7c5b42f14f703064ce20125dd779d6ba",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_0_31.rs": "0ec5f4d4164fa8bea1775159e24d3279e5c4b615bbfb10ed71870d9f3e84f557",
-    "../stochastic-rs-metal-kernels/src/euler/entries/families_128_131.rs": "d8e2c14217bde4c2a757dcea8e2494c4be3ab1430a0d5bfe376e64a625ea4013",
+    "../stochastic-rs-metal-kernels/src/euler/entries/families_128_131.rs": "cf217928b4e90f1e141d39fb7153037a4a3f8bd31d11b5547205422335d37822",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_32_63.rs": "db8ab8378c12e11bac2597c21501114dbc09f7b2b4c33f6b9963df60272b9df0",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_64_95.rs": "34581e6c2287b181e678ac79f5d72ac63f36bb7d876bb39b50180765dd8202de",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_96_127.rs": "e12edcc751b5545b7dcd78d089127e727ec43c2edcb877ef9a01a5aa0603130f",
@@ -54,7 +54,7 @@
     "src/euler/families/definitions/multifactor.rs": "cc32e5d343a03dfe36bf38cc7e4140bdedd64f57c64e78a3ed880c726bdf73a7",
     "src/euler/families/definitions/systems.rs": "8b056d72dae2ba38a09b1f4bca30ffc9cf1c275e84bdb355cea6614b2c18868d",
     "src/euler/families/definitions/transformations.rs": "b6eb57a90bb9747dbd1dbdada8a79f944be9de13b5103a994f020c45cc0a3df8",
-    "src/euler/families/definitions/truncations.rs": "e515650e28a2c6fabbad92e80b3b0ea721c4d10aadbebbf9280c405d94cb50e7",
+    "src/euler/families/definitions/truncations.rs": "e89c645392f5b42bf9803de0769eb64787b68bac22c95c9adbe8e7e0d6b5b3a1",
     "src/euler/philox.rs": "7b1bf9374093c0ecaa4515c61c452fb1041fafff63e95698524c71a2a10fec9b"
   }
 }

@@ -681,7 +681,7 @@ pub enum EulerSpec<T: FloatExt> {
   /// absorption, `2` reflection.
   TwoFactorSquareRootSchemes([T; 8]),
   /// `SquaredBesselState` under full truncation, its parameters in the same order.
-  SquaredBesselStateFullTruncation([T; 2]),
+  SquaredBesselFullTruncation([T; 2]),
   /// `BesselFromSquared` under full truncation, its parameters in the same order.
   BesselFromSquaredFullTruncation([T; 2]),
 }

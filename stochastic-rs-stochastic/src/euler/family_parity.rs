@@ -367,7 +367,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::KouJumpHestonFullTruncation(..) => "KouJumpHestonFullTruncation",
     EulerSpec::ShiftedSquareRootFullTruncation(..) => "ShiftedSquareRootFullTruncation",
     EulerSpec::TwoFactorSquareRootSchemes(..) => "TwoFactorSquareRootSchemes",
-    EulerSpec::SquaredBesselStateFullTruncation(..) => "SquaredBesselStateFullTruncation",
+    EulerSpec::SquaredBesselFullTruncation(..) => "SquaredBesselFullTruncation",
     EulerSpec::BesselFromSquaredFullTruncation(..) => "BesselFromSquaredFullTruncation",
     EulerSpec::VolterraProgram => "VolterraProgram",
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",

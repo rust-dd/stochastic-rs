@@ -134,7 +134,7 @@ macro_rules! euler_truncations {
     },
 
   /// [`SquaredBesselState`](Family::SquaredBesselState) under full truncation.
-  130 => SquaredBesselStateFullTruncation { delta, two }
+  130 => SquaredBesselFullTruncation { delta, two }
     state (x)
     noise (dz)
     step { x + delta * $dt + two * sqrt(positive(x)) * dz }

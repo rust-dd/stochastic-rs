@@ -134,7 +134,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     let two = T::from_usize_(2);
     match self.boundary {
       VarianceBoundary::FullTruncation => {
-        crate::euler::EulerSpec::SquaredBesselStateFullTruncation([self.delta, two])
+        crate::euler::EulerSpec::SquaredBesselFullTruncation([self.delta, two])
       }
       VarianceBoundary::Absorption => crate::euler::EulerSpec::SquaredBesselState {
         delta: self.delta,
