@@ -421,3 +421,48 @@ fn merton_at_a_zero_yield_is_bsm_1973_bit_for_bit() {
     }
   }
 }
+
+/// Ultima against a central difference of `volga` in sigma, `h = 1e-5 sigma`, over moneyness,
+/// maturity and carry.
+#[test]
+fn ultima_matches_finite_difference_of_volga() {
+  let cells = [
+    (100.0, 105.0, 0.05, 0.02, 0.75, 0.25),
+    (100.0, 100.0, 0.03, 0.0, 1.0, 0.2),
+    (100.0, 150.0, 0.02, 0.01, 0.25, 0.3),
+    (100.0, 70.0, 0.01, 0.03, 2.0, 0.35),
+    (100.0, 95.0, 0.04, 0.0, 0.05, 0.4),
+    (80.0, 100.0, 0.0, 0.05, 5.0, 0.15),
+  ];
+  for (s, k, r, q, tau, v) in cells {
+    let h = 1e-5 * v;
+    let volga = |sigma: f64| BsmPricer::new(sigma, BsmCoc::Merton1973).volga(s, k, r, q, tau);
+    let fd = (volga(v + h) - volga(v - h)) / (2.0 * h);
+    let ultima = BsmPricer::new(v, BsmCoc::Merton1973).ultima(s, k, r, q, tau);
+    assert!(
+      ((ultima - fd) / fd).abs() < 1e-6,
+      "{s} {k} {r} {q} {tau} {v}: {ultima} vs {fd}"
+    );
+  }
+}
+
+/// Ultima at the pinned query against `d^3 V/d sigma^3` of the Merton (1973) call from mpmath's
+/// numerical third derivative at 60 digits, quoted to 30.
+#[test]
+fn ultima_matches_mpmath_third_derivative() {
+  let (s, k, r, q, tau) = Q;
+  let ultima = BsmPricer::new(V, BsmCoc::Merton1973).ultima(s, k, r, q, tau);
+  let reference = "-30.4626092468568644460922716058".parse::<f64>().unwrap();
+  assert!(((ultima - reference) / reference).abs() < 1e-13, "{ultima}");
+}
+
+/// At `d2 = 0` the Volga form of ultima is `0 * inf`; the Vega form stays finite.
+#[test]
+fn ultima_is_finite_where_d2_vanishes() {
+  let (s, r, q, tau, v) = (100.0_f64, 0.05, 0.02, 0.75, 0.25_f64);
+  let k = s * ((r - q - 0.5 * v * v) * tau).exp();
+  let model = BsmPricer::new(v, BsmCoc::Merton1973);
+  let (_, d2) = model.d1_d2(s, k, r, q, tau);
+  assert!(d2.abs() < 1e-14, "{d2}");
+  assert!(model.ultima(s, k, r, q, tau).is_finite());
+}
