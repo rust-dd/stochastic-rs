@@ -4,17 +4,19 @@ use ndarray::ArrayView1;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
+use crate::LossMetric;
+use crate::calibration::Calibrated;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
-/// Calibrate SSVI global parameters $(\rho, \eta, \gamma)$ to multiple
-/// maturity slices simultaneously.
+/// SSVI's global $(\rho, \eta, \gamma)$ fitted to every slice at once by Levenberg–Marquardt; the
+/// loss is in total variance, and `converged` and `message` are the stop's.
 pub fn calibrate_ssvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   initial: Option<SsviParams<T>>,
-) -> SsviParams<T> {
+) -> Calibrated<SsviParams<T>> {
   let init_f64 = initial
     .map(|p| p.as_f64())
     .unwrap_or(SsviParams::<f64>::new(-0.3, 0.5, 0.5));
@@ -49,7 +51,7 @@ pub fn calibrate_ssvi<T: RealExt>(
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = minimize(
+  let (result, report) = minimize(
     problem,
     LmOptions {
       tolerance: Some(1e-12),
@@ -69,11 +71,22 @@ pub fn calibrate_ssvi<T: RealExt>(
     p64.project();
   }
 
-  SsviParams {
+  let slices = result.slices.iter();
+  let points = slices.flat_map(|s| {
+    s.log_moneyness
+      .iter()
+      .zip(&s.total_variance)
+      .map(|p| (s.theta, p))
+  });
+  let (market, model): (Vec<f64>, Vec<f64>) = points
+    .map(|(theta, (&k, &w))| (w, p64.total_variance(k, theta)))
+    .unzip();
+  let params = SsviParams {
     rho: T::from_f64_fast(p64.rho),
     eta: T::from_f64_fast(p64.eta),
     gamma: T::from_f64_fast(p64.gamma),
-  }
+  };
+  report.fit(params, &market, &model, &LossMetric::ALL, Vec::new())
 }
 
 #[derive(Clone, Debug)]

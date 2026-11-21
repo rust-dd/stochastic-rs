@@ -164,9 +164,13 @@ where
 pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult {
   let nt = iv_surface.maturities.len();
 
-  let svi_params = iv_surface.fit_svi_slices();
+  let svi_params: Vec<_> = iv_surface
+    .fit_svi_slices()
+    .into_iter()
+    .map(|fit| fit.params)
+    .collect();
 
-  let ssvi_surface = iv_surface.fit_ssvi(None);
+  let ssvi_surface = iv_surface.fit_ssvi(None).params;
 
   let analytics: Vec<SmileAnalytics<f64>> = svi_params
     .iter()

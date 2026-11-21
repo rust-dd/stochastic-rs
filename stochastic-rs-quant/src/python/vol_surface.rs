@@ -141,7 +141,7 @@ impl PySviCalibrator {
   #[new]
   fn new(log_moneyness: Vec<f64>, total_variance: Vec<f64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      fitted: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None),
+      fitted: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None).params,
     })
   }
 
@@ -183,7 +183,7 @@ impl PySsviCalibrator {
         )
         .collect();
       Self {
-        fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
+        fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None).params,
       }
     })
   }

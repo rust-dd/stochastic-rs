@@ -424,7 +424,7 @@ mod tests {
     let maturities = vec![0.25, 0.5, 1.0, 2.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    let ssvi = surface.fit_ssvi(None);
+    let ssvi = surface.fit_ssvi(None).params;
     let ks: Vec<f64> = (-3..=3).map(|i| i as f64 * 0.5).collect();
     assert!(ssvi.is_calendar_spread_free(&ks));
 

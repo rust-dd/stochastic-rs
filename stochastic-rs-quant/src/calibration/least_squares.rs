@@ -217,18 +217,29 @@ impl LmReport {
         reason: "the start's residuals or Jacobian are not finite".into(),
       });
     }
+    Ok(self.fit(params, market, model, metrics, history))
+  }
+
+  /// The fit as [`calibrated`](Self::calibrated) builds it, a start it could not evaluate included:
+  /// that one reads `solver failed` at the start's parameters.
+  pub(crate) fn fit<P>(
+    &self,
+    params: P,
+    market: &[f64],
+    model: &[f64],
+    metrics: &[LossMetric],
+    history: Vec<CalibrationHistory<P>>,
+  ) -> Calibrated<P> {
     let fit = Calibrated::repriced(params, market, model, metrics, self.converged);
     let settled = self.settled(fit.loss.get(LossMetric::Rmse), market, PRICER_ACCURACY);
     let fit = Calibrated {
       converged: settled.converged,
       ..fit
     };
-    Ok(
-      fit
-        .with_iterations(self.iterations)
-        .with_message(settled.message())
-        .with_history(history),
-    )
+    fit
+      .with_iterations(self.iterations)
+      .with_message(settled.message())
+      .with_history(history)
   }
 }
 

@@ -22,6 +22,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::LossMetric;
+use crate::calibration::Calibrated;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
@@ -259,18 +261,13 @@ pub struct SviJumpWings<T: RealExt> {
   pub tau: T,
 }
 
-/// Calibrate raw SVI parameters to observed total-variance data via
-/// Levenberg-Marquardt least squares.
-///
-/// # Arguments
-/// * `log_moneyness` - Log-forward moneyness values $k_i$
-/// * `total_variance` - Observed total variance $w_i = \sigma_i^2 T$
-/// * `initial` - Optional initial guess; defaults to a heuristic
+/// Raw SVI fitted to total variances by Levenberg–Marquardt from `initial` or a heuristic start;
+/// the loss is in total variance, and `converged` and `message` are the stop's.
 pub fn calibrate_svi<T: RealExt>(
   log_moneyness: &[T],
   total_variance: &[T],
   initial: Option<SviRawParams<T>>,
-) -> SviRawParams<T> {
+) -> Calibrated<SviRawParams<T>> {
   assert_eq!(
     log_moneyness.len(),
     total_variance.len(),
@@ -296,7 +293,7 @@ pub fn calibrate_svi<T: RealExt>(
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = minimize(
+  let (result, report) = minimize(
     problem,
     LmOptions {
       tolerance: Some(1e-12),
@@ -312,13 +309,19 @@ pub fn calibrate_svi<T: RealExt>(
   p64.sigma = p64.sigma.abs();
   p64.project();
 
-  SviRawParams {
+  let model = result
+    .ks
+    .iter()
+    .map(|&k| p64.total_variance(k))
+    .collect::<Vec<_>>();
+  let params = SviRawParams {
     a: T::from_f64_fast(p64.a),
     b: T::from_f64_fast(p64.b),
     rho: T::from_f64_fast(p64.rho),
     m: T::from_f64_fast(p64.m),
     sigma: T::from_f64_fast(p64.sigma),
-  }
+  };
+  report.fit(params, &result.ws, &model, &LossMetric::ALL, Vec::new())
 }
 
 /// Heuristic initial guess for SVI from data moments.
@@ -423,9 +426,10 @@ mod tests {
   fn a_nan_quote_reaches_the_calibrated_parameters() {
     let ks = [-0.1, 0.0, 0.1];
     let nan_w = calibrate_svi(&ks, &[0.05, f64::NAN, 0.05], None);
-    assert!(nan_w.b.is_nan() && nan_w.rho.is_nan());
+    assert!(nan_w.params.b.is_nan() && nan_w.params.rho.is_nan());
+    assert!(!nan_w.converged && nan_w.message.as_deref() == Some("solver failed"));
     let nan_k = calibrate_svi(&[-0.1, f64::NAN, 0.1], &[0.05, 0.04, 0.05], None);
-    assert!(nan_k.sigma.is_nan());
+    assert!(nan_k.params.sigma.is_nan() && !nan_k.converged);
     let mut projected = SviRawParams::<f64>::new(0.04, -0.1, 1.5, 0.0, 0.0);
     projected.project();
     assert_eq!(
@@ -480,7 +484,12 @@ mod tests {
     let ks: Vec<f64> = (-10..=10).map(|i| i as f64 * 0.1).collect();
     let ws: Vec<f64> = ks.iter().map(|&k| true_params.total_variance(k)).collect();
 
-    let fitted = calibrate_svi(&ks, &ws, None);
+    let fit = calibrate_svi(&ks, &ws, None);
+    assert!(
+      fit.converged && fit.message.as_deref() == Some("converged"),
+      "{fit:?}"
+    );
+    let fitted = fit.params;
 
     assert!((fitted.a - true_params.a).abs() < 1e-4, "a mismatch");
     assert!((fitted.b - true_params.b).abs() < 1e-4, "b mismatch");
@@ -515,7 +524,7 @@ mod tests {
       sigma: -0.3,
       ..truth
     };
-    let fitted = calibrate_svi(&ks, &ws, Some(initial));
+    let fitted = calibrate_svi(&ks, &ws, Some(initial)).params;
     assert!((fitted.sigma - truth.sigma).abs() < 1e-6);
     for (&k, &w) in ks.iter().zip(&ws) {
       assert!((fitted.total_variance(k) - w).abs() < 1e-10);
@@ -544,7 +553,7 @@ mod tests {
         .iter()
         .map(|&k| truth.total_variance(k))
         .collect::<Vec<_>>();
-      let fitted = calibrate_svi(&ks, &ws, None);
+      let fitted = calibrate_svi(&ks, &ws, None).params;
       // Weakly identified parameters can differ while describing the same smile.
       for (&k, &w) in ks.iter().zip(&ws) {
         assert!(

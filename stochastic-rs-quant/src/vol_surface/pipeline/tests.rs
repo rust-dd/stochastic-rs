@@ -331,7 +331,7 @@ fn smile_slice_svi_fit() {
   );
 
   let slice = iv_surface.smile_slice(1);
-  let svi = slice.fit_svi(None);
+  let svi = slice.fit_svi(None).params;
 
   assert!(svi.is_admissible());
 

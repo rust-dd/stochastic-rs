@@ -65,7 +65,12 @@ fn ssvi_calibration_exact() {
     })
     .collect();
 
-  let fitted = calibrate_ssvi(&slices, None);
+  let fit = calibrate_ssvi(&slices, None);
+  assert!(
+    fit.converged && fit.message.as_deref() == Some("converged"),
+    "{fit:?}"
+  );
+  let fitted = fit.params;
 
   assert!((fitted.rho - true_params.rho).abs() < 1e-3, "rho mismatch");
   assert!((fitted.eta - true_params.eta).abs() < 1e-3, "eta mismatch");
