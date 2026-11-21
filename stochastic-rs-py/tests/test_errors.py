@@ -210,6 +210,19 @@ def test_the_hscm_model_builds_where_its_rust_constructor_does():
         sr.HscmModel(**{**HSCM, **edge})
 
 
+@pytest.mark.parametrize(
+    "build, want",
+    [
+        (lambda q: sr.BSMPricer(v=-0.2, **q), r"sigma must satisfy `sigma\.is_nan\(\) \|\| \(sigma\.is_finite\(\) && sigma >= 0\.0\)`, got sigma = -0\.2"),
+        (lambda q: sr.BachelierPricer(v=float("inf"), **q), r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`, got sigma = inf"),
+        (lambda q: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=1.5, fixed_rate=1.5, **q), r"rho must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&rho\)`, got rho = 1\.5"),
+    ],
+)
+def test_a_vanilla_pricer_refuses_a_volatility_or_correlation_off_its_domain(build, want):
+    with pytest.raises(ValueError, match=want):
+        build(dict(s=100.0, k=100.0, r=0.05, tau=1.0))
+
+
 def test_a_regularization_anchor_that_is_not_finite_is_refused_at_construction():
     slices = [sr.MarketSlice([90.0, 100.0, 110.0], [12.0, 6.0, 2.5], [True] * 3, 0.5)]
     anchor = [0.04, float("nan"), 0.04, 0.5, -0.5]
