@@ -387,9 +387,9 @@ directory:
 ```
 
 Read the header of `tests/reproducibility_all_processes.rs` for the rules — it carries
-the derivation grep, the per-directory counts (diffusion 36, process 20, jump 17,
-interest 16, volatility 16, autoregressive 9, noise 6, rough 4, correlation 4, volterra
-3, sheet 1; bump the one you touched **and** the total), and the statement that a type
+the derivation grep, the per-directory counts (diffusion 36, process 19, jump 16,
+interest 15, volatility 16, autoregressive 9, noise 6, rough 4, correlation 4, volterra
+4, sheet 1; bump the one you touched **and** the total), and the statement that a type
 with no line there is a type nothing is proving anything about. That grep only sees a
 one-line `impl` header, so long bounds go in a trailing `where`. A new `Output` shape
 needs a `ReproBits` impl in that tree's `common.rs`.
