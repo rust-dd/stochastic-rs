@@ -157,6 +157,7 @@ pub fn generate_gbm_paths(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
@@ -173,7 +174,8 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 50;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
@@ -204,7 +206,8 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 60;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(11);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
 
@@ -232,7 +235,8 @@ mod tests {
     let n_paths = 50_000;
     let n_steps = 30;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
     let berm = bermudan.price(paths.view(), &[n_steps], payoff).mean;
