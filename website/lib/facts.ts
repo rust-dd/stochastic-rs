@@ -21,7 +21,7 @@ export const FACTS = {
   /** Root `CLAUDE.md`, `ProcessExt`: 140 implementors over 130 processes. */
   processes: 130,
   /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
-  deviceFamilies: 123,
+  deviceFamilies: 134,
   processesOnEngine: 128,
   /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */
   distributions: 36,
