@@ -151,6 +151,10 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
   let Some(bounds) = &objective.bounds else {
     return total;
   };
+  if !total.started && bounds.change.borrow().is_some() {
+    // A start whose own set stopped the solve was evaluated last, so the trail opens with it.
+    objective.model.borrow_mut().accept();
+  }
   loop {
     let own = matches!(
       total.reason,
@@ -188,6 +192,7 @@ mod tests {
   use stochastic_rs_distributions::RealExt;
 
   use super::super::LmOptions;
+  use super::super::LmReport;
   use super::super::minimize_in_box;
   use super::*;
   use crate::calibration::stencil::room;
@@ -261,6 +266,9 @@ mod tests {
     caps: Vec<f64>,
     rows: fn(&[f64]) -> Array1<f64>,
     slopes: fn(&[f64]) -> Array2<f64>,
+    /// The values of the last `residuals` call, and those `accept` kept.
+    staged: Array1<f64>,
+    trail: Vec<Array1<f64>>,
   }
 
   impl Capped {
@@ -290,8 +298,8 @@ mod tests {
     }
 
     fn residuals(&mut self) -> Option<Array1<f64>> {
-      let values = Self::values(self.x.view(), &self.caps);
-      Some((self.rows)(values.as_slice()?))
+      self.staged = Self::values(self.x.view(), &self.caps);
+      Some((self.rows)(self.staged.as_slice()?))
     }
 
     fn jacobian(&self) -> Option<Array2<f64>> {
@@ -300,27 +308,48 @@ mod tests {
       let folds = Self::folds(self.x.view(), &self.caps);
       Some(crate::calibration::scale_columns(slopes, folds.view()))
     }
+
+    fn accept(&mut self) {
+      self.trail.push(self.staged.clone());
+    }
   }
 
-  /// The fit of `rows` from `start` under `caps`: its values, its cost and whether it converged.
-  fn capped<const N: usize>(
+  /// The fit of `rows` from `start` under `caps`, on a budget of `patience·(N + 1)` evaluations.
+  fn fit<const N: usize>(
     start: [f64; N],
     caps: [f64; N],
     rows: fn(&[f64]) -> Array1<f64>,
     slopes: fn(&[f64]) -> Array2<f64>,
-  ) -> (Array1<f64>, f64, bool) {
+    patience: usize,
+  ) -> (Capped, LmReport) {
     let problem = Capped {
       x: Array1::from_vec(start.to_vec()),
       caps: caps.to_vec(),
       rows,
       slopes,
+      staged: Array1::zeros(N),
+      trail: Vec::new(),
     };
     let rooms = move |x: ArrayView1<f64>| {
       let bounds = caps.map(|cap| (f64::NEG_INFINITY, cap));
       let folds = Capped::folds(x, &caps);
       room(&Capped::values(x, &caps), &bounds, folds.view())
     };
-    let (mut fitted, report) = minimize_in_box(problem, LmOptions::default(), rooms);
+    let options = LmOptions {
+      patience,
+      ..LmOptions::default()
+    };
+    minimize_in_box(problem, options, rooms)
+  }
+
+  /// [`fit`] on the default budget: its values, its cost and whether it converged.
+  fn capped<const N: usize>(
+    start: [f64; N],
+    caps: [f64; N],
+    rows: fn(&[f64]) -> Array1<f64>,
+    slopes: fn(&[f64]) -> Array2<f64>,
+  ) -> (Array1<f64>, f64, bool) {
+    let (mut fitted, report) = fit(start, caps, rows, slopes, LmOptions::default().patience);
     let values = Capped::values(fitted.x.view(), &fitted.caps);
     let cost = fitted.residuals().map_or(f64::NAN, |r| r.dot(&r));
     (values, cost, report.converged)
@@ -372,6 +401,18 @@ mod tests {
         "{start:?}: {fitted}"
       );
       assert!((cost - 0.04).abs() < 1e-12, "{start:?}: cost {cost}");
+    }
+  }
+
+  /// The first start is cut where it stands and the second is the minimum, held on its bound.
+  #[test]
+  fn a_start_on_its_bound_opens_the_trail() {
+    let rows = |v: &[f64]| ndarray::array![10.0 * (v[1] - v[0] * v[0]), 1.0 - v[0]];
+    let slopes = |v: &[f64]| ndarray::array![[-20.0 * v[0], 10.0], [-1.0, 0.0]];
+    for start in [[0.8, 0.9], [0.8, 0.64]] {
+      let (fitted, _) = fit(start, [0.8, FREE], rows, slopes, 100);
+      let opens = fitted.trail.first().map(|first| first.to_vec());
+      assert_eq!(opens, Some(start.to_vec()), "{:?}", fitted.trail);
     }
   }
 
