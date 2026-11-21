@@ -1,13 +1,5 @@
-//! Integration tests for the credit module.
-//!
-//! Validates:
-//! - Merton structural model against closed-form reference values.
-//! - Survival curve against the hazard-rate → survival identity.
-//! - CDS valuation against a flat-hazard closed-form approximation.
-//! - Hazard bootstrap repricing consistency (each CDS reprices to par).
-//! - Continuous-time generator → transition matrix via matrix exponential
-//!   against a 2-state analytic solution, and Moody's S&P-style one-year
-//!   transition matrix invariants.
+//! Credit tests: Merton against closed forms, survival and CDS against hazard-rate identities,
+//! bootstrap repricing to par, the generator's matrix exponential against a 2-state solution.
 
 use chrono::NaiveDate;
 use ndarray::Array1;

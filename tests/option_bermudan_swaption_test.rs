@@ -1,8 +1,5 @@
-//! Bermudan and tree-based swaption pricing tests.
-//!
-//! Covers Hull-White and G2++ trinomial trees, the Jamshidian decomposition
-//! for European HW swaptions, and Bermudan-vs-European dominance on a shared
-//! exercise grid.
+//! Bermudan and tree-based swaption tests: Hull-White and G2++ trinomial trees, Jamshidian
+//! decomposition for European HW swaptions, Bermudan-vs-European dominance on one exercise grid.
 
 use chrono::NaiveDate;
 use ndarray::array;
@@ -160,9 +157,8 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
   let steps: usize = 20;
   let dt: f64 = horizon / steps as f64;
 
-  // Hull-White: dr = a(θ-r)dt + σ dW with r₀=θ means r(t) = X(t) + θ where
-  // X follows a zero-mean Ou with X(0)=0. Matching G2++ uses phi=θ, x(0)=0,
-  // and a nearly zero second factor with strong mean reversion.
+  // Hull-White dr = a(θ-r)dt + σ dW with r₀=θ is r(t) = X(t) + θ for a zero-mean Ou X with X(0)=0;
+  // G2++ matches it with phi=θ, x(0)=0 and a nearly zero second factor with strong mean reversion.
   let a = 0.1_f64;
   let sigma = 0.012_f64;
   let theta = 0.05_f64;

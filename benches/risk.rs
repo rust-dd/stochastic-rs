@@ -1,11 +1,5 @@
-//! Benchmarks for the risk-metrics module.
-//!
-//! Hot paths measured:
-//! - Gaussian / historical VaR on a 100k-sample PnL series.
-//! - Expected Shortfall on the same series.
-//! - Max drawdown on a 100k-observation equity series.
-//! - Bucket DV01 on a 10-pillar discount curve.
-//! - Stress-test engine running 8 curve / spot scenarios.
+//! Risk-metrics benches: Gaussian / historical VaR, ES and max drawdown on 100k observations,
+//! bucket DV01 on a 10-pillar curve, and a stress-test engine over 8 curve / spot scenarios.
 
 use criterion::Criterion;
 use criterion::criterion_group;

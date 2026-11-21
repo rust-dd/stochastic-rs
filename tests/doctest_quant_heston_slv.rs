@@ -1,7 +1,6 @@
 // docs: quant#heston-slv-leverage-calibration-by-the-particle-method
-//! Backs the Heston SLV calibration example on the quant catalog page: a
-//! vanilla call surface in, a leverage-calibrated model and its Monte Carlo
-//! pricer out.
+//! Backs the Heston SLV calibration example on the quant catalog page: a vanilla call surface in, a
+//! leverage-calibrated model and its Monte Carlo pricer out.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -34,9 +33,8 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
     model.price_call(s, strikes[i], r, q, maturities[j])
   });
 
-  // Half the vol-of-vol; the leverage makes up the difference so the surface
-  // is reproduced. The Heston fit is pinned here — leave it out to have
-  // `HestonCalibrator` fit the same quotes.
+  // Half the vol-of-vol; the leverage makes up the difference so the surface is reproduced. The
+  // Heston fit is pinned here; leave it out to have `HestonCalibrator` fit the same quotes.
   let result = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
     .with_mixing(0.5)
     .with_heston_params(heston)

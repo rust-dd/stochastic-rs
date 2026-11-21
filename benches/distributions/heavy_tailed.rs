@@ -17,8 +17,8 @@ use stochastic_rs::simd_rng::Unseeded;
 
 use super::SIZES;
 
-/// The buffered stream, the honest scalar draw on a `SimdRng` and a bulk fill, plus `rand_distr`'s law on the same
-/// `SimdRng` for the two it has (inverse Gaussian, NIG); it has no stable, tempered-stable, GIG or skew-t law.
+/// The buffered stream, the scalar draw and a bulk fill, plus `rand_distr`'s law on the same
+/// `SimdRng` for inverse Gaussian and NIG; it has no stable, tempered-stable, GIG or skew-t law.
 macro_rules! bench_heavy_tailed {
   ($fn_name:ident, $group_name:expr, $law:expr $(, $rand:expr)?) => {
     pub fn $fn_name(c: &mut Criterion) {

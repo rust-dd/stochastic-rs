@@ -1,6 +1,5 @@
-//! RNG-behaviour tests for the sampler refactor: `Deterministic`
-//! reproducibility, `Unseeded` variability, and path distinctness ("the seed
-//! never gets stuck") — including across the thread-local block-seed boundary.
+//! RNG-behaviour tests for the sampler refactor: `Deterministic` reproducibility, `Unseeded`
+//! variability, and path distinctness ("the seed never gets stuck") across the block-seed boundary.
 
 use std::collections::HashSet;
 
@@ -96,10 +95,8 @@ fn sample_map_paths_all_distinct() {
 
 #[test]
 fn seed_not_stuck_across_block_boundary() {
-  // SEED_BLOCK_LEN = 1<<18 = 262_144. Constructing more auto-seeded RNGs than
-  // one block on a single thread forces a re-reservation; every path must
-  // still be unique (the block scheme hands out disjoint seeds, it never
-  // sticks or repeats at the boundary).
+  // SEED_BLOCK_LEN = 1<<18 = 262_144: more auto-seeded RNGs than one block on a thread force a
+  // re-reservation, and every path must stay unique (no seed repeats at the boundary).
   let count = 300_000usize;
   let g = gbm(4, Unseeded);
   let mut seen = HashSet::with_capacity(count);

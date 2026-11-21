@@ -1,7 +1,6 @@
 // docs: concepts/seeding#simdrngext-generic-backing-rng
-//! Backs the single- vs dual-stream `SimdNormal` example on the seeding
-//! concept page. `SimdRngDual` only exists under `unstable-dual-stream-rng`,
-//! so the whole file is gated on that feature.
+//! Backs the single- vs dual-stream `SimdNormal` example on the seeding concept page; `SimdRngDual`
+//! exists only under `unstable-dual-stream-rng`, so the whole file is gated on that feature.
 
 #![cfg(feature = "unstable-dual-stream-rng")]
 

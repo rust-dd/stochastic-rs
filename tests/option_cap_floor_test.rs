@@ -1,8 +1,5 @@
-//! Cap, floor, and collar comparison tests.
-//!
-//! Verifies that cap NPVs equal the sum of constituent caplet prices, and
-//! that cap minus floor equals the intrinsic value of the underlying forward
-//! swap (the Black-76 put-call parity in caplet form).
+//! Cap, floor and collar comparison tests: a cap NPV equals the sum of its caplets, and cap minus
+//! floor equals the intrinsic value of the forward swap (Black-76 put-call parity in caplet form).
 
 use chrono::NaiveDate;
 use ndarray::array;

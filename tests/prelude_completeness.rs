@@ -1,18 +1,5 @@
-//! Guards `stochastic_rs::prelude`'s documented item list (CLAUDE.md's
-//! "Key traits"/"Prelude" sections, `website/content/docs/concepts/prelude.mdx`)
-//! against the failure mode that already happened once: `VolterraKernel`
-//! was added to the prelude and the docs kept saying "20 items" for
-//! several releases afterward, because nothing forced anyone to touch the
-//! docs when the prelude's contents changed.
-//!
-//! Naming every documented item explicitly (rather than `use
-//! stochastic_rs::prelude::*;`) means removing or renaming one is a
-//! compile error here, not a silent doc/reality mismatch. This cannot
-//! catch the opposite direction (a new item added to the prelude but
-//! never documented) — for that, re-run the derivation below and compare
-//! against the seven group lists in `CLAUDE.md` and `prelude.mdx`:
-//!
-//! `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`
+//! Guards the prelude list in CLAUDE.md and the website's `prelude.mdx`: a removal fails here.
+//! For an addition re-count: `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`
 
 #![allow(unused_imports)]
 
