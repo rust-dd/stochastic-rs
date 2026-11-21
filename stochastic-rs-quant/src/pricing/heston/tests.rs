@@ -199,9 +199,8 @@ fn heston_greeks_match_engine_bumps() {
   let theta_tight = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_tight =
     (direct.theta(s, k, r, q, tau, ot) - theta_tight).abs() / theta_tight.abs().max(1e-8);
-  // A bump of `1e-7` turns the price's `1e-11` quadrature noise into `5e-5` of theta.
   assert!(
-    rel_tight < 1e-5,
+    rel_tight < 1e-6,
     "theta (tight-bump engine): mine={}, engine_tight={theta_tight}, rel={rel_tight}",
     direct.theta(s, k, r, q, tau, ot)
   );
