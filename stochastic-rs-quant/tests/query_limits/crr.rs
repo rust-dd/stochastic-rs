@@ -110,3 +110,47 @@ fn a_binomial_tree_from_a_nan_probability_is_a_precondition() {
 fn a_crr_lattice_without_a_step_is_a_precondition() {
   CrrModel::new(0.2, 0);
 }
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = -0.2"
+)]
+fn a_crr_lattice_with_a_negative_volatility_is_a_precondition() {
+  CrrModel::new(-0.2, 50);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_crr_lattice_with_a_nan_volatility_is_a_precondition() {
+  CrrModel::new(f64::NAN, 50);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = inf"
+)]
+fn a_crr_lattice_with_an_infinite_volatility_is_a_precondition() {
+  CrrModel::new(f64::INFINITY, 50);
+}
+
+/// The lattice holds no rate: an infinite one arrives with the query and answers NaN.
+#[test]
+fn a_crr_lattice_is_nan_for_an_infinite_rate() {
+  let crr = CrrModel::new(0.2, 50);
+  for (r, q) in [
+    (f64::INFINITY, Q),
+    (R, f64::INFINITY),
+    (f64::NEG_INFINITY, Q),
+  ] {
+    for option_type in TYPES {
+      let european = crr.price_option(100.0, K, r, q, 1.0, option_type);
+      let american = crr.price_american(100.0, K, r, q, 1.0, option_type);
+      assert!(
+        european.is_nan() && american.is_nan(),
+        "{r} {q}: {european} {american}"
+      );
+    }
+  }
+}

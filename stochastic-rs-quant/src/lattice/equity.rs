@@ -26,8 +26,12 @@ pub struct CrrModel<T: RealExt> {
 }
 
 impl<T: RealExt> CrrModel<T> {
-  /// Panics unless `steps >= 1`.
+  /// Panics unless `sigma` is finite and `>= 0` and `steps >= 1`.
   pub fn new(sigma: T, steps: usize) -> Self {
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     assert!(
       steps >= 1,
       "steps must satisfy `steps >= 1`, got steps = {steps:?}"
