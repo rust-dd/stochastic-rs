@@ -1,14 +1,7 @@
-use ndarray::Array1;
-use ndarray::ArrayView1;
-
 use super::types::LevyModel;
 use super::types::LevyModelType;
 use crate::OptionType;
 use crate::calibration::clip_negative;
-use crate::calibration::least_squares::Room;
-use crate::calibration::periodic_map;
-use crate::calibration::periodic_slopes;
-use crate::calibration::stencil::room;
 use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::fourier::LewisPricer;
@@ -53,7 +46,7 @@ pub(super) fn fourier_option_price(
 }
 
 /// How far inside its model's `E[e^X] < ∞` domain a fit's point stays.
-const DOMAIN_MARGIN: f64 = 0.01;
+pub(super) const DOMAIN_MARGIN: f64 = 0.01;
 
 pub(super) fn param_count(model_type: LevyModelType) -> usize {
   match model_type {
@@ -65,6 +58,7 @@ pub(super) fn param_count(model_type: LevyModelType) -> usize {
   }
 }
 
+/// Each parameter's box; the fit's own is `coordinates::coordinate_bounds`.
 pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
   match model_type {
     LevyModelType::VarianceGamma => {
@@ -108,29 +102,7 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
   }
 }
 
-/// Each parameter clamped into its bounds, then the point moved `DOMAIN_MARGIN` inside its
-/// model's `E[e^X] < ∞`, where its compensator is real: Variance Gamma's `ν`, NIG's `α`.
-pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
-  clamp_params(model_type, params);
-  match model_type {
-    // Reference: Madan, Carr & Chang (1998), eq. (22), DOI 10.1023/A:1009703431535.
-    LevyModelType::VarianceGamma => {
-      let rate = params[1] + 0.5 * params[0] * params[0];
-      if rate * params[2] > 1.0 - DOMAIN_MARGIN {
-        params[2] = (1.0 - DOMAIN_MARGIN) / rate;
-      }
-    }
-    // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
-    LevyModelType::Nig => {
-      let beta = params[1];
-      params[0] = params[0].max(beta.abs().max((beta + 1.0).abs()) + DOMAIN_MARGIN);
-    }
-    _ => {}
-  }
-}
-
-/// The condition of `E[e^X] < ∞` that `p` breaks, the ones [`project_params`] keeps a fit inside,
-/// in a constructor panic's words.
+/// The condition of `E[e^X] < ∞` that `p` breaks, in a constructor panic's words.
 pub(super) fn domain_violation(model_type: LevyModelType, p: &[f64]) -> Option<String> {
   let above_one = |i: usize, name: &str| {
     let got = format!("got start.values[{i}] = {:?}", p[i]);
@@ -154,33 +126,4 @@ pub(super) fn domain_violation(model_type: LevyModelType, p: &[f64]) -> Option<S
     LevyModelType::Kou => above_one(3, "eta1"),
     LevyModelType::MertonJd => None,
   }
-}
-
-/// Each parameter clamped into its bounds, the domain's coupled conditions aside.
-fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
-  for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
-    *p = p.clamp(lo, hi);
-  }
-}
-
-/// Each raw coordinate reflected into its bounds, so that no step leaves it unmoved, and the
-/// reflections' slopes.
-pub(super) fn fold_params(
-  model_type: LevyModelType,
-  x: ArrayView1<f64>,
-) -> (Vec<f64>, Array1<f64>) {
-  let bounds = param_bounds(model_type);
-  let folded = x.iter().zip(&bounds);
-  let folded = folded.map(|(&x, &(lo, hi))| periodic_map(x, lo, hi));
-  (folded.collect(), periodic_slopes(x, &bounds))
-}
-
-/// Each raw coordinate's room before its folded value meets a bound of its model's box.
-pub(super) fn room_in_box(model_type: LevyModelType, x: ArrayView1<f64>) -> Room {
-  let (folded, slopes) = fold_params(model_type, x);
-  room(
-    &Array1::from_vec(folded),
-    &param_bounds(model_type),
-    slopes.view(),
-  )
 }

@@ -22,6 +22,7 @@
 //!   <https://doi.org/10.1023/A:1009703431535>
 
 mod calibrator;
+mod coordinates;
 mod loss;
 mod types;
 

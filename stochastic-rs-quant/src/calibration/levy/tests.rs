@@ -33,6 +33,13 @@ const MJD_REF: [f64; 9] = [
   24.537096, 20.322713, 16.420092, 12.915553, 9.877019, 7.340385, 5.303578, 3.729825, 2.557790,
 ];
 
+/// The fit's start from `values`: clamped, its tied parameter a share between its edges.
+fn project(model: LevyModelType, values: &[f64]) -> Vec<f64> {
+  use super::coordinates::to_coordinates;
+  use super::coordinates::to_values;
+  to_values(model, &to_coordinates(model, values))
+}
+
 fn calls(strikes: &[f64], prices: &[f64], tau: f64) -> Vec<OptionQuote> {
   strikes
     .iter()
@@ -463,13 +470,11 @@ fn points_without_a_martingale() -> Vec<(LevyModelType, Vec<f64>, fn(&[f64]) -> 
 /// is finite; the point itself prices NaN or without a finite compensator.
 #[test]
 fn a_projected_point_has_a_martingale_in_every_model() {
-  use super::loss::project_params;
   for (model, point, condition) in points_without_a_martingale() {
     let price =
       |p: &[f64]| fourier_call_price(model, p, 100.0, 100.0, 0.05, 0.0, 1.0, &mut Walk::Adaptive);
     assert!(condition(&point) <= 0.0, "{model:?} {point:?}");
-    let mut projected = point.clone();
-    project_params(model, &mut projected);
+    let projected = project(model, &point);
     let margin = condition(&projected);
     assert!(margin >= 0.01 - 1e-12, "{model:?} {projected:?}: {margin}");
     let (inside, outside) = (price(&projected), price(&point));
@@ -477,8 +482,7 @@ fn a_projected_point_has_a_martingale_in_every_model() {
       inside.is_finite() && inside > 0.0 && inside < 100.0 + 1e-9,
       "{model:?} {projected:?}: {inside}, the point itself {outside}"
     );
-    let mut again = projected.clone();
-    project_params(model, &mut again);
+    let again = project(model, &projected);
     assert_eq!(again, projected);
     let boxed = projected.iter().zip(super::loss::param_bounds(model));
     assert!(
@@ -488,11 +492,10 @@ fn a_projected_point_has_a_martingale_in_every_model() {
   }
 }
 
-/// A point inside the condition by more than the margin is left as it is.
+/// A point inside the condition by more than the margin is left as it is, to its share's rounding.
 #[test]
 fn a_point_with_a_martingale_is_its_own_projection() {
   use super::loss::default_params;
-  use super::loss::project_params;
   let inside = [
     (LevyModelType::VarianceGamma, vec![1.2, -0.6, 4.95]),
     (LevyModelType::Nig, vec![6.02, 5.0, 0.5]),
@@ -508,9 +511,10 @@ fn a_point_with_a_martingale_is_its_own_projection() {
   ]
   .map(|model| (model, default_params(model)));
   for (model, point) in inside.into_iter().chain(defaults) {
-    let mut projected = point.clone();
-    project_params(model, &mut projected);
-    assert_eq!(projected, point, "{model:?}");
+    let moved = project(model, &point).into_iter().zip(&point);
+    let moved = moved.map(|(to, from)| (to - from).abs() / from.abs());
+    let moved = moved.fold(0.0, f64::max);
+    assert!(moved < 4.0 * f64::EPSILON, "{model:?}: {moved:e}");
   }
 }
 
@@ -564,9 +568,8 @@ fn with_start_panics_on_a_start_without_a_martingale() {
 /// From the domain's edge, the projection of each such point, every accepted step stays inside.
 #[test]
 fn a_fit_started_on_the_domains_edge_runs_inside_it() {
-  use super::loss::project_params;
   for (model, mut point, condition) in points_without_a_martingale() {
-    project_params(model, &mut point);
+    point = project(model, &point);
     let options = CalibrationOptions::default()
       .with_max_iterations(12)
       .with_record_history(true);
