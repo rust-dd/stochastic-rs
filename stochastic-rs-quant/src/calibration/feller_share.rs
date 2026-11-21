@@ -1,5 +1,5 @@
 //! σ as its share `w ∈ [0, 1]` of the way from its floor to Feller's cap, which is then a bound of
-//! the coordinate's box: above a projected cap σ had no slope, and a fit never left it.
+//! the coordinate's box: σ has a slope at every share, and none above a cap it is projected onto.
 
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -69,6 +69,24 @@ mod tests {
       }
     }
     assert_eq!(share(0.5, 1.5, 0.04, range), 1.0);
+  }
+
+  /// At `2κθ = 1` the cap meets σ's ceiling of 1: σ is continuous across it, and its slope in `κ`
+  /// is each side's own, `w·cap/(2κ)` below and 0 from the kink on.
+  #[test]
+  fn the_slopes_are_one_sided_at_the_caps_kink() {
+    let (range, w, theta, kink, h) = ((0.01, 1.0), 0.7, 0.25, 2.0, 1e-6);
+    let at = |kappa: f64| sigma(w, kappa, theta, range);
+    assert!((at(kink) - at(kink - h)).abs() < h && at(kink) == at(kink + h));
+    let below = (at(kink - h) - at(kink - 2.0 * h)) / h;
+    let [slope, _, _] = slopes(w, kink - h, theta, range);
+    assert!(
+      (slope - below).abs() < 1e-6 && (slope - 0.175).abs() < 1e-6,
+      "{slope} {below}"
+    );
+    for kappa in [kink, kink + h] {
+      assert_eq!(slopes(w, kappa, theta, range)[..2], [0.0, 0.0]);
+    }
   }
 
   #[test]
