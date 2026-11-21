@@ -11,7 +11,7 @@
 //! The lift takes drift $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps on $W^s$.
 //!
 //! Reference: Bilokon & Wong (2026), §5.5
-//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38, DOI 10.1111/mafi.12173
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

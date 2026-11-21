@@ -8,7 +8,7 @@
 //! Truncated at $V^+ = \max(V, 0)$ with a floored output: nonnegative always, and biased in law.
 //!
 //! Reference: Abi Jaber & El Euch, arXiv:1803.00477, the Volterra Heston model
-//! Reference: Lord, Koekkoek & van Dijk (2010), Quantitative Finance 10(2), full truncation
+//! Reference: Lord, Koekkoek & van Dijk (2010), Quantitative Finance 10(2), full truncation, DOI 10.1080/14697680802392496
 //! Reference: Abi Jaber, Bayer & Breneis (2024), arXiv:2412.17526, the exact state space
 //! Reference: Abi Jaber (2024), arXiv:2412.11264, the integrated classical square-root process
 //! Reference: Abi Jaber & Attal (2025), arXiv:2504.19885, iVi: weak convergence, not exactness

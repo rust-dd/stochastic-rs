@@ -6,8 +6,8 @@
 //!
 //! The schemes: <https://stochastic.rust-dd.com/docs/processes#generic-sde-solver>.
 //!
-//! Reference: Maruyama (1955), Rend. Circ. Mat. Palermo 4, 48–90
-//! Reference: Milstein (1974), Theory Probab. Appl. 19(3), 557–562
+//! Reference: Maruyama (1955), Rend. Circ. Mat. Palermo 4, 48–90, DOI 10.1007/BF02846028
+//! Reference: Milstein (1974), Theory Probab. Appl. 19(3), 557–562, DOI 10.1137/1119062
 //!
 //! ```rust
 //! use ndarray::{array, Array1, Array2};

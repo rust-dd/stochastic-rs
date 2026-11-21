@@ -6,7 +6,7 @@
 //!
 //! Its OU transition freezes `theta` over a step: exact for a constant `theta` at any step size.
 //!
-//! Reference: Black & Karasinski (1991), "Bond and Option Pricing when Short Rates are Lognormal"
+//! Reference: Black & Karasinski (1991), "Bond and Option Pricing when Short Rates are Lognormal", DOI 10.2469/faj.v47.n4.52
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

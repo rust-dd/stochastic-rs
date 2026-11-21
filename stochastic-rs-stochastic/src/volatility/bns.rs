@@ -19,7 +19,7 @@
 //!
 //! Reference: Barndorff-Nielsen, Shephard (2001), JRSSB 63(2), 167-241, DOI 10.1111/1467-9868.00282
 //! Reference: Arai (2015), arXiv:1506.01477
-//! Reference: Roberts, Papaspiliopoulos & Dellaportas (2004), JRSSB 66(2), 369-393
+//! Reference: Roberts, Papaspiliopoulos & Dellaportas (2004), JRSSB 66(2), 369-393, DOI 10.1111/j.1369-7412.2004.05139.x
 
 use ndarray::Array1;
 use rand::distr::Distribution;

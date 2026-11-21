@@ -89,7 +89,7 @@ fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
 
 /// Bilateral gamma, the difference of two gamma subordinators:
 /// `φ(u) = (1 − iu/λ₊)^{−α₊t}(1 + iu/λ₋)^{−α₋t}`. Unequal sides, so a sign error cannot pass.
-/// Reference: Küchler & Tappe (2008), §2
+/// Reference: Küchler & Tappe (2008), §2, DOI 10.1016/j.spa.2007.04.006
 #[test]
 fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
   let (alpha_p, lambda_p, alpha_m, lambda_m) = (1.2, 3.0, 0.8, 5.0);
@@ -195,7 +195,7 @@ fn gamma_subordinator_matches_its_laplace_transform() {
 /// The α-stable subordinator, `E[e^{−uX_t}] = exp(−ctu^α)`. At `α = 0.7` it has no finite mean,
 /// so only a transform has a standard error; this checks the sampler's positive-stable draw.
 /// Reference: Bertoin (1996), §III.1
-/// Reference: Chambers, Mallows & Stuck (1976)
+/// Reference: Chambers, Mallows & Stuck (1976), DOI 10.1080/01621459.1976.10480344
 #[test]
 fn alpha_stable_subordinator_matches_its_laplace_exponent() {
   let (alpha, c) = (0.7, 0.8);
@@ -225,7 +225,7 @@ fn alpha_stable_subordinator_matches_its_laplace_exponent() {
 
 /// The Poisson subordinator: a unit step counts `Poisson(λ)` events, so mean and variance are
 /// `λ`, an empty step has probability `e^{−λ}`, and `φ(u) = exp(λ(e^{iu} − 1))`.
-/// Reference: Cont & Tankov (2004), §3.1
+/// Reference: Cont & Tankov (2004), §3.1, DOI 10.1201/9780203485217
 #[test]
 fn poisson_subordinator_counts_match_the_poisson_law() {
   let lambda = 2.3;

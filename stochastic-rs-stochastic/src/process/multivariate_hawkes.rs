@@ -7,7 +7,7 @@
 //!
 //! Stationary when the spectral radius of `Γ`, `Γ_ij = α_ij / β_ij`, is below 1; Ogata thinning.
 //!
-//! Reference: Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
+//! Reference: Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes", DOI 10.1093/biomet/58.1.83
 //! Reference: Bacry, Mastromatteo & Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
 
 use ndarray::Array1;

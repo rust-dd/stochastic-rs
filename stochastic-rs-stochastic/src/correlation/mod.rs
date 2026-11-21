@@ -2,7 +2,7 @@
 //!
 //! [`TransformedOu`] is the reference's Section 2.1, [`VanEmmerich`] Eq. 15, [`TengScp`] Eq. 19/20.
 //!
-//! Reference: Teng, Ehrhardt & Günther (2016), J. Math. Industry 6:2
+//! Reference: Teng, Ehrhardt & Günther (2016), J. Math. Industry 6:2, DOI 10.1186/s13362-016-0018-4
 
 pub mod heston_stoch_corr;
 pub mod teng;

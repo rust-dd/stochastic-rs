@@ -7,8 +7,8 @@
 //!
 //! Only [`EulerBackend`] is stable: <https://stochastic.rust-dd.com/docs/processes#euler-engine>.
 //!
-//! Reference: Kloeden & Platen (1992), Numerical Solution of SDEs, Springer, §10.2 (Euler–Maruyama)
-//! Reference: Lord, Koekkoek & van Dijk (2010), Quant. Fin. 10(2), 177–194 (full truncation, CIR)
+//! Reference: Kloeden & Platen (1992), Numerical Solution of SDEs, Springer, §10.2 (Euler–Maruyama), DOI 10.1007/978-3-662-12616-5
+//! Reference: Lord, Koekkoek & van Dijk (2010), Quant. Fin. 10(2), 177–194 (full truncation, CIR), DOI 10.1080/14697680802392496
 
 use ndarray::Array1;
 use ndarray::Array2;

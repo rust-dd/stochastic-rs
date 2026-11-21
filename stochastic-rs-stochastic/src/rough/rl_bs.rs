@@ -7,8 +7,8 @@
 //! Solves `dS = rS dt + σS dW^H` under Wick–Itô–Skorokhod integration (Hu & Øksendal 2003).
 //!
 //! Reference: Bilokon & Wong (2026), §5.1
-//! Reference: Hu & Øksendal (2003), IDAQP 6, 1–32
-//! Reference: Necula (2008), "Option pricing in a fractional Brownian motion environment"
+//! Reference: Hu & Øksendal (2003), IDAQP 6, 1–32, DOI 10.1142/S0219025703001110
+//! Reference: Necula (2008), "Option pricing in a fractional Brownian motion environment", DOI 10.2139/ssrn.1286833
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
