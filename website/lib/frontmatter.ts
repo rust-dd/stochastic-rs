@@ -49,8 +49,8 @@ export const extraFrontmatter = {
 };
 
 /**
- * In this site's zod, not `frontmatterSchema.extend(…)`: extending fumadocs' own zod 4 erases
- * these types. The build and `scripts/lint-mdx.ts` share it, so they agree on what a page declares.
+ * In this site's zod: `frontmatterSchema.extend(…)` with fumadocs' own zod 4 erases these types.
+ * The build (`source.config.ts`) and `lint-mdx.ts` share it, so they agree on what a page declares.
  */
 export const pageFrontmatter = z.object({
   title: z.string(),

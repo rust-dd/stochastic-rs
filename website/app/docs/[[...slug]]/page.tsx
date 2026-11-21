@@ -8,7 +8,7 @@ import { SITE } from '@/lib/site';
 import { docsPageJsonLd } from '@/lib/structured-data';
 import type { Metadata } from 'next';
 
-/** An unknown slug gets the static 404; invoking the function answered it with a 500. */
+/** An unknown slug gets the static 404; the function would answer it with a 500 in production. */
 export const dynamicParams = false;
 
 /** Brand suffix only while the whole title still fits a search result (~60 chars). */

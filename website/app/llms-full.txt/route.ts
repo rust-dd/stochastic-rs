@@ -3,7 +3,7 @@ import { SITE } from '@/lib/site';
 
 export const dynamic = 'force-static';
 
-/** The whole site as one Markdown file, so an assistant can ingest the library in one fetch. */
+/** Every docs page as one Markdown file, so an assistant can ingest the library in one fetch. */
 export async function GET(): Promise<Response> {
   const sections = await Promise.all(pagesInOrder().map(llmText));
 

@@ -46,8 +46,8 @@ function inline(parent: Parent, workspace: string) {
 }
 
 /**
- * Inlines each `<RustExample>` as a fenced `rust` block at compile time, so the Markdown twins
- * carry the code, not a tag naming a file the reader cannot open; a missing file fails the build.
+ * Inlines each `<RustExample>` as a fenced `rust` block, so Shiki highlights it like any other and
+ * the Markdown twins carry the code itself; a missing file fails the build.
  */
 export function remarkRustExample() {
   const workspace = join(process.cwd(), '..');

@@ -6,7 +6,7 @@ export const OG_SIZE = { width: 1200, height: 630 };
 /** Band reserved at the very bottom edge, clear of the footer baseline. */
 const PATH_HEIGHT = 74;
 
-/** A fixed LCG keeps the PNG byte-identical across builds, so platforms never re-fetch it. */
+/** A fixed LCG keeps the PNG byte-identical, so platforms do not re-fetch it on each deploy. */
 function samplePath(): string {
   const points = 120;
   const width = 1200;
