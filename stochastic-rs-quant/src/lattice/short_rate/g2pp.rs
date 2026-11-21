@@ -73,30 +73,6 @@ impl<T: RealExt> G2ppTreeModel<T> {
 }
 
 impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
-  fn initial_x(&self) -> T {
-    self.initial_x
-  }
-
-  fn initial_y(&self) -> T {
-    self.initial_y
-  }
-
-  fn drift_x(&self, _time: T, x: T) -> T {
-    -self.mean_reversion_x * x
-  }
-
-  fn drift_y(&self, _time: T, y: T) -> T {
-    -self.mean_reversion_y * y
-  }
-
-  fn diffusion_x(&self, _time: T, _x: T) -> T {
-    self.sigma_x
-  }
-
-  fn diffusion_y(&self, _time: T, _y: T) -> T {
-    self.sigma_y
-  }
-
   fn correlation(&self) -> T {
     self.rho
   }

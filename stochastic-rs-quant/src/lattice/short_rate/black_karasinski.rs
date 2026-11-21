@@ -52,18 +52,6 @@ impl<T: RealExt> BlackKarasinskiTreeModel<T> {
 }
 
 impl<T: RealExt> OneFactorShortRateModel<T> for BlackKarasinskiTreeModel<T> {
-  fn initial_state(&self) -> T {
-    self.initial_rate.ln()
-  }
-
-  fn drift(&self, _time: T, state: T) -> T {
-    self.mean_reversion * (self.theta_log - state)
-  }
-
-  fn diffusion(&self, _time: T, _state: T) -> T {
-    self.sigma
-  }
-
   fn short_rate(&self, _time: T, state: T) -> T {
     state.exp()
   }

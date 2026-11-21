@@ -35,18 +35,6 @@ pub struct CurveFittedHullWhiteModel<T: RealExt> {
 }
 
 impl<T: RealExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
-  fn initial_state(&self) -> T {
-    T::zero()
-  }
-
-  fn drift(&self, _time: T, state: T) -> T {
-    -self.mean_reversion * state
-  }
-
-  fn diffusion(&self, _time: T, _state: T) -> T {
-    self.sigma
-  }
-
   fn short_rate(&self, time: T, state: T) -> T {
     let raw_level = (time / self.dt).to_f64().unwrap_or(0.0).round();
     let level = raw_level.max(0.0) as usize;
