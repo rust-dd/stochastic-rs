@@ -1,5 +1,5 @@
-//! Jarrow–Yildirim's foreign-currency analogy: the nominal short rate is the domestic rate, the
-//! real short rate the foreign one, and the price index `I(t)` the FX spot.
+//! Zero-coupon and year-on-year inflation curves, price indices with their publication lags, and
+//! inflation swaps; Jarrow–Yildirim read `I(t)` as an FX spot, the real rate as the foreign one.
 //!
 //! $$
 //! \frac{dI(t)}{I(t)} = (r_n(t) - r_r(t))\,dt + \sigma_I(t)\,dW^Q_I(t)
