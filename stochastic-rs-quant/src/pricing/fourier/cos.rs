@@ -1,7 +1,8 @@
 //! Fang–Oosterlee COS pricing of any [`FourierModelExt`] model in `y = ln(S_T/K)` from
-//! `x = ln(F_T/K)`: `chf(t, u)·e^{iux}` is their `φ(u; x)`, and Eqs. (22)–(23), (29)–(30) follow.
+//! `x = ln(F_T/K)`: `chf(t, u)·e^{iux}` is their `φ(u; x)`; Eqs. (19), (22)–(23), (25), (50).
 //!
-//! Reference: Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for European Options Based on Fourier-Cosine Series Expansions", SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
+//! Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
+//! Reference: Le Floc'h (2020), arXiv:2005.13248, §3
 
 use std::f64::consts::PI;
 
