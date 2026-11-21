@@ -128,7 +128,7 @@ impl FrftCarrMadanPricer {
     let half_width = cumulants.truncation_half_width(l_factor);
     let n = 4096_usize;
     // `Nη` spans twice `v* = √(80/c₂)`, where the Gaussian core `e^{−c₂v²/2}` is `e^{−40}`; the
-    // strike step is free of `η`, so a finer `η` than reciprocity tightens Simpson near the money.
+    // strike step is free of `η`, so a finer `η` than reciprocity tightens the rule near the money.
     let v_max = 2.0 * (80.0 / c2).sqrt();
     let eta = (v_max / n as f64).clamp(0.005, 0.25);
     Self {
@@ -167,13 +167,7 @@ impl FrftCarrMadanPricer {
     let mut input = Array1::<Complex64>::zeros(n);
     for j in 0..n {
       let v_j = eta * j as f64;
-      let simpson = if j == 0 {
-        eta / 3.0
-      } else if j % 2 == 1 {
-        eta * 4.0 / 3.0
-      } else {
-        eta * 2.0 / 3.0
-      };
+      let weight = if j == 0 { 0.5 * eta } else { eta };
       let xi = Complex64::new(v_j, -(alpha + 1.0));
       let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
       let denom = Complex64::new(alpha * alpha + alpha - v_j * v_j, (2.0 * alpha + 1.0) * v_j);
@@ -183,7 +177,7 @@ impl FrftCarrMadanPricer {
       // sign. (The 0-centred standard FFT pricer can use +i v_j b because
       // a symmetric grid makes the real part sign-insensitive; a forward-
       // shifted grid does not, so the sign must be correct here.)
-      input[j] = (-i_unit * v_j * b).exp() * psi * simpson;
+      input[j] = (-i_unit * v_j * b).exp() * psi * weight;
     }
 
     let output = frft(input.view(), gamma);

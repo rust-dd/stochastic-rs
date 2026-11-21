@@ -84,8 +84,8 @@ impl CarrMadanPricer {
     );
     let required_half_width = s.ln().abs() + cumulants.truncation_half_width(l_factor);
     let default = Self::default();
-    // Simpson's alternating weights image the damped price half a period away, `(S/3)e^{−απ/η}`:
-    // 0.56 on a spot of 100 at `η = 0.59`, so a narrow range must not coarsen `η`.
+    // The trapezoid's image of the damped price a period away, `Se^{−2πα/η}`, grows with `η`:
+    // a narrow range must not coarsen it past the default.
     let eta = (PI / required_half_width).min(default.eta);
     Self {
       eta: eta.max(0.001),
@@ -93,15 +93,8 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Compute call prices on the FFT strike grid.
-  ///
-  /// Returns `(log_strikes, call_prices)` where `log_strikes` are
-  /// $k_u = b + \lambda u$ and $b = -L/2$ centres the grid on $\ln K = 0$.
-  ///
-  /// Prices are floored at zero — FFT ringing puts deep-wing values a few ulp
-  /// below it — but a `NaN` is passed through rather than floored, so a
-  /// characteristic function that overflowed or a non-finite `s` / `r` / `t`
-  /// poisons the grid visibly. See `floor_price`.
+  /// Call prices on the FFT strike grid `(log_strikes, call_prices)`, `k_u = b + λu` with
+  /// `b = −Nλ/2` centring it on `ln K = 0`; floored at zero, a NaN passed through.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -110,11 +103,25 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> (Array1<f64>, Array1<f64>) {
+    self.surface(model, s, r, q, t, 0.0)
+  }
+
+  /// The grid centred on `centre`, by the trapezoid rule of Carr & Madan's (17): `η/2` at `v = 0`.
+  /// Reference: Carr & Madan (1999), J. Comput. Finance 2(4), (17), DOI 10.21314/JCF.1999.043
+  fn surface(
+    &self,
+    model: &impl FourierModelExt,
+    s: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+    centre: f64,
+  ) -> (Array1<f64>, Array1<f64>) {
     let n = self.n;
     let alpha = self.alpha;
     let eta = self.eta;
     let lambda = 2.0 * PI / (n as f64 * eta);
-    let b = -0.5 * n as f64 * lambda;
+    let b = centre - 0.5 * n as f64 * lambda;
 
     let i_unit = Complex64::i();
     let ln_f = s.ln() + (r - q) * t;
@@ -125,13 +132,7 @@ impl CarrMadanPricer {
     for j in 0..n {
       let v_j = eta * j as f64;
 
-      let simpson = if j == 0 {
-        eta / 3.0
-      } else if j % 2 == 1 {
-        eta * 4.0 / 3.0
-      } else {
-        eta * 2.0 / 3.0
-      };
+      let weight = if j == 0 { 0.5 * eta } else { eta };
 
       let xi = Complex64::new(v_j, -(alpha + 1.0));
       let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
@@ -140,7 +141,8 @@ impl CarrMadanPricer {
 
       let psi = disc * phi / denom;
 
-      input[j] = (i_unit * v_j * b).exp() * psi * simpson;
+      // `e^{−iv_j k_u} = e^{−iv_j b}e^{−2πiju/N}`; only at `b = −Nλ/2` do both signs give `(−1)^j`.
+      input[j] = (-i_unit * v_j * b).exp() * psi * weight;
     }
 
     let handler = FftHandler::<f64>::new(n);
@@ -158,8 +160,8 @@ impl CarrMadanPricer {
     (log_strikes, prices)
   }
 
-  /// Call price interpolated on the FFT surface; NaN when `ln(k)` falls outside the grid (test with
-  /// [`Self::strike_in_grid`], or widen it with a larger `n` or a smaller `eta`).
+  /// The call at `k`, node `N/2` of a grid centred on `ln k`, nothing interpolated; NaN outside
+  /// [`Self::price_call_surface`]'s grid, past which `e^{−α ln k}` amplifies the round-off.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
@@ -169,26 +171,16 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
-    let target = k.ln();
-    let n = log_strikes.len();
-
-    if !(log_strikes[0] <= target && target <= log_strikes[n - 1]) {
+    let half_span = 0.5 * self.n as f64 * 2.0 * PI / (self.n as f64 * self.eta);
+    let log_strike = k.ln();
+    if log_strike.is_nan() || log_strike.abs() > half_span {
       return f64::NAN;
     }
-
-    for i in 0..n - 1 {
-      if log_strikes[i] <= target && target <= log_strikes[i + 1] {
-        let w = (target - log_strikes[i]) / (log_strikes[i + 1] - log_strikes[i]);
-        return prices[i] * (1.0 - w) + prices[i + 1] * w;
-      }
-    }
-    unreachable!("CarrMadan interpolation fall-through despite grid bracketing");
+    let (_, prices) = self.surface(model, s, r, q, t, log_strike);
+    prices[self.n / 2]
   }
 
-  /// Returns `true` if a strike `k` falls inside the FFT log-strike grid for
-  /// the given model / market state. Use this before [`Self::price_call`] to
-  /// detect / extend the grid rather than accept a NaN.
+  /// Whether `k` falls inside [`Self::price_call_surface`]'s log-strike grid.
   pub fn strike_in_grid(
     &self,
     model: &impl FourierModelExt,
