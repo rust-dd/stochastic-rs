@@ -5,7 +5,7 @@
 //! \sum_{i=1}^{n} c_i\,P(T_0,T_i;r^\star)=N
 //! $$
 //!
-//! with zero-coupon-bond puts (payer) or calls (receiver) struck at `X_i = A(T₀, T_i)e^{−B r*}`.
+//! with zero-coupon-bond puts (payer) or calls (receiver) at `X_i = A(T₀, T_i)e^{−B(T₀, T_i)r*}`.
 //! Reference: Jamshidian (1989), J. Finance 44(1), 205–209
 //! Reference: Brigo & Mercurio (2006), 2nd ed., §3.3, DOI 10.1007/978-3-540-34604-3
 

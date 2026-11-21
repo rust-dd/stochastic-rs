@@ -26,7 +26,7 @@
 //!            {\sigma_j^{(n)}\sqrt{T_n}},
 //! $$
 //!
-//! with `N_t` Poisson at rate `λ`, `ψ` the normal pdf and `σ_j^{(n)}` the quote's vol, held fixed.
+//! with `N_t` Poisson at rate `λ`, `ψ` the normal pdf, `σ_j^{(n)}` the quote's vol and `w` fixed.
 //! Reference: Agazzotti et al. (2025), arXiv:2502.13824, eqs. (12)–(13)
 //! Reference: Kou (2002), Manag. Sci. 48(8), 1086–1101, DOI 10.1287/mnsc.48.8.1086.166
 //! Reference: Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327

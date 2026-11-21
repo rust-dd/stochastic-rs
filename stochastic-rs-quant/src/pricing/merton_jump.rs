@@ -148,8 +148,8 @@ impl Merton1976Pricer {
     BsmPricer::new(self.term_vol(n, tau), self.b)
   }
 
-  /// Classifies a term's query ([`TermRegime`]); a non-finite or non-positive `tau`, `s` or `k`
-  /// stays `Ordinary`, so its closed-form `NaN` propagates instead of a limit answering it.
+  /// Classifies a term's query ([`TermRegime`]); a query failing `0 < tau < ∞`, `s > 0` or `k > 0`
+  /// (a NaN fails, `+∞` passes) stays `Ordinary`, so the closed form answers it, not a limit.
   fn term_regime(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
     if term.sigma != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
       return TermRegime::Ordinary;

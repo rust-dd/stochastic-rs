@@ -152,8 +152,8 @@ impl<S: SeedExt> HestonSlvCalibrator<S> {
     self
   }
 
-  /// The local vol `σ_LV(T_j, K_i)` on the input grid, preferred to [`Dupire`]'s finite difference:
-  /// its 1–3 % error against QuantLib dominates the leverage's (fit RMSE 0.036 against 0.004).
+  /// The local vol `σ_LV(T_j, K_i)` on the input grid; prefer it where a smooth surface exists, as
+  /// [`Dupire`]'s 1–3 % error against QuantLib dominates the leverage's (RMSE 0.036 against 0.004).
   pub fn with_local_vol(mut self, local_vol: Array2<f64>) -> Self {
     self.local_vol = Some(local_vol);
     self

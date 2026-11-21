@@ -46,7 +46,7 @@ pub fn kernel_k_ij_h<T: FloatExt>(x: &[T], h: T, i: usize, j: usize) -> T {
 }
 
 /// `g_{i,j}` of the digital put `1(0≤x₁≤K₁)1(0≤x₂≤K₂)` as `h → 0`, `g₂₂ = f − g₁₁` by `ΔQ₂ = δ₀`;
-/// edges take the inner limit, corners the path `|y₁−b₁|/K₁ = |y₂−b₂|/K₂`; off-diagonal log kept.
+/// edges take the inner limit, a corner `c` the path `|y₁−c₁|/K₁ = |y₂−c₂|/K₂`; `g₁₂`'s log kept.
 /// Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580, 124–135, eq. (6.3)
 pub fn g_digital_put_2d<T: FloatExt>(y: [T; 2], k: [T; 2]) -> [[T; 2]; 2] {
   assert!(

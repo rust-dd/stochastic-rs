@@ -15,7 +15,7 @@
 //! \mathbb{E}[V_t \mid X_t = x] = \frac{\int_0^\infty v\, p(t, x, v)\, dv}{\int_0^\infty p(t, x, v)\, dv},
 //! $$
 //!
-//! Finite volumes (§2), Hundsdorfer–Verwer ADI after a Rannacher start (§3), `Q` passes of §4.
+//! Finite volumes (§2), Hundsdorfer–Verwer ADI from a Rannacher start (§3), `Q` passes of §4 (4.4).
 //! Reference: Wyns & Du Toit (2016), arXiv:1611.02961; Int. J. Comput. Math. 94 (2017), 2239–2267
 //! Reference: Ren et al. (2007), Risk 20(9), 138–143
 //! Reference: Tian et al. (2015), J. Deriv. 22(3), 21–39

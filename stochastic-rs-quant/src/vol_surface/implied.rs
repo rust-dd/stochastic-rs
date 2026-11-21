@@ -152,8 +152,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// From a surrogate's flat row-major `(maturity, strike)` vols; panics unless `N_T·N_K` of them,
-  /// one forward per maturity, ascending axes (`predict_implied_vol_surface` sorts `STRIKES`).
+  /// From `N_T·N_K` flat row-major `(maturity, strike)` vols of a surrogate, a forward per maturity
+  /// and strictly ascending axes, or panics (`predict_implied_vol_surface` sorts `STRIKES`).
   ///
   /// ```
   /// use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
