@@ -1,5 +1,5 @@
-//! The numbers in `website/lib/figures.ts`: copy this file to `examples/figure_data.rs` at the
-//! repository root and run `cargo run --release --example figure_data`.
+//! The numbers in `website/lib/figures.ts`, a docs asset rather than an example: copy this file to
+//! `examples/figure_data.rs` and run `cargo run --release --example figure_data`.
 
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::vol_surface::svi::SviRawParams;
