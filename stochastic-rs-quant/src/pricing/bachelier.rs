@@ -15,6 +15,7 @@ use crate::instruments::option::caplet::bachelier_forward_caplet;
 use crate::instruments::option::caplet::bachelier_forward_floorlet;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::exotic::assert_sigma;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -27,7 +28,10 @@ pub struct BachelierPricer {
 }
 
 impl BachelierPricer {
-  pub const fn new(sigma: f64) -> Self {
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the forward is certain and the price is
+  /// its discounted intrinsic value.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
     Self { sigma }
   }
 
@@ -238,5 +242,38 @@ mod tests {
       normal_implied_volatility(5.0, 105.0, 100.0, 1.0, OptionType::Call),
       0.0
     );
+  }
+
+  /// At `σ_N = 0` the forward is certain, so the call is its discounted intrinsic value.
+  #[test]
+  fn a_zero_normal_volatility_prices_the_discounted_intrinsic() {
+    let (s, _, r, q, tau) = Q;
+    let model = BachelierPricer::new(0.0);
+    let want = (-r * tau).exp() * (model.forward(s, r, q, tau) - 95.0);
+    assert_eq!(model.price_call(s, 95.0, r, q, tau), want);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -20.0"
+  )]
+  fn new_rejects_a_negative_normal_volatility() {
+    let _ = BachelierPricer::new(-20.0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_normal_volatility() {
+    let _ = BachelierPricer::new(f64::INFINITY);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+  )]
+  fn new_rejects_a_nan_normal_volatility() {
+    let _ = BachelierPricer::new(f64::NAN);
   }
 }
