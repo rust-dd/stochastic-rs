@@ -19,6 +19,7 @@ pub(super) const P_SIGMA_J: (f64, f64) = (0.001, 1.0);
 pub(super) const BOX: [(f64, f64); 8] = [
   P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_MU_J, P_SIGMA_J,
 ];
+
 /// Where a boxed value lies: `BOX`, with `ρ` clamped inside its reflection's range.
 pub(super) const BOXED: [(f64, f64); 8] = [
   P_V0,

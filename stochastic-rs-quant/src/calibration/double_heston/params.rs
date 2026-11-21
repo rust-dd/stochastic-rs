@@ -9,7 +9,9 @@ use crate::pricing::heston::HestonParams;
 
 pub(super) const P_V0: (f64, f64) = (0.001, 0.25);
 pub(super) const P_SIGMA: (f64, f64) = (0.01, 1.0);
+
 const FACTOR: [(f64, f64); 5] = [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-RHO_BOUND, RHO_BOUND)];
+
 /// Where a boxed value lies: each factor's box, with `ρ` clamped inside its reflection's range.
 pub(super) const BOXED: [(f64, f64); 10] = [
   FACTOR[0], FACTOR[1], FACTOR[2], FACTOR[3], FACTOR[4], FACTOR[0], FACTOR[1], FACTOR[2],
