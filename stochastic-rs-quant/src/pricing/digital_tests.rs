@@ -250,10 +250,18 @@ mod construction_validation {
     ] {
       let want = format!("{SIGMA}, got sigma = {shown}");
       let texts = [
-        panic_text(move || drop(CashOrNothingPricer::new(10.0, bad))),
-        panic_text(move || drop(AssetOrNothingPricer::new(bad))),
-        panic_text(move || drop(GapPricer::new(100.0, bad))),
-        panic_text(move || drop(SuperSharePricer::new(110.0, bad))),
+        panic_text(move || {
+          let _ = CashOrNothingPricer::new(10.0, bad);
+        }),
+        panic_text(move || {
+          let _ = AssetOrNothingPricer::new(bad);
+        }),
+        panic_text(move || {
+          let _ = GapPricer::new(100.0, bad);
+        }),
+        panic_text(move || {
+          let _ = SuperSharePricer::new(110.0, bad);
+        }),
       ];
       assert!(texts.iter().all(|text| *text == want), "{texts:?}");
     }
@@ -293,7 +301,9 @@ mod construction_validation {
       (-110.0, "-110.0"),
       (f64::INFINITY, "inf"),
     ] {
-      let text = panic_text(move || drop(SuperSharePricer::new(bad, 0.2)));
+      let text = panic_text(move || {
+        let _ = SuperSharePricer::new(bad, 0.2);
+      });
       let want = "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = ";
       assert_eq!(text, format!("{want}{shown}"));
     }
