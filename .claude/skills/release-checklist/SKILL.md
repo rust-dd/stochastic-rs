@@ -120,14 +120,17 @@ version DOI is only known after stage 5.5.
 ## Stage 4 — local publish dry run
 
 ```bash
-# 4.1 Dry-run publish.sh: runs `cargo publish --dry-run` on each
-# sub-crate in dependency order (core → distributions → stochastic →
-# copulas → stats → quant → ai → umbrella).
-./publish.sh --dry-run
+# 4.1 Package and verify every published crate together, in dependency
+# order (core → distributions → copulas → stochastic → stats → quant →
+# ai → umbrella), against a local registry of the packaged siblings.
+cargo publish --workspace --dry-run --locked
 ```
 
-`publish.sh` runs its **own** fmt + clippy + test gate before
-publishing anything, so stage 1 and this stage overlap deliberately.
+Not `./publish.sh --dry-run`: it verifies each crate against its siblings
+on crates.io, so after a version bump it fails at the second crate.
+
+`publish.sh` (stage 6) runs its **own** fmt + clippy + test gate before
+publishing anything, so stage 1 and stage 6 overlap deliberately.
 Its other flags: `--allow-dirty` (publish with uncommitted changes) and
 `--skip-gate` (bypass the fmt/clippy/test gate — not recommended). It
 skips `stochastic-rs-py` entirely (`publish = false`; it is a
@@ -194,6 +197,10 @@ fix the cause and simply re-run `./publish.sh`: already-published
 versions are detected and skipped, so a resume needs no version
 surgery.
 
+`cargo publish --workspace` does it in one command and verifies all
+eight crates before the first upload; a resume after a failed upload
+needs `--exclude` for the crates already published.
+
 ## Stage 7 — build & publish PyPI wheels
 
 **This stage is automatic.** `.github/workflows/pypi.yml` (there is no
@@ -216,11 +223,12 @@ pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that
 internal `python` features itself, and maturin (>= 1.9.4) sets
 `PYO3_BUILD_EXTENSION_MODULE` for its cargo call.
 
-A local wheel for debugging one platform:
+A local wheel for debugging one platform, from the repo root as CI does
+(the root `pyproject.toml` carries `manifest-path`, `module-name` and
+`license-files`):
 
 ```bash
-cd stochastic-rs-py
-maturin build --release --strip
+maturin build --release --locked --strip
 ```
 
 **Platform coverage is settled — do not re-add Intel macOS.** The macOS
