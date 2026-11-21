@@ -21,10 +21,11 @@ const NEAR_TOLERANCE: f64 = 1e-12;
 /// The head covers `(0, 1]` in panels of `x = ln u` this wide, until three in a row add nothing.
 const HEAD_WIDTH: f64 = 2.0;
 const MAX_HEAD_PANELS: usize = 400;
-/// The radians the integrand's phase turns before the tail rule takes over; its rate is floored.
+/// The walk ends where `u` times the phase's local rate is this many radians, the turn a panel
+/// from `u` holds; the rate's floor puts that at `2·10⁶` at most, so the probes end by `2²¹`.
 const PHASE_BUDGET: f64 = 20.0;
 const RATE_FLOOR: f64 = 1e-5;
-/// `|φ|` past which the walk need not reach, probed at powers of two up to `2⁴⁰`.
+/// `|φ|` past which the walk need not reach, probed at powers of two.
 const NEGLIGIBLE_CHF: f64 = 1e-12;
 
 /// Past this variance the control keeps it: a wider law's chf is already negligible in `1/√w`.
@@ -61,12 +62,12 @@ pub(crate) struct Rule {
   tails: [Option<TailRule>; 2],
 }
 
-/// `(reach, scale)`: the walk ends where `e^{−iuκ}chf(u)` has turned `PHASE_BUDGET` radians, or at
-/// the first power of two where `chf` is negligible; it walks `y = u/scale` over its panel budget.
+/// `(reach, scale)`: `PHASE_BUDGET` over the local phase rate of `e^{−iuκ}chf(u)` at the first
+/// power of two `u` it is under, or that `u` where `chf` is negligible; the walk is in `u/scale`.
 pub(crate) fn reach_and_scale(chf: impl Fn(f64) -> Complex64, kappa: f64) -> (f64, f64) {
   let mut rate = -kappa;
   let mut reach = 1.0_f64;
-  while reach < 1.1e12 {
+  loop {
     let at = chf(reach);
     let live = at.norm() > NEGLIGIBLE_CHF || at.is_nan();
     if live {
@@ -77,11 +78,10 @@ pub(crate) fn reach_and_scale(chf: impl Fn(f64) -> Complex64, kappa: f64) -> (f6
       // The rate settles as `u` grows, so the budget is not read back past the probe before.
       let floor = if reach > 1.0 { 0.5 * reach } else { 0.0 };
       reach = reach.min(budget.max(floor));
-      break;
+      return (reach, (reach / 4000.0).max(1.0));
     }
     reach *= 2.0;
   }
-  (reach, (reach / 4000.0).max(1.0))
 }
 
 /// `d arg part/du` at `u` by a forward step of `1e-6·max(u, 1)`, given `at = part(u)`.
