@@ -54,8 +54,8 @@ enum Degenerate {
 
 impl Degenerate {
   fn of(s: f64, k: f64, r: f64, q: f64, tau: f64, t_eval: f64) -> Option<Self> {
-    let finite = s.is_finite() && r.is_finite() && q.is_finite() && tau.is_finite();
-    if !finite || k.is_nan() || tau < 0.0 {
+    let finite = [s, k, r, q, tau].iter().all(|x| x.is_finite());
+    if !finite || tau < 0.0 {
       Some(Self::OffDomain)
     } else if tau == 0.0 {
       Some(Self::ZeroHorizon)

@@ -442,7 +442,13 @@ mod degenerate_queries {
   #[test]
   fn a_spot_or_strike_that_is_not_positive_is_nan() {
     let p = model();
-    for (s, k) in [(0.0, K), (S, 0.0), (S, -5.0), (S, f64::NAN)] {
+    for (s, k) in [
+      (0.0, K),
+      (S, 0.0),
+      (S, -5.0),
+      (S, f64::NAN),
+      (S, f64::INFINITY),
+    ] {
       let CallPut { call, put } = p.price_call_put(s, k, R, 0.0, TAU);
       assert!(call.is_nan() && put.is_nan(), "({s}, {k}): ({call}, {put})");
       let localized = p.price_call_put_localized(s, k, R, 0.0, TAU);
