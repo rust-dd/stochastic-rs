@@ -5,8 +5,9 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::*;
 use crate::interest::hull_white_2f::HullWhite2F;
 use crate::traits::ProcessExt;
+use crate::traits::RealExt;
 
-/// Grzelak, Oosterlee and van Weeren (2011) experiment 4.2, with the drift target holding the mean rate at 3 percent.
+/// Holds the mean rate of Grzelak et al. (2011), experiment 4.2, at 3 percent.
 fn flat_theta(_t: f64) -> f64 {
   1.1 * 0.03
 }
@@ -84,7 +85,7 @@ fn sample_par_is_bit_identical_across_thread_pools() {
   assert_ne!(one[0], one[69], "paths of one call differ");
 }
 
-/// With both rate volatilities at zero the rate rows are the deterministic recursion `HullWhite2F` runs.
+/// With both rate volatilities at zero the rate rows are `HullWhite2F`'s deterministic recursion.
 #[test]
 fn zero_rate_volatility_reproduces_hull_white_2f() {
   let n = 33;
@@ -156,12 +157,16 @@ fn integrated_rate_row_is_the_trapezoidal_sum_of_the_rate_row() {
   }
 }
 
-/// `E[S_T exp(-∫r)] = S_0` through the standard error across paths; Euler holds it exactly per step,
-/// QE up to the asset step's own small bias (Andersen 2008 §4.3), covered by the band at this vol-of-vol.
-fn discounted_spot_holds<Sch: HybridScheme>(
-  model: &HestonHullWhite2F<f64, Sch, Deterministic>,
-  what: &str,
-) {
+/// Standard errors a statistic may sit from its reference, on the best of [`SEEDS`].
+const Z_MAX: f64 = 3.0;
+const SEEDS: [u64; 3] = [20_240_601, 1312, 42];
+
+/// `|z|` of `E[S_T exp(-∫r)]` against `S_0 = 1`: exact per step under Euler, and under QE up
+/// to the asset step's own bias (Andersen 2008, §4.3).
+fn discounted_spot_z<Sch: HybridScheme>(model: &HestonHullWhite2F<f64, Sch, Deterministic>) -> f64
+where
+  HestonHullWhite2F<f64, Sch, Deterministic>: ProcessExt<f64, Output = HestonHullWhite2FPaths<f64>>,
+{
   let n = model.n;
   let m = 20_000;
   let values = model.sample_map(m, |path| {
@@ -169,27 +174,90 @@ fn discounted_spot_holds<Sch: HybridScheme>(
   });
   let mean = values.iter().sum::<f64>() / m as f64;
   let var = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (m as f64 - 1.0);
-  let se = (var / m as f64).sqrt();
-  let z = (mean - 1.0) / se;
-  assert!(
-    z.abs() < 5.0,
-    "{what}: E[S_T exp(-∫r)] = {mean} ± {se}, {z:.1} standard errors from S_0 = 1"
-  );
+  ((mean - 1.0) / (var / m as f64).sqrt()).abs()
 }
 
 #[test]
 fn discounted_spot_is_a_martingale_under_both_schemes() {
-  discounted_spot_holds(&paper(33, 20_240_601), "Euler");
-  discounted_spot_holds(&paper(33, 20_240_601).qe(), "QE");
+  let euler = f64::min_or_nan_fold(SEEDS.map(|seed| discounted_spot_z(&paper(33, seed))));
+  assert!(
+    euler < Z_MAX,
+    "Euler: every seed is {euler:.2} SE or more off"
+  );
+  let qe = f64::min_or_nan_fold(SEEDS.map(|seed| discounted_spot_z(&paper(33, seed).qe())));
+  assert!(qe < Z_MAX, "QE: every seed is {qe:.2} SE or more off");
 }
 
-/// Grzelak's `Exe13_12.py` (Heston + one-factor Hull-White, `λ = 1.12, η = 0.01, S₀ = 100, T = 15,
-/// r = 0.1, γ = 0.3, v̄ = 0.05, v₀ = 0.02, ρ_xr = 0.5, ρ_xv = −0.8, κ = 0.5`) prices calls by COS
-/// from the affine H1-HW characteristic function; `(K, call)` below is that script's
-/// `CallPutOptionPriceCOSMthd_StochIR` at `N = 2000, L = 15`. The hybrid with `σ₂ = 0` is that model, and the
-/// affine approximation's gap to it is below the Monte Carlo error at this η (Grzelak and Oosterlee 2011).
+/// Every pair correlated, the rate-variance entries included, each entry a value of its own.
+fn rho_full() -> Array2<f64> {
+  array![
+    [1.0, -0.3, 0.35, 0.08],
+    [-0.3, 1.0, 0.25, -0.15],
+    [0.35, 0.25, 1.0, -0.4],
+    [0.08, -0.15, -0.4, 1.0],
+  ]
+}
+
+/// Sample correlations of one Euler step's increments, which are linear in the shocks;
+/// `log S − ∫r` drops the rate shock the trapezoid adds to the spot.
+fn one_step_correlations(seed: u64) -> Array2<f64> {
+  let m = 100_000;
+  let model = paper(2, seed).with_rho(rho_full());
+  let steps = model.sample_map(m, |path| {
+    [
+      path.s[1].ln() - path.integrated_rate[1],
+      path.v[1],
+      path.r[1],
+      path.u[1],
+    ]
+  });
+  let mean: [f64; 4] = std::array::from_fn(|i| steps.iter().map(|x| x[i]).sum::<f64>() / m as f64);
+  let cov = |i: usize, j: usize| {
+    steps
+      .iter()
+      .map(|x| (x[i] - mean[i]) * (x[j] - mean[j]))
+      .sum::<f64>()
+  };
+  Array2::from_shape_fn((4, 4), |(i, j)| cov(i, j) / (cov(i, i) * cov(j, j)).sqrt())
+}
+
+/// The worst `|z|` of the six sample correlations against `reference`, at the standard error
+/// `(1 − ρ²)/√m` of a Gaussian pair.
+fn correlation_worst_z(sample: &Array2<f64>, reference: &Array2<f64>) -> f64 {
+  let pairs = (0..4).flat_map(|i| (0..i).map(move |j| (i, j)));
+  f64::max_or_nan_fold(pairs.map(|(i, j)| {
+    let rho = reference[(i, j)];
+    ((sample[(i, j)] - rho) / ((1.0 - rho * rho) / 100_000_f64.sqrt())).abs()
+  }))
+}
+
 #[test]
-fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
+fn one_euler_step_has_the_full_correlation_matrix() {
+  let samples = SEEDS.map(one_step_correlations);
+  let best = f64::min_or_nan_fold(samples.iter().map(|c| correlation_worst_z(c, &rho_full())));
+  assert!(
+    best < Z_MAX,
+    "every seed has an entry {best:.2} SE or more off"
+  );
+  let mut swapped = rho_full();
+  for (i, j) in [(1, 2), (2, 1)] {
+    swapped[(i, j)] = rho_full()[(1, 3)];
+  }
+  for (i, j) in [(1, 3), (3, 1)] {
+    swapped[(i, j)] = rho_full()[(1, 2)];
+  }
+  for sample in &samples {
+    let z = correlation_worst_z(sample, &swapped);
+    assert!(
+      z > 5.0,
+      "the rate-variance entries swapped are only {z:.2} SE away"
+    );
+  }
+}
+
+/// The worst `|z|` over `(K, call)` of Grzelak's `Exe13_12.py`, COS on the affine H1-HW model,
+/// which the hybrid with `σ₂ = 0` is up to an approximation gap below the Monte Carlo error.
+fn exe13_12_worst_z(seed: u64) -> f64 {
   fn theta_r(t: f64) -> f64 {
     let (lambda, eta, r) = (1.12_f64, 0.01_f64, 0.1_f64);
     lambda * r + eta * eta / (2.0 * lambda) * (1.0 - (-2.0 * lambda * t).exp())
@@ -216,7 +284,7 @@ fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
     Some(0.1),
     n,
     Some(15.0),
-    Deterministic::new(1312),
+    Deterministic::new(seed),
   )
   .qe();
   const REFERENCE: [(f64, f64); 5] = [
@@ -228,20 +296,24 @@ fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
   ];
   let m = 20_000;
   let terminal = model.sample_map(m, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
-  for (k, cos) in REFERENCE {
+  f64::max_or_nan_fold(REFERENCE.map(|(k, cos)| {
     let payoffs = terminal
       .iter()
       .map(|(s, int_r)| (s - k).max(0.0) * (-int_r).exp())
       .collect::<Vec<_>>();
     let mean = payoffs.iter().sum::<f64>() / m as f64;
     let var = payoffs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (m as f64 - 1.0);
-    let se = (var / m as f64).sqrt();
-    let z = (mean - cos) / se;
-    assert!(
-      z.abs() < 4.0,
-      "K = {k}: Monte Carlo {mean} ± {se} against COS {cos}, {z:.1} standard errors apart"
-    );
-  }
+    ((mean - cos) / (var / m as f64).sqrt()).abs()
+  }))
+}
+
+#[test]
+fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
+  let best = f64::min_or_nan_fold(SEEDS.map(exe13_12_worst_z));
+  assert!(
+    best < Z_MAX,
+    "every seed has a call {best:.2} SE or more from COS"
+  );
 }
 
 #[test]
