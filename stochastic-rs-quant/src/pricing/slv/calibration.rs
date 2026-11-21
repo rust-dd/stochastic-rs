@@ -17,8 +17,7 @@
 //! \qquad \kappa = 1.5,\ t_{\min} = 0.25,
 //! $$
 //!
-//! The cloud starts at `(S₀, v₀)` and steps under `L(t_k, ·)`, the variance by Euler under full
-//! truncation, the recursion [`super::HestonSlvPricer`] and the `HestonSlv` process run.
+//! The cloud steps from `(S₀, v₀)` as [`super::HestonSlvPricer`] does, `v` by full truncation.
 //! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
 //! Reference: Guyon & Henry-Labordère (2013), Nonlinear Option Pricing, Chapman & Hall, ch. 11
 //! Reference: Cozma et al. (2017), arXiv:1701.06001, §3.4, Algorithm 1
