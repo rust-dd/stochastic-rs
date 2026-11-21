@@ -211,3 +211,29 @@ fn the_natural_jacobian_matches_central_differences() {
     assert!(worst < 1e-6, "{model:?} {x}: {worst:e}");
   }
 }
+
+/// Kou on the Heston reference ends with `p` held on its floor, from four starts whose raw `p`
+/// travels far from its box: the reported `p` is the bound, not the nearest value a seat reached.
+#[test]
+fn a_parameter_held_on_its_bound_is_reported_on_it() {
+  let heston = [
+    25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
+  ];
+  let rows = STRIKES.iter().zip(heston);
+  let quotes = rows.map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call));
+  let quotes = quotes.collect::<Vec<_>>();
+  for values in [
+    vec![1.577, 13.276, 0.818, 90.355, 27.054],
+    vec![0.884, 17.580, 0.435, 81.636, 90.007],
+    vec![1.719, 11.627, 0.531, 48.454, 43.936],
+    vec![0.590, 1.087, 0.666, 89.526, 80.961],
+  ] {
+    let start = LevyParams {
+      values: values.clone(),
+      model_type: LevyModelType::Kou,
+    };
+    let calibrator = LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.05, 0.0, quotes.clone());
+    let p = calibrator.calibrate(Some(start)).unwrap().params.values[2];
+    assert!(p == 0.01 || p > 0.01 + 1e-9, "{values:?}: p = {p:?}");
+  }
+}

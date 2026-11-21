@@ -121,7 +121,8 @@ impl Bounds {
     cost: f64,
   ) -> Array1<f64> {
     let mut active = self.active.borrow_mut();
-    let folded = objective.at(&best).params();
+    // The folded point is the same model at a raw value a bound's own `f64` is reachable from.
+    let best = objective.at(&best).params();
     let mut seated = best.clone();
     let entering = |j: usize| !active[j] && set[j].is_some();
     for j in (0..set.len()).filter(|j| entering(*j)) {
@@ -142,7 +143,7 @@ impl Bounds {
     let slopes = objective.slopes.borrow();
     let columns = slopes
       .iter()
-      .flat_map(|slopes| slopes.columns().into_iter().zip(&folded));
+      .flat_map(|slopes| slopes.columns().into_iter().zip(&best));
     let reach = columns.map(|(column, value)| column.dot(&column) * value * value);
     let allowance = 4.0 * cost.sqrt() * f64::EPSILON * reach.sum::<f64>().sqrt();
     drop(slopes);
