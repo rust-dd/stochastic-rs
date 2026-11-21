@@ -195,6 +195,15 @@ fn negative_bandwidth_is_rejected_by_the_cdf_too() {
   let _ = laplace_cdf(0.5, -1.0);
 }
 
+/// At `sigma = 0` no Brownian increment `dS/(σS)` is finite, so no path has an estimate and the
+/// price is NaN, not the empty average's `0.0`.
+#[test]
+fn no_finite_pathwise_estimate_prices_nan() {
+  let p = GbmMalliavinPricer::new(0.0, 64, 16, 0.5).with_seed(Deterministic::new(SEEDS[0]));
+  let CallPut { call, put } = p.price_call_put(110.0, 100.0, R, 0.0, TAU);
+  assert!(call.is_nan() && put.is_nan(), "({call}, {put})");
+}
+
 /// A strike no path reaches zeroes `lf` and empties the localisation sum: the price is finite and
 /// non-negative, and the same pricer still prices a live strike above it.
 #[test]

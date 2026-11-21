@@ -166,8 +166,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     self.t_eval
   }
 
-  /// Call and put from one simulation of the plain Malliavin estimator: the payoff at `tau = 0`;
-  /// NaN for a non-finite query, a spot or strike that is not positive, or `tau <= t_eval`.
+  /// Call and put from one simulation of the plain Malliavin estimator, the payoff at `tau = 0`;
+  /// NaN off the query's domain, at `tau <= t_eval`, and where no path has a finite estimate.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval) {
       return limit.price_call_put(s, k);
@@ -187,8 +187,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   ) -> CallPut {
     let t_eval = self.t_eval;
 
-    // The tower property `C(0) = E[e^{−rt} C(t, S_t)]`, over the finite pathwise estimates and
-    // floored at zero.
+    // The tower property `C(0) = E[e^{−rt} C(t, S_t)]` over the finite pathwise estimates, NaN with
+    // none, floored at zero.
     let disc_0t = (-r * t_eval).exp();
 
     let mut sum = 0.0_f64;
@@ -199,7 +199,11 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
         count += 1;
       }
     }
-    let avg_c_t = if count > 0 { sum / count as f64 } else { 0.0 };
+    let avg_c_t = if count > 0 {
+      sum / count as f64
+    } else {
+      f64::NAN
+    };
 
     let mut call_0 = disc_0t * avg_c_t;
     if call_0 < 0.0 {
