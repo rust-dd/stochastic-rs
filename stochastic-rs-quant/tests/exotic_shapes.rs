@@ -316,7 +316,10 @@ fn the_other_carries_and_the_edges_keep_their_values() {
   );
   let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25).with_seed(Deterministic::new(7));
   let zero_spot = malliavin.price_call_put_localized(0.0, K, R, Q, TAU);
-  assert!(zero_spot.call.is_nan() && zero_spot.put.is_nan(), "{zero_spot:?}");
+  assert!(
+    zero_spot.call.is_nan() && zero_spot.put.is_nan(),
+    "{zero_spot:?}"
+  );
   let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);
   let far_out = hscm.price_call_put(S, 400.0, R, Q, 0.05);
   assert_pinned(
