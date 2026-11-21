@@ -353,46 +353,82 @@ fn price_strikes_is_price_at_every_strike() {
   });
 }
 
-/// Fang & Oosterlee (2008) Table 2: three GBM calls in one computation, the reference values
-/// printed to nine decimals.
+/// Fang & Oosterlee (2008) Table 2: three GBM calls in one computation, held to the values printed
+/// to nine decimals and to the closed form (Merton 1973).
 #[test]
 fn price_strikes_reproduces_the_gbm_strike_vector_of_fang_oosterlee() {
+  let strikes = ndarray::array![80.0, 100.0, 120.0];
   let prices = CosEngine::default().price_strikes(
     &BsmFourier { sigma: 0.25 },
     100.0,
-    ndarray::array![80.0, 100.0, 120.0].view(),
+    strikes.view(),
     0.1,
     0.0,
     0.1,
     OptionType::Call,
   );
-  for (price, want) in prices.iter().zip([20.799226309, 3.659968453, 0.044577814]) {
-    assert!((price - want).abs() < 1e-9, "{price} vs {want}");
+  let printed = [20.799226309, 3.659968453, 0.044577814];
+  let bsm = BsmPricer::new(0.25, BsmCoc::Bsm1973);
+  for ((&price, &k), want) in prices.iter().zip(&strikes).zip(printed) {
+    assert!((price - want).abs() < 1e-9, "K={k}: {price} vs {want}");
+    let closed = bsm.price_call(100.0, k, 0.1, 0.0, 0.1);
+    assert!((price - closed).abs() < 1e-12, "K={k}: {price} vs {closed}");
   }
 }
 
-/// Fang & Oosterlee (2008) Tables 4–6: the 21 Heston strikes of Table 6, with `K = 100` at the
-/// printed references; the `T = 1` one is a Carr–Madan value, held here to seven decimals.
+/// Table 6's strikes 50, 55, …, 150 on Fang & Oosterlee's Heston set (53) at `T = 1`, by Lewis's
+/// integral of the same `chf`, mpmath at 40 digits.
+const TABLE_6: [f64; 21] = [
+  50.07053913971511,
+  45.12410854150659,
+  40.20880117230948,
+  35.33869482461895,
+  30.5332869929249,
+  25.819775173024123,
+  21.236638756516854,
+  16.839368496216263,
+  12.70953177475374,
+  8.967794318649112,
+  5.78515543437619,
+  3.3592018895317572,
+  1.787135001945827,
+  0.9211483314582412,
+  0.48282813789152784,
+  0.2621235686061102,
+  0.1475936526090662,
+  0.08587840764229675,
+  0.05141485251512249,
+  0.03155321757076034,
+  0.019788382207635565,
+];
+
+/// Reference: Fang & Oosterlee (2008) Tables 4–6: `TABLE_6`, and `T = 10` at `K = 100`.
+/// The default engine is within 3e-8 of mpmath and the printed 5.785155450 is 1.6e-8 high; 4,096
+/// terms over 16 deviations hold 1e-12, and at `T = 10` Table 5's 22.318945791 stands to 1e-9.
 #[test]
 fn price_strikes_holds_the_heston_references_of_fang_oosterlee() {
+  let model = fang_oosterlee_heston();
   let strikes = ndarray::Array1::linspace(50.0, 150.0, 21);
-  for (t, want, tolerance) in [(1.0, 5.785155450, 1e-7), (10.0, 22.318945791, 1e-9)] {
-    let prices = CosEngine::default().price_strikes(
-      &fang_oosterlee_heston(),
+  for (engine, tolerance) in [
+    (CosEngine::default(), 3e-8),
+    (CosEngine::new(4096, 16.0), 1e-12),
+  ] {
+    let prices = engine.price_strikes(
+      &model,
       100.0,
       strikes.view(),
       0.0,
       0.0,
-      t,
+      1.0,
       OptionType::Call,
     );
-    assert_eq!(strikes[10], 100.0);
-    assert!(
-      (prices[10] - want).abs() < tolerance,
-      "T={t}: {} vs {want}",
-      prices[10]
-    );
+    for ((&price, &k), want) in prices.iter().zip(&strikes).zip(TABLE_6) {
+      assert!((price - want).abs() < tolerance, "K={k}: {price} vs {want}");
+    }
   }
+  let long = CosEngine::default().price(&model, 100.0, 100.0, 0.0, 0.0, 10.0, OptionType::Call);
+  assert!((long - 22.31894579115449).abs() < 1e-11, "{long}");
+  assert!((long - 22.318945791).abs() < 1e-9, "{long}");
 }
 
 /// A strike off the domain is NaN alone and a spot, rate or maturity off it every strike; each
