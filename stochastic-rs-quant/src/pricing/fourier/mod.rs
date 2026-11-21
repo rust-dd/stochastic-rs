@@ -28,7 +28,6 @@ pub use cumulants::Cumulants;
 pub(crate) use cumulants::heston_cumulants;
 pub(crate) use cumulants::mean_integrated_variance;
 pub use frft::FrftCarrMadanPricer;
-pub use frft::frft;
 pub use heston::DoubleHestonFourier;
 pub use heston::HestonFourier;
 pub(crate) use heston::factor_cd;
@@ -70,11 +69,6 @@ impl<T: FourierModelExt> crate::traits::ModelPricer for T {
 /// $Se^{-q\tau}P_1-Ke^{-r\tau}P_2$, the vanilla European call, on the
 /// forward $Se^{(r-q)\tau}$ the default reports.
 impl<T: FourierModelExt> crate::traits::VanillaEuropeanCall for T {}
-
-/// Compute $\Gamma(-Y)$ via the reflection formula.
-pub fn gamma_neg_y_pub(y: f64) -> f64 {
-  gamma_neg_y(y)
-}
 
 pub(crate) fn gamma_neg_y(y: f64) -> f64 {
   if y.abs() < 1e-8 {
