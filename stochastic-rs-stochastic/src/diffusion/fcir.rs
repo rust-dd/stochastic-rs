@@ -427,9 +427,8 @@ mod tests {
     );
   }
 
-  /// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
   #[test]
-  fn fcir_accepts_sub_feller_under_the_floor() {
+  fn fcir_accepts_sub_feller_under_absorption() {
     let fcir = Fcir::<f64, _>::new(
       0.7,
       0.5,

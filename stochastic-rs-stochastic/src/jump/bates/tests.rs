@@ -45,7 +45,7 @@ fn every_drift_form_reaches_the_spot_drift_net_of_the_compensator() {
     let EulerSpec::Bates1996 { drift_c, .. } =
       EulerSystem::<f64, 2>::euler_spec(&make_bates(drift))
     else {
-      panic!("a floored Bates steps through the Bates family");
+      panic!("an absorbing Bates steps through the Bates family");
     };
     assert_eq!(drift_c, rate - 0.25);
   }

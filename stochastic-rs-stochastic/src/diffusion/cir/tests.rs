@@ -45,9 +45,8 @@ fn cir_accepts_sub_feller_under_reflection() {
   );
 }
 
-/// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
 #[test]
-fn cir_accepts_sub_feller_under_the_floor() {
+fn cir_accepts_sub_feller_under_absorption() {
   let cir = Cir::<f64, _>::new(
     0.5,
     0.1,

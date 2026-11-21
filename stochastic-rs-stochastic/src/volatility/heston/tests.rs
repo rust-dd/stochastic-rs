@@ -179,12 +179,15 @@ fn the_boundary_selects_the_step() {
     )
     .sample()
   };
-  let [_, floor] = make(VarianceBoundary::Absorption);
+  let [_, absorption] = make(VarianceBoundary::Absorption);
   let [_, reflect] = make(VarianceBoundary::Reflect);
-  assert!(floor.iter().all(|v| *v >= 0.0) && reflect.iter().all(|v| *v >= 0.0));
-  let split = floor.iter().zip(reflect.iter()).position(|(f, r)| f != r);
+  assert!(absorption.iter().all(|v| *v >= 0.0) && reflect.iter().all(|v| *v >= 0.0));
+  let split = absorption
+    .iter()
+    .zip(reflect.iter())
+    .position(|(f, r)| f != r);
   let split = split.expect("v0 = 0 under a vol-of-vol of 2 crosses zero, where the two steps part");
-  assert_eq!(floor[split], 0.0);
+  assert_eq!(absorption[split], 0.0);
   assert!(reflect[split] > 0.0);
 }
 

@@ -317,9 +317,8 @@ fn accepts_matlab_feller_violation_under_reflection() {
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
-/// The floored step accepts the same parameters; only the diagnostic warning differs.
 #[test]
-fn accepts_matlab_feller_violation_under_the_floor() {
+fn accepts_matlab_feller_violation_under_absorption() {
   let model = Heston2D::<f64, _>::new(
     [0.0, 0.0],
     [0.4, 0.4],
