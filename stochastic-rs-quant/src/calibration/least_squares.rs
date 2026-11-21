@@ -473,9 +473,13 @@ fn drive<P: LeastSquaresProblem>(
     iterations,
     started,
   } = restarted(&objective, initial, (budget, max_iter), solve);
-  if let Some(bounds) = &objective.bounds {
-    bounds.watch.set(false);
-  }
+  let best = match &objective.bounds {
+    Some(bounds) => {
+      bounds.watch.set(false);
+      bounds.settled(&objective, best)
+    }
+    None => best,
+  };
   let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
     false => 0.0,
