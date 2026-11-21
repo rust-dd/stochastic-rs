@@ -197,7 +197,14 @@ fn the_trail_records_weighted_market_minus_model() {
     );
   let fit = calibrator.calibrate(None).unwrap();
   assert!(fit.history.len() > 1, "{} entries", fit.history.len());
-  assert_eq!(fit.history[0].params, START.projected());
+  // The start returns from σ's share within a rounding.
+  let opened = fit.history[0].params;
+  assert!((opened.sigma - START.sigma).abs() < 1e-15, "{opened:?}");
+  let exact = HkdeParams {
+    sigma: START.sigma,
+    ..opened
+  };
+  assert_eq!(exact, START.projected());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -404,17 +411,14 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = HkdeProblem::new(&calibrator, START).unwrap();
-  let bounds = [
-    P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_P_UP, P_ETA1, P_ETA2,
-  ];
+  let bounds = BOX;
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, 0.2, 30.0, 25.0];
   for base in [problem.params(), ndarray::Array1::from(SHOP), far] {
     for (label, point) in box_points(base.view(), &bounds, &[true; 9]) {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
-    let boxed = [P_V0, P_KAPPA, P_THETA, P_SIGMA_V, (-RHO_BOUND, RHO_BOUND)];
-    for (label, point) in beside_points(base.view(), &[&boxed[..], &bounds[5..]].concat()) {
+    for (label, point) in beside_points(base.view(), &BOX) {
       // `η₁ = 1.01` is `1e-2` from `E[e^J]`'s pole at 1, where the price turns on a `1e-4` scale.
       if label == "beside lower 7" {
         continue;
@@ -457,8 +461,8 @@ fn the_default_start_leaves_the_rho_bound_for_the_heston_reference() {
   assert!(rmse < 1e-5 && fit.params.rho > -0.75, "{rmse:e}: {fit:?}");
 }
 
-/// A coordinate's room is its boxed value's distance to each bound, swapped where the raw point
-/// lies reflected, and 0 across `ρ`'s clamped strip.
+/// A coordinate's room is its folded value's distance to each bound, swapped where the raw point
+/// lies reflected, as `ρ` is past its bound of 0.9999.
 #[test]
 fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   use super::params::room_in_box;
@@ -475,9 +479,9 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   for (j, value, want) in [
     (4, -0.6, (0.3999, 1.5999)),
     (4, -0.9995, (4e-4, 1.9994)),
-    (4, -0.99995, (0.0, 1.9998)),
-    (4, -1.00005, (1.9998, 0.0)),
-    (4, 1.0005, (4e-4, 1.9994)),
+    (4, -0.99995, (1.99975, 5e-5)),
+    (4, -1.00005, (1.99965, 1.5e-4)),
+    (4, 1.0005, (6e-4, 1.9992)),
     (1, 19.99, (19.89, 0.01)),
     (1, 20.01, (0.01, 19.89)),
     (5, 5e-6, (5e-6, 10.0 - 5e-6)),
@@ -492,4 +496,46 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   let room = room_in_box(base.view());
   assert_eq!(room.strip[4], 6e-4);
   assert!(room.down.iter().chain(&room.up).all(|room| *room > 1e-2));
+}
+
+/// A pull acts on `(v0, κ, θ, σ, …)`: σ's row runs through its share and the cap's `κ` and `θ`,
+/// and a reflected coordinate's slope is −1.
+#[test]
+fn the_natural_jacobian_matches_central_differences() {
+  use super::loss::HkdeProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+  use crate::calibration::least_squares::checks::worst_relative_error;
+  let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let mut problem = HkdeProblem::new(&calibrator, START).unwrap();
+  for x in [
+    ndarray::array![0.04, 1.5, 0.04, 0.6, -0.5, 0.5, 0.4, 10.0, 5.0],
+    ndarray::array![0.04, 20.5, 0.3, 0.4, -0.5, -0.2, 0.4, 51.0, 5.0],
+    ndarray::array![0.04, 1.5, 0.04, 1.3, -0.5, 0.5, 0.4, 10.0, 5.0],
+  ] {
+    problem.set_params(x.view());
+    let analytic = problem.natural_jacobian();
+    let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+    let worst = worst_relative_error(analytic.view(), numeric.view());
+    assert!(worst < 1e-6, "{x}: {worst:e}");
+  }
+}
+
+/// A start inside Feller's condition is its own model point, and one that breaks it is the cap.
+#[test]
+fn a_start_maps_to_its_share_and_back() {
+  use super::loss::HkdeProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let inside = HkdeProblem::new(&calibrator, START).unwrap();
+  assert!((inside.effective_params().sigma - START.sigma).abs() < 1e-15);
+  let breaking = HkdeParams {
+    sigma: 0.9,
+    ..START
+  };
+  let capped = HkdeProblem::new(&calibrator, breaking).unwrap();
+  assert_eq!(capped.params()[3], 1.0);
+  let (capped, want) = (capped.effective_params(), breaking.projected());
+  assert!((capped.sigma - want.sigma).abs() < 1e-15, "{capped:?}");
+  assert!(capped.sigma * capped.sigma <= 2.0 * capped.kappa * capped.theta);
 }

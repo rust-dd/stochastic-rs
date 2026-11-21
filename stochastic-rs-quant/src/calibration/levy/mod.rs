@@ -22,6 +22,7 @@
 //!   <https://doi.org/10.1023/A:1009703431535>
 
 mod calibrator;
+mod coordinates;
 mod loss;
 mod types;
 
@@ -29,6 +30,9 @@ pub use calibrator::LevyCalibrator;
 pub use types::LevyModel;
 pub use types::LevyModelType;
 pub use types::LevyParams;
+
+#[cfg(test)]
+mod in_box_tests;
 
 #[cfg(test)]
 mod quadrature_tests;

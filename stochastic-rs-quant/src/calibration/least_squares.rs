@@ -189,7 +189,8 @@ pub(crate) fn natural_cosines<P: LeastSquaresProblem>(
 }
 
 impl LmReport {
-  /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
+  /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's
+  /// renames do not reach.
   pub fn message(&self) -> &'static str {
     match self.reason {
       _ if self.flat => "flat objective",
@@ -472,9 +473,13 @@ fn drive<P: LeastSquaresProblem>(
     iterations,
     started,
   } = restarted(&objective, initial, (budget, max_iter), solve);
-  if let Some(bounds) = &objective.bounds {
-    bounds.watch.set(false);
-  }
+  let best = match &objective.bounds {
+    Some(bounds) => {
+      bounds.watch.set(false);
+      bounds.settled(&objective, best)
+    }
+    None => best,
+  };
   let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
     false => 0.0,

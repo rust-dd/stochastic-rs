@@ -111,6 +111,32 @@ impl Bounds {
     Ok(())
   }
 
+  /// A sum can miss the bound by a rounding; the rest of the way is the nearer room, twice.
+  fn land(&self, x: &mut Array1<f64>, j: usize) {
+    for _ in 0..2 {
+      let room = (self.rooms)(x.view());
+      x[j] += if room.down[j] <= room.up[j] {
+        -room.down[j]
+      } else {
+        room.up[j]
+      };
+    }
+  }
+
+  /// The fit's point folded, where a bound's own `f64` is a raw value, with each held coordinate
+  /// landed on it: far from its box a raw value reaches a bound only to its own spacing.
+  pub(super) fn settled<P: LeastSquaresProblem>(
+    &self,
+    objective: &Objective<P>,
+    best: Array1<f64>,
+  ) -> Array1<f64> {
+    let mut settled = objective.at(&best).params();
+    let active = self.active.borrow();
+    let held = (0..settled.len()).filter(|j| active[*j]);
+    held.for_each(|j| self.land(&mut settled, j));
+    settled
+  }
+
   /// `best` with each entering coordinate of `set` on its bound, the projection of (82), where
   /// that does not raise `cost`; `best` otherwise, with nothing entering. The rest is released.
   fn seat<P: LeastSquaresProblem>(
@@ -121,22 +147,24 @@ impl Bounds {
     cost: f64,
   ) -> Array1<f64> {
     let mut active = self.active.borrow_mut();
+    let folded = objective.at(&best).params();
     let mut seated = best.clone();
     let entering = |j: usize| !active[j] && set[j].is_some();
     for j in (0..set.len()).filter(|j| entering(*j)) {
       seated[j] += set[j].unwrap_or(0.0);
-      // The sum can miss the bound by a rounding; the rest of the way is the nearer room.
-      for _ in 0..2 {
-        let room = (self.rooms)(seated.view());
-        seated[j] += if room.down[j] <= room.up[j] {
-          -room.down[j]
-        } else {
-          room.up[j]
-        };
-      }
+      self.land(&mut seated, j);
     }
     let on = |x: &Array1<f64>| Residual::residual(&objective, x).map(|r| r.dot(&r));
-    let kept = seated == best || on(&seated).is_ok_and(|on| on <= cost);
+    // An ulp of every folded value moves the cost by `2‖r‖·ε‖Dθ‖`: a seat worse by no more than
+    // twice that is taken, as (82)'s projection onto the bound.
+    let slopes = objective.slopes.borrow();
+    let columns = slopes
+      .iter()
+      .flat_map(|slopes| slopes.columns().into_iter().zip(&folded));
+    let reach = columns.map(|(column, value)| column.dot(&column) * value * value);
+    let allowance = 4.0 * cost.sqrt() * f64::EPSILON * reach.sum::<f64>().sqrt();
+    drop(slopes);
+    let kept = seated == best || on(&seated).is_ok_and(|on| on <= cost + allowance);
     for (j, active) in active.iter_mut().enumerate() {
       *active = set[j].is_some() && (kept || *active);
     }
@@ -457,6 +485,35 @@ mod tests {
       fitted[0] < 1000.0 && cost < 1.0 + 1e-9,
       "{fitted}, cost {cost}"
     );
+  }
+
+  /// One ulp short of a bound the cost falls across, where the cost on the bound reads `8ε`
+  /// higher, 0.9 of the allowance `4‖r‖·ε‖Dθ‖ = 4√5·ε`: the seat is taken.
+  #[test]
+  fn a_seat_whose_cost_is_worse_by_its_rounding_alone_is_taken() {
+    let rows = |v: &[f64]| {
+      let bit = if v[0] >= 1.0 { 4.0 * f64::EPSILON } else { 0.0 };
+      ndarray::array![2.0 - v[0] + bit, v[1] - 2.0]
+    };
+    let slopes = |_: &[f64]| ndarray::array![[-1.0, 0.0], [0.0, 1.0]];
+    let (fitted, _, _) = capped([1.0 - f64::EPSILON / 2.0, 2.0], [1.0, FREE], rows, slopes);
+    assert_eq!(fitted[0], 1.0, "{fitted}");
+  }
+
+  /// The same seat at a rise of `32ε`, 3.6 times the allowance, is refused.
+  #[test]
+  fn a_seat_whose_cost_is_worse_by_a_few_allowances_is_refused() {
+    let rows = |v: &[f64]| {
+      let bit = if v[0] >= 1.0 {
+        16.0 * f64::EPSILON
+      } else {
+        0.0
+      };
+      ndarray::array![2.0 - v[0] + bit, v[1] - 2.0]
+    };
+    let slopes = |_: &[f64]| ndarray::array![[-1.0, 0.0], [0.0, 1.0]];
+    let (fitted, _, _) = capped([1.0 - f64::EPSILON / 2.0, 2.0], [1.0, FREE], rows, slopes);
+    assert!(fitted[0] < 1.0, "{fitted}");
   }
 
   /// The first rests 1e-6 from a bound the cost falls across: its step is 1 and then 2e-7.

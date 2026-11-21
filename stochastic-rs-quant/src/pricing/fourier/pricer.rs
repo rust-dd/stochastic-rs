@@ -28,7 +28,7 @@ pub(super) fn settled_call(s: f64, k: f64, r: f64, q: f64, t: f64) -> Option<f64
 }
 
 /// The put by parity on `call`, and the payoff or NaN from expiry on, where parity on a payoff
-/// rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`.
+/// rounds: `(1.1 − 0.3) − 1.1 + 0.3` is `−5.6e-17`.
 pub(super) fn parity_put(
   call: impl FnOnce() -> f64,
   s: f64,
