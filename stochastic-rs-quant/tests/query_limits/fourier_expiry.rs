@@ -154,10 +154,10 @@ fn a_fractional_surface_at_expiry_pays_a_zero_spot_its_payoff() {
   assert_eq!((log_strikes.len(), prices.len()), (256, 256));
 }
 
-/// Parity on a payoff rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`, and the put is 0.
+/// Parity on a payoff rounds: `(1.1 − 0.3) − 1.1 + 0.3` is `−5.6e-17`, and the put is 0.
 #[test]
 fn an_expired_put_is_its_payoff_and_not_parity_on_the_calls() {
-  let (s, k) = (0.3, 0.1);
+  let (s, k) = (1.1, 0.3);
   let carr_madan = CarrMadanPricer::new(4096, 1.5);
   let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
   let puts = [
