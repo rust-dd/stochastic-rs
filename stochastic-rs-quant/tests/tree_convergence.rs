@@ -1,5 +1,5 @@
 //! The short-rate trees converge to their models' closed forms: Vasicek's bond and Jamshidian's
-//! swaption for Hull–White, Brigo–Mercurio's bond for G2++, Jamshidian on the fitted curve.
+//! swaption for Hull–White, the closed-form bond for G2++, Jamshidian on the fitted curve.
 
 use ndarray::Array1;
 use stochastic_rs_quant::bonds::Vasicek;
@@ -52,7 +52,7 @@ fn the_hull_white_bond_converges_at_first_order_to_vasiceks() {
   assert_first_order(&errors, 1e-4);
 }
 
-/// Brigo & Mercurio (2006), §4.2.2: `exp(−φT − B_a x₀ − B_b y₀ + V(0, T)/2)` for a constant `φ`.
+/// `exp(−φT − B_a x₀ − B_b y₀ + V/2)` for a constant `φ`, `V = Var ∫₀ᵀ (x + y) dt`.
 fn g2pp_bond(p: &G2ppParams, x0: f64, y0: f64, t: f64) -> f64 {
   let (a, b, s, e) = (p.mean_reversion_x, p.mean_reversion_y, p.sigma_x, p.sigma_y);
   let one = |k: f64| t + 2.0 / k * (-k * t).exp() - (-2.0 * k * t).exp() / (2.0 * k) - 1.5 / k;
