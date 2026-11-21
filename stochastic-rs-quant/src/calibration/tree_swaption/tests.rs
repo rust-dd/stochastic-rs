@@ -122,7 +122,7 @@ fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
   };
   let bk =
     BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start).calibrate(None);
-  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).calibrate(None);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).calibrate(None);
   for err in [bk.unwrap_err(), g2.unwrap_err()] {
     assert!(
       matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
@@ -145,7 +145,7 @@ fn g2pp_reprices_synthetic_quotes() {
     rho: -0.7,
     phi: 0.03,
   };
-  let truth = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, true_params);
+  let truth = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, true_params);
   let (_, model_prices) = truth.cost(0.03, None).price_series(&true_params);
   let scale = model_prices.iter().sum::<f64>() / model_prices.len() as f64;
   for (quote, price) in quotes.iter_mut().zip(model_prices) {
@@ -156,22 +156,66 @@ fn g2pp_reprices_synthetic_quotes() {
     mean_reversion_x: 0.4,
     mean_reversion_y: 0.08,
     sigma_x: 0.012,
-    sigma_y: 0.005,
-    rho: -0.5,
+    sigma_y: 0.0072,
+    rho: -0.9,
     phi: 0.03,
   };
-  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
-    .with_options(CalibrationOptions::default().with_max_iterations(300));
+  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, start);
   let result = calibrator.calibrate(None).expect("calibration runs");
   let (rmse, worst) = (result.rmse() / scale, result.max_error.unwrap() / scale);
+  assert!(result.converged, "{:?}", result.message);
   assert!(
-    rmse < 2e-2 && worst < 3e-2,
+    rmse < 1e-4 && worst < 1e-4,
     "relative rmse {rmse}, worst {worst}"
   );
   let model = result.to_short_rate_model();
   assert_eq!(model.phi, 0.03);
   assert_eq!(model.rho, result.params.rho);
   assert!(result.params.rho.abs() < 1.0);
+}
+
+/// The exact European at the truth from a first-principles quadrature, at two correlations.
+#[test]
+fn g2pp_prices_each_quote_by_the_exact_european() {
+  let curve = flat_curve();
+  let quotes = grid(&[(1.0, 2.0), (1.0, 3.0), (2.0, 2.0), (2.0, 4.0)]);
+  for (rho, exact) in [
+    (
+      -0.7,
+      [
+        0.0031236220647256406,
+        0.004316990382190504,
+        0.004111127640411084,
+        0.007567375148371866,
+      ],
+    ),
+    (
+      -0.99,
+      [
+        0.0008601245844779512,
+        0.0017501570863531332,
+        0.0019255111106666286,
+        0.005096947261395691,
+      ],
+    ),
+  ] {
+    let truth = G2ppParams {
+      mean_reversion_x: 0.5,
+      mean_reversion_y: 0.05,
+      sigma_x: 0.01,
+      sigma_y: 0.006,
+      rho,
+      phi: 0.03,
+    };
+    let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, truth);
+    let (_, model) = calibrator.cost(0.03, None).price_series(&truth);
+    for (got, want) in model.iter().zip(exact) {
+      assert!(
+        (got / want - 1.0).abs() < 1e-11,
+        "rho {rho}: {got} against {want}"
+      );
+    }
+  }
 }
 
 /// The weights shape the objective only; `rmse()` and `max_error` are price errors as quoted.
@@ -222,9 +266,9 @@ fn the_tree_calibrators_report_unweighted_errors() {
     rho: -0.5,
     phi: 0.03,
   };
-  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).with_options(options);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).with_options(options);
   let fit = g2.calibrate(None).unwrap();
-  let (market, model) = G2ppSwaptionCalibrator::new(&plain, &curve, 1.0, 4, g2_start)
+  let (market, model) = G2ppSwaptionCalibrator::new(&plain, &curve, 1.0, g2_start)
     .cost(0.03, None)
     .price_series(&fit.params);
   let (rmse, worst) = unweighted(&market, &model);
@@ -259,7 +303,7 @@ fn the_tree_calibrators_refuse_patience() {
     rho: -0.5,
     phi: 0.03,
   };
-  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).with_options(options);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).with_options(options);
   assert_eq!(g2.calibrate(None).unwrap_err(), refused);
 }
 
@@ -276,7 +320,7 @@ fn g2pp_reflects_a_correlation_past_its_bound() {
     rho: -0.7,
     phi: 0.03,
   };
-  let cost = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start).cost(0.03, None);
+  let cost = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, start).cost(0.03, None);
   let rho = |x: f64| cost.params(&[0.5, 0.05, 0.01, 0.006, x]).rho;
   assert_eq!(rho(-0.7), -0.7);
   assert!((rho(-1.2) + 0.798).abs() < 1e-15 && (rho(1.2) - 0.798).abs() < 1e-15);
