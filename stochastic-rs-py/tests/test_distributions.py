@@ -1,12 +1,5 @@
-"""Distribution-surface pytest coverage for the `stochastic_rs` extension.
-
-Mirrors and extends the verified `python_smoke.py` checks: seed
-determinism, sample shapes, statistical moments, and the parallel
-sampling path. Run after `maturin develop` from the workspace root:
-
-    maturin develop --release
-    pytest stochastic-rs-py/tests/test_distributions.py
-"""
+"""Distribution bindings: `python_smoke.py`'s checks of seed determinism, sample shapes, moments and
+the parallel sampling path; run after `maturin develop`."""
 
 from __future__ import annotations
 

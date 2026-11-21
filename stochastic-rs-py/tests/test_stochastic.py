@@ -1,8 +1,5 @@
-"""Stochastic-process-surface pytest coverage.
-
-Exercises the GBM process binding: seed determinism, path shape, the
-parallel multi-path sampler, and basic sanity of the simulated levels.
-"""
+"""GBM process binding: seed determinism, path shape, the parallel multi-path sampler and sanity of
+the simulated levels."""
 
 from __future__ import annotations
 

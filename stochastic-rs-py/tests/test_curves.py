@@ -48,7 +48,8 @@ def test_multi_curve_reads_a_tenor_string_and_rejects_one_that_names_no_tenor():
 
 def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_convex_starts_at_the_origin():
     times, rates = np.array([0.5, 1.0, 2.0, 5.0]), np.array([0.03, 0.032, 0.035, 0.04])
-    # cubic is scipy's CubicSpline(bc_type="natural") on the zero rates; monotone_convex is Hagan & West with tau_0 = 0
+    # cubic is scipy's CubicSpline(bc_type="natural") on the zero rates; monotone_convex is Hagan &
+    # West with tau_0 = 0
     from_the_first_pillar_on = {
         "linear": [0.9851119396030626, 0.9770181986892416, 0.9509916468680314, 0.8958341352965283, 0.7557837414557255],
         "log_df": [0.9851119396030626, 0.9767739746688439, 0.950278670532427, 0.8928529928432785, 0.7557837414557255],

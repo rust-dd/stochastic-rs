@@ -1,17 +1,7 @@
 #!/usr/bin/env python3
-"""In-process Python smoke test for the `stochastic_rs` extension module.
+"""Smoke test of the 5 API surfaces of `stochastic_rs` and seed determinism wherever `seed=` is taken.
 
-Run with:
-    cd stochastic-rs-py
-    maturin develop --release           # build + install editable wheel
-    python python_smoke.py
-
-The script exercises the 5 main API surfaces (distributions, stochastic
-processes, copulas, stats, quant) and verifies seed-determinism wherever
-the wrapper accepts a `seed=` keyword argument.
-
-Exit code 0 = all checks pass; non-zero = first failure raises.
-"""
+Run `maturin develop --release` in `stochastic-rs-py`, then `python python_smoke.py`."""
 
 from __future__ import annotations
 
@@ -54,9 +44,8 @@ def check_stochastic_seed():
     assert p1.shape[0] == 252
     print("[OK]  PyGbm seed determinism (T=1y, n=252)")
 
-    # sample_par determinism on the seeded path: the wrapper must serialize
-    # because the default ProcessExt::sample_par would race on the shared
-    # Deterministic atomic state.
+    # The wrapper serializes the seeded sample_par: the default ProcessExt::sample_par would race
+    # on the shared Deterministic atomic state.
     pp1 = sr.PyGbm(0.05, 0.2, 252, x0=100.0, t=1.0, seed=42).sample_par(8)
     pp2 = sr.PyGbm(0.05, 0.2, 252, x0=100.0, t=1.0, seed=42).sample_par(8)
     assert np.allclose(pp1, pp2), "PyGbm sample_par seed determinism failed"

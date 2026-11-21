@@ -1,8 +1,5 @@
-"""Stats-surface pytest coverage.
-
-Exercises the Jarque-Bera normality test binding: statistic / p-value
-ranges, and the qualitative behaviour on Gaussian vs heavy-tailed data.
-"""
+"""Jarque-Bera normality test binding: statistic / p-value ranges, and its behaviour on Gaussian vs
+heavy-tailed data."""
 
 from __future__ import annotations
 
