@@ -4,8 +4,9 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150, DOI 10.1016/j.jmva.2012.02.019.
+//! Domino's eq. (4.54) prints its fraction bar over the leading 1, which belongs outside it.
+//! Reference: Domino, K. (2018), arXiv:1811.10486, Example 4.3.2, eq. (4.54).
+//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 
@@ -366,7 +367,7 @@ impl BivariateExt for Frank {
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
+  /// Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {

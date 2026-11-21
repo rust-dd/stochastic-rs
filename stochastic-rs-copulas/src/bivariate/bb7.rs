@@ -19,9 +19,9 @@
 //! \bigl[\theta(\delta+1)-(\theta\delta+1)T\bigr].
 //! $$
 //!
-//! Reference: Joe, H. (1997), *Multivariate Models and Dependence Concepts*, Chapman & Hall, §5.2 (family BB7), DOI 10.1201/b13150.
-//! Reference: Joe, H. (2014), *Dependence Modeling with Copulas*, CRC Press, §4.13.2, DOI 10.1201/b17116.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Corollary 5.1.4 (Kendall's τ `1 + 4∫₀¹ φ/φ′` of an Archimedean copula), DOI 10.1007/0-387-28678-0.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.2, DOI 10.1201/b13150.
+//! Reference: Joe, H. (2014), CRC Press, §4.13.2, DOI 10.1201/b17116.
+//! Reference: Nelsen (2006), Corollary 5.1.4, DOI 10.1007/0-387-28678-0.
 
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;

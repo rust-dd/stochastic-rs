@@ -1,5 +1,5 @@
 //! A validated correlation matrix and the factors the elliptical copulas evaluate through.
-//! Reference: Higham, N.J., Strabić, N., Šego, V. (2016), "Restoring definiteness via shrinking, with an application to correlation matrices with a fixed block", SIAM Review 58(2), 245-263, eq. (2.1), §2, Algorithm 3.1 and §5.3 eqs. (5.6), (5.8), DOI 10.1137/140996112.
+//! Reference: Higham et al. (2016), eq. (2.1), Alg. 3.1, eqs. (5.6), (5.8), DOI 10.1137/140996112.
 
 use ndarray::Array2;
 use stochastic_rs_distributions::linalg::is_spd;

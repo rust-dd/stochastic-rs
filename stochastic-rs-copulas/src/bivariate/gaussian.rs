@@ -5,8 +5,8 @@
 //! C_\rho(u,v) = \Phi_2\big(\Phi^{-1}(u), \Phi^{-1}(v); \rho\big), \qquad \rho \in (-1, 1),
 //! $$
 //!
-//! Reference: Kruskal, W.H. (1958), "Ordinal Measures of Association", *JASA* 53(284), 814-861, DOI 10.1080/01621459.1958.10501481.
-//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling Dependence with Copulas and Applications to Risk Management", in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier, ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
+//! Reference: Kruskal, W.H. (1958), JASA 53(284), 814-861, DOI 10.1080/01621459.1958.10501481.
+//! Reference: Embrechts et al. (2003), ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

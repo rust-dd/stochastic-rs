@@ -1,6 +1,6 @@
 //! The Student-t law every t copula evaluates through: `SimdStudentT`'s cdf and quantile, the
 //! log-density its `pdf` exponentiates, the t copula's log-density at t scores, the one `nu` rule.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the t quantile).
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 26.7.5.
 
 use std::f64::consts::LN_2;
 
@@ -436,7 +436,7 @@ pub(crate) fn ln_cosh(t: f64) -> f64 {
 /// `ln(Γ(ν/2 + 1)Γ(ν/2)/Γ(ν/2 + ½)²)` by Stirling's series from `ν = 40`, where the gammas'
 /// logarithms cancel, truncated under `4e-17` (proved in sympy), `z = ν/2`:
 /// $$\frac{1}{4z} - \frac{1}{96z^3} + \frac{1}{320z^5} - \frac{17}{7168z^7} + \frac{31}{9216z^9}$$
-/// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
+/// Reference: NIST DLMF, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 pub(crate) fn ln_gamma_constant(nu: f64) -> f64 {
   let z = 0.5 * nu;
   if z < 20.0 {

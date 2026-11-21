@@ -6,9 +6,9 @@
 //! \mathbf E_i = \bigl(U_{i2},\ \partial_v C(U_{i1}, U_{i2})\bigr)
 //! $$
 //!
-//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 eq. (5) with the coordinates in the order (U₂, U₁), which §7 I(c) allows; §4 eq. (9) and Appendix D: `S_n^{(C)}` and its parametric bootstrap).
-//! Reference: Rosenblatt, M. (1952), "Remarks on a multivariate transformation", Annals of Mathematical Statistics 23(3), 470–472, doi:10.1214/aoms/1177729394.
-//! Reference: Phipson, B. & Smyth, G. K. (2010), "Permutation P-values should never be zero: calculating exact P-values when permutations are randomly drawn", Statistical Applications in Genetics and Molecular Biology 9(1), Article 39, doi:10.2202/1544-6115.1585, arXiv:1603.05766 (the exact Monte Carlo p-value `(b + 1)/(m + 1)`).
+//! Reference: Genest et al. (2009), eqs. (5), (9), App. D, DOI 10.1016/j.insmatheco.2007.10.005.
+//! Reference: Rosenblatt, M. (1952), Ann. Math. Stat. 23(3), 470–472, DOI 10.1214/aoms/1177729394.
+//! Reference: Phipson & Smyth (2010), 9(1), Art. 39, DOI 10.2202/1544-6115.1585.
 
 use ndarray::Array2;
 use ndarray::ArrayView2;

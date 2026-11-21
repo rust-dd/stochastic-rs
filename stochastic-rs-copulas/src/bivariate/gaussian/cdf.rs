@@ -1,6 +1,6 @@
 //! The bivariate normal cdf to a relative `1e-12`: Owen's `T` form where its terms barely cancel,
 //! else the conditional integral over the rotated `V`, positive terms only, by Gauss–Kronrod.
-//! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
+//! Reference: Genz (2004), Stat. Comput. 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31.
 
 use std::f64::consts::FRAC_1_SQRT_2;
 use std::f64::consts::FRAC_2_SQRT_PI;
@@ -168,7 +168,7 @@ pub(crate) const CLOSED_FORM_BUDGET: f64 = 6e-13;
 
 /// Owen's `Φ₂` is used where its terms' absolute sum `S` is within this of `C`: P&T's `T` to `179ε`
 /// (`a ≤ 1`, `h ≤ 38`; eq. (11) above), `Φ` to `2ε` and sums to `7ε` keep each within `188ε`.
-/// Reference: Patefield, M., Tandy, D. (2000), "Fast and accurate calculation of Owen's T-function", *Journal of Statistical Software* 5(5), 1-25, eqs. (2), (10)-(11), DOI 10.18637/jss.v005.i05.
+/// Reference: Patefield, Tandy (2000), 5(5), 1-25, eqs. (2), (10)-(11), DOI 10.18637/jss.v005.i05.
 const OWEN_SPREAD: f64 = 14.0;
 
 /// The low half of `1/√2`, `1/√2 − FRAC_1_SQRT_2` to 17 digits.

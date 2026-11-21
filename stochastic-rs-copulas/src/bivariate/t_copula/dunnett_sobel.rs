@@ -1,8 +1,8 @@
 //! Dunnett & Sobel's finite sums for `T_n(h, k; ρ)` at integer `n`, taken where their forward error
 //! bound is within budget; the `ν/2` terms recur as in Genz's BVTL.
-//! Reference: Dunnett, C.W., Sobel, M. (1954), "A bivariate generalization of Student's t-distribution", *Biometrika* 41, 153-169, DOI 10.1093/biomet/41.1-2.153.
-//! Reference: Genz, A. (2004), *Statistics and Computing* 14(3), 251-260, eq. (20), DOI 10.1023/B:STCO.0000035304.20635.31.
-//! Reference: Higham, N.J. (2002), *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, ch. 3-4 (the forward bound), DOI 10.1137/1.9780898718027.
+//! Reference: Dunnett, Sobel (1954), Biometrika 41, 153-169, DOI 10.1093/biomet/41.1-2.153.
+//! Reference: Genz (2004), 14(3), 251-260, eq. (20), DOI 10.1023/B:STCO.0000035304.20635.31.
+//! Reference: Higham, N.J. (2002), 2nd ed., SIAM, ch. 3-4, DOI 10.1137/1.9780898718027.
 
 use std::f64::consts::FRAC_2_PI;
 use std::f64::consts::PI;

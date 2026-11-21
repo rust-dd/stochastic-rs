@@ -6,7 +6,7 @@
 //! h^{-1}(p, v) \text{ solves } h(u \mid v) = p
 //! $$
 //!
-//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487), eq. (7) for h and App. B for the Gaussian, Student-t and Clayton h-functions and inverses.
+//! Reference: Aas et al. (2009), eq. (7), App. B, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;

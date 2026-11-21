@@ -8,20 +8,20 @@
 //! \bigg),
 //! $$
 //!
-//! Reference: Joe, H. (1997), *Multivariate Models and Dependence Concepts*, Chapman & Hall, ch. 4, DOI 10.1201/b13150.
-//! Reference: Hofert, M. (2008), "Sampling Archimedean copulas", *Computational Statistics & Data Analysis* 52(12), 5163-5174, DOI 10.1016/j.csda.2008.05.019.
-//! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Art. 18, doi:10.1145/1596519.1596523.
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM Transactions on Mathematical Software* 26(3), 363-372, doi:10.1145/358407.358414.
-//! Reference: Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
-//! Reference: Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
-//! Reference: Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
-//! Reference: Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
-//! Reference: Gnedin, A., Pitman, J. (2006), "Exchangeable Gibbs partitions and Stirling triangles", *Journal of Mathematical Sciences* 138(3), 5674-5685, doi:10.1007/s10958-006-0335-z (arXiv:math/0412494).
-//! Reference: McNeil, A.J. (2008), "Sampling nested Archimedean copulas", *Journal of Statistical Computation and Simulation* 78(6), 567-581, DOI 10.1080/00949650701255834.
-//! Reference: Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
-//! Reference: Górecki, J., Hofert, M., Holeňa, M. (2017), "On structure, family and parameter estimation of hierarchical Archimedean copulas", *Journal of Statistical Computation and Simulation* 87(17), 3261-3324, doi:10.1080/00949655.2017.1365148.
-//! Reference: Okhrin, O., Okhrin, Y., Schmid, W. (2013), "On the structure and estimation of hierarchical Archimedean copulas", *Journal of Econometrics* 173(2), 189-204, doi:10.1016/j.jeconom.2012.12.001.
-//! Reference: Okhrin, O., Ristig, A. (2014), "Hierarchical Archimedean Copulae: The HAC Package", *Journal of Statistical Software* 58(4), 1-20, doi:10.18637/jss.v058.i04.
+//! Reference: Joe, H. (1997), Chapman & Hall, ch. 4, DOI 10.1201/b13150.
+//! Reference: Hofert (2008), 52(12), 5163-5174, DOI 10.1016/j.csda.2008.05.019.
+//! Reference: Devroye, L. (2009), ACM TOMACS 19(4), Art. 18, DOI 10.1145/1596519.1596523.
+//! Reference: Marsaglia, Tsang (2000), ACM TOMS 26(3), 363-372, DOI 10.1145/358407.358414.
+//! Reference: Hofert (2011), Comput. Stat. Data Anal. 55(1), 57-70, DOI 10.1016/j.csda.2010.04.025.
+//! Reference: Hofert, Mächler (2011), J. Stat. Softw. 39(9), 1-20, DOI 10.18637/jss.v039.i09.
+//! Reference: Hofert et al. (2012), 110, 133-150, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Hofert, Pham (2013), J. Multivar. Anal. 118, 37-52, DOI 10.1016/j.jmva.2013.03.006.
+//! Reference: Gnedin, Pitman (2006), 138(3), 5674-5685, DOI 10.1007/s10958-006-0335-z.
+//! Reference: McNeil (2008), J. Stat. Comput. Simul. 78(6), 567-581, DOI 10.1080/00949650701255834.
+//! Reference: Górecki et al. (2016), 46(1), 21-59, DOI 10.1007/s10844-014-0350-3.
+//! Reference: Górecki et al. (2017), 87(17), 3261-3324, DOI 10.1080/00949655.2017.1365148.
+//! Reference: Okhrin et al. (2013), J. Econom. 173(2), 189-204, DOI 10.1016/j.jeconom.2012.12.001.
+//! Reference: Okhrin, Ristig (2014), J. Stat. Softw. 58(4), 1-20, DOI 10.18637/jss.v058.i04.
 
 use ndarray::Array1;
 use ndarray::Array2;

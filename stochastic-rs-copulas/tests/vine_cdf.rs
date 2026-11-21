@@ -1,6 +1,6 @@
 //! The vine cdfs, Genz's separation of variables through the samplers' Rosenblatt map:
 //! deterministic, within ten times their error of the closed forms and Joe's integrals.
-//! Reference: Joe, H. (1996), "Families of m-variate distributions with given margins and m(m−1)/2 bivariate dependence parameters", IMS Lecture Notes – Monograph Series 28, 120–141, DOI 10.1214/lnms/1215452614 (eqs. (2.1), (2.2))
+//! Reference: Joe (1996), 28, 120–141, DOI 10.1214/lnms/1215452614
 
 use ndarray::Array1;
 use ndarray::Array2;

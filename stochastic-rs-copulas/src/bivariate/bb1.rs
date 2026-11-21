@@ -18,8 +18,8 @@
 //! \bigl[\theta(\delta-1)+(\theta\delta+1)w\bigr].
 //! $$
 //!
-//! Reference: Joe, H. (1997), *Multivariate Models and Dependence Concepts*, Chapman & Hall, §5.2 (family BB1), DOI 10.1201/b13150.
-//! Reference: Joe, H. (2014), *Dependence Modeling with Copulas*, CRC Press, §4.13.1, DOI 10.1201/b17116.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.2, DOI 10.1201/b13150.
+//! Reference: Joe, H. (2014), CRC Press, §4.13.1, DOI 10.1201/b17116.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

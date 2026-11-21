@@ -168,7 +168,7 @@ impl Against {
 
 /// QUADPACK's 15-point Kronrod nodes on `[0, 1)` (mirrored) and weights, and the 7-point Gauss
 /// weights on its odd nodes: K15 exact to degree 23, G7 to 13, both checked in mpmath.
-/// Reference: Piessens, R., de Doncker-Kapenga, E., Überhuber, C.W., Kahaner, D.K. (1983), "QUADPACK: A Subroutine Package for Automatic Integration", Springer, routine QK15, DOI 10.1007/978-3-642-61786-7.
+/// Reference: Piessens, R. et al. (1983), Springer, routine QK15, DOI 10.1007/978-3-642-61786-7.
 const KRONROD_NODES: [f64; 8] = [
   0.991_455_371_120_812_6,
   0.949_107_912_342_758_5,

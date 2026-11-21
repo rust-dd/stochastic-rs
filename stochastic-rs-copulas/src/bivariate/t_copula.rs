@@ -5,8 +5,8 @@
 //! C_{\rho,\nu}(u,v) = T_{\rho,\nu}\!\big(t_\nu^{-1}(u),\, t_\nu^{-1}(v)\big),
 //! $$
 //!
-//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling Dependence with Copulas and Applications to Risk Management", in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier, ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
-//! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
+//! Reference: Embrechts et al. (2003), ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
+//! Reference: Aas et al. (2009), 44(2), 182-198, App. B.2, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use std::cell::Cell;
 

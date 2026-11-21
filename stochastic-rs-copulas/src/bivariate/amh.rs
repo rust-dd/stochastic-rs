@@ -6,10 +6,10 @@
 //! \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Reference: Ali, M.M., Mikhail, N.N., Haq, M.S. (1978), "A class of bivariate distributions including the bivariate logistic", *Journal of Multivariate Analysis* 8(3), 405-412, DOI 10.1016/0047-259X(78)90063-5.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 4.23 / Table 4.1 (family (3)), DOI 10.1007/0-387-28678-0.
-//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Ali et al. (1978), 8(3), 405-412, DOI 10.1016/0047-259X(78)90063-5.
+//! Reference: Nelsen, R.B. (2006), Example 4.23 / Table 4.1, DOI 10.1007/0-387-28678-0.
+//! Reference: Johnson, M.E. (1987), Wiley, DOI 10.1002/9781118150740.
+//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

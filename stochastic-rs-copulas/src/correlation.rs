@@ -9,8 +9,8 @@
 //! \rho = \sin\!\left(\frac{\pi\tau}{2}\right)
 //! $$
 //!
-//! Reference: Knight, W. R. (1966), "A Computer Method for Calculating Kendall's Tau with Ungrouped Data", Journal of the American Statistical Association 61(314), 436–439, doi:10.1080/01621459.1966.10480879.
-//! Reference: Kendall, M. G. (1945), "The treatment of ties in ranking problems", Biometrika 33(3), 239–251, doi:10.1093/biomet/33.3.239.
+//! Reference: Knight (1966), 61(314), 436–439, DOI 10.1080/01621459.1966.10480879.
+//! Reference: Kendall, M. G. (1945), Biometrika 33(3), 239–251, DOI 10.1093/biomet/33.3.239.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;

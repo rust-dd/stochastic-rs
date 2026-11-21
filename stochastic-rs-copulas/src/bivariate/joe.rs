@@ -6,9 +6,9 @@
 //! \qquad \theta \in [1, \infty).
 //! $$
 //!
-//! Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts", Chapman & Hall, §5.1, DOI 10.1201/b13150.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Family BB1 / table 4.1, DOI 10.1007/0-387-28678-0.
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.1, DOI 10.1201/b13150.
+//! Reference: Nelsen, R.B. (2006), Table 4.1, family (4.2.6), DOI 10.1007/0-387-28678-0.
+//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 
@@ -236,7 +236,7 @@ impl BivariateExt for Joe {
   }
 
   /// $\lambda_U = 2 - 2^{1/\theta}$, Gumbel's form; Joe has no lower-tail dependence.
-  /// Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts", Chapman & Hall, §5.1, DOI 10.1201/b13150.
+  /// Reference: Joe, H. (1997), Chapman & Hall, §5.1, DOI 10.1201/b13150.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();

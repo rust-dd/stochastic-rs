@@ -1,6 +1,6 @@
 //! The C- and D-vine samplers draw their declared vine (tree-1 pairs, tree-2 pairs given their
 //! neighbour, the Rosenblatt transform, within 4 SE of τ̂); densities match a recursion.
-//! Reference: Hoeffding, W. (1948), "A class of statistics with asymptotically normal distribution", Annals of Mathematical Statistics 19(3), 293–325, doi:10.1214/aoms/1177730196.
+//! Reference: Hoeffding, W. (1948), Ann. Math. Stat. 19(3), 293–325, DOI 10.1214/aoms/1177730196.
 
 use ndarray::ArrayView1;
 use ndarray::array;

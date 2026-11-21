@@ -1,8 +1,8 @@
 //! Dißmann et al. (2013), Algorithm 3.1: per tree a path (D-vine) or star (C-vine) of largest
 //! Σ|τ̂|, each edge's family by AIC or BIC over ML fits, its h-functions the next tree's data.
-//! Reference: Dißmann, J., Brechmann, E. C., Czado, C. & Kurowicka, D. (2013), "Selecting and estimating regular vine copulae and application to financial returns", Computational Statistics & Data Analysis 59, 52–69, doi:10.1016/j.csda.2012.08.010 (preprint arXiv:1202.2002).
-//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001.
-//! Reference: Held, M. & Karp, R. M. (1962), "A Dynamic Programming Approach to Sequencing Problems", Journal of the Society for Industrial and Applied Mathematics 10(1), 196–210, doi:10.1137/0110015.
+//! Reference: Dißmann et al. (2013), 59, 52–69, DOI 10.1016/j.csda.2012.08.010.
+//! Reference: Aas et al. (2009), 44(2), 182–198, DOI 10.1016/j.insmatheco.2007.02.001.
+//! Reference: Held, M. & Karp, R. M. (1962), J. SIAM 10(1), 196–210, DOI 10.1137/0110015.
 
 use ndarray::Array2;
 use ndarray::ArrayView1;

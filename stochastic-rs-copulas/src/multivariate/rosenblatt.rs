@@ -1,7 +1,7 @@
 //! A vine's cdf by Genz's separation of variables through its Rosenblatt map, `C(u) = ∫ ∏ e_i dw`
 //! over Sobol points, `e_i = F(u_i | x_{<i})`, `x_i = F⁻¹(w_i e_i | x_{<i})`.
-//! Reference: Rosenblatt, M. (1952), "Remarks on a Multivariate Transformation", Ann. Math. Statist. 23(3) 470–472, DOI 10.1214/aoms/1177729394
-//! Reference: Genz, A. (1992), "Numerical Computation of Multivariate Normal Probabilities", JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§2)
+//! Reference: Rosenblatt, M. (1952), Ann. Math. Stat. 23(3) 470–472, DOI 10.1214/aoms/1177729394
+//! Reference: Genz, A. (1992), JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§2)
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

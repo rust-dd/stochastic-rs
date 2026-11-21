@@ -1,7 +1,7 @@
 //! Genz's separation-of-variables integrand for `P(Z ≤ b)`, `Z ~ N(0, LLᵀ)`, and its t form over
 //! the `χ_ν/√ν` scale, ordered per query by Gibson–Glasbey–Elston prioritization (Genz's MVSORT).
-//! Reference: Genz, A. (1992), "Numerical Computation of Multivariate Normal Probabilities", JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§§2–3)
-//! Reference: Genz, A., Bretz, F. (2002), "Comparison of Methods for the Computation of Multivariate t Probabilities", JCGS 11(4) 950–971, DOI 10.1198/106186002394 (§2.3, eqs. 13–14)
+//! Reference: Genz, A. (1992), JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§§2–3)
+//! Reference: Genz, Bretz (2002), JCGS 11(4) 950–971, DOI 10.1198/106186002394 (§2.3, eqs. 13–14)
 
 use ndarray::Array1;
 use ndarray::Array2;

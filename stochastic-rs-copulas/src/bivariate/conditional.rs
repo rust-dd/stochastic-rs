@@ -1,6 +1,6 @@
 //! What the families' fits, conditional inverses and h-functions share: input checks, the NaN rule,
 //! stable logarithmic helpers, Knuth's two-sum and the `ln h` quantile solver.
-//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
+//! Reference: Shewchuk (1997), 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
 
 use std::cell::Cell;
 

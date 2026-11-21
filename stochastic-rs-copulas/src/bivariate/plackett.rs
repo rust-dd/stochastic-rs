@@ -8,9 +8,9 @@
 //! C(u,v) = \frac{1 + (\theta-1)(u+v) - \sqrt{[1 + (\theta-1)(u+v)]^2 - 4 u v \theta (\theta-1)}}{2(\theta-1)}.
 //! $$
 //!
-//! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions", *Journal of the American Statistical Association* 60(310), 516-522, DOI 10.1080/01621459.1965.10480807.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives), DOI 10.1007/0-387-28678-0.
-//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
+//! Reference: Plackett (1965), 60(310), 516-522, DOI 10.1080/01621459.1965.10480807.
+//! Reference: Nelsen (2006), Example 3.11, Theorem 5.1.3, DOI 10.1007/0-387-28678-0.
+//! Reference: Johnson, M.E. (1987), Wiley, the Plackett generator, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -324,7 +324,7 @@ impl BivariateExt for Plackett {
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §2.3 / Example 3.11, DOI 10.1007/0-387-28678-0.
+  /// Reference: Nelsen, R.B. (2006), §2.3 / Example 3.11, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {

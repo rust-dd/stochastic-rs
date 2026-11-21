@@ -1,6 +1,6 @@
 //! The bivariate t cdf to a relative `1e-12` (not where `C ≪ u` off the countermonotone solve):
 //! Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels from each feature.
-//! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
+//! Reference: Genz (2004), Stat. Comput. 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31.
 
 use std::cell::Cell;
 use std::f64::consts::FRAC_2_PI;

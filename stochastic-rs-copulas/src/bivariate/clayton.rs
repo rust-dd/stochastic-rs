@@ -307,7 +307,7 @@ impl BivariateExt for Clayton {
 
   /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no upper-tail dependence
   /// ($\lambda_U = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 5.21 / Table 5.1, DOI 10.1007/0-387-28678-0.
+  /// Reference: Nelsen, R.B. (2006), Example 5.21 / Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();

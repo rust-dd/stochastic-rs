@@ -5,9 +5,9 @@
 //! C_\theta(u,v) = uv + \theta\, u(1-u)\, v(1-v), \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Reference: Farlie, D.J.G. (1960), "The Performance of Some Correlation Coefficients for a General Bivariate Distribution", *Biometrika* 47, 307-323, DOI 10.1093/biomet/47.3-4.307.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 3.12, DOI 10.1007/0-387-28678-0.
-//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Morgenstern generator (the conditional inverse), DOI 10.1002/9781118150740.
+//! Reference: Farlie, D.J.G. (1960), Biometrika 47, 307-323, DOI 10.1093/biomet/47.3-4.307.
+//! Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Example 3.12, DOI 10.1007/0-387-28678-0.
+//! Reference: Johnson, M.E. (1987), Wiley, the Morgenstern generator, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

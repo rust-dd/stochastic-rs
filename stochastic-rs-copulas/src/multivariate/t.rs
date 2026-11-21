@@ -17,10 +17,10 @@
 //! \lambda = 2\,t_{\nu+1}\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big).
 //! $$
 //!
-//! Reference: Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas", *International Statistical Review* 73(1), 111-129, DOI 10.1111/j.1751-5823.2005.tb00254.x.
-//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling Dependence with Copulas and Applications to Risk Management", in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier, ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
+//! Reference: Demarta, McNeil (2005), 73(1), 111-129, DOI 10.1111/j.1751-5823.2005.tb00254.x.
+//! Reference: Embrechts et al. (2003), ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
 //! Reference: McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*, Princeton UP, §7.5.
-//! Reference: Brent, R.P. (1973), *Algorithms for Minimization without Derivatives*, Prentice-Hall, ch. 5 (`localmin`).
+//! Reference: Brent, R.P. (1973), Prentice-Hall, ch. 5 (`localmin`).
 
 use std::sync::OnceLock;
 

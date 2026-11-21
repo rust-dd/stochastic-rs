@@ -197,7 +197,7 @@ impl BivariateExt for Gumbel {
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no lower-tail dependence
   /// ($\lambda_L = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
+  /// Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();

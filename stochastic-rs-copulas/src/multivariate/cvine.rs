@@ -1,6 +1,6 @@
 //! C-vine: tree `T_j` joins root `j` to each `j + i` given `1, …, j − 1`; Aas et al. (2009)
 //! Algorithm 1 samples it, Algorithm 3 evaluates it, an edge's ends in either order.
-//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487).
+//! Reference: Aas et al. (2009), 44(2), 182–198, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use ndarray::Array1;
 use ndarray::Array2;

@@ -7,8 +7,8 @@
 //! A(t) = (1-t)·Φ(1/λ + (λ/2)·ln((1-t)/t)) + t·Φ(1/λ + (λ/2)·ln(t/(1-t))),   t ∈ [0, 1].
 //! ```
 //!
-//! Reference: Hüsler, J., Reiss, R.-D. (1989), "Maxima of normal random vectors: between independence and complete dependence", *Statist. Probab. Lett.* 7(4), 283-286, DOI 10.1016/0167-7152(89)90106-5.
-//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §3.3 (the parameter space, `[0, ∞]` in the reciprocal of this `λ`, independence at its `∞`), §4 (Kendall's τ from the Pickands function), DOI 10.1007/978-3-642-12465-5_6.
+//! Reference: Hüsler, Reiss (1989), 7(4), 283-286, DOI 10.1016/0167-7152(89)90106-5.
+//! Reference: Gudendorf & Segers (2010), §3.3, §4, DOI 10.1007/978-3-642-12465-5_6.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::TAU;

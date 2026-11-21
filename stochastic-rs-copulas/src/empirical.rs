@@ -5,8 +5,8 @@
 //! C_n(u,v)=\frac{1}{n}\sum_{i=1}^n \mathbf 1\{U_i\le u,\,V_i\le v\}
 //! $$
 //!
-//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§2.2: `U_ij = R_ij/(n+1)`; §3.1, Eq. (1): `C_n`).
-//! Reference: Deheuvels, P. (1979), "La fonction de dépendance empirique et ses propriétés. Un test non paramétrique d'indépendance", Acad. Roy. Belg. Bull. Cl. Sci. (5) 65, 274–292, DOI 10.3406/barb.1979.58521.
+//! Reference: Genest et al. (2009), §2.2, §3.1 eq. (1), DOI 10.1016/j.insmatheco.2007.10.005.
+//! Reference: Deheuvels (1979), 65, 274–292, DOI 10.3406/barb.1979.58521.
 
 use ndarray::Array1;
 use ndarray::Array2;

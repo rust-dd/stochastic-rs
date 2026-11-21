@@ -1,5 +1,5 @@
 //! The point set every deterministic copula `cdf` integrates over.
-//! Reference: Owen, A. B. (2022), "On Dropping the First Sobol' Point", MCQMC 2020, Springer PROMS 71–86, doi:10.1007/978-3-030-98319-2_4, arXiv:2008.08051 (§1, `u_i + 1/(2n)`)
+//! Reference: Owen (2022), §1, DOI 10.1007/978-3-030-98319-2_4, arXiv:2008.08051.
 
 use ndarray::Array2;
 use ndarray::s;

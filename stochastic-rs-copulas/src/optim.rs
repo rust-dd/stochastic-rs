@@ -1,7 +1,8 @@
 //! The crate's derivative-free solvers: a Nelder–Mead simplex for the two-parameter fits
 //! (Nelder & Mead 1965; Lagarias, Reeds, Wright & Wright 1998 parameters) and Brent's `localmin`.
 //!
-//! Reference: Brent, R.P. (1973), "Algorithms for Minimization without Derivatives", Prentice-Hall, ch. 5: eqs. (4.1)–(4.2) and procedure `localmin`, §8, pp. 79–80, with the errata of maths-people.anu.edu.au/~brent/pub/pub011.html.
+//! Reference: Brent (1973), ch. 5: eqs. (4.1)–(4.2), procedure `localmin`, §8, pp. 79–80.
+//! Errata: maths-people.anu.edu.au/~brent/pub/pub011.html.
 
 use stochastic_rs_distributions::RealExt;
 

@@ -11,8 +11,8 @@
 //!
 //! `u^α = v^β` carries a singular mass `αβ/(α + β − αβ)`, also Kendall's τ; `theta` sets `α = β`.
 //!
-//! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
+//! Reference: Marshall, Olkin (1967), JASA 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
+//! Reference: Nelsen, R.B. (2006), §3.1.1, eq. 3.1.3; §2.9, DOI 10.1007/0-387-28678-0.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

@@ -12,9 +12,9 @@
 //! \qquad t \in [0, 1].
 //! $$
 //!
-//! Reference: Galambos, J. (1975), "Order statistics of samples from multivariate distributions", *JASA* 70(351), 674-680, DOI 10.1080/01621459.1975.10482493.
-//! Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts", Chapman & Hall, §5.4, DOI 10.1201/b13150.
-//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function), DOI 10.1007/978-3-642-12465-5_6.
+//! Reference: Galambos, J. (1975), JASA 70(351), 674-680, DOI 10.1080/01621459.1975.10482493.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.4, DOI 10.1201/b13150.
+//! Reference: Gudendorf & Segers (2010), arXiv:0911.1015, §4, DOI 10.1007/978-3-642-12465-5_6.
 
 use std::f64::consts::LN_2;
 
