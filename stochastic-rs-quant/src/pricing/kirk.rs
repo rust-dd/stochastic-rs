@@ -77,9 +77,8 @@ impl KirkSpreadPricer {
     }
   }
 
-  /// Spread call and put of forwards `f1`, `f2` at spread strike `x`, Kirk's volatility weighting
-  /// $\sigma_2$ by $F_2/(F_2+X)$; the payoffs at `tau = 0`, NaN past expiry or for a forward that
-  /// is not positive before it.
+  /// Spread call and put of forwards `f1`, `f2` at strike `x`, Kirk's volatility weighting
+  /// $\sigma_2$ by $F_2/(F_2+X)$; the payoffs at `tau = 0`, NaN past expiry or at a forward `<= 0`.
   pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> CallPut {
     let payoff = |leg| expired(tau, &[r], || vanilla_payoff(leg, f1 - f2, x));
     if let (Some(call), Some(put)) = (payoff(OptionType::Call), payoff(OptionType::Put)) {
