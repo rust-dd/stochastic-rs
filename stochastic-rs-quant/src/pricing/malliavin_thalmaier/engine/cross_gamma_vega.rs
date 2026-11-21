@@ -6,10 +6,8 @@ use crate::QuantError;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
-  /// Cross-Gamma via a common-random-numbers finite difference on Delta.
-  ///
-  /// This is a numerical utility, not a higher-order Malliavin--Thalmaier
-  /// weight estimator.
+  /// Cross-gamma by a common-random-numbers finite difference on Delta, not a higher-order
+  /// Malliavin–Thalmaier weight.
   pub fn cross_gamma(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
     self
       .try_cross_gamma(payoff, asset_a, asset_b)

@@ -20,10 +20,8 @@ pub fn norm_h<T: FloatExt>(x: &[T], h: T) -> T {
   (s + h).sqrt()
 }
 
-/// Gradient of the regularised Poisson kernel `∂Q_d^h/∂x_i`.
-///
-/// - `d = 2`: `∂Q₂^h/∂xᵢ = (1/a₂) · xᵢ / |x|_h²`
-/// - `d ≥ 3`: `∂Q_d^h/∂xᵢ = (1/a_d) · xᵢ / |x|_h^d`
+/// Gradient `∂Q_d^h/∂x_i` of the regularised Poisson kernel: `x_i/(a₂|x|_h²)` at `d = 2`,
+/// `x_i/(a_d|x|_h^d)` at `d ≥ 3`.
 pub fn grad_poisson_reg<T: FloatExt>(x: &[T], h: T) -> Vec<T> {
   let d = x.len();
   assert!(d >= 2, "Poisson kernel requires d >= 2");
@@ -47,16 +45,9 @@ pub fn kernel_k_ij_h<T: FloatExt>(x: &[T], h: T, i: usize, j: usize) -> T {
   (delta / rd - T::from_usize_(d) * x[i] * x[j] / r.powi(d as i32 + 2)) / ad
 }
 
-/// Closed-form `g_{i,j}` for the 2-asset digital put
-/// `f(x) = 1(0≤x₁≤K₁)·1(0≤x₂≤K₂)`.
-///
-/// From Kohatsu-Higa & Yasuda (2008), eq. (6.3). Valid as `h → 0`.
-/// The second diagonal follows from `g₁₁(y) + g₂₂(y) = f(y)` because
-/// the Poisson kernel is normalised by `ΔQ₂ = δ₀`.
-/// Values on an edge use the one-sided limit from the rectangle interior. At
-/// a corner the diagonal uses the relative interior path
-/// `(|y₁-bound₁|/K₁) = (|y₂-bound₂|/K₂)`. The off-diagonal
-/// logarithmic singularity is preserved.
+/// `g_{i,j}` of the digital put `1(0≤x₁≤K₁)1(0≤x₂≤K₂)` as `h → 0`, `g₂₂ = f − g₁₁` by `ΔQ₂ = δ₀`;
+/// edges take the inner limit, corners the path `|y₁−b₁|/K₁ = |y₂−b₂|/K₂`; off-diagonal log kept.
+/// Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580, 124–135, eq. (6.3)
 pub fn g_digital_put_2d<T: FloatExt>(y: [T; 2], k: [T; 2]) -> [[T; 2]; 2] {
   assert!(
     y.iter().all(|value| value.is_finite()),
@@ -161,11 +152,8 @@ where
   g
 }
 
-/// Compute `g^h_{i,j}(y)` numerically in arbitrary dimension via tensor-product
-/// midpoint quadrature on `[lo, hi]^d`.
-///
-/// This is the direct numerical counterpart of Theorem 6.1 in
-/// Kohatsu-Higa--Yasuda when no closed-form `g_{i,j}` is available.
+/// `g^h_{i,j}(y)` in any dimension by tensor-product midpoint quadrature on `[lo, hi]^d`, the
+/// numerical Theorem 6.1 of Kohatsu-Higa & Yasuda where no closed form exists.
 pub fn g_kernel_numerical_nd<T, F>(
   y: &[T],
   payoff: &F,
