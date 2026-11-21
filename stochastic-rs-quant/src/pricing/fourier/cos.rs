@@ -127,7 +127,7 @@ impl CosEngine {
     let half_width = cumulants.truncation_half_width(self.l);
     half_width
       .is_finite()
-      .then(|| (cumulants.c1 - half_width, 2.0 * half_width))
+      .then_some((cumulants.c1 - half_width, 2.0 * half_width))
   }
 
   /// Adds Eq. (19)'s terms to each live strike's put: `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at
@@ -173,7 +173,8 @@ impl PutSeries {
     let d = (a + bma).min(0.0);
     Self {
       live: priceable(strike),
-      inside: !(a >= 0.0),
+      // A NaN `a` stays in the sum, so its price is NaN.
+      inside: a < 0.0 || a.is_nan(),
       exp_a: a.exp(),
       exp_d: d.exp(),
       d_minus_a: d - a,
