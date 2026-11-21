@@ -5,6 +5,7 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::RealExt;
 
 use super::LeastSquaresProblem;
+use crate::calibration::stencil::step;
 
 /// `∂θ/∂x` of a problem's natural parameters by central differences of step `h` around `x`.
 pub(crate) fn natural_jacobian_by_differences<P: LeastSquaresProblem>(
@@ -93,13 +94,12 @@ pub(crate) fn box_points(
   points
 }
 
-/// Per coordinate, a point 0.3 of the step `max(1e-5, 1e-3·|x|)` inside each bound of `base`'s
-/// box, where a central stencil would cross the bound.
+/// Per coordinate, a point 0.3 of the shared step inside each bound of `base`'s box, where a
+/// central stencil would cross the bound.
 pub(crate) fn beside_points(
   base: ArrayView1<f64>,
   bounds: &[(f64, f64)],
 ) -> Vec<(String, Array1<f64>)> {
-  let step = |x: f64| 1e-5_f64.max(1e-3 * x.abs());
   let mut points = Vec::new();
   for (j, &(lower, upper)) in bounds.iter().enumerate() {
     let sides = [
@@ -113,6 +113,12 @@ pub(crate) fn beside_points(
     }
   }
   points
+}
+
+/// [`jacobian_error`]'s step at a beside point: a tenth of the shared step stays inside the bound,
+/// and never shrinks to where the reference difference is rounding.
+pub(crate) fn beside_reference(_: usize, x: f64) -> f64 {
+  0.1 * step(x)
 }
 
 /// The worst column's `‖J(h) − J(2h)‖ / ‖J(2h)‖`, `jacobian(s)` at `s` times the step.

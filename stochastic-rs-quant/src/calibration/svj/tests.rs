@@ -216,6 +216,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::params::*;
   use crate::calibration::least_squares::LeastSquaresProblem;
   use crate::calibration::least_squares::checks::beside_points;
+  use crate::calibration::least_squares::checks::beside_reference;
   use crate::calibration::least_squares::checks::box_points;
   use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
@@ -232,9 +233,8 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     let mut boxed = bounds;
     boxed[4] = (-RHO_BOUND, RHO_BOUND);
     for (label, point) in beside_points(base.view(), &boxed) {
-      let reference = |_, x: f64| 1e-4 * x.abs().max(1e-3);
-      let error = jacobian_error(&mut problem, point.view(), reference);
-      assert!(error < 2e-2, "{label} of {base}: {error:e}");
+      let error = jacobian_error(&mut problem, point.view(), beside_reference);
+      assert!(error < 1e-2, "{label} of {base}: {error:e}");
     }
   }
 }
