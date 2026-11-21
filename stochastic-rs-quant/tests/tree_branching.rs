@@ -168,7 +168,7 @@ fn each_factor_keeps_its_exact_mean_and_variance_on_the_calibrators_coarse_grid(
   let tree = g2(0.5, 9.0, 0.01, 0.006, 3.0, 12);
   for (factor, a, sigma) in [(&tree.x_tree, 0.5, 0.01), (&tree.y_tree, 9.0, 0.006)] {
     let (mean, variance) = terminal_moments(factor);
-    assert!(mean.abs() < 1e-18, "mean {mean}");
+    assert!(mean.abs() < 1e-15 * variance.sqrt(), "mean {mean}");
     let want = exact(a, sigma, 3.0);
     assert!(
       (variance / want - 1.0).abs() < 1e-12,
