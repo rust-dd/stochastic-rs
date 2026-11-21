@@ -6,6 +6,7 @@
 //! $$
 //!
 //! Reference: Kelley (1999), SIAM J. Optim. 10(1), 43–55
+//! Reference: O'Neill (1971), Appl. Stat. 20(3), 338–345, DOI 10.2307/2346772
 
 use std::cell::Cell;
 use std::convert::Infallible;

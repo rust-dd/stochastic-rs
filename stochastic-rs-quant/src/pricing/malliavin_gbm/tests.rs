@@ -150,8 +150,8 @@ fn the_checked_fields_are_read_through_getters() {
   );
 }
 
-/// The `l == 0` kernel is the Dirac limit, the step the caller compares it with, or the weight
-/// `pdf + (H − cdf)·t2` biases the estimator invisibly.
+/// The `l == 0` kernel must be the Dirac limit, the step the caller compares it with; otherwise the
+/// weight `pdf + (H − cdf)·t2` biases the estimator invisibly.
 #[test]
 fn zero_bandwidth_kernel_is_the_dirac_limit() {
   for &x in &[-2.0, -1e-9, 1e-9, 2.0] {

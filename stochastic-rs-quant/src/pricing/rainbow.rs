@@ -63,8 +63,8 @@ impl RainbowPayoff {
   }
 }
 
-/// Stulz (1982) closed form for a two-asset best-of or worst-of option, the payoff its contract and
-/// its call/put axis; two assets take no [`ModelPricer`](crate::traits::ModelPricer).
+/// Stulz (1982) closed form for a two-asset best-of or worst-of option; the payoff is the contract
+/// and its call or put side, as two assets fit no [`ModelPricer`](crate::traits::ModelPricer).
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::rainbow::RainbowPayoff;
