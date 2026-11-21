@@ -20,8 +20,8 @@ export const FACTS = {
   /** `EulerSpec`'s variants, and the processes they carry (`concepts/gpu-support.mdx`). */
   deviceFamilies: 134,
   processesOnEngine: 128,
-  /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */
-  distributions: 36,
+  /** The `Simd*` samplers of stochastic-rs-distributions; `ComplexDistribution` is not one. */
+  distributions: 35,
   /** 15 bivariate + 6 multivariate `BivariateExt` / `MultivariateExt` implementors. */
   copulas: 21,
   /** `impl Calibrator for` in stochastic-rs-quant. */
