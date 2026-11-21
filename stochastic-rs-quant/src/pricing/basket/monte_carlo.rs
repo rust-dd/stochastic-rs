@@ -1,7 +1,4 @@
 //! Monte Carlo basket pricer and the average it is struck against.
-//!
-//! Split out of `basket.rs` when the file crossed the 600-line cap; a pure
-//! move, with the public paths preserved by the `pub use` in the parent.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -32,29 +29,8 @@ pub enum BasketAverageType {
   Geometric,
 }
 
-/// Monte Carlo basket option pricer. Supports arithmetic and geometric
-/// payoffs. Uses a Cholesky factorization for the correlation factor and
-/// runs on the pure-Rust `faer`, in every build.
-///
-/// The struct holds **model, contract and method state only** — the
-/// per-asset volatilities and their correlation, the basket weights and
-/// which average they are applied to, and the Monte Carlo path count. The
-/// spot vector, the strike, the rate, the dividend-yield vector and the
-/// maturity are the pricing *query* and travel as arguments.
-///
-/// [`BasketAverageType`] sits beside the weights because it is the same kind
-/// of thing: both say what the option is written on, and neither moves when
-/// the market does.
-///
-/// `n_paths` is neither model, contract nor query but a convergence control,
-/// and it sits on the struct for the same reason
-/// `GbmMalliavinPricer` keeps its own path and step counts there.
-///
-/// The dimension and positive-definiteness checks stay in
-/// [`try_price`](Self::try_price) rather than moving to [`new`](Self::new):
-/// `try_price` is the only advertised way to surface either as an `Err`, and
-/// a constructor that panicked on them first would leave it nothing to
-/// report.
+/// Monte Carlo arithmetic or geometric basket on a Cholesky factor of `rho`; the shape and
+/// positive-definiteness checks stay in [`try_price`](Self::try_price), its only way to an `Err`.
 #[derive(Debug, Clone)]
 pub struct McBasketPricer<S: SeedExt = Unseeded> {
   /// Weights — a term of the contract, not a market quote.

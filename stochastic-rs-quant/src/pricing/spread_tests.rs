@@ -4,7 +4,7 @@ use super::*;
 /// aarch64-darwin and CI's ubuntu x86_64.
 const TOL: f64 = 1e-12;
 
-/// Margrabe's prices are pinned to the values it priced before the model/query split.
+/// Regression goldens for Margrabe's price and deltas at and in the money.
 #[test]
 fn margrabe_matches_pre_refactor_goldens() {
   let atm = MargrabePricer::new(0.20, 0.20, 0.0);

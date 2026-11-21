@@ -1,22 +1,9 @@
-//! # Basket
+//! Basket options on `B = Σ wᵢSᵢ`: the geometric one in closed form, the arithmetic one by Levy's
+//! two-moment lognormal, and either average by Monte Carlo under any correlation.
 //!
-//! Basket option payoff: $\max(\phi(B - K), 0)$ where
-//! $B = \sum_i w_i S_{i,T}$ is a weighted average of $n$ assets.
-//!
-//! - **Geometric** (closed-form, Kemna–Vorst style): the weighted geometric
-//!   mean of correlated log-normals is itself log-normal; price via BSM with
-//!   adjusted volatility and forward.
-//! - **Arithmetic via Levy (1992) moment matching**: match the first two
-//!   moments of $B$ to a log-normal and use BSM. Standard market practice
-//!   for pricing index options.
-//! - **Monte Carlo**: general benchmark, supports arbitrary correlation.
-//!
-//! Source:
-//! - Levy, E. (1992), "Pricing European average rate currency options", J. Int. Money & Finance 11
-//! - Turnbull, S. & Wakeman, L. (1991), "A quick algorithm for pricing European average options"
-//! - Hu, D., Sayit, H. & Viens, F. (2023), "Pricing basket options with the first three moments
-//!   of the basket: log-normal models and beyond", arXiv:2302.08041
-//!
+//! Reference: Levy (1992), J. Int. Money Finance 11
+//! Reference: Turnbull & Wakeman (1991), "A quick algorithm for pricing European average options"
+//! Reference: Hu et al. (2023), arXiv:2302.08041
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -80,48 +67,13 @@ fn assert_basket_query(
   );
 }
 
-/// Geometric basket call/put on $n$ correlated Gbm assets. Uses the fact
-/// that the weighted geometric mean is log-normal under Gbm.
+/// Geometric basket on `n` correlated Gbm assets, whose weighted geometric mean is lognormal; the
+/// weights are contract terms that also fix `σ_G`, and `n` assets take no `ModelPricer`.
 ///
 /// $$
 /// G_T = \prod_{i=1}^n S_{i,T}^{w_i},\qquad
 /// \ln G_T \sim \mathcal N\!\big(\mu_G T, \sigma_G^2 T\big)
 /// $$
-///
-/// where the weights satisfy $\sum_i w_i = 1$.
-///
-/// The struct holds **model and contract state only** — the per-asset
-/// volatilities and their correlation, plus the basket weights. The spot
-/// vector, the strike, the rate, the dividend-yield vector and the maturity
-/// are the pricing *query* and travel as arguments, so one instance prices a
-/// whole strike/maturity grid.
-///
-/// The weights are the field where the split is not obvious, and they land
-/// on the struct for two independent reasons. They are a **contract** term:
-/// $\prod_i S_i^{w_i}$ is what the option is written on, fixed by the term
-/// sheet and not by the market, exactly like the digitals' cash payout. They
-/// are also inseparable from the model, because the effective volatility
-/// $\sigma_G^2=\sum_{i,j} w_i w_j \rho_{ij}\sigma_i\sigma_j$ is a function of
-/// the weights, the volatilities and the correlation and of nothing else — a
-/// query-side weight vector would leave the basket with no volatility of its
-/// own.
-///
-/// The dividend yields go the other way. A yield is a market quote, which
-/// the crate already says in
-/// [`ModelPricer`](crate::traits::ModelPricer)'s
-/// `price_call(s, k, r, q, tau)`; a vector of them is the same quantity per
-/// asset, so it travels with the query.
-///
-/// $\sigma_G$ could be cached at construction, since no query enters it, and
-/// deliberately is not: the drift $\mu_G$ and the geometric forward both
-/// carry the query's own rate, yields and spots, so caching one of the three
-/// would put a struct field next to two that can never be one.
-///
-/// An $n$-asset payoff carries no
-/// [`ModelPricer`](crate::traits::ModelPricer), whose
-/// `price_call(s, k, r, q, tau)` has a single underlying — this is the
-/// multi-asset "convention, no trait" family, see
-/// [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer).
 ///
 /// ```
 /// use ndarray::array;
@@ -140,9 +92,7 @@ fn assert_basket_query(
 /// ```
 #[derive(Debug, Clone)]
 pub struct GeometricBasketPricer {
-  /// Basket weights $w_i$, conventionally summing to one — a term of the
-  /// contract, not a market quote. The sum is not enforced; see
-  /// [`new`](Self::new).
+  /// Basket weights `wᵢ`, a term of the contract; summing to one by convention, not enforced.
   pub weights: Array1<f64>,
   /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
@@ -248,27 +198,13 @@ impl GeometricBasketPricer {
   }
 }
 
-/// Arithmetic basket option priced via Levy (1992) two-moment matching.
-/// The arithmetic basket is approximated by a log-normal whose first two
-/// moments match those of $B = \sum_i w_i S_{i,T}$ under the risk-neutral
-/// measure.
+/// Arithmetic basket by Levy (1992): the lognormal matching `B = Σ wᵢS_{i,T}`'s first two
+/// risk-neutral moments, both of which carry the query's rate, yields and spots.
 ///
 /// $$
 /// E\left[B\right] = \sum_i w_i S_{i,0} e^{(r-q_i)T},\qquad
 /// E\left[B^2\right] = \sum_{i,j} w_i w_j S_i S_j e^{((r-q_i) + (r-q_j) + \rho_{ij}\sigma_i\sigma_j)T}
 /// $$
-///
-/// The struct holds **model and contract state only** — the per-asset
-/// volatilities and their correlation, plus the basket weights. The spot
-/// vector, the strike, the rate, the dividend-yield vector and the maturity
-/// are the pricing *query* and travel as arguments, so one instance prices a
-/// whole strike/maturity grid.
-///
-/// The weights split the same way as
-/// [`GeometricBasketPricer`]'s and for the same reason. Here the case is if
-/// anything plainer: both matched moments carry the query's own rate, yields
-/// and spots, so no part of this approximation can be cached at construction
-/// even in principle.
 ///
 /// ```
 /// use ndarray::array;
@@ -337,15 +273,8 @@ impl ArithmeticBasketLevyPricer {
       r,
       tau,
     );
-    // A floor and a poison check are different operations, and `f64::max`
-    // runs them together: `f64::NAN.max(1e-14)` is `1e-14`. The floor
-    // itself is right — a basket whose two matched moments satisfy
-    // `m2 == m1²` has zero variance, and `1e-14` keeps `sigma_eff` out of
-    // a division by zero at that degenerate limit. A `NaN` log-ratio has
-    // no variance to floor: it means a model parameter or a market input
-    // was undefined, and squashing it to `1e-14` gave `sigma_eff ~ 1e-7`
-    // and priced the basket at its zero-volatility intrinsic. Same split
-    // as `pricing::fourier::pricer`'s `floor_price`.
+    // Floor the variance at `1e-14` (zero variance at `m2 == m1²` would divide by zero) but keep a
+    // NaN, which `f64::max` would turn into a zero-volatility intrinsic price.
     let log_ratio = (m2 / (m1 * m1)).ln();
     let var = if log_ratio.is_nan() {
       log_ratio

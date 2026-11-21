@@ -47,7 +47,7 @@ fn asymmetric_basket() -> (
   )
 }
 
-/// The geometric basket's prices are pinned to the values it priced before the model/query split.
+/// Regression goldens for the geometric basket, one asset and several.
 #[test]
 fn geometric_basket_matches_pre_refactor_goldens() {
   let single = GeometricBasketPricer::new(array![1.0], array![0.2], array![[1.0]]);
@@ -122,7 +122,7 @@ fn geometric_below_arithmetic() {
   assert!(geo < ari, "geo={geo} should be < ari={ari}");
 }
 
-/// The Levy basket's prices are pinned to the values it priced before the model/query split.
+/// Regression goldens for the Levy basket at the asymmetric query.
 #[test]
 fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   let (s, w, sig, q, rho) = asymmetric_basket();

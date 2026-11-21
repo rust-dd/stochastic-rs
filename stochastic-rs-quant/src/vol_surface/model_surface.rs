@@ -1,21 +1,5 @@
-//! # Model-Generated Implied Volatility Surfaces
-//!
-//! Any calibrated model implementing [`VanillaEuropeanCall`] automatically
-//! gets [`ModelSurface::vol_surface()`] via a blanket implementation that
-//! prices a grid of European calls and inverts to implied volatility.
-//!
-//! [`ModelPricer`](crate::traits::ModelPricer) alone is deliberately not
-//! enough. The inversion is a European Black inversion, so it is only
-//! meaningful for a European vanilla call, and `ModelPricer` covers digital,
-//! Asian and American payoffs too — [`VanillaEuropeanCall`] is the narrower
-//! bound that says the inversion applies. See that trait for what widening
-//! this bound silently produces.
-//!
-//! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJd,
-//! Kou, Hkde) get both traits via blanket impls in `fourier/mod.rs`.
-//! Non-Fourier models ([`SabrPricer`](crate::pricing::sabr::SabrPricer),
-//! [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer))
-//! have explicit impls.
+//! Implied-volatility surfaces by Black inversion of a [`VanillaEuropeanCall`]'s calls, not of any
+//! `ModelPricer`'s, whose digital, Asian or American prices would invert to finite, wrong vols.
 
 use ndarray::Array2;
 
@@ -25,15 +9,8 @@ use crate::pricing::fourier::CarrMadanPricer;
 use crate::pricing::fourier::FourierModelExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Trait for generating an implied vol surface from a calibrated model.
-///
-/// Every [`VanillaEuropeanCall`] gets this via a blanket implementation. The
-/// default prices calls across the (strike, maturity) grid and inverts each
-/// through the Black formula. Models like Sabr can override for efficiency.
-///
-/// The supertrait is the whole point of the bound. A
-/// [`ModelPricer`](crate::traits::ModelPricer) that is *not* a European
-/// vanilla call has no method here at all:
+/// An implied-vol surface for every [`VanillaEuropeanCall`]; a `ModelPricer` that is not one has
+/// no `vol_surface` (the first example), and one that is compiles (the second).
 ///
 /// ```compile_fail,E0599
 /// use stochastic_rs_quant::pricing::CashOrNothingPricer;
@@ -42,9 +19,6 @@ use crate::traits::VanillaEuropeanCall;
 /// let model = CashOrNothingPricer::new(10.0, 0.35);
 /// let _ = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// ```
-///
-/// The same call on a model that *is* one compiles, so the failure above is
-/// the bound and not a typo:
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::fourier::BsmFourier;
@@ -55,15 +29,8 @@ use crate::traits::VanillaEuropeanCall;
 /// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
 /// ```
 pub trait ModelSurface: VanillaEuropeanCall {
-  /// Generate an implied vol surface on the given grid.
-  ///
-  /// Each maturity's slice is inverted against
-  /// [`vanilla_call_forward`](VanillaEuropeanCall::vanilla_call_forward)
-  /// rather than an assumed $Se^{(r-q)\tau}$, so a model that carries at
-  /// something else inverts against its own forward. An implementor that
-  /// reports [`f64::NAN`] there — it is not a European vanilla call at that
-  /// query — leaves the whole slice `NaN`, including
-  /// [`log_moneyness`](ImpliedVolSurface::log_moneyness).
+  /// The surface inverted against [`VanillaEuropeanCall::vanilla_call_forward`], not an assumed
+  /// `Se^{(r−q)τ}`; a NaN forward leaves its slice NaN, `log_moneyness` included.
   fn vol_surface(
     &self,
     s: f64,
@@ -117,17 +84,8 @@ pub fn fourier_model_surface_fft(
   fourier_model_surface_fft_with(model, s, r, q, strikes, maturities, 12, 0.75)
 }
 
-/// Generate an implied vol surface using Carr-Madan FFT with caller-supplied
-/// FFT settings.
-///
-/// - `n_pow2`: FFT grid is `2^n_pow2` log-strike points. Higher gives a denser
-///   strike grid and a wider strike range (so deep wings hit-the-grid less
-///   often) at the cost of an O(N log N) FFT. Typical: 12 (4096) or 13 (8192).
-/// - `alpha`: Carr-Madan damping factor. Must be > 0. Lower values reduce
-///   the integrand's contribution near `u=0`; higher values pull the
-///   integration tail in. Typical: 0.75 (the Lord-Kahl 2010 sweet spot for
-///   moderate-vol equity smiles); use 0.25-0.5 for low-vol smiles, 1.0-1.5
-///   for high-skew rough-vol surfaces.
+/// [`fourier_model_surface_fft`] on `2^n_pow2` log-strikes (12 or 13 typical), damped by `alpha`
+/// `> 0`: 0.75 (Lord–Kahl) for equity smiles, 0.25–0.5 for low vol, 1.0–1.5 for rough-vol skew.
 pub fn fourier_model_surface_fft_with(
   model: &impl FourierModelExt,
   s: f64,
@@ -471,13 +429,8 @@ mod tests {
     }
   }
 
-  /// A flat-volatility model must invert to a flat surface. Under
-  /// [`BsmCoc::Black1976`] the carry is `b = 0`, so the forward is `s` — and
-  /// against the default `s * exp((r - q) * tau)` these same *correct* prices
-  /// invert to a smile running 0.080 to 0.150 across this grid, every point
-  /// finite and none of them 0.20. That is what
-  /// [`BsmPricer::vanilla_call_forward`] exists to prevent, and deleting the
-  /// override fails this test rather than degrading it.
+  /// Under `Black1976` the forward is `s`; against `se^{(r−q)τ}` the same prices inverted to a
+  /// 0.080–0.150 smile, which deleting [`BsmPricer::vanilla_call_forward`] would bring back.
   #[test]
   fn futures_carry_surface_recovers_the_models_flat_vol() {
     for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
@@ -497,11 +450,8 @@ mod tests {
     }
   }
 
-  /// The same failure with the dividend yield rather than the carry
-  /// convention: [`BsmCoc::Bsm1973`] carries at `b = r` and ignores `q`, so a
-  /// surface asked for at `q = 0.03` must still invert flat. Against the
-  /// default forward it produces a 0.274-to-0.233 skew out of a model that
-  /// has none.
+  /// `Bsm1973` carries at `b = r` and ignores `q`, so at `q = 0.03` it inverts flat, where the
+  /// default forward gave a 0.274-to-0.233 skew.
   #[test]
   fn dividend_ignoring_carry_surface_recovers_the_models_flat_vol() {
     let model = BsmPricer::new(0.20, BsmCoc::Bsm1973);
@@ -518,14 +468,8 @@ mod tests {
     }
   }
 
-  /// [`FiniteDifferencePricer`] is the one implementor whose exercise style
-  /// is a field, so it is the one that has to answer per instance. At
-  /// [`OptionStyle::American`] the whole surface must be `NaN`.
-  ///
-  /// Without the `NaN` this grid comes back 10/10 finite, every point within
-  /// 0.008 of the model's own `v` — an American price pushed through a
-  /// European inversion looks like a slightly noisy European one, which is
-  /// exactly why a `NaN` and not a warning.
+  /// At [`OptionStyle::American`] the surface is all NaN, where it came back 10/10 finite within
+  /// 0.008 of `sigma`: an American price through a European inversion passes for a European one.
   #[test]
   fn american_finite_difference_surface_is_all_nan() {
     let model = FiniteDifferencePricer::new(
@@ -551,9 +495,7 @@ mod tests {
     }
   }
 
-  /// Control for `american_finite_difference_surface_is_all_nan`: the same
-  /// solver at [`OptionStyle::European`] still produces a surface, so the
-  /// `NaN` above is the exercise style and not the type.
+  /// The same solver at [`OptionStyle::European`] gives a surface, so the NaN above is the style.
   #[test]
   fn european_finite_difference_surface_is_finite() {
     let model = FiniteDifferencePricer::new(
