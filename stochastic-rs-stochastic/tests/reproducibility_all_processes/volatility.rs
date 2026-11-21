@@ -11,6 +11,7 @@ use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::Fheston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
@@ -105,6 +106,35 @@ guard!(heston, "Heston", |s| Heston::new(
   VarianceBoundary::FullTruncation,
   s
 ));
+
+fn flat_drift_target(_t: f64) -> f64 {
+  0.033
+}
+
+guard!(heston_hull_white_2f, "HestonHullWhite2F", |s| {
+  HestonHullWhite2F::new(
+    1.0,
+    0.2,
+    0.8,
+    0.2,
+    0.2,
+    flat_drift_target as fn(f64) -> f64,
+    1.1,
+    0.01,
+    0.015,
+    0.8,
+    ndarray::array![
+      [1.0, -0.3, 0.35, 0.08],
+      [-0.3, 1.0, 0.0, 0.0],
+      [0.35, 0.0, 1.0, -0.4],
+      [0.08, 0.0, -0.4, 1.0],
+    ],
+    Some(0.03),
+    N,
+    Some(1.0),
+    s,
+  )
+});
 
 guard!(heston2d, "Heston2D", |s| Heston2D::new(
   [0.0, 0.0],

@@ -80,6 +80,7 @@ use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::Fheston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
@@ -400,6 +401,14 @@ refuses! {
     => Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 16, None, None, Unseeded).with_sigma(f64::NAN);
   a_polynomial_volatility_setter_refuses_a_nan_coefficient: "coefficients[0] must satisfy `coefficients[i].is_finite()`, got coefficients[0] = NaN"
     => GaussianPolynomialVolatility::new(ExponentialKernel::<f64>::new(1.5, 1.0), array![0.1], 64, None, Unseeded).with_coefficients(array![f64::NAN]);
+  a_heston_hull_white_hybrid_refuses_a_non_positive_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => HestonHullWhite2F::<f64>::default().with_s0(0.0);
+  a_heston_hull_white_hybrid_refuses_a_nan_rate_start: "r0 must satisfy `r0.is_none_or(|r0| r0.is_finite())`, got r0 = Some(NaN)"
+    => HestonHullWhite2F::<f64>::default().with_r0(Some(f64::NAN));
+  a_heston_hull_white_hybrid_refuses_a_matrix_of_another_size: "rho must satisfy `rho.dim() == (4, 4)`, got rho.dim() = (3, 3)"
+    => HestonHullWhite2F::<f64>::default().with_rho(Array2::eye(3));
+  a_heston_hull_white_hybrid_refuses_an_infinite_reversion: "b must satisfy `b.is_finite()`, got b = inf"
+    => HestonHullWhite2F::<f64>::default().with_b(f64::INFINITY);
   a_local_stochastic_volatility_setter_refuses_an_infinite_mixing: "eta must satisfy `eta.is_finite()`, got eta = inf"
     => HestonSlv::<f64>::default().with_eta(f64::INFINITY);
   a_stochastic_correlation_setter_refuses_a_nan_start: "rho0 must satisfy `rho0.is_finite()`, got rho0 = NaN"

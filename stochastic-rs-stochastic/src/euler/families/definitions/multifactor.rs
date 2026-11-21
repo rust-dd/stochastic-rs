@@ -108,6 +108,59 @@ macro_rules! euler_multifactor {
       v + kappa * (theta - vp) * $dt + sigma * sqrt(vp) * db
     }
     report { s, positive(v) },
+
+  /// Heston's log-spot on two-factor Hull-White rates by Euler under full truncation; `l` is the
+  /// lower factor of the `(x, v, r, u)` correlation, and the spot reads the rate's trapezoid.
+  132 => HestonHullWhite2F {
+    kappa, theta, sigma, a, b, sigma1, sigma2, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33,
+    s0
+  }
+    state (y, v, r, w)
+    noise (dz0, dz1, dz2, dz3)
+    step {
+      bind ex = l00 * dz0;
+      bind ev = l10 * dz0 + l11 * dz1;
+      bind er = l20 * dz0 + l21 * dz1 + l22 * dz2;
+      bind ew = l30 * dz0 + l31 * dz1 + l32 * dz2 + l33 * dz3;
+      bind vp = positive(v);
+      bind dv = kappa * (theta - vp) * $dt + sigma * sqrt(vp) * ev;
+      bind rn = r + ($ct + w - a * r) * $dt + sigma1 * er;
+      y + (r + rn) * lit(0.5) * $dt - vp * lit(0.5) * $dt + sqrt(vp) * ex,
+      v + dv,
+      rn,
+      w - b * w * $dt + sigma2 * ew
+    }
+    report { s0 * exp(y), positive(v), r, w },
+
+  /// [`HestonHullWhite2F`](Family::HestonHullWhite2F) under Andersen's quadratic-exponential
+  /// variance: `l` factors `(v, r, u, x)` with the rate-variance correlations zero.
+  133 => HestonHullWhite2FQe {
+    theta, e_kd, c1, c2, k0, k1, k2, a, b, sigma1, sigma2, l11, l21, l22, l31, l32, l33, s0
+  }
+    state (y, v, r, w)
+    noise (dzv, dzr, dz3, dz4)
+    step {
+      bind omekd = negate(e_kd - lit(1.0));
+      bind m = theta + (v - theta) * e_kd;
+      bind s2 = v * c1 * omekd + c2 * omekd * omekd;
+      bind psi = s2 / (m * m);
+      bind inv = recip(psi) * lit(2.0);
+      bind b2 = inv - lit(1.0) + sqrt(positive(inv * (inv - lit(1.0))));
+      bind zv = dzv / sqrt($dt);
+      bind quad = m / (b2 + lit(1.0)) * (sqrt(b2) + zv) * (sqrt(b2) + zv);
+      bind p = (psi - lit(1.0)) / (psi + lit(1.0));
+      bind tail = ln(negate(p - lit(1.0)) / negate($u - lit(1.0))) * m
+        * recip(negate(p - lit(1.0)));
+      bind vn = pick(leq(psi, lit(1.5)), quad, pick(leq($u, p), lit(0.0), tail));
+      bind rn = r + ($ct + w - a * r) * $dt + sigma1 * l11 * dzr;
+      bind zx = (l31 * dzr + l32 * dz3 + l33 * dz4) / sqrt($dt);
+      y + (r + rn) * lit(0.5) * $dt + k0 + k1 * v + k2 * vn
+        + sqrt(positive((v + vn) * lit(0.5) * $dt)) * zx,
+      vn,
+      rn,
+      w - b * w * $dt + sigma2 * (l21 * dzr + l22 * dz3)
+    }
+    report { s0 * exp(y), v, r, w },
     }
   };
 }

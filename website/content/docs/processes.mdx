@@ -1,13 +1,13 @@
 ---
 title: Stochastic processes
 seo_title: Stochastic processes in Rust and Python
-description: 129 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 130 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **129 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
+The `stochastic-rs-stochastic` crate ships **130 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
@@ -16,7 +16,7 @@ The `stochastic-rs-stochastic` crate ships **129 processes** in eleven families 
 | **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
 | **Core building blocks**       | 19    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion |
 | **Jump**                       | 16    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
-| **Volatility**                 | 15    | Heston (+ log, 2D, multifactor, stochastic-local), SABR (+ multifactor), Bergomi, rough Bergomi, fractional Heston, double-Heston, BNS, HKDE, fractional Bates SVJ, SVCGMY |
+| **Volatility**                 | 16    | Heston (+ log, 2D, multifactor, stochastic-local, Hull-White 2F hybrid), SABR (+ multifactor), Bergomi, rough Bergomi, fractional Heston, double-Heston, BNS, HKDE, fractional Bates SVJ, SVCGMY |
 | **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
@@ -110,6 +110,42 @@ s, v = p.sample()                   # both numpy arrays
 ```
 </Tab>
 </Tabs>
+
+### Heston Hull-White 2F hybrid
+
+The Heston-Gaussian two-factor hybrid (H-G2++) of Grzelak, Oosterlee and van Weeren (2011): Heston equity on the `HullWhite2F` short rate, the four drivers $(x, v, r, u)$ under one correlation matrix.
+
+$$
+\begin{aligned}
+d\log S_t &= \bigl(r_t - \tfrac12 v_t\bigr)\,dt + \sqrt{v_t}\,dW^x_t, & dv_t &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^v_t, \\
+dr_t &= \bigl[\theta_r(t) + u_t - a\,r_t\bigr]\,dt + \sigma_1\,dW^r_t, & du_t &= -b\,u_t\,dt + \sigma_2\,dW^u_t, \qquad d\langle W^i, W^j\rangle_t = \rho_{ij}\,dt.
+\end{aligned}
+$$
+
+The model is simulated in full, not as the paper's affine approximation (which is its reference pricer). `sample()` returns a `HestonHullWhite2FPaths { s, v, r, u, integrated_rate }`: spot, variance, short rate, auxiliary factor and the integrated short rate $\int_0^t r$, so a path discounts its own payoff; the rate enters the spot and the integral through the same trapezoidal sum, which keeps the discounted spot a martingale of the Euler scheme; QE carries the bias of Andersen's asset step. `rho` is the full $4 \times 4$ correlation matrix, validated symmetric with unit diagonal and factorised once; the rate-variance entries are zero in the paper and typically in practice. The variance steps by Euler under full truncation, `Heston`'s default `VarianceBoundary::FullTruncation` with no other boundary to choose, or by Andersen's QE scheme after `.qe()`, which requires those two entries to be zero. $\theta_r(t)$ is the additive drift target `HullWhite2F` takes, fitted to the initial curve by the user. On a device the kernel steps the four drivers under either scheme, and the integrated rate is rebuilt on the host from the rate row, the same trapezoid.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_heston_hull_white_2f.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+rho = np.array([[1.0, -0.3, 0.35, 0.08], [-0.3, 1.0, 0.0, 0.0],
+                [0.35, 0.0, 1.0, -0.4], [0.08, 0.0, -0.4, 1.0]])
+p = srs.PyHestonHullWhite2F(kappa=0.8, theta=0.2, sigma=0.2, theta_r=lambda t: 1.1 * 0.03,
+                            a=1.1, sigma1=0.01, sigma2=0.015, b=0.8, rho=rho, n=253,
+                            s0=1.0, v0=0.2, r0=0.03, t=1.0, seed=42, scheme="qe")
+s, v, r, u, integrated_rate = p.sample()                # five arrays of 253 points
+s, v, r, u, integrated_rate = p.sample_par(10_000)      # five (10_000, 253) arrays
+discounted = s[:, -1] * np.exp(-integrated_rate[:, -1])
+```
+</Tab>
+</Tabs>
+
+Reference: Grzelak, L. A., Oosterlee, C. W. and van Weeren, S. (2011), *The affine Heston model with correlated Gaussian interest rates for pricing hybrid derivatives*, Quantitative Finance 11(11), 1647-1663, doi:10.1080/14697688.2011.615216. `tests/heston_hull_white_2f_grzelak_tables.rs` holds the simulated implied volatilities to the paper's tables 3 and 4.
 
 ### Fractional Brownian motion
 
@@ -282,7 +318,7 @@ Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Accelerate` (`ac
 
 ## Euler engine
 
-The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 127 of the 129: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and Philox Box–Muller normals (`sample_par` is one launch for all `m` paths):
+The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 128 of the 130: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and Philox Box–Muller normals (`sample_par` is one launch for all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
@@ -316,7 +352,7 @@ gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="me
 
 `EulerBackend` is the capability a generic bound names — `B: EulerBackend<T>` says a process runs on the device `B` through this engine — and it is the one item of the `euler` module a caller writes. Everything else is the engine's own machinery: the family specification `EulerSpec`, the launch hooks `EulerCoefficients` and `EulerSystem`, the lift, table and program specifications, the slot caps and the kernel-implementor trait `EulerKernel`. Those items are public so the crate's sub-modules, tests and probes can reach them, hidden from the rendered documentation, and outside the stability promise. A process reaches a device by declaring a family in the crate's table and describing its coefficients as an `EulerSpec` through `EulerCoefficients`, not by implementing these traits from outside.
 
-The recursion is the Euler–Maruyama scheme of Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of Stochastic Differential Equations*, Springer, §10.2. Every square-root process takes a `VarianceBoundary`, on the host and on a device: full truncation (the default), absorption or reflection, the three fixes of Lord, R., Koekkoek, R. & van Dijk, D. (2010), *A comparison of biased simulation schemes for stochastic volatility models*, Quantitative Finance 10(2), 177–194. The generator is Philox-4x32-10: Salmon, J. K., Moraes, M. A., Dror, R. O. & Shaw, D. E. (2011), *Parallel random numbers: as easy as 1, 2, 3*, SC'11, DOI 10.1145/2063384.2063405.
+The recursion is the Euler–Maruyama scheme of Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of Stochastic Differential Equations*, Springer, §10.2. The square-root processes that take a `VarianceBoundary` (`Heston`, `HestonLog`, `DoubleHeston`, `Heston2D`, `Bates`, `Hkde`, `Cir`, `Fcir`, `CirPlusPlus`, `Cir2F`, `SquaredBessel`, `Bessel`, `FellerLogistic`) take it on the host and on a device: full truncation (the default), absorption or reflection, the three fixes of Lord, R., Koekkoek, R. & van Dijk, D. (2010), *A comparison of biased simulation schemes for stochastic volatility models*, Quantitative Finance 10(2), 177–194. `HestonSlv`, `MultifactorHeston`, `HestonStochCorr`, `WuZhang` and `HestonHullWhite2F` take none and always step full truncation. The generator is Philox-4x32-10: Salmon, J. K., Moraes, M. A., Dror, R. O. & Shaw, D. E. (2011), *Parallel random numbers: as easy as 1, 2, 3*, SC'11, DOI 10.1145/2063384.2063405.
 
 ## Generic SDE solver
 
@@ -432,7 +468,7 @@ Three constructions in the literature keep the law and are not implemented: the 
 
 ## Symbol glossary
 
-**Design principle.** This crate keeps literature-faithful, per-model parameter names instead of forcing one global naming convention across 129 processes. The same Greek letter legitimately plays different roles in different models: `theta` is a mean-reversion **speed** in `Ou` / `Cir` / `Vasicek`, but a long-run **variance level** in `Heston`; `alpha` alone has around seven unrelated meanings in this crate (see below). Renaming every colliding field to remove the ambiguity would break positional constructor calls, diverge from the paper each model transcribes, and erase the very naming convention practitioners expect to find.
+**Design principle.** This crate keeps literature-faithful, per-model parameter names instead of forcing one global naming convention across 130 processes. The same Greek letter legitimately plays different roles in different models: `theta` is a mean-reversion **speed** in `Ou` / `Cir` / `Vasicek`, but a long-run **variance level** in `Heston`; `alpha` alone has around seven unrelated meanings in this crate (see below). Renaming every colliding field to remove the ambiguity would break positional constructor calls, diverge from the paper each model transcribes, and erase the very naming convention practitioners expect to find.
 
 So instead: **every field's own `///` doc states its role in that specific model**, and this section is the cross-model index for the symbols that recur most. Read a field's own doc comment for the authoritative answer; this page is a map to help you find the right model, not a replacement for the field doc.
 

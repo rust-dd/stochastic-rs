@@ -814,6 +814,44 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::BesselFromSquaredFullTruncation(p) => {
         (Family::BesselFromSquaredFullTruncation.code(), pad(p))
       }
+      EulerSpec::HestonHullWhite2F {
+        kappa,
+        theta,
+        sigma,
+        a,
+        b,
+        sigma1,
+        sigma2,
+        l,
+        s0,
+      } => {
+        let mut values = [T::zero(); 18];
+        values[..7].copy_from_slice(&[kappa, theta, sigma, a, b, sigma1, sigma2]);
+        values[7..17].copy_from_slice(&l);
+        values[17] = s0;
+        (Family::HestonHullWhite2F.code(), pad(values))
+      }
+      EulerSpec::HestonHullWhite2FQe {
+        theta,
+        e_kd,
+        c1,
+        c2,
+        k0,
+        k1,
+        k2,
+        a,
+        b,
+        sigma1,
+        sigma2,
+        l,
+        s0,
+      } => {
+        let mut values = [T::zero(); 18];
+        values[..11].copy_from_slice(&[theta, e_kd, c1, c2, k0, k1, k2, a, b, sigma1, sigma2]);
+        values[11..17].copy_from_slice(&l);
+        values[17] = s0;
+        (Family::HestonHullWhite2FQe.code(), pad(values))
+      }
     }
   }
 }

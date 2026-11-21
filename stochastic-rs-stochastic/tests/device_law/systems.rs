@@ -23,6 +23,7 @@ fn terminal_mean(paths: &[[Array1<f32>; 2]], component: usize) -> f64 {
 
 mod affine;
 mod heston;
+mod heston_hull_white_2f;
 mod jumps;
 mod regimes;
 mod volatility;

@@ -40,6 +40,7 @@ use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::Fheston;
 use stochastic_rs_stochastic::volatility::heston::AndersenQe;
 use stochastic_rs_stochastic::volatility::heston::Euler;
+use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
@@ -68,6 +69,8 @@ fn every_process_is_debug_and_clone_on<B: EulerBackend<f64> + core::fmt::Debug>(
   is_debug_and_clone::<Fheston<f64, Unseeded, B>>();
   is_debug_and_clone::<GaussianPolynomialVolatility<f64, ExponentialKernel<f64>, Unseeded, B>>();
   is_debug_and_clone::<Heston2D<f64, Unseeded, B>>();
+  is_debug_and_clone::<HestonHullWhite2F<f64, Euler, Unseeded, B>>();
+  is_debug_and_clone::<HestonHullWhite2F<f64, AndersenQe, Unseeded, B>>();
   is_debug_and_clone::<Hjm<f64, Unseeded, B>>();
   is_debug_and_clone::<Hkde<f64, Unseeded, B>>();
   is_debug_and_clone::<JumpFou<f64, SimdNormal<f64>, Unseeded, B>>();

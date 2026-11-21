@@ -4,9 +4,9 @@
 
 # stochastic-rs-stochastic
 
-**Stochastic process simulation — 129 processes**
+**Stochastic process simulation — 130 processes**
 
-The simulation engine: 129 processes behind one `ProcessExt<T>` trait,
+The simulation engine: 130 processes behind one `ProcessExt<T>` trait,
 generic over `f32` / `f64`, each of which samples on CUDA, Metal or Apple
 Accelerate as well as on the CPU.
 

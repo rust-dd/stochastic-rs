@@ -4,6 +4,7 @@ use std::time::Duration;
 use criterion::BatchSize;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
@@ -11,6 +12,7 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::ndarray::array;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::autoregressive::ar::Ar;
 use stochastic_rs::stochastic::autoregressive::arima::Arima;
@@ -22,7 +24,10 @@ use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::bm::Bm;
 use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston::Heston;
+use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
+use stochastic_rs::traits::FloatExt;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_process_generation(c: &mut Criterion) {
@@ -197,5 +202,71 @@ fn bench_process_generation(c: &mut Criterion) {
   group.finish();
 }
 
-criterion_group!(benches, bench_process_generation);
+/// The paper's experiment 4.2 parameters (the type's `Default`) under a pinned seed.
+fn seeded_heston_hull_white_2f<T: FloatExt>() -> HestonHullWhite2F<T, Euler, Deterministic> {
+  let d = HestonHullWhite2F::<T>::default();
+  let rho = d.rho().clone();
+  HestonHullWhite2F::new(
+    d.s0,
+    d.v0,
+    d.kappa,
+    d.theta,
+    d.sigma,
+    d.theta_r,
+    d.a,
+    d.sigma1,
+    d.sigma2,
+    d.b,
+    rho,
+    d.r0,
+    d.n,
+    d.t,
+    Deterministic::new(42),
+  )
+}
+
+fn bench_heston_hull_white_2f(c: &mut Criterion) {
+  let mut group = c.benchmark_group("HestonHullWhite2F");
+  for &n in &[256usize, 4_096] {
+    group.throughput(Throughput::Elements(n as u64));
+    // Built outside `b.iter`: construction and the Cholesky factorisation are not measured.
+    let euler = seeded_heston_hull_white_2f::<f64>().with_points(n);
+    group.bench_with_input(BenchmarkId::new("euler/sample", n), &n, |b, _| {
+      b.iter(|| black_box(euler.sample()));
+    });
+    let qe = euler.clone().qe();
+    group.bench_with_input(BenchmarkId::new("qe/sample", n), &n, |b, _| {
+      b.iter(|| black_box(qe.sample()));
+    });
+  }
+  let euler = seeded_heston_hull_white_2f::<f64>();
+  let qe = euler.clone().qe();
+  group.throughput(Throughput::Elements(1_000 * 252));
+  group.bench_function("euler/sample_par/1000", |b| {
+    b.iter(|| black_box(euler.sample_par(1_000)));
+  });
+  group.bench_function("qe/sample_par/1000", |b| {
+    b.iter(|| black_box(qe.sample_par(1_000)));
+  });
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+  {
+    use stochastic_rs::stochastic::device::Metal;
+    let euler = seeded_heston_hull_white_2f::<f32>().on::<Metal>();
+    let qe = seeded_heston_hull_white_2f::<f32>().qe().on::<Metal>();
+    group.throughput(Throughput::Elements(100_000 * 252));
+    group.bench_function("euler/metal/sample_par/100000", |b| {
+      b.iter(|| black_box(euler.sample_par(100_000)));
+    });
+    group.bench_function("qe/metal/sample_par/100000", |b| {
+      b.iter(|| black_box(qe.sample_par(100_000)));
+    });
+  }
+  group.finish();
+}
+
+criterion_group!(
+  benches,
+  bench_process_generation,
+  bench_heston_hull_white_2f
+);
 criterion_main!(benches);

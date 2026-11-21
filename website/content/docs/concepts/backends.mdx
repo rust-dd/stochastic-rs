@@ -34,7 +34,7 @@ let gpu = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 - `HostBackend: Backend` — the process samples on the CPU through its own sampler. `Cpu` and `Accelerate` implement it.
 - `FgnBackend<T>: Backend` — fractional Gaussian noise on the device (the circulant-embedding FFT pipeline); `Fgn` is bound on it, and the fractional processes take their increments from it.
 - `SheetBackend<T>: Backend` — the two-dimensional circulant embedding behind the fractional Brownian sheet `Fbs`.
-- `EulerBackend<T>: Backend` — the Euler engine's device kernels, which 127 processes step through; `Cpu` and `Accelerate` implement it as the host sampler.
+- `EulerBackend<T>: Backend` — the Euler engine's device kernels, which 128 processes step through; `Cpu` and `Accelerate` implement it as the host sampler.
 
 The three device capabilities take the scalar, and a device implements them only for the precision its kernels compute in: `Cuda` for `f32` and `f64`, `Metal` for `f32`, the CPU devices for both. `Fgn<f64>` or `Gbm<f64>` on `Metal` is a compile error; nothing runs in `f32` behind an `f64` type. Generic code spells the scalar in the bound: `B: EulerBackend<T>`.
 
@@ -53,7 +53,7 @@ Bound on `Backend` to say "device-parameterised"; bound on a capability when the
 
 ## Which processes support it
 
-All 129 processes carry the parameter and reach a device: 127 through the Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`) and `Fbs` through the sheet pipeline (`SheetBackend`). The per-family inventory — which process runs on which device, at what precision, and its Python entry point — is on [GPU support](/docs/concepts/gpu-support).
+All 130 processes carry the parameter and reach a device: 128 through the Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`) and `Fbs` through the sheet pipeline (`SheetBackend`). The per-family inventory — which process runs on which device, at what precision, and its Python entry point — is on [GPU support](/docs/concepts/gpu-support).
 
 ## One fallback rule
 
