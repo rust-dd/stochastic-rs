@@ -1,14 +1,19 @@
 //! Reference: Bertsekas, “Projected Newton Methods for Optimization Problems with Simple
-//! Constraints” (1982), eqs. (32), (81)–(84), DOI 10.1137/0320018; its set is held till the end.
+//! Constraints” (1982), eqs. (32), (81)–(84), DOI 10.1137/0320018; a restart stands for its step.
+
+use std::cell::Cell;
+use std::cell::RefCell;
 
 use basin::Jacobian;
 use basin::Residual;
+use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
 use super::LeastSquaresProblem;
 use super::Objective;
+use super::Run;
 
 /// How far each coordinate of the optimiser's point can fall and rise before its value meets a
 /// bound its map folds or clamps at, and `strip`, its stencil step: the paper's `ε`.
@@ -20,73 +25,168 @@ pub(crate) struct Room {
 
 pub(super) type Rooms = Box<dyn Fn(ArrayView1<f64>) -> Room>;
 
-/// The set of (81): per coordinate the step onto the bound it rests within `εₖ = min{ε, wₖ}` of
-/// while the cost falls across it, `None` for a free one; `M` is `1/‖Jⱼ‖²`.
-pub(super) fn held(
+/// The coordinates of (81)'s set whose diagonal step, `M = 1/‖Jⱼ‖²`, is cut at the bound: the
+/// step onto it. Such a step is its own term of `wₖ`, so `εₖ` holds whatever the other terms.
+pub(super) fn cut(
   jacobian: &Array2<f64>,
   residuals: &Array1<f64>,
   room: &Room,
 ) -> Vec<Option<f64>> {
   let columns = jacobian.columns().into_iter().enumerate();
-  let reach = columns.map(|(j, column)| {
+  let onto = columns.map(|(j, column)| {
     let (slope, square) = (column.dot(residuals), column.dot(&column));
     let onto = if slope > 0.0 {
       -room.down[j]
     } else {
       room.up[j]
     };
-    let step = if square > 0.0 {
-      slope.abs() / square
-    } else {
-      0.0
-    };
-    (onto, step.min(onto.abs()), slope != 0.0)
+    let reaches = slope.abs() >= onto.abs() * square && onto.abs() <= room.strip[j];
+    (slope != 0.0 && reaches).then_some(onto)
   });
-  let reach = reach.collect::<Vec<_>>();
-  let projected = reach
-    .iter()
-    .map(|(_, step, _)| step * step)
-    .sum::<f64>()
-    .sqrt();
-  let rests = |(j, &(onto, _, falls)): (usize, &(f64, f64, bool))| {
-    (falls && onto.abs() <= room.strip[j].min(projected)).then_some(onto)
-  };
-  reach.iter().enumerate().map(rests).collect()
+  onto.collect()
 }
 
-/// Zeroes each held coordinate's column: the scaling matrix diagonal with respect to the set.
-pub(super) fn rest_on_bounds(jacobian: &mut Array2<f64>, held: &[Option<f64>]) {
-  for (mut column, held) in jacobian.columns_mut().into_iter().zip(held) {
-    if held.is_some() {
-      column.fill(0.0);
+/// The bounds' side of a fit: the set held on its bounds through one solve, and what ends it.
+pub(super) struct Bounds {
+  rooms: Rooms,
+  /// The coordinates on a bound, their columns zero: the scaling matrix diagonal in the set.
+  active: RefCell<Vec<bool>>,
+  /// The set and the cost at the iterate whose set is not `active`, which stopped the solve.
+  change: RefCell<Option<(Vec<Option<f64>>, f64)>>,
+  pub(super) watch: Cell<bool>,
+  /// The iterate whose step onto the bounds raised the cost: nothing enters the set there.
+  refused: RefCell<Option<Array1<f64>>>,
+}
+
+impl Bounds {
+  pub(super) fn new(rooms: Rooms, dimension: usize) -> Self {
+    Self {
+      rooms,
+      active: RefCell::new(vec![false; dimension]),
+      change: RefCell::new(None),
+      watch: Cell::new(true),
+      refused: RefCell::new(None),
     }
+  }
+
+  /// Zeroes the active columns; `Err`, with the change kept, where the set at `x` is another.
+  pub(super) fn hold(
+    &self,
+    x: &Array1<f64>,
+    jacobian: &mut Array2<f64>,
+    residuals: &Array1<f64>,
+  ) -> Result<(), ()> {
+    let active = self.active.borrow();
+    if self.watch.get() {
+      let mut set = cut(jacobian, residuals, &(self.rooms)(x.view()));
+      if self.refused.borrow().as_ref() == Some(x) {
+        let entering = set
+          .iter_mut()
+          .zip(active.iter())
+          .filter(|(_, active)| !**active);
+        entering.for_each(|(step, _)| *step = None);
+      }
+      if set
+        .iter()
+        .zip(active.iter())
+        .any(|(step, active)| step.is_some() != *active)
+      {
+        *self.change.borrow_mut() = Some((set, residuals.dot(residuals)));
+        return Err(());
+      }
+    }
+    let columns = jacobian.columns_mut().into_iter().zip(active.iter());
+    columns
+      .filter(|(_, active)| **active)
+      .for_each(|(mut column, _)| column.fill(0.0));
+    Ok(())
+  }
+
+  /// `best` with each entering coordinate of `set` on its bound, the projection of (82), where
+  /// that does not raise `cost`; `best` otherwise, with nothing entering. The rest is released.
+  fn seat<P: LeastSquaresProblem>(
+    &self,
+    objective: &Objective<P>,
+    best: Array1<f64>,
+    set: &[Option<f64>],
+    cost: f64,
+  ) -> Array1<f64> {
+    let mut active = self.active.borrow_mut();
+    let mut seated = best.clone();
+    let entering = |j: usize| !active[j] && set[j].is_some();
+    for j in (0..set.len()).filter(|j| entering(*j)) {
+      seated[j] += set[j].unwrap_or(0.0);
+      // The sum can miss the bound by a rounding; the rest of the way is the nearer room.
+      for _ in 0..2 {
+        let room = (self.rooms)(seated.view());
+        seated[j] += if room.down[j] <= room.up[j] {
+          -room.down[j]
+        } else {
+          room.up[j]
+        };
+      }
+    }
+    let on = |x: &Array1<f64>| Residual::residual(&objective, x).map(|r| r.dot(&r));
+    let kept = seated == best || on(&seated).is_ok_and(|on| on <= cost);
+    for (j, active) in active.iter_mut().enumerate() {
+      *active = set[j].is_some() && (kept || *active);
+    }
+    *self.refused.borrow_mut() = (!kept).then(|| best.clone());
+    if kept && seated != best {
+      objective.model.borrow_mut().accept();
+    }
+    if kept { seated } else { best }
   }
 }
 
-/// `best` with each held coordinate set on its bound, the projection of (82) taken once, where
-/// that does not raise the cost; `best` otherwise.
-pub(super) fn seated<P: LeastSquaresProblem>(
+/// `solve` from `start`, and again from each iterate whose set is not the one held, its entering
+/// coordinates seated; a restart spends an evaluation, so the budget bounds their number.
+pub(super) fn restarted<P: LeastSquaresProblem>(
   objective: &Objective<P>,
-  best: Array1<f64>,
-) -> Array1<f64> {
-  let cost = |x: &Array1<f64>| Residual::residual(&objective, x).map(|r| r.dot(&r));
-  let flat = objective.flat.get();
-  let at = cost(&best).and_then(|at| Jacobian::jacobian(&objective, &best).map(|_| at));
-  objective.flat.set(flat);
-  let onto = objective.held.borrow().clone();
-  let steps = onto.iter().map(|step| step.unwrap_or(0.0));
-  let seated = &best + &Array1::from_iter(steps);
-  match (at, cost(&seated)) {
-    (Ok(at), Ok(on)) if seated != best && on <= at => {
-      objective.model.borrow_mut().accept();
-      seated
+  start: Array1<f64>,
+  (budget, cap): (usize, usize),
+  mut solve: impl FnMut(Array1<f64>, usize, usize, bool) -> Run,
+) -> Run {
+  let mut total = solve(start, budget, cap, true);
+  let Some(bounds) = &objective.bounds else {
+    return total;
+  };
+  loop {
+    let own = matches!(
+      total.reason,
+      TerminationReason::SolverConverged | TerminationReason::NumericalNoProgress
+    );
+    if own && bounds.change.borrow().is_none() {
+      // The solver stops on a step, before the Jacobian that tells the set where it stopped.
+      let _ = Residual::residual(&objective, &total.best)
+        .and_then(|_| Jacobian::jacobian(&objective, &total.best));
     }
-    _ => best,
+    let Some((set, cost)) = bounds.change.borrow_mut().take() else {
+      return total;
+    };
+    let spent = objective.evaluations.get();
+    if spent >= budget || total.iterations >= cap {
+      total.reason = match spent >= budget {
+        true => TerminationReason::MaxCostEvals,
+        false => TerminationReason::MaxIter,
+      };
+      total.started = true;
+      return total;
+    }
+    let from = bounds.seat(objective, total.best, &set, cost);
+    let next = solve(from, budget - spent, cap - total.iterations, false);
+    total = Run {
+      iterations: total.iterations + next.iterations,
+      started: true,
+      ..next
+    };
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_distributions::RealExt;
+
   use super::super::LmOptions;
   use super::super::minimize_in_box;
   use super::*;
@@ -132,14 +232,13 @@ mod tests {
     }
   }
 
-  /// The minimum over `θ₁ ≥ 0` is `(0, 3)`: `θ₁` is held beside the fold, `θ₂` fitted, and the
-  /// held one then set on the fold itself.
+  /// The minimum over `θ₁ ≥ 0` is `(0, 3)`: `θ₁` is set on the fold and `θ₂` fitted with it there.
   #[test]
   fn a_coordinate_whose_cost_falls_across_its_bound_ends_on_it_with_the_rest_fitted() {
     let (fitted, report) = minimize_in_box(folded([1.0, 0.0], -0.5), LmOptions::default(), outward);
     assert!(report.converged, "{report:?}");
     assert!(
-      fitted.x[0] == 0.0 && (fitted.x[1] - 3.0).abs() < 1e-5,
+      fitted.x[0] == 0.0 && (fitted.x[1] - 3.0).abs() < 1e-9,
       "{}",
       fitted.x
     );
@@ -156,62 +255,153 @@ mod tests {
     assert!(gap < 1e-9, "{}", fitted.x);
   }
 
-  /// `r = [θ₁ − 999.5, θ₂ − 2]` with `θ₁ = 1000 − |x₁ − 1000|`, a fold at the upper bound 1000.
-  struct Under(Array1<f64>);
+  /// Residuals of `θ`, each `θⱼ = capⱼ − |xⱼ − capⱼ|` folded at an upper bound, `∞` for none.
+  struct Capped {
+    x: Array1<f64>,
+    caps: Vec<f64>,
+    rows: fn(&[f64]) -> Array1<f64>,
+    slopes: fn(&[f64]) -> Array2<f64>,
+  }
 
-  impl LeastSquaresProblem for Under {
+  impl Capped {
+    fn values(x: ArrayView1<f64>, caps: &[f64]) -> Array1<f64> {
+      let folded = x.iter().zip(caps).map(|(x, cap)| match cap.is_finite() {
+        true => cap - (x - cap).abs(),
+        false => *x,
+      });
+      folded.collect()
+    }
+
+    fn folds(x: ArrayView1<f64>, caps: &[f64]) -> Array1<f64> {
+      let sides = x.iter().zip(caps);
+      sides
+        .map(|(x, cap)| if x > cap { -1.0 } else { 1.0 })
+        .collect()
+    }
+  }
+
+  impl LeastSquaresProblem for Capped {
     fn set_params(&mut self, x: ArrayView1<f64>) {
-      self.0.assign(&x);
+      self.x.assign(&x);
     }
 
     fn params(&self) -> Array1<f64> {
-      self.0.clone()
+      self.x.clone()
     }
 
     fn residuals(&mut self) -> Option<Array1<f64>> {
-      let first = 1000.0 - (self.0[0] - 1000.0).abs();
-      Some(ndarray::array![first - 999.5, self.0[1] - 2.0])
+      let values = Self::values(self.x.view(), &self.caps);
+      Some((self.rows)(values.as_slice()?))
     }
 
     fn jacobian(&self) -> Option<Array2<f64>> {
-      let slope = if self.0[0] > 1000.0 { -1.0 } else { 1.0 };
-      Some(ndarray::array![[slope, 0.0], [0.0, 1.0]])
+      let values = Self::values(self.x.view(), &self.caps);
+      let slopes = (self.slopes)(values.as_slice()?);
+      let folds = Self::folds(self.x.view(), &self.caps);
+      Some(crate::calibration::scale_columns(slopes, folds.view()))
     }
   }
 
-  fn under(x: ArrayView1<f64>) -> Room {
-    let boxed = ndarray::array![1000.0 - (x[0] - 1000.0).abs(), x[1]];
-    let bounds = [(0.0, 1000.0), (f64::NEG_INFINITY, f64::INFINITY)];
-    let slopes = ndarray::array![if x[0] > 1000.0 { -1.0 } else { 1.0 }, 1.0];
-    room(&boxed, &bounds, slopes.view())
+  /// The fit of `rows` from `start` under `caps`: its values, its cost and whether it converged.
+  fn capped<const N: usize>(
+    start: [f64; N],
+    caps: [f64; N],
+    rows: fn(&[f64]) -> Array1<f64>,
+    slopes: fn(&[f64]) -> Array2<f64>,
+  ) -> (Array1<f64>, f64, bool) {
+    let problem = Capped {
+      x: Array1::from_vec(start.to_vec()),
+      caps: caps.to_vec(),
+      rows,
+      slopes,
+    };
+    let rooms = move |x: ArrayView1<f64>| {
+      let bounds = caps.map(|cap| (f64::NEG_INFINITY, cap));
+      let folds = Capped::folds(x, &caps);
+      room(&Capped::values(x, &caps), &bounds, folds.view())
+    };
+    let (mut fitted, report) = minimize_in_box(problem, LmOptions::default(), rooms);
+    let values = Capped::values(fitted.x.view(), &fitted.caps);
+    let cost = fitted.residuals().map_or(f64::NAN, |r| r.dot(&r));
+    (values, cost, report.converged)
   }
+
+  const FREE: f64 = f64::INFINITY;
 
   /// 999.1 lies within the stencil step 1 of the bound, 0.9 from it, and 0.4 short of its minimum.
   #[test]
   fn a_coordinate_whose_minimum_lies_short_of_its_bound_is_free() {
+    let rows = |v: &[f64]| ndarray::array![v[0] - 999.5, v[1] - 2.0];
     for start in [999.1, 900.0] {
-      let problem = Under(ndarray::array![start, 2.0]);
-      let (fitted, report) = minimize_in_box(problem, LmOptions::default(), under);
-      assert!(report.converged, "{report:?}");
-      assert!((fitted.0[0] - 999.5).abs() < 1e-9, "{start}: {}", fitted.0);
+      let (fitted, _, converged) = capped([start, 2.0], [1000.0, FREE], rows, |_| Array2::eye(2));
+      assert!(
+        converged && (fitted[0] - 999.5).abs() < 1e-9,
+        "{start}: {fitted}"
+      );
     }
   }
 
-  /// Both rest 1e-6 from a bound the cost falls across; the projected step is 1e-6 and then 2e-7.
+  /// Both capped at 1000: the first's minimum, 1001, lies beyond its bound and the second's,
+  /// 999.5, short of it, inside the strip.
   #[test]
-  fn a_coordinate_is_held_only_within_the_projected_step_of_its_bound() {
+  fn a_coordinate_short_of_its_bound_is_fitted_whatever_another_one_holds() {
+    let rows = |v: &[f64]| ndarray::array![v[0] - 1001.0, v[1] - 999.5, v[2] - 2.0];
+    let want = ndarray::array![1000.0, 999.5, 2.0];
+    for start in [
+      [999.05, 999.1, 2.0],
+      [999.95, 999.1, 2.0],
+      [900.0, 900.0, 0.0],
+    ] {
+      let caps = [1000.0, 1000.0, FREE];
+      let (fitted, cost, converged) = capped(start, caps, rows, |_| Array2::eye(3));
+      let gap = f64::max_or_nan_fold((&fitted - &want).iter().map(|d| d.abs()));
+      assert!(converged && gap < 1e-9, "{start:?}: {fitted}, cost {cost}");
+    }
+  }
+
+  /// Rosenbrock's valley under `θ₁ ≤ 0.8`: the minimum is `(0.8, 0.64)`, at cost 0.04.
+  #[test]
+  fn the_free_coordinates_are_fitted_with_the_held_one_on_its_bound() {
+    let rows = |v: &[f64]| ndarray::array![10.0 * (v[1] - v[0] * v[0]), 1.0 - v[0]];
+    let slopes = |v: &[f64]| ndarray::array![[-20.0 * v[0], 10.0], [-1.0, 0.0]];
+    for start in [[-1.2, 1.0], [0.7998, 0.3]] {
+      let (fitted, cost, converged) = capped(start, [0.8, FREE], rows, slopes);
+      assert!(converged, "{start:?}: {fitted}, cost {cost}");
+      assert!(
+        fitted[0] == 0.8 && (fitted[1] - 0.64).abs() < 1e-9,
+        "{start:?}: {fitted}"
+      );
+      assert!((cost - 0.04).abs() < 1e-12, "{start:?}: cost {cost}");
+    }
+  }
+
+  /// On the bound itself the cost jumps by more than it falls towards it: the minimum is short
+  /// of 1000, and the step onto the bound is refused.
+  #[test]
+  fn a_step_onto_a_bound_that_raises_the_cost_is_not_taken() {
+    let rows = |v: &[f64]| {
+      let cliff = if v[0] >= 1000.0 { 5.0 } else { 0.0 };
+      ndarray::array![v[0] - 1001.0 + cliff, v[1] - 2.0]
+    };
+    let (fitted, cost, _) = capped([999.5, 0.0], [1000.0, FREE], rows, |_| Array2::eye(2));
+    assert!(
+      fitted[0] < 1000.0 && cost < 1.0 + 1e-9,
+      "{fitted}, cost {cost}"
+    );
+  }
+
+  /// The first rests 1e-6 from a bound the cost falls across: its step is 1 and then 2e-7.
+  #[test]
+  fn a_coordinate_is_in_the_set_only_where_its_own_step_reaches_its_bound() {
     let jacobian = ndarray::array![[1.0, 0.0, 0.0], [0.0, 1.0, 1.0]];
     let room = Room {
       down: ndarray::array![1e-6, 1.0, 1.0],
       up: ndarray::array![1.0, 1.0, 1.0],
       strip: ndarray::array![1e-5, 1e-5, 1e-5],
     };
-    let far = held(&jacobian, &ndarray::array![1.0, 0.0], &room);
+    let far = cut(&jacobian, &ndarray::array![1.0, 0.0], &room);
     assert_eq!(far, [Some(-1e-6), None, None]);
-    let near = held(&jacobian, &ndarray::array![2e-7, 0.0], &room);
+    let near = cut(&jacobian, &ndarray::array![2e-7, 0.0], &room);
     assert_eq!(near, [None, None, None]);
-    let mut zeroed = jacobian.clone();
-    rest_on_bounds(&mut zeroed, &far);
-    assert_eq!(zeroed, ndarray::array![[0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]);
   }
 }

@@ -271,9 +271,9 @@ struct Objective<P> {
   flat: Cell<bool>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
-  rooms: Option<Rooms>,
-  /// `in_box::held` at the last Jacobian.
-  held: RefCell<Vec<Option<f64>>>,
+  bounds: Option<Bounds>,
+  /// The Jacobian at `coordinates` before a column is held, for a restart from the same point.
+  slopes: RefCell<Option<Array2<f64>>>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
@@ -284,6 +284,7 @@ impl<P: LeastSquaresProblem> Objective<P> {
       model.set_params(x.view());
       *coordinates = Some(x.clone());
       *self.rows.borrow_mut() = None;
+      *self.slopes.borrow_mut() = None;
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
     model
@@ -348,7 +349,10 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
   fn jacobian(&self, x: &Self::Param) -> Result<Self::Jacobian, Self::Error> {
     let mut model = self.at(x);
     let pull = self.regularization.as_ref();
-    let mut jacobian = pulled_jacobian(&*model, pull).ok_or(())?;
+    let mut jacobian = match self.slopes.borrow_mut().take() {
+      Some(jacobian) => jacobian,
+      None => pulled_jacobian(&*model, pull).ok_or(())?,
+    };
     if jacobian.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
@@ -375,13 +379,15 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
       self.flat.set(true);
       return Err(());
     }
-    if let Some(rooms) = &self.rooms {
-      let held = held(&jacobian, &residuals, &rooms(x.view()));
-      rest_on_bounds(&mut jacobian, &held);
-      *self.held.borrow_mut() = held;
-    }
+    let held = match &self.bounds {
+      Some(bounds) => {
+        *self.slopes.borrow_mut() = Some(jacobian.clone());
+        bounds.hold(x, &mut jacobian, &residuals)
+      }
+      None => Ok(()),
+    };
     *rows = Some(residuals);
-    Ok(jacobian)
+    held.map(|()| jacobian)
   }
 }
 
@@ -390,8 +396,8 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   drive(problem, options, None)
 }
 
-/// [`minimize`] for a problem whose map folds or clamps at a box: a coordinate resting on a bound
-/// the cost falls across, as `rooms` and `in_box::held` tell, is held there.
+/// [`minimize`] for a problem whose map folds or clamps at a box: a coordinate whose step reaches
+/// a bound the cost falls across, as `rooms` and `in_box::cut` tell, is set on it and held there.
 pub(crate) fn minimize_in_box<P: LeastSquaresProblem>(
   problem: P,
   options: LmOptions,
@@ -415,8 +421,8 @@ fn drive<P: LeastSquaresProblem>(
     sizes: RefCell::new(Array1::zeros(initial.len())),
     flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
-    rooms,
-    held: RefCell::new(Vec::new()),
+    bounds: rooms.map(|rooms| Bounds::new(rooms, initial.len())),
+    slopes: RefCell::new(None),
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
   let gradient_tolerance = if options.tolerance.is_some() {
@@ -441,27 +447,34 @@ fn drive<P: LeastSquaresProblem>(
       },
     );
   }
-  let solver = LevenbergMarquardt::<Array1<f64>, Array2<f64>>::new()
-    .with_damping(LmDamping::TrustRegion)
-    .with_absolute_gradient_tolerance(None)
-    .with_gradient_orthogonality_tolerance(gradient_tolerance)
-    .with_relative_model_reduction_tolerance(tolerance)
-    .with_relative_trust_radius_tolerance(tolerance);
-  let (best, reason, iterations, started) = if options.pivoted_qr {
-    run(
+  let solver = || {
+    LevenbergMarquardt::<Array1<f64>, Array2<f64>>::new()
+      .with_damping(LmDamping::TrustRegion)
+      .with_absolute_gradient_tolerance(None)
+      .with_gradient_orthogonality_tolerance(gradient_tolerance)
+      .with_relative_model_reduction_tolerance(tolerance)
+      .with_relative_trust_radius_tolerance(tolerance)
+  };
+  let solve = |from, budget, max_iter, opens| match options.pivoted_qr {
+    true => run(
       &objective,
-      solver.with_pivoted_qr(),
-      initial,
+      solver().with_pivoted_qr(),
+      from,
       budget,
       max_iter,
-    )
-  } else {
-    run(&objective, solver, initial, budget, max_iter)
+      opens,
+    ),
+    false => run(&objective, solver(), from, budget, max_iter, opens),
   };
-  let best = match started && objective.rooms.is_some() {
-    true => seated(&objective, best),
-    false => best,
-  };
+  let Run {
+    best,
+    reason,
+    iterations,
+    started,
+  } = restarted(&objective, initial, (budget, max_iter), solve);
+  if let Some(bounds) = &objective.bounds {
+    bounds.watch.set(false);
+  }
   let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
     false => 0.0,
@@ -490,13 +503,23 @@ fn drive<P: LeastSquaresProblem>(
   )
 }
 
+/// One solve: the last point it accepted, why it stopped, and its stepper iterations.
+struct Run {
+  best: Array1<f64>,
+  reason: TerminationReason,
+  iterations: usize,
+  started: bool,
+}
+
+/// `opens`: the start is a point the trail does not hold yet.
 fn run<'a, P, So>(
   objective: &'a Objective<P>,
   solver: So,
   initial: Array1<f64>,
   budget: usize,
   max_iter: usize,
-) -> (Array1<f64>, TerminationReason, usize, bool)
+  opens: bool,
+) -> Run
 where
   P: LeastSquaresProblem,
   So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
@@ -513,7 +536,9 @@ where
     Ok(mut stepper) => {
       started = true;
       // `into_stepper` evaluated the start last, so the trail opens with it.
-      objective.model.borrow_mut().accept();
+      if opens {
+        objective.model.borrow_mut().accept();
+      }
       loop {
         let cost = stepper.state().best_cost();
         match stepper.step() {
@@ -533,17 +558,21 @@ where
       }
     }
   };
-  (best, reason, iterations, started)
+  Run {
+    best,
+    reason,
+    iterations,
+    started,
+  }
 }
 
 mod in_box;
 mod trail;
 
+use in_box::Bounds;
 pub(crate) use in_box::Room;
 use in_box::Rooms;
-use in_box::held;
-use in_box::rest_on_bounds;
-use in_box::seated;
+use in_box::restarted;
 pub(crate) use trail::Trail;
 
 #[cfg(test)]

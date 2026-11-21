@@ -270,3 +270,36 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
     );
   }
 }
+
+/// From `START` the cost falls across `σ_J`'s lower bound: within its stencil step of the bound
+/// the raw coordinate comes to rest on the fold, and never steps across it and back.
+#[test]
+fn a_jump_volatility_driven_to_its_bound_rests_on_it_and_does_not_zigzag_across() {
+  use std::cell::RefCell;
+  use std::rc::Rc;
+
+  use super::loss::SvjProblem;
+  use super::params::P_SIGMA_J;
+  use super::params::room_in_box;
+  use crate::calibration::least_squares::minimize_in_box;
+  let options = CalibrationOptions::default().with_max_iterations(150);
+  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes()).with_options(options);
+  let seen = Rc::new(RefCell::new(Vec::new()));
+  let log = seen.clone();
+  let rooms = move |x: ndarray::ArrayView1<f64>| {
+    log.borrow_mut().push(x[7] - P_SIGMA_J.0);
+    room_in_box(x)
+  };
+  let lm = calibrator.options.lm(true, 8).unwrap();
+  minimize_in_box(SvjProblem::new(&calibrator, START), lm, rooms);
+  let mut path = seen.take();
+  let on = path.iter().filter(|gap| **gap == 0.0).count();
+  path.dedup();
+  let beside = |steps: &&[f64]| steps.iter().all(|gap| gap.abs() <= 1e-5);
+  let across = |steps: &&[f64]| steps[0] * steps[1] < 0.0 && steps[1] * steps[2] < 0.0;
+  let zigzags = path.windows(3).filter(beside).filter(across).count();
+  assert!(
+    on > 0 && zigzags == 0,
+    "{on} on the fold, {zigzags} zigzags"
+  );
+}
