@@ -337,6 +337,15 @@ fn heston_fair_strike_is_nan_at_a_negative_or_nan_maturity() {
   }
 }
 
+/// The `v0 = theta` limit is the closed form's only where `kappa * tau` is a number.
+#[test]
+fn heston_fair_strike_keeps_a_nan_kappa_at_the_long_run_mean() {
+  for tau in [1.0, f64::INFINITY] {
+    let k_var = VarianceSwapPricer::fair_strike_heston(&heston(0.04, f64::NAN, 0.04), tau);
+    assert!(k_var.is_nan(), "tau={tau}: {k_var}");
+  }
+}
+
 /// `tau == 0` is the genuine $T \to 0$ limit of
 /// $\frac{1-e^{-\kappa T}}{\kappa T} \to 1$, not a sentinel, so it keeps
 /// returning `v0` — the negative-maturity guard must not take it with it.

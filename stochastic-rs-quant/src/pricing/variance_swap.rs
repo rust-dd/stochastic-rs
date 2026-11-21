@@ -117,10 +117,10 @@ impl VarianceSwapPricer {
     if tau.is_nan() || tau < 0.0 {
       return f64::NAN;
     }
-    if tau == 0.0 || v0 == theta {
+    let x = if kappa == 0.0 { 0.0 } else { kappa * tau };
+    if tau == 0.0 || (v0 == theta && !x.is_nan()) {
       return v0;
     }
-    let x = if kappa == 0.0 { 0.0 } else { kappa * tau };
     theta + (v0 - theta) * discrete::mean_reversion_factor(x)
   }
 
