@@ -152,8 +152,8 @@ pub struct ParticleCalibration {
   pub snapshots: Vec<Array1<f64>>,
 }
 
-/// `L` on `local_vol`'s nodes up to the last maturity, at `(r, q)`; `InvalidInput` for a non-finite
-/// input, `s0 ≤ 0`, `v0`, `eta` or σ_LV `< 0`, `|ρ| > 1`, unsorted maturities or `< 2` particles.
+/// `L` on `local_vol`'s nodes up to the last maturity, at `(r, q)`; `InsufficientData` with no
+/// maturity, `InvalidInput` for any input off its domain (`s0 ≤ 0`, `|ρ| > 1`, `< 2` particles, …).
 pub fn calibrate_leverage(
   params: &HestonSlvParams,
   s0: f64,
