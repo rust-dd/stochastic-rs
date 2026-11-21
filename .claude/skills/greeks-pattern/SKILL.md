@@ -29,8 +29,8 @@ It reports what an engine happened to compute, and is not a way to
 *implement* Greeks on a pricer.
 
 The single-pass `greeks()` aggregator is the load-bearing part for MC
-pricers: calling each Greek separately means N independent
-re-pricings (with different random seeds, in general). Overriding
+pricers: calling each Greek separately means N re-pricings, each on
+fresh paths under the default `Unseeded` seed. Overriding
 `greeks()` to share a single set of MC paths across all Greeks is
 **mandatory** for MC pricers; otherwise users get visibly inconsistent
 delta/gamma/vega from re-runs.
@@ -137,11 +137,11 @@ looks like a vol-immunised portfolio, which is misleading).
 
 The default `greeks()` aggregator calls each Greek method
 sequentially. For an analytic pricer that re-uses the same closed-form
-inputs, this is fine. For a Monte Carlo pricer, each call re-samples
-paths from a *different* RNG state (or the same seed twice, depending
-on construction), and the resulting deltas / gammas / vegas don't share
-control variates. The user observes "delta-from-greeks() ≠
-delta-direct()" within numerical noise.
+inputs, this is fine. For a Monte Carlo pricer, each call simulates
+again from a clone of the estimator's seed: under the default
+`Unseeded` that is fresh entropy per call, and the resulting deltas /
+gammas / vegas don't share control variates. The user observes
+"delta-from-greeks() ≠ delta-direct()" within numerical noise.
 
 The mandated pattern: override `greeks()` so **one** simulation feeds
 every returned Greek. Both in-tree implementors do this with **Malliavin
@@ -195,7 +195,7 @@ same with two helpers instead of one accumulator loop:
 ```rust
 fn greeks(&self) -> Greeks {
     let (delta, gamma) = self.delta_gamma_single_pass();
-    let vega = self.vega_v0();
+    let vega = self.vega_v0().mean;
     Greeks { delta, gamma, vega,
              theta: f64::NAN, rho: f64::NAN,
              vanna: f64::NAN, charm: f64::NAN, volga: f64::NAN, veta: f64::NAN }
@@ -203,10 +203,12 @@ fn greeks(&self) -> Greeks {
 ```
 
 The point of the override is stated in `all_greeks`'s own doc comment:
-calling `delta()`, `gamma()`, `vega()`, `rho()` individually each runs a
-**fresh** simulation, so the four would come from four different sample
-paths and be mutually inconsistent. Sharing the paths is the whole
-reason the override exists.
+calling `delta()`, `gamma()`, `vega()`, `rho()` individually runs four
+simulations, and under `Unseeded` four different sets of paths, so the
+four are mutually inconsistent; a `Deterministic` seed
+(`with_seed(Deterministic::new(..))`) replays the same paths in each,
+at four times the cost. Sharing one simulation is the whole reason the
+override exists.
 
 If you do write a bump-and-reprice estimator, common random numbers
 (Glasserman 2003 §7.1) is the right technique — but you would be adding
@@ -235,7 +237,7 @@ impl BsmPricer {
 
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
-        norm_pdf(d1) / (s * self.v * tau.sqrt())
+        norm_pdf(d1) / (s * self.sigma * tau.sqrt())
     }
 
     pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -314,8 +316,10 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
   precision across components (the override Greek is single-pass, the
   rest re-sample).
 - **Do not** finite-difference the price by re-running an MC pricer
-  with a different RNG state per Greek. Always seed-share via
-  `with_*_bump(...)` constructors.
+  with a different RNG state per Greek. Share one seed: build the pricer
+  `with_seed(Deterministic::new(..))`, so every run draws from a clone
+  of it, the common random numbers the Malliavin–Thalmaier engine's bump
+  pairs use.
 - **Do not** invent new Greek field names. `Greeks` is a fixed flat
   struct; if you need an extra Greek (e.g. zomma = `∂Γ/∂σ`), extend the
   struct in one PR rather than smuggling it through a `HashMap`-style

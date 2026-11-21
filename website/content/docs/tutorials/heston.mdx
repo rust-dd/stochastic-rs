@@ -111,7 +111,7 @@ C = S e^{-q\tau} P_1 - K e^{-r\tau} P_2,\qquad
 P_j = \frac12 + \frac1\pi \int_0^\infty \operatorname{Re}\!\left[\frac{e^{-i\phi \ln K} f_j(\phi)}{i\phi}\right] d\phi,
 $$
 
-with the characteristic functions $f_j$ in the "little Heston trap" form of Albrecher et al. (2007), which keeps the complex logarithm on its principal branch at long maturities. The struct holds the model only, so one instance prices a whole strike and maturity grid; `greeks(s, k, r, q, tau, option_type)` returns all nine first- and second-order Greeks by central differences, with vega, vanna, volga and veta built on the analytic derivative in $v_0$ and reported per unit of $\sqrt{v_0}$. `HestonFourier` prices the same model through the crate's Fourier pricers (Gil-Pelaez by default, also Carr-Madan, Lewis and COS), and `HestonAdiPricer` solves the Heston PDE on the sinh-stretched meshes of in 't Hout and Foulon, with an optional down-and-out barrier.
+with the characteristic functions $f_j$ in the "little Heston trap" form of Albrecher et al. (2007), which keeps the complex logarithm on its principal branch at long maturities. The struct holds the model only, so one instance prices a whole strike and maturity grid; `greeks(s, k, r, q, tau, option_type)` returns all nine first- and second-order Greeks by central differences, with vega, vanna, volga and veta built on the analytic derivative in $v_0$ and reported per unit of $\sqrt{v_0}$. `HestonFourier` prices the same model through the crate's Fourier pricers (Lewis (2001) less a Gaussian control by default, and Carr-Madan, Gil–Pelaez and COS), and `HestonAdiPricer` solves the Heston PDE on the sinh-stretched meshes of in 't Hout and Foulon, with an optional down-and-out barrier.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -194,7 +194,7 @@ A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified b
 - **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$, $\sigma > 0$ and $S_0 > 0$, which `.qe()` asserts. In Python, `PyHeston(..., scheme="qe")` selects it.
 - **One parameter set.** `HestonPricer::new`, `HestonAdiPricer::new`, `HestonFourier::new` and `AnalyticHestonEngine` all take one `HestonParams { v0, kappa, theta, sigma, rho }` and panic, naming the field, on a value outside its domain; the process keeps its own order, `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `HestonPricer::with_vol_risk_premium(lambda)` sets the market price of volatility risk, 0 by default.
 - **`HestonFourier` holds no rates.** Its characteristic function is drift-free; `price_call(s, k, r, q, tau)` takes the carry and the discounting from its arguments.
-- **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-9}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
+- **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-9}$ below zero. The Lewis pricer behind `HestonFourier::price_call`, Lewis (2001) less a Gaussian control, floors at zero.
 - **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32>`); the pricers, calibrators and estimators work in `f64`.
 
 ## FAQ
