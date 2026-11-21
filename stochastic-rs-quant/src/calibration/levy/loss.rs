@@ -81,7 +81,7 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
         (0.01, 20.0),
         (0.01, 0.99),
         // `E[e^J]` is finite for `η₁ > 1`, the compensator's `pη₁/(η₁ − 1)`.
-        // Reference: Kou (2002), DOI 10.1287/mnsc.48.8.1086.166.
+        // Reference: Kou (2002), eq. (4), DOI 10.1287/mnsc.48.8.1086.166.
         (1.0 + DOMAIN_MARGIN, 100.0),
         (1.0, 100.0),
       ]

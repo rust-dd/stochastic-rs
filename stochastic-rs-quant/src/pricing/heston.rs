@@ -84,7 +84,7 @@ impl HestonPricer {
   }
 
   /// Call and put from one pair `P_1`, `P_2`; the payoff at `tau = 0`. NaN for a negative or NaN
-  /// `tau` and from an `E_j[∫₀^τ v]` near `1e149` on (`b_jτ = −353` at `λ = −355`), finite or not.
+  /// `tau`, and from an `E_j[∫₀^τ v]` between `2e148` and `6e148` on (`λ = −353` at `τ = 1`).
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -148,7 +148,7 @@ impl VanillaEuropeanCall for HestonPricer {}
 
 impl HestonPricer {
   /// `∂C/∂v₀ = ∂P/∂v₀`, the price's own split differentiated in `v₀`, no finite difference. NaN for
-  /// `tau ≤ 0` or a NaN `tau`, and from an `E_j[∫₀^τ v]` near `1e147` on (`b_jτ = −348`).
+  /// `tau ≤ 0` or a NaN `tau`, and from a `b_jτ` between `−347` and `−348.2` down.
   pub fn initial_variance_vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau.is_nan() || tau <= 0.0 {
       return f64::NAN;

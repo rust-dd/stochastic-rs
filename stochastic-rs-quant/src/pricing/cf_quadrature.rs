@@ -30,8 +30,8 @@ const MAX_WIDTH: f64 = 64.0;
 const MAX_PANELS: usize = 128;
 /// Backstop on bisection depth, i.e. at most 64 sub-panels per panel.
 const MAX_DEPTH: u32 = 6;
-/// The share of a panel's `∫|f|` that the rounding of its ~350 samples leaves in a level
-/// difference: bisecting cannot lower it, so it is the tightest target a panel is held to.
+/// A bound, as measured, on the share of a panel's `∫|f|` that the rounding of its ~350 samples
+/// leaves in a level difference: bisecting cannot lower it, so no panel is held to a tighter one.
 const ROUNDING: f64 = 256.0 * f64::EPSILON;
 
 /// The pieces `(lo, hi, levels)` one walk integrated: a fixed rule, so integrands that share it
