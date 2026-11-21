@@ -123,8 +123,8 @@ impl<S: SeedExt> McBasketPricer<S> {
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }
 
-  /// Either leg from one simulation: NaN for a NaN query, `tau < 0` or, before expiry, a spot or
-  /// strike not positive; panics on a `rho` not positive definite, which `try_price` reports.
+  /// One simulation for either leg: NaN for a NaN query, `tau < 0` or, before expiry, a spot or
+  /// (unless an arithmetic weight is negative) a strike not positive; a non-SPD `rho` panics.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
