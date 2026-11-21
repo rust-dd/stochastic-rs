@@ -1,8 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 
-/// `1e-3·|x|`, at least `1e-5`: a central difference of a price accurate to a relative `ε` is best
-/// near `ε^{1/3}` (Nocedal & Wright 2006, ch. 8), and the pricers' `ε` is about `1e-8`.
+/// `1e-3·|x|`, at least `1e-5`, every numeric Jacobian's step: `ε^{1/3}` for the Fourier walks'
+/// `ε ≈ 1e-8` (Nocedal & Wright 2006, ch. 8), shared by `HestonPricer` at a `1e-6` truncation.
 pub(crate) fn step(x: f64) -> f64 {
   1e-5_f64.max_or_nan(1e-3 * x.abs())
 }
