@@ -4,6 +4,7 @@
 use std::cell::Cell;
 
 use num_complex::Complex64;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::MAX_DEPTH;
 use super::Panels;
@@ -25,6 +26,22 @@ const PHASE_BUDGET: f64 = 20.0;
 const KAPPA_FLOOR: f64 = 1e-5;
 /// `|φ|` past which the walk need not reach, probed at powers of two up to `2⁴⁰`.
 const NEGLIGIBLE_CHF: f64 = 1e-12;
+
+/// Past this variance the control keeps it: a wider law's chf is already negligible in `1/√w`.
+pub(crate) const CONTROL_VARIANCE_CAP: f64 = 2e3;
+
+/// `P(X > κ)` for the control `X ~ N(mean, w)`; a step at `w = 0`.
+pub(crate) fn gaussian_share(kappa: f64, mean: f64, w: f64) -> f64 {
+  if w > 0.0 {
+    norm_cdf((mean - kappa) / w.sqrt())
+  } else if kappa < mean {
+    1.0
+  } else if kappa > mean {
+    0.0
+  } else {
+    0.5
+  }
+}
 
 /// One tail as integrated: its start, its frequency and the panels of its stretch in `ln u`.
 #[derive(Clone, Debug, Default)]

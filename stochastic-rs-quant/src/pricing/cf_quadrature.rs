@@ -8,8 +8,10 @@ mod nodes;
 mod ooura;
 mod tanh_sinh;
 
+pub(crate) use inversion::CONTROL_VARIANCE_CAP;
 pub(crate) use inversion::Inversion;
 pub(crate) use inversion::Rule;
+pub(crate) use inversion::gaussian_share;
 pub(crate) use inversion::head_floor;
 pub(crate) use inversion::reach_and_scale;
 

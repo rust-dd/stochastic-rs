@@ -7,11 +7,12 @@
 use std::f64::consts::FRAC_1_PI;
 
 use num_complex::Complex64;
-use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
+use super::cf_quadrature::CONTROL_VARIANCE_CAP;
 use super::cf_quadrature::Inversion;
 use super::cf_quadrature::Walk;
+use super::cf_quadrature::gaussian_share;
 use super::cf_quadrature::head_floor;
 use super::cf_quadrature::reach_and_scale;
 use super::fourier::mean_integrated_variance;
@@ -26,9 +27,6 @@ mod greeks;
 mod params;
 
 pub use params::HestonParams;
-
-/// Past this variance the Gaussian control keeps it and no longer matches the mean.
-const CONTROL_VARIANCE_CAP: f64 = 2e3;
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -285,19 +283,6 @@ impl HestonPricer {
 /// The control's characteristic function of `ln(S_T/F) ~ N(mean, w)` at `φ`.
 fn gaussian(phi: f64, mean: f64, w: f64) -> Complex64 {
   Complex64::new(-0.5 * phi * phi * w, phi * mean).exp()
-}
-
-/// `P(X > κ)` for `X ~ N(mean, w)`; a step at `w = 0`.
-fn gaussian_share(kappa: f64, mean: f64, w: f64) -> f64 {
-  if w > 0.0 {
-    norm_cdf((mean - kappa) / w.sqrt())
-  } else if kappa < mean {
-    1.0
-  } else if kappa > mean {
-    0.0
-  } else {
-    0.5
-  }
 }
 
 #[cfg(test)]

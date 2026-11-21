@@ -7,14 +7,13 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::FourierModelExt;
 use super::pricer::floor_price;
+use crate::pricing::cf_quadrature::CONTROL_VARIANCE_CAP;
 use crate::pricing::cf_quadrature::Inversion;
 use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::cf_quadrature::gaussian_share;
 use crate::pricing::cf_quadrature::head_floor;
 use crate::pricing::cf_quadrature::reach_and_scale;
-
-/// Past this variance the control keeps it: a wider law's chf is already negligible in `1/√w`.
-const CONTROL_VARIANCE_CAP: f64 = 2e3;
 
 /// `w = −2c₁` within `[0, CONTROL_VARIANCE_CAP]`, `0` for a non-finite `c₁`: the split is exact for
 /// any `w`, which only decides how small the rest is.
@@ -24,19 +23,6 @@ fn control_variance(model: &impl FourierModelExt, t: f64) -> f64 {
     (-2.0 * c1).clamp(0.0, CONTROL_VARIANCE_CAP)
   } else {
     0.0
-  }
-}
-
-/// `P(X > κ)` for `X ~ N(mean, w)`; a step at `w = 0`.
-fn gaussian_share(kappa: f64, mean: f64, w: f64) -> f64 {
-  if w > 0.0 {
-    norm_cdf((mean - kappa) / w.sqrt())
-  } else if kappa < mean {
-    1.0
-  } else if kappa > mean {
-    0.0
-  } else {
-    0.5
   }
 }
 
