@@ -1,4 +1,4 @@
-//! # Dupire
+//! Dupire local volatility from a call-price surface on a strike–maturity grid:
 //!
 //! $$
 //! \sigma_{loc}^2(K,T)=\frac{\partial_T C + (r-q)K\partial_K C + qC}{\tfrac12 K^2\partial_{KK}C}

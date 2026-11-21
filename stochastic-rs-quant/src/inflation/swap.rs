@@ -1,5 +1,5 @@
-//! Inflation-linked swaps: the zero-coupon swap pays once at $T$, with fair rate
-//! $K^* = (I(0,T)/I(0))^{1/T} - 1$, and the year-on-year swap pays annually.
+//! Inflation-linked swaps: the zero-coupon swap pays once at `T`, with fair rate
+//! `K* = (I(0, T)/I(0))^{1/T} − 1`, and the year-on-year swap pays annually.
 //!
 //! $$
 //! \text{ZCIIS:}\quad N\left[\frac{I(T)}{I(0)} - 1\right]

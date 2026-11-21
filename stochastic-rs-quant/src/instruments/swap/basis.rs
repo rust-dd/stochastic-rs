@@ -1,3 +1,5 @@
+//! Same-currency floating-versus-floating basis swaps.
+
 use chrono::NaiveDate;
 
 use super::shared::floating_leg_spread_annuity;

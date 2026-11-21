@@ -1,5 +1,5 @@
 //! Jarrow–Yildirim's foreign-currency analogy: the nominal short rate is the domestic rate, the
-//! real short rate the foreign one, and the price index $I(t)$ the FX spot.
+//! real short rate the foreign one, and the price index `I(t)` the FX spot.
 //!
 //! $$
 //! \frac{dI(t)}{I(t)} = (r_n(t) - r_r(t))\,dt + \sigma_I(t)\,dW^Q_I(t)

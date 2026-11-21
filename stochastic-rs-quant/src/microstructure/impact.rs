@@ -1,5 +1,5 @@
 //! Transient impact propagators: the mid-price change is past signed flow convolved with a decaying
-//! kernel $G$: on trade signs at $\delta=0$, on signed volume at $\delta=1$ (Almgren et al. 2005).
+//! kernel `G`: on trade signs at `δ = 0`, on signed volume at `δ = 1` (Almgren et al. 2005).
 //!
 //! $$
 //! p_t - p_0 = \sum_{s\le t} G(t - s)\,\varepsilon_s\,|v_s|^\delta + \xi_t

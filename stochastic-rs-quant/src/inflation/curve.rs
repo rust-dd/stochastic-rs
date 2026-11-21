@@ -1,4 +1,4 @@
-//! Inflation curves: zero-coupon breakevens from ZCIIS quotes, with $I(0,T)$ the forward CPI,
+//! Inflation curves: zero-coupon breakevens from ZCIIS quotes, with `I(0, T)` the forward CPI,
 //! and year-on-year breakevens from YYIIS quotes.
 //!
 //! $$

@@ -1,5 +1,5 @@
 //! FX delta conventions (spot or forward, raw or premium-adjusted) and ATM conventions, with
-//! $F = S e^{(r_d - r_f)\tau}$ and $D_f = e^{-r_f \tau}$.
+//! `F = Se^{(r_d − r_f)τ}` and `D_f = e^{−r_f τ}`.
 //!
 //! Reference: Reiswich & Wystup (2010), "FX Volatility Smile Construction", Wilmott Magazine
 //! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley

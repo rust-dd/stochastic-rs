@@ -1,5 +1,5 @@
 //! Total return swap: the receiver gets capital gain plus dividends, whose risk-neutral growth
-//! is $e^{r\Delta t}$ whatever the dividend yield, and pays `funding_rate + spread`.
+//! is `e^{rΔt}` whatever the dividend yield, and pays `funding_rate + spread`.
 //!
 //! $$
 //! F_{\mathrm{TR}}(t) = S_0\,e^{r\,t},\qquad

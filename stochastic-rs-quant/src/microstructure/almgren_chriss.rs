@@ -1,5 +1,5 @@
-//! Almgren–Chriss execution of $X$ shares over $N$ intervals of $\tau = T/N$ under linear impact,
-//! minimising $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$; $\lambda = 0$ is TWAP.
+//! Almgren–Chriss execution of `X` shares over `N` intervals of `τ = T/N` under linear impact,
+//! minimising `E[C] + λ Var[C]`; `λ = 0` is TWAP.
 //!
 //! $$
 //! x_k = X\,\frac{\sinh\bigl(\kappa(T-t_k)\bigr)}{\sinh(\kappa T)},

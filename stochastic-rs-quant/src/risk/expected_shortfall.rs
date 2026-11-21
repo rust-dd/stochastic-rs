@@ -1,4 +1,4 @@
-//! Expected shortfall of the loss $L$ (Acerbi & Tasche 2002, (3.3)); the historical and Monte
+//! Expected shortfall of the loss `L` (Acerbi & Tasche 2002, (3.3)); the historical and Monte
 //! Carlo estimators take it on the sample's own law, its tail mean.
 //!
 //! $$

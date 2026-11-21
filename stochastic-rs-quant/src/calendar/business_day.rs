@@ -1,4 +1,4 @@
-//! Business day adjustment conventions.
+//! Business-day conventions that roll a date falling on a holiday or a weekend.
 //!
 //! Reference: ISDA 2006 Definitions, Section 4.12
 

@@ -1,10 +1,8 @@
-//! # Portfolio Optimizers
+//! Long-only and long-short portfolio allocation optimizers on a penalised objective:
 //!
 //! $$
 //! \min_{\mathbf{w}} \ \mathcal{L}(\mathbf{w}) + \lambda(\mu_p-r^\*)^2
 //! $$
-//!
-//! Collection of long-only and long-short allocation optimizers.
 
 use std::convert::Infallible;
 

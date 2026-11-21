@@ -1,5 +1,5 @@
-//! Price indices and their prints: $I(\text{first day of month } m)$ is the print for month $m - 2$
-//! or $m - 3$ by market convention, and the instrument reading it handles the publication lag.
+//! Price indices and their prints: `I` on the first day of month `m` is the print for month `m − 2`
+//! or `m − 3` by market convention, and the instrument reading it handles the publication lag.
 
 use std::fmt::Display;
 

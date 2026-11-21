@@ -1,3 +1,5 @@
+//! Deterministic inflation-linked bonds on projected index ratios.
+
 use chrono::NaiveDate;
 use ndarray::Array1;
 

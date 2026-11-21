@@ -1,3 +1,5 @@
+//! Bullet fixed-rate bonds on a deterministic coupon leg.
+
 use chrono::NaiveDate;
 
 use super::shared::accrued_interest_for_deterministic_leg;

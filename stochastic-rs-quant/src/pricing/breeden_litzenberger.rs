@@ -1,4 +1,4 @@
-//! # Breeden Litzenberger
+//! Breeden–Litzenberger risk-neutral density from the second strike derivative of calls:
 //!
 //! $$
 //! f_{\mathbb Q}(K)=e^{rT}\frac{\partial^2 C(K,T)}{\partial K^2}

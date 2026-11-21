@@ -1,4 +1,4 @@
-//! # Malliavin-weighted Greeks
+//! Monte Carlo Greeks by Malliavin integration-by-parts weights, for GBM and Heston:
 //!
 //! $$
 //! \Delta=\mathbb E\!\left[e^{-rT}\Phi(S_T)\,\frac{W_T}{S_0\sigma T}\right]
