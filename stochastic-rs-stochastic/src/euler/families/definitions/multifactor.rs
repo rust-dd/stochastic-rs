@@ -109,8 +109,8 @@ macro_rules! euler_multifactor {
     }
     report { s, positive(v) },
 
-  /// Heston's log-spot on two-factor Hull-White rates by Euler, under one lower factor `l` of the
-  /// `(x, v, r, u)` correlation; the spot reads the rate's trapezoid, the variance is truncated.
+  /// Heston's log-spot on two-factor Hull-White rates by Euler under full truncation; `l` is the
+  /// lower factor of the `(x, v, r, u)` correlation, and the spot reads the rate's trapezoid.
   132 => HestonHullWhite2F {
     kappa, theta, sigma, a, b, sigma1, sigma2, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33
   }
@@ -122,13 +122,14 @@ macro_rules! euler_multifactor {
       bind er = l20 * dz0 + l21 * dz1 + l22 * dz2;
       bind ew = l30 * dz0 + l31 * dz1 + l32 * dz2 + l33 * dz3;
       bind vp = positive(v);
+      bind dv = kappa * (theta - vp) * $dt + sigma * sqrt(vp) * ev;
       bind rn = r + ($ct + w - a * r) * $dt + sigma1 * er;
       y + (r + rn) * lit(0.5) * $dt - vp * lit(0.5) * $dt + sqrt(vp) * ex,
-      positive(v + kappa * (theta - vp) * $dt + sigma * sqrt(vp) * ev),
+      v + dv,
       rn,
       w - b * w * $dt + sigma2 * ew
     }
-    report { exp(y), v, r, w },
+    report { exp(y), positive(v), r, w },
 
   /// [`HestonHullWhite2F`](Family::HestonHullWhite2F) under Andersen's quadratic-exponential
   /// variance: `l` factors `(v, r, u, x)` with the rate-variance correlations zero.

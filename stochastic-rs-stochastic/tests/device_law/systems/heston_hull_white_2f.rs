@@ -1,6 +1,7 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::traits::PathSampler;
+use stochastic_rs_stochastic::traits::RealExt;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2FPaths;
@@ -107,6 +108,31 @@ fn heston_hull_white_2f_agrees_with_the_cpu_law() {
     &hybrid(23).sample_par(PATHS),
     &device.sample_par(PATHS),
   );
+}
+
+/// Outside Feller's condition the kernel carries a signed variance and reports its positive part:
+/// at zero somewhere, at the exact CIR mean where absorption sits 10 % above it.
+#[test]
+fn heston_hull_white_2f_truncates_in_full_on_the_device() {
+  const PATHS: usize = 12_000;
+  let build = || {
+    let model = hybrid(37).with_points(61).with_horizon(Some(5.0));
+    let model = model.with_v0(0.05).with_kappa(0.4).with_theta(0.2);
+    model.with_sigma(0.6)
+  };
+  let exact = 0.2 + (0.05 - 0.2) * (-0.4_f64 * 5.0).exp();
+  for (side, paths) in [
+    ("host", build().sample_par(PATHS)),
+    ("device", build().on::<Device>().sample_par(PATHS)),
+  ] {
+    let least = f32::min_or_nan_fold(paths.iter().flat_map(|p| p.v.iter().copied()));
+    assert_eq!(least, 0.0, "{side}: the smallest variance");
+    let mean = paths.iter().map(|p| p.v[60] as f64).sum::<f64>() / PATHS as f64;
+    assert!(
+      (mean / exact - 1.0).abs() < 0.04,
+      "{side}: the mean {mean} against the exact {exact}"
+    );
+  }
 }
 
 /// With no variance and no rate volatility the path is the drift alone, `S = exp(∫r)`: a curve

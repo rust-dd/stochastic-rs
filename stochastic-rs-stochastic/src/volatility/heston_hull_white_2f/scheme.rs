@@ -1,5 +1,5 @@
-//! The variance steps of [`HestonHullWhite2F`]: [`Euler`], floored at zero as `Heston`'s is, and
-//! [`AndersenQe`], whose spot step is Andersen's eq. 33 with the rate's trapezoid as its drift.
+//! The variance steps of [`HestonHullWhite2F`]: [`Euler`] under full truncation, as `Heston`'s
+//! default is, and [`AndersenQe`], whose spot step is Andersen's eq. 33 on the rate's trapezoid.
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -10,6 +10,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use super::HestonHullWhite2F;
 use super::HestonHullWhite2FPaths;
 use crate::linalg::cholesky_lower;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::volatility::heston::AndersenQe;
 use crate::volatility::heston::Euler;
@@ -135,16 +136,16 @@ impl HybridScheme for Euler {
       let shocks = [z[(0, j)], z[(1, j)], z[(2, j)], z[(3, j)]];
       let (next, r_dt) = model.euler_step(curve[i], dt, state, shocks);
       int_r += r_dt;
-      write_point(out, i, [next[0].exp(), next[1], next[2], next[3], int_r]);
+      let v = TRUNCATION.observed(next[1]);
+      write_point(out, i, [next[0].exp(), v, next[2], next[3], int_r]);
       state = next;
     }
   }
 }
 
-/// The variance after one Euler step from `v >= 0`, floored at zero as `Heston`'s `Floor` step.
-fn floored_variance<T: FloatExt>(v: T, kappa: T, theta: T, sigma: T, dt: T, dw_v: T) -> T {
-  (v + kappa * (theta - v) * dt + sigma * v.sqrt() * dw_v).max(T::zero())
-}
+/// The Euler variance carries its sign; drift, diffusion, the spot and the reported row read `v⁺`.
+/// Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
+const TRUNCATION: VarianceBoundary = VarianceBoundary::FullTruncation;
 
 impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
   /// One Euler step of `(log S, v, r, u)` from four independent increments, with `½(r + r′)dt`,
@@ -152,12 +153,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
   pub(super) fn euler_step(&self, target: T, dt: T, state: [T; 4], z: [T; 4]) -> ([T; 4], T) {
     let half = T::from_f64_fast(0.5);
     let l = &self.chol;
-    let [log_s, v, r, u] = state;
+    let [log_s, carried, r, u] = state;
+    let v = TRUNCATION.observed(carried);
     let dw_x = l[(0, 0)] * z[0];
     let dw_v = l[(1, 0)] * z[0] + l[(1, 1)] * z[1];
     let dw_r = l[(2, 0)] * z[0] + l[(2, 1)] * z[1] + l[(2, 2)] * z[2];
     let dw_u = l[(3, 0)] * z[0] + l[(3, 1)] * z[1] + l[(3, 2)] * z[2] + l[(3, 3)] * z[3];
-    let v_next = floored_variance(v, self.kappa, self.theta, self.sigma, dt, dw_v);
+    let (kappa, theta, sigma) = (self.kappa, self.theta, self.sigma);
+    let v_next = TRUNCATION.square_root_step(carried, kappa, theta, sigma, dt, dw_v);
     let (r_next, u_next) = self.rate_step(target, dt, r, u, dw_r, dw_u);
     let r_dt = half * (r + r_next) * dt;
     let log_s_next = log_s + r_dt - half * v * dt + v.sqrt() * dw_x;

@@ -10,6 +10,8 @@ use crate::interest::hull_white_2f::HullWhite2F;
 use crate::traits::ProcessExt;
 use crate::traits::RealExt;
 
+mod truncation;
+
 /// Holds the mean rate of Grzelak et al. (2011), experiment 4.2, at 3 percent.
 fn flat_theta(_t: f64) -> f64 {
   1.1 * 0.03

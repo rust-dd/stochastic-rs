@@ -381,9 +381,12 @@ fn frozen_variance_prices_black_on_the_forward_under_two_factor_rates() {
   assert_frozen_variance("QE", qe);
 }
 
-/// Terminal variances at table 4's `κ = 0.4`, `θ = v₀ = 0.2`, `σ = 0.6`, where Feller fails
-/// (`2κθ = 0.16 < σ²`), over five years on a monthly grid.
+/// Table 4's `κ = 0.4`, `θ = v₀ = 0.2`, `σ = 0.6`, outside Feller's condition (`2κθ = 0.16 < σ²`),
+/// over five years on a monthly grid; the exact `E[v_T]` is `θ`.
 const FELLER_PATHS: usize = 40_000;
+/// Full truncation measures +0.1 % here over two million paths and absorption +8 to +9 %; one
+/// seed's standard error is 0.75 %.
+const TRUNCATION_BAND: f64 = 0.04;
 
 fn feller_violated(seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   HestonHullWhite2F::new(
@@ -405,11 +408,11 @@ fn feller_violated(seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   )
 }
 
-/// The Euler step floors the variance it stores, as `Heston`'s `Absorption` step does: absorption
-/// in Lord et al.'s terms, which lifts `E[v_T]` above `θ` here; QE keeps the exact mean.
+/// The Euler variance is fully truncated: `E[v_T]` sits at the exact CIR mean, as QE's and
+/// `Heston`'s do, and the reported row is the positive part, at zero somewhere.
 /// Reference: Lord et al. (2010), Quant. Finance 10(2), 177-194, DOI 10.1080/14697680802392496
 #[test]
-fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
+fn the_euler_variance_is_fully_truncated_where_feller_fails() {
   use stochastic_rs::stochastic::params::VarianceBoundary;
   use stochastic_rs::stochastic::volatility::HestonPow;
   use stochastic_rs::stochastic::volatility::heston::Heston;
@@ -419,7 +422,13 @@ fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
     (mean - theta) / se
   };
   let runs = SEEDS.map(|seed| {
-    let euler = feller_violated(seed).sample_map(FELLER_PATHS, |path| path.v[60]);
+    let rows = feller_violated(seed).sample_map(FELLER_PATHS, |path| {
+      let least = f64::min_or_nan_fold(path.v.iter().copied());
+      (path.v[60], least)
+    });
+    let least = f64::min_or_nan_fold(rows.iter().map(|row| row.1));
+    assert_eq!(least, 0.0, "seed {seed}: the smallest reported variance");
+    let euler = rows.iter().map(|row| row.0).collect::<Vec<_>>();
     let qe = feller_violated(seed)
       .qe()
       .sample_map(FELLER_PATHS, |path| path.v[60]);
@@ -434,7 +443,7 @@ fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
       61,
       Some(5.0),
       HestonPow::Sqrt,
-      VarianceBoundary::Absorption,
+      VarianceBoundary::FullTruncation,
       Deterministic::new(seed + 1),
     )
     .sample_map(FELLER_PATHS, |[_, v]| v[60]);
@@ -446,22 +455,23 @@ fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
       (hybrid_mean - heston_mean) / (hybrid_se * hybrid_se + heston_se * heston_se).sqrt();
     (
       against_heston.abs(),
-      z_from_theta(&euler),
+      z_from_theta(&euler).abs(),
       z_from_theta(&qe).abs(),
+      (hybrid_mean / theta - 1.0).abs(),
     )
   });
-  println!("(|z| against Heston's Absorption, Euler z from θ, QE |z| from θ): {runs:.2?}");
-  let heston = best(runs.map(|(z, _, _)| z));
-  assert!(
-    heston < Z_MAX,
-    "every seed is {heston:.2} SE or more from Heston's Absorption step"
-  );
-  let qe = best(runs.map(|(_, _, z)| z));
-  assert!(qe < Z_MAX, "QE: every seed is {qe:.2} SE or more from θ");
-  for (_, euler, _) in runs {
+  println!("(|z| against Heston, Euler |z| from θ, QE |z| from θ, Euler bias): {runs:.4?}");
+  for (what, z) in [
+    ("Heston's full truncation", best(runs.map(|run| run.0))),
+    ("θ under Euler", best(runs.map(|run| run.1))),
+    ("θ under QE", best(runs.map(|run| run.2))),
+  ] {
+    assert!(z < Z_MAX, "every seed is {z:.2} SE or more from {what}");
+  }
+  for (.., bias) in runs {
     assert!(
-      euler > Z_POWER,
-      "the floored Euler mean is only {euler:.2} SE above θ"
+      bias < TRUNCATION_BAND,
+      "the Euler mean is {bias:.4} from θ, relative"
     );
   }
 }
