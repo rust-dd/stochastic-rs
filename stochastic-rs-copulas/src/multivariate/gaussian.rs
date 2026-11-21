@@ -1,4 +1,4 @@
-//! # Gaussian
+//! Multivariate Gaussian copula of a correlation matrix, with no tail dependence.
 //!
 //! $$
 //! C_\Sigma(u)=\Phi_\Sigma\!\left(\Phi^{-1}(u_1),\dots,\Phi^{-1}(u_d)\right)

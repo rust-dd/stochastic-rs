@@ -1,4 +1,4 @@
-//! # Independence
+//! Independence (product) copula `C(u, v) = uv`, the zero-dependence reference.
 //!
 //! $$
 //! C(u,v)=uv

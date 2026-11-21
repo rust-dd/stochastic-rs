@@ -1,4 +1,4 @@
-//! # Gumbel
+//! Gumbel copula, Archimedean and extreme-value, with upper-tail dependence only.
 //!
 //! $$
 //! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1

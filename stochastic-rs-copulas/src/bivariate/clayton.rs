@@ -1,4 +1,4 @@
-//! # Clayton
+//! Clayton copula, Archimedean with lower-tail dependence and none in the upper tail.
 //!
 //! $$
 //! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
