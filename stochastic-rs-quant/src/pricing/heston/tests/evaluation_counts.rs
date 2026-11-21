@@ -12,8 +12,7 @@ fn evaluations(run: impl Fn(&HestonPricer, f64) -> f64) -> usize {
   EVALUATIONS.with(|n| n.get())
 }
 
-/// The head in `ln φ` and the two tails cost 1.95 and 1.34 times a walk from `1e-8` on these
-/// strikes (7,098 and 9,744); 3 % allows a panel that another libm splits.
+/// A count is a function of the inputs and the libm: 3 % allows a panel that another libm splits.
 #[test]
 fn a_price_keeps_its_evaluation_count() {
   for (tau, pinned) in [(1.0, 13_722), (0.02, 13_294)] {

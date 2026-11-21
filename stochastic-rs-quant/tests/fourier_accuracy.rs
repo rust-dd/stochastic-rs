@@ -126,8 +126,7 @@ const BLACK_SCHOLES: [(f64, f64, f64); 3] = [
   (120.0, 5.0, 20.578_973_389_573_955),
 ];
 
-/// What the trapezoid rule leaves is its image, `Se^{−2πα/η} = 6.5e-7` at the default `α` and `η`;
-/// Simpson's weights left `2.7e-3`.
+/// What the trapezoid rule leaves is its image, `Se^{−2πα/η} = 6.5e-7` at the default `α` and `η`.
 #[test]
 fn carr_madan_is_off_by_the_trapezoid_rules_image_alone() {
   let model = BsmFourier { sigma: 0.2 };
