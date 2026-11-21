@@ -74,8 +74,8 @@ pub struct CurveFittedHullWhiteTree<T: RealExt> {
 }
 
 impl<T: RealExt> CurveFittedHullWhiteTree<T> {
-  /// A Hull–White tree fitted to `curve`; panics unless `mean_reversion` and `sigma` are finite
-  /// and `≥ 0`, `horizon` is finite and positive, and `steps > 0`.
+  /// A Hull–White tree fitted to `curve`, NaN-priced where its discount factor underflows; panics
+  /// unless `mean_reversion`, `sigma` are finite `≥ 0`, `horizon` finite `> 0` and `steps > 0`.
   pub fn new(
     mean_reversion: T,
     sigma: T,
@@ -138,11 +138,7 @@ fn fit_alpha_schedule<T: RealExt>(
       weighted_sum += arrow_debreu[m][j] * (-x_j * dt).exp();
     }
 
-    let alpha_m = if weighted_sum > T::zero() && p_next > T::zero() {
-      -(p_next / weighted_sum).ln() / dt
-    } else {
-      T::zero()
-    };
+    let alpha_m = -(p_next / weighted_sum).ln() / dt;
     alpha[m] = alpha_m;
 
     let width_next = tree.states[m + 1].len();
