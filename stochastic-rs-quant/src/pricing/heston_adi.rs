@@ -102,11 +102,13 @@ impl HestonAdiPricer {
     self.barrier
   }
 
-  /// Mesh intervals and time steps.
+  /// Mesh intervals and time steps; panics unless `m1 >= 4`, `m2 >= 4` and `steps >= 1`.
   pub fn with_grid(mut self, m1: usize, m2: usize, steps: usize) -> Self {
+    assert!(m1 >= 4, "m1 must satisfy `m1 >= 4`, got m1 = {m1}");
+    assert!(m2 >= 4, "m2 must satisfy `m2 >= 4`, got m2 = {m2}");
     assert!(
-      m1 >= 4 && m2 >= 4 && steps >= 1,
-      "grid needs at least four intervals per direction and one step"
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps}"
     );
     self.m1 = m1;
     self.m2 = m2;
@@ -132,10 +134,13 @@ impl HestonAdiPricer {
     self
   }
 
-  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B`
-  /// with `u(B, v, t) = 0` and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6).
+  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B` with `u(B, v, t) = 0`,
+  /// and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6); panics unless `B` is finite and positive.
   pub fn with_barrier(mut self, barrier: f64) -> Self {
-    assert!(barrier > 0.0, "barrier must be positive");
+    assert!(
+      barrier.is_finite() && barrier > 0.0,
+      "barrier must satisfy `barrier.is_finite() && barrier > 0.0`, got barrier = {barrier:?}"
+    );
     self.barrier = Some(barrier);
     self
   }

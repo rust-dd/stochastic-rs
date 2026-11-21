@@ -24,6 +24,19 @@ fn the_grid_and_the_barrier_are_read_through_getters() {
   assert_eq!(HestonAdiPricer::new(P).barrier(), None);
 }
 
+/// The setters are the only gate, so a barrier of `+∞` is refused as one at zero is.
+#[test]
+#[should_panic(expected = "barrier must satisfy `barrier.is_finite() && barrier > 0.0`, got")]
+fn an_infinite_barrier_is_refused() {
+  let _ = HestonAdiPricer::new(P).with_barrier(f64::INFINITY);
+}
+
+#[test]
+#[should_panic(expected = "m2 must satisfy `m2 >= 4`, got m2 = 3")]
+fn a_grid_check_names_its_argument_and_value() {
+  let _ = HestonAdiPricer::new(P).with_grid(4, 3, 1);
+}
+
 #[test]
 fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
   let model = HestonAdiPricer::new(HestonParams {
