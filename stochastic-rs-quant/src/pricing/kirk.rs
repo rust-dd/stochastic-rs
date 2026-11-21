@@ -165,7 +165,7 @@ mod tests {
     );
   }
 
-  /// One model instance prices a whole query grid — the point of the split.
+  /// One model instance prices a whole query grid.
   #[test]
   fn kirk_one_model_prices_a_strike_grid() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);

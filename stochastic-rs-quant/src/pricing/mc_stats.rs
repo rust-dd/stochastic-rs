@@ -47,15 +47,8 @@ pub(crate) fn pathless(mean: f64) -> McEstimate<f64> {
   }
 }
 
-/// Standard error of a Monte Carlo mean from the running sums a payoff
-/// pass produces: sample variance `(sum_sq - sum²/n) / (n - 1)`, then
-/// `sqrt(var / n)` (Glasserman 2003, §1.1).
-///
-/// Undiscounted — the caller multiplies by the same factor its mean uses.
-/// A poisoned accumulator (`NaN` in either sum) comes back as `NaN`, never
-/// as a small plausible number; a tiny negative variance from cancellation
-/// floors at zero; fewer than two samples have no variance estimate and
-/// return `NaN`.
+/// Undiscounted `sqrt(((sum_sq − sum²/n)/(n − 1))/n)` (Glasserman 2003, §1.1): NaN for a NaN sum or
+/// `n < 2`, a cancellation's tiny negative variance floored at zero.
 pub(crate) fn std_err_from_sums(sum: f64, sum_sq: f64, n: usize) -> f64 {
   if n < 2 {
     return f64::NAN;

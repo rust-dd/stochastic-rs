@@ -1,14 +1,11 @@
-//! # CGMYSV Calibration
+//! Calibration of the CGMYSV stochastic-volatility model's eight parameters to option prices by
+//! Lewis's Fourier price and Levenberg–Marquardt.
 //!
 //! $$
 //! \hat\theta=\arg\min_\theta\sum_i\bigl(C_i^{\mathrm{model}}(\theta)-C_i^{\mathrm{mkt}}\bigr)^2
 //! $$
 //!
-//! Calibrates the CGMYSV stochastic volatility model parameters
-//! $(\alpha,\lambda_+,\lambda_-,\kappa,\eta,\zeta,\rho,v_0)$ to observed
-//! option prices using Fourier pricing (Lewis) and Levenberg-Marquardt.
-//!
-//! Reference: Kim, Y. S. (2021), arXiv:2101.11001
+//! Reference: Kim (2021), arXiv:2101.11001
 
 use ndarray::Array1;
 use ndarray::Array2;

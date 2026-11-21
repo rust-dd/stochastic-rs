@@ -117,10 +117,7 @@ impl<S: SeedExt> HestonMalliavinGreeks<S> {
     )
   }
 
-  /// Simulate Heston paths and return terminal prices, payoffs, full variance paths,
-  /// and full W1 (price-driving Brownian) paths.
-  ///
-  /// Returns `(S_T, payoff, V_paths, W1_paths)`.
+  /// The simulated `(S_T, payoff, V_paths, W1_paths)`, `W1` the Brownian that drives the price.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>, Array2<f64>, Array2<f64>) {
     if self.degenerate_query() {
       let nan = Array1::from_elem(self.n_paths, f64::NAN);
@@ -319,10 +316,8 @@ impl<S: SeedExt> HestonMalliavinGreeks<S> {
 }
 
 impl<S: SeedExt> HestonMalliavinGreeks<S> {
-  /// Single-pass delta + gamma (sharing simulated paths). Vega is computed
-  /// separately by [`Self::vega_v0`] because it uses an independent
-  /// finite-difference bump with common-random-numbers and cannot share
-  /// paths with the Malliavin estimator.
+  /// Delta and gamma from one set of paths; [`Self::vega_v0`] bumps by finite difference on common
+  /// random numbers, which cannot share the Malliavin paths.
   fn delta_gamma_single_pass(&self) -> (f64, f64) {
     if self.degenerate_query() {
       return (f64::NAN, f64::NAN);

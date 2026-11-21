@@ -104,9 +104,8 @@ mod tests {
   const TAU: f64 = 0.75;
   const V: f64 = 0.25;
 
-  /// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last
-  /// bit is a hostage to FMA contraction and libm differences between the
-  /// aarch64-darwin dev machine and CI's ubuntu x86_64.
+  /// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
+  /// aarch64-darwin and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
   /// Reference: the module's law of `ln G` integrated by mpmath at 50 digits, 3.15336604657145 and
@@ -146,7 +145,7 @@ mod tests {
     );
   }
 
-  /// The capability the reshape exists for: one model, a whole grid.
+  /// One model prices a strike and maturity grid.
   #[test]
   fn asian_one_model_prices_a_grid() {
     let model = AsianPricer::new(V);

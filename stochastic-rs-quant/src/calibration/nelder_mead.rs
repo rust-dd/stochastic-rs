@@ -1,11 +1,11 @@
-//! # Nelder–Mead with a stagnation test
+//! Nelder–Mead with Kelley's (1999, §3) test: a step missing the decrease below restarts the
+//! simplex down its gradient, a third miss is stagnation; a stop passes O'Neill's (1971) AS 47.
 //!
 //! $$
 //! \bar f^{k+1}-\bar f^k<-\alpha\,\lVert D(f:S^k)\rVert^2,\qquad D(f:S)=V^{-T}\delta(f:S)
 //! $$
 //!
-//! Kelley (1999), SIAM J. Optim. 10(1), 43–55, §3: a step that misses this decrease restarts the
-//! simplex down its gradient, a third miss is stagnation; a stop passes O'Neill's (1971) AS 47.
+//! Reference: Kelley (1999), SIAM J. Optim. 10(1), 43–55
 
 use std::cell::Cell;
 use std::convert::Infallible;

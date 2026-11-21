@@ -1,11 +1,5 @@
-//! # Variance / volatility swap pricing
-//!
-//! Static-replication (Demeterfi–Derman–Kamal–Zou 1999) and stochastic-vol
-//! closed-form fair strikes (Brockhaus–Long 2000 for Heston, Bernard–Cui
-//! 2013 discrete corrections).
-//!
-//! Continuous Demeterfi formula (with continuous dividend yield $q$ and
-//! forward $F = S_0 e^{(r-q)T}$, ATM cutoff $K_0$):
+//! Variance and volatility swap fair strikes: Demeterfi et al.'s static replication on the forward
+//! `F = S₀e^{(r−q)T}` with cutoff `K₀`, and Brockhaus–Long's Heston closed form.
 //!
 //! $$
 //! K_{\text{var}}=\frac{2}{T}\!\left[
@@ -15,23 +9,15 @@
 //!   e^{rT}\!\!\int_{K_0}^{\infty}\!\!\frac{C(K)}{K^2}\,dK
 //! \right]
 //! $$
-//!
-//! Heston closed-form (continuous monitoring):
-//!
 //! $$
 //! K_{\text{var}}^{\text{Heston}}=\theta+(V_0-\theta)\,\frac{1-e^{-\kappa T}}{\kappa T}
 //! $$
 //!
-//! Source:
-//! - Demeterfi, K., Derman, E., Kamal, M. & Zou, J. (1999),
-//!   "More Than You Ever Wanted to Know About Volatility Swaps", Goldman Sachs.
-//! - Brockhaus, O. & Long, D. (2000), "Volatility Swaps Made Simple", Risk 13.
-//! - Swishchuk, A. & Wang, Z. (2017), "Variance and Volatility Swaps and Futures Pricing for
-//!   Stochastic Volatility Models", arXiv:1712.02735, eqs. 10–13: Brockhaus–Long for Heston.
-//! - Bernard, C. & Cui, Z. (2013), "Prices and Asymptotics for Discrete
-//!   Variance Swaps", arXiv:1305.7092.
-//! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",
-//!   in *Volatility: New Estimation Techniques for Pricing Derivatives*.
+//! Reference: Demeterfi et al. (1999), "More Than You Ever Wanted to Know About Volatility Swaps"
+//! Reference: Brockhaus & Long (2000), Risk 13
+//! Reference: Swishchuk & Wang (2017), arXiv:1712.02735, eqs. 10–13
+//! Reference: Bernard & Cui (2013), arXiv:1305.7092
+//! Reference: Carr & Madan (1998), "Towards a Theory of Volatility Trading"
 
 use crate::pricing::exotic::VarianceSwapTerms;
 use crate::pricing::heston::HestonParams;
@@ -201,10 +187,7 @@ pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   w
 }
 
-/// Volatility-swap fair strike with convexity correction.
-///
-/// Naive: $K_{\text{vol}} \approx \sqrt{K_{\text{var}}}$. With variance-of-variance
-/// the convex Jensen correction lowers the strike:
+/// Volatility-swap fair strike: `√K_var` less the Jensen correction of the variance of variance.
 ///
 /// $$
 /// K_{\text{vol}} \approx \sqrt{K_{\text{var}}} - \frac{\text{Var}(V)}{8\,K_{\text{var}}^{3/2}}

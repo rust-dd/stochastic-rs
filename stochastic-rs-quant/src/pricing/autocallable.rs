@@ -1,19 +1,9 @@
-//! # Autocallable
+//! Autocallable, phoenix and athena notes on one underlying: each date checks the autocall barrier,
+//! then the coupon one, and at maturity the principal is at risk below the knock-in barrier.
 //!
-//! Auto-callable / phoenix / athena structured note. Observation grid
-//! $t_1 < t_2 < \cdots < t_M = T$. Each observation date checks an upper
-//! "autocall" barrier; if breached the note redeems early at par plus the
-//! accrued coupon. Otherwise a coupon may be paid (phoenix) or skipped, and
-//! at maturity the principal is at risk via a knock-in barrier on a worst-of
-//! basket (here single underlying).
-//!
-//! Source:
-//! - Bouzoubaa, M. & Osseiran, A. (2010), "Exotic Options and Hybrids", §11
-//! - Kuklinski, J., Papaioannou, P. & Tyloo, K. (2016), "Pricing Weakly
-//!   Model Dependent Barrier Products", arXiv:1608.00280
-//! - Cibrario, F. et al. (2025), "Autocallable Options Pricing with
-//!   Integration-Based Exponential Amplitude Loading", arXiv:2507.19039
-//!
+//! Reference: Bouzoubaa & Osseiran (2010), "Exotic Options and Hybrids", §11
+//! Reference: Kuklinski et al. (2016), arXiv:1608.00280
+//! Reference: Cibrario et al. (2025), arXiv:2507.19039
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;

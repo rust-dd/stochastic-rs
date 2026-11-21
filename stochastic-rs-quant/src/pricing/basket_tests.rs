@@ -140,7 +140,7 @@ fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   assert!((put - 7.44011942297468).abs() < TOL, "iid put {put}");
 }
 
-/// One model instance prices a whole strike grid — the point of the split.
+/// One model instance prices a whole strike grid.
 #[test]
 fn arithmetic_basket_levy_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = asymmetric_basket();

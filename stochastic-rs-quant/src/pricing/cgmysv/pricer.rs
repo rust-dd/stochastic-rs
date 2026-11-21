@@ -372,8 +372,8 @@ mod tests {
     }
   }
 
-  /// Table 4: Lewis's call against the paper's FFT `19.659` at `K = 2500`, `T = 28/365`, the
-  /// paper's S&P 500 days kept as literals.
+  /// Table 4: Lewis's call against the paper's FFT `19.659` at `K = 2500`; the maturities are
+  /// Tables 4–6's S&P 500 days, kept as literals.
   #[test]
   fn table4_lewis_call() {
     let model = CgmysvModel {

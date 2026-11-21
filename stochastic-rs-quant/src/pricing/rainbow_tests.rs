@@ -37,7 +37,7 @@ fn stulz_matches_pre_refactor_goldens() {
   }
 }
 
-/// One model instance prices a whole strike grid — the point of the split.
+/// One model instance prices a whole strike grid.
 #[test]
 fn stulz_one_model_prices_a_strike_grid() {
   let model = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4);

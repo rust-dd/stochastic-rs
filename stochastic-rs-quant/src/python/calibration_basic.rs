@@ -103,8 +103,8 @@ pub struct PyHestonCalibrator {
 
 #[pymethods]
 impl PyHestonCalibrator {
-  /// `regularization`: optional `(anchor, weights)` Tikhonov pull on `(v0, kappa, theta, sigma, rho)`; `jacobian_method` is
-  /// `"cui"` or `"fd"`; `residual_weights` holds one positive weight per quote in slice order.
+  /// `regularization`: an optional `(anchor, weights)` Tikhonov pull on the five parameters;
+  /// `jacobian_method` is `"cui"` or `"fd"`; `residual_weights`: one positive weight per quote.
   #[new]
   #[pyo3(signature = (slices, s, r, option_type="call", q=None, regularization=None, jacobian_method="cui", residual_weights=None, feller_projection=false))]
   fn new(
@@ -137,8 +137,8 @@ impl PyHestonCalibrator {
     })?
   }
 
-  /// `initial_guess` is `(v0, kappa, theta, sigma, rho)`. Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`,
-  /// with the stop reason (`"converged"`, `"evaluation budget exhausted"`, …) appended when `full_output` is true.
+  /// `initial_guess` is `(v0, kappa, theta, sigma, rho)`; returns those, `converged`, `loss_rmse`
+  /// and, with `full_output`, the stop reason (`"converged"`, `"evaluation budget exhausted"`, …).
   #[pyo3(signature = (initial_guess=None, full_output=false))]
   fn calibrate(
     &self,

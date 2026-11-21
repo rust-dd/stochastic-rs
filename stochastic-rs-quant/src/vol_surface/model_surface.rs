@@ -85,7 +85,7 @@ pub fn fourier_model_surface_fft(
 }
 
 /// [`fourier_model_surface_fft`] on `2^n_pow2` log-strikes (12 or 13 typical), damped by `alpha`
-/// `> 0`: 0.75 (Lord–Kahl) for equity smiles, 0.25–0.5 for low vol, 1.0–1.5 for rough-vol skew.
+/// `> 0`: 0.75 (Lord–Kahl 2010) for equity smiles, 0.25–0.5 for low vol, 1.0–1.5 for rough skew.
 pub fn fourier_model_surface_fft_with(
   model: &impl FourierModelExt,
   s: f64,

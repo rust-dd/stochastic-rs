@@ -28,7 +28,7 @@ fn margrabe_matches_pre_refactor_goldens() {
   assert!((d2 + 0.28856103581454673).abs() < TOL, "delta2 {d2}");
 }
 
-/// One model instance prices a whole query grid — the point of the split.
+/// One model instance prices a whole query grid.
 #[test]
 fn margrabe_one_model_prices_a_spot_grid() {
   let model = MargrabePricer::new(0.25, 0.20, 0.4);
