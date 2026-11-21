@@ -20,10 +20,7 @@ use crate::traits::VanillaEuropeanCall;
 /// Laplace kernel of bandwidth `l`; `l = 0` is the Dirac limit (zero density, right-continuous step
 /// cdf), so the localisation weight collapses exactly. Panics on `l < 0`.
 fn laplace_pdf(x: f64, l: f64) -> f64 {
-  assert!(
-    l >= 0.0,
-    "laplace bandwidth l must be non-negative (got {l})"
-  );
+  assert!(l >= 0.0, "l must satisfy `l >= 0.0`, got l = {l:?}");
   if l == 0.0 {
     return 0.0;
   }
@@ -34,10 +31,7 @@ fn laplace_pdf(x: f64, l: f64) -> f64 {
 /// Cdf of [`laplace_pdf`] — see its doc for the `l == 0` Dirac limit and the
 /// negative-bandwidth panic, which this shares.
 fn laplace_cdf(x: f64, l: f64) -> f64 {
-  assert!(
-    l >= 0.0,
-    "laplace bandwidth l must be non-negative (got {l})"
-  );
+  assert!(l >= 0.0, "l must satisfy `l >= 0.0`, got l = {l:?}");
   if l == 0.0 {
     return if x < 0.0 { 0.0 } else { 1.0 };
   }

@@ -184,9 +184,15 @@ fn the_atom_is_a_convention_not_a_limit() {
 
 /// A negative bandwidth has no limit interpretation, unlike `l == 0`.
 #[test]
-#[should_panic(expected = "laplace bandwidth l must be non-negative (got -1)")]
+#[should_panic(expected = "l must satisfy `l >= 0.0`, got l = -1.0")]
 fn negative_bandwidth_is_rejected() {
   let _ = laplace_pdf(0.5, -1.0);
+}
+
+#[test]
+#[should_panic(expected = "l must satisfy `l >= 0.0`, got l = -1.0")]
+fn negative_bandwidth_is_rejected_by_the_cdf_too() {
+  let _ = laplace_cdf(0.5, -1.0);
 }
 
 /// A strike no path reaches zeroes `lf` and empties the localisation sum: the price is finite and
