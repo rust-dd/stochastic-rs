@@ -91,7 +91,8 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   pub theta: T,
   /// Volatility of variance σ.
   pub sigma: T,
-  /// Drift target θ_r(t) of the short rate, the additive curve term `HullWhite2F::theta` carries.
+  /// Drift target θ_r(t) of the short rate, as `HullWhite2F::theta`; a non-finite value makes the
+  /// rate rows, the spot and the integrated rate NaN from that grid point on.
   pub theta_r: Fn1D<T>,
   /// Mean-reversion speed of the short rate.
   pub a: T,
@@ -360,6 +361,14 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
     self
   }
 
+  /// `theta_r` at every grid point, tabulated once: a Python callable costs a GIL round trip a call.
+  fn rate_curve(&self) -> Vec<T> {
+    let dt = self.dt();
+    (0..self.n)
+      .map(|i| self.theta_r.call(T::from_usize_(i) * dt))
+      .collect()
+  }
+
   /// Time step `t / (n - 1)`.
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
@@ -430,6 +439,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T
   fn sampler(&self) -> HestonHullWhite2FSampler<'_, T, Sch, S, B> {
     HestonHullWhite2FSampler {
       model: self,
+      curve: self.rate_curve(),
       seed: self.seed.derive(),
     }
   }
@@ -446,6 +456,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T
 #[derive(Debug)]
 pub struct HestonHullWhite2FSampler<'a, T: FloatExt, Sch: HybridScheme, S: SeedExt, B> {
   model: &'a HestonHullWhite2F<T, Sch, S, B>,
+  curve: Vec<T>,
   seed: S,
 }
 
@@ -460,7 +471,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> PathSampler<T>
   type Output = HestonHullWhite2FPaths<T>;
 
   fn sample_into(&mut self, out: &mut HestonHullWhite2FPaths<T>) {
-    Sch::simulate_into(self.model, &self.seed, out);
+    Sch::simulate_into(self.model, &self.curve, &self.seed, out);
   }
 
   fn sample(&mut self) -> HestonHullWhite2FPaths<T> {

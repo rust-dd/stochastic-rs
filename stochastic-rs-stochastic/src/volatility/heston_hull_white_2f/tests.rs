@@ -109,6 +109,42 @@ fn zero_rate_volatility_reproduces_hull_white_2f() {
 }
 
 #[test]
+fn theta_r_is_tabulated_once_per_sampler() {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+  static CALLS: AtomicUsize = AtomicUsize::new(0);
+  fn counted(_t: f64) -> f64 {
+    CALLS.fetch_add(1, Ordering::Relaxed);
+    1.1 * 0.03
+  }
+  let n = 16;
+  let model = paper(n, 1).with_theta_r(counted as fn(f64) -> f64);
+  let mut sampler = model.sampler();
+  for _ in 0..5 {
+    sampler.sample();
+  }
+  assert_eq!(CALLS.load(Ordering::Relaxed), n);
+}
+
+#[test]
+fn a_non_finite_theta_r_is_nan_from_its_grid_point_on() {
+  fn broken_late(t: f64) -> f64 {
+    if t < 0.5 { 1.1 * 0.03 } else { f64::NAN }
+  }
+  let n = 33;
+  let path = paper(n, 1)
+    .with_theta_r(broken_late as fn(f64) -> f64)
+    .sample();
+  for i in 0..n {
+    let nan = i >= 16;
+    assert_eq!(path.r[i].is_nan(), nan, "r at {i}");
+    assert_eq!(path.s[i].is_nan(), nan, "s at {i}");
+    assert_eq!(path.integrated_rate[i].is_nan(), nan, "∫r at {i}");
+    assert!(path.v[i].is_finite() && path.u[i].is_finite());
+  }
+}
+
+#[test]
 fn integrated_rate_row_is_the_trapezoidal_sum_of_the_rate_row() {
   let n = 65;
   let path = paper(n, 5).qe().sample();

@@ -32,9 +32,10 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
   /// Lower Cholesky factor of the `(x, v, r, u)` correlation matrix in the driver order this scheme steps.
   fn factor<T: FloatExt>(rho: &Array2<T>) -> Array2<T>;
 
-  /// Fills `out`'s five rows of `n` points with one path, drawing from `seed`, the sampler's basis.
+  /// One path into `out`, from `seed`, the sampler's basis; `curve[i]` is `theta_r` at grid point `i`.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Self, S, B>,
+    curve: &[T],
     seed: &S,
     out: &mut HestonHullWhite2FPaths<T>,
   ) where
@@ -42,11 +43,9 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
 }
 
 impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
-  /// One Euler step of the rate leg, `theta_r` read at the step's end as `HullWhite2F` reads it.
-  fn rate_step(&self, i: usize, r: T, u: T, dw_r: T, dw_u: T) -> (T, T) {
-    let dt = self.dt();
-    let r_next =
-      r + (self.theta_r.call(T::from_usize_(i) * dt) + u - self.a * r) * dt + self.sigma1 * dw_r;
+  /// One Euler step of the rate leg; `target` is `theta_r` at the step's end, as `HullWhite2F` reads it.
+  fn rate_step(&self, target: T, dt: T, r: T, u: T, dw_r: T, dw_u: T) -> (T, T) {
+    let r_next = r + (target + u - self.a * r) * dt + self.sigma1 * dw_r;
     let u_next = u - self.b * u * dt + self.sigma2 * dw_u;
     (r_next, u_next)
   }
@@ -72,6 +71,7 @@ impl HybridScheme for Euler {
 
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Euler, S, B>,
+    curve: &[T],
     seed: &S,
     out: &mut HestonHullWhite2FPaths<T>,
   ) {
@@ -104,7 +104,7 @@ impl HybridScheme for Euler {
         + l[(3, 3)] * z[(3, j)];
       let v_next =
         (v + model.kappa * (model.theta - v) * dt + model.sigma * v.sqrt() * dw_v).max(T::zero());
-      let (r_next, u_next) = model.rate_step(i, r, u, dw_r, dw_u);
+      let (r_next, u_next) = model.rate_step(curve[i], dt, r, u, dw_r, dw_u);
       let r_dt = half * (r + r_next) * dt;
       log_s = log_s + r_dt - half * v * dt + v.sqrt() * dw_x;
       int_r += r_dt;
@@ -129,6 +129,7 @@ impl HybridScheme for AndersenQe {
   /// sum in place of the constant drift and the orthogonal shock correlated with the rate shocks.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, AndersenQe, S, B>,
+    curve: &[T],
     seed: &S,
     out: &mut HestonHullWhite2FPaths<T>,
   ) {
@@ -184,7 +185,7 @@ impl HybridScheme for AndersenQe {
       let dw_r = sqrt_dt * lq[(1, 1)] * z_r;
       let dw_u = sqrt_dt * (lq[(2, 1)] * z_r + lq[(2, 2)] * z_3);
       let z_x = lq[(3, 1)] * z_r + lq[(3, 2)] * z_3 + lq[(3, 3)] * z_4;
-      let (r_next, u_next) = model.rate_step(i, r, u, dw_r, dw_u);
+      let (r_next, u_next) = model.rate_step(curve[i], dt, r, u, dw_r, dw_u);
       let r_dt = half * (r + r_next) * dt;
       let vol = (half * dt * (v + v_next)).max(T::zero()).sqrt();
       log_s = log_s + r_dt + k0 + k1 * v + k2 * v_next + vol * z_x;
