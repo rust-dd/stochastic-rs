@@ -217,13 +217,12 @@ impl VolatilitySwapPricer {
     sigma
   }
 
-  /// Convexity-adjusted vol strike from the variance strike and the variance of variance; panics
+  /// Convexity-adjusted vol strike from the variance strike and the variance of variance; NaN
   /// unless `k_var > 0`, since the Jensen term divides by $K_{\text{var}}^{3/2}$.
   pub fn fair_strike_from_var(k_var: f64, var_of_var: f64) -> f64 {
-    assert!(
-      k_var > 0.0,
-      "variance strike k_var must be strictly positive (got {k_var})"
-    );
+    if k_var.is_nan() || k_var <= 0.0 {
+      return f64::NAN;
+    }
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
