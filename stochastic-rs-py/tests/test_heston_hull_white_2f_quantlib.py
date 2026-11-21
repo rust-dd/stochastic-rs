@@ -1,5 +1,5 @@
 """`PyHestonHullWhite2F` at `sigma2 = 0` against QuantLib's finite-difference Heston Hull-White
-puts, whose grid error is measured on the exact zero-correlation engine; skipped without QuantLib."""
+puts, their grid error measured on the exact zero-correlation engine; needs QuantLib."""
 
 from __future__ import annotations
 

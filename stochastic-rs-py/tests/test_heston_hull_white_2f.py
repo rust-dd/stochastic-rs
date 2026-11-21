@@ -121,8 +121,8 @@ print(json.dumps([rows.tolist() for rows in p.sample_par(70)]))
 
 @pytest.mark.parametrize("scheme", ["euler", "qe"])
 def test_sample_par_is_thread_count_independent(scheme):
-    """As `test_sample_par_thread_count.py`: rayon's global pool is sized once per interpreter, so each
-    pool size runs in its own subprocess under `RAYON_NUM_THREADS`; 70 paths is above `MAX_CHUNKS`."""
+    """Rayon sizes its pool once per interpreter, so each size runs in a subprocess under
+    `RAYON_NUM_THREADS`; 70 paths is above `MAX_CHUNKS`."""
     import json
     import os
     import subprocess

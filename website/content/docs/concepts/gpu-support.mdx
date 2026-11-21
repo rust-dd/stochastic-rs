@@ -76,7 +76,7 @@ Probing a device, handling its failures and choosing an ordinal are on [Sampling
 
 ## From Python
 
-88 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); the ones without it, listed on [Python bindings](/docs/python#devices), sample on the host. The name is one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal (`"cuda:1"`); one the build does not carry raises `ValueError` with a rebuild hint, and the device is probed when the object is built. Arrays come back in the class's dtype, and the `f32`-only Metal backend needs `dtype="f32"`. A class also answers `device_ready()` and `device_fallback()` for the configuration it holds. The published wheels are CPU-only; the device backends need a source build — `maturin develop --features metal` on a Mac, `--features cuda` on an NVIDIA machine. See [Python bindings](/docs/python#devices).
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); the ones without it, listed on [Python bindings](/docs/python#devices), sample on the host. The name is one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal (`"cuda:1"`); one the build does not carry raises `ValueError` with a rebuild hint, and the device is probed when the object is built. Arrays come back in the class's dtype, and the `f32`-only Metal backend needs `dtype="f32"`. A class also answers `device_ready()` and `device_fallback()` for the configuration it holds. The published wheels are CPU-only; the device backends need a source build — `maturin develop --features metal` on a Mac, `--features cuda` on an NVIDIA machine. See [Python bindings](/docs/python#devices).
 
 ## Trying the CUDA back-end without a CUDA machine
 
