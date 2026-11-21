@@ -8,7 +8,7 @@
 //!
 //! The Brownian correlations are Eq. 2.4 with ρ₁ = 0: `dW^S dW^v = ρ_t dt` and `dW^v dW^ρ = ρ₂ dt`.
 //!
-//! Reference: Teng, Ehrhardt & Günther (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
+//! Reference: Teng et al. (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

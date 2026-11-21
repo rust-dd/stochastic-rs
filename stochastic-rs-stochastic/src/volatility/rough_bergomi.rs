@@ -24,7 +24,7 @@
 //! = \frac{\Delta^{2\alpha+1}}{2\alpha+1}
 //! $$
 //!
-//! Reference: Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904, DOI 10.1080/14697688.2015.1099717
+//! Reference: Bayer et al. (2016), Quant. Finance 16(6), 887–904, DOI 10.1080/14697688.2015.1099717
 //! Reference: Bennedsen et al. (2017), Finance Stoch. 21, 931–965, DOI 10.1007/s00780-017-0335-5
 
 use ndarray::Array1;

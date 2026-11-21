@@ -13,9 +13,9 @@
 //!
 //! Drift frozen per step (§3.7.1; Joshi 2003), not Glasserman & Zhao's predictor-corrector.
 //!
-//! Reference: Brace, Gatarek & Musiela (1997), Math. Finance 7(2), 127–155, DOI 10.1111/1467-9965.00028
+//! Reference: Brace et al. (1997), Math. Finance 7(2), 127–155, DOI 10.1111/1467-9965.00028
 //! Reference: Jamshidian (1997), Finance Stoch. 1(4), 293–330, DOI 10.1007/s007800050026
-//! Reference: Glasserman (2003), "Monte Carlo Methods in Financial Engineering", Springer, §3.7, DOI 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §3.7, DOI 10.1007/978-0-387-21617-1
 //! Reference: Glasserman & Zhao (2000), Finance Stoch. 4(1), 35–68, DOI 10.1007/s007800050002
 //! Reference: Hula (2011), "Discrete LIBOR Market Model Analogy", arXiv:1108.4260
 //!

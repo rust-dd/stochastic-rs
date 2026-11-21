@@ -12,7 +12,7 @@
 //!
 //! The asset steps by Euler, each variance factor by full truncation (Lord-Koekkoek-van Dijk 2010).
 //!
-//! Reference: Christoffersen, Heston & Jacobs (2009), Management Science 55(12), 1914-1932, DOI 10.1287/mnsc.1090.1065
+//! Reference: Christoffersen et al. (2009), 55(12), 1914-1932, DOI 10.1287/mnsc.1090.1065
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

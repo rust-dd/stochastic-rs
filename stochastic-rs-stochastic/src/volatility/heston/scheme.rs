@@ -43,7 +43,7 @@ pub struct Euler;
 
 /// Andersen's Quadratic-Exponential scheme, for the square-root variance only: lower bias than
 /// Euler at large vol-of-vol or a violated Feller condition, at about the same cost per step.
-/// Reference: Andersen (2008), J. Comput. Finance 11(3), 1-42, §3.2 (QE), §4.2 eq. 33 (the asset), DOI 10.21314/JCF.2008.189
+/// Reference: Andersen (2008), 11(3), 1-42, §3.2 (QE), §4.2 eq. 33, DOI 10.21314/JCF.2008.189
 #[derive(Debug, Clone, Copy)]
 pub struct AndersenQe;
 

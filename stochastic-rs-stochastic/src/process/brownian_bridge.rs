@@ -10,7 +10,7 @@
 //! X_s=x_0+(x_T-x_0)\frac{s}{T}+\sigma\Bigl(W_s-\frac{s}{T}W_T\Bigr)
 //! $$
 //!
-//! Reference: Karatzas & Shreve (1991), "Brownian Motion and Stochastic Calculus", 2nd ed., §5.6.B, DOI 10.1007/978-1-4612-0949-2
+//! Reference: Karatzas & Shreve (1991), 2nd ed., §5.6.B, DOI 10.1007/978-1-4612-0949-2
 //! Reference: Glasserman (2003), Springer, §3.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;

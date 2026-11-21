@@ -6,7 +6,7 @@
 //!
 //! The RFSV log-volatility of Gatheral, Jaisson & Rosenbaum (2018), by Euler on RL-fBM increments.
 //!
-//! Reference: Bayer, Friz & Gatheral (2016), Quantitative Finance 16, 887–904, DOI 10.1080/14697688.2015.1099717
+//! Reference: Bayer et al. (2016), Quant. Finance 16, 887–904, DOI 10.1080/14697688.2015.1099717
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

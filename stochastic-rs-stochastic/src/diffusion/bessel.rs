@@ -15,7 +15,7 @@
 //! \quad \tau(t) = \frac{\sigma^2}{4\kappa}\bigl(e^{\kappa t}-1\bigr)
 //! $$
 //!
-//! Reference: Revuz & Yor, "Continuous Martingales and Brownian Motion", Ch. XI §1, DOI 10.1007/978-3-662-06400-9
+//! Reference: Revuz & Yor (1999), Ch. XI §1, DOI 10.1007/978-3-662-06400-9
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
