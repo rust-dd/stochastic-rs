@@ -58,7 +58,7 @@ impl CosEngine {
 
   /// A call is the put plus parity: the payoff at `t = 0`; NaN past expiry and, before it, for a
   /// rate not finite, an `s0` or `k` not finite and positive, or a NaN `chf` or truncation range.
-  pub fn price<M: FourierModelExt>(
+  pub fn price<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,
     s0: f64,
@@ -84,7 +84,7 @@ impl CosEngine {
 
   /// [`CosEngine::price`] at each strike, bit for bit: the ranges are equally wide, so the nodes
   /// and `chf` are shared. Fang & Oosterlee's Eq. (30) prices on one common range instead.
-  pub fn price_strikes<M: FourierModelExt>(
+  pub fn price_strikes<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,
     s0: f64,
@@ -122,7 +122,7 @@ impl CosEngine {
   }
 
   /// Eq. (49)'s range less each strike's `x`, as `(lower, width)`; `None` where it has no width.
-  fn range<M: FourierModelExt>(&self, model: &M, t: f64) -> Option<(f64, f64)> {
+  fn range<M: FourierModelExt + ?Sized>(&self, model: &M, t: f64) -> Option<(f64, f64)> {
     let cumulants = model.cumulants(t);
     let half_width = cumulants.truncation_half_width(self.l);
     half_width
@@ -132,7 +132,7 @@ impl CosEngine {
 
   /// Adds Eq. (19)'s terms to each live strike's put: `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at
   /// every strike, so each term calls `chf` once.
-  fn put_sums<M: FourierModelExt>(
+  fn put_sums<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,
     t: f64,

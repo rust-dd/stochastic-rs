@@ -1,10 +1,8 @@
-use num_complex::Complex64;
 use pyo3::exceptions::PyTypeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::parse_option_type;
-use crate::pricing::fourier::Cumulants;
 use crate::pricing::fourier::FourierModelExt;
 use crate::pricing::fourier::HkdeParams;
 use crate::pricing::fourier::SvjParams;
@@ -355,26 +353,12 @@ impl PyHkdeFourier {
   }
 }
 
-/// The Rust model inside one of this module's Fourier model classes, as the model
-/// [`PyCosEngine`] prices.
-struct DynFourierModel(Box<dyn FourierModelExt>);
-
-impl FourierModelExt for DynFourierModel {
-  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    self.0.chf(t, xi)
-  }
-
-  fn cumulants(&self, t: f64) -> Cumulants {
-    self.0.cumulants(t)
-  }
-}
-
-fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<DynFourierModel> {
+fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<Box<dyn FourierModelExt>> {
   macro_rules! model_of {
     ($($wrapper:ty),+ $(,)?) => {{
       $(
         if let Ok(wrapper) = model.extract::<PyRef<'_, $wrapper>>() {
-          return Ok(DynFourierModel(Box::new(wrapper.inner.clone())));
+          return Ok(Box::new(wrapper.inner.clone()));
         }
       )+
       [$(<$wrapper as pyo3::PyClass>::NAME),+]
@@ -434,7 +418,11 @@ impl PyCosEngine {
   ) -> PyResult<f64> {
     let model = fourier_model(model)?;
     let option_type = parse_option_type(option_type)?;
-    Ok(self.inner.price(&model, s, k, r, q, tau, option_type))
+    Ok(
+      self
+        .inner
+        .price(model.as_ref(), s, k, r, q, tau, option_type),
+    )
   }
 
   /// `price` at each strike of an array, bit for bit, on one pass over the characteristic function.
@@ -456,7 +444,15 @@ impl PyCosEngine {
     Ok(
       self
         .inner
-        .price_strikes(&model, s, strikes.as_array(), r, q, tau, option_type)
+        .price_strikes(
+          model.as_ref(),
+          s,
+          strikes.as_array(),
+          r,
+          q,
+          tau,
+          option_type,
+        )
         .into_pyarray(py),
     )
   }
