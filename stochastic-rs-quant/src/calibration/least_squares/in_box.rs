@@ -46,6 +46,13 @@ pub(super) fn cut(
   onto.collect()
 }
 
+#[cfg(test)]
+thread_local! {
+  /// Each point a solve stepped from, with the set held there: what a test reads of a fit.
+  pub(crate) static HELD: RefCell<Vec<(Array1<f64>, Vec<bool>)>> =
+    const { RefCell::new(Vec::new()) };
+}
+
 /// The bounds' side of a fit: the set held on its bounds through one solve, and what ends it.
 pub(super) struct Bounds {
   rooms: Rooms,
@@ -94,6 +101,8 @@ impl Bounds {
         *self.change.borrow_mut() = Some((set, residuals.dot(residuals)));
         return Err(());
       }
+      #[cfg(test)]
+      HELD.with_borrow_mut(|held| held.push((x.clone(), active.to_vec())));
     }
     let columns = jacobian.columns_mut().into_iter().zip(active.iter());
     columns

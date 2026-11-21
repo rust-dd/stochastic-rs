@@ -271,34 +271,24 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   }
 }
 
-/// From `START` the cost falls across `σ_J`'s lower bound. A held coordinate does not move, so a
-/// raw value two successive Jacobians see within the stencil step of the fold is the fold itself.
+/// From `START` the cost falls across `σ_J`'s lower bound: at each point a solve steps from with
+/// `σ_J` held, its value is the bound itself.
 #[test]
 fn a_jump_volatility_held_at_its_bound_is_on_it_not_beside_it() {
-  use std::cell::RefCell;
-  use std::rc::Rc;
-
-  use super::loss::SvjProblem;
   use super::params::P_SIGMA_J;
-  use super::params::room_in_box;
-  use crate::calibration::least_squares::minimize_in_box;
+  use crate::calibration::least_squares::HELD;
   let options = CalibrationOptions::default().with_max_iterations(150);
-  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes()).with_options(options);
-  let seen = Rc::new(RefCell::new(Vec::new()));
-  let log = seen.clone();
-  let rooms = move |x: ndarray::ArrayView1<f64>| {
-    log.borrow_mut().push(x[7] - P_SIGMA_J.0);
-    room_in_box(x)
-  };
-  let lm = calibrator.options.lm(true, 8).unwrap();
-  minimize_in_box(SvjProblem::new(&calibrator, START), lm, rooms);
-  let path = seen.take();
-  let held = path
-    .windows(2)
-    .filter(|at| at[0] == at[1] && at[0].abs() <= 1e-5);
-  let beside = held.clone().filter(|at| at[0] != 0.0).count();
+  HELD.take();
+  SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .with_options(options)
+    .calibrate(None)
+    .unwrap();
+  let held = HELD.take().into_iter().filter(|(_, set)| set[7]);
+  let gaps = held.map(|(x, _)| SvjParams::from(x).boxed().sigma_j - P_SIGMA_J.0);
+  let gaps = gaps.collect::<Vec<_>>();
   assert!(
-    held.count() > 0 && beside == 0,
-    "held beside the fold at {beside} Jacobians"
+    !gaps.is_empty() && gaps.iter().all(|gap| *gap == 0.0),
+    "{gaps:?}"
   );
 }
