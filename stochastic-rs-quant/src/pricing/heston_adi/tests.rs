@@ -1,6 +1,5 @@
-//! Validation of the ADI solver against the semi-analytic Heston price on
-//! the four parameter sets of in 't Hout & Foulon (2008), Table 1, plus the
-//! structural identities of the schemes.
+//! The ADI solver against the semi-analytic Heston price on in 't Hout & Foulon's (2008) Table 1
+//! sets, and the schemes' structural identities.
 
 use super::*;
 use crate::pricing::heston::HestonPricer;
@@ -106,9 +105,8 @@ fn adi(case: usize, v0: f64) -> HestonAdiPricer {
   })
 }
 
-/// MCS(⅓) with damping on a 100 × 50 mesh reprices the four Table 1 cases
-/// inside the paper's error region `½K < s < 3K/2`, `0 < v < 1` to about the
-/// 1 % the paper reports for `m2 = 50`.
+/// Damped MCS(⅓) on a 100 × 50 mesh reprices the four Table 1 cases on `½K < s < 3K/2`,
+/// `0 < v < 1` to the paper's 1 % at `m2 = 50`.
 #[test]
 fn matches_the_semi_analytic_price_on_table_1() {
   for case in 0..4 {
@@ -147,9 +145,8 @@ fn craig_sneyd_equals_douglas_without_correlation() {
   assert_eq!(douglas, craig_sneyd);
 }
 
-/// Every scheme converges toward the analytic price as the time step
-/// shrinks, and the second-order schemes are closer than Douglas at the
-/// same step count once correlation is present.
+/// Every scheme converges as the step shrinks, and with correlation the second-order schemes beat
+/// Douglas at equal step counts.
 #[test]
 fn schemes_converge_with_the_time_step() {
   let (_, _, _, _, r_d, r_f, tau) = TABLE_1[0];

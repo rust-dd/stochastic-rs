@@ -57,10 +57,8 @@ fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
   assert!(m.price_put(100.0, 100.0, 0.0, 0.0, 10.0).is_nan());
 }
 
-/// The degeneracy is a property of the parameter/τ combination, not of one
-/// query point, so it must not be mistaken for a strike-grid artifact: at
-/// these parameters the whole strike row is `NaN`, and shortening τ to a
-/// value the expansion is actually valid at brings every point back finite.
+/// At these parameters the expansion fails on the whole strike row (all `NaN`), and a `τ` it is
+/// valid at brings every point back finite.
 #[test]
 fn sabr_degeneracy_tracks_tau_not_the_strike_grid() {
   let m = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.9, 3.0));
@@ -83,18 +81,15 @@ const R: f64 = 0.05;
 const Q: f64 = 0.02;
 const TAU: f64 = 0.75;
 
-/// Cross-arch tolerance: the goldens route through `norm_cdf` and the
-/// Hagan expansion, whose last bits differ between aarch64-darwin and CI's
-/// ubuntu x86_64 under FMA contraction.
+/// Cross-arch tolerance: `norm_cdf` and the Hagan expansion differ in the last bits between
+/// aarch64-darwin and x86_64 under FMA contraction.
 const TOL: f64 = 1e-12;
 
 fn golden_model() -> SabrPricer {
   SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6))
 }
 
-/// Captured from `PricerExt::calculate_call_put()` and the four inherent
-/// accessors **before** the `ModelPricer` reshape. The reshape (and the
-/// `SabrModel` merge) is an API change only.
+/// Goldens of the call, the put and the four inherent accessors.
 #[test]
 fn sabr_model_pricer_matches_pre_refactor_goldens() {
   let m = golden_model();
@@ -114,12 +109,8 @@ fn sabr_model_pricer_matches_pre_refactor_goldens() {
   assert!((iv - 0.12131352686290568).abs() < TOL, "iv {iv}");
 }
 
-/// This model's carry is `b = r - q`, which is exactly the case where the
-/// trait's vanilla put-call parity is *mathematically* right — so this is
-/// the one member of 5b whose `price_put` override buys bit-identity
-/// rather than correctness. Both facts are pinned: parity holds to 1e-12,
-/// and `price_put` is the Black-Scholes closed form the pre-query
-/// `calculate_call_put().1` returned.
+/// The carry is `b = r − q`, where parity is exact: it holds to `1e-12`, and `price_put` is the
+/// Black-Scholes closed form.
 #[test]
 fn sabr_price_put_matches_parity_but_is_the_closed_form() {
   let m = golden_model();
@@ -129,11 +120,8 @@ fn sabr_price_put_matches_parity_but_is_the_closed_form() {
   assert_eq!(m.price_put(S, K, R, Q, TAU), put);
 }
 
-/// The merge is behaviour-preserving: pricing through this type is still
-/// exactly "Hagan implied vol, then Black-Scholes at Merton (1973) carry",
-/// which is what the deleted `SabrModel::price_call` did. Written against
-/// a hand-composed reference rather than against anything routed through
-/// `SabrPricer`, so it cannot go stale with the type.
+/// A price is Hagan's implied vol, then Black-Scholes at Merton (1973) carry, against a reference
+/// composed by hand rather than through `SabrPricer`.
 #[test]
 fn sabr_price_call_is_hagan_vol_through_black_scholes() {
   use crate::pricing::bsm::BsmCoc;
@@ -295,20 +283,8 @@ fn alpha_from_atm_vol_reference() {
   }
 }
 
-/// A hazard case for [`alpha_from_atm_vol`]'s root selection: at these
-/// parameters the Hagan Eq. A.69b quadratic (β = 1, so the cubic's α³ term
-/// vanishes) has two positive real roots within 5% of each other —
-/// α ≈ 0.3657 (economically meaningful, near the zeroth-order estimate
-/// `α₀ = σ_ATM · F^{1−β} = 0.15`) and α ≈ 0.3838 (spurious). Found by a
-/// grid search over (β, ρ, ν, τ, F, σ_ATM) for the closest positive-root
-/// pair reachable within this crate's own SABR-smile calibrator bounds
-/// (`ρ ∈ [-0.99, 0.99]`, `ν ∈ [0.01, 10]`, `vol_surface::sabr_smile`).
-///
-/// Both roots round-trip through [`hagan_implied_vol`] back to `v_atm` —
-/// proving a round-trip check alone (as in `alpha_from_atm_vol_reference`
-/// above) cannot distinguish "found *a* root" from "found the *correct*
-/// root" — so this pins the exact value Newton must return, not just that
-/// *some* value satisfies the round trip.
+/// Here (`β = 1`) eq. A.69b's quadratic has positive roots `α ≈ 0.3657`, near `α₀ = 0.15`, and a
+/// spurious 0.3838 within 5%; both round-trip, so Newton's exact root is pinned.
 #[test]
 fn alpha_from_atm_vol_close_roots_reference() {
   let (v_atm, f, tau, beta, rho, nu) = (0.15, 100.0, 3.0, 1.0, -0.95, 1.5);
@@ -339,13 +315,7 @@ fn alpha_from_atm_vol_close_roots_reference() {
   );
 }
 
-/// Independent cross-check of [`hagan_implied_vol`] against a 40-decimal-digit
-/// reimplementation of Hagan Eq. A.69a, rather than against values this crate
-/// produced itself.
-///
-/// The rest of this file's reference cases are regression pins — they catch
-/// drift but would not catch a formula that was wrong from the start. These
-/// five were recomputed with `mpmath` at `mp.dps = 40`:
+/// [`hagan_implied_vol`] against a 40-digit mpmath reimplementation of Hagan eq. A.69a:
 ///
 /// ```text
 /// from mpmath import mp, mpf, log, sqrt
@@ -360,8 +330,7 @@ fn alpha_from_atm_vol_close_roots_reference() {
 ///                                                 + (1-beta)**4*logfk**4/1920))
 /// ```
 ///
-/// Every case agreed to within 1e-15 relative, i.e. floating-point noise, so
-/// the tolerance below is set at 1e-14 rather than tuned to pass.
+/// All five agree to `1e-15` relative, so the `1e-14` tolerance is not tuned to pass.
 #[test]
 fn hagan_matches_an_independent_high_precision_implementation() {
   // (K, F, tau, alpha, beta, rho, nu, mpmath value at 40 digits)
@@ -392,11 +361,8 @@ fn hagan_matches_an_independent_high_precision_implementation() {
   }
 }
 
-/// The ATM `beta = 1` case is simple enough to verify by hand, which pins the
-/// `(a + b + c) * tau` correction independently of any reference value:
-/// `a = 0`, `b = rho*nu*alpha/4 = -0.0075`,
-/// `c = (2 - 3*rho^2)*nu^2/24 = 0.01802083...`, so
-/// `sigma = alpha * (1 + (b + c) * tau) = 0.2 * 1.01052083... = 0.2021041666...`
+/// The ATM `beta = 1` correction by hand: `b = ρνα/4 = −0.0075`, `c = (2 − 3ρ²)ν²/24`, so
+/// `σ = α(1 + (b + c)τ) = 0.2021041666…`.
 #[test]
 fn atm_beta_one_matches_hand_computation() {
   let (alpha, rho, nu, tau) = (0.2, -0.3, 0.5, 1.0);
@@ -539,10 +505,8 @@ mod construction_validation {
     });
   }
 
-  /// Hagan's expansion carries a `1 - rho` denominator, so `rho = 1` is
-  /// excluded at both layers rather than only at the accessor. The bound is
-  /// *open*, matching `hagan_implied_vol` exactly — a constructor that
-  /// admitted `±1` would only defer the same panic.
+  /// `rho = ±1` is refused at construction as well, the open bound `hagan_implied_vol`'s `1 − ρ`
+  /// denominator sets.
   #[test]
   #[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0")]
   fn new_rejects_unit_rho_like_the_expansion_does() {
@@ -554,10 +518,8 @@ mod construction_validation {
     });
   }
 
-  /// The whole of `SabrCalibrator`'s projection box must still construct:
-  /// it clamps `alpha` and `nu` to at least `1e-6`, `beta` to `[0, 1]` and
-  /// `rho` to `±0.9999`. A guard tighter than the box would abort a
-  /// calibration on a legal iterate.
+  /// `SabrCalibrator`'s projection box constructs (`alpha`, `nu ≥ 1e-6`, `beta ∈ [0, 1]`,
+  /// `rho = ±0.9999`), so no legal iterate aborts a calibration.
   #[test]
   fn the_calibrators_projection_box_stays_constructible() {
     for &(alpha, beta, rho, nu) in &[

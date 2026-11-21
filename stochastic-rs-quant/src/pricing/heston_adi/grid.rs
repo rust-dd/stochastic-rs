@@ -1,7 +1,5 @@
-//! Non-uniform meshes and finite-difference coefficients of in 't Hout &
-//! Foulon (2008), §2.2: the sinh-stretched `s` and `v` meshes (2.6), (2.8)
-//! and the three-point first-derivative stencils (2.9a–c), the second
-//! derivative (2.10) and the mixed derivative (2.11) on arbitrary meshes.
+//! The sinh-stretched `s`, `v` meshes (2.6), (2.8) and the first (2.9a–c), second (2.10) and mixed
+//! (2.11) derivative stencils of in 't Hout & Foulon (2008), §2.2, on arbitrary meshes.
 
 /// `s`-mesh `s_i = K + c sinh(ξ_i)` clustering around the strike (2.6);
 /// `s_0 = lower`, `s_{m} = upper`, `c = K / 5`.
@@ -29,8 +27,7 @@ pub(super) fn origin_centred_mesh(upper: f64, m: usize) -> Vec<f64> {
   v
 }
 
-/// Backward three-point first derivative at `x_i` on `(x_{i−2}, x_{i−1}, x_i)`
-/// (2.9a); returns `(α_{i,−2}, α_{i,−1}, α_{i,0})` for mesh widths
+/// Backward three-point first derivative (2.9a) at `x_i`: `(α_{i,−2}, α_{i,−1}, α_{i,0})` for
 /// `dx_prev = Δx_{i−1}`, `dx = Δx_i`.
 pub(super) fn backward_first(dx_prev: f64, dx: f64) -> (f64, f64, f64) {
   (

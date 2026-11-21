@@ -1,13 +1,5 @@
-//! Semi-discrete Heston operator `U' = A U + b(t)` of in 't Hout & Foulon
-//! (2008), §2.2, split as `A = A0 + A1 + A2` (§2.4): `A0` the mixed
-//! derivative, `A1` the `s`-direction terms, `A2` the `v`-direction terms,
-//! with the reaction term `−r_d u` shared evenly between `A1` and `A2`.
-//!
-//! Unknowns live on `G = {(s_i, v_j): 1 ≤ i ≤ m1, 0 ≤ j ≤ m2 − 1}`, stored
-//! row-major in `j` (`index = j · m1 + (i − 1)`). The Dirichlet data at
-//! `s = s_0` (zero), the Neumann data `u_s(S) = e^{−r_f t}` and the Dirichlet
-//! data `u(s, V) = (s − s_0) e^{−r_f t}` all scale with `e^{−r_f t}`, so every
-//! boundary vector is stored once and multiplied by that factor per step.
+//! In 't Hout & Foulon's (2008) semi-discrete `U' = AU + b(t)` as `A0` (mixed), `A1` (`s`), `A2`
+//! (`v`), sharing `−r_d u`; unknowns at `j·m1 + i − 1`, boundary vectors scaled by `e^{−r_f t}`.
 
 use super::grid::backward_first;
 use super::grid::central_first;
@@ -47,7 +39,8 @@ pub(super) struct Operators {
   a1: Vec<Stencil>,
   /// `A2` rows: stencil along `j` (offsets in `j`).
   a2: Vec<Stencil>,
-  /// `A0` rows: the nine mixed-derivative weights on `(i+k, j+l)`, `k, l ∈ {−1, 0, 1}`, row-major in `k`.
+  /// `A0` rows: the nine mixed-derivative weights on `(i+k, j+l)`, `k, l ∈ {−1, 0, 1}`, row-major
+  /// in `k`.
   a0: Vec<[f64; 9]>,
   /// Boundary vectors per split part, to be scaled by `e^{−r_f t}`.
   b0: Vec<f64>,
@@ -134,11 +127,8 @@ impl Operators {
               ],
               extra: None,
             };
-            // The second-derivative coupling to j + 1 is kept explicit in the
-            // boundary vector only when j + 1 is the Dirichlet boundary; the
-            // upwind rows sit strictly inside (v_j > 1 < V), where j + 1 < m2
-            // holds for every practical mesh — that coupling is folded into
-            // the `a0`-free diagonal part below through `extra_upper`.
+            // The `j + 1` coupling goes to the boundary vector only at the Dirichlet row; upwind
+            // rows sit inside (`v_j > 1`, `j + 1 < m2` on any practical mesh), via `extra_upper`.
             extra_upper(&mut a2[row], vol_diffusion * d_p);
           } else {
             a2[row] = Stencil {
@@ -442,9 +432,8 @@ fn extra_upper(stencil: &mut Stencil, coefficient: f64) {
   stencil.extra = Some((1, coefficient));
 }
 
-/// Gaussian elimination without pivoting on a banded system with lower and
-/// upper bandwidth two (the outer bands optional); the `A1`/`A2` systems are
-/// diagonally dominant for the step sizes of interest.
+/// Gaussian elimination without pivoting on a bandwidth-two system (outer bands optional); `A1` and
+/// `A2` are diagonally dominant at the step sizes used.
 pub(super) fn solve_banded(
   lo: &[f64],
   di: &[f64],

@@ -1,37 +1,5 @@
-//! Central finite-difference Greeks for the Heston (1993) semi-closed-form
-//! price, at an explicit `(s, k, r, q, tau)` query point.
-//!
-//! `vega`/`vanna`/`volga`/`veta` bump the variance parameter `v0` — not
-//! `√v0` — mirroring
-//! [`AnalyticHestonEngine::finite_diff_greeks`](crate::pricing::engines::AnalyticHestonEngine),
-//! then convert to a volatility-space derivative via the chain rule
-//! `σ = √v0`: `∂P/∂σ = 2√v0 · ∂P/∂v0` and its higher partials. The
-//! `∂P/∂v0` building block itself is the analytic
-//! [`HestonPricer::initial_variance_vega`] rather than a finite
-//! difference, for precision — vanna/volga/veta then finite-difference
-//! *that* analytic function instead of double finite-differencing the raw
-//! price.
-//!
-//! `theta`/`charm`/`veta` use the calendar `-∂/∂τ` convention mandated by
-//! [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc
-//! (`∂V/∂t`) and matching [`BsmPricer`](crate::pricing::bsm::BsmPricer)'s /
-//! `Merton1976Pricer`'s Greeks — the negative of the raw `+∂P/∂τ` that
-//! [`AnalyticHestonEngine::finite_diff_greeks`](crate::pricing::engines::AnalyticHestonEngine)
-//! computes (that engine predates these and was never updated to match; see
-//! `heston/tests.rs::heston_greeks_match_engine_bumps` for how the two are
-//! reconciled in tests).
-//!
-//! **`NaN` is a deliberate return value here**, not an "unimplemented"
-//! marker, and it is case 2 of the crate's [failure
-//! convention](crate::traits::ModelPricer#how-pricing-fails).
-//! `vega`/`vanna`/`volga`/`veta` divide through the `σ = √v0` chain rule
-//! above, which is undefined at `v0 == 0`; each guards that case explicitly
-//! and returns `NaN` rather than a wrong finite number.
-//! `theta`/`charm`/`veta` carry a second, independent guard on `tau`,
-//! returning `NaN` when it is non-finite or not safely larger than the
-//! central-difference step `H_TAU` — see
-//! `heston_greeks_nan_at_degenerate_inputs` for both `NaN` guards exercised
-//! directly.
+//! Heston (1993) Greeks by central differences: volatility Greeks chain `∂P/∂σ = 2√v0 ∂P/∂v0` from
+//! the analytic `∂P/∂v0`; calendar Greeks are `−∂/∂τ`, against `AnalyticHestonEngine`'s `+∂P/∂τ`.
 
 use super::HestonPricer;
 use crate::OptionType;
@@ -56,10 +24,8 @@ impl HestonPricer {
     self.params.v0 > 0.0
   }
 
-  /// Copy with `v0` bumped, floored at `1e-12` (mirrors
-  /// [`AnalyticHestonEngine`](crate::pricing::engines::AnalyticHestonEngine)'s
-  /// own down-bump clamp) so a downward variance bump near zero cannot
-  /// produce a negative, model-invalid variance.
+  /// Copy with `v0` bumped and floored at `1e-12`, as the analytic engine's down-bump is, so a bump
+  /// near zero keeps the variance valid.
   fn with_v0_bump(&self, dv0: f64) -> Self {
     let mut bumped = *self;
     bumped.params.v0 = (bumped.params.v0 + dv0).max(1e-12);
@@ -89,10 +55,7 @@ impl HestonPricer {
       / (h * h)
   }
 
-  /// Vega — $\partial V/\partial\sigma$ with $\sigma=\sqrt{v_0}$.
-  ///
-  /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
-  /// undefined.
+  /// Vega `∂V/∂σ` with `σ = √v0`; `NaN` at `v0 == 0`, where that chain rule is undefined.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
@@ -100,11 +63,8 @@ impl HestonPricer {
     2.0 * self.params.v0.sqrt() * self.initial_variance_vega(s, k, r, q, tau)
   }
 
-  /// Theta — $\partial V/\partial t$ (calendar convention, $-\partial/\partial\tau$).
-  ///
-  /// Returns `NaN` for a `tau` that is non-finite or not larger than the
-  /// central-difference step `H_TAU`, where the down-bump would evaluate the
-  /// price past expiry.
+  /// Theta `∂V/∂t = −∂V/∂τ`; `NaN` for a non-finite `tau` or `tau ≤ 1e-5` (the step), where the
+  /// down-bump would price past expiry.
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let h = Self::H_TAU;
     if !(tau.is_finite() && tau > h) {
@@ -126,10 +86,7 @@ impl HestonPricer {
       / (2.0 * h)
   }
 
-  /// Vanna — $\partial^2 V/\partial S\partial\sigma$.
-  ///
-  /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
-  /// undefined.
+  /// Vanna `∂²V/∂S∂σ`; `NaN` at `v0 == 0`, where the `σ = √v0` chain rule is undefined.
   pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
@@ -141,11 +98,8 @@ impl HestonPricer {
     2.0 * self.params.v0.sqrt() * p_s_v0
   }
 
-  /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
-  ///
-  /// Returns `NaN` for a `tau` that is non-finite or not larger than the
-  /// central-difference step `H_TAU`, where the down-bump would evaluate the
-  /// price past expiry.
+  /// Charm `∂²V/∂S∂t` (delta decay); `NaN` for a non-finite `tau` or `tau ≤ 1e-5`, where the
+  /// down-bump would price past expiry.
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let ht = Self::H_TAU;
     if !(tau.is_finite() && tau > ht) {
@@ -159,10 +113,7 @@ impl HestonPricer {
       / (4.0 * hs * ht)
   }
 
-  /// Volga — $\partial^2 V/\partial\sigma^2$ (vega convexity).
-  ///
-  /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
-  /// undefined.
+  /// Volga `∂²V/∂σ²`; `NaN` at `v0 == 0`, where the `σ = √v0` chain rule is undefined.
   pub fn volga(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
