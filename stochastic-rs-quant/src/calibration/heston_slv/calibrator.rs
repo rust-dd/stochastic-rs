@@ -44,11 +44,8 @@ impl ToModel for Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>> {
   }
 }
 
-/// How the leverage surface is read off the local volatility: the
-/// Guyon–Henry-Labordère particle cloud, or the finite-volume solution of
-/// the forward Kolmogorov equation after Wyns & Du Toit. Both reproduce the
-/// vanilla surface; the cloud is cheap and noisy, the PDE deterministic and
-/// smooth, and the fit each reports is read off its own density.
+/// The leverage from the local vol: the Guyon–Henry-Labordère cloud (cheap, noisy) or Wyns & Du
+/// Toit's forward Kolmogorov finite volumes (smooth); each fit is read off its own density.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum LeverageMethod<S: SeedExt = Unseeded> {
@@ -62,22 +59,11 @@ impl Default for LeverageMethod {
   }
 }
 
-/// Heston SLV calibrator: a vanilla call surface in, a leverage-calibrated
-/// model out — the module doc has the three steps.
-///
-/// The input is a call-price grid, `calls[[j, i]] = C(K_i, T_j)`, the shape
-/// [`Dupire`] and the vol-surface pipeline take. Everything else is a
-/// builder knob with a default: the mixing fraction (`1`), the Heston
-/// parameters (fitted unless pinned), the local volatility (Dupire on the
-/// input calls unless supplied), the Dupire denominator floor, and the
-/// [`LeverageMethod`] (the particle cloud unless
-/// [`with_fokker_planck`](Self::with_fokker_planck) picks the PDE).
-///
-/// Source:
-/// - Guyon & Henry-Labordère (2012), *Being particular about calibration*,
-///   Risk 25(1)
-/// - Cozma, Mariapragassam & Reisinger (2017), arXiv:1701.06001, §3.4
-/// - Wyns & Du Toit (2016), arXiv:1611.02961, §4
+/// Heston SLV calibrator from a call grid `calls[[j, i]] = C(K_i, T_j)`; every other input is a
+/// knob with a default: mixing `1`, a fitted Heston, Dupire's local vol, the particle method.
+/// Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
+/// Reference: Cozma et al. (2017), arXiv:1701.06001, §3.4
+/// Reference: Wyns & Du Toit (2016), arXiv:1611.02961, §4
 #[derive(Clone, Debug)]
 pub struct HestonSlvCalibrator<S: SeedExt = Unseeded> {
   /// Spot.
@@ -166,16 +152,8 @@ impl<S: SeedExt> HestonSlvCalibrator<S> {
     self
   }
 
-  /// Supply the local volatility $\sigma_{\text{LV}}(T_j, K_i)$ on the input
-  /// grid instead of reading it off the calls with [`Dupire`].
-  ///
-  /// Prefer this whenever a smooth surface exists — an SSVI fit, an
-  /// analytic Black surface: [`Dupire`]'s read of a call grid is a
-  /// finite-difference estimate, and against QuantLib's local volatility of
-  /// the same Heston market it carries a 1–3 % error that dominates the
-  /// leverage's (the calibration's in-sample RMSE is 0.036 on a spot of 100
-  /// from the finite-difference read and 0.004 from the smooth surface, with
-  /// the leverage then within 0.01 of QuantLib's own SLV model).
+  /// The local vol `σ_LV(T_j, K_i)` on the input grid, preferred to [`Dupire`]'s finite difference:
+  /// its 1–3 % error against QuantLib dominates the leverage's (fit RMSE 0.036 against 0.004).
   pub fn with_local_vol(mut self, local_vol: Array2<f64>) -> Self {
     self.local_vol = Some(local_vol);
     self
@@ -372,10 +350,8 @@ impl<S: SeedExt> HestonSlvCalibrator<S> {
 }
 
 impl<S: SeedExt> HestonSlvCalibrator<S> {
-  /// The leverage by the chosen method, and the input grid repriced from
-  /// that method's own density — the particle cloud's payoff averages, or
-  /// the trapezoid rule over the finite-volume marginal — row-major in the
-  /// maturities like `calls`.
+  /// The leverage and the input grid repriced from the method's own density (cloud averages or the
+  /// finite-volume marginal), row-major in maturity like `calls`.
   fn leverage_and_model_prices(
     &self,
     params: &HestonSlvParams,
@@ -423,11 +399,8 @@ impl<S: SeedExt> HestonSlvCalibrator<S> {
   }
 }
 
-/// The Dupire surface with its `NaN` cells filled: the stencil-boundary
-/// columns and any leading or trailing run take the nearest admissible cell
-/// of their row, an interior hole is interpolated linearly in strike between
-/// the admissible cells around it. A row with no admissible cell at all is
-/// an error — there is no local volatility to calibrate to at that maturity.
+/// Dupire's surface with `NaN` cells filled: edges and end runs take their row's nearest admissible
+/// cell, interior holes interpolate in strike; `InvalidInput` for a row with none.
 pub(super) fn clean_local_vol(
   mut surface: Array2<f64>,
   maturities: &[f64],

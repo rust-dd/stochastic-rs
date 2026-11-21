@@ -1,8 +1,5 @@
-//! Smooth coordinates for box-constrained Heston calibration.
-//!
-//! Each physical parameter is `lower + (upper - lower) * sigmoid(z)`. The
-//! optimizer therefore moves in unconstrained `z` coordinates, while analytic
-//! physical-parameter derivatives use the exact diagonal chain rule.
+//! Smooth coordinates for box-constrained Heston calibration: each parameter is
+//! `lower + (upper − lower)·sigmoid(z)` in a free `z`, under the exact diagonal chain rule.
 
 use ndarray::Array1;
 use ndarray::Array2;
