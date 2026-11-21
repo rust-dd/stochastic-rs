@@ -1,4 +1,4 @@
-//! # Calibration
+//! Calibrators fitting model parameters to market quotes by weighted least squares.
 //!
 //! $$
 //! \hat\theta=\arg\min_\theta\sum_i w_i\left(P_i^{model}(\theta)-P_i^{mkt}\right)^2
