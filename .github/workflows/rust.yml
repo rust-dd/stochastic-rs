@@ -141,12 +141,8 @@ jobs:
       - name: Device handle environment contract (cuda)
         run: cargo test -p stochastic-rs-stochastic --features cuda --test device_handle_env --locked
 
-  # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
-  # includes rather than hand-copied text, so there is nothing to diff for
-  # divergence — the page renders the literal file the `test` job already
-  # compiles and runs. This job is what catches a dangling/renamed path and
-  # proves the MDX build actually resolves every one of them, since neither
-  # `test` nor `lint` above ever looks inside `website/`.
+  # The MDX pages render `tests/doctest_*.rs` by path; this build catches a dangling or renamed one
+  # and is the only job that looks inside `website/`.
   docs_website:
     runs-on: ubuntu-latest
     defaults:
