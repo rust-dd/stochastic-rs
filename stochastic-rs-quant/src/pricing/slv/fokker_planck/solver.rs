@@ -1,32 +1,21 @@
-//! The finite-volume semi-discretisation of Wyns & Du Toit (2016), §2.4, of
-//! the forward Kolmogorov equation of the Heston SLV model on a vertex-centred
-//! `(x, v)` mesh, split into its `x`-direction, `v`-direction and mixed parts,
-//! and the Hundsdorfer–Verwer time step of their §3 on that split.
-//!
-//! Unknowns are cell averages `P[j * m1 + i] ≈ p(x_i, v_j)`, row-major in
-//! `j`. Every flux at the boundary of the truncated domain is zero, so the
-//! total mass `Σ ω_i ω'_j P_{i,j}` is constant in time up to the mixed flux
-//! at the two corners on `v = v_max`, where the density is negligible.
+//! Wyns & Du Toit's (2016) finite volumes (§2.4) on the `(x, v)` mesh and their Hundsdorfer–Verwer
+//! step (§3); `P[j·m1 + i] ≈ p(x_i, v_j)`, mass conserved up to the `v_max` corners' mixed flux.
 
 use super::mesh::Mesh;
 use crate::QuantError;
 
 mod implicit;
 
-/// A direction operator: the three coefficients on the neighbours along one
-/// axis, per node, from the central advection flux
-/// `μ_{i−½} (P_{i−1} + P_i) / 2` and the conservative diffusion flux
-/// `−(D_i P_i − D_{i−1} P_{i−1}) / Δx_i` of Wyns & Du Toit (2.22a–b), the
-/// boundary fluxes zero.
+/// One axis's three neighbour coefficients per node, from the central advection flux and the
+/// conservative diffusion flux of Wyns & Du Toit (2.22a–b), zero at the boundary.
 pub(super) struct Direction {
   lower: Vec<f64>,
   diag: Vec<f64>,
   upper: Vec<f64>,
 }
 
-/// The coefficients along a line of nodes: `diffusion[k] = D` at node `k`,
-/// `advection[k] = μ` at the midpoint between nodes `k − 1` and `k`
-/// (`advection[0]` unused).
+/// Coefficients along a line of nodes: `diffusion[k]` at node `k`, `advection[k]` at the midpoint
+/// of `k − 1` and `k` (`advection[0]` unused).
 fn line_stencil(
   nodes: &[f64],
   widths: &[f64],
@@ -259,11 +248,8 @@ impl Scratch {
   }
 }
 
-/// The mixed part (2.22c) at one time level: the corner flux
-/// `ρ ξ L(x_{i−½}) v_{j−½} · (P_{i−1,j−1} + P_{i−1,j} + P_{i,j−1} + P_{i,j}) / 4`
-/// with the ghost values (2.24), replaced on the corner row above `v = 0`
-/// by the first-order forward mean of the row-`1` values only when the
-/// Feller condition is violated and `v = 0` is attainable.
+/// The mixed flux (2.22c) with the ghost values (2.24), replaced on the corner row above `v = 0` by
+/// a first-order forward mean when the Feller condition fails and `v = 0` is attainable.
 pub(super) struct Mixed<'a> {
   mesh: &'a Mesh,
   rho_xi: f64,
@@ -402,9 +388,8 @@ impl StepBuffers {
   }
 }
 
-/// One Hundsdorfer–Verwer step (Wyns & Du Toit (3.1)) from `w` at the level
-/// `prev` to the level `next`, or a fully implicit Euler half-step for the
-/// Rannacher start-up. The latter includes the mixed derivative in its solve.
+/// One Hundsdorfer–Verwer step (Wyns & Du Toit (3.1)) from level `prev` to `next`, or a fully
+/// implicit Euler half-step of the Rannacher start, mixed derivative included in its solve.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn step(
   mesh: &Mesh,
