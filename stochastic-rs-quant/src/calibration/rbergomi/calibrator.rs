@@ -19,6 +19,7 @@ use crate::calibration::CalibrationOptions;
 use crate::calibration::Knob;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::pricing::rbergomi::RBergomiPricer;
+use crate::total_order::ascending;
 use crate::traits::ToModel;
 
 impl<D> ToModel for Calibrated<RBergomiParams, D> {
@@ -85,7 +86,7 @@ impl RBergomiCalibrator {
       tol.is_finite() && tol >= 0.0,
       "config.improvement_tol must satisfy `config.improvement_tol.is_finite() && config.improvement_tol >= 0.0`, got config.improvement_tol = {tol:?}"
     );
-    market_slices.sort_by(|a, b| a.tau.total_cmp(&b.tau));
+    market_slices.sort_by(|a, b| ascending(&a.tau, &b.tau));
     Self {
       s,
       r,

@@ -207,3 +207,46 @@ fn a_zero_path_count_panics() {
   };
   let _ = RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), Vec::new(), config);
 }
+
+/// Reference: `scipy.stats.wasserstein_distance` 1.17, the integral of `|F⁻¹ − G⁻¹|` over the two
+/// empirical quantile functions; for equal sizes it is the module doc's order-statistic mean.
+#[test]
+fn wasserstein_1_is_the_distance_between_the_two_empirical_measures() {
+  for (x, y, want) in [
+    (vec![0.0, 10.0], vec![1.0, 9.0], 1.0),
+    (
+      vec![3.0, -1.0, 4.0, 1.5, 9.0],
+      vec![2.0, 7.0, 1.0, 8.0, -2.5],
+      1.4,
+    ),
+    (vec![0.0, 1.0, 3.0], vec![5.0, 6.0], 4.166666666666667),
+    (
+      vec![1.0, 2.0, 4.0, 8.0],
+      vec![0.5, 1.5, 2.5, 3.5, 5.0, 13.0],
+      1.5,
+    ),
+    (vec![2.0], vec![1.0, 2.0, 6.0], 1.6666666666666667),
+  ] {
+    let (got, swapped) = (
+      empirical_wasserstein_1(&x, &y),
+      empirical_wasserstein_1(&y, &x),
+    );
+    assert!((got - want).abs() < 1e-14, "{x:?}, {y:?}: {got} vs {want}");
+    assert!((swapped - want).abs() < 1e-14, "{y:?}, {x:?}: {swapped}");
+  }
+}
+
+#[test]
+fn wasserstein_1_is_nan_for_a_sample_that_is_not_finite_or_is_missing() {
+  let finite = [1.0, 9.0];
+  for bad in [
+    vec![0.0, f64::NAN, 10.0],
+    vec![0.0, -f64::NAN, 10.0],
+    vec![0.0, f64::INFINITY],
+    vec![f64::NEG_INFINITY, 0.0],
+    vec![],
+  ] {
+    assert!(empirical_wasserstein_1(&bad, &finite).is_nan(), "{bad:?}");
+    assert!(empirical_wasserstein_1(&finite, &bad).is_nan(), "{bad:?}");
+  }
+}

@@ -1,32 +1,32 @@
-/// Empirical $W_1$ distance between two 1D sample sets using quantile coupling.
+use crate::total_order::ascending;
+
+/// $W_1$ between the empirical measures of `x` and `y`, exact; NaN for an empty sample or one that
+/// holds a value that is not finite.
+///
+/// $$
+/// W_1=\int_0^1\bigl|F_x^{-1}(u)-F_y^{-1}(u)\bigr|\,du,\qquad
+/// W_1=\frac1m\sum_{i=1}^m\bigl|x_{(i)}-y_{(i)}\bigr|\ \text{ for equal sizes } m
+/// $$
 pub fn empirical_wasserstein_1(x: &[f64], y: &[f64]) -> f64 {
-  let mut xs = x
-    .iter()
-    .copied()
-    .filter(|v| v.is_finite())
-    .collect::<Vec<f64>>();
-  let mut ys = y
-    .iter()
-    .copied()
-    .filter(|v| v.is_finite())
-    .collect::<Vec<f64>>();
-
-  if xs.is_empty() || ys.is_empty() {
-    return f64::INFINITY;
+  let finite = |sample: &[f64]| !sample.is_empty() && sample.iter().all(|v| v.is_finite());
+  if !(finite(x) && finite(y)) {
+    return f64::NAN;
   }
+  let (mut xs, mut ys) = (x.to_vec(), y.to_vec());
+  xs.sort_by(ascending);
+  ys.sort_by(ascending);
 
-  xs.sort_by(|a, b| a.total_cmp(b));
-  ys.sort_by(|a, b| a.total_cmp(b));
-
-  let m = xs.len().max(ys.len());
-  let mut acc = 0.0;
-  for i in 0..m {
-    let u = (i as f64 + 0.5) / m as f64;
-    let qx = quantile_sorted(&xs, u);
-    let qy = quantile_sorted(&ys, u);
-    acc += (qx - qy).abs();
+  // Both quantile functions are steps: `xs[i]` on `(i/n, (i+1)/n]`, `ys[j]` on `(j/m, (j+1)/m]`.
+  let (n, m) = (xs.len(), ys.len());
+  let (mut i, mut j, mut done, mut acc) = (0, 0, 0, 0.0);
+  while i < n && j < m {
+    let next = ((i + 1) * m).min((j + 1) * n);
+    acc += (xs[i] - ys[j]).abs() * (next - done) as f64;
+    done = next;
+    i += usize::from((i + 1) * m == next);
+    j += usize::from((j + 1) * n == next);
   }
-  acc / m as f64
+  acc / (n * m) as f64
 }
 
 /// Computes bid-ask calibration tolerance:
@@ -43,20 +43,4 @@ pub fn bid_ask_tolerance(bid: &[f64], ask: &[f64]) -> f64 {
     .map(|(b, a)| (a - b).abs())
     .sum::<f64>()
     / m as f64
-}
-
-fn quantile_sorted(sorted: &[f64], u: f64) -> f64 {
-  if sorted.len() == 1 {
-    return sorted[0];
-  }
-  let z = u.clamp(0.0, 1.0);
-  let pos = z * (sorted.len() as f64 - 1.0);
-  let lo = pos.floor() as usize;
-  let hi = pos.ceil() as usize;
-  if lo == hi {
-    sorted[lo]
-  } else {
-    let w = pos - lo as f64;
-    sorted[lo] * (1.0 - w) + sorted[hi] * w
-  }
 }
