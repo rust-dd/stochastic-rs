@@ -219,23 +219,25 @@ fn vol_swap_heston_lowers_the_root_by_the_variance_of_the_realised_variance() {
   assert_eq!(VolatilitySwapPricer::fair_strike_heston(&flat, 1.0), naive);
 }
 
-/// Both mean-reversion branches of the variance strike, κ → 0 included, reject the same inputs.
+/// A negative variance strike, from a literal on either mean-reversion branch or from a negative
+/// `kappa` with `v0 < theta` at a long `tau`, is NaN; at `tau = 1` the latter is still finite.
 #[test]
-fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
+fn vol_swap_heston_is_nan_for_a_negative_variance_strike() {
   for &kappa in &[1e-12, 1.5] {
-    let err = std::panic::catch_unwind(|| {
-      VolatilitySwapPricer::fair_strike_heston(&heston(-0.04, kappa, -0.04), 1.0)
-    })
-    .unwrap_err();
-    let msg = err
-      .downcast_ref::<String>()
-      .cloned()
-      .unwrap_or_else(|| (*err.downcast_ref::<&str>().unwrap_or(&"")).to_string());
-    assert_eq!(
-      msg, "k_var must satisfy `k_var >= 0.0`, got k_var = -0.04",
-      "kappa={kappa}"
-    );
+    let strike = VolatilitySwapPricer::fair_strike_heston(&heston(-0.04, kappa, -0.04), 1.0);
+    assert!(strike.is_nan(), "kappa={kappa}: {strike}");
   }
+  let reverting_away = HestonParams::new(0.02, -0.5, 0.04, 0.3, -0.7);
+  for tau in [4.0, f64::INFINITY] {
+    assert!(
+      VarianceSwapPricer::fair_strike_heston(&reverting_away, tau) < 0.0,
+      "{tau}"
+    );
+    let strike = VolatilitySwapPricer::fair_strike_heston(&reverting_away, tau);
+    assert!(strike.is_nan(), "tau={tau}: {strike}");
+  }
+  let strike = VolatilitySwapPricer::fair_strike_heston(&reverting_away, 1.0);
+  assert!(strike.is_finite() && strike > 0.0, "{strike}");
 }
 
 #[test]

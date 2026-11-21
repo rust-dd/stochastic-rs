@@ -226,17 +226,13 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 0.5 % of `E√V` while `Var(V) ≤ K²/4` and
-  /// NaN past `Var(V) = 8K²`, where it turns negative; panics on a negative variance strike `K`.
+  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 0.5 % of `E√V` while `Var(V) ≤ K²/4`; NaN
+  /// past `Var(V) = 8K²`, where it turns negative, and for a negative variance strike `K`.
   pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
     let k_var = VarianceSwapPricer::fair_strike_heston(params, tau);
-    if k_var.is_nan() {
+    if k_var.is_nan() || k_var < 0.0 {
       return f64::NAN;
     }
-    assert!(
-      k_var >= 0.0,
-      "k_var must satisfy `k_var >= 0.0`, got k_var = {k_var:?}"
-    );
     if tau == 0.0 || k_var == 0.0 {
       return k_var.sqrt();
     }
