@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::loss::empirical_wasserstein_1;
 use super::params::RBergomiCalibrationConfig;
@@ -28,7 +31,7 @@ impl<D> ToModel for Calibrated<RBergomiParams, D> {
 
 /// rBergomi fit to terminal-price samples by projected Adam on the mean Wasserstein-1 distance.
 #[derive(Clone, Debug)]
-pub struct RBergomiCalibrator {
+pub struct RBergomiCalibrator<S: SeedExt = Unseeded> {
   s: f64,
   r: f64,
   /// Continuous dividend yield (or foreign rate for FX).
@@ -41,6 +44,8 @@ pub struct RBergomiCalibrator {
   /// Adam reads `max_iterations` (default 60) and `record_history`; its stop is `config`'s, so
   /// `tolerance`, `patience`, `loss_metrics` and `regularization` are `Unsupported`.
   pub options: CalibrationOptions,
+  /// A fit reads one base from a clone, every loss sharing it as its common random numbers.
+  pub seed: S,
 }
 
 impl RBergomiCalibrator {
@@ -89,6 +94,22 @@ impl RBergomiCalibrator {
       market_slices,
       config,
       options: CalibrationOptions::default(),
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> RBergomiCalibrator<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> RBergomiCalibrator<S2> {
+    RBergomiCalibrator {
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      start: self.start,
+      market_slices: self.market_slices,
+      config: self.config,
+      options: self.options,
+      seed,
     }
   }
 
@@ -109,13 +130,17 @@ impl RBergomiCalibrator {
     self
   }
 
-  /// Returns `L(theta)` and the per-maturity `W1` contributions.
+  /// Returns `L(theta)` and the per-maturity `W1` contributions, at a base the seed draws.
   pub fn loss(&self, params: &RBergomiParams) -> (f64, Vec<(f64, f64)>) {
+    self.loss_at(params, self.seed.clone().next_seed())
+  }
+
+  fn loss_at(&self, params: &RBergomiParams, base: u64) -> (f64, Vec<(f64, f64)>) {
     let p = params.clone().projected();
     let mut per_maturity = Vec::with_capacity(self.market_slices.len());
 
     for (idx, slice) in self.market_slices.iter().enumerate() {
-      let seed = self.slice_seed(idx, slice.tau);
+      let seed = Deterministic::new(slice_seed(base, idx, slice.tau));
       let model_samples = simulate_rbergomi_terminal_samples(
         &p,
         self.s,
@@ -125,7 +150,7 @@ impl RBergomiCalibrator {
         self.config.paths,
         self.config.steps_per_year,
         self.config.msoe_terms,
-        seed,
+        &seed,
       );
       let w1 = empirical_wasserstein_1(&model_samples, &slice.terminal_samples);
       per_maturity.push((slice.tau, w1));
@@ -135,7 +160,7 @@ impl RBergomiCalibrator {
     (avg, per_maturity)
   }
 
-  fn finite_diff_gradient(&self, params: &RBergomiParams, theta: &[f64]) -> Vec<f64> {
+  fn finite_diff_gradient(&self, params: &RBergomiParams, theta: &[f64], base: u64) -> Vec<f64> {
     let dim = theta.len();
     let mut grad = vec![0.0_f64; dim];
     for i in 0..dim {
@@ -146,14 +171,14 @@ impl RBergomiCalibrator {
       let mut p_plus = params.clone();
       p_plus.assign_flattened(&plus);
       p_plus.project_in_place();
-      let l_plus = self.loss(&p_plus).0;
+      let l_plus = self.loss_at(&p_plus, base).0;
 
       let mut minus = theta.to_vec();
       minus[i] -= h;
       let mut p_minus = params.clone();
       p_minus.assign_flattened(&minus);
       p_minus.project_in_place();
-      let l_minus = self.loss(&p_minus).0;
+      let l_minus = self.loss_at(&p_minus, base).0;
 
       grad[i] = (l_plus - l_minus) / (2.0 * h);
     }
@@ -162,6 +187,7 @@ impl RBergomiCalibrator {
 
   fn solve(&self, start: RBergomiParams) -> Calibrated<RBergomiParams> {
     let config = &self.config;
+    let base = self.seed.clone().next_seed();
     let mut history = Vec::new();
     let mut record = |iteration, params: &RBergomiParams, loss, per_maturity: &[(f64, f64)]| {
       if self.options.record_history {
@@ -176,7 +202,7 @@ impl RBergomiCalibrator {
 
     let mut current_params = start.projected();
     let mut theta = current_params.flatten();
-    let (mut current_loss, mut current_per_maturity) = self.loss(&current_params);
+    let (mut current_loss, mut current_per_maturity) = self.loss_at(&current_params, base);
     let mut best_params = current_params.clone();
     let mut best_loss = current_loss;
     record(0, &current_params, current_loss, &current_per_maturity);
@@ -199,7 +225,7 @@ impl RBergomiCalibrator {
         break;
       }
 
-      let grad = self.finite_diff_gradient(&current_params, &theta);
+      let grad = self.finite_diff_gradient(&current_params, &theta, base);
 
       b1_pow *= config.adam_beta1;
       b2_pow *= config.adam_beta2;
@@ -230,7 +256,7 @@ impl RBergomiCalibrator {
         p_try.project_in_place();
         let projected = p_try.flatten();
 
-        let (loss_try, per_maturity_try) = self.loss(&p_try);
+        let (loss_try, per_maturity_try) = self.loss_at(&p_try, base);
         if loss_try.is_finite() && loss_try <= current_loss {
           accepted = true;
           candidate_params = p_try;
@@ -253,7 +279,7 @@ impl RBergomiCalibrator {
         p_try.project_in_place();
         let projected = p_try.flatten();
 
-        let (loss_try, per_maturity_try) = self.loss(&p_try);
+        let (loss_try, per_maturity_try) = self.loss_at(&p_try, base);
         if loss_try.is_finite() && loss_try < current_loss {
           accepted = true;
           candidate_params = p_try;
@@ -301,16 +327,12 @@ impl RBergomiCalibrator {
       .with_message(exit.message())
       .with_history(history)
   }
+}
 
-  fn slice_seed(&self, idx: usize, tau: f64) -> u64 {
-    let a = 0x9E37_79B9_7F4A_7C15_u64;
-    let b = 0xBF58_476D_1CE4_E5B9_u64;
-    self
-      .config
-      .random_seed
-      .wrapping_add(a.wrapping_mul((idx as u64).wrapping_add(1)))
-      ^ tau.to_bits().wrapping_mul(b)
-  }
+fn slice_seed(base: u64, idx: usize, tau: f64) -> u64 {
+  let a = 0x9E37_79B9_7F4A_7C15_u64;
+  let b = 0xBF58_476D_1CE4_E5B9_u64;
+  base.wrapping_add(a.wrapping_mul((idx as u64).wrapping_add(1))) ^ tau.to_bits().wrapping_mul(b)
 }
 
 /// Why the Adam loop ended; the fit converged only on `config`'s own criterion.
@@ -339,7 +361,7 @@ fn wasserstein_loss(w1: f64) -> CalibrationLossScore {
   CalibrationLossScore { scores }
 }
 
-impl crate::traits::Calibrator for RBergomiCalibrator {
+impl<S: SeedExt> crate::traits::Calibrator for RBergomiCalibrator<S> {
   type Params = RBergomiParams;
   type Output = Calibrated<RBergomiParams>;
   type Error = QuantError;

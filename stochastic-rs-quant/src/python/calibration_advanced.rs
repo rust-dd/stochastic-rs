@@ -210,7 +210,8 @@ impl PyHkdeCalibrator {
 /// Rough Bergomi calibrator (Wasserstein-1 path matching, projected Adam).
 #[pyclass(name = "RBergomiCalibrator", unsendable)]
 pub struct PyRBergomiCalibrator {
-  inner: crate::calibration::rbergomi::RBergomiCalibrator,
+  inner:
+    crate::calibration::rbergomi::RBergomiCalibrator<stochastic_rs_core::simd_rng::Deterministic>,
 }
 
 #[pymethods]
@@ -251,8 +252,9 @@ impl PyRBergomiCalibrator {
       };
       let options =
         crate::calibration::CalibrationOptions::default().with_max_iterations(max_iters);
-      let inner =
-        RBergomiCalibrator::new(s0, r, 0.0, params, inner_slices, config).with_options(options);
+      let inner = RBergomiCalibrator::new(s0, r, 0.0, params, inner_slices, config)
+        .with_options(options)
+        .with_seed(stochastic_rs_core::simd_rng::Deterministic::new(42));
       Ok(Self { inner })
     })?
   }

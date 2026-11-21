@@ -9,6 +9,7 @@ use stochastic_rs::quant::calibration::heston_slv::HestonSlvCalibrator;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
 use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::ParticleMethod;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
 use stochastic_rs::traits::ModelPricer;
@@ -43,7 +44,7 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
       ParticleMethod::default()
         .with_particles(5_000)
         .with_steps_per_year(50)
-        .with_seed(7),
+        .with_seed(Deterministic::new(7)),
     )
     .calibrate(None)
     .unwrap();
