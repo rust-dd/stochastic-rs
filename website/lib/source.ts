@@ -40,11 +40,7 @@ function referencesMarkdown(refs: Reference[]): string {
   return ['', '## References', '', ...items].join('\n');
 }
 
-/**
- * A page as plain Markdown for assistants: title, canonical URL, summary, the
- * processed body (Rust examples already inlined, layout wrappers dropped) and
- * the frontmatter references the HTML page renders as its reference list.
- */
+/** A page as Markdown for assistants; the processed body has the Rust examples inlined. */
 export async function llmText(page: DocsPage): Promise<string> {
   const body = await page.data.getText('processed');
   return [

@@ -16,12 +16,7 @@ function breadcrumbs(page: DocsPage): { name: string; url: string }[] {
   return crumbs;
 }
 
-/**
- * `TechArticle` + `BreadcrumbList` for one docs page. The article points back
- * at the site-wide `SoftwareSourceCode` node by `@id`, and its `citation`
- * carries the frontmatter references, so an engine reading the page sees what
- * it documents and which papers it rests on.
- */
+/** One page's JSON-LD: an engine sees what it documents (`about`) and the papers it rests on. */
 export function docsPageJsonLd(page: DocsPage) {
   const url = absolute(page.url);
   const citation = page.data.references.map((ref) => {

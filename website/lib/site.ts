@@ -1,11 +1,6 @@
 import { FACTS } from '@/lib/facts';
 
-/**
- * Single source of truth for the canonical URLs and marketing copy that feed
- * `<head>` metadata, the sitemap, robots.txt, the OG image and the JSON-LD
- * block. Anything user-visible outside the MDX content should read from here
- * so the canonical host never drifts between surfaces.
- */
+/** The canonical URLs and copy every surface outside the MDX reads, so the host cannot drift. */
 export const SITE = {
   name: 'stochastic-rs',
   url: 'https://stochastic.rust-dd.com',

@@ -1,22 +1,6 @@
 #!/usr/bin/env bun
-/**
- * Frontmatter check for every MDX file under content/docs/.
- *
- * Run via `bun run lint:mdx`. Hard-fails on:
- *   - frontmatter that is not valid YAML (an unquoted value holding a
- *     colon-space is a nested mapping to YAML and fails the site build)
- *   - a key outside the shared schema in `lib/frontmatter.ts`
- *   - description length out of [20, 160]
- *   - status: deprecated without a replaced_by pointer
- *   - a body that opens with a level-1 heading (the page layout already
- *     renders the frontmatter title as the page's one `<h1>`)
- *
- * Soft-warns on:
- *   - description length outside the 24-152 comfort window
- *
- * The full audit (meta.json coverage, RustExample targets) lives in
- * scripts/docs-audit.ts.
- */
+// `bun run lint:mdx`: each page's frontmatter parsed as YAML, where an unquoted `: ` nests a
+// mapping and fails the site build, then checked against `lib/frontmatter.ts`'s schema.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { z } from 'zod';

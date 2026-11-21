@@ -1,30 +1,6 @@
 #!/usr/bin/env bun
-/**
- * Regenerate website/public/python-parity.json — the data backing a future
- * <PythonParityTable /> component (not yet built; this script only emits
- * the JSON).
- *
- * Strategy: parse `stochastic-rs-py/src/lib.rs`'s `#[pymodule]` function
- * directly for `m.add_class::<PyXxx>()` and
- * `m.add_function(pyo3::wrap_pyfunction!(path::to::fn, m))` calls. That
- * function is the single authoritative list of what the compiled
- * `stochastic_rs` Python module actually exposes — a `#[pyclass]` defined
- * in a sub-crate but never registered there is not a real Python entry.
- *
- * This script previously walked `stochastic-rs-py/src/` for macro
- * invocations and bare `#[pyclass]`/`#[pyfunction]` attributes, but every
- * `py_distribution!`/`py_process_*!` call and every hand-written pyclass
- * lives in the *sub-crates* (`stochastic-rs-distributions`,
- * `stochastic-rs-stochastic`, `stochastic-rs-quant`, …) — `stochastic-rs-py`
- * itself holds only this one registration file, so the walk found nothing
- * and silently wrote 0 rows every run.
- *
- * `kind` is inferred from the `use` import that brought each `PyXxx` name
- * into scope (the crate segment of the import path). Every entry ships in
- * every wheel — the linalg stack is the pure-Rust faer, so nothing is
- * feature-gated any more — except the four `ai` registrations, which are
- * counted here and reach a wheel only in a source build with that feature.
- */
+// Writes public/python-parity.json from the registrations in `stochastic-rs-py/src/lib.rs`, the
+// one list of what the module exposes; its four `ai` rows reach only a source build with `ai`.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -70,9 +46,7 @@ const rows: Row[] = [];
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i];
 
-  // A registration may name the type by a qualified path rather than an
-  // imported symbol (`m.add_class::<stochastic_rs_copulas::python::PyBb1>()`),
-  // which a `\w+` pattern skips silently — two copulas went uncounted.
+  // A qualified path (`m.add_class::<stochastic_rs_copulas::python::PyBb1>()`) counts too.
   const classMatch = /m\.add_class::<([\w:]+)>\(\)/.exec(line);
   if (classMatch) {
     const py = classMatch[1].split('::').pop() as string;
@@ -83,9 +57,7 @@ for (let i = 0; i < lines.length; i++) {
     });
   }
 
-  // `m.add_function(pyo3::wrap_pyfunction!(` opens a call whose qualified
-  // function path is the next non-blank line; the closing `m)?)?;` follows
-  // two lines after that in every occurrence in this file.
+  // A `wrap_pyfunction!(` that ends its line has the function's qualified path on the next one.
   if (/pyo3::wrap_pyfunction!\(\s*$/.test(line)) {
     const pathLine = (lines[i + 1] ?? '').trim().replace(/,\s*$/, '');
     if (/^[\w:]+$/.test(pathLine)) {

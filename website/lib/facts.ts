@@ -9,18 +9,15 @@ function workspaceVersion(): string {
 }
 
 /**
- * The library's headline numbers, in one place. Everything outside the MDX
- * content — the landing page, the meta description, the social card,
- * `llms.txt`, the JSON-LD — reads them from here, so a count cannot drift
- * between surfaces the way "120+", "131" and "140+" once did. Each figure
- * names where it is derived; re-derive them when a release adds a type.
+ * The headline numbers every surface outside the MDX reads, so a count cannot drift between
+ * them; re-derive each from the source it names when a release adds a type.
  */
 export const FACTS = {
   /** `[workspace.package] version` in the root `Cargo.toml`, read at build time. */
   version: workspaceVersion(),
   /** Root `CLAUDE.md`, `ProcessExt`: 140 implementors over 130 processes. */
   processes: 130,
-  /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
+  /** `EulerSpec`'s variants, and the processes they carry (`concepts/gpu-support.mdx`). */
   deviceFamilies: 134,
   processesOnEngine: 128,
   /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */

@@ -4,12 +4,7 @@ import { SITE } from '@/lib/site';
 
 export const dynamic = 'force-static';
 
-/**
- * https://llmstxt.org — a flat index of the documentation for assistants.
- * Each entry links the page's Markdown twin (`/docs/<page>.md`), which carries
- * the prose, the math and the compiled Rust examples without the HTML around
- * them; the canonical HTML page is the same URL without the `.md`.
- */
+/** The https://llmstxt.org index; its entries link the Markdown twins, the pages without HTML. */
 export function GET(): Response {
   const entry = (page: ReturnType<typeof pagesInOrder>[number]) => {
     const url = new URL(markdownUrl(page), SITE.url).toString();

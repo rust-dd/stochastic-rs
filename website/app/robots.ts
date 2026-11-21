@@ -1,12 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { SITE } from '@/lib/site';
 
-/**
- * AI answer engines are a first-class discovery channel for a library like
- * this — "how do I price a Heston option in Rust" is far more likely to be
- * asked of an assistant than typed into a search box — so their crawlers are
- * named explicitly rather than left to the wildcard.
- */
+/** Named rather than left to the wildcard: assistants are a first-class discovery channel. */
 const AI_CRAWLERS = [
   'GPTBot',
   'OAI-SearchBot',

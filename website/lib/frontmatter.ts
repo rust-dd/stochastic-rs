@@ -49,12 +49,8 @@ export const extraFrontmatter = {
 };
 
 /**
- * The whole page schema: fumadocs' own `pageSchema` fields (`title`,
- * `description`, `icon`, `full`) plus the keys above. It is written with this
- * site's zod rather than as `frontmatterSchema.extend(…)`, because fumadocs
- * ships its own zod 4 and extending it with these schemas erases their types.
- * The build (`source.config.ts`) and the pre-CI check (`scripts/lint-mdx.ts`)
- * both use it, so the two cannot disagree about what a page may declare.
+ * In this site's zod, not `frontmatterSchema.extend(…)`: extending fumadocs' own zod 4 erases
+ * these types. The build and `scripts/lint-mdx.ts` share it, so they agree on what a page declares.
  */
 export const pageFrontmatter = z.object({
   title: z.string(),

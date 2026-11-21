@@ -46,11 +46,8 @@ function inline(parent: Parent, workspace: string) {
 }
 
 /**
- * Replaces `<RustExample path="tests/…" />` with a fenced `rust` block holding
- * that file, at compile time. The page highlights it through the same Shiki
- * pipeline as any fenced block, and the Markdown served to assistants
- * (`llms-full.txt`, `/docs/<page>.md`) carries the code itself instead of a tag
- * naming a file the reader cannot open. A missing file fails the build.
+ * Inlines each `<RustExample>` as a fenced `rust` block at compile time, so the Markdown twins
+ * carry the code, not a tag naming a file the reader cannot open; a missing file fails the build.
  */
 export function remarkRustExample() {
   const workspace = join(process.cwd(), '..');
