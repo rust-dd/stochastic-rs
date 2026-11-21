@@ -29,7 +29,7 @@ fn bates(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(seed),
   )
 }

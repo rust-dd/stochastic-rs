@@ -395,8 +395,8 @@ fn hscm_one_model_prices_a_grid() {
   }
 }
 
-/// `new` refuses each parameter outside its domain; `sigma_v = 0` passes (the RK4 Riccati system
-/// only multiplies by it), and `kappa_v`, `kappa_r` stay free like `HestonPricer::new`'s `kappa`.
+/// `new` refuses a negative or NaN variance or volatility and a correlation off `[−1, 1]`; it takes
+/// `sigma_v = 0` (the RK4 Riccati system only multiplies by it) and any `kappa_v` and `kappa_r`.
 mod construction_validation {
   use super::*;
 
@@ -409,9 +409,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(
-    expected = "HestonStochCorrPricer::new: v0 must be a non-negative variance (got -0.04)"
-  )]
+  #[should_panic(expected = "v0 must satisfy `v0 >= 0.0`, got v0 = -0.04")]
   fn new_rejects_negative_v0() {
     let mut p = ok();
     p[0] = -0.04;
@@ -419,9 +417,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(
-    expected = "HestonStochCorrPricer::new: theta_v must be a non-negative variance (got -0.04)"
-  )]
+  #[should_panic(expected = "theta_v must satisfy `theta_v >= 0.0`, got theta_v = -0.04")]
   fn new_rejects_negative_long_run_variance() {
     let mut p = ok();
     p[2] = -0.04;
@@ -429,9 +425,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(
-    expected = "HestonStochCorrPricer::new: sigma_v must be a non-negative volatility (got -0.3)"
-  )]
+  #[should_panic(expected = "sigma_v must satisfy `sigma_v >= 0.0`, got sigma_v = -0.3")]
   fn new_rejects_negative_vol_of_vol() {
     let mut p = ok();
     p[3] = -0.3;
@@ -439,9 +433,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(
-    expected = "HestonStochCorrPricer::new: sigma_r must be a non-negative volatility (got -0.2)"
-  )]
+  #[should_panic(expected = "sigma_r must satisfy `sigma_r >= 0.0`, got sigma_r = -0.2")]
   fn new_rejects_negative_correlation_volatility() {
     let mut p = ok();
     p[7] = -0.2;
@@ -465,9 +457,10 @@ mod construction_validation {
             .to_string()
         });
         assert!(
-          msg.contains(&format!(
-            "HestonStochCorrPricer::new: {name} must be in [-1, 1]"
-          )),
+          msg
+            == format!(
+              "{name} must satisfy `(-1.0..=1.0).contains(&{name})`, got {name} = {bad:?}"
+            ),
           "{name} at {bad}: wrong message {msg}"
         );
       }

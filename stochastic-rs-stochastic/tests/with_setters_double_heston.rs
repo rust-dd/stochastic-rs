@@ -137,7 +137,7 @@ dh_plain_test!(
   double_heston_with_boundary_round_trip,
   with_boundary,
   boundary,
-  VarianceBoundary::Floor
+  VarianceBoundary::Absorption
 );
 
 #[test]

@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
-//#![warn(missing_docs)]
+// #![warn(missing_docs)]
 
-// Types of these crates appear in the public API; the re-exports name the versions callers must match.
+// Their types appear in the public API; the re-exports name the versions callers must match.
 pub use chrono;
 pub use ndarray;
 pub use num_complex;
@@ -17,20 +17,8 @@ pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
 pub mod traits;
 
-/// Convenience prelude that re-exports the most commonly used types and traits.
-///
-/// Bring this in scope to get the canonical trait set (`ProcessExt`,
-/// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
-/// without pulling them one by one.
-///
-/// Currently 27 items in 6 groups — re-derive with
-/// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` — the
-/// leading indentation matters, since a bare `grep -c "pub use"` also matches
-/// this very comment and reports two too many — and update
-/// `CLAUDE.md` and `website/content/docs/concepts/prelude.mdx` together
-/// whenever a `pub use` line below is added or removed;
-/// `tests/prelude_completeness.rs` catches the removal direction at
-/// compile time but not additions that go undocumented.
+/// The canonical traits (`ProcessExt`, `ModelPricer`, …) and option enums in one import; keep its
+/// 27 items in 6 groups in step with `CLAUDE.md` and `website/content/docs/concepts/prelude.mdx`.
 ///
 /// ```
 /// use stochastic_rs::prelude::*;

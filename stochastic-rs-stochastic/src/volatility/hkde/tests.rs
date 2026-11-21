@@ -17,7 +17,7 @@ fn default_hkde() -> Hkde<f64> {
     256,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
 }
@@ -52,7 +52,7 @@ fn no_jumps_reduces_to_heston() {
     1000,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [s, _v] = p.sample();
@@ -80,7 +80,7 @@ fn seeded_is_deterministic() {
     100,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(123),
   );
   let p2 = Hkde::new(
@@ -97,7 +97,7 @@ fn seeded_is_deterministic() {
     100,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(123),
   );
   let [s1, v1] = p1.sample();

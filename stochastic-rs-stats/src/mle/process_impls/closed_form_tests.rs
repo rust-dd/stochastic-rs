@@ -47,7 +47,7 @@ fn root(c: f64, g: f64, g1: f64, g2: f64) -> [f64; 2] {
 /// Every implementor that is not flat in the state, with its derivatives written out by hand.
 fn models() -> Vec<(&'static str, Box<dyn DiffusionModel>, Closed)> {
   let seed = || Deterministic::new(0);
-  let floor = VarianceBoundary::Floor;
+  let absorption = VarianceBoundary::Absorption;
   let one = Some(1.0);
   vec![
     (
@@ -109,7 +109,7 @@ fn models() -> Vec<(&'static str, Box<dyn DiffusionModel>, Closed)> {
         2,
         one,
         None,
-        floor,
+        absorption,
         seed(),
       )),
       |x| {

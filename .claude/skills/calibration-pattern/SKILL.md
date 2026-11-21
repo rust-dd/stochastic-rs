@@ -143,9 +143,9 @@ impl ToModel for Calibrated<XyzParams> {
 /// Xyz fit to vanilla quotes by Levenberg–Marquardt.
 #[derive(Clone, Debug)]
 pub struct XyzCalibrator {
-  pub s: f64,
-  pub r: f64,
-  pub q: f64,
+  s: f64,
+  r: f64,
+  q: f64,
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.1, 0.5, 0.3).
   pub start: Option<XyzParams>,
@@ -158,6 +158,18 @@ impl XyzCalibrator {
   pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
     assert_spot_and_rates(s, r, q);
     Self { s, r, q, quotes, start: None, options: CalibrationOptions::default() }
+  }
+
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
   }
 
   /// Panics unless `start` passes `XyzParams::new`.
@@ -248,6 +260,10 @@ itself, `Calibrated::new(params, loss, converged)` with `.with_iterations(..)`,
 `.with_max_error(..)`, `.with_message(..)` and `.with_history(..)`; its `converged`
 is a stop on the optimiser's own criterion, never a cap, and `message` names the
 stop.
+
+The spot and rates are private: `new` checks them and `s()`, `r()` and `q()` read them
+back, so no fit runs at a spot `new` did not check; to fit elsewhere, build another
+calibrator. Where the problem lives in a sibling module, make them `pub(super)`.
 
 Field names follow the crate-wide vocabulary: `s` spot, `k` or `strike`, `tau` time
 to maturity in years, `r` and `q` the rates (`r_d`/`r_f` only where two rates

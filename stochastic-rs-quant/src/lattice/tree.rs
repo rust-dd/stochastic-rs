@@ -19,7 +19,7 @@ pub struct BinomialTree<T: RealExt> {
 }
 
 impl<T: RealExt> BinomialTree<T> {
-  /// Construct a binomial tree from explicit levels and up probabilities.
+  /// Panics unless level `i` holds `i + 1` states and every up probability is in `[0, 1]`.
   pub fn new(dt: T, states: Vec<Array1<T>>, up_probabilities: Vec<Array1<T>>) -> Self {
     assert_eq!(
       states.len(),
@@ -41,6 +41,13 @@ impl<T: RealExt> BinomialTree<T> {
         "probability level {level} must contain {} entries",
         level + 1
       );
+      for (node, &p) in probs.iter().enumerate() {
+        assert!(
+          p.is_finite() && p >= T::zero() && p <= T::one(),
+          "up_probabilities[{level}][{node}] must satisfy `p.is_finite() && p >= T::zero() && p <= \
+           T::one()`, got up_probabilities[{level}][{node}] = {p:?}"
+        );
+      }
     }
     Self {
       dt,
@@ -49,7 +56,7 @@ impl<T: RealExt> BinomialTree<T> {
     }
   }
 
-  /// Cox-Ross-Rubinstein stock-price tree.
+  /// Cox-Ross-Rubinstein stock-price tree; panics unless `probability` is in `[0, 1]`.
   pub fn from_crr(spot: T, up: T, down: T, probability: T, steps: usize, dt: T) -> Self {
     let states = (0..=steps)
       .map(|level| {

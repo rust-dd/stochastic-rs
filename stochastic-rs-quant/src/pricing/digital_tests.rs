@@ -207,64 +207,84 @@ fn every_query_argument_drives_the_price() {
   }
 }
 
-/// Every digital rejects `σ < 0`, which flips the shared `d₁` into finite, wrong (even negative)
-/// prices; `σ = 0` and a negative `cash` payout stay admissible.
+/// Every digital refuses `σ < 0` and `±∞`, as a negative `σ` flips the shared `d₁` into a finite
+/// wrong price; `σ = 0`, a NaN `σ` and a negative `cash` payout stay admissible.
 mod construction_validation {
   use super::*;
 
-  #[test]
-  #[should_panic(
-    expected = "CashOrNothingPricer::new: sigma must be a non-negative volatility (got -0.35)"
-  )]
-  fn cash_or_nothing_rejects_negative_sigma() {
-    let _ = CashOrNothingPricer::new(10.0, -0.35);
+  const SIGMA: &str = "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`";
+
+  fn panic_text(build: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let err = std::panic::catch_unwind(build).expect_err("must refuse");
+    err.downcast_ref::<String>().cloned().unwrap_or_default()
   }
 
   #[test]
-  #[should_panic(
-    expected = "AssetOrNothingPricer::new: sigma must be a non-negative volatility (got -0.25)"
-  )]
-  fn asset_or_nothing_rejects_negative_sigma() {
-    let _ = AssetOrNothingPricer::new(-0.25);
+  fn every_digital_refuses_a_negative_or_infinite_sigma() {
+    for (bad, shown) in [
+      (-0.35, "-0.35"),
+      (f64::INFINITY, "inf"),
+      (f64::NEG_INFINITY, "-inf"),
+    ] {
+      let want = format!("{SIGMA}, got sigma = {shown}");
+      let texts = [
+        panic_text(move || {
+          let _ = CashOrNothingPricer::new(10.0, bad);
+        }),
+        panic_text(move || {
+          let _ = AssetOrNothingPricer::new(bad);
+        }),
+        panic_text(move || {
+          let _ = GapPricer::new(100.0, bad);
+        }),
+        panic_text(move || {
+          let _ = SuperSharePricer::new(110.0, bad);
+        }),
+      ];
+      assert!(texts.iter().all(|text| *text == want), "{texts:?}");
+    }
   }
 
   #[test]
-  #[should_panic(expected = "GapPricer::new: sigma must be a non-negative volatility (got -0.2)")]
-  fn gap_rejects_negative_sigma() {
-    let _ = GapPricer::new(100.0, -0.2);
+  #[should_panic(expected = "cash must satisfy `!cash.is_infinite()`, got cash = inf")]
+  fn cash_or_nothing_refuses_an_infinite_cash() {
+    let _ = CashOrNothingPricer::new(f64::INFINITY, 0.2);
   }
 
   #[test]
-  #[should_panic(
-    expected = "SuperSharePricer::new: sigma must be a non-negative volatility (got -0.2)"
-  )]
-  fn supershare_rejects_negative_sigma() {
-    let _ = SuperSharePricer::new(110.0, -0.2);
+  #[should_panic(expected = "k2 must satisfy `!k2.is_infinite()`, got k2 = -inf")]
+  fn gap_refuses_an_infinite_payoff_strike() {
+    let _ = GapPricer::new(f64::NEG_INFINITY, 0.2);
   }
 
-  /// A `NaN` `sigma` passes (`sigma.is_nan() || sigma >= 0.0`): `AnalyticBsEngine`'s unlinked
-  /// handle reads `NaN` by design, which must reach the caller as a `NaN` NPV.
+  /// `AnalyticBsEngine` builds these from a market handle, and an unlinked handle reads NaN,
+  /// which has to reach the caller as a NaN NPV and not as a panic.
   #[test]
-  fn a_nan_sigma_propagates_as_missing_data_rather_than_panicking() {
+  fn a_nan_sigma_cash_or_payoff_strike_prices_nan() {
     let aon = AssetOrNothingPricer::new(f64::NAN);
     assert!(aon.price_call(100.0, 90.0, 0.05, 0.02, 1.0).is_nan());
     let con = CashOrNothingPricer::new(10.0, f64::NAN);
     assert!(con.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
+    let con = CashOrNothingPricer::new(f64::NAN, 0.2);
+    assert!(con.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
+    let gap = GapPricer::new(f64::NAN, 0.2);
+    assert!(gap.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
   }
 
-  /// `x_high` has no handle behind it, so it keeps the stricter test.
+  /// `x_high` has no handle behind it, and a band edge is a price level: finite and positive.
   #[test]
-  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got NaN)")]
-  fn a_nan_upper_band_is_still_rejected() {
-    let _ = SuperSharePricer::new(f64::NAN, 0.2);
-  }
-
-  /// A non-positive upper band edge is refused; an inverted band `x_high < k` is not, as its lower
-  /// edge arrives as the query strike.
-  #[test]
-  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got -110)")]
-  fn supershare_rejects_non_positive_upper_band() {
-    let _ = SuperSharePricer::new(-110.0, 0.2);
+  fn supershare_refuses_an_upper_band_that_is_not_finite_and_positive() {
+    for (bad, shown) in [
+      (f64::NAN, "NaN"),
+      (-110.0, "-110.0"),
+      (f64::INFINITY, "inf"),
+    ] {
+      let text = panic_text(move || {
+        let _ = SuperSharePricer::new(bad, 0.2);
+      });
+      let want = "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = ";
+      assert_eq!(text, format!("{want}{shown}"));
+    }
   }
 
   #[test]

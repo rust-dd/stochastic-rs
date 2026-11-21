@@ -1,7 +1,6 @@
 // docs: concepts/prelude#importing-concrete-types
-//! Backs the "importing concrete types" example on the prelude concept
-//! page: the prelude ships traits and option-type enums only, so concrete
-//! types are always named explicitly.
+//! Backs the "importing concrete types" example on the prelude concept page: the prelude ships
+//! traits and option-type enums only, so concrete types are always named explicitly.
 
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;

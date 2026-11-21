@@ -5,8 +5,10 @@
 //! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
 //! $$
 //!
-//! Each `v_i` is CIR-style; the pairs are uncoupled, and `dW^v` and `dW^F` are independent.
+//! Each `v_i` is a CIR that always steps by full truncation; the pairs are uncoupled, and `dW^v`
+//! and `dW^F` are independent.
 //!
+//! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -18,6 +20,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -140,8 +143,8 @@ impl<T: FloatExt, S: SeedExt, B> WuZhang<T, S, B> {
   }
 }
 
-/// One pair's recursion on tails pre-filled with `N(0, dt)`, the rate's first: each step floors
-/// and mean-reverts the variance, floors it again, and moves the rate by `lambda · √v`.
+/// One pair's recursion on tails pre-filled with `N(0, dt)`, the rate's first: each step moves
+/// the variance by full truncation and the rate by `lambda · √v⁺`.
 fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
   f: &mut [T],
   v: &mut [T],
@@ -169,12 +172,13 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
   SimdNormal::<T>::new(T::zero(), sqrt_dt)
     .seeded(seed)
     .fill_slice(&mut v[1..]);
+  let boundary = VarianceBoundary::FullTruncation;
+  let mut carried = v[0];
   for j in 1..f.len() {
-    let v_old = v[j - 1].max(T::zero());
     let f_old = f[j - 1].max(T::zero());
     let (d_w_v, d_w_f) = (v[j], f[j]);
-    let dv = beta * (alpha - v_old) * dt + nu * v_old.sqrt() * d_w_v;
-    let v_new = (v_old + dv).max(T::zero());
+    carried = boundary.square_root_step(carried, beta, alpha, nu, dt, d_w_v);
+    let v_new = boundary.observed(carried);
     v[j] = v_new;
     f[j] = f_old + f_old * lambda * v_new.sqrt() * d_w_f;
   }

@@ -1,10 +1,5 @@
-//! Benchmarks for the realized-volatility module.
-//!
-//! Hot paths measured:
-//! - Realized variance, semivariance, skewness on 50k intraday returns.
-//! - Bipower variation, MedRV, BNS and Lee-Mykland jump tests.
-//! - Realized kernel (Parzen) at the rule-of-thumb bandwidth.
-//! - Pre-averaging and TSRV / MSRV on 50k-tick noisy paths.
+//! Realized-volatility benches: RV, semivariance, skewness on 50k returns, bipower / MedRV / BNS /
+//! Lee-Mykland jump tests, Parzen kernel, pre-averaging and TSRV / MSRV on 50k-tick paths.
 
 use criterion::Criterion;
 use criterion::criterion_group;

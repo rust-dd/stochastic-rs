@@ -33,7 +33,12 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::QuantError;
 use crate::error::check_grid_shape;
+use crate::pricing::digital::expired;
+use crate::pricing::mc_stats::off_domain;
 use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
+use crate::pricing::spread::assert_two_asset_model;
+use crate::traits::RealExt;
 
 /// Type of multi-asset rainbow payoff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,34 +51,6 @@ pub enum RainbowPayoff {
   PutOnMax,
   /// $\max(K - \min(S_i), 0)$
   PutOnMin,
-}
-
-/// `a.max(b)` with a `NaN` operand **propagated** instead of discarded.
-///
-/// `f64::max` returns the non-`NaN` operand, which is right for an
-/// ordering question and wrong for every use in this file. Folded over an
-/// asset vector it silently *drops* an undefined leg, so an $n$-asset
-/// best-of prices as an $(n-1)$-asset best-of; applied as a payoff floor
-/// it turns an undefined payoff into a plausible zero. Same split as
-/// `pricing::fourier::pricer`'s `floor_price`, which closes the identical
-/// trap on the Fourier path.
-#[inline]
-fn nan_max(a: f64, b: f64) -> f64 {
-  if a.is_nan() || b.is_nan() {
-    f64::NAN
-  } else {
-    a.max(b)
-  }
-}
-
-/// `a.min(b)` with a `NaN` operand propagated — see `nan_max`.
-#[inline]
-fn nan_min(a: f64, b: f64) -> f64 {
-  if a.is_nan() || b.is_nan() {
-    f64::NAN
-  } else {
-    a.min(b)
-  }
 }
 
 impl RainbowPayoff {
@@ -92,13 +69,13 @@ impl RainbowPayoff {
   /// assets — and it is not reachable from either Monte Carlo caller,
   /// whose asset count comes from the query's own spot vector.
   pub fn evaluate(&self, prices: &[f64], k: f64) -> f64 {
-    let max_p = prices.iter().copied().fold(f64::NEG_INFINITY, nan_max);
-    let min_p = prices.iter().copied().fold(f64::INFINITY, nan_min);
+    let max_p = f64::max_or_nan_fold(prices.iter().copied());
+    let min_p = f64::min_or_nan_fold(prices.iter().copied());
     match self {
-      RainbowPayoff::CallOnMax => nan_max(max_p - k, 0.0),
-      RainbowPayoff::CallOnMin => nan_max(min_p - k, 0.0),
-      RainbowPayoff::PutOnMax => nan_max(k - max_p, 0.0),
-      RainbowPayoff::PutOnMin => nan_max(k - min_p, 0.0),
+      RainbowPayoff::CallOnMax => (max_p - k).max_or_nan(0.0),
+      RainbowPayoff::CallOnMin => (min_p - k).max_or_nan(0.0),
+      RainbowPayoff::PutOnMax => (k - max_p).max_or_nan(0.0),
+      RainbowPayoff::PutOnMin => (k - min_p).max_or_nan(0.0),
     }
   }
 }
@@ -156,18 +133,7 @@ impl StulzRainbowPricer {
   /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: a negative vol prices negative calls,
   /// and a bad `rho` would trip an anonymous `owens_t::biv_norm` assert or skew the Margrabe legs.
   pub fn new(payoff: RainbowPayoff, sigma1: f64, sigma2: f64, rho: f64) -> Self {
-    assert!(
-      sigma1 >= 0.0,
-      "StulzRainbowPricer::new: sigma1 must be a non-negative volatility (got {sigma1})"
-    );
-    assert!(
-      sigma2 >= 0.0,
-      "StulzRainbowPricer::new: sigma2 must be a non-negative volatility (got {sigma2})"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "StulzRainbowPricer::new: rho must be in [-1, 1] (got {rho})"
-    );
+    assert_two_asset_model(sigma1, sigma2, rho);
     Self {
       payoff,
       sigma1,
@@ -176,8 +142,11 @@ impl StulzRainbowPricer {
     }
   }
 
-  /// Price the contract at one query point.
+  /// The contract at one query point: its payoff at `tau = 0`, NaN past expiry.
   pub fn price(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q1, q2], || self.payoff.evaluate(&[s1, s2], k)) {
+      return value;
+    }
     match self.payoff {
       RainbowPayoff::CallOnMin => self.call_on_min(s1, s2, k, r, q1, q2, tau),
       RainbowPayoff::CallOnMax => self.call_on_max(s1, s2, k, r, q1, q2, tau),
@@ -253,6 +222,17 @@ impl StulzRainbowPricer {
   }
 }
 
+/// One volatility per asset, each finite and `>= 0`.
+#[track_caller]
+pub(crate) fn assert_volatilities(sigma: &Array1<f64>) {
+  for (i, &v) in sigma.iter().enumerate() {
+    assert!(
+      v.is_finite() && v >= 0.0,
+      "sigma[{i}] must satisfy `sigma[{i}].is_finite() && sigma[{i}] >= 0.0`, got sigma[{i}] = {v:?}"
+    );
+  }
+}
+
 /// Monte-Carlo rainbow pricer for arbitrary $n$ assets. Gated behind the
 /// It relies on a Cholesky factorization for
 /// the correlation factor.
@@ -284,40 +264,13 @@ pub struct McRainbowPricer<S: SeedExt = Unseeded> {
 }
 
 impl McRainbowPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if any `sigma[i]` is negative or `NaN` — not a volatility
-  /// - if `n_paths` is `0`
-  ///
-  /// `rho` is **deliberately unchecked here**, and so are the dimensions.
-  /// [`try_price`](Self::try_price) is the only advertised way to surface
-  /// a non-SPD correlation or a query/model dimension mismatch as an
-  /// `Err`, and a constructor that panicked on them first would leave it
-  /// nothing to report — `mc_rainbow_try_price_reports_a_non_spd_correlation`
-  /// pins that with `rho = [[1, 2], [2, 1]]`, an entry a range check would
-  /// have rejected at construction. The only element-wise correlation
-  /// guard that would not pre-empt that contract is a unit-diagonal test,
-  /// and a correlation check that inspects the diagonal but not the
-  /// entries is precisely the asymmetry this validation exists to avoid.
-  /// The array siblings that have no `try_price` —
-  /// [`GeometricBasketPricer`](crate::pricing::basket::GeometricBasketPricer)
-  /// and
-  /// [`ArithmeticBasketLevyPricer`](crate::pricing::basket::ArithmeticBasketLevyPricer)
-  /// — do get the range check, for that reason and no other.
-  ///
-  /// `n_paths == 0` does not close a wrong number either; it is refused
-  /// where it is supplied, matching the other Monte Carlo pricers.
+  /// Panics unless every `sigma[i]` is finite and `>= 0` and `n_paths >= 1`; `rho` and the
+  /// dimensions are data, which [`try_price`](Self::try_price) reports as an `Err`.
   pub fn new(payoff: RainbowPayoff, sigma: Array1<f64>, rho: Array2<f64>, n_paths: usize) -> Self {
-    for (i, &v) in sigma.iter().enumerate() {
-      assert!(
-        v >= 0.0,
-        "McRainbowPricer::new: sigma[{i}] must be a non-negative volatility (got {v})"
-      );
-    }
+    assert_volatilities(&sigma);
     assert!(
       n_paths >= 1,
-      "McRainbowPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     Self {
       payoff,
@@ -376,11 +329,8 @@ impl<S: SeedExt> McRainbowPricer<S> {
     Ok(self.price(s, k, r, q, tau))
   }
 
-  /// Price the contract at one query point.
-  ///
-  /// # Panics
-  /// If the correlation matrix is not positive definite — call
-  /// [`try_price`](Self::try_price) to handle that gracefully.
+  /// The contract at one query point: NaN for a NaN query, `tau < 0` or a spot not positive before
+  /// expiry; panics on a `rho` that is not positive definite, which `try_price` reports.
   pub fn price(
     &self,
     s: ArrayView1<'_, f64>,
@@ -389,6 +339,11 @@ impl<S: SeedExt> McRainbowPricer<S> {
     q: ArrayView1<'_, f64>,
     tau: f64,
   ) -> McEstimate<f64> {
+    let spots = s.iter().copied().collect::<Vec<f64>>();
+    let others = q.iter().copied().chain([k, r]).collect::<Vec<f64>>();
+    if off_domain(&spots, &others, tau) {
+      return pathless(f64::NAN);
+    }
     let n_assets = s.len();
     let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",

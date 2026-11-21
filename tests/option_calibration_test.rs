@@ -1,8 +1,5 @@
-//! CMS caplet/floorlet pricing and Hull-White / SABR calibration tests.
-//!
-//! Includes finite-positive sanity checks on CMS instruments and round-trip
-//! consistency tests where calibrators recover the parameters used to
-//! generate synthetic market quotes.
+//! CMS caplet/floorlet pricing and Hull-White / SABR calibration tests: finite-positive sanity
+//! checks on CMS instruments, round trips recovering the parameters behind synthetic quotes.
 
 use ndarray::array;
 use stochastic_rs::quant::calendar::Frequency;
@@ -211,8 +208,8 @@ fn caplet_start(shift: f64) -> stochastic_rs::quant::calibration::SabrCapletPara
   }
 }
 
-/// A negative forward and strikes with no shift configured: `calibrate` answers `Err` naming the forward
-/// before the Hagan expansion sees them.
+/// A negative forward and strikes with no shift configured: `calibrate` answers `Err` naming the
+/// forward before the Hagan expansion sees them.
 #[test]
 fn sabr_caplet_calibration_rejects_negative_forward_without_shift() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
@@ -233,9 +230,8 @@ fn sabr_caplet_calibration_rejects_negative_forward_without_shift() {
   );
 }
 
-/// A shift that fixes the forward but is still too small for the lowest
-/// strike must be reported by value, not silently truncated or panicked
-/// through.
+/// A shift that fixes the forward but is still too small for the lowest strike must be reported by
+/// value, not silently truncated or panicked through.
 #[test]
 fn sabr_caplet_calibration_rejects_insufficient_shift() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
@@ -258,11 +254,8 @@ fn sabr_caplet_calibration_rejects_insufficient_shift() {
   );
 }
 
-/// Round-trip recovery on a negative forward with strikes spanning
-/// negative, zero and positive values — the realistic EUR/JPY/CHF caplet
-/// regime from roughly 2015 to 2022. `shift = 0.02` is the market
-/// convention mentioned for EUR caplets; every shifted strike/forward is
-/// then comfortably positive (0.0125 to 0.03).
+/// Round trip on a negative forward with negative, zero and positive strikes (the EUR/JPY/CHF
+/// caplet regime of 2015-2022); `shift = 0.02`, the EUR convention, puts them in 0.0125 to 0.03.
 #[test]
 fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
   use stochastic_rs::quant::calibration::CalibrationOptions;
@@ -282,9 +275,8 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
 
   let strikes: Vec<f64> = vec![-0.0075, -0.005, -0.0025, 0.0, 0.0025, 0.005, 0.0075, 0.01];
   let shifted_forward = forward + shift;
-  // sigma_ATM ~= 38% on the shifted forward, chosen so the shifted-coordinate
-  // smile stays in Hagan's well-behaved regime (log-moneyness < 1 in
-  // magnitude across the whole strike grid).
+  // sigma_ATM ~= 38% on the shifted forward keeps the shifted-coordinate smile in Hagan's
+  // well-behaved regime (log-moneyness < 1 in magnitude across the whole strike grid).
   let target_alpha = 0.38 * shifted_forward.powf(1.0 - target_beta);
   let target = SabrParams {
     alpha: target_alpha,

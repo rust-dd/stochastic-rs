@@ -1,15 +1,5 @@
-"""Cross-check of the Heston SLV leverage calibration against QuantLib.
-
-QuantLib is not a dependency of the suite: the module is skipped unless it
-is installed (`pip install QuantLib`). QuantLib's `HestonSLVFDMModel` solves
-the same forward Kolmogorov equation by its own finite-difference scheme,
-and its `NoExceptLocalVolSurface` reads the Dupire local volatility off the
-analytic Heston Black surface. That local volatility is handed to both of
-our routes, so what is compared is the leverage calibration alone; the
-bounds are the level at which QuantLib's own FDM and MC models agree with
-each other (mean 0.01, worst 0.025 on the same probes), and both of our
-routes sit well inside them (mean 0.001-0.006, worst 0.003-0.012).
-"""
+"""Heston SLV leverage calibration against QuantLib's `HestonSLVFDMModel` (skipped without it); the
+bounds (mean 0.01, worst 0.025) are where QuantLib's own FDM and MC models agree."""
 
 from __future__ import annotations
 

@@ -25,7 +25,7 @@ fn hlog_base_seeded<S: SeedExt>(seed: S) -> HestonLog<f64, S> {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed,
   )
 }

@@ -514,15 +514,17 @@ mod tests {
     );
   }
 
-  /// At `t = 0` the density degenerates: call and put are NaN, the put not floored to `0.0`.
+  /// At `t = 0` the option is its payoff, and past expiry NaN, the put not floored to `0.0`.
   #[test]
-  fn cos_degenerate_maturity_prices_nan() {
+  fn cos_at_expiry_pays_out_and_is_nan_past_it() {
     let pricer = CosPricer::default();
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
-    let call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
-    let put = pricer.price_put(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
-    assert!(call.is_nan() && put.is_nan(), "call {call}, put {put}");
+    let call = |s, t| pricer.price_call(s, 100.0, 0.05, 0.01, t, q_mat.view(), vols.view(), 0);
+    let put = |s, t| pricer.price_put(s, 100.0, 0.05, 0.01, t, q_mat.view(), vols.view(), 0);
+    assert_eq!((call(110.0, 0.0), put(110.0, 0.0)), (10.0, 0.0));
+    assert_eq!((call(100.0, 0.0), put(90.0, 0.0)), (0.0, 10.0));
+    assert!(call(100.0, -1.0).is_nan() && put(100.0, -1.0).is_nan());
   }
 
   #[test]

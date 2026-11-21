@@ -332,7 +332,7 @@ fn a_broken_model_parameter_panics_in_new() {
       "v0 must satisfy `v0 > 0.0`, got v0 = -0.01",
     ),
     (
-      |m| m.params.kappa = -1.0,
+      |m| (m.params.kappa, m.params.theta) = (-1.0, 0.0),
       "kappa must satisfy `kappa >= 0.0`, got kappa = -1.0",
     ),
     (

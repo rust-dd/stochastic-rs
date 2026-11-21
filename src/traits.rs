@@ -1,10 +1,5 @@
-//! # Traits — umbrella re-export hub.
-//!
-//! Mirrors every documented trait each sub-crate exports from its own `traits` module; a trait kept out of
-//! [`crate::prelude`] (`ShortRatePricer`, `VanillaEuropeanCall`, `GreeksExt`) still resolves here.
-//!
-//! The quant half of the mirror is derivable, so a future omission is
-//! measurable rather than a matter of reading:
+//! Umbrella re-export hub: every documented trait each sub-crate exports, prelude-excluded ones
+//! included. The quant half is derivable, and `tests/prelude_completeness.rs` fails on a drop:
 //!
 //! ```text
 //! diff <(grep '^pub use \(calibration\|instrument\|pricing\|short_rate\|time\)::' \
@@ -12,9 +7,6 @@
 //!      <(grep '^pub use stochastic_rs_quant::traits::' src/traits.rs \
 //!          | sed 's/.*:://;s/;//' | sort)
 //! ```
-//!
-//! `tests/prelude_completeness.rs` names the prelude-excluded traits
-//! explicitly, so dropping one from this hub is a compile error there.
 
 #[cfg(feature = "ai")]
 pub use stochastic_rs_ai::traits::SurrogateModel;

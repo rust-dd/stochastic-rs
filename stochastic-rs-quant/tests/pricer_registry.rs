@@ -145,8 +145,8 @@ assert_model_pricer!(
   SuperSharePricer,
 );
 
-// European vanillas, so `vol_surface` applies; the `FourierModelExt` blanket covers the Fourier
-// models, and `FiniteDifferencePricer` and `HestonAdiPricer` answer `NaN` per instance.
+// The pricers whose `price_call` is a European vanilla call, which `ModelSurface` may invert; a
+// `FourierModelExt` model has it through the blanket `BLANKET_IMPLS` pins, by Lewis's integral.
 assert_vanilla_european_call!(
   BachelierPricer,
   BsmPricer,

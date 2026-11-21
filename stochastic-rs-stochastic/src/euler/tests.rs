@@ -44,7 +44,7 @@ fn cpu_backend_is_the_process_sampler() {
       33,
       Some(0.09),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(7),
     )
   };
@@ -88,7 +88,13 @@ fn switching_the_backend_keeps_the_parameters() {
   )
   .on::<Cpu>();
   assert_eq!(cir.boundary, VarianceBoundary::Reflect);
-  assert_eq!(cir.euler_spec().encode().0, 2);
+  let code = |boundary| cir.clone().with_boundary(boundary).euler_spec().encode().0;
+  let boundaries = [
+    VarianceBoundary::FullTruncation,
+    VarianceBoundary::Absorption,
+    VarianceBoundary::Reflect,
+  ];
+  assert_eq!(boundaries.map(code), [2, 4, 5]);
   assert_eq!(
     (cir.initial_value(), cir.grid_points(), cir.horizon()),
     (0.09, 10, 2.0)
@@ -129,7 +135,7 @@ fn try_sample_par_matches_sample_par_on_the_cpu() {
       64,
       Some(0.09),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(9),
     )
   };

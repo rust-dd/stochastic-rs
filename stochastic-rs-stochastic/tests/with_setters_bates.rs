@@ -29,7 +29,7 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates<f64, SimdNormal<f64>, S> {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed,
   )
 }
@@ -140,7 +140,7 @@ fn bates_at(lambda: f64, law: SimdNormal<f64>) -> Bates<f64, SimdNormal<f64>, De
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(3),
   )
 }
@@ -216,7 +216,7 @@ fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates<f64, SimdNorma
     100.0,
     0.0, // v0 = 0
     t,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed,
   )
 }

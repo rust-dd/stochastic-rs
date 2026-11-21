@@ -279,3 +279,45 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     }
   }
 }
+
+/// The first factor's `ρ` meets its lower bound while the cost still falls across it: the fit
+/// goes on along the bound.
+#[test]
+fn the_default_start_fits_the_heston_reference_along_the_rho_bound() {
+  let fit = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let rmse = fit.loss.get(LossMetric::Rmse);
+  assert!(rmse < 1e-3, "{rmse:e}: {fit:?}");
+}
+
+/// Each factor has its own slots: the second's `ρ` on its clamp, reflected, and its `κ` at the top.
+#[test]
+fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
+  use super::params::room_in_box;
+  let base = ndarray::Array1::from(START);
+  let rooms = |j: usize, value: f64| {
+    let mut x = base.clone();
+    x[j] = value;
+    let room = room_in_box(x.view());
+    (room.down[j], room.up[j])
+  };
+  let near = |(down, up): (f64, f64), want: (f64, f64)| {
+    (down - want.0).abs() < 1e-12 && (up - want.1).abs() < 1e-12
+  };
+  for (j, value, want) in [
+    (4, -0.5, (0.4999, 1.4999)),
+    (9, -0.99995, (0.0, 1.9998)),
+    (9, -1.00005, (1.9998, 0.0)),
+    (9, 0.9995, (1.9994, 4e-4)),
+    (6, 19.99, (19.89, 0.01)),
+    (5, 0.0005, (0.2485, 0.0005)),
+  ] {
+    assert!(
+      near(rooms(j, value), want),
+      "{j} at {value}: {:?}",
+      rooms(j, value)
+    );
+  }
+}

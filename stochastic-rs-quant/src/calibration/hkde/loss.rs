@@ -19,11 +19,11 @@ use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
-use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
-use crate::pricing::fourier::GilPelaezPricer;
 use crate::pricing::fourier::HkdeFourier;
 use crate::pricing::fourier::HkdeParams;
+use crate::pricing::fourier::LewisPricer;
 
 const EPS: f64 = 1e-8;
 
@@ -76,11 +76,11 @@ impl<'a> HkdeProblem<'a> {
       .collect()
   }
 
-  /// The quote's Gil–Pelaez price, a put by parity, as `ModelPricer::price_option` gives it.
-  fn price(&self, p: &HkdeParams, quote: &OptionQuote, walk: &mut Walk<'_, Panels>) -> f64 {
+  /// The quote's Lewis price, a put by parity, as `ModelPricer::price_option` gives it.
+  fn price(&self, p: &HkdeParams, quote: &OptionQuote, walk: &mut Walk<'_, Rule>) -> f64 {
     let HkdeCalibrator { s, r, q, .. } = *self.calibrator;
     let (k, tau) = (quote.strike, quote.tau);
-    let call = GilPelaezPricer::price_call_walk(&self.build_model(p), s, k, r, q, tau, walk);
+    let call = LewisPricer::price_call_walk(&self.build_model(p), s, k, r, q, tau, walk);
     clip_negative(match quote.option_type {
       OptionType::Call => call,
       OptionType::Put => call - s * (-q * tau).exp() + k * (-r * tau).exp(),

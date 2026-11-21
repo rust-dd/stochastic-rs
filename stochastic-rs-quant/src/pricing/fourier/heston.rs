@@ -38,7 +38,13 @@ pub(crate) fn riccati_cd(
   } else {
     (1.0 - exp_dt) / d
   };
-  let denom = (beta + d) * decay + 2.0 * exp_dt;
+  // `(β + d)(d − β) = σ²m`: where `Re β < 0` the sum cancels near `m = 0`; the quotient does not.
+  let beta_plus_d = if beta.re < 0.0 {
+    sigma2 * moment / (d - beta)
+  } else {
+    beta + d
+  };
+  let denom = beta_plus_d * decay + 2.0 * exp_dt;
 
   let c_val = (kappa_theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
   let d_val = -moment * decay / denom;

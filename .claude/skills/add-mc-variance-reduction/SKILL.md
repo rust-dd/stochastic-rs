@@ -7,7 +7,7 @@ description: How to add a Monte Carlo variance-reduction technique to stochastic
 
 Variance-reduction techniques in `stochastic-rs-stochastic` follow a uniform
 contract: an MC estimator returns an `McEstimate<T>` struct carrying
-`(point_estimate, std_error, n_paths)` from which the caller can
+`mean`, `std_err` and `n_samples`, from which the caller can
 compute a 95 % confidence interval. New estimators ship with a
 **reference test** asserting the variance is genuinely reduced versus
 plain MC on a synthetic problem.
@@ -31,7 +31,7 @@ QMC); Giles 2015 for MLMC.
 ```rust
 // stochastic-rs-stochastic/src/mc/mod.rs
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct McEstimate<T: FloatExt> {
     /// Estimated mean.
     pub mean: T,

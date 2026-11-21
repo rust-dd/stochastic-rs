@@ -234,8 +234,8 @@ fn the_natural_jacobian_matches_central_differences() {
   assert!(worst < 1e-6, "{worst:e}");
 }
 
-/// A point where a panel of the Lewis quadrature switches inside a `1e-6` stencil of η, in
-/// `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
+/// A point beside which a walk that stops on its envelope moves the Lewis price of K = 2525 by
+/// 3.3e-5 within `1e-6` of η, in `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
 const STALLED: [f64; 8] = [
   0.591203583519947,
   22.88796593498391,
@@ -247,8 +247,7 @@ const STALLED: [f64; 8] = [
   0.009934101706378984,
 ];
 
-/// At `STALLED` the Lewis price of K = 2525 jumps by 3.3e-5 within 8.75e-7 of η, so the
-/// Jacobian's step must bound a jump's share: `2e-3·|θ|` reads each column within 6.3e-3.
+/// A step of `2e-3·|θ|` in each natural parameter reads every column within 2e-2.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
   use crate::calibration::least_squares::checks::jacobian_error;
@@ -263,6 +262,31 @@ fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
     let step = |j: usize, _| 2e-3 * natural[j].abs() / factors[j];
     let error = jacobian_error(&mut problem, x.view(), step);
     assert!(error < 2e-2, "{natural:?}: {error:e}");
+  }
+}
+
+/// `(K, half-width in η)` about `STALLED`: where a walk that stops on its envelope jumps by 3.3e-5
+/// and 9.9e-5.
+const WINDOWS: [(f64, f64); 2] = [(2525.0, 1.5e-6), (2550.0, 8e-5)];
+
+/// Across each window a step of the price differs from its neighbours' mean by rounding alone.
+#[test]
+fn the_price_is_continuous_in_eta_where_an_envelope_stop_would_move() {
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  for (k, half) in WINDOWS {
+    let price = |i: i32| {
+      let mut natural = STALLED;
+      natural[4] += half * (f64::from(i) / 30.0 - 1.0);
+      let params = to_cgmysv_params(&natural);
+      fourier_call_price(&params, s, k, r, q, tau, &mut Walk::Adaptive)
+    };
+    let prices = (0..=60).map(price).collect::<Vec<_>>();
+    let steps = prices.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>();
+    let jump = steps
+      .windows(3)
+      .map(|w| (w[1] - 0.5 * (w[0] + w[2])).abs())
+      .fold(0.0, f64::max);
+    assert!(jump < 1e-10, "K = {k}: a jump of {jump:e}");
   }
 }
 
@@ -290,8 +314,8 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
   }
 }
 
-/// On the rule each price's own walk took, a difference never straddles a stop of Lewis's walk:
-/// at `STALLED`, where a walk's price jumps by 3.3e-5 inside the η stencil, `J(h)` is `J(2h)`.
+/// On the rule each price's own walk took, a difference integrates one fixed rule: at `STALLED`,
+/// `J(h)` is `J(2h)`.
 #[test]
 fn the_jacobian_at_twice_its_step_is_the_same_where_a_walk_jumps() {
   use crate::calibration::least_squares::checks::step_doubling_error;

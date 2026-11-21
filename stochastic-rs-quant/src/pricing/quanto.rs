@@ -18,6 +18,10 @@
 
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 
 /// Quanto (fixed exchange rate foreign equity) option pricer.
@@ -72,11 +76,21 @@ impl QuantoPricer {
     let d2 = d1 - self.sigma * sqrt_tau;
     (s * ((b - r) * tau).exp(), k * (-r * tau).exp(), d1, d2)
   }
+
+  /// `E_p` times the vanilla payoff at `tau = 0`; NaN past expiry and, before it, for a spot or
+  /// strike that is not positive; `None` where the formula holds.
+  fn off_formula(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, leg: OptionType) -> Option<f64> {
+    let payoff = expired(tau, &[r, q], || self.fixed_rate * vanilla_payoff(leg, s, k));
+    payoff.or_else(|| not_positive(&[s, k]).then_some(f64::NAN))
+  }
 }
 
 impl ModelPricer for QuantoPricer {
   /// In domestic currency.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = self.off_formula(s, k, r, q, tau, OptionType::Call) {
+      return value;
+    }
     let (carried, strike, d1, d2) = self.legs(s, k, r, q, tau);
     self.fixed_rate * (carried * norm_cdf(d1) - strike * norm_cdf(d2))
   }
@@ -84,6 +98,9 @@ impl ModelPricer for QuantoPricer {
   /// Not the parity default: the carry is `e^{(b − r)τ}` with the quanto drift and the price is
   /// scaled by `E_p`, so parity reads `C − P = E_p (S e^{(b − r)τ} − K e^{−rτ})`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = self.off_formula(s, k, r, q, tau, OptionType::Put) {
+      return value;
+    }
     let (carried, strike, d1, d2) = self.legs(s, k, r, q, tau);
     self.fixed_rate * (strike * norm_cdf(-d2) - carried * norm_cdf(-d1))
   }

@@ -5,15 +5,57 @@ use std::fmt;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 
-/// How a square-root state is kept non-negative after an Euler step: floored at zero or reflected.
+/// How an Euler step treats a square-root state `x̃` that leaves the half-line, as the `f`s of
+/// $$\tilde x_{t+\Delta} = f_1(\tilde x_t) + \kappa(\theta - f_2(\tilde x_t))\Delta + \sigma\sqrt{f_3(\tilde x_t)}\,\Delta W$$
+/// Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VarianceBoundary {
-  /// `max(x, 0)`.
+  /// `f₁ = x`, `f₂ = f₃ = x⁺`: the carried state keeps its sign and the path reports `x⁺`.
   #[default]
-  Floor,
-  /// `|x|`.
+  FullTruncation,
+  /// `f₁ = f₂ = f₃ = x⁺`.
+  Absorption,
+  /// `f₁ = f₂ = f₃ = |x|`.
   Reflect,
+}
+
+impl VarianceBoundary {
+  /// `f₂ = f₃`: what drift, diffusion and the reported path read of the carried state.
+  #[inline]
+  pub(crate) fn observed<T: FloatExt>(self, carried: T) -> T {
+    match self {
+      VarianceBoundary::FullTruncation | VarianceBoundary::Absorption => carried.max(T::zero()),
+      VarianceBoundary::Reflect => carried.abs(),
+    }
+  }
+
+  /// The state carried out of a step or in from a start: `f₁` is applied here, so only full
+  /// truncation keeps a sign.
+  #[inline]
+  pub(crate) fn carried<T: FloatExt>(self, stepped: T) -> T {
+    match self {
+      VarianceBoundary::FullTruncation => stepped,
+      VarianceBoundary::Absorption | VarianceBoundary::Reflect => self.observed(stepped),
+    }
+  }
+
+  /// One Euler step of `dx = κ(θ − x)dt + σ√x dW` from the carried state to the carried state,
+  /// `dw` the Brownian increment; [`observed`](Self::observed) of either is the path's value.
+  #[inline]
+  pub(crate) fn square_root_step<T: FloatExt>(
+    self,
+    carried: T,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    dt: T,
+    dw: T,
+  ) -> T {
+    let x = self.observed(carried);
+    let dx = kappa * (theta - x) * dt + sigma * x.sqrt() * dw;
+    self.carried(carried + dx)
+  }
 }
 
 /// The drift of a price model: a rate, a cost of carry, or the domestic–foreign pair (`r − r_f`).
@@ -120,7 +162,7 @@ pub struct HorizonIsOneArgument;
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::volatility::HestonPow;
 /// use stochastic_rs_stochastic::volatility::heston::Heston;
-/// let h = Heston::<f64>::new(Some(100.0), Some(0.04), 2.0, 0.04, 0.5, -0.7, 0.03, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
+/// let h = Heston::<f64>::new(Some(100.0), Some(0.04), 2.0, 0.04, 0.5, -0.7, 0.03, 64, None, HestonPow::Sqrt, VarianceBoundary::Absorption, Unseeded);
 /// ```
 #[cfg(doctest)]
 pub struct InitialValuesArePlain;
@@ -180,6 +222,28 @@ mod tests {
       EulerSystem::<f64, 3>::grid_points(&cpoisson),
     ];
     (rows, grids)
+  }
+
+  /// So reading `observed` where a recursion read the state and its modulus moves no path that
+  /// starts at or above zero.
+  #[test]
+  fn a_state_at_or_above_zero_is_observed_and_carried_bit_for_bit() {
+    use super::VarianceBoundary::*;
+    let states = [
+      0.0,
+      5e-324,
+      f64::MIN_POSITIVE,
+      0.04,
+      1.0,
+      f64::MAX,
+      f64::INFINITY,
+    ];
+    for boundary in [FullTruncation, Absorption, Reflect] {
+      for x in states {
+        let read = [boundary.observed(x), boundary.carried(x), x.abs()].map(f64::to_bits);
+        assert_eq!(read, [x.to_bits(); 3], "{boundary:?} at {x:e}");
+      }
+    }
   }
 
   #[test]

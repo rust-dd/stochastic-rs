@@ -31,7 +31,7 @@ use crate::calibration::reseat::minimize_reseated;
 use crate::calibration::reseat::reseat;
 use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
-use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::cgmysv::CgmysvModel;
 use crate::pricing::cgmysv::CgmysvParams;
@@ -177,7 +177,7 @@ fn fourier_call_price(
   r: f64,
   q: f64,
   t: f64,
-  walk: &mut Walk<'_, Panels>,
+  walk: &mut Walk<'_, Rule>,
 ) -> f64 {
   let model = CgmysvModel {
     params: params.clone(),
@@ -193,7 +193,7 @@ fn fourier_option_price(
   q: f64,
   t: f64,
   option_type: OptionType,
-  walk: &mut Walk<'_, Panels>,
+  walk: &mut Walk<'_, Rule>,
 ) -> f64 {
   let call = fourier_call_price(params, s, k, r, q, t, walk);
   match option_type {
@@ -263,7 +263,7 @@ impl<'a> CgmysvProblem<'a> {
     }
   }
 
-  fn price(&self, params: &CgmysvParams, quote: &OptionQuote, walk: &mut Walk<'_, Panels>) -> f64 {
+  fn price(&self, params: &CgmysvParams, quote: &OptionQuote, walk: &mut Walk<'_, Rule>) -> f64 {
     let CgmysvCalibrator { s, r, q, .. } = *self.calibrator;
     let (k, tau) = (quote.strike, quote.tau);
     fourier_option_price(params, s, k, r, q, tau, quote.option_type, walk)

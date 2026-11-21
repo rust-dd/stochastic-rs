@@ -116,6 +116,8 @@ impl PyExposureProfile {
 #[pyclass(name = "HullWhiteSwapExposure", unsendable)]
 pub struct PyHullWhiteSwapExposure {
   inner: xva::irs::HullWhiteSwapExposure,
+  /// No `fixed_rate` was given, so `profile` sets the swap at par on its curve.
+  at_par: bool,
 }
 
 #[pymethods]
@@ -137,11 +139,12 @@ impl PyHullWhiteSwapExposure {
         mean_reversion,
         sigma,
         notional,
-        fixed_rate.unwrap_or(f64::NAN),
+        fixed_rate.unwrap_or(0.0),
         payment_times,
         accrual,
       )
       .with_steps_per_year(steps_per_year),
+      at_par: fixed_rate.is_none(),
     })
   }
 
@@ -151,7 +154,7 @@ impl PyHullWhiteSwapExposure {
   }
 
   /// Exposure profile on the payment dates from `paths` simulated short-rate
-  /// paths; a `NaN` fixed rate is replaced by the par rate on `curve`.
+  /// paths; a swap built without a fixed rate takes the par rate on `curve`.
   #[pyo3(signature = (curve, paths=10_000, quantile=0.95, seed=None))]
   fn profile(
     &self,
@@ -161,7 +164,7 @@ impl PyHullWhiteSwapExposure {
     seed: Option<u64>,
   ) -> PyExposureProfile {
     let mut swap = self.inner.clone();
-    if swap.fixed_rate.is_nan() {
+    if self.at_par {
       swap.fixed_rate = swap.par_rate(&curve.inner);
     }
     let inner = match seed {

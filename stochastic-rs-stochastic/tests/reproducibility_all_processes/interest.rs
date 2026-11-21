@@ -67,7 +67,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.03),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(7)
   ),
   Cir::new(
@@ -77,7 +77,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.02),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(8)
   ),
   fn1d_a as fn(f64) -> f64,
@@ -92,7 +92,7 @@ guard!(cir_plus_plus, "CirPlusPlus", |s| CirPlusPlus::new(
   N,
   Some(0.03),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 

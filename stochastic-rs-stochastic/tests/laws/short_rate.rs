@@ -276,7 +276,7 @@ fn cir_stationary_moments_match_the_gamma_law() {
     N,
     Some(mu),
     Some(HORIZON),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(347),
   )
   .sample_par(PATHS);

@@ -266,7 +266,7 @@ fn a_dense_count_keeps_every_count_reading_process_on_the_host() {
           100.0,
           0.04,
           Some(1.0),
-          VarianceBoundary::Floor,
+          VarianceBoundary::Absorption,
           Unseeded,
         )
         .device_fallback()
@@ -344,7 +344,7 @@ fn a_dense_count_keeps_every_count_reading_process_on_the_host() {
           N,
           100.0,
           Some(1.0),
-          VarianceBoundary::Floor,
+          VarianceBoundary::Absorption,
           Unseeded,
         )
         .device_fallback()

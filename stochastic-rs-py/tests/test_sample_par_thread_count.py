@@ -1,36 +1,5 @@
-"""Thread-count independence of seeded `sample_par` across the PyO3 boundary.
-
-`ProcessExt::sample_par`'s guarantee — same seed and same `m` give
-bit-identical output on any rayon thread-pool size — is proven in-process by
-`stochastic-rs-stochastic/tests/reproducibility_all_processes.rs`: that guard
-builds a fresh `rayon::ThreadPool` per pool size and calls `.install(|| ...)`
-around each `sample_par` call, all inside one Rust test binary.
-
-Python has no equivalent of `.install()` reachable from the binding, and
-rayon's *global* pool — the one every `py_process_*!`-generated `sample_par`
-uses — is sized once, from `RAYON_NUM_THREADS` (or the machine's core count)
-if unset, the first time any parallel iterator runs in the process, and
-cannot be resized or rebuilt afterwards for that interpreter's remaining
-lifetime. So the only way to observe two different pool sizes from Python is
-two different interpreter processes, one per size, each making its first
-`sample_par` call under a different `RAYON_NUM_THREADS`.
-
-Why this must fail if `sample_par` were thread-count dependent: `chunk_count`
-(`stochastic-rs-stochastic/src/traits/process.rs`) is documented to be a
-pure function of `m` alone, and every chunk's sampler is built sequentially,
-before any chunk reaches rayon. If a future change made `chunk_count` read
-`rayon::current_num_threads()` instead — the exact regression class that
-function's own doc comment warns against — `sample_par(seed=42, m=256)`
-would split into a different number of chunks under `RAYON_NUM_THREADS=1`
-than under `RAYON_NUM_THREADS=8`, so the sequence of `derive()` calls that
-seeds each chunk would differ, and the two subprocesses below would produce
-different arrays. This was verified directly: temporarily changing
-`chunk_count` to `m.min(MAX_CHUNKS).min(rayon::current_num_threads())` and
-rebuilding the extension made `test_gbm_sample_par_is_thread_count_independent`
-fail with a shape/value mismatch between the `RAYON_NUM_THREADS=1` and `=8`
-runs, at every `m` in `_M_VALUES`; reverting restored a pass. See
-MIGRATION.md and the follow-up report for the exact before/after.
-"""
+"""Seeded `sample_par` is thread-count independent across PyO3; rayon sizes its global pool once, so
+each size is a subprocess (Rust guard: `reproducibility_all_processes.rs`)."""
 
 from __future__ import annotations
 
@@ -47,10 +16,8 @@ pytest.importorskip("stochastic_rs")
 
 _SEED = 42
 _N = 32
-# <= MAX_CHUNKS (`traits/process.rs`, currently 64): one path per chunk, the
-# regime that cannot by itself expose cross-chunk correlation. > MAX_CHUNKS:
-# several paths share a chunk. Both regimes are exercised, mirroring the
-# Rust-side guard's own `M_ONE_PER_CHUNK` / `M_MULTI_PER_CHUNK` split.
+# <= MAX_CHUNKS (`traits/process.rs`, 64): one path per chunk; above it several share a chunk,
+# mirroring the Rust guard's `M_ONE_PER_CHUNK` / `M_MULTI_PER_CHUNK` split.
 _M_VALUES = (64, 256)
 _THREAD_COUNTS = (1, 2, 3, 8)
 
@@ -66,14 +33,8 @@ print(json.dumps(p.tolist()))
 
 @lru_cache(maxsize=None)
 def _sample_par_under(m: int, num_threads: int) -> np.ndarray:
-    """Runs `_WORKER` in a fresh subprocess with `RAYON_NUM_THREADS` fixed to
-    `num_threads`, so rayon's global pool is first-sized to exactly that
-    count before this process's one and only `sample_par` call.
-
-    Cached on `(m, num_threads)`: several test cases below share the
-    `num_threads=1` baseline for a given `m`, and this avoids re-spawning an
-    identical subprocess for each of them.
-    """
+    """Runs `_WORKER` in a fresh subprocess with a rayon pool of `num_threads`; cached, as the
+    cases share the `num_threads=1` baseline."""
     env = dict(os.environ, RAYON_NUM_THREADS=str(num_threads))
     result = subprocess.run(
         [sys.executable, "-c", _WORKER, str(m)],
@@ -103,7 +64,6 @@ def test_gbm_sample_par_is_thread_count_independent(m, num_threads):
 
 @pytest.mark.parametrize("m", _M_VALUES)
 def test_gbm_sample_par_paths_are_distinct(m):
-    """Guards against the matrix above passing only because every row is the
-    same degenerate value regardless of threading."""
+    """Guards against the matrix above passing because every row is the same degenerate value."""
     paths = _sample_par_under(m, 1)
     assert not np.allclose(paths[0], paths[1])

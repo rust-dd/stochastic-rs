@@ -1,4 +1,5 @@
-//! A `rand_distr` law fills the jump-size slot, so the dev-dependency pairs with the `rand` the library is built on.
+//! A `rand_distr` law fills the jump-size slot, so the dev-dependency pairs with the `rand` the
+//! library is built on.
 
 use rand_distr::Normal;
 use stochastic_rs::prelude::*;

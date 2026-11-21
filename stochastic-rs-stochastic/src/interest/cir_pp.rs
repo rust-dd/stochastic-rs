@@ -65,7 +65,7 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
 /// Every field has a `with_*` setter (`CirPlusPlus::default().with_kappa(3.0)`); nothing is
 /// cached, since `sampler()` builds a transient `Cir` from `self` on every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns under [`VarianceBoundary::Floor`].
+  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns unless fully truncated.
   /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
@@ -84,12 +84,12 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     check_n(n);
     Self::check_x0(x0);
     check_t(t);
-    if T::from_usize_(2) * kappa * theta < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
+    let sub_feller = T::from_usize_(2) * kappa * theta < sigma.powi(2);
+    if sub_feller && boundary != VarianceBoundary::FullTruncation {
       log::warn!(
         "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
-         under VarianceBoundary::Floor; the underlying CIR factor floors at zero on every \
-         boundary hit instead of reflecting — pass VarianceBoundary::Reflect for the \
-         standard sub-Feller mitigation"
+         under VarianceBoundary::{boundary:?}; the Euler path of the CIR factor reaches \
+         zero and this boundary biases it there, full truncation least"
       );
     }
 
@@ -198,7 +198,7 @@ impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
       252,
       Some(T::from_f64_fast(0.04)),
       Some(T::one()),
-      VarianceBoundary::Floor,
+      VarianceBoundary::default(),
       Unseeded,
     )
   }
@@ -211,7 +211,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::ShiftedSquareRoot {
+      VarianceBoundary::FullTruncation => {
+        let params = [self.kappa, self.theta, self.sigma];
+        crate::euler::EulerSpec::ShiftedSquareRootFullTruncation(params)
+      }
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::ShiftedSquareRoot {
         theta: self.kappa,
         mu: self.theta,
         sigma: self.sigma,
@@ -225,7 +229,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.carried(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {
@@ -413,7 +417,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(seed),
     );
     let cir_pp = CirPlusPlus::<f64, _>::new(
@@ -424,7 +428,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(seed),
     );
 
@@ -455,7 +459,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(seed),
     );
     let cir_pp = CirPlusPlus::<f64, _>::new(
@@ -466,7 +470,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(seed),
     );
 
@@ -508,7 +512,7 @@ mod tests {
       100,
       Some(0.03),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(42),
     )
     .sample();
@@ -520,7 +524,7 @@ mod tests {
       100,
       Some(0.03),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(42),
     )
     .sample();

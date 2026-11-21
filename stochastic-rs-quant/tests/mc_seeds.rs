@@ -278,17 +278,8 @@ fn every_malliavin_estimator_is_seeded_the_same_way() {
   );
   assert_eq!(g.delta(), g.delta());
   assert_eq!(g.vega_v0(), g.vega_v0());
-  let gbm = GbmMalliavinGreeks {
-    s: 100.0,
-    sigma: 0.2,
-    r: 0.03,
-    q: 0.0,
-    tau: 1.0,
-    k: 100.0,
-    n_paths: 500,
-    n_steps: 16,
-    seed: Deterministic::new(4),
-  };
+  let gbm = GbmMalliavinGreeks::new(0.2, 100.0, 100.0, 0.03, 0.0, 1.0, 500, 16)
+    .with_seed(Deterministic::new(4));
   assert_eq!(gbm.gamma(), gbm.gamma());
   let pricer = GbmMalliavinPricer::new(0.2, 500, 16, 0.5).with_seed(Deterministic::new(6));
   assert_eq!(

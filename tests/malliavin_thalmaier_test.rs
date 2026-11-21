@@ -71,12 +71,9 @@ fn black_scholes_digital_cross_gamma(
     / (spot[0] * spot[1] * sigma[0] * sigma[1] * tau * root_one_minus_rho_sq)
 }
 
-/// Reference: Kohatsu-Higa and Yasuda, "Estimating Multi-dimensional Density
-/// Functions through the Malliavin-Thalmaier Formula and Its Application to
-/// Finance", RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1), with
-/// `(sigma1,sigma2)=(0.25,0.20)`, price correlation `0.2`, `r=0`, `tau=1`,
-/// and eight Euler intervals. The exact bivariate Black--Scholes Deltas are
-/// `-0.008399800188218226` and `-0.010770732373919333`.
+/// Reference: Kohatsu-Higa and Yasuda, RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1).
+/// Setup `(sigma1,sigma2)=(0.25,0.20)`, correlation `0.2`, `r=0`, `tau=1`, eight Euler intervals;
+/// exact Black--Scholes Deltas `-0.008399800188218226` and `-0.010770732373919333`.
 #[test]
 fn paper_digital_put_deltas_match_exact_values() {
   let payoff = MtPayoff::DigitalPut2D {

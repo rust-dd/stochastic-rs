@@ -1,14 +1,19 @@
 //! Fang–Oosterlee COS pricing of any [`FourierModelExt`] model in `y = ln(S_T/K)` from
-//! `x = ln(F_T/K)`: `chf(t, u)·e^{iux}` is their `φ(u; x)`, and Eqs. (22)–(23), (29)–(30) follow.
+//! `x = ln(F_T/K)`: `chf(t, u)·e^{iux}` is their `φ(u; x)`; Eqs. (19), (22)–(23), (25), (50).
 //!
-//! Reference: Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for European Options Based on Fourier-Cosine Series Expansions", SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
+//! Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
+//! Reference: Le Floc'h (2020), arXiv:2005.13248, §3
 
 use std::f64::consts::PI;
 
+use ndarray::Array1;
+use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 /// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1)
 /// cumulant standard deviations, so understated `cumulants()` misprice silently.
@@ -27,20 +32,34 @@ const CHF_FLOOR: f64 = 1e-9;
 
 impl Default for CosEngine {
   fn default() -> Self {
-    Self { n: None, l: 10.0 }
+    Self::adaptive(10.0)
   }
 }
 
 impl CosEngine {
-  /// Exactly `n` terms over half-width `l`; panics unless `l > 0` and `n ≥ 2`.
+  /// Exactly `n` terms over `l` cumulant standard deviations; panics unless `n >= 2` and `l` is
+  /// finite and positive.
   pub fn new(n: usize, l: f64) -> Self {
-    assert!(l > 0.0 && n >= 2, "CosEngine requires l > 0 and n >= 2");
-    Self { n: Some(n), l }
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
+    Self {
+      n: Some(n),
+      ..Self::adaptive(l)
+    }
   }
 
-  /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is
-  /// the put plus `S e^{−qt} − K e^{−rt}`; NaN where `truncation_half_width` or `chf` is.
-  pub fn price<M: FourierModelExt>(
+  /// The default's term rule over `l` cumulant standard deviations; panics unless `l` is finite
+  /// and positive.
+  pub fn adaptive(l: f64) -> Self {
+    assert!(
+      l.is_finite() && l > 0.0,
+      "l must satisfy `l.is_finite() && l > 0.0`, got l = {l:?}"
+    );
+    Self { n: None, l }
+  }
+
+  /// A call is the put plus parity: the payoff at `t = 0`; NaN past expiry and, before it, for a
+  /// rate not finite, an `s0` or `k` not finite and positive, or a NaN `chf` or truncation range.
+  pub fn price<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,
     s0: f64,
@@ -50,304 +69,163 @@ impl CosEngine {
     t: f64,
     option_type: OptionType,
   ) -> f64 {
-    let cumulants = model.cumulants(t);
-    let half_width = cumulants.truncation_half_width(self.l);
-    if !half_width.is_finite() {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(option_type, s0, k)) {
+      return value;
+    }
+    if !(priceable(s0) && priceable(k) && r.is_finite() && q.is_finite()) {
       return f64::NAN;
     }
+    let Some((lower, bma)) = self.range(model, t) else {
+      return f64::NAN;
+    };
+    let mut put = [PutSeries::new((s0 / k).ln() + (r - q) * t + lower, bma, k)];
+    self.put_sums(model, t, lower, bma, &mut put);
+    discounted(put[0].sum, s0, k, r, q, t, option_type)
+  }
 
-    let x = (s0 / k).ln() + (r - q) * t;
-    let a = x + cumulants.c1 - half_width;
-    let b = x + cumulants.c1 + half_width;
-    let bma = b - a;
+  /// [`CosEngine::price`] at each strike, bit for bit for runtime model parameters: equal ranges
+  /// share nodes and `chf`. Fang & Oosterlee's Eq. (30) prices on one common range instead.
+  pub fn price_strikes<M: FourierModelExt + ?Sized>(
+    &self,
+    model: &M,
+    s0: f64,
+    strikes: ArrayView1<f64>,
+    r: f64,
+    q: f64,
+    t: f64,
+    option_type: OptionType,
+  ) -> Array1<f64> {
+    let summed = expired(t, &[r, q], || f64::NAN).is_none();
+    if !(summed && priceable(s0) && r.is_finite() && q.is_finite()) {
+      return strikes.mapv(|k| self.price(model, s0, k, r, q, t, option_type));
+    }
+    let live = strikes.iter().any(|&k| priceable(k));
+    let Some((lower, bma)) = self.range(model, t).filter(|_| live) else {
+      return Array1::from_elem(strikes.len(), f64::NAN);
+    };
+    let carry = (r - q) * t;
+    let mut puts = strikes
+      .iter()
+      .map(|&k| PutSeries::new((s0 / k).ln() + carry + lower, bma, k))
+      .collect::<Vec<_>>();
+    self.put_sums(model, t, lower, bma, &mut puts);
+    strikes
+      .iter()
+      .zip(&puts)
+      .map(|(&k, put)| {
+        if put.live {
+          discounted(put.sum, s0, k, r, q, t, option_type)
+        } else {
+          f64::NAN
+        }
+      })
+      .collect()
+  }
 
-    let i_unit = Complex64::i();
-    let mut put = 0.0;
+  /// Eq. (49)'s range less each strike's `x`, as `(lower, width)`; `None` where it has no width.
+  fn range<M: FourierModelExt + ?Sized>(&self, model: &M, t: f64) -> Option<(f64, f64)> {
+    let cumulants = model.cumulants(t);
+    let half_width = cumulants.truncation_half_width(self.l);
+    half_width
+      .is_finite()
+      .then_some((cumulants.c1 - half_width, 2.0 * half_width))
+  }
+
+  /// Adds Eq. (19)'s terms to each live strike's put: `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at
+  /// every strike, so each term calls `chf` once.
+  fn put_sums<M: FourierModelExt + ?Sized>(
+    &self,
+    model: &M,
+    t: f64,
+    lower: f64,
+    bma: f64,
+    puts: &mut [PutSeries],
+  ) {
     for k_idx in 0..self.n.unwrap_or(MAX_TERMS) {
-      let kf = k_idx as f64;
-      let u = kf * PI / bma;
-
+      let u = k_idx as f64 * PI / bma;
       let phi = model.chf(t, Complex64::new(u, 0.0));
       if self.n.is_none() && k_idx >= MIN_TERMS && phi.norm_sqr() < CHF_FLOOR * CHF_FLOOR {
         break;
       }
-      let phi_y = phi * (i_unit * u * x).exp();
-      let f_k = (phi_y * (-i_unit * u * a).exp()).re;
-
+      let f_k = (phi * Complex64::new(0.0, -u * lower).exp()).re;
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
-      put += weight * f_k * put_coefficient(kf, a, b, bma, k);
+      let (weighted, denom) = (weight * f_k, 1.0 + u * u);
+      for put in puts.iter_mut().filter(|put| put.live) {
+        put.sum += weighted * put.coefficient(k_idx == 0, u, denom);
+      }
     }
+  }
+}
 
-    let put = (-r * t).exp() * put;
-    // The call's coefficients grow like `e^b`, the put's stay below `K`: Le Floc'h (2020), §3.
-    let price = match option_type {
-      OptionType::Call => put + s0 * (-q * t).exp() - k * (-r * t).exp(),
-      OptionType::Put => put,
+/// One strike's put series: Eq. (25) on `[a, min(b, 0)]`, its exponentials taken once, so a term
+/// costs one `sin_cos`; `χ_k` and `ψ_k` of Eqs. (22)–(23) at `c = a`.
+struct PutSeries {
+  live: bool,
+  inside: bool,
+  exp_a: f64,
+  exp_d: f64,
+  d_minus_a: f64,
+  scale: f64,
+  sum: f64,
+}
+
+impl PutSeries {
+  fn new(a: f64, bma: f64, strike: f64) -> Self {
+    let d = (a + bma).min(0.0);
+    Self {
+      live: priceable(strike),
+      // A NaN `a` stays in the sum, so its price is NaN.
+      inside: a < 0.0 || a.is_nan(),
+      exp_a: a.exp(),
+      exp_d: d.exp(),
+      d_minus_a: d - a,
+      scale: (2.0 / bma) * strike,
+      sum: 0.0,
+    }
+  }
+
+  /// `V_k` at `w = kπ/(b − a)` and `denom = 1 + w²`; zero where `a ≥ 0`, the put paying nothing.
+  fn coefficient(&self, first: bool, w: f64, denom: f64) -> f64 {
+    if !self.inside {
+      return 0.0;
+    }
+    let (chi, psi) = if first {
+      (self.exp_d - self.exp_a, self.d_minus_a)
+    } else {
+      let (sin_d, cos_d) = (w * self.d_minus_a).sin_cos();
+      let chi = (cos_d * self.exp_d - self.exp_a + w * (sin_d * self.exp_d)) / denom;
+      (chi, sin_d / w)
     };
-    if price.is_nan() {
-      return f64::NAN;
-    }
-    price.max(0.0)
+    self.scale * (psi - chi)
   }
 }
 
-/// Put payoff coefficient $V_k$ on $[a,b]\cap(-\infty,0]$, Fang-Oosterlee (2008) Eq. (30)
-/// for $a<0<b$.
-fn put_coefficient(kf: f64, a: f64, b: f64, bma: f64, strike: f64) -> f64 {
-  if a >= 0.0 {
-    return 0.0;
-  }
-  let (chi, psi) = chi_psi(kf, a, bma, a, b.min(0.0));
-  (2.0 / bma) * strike * (psi - chi)
+/// A spot or strike whose `ln` is finite, the only kind COS prices before expiry.
+fn priceable(x: f64) -> bool {
+  x.is_finite() && x > 0.0
 }
 
-/// Fang-Oosterlee (2008) Eq. (22)-(23): cosine-series coefficients of $e^y$
-/// (`chi`) and of the constant function `1` (`psi`) on `[c, d] ⊆ [a, b]`.
-fn chi_psi(kf: f64, a: f64, bma: f64, c: f64, d: f64) -> (f64, f64) {
-  if kf.abs() < 1e-14 {
-    return (d.exp() - c.exp(), d - c);
+/// The call's coefficients grow like `e^b`, the put's stay below `K`, so a call is the put and
+/// parity: Le Floc'h (2020), §3. A NaN stays NaN; any other price is floored at zero.
+fn discounted(
+  put_sum: f64,
+  s0: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  t: f64,
+  option_type: OptionType,
+) -> f64 {
+  let put = (-r * t).exp() * put_sum;
+  let price = match option_type {
+    OptionType::Call => put + s0 * (-q * t).exp() - k * (-r * t).exp(),
+    OptionType::Put => put,
+  };
+  if price.is_nan() {
+    return f64::NAN;
   }
-
-  let w = kf * PI / bma;
-  let (sin_d, cos_d) = (w * (d - a)).sin_cos();
-  let (sin_c, cos_c) = (w * (c - a)).sin_cos();
-
-  let chi =
-    (cos_d * d.exp() - cos_c * c.exp() + w * (sin_d * d.exp() - sin_c * c.exp())) / (1.0 + w * w);
-  let psi = (sin_d - sin_c) / w;
-
-  (chi, psi)
+  price.max(0.0)
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::pricing::bsm::BsmCoc;
-  use crate::pricing::bsm::BsmPricer;
-  use crate::pricing::fourier::BsmFourier;
-  use crate::pricing::fourier::GilPelaezPricer;
-  use crate::pricing::fourier::HestonFourier;
-  use crate::pricing::fourier::KouFourier;
-  use crate::pricing::heston::HestonParams;
-  use crate::pricing::heston::HestonPricer;
-  use crate::traits::ModelPricer;
-
-  /// Fang & Oosterlee (2008) §5.1: COS at `N = 256, L = 10` reproduces the closed-form BSM call.
-  #[test]
-  fn cos_bsm_matches_analytic() {
-    let model = BsmFourier { sigma: 0.25 };
-    let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
-    let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
-    assert!(
-      (price - expected).abs() < 1e-10,
-      "COS BSM: got={price}, expected={expected}"
-    );
-  }
-
-  #[test]
-  fn cos_heston_matches_quadrature() {
-    let model = HestonFourier::new(HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    });
-    let reference = HestonPricer::new(HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    })
-    .price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 1.5e-4).
-    let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
-    let gil_pelaez = GilPelaezPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
-    assert!(
-      (price - gil_pelaez).abs() < 1e-6,
-      "COS vs Gil-Pelaez (same chf): cos={price}, gil_pelaez={gil_pelaez}"
-    );
-    assert!(
-      (price - reference).abs() < 1e-6,
-      "COS Heston: got={price}, expected={reference}"
-    );
-  }
-
-  /// A chf still above `1e-9` at term 256 (`σ = 1`, `ρ = −0.9`, widened by `√c4`) takes more
-  /// terms by default; an explicit `n` is the sum of exactly `n` terms.
-  #[test]
-  fn the_default_adds_terms_until_the_chf_has_decayed() {
-    let model = HestonFourier::new(HestonParams {
-      v0: 0.02,
-      kappa: 0.5,
-      theta: 0.09,
-      sigma: 1.0,
-      rho: -0.9,
-    });
-    for k in [80.0, 100.0, 120.0] {
-      let want = model.price_put(100.0, k, 0.05, 0.01, 2.0);
-      let adaptive = CosEngine::default().price(&model, 100.0, k, 0.05, 0.01, 2.0, OptionType::Put);
-      let fixed =
-        CosEngine::new(256, 10.0).price(&model, 100.0, k, 0.05, 0.01, 2.0, OptionType::Put);
-      assert!(
-        (adaptive - want).abs() < 5e-6,
-        "K={k}: {adaptive} vs {want}"
-      );
-      assert!((fixed - want).abs() > 1e-3, "K={k}: {fixed} vs {want}");
-    }
-  }
-
-  #[test]
-  fn the_default_stops_at_256_terms_where_the_chf_has_decayed() {
-    let model = HestonFourier::new(HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    });
-    let adaptive =
-      CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Put);
-    let fixed =
-      CosEngine::new(256, 10.0).price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Put);
-    assert_eq!(adaptive, fixed);
-  }
-
-  #[test]
-  fn cos_kou_matches_gil_pelaez() {
-    let model = KouFourier {
-      sigma: 0.15,
-      lambda: 3.0,
-      p_up: 0.2,
-      eta1: 25.0,
-      eta2: 10.0,
-    };
-    let reference = GilPelaezPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
-    let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.01, 1.0, OptionType::Call);
-    assert!(
-      (price - reference).abs() < 1e-4,
-      "COS Kou: got={price}, expected={reference}"
-    );
-  }
-
-  #[test]
-  fn cos_put_call_parity() {
-    let model = BsmFourier { sigma: 0.2 };
-    let engine = CosEngine::default();
-    let call = engine.price(&model, 100.0, 95.0, 0.05, 0.03, 0.5, OptionType::Call);
-    let put = engine.price(&model, 100.0, 95.0, 0.05, 0.03, 0.5, OptionType::Put);
-    let parity = 100.0 * (-0.03_f64 * 0.5).exp() - 95.0 * (-0.05_f64 * 0.5).exp();
-    assert!(
-      (call - put - parity).abs() < 1e-8,
-      "put-call parity: call={call}, put={put}, parity={parity}"
-    );
-  }
-
-  #[test]
-  fn cos_converges_in_n() {
-    let model = BsmFourier { sigma: 0.25 };
-    let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
-    let err_small =
-      (CosEngine::new(64, 10.0).price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call)
-        - expected)
-        .abs();
-    let err_large =
-      (CosEngine::new(512, 10.0).price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call)
-        - expected)
-        .abs();
-    assert!(
-      err_small >= err_large,
-      "convergence in N: err(64)={err_small}, err(512)={err_large}"
-    );
-  }
-
-  /// Degenerate maturity `t=0` collapses `c2` (and `c4`) to zero, so the
-  /// truncation half-width is zero — the crate convention is `NaN`, never a
-  /// silently-wrong `0.0` (see `carr_madan_out_of_grid_returns_nan_not_zero`
-  /// in `super::super::tests` for the same convention elsewhere in this module).
-  #[test]
-  fn cos_invalid_cumulants_gives_nan() {
-    let model = BsmFourier { sigma: 0.25 };
-    let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 0.0, OptionType::Call);
-    assert!(
-      price.is_nan(),
-      "degenerate t=0 cumulants must give NaN, got {price}"
-    );
-  }
-
-  #[test]
-  #[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
-  fn cos_engine_new_rejects_nonpositive_l() {
-    CosEngine::new(256, 0.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
-  fn cos_engine_new_rejects_too_few_terms() {
-    CosEngine::new(1, 10.0);
-  }
-
-  /// A characteristic function that returns `NaN` (standing in for a
-  /// user-supplied model overflowing its own `chf`) must exit `price` as
-  /// `NaN`, not the `0.0` `f64::max` would silently produce by picking its
-  /// non-`NaN` operand — see [`CosEngine::price`]'s doc.
-  #[test]
-  fn cos_price_preserves_nan_from_chf_blowup() {
-    struct NanModel;
-    impl FourierModelExt for NanModel {
-      fn chf(&self, _t: f64, _xi: Complex64) -> Complex64 {
-        Complex64::new(f64::NAN, f64::NAN)
-      }
-
-      fn cumulants(&self, _t: f64) -> super::super::Cumulants {
-        super::super::Cumulants {
-          c1: 0.0,
-          c2: 0.04,
-          c4: Some(0.0),
-        }
-      }
-    }
-    let price =
-      CosEngine::default().price(&NanModel, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
-    assert!(
-      price.is_nan(),
-      "NaN chf must propagate to a NaN price, got {price}"
-    );
-  }
-
-  /// Le Floc'h (2020), arXiv:2005.13248, §3: a call's coefficients grow like `e^b`, so over a wide
-  /// range a call stays at the closed form only through the put and parity.
-  #[test]
-  fn cos_call_holds_over_a_wide_truncation_range() {
-    let model = BsmFourier { sigma: 0.2 };
-    let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
-    let engine = CosEngine::new(4096, 100.0);
-    for k in [80.0, 100.0, 120.0] {
-      let call = engine.price(&model, 100.0, k, 0.05, 0.01, 1.0, OptionType::Call);
-      let want = bsm.price_call(100.0, k, 0.05, 0.01, 1.0);
-      assert!((call - want).abs() < 1e-10, "K={k}: {call} vs {want}");
-    }
-  }
-
-  /// Where 0 falls outside [a, b] the payoff coefficients must clamp to the payoff's support.
-  #[test]
-  fn cos_matches_closed_form_at_wing_strikes() {
-    let model = BsmFourier { sigma: 0.2 };
-    let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
-    let engine = CosEngine::default();
-    for k in [40.0, 250.0] {
-      let call = engine.price(&model, 100.0, k, 0.05, 0.01, 0.05, OptionType::Call);
-      let put = engine.price(&model, 100.0, k, 0.05, 0.01, 0.05, OptionType::Put);
-      let (want_c, want_p) = (
-        bsm.price_call(100.0, k, 0.05, 0.01, 0.05),
-        bsm.price_put(100.0, k, 0.05, 0.01, 0.05),
-      );
-      assert!(
-        (call - want_c).abs() < 1e-9,
-        "K={k} call: {call} vs {want_c}"
-      );
-      assert!((put - want_p).abs() < 1e-9, "K={k} put: {put} vs {want_p}");
-    }
-  }
-}
+mod tests;

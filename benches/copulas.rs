@@ -1,5 +1,5 @@
-//! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the elliptical and vine
-//! samplers and cdfs, the nested Clayton sampler, the nested Archimedean density, the fits, the τ matrix and the GoF bootstrap.
+//! Copula hot paths: conditional-inversion sampling (closed form, Brent, Marshall–Olkin atom),
+//! elliptical, vine and nested Clayton samplers and cdfs, nested density, fits, τ matrix, GoF.
 
 use std::time::Duration;
 
@@ -67,7 +67,8 @@ fn dvine(d: usize) -> DVine {
   DVine::new(d, trees).unwrap()
 }
 
-/// BB1 (Clayton–Gumbel) on the first tree: no Gumbel pair exists, and BB1's `h_inverse` is a Brent solve.
+/// BB1 (Clayton–Gumbel) on the first tree: no Gumbel pair exists, and BB1's `h_inverse` is a Brent
+/// solve.
 fn cvine_bb1(d: usize) -> CVine {
   let trees = (0..d - 1)
     .map(|m| {

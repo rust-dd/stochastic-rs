@@ -440,5 +440,42 @@ pub(super) fn every_two_component_family() -> Vec<SystemProbe<2>> {
       lift: None,
       program: None,
     },
+    // Sub-Feller, so the signed variance of the full-truncation families goes below zero.
+    SystemProbe {
+      spec: EulerSpec::HestonFullTruncation([0.03, 0.5, 0.04, 1.0, -0.7, 0.5]),
+      x0: [100.0, 0.04],
+      lift: None,
+      program: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::LogHestonFullTruncation([0.03, 0.5, 0.04, 1.0, -0.7]),
+      x0: [100.0, 0.04],
+      lift: None,
+      program: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::BatesJumpFullTruncation([0.02, 0.02, 0.5, 1.0, -0.7]),
+      x0: [100.0, 0.04],
+      lift: None,
+      program: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::Bates1996FullTruncation([0.03, 0.02, 0.5, 1.0, -0.6]),
+      x0: [100.0, 0.04],
+      lift: None,
+      program: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::KouJumpHestonFullTruncation([0.02, 0.5, 0.04, 1.0, -0.7]),
+      x0: [100.0, 0.04],
+      lift: None,
+      program: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::TwoFactorSquareRootSchemes([0.5, 0.03, 1.0, 1.0, 0.01, 0.5, 0.0, 2.0]),
+      x0: [0.03, 0.01],
+      lift: None,
+      program: None,
+    },
   ]
 }

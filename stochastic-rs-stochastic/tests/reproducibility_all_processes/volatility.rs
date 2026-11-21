@@ -102,7 +102,7 @@ guard!(heston, "Heston", |s| Heston::new(
   N,
   Some(1.0),
   HestonPow::Sqrt,
-  VarianceBoundary::Floor,
+  VarianceBoundary::FullTruncation,
   s
 ));
 
@@ -116,7 +116,7 @@ guard!(heston2d, "Heston2D", |s| Heston2D::new(
   [0.5, -0.5, 0.0, 0.0, -0.5, 0.5],
   N,
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::FullTruncation,
   s
 ));
 
@@ -130,7 +130,7 @@ guard!(heston_log, "HestonLog", |s| HestonLog::new(
   100.0,
   0.04,
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::FullTruncation,
   s
 ));
 
@@ -163,7 +163,7 @@ guard!(hkde, "Hkde", |s| Hkde::new(
   N,
   100.0,
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::FullTruncation,
   s
 ));
 

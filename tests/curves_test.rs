@@ -1,9 +1,5 @@
-//! Comparison tests for the yield curve construction module.
-//!
-//! Discount factor / zero rate / forward rate identities verified analytically.
-//! Nelson-Siegel values verified against the `nelson_siegel_svensson` Python library (luphord).
-//! Bootstrapping values verified against CFA / AnalystPrep worked examples.
-//! Par rate verified against manual derivation.
+//! Yield-curve tests: discount, zero and forward identities and the par rate analytically,
+//! Nelson-Siegel against luphord's `nelson_siegel_svensson`, bootstrap against CFA / AnalystPrep.
 
 use ndarray::array;
 use stochastic_rs::quant::calendar::Frequency;
@@ -159,10 +155,8 @@ fn nelson_siegel_zero_rates_match_python_reference() {
     1.7170972656534174,
   );
 
-  // y(0) approaches beta0 + beta1 = 0.010188...
-  // y(1) = 0.012547870204470839
-  // y(2) = 0.015748555528558850
-  // y(3) = 0.018979558041460460
+  // y(0) approaches beta0 + beta1 = 0.010188...; y(1) = 0.012547870204470839,
+  // y(2) = 0.015748555528558850, y(3) = 0.018979558041460460.
   approx(ns.zero_rate(1.0), 0.012547870204470839, 1e-10);
   approx(ns.zero_rate(2.0), 0.015_748_555_528_558_85, 1e-10);
   approx(ns.zero_rate(3.0), 0.018_979_558_041_460_46, 1e-10);
@@ -249,9 +243,8 @@ fn bootstrap_deposits_simple_compounding() {
 
 #[test]
 fn bootstrap_deposit_plus_swap() {
-  // D(1) from deposit, D(2) from 2Y swap
-  // D(1) = 1/(1+0.056) = 0.946970
-  // D(2) = (1 - 0.058 * D(1)) / (1 + 0.058) = (1 - 0.054924) / 1.058
+  // D(1) = 1/(1+0.056) = 0.946970 from the deposit; D(2) from the 2Y swap is
+  // (1 - 0.058 * D(1)) / (1 + 0.058) = (1 - 0.054924) / 1.058.
   let instruments = vec![
     BootstrapInstrument::Deposit {
       maturity: 1.0,
@@ -278,9 +271,8 @@ fn bootstrap_deposit_plus_swap() {
 
 #[test]
 fn bootstrap_fra() {
-  // Deposit gives D(0.25), FRA gives D(0.50)
-  // D(0.25) = 1/(1 + 0.05 * 0.25)
-  // D(0.50) = D(0.25) / (1 + fra_rate * 0.25)
+  // The deposit gives D(0.25) = 1/(1 + 0.05 * 0.25); the FRA gives
+  // D(0.50) = D(0.25) / (1 + fra_rate * 0.25).
   let instruments = vec![
     BootstrapInstrument::Deposit {
       maturity: 0.25,
@@ -307,10 +299,8 @@ fn bootstrap_fra() {
 
 #[test]
 fn bootstrap_futures_with_convexity_adjustment() {
-  // Future price = 94.5, sigma = 0.01
-  // Futures rate = (100 - 94.5)/100 = 0.055
-  // Convexity adj = 0.5 * 0.01^2 * 0.25 * 0.50 = 0.00000625
-  // FRA rate = 0.055 - 0.00000625
+  // Future price 94.5, sigma 0.01: futures rate (100 - 94.5)/100 = 0.055, convexity adjustment
+  // 0.5 * 0.01^2 * 0.25 * 0.50 = 0.00000625, so the FRA rate is 0.055 - 0.00000625.
   let instruments = vec![
     BootstrapInstrument::Deposit {
       maturity: 0.25,

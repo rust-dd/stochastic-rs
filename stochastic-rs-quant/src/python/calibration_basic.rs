@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use super::parse_option_type;
 use crate::OptionQuote;
 use crate::OptionType;
+use crate::total_order::ascending;
 
 #[pyclass(name = "MarketSlice", from_py_object, unsendable)]
 #[derive(Clone)]
@@ -317,7 +318,7 @@ fn caplet_start(
   let atm = strikes
     .iter()
     .zip(vols)
-    .min_by(|a, b| (a.0 - forward).abs().total_cmp(&(b.0 - forward).abs()))
+    .min_by(|a, b| ascending(&(a.0 - forward).abs(), &(b.0 - forward).abs()))
     .map_or(0.2, |(_, &vol)| vol);
   let alpha = atm * forward.powf(1.0 - beta);
   if !(alpha.is_finite() && alpha > 0.0) {
