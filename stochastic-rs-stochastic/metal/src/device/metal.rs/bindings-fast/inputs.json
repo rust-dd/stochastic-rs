@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "c6928eff287263b9c99c23ca90fec2baf02c10437ecadec6c84a4cc4873e0c22",
+  "artifact": "0b5281bfff64981585f39f13c841ee03613ab9c614f07d865fb8cbadf80071e1",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -51,7 +51,7 @@
     "src/euler/families/definitions/lifts.rs": "af2317c9a7b710a2b6eb759470525dc5a3e1b565a09c2f60825861cd0c28a973",
     "src/euler/families/definitions/memory.rs": "f33d44ffd762dc9928e9306d4706bb5260bf869b4db72797c5c9901163ac107a",
     "src/euler/families/definitions/mod.rs": "8b09cf2f4dd0485d1fd4ac7689d3c5e61b9f227bfe925fd9834ffc105234010e",
-    "src/euler/families/definitions/multifactor.rs": "9d0b005b8d73012090c971ff7da0f124502cab2df3af36d6821d244cd35872e0",
+    "src/euler/families/definitions/multifactor.rs": "1158c20bfc880979b6083cde33965b8f271c196f0219b235e8451c5eca580126",
     "src/euler/families/definitions/systems.rs": "8b056d72dae2ba38a09b1f4bca30ffc9cf1c275e84bdb355cea6614b2c18868d",
     "src/euler/families/definitions/transformations.rs": "b6eb57a90bb9747dbd1dbdada8a79f944be9de13b5103a994f020c45cc0a3df8",
     "src/euler/families/definitions/truncations.rs": "e89c645392f5b42bf9803de0769eb64787b68bac22c95c9adbe8e7e0d6b5b3a1",
