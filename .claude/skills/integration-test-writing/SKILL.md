@@ -107,7 +107,7 @@ When a test asserts agreement with a paper's published table:
 
 ```rust
 /// Call price 6.8061 at (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
-/// Reference: Heston (1993), Rev. Financ. Stud. 6(2), Table 1, row 4, DOI 10.1093/rfs/6.2.327
+/// Reference: Heston (1993), RFS 6(2), 327-343, Table 1, row 4, DOI 10.1093/rfs/6.2.327
 #[test]
 fn heston_table1_row4() {
     // Model parameters on the struct.
