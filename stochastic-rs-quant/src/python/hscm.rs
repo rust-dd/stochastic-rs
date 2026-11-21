@@ -52,29 +52,11 @@ impl PyHscmModel {
     sigma_r: f64,
     rho2: f64,
   ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      if v0 <= 0.0 || theta_v <= 0.0 || sigma_v <= 0.0 || sigma_r <= 0.0 {
-        return Err(PyValueError::new_err(
-          "v0, theta_v, sigma_v, sigma_r must be > 0",
-        ));
-      }
-      if rho0.abs() >= 1.0 || rho2.abs() >= 1.0 || mu_r.abs() >= 1.0 {
-        return Err(PyValueError::new_err("|rho0|, |rho2|, |mu_r| must be < 1"));
-      }
-      Ok(Self {
-        inner: crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
-          v0,
-          kappa_v,
-          theta_v,
-          sigma_v,
-          rho0,
-          kappa_r,
-          mu_r,
-          sigma_r,
-          rho2,
-        },
-      })
-    })?
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: crate::pricing::heston_stoch_corr::HestonStochCorrPricer::new(
+        v0, kappa_v, theta_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2,
+      ),
+    })
   }
 
   /// Carr-Madan FFT call price.
