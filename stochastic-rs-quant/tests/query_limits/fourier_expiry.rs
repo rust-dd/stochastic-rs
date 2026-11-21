@@ -117,6 +117,30 @@ fn a_transform_surface_is_its_nodes_payoffs_at_expiry_and_nan_past_it() {
   }
 }
 
+/// The fractional grid is centred on `ln F_T`, which a spot that is not positive or a maturity
+/// that is not finite leaves without a finite value: no node has a strike, and none a price.
+#[test]
+fn a_fractional_surface_off_the_domain_has_no_finite_log_strike() {
+  let fractional = FrftCarrMadanPricer::new(256, 1.5, 0.25, 0.01);
+  for (s, tau) in [
+    (0.0, 1.0),
+    (-5.0, 1.0),
+    (f64::NAN, 1.0),
+    (110.0, f64::NAN),
+    (110.0, f64::INFINITY),
+  ] {
+    let (log_strikes, prices) = fractional.price_call_surface(&BSM, s, R, Q, tau);
+    assert_eq!((log_strikes.len(), prices.len()), (256, 256));
+    assert!(
+      log_strikes.iter().all(|k| !k.is_finite()) && prices.iter().all(|p| p.is_nan()),
+      "({s}, {tau}): {} to {}, {}",
+      log_strikes[0],
+      log_strikes[255],
+      prices[128]
+    );
+  }
+}
+
 /// Parity on a payoff rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`, and the put is 0.
 #[test]
 fn an_expired_put_is_its_payoff_and_not_parity_on_the_calls() {

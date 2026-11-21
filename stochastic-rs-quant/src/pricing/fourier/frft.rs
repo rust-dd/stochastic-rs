@@ -139,8 +139,8 @@ impl FrftCarrMadanPricer {
     }
   }
 
-  /// `(log_strikes, call_prices)` on the grid centred on `ln F_T + c₁`; a NaN `chf` leaves its
-  /// prices NaN; from expiry on, and for a spot that is not positive, the centre is `ln F_T`.
+  /// `(log_strikes, call_prices)` on the grid centred on `ln F_T + c₁`, on `ln F_T` from expiry on;
+  /// NaN prices for a NaN `chf`; no finite log-strike for `s ≤ 0` or a `t` that is not finite.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
