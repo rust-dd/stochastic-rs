@@ -11,7 +11,8 @@ pub enum QuantError {
     what: &'static str,
     reason: String,
   },
-  /// Quote `index` cannot be used (non-finite or non-positive strike, price or maturity, unknown maturity).
+  /// Quote `index` cannot be used: a non-finite or non-positive strike, price or maturity, or an
+  /// unknown maturity.
   InvalidQuote {
     index: usize,
     reason: String,
@@ -34,7 +35,7 @@ pub enum QuantError {
   NotPositiveDefinite {
     what: &'static str,
   },
-  /// The optimiser produced no usable iterate; non-convergence is `Ok(converged = false)`, not this.
+  /// The optimiser produced no usable iterate; non-convergence is `Ok(converged = false)` instead.
   Optimizer {
     what: &'static str,
     reason: String,

@@ -75,7 +75,7 @@ fn bsm_model_pricer_matches_pre_refactor_goldens() {
   }
 }
 
-/// `Asay1982` equals `Black1976` here (`b = 0`, discounted at `e^{−rτ}`): Asay's undiscounted
+/// `Asay1982` is `Black1976` here (`b = 0`, discounted at `e^{−rτ}`): Asay's (1982) undiscounted
 /// margined-futures convention is not implemented, and this pins it.
 #[test]
 fn bsm_asay_currently_equals_black76() {

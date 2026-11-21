@@ -1,4 +1,4 @@
-//! In 't Hout & Foulon's (2008) semi-discrete `U' = AU + b(t)` as `A0` (mixed), `A1` (`s`), `A2`
+//! In 't Hout & Foulon's (2008, §2.2, §2.4) `U' = AU + b(t)` as `A0` (mixed), `A1` (`s`), `A2`
 //! (`v`), sharing `−r_d u`; unknowns at `j·m1 + i − 1`, boundary vectors scaled by `e^{−r_f t}`.
 
 use super::grid::backward_first;

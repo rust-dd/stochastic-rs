@@ -19,7 +19,7 @@ pub(super) fn default_bias_corrected_m<T: RealExt>(mesh: T) -> usize {
 
 impl<T: RealExt> FmVol<T> {
   /// Default spot window `m = ⌊√N⌋`, balancing the Cesàro bias `~1/m` against the variance `~m/N`
-  /// (Malliavin & Mancino 2009, eq. 4.5); truncated so `m ≤ √N`, never past the crossover.
+  /// (Malliavin & Mancino 2009, eq. 4.5; Mancino & Recchioni 2015, §3), truncated so `m ≤ √N`.
   pub(super) fn resolve_m(&self, m: Option<usize>) -> usize {
     m.unwrap_or((self.n_freq as f64).sqrt() as usize)
   }
