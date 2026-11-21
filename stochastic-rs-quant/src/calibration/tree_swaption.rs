@@ -3,10 +3,8 @@
 //! Black–Karasinski reprices each quote on a [`BlackKarasinskiTree`] snapped to its levels, G2++ by
 //! Brigo & Mercurio's exact European; both fit Black-76 at-the-money-forward prices by Nelder–Mead.
 //!
-//! References: Brigo, D. & Mercurio, F. (2006), *Interest Rate Models — Theory
-//! and Practice*, 2nd ed., Springer, §3.5 (Black–Karasinski), §4.2 (G2++),
-//! Ch. 13 (lattices); Hull, J. & White, A. (1994), *Numerical Procedures for
-//! Implementing Term Structure Models I*, Journal of Derivatives 2(1), 7–16.
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §3.5 and §4.2, DOI 10.1007/978-3-540-34604-3
+//! Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, DOI 10.3905/jod.1994.407902
 
 use std::convert::Infallible;
 

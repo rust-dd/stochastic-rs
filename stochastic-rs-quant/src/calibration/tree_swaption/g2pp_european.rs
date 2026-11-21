@@ -7,8 +7,9 @@
 //! \qquad\sum_{i=1}^{n}c_i\,A(T,t_i)\,e^{-B(a,T,t_i)\,x-B(b,T,t_i)\,\bar y(x)}=1
 //! $$
 //!
-//! Reference: Brigo & Mercurio (2006), 2nd ed., §4.2.4, p. 158, as restated in QuantLib's `G2`
-//! (`ql/models/shortrate/twofactormodels/g2.cpp`) and by Acar & Natcheva-Acar (2009), Thm 1.1–1.3
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §4.2.4, p. 158, DOI 10.1007/978-3-540-34604-3
+//! Reference: QuantLib, `ql/models/shortrate/twofactormodels/g2.cpp`, `G2::swaption` and `G2::V`
+//! Reference: Acar & Natcheva-Acar (2009), Berichte des Fraunhofer ITWM 170, Thm 1.1–1.3
 
 use std::cell::Cell;
 use std::sync::OnceLock;
