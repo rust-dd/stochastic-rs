@@ -5,7 +5,7 @@
 //! \qquad G=\exp\!\Bigl(\tfrac1\tau\int_0^\tau\ln S_t\,dt\Bigr),\qquad b=r-q
 //! $$
 //!
-//! Reference: Kemna, A. & Vorst, A. (1990), "A Pricing Method for Options Based on Average Asset Values", J. Banking & Finance 14(1), 113–129
+//! Reference: Kemna & Vorst (1990), J. Banking & Finance 14(1), 113–129
 
 use stochastic_rs_distributions::special::norm_cdf;
 

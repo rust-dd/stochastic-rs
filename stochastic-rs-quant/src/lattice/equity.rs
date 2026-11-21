@@ -99,7 +99,7 @@ impl<T: RealExt> CrrModel<T> {
 
   /// American price by comparing continuation with exercise at every node.
   ///
-  /// Reference: Cox, J., Ross, S. & Rubinstein, M. (1979), "Option Pricing: A Simplified Approach", J. Financial Economics 7(3), 229–263
+  /// Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
   pub fn price_american(&self, s: T, k: T, r: T, q: T, tau: T, option_type: OptionType) -> T {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::American)
   }

@@ -127,8 +127,8 @@ pub struct GeometricBasketPricer {
 }
 
 impl GeometricBasketPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and `≥ 0` and every
-  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and
+  /// `≥ 0` and `rho` in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
     assert_basket_model(&weights, &sigma, &rho);
     Self {
@@ -272,8 +272,8 @@ pub struct ArithmeticBasketLevyPricer {
 }
 
 impl ArithmeticBasketLevyPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and `≥ 0` and every
-  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and
+  /// `≥ 0` and `rho` in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
     assert_basket_model(&weights, &sigma, &rho);
     Self {

@@ -1,4 +1,4 @@
-"""The non-exotic pricers at expiry, Kemna and Vorst's geometric Asian, and a barrier at zero volatility."""
+"""The pricers at expiry, Kemna and Vorst's geometric Asian, and a barrier at zero volatility."""
 
 import math
 
