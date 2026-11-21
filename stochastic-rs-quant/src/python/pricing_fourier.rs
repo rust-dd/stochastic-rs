@@ -399,8 +399,8 @@ fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<DynFourierModel> {
   )))
 }
 
-/// Fang-Oosterlee (2008) COS pricer for any Fourier model of this module. `n=None`, the default,
-/// adds terms until the characteristic function has decayed; `l` is the range half-width.
+/// Fang-Oosterlee (2008) COS pricer; `n=None`, the default, adds terms until the chf has decayed.
+/// `l` is their L: the range spans `l` cumulant standard deviations either side, 10 by default.
 #[pyclass(name = "CosEngine", unsendable)]
 pub struct PyCosEngine {
   inner: crate::pricing::fourier::CosEngine,
