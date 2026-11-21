@@ -119,7 +119,7 @@ mod tests {
   use super::*;
   use crate::traits::ModelPricer;
 
-  /// At expiry too, where parity on a call rounds `(0.3, 0.1)`'s payoff of 0 to `-2.8e-17`.
+  /// At expiry it is the payoff, where parity on a call rounds `(1.1, 0.3)`'s 0 to `-5.6e-17`.
   #[test]
   fn a_levy_models_put_is_its_members_to_the_bit() {
     let types = [
@@ -130,7 +130,7 @@ mod tests {
       LevyModelType::Kou,
     ];
     for model in types.map(|model| LevyModel::of(model, &default_params(model))) {
-      for (s, k, tau) in [(0.3, 0.1, 0.0), (100.0, 110.0, 0.0), (100.0, 110.0, 1.0)] {
+      for (s, k, tau) in [(1.1, 0.3, 0.0), (100.0, 110.0, 0.0), (100.0, 110.0, 1.0)] {
         let member = match &model {
           LevyModel::VarianceGamma(m) => m.price_put(s, k, 0.05, 0.01, tau),
           LevyModel::Nig(m) => m.price_put(s, k, 0.05, 0.01, tau),
@@ -144,6 +144,9 @@ mod tests {
           member.to_bits(),
           "{model:?} at ({s}, {k}, {tau})"
         );
+        if tau == 0.0 {
+          assert_eq!(own, f64::max(k - s, 0.0), "{model:?} at ({s}, {k})");
+        }
       }
     }
   }
