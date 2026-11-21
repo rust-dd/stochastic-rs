@@ -320,6 +320,8 @@ impl PyHestonSlvCalibrationResult {
   }
 }
 
+/// `method` is `"particle"` (tuned by `n_particles`, `seed`, `bandwidth_*`) or `"fokker_planck"`
+/// (by `log_spot_nodes`, `variance_nodes`, `inner_iterations`); `steps_per_year` tunes both.
 #[pyclass(name = "HestonSlvCalibrator")]
 pub struct PyHestonSlvCalibrator {
   inner: HestonSlvCalibrator<Deterministic>,
@@ -345,8 +347,8 @@ impl PyHestonSlvCalibrator {
 
 #[pymethods]
 impl PyHestonSlvCalibrator {
-  /// `calls[j, i]` is at `maturities[j]`, `strikes[i]`; `heston` pins, `heston_initial_guess` seeds
-  /// the Heston fit; `local_vol` overrides Dupire's; `method` is `"particle"` or `"fokker_planck"`.
+  /// `calls[j, i]`: present call at `maturities[j]`, `strikes[i]`; `local_vol` replaces Dupire's;
+  /// `heston` pins and `heston_initial_guess` seeds Heston's `(v0, kappa, theta, sigma, rho)`.
   #[new]
   #[pyo3(signature = (s, r, q, strikes, maturities, calls, eta=1.0, heston=None, heston_initial_guess=None, local_vol=None, dupire_eps=1e-6, method="particle", n_particles=100_000, steps_per_year=200, seed=42, bandwidth_factor=1.5, bandwidth_t_min=0.25, log_spot_nodes=201, variance_nodes=100, inner_iterations=2))]
   fn new(
