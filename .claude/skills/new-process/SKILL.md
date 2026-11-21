@@ -306,7 +306,7 @@ seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`
 
 **4a. Device law** — a leaf file of `tests/device_law/`: `<group>.rs`, or
 `<group>/<part>.rs` for the three groups that are thin parents (`fractional/{correlated,driven,volterra}.rs`,
-`levy/{arrivals,subordinators}.rs`, `systems/{affine,heston,jumps,regimes,volatility}.rs`); never the
+`levy/{arrivals,subordinators}.rs`, `systems/{affine,heston,heston_hull_white_2f,jumps,regimes,volatility}.rs`); never the
 parent. A new group is declared `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
 `tests/device_law.rs`. The binary is gated `#![cfg(device_backend)]` (an alias the crate's
 `build.rs` emits) and is `f32` throughout. Groups — pick by what the comparison must allow for,
