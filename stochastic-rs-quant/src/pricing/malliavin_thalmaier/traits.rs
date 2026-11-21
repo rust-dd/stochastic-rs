@@ -122,7 +122,9 @@ mod tests {
       tau: 1.0,
       n_steps: 100,
     };
-    let paths = p.sample_with_seed(0x7a_17_01);
+    let paths = p.sample(&stochastic_rs_core::simd_rng::Deterministic::new(
+      0x7a_17_01,
+    ));
 
     let gamma = malliavin_cov_generic(&paths, cross.view(), 1.0);
     assert!(gamma[[0, 0]] > 0.0);

@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::HestonMalliavinConfig;
 use super::HestonMalliavinEstimator;
 use super::HestonModel;
@@ -6,11 +8,11 @@ use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
 
-fn config() -> HestonMalliavinConfig {
+fn config() -> HestonMalliavinConfig<Deterministic> {
   HestonMalliavinConfig {
     paths: 140_000,
     steps: 64,
-    seed: 8_675_309,
+    seed: Deterministic::new(8_675_309),
     initial_variance_bump: 1e-4,
     minimum_relative_initial_variance_bump: 0.03,
     minimum_integrated_variance: 1e-14,
@@ -57,7 +59,7 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
     tau: 0.5,
   };
   let strike = 100.0;
-  let estimator = HestonMalliavinEstimator::new(model, config()).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, config());
   let result = estimator.estimate(&VanillaPortfolio::call(strike)).unwrap();
   let spot_bump = 0.1;
   let variance_bump = 1e-5;

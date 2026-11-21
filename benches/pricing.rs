@@ -442,14 +442,15 @@ fn bench_malliavin_thalmaier(c: &mut Criterion) {
   group
     .sample_size(10)
     .measurement_time(Duration::from_secs(10));
-  let engine = MtGreeks::new(mt_paper_params(), 0.01, 2_000);
+  let engine =
+    MtGreeks::new(mt_paper_params(), 0.01, 2_000).with_seed(Deterministic::new(0x1580_0011));
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
   group.bench_function("mt_delta_2k_paths", |b| {
     b.iter(|| {
       black_box(&engine)
-        .try_delta_with_seed(black_box(&payoff), black_box(0), black_box(0x1580_0011))
+        .try_delta(black_box(&payoff), black_box(0))
         .unwrap()
     })
   });

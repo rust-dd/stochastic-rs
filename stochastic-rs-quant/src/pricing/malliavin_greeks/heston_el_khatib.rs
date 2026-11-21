@@ -1,6 +1,5 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -17,7 +16,7 @@ pub(super) struct HestonElKhatibPath {
   pub(super) dw_v: Array1<f64>,
 }
 
-impl HestonMalliavinGreeks {
+impl<S: SeedExt> HestonMalliavinGreeks<S> {
   fn sample_el_khatib_path(
     &self,
     normal_s: &mut Seeded<SimdNormal<f64>>,
@@ -173,23 +172,9 @@ impl HestonMalliavinGreeks {
     }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
-    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Unseeded);
-    let mut normal_perp = SimdNormal::new(0.0, sqrt_dt).seeded(&Unseeded);
-
-    self.delta_el_khatib_from_normals(&mut normal_s, &mut normal_perp)
-  }
-
-  /// Seeded variant of [`delta_el_khatib`](Self::delta_el_khatib) for reproducible
-  /// tests and benchmarks.
-  pub fn delta_el_khatib_with_seed(&self, seed: u64) -> McEstimate<f64> {
-    if self.degenerate_query() {
-      return undefined();
-    }
-    let dt = self.tau / (self.n_steps - 1) as f64;
-    let sqrt_dt = dt.sqrt();
-    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Deterministic::new(seed));
-    let mut normal_perp =
-      SimdNormal::new(0.0, sqrt_dt).seeded(&Deterministic::new(seed ^ 0x9E37_79B9_7F4A_7C15));
+    let seed = self.seed.clone();
+    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&seed.derive());
+    let mut normal_perp = SimdNormal::new(0.0, sqrt_dt).seeded(&seed.derive());
 
     self.delta_el_khatib_from_normals(&mut normal_s, &mut normal_perp)
   }

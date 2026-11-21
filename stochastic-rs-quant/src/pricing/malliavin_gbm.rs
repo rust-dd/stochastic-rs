@@ -128,10 +128,10 @@ impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
 /// grid may contain.
 impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
-impl<S: SeedExt> GbmMalliavinPricer<S> {
+impl GbmMalliavinPricer {
   /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
   /// `n_paths >= 1`, `n_steps >= 2` and `t_eval` is finite and `> 0`; `t_eval < tau` is per query.
-  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
+  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
     assert!(
       sigma.is_finite() && sigma >= 0.0,
       "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
@@ -153,6 +153,18 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       n_paths,
       n_steps,
       t_eval,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> GbmMalliavinPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> GbmMalliavinPricer<S2> {
+    GbmMalliavinPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      t_eval: self.t_eval,
       seed,
     }
   }

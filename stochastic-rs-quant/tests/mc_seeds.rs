@@ -20,6 +20,18 @@ use stochastic_rs_quant::pricing::cliquet::McCliquetPricer;
 use stochastic_rs_quant::pricing::exotic::AutocallableNote;
 use stochastic_rs_quant::pricing::exotic::BarrierOption;
 use stochastic_rs_quant::pricing::exotic::CliquetOption;
+use stochastic_rs_quant::pricing::heston::HestonParams;
+use stochastic_rs_quant::pricing::heston_malliavin::HestonMalliavinConfig;
+use stochastic_rs_quant::pricing::heston_malliavin::HestonMalliavinEstimator;
+use stochastic_rs_quant::pricing::heston_malliavin::HestonModel;
+use stochastic_rs_quant::pricing::heston_malliavin::VanillaPortfolio;
+use stochastic_rs_quant::pricing::malliavin_gbm::GbmMalliavinPricer;
+use stochastic_rs_quant::pricing::malliavin_greeks::GbmMalliavinGreeks;
+use stochastic_rs_quant::pricing::malliavin_greeks::HestonMalliavinGreeks;
+use stochastic_rs_quant::pricing::malliavin_thalmaier::AssetParams;
+use stochastic_rs_quant::pricing::malliavin_thalmaier::MtGreeks;
+use stochastic_rs_quant::pricing::malliavin_thalmaier::MtPayoff;
+use stochastic_rs_quant::pricing::malliavin_thalmaier::MultiHestonParams;
 use stochastic_rs_quant::pricing::rainbow::McRainbowPricer;
 use stochastic_rs_quant::pricing::rainbow::RainbowPayoff;
 use stochastic_rs_quant::pricing::spread::McSpreadPricer;
@@ -246,4 +258,88 @@ fn every_monte_carlo_estimator_is_seeded_the_same_way() {
     first,
     generate_gbm_paths(100.0, 0.05, 0.0, 0.2, 1.0, 500, 20, &shared)
   );
+}
+
+#[test]
+fn every_malliavin_estimator_is_seeded_the_same_way() {
+  let heston = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
+  let g = HestonMalliavinGreeks::new(heston, 100.0, 100.0, 0.03, 1.0, 400, 16)
+    .with_seed(Deterministic::new(9));
+  assert_eq!(
+    g.delta_el_khatib(),
+    g.delta_el_khatib(),
+    "El-Khatib draws both streams from the estimator's seed"
+  );
+  assert_eq!(g.delta(), g.delta());
+  assert_eq!(g.vega_v0(), g.vega_v0());
+  let gbm = GbmMalliavinGreeks {
+    s: 100.0,
+    sigma: 0.2,
+    r: 0.03,
+    q: 0.0,
+    tau: 1.0,
+    k: 100.0,
+    n_paths: 500,
+    n_steps: 16,
+    seed: Deterministic::new(4),
+  };
+  assert_eq!(gbm.gamma(), gbm.gamma());
+  let pricer = GbmMalliavinPricer::new(0.2, 500, 16, 0.5).with_seed(Deterministic::new(6));
+  assert_eq!(
+    pricer.price_call(100.0, 100.0, 0.03, 0.0, 1.0),
+    pricer.price_call(100.0, 100.0, 0.03, 0.0, 1.0)
+  );
+
+  let model = HestonModel {
+    s: 100.0,
+    params: heston,
+    risk_free_rate: 0.03,
+    dividend_yield: 0.0,
+    tau: 1.0,
+  };
+  let config = HestonMalliavinConfig {
+    paths: 1_000,
+    steps: 8,
+    ..HestonMalliavinConfig::default()
+  };
+  let estimator = HestonMalliavinEstimator::new(model, config.with_seed(Deterministic::new(71)));
+  let call = VanillaPortfolio::call(100.0);
+  assert_eq!(
+    estimator.estimate(&call).unwrap(),
+    estimator.estimate(&call).unwrap()
+  );
+
+  let asset = |vol: f64| AssetParams {
+    s: 100.0,
+    v0: vol * vol,
+    kappa: 1.0,
+    theta: vol * vol,
+    xi: 0.0,
+    rho: 0.0,
+  };
+  let mut cross_corr = Array2::<f64>::eye(2);
+  cross_corr[[0, 1]] = 0.2;
+  cross_corr[[1, 0]] = 0.2;
+  let params = MultiHestonParams {
+    assets: vec![asset(0.25), asset(0.2)],
+    cross_corr,
+    r: 0.0,
+    tau: 1.0,
+    n_steps: 9,
+  };
+  let mt = MtGreeks::new(params, 0.01, 200).with_seed(Deterministic::new(42));
+  let put = MtPayoff::DigitalPut2D {
+    strikes: [100.0, 100.0],
+  };
+  assert_eq!(
+    mt.cross_gamma(&put, 0, 1).to_bits(),
+    mt.cross_gamma(&put, 0, 1).to_bits()
+  );
+  assert_eq!(mt.all_deltas(&put), mt.all_deltas(&put));
 }

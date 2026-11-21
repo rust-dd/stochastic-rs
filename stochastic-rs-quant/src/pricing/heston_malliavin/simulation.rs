@@ -1,9 +1,9 @@
 //! Full-truncation Heston path simulation for Malliavin weights.
 
+use stochastic_rs_core::simd_rng::SeedExt;
+
 use super::HestonMalliavinConfig;
 use super::HestonModel;
-use super::invalid_input;
-use super::variance_vega::effective_initial_variance_bump;
 use crate::QuantError;
 use crate::pricing::heston::HestonParams;
 
@@ -129,48 +129,63 @@ pub(super) fn assert_model(model: HestonModel) {
   );
 }
 
-pub(super) fn validate_config(
-  model: HestonModel,
-  config: HestonMalliavinConfig,
-) -> Result<(), QuantError> {
-  if config.paths < 4 || !config.paths.is_multiple_of(2) {
-    return Err(invalid_input(format!(
-      "paths must be even and at least four, got {}",
-      config.paths
-    )));
-  }
-  if config.steps == 0 {
-    return Err(invalid_input("steps must be positive, got 0"));
-  }
-  effective_initial_variance_bump(
-    model.params.v0,
-    config.initial_variance_bump,
-    config.minimum_relative_initial_variance_bump,
-  )?;
-  let floor = config.minimum_integrated_variance;
-  if !floor.is_finite() || floor <= 0.0 {
-    return Err(invalid_input(format!(
-      "minimum_integrated_variance must be finite and positive, got {floor}"
-    )));
-  }
-  let floor = config.minimum_conditional_variance;
-  if !floor.is_finite() || floor <= 0.0 {
-    return Err(invalid_input(format!(
-      "minimum_conditional_variance must be finite and positive, got {floor}"
-    )));
-  }
-  let fraction = config.minimum_orthogonal_variance_fraction;
-  if !fraction.is_finite() || fraction <= 0.0 || fraction >= 1.0 {
-    return Err(invalid_input(format!(
-      "minimum_orthogonal_variance_fraction must lie in (0, 1), got {fraction}"
-    )));
-  }
-  let orthogonal = 1.0 - model.params.rho.powi(2);
-  if orthogonal < fraction {
-    return Err(invalid_input(format!(
-      "rho leaves too little orthogonal variance for a stable Malliavin score: 1 - rho^2 = \
-       {orthogonal:e} is below minimum_orthogonal_variance_fraction = {fraction}"
-    )));
-  }
-  Ok(())
+pub(super) fn assert_config<S: SeedExt>(model: HestonModel, config: &HestonMalliavinConfig<S>) {
+  let HestonMalliavinConfig {
+    paths,
+    steps,
+    initial_variance_bump: bump,
+    minimum_relative_initial_variance_bump: relative,
+    minimum_integrated_variance: integrated,
+    minimum_conditional_variance: conditional,
+    minimum_orthogonal_variance_fraction: fraction,
+    ..
+  } = *config;
+  assert!(
+    paths >= 4 && paths.is_multiple_of(2),
+    "paths must satisfy `paths >= 4 && paths.is_multiple_of(2)`, got paths = {paths:?}"
+  );
+  assert!(
+    steps >= 1,
+    "steps must satisfy `steps >= 1`, got steps = {steps:?}"
+  );
+  assert!(
+    bump.is_finite() && bump > 0.0,
+    "initial_variance_bump must satisfy `initial_variance_bump.is_finite() && \
+     initial_variance_bump > 0.0`, got initial_variance_bump = {bump:?}"
+  );
+  assert!(
+    (0.0..1.0).contains(&relative),
+    "minimum_relative_initial_variance_bump must satisfy \
+     `(0.0..1.0).contains(&minimum_relative_initial_variance_bump)`, got \
+     minimum_relative_initial_variance_bump = {relative:?}"
+  );
+  let effective = bump.max(relative * model.params.v0);
+  assert!(
+    effective < model.params.v0,
+    "the effective initial-variance bump must satisfy `max(initial_variance_bump, \
+     minimum_relative_initial_variance_bump * v0) < v0`, got {effective:?} against v0 = {:?}",
+    model.params.v0
+  );
+  assert!(
+    integrated.is_finite() && integrated > 0.0,
+    "minimum_integrated_variance must satisfy `minimum_integrated_variance.is_finite() && \
+     minimum_integrated_variance > 0.0`, got minimum_integrated_variance = {integrated:?}"
+  );
+  assert!(
+    conditional.is_finite() && conditional > 0.0,
+    "minimum_conditional_variance must satisfy `minimum_conditional_variance.is_finite() && \
+     minimum_conditional_variance > 0.0`, got minimum_conditional_variance = {conditional:?}"
+  );
+  assert!(
+    fraction > 0.0 && fraction < 1.0,
+    "minimum_orthogonal_variance_fraction must satisfy `minimum_orthogonal_variance_fraction > \
+     0.0 && minimum_orthogonal_variance_fraction < 1.0`, got \
+     minimum_orthogonal_variance_fraction = {fraction:?}"
+  );
+  let rho = model.params.rho;
+  assert!(
+    1.0 - rho.powi(2) >= fraction,
+    "rho must satisfy `1.0 - rho.powi(2) >= minimum_orthogonal_variance_fraction`, got rho = \
+     {rho:?} against minimum_orthogonal_variance_fraction = {fraction:?}"
+  );
 }

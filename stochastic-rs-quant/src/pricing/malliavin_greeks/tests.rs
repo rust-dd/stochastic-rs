@@ -1,3 +1,6 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
+
 use super::*;
 use crate::pricing::heston::HestonParams;
 
@@ -12,6 +15,7 @@ fn gbm_delta_positive_for_call() {
     k: 100.0,
     n_paths: 50_000,
     n_steps: 252,
+    seed: Unseeded,
   };
   let delta = greeks.delta().mean;
   assert!(
@@ -31,6 +35,7 @@ fn gbm_gamma_positive() {
     k: 100.0,
     n_paths: 50_000,
     n_steps: 252,
+    seed: Unseeded,
   };
   let gamma = greeks.gamma().mean;
   assert!(gamma > 0.0, "Call gamma should be > 0, got {gamma}");
@@ -47,6 +52,7 @@ fn gbm_vega_positive() {
     k: 100.0,
     n_paths: 50_000,
     n_steps: 252,
+    seed: Unseeded,
   };
   let vega = greeks.vega().mean;
   assert!(vega > 0.0, "Call vega should be > 0, got {vega}");
@@ -63,6 +69,7 @@ fn gbm_all_greeks_consistent() {
     k: 100.0,
     n_paths: 100_000,
     n_steps: 252,
+    seed: Unseeded,
   };
   let g = greeks.all_greeks();
   // BS analytical: Delta ~ 0.64, Gamma ~ 0.019, Vega ~ 37.5, Rho ~ 53.2
@@ -136,7 +143,10 @@ fn heston_delta_el_khatib_gbm_limit() {
     20_000,
     64,
   );
-  let delta = greeks.delta_el_khatib_with_seed(0x5EED).mean;
+  let delta = greeks
+    .with_seed(Deterministic::new(0x5EED))
+    .delta_el_khatib()
+    .mean;
   assert!(
     delta > 0.3 && delta < 0.9,
     "El-Khatib delta should reduce to the Gbm Malliavin range, got {delta}"
@@ -160,7 +170,10 @@ fn heston_delta_el_khatib_full_kernel_finite() {
     2_000,
     32,
   );
-  let delta = greeks.delta_el_khatib_with_seed(0xDEC0DE).mean;
+  let delta = greeks
+    .with_seed(Deterministic::new(0xDEC0DE))
+    .delta_el_khatib()
+    .mean;
   assert!(
     delta.is_finite() && delta.abs() < 5.0,
     "El-Khatib delta should stay finite under the full kernel, got {delta}"
@@ -250,6 +263,7 @@ fn gbm_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
     k: 100.0,
     n_paths: 64,
     n_steps: 16,
+    seed: Unseeded,
   };
   let degenerate = [
     GbmMalliavinGreeks {
@@ -323,7 +337,10 @@ fn heston_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
       h.delta_pathwise().mean,
       h.gamma().mean,
       h.vega_v0().mean,
-      h.delta_el_khatib_with_seed(7).mean,
+      h.clone()
+        .with_seed(Deterministic::new(7))
+        .delta_el_khatib()
+        .mean,
       all.delta,
       all.gamma,
       all.vega,
@@ -357,6 +374,7 @@ fn every_malliavin_greek_carries_its_standard_error() {
     k: 100.0,
     n_paths: 2_000,
     n_steps: 32,
+    seed: Unseeded,
   };
   let params = HestonParams {
     v0: 0.04,
@@ -375,7 +393,10 @@ fn every_malliavin_greek_carries_its_standard_error() {
     heston.delta_pathwise(),
     heston.gamma(),
     heston.vega_v0(),
-    heston.delta_el_khatib_with_seed(5),
+    heston
+      .clone()
+      .with_seed(Deterministic::new(5))
+      .delta_el_khatib(),
   ];
   for estimate in estimates {
     assert!(

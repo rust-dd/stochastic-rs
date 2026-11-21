@@ -1,11 +1,12 @@
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::greeks::MtGreeks;
 use super::payoff::MtPayoff;
 use crate::QuantError;
 use crate::traits::FloatExt;
 
-impl<T: FloatExt> MtGreeks<T> {
+impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
   /// Delta for one asset using exact conditional Malliavin weights.
   ///
   /// This compatibility wrapper panics when the model is outside the supported
@@ -25,34 +26,17 @@ impl<T: FloatExt> MtGreeks<T> {
   /// shock is correlated with the price noise and needs the full Skorohod
   /// derivative of the variance path.
   pub fn try_delta(&self, payoff: &MtPayoff<T>, asset: usize) -> Result<T, QuantError> {
-    self.validate_delta_request(payoff, Some(asset))?;
-    self.try_delta_from_sampler(payoff, asset, || self.params.sample())
+    self.try_delta_at(payoff, asset, &self.path_seeds())
   }
 
-  /// Deterministic Delta estimator for reproducible tests and benchmarks.
-  ///
-  /// This compatibility wrapper has the same supported scope as [`Self::delta`]
-  /// and panics outside it. Use [`Self::try_delta_with_seed`] to handle errors.
-  pub fn delta_with_seed(&self, payoff: &MtPayoff<T>, asset: usize, seed: u64) -> T {
-    self
-      .try_delta_with_seed(payoff, asset, seed)
-      .unwrap_or_else(|e| panic!("{e}"))
-  }
-
-  /// Fallible deterministic variant of [`Self::try_delta`].
-  pub fn try_delta_with_seed(
+  pub(super) fn try_delta_at(
     &self,
     payoff: &MtPayoff<T>,
     asset: usize,
-    seed: u64,
+    seeds: &[u64],
   ) -> Result<T, QuantError> {
     self.validate_delta_request(payoff, Some(asset))?;
-    let mut seed_state = seed;
-    self.try_delta_from_sampler(payoff, asset, || {
-      self
-        .params
-        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
-    })
+    self.try_delta_from_sampler(payoff, asset, self.sampler(seeds))
   }
 
   fn try_delta_from_sampler<F>(
@@ -119,33 +103,8 @@ impl<T: FloatExt> MtGreeks<T> {
   /// Fallible single-pass estimator of every Delta.
   pub fn try_all_deltas(&self, payoff: &MtPayoff<T>) -> Result<Array1<T>, QuantError> {
     self.validate_delta_request(payoff, None)?;
-    self.try_all_deltas_from_sampler(payoff, || self.params.sample())
-  }
-
-  /// Deterministic variant of [`Self::all_deltas`].
-  ///
-  /// This compatibility wrapper panics outside the supported scope. Use
-  /// [`Self::try_all_deltas_with_seed`] for a fallible result.
-  pub fn all_deltas_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> Vec<T> {
-    self
-      .try_all_deltas_with_seed(payoff, seed)
-      .unwrap_or_else(|e| panic!("{e}"))
-      .to_vec()
-  }
-
-  /// Fallible deterministic variant of [`Self::try_all_deltas`].
-  pub fn try_all_deltas_with_seed(
-    &self,
-    payoff: &MtPayoff<T>,
-    seed: u64,
-  ) -> Result<Array1<T>, QuantError> {
-    self.validate_delta_request(payoff, None)?;
-    let mut seed_state = seed;
-    self.try_all_deltas_from_sampler(payoff, || {
-      self
-        .params
-        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
-    })
+    let seeds = self.path_seeds();
+    self.try_all_deltas_from_sampler(payoff, self.sampler(&seeds))
   }
 
   fn try_all_deltas_from_sampler<F>(

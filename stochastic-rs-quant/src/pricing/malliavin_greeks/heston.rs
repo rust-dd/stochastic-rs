@@ -18,7 +18,7 @@ use crate::traits::ProcessExt;
 /// Malliavin-weighted Greeks of a European call under Heston dynamics; every estimator is NaN for a
 /// spot or horizon that is not finite and positive or a non-finite rate.
 #[derive(Debug, Clone)]
-pub struct HestonMalliavinGreeks {
+pub struct HestonMalliavinGreeks<S: SeedExt = Unseeded> {
   /// Spot price.
   pub s: f64,
   pub params: HestonParams,
@@ -32,6 +32,8 @@ pub struct HestonMalliavinGreeks {
   pub n_paths: usize,
   /// Number of time steps
   pub n_steps: usize,
+  /// Each estimator simulates from a clone, so a `Deterministic` seed replays its paths.
+  pub seed: S,
 }
 
 impl HestonMalliavinGreeks {
@@ -62,6 +64,22 @@ impl HestonMalliavinGreeks {
       tau,
       n_paths,
       n_steps,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> HestonMalliavinGreeks<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> HestonMalliavinGreeks<S2> {
+    HestonMalliavinGreeks {
+      s: self.s,
+      params: self.params,
+      r: self.r,
+      k: self.k,
+      tau: self.tau,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      seed,
     }
   }
 
@@ -74,7 +92,7 @@ impl HestonMalliavinGreeks {
     !(query && self.r.is_finite())
   }
 
-  fn process<S: SeedExt>(&self, v0: f64, seed: S) -> Heston<f64, Euler, S> {
+  fn process<P: SeedExt>(&self, v0: f64, seed: P) -> Heston<f64, Euler, P> {
     let HestonParams {
       kappa,
       theta,
@@ -110,7 +128,7 @@ impl HestonMalliavinGreeks {
     }
     let dt = self.tau / (self.n_steps - 1) as f64;
 
-    let heston = self.process(self.params.v0, Unseeded);
+    let heston = self.process(self.params.v0, self.seed.clone());
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
     let mut payoffs = Array1::<f64>::zeros(self.n_paths);
@@ -156,7 +174,7 @@ impl HestonMalliavinGreeks {
     }
     let discount = (-self.r * self.tau).exp();
 
-    let heston = self.process(self.params.v0, Unseeded);
+    let heston = self.process(self.params.v0, self.seed.clone());
 
     let (mut sum, mut sum_sq) = (0.0, 0.0);
 
@@ -182,7 +200,7 @@ impl HestonMalliavinGreeks {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
 
-    let heston = self.process(self.params.v0, Unseeded);
+    let heston = self.process(self.params.v0, self.seed.clone());
 
     let (mut sum, mut sum_sq) = (0.0, 0.0);
 
@@ -224,7 +242,7 @@ impl HestonMalliavinGreeks {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
 
-    let heston = self.process(self.params.v0, Unseeded);
+    let heston = self.process(self.params.v0, self.seed.clone());
 
     let (mut sum, mut sum_sq) = (0.0, 0.0);
 
@@ -261,7 +279,7 @@ impl HestonMalliavinGreeks {
   }
 
   /// `∂V/∂v0` by a central bump of `v0` on common random numbers: each up path shares its
-  /// down path's stream.
+  /// down path's stream, one draw of the estimator's seed.
   pub fn vega_v0(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
       return undefined();
@@ -274,8 +292,9 @@ impl HestonMalliavinGreeks {
     let mut sum_dn = 0.0;
     let (mut sum_diff, mut sum_diff_sq) = (0.0, 0.0);
 
-    for i in 0..self.n_paths {
-      let seed = 0xCAFE_u64.wrapping_add(i as u64);
+    let seeds = self.seed.clone();
+    for _ in 0..self.n_paths {
+      let seed = seeds.next_seed();
 
       let heston_up = self.process(self.params.v0 + dv, Deterministic::new(seed));
       let heston_dn = self.process((self.params.v0 - dv).max(1e-6), Deterministic::new(seed));
@@ -298,7 +317,7 @@ impl HestonMalliavinGreeks {
   }
 }
 
-impl HestonMalliavinGreeks {
+impl<S: SeedExt> HestonMalliavinGreeks<S> {
   /// Single-pass delta + gamma (sharing simulated paths). Vega is computed
   /// separately by [`Self::vega_v0`] because it uses an independent
   /// finite-difference bump with common-random-numbers and cannot share
@@ -311,7 +330,7 @@ impl HestonMalliavinGreeks {
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston = self.process(self.params.v0, Unseeded);
+    let heston = self.process(self.params.v0, self.seed.clone());
 
     let mut sum_delta = 0.0;
     let mut sum_gamma = 0.0;
@@ -349,7 +368,7 @@ impl HestonMalliavinGreeks {
   }
 }
 
-impl crate::traits::GreeksExt for HestonMalliavinGreeks {
+impl<S: SeedExt> crate::traits::GreeksExt for HestonMalliavinGreeks<S> {
   fn delta(&self) -> Option<McEstimate<f64>> {
     Some(HestonMalliavinGreeks::delta(self))
   }

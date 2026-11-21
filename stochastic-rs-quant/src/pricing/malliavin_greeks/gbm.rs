@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::mc::McEstimate;
@@ -9,7 +10,7 @@ use crate::traits::ProcessExt;
 
 /// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
 #[derive(Debug, Clone)]
-pub struct GbmMalliavinGreeks {
+pub struct GbmMalliavinGreeks<S: SeedExt = Unseeded> {
   /// Spot price.
   pub s: f64,
   /// Annualised Black–Scholes volatility.
@@ -26,9 +27,25 @@ pub struct GbmMalliavinGreeks {
   pub n_paths: usize,
   /// Number of time steps
   pub n_steps: usize,
+  /// Each estimator simulates from a clone, so a `Deterministic` seed replays its paths.
+  pub seed: S,
 }
 
-impl GbmMalliavinGreeks {
+impl<S: SeedExt> GbmMalliavinGreeks<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> GbmMalliavinGreeks<S2> {
+    GbmMalliavinGreeks {
+      s: self.s,
+      sigma: self.sigma,
+      r: self.r,
+      q: self.q,
+      tau: self.tau,
+      k: self.k,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      seed,
+    }
+  }
+
   /// Terminal prices and Brownian values `(S_T, W_T)` of `n_paths` Gbm paths; both are NaN, and so
   /// every Greek, for a spot or horizon that is not finite and positive or a non-finite rate.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
@@ -45,7 +62,7 @@ impl GbmMalliavinGreeks {
       self.n_steps,
       self.s,
       Some(self.tau),
-      Unseeded,
+      self.seed.clone(),
     );
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
@@ -181,7 +198,7 @@ impl GbmMalliavinGreeks {
   }
 }
 
-impl crate::traits::GreeksExt for GbmMalliavinGreeks {
+impl<S: SeedExt> crate::traits::GreeksExt for GbmMalliavinGreeks<S> {
   fn delta(&self) -> Option<McEstimate<f64>> {
     Some(GbmMalliavinGreeks::delta(self))
   }

@@ -2,7 +2,6 @@
 //! book, and an enum for the option type.
 
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_quant::CallPut;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::calibration::SwaptionQuote;
@@ -225,7 +224,7 @@ fn one_computation_answers_a_named_pair() {
   assert_eq!(named, legs(&hscm, TAU));
   assert_pinned(named, HSCM, "hscm");
 
-  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(7));
+  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25).with_seed(Deterministic::new(7));
   let named = malliavin.price_call_put(S, K, R, Q, TAU);
   assert_eq!(named, legs(&malliavin, TAU));
   assert_pinned(named, MALLIAVIN, "malliavin");
@@ -315,7 +314,7 @@ fn the_other_carries_and_the_edges_keep_their_values() {
     pair(5.286858855569344, 4.361461686435224),
     "bs2002",
   );
-  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(7));
+  let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25).with_seed(Deterministic::new(7));
   let zero_spot = malliavin.price_call_put_localized(0.0, K, R, Q, TAU);
   assert_pinned(
     zero_spot,
@@ -362,7 +361,7 @@ fn the_vocabulary_is_one_word_per_concept() {
   assert_eq!(AsianPricer::new(0.25).sigma, 0.25);
   assert_eq!(BjerksundStensland2002Pricer::new(0.25).sigma, 0.25);
   assert_eq!(SnellEnvelopePricer::new(0.25, 50).sigma, 0.25);
-  assert_eq!(GbmMalliavinPricer::new(0.2, 8, 4, 0.5, Unseeded).sigma, 0.2);
+  assert_eq!(GbmMalliavinPricer::new(0.2, 8, 4, 0.5).sigma, 0.2);
   let quanto = QuantoPricer {
     sigma: 0.2,
     sigma_fx: 0.12,

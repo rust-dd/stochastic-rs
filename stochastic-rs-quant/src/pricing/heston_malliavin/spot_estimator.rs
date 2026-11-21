@@ -1,6 +1,6 @@
 //! Base-path-only Malliavin estimation of Heston price and spot Greeks.
 
-use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::mc::McEstimate;
@@ -42,19 +42,17 @@ pub struct HestonMalliavinSpotEstimate {
   pub paths: usize,
   /// Number of independent antithetic pairs used for standard errors.
   pub independent_samples: usize,
-  /// Seed used by the simulation.
-  pub seed: u64,
   /// Confirms that only unbumped antithetic paths were simulated.
   pub provenance: HestonMalliavinSpotProvenance,
 }
 
-pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
+pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized, S: SeedExt>(
   model: HestonModel,
-  config: HestonMalliavinConfig,
+  config: &HestonMalliavinConfig<S>,
   payoff: &P,
 ) -> Result<HestonMalliavinSpotEstimate, QuantError> {
   let pairs = config.paths / 2;
-  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(config.seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&config.seed.clone());
   let mut statistics = OnlineCovariance::<HESTON_MALLIAVIN_SPOT_OBSERVABLES>::default();
   let mut variance_normals = vec![0.0; config.steps];
   let mut orthogonal_normals = vec![0.0; config.steps];
@@ -98,14 +96,13 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
     estimator_covariance: summary.estimator_covariance,
     paths: config.paths,
     independent_samples: summary.independent_samples,
-    seed: config.seed,
     provenance: HestonMalliavinSpotProvenance::BaseAntitheticPaths,
   })
 }
 
-fn spot_observation<P: TerminalPayoff + ?Sized>(
+fn spot_observation<P: TerminalPayoff + ?Sized, S: SeedExt>(
   model: HestonModel,
-  config: HestonMalliavinConfig,
+  config: &HestonMalliavinConfig<S>,
   payoff: &P,
   sign: f64,
   discount: f64,
