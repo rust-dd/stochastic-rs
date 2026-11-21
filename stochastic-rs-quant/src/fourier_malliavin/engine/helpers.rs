@@ -10,43 +10,28 @@ use crate::traits::RealExt;
 
 const BIAS_CORRECTED_C_M: f64 = 0.05;
 
-/// Default `M = floor(c_M / sqrt(mesh))` for the rate-efficient estimator.
-///
-/// Toscano et al. (2022), Section 4.3, report `c_M = 0.05` as the
-/// MSE-optimal value for their Heston experiment. The constant is expressed
-/// in the square root of the caller's time unit, exactly as the paper's
-/// `M rho(n)^(1/2) -> c_M` condition requires.
+/// Default `M = ⌊c_M/√mesh⌋` with Toscano et al.'s (2022, §4.3) MSE-optimal `c_M = 0.05`, in the
+/// square root of the caller's time unit as their `M ρ(n)^{1/2} → c_M` requires.
 pub(super) fn default_bias_corrected_m<T: RealExt>(mesh: T) -> usize {
   let scaled = T::from_f64_fast(BIAS_CORRECTED_C_M) / mesh.sqrt();
   scaled.floor().to_usize().unwrap_or(usize::MAX).max(1)
 }
 
 impl<T: RealExt> FmVol<T> {
-  /// Default smoothing window for spot-volatility / spot-leverage / spot-quarticity:
-  /// `m ≈ √N`. This is the canonical Malliavin-Mancino choice (Malliavin & Mancino
-  /// 2009, eq. 4.5 / Mancino-Recchioni 2015 §3): the bias from a finite Cesàro
-  /// window scales like `1/m` while the variance of the Fourier-coefficient
-  /// estimator scales like `m/N`, so balancing the two gives the `m ≈ N^{1/2}`
-  /// optimum. The cast truncates the square root toward zero, which is
-  /// intentional — we want `m ≤ √N` rather than rounding up across the
-  /// bias/variance crossover.
+  /// Default spot window `m = ⌊√N⌋`, balancing the Cesàro bias `~1/m` against the variance `~m/N`
+  /// (Malliavin & Mancino 2009, eq. 4.5); truncated so `m ≤ √N`, never past the crossover.
   pub(super) fn resolve_m(&self, m: Option<usize>) -> usize {
     m.unwrap_or((self.n_freq as f64).sqrt() as usize)
   }
 
-  /// Default smoothing window for the volvol / leverage estimators: `m ≈ N^{0.4}`.
-  /// Slower-than-square-root window to keep the estimator's variance bounded
-  /// for the cube/quartic cumulants, per Mancino-Recchioni (2015) §4.
+  /// Default vol-of-vol and leverage window `m ≈ N^{0.4}`, below `√N` to bound the variance of the
+  /// cubic and quartic cumulants (Mancino & Recchioni 2015, §4).
   pub(super) fn resolve_m_volvol(&self, m: Option<usize>) -> usize {
     m.unwrap_or((self.n_freq as f64).powf(0.4) as usize)
   }
 
-  /// Default smoothing window for the bias-corrected estimator.
-  ///
-  /// Theorem 3.1 of Toscano et al. requires
-  /// `M rho(n)^(1/2) -> c_M > 0`. The actual largest observation gap is
-  /// retained by the engine, so irregular grids use their own mesh rather
-  /// than the uniform-grid proxy `period / n`.
+  /// Default bias-corrected window under Toscano et al.'s Theorem 3.1, `M ρ(n)^{1/2} → c_M > 0`, on
+  /// the grid's own largest gap, not the uniform proxy `period / n`.
   pub(super) fn resolve_m_volvol_bc(&self, m: Option<usize>) -> usize {
     m.unwrap_or_else(|| default_bias_corrected_m(self.mesh))
   }
@@ -59,23 +44,15 @@ impl<T: RealExt> FmVol<T> {
     })
   }
 
-  /// Bias-correction constant `K` from Toscano-Livieri-Mancino-Marmi (2024)
-  /// equation (51) [arXiv:2112.14529v3, p.42]:
+  /// Bias-correction constant `K` of Toscano et al. (2024), eq. (51), with `c_M = Mρ(n)^{1/2}`,
+  /// `c_N = Nρ(n)`, `η(a) = r(a)(1 − r(a))/(2a²)`, `r(a) = a − ⌊a⌋`, rescaled to a period `T`:
   ///
-  /// $$K := \tfrac{1}{3}\cdot \tfrac{c_M^2}{2\pi}\,\bigl(1 + 2\eta(c_N/\pi)\bigr),$$
+  /// $$
+  /// K := \tfrac{1}{3}\cdot \tfrac{c_M^2}{2\pi}\,\bigl(1 + 2\eta(c_N/\pi)\bigr),\qquad
+  /// K = \frac{M^2\rho(n)}{3T}\left(1 + 2\eta\left(\frac{2N\rho(n)}{T}\right)\right)
+  /// $$
   ///
-  /// where `c_M, c_N` are the asymptotic-regime constants
-  /// `c_M = M·ρ(n)^{1/2}`, `c_N = N·ρ(n)` and
-  /// `η(a) := r(a)(1-r(a)) / (2 a²)`, `r(a) = a − ⌊a⌋`.
-  ///
-  /// For a general period, rescaling the grid to `[0, 2π]` gives
-  ///
-  /// $$K = \frac{M^2\rho(n)}{3T}\,
-  ///   \left(1 + 2\eta\left(\frac{2N\rho(n)}{T}\right)\right).$$
-  ///
-  /// This reduces to `M²/(3n)` at the uniform-grid Nyquist frequency. The
-  /// integrated correction is `(2π)² K / T` times integrated quarticity;
-  /// at `T = 2π` this is the paper's `2π K` multiplier.
+  /// Reference: Toscano et al. (2024), arXiv:2112.14529v3, p. 42
   pub(super) fn compute_bias_correction_constant(&self, big_m: usize) -> T {
     let two = T::from_f64_fast(2.0);
     let three = T::from_f64_fast(3.0);
@@ -90,10 +67,8 @@ impl<T: RealExt> FmVol<T> {
     m * m * self.mesh / (three * self.period) * (T::one() + two * eta)
   }
 
-  /// Bias-corrected Fourier coefficients of the spot volatility of volatility.
-  ///
-  /// This is equation (11) of Toscano et al. after rescaling `[0, T]`
-  /// to `[0, 2π]`. Coefficients are returned for `k = -L, ..., L`.
+  /// Bias-corrected vol-of-vol Fourier coefficients for `k = −L..=L`, Toscano et al.'s eq. (11)
+  /// rescaled from `[0, T]` to `[0, 2π]`.
   pub(super) fn bias_corrected_volvol_coefficients(
     &self,
     big_m: usize,
