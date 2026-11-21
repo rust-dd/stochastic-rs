@@ -29,6 +29,7 @@ The `stochastic-rs-quant` crate covers pricing, calibration, vol surface constru
 | **Factors** | `factors` | PCA, two-pass Fama-MacBeth, Ledoit-Wolf shrinkage. |
 | **Strategies** | `strategies`, `factors::pairs` | Cointegrated pairs trading (hedge ratio, spread, z-score, signal generator), the `Strategy` trait with its `Backtest` driver (a flat cost per unit traded), delta hedge. |
 | **Microstructure** | `microstructure`, `order_book` | Almgren-Chriss optimal execution, Kyle (1985) strategic-trading equilibria, Bouchaud propagator (power-law / exponential / custom kernels), Roll / Corwin-Schultz spread estimators, full price-time priority order book. |
+| **Traits** | `traits`, the crate root | `ModelPricer` with `VanillaEuropeanCall` and the `Greeks` aggregate, `GreeksExt`, `ShortRatePricer`, `Calibrator` / `CalibrationResult` / `ToModel` / `ToShortRateModel`, the `Instrument` / `PricingEngine` harness and `TimeExt`; `FourierModelExt` lives in `pricing::fourier` and `CalendarExt` in `calendar`. The crate root holds `OptionType`, `OptionStyle`, `Moneyness`, `CallPut`, `OptionQuote`, `LossMetric`, `CalibrationLossScore` and `QuantError`. |
 
 ## Choosing a pricer
 
