@@ -13,6 +13,7 @@ use stochastic_rs_quant::lattice::G2ppTree;
 use stochastic_rs_quant::lattice::G2ppTreeModel;
 use stochastic_rs_quant::lattice::HullWhiteTree;
 use stochastic_rs_quant::lattice::HullWhiteTreeModel;
+use stochastic_rs_quant::lattice::TrinomialBranch;
 use stochastic_rs_quant::lattice::TrinomialTree;
 
 fn hw(a: f64, sigma: f64, r0: f64, theta: f64, horizon: f64, steps: usize) -> TrinomialTree<f64> {
@@ -182,4 +183,46 @@ fn each_factor_keeps_its_exact_mean_and_variance_on_the_calibrators_coarse_grid(
     (variance / exact(0.4, 0.02, 2.0) - 1.0).abs() < 1e-12,
     "{variance}"
   );
+}
+
+/// One step from a single node onto three, with the branch as given.
+fn one_step(down: f64, middle: f64, up: f64) -> TrinomialTree<f64> {
+  let branch = TrinomialBranch {
+    center_index: 1,
+    down_probability: down,
+    middle_probability: middle,
+    up_probability: up,
+  };
+  let states = vec![ndarray::array![0.0], ndarray::array![-1.0, 0.0, 1.0]];
+  TrinomialTree::new(0.5, states, vec![vec![branch]])
+}
+
+#[test]
+fn a_hand_built_tree_on_a_probability_vector_builds() {
+  let tree = one_step(1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0);
+  assert_eq!(tree.branches[0][0].middle_probability, 2.0 / 3.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "branches[0][0].down_probability must satisfy `down_probability.is_finite() && down_probability >= T::zero()`, got branches[0][0].down_probability = -0.25"
+)]
+fn a_negative_branch_probability_is_a_precondition() {
+  one_step(-0.25, 0.75, 0.5);
+}
+
+#[test]
+#[should_panic(
+  expected = "branches[0][0].middle_probability must satisfy `middle_probability.is_finite() && middle_probability >= T::zero()`, got branches[0][0].middle_probability = NaN"
+)]
+fn a_nan_branch_probability_is_a_precondition() {
+  one_step(0.25, f64::NAN, 0.25);
+}
+
+#[test]
+#[should_panic(
+  expected = "branches[0][0] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::epsilon()`, got down + middle + up = 1.25"
+)]
+fn a_branch_that_does_not_sum_to_one_is_a_precondition() {
+  one_step(0.25, 0.5, 0.5);
 }
