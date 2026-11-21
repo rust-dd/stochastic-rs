@@ -4,8 +4,8 @@
 
 use pyo3::prelude::*;
 
-/// Describes the named device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally
-/// `:ordinal`) as a dict; `RuntimeError` if it cannot be used, `ValueError` if the build lacks it.
+/// Probes `cpu|accelerate|cuda|metal[:ordinal]` into a dict; `RuntimeError` if unusable,
+/// `ValueError` for a bad name, `:ordinal` or `STOCHASTIC_RS_DEVICE_*`, or a build lacking it.
 #[pyfunction]
 pub fn probe_device<'py>(
   py: Python<'py>,
