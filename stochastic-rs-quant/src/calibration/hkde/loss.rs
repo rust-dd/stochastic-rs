@@ -64,7 +64,7 @@ impl<'a> HkdeProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> HkdeParams {
-    self.params.from_share()
+    self.params.at_share()
   }
 
   fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
@@ -113,7 +113,7 @@ impl<'a> HkdeProblem<'a> {
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        let moved = HkdeParams::from(moved).from_share();
+        let moved = HkdeParams::from(moved).at_share();
         let replay = quotes.iter().zip(&rules);
         let model =
           replay.map(|(quote, rules)| self.price(&moved, quote, &mut Walk::Replay(rules.iter())));

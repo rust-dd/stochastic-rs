@@ -109,7 +109,7 @@ impl<'a> SvjProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> SvjParams {
-    self.params.from_share()
+    self.params.at_share()
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &SvjParams) -> Vec<f64> {
@@ -153,7 +153,7 @@ impl<'a> SvjProblem<'a> {
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        self.residuals_for(&SvjParams::from(moved).from_share())
+        self.residuals_for(&SvjParams::from(moved).at_share())
       }));
     }
     jacobian

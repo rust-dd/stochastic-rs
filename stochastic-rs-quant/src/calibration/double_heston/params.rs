@@ -80,7 +80,7 @@ impl DoubleHestonParams {
   }
 
   /// The model's values at a folded point, inside Feller's condition at every share.
-  pub(super) fn from_share(mut self) -> Self {
+  pub(super) fn at_share(mut self) -> Self {
     for factor in [&mut self.first, &mut self.second] {
       factor.sigma = feller_share::sigma(factor.sigma, factor.kappa, factor.theta, P_SIGMA);
     }

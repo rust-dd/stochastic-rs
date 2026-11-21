@@ -103,7 +103,7 @@ impl<'a> DoubleHestonProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> DoubleHestonParams {
-    self.params.from_share()
+    self.params.at_share()
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Vec<f64> {
@@ -147,7 +147,7 @@ impl<'a> DoubleHestonProblem<'a> {
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        self.residuals_for(&DoubleHestonParams::from(moved).from_share())
+        self.residuals_for(&DoubleHestonParams::from(moved).at_share())
       }));
     }
     jacobian

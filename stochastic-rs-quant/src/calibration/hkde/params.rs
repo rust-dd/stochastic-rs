@@ -89,7 +89,7 @@ impl HkdeParams {
   }
 
   /// The model's values at a folded point, inside Feller's condition at every share.
-  pub(super) fn from_share(mut self) -> Self {
+  pub(super) fn at_share(mut self) -> Self {
     self.sigma = feller_share::sigma(self.sigma, self.kappa, self.theta, P_SIGMA_V);
     self
   }
