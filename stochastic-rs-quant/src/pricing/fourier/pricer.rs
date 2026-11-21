@@ -8,12 +8,44 @@ use ndrustfft::ndfft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 /// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
 /// `f64::max` would turn into a plausible `0.0`.
 #[inline]
 pub(super) fn floor_price(x: f64) -> f64 {
   if x.is_nan() { x } else { x.max(0.0) }
+}
+
+/// The put by parity on `call`, and the payoff or NaN from expiry on, where parity on a payoff
+/// rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`.
+pub(super) fn parity_put(
+  call: impl FnOnce() -> f64,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  t: f64,
+) -> f64 {
+  expired(t, &[r, q], || vanilla_payoff(OptionType::Put, s, k))
+    .unwrap_or_else(|| call() - s * (-q * t).exp() + k * (-r * t).exp())
+}
+
+/// From expiry on, the grid `b + λu` with each node's payoff at `t = 0` and NaN past it.
+pub(super) fn expired_surface(
+  (n, b, lambda): (usize, f64, f64),
+  s: f64,
+  r: f64,
+  q: f64,
+  t: f64,
+) -> Option<(Array1<f64>, Array1<f64>)> {
+  let call = |k_u: f64| vanilla_payoff(OptionType::Call, s, k_u.exp());
+  expired(t, &[r, q], || call(b))?;
+  let log_strikes = Array1::from_shape_fn(n, |u| b + lambda * u as f64);
+  let prices = log_strikes.mapv(|k_u| expired(t, &[r, q], || call(k_u)).unwrap_or(f64::NAN));
+  Some((log_strikes, prices))
 }
 
 /// Carr–Madan FFT pricer.
@@ -94,7 +126,7 @@ impl CarrMadanPricer {
   }
 
   /// Call prices on the FFT strike grid `(log_strikes, call_prices)`, `k_u = b + λu` with
-  /// `b = −Nλ/2` centring it on `ln K = 0`; floored at zero, a NaN passed through.
+  /// `b = −Nλ/2`; floored at zero, a NaN passed through, the payoffs at `t = 0`, NaN past expiry.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -122,6 +154,9 @@ impl CarrMadanPricer {
     let eta = self.eta;
     let lambda = 2.0 * PI / (n as f64 * eta);
     let b = centre - 0.5 * n as f64 * lambda;
+    if let Some(surface) = expired_surface((n, b, lambda), s, r, q, t) {
+      return surface;
+    }
 
     let i_unit = Complex64::i();
     let ln_f = s.ln() + (r - q) * t;
@@ -160,8 +195,8 @@ impl CarrMadanPricer {
     (log_strikes, prices)
   }
 
-  /// The call at `k`, node `N/2` of a grid centred on `ln k`, nothing interpolated; NaN outside
-  /// [`Self::price_call_surface`]'s grid, past which `e^{−α ln k}` amplifies the round-off.
+  /// The call at `k`, node `N/2` of a grid centred on `ln k`: the payoff at `t = 0`; NaN past
+  /// expiry and, before it, outside [`Self::price_call_surface`]'s grid, where round-off grows.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
@@ -171,6 +206,9 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     let half_span = 0.5 * self.n as f64 * 2.0 * PI / (self.n as f64 * self.eta);
     let log_strike = k.ln();
     if log_strike.is_nan() || log_strike.abs() > half_span {
@@ -196,7 +234,7 @@ impl CarrMadanPricer {
     target >= log_strikes[0] && target <= log_strikes[n - 1]
   }
 
-  /// Price a single put option via put-call parity.
+  /// The put by parity on [`Self::price_call`]; the payoff at `t = 0`, NaN past expiry.
   pub fn price_put(
     &self,
     model: &impl FourierModelExt,
@@ -206,8 +244,7 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let call = self.price_call(model, s, k, r, q, t);
-    call - s * (-q * t).exp() + k * (-r * t).exp()
+    parity_put(|| self.price_call(model, s, k, r, q, t), s, k, r, q, t)
   }
 }
 

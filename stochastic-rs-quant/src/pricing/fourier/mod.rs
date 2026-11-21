@@ -57,10 +57,15 @@ pub trait FourierModelExt {
   fn cumulants(&self, t: f64) -> Cumulants;
 }
 
-/// Every [`FourierModelExt`] model prices through [`LewisPricer`].
+/// Every [`FourierModelExt`] model prices through [`LewisPricer`]: the payoff at `tau = 0`, NaN
+/// past expiry.
 impl<T: FourierModelExt> crate::traits::ModelPricer for T {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     LewisPricer::price_call(self, s, k, r, q, tau)
+  }
+
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    pricer::parity_put(|| self.price_call(s, k, r, q, tau), s, k, r, q, tau)
   }
 }
 

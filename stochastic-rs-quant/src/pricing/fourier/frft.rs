@@ -21,6 +21,11 @@ use ndrustfft::ndifft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
+use super::pricer::expired_surface;
+use super::pricer::parity_put;
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::RealExt;
 
 /// $G_k = \sum_j x_j e^{-2\pi i \gamma jk}$ by Bailey–Swarztrauber's three FFTs of length `2n`, the
@@ -137,7 +142,7 @@ impl FrftCarrMadanPricer {
   }
 
   /// `(log_strikes, call_prices)` on the grid centred on `ln F_T + c₁`; a NaN `chf` leaves its
-  /// prices NaN.
+  /// prices NaN; from expiry on the centre is `ln F_T`, with payoffs at `t = 0` and NaN past it.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -152,8 +157,12 @@ impl FrftCarrMadanPricer {
     let lambda = self.lambda;
     let gamma = eta * lambda / (2.0 * PI);
 
-    let cumulants = model.cumulants(t);
     let ln_f = s.ln() + (r - q) * t;
+    let at_forward = ln_f - 0.5 * n as f64 * lambda;
+    if let Some(surface) = expired_surface((n, at_forward, lambda), s, r, q, t) {
+      return surface;
+    }
+    let cumulants = model.cumulants(t);
     // Centre the log-strike grid on the model-implied log-asset mean.
     let mu_t = ln_f + cumulants.c1;
     let b = mu_t - 0.5 * n as f64 * lambda;
@@ -185,9 +194,8 @@ impl FrftCarrMadanPricer {
     (log_strikes, prices)
   }
 
-  /// Price a single call by interpolating the centred FRFT surface.
-  /// Returns `f64::NAN` for strikes outside the grid (same truncation
-  /// contract as [`super::pricer::CarrMadanPricer::price_call`]).
+  /// The call interpolated on [`Self::price_call_surface`]: the payoff at `t = 0`; NaN past
+  /// expiry and, before it, for a strike outside the grid.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
@@ -197,6 +205,9 @@ impl FrftCarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
@@ -212,7 +223,7 @@ impl FrftCarrMadanPricer {
     unreachable!("FRFT Carr-Madan interpolation fall-through despite grid bracketing");
   }
 
-  /// Price a single put via put-call parity.
+  /// The put by parity on [`Self::price_call`]; the payoff at `t = 0`, NaN past expiry.
   pub fn price_put(
     &self,
     model: &impl FourierModelExt,
@@ -222,8 +233,7 @@ impl FrftCarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let call = self.price_call(model, s, k, r, q, t);
-    call - s * (-q * t).exp() + k * (-r * t).exp()
+    parity_put(|| self.price_call(model, s, k, r, q, t), s, k, r, q, t)
   }
 }
 

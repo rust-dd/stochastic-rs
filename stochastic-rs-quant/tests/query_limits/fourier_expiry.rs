@@ -1,0 +1,160 @@
+//! The Fourier entry points at and past expiry: the payoff at `tau = 0`, NaN for a `tau` that is
+//! negative, NaN or infinite.
+
+use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::pricing::fourier::BsmFourier;
+use stochastic_rs_quant::pricing::fourier::CarrMadanPricer;
+use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
+use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
+use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::fourier::LewisPricer;
+use stochastic_rs_quant::pricing::heston::HestonParams;
+use stochastic_rs_quant::traits::ModelPricer;
+
+const K: f64 = 100.0;
+const R: f64 = 0.05;
+const Q: f64 = 0.02;
+const SPOTS: [f64; 3] = [90.0, 100.0, 110.0];
+const PAST: [f64; 3] = [-1.0, f64::NAN, f64::INFINITY];
+const BSM: BsmFourier = BsmFourier { sigma: 0.2 };
+
+fn payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
+  match option_type {
+    OptionType::Call => (s - k).max(0.0),
+    OptionType::Put => (k - s).max(0.0),
+  }
+}
+
+fn assert_expiry_rule(what: &str, price: impl Fn(OptionType, f64, f64) -> f64) {
+  for option_type in [OptionType::Call, OptionType::Put] {
+    for s in SPOTS {
+      let (got, want) = (price(option_type, s, 0.0), payoff(option_type, s, K));
+      assert_eq!(got, want, "{what} {option_type:?} at s = {s}, tau = 0");
+      for tau in PAST {
+        let got = price(option_type, s, tau);
+        assert!(
+          got.is_nan(),
+          "{what} {option_type:?} at s = {s}, tau = {tau}: {got}"
+        );
+      }
+    }
+  }
+}
+
+/// The put a caller forms by parity on `call`, which is exact at these spots.
+fn by_parity(call: f64, option_type: OptionType, s: f64, tau: f64) -> f64 {
+  match option_type {
+    OptionType::Call => call,
+    OptionType::Put => call - s * (-Q * tau).exp() + K * (-R * tau).exp(),
+  }
+}
+
+#[test]
+fn the_blanket_model_pricer_follows_the_expiry_rule() {
+  assert_expiry_rule("blanket", |option_type, s, tau| {
+    BSM.price_option(s, K, R, Q, tau, option_type)
+  });
+  let heston = HestonFourier::new(HestonParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  });
+  assert_expiry_rule("blanket, Heston", |option_type, s, tau| {
+    heston.price_option(s, K, R, Q, tau, option_type)
+  });
+}
+
+#[test]
+fn the_quadrature_pricers_follow_the_expiry_rule() {
+  assert_expiry_rule("Lewis", |option_type, s, tau| {
+    let call = LewisPricer::price_call(&BSM, s, K, R, Q, tau);
+    by_parity(call, option_type, s, tau)
+  });
+  assert_expiry_rule("Gil-Pelaez", |option_type, s, tau| {
+    let call = GilPelaezPricer::price_call(&BSM, s, K, R, Q, tau);
+    by_parity(call, option_type, s, tau)
+  });
+}
+
+#[test]
+fn the_transform_pricers_follow_the_expiry_rule() {
+  let carr_madan = CarrMadanPricer::new(4096, 1.5);
+  assert_expiry_rule("Carr-Madan", |option_type, s, tau| match option_type {
+    OptionType::Call => carr_madan.price_call(&BSM, s, K, R, Q, tau),
+    OptionType::Put => carr_madan.price_put(&BSM, s, K, R, Q, tau),
+  });
+  let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
+  assert_expiry_rule("FRFT", |option_type, s, tau| match option_type {
+    OptionType::Call => fractional.price_call(&BSM, s, K, R, Q, tau),
+    OptionType::Put => fractional.price_put(&BSM, s, K, R, Q, tau),
+  });
+}
+
+#[test]
+fn a_transform_surface_is_its_nodes_payoffs_at_expiry_and_nan_past_it() {
+  let carr_madan = CarrMadanPricer::new(256, 1.5);
+  let fractional = FrftCarrMadanPricer::new(256, 1.5, 0.25, 0.01);
+  let surface = |which: usize, s: f64, tau: f64| match which {
+    0 => carr_madan.price_call_surface(&BSM, s, R, Q, tau),
+    _ => fractional.price_call_surface(&BSM, s, R, Q, tau),
+  };
+  for which in [0, 1] {
+    let s = if which == 0 { 1.1 } else { 110.0 };
+    let (log_strikes, prices) = surface(which, s, 0.0);
+    assert_eq!((log_strikes.len(), prices.len()), (256, 256));
+    let (below, above) = (log_strikes[0].exp(), log_strikes[255].exp());
+    assert!(below < s && s < above, "{which}: {below} {s} {above}");
+    for (log_strike, price) in log_strikes.iter().zip(&prices) {
+      assert_eq!(*price, (s - log_strike.exp()).max(0.0), "{which}");
+    }
+    for tau in PAST {
+      let (log_strikes, prices) = surface(which, s, tau);
+      assert_eq!(log_strikes.len(), 256);
+      assert!(prices.iter().all(|p| p.is_nan()), "{which} at tau = {tau}");
+    }
+  }
+}
+
+/// Parity on a payoff rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`, and the put is 0.
+#[test]
+fn an_expired_put_is_its_payoff_and_not_parity_on_the_calls() {
+  let (s, k) = (0.3, 0.1);
+  let carr_madan = CarrMadanPricer::new(4096, 1.5);
+  let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
+  let puts = [
+    BSM.price_put(s, k, R, Q, 0.0),
+    carr_madan.price_put(&BSM, s, k, R, Q, 0.0),
+    fractional.price_put(&BSM, s, k, R, Q, 0.0),
+  ];
+  assert_eq!(puts, [0.0; 3]);
+  assert_eq!(BSM.price_put(k, s, R, Q, 0.0), s - k);
+}
+
+#[test]
+fn an_expired_fourier_price_is_nan_for_a_nan_rate_spot_or_strike() {
+  let carr_madan = CarrMadanPricer::new(4096, 1.5);
+  let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
+  for (s, k, r, q) in [
+    (f64::NAN, K, R, Q),
+    (110.0, f64::NAN, R, Q),
+    (110.0, K, f64::NAN, Q),
+    (110.0, K, R, f64::NAN),
+  ] {
+    let prices = [
+      BSM.price_call(s, k, r, q, 0.0),
+      BSM.price_put(s, k, r, q, 0.0),
+      LewisPricer::price_call(&BSM, s, k, r, q, 0.0),
+      GilPelaezPricer::price_call(&BSM, s, k, r, q, 0.0),
+      carr_madan.price_call(&BSM, s, k, r, q, 0.0),
+      carr_madan.price_put(&BSM, s, k, r, q, 0.0),
+      fractional.price_call(&BSM, s, k, r, q, 0.0),
+      fractional.price_put(&BSM, s, k, r, q, 0.0),
+    ];
+    assert!(
+      prices.iter().all(|p| p.is_nan()),
+      "({s}, {k}, {r}, {q}): {prices:?}"
+    );
+  }
+}

@@ -7,6 +7,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::FourierModelExt;
 use super::pricer::floor_price;
+use crate::OptionType;
 use crate::pricing::cf_quadrature::CONTROL_VARIANCE_CAP;
 use crate::pricing::cf_quadrature::Inversion;
 use crate::pricing::cf_quadrature::Rule;
@@ -14,6 +15,8 @@ use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::cf_quadrature::gaussian_share;
 use crate::pricing::cf_quadrature::head_floor;
 use crate::pricing::cf_quadrature::reach_and_scale;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 /// `w = −2c₁` within `[0, CONTROL_VARIANCE_CAP]`, `0` for a non-finite `c₁`: the split is exact for
 /// any `w`, which only decides how small the rest is.
@@ -38,7 +41,8 @@ fn control_variance(model: &impl FourierModelExt, t: f64) -> f64 {
 pub struct LewisPricer;
 
 impl LewisPricer {
-  /// The European call; NaN for a non-finite `s`, `k`, `r`, `q` or `t`, otherwise floored at zero.
+  /// The European call, floored at zero: the payoff at `t = 0`; NaN past expiry and, before it,
+  /// for a non-finite `s`, `k`, `r` or `q`.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
   }
@@ -53,6 +57,9 @@ impl LewisPricer {
     t: f64,
     walk: &mut Walk<'_, Rule>,
   ) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     let forward = s * ((r - q) * t).exp();
     let kappa = (k / forward).ln();
     let w = control_variance(model, t);
@@ -91,9 +98,12 @@ impl LewisPricer {
 pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
-  /// The call `Se^{−qτ}P₁ − Ke^{−rτ}P₂`; NaN for a non-finite `s`, `k`, `r`, `q` or `t`, or where
-  /// `φ(−i) = E[e^X]` is not finite and positive, otherwise floored at zero.
+  /// The call `Se^{−qτ}P₁ − Ke^{−rτ}P₂`, floored at zero: the payoff at `t = 0`; NaN past expiry,
+  /// for a non-finite `s`, `k`, `r` or `q` before it, and where `φ(−i) = E[e^X]` is not positive.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     let kappa = (k / s).ln() - (r - q) * t;
     let w = control_variance(model, t);
     let share_norm = model.chf(t, Complex64::new(0.0, -1.0));
