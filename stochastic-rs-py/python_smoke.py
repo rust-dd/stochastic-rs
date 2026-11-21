@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test of the 5 API surfaces of `stochastic_rs` and seed determinism wherever `seed=` is taken.
+"""Smoke test of `stochastic_rs`'s 5 API surfaces and seed determinism wherever `seed=` is taken.
 
 Run `maturin develop --release` in `stochastic-rs-py`, then `python python_smoke.py`."""
 

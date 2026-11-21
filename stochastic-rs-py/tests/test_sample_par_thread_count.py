@@ -33,8 +33,8 @@ print(json.dumps(p.tolist()))
 
 @lru_cache(maxsize=None)
 def _sample_par_under(m: int, num_threads: int) -> np.ndarray:
-    """Runs `_WORKER` in a fresh subprocess whose rayon pool is sized to `num_threads`; cached because
-    the cases share the `num_threads=1` baseline."""
+    """Runs `_WORKER` in a fresh subprocess with a rayon pool of `num_threads`; cached, as the
+    cases share the `num_threads=1` baseline."""
     env = dict(os.environ, RAYON_NUM_THREADS=str(num_threads))
     result = subprocess.run(
         [sys.executable, "-c", _WORKER, str(m)],
