@@ -106,7 +106,7 @@ where
   walk(f, a, tol, f64::INFINITY, None).0
 }
 
-/// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, past it
+/// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, to it
 /// whatever the envelope says, so that a price's panels move only with `reach`.
 fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64)
 where
@@ -137,12 +137,14 @@ where
       break;
     }
     peak.set(0.0);
-    let (panel, depth_used) = refine(&watched, lo, lo + width, tol, MAX_DEPTH, &mut leaves);
+    // A panel run past the reach holds turns of phase its levels pass without resolving.
+    let hi = (lo + width).min(reach);
+    let (panel, depth_used) = refine(&watched, lo, hi, tol, MAX_DEPTH, &mut leaves);
     if poisoned.get() {
       return (f64::NAN, lo);
     }
     total += panel;
-    lo += width;
+    lo = hi;
 
     let env = peak.get();
     scale = scale.max(env);

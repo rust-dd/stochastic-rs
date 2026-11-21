@@ -119,6 +119,33 @@ fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
   }
 }
 
+/// An ordinary set whose reach, 12.23, falls inside the walk's second panel, `[9, 25]`: the panel
+/// ends at the reach, or its 24 radians pass the rule's test unresolved.
+#[test]
+fn every_pricer_holds_a_price_whose_reach_falls_inside_a_panel() {
+  let p = HestonParams {
+    v0: 0.194_779_246_267_201_67,
+    kappa: 1.315_287_479_158_480_5,
+    theta: 0.039_367_491_782_947_184,
+    sigma: 0.230_791_385_737_688,
+    rho: 0.694_633_511_616_932_9,
+  };
+  let (s, k) = (100.0, 97.704_591_549_406_44);
+  let (r, q, tau) = (
+    0.073_498_654_012_610_65,
+    0.038_008_315_124_199_77,
+    10.928_313_122_938_823,
+  );
+  let want = 28.909_883_340_891_092;
+  let model = HestonFourier::new(p);
+  let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
+  assert_within("lewis", lewis, want, 1e-12);
+  let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
+  assert_within("gil-pelaez", gil_pelaez, want, 1e-12);
+  let closed = HestonPricer::new(p).price_call(s, k, r, q, tau);
+  assert_within("heston", closed, want, 1e-12);
+}
+
 /// `(k, τ)` and Black–Scholes's call at `σ = 0.2`, `(s, r, q) = (100, 0.05, 0)`.
 const BLACK_SCHOLES: [(f64, f64, f64); 3] = [
   (80.0, 0.1, 20.399_215_828_168_058),
