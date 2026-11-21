@@ -241,16 +241,14 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
-    let mut boxed = bounds;
-    boxed[4] = (-RHO_BOUND, RHO_BOUND);
-    for (label, point) in beside_points(base.view(), &boxed) {
+    for (label, point) in beside_points(base.view(), &bounds) {
       let error = jacobian_error(&mut problem, point.view(), beside_reference);
       assert!(error < 1e-2, "{label} of {base}: {error:e}");
     }
   }
 }
 
-/// `λ` beside 0 and reflected below it, `μ_J` at the top of its range, `ρ` on its clamp.
+/// `λ` beside 0 and reflected below it, `μ_J` at the top of its range, `ρ` reflected at its bound.
 #[test]
 fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   use super::params::room_in_box;
@@ -269,7 +267,7 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
     (5, -5e-6, (10.0 - 5e-6, 5e-6)),
     (6, 0.4999, (0.9999, 1e-4)),
     (6, 0.5001, (1e-4, 0.9999)),
-    (4, -0.99995, (0.0, 1.9998)),
+    (4, -0.99995, (1.99975, 5e-5)),
     (4, 0.9995, (1.9994, 4e-4)),
   ] {
     assert!(

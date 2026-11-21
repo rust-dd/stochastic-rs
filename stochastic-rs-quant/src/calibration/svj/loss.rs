@@ -8,7 +8,6 @@ use num_complex::Complex64;
 use super::SvjParams;
 use super::calibrator::SvjCalibrator;
 use super::params::BOX;
-use super::params::BOXED;
 use crate::OptionType;
 use crate::calibration::clip_negative;
 use crate::calibration::feller_share::natural_jacobian;
@@ -150,7 +149,7 @@ impl<'a> SvjProblem<'a> {
     let mut jacobian = Array2::zeros((self.market.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
-      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+      column.assign(&derivative(x, scale * step(x), BOX[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
         self.residuals_for(&SvjParams::from(moved).at_share())

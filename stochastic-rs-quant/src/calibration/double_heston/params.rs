@@ -5,7 +5,6 @@ use crate::calibration::feller_share;
 use crate::calibration::feller_share::P_SHARE;
 use crate::calibration::heston::params::EPS;
 use crate::calibration::heston::params::P_KAPPA;
-use crate::calibration::heston::params::P_RHO;
 use crate::calibration::heston::params::P_THETA;
 use crate::calibration::heston::params::RHO_BOUND;
 use crate::calibration::heston::params::THETA_MIN;
@@ -20,21 +19,17 @@ pub(super) const P_SIGMA: (f64, f64) = (0.01, 1.0);
 
 const FACTOR: [(f64, f64); 5] = [P_V0, P_KAPPA, P_THETA, P_SHARE, (-RHO_BOUND, RHO_BOUND)];
 
-/// Where a folded value lies: each factor's box, with `ρ` clamped inside its reflection's range.
-pub(super) const BOXED: [(f64, f64); 10] = [
+/// The box each raw coordinate folds into, `ρ` at its bound so that no raw step leaves it
+/// unmoved; σ's is its share of the way to Feller's cap.
+pub(super) const FOLD: [(f64, f64); 10] = [
   FACTOR[0], FACTOR[1], FACTOR[2], FACTOR[3], FACTOR[4], FACTOR[0], FACTOR[1], FACTOR[2],
   FACTOR[3], FACTOR[4],
 ];
 
-/// The box each raw coordinate is reflected into; σ's is its share of the way to Feller's cap.
-pub(super) const FOLD: [(f64, f64); 10] = [
-  P_V0, P_KAPPA, P_THETA, P_SHARE, P_RHO, P_V0, P_KAPPA, P_THETA, P_SHARE, P_RHO,
-];
-
-/// Each raw coordinate's room before its folded value meets a bound of `BOXED`.
+/// Each raw coordinate's room before its folded value meets a bound of `FOLD`.
 pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
   let folded = Array1::from(DoubleHestonParams::from(x.to_owned()).folded());
-  room(&folded, &BOXED, periodic_slopes(x, &FOLD).view())
+  room(&folded, &FOLD, periodic_slopes(x, &FOLD).view())
 }
 
 /// Double Heston model parameters: two independent Heston factors.
@@ -63,8 +58,9 @@ impl DoubleHestonParams {
   pub(super) fn folded(mut self) -> Self {
     for factor in [&mut self.first, &mut self.second] {
       let share = periodic_map(factor.sigma, P_SHARE.0, P_SHARE.1);
+      let rho = periodic_map(factor.rho, FACTOR[4].0, FACTOR[4].1);
       factor.project_box(P_V0, P_SIGMA);
-      factor.sigma = share;
+      (factor.sigma, factor.rho) = (share, rho);
     }
     self
   }

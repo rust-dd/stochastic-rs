@@ -27,33 +27,21 @@ pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
 pub(super) const P_THETA: (f64, f64) = (0.001, 1.0);
 pub(super) const P_SIGMA_V: (f64, f64) = (0.01, 1.0);
-pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
+pub(super) const P_RHO: (f64, f64) = (-RHO_BOUND, RHO_BOUND);
 pub(super) const P_LAMBDA: (f64, f64) = (0.0, 10.0);
 pub(super) const P_P_UP: (f64, f64) = (0.001, 0.999);
 pub(super) const P_ETA1: (f64, f64) = (1.01, 50.0);
 pub(super) const P_ETA2: (f64, f64) = (0.1, 50.0);
-/// The box each raw coordinate folds into; σ's is its share of the way to Feller's cap.
+/// The box each raw coordinate folds into, `ρ` at its bound so that no raw step leaves it
+/// unmoved; σ's is its share of the way to Feller's cap.
 pub(super) const BOX: [(f64, f64); 9] = [
   P_V0, P_KAPPA, P_THETA, P_SHARE, P_RHO, P_LAMBDA, P_P_UP, P_ETA1, P_ETA2,
 ];
 
-/// Where a folded value lies: `BOX`, with `ρ` clamped inside its reflection's range.
-pub(super) const BOXED: [(f64, f64); 9] = [
-  P_V0,
-  P_KAPPA,
-  P_THETA,
-  P_SHARE,
-  (-RHO_BOUND, RHO_BOUND),
-  P_LAMBDA,
-  P_P_UP,
-  P_ETA1,
-  P_ETA2,
-];
-
-/// Each raw coordinate's room before its folded value meets a bound of `BOXED`.
+/// Each raw coordinate's room before its folded value meets a bound of `BOX`.
 pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
   let folded = Array1::from(HkdeParams::from(x.to_owned()).folded());
-  room(&folded, &BOXED, periodic_slopes(x, &BOX).view())
+  room(&folded, &BOX, periodic_slopes(x, &BOX).view())
 }
 
 impl HkdeParams {
@@ -76,8 +64,9 @@ impl HkdeParams {
   /// A raw point folded into `BOX`: `sigma` holds σ's share, the fit's coordinate.
   pub(super) fn folded(mut self) -> Self {
     let share = periodic_map(self.sigma, P_SHARE.0, P_SHARE.1);
+    let rho = periodic_map(self.rho, P_RHO.0, P_RHO.1);
     self.project_box();
-    self.sigma = share;
+    (self.sigma, self.rho) = (share, rho);
     self
   }
 
@@ -106,7 +95,7 @@ impl HkdeParams {
     self.sigma = periodic_map(self.sigma, P_SIGMA_V.0, P_SIGMA_V.1)
       .abs()
       .max(SIGMA_V_MIN);
-    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
+    self.rho = periodic_map(self.rho, -1.0, 1.0).clamp(-RHO_BOUND, RHO_BOUND);
     self.lambda = periodic_map(self.lambda, P_LAMBDA.0, P_LAMBDA.1).max(0.0);
     self.p_up = periodic_map(self.p_up, P_P_UP.0, P_P_UP.1).clamp(P_P_UP.0, P_P_UP.1);
     self.eta1 = periodic_map(self.eta1, P_ETA1.0, P_ETA1.1).max(ETA1_MIN);

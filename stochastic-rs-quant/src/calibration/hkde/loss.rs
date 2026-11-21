@@ -6,7 +6,6 @@ use ndarray::ArrayView1;
 
 use super::calibrator::HkdeCalibrator;
 use super::params::BOX;
-use super::params::BOXED;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
@@ -110,7 +109,7 @@ impl<'a> HkdeProblem<'a> {
     let mut jacobian = Array2::zeros((quotes.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
-      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+      column.assign(&derivative(x, scale * step(x), BOX[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
         let moved = HkdeParams::from(moved).at_share();

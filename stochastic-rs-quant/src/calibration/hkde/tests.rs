@@ -418,7 +418,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
-    for (label, point) in beside_points(base.view(), &BOXED) {
+    for (label, point) in beside_points(base.view(), &BOX) {
       // `η₁ = 1.01` is `1e-2` from `E[e^J]`'s pole at 1, where the price turns on a `1e-4` scale.
       if label == "beside lower 7" {
         continue;
@@ -461,8 +461,8 @@ fn the_default_start_leaves_the_rho_bound_for_the_heston_reference() {
   assert!(rmse < 1e-5 && fit.params.rho > -0.75, "{rmse:e}: {fit:?}");
 }
 
-/// A coordinate's room is its boxed value's distance to each bound, swapped where the raw point
-/// lies reflected, and 0 across `ρ`'s clamped strip.
+/// A coordinate's room is its folded value's distance to each bound, swapped where the raw point
+/// lies reflected, as `ρ` is past its bound of 0.9999.
 #[test]
 fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   use super::params::room_in_box;
@@ -479,9 +479,9 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   for (j, value, want) in [
     (4, -0.6, (0.3999, 1.5999)),
     (4, -0.9995, (4e-4, 1.9994)),
-    (4, -0.99995, (0.0, 1.9998)),
-    (4, -1.00005, (1.9998, 0.0)),
-    (4, 1.0005, (4e-4, 1.9994)),
+    (4, -0.99995, (1.99975, 5e-5)),
+    (4, -1.00005, (1.99965, 1.5e-4)),
+    (4, 1.0005, (6e-4, 1.9992)),
     (1, 19.99, (19.89, 0.01)),
     (1, 20.01, (0.01, 19.89)),
     (5, 5e-6, (5e-6, 10.0 - 5e-6)),

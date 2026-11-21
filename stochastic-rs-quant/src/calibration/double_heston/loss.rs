@@ -7,7 +7,6 @@ use num_complex::Complex64;
 
 use super::super::integrate_gl_to_convergence;
 use super::calibrator::DoubleHestonCalibrator;
-use super::params::BOXED;
 use super::params::DoubleHestonParams;
 use super::params::FOLD;
 use crate::OptionType;
@@ -144,7 +143,7 @@ impl<'a> DoubleHestonProblem<'a> {
     let mut jacobian = Array2::zeros((self.market.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
-      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+      column.assign(&derivative(x, scale * step(x), FOLD[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
         self.residuals_for(&DoubleHestonParams::from(moved).at_share())

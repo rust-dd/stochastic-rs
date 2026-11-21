@@ -261,11 +261,7 @@ fn double_heston_params_to_model() {
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::DoubleHestonProblem;
-  use super::params::P_V0;
-  use crate::calibration::feller_share::P_SHARE;
-  use crate::calibration::heston::params::P_KAPPA;
-  use crate::calibration::heston::params::P_THETA;
-  use crate::calibration::heston::params::RHO_BOUND;
+  use super::params::FOLD;
   use crate::calibration::least_squares::LeastSquaresProblem;
   use crate::calibration::least_squares::checks::beside_points;
   use crate::calibration::least_squares::checks::beside_reference;
@@ -273,16 +269,13 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = DoubleHestonProblem::new(&calibrator, START);
-  let factor = [P_V0, P_KAPPA, P_THETA, P_SHARE, (-1.0, 1.0)];
-  let bounds = [factor, factor].concat();
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 0.15, 6.0, 0.2, 0.7, -0.8];
   for base in [problem.params(), far] {
-    for (label, point) in box_points(base.view(), &bounds, &[true; 10]) {
+    for (label, point) in box_points(base.view(), &FOLD, &[true; 10]) {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
-    let boxed = [P_V0, P_KAPPA, P_THETA, P_SHARE, (-RHO_BOUND, RHO_BOUND)];
-    for (label, point) in beside_points(base.view(), &[boxed, boxed].concat()) {
+    for (label, point) in beside_points(base.view(), &FOLD) {
       let error = jacobian_error(&mut problem, point.view(), beside_reference);
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
@@ -301,7 +294,58 @@ fn the_default_start_fits_the_heston_reference_along_the_rho_bound() {
   assert!(rmse < 1e-3, "{rmse:e}: {fit:?}");
 }
 
-/// Each factor has its own slots: the second's `ρ` on its clamp, reflected, and its `κ` at the top.
+/// Where a raw step leaves `ρ` unmoved no residual moves and the trust region closes: the fold has
+/// no such strip.
+#[test]
+fn no_raw_step_leaves_a_correlation_where_it_was() {
+  let rho = |raw: f64| {
+    let mut x = ndarray::Array1::from(START);
+    x[4] = raw;
+    DoubleHestonParams::from(x).folded().first.rho
+  };
+  for raw in (0..=60).map(|i| -1.0003 + 1e-5 * f64::from(i)) {
+    let (at, beside) = (rho(raw), rho(raw + 1e-6));
+    assert!(
+      at != beside && at.abs() <= 0.9999,
+      "{raw}: {at} and {beside}"
+    );
+  }
+}
+
+/// On the surface fit the first `ρ` is held at −0.9999: there its folded value is the bound.
+#[test]
+fn a_correlation_held_at_its_bound_is_on_it_not_beside_it() {
+  use crate::calibration::least_squares::HELD;
+  HELD.take();
+  DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(400))
+    .calibrate(None)
+    .unwrap();
+  let held = HELD.take().into_iter().filter(|(_, set)| set[4]);
+  let gaps = held.map(|(x, _)| DoubleHestonParams::from(x).folded().first.rho + 0.9999);
+  let gaps = gaps.collect::<Vec<_>>();
+  assert!(
+    !gaps.is_empty() && gaps.iter().all(|gap| *gap == 0.0),
+    "{gaps:?}"
+  );
+}
+
+/// A restart from a minimum stays there, so a `converged` fit's own point is not improved tenfold.
+#[test]
+fn the_default_fit_is_not_converged_where_a_restart_improves_it_tenfold() {
+  let calibrator = || DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let fit = calibrator().calibrate(None).unwrap();
+  let again = calibrator().with_start(fit.params).calibrate(None).unwrap();
+  let rmse = |fit: &Calibrated<DoubleHestonParams>| fit.loss.get(LossMetric::Rmse);
+  let (first, second) = (rmse(&fit), rmse(&again));
+  assert!(
+    !fit.converged || 10.0 * second >= first,
+    "{first:e} converged, {second:e} from it"
+  );
+}
+
+/// Each factor has its own slots: the second's `ρ` reflected at its bound, and its `κ` at the top.
 #[test]
 fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   use super::params::room_in_box;
@@ -317,8 +361,8 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   };
   for (j, value, want) in [
     (4, -0.5, (0.4999, 1.4999)),
-    (9, -0.99995, (0.0, 1.9998)),
-    (9, -1.00005, (1.9998, 0.0)),
+    (9, -0.99995, (1.99975, 5e-5)),
+    (9, -1.00005, (1.99965, 1.5e-4)),
     (9, 0.9995, (1.9994, 4e-4)),
     (6, 19.99, (19.89, 0.01)),
     (5, 0.0005, (0.2485, 0.0005)),
