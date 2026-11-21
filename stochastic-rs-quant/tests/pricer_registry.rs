@@ -1,44 +1,5 @@
-//! Inventory of every pricer and engine in this crate, checked two ways.
-//!
-//! **At compile time**, each list below is a macro invocation that asserts,
-//! entry by entry, that the named type implements the trait the list is named
-//! for. A pricer that *loses* its trait stops compiling here.
-//!
-//! **At run time**, `registry_matches_crate_source` re-derives the same
-//! inventory from `src/**/*.rs` with `syn` (see `tests/pricer_inventory/`) and
-//! diffs it against these lists. A pricer *added* without a registry entry
-//! fails there.
-//!
-//! The second half is not belt and braces. A hand-curated list can be wrong
-//! about a name it contains; it cannot be wrong about a name it has never
-//! heard of.
-//!
-//! ## What counts as a pricer
-//!
-//! Two signals, unioned, because either alone has a hole this file has already
-//! fallen into:
-//!
-//!  - **carries a pricing trait** — one of [`ModelPricer`], [`PricingEngine`],
-//!    [`ShortRatePricer`], [`VanillaEuropeanCall`];
-//!  - **is named like one** — a `pub struct` whose identifier ends in `Pricer`
-//!    or `Engine`.
-//!
-//! Name shape alone is blind to [`LevyModel`], [`CrrModel`], [`Cir`],
-//! [`HullWhite`] and [`Vasicek`]: all five implement a pricing trait under a
-//! model's name. Trait
-//! membership alone is blind to everything in `NO_TRAIT_BY_DESIGN` — which is
-//! exactly where an orphan hides, an orphan being a struct that implements
-//! nothing.
-//!
-//! Every name in the union has to be either in a trait list or in
-//! `NO_TRAIT_BY_DESIGN` with a reason. The audit fails on one that is in
-//! neither, and equally on a `NO_TRAIT_BY_DESIGN` entry the source has since
-//! dropped or has since given a trait to.
-//!
-//! ## Counts
-//!
-//! This prose states none. Every figure is the length of a list the audit
-//! checks, so it is re-derived rather than remembered:
+//! Every pricer and engine, checked at compile time (each list asserts its trait) and at run time
+//! against `src` re-derived by `syn` (`pricer_inventory`), so an unlisted pricer fails; the counts:
 //!
 //! ```text
 //! cd stochastic-rs-quant/tests
@@ -48,31 +9,6 @@
 //! awk '/^assert_pricing_engine!\(/,/^\);/'            pricer_registry.rs | grep -c '^  ('
 //! awk '/^const NO_TRAIT_BY_DESIGN/,/^\];/'            pricer_registry.rs | grep -c '^  ('
 //! ```
-//!
-//! Five commands, not one with the name substituted: `assert_pricing_engine!`
-//! takes `(pricer, instrument)` pairs and `NO_TRAIT_BY_DESIGN` holds
-//! `(struct, reason)` pairs, so both open with a paren and `grep -c '^  [A-Z]'`
-//! reports 0 for them.
-//!
-//! ## What this does not catch
-//!
-//! A struct that neither carries a pricing trait nor is named `*Pricer` /
-//! `*Engine` — a `FooModel` with an inherent `price()` and nothing else — is in
-//! neither signal and passes unseen. That is the real residual: closing it
-//! needs a signal the compiler exposes, and Rust cannot enumerate a trait's
-//! implementors at run time.
-//!
-//! Two narrower gaps, both bounded. The name signal wants `pub`, so a
-//! `pub(crate)` or `pub(super)` pricer is invisible *to that signal* — the
-//! trait signal still sees it if it implements one, and the crate's only such
-//! struct today, `calibration/rbergomi/simulation.rs`'s `MsoeEngine`,
-//! implements none. And anything under `src/python/` is skipped by path,
-//! deliberately: those are `#[cfg(feature = "python")]` wrappers holding their
-//! subject in an `inner` field, with no trait of their own.
-//!
-//! Each pricing trait gets its own compile-checked list, so a claim about
-//! *which* trait a struct carries can drift no more than the claim that it
-//! carries one at all.
 
 use std::marker::PhantomData;
 
@@ -111,9 +47,8 @@ use stochastic_rs_quant::traits::VanillaEuropeanCall;
 
 mod pricer_inventory;
 
-/// Asserts `$t` implements [`ModelPricer`] at compile time, and publishes the
-/// list to the runtime audit so the compile-time list and the audited list are
-/// one list rather than two that can drift.
+/// Asserts at compile time that `$t` implements [`ModelPricer`] and publishes the list to the
+/// runtime audit, so the two are one list.
 macro_rules! assert_model_pricer {
   ($($t:ty),* $(,)?) => {
     $(const _: fn() = || {
@@ -149,9 +84,8 @@ macro_rules! assert_short_rate_pricer {
   };
 }
 
-/// Asserts `$t` implements [`VanillaEuropeanCall`] at compile time — that its
-/// `price_call` is a European vanilla call, which is what earns it a
-/// `ModelSurface::vol_surface` — and publishes the list to the audit.
+/// Asserts `$t` implements [`VanillaEuropeanCall`], a European vanilla `price_call` that earns
+/// `ModelSurface::vol_surface`, and publishes the list to the audit.
 macro_rules! assert_vanilla_european_call {
   ($($t:ty),* $(,)?) => {
     $(const _: fn() = || {
@@ -162,15 +96,8 @@ macro_rules! assert_vanilla_european_call {
   };
 }
 
-/// Probe carrying a `bool` that reports whether `T` implements
-/// [`VanillaEuropeanCall`]: the inherent `impl` below applies only when the
-/// bound holds and shadows the trait's `false` when it does, so the constant is
-/// `true` exactly for implementors.
-///
-/// Rust has no `where T: !Trait`, and a *missing* impl is precisely what needs
-/// pinning here — an added blanket impl, or a marker pasted onto a digital, is
-/// the regression this file exists to catch, and both are invisible to a
-/// positive-only inventory.
+/// Probe whose constant is `true` exactly for [`VanillaEuropeanCall`] implementors: the inherent
+/// impl applies only under the bound and shadows the trait's `false`, as Rust has no `T: !Trait`.
 struct VanillaProbe<T: ?Sized>(PhantomData<T>);
 
 trait MaybeVanillaEuropeanCall {
@@ -183,15 +110,8 @@ impl<T: VanillaEuropeanCall + ?Sized> VanillaProbe<T> {
   const IS_VANILLA_EUROPEAN_CALL: bool = true;
 }
 
-/// Asserts `$t` does **not** implement [`VanillaEuropeanCall`], so
-/// `$t::vol_surface(..)` does not compile, and publishes the list to the audit,
-/// which checks that this list and `assert_vanilla_european_call!` tile
-/// `assert_model_pricer!` exactly.
-///
-/// The positive control below the invocation is not decoration: if the
-/// shadowing ever stopped resolving, every negative assertion here would pass
-/// vacuously and this whole list would become a comment. The control fails to
-/// compile in that case.
+/// Asserts `$t` lacks [`VanillaEuropeanCall`] and publishes the list, which with the positive one
+/// must tile `assert_model_pricer!`; the positive control below keeps it from passing vacuously.
 macro_rules! assert_not_vanilla_european_call {
   ($($t:ty),* $(,)?) => {
     $(const _: () = assert!(!<VanillaProbe<$t>>::IS_VANILLA_EUROPEAN_CALL);)*
@@ -225,30 +145,8 @@ assert_model_pricer!(
   SuperSharePricer,
 );
 
-// The subset of the list above whose `price_call` is a European vanilla call,
-// and so may be inverted through the Black formula into an implied vol surface.
-// `ModelSurface` is blanket-implemented over this trait, not over
-// `ModelPricer`, so membership here is what makes `vol_surface` callable at
-// all.
-//
-// Absent from the list because a blanket impl in `pricing/fourier/mod.rs`
-// covers them: every `FourierModelExt` model. Gil-Pelaez prices
-// `S e^{-q tau} P_1 - K e^{-r tau} P_2` — the vanilla European call — for all
-// of them, so they are covered by the same one-line reasoning rather than one
-// entry each. `BLANKET_IMPLS` below pins that blanket, so a *second* one
-// arriving is a test failure rather than a silent widening.
-//
-// `FiniteDifferencePricer` is the one member whose answer is per-instance: it
-// holds its exercise style in a field, so it carries the trait and reports
-// `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BsmPricer` and
-// `Merton1976Pricer` are the two whose *forward* is per-instance, at `b(r, q)`
-// rather than the default `r - q`.
-// `HestonAdiPricer` is per-instance like `FiniteDifferencePricer`: a vanilla
-// European call at the default forward without a barrier, and `NaN` from
-// `vanilla_call_forward` once `with_barrier` turns it into a down-and-out call.
-// `BachelierPricer` is the normal-model member: its call is a European vanilla
-// on `S` at the default forward, so the Black inversion of its prices is the
-// normal-to-lognormal volatility conversion, strike by strike.
+// European vanillas, so `vol_surface` applies; the `FourierModelExt` blanket covers the Fourier
+// models, and `FiniteDifferencePricer` and `HestonAdiPricer` answer `NaN` per instance.
 assert_vanilla_european_call!(
   BachelierPricer,
   BsmPricer,
@@ -265,30 +163,8 @@ assert_vanilla_european_call!(
   SabrPricer,
 );
 
-// The complement: `ModelPricer`s whose payoff a Black inversion cannot describe, so they carry no
-// `VanillaEuropeanCall` and get no `vol_surface`.
-//
-//  - the four digitals (`AssetOrNothingPricer`, `CashOrNothingPricer`,
-//    `GapPricer`, `SuperSharePricer`): the payoff is not `(S_T - K)^+`, so no
-//    Black volatility reproduces it. Nothing about the output says so — an
-//    asset-or-nothing call is worth `F N(d_1)`, inside the no-arbitrage band
-//    `(max(F - K, 0), F)` at every strike, so every point inverts.
-//  - `AsianPricer`: a vanilla call, but on the geometric *average* rather than
-//    on `S_T`, and carried at `b = (r - q - sigma_A^2 / 6) / 2`. The inversion
-//    would return an averaged-underlying volatility labelled as the spot's,
-//    near `sigma / sqrt(3)` and so especially easy to mistake for a real one.
-//  - `BjerksundStensland2002Pricer`, `SnellEnvelopePricer`: American exercise,
-//    and unconditionally so — unlike `FiniteDifferencePricer` there is no
-//    European setting to fall back to. An American call at `q = 0` *is* the
-//    European one, which is what makes the general case dangerous rather than
-//    obviously wrong: at `q = 0.06` both invert to within 0.008 of the model's
-//    own volatility, close enough to pass any eyeball check and wrong at every
-//    point.
-//  - `QuantoPricer`: a vanilla call on the foreign asset, but paid in the
-//    domestic currency at a fixed exchange rate — `E_p` times a Black price
-//    carried at the quanto drift `r_f - q - rho sigma_S sigma_E`. Inverting it
-//    as a domestic vanilla on `S` would fold the `E_p` scale and the wrong
-//    forward into a volatility that is neither the asset's nor the FX rate's.
+// `ModelPricer`s a Black inversion cannot describe, though each inverts to a finite vol: the
+// digitals, the geometric Asian, the two American pricers and the quanto.
 assert_not_vanilla_european_call!(
   AsianPricer,
   AssetOrNothingPricer,
@@ -300,20 +176,12 @@ assert_not_vanilla_european_call!(
   SuperSharePricer,
 );
 
-// Positive control for the probe above — see
-// `assert_not_vanilla_european_call!`. Deliberately *not* a member of the list
-// it guards.
+// The probe's positive control (see `assert_not_vanilla_european_call!`), outside the list it
+// guards.
 const _: () = assert!(<VanillaProbe<HestonPricer>>::IS_VANILLA_EUROPEAN_CALL);
 
-// QuantLib-style decoupled engines (`Instrument` + `PricingEngine<I>` +
-// `PricingResult`, see `traits::instrument`) rather than `ModelPricer`. This is
-// a considered second pricing architecture, not a gap: `Instrument` describes
-// the payoff, the engine owns model/market/method and reacts to market-data
-// updates, and one engine can serve several instrument types.
-//
-// One entry per `(engine, instrument)` impl, not per engine: the audit diffs
-// pairs, so `AnalyticBsEngine`'s second instrument is checked rather than
-// mentioned in a comment, which is how it was handled before.
+// The `Instrument` + `PricingEngine` engines, one entry per `(engine, instrument)` impl, as the
+// audit diffs pairs.
 assert_pricing_engine!(
   (AnalyticBsEngine, DigitalOption),
   (AnalyticBsEngine, EuropeanOption),
@@ -323,9 +191,8 @@ assert_pricing_engine!(
 // The short-rate bond family, named for their model, so only the trait signal sees them.
 assert_short_rate_pricer!(Cir, HullWhite, Vasicek);
 
-/// Blanket impls of a tracked trait, as `(trait, selecting bound)`. Pinned
-/// because a blanket hands a pricing trait to types no list can enumerate: the
-/// audit fails if one is added, removed, or re-bound.
+/// Blanket impls of a tracked trait as `(trait, selecting bound)`, pinned because a blanket hands a
+/// trait to types no list enumerates.
 const BLANKET_IMPLS: &[(&str, &str)] = &[
   ("ModelPricer", "FourierModelExt"),
   ("VanillaEuropeanCall", "FourierModelExt"),
@@ -371,9 +238,8 @@ const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("VolatilitySwapPricer", EXOTIC),
 ];
 
-/// Re-derives the inventory from `src/**/*.rs` and diffs it against the lists
-/// above. This is the half a hand-curated file cannot do for itself: it fails
-/// on a pricer the file has never heard of.
+/// Diffs the lists against the inventory re-derived from `src/**/*.rs`, failing on a pricer the
+/// file has never heard of.
 #[test]
 fn registry_matches_crate_source() {
   let registered = pricer_inventory::Registered {

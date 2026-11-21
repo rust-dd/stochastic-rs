@@ -1,13 +1,5 @@
-//! The acceptance proof for the `RealExt` / `FloatExt` split: a scalar that
-//! implements **only** `RealExt` — no SIMD lanes, no RNG fills, so it could
-//! never implement `FloatExt` — flows through the generic analytic pricing
-//! path and reproduces `f64` bit-for-bit.
-//!
-//! `R64` is a plain delegating newtype over `f64`. Its point is what it does
-//! *not* implement: `SimdFloatExt` and `FloatExt` are absent, so every call
-//! below compiles only because the code under test is bounded on `RealExt`
-//! alone. An AAD dual number or a higher-precision scalar takes exactly this
-//! route in.
+//! A scalar with only `RealExt` (`R64`, a delegating newtype with no SIMD or RNG, so never
+//! `FloatExt`) flows through the generic analytic pricing path and reproduces `f64` bit for bit.
 
 use std::cell::Cell;
 use std::iter::Sum;
@@ -337,9 +329,8 @@ impl RealExt for R64 {
   }
 }
 
-/// The CRR binomial rollback is a genuine pricer that is generic over the
-/// scalar, so it is the door: if `R64` prices it, any `RealExt`-only scalar
-/// can. Delegation is exact, so the two runs must agree to the bit.
+/// The CRR rollback is generic over the scalar, so `R64` pricing it opens the door to any
+/// `RealExt`-only scalar; delegation is exact, so the runs agree to the bit.
 #[test]
 fn a_realext_only_scalar_prices_the_crr_lattice_bit_for_bit() {
   let queries = [

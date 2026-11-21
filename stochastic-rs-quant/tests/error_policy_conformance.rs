@@ -1,5 +1,5 @@
-//! The error policy at its edge cases: NaN for an evaluation outside its domain, a named panic for a
-//! broken precondition, never a plausible sentinel.
+//! The error policy at its edge cases: NaN for an evaluation outside its domain, a named panic for
+//! a broken precondition, never a plausible sentinel.
 
 use chrono::NaiveDate;
 use ndarray::Array1;

@@ -1,16 +1,5 @@
-//! Re-derives this crate's pricing inventory from `src/**/*.rs`.
-//!
-//! `pricer_registry.rs` holds a hand-written list; this module produces the
-//! list the source actually implies, so the two can be diffed and a pricer
-//! added without a registry entry fails a test instead of passing unnoticed.
-//!
-//! The reader is `syn` — the parser procedural macros use — and not a regex
-//! over lines. That choice is the whole point: a line regex sees `impl` inside
-//! a doc comment or a string literal, cannot separate `struct FooPricer` from
-//! `struct FooPricerBuilder` without a word-boundary trick this repository has
-//! already got wrong, and has no way at all to skip a `#[cfg(test)]` module.
-//! `derivation_tests` feeds every one of those shapes through `parse_source`
-//! and pins what comes out, so the derivation is checked rather than trusted.
+//! Re-derives the crate's pricing inventory from `src/**/*.rs` with `syn`, not a line regex, which
+//! sees `impl` in docs and strings, needs word-boundary tricks and cannot skip `#[cfg(test)]`.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -35,9 +24,8 @@ use syn::punctuated::Punctuated;
 mod audit;
 mod derivation_tests;
 
-/// The traits `pricer_registry.rs` enumerates implementors of. A trait absent
-/// from this list is invisible to the scan, which is why adding one to the
-/// registry means adding it here too.
+/// The traits `pricer_registry.rs` enumerates implementors of; one absent here is invisible to the
+/// scan, so a new registry trait is added here too.
 pub const TRACKED_TRAITS: [&str; 4] = [
   "ModelPricer",
   "PricingEngine",
@@ -45,15 +33,12 @@ pub const TRACKED_TRAITS: [&str; 4] = [
   "VanillaEuropeanCall",
 ];
 
-/// Identifier *suffixes* that make a `pub struct` a pricer by name. Matching
-/// the suffix of the parsed identifier rather than a substring of the source
-/// line is what excludes `KirkSpreadPricerBuilder` and `PortfolioEngineConfig`
-/// without needing a word-boundary trick to be spelled correctly.
+/// Identifier suffixes that make a `pub struct` a pricer by name, matched on the parsed identifier
+/// so `KirkSpreadPricerBuilder` and `PortfolioEngineConfig` stay out.
 pub const PRICER_NAME_SUFFIXES: [&str; 2] = ["Pricer", "Engine"];
 
-/// Directory under `src/` the scan skips: the PyO3 wrappers are
-/// `#[cfg(feature = "python")]`, hold their subject in an `inner` field and
-/// carry no trait of their own, so they belong to no pricing family.
+/// The `src/` directory the scan skips: the PyO3 wrappers hold their subject in `inner` and carry
+/// no trait of their own.
 const EXCLUDED_DIR: &str = "python";
 
 const PRICING_ENGINE: &str = "PricingEngine";
@@ -61,22 +46,18 @@ const PRICING_ENGINE: &str = "PricingEngine";
 /// What the source says about pricing traits and pricer-shaped structs.
 #[derive(Debug, Default)]
 pub struct Inventory {
-  /// `impl <tracked trait> for <named type>`, keyed by trait, valued by the
-  /// self type's base identifier — generic arguments dropped, so
-  /// `impl ModelPricer for CrrModel<f64>` lands under `CrrModel`.
+  /// `impl <tracked trait> for <named type>` by trait, valued by the self type's base identifier
+  /// (`CrrModel<f64>` lands under `CrrModel`).
   pub concrete: BTreeMap<String, BTreeSet<String>>,
-  /// `impl<T: Bound> <tracked trait> for T`, keyed by trait, valued by the
-  /// bound that selects the implementors. A blanket impl hands the trait to
-  /// types no per-type list can enumerate, so it is pinned rather than
-  /// expanded.
+  /// `impl<T: Bound> <tracked trait> for T` by trait, valued by the selecting bound: pinned, not
+  /// expanded, as it reaches types no list enumerates.
   pub blanket: BTreeMap<String, BTreeSet<String>>,
   /// `(engine, instrument)` for every `impl PricingEngine<I> for E`.
   pub engine_pairs: BTreeSet<(String, String)>,
   /// `pub struct`s whose identifier ends in one of [`PRICER_NAME_SUFFIXES`].
   pub named_structs: BTreeSet<String>,
-  /// Tracked-trait impls whose self type is neither a named path nor a
-  /// generic parameter. Recorded instead of dropped: an unforeseen shape
-  /// should fail a test, not quietly leave the inventory.
+  /// Tracked-trait impls whose self type is neither a named path nor a generic parameter, kept so
+  /// an unforeseen shape fails a test.
   pub unclassified: BTreeSet<String>,
 }
 
@@ -123,18 +104,15 @@ pub fn parse_source(text: &str) -> Inventory {
   inventory
 }
 
-/// Reduces a `stringify!`d type to the base identifier the scan reports, so
-/// `crate::lattice::equity::CrrModel<f64>` and `CrrModel < f64 >` both become
-/// `CrrModel`.
+/// The base identifier of a `stringify!`d type: `crate::lattice::equity::CrrModel<f64>` and
+/// `CrrModel < f64 >` both give `CrrModel`.
 pub fn base_name(rendered: &str) -> String {
   let head = rendered.split('<').next().unwrap_or(rendered).trim();
   head.rsplit("::").next().unwrap_or(head).trim().to_string()
 }
 
-/// Describes how `derived` and `registered` disagree, or `None` if they do
-/// not. Both directions are reported: a missing entry is an unregistered
-/// pricer, a stale one is a registry claim about a type that no longer
-/// implements the trait.
+/// How `derived` and `registered` disagree, or `None`: a missing entry is an unregistered pricer, a
+/// stale one a registry claim about a type without the trait.
 pub fn diff(
   label: &str,
   derived: &BTreeSet<String>,
