@@ -5,8 +5,8 @@ use stochastic_rs_quant::traits::ModelPricer;
 
 const K: f64 = 100.0;
 
-/// Reference: the law of `ln G` integrated by mpmath at 50 digits; the last row is the example of
-/// Haug (2007) §4.20.1, whose put he prints as 4.6922.
+/// Reference: the law of `ln G`, integrated by mpmath at 50 digits
+/// Reference: Haug (2007), ISBN 0071389970, §4.20.1: the last row, whose put he prints as 4.6922
 #[test]
 fn the_geometric_asian_is_kemna_and_vorsts_closed_form() {
   for (s, k, r, q, tau, sigma, call, put) in [

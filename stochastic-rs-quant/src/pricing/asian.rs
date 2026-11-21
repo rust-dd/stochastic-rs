@@ -15,13 +15,8 @@ use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 
-/// Geometric-average Asian option by Kemna and Vorst's closed form.
-///
-/// The struct holds **model state only** — the volatility of the
-/// underlying. Spot, strike, rate, dividend yield and maturity are the
-/// pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid.
+/// Geometric-average Asian option by Kemna and Vorst's closed form; the struct holds the
+/// volatility alone and the query travels as arguments, so one instance prices a whole grid.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::asian::AsianPricer;

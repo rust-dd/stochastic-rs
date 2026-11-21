@@ -201,7 +201,7 @@ impl BarrierPricer {
 }
 
 /// The path `S e^{(r−q)t}`, which meets `H` at `t* = ln(H/S)/(r − q)` or never: a knock-out pays
-/// its rebate at `t*`, a knock-in its payoff once in, breached at the start or not, else its rebate.
+/// its rebate at `t*`, a knock-in its payoff once in, at the start or later, else its rebate.
 fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
   let BarrierOption {
     strike: k,
