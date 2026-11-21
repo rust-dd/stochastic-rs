@@ -6,6 +6,8 @@ use stochastic_rs_quant::pricing::fourier::CarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
 use stochastic_rs_quant::pricing::fourier::VarianceGammaFourier;
@@ -83,9 +85,87 @@ fn every_pricer_holds_a_price_whose_share_measure_explodes() {
   let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
   assert_within("lewis", lewis, want, 1e-11);
   let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
-  assert_within("gil-pelaez", gil_pelaez, want, 2e-8);
+  assert_within("gil-pelaez", gil_pelaez, want, 1e-11);
   let closed = HestonPricer::new(EXPLODING).price_call(s, k, r, q, tau);
   assert_within("heston", closed, want, 1e-11);
+}
+
+/// `ρσ ≥ κ` at `τ = 15`, where the share measure's chf has its structure near `u = 1e-8`.
+fn hkde_past_its_share_measure() -> HkdeFourier {
+  HkdeFourier::new(HkdeParams {
+    v0: 0.09,
+    kappa: 0.2,
+    theta: 0.01,
+    sigma: 1.5,
+    rho: 0.95,
+    lambda: 1.0,
+    p_up: 0.4,
+    eta1: 10.0,
+    eta2: 5.0,
+  })
+}
+
+/// Calls at `(s, r, q, τ) = (100, 0.03, 0.01, 15)` by Lewis quadrature at 40 digits (mpmath); the
+/// third strike is the forward, where `κ = 0`.
+const HKDE_CALLS: [(f64, f64); 5] = [
+  (100.0, 40.091_698_837_618_03),
+  (80.0, 46.355_092_420_111_84),
+  (134.985_880_757_600_3, 31.704_182_907_960_47),
+  (60.0, 53.946_237_851_884_24),
+  (250.0, 17.921_940_384_218_78),
+];
+
+/// The jumps' compensator turns the integrand's phase 0.83 radians per unit `u` beside `κ`'s 0.3,
+/// and the walk hands over to the tail rule on the sum.
+#[test]
+fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
+  let model = hkde_past_its_share_measure();
+  let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
+  for (k, want) in HKDE_CALLS {
+    let name = format!("k = {k}");
+    assert_within(&name, model.price_call(s, k, r, q, tau), want, 1e-11);
+    let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
+    assert_within(&name, lewis, want, 1e-11);
+  }
+}
+
+/// `P₁`'s head reads `φ(u − i)` down to `u = 1e-16`, where `e^{−iuκ}` is 1: an error of the chf
+/// near `1e-8` is the same error in the price at every strike.
+#[test]
+fn gil_pelaez_holds_a_share_measure_with_structure_near_1e_8() {
+  let model = hkde_past_its_share_measure();
+  let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
+  for (k, want) in HKDE_CALLS {
+    let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
+    assert_within(&format!("k = {k}"), gil_pelaez, want, 2e-12);
+  }
+}
+
+/// An ordinary set whose reach, 12.23, falls inside the walk's second panel, `[9, 25]`: the panel
+/// ends at the reach, or its 24 radians pass the rule's test unresolved.
+#[test]
+fn every_pricer_holds_a_price_whose_reach_falls_inside_a_panel() {
+  let p = HestonParams {
+    v0: 0.194_779_246_267_201_67,
+    kappa: 1.315_287_479_158_480_5,
+    theta: 0.039_367_491_782_947_184,
+    sigma: 0.230_791_385_737_688,
+    rho: 0.694_633_511_616_932_9,
+  };
+  let (s, k) = (100.0, 97.704_591_549_406_44);
+  let (r, q, tau) = (
+    0.073_498_654_012_610_65,
+    0.038_008_315_124_199_77,
+    10.928_313_122_938_823,
+  );
+  let want = 28.909_883_340_891_092;
+  let model = HestonFourier::new(p);
+  let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
+  assert_within("lewis", lewis, want, 1e-12);
+  let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
+  assert_within("gil-pelaez", gil_pelaez, want, 1e-12);
+  let closed = HestonPricer::new(p).price_call(s, k, r, q, tau);
+  assert_within("heston", closed, want, 1e-12);
 }
 
 /// `(k, τ)` and Black–Scholes's call at `σ = 0.2`, `(s, r, q) = (100, 0.05, 0)`.
@@ -95,8 +175,7 @@ const BLACK_SCHOLES: [(f64, f64, f64); 3] = [
   (120.0, 5.0, 20.578_973_389_573_955),
 ];
 
-/// What the trapezoid rule leaves is its image, `Se^{−2πα/η} = 6.5e-7` at the default `α` and `η`;
-/// Simpson's weights left `2.7e-3`.
+/// What the trapezoid rule leaves is its image, `Se^{−2πα/η} = 6.5e-7` at the default `α` and `η`.
 #[test]
 fn carr_madan_is_off_by_the_trapezoid_rules_image_alone() {
   let model = BsmFourier { sigma: 0.2 };

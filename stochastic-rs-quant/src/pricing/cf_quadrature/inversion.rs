@@ -21,10 +21,11 @@ const NEAR_TOLERANCE: f64 = 1e-12;
 /// The head covers `(0, 1]` in panels of `x = ln u` this wide, until three in a row add nothing.
 const HEAD_WIDTH: f64 = 2.0;
 const MAX_HEAD_PANELS: usize = 400;
-/// The radians of `e^{−iuκ}` the walk covers before the tail rule takes over; `|κ|` floored.
+/// The walk ends where `u` times the phase's local rate is this many radians, the turn a panel
+/// from `u` holds; the rate's floor puts that at `2·10⁶` at most, so the probes end by `2²¹`.
 const PHASE_BUDGET: f64 = 20.0;
-const KAPPA_FLOOR: f64 = 1e-5;
-/// `|φ|` past which the walk need not reach, probed at powers of two up to `2⁴⁰`.
+const RATE_FLOOR: f64 = 1e-5;
+/// `|φ|` past which the walk need not reach, probed at powers of two.
 const NEGLIGIBLE_CHF: f64 = 1e-12;
 
 /// Past this variance the control keeps it: a wider law's chf is already negligible in `1/√w`.
@@ -61,18 +62,32 @@ pub(crate) struct Rule {
   tails: [Option<TailRule>; 2],
 }
 
-/// `(reach, scale)`: the walk ends at `min(u*, PHASE_BUDGET/|κ|)`, `u*` the first power of two
-/// where `modulus` is negligible; it walks `y = u/scale` so that its panel budget covers the reach.
-pub(crate) fn reach_and_scale(modulus: impl Fn(f64) -> f64, kappa: f64) -> (f64, f64) {
-  let mut decayed = 1.0_f64;
-  while decayed < 1.1e12 {
-    if modulus(decayed) <= NEGLIGIBLE_CHF {
-      break;
+/// `(reach, scale)`: `PHASE_BUDGET` over the local phase rate of `e^{−iuκ}chf(u)` at the first
+/// power of two `u` it is under, or that `u` where `chf` is negligible; the walk is in `u/scale`.
+pub(crate) fn reach_and_scale(chf: impl Fn(f64) -> Complex64, kappa: f64) -> (f64, f64) {
+  let mut rate = -kappa;
+  let mut reach = 1.0_f64;
+  loop {
+    let at = chf(reach);
+    let live = at.norm() > NEGLIGIBLE_CHF || at.is_nan();
+    if live {
+      rate = phase_rate(&chf, reach, at) - kappa;
     }
-    decayed *= 2.0;
+    let budget = PHASE_BUDGET / rate.abs().max(RATE_FLOOR);
+    if !live || budget <= reach {
+      // The rate settles as `u` grows, so the budget is not read back past the probe before.
+      let floor = if reach > 1.0 { 0.5 * reach } else { 0.0 };
+      reach = reach.min(budget.max(floor));
+      return (reach, (reach / 4000.0).max(1.0));
+    }
+    reach *= 2.0;
   }
-  let reach = decayed.min(PHASE_BUDGET / kappa.abs().max(KAPPA_FLOOR));
-  (reach, (reach / 4000.0).max(1.0))
+}
+
+/// `d arg part/du` at `u` by a forward step of `1e-6·max(u, 1)`, given `at = part(u)`.
+fn phase_rate(part: &impl Fn(f64) -> Complex64, u: f64, at: Complex64) -> f64 {
+  let step = 1e-6 * u.max(1.0);
+  (part(u + step) / at).arg() / step
 }
 
 /// The first `u = 1e-8·10⁻⁴ⁿ` at which `gap`, a chf's distance from its `u → 0` limit, is under
@@ -90,19 +105,20 @@ pub(crate) fn head_floor(gap: impl Fn(f64) -> f64) -> f64 {
 
 /// `∫₀^∞ Re[chf_part − control_part]`; `control_part` oscillates at `control_frequency`, and a
 /// `head_floor` below 1 says the kernel's `1/u` needs the head in `ln u`, walked at least that far.
-pub(crate) struct Inversion<A, B> {
+pub(crate) struct Inversion<A, B, R> {
   pub(crate) chf_part: A,
   pub(crate) control_part: B,
   pub(crate) control_frequency: f64,
   pub(crate) head_floor: Option<f64>,
-  pub(crate) reach: f64,
-  pub(crate) scale: f64,
+  /// [`reach_and_scale`], asked of a walk alone: a replay integrates its rule and probes nothing.
+  pub(crate) reach: R,
 }
 
-impl<A, B> Inversion<A, B>
+impl<A, B, R> Inversion<A, B, R>
 where
   A: Fn(f64) -> Complex64,
   B: Fn(f64) -> Complex64,
+  R: Fn() -> (f64, f64),
 {
   /// The integral, NaN if any sample is, walked or replayed as `walk` says.
   pub(crate) fn integrate(&self, walk: &mut Walk<'_, Rule>) -> f64 {
@@ -127,22 +143,17 @@ where
       }
       None => (0.0, 0.0),
     };
-    let scaled = |y: f64| self.scale * watched(self.scale * y);
+    let (reach, scale) = (self.reach)();
+    let scaled = |y: f64| scale * watched(scale * y);
     let leaves = rule.as_deref_mut().map(|r| {
-      r.scale = self.scale;
+      r.scale = scale;
       &mut r.body
     });
-    let (body, end) = walk(
-      scaled,
-      start / self.scale,
-      BODY_TOLERANCE,
-      self.reach / self.scale,
-      leaves,
-    );
+    let (body, end) = walk(scaled, start / scale, BODY_TOLERANCE, reach / scale, leaves);
     if poisoned.get() || body.is_nan() {
       return f64::NAN;
     }
-    let end = (end * self.scale).max(start);
+    let end = (end * scale).max(start);
     let mut tails = [
       self.tail_rule(&self.chf_part, end, None),
       self.tail_rule(&self.control_part, end, Some(self.control_frequency)),
@@ -223,10 +234,7 @@ where
     P: Fn(f64) -> Complex64,
   {
     let at = part(start);
-    let frequency = frequency.unwrap_or_else(|| {
-      let step = 1e-6 * start.max(1.0);
-      (part(start + step) / at).arg() / step
-    });
+    let frequency = frequency.unwrap_or_else(|| phase_rate(part, start, at));
     let span = start.max(1.0 / frequency.abs());
     (at.norm() * span > 1e-3 * BODY_TOLERANCE || at.is_nan()).then(|| TailRule {
       start,
@@ -275,5 +283,42 @@ where
       ooura::tail(|u| part(u).conj(), start, -omega)
     };
     total + far.re
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// The reach of `e^{−u/50 + i·phase(u)}`, negligible from the power of two 2048.
+  fn reach(phase: impl Fn(f64) -> f64, kappa: f64) -> f64 {
+    reach_and_scale(|u| Complex64::new(-0.02 * u, phase(u)).exp(), kappa).0
+  }
+
+  /// `κ = −0.25` alone turns 20 radians by 80; a chf turning 0.75 a unit brings that to 20, and
+  /// one turning with `κ` leaves none.
+  #[test]
+  fn the_reach_counts_the_phase_the_chf_turns_itself() {
+    assert_eq!(reach(|_| 0.0, -0.25), 80.0);
+    assert!((reach(|u| 0.75 * u, -0.25) - 20.0).abs() < 1e-6);
+    assert_eq!(reach(|u| -0.25 * u, -0.25), 2048.0);
+    assert_eq!(reach(|_| 0.0, 0.0), 2048.0);
+    assert_eq!(reach(|_| 0.0, 100.0), 0.2);
+  }
+
+  /// A rate of `0.25 − u/100` is zero at 25 and `−0.39` at the probe 64, which it stops: `|rate|`
+  /// is what counts, and the probes at 16 and 32, either side of the zero, go on.
+  #[test]
+  fn the_reach_holds_where_the_phase_rate_changes_sign() {
+    let got = reach(|u| -u * u / 200.0, -0.25);
+    assert!((got - 20.0 / 0.39).abs() < 1e-3, "{got}");
+  }
+
+  /// A rate that starts at 100 is 28 at the probe 128, a budget of 0.71: the reach stays at 64,
+  /// where the probe before read no rate at all.
+  #[test]
+  fn the_reach_is_not_read_back_past_the_probe_before() {
+    let got = reach(|u| 0.5 * (u - 100.0).max(0.0).powi(2), 0.0);
+    assert_eq!(got, 64.0);
   }
 }

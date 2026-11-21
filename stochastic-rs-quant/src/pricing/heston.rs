@@ -202,10 +202,10 @@ impl HestonPricer {
     mean_integrated_variance(v0, self.b(j), kappa * theta, tau)
   }
 
-  /// The walk's `(reach, scale)`, from the chf's decay and `κ = ln(K/F)`; one for both `P_j`.
+  /// The walk's `(reach, scale)`, from `f₂`'s decay and phase and `κ = ln(K/F)`; one for both.
   fn reach(&self, tau: f64, (s, k, r, q): (f64, f64, f64, f64)) -> (f64, f64) {
     let kappa = (k / s).ln() - (r - q) * tau;
-    reach_and_scale(|phi| self.f_and_d(2, phi, tau).0.norm(), kappa)
+    reach_and_scale(|phi| self.f_and_d(2, phi, tau).0, kappa)
   }
 
   /// `(w, ∂w/∂v₀)`: `E_j[∫v]`, the Gaussian control's variance, held at the cap past it.
@@ -224,7 +224,7 @@ impl HestonPricer {
     j: u8,
     tau: f64,
     (s, k, r, q): (f64, f64, f64, f64),
-    (reach, scale): (f64, f64),
+    reach: (f64, f64),
   ) -> f64 {
     if !self.mean_integrated_variance(j, tau).is_finite() {
       return f64::NAN;
@@ -239,8 +239,7 @@ impl HestonPricer {
       control_part: |phi: f64| kernel(phi) * gaussian(phi, mean, w),
       control_frequency: mean - kappa,
       head_floor: Some(self.head_floor(j, tau)),
-      reach,
-      scale,
+      reach: || reach,
     };
     gaussian_share(kappa, mean, w) + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
   }
@@ -251,7 +250,7 @@ impl HestonPricer {
     j: u8,
     tau: f64,
     (s, k, r, q): (f64, f64, f64, f64),
-    (reach, scale): (f64, f64),
+    reach: (f64, f64),
   ) -> f64 {
     if !self.mean_integrated_variance(j, tau).is_finite() {
       return f64::NAN;
@@ -271,8 +270,7 @@ impl HestonPricer {
       },
       control_frequency: u * w - kappa,
       head_floor: Some(self.head_floor(j, tau)),
-      reach,
-      scale,
+      reach: || reach,
     };
     let share = if w > 0.0 {
       norm_pdf((u * w - kappa) / w.sqrt()) * (u * w + kappa) / (2.0 * w * w.sqrt()) * slope

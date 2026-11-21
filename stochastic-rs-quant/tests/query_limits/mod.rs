@@ -47,6 +47,7 @@ mod exotic_edges;
 mod exotics;
 mod expiry_census;
 mod expiry_greeks;
+mod fourier_expiry;
 mod kemna_vorst;
 mod mc_queries;
 mod positive_domain;

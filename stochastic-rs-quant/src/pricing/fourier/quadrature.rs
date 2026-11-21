@@ -7,6 +7,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::FourierModelExt;
 use super::pricer::floor_price;
+use super::pricer::settled_call;
 use crate::pricing::cf_quadrature::CONTROL_VARIANCE_CAP;
 use crate::pricing::cf_quadrature::Inversion;
 use crate::pricing::cf_quadrature::Rule;
@@ -38,7 +39,8 @@ fn control_variance(model: &impl FourierModelExt, t: f64) -> f64 {
 pub struct LewisPricer;
 
 impl LewisPricer {
-  /// The European call; NaN for a non-finite `s`, `k`, `r`, `q` or `t`, otherwise floored at zero.
+  /// The European call, floored at zero: the payoff at `t = 0`; NaN past expiry and, before it,
+  /// for an `s` or `k` that is not positive and finite or a non-finite `r` or `q`.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
   }
@@ -53,19 +55,20 @@ impl LewisPricer {
     t: f64,
     walk: &mut Walk<'_, Rule>,
   ) -> f64 {
+    if let Some(value) = settled_call(s, k, r, q, t) {
+      return value;
+    }
     let forward = s * ((r - q) * t).exp();
     let kappa = (k / forward).ln();
     let w = control_variance(model, t);
     let chf = |u: f64| model.chf(t, Complex64::new(u, -0.5));
-    let (reach, scale) = reach_and_scale(|u| chf(u).norm(), kappa);
     let kernel = |u: f64| Complex64::new(0.0, -u * kappa).exp() / (u * u + 0.25);
     let inversion = Inversion {
       chf_part: |u: f64| kernel(u) * chf(u),
       control_part: |u: f64| kernel(u) * (-0.5 * w * (u * u + 0.25)).exp(),
       control_frequency: -kappa,
       head_floor: None,
-      reach,
-      scale,
+      reach: || reach_and_scale(chf, kappa),
     };
     let integral = inversion.integrate(walk);
     let black = if w > 0.0 {
@@ -91,16 +94,19 @@ impl LewisPricer {
 pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
-  /// The call `Se^{−qτ}P₁ − Ke^{−rτ}P₂`; NaN for a non-finite `s`, `k`, `r`, `q` or `t`, or where
-  /// `φ(−i) = E[e^X]` is not finite and positive, otherwise floored at zero.
+  /// The call `Se^{−qτ}P₁ − Ke^{−rτ}P₂`, floored at zero: the payoff at `t = 0`; NaN past expiry,
+  /// for an `s` or `k` not positive and finite before it, and where `E[e^X]` is not positive.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
+    if let Some(value) = settled_call(s, k, r, q, t) {
+      return value;
+    }
     let kappa = (k / s).ln() - (r - q) * t;
     let w = control_variance(model, t);
     let share_norm = model.chf(t, Complex64::new(0.0, -1.0));
     if !(share_norm.is_finite() && share_norm.norm() > 0.0) {
       return f64::NAN;
     }
-    let (reach, scale) = reach_and_scale(|u| model.chf(t, Complex64::from(u)).norm(), kappa);
+    let reach = reach_and_scale(|u| model.chf(t, Complex64::from(u)), kappa);
     let share = |u_j: f64, shift: f64, norm: Complex64| {
       let mean = u_j * w;
       let chf = |u: f64| model.chf(t, Complex64::new(u, shift)) / norm;
@@ -110,8 +116,7 @@ impl GilPelaezPricer {
         control_part: |u: f64| kernel(u) * Complex64::new(-0.5 * u * u * w, u * mean).exp(),
         control_frequency: mean - kappa,
         head_floor: Some(head_floor(|u| (chf(u) - 1.0).norm())),
-        reach,
-        scale,
+        reach: || reach,
       };
       gaussian_share(kappa, mean, w) + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
     };

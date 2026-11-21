@@ -18,7 +18,8 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
   } = *p;
   let i = Complex64::i();
   let beta = kappa - rho * sigma * i * xi;
-  riccati_cd(beta, i * xi + xi * xi, kappa * theta, sigma * sigma, t)
+  // The moment `iξ + ξ²` as a product: at `ξ = u − i` the sum rounds its `u²` away against 1.
+  riccati_cd(beta, xi * (xi + i), kappa * theta, sigma * sigma, t)
 }
 
 /// `(C, D)` solving `C' = κθD`, `D' = ½σ²D² − βD − ½m` from zero: the Little-Trap form with `g̃`

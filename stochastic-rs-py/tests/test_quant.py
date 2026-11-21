@@ -348,6 +348,24 @@ def test_carr_madan_pricer_takes_the_carry_from_the_query():
         assert abs(fft - model.price_call(100.0, k, 0.05, 0.02, 1.0)) < 5e-3
 
 
+def test_the_fourier_models_and_carr_madan_pay_out_at_expiry_and_are_nan_past_it():
+    heston = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
+    bates = sr.BatesFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, -0.05, 0.1)
+    kou = sr.KouFourier(0.2, 1.0, 0.4, 10.0, 5.0)
+    pricer = sr.CarrMadanPricer()
+    calls = [model.price_call for model in (sr.BSMFourier(0.2), heston, bates, kou)]
+    calls.append(lambda *query: pricer.price_heston_call(heston, *query))
+    calls.append(lambda *query: pricer.price_bates_call(bates, *query))
+    calls.append(lambda *query: pricer.price_kou_call(kou, *query))
+    for call in calls:
+        for s in (90.0, 100.0, 110.0):
+            assert call(s, 100.0, 0.05, 0.02, 0.0) == max(s - 100.0, 0.0)
+            for tau in (-1.0, math.nan, math.inf):
+                assert math.isnan(call(s, 100.0, 0.05, 0.02, tau))
+        for s, k in ((0.0, 100.0), (-5.0, 100.0), (110.0, 0.0), (110.0, -5.0)):
+            assert math.isnan(call(s, k, 0.05, 0.02, 1.0))
+
+
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
     import numpy as np
 
