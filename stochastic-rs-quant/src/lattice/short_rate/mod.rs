@@ -1,6 +1,7 @@
 //! Short-rate tree engines built on the generic lattice primitives.
 //!
-//! Reference: Hull & White (1994), Black & Karasinski (1991).
+//! Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, DOI 10.3905/jod.1994.407902
+//! Reference: Black & Karasinski (1991), Financ. Anal. J. 47(4), 52–59
 
 use crate::traits::RealExt;
 
