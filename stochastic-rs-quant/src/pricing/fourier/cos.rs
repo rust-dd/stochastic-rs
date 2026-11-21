@@ -83,8 +83,8 @@ impl CosEngine {
     discounted(put[0].sum, s0, k, r, q, t, option_type)
   }
 
-  /// [`CosEngine::price`] at each strike, bit for bit: the ranges are equally wide, so the nodes
-  /// and `chf` are shared. Fang & Oosterlee's Eq. (30) prices on one common range instead.
+  /// [`CosEngine::price`] at each strike, bit for bit for runtime model parameters: equal ranges
+  /// share nodes and `chf`. Fang & Oosterlee's Eq. (30) prices on one common range instead.
   pub fn price_strikes<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,

@@ -5,6 +5,8 @@ use crate::pricing::fourier::BsmFourier;
 use crate::pricing::fourier::GilPelaezPricer;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::fourier::KouFourier;
+use crate::pricing::fourier::MertonJdFourier;
+use crate::pricing::fourier::NigFourier;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
@@ -321,6 +323,7 @@ fn fang_oosterlee_heston() -> HestonFourier {
 
 /// A strike array is `price` at each strike, bit for bit: both sum the same terms in one order.
 fn assert_strikes_are_prices<M: FourierModelExt>(model: &M) {
+  let model = std::hint::black_box(model);
   let strikes = ndarray::Array1::linspace(40.0, 250.0, 43);
   for engine in [CosEngine::default(), CosEngine::new(512, 12.0)] {
     for option_type in [OptionType::Call, OptionType::Put] {
@@ -348,6 +351,17 @@ fn price_strikes_is_price_at_every_strike() {
     p_up: 0.2,
     eta1: 25.0,
     eta2: 10.0,
+  });
+  assert_strikes_are_prices(&MertonJdFourier {
+    sigma: 0.2,
+    lambda: 0.5,
+    mu_j: -0.1,
+    sigma_j: 0.15,
+  });
+  assert_strikes_are_prices(&NigFourier {
+    alpha: 15.0,
+    beta: -5.0,
+    delta: 0.5,
   });
 }
 
