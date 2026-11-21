@@ -104,17 +104,6 @@ where
   walk(f, a, tol, f64::INFINITY, None).0
 }
 
-/// [`integrate_to_convergence`] run as `mode` says: recorded, or on a rule recorded before.
-pub(crate) fn integrate_walk<F>(f: F, a: f64, tol: f64, mode: &mut Walk<'_, Panels>) -> f64
-where
-  F: Fn(f64) -> f64,
-{
-  mode.run(
-    |leaves| walk(&f, a, tol, f64::INFINITY, leaves).0,
-    |panels| integrate_on(&f, panels),
-  )
-}
-
 /// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, past it
 /// whatever the envelope says, so that a price's panels move only with `reach`.
 fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64)
@@ -272,11 +261,19 @@ mod tests {
     );
   }
 
+  /// `walk` run as `mode` says, the record and replay an inversion's body takes.
+  fn walked(f: impl Fn(f64) -> f64, mode: &mut Walk<'_, Panels>) -> f64 {
+    mode.run(
+      |leaves| walk(&f, 0.0, 1e-8, f64::INFINITY, leaves).0,
+      |panels| integrate_on(&f, panels),
+    )
+  }
+
   #[cfg(debug_assertions)]
   #[test]
   #[should_panic(expected = "a replay outran its recorded rules")]
   fn a_replay_past_its_record_panics_where_debug_assertions_run() {
-    integrate_walk(|u: f64| (-u).exp(), 0.0, 1e-8, &mut Walk::Replay([].iter()));
+    walked(|u: f64| (-u).exp(), &mut Walk::Replay([].iter()));
   }
 
   /// Recorded on one integrand, the rule integrates a shifted one as a fixed rule: the same value
@@ -285,12 +282,15 @@ mod tests {
   fn a_recorded_rule_replays_the_walk_and_holds_across_its_stop() {
     let f = |c: f64| move |u: f64| (-c * u).exp() * (u * 1.3).cos() / (1.0 + u * u);
     let mut rules = Vec::new();
-    let walked = integrate_walk(f(0.05), 0.0, 1e-8, &mut Walk::Record(&mut rules));
-    assert_eq!(walked, integrate_to_convergence(f(0.05), 0.0, 1e-8));
-    let replayed = integrate_walk(f(0.05), 0.0, 1e-8, &mut Walk::Replay(rules.iter()));
-    assert!((replayed - walked).abs() < 1e-15, "{replayed} vs {walked}");
+    let recorded = walked(f(0.05), &mut Walk::Record(&mut rules));
+    assert_eq!(recorded, integrate_to_convergence(f(0.05), 0.0, 1e-8));
+    let replayed = walked(f(0.05), &mut Walk::Replay(rules.iter()));
+    assert!(
+      (replayed - recorded).abs() < 1e-15,
+      "{replayed} vs {recorded}"
+    );
     let h = 1e-6;
-    let on_rule = |c: f64| integrate_walk(f(c), 0.0, 1e-8, &mut Walk::Replay(rules.iter()));
+    let on_rule = |c: f64| walked(f(c), &mut Walk::Replay(rules.iter()));
     let slope = (on_rule(0.05 + h) - on_rule(0.05 - h)) / (2.0 * h);
     let wide = (on_rule(0.05 + 1e3 * h) - on_rule(0.05 - 1e3 * h)) / (2e3 * h);
     assert!(

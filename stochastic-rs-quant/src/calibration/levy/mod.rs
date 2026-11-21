@@ -25,8 +25,6 @@ mod calibrator;
 mod loss;
 mod types;
 
-pub(super) const EPS: f64 = 1e-8;
-
 pub use calibrator::LevyCalibrator;
 pub use types::LevyModel;
 pub use types::LevyModelType;
