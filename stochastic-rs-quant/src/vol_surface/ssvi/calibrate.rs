@@ -12,7 +12,7 @@ use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
 /// SSVI's global $(\rho, \eta, \gamma)$ fitted to every slice at once by Levenberg–Marquardt; the
-/// loss is in total variance, and `converged` and `message` are the stop's.
+/// loss is in total variance, and a parameter the projection moves stops the fit at its bound.
 pub fn calibrate_ssvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   initial: Option<SsviParams<T>>,
@@ -62,6 +62,7 @@ pub fn calibrate_ssvi<T: RealExt>(
   );
 
   let mut p64 = SsviParams::<f64>::from_dvector(result.params.view());
+  let unprojected = p64.into_dvector();
   // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
   // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
   // projection when no positive θ is available (degenerate input).
@@ -86,7 +87,10 @@ pub fn calibrate_ssvi<T: RealExt>(
     eta: T::from_f64_fast(p64.eta),
     gamma: T::from_f64_fast(p64.gamma),
   };
-  report.fit(params, &market, &model, &LossMetric::ALL, Vec::new())
+  let (before, after) = (unprojected.to_vec(), p64.into_dvector().to_vec());
+  report
+    .fit(params, &market, &model, &LossMetric::ALL, Vec::new())
+    .projected(&["rho", "eta", "gamma"], &before, &after)
 }
 
 #[derive(Clone, Debug)]

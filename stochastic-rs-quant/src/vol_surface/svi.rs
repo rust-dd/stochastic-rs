@@ -261,8 +261,8 @@ pub struct SviJumpWings<T: RealExt> {
   pub tau: T,
 }
 
-/// Raw SVI fitted to total variances by Levenberg–Marquardt from `initial` or a heuristic start;
-/// the loss is in total variance, and `converged` and `message` are the stop's.
+/// Raw SVI fitted to total variances by Levenberg–Marquardt and projected onto its admissible box;
+/// the loss is in total variance, and a parameter the projection moves stops the fit at its bound.
 pub fn calibrate_svi<T: RealExt>(
   log_moneyness: &[T],
   total_variance: &[T],
@@ -307,6 +307,7 @@ pub fn calibrate_svi<T: RealExt>(
   // The objective depends on sigma squared, so either sign represents the fit.
   // Reflect before projecting to preserve its curvature at a negative solution.
   p64.sigma = p64.sigma.abs();
+  let unprojected = p64.into_dvector();
   p64.project();
 
   let model = result
@@ -321,7 +322,11 @@ pub fn calibrate_svi<T: RealExt>(
     m: T::from_f64_fast(p64.m),
     sigma: T::from_f64_fast(p64.sigma),
   };
-  report.fit(params, &result.ws, &model, &LossMetric::ALL, Vec::new())
+  let names = ["a", "b", "rho", "m", "sigma"];
+  let (before, after) = (unprojected.to_vec(), p64.into_dvector().to_vec());
+  report
+    .fit(params, &result.ws, &model, &LossMetric::ALL, Vec::new())
+    .projected(&names, &before, &after)
 }
 
 /// Heuristic initial guess for SVI from data moments.

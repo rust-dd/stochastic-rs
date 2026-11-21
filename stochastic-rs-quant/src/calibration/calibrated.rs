@@ -82,6 +82,22 @@ impl<P, D> Calibrated<P, D> {
     self
   }
 
+  /// Not converged, in the quant stop words of a fit held on the bound of `name`.
+  pub(crate) fn at_bound(mut self, name: &str) -> Self {
+    self.converged = false;
+    self.with_message(format!("stopped at the bound of {name}"))
+  }
+
+  /// [`at_bound`](Self::at_bound) of the first of `names` a projection moved beyond rounding, from
+  /// `before` to `after`; unchanged where it moved none.
+  pub(crate) fn projected(self, names: &[&str], before: &[f64], after: &[f64]) -> Self {
+    let moved = |(b, a): (&f64, &f64)| (b - a).abs() > 1e-12 * b.abs().max_or_nan(1.0);
+    match before.iter().zip(after).position(moved) {
+      Some(j) => self.at_bound(names[j]),
+      None => self,
+    }
+  }
+
   pub fn with_diagnostics<E>(self, diagnostics: E) -> Calibrated<P, E> {
     Calibrated {
       params: self.params,

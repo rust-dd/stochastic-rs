@@ -177,3 +177,22 @@ fn the_jacobian_is_the_slope_of_the_residuals() {
     assert!(error < 1e-8, "{point}: {error:e}");
   }
 }
+
+/// From an inadmissible truth (`b < 0`) the fit is exact; the projection then sets `b` to 0, so the
+/// returned fit is short of the stop and names the bound it was moved onto.
+#[test]
+fn a_fit_the_projection_moves_stops_at_that_parameters_bound() {
+  let truth = SviRawParams::<f64>::new(0.06, -0.1, 0.2, 0.0, 0.1);
+  let ks = (-6..=6).map(|i| i as f64 * 0.05).collect::<Vec<_>>();
+  let ws = ks
+    .iter()
+    .map(|&k| truth.total_variance(k))
+    .collect::<Vec<_>>();
+  let fit = calibrate_svi(&ks, &ws, Some(truth));
+  assert_eq!(fit.params.b, 0.0);
+  let stop = fit.message.as_deref();
+  assert!(
+    !fit.converged && stop == Some("stopped at the bound of b"),
+    "{fit:?}"
+  );
+}
