@@ -324,17 +324,19 @@ def test_the_boundary_kwarg_selects_the_variance_step():
         kwargs = {"s0": 100.0, "v0": 0.0, "t": 1.0, "seed": 3, "boundary": boundary}
         return sr.PyHeston(2.0, 0.04, 2.0, -0.7, 0.03, 65, **kwargs).sample()[1]
 
-    floor, reflect = variance("floor"), variance("reflect")
-    assert np.all(floor >= 0.0) and np.all(reflect >= 0.0)
-    split = int(np.argmax(floor != reflect))
-    assert floor[split] != reflect[split]
-    assert floor[split] == 0.0 and reflect[split] > 0.0
-    assert np.array_equal(variance(None), floor)
-    cir = sr.PyCir(1.5, 0.04, 0.3, 64, x0=0.04, t=1.0, seed=5, boundary="floor").sample()
+    absorbed, reflect = variance("absorption"), variance("reflect")
+    truncated = variance("full_truncation")
+    assert np.all(absorbed >= 0.0) and np.all(reflect >= 0.0) and np.all(truncated >= 0.0)
+    split = int(np.argmax(absorbed != reflect))
+    assert absorbed[split] != reflect[split]
+    assert absorbed[split] == 0.0 and reflect[split] > 0.0
+    assert truncated[split] == 0.0 and not np.array_equal(truncated, absorbed)
+    assert np.array_equal(variance(None), truncated)
+    cir = sr.PyCir(1.5, 0.04, 0.3, 64, x0=0.04, t=1.0, seed=5, boundary="full_truncation").sample()
     assert np.array_equal(cir, sr.PyCir(1.5, 0.04, 0.3, 64, x0=0.04, t=1.0, seed=5).sample())
     for build in (variance, lambda b: sr.PyCir(1.5, 0.04, 0.3, 64, boundary=b)):
         with pytest.raises(ValueError):
-            build("symmetric")
+            build("floor")
 
 
 def test_a_log_price_model_takes_exactly_one_drift():

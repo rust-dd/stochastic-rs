@@ -23,7 +23,7 @@ fn heston_base_seeded<S: SeedExt>(seed: S) -> Heston<f64, Euler, S> {
     64,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed,
   )
 }
@@ -140,7 +140,7 @@ fn heston_with_rho_rebuilds_cgns_cache() {
     64,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(7),
   )
   .sample();
@@ -170,7 +170,7 @@ fn heston_with_points_rebuilds_cgns_cache() {
     128,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(9),
   )
   .sample();
@@ -199,7 +199,7 @@ fn heston_with_horizon_rebuilds_cgns_cache() {
     64,
     Some(2.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(11),
   )
   .sample();

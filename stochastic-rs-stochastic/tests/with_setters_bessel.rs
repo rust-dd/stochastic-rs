@@ -91,7 +91,7 @@ fn bessel_with_seed_matches_fresh_construction() {
     64,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(13),
   )
   .sample();
@@ -100,7 +100,7 @@ fn bessel_with_seed_matches_fresh_construction() {
     64,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   )
   .with_seed(Deterministic::new(13))
@@ -126,7 +126,7 @@ fn besq_with_seed_matches_fresh_construction() {
     64,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(13),
   )
   .sample();
@@ -135,7 +135,7 @@ fn besq_with_seed_matches_fresh_construction() {
     64,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   )
   .with_seed(Deterministic::new(13))

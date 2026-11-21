@@ -56,10 +56,10 @@ with $p = \tfrac12$ for the Heston model. `HestonPow::ThreeHalves` sets $p = \tf
 | $\mu$ | `mu` | Drift of the price; use $r - q$ for risk-neutral paths |
 | $p$ | `pow` | `HestonPow::Sqrt` ($p = \tfrac12$) or `HestonPow::ThreeHalves` ($p = \tfrac32$); Python `pow="sqrt"` or `"3/2"` |
 | | `n`, `t` | Grid points including $t = 0$, and the horizon (default 1); the step is $t/(n-1)$ |
-| | `boundary` | `VarianceBoundary::Reflect` reflects the variance, $\lvert v \rvert$, instead of truncating it at 0 (`Floor`, the default); Python `boundary="reflect"` |
+| | `boundary` | What a variance step below zero becomes: `VarianceBoundary::FullTruncation` (the default), `Absorption` or `Reflect`; Python `boundary="full_truncation"`, `"absorption"` or `"reflect"` |
 | | `seed` | `Unseeded` or `Deterministic::new(seed)`; Python `seed=` |
 
-The constructor asserts the signs above and the range of `rho`. It does not check the Feller condition $2\kappa\theta \ge \sigma^2$: both variance schemes keep the simulated variance non-negative whether it holds or not.
+The constructor asserts the signs above and the range of `rho`. It does not check the Feller condition $2\kappa\theta \ge \sigma^2$: every boundary and QE report a non-negative variance whether it holds or not.
 
 ## What the library has for it
 
@@ -78,7 +78,7 @@ The constructor asserts the signs above and the range of `rho`. It does not chec
 
 ## Simulate paths
 
-`sample()` returns `[s, v]`, two arrays of `n` points; `sample_par(m)` returns `m` of them. The default variance step is Euler with truncation at zero; `.qe()` switches the same model to Andersen's quadratic-exponential scheme.
+`sample()` returns `[s, v]`, two arrays of `n` points; `sample_par(m)` returns `m` of them. The default variance step is Euler under full truncation; `.qe()` switches the same model to Andersen's quadratic-exponential scheme.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -190,7 +190,7 @@ A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified b
 
 ## Notes
 
-- **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected under `VarianceBoundary::Reflect`). `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift is one `Drift` (`Mu`, `CostOfCarry` or `Rates { r, r_f }`, read as $r - r_f$), in Python exactly one of `mu=`, `b=` or the pair `r=`, `r_f=`, and its vol-of-vol argument is named `xi`.
+- **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance follows the unified scheme of Lord, Koekkoek & van Dijk (2010), $\tilde v_{i} = f_1(\tilde v_{i-1}) + \kappa(\theta - f_2(\tilde v_{i-1}))\Delta t + \sigma\sqrt{f_3(\tilde v_{i-1})}\,\Delta W^v$, reporting $f_3(\tilde v)$. `FullTruncation` is $f_1 = x$, $f_2 = f_3 = x^+$: the carried state keeps its sign. `Absorption` is $f_1 = f_2 = f_3 = x^+$ and `Reflect` is $f_1 = f_2 = f_3 = \lvert x \rvert$. Full truncation has the smallest bias of the three: at $\kappa = 0.4$, $\theta = 0.2$, $\sigma = 0.6$, $v_0 = 0.05$, $T = 5$ on a monthly grid, $E[v_T]$ is about 0.5 % above the exact mean, against 10 % under absorption and 22 % under reflection. `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift is one `Drift` (`Mu`, `CostOfCarry` or `Rates { r, r_f }`, read as $r - r_f$), in Python exactly one of `mu=`, `b=` or the pair `r=`, `r_f=`, and its vol-of-vol argument is named `xi`.
 - **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$, $\sigma > 0$ and $S_0 > 0$, which `.qe()` asserts. In Python, `PyHeston(..., scheme="qe")` selects it.
 - **One parameter set.** `HestonPricer::new`, `HestonAdiPricer::new`, `HestonFourier::new` and `AnalyticHestonEngine` all take one `HestonParams { v0, kappa, theta, sigma, rho }` and panic, naming the field, on a value outside its domain; the process keeps its own order, `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `HestonPricer::with_vol_risk_premium(lambda)` sets the market price of volatility risk, 0 by default.
 - **`HestonFourier` holds no rates.** Its characteristic function is drift-free; `price_call(s, k, r, q, tau)` takes the carry and the discounting from its arguments.

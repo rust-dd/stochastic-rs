@@ -192,15 +192,15 @@ fn validate_params<T: FloatExt>(
   }
 }
 
-/// A `log::warn!` per asset whose variance violates Feller's `2·kappa·theta ≥ sigma²` under
-/// [`VarianceBoundary::Floor`], as [`crate::diffusion::cir::Cir::new`] warns.
+/// A `log::warn!` per asset whose variance violates Feller's `2·kappa·theta ≥ sigma²` unless
+/// fully truncated, as [`crate::diffusion::cir::Cir::new`] warns.
 fn warn_on_feller_violation<T: FloatExt>(
   kappa: &[T; 2],
   theta: &[T; 2],
   sigma: &[T; 2],
   boundary: VarianceBoundary,
 ) {
-  if boundary == VarianceBoundary::Reflect {
+  if boundary == VarianceBoundary::FullTruncation {
     return;
   }
   for i in 0..2 {
@@ -208,10 +208,8 @@ fn warn_on_feller_violation<T: FloatExt>(
     if feller_lhs < sigma[i] * sigma[i] {
       log::warn!(
         "Heston2D::new: asset {i} does not satisfy the Feller \
-         condition (2*kappa*theta < sigma^2) under VarianceBoundary::Floor; \
-         its variance floors at zero on every boundary hit instead \
-         of reflecting — pass VarianceBoundary::Reflect for the standard \
-         sub-Feller mitigation"
+         condition (2*kappa*theta < sigma^2) under VarianceBoundary::{boundary:?}; \
+         its Euler variance reaches zero and this boundary biases it there, full truncation least"
       );
     }
   }
@@ -262,7 +260,27 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44] = self.chol;
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::TwoAssetHeston {
+      VarianceBoundary::FullTruncation => crate::euler::EulerSpec::TwoAssetHestonFullTruncation([
+        self.mu[0],
+        self.mu[1],
+        self.kappa[0],
+        self.theta[0],
+        self.sigma[0],
+        self.kappa[1],
+        self.theta[1],
+        self.sigma[1],
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
+      ]),
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::TwoAssetHeston {
         mu1: self.mu[0],
         mu2: self.mu[1],
         kappa1: self.kappa[0],
@@ -433,27 +451,23 @@ impl<T: FloatExt> Heston2DSampler<T> {
 
     let dt = self.dt;
     let half = T::from_f64_fast(0.5);
+    let boundary = self.boundary;
+    let step = |carried, k: usize, dz| {
+      boundary.square_root_step(carried, self.kappa[k], self.theta[k], self.sigma[k], dt, dz)
+    };
+    let (mut carried1, mut carried2) = (v1[0], v2[0]);
     for i in 1..self.n {
       let dz1 = l11 * e1[i - 1];
       let dz2 = l21 * e1[i - 1] + l22 * e2[i - 1];
       let dw1 = l31 * e1[i - 1] + l32 * e2[i - 1] + l33 * e3[i - 1];
       let dw2 = l41 * e1[i - 1] + l42 * e2[i - 1] + l43 * e3[i - 1] + l44 * e4[i - 1];
 
-      let v1_prev = v1[i - 1].max(T::zero());
-      let v2_prev = v2[i - 1].max(T::zero());
-
-      let dv1 =
-        self.kappa[0] * (self.theta[0] - v1_prev) * dt + self.sigma[0] * v1_prev.sqrt() * dz1;
-      let dv2 =
-        self.kappa[1] * (self.theta[1] - v2_prev) * dt + self.sigma[1] * v2_prev.sqrt() * dz2;
-
-      (v1[i], v2[i]) = match self.boundary {
-        VarianceBoundary::Floor => (
-          (v1[i - 1] + dv1).max(T::zero()),
-          (v2[i - 1] + dv2).max(T::zero()),
-        ),
-        VarianceBoundary::Reflect => ((v1[i - 1] + dv1).abs(), (v2[i - 1] + dv2).abs()),
-      };
+      let v1_prev = self.boundary.observed(carried1);
+      let v2_prev = self.boundary.observed(carried2);
+      carried1 = step(carried1, 0, dz1);
+      carried2 = step(carried2, 1, dz2);
+      v1[i] = self.boundary.observed(carried1);
+      v2[i] = self.boundary.observed(carried2);
 
       x1[i] = x1[i - 1] + (self.mu[0] - half * v1_prev) * dt + v1_prev.sqrt() * dw1;
       x2[i] = x2[i - 1] + (self.mu[1] - half * v2_prev) * dt + v2_prev.sqrt() * dw2;

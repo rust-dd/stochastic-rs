@@ -321,8 +321,11 @@ where
     use crate::euler::EulerSpec;
     let (drift_c, alpha, beta, sigma, rho) =
       (self.drift_c(), self.alpha, self.beta, self.sigma, self.rho);
+    let params = [drift_c, alpha, beta, sigma, rho];
     match (self.log_jumps().is_some(), self.boundary) {
-      (true, VarianceBoundary::Floor) => EulerSpec::BatesJump {
+      (true, VarianceBoundary::FullTruncation) => EulerSpec::BatesJumpFullTruncation(params),
+      (false, VarianceBoundary::FullTruncation) => EulerSpec::Bates1996FullTruncation(params),
+      (true, VarianceBoundary::Absorption) => EulerSpec::BatesJump {
         drift_c,
         alpha,
         beta,
@@ -336,7 +339,7 @@ where
         sigma,
         rho,
       },
-      (false, VarianceBoundary::Floor) => EulerSpec::Bates1996 {
+      (false, VarianceBoundary::Absorption) => EulerSpec::Bates1996 {
         drift_c,
         alpha,
         beta,

@@ -126,7 +126,7 @@ fn multistate_sample_par_paths_distinct() {
     32,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
   let runs = h.sample_par(2000);

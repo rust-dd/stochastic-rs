@@ -1,5 +1,5 @@
-//! Compile-time variance-discretisation schemes for [`Heston`](super::Heston): [`Euler`], the
-//! full-truncation scheme, and [`AndersenQe`], Andersen 2008's Quadratic-Exponential scheme.
+//! Compile-time variance-discretisation schemes for [`Heston`](super::Heston): [`Euler`], under
+//! the model's `VarianceBoundary`, and [`AndersenQe`], Andersen 2008's Quadratic-Exponential.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -7,7 +7,6 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::Heston;
-use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::volatility::HestonPow;
 
@@ -36,8 +35,8 @@ pub trait HestonScheme: sealed::Sealed + Send + Sync + 'static {
     Self: Sized;
 }
 
-/// Full-truncation Euler–Maruyama, or reflection under [`VarianceBoundary::Reflect`]: the original
-/// Heston discretisation and the default scheme.
+/// Euler–Maruyama, the default scheme: the model's `boundary` picks full truncation, absorption
+/// or reflection for a variance that leaves the half-line.
 #[derive(Debug, Clone, Copy)]
 pub struct Euler;
 
@@ -61,8 +60,9 @@ impl HestonScheme for Euler {
     s[0] = model.s0;
     v[0] = model.v0.max(T::zero());
 
+    let mut carried = v[0];
     for i in 1..model.n {
-      let v_prev = v[i - 1].max(T::zero());
+      let v_prev = model.boundary.observed(carried);
       s[i] = s[i - 1] + model.mu * s[i - 1] * dt + s[i - 1] * v_prev.sqrt() * cgn1[i - 1];
 
       let dv = model.kappa * (model.theta - v_prev) * dt
@@ -73,10 +73,8 @@ impl HestonScheme for Euler {
           })
           * cgn2[i - 1];
 
-      v[i] = match model.boundary {
-        VarianceBoundary::Floor => (v[i - 1] + dv).max(T::zero()),
-        VarianceBoundary::Reflect => (v[i - 1] + dv).abs(),
-      }
+      carried = model.boundary.carried(carried + dv);
+      v[i] = model.boundary.observed(carried);
     }
 
     [s, v]

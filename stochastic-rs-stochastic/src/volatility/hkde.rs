@@ -302,7 +302,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let drift_c = self.mu - self.lambda * self.k_bar();
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::KouJumpHeston {
+      VarianceBoundary::FullTruncation => crate::euler::EulerSpec::KouJumpHestonFullTruncation([
+        drift_c,
+        self.kappa,
+        self.theta,
+        self.sigma_v,
+        self.rho,
+      ]),
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::KouJumpHeston {
         drift_c,
         kappa: self.kappa,
         theta: self.theta,
@@ -519,11 +526,10 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
       None
     };
 
+    let boundary = self.boundary;
+    let mut carried = v[0];
     for i in 1..self.n {
-      let v_prev = match self.boundary {
-        VarianceBoundary::Floor => v[i - 1].max(T::zero()),
-        VarianceBoundary::Reflect => v[i - 1].abs(),
-      };
+      let v_prev = boundary.observed(carried);
       let sqrt_v = v_prev.sqrt();
 
       // Kou jumps
@@ -542,11 +548,9 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
       s[i] = s[i - 1] * log_inc.exp();
 
       // Variance dynamics (Heston)
-      let dv = self.kappa * (self.theta - v_prev) * dt + self.sigma_v * sqrt_v * cgn2[i - 1];
-      v[i] = match self.boundary {
-        VarianceBoundary::Floor => (v_prev + dv).max(T::zero()),
-        VarianceBoundary::Reflect => (v_prev + dv).abs(),
-      };
+      let (kappa, theta, sigma_v) = (self.kappa, self.theta, self.sigma_v);
+      carried = boundary.square_root_step(carried, kappa, theta, sigma_v, dt, cgn2[i - 1]);
+      v[i] = boundary.observed(carried);
     }
   }
 }

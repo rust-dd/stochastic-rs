@@ -196,7 +196,7 @@ fn levy_diffusion_agrees_with_the_cpu_law() {
 /// stays positive and both components keep the host's law under either boundary.
 #[test]
 fn bates_with_its_lognormal_law_agrees_with_the_cpu_law() {
-  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+  for boundary in [VarianceBoundary::Absorption, VarianceBoundary::Reflect] {
     let build = || {
       let law = LogNormalJump::<f32>::new(-0.05, 0.1);
       Bates::<f32, _, _>::new(

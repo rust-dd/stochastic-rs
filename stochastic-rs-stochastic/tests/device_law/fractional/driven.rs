@@ -76,7 +76,7 @@ fn fcir_stays_nonnegative_and_agrees() {
       N,
       Some(0.04),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(9),
     )
   };

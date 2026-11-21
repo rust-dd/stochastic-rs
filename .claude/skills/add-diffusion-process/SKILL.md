@@ -402,7 +402,7 @@ that line if your new process is material.
 - `Vasicek` (`interest/vasicek.rs`) — note the directory: mean-reverting
   short-rate models live under `interest/`, not `diffusion/`.
 - `Cir` (`diffusion/cir.rs`) — CIR; carries an extra `boundary: VarianceBoundary`
-  option (`params.rs`), floored or reflected at zero.
+  option (`params.rs`), full truncation (the default), absorption or reflection at zero.
 - `Fou` (`diffusion/fou.rs`) — fractional OU; adds a third type
   parameter `B` (backend, defaulting to `Cpu`) and composes an `Fgn`
   driver. See `add-fractional-process`.

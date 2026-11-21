@@ -8,14 +8,16 @@
 //! \end{aligned}
 //! $$
 //!
-//! $L(t, S)$ is read at the step's start; `HestonLog` and quant's calibration run this scheme:
+//! $L(t, S)$ is read at the step's start and the variance always steps by full truncation, with
+//! $V_n^+ = \max(\tilde V_n, 0)$ reported; `HestonLog` and quant's calibration run this scheme:
 //!
 //! $$
 //! S_{n+1} = S_n \exp\bigl((\mu - \tfrac12 L^2 V_n^+)\Delta t + L\sqrt{V_n^+}\,\Delta W\bigr),\quad
-//! V_{n+1} = \max\bigl(0, V_n + \kappa(\theta - V_n^+)\Delta t +
-//! \eta\sigma\sqrt{V_n^+}\,\Delta B\bigr)
+//! \tilde V_{n+1} = \tilde V_n + \kappa(\theta - V_n^+)\Delta t +
+//! \eta\sigma\sqrt{V_n^+}\,\Delta B
 //! $$
 //!
+//! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 //! Reference: Jex, Henderson & Wang (1999), Risk 12(11), 72–75
 //! Reference: Lipton (2002), Risk 15(2), 61–65
 //! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
@@ -31,6 +33,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::params::VarianceBoundary;
 use crate::precondition::check_n;
 use crate::precondition::check_t;
 use crate::traits::Expr;
@@ -474,17 +477,20 @@ impl<T: FloatExt> HestonSlvSampler<'_, T> {
 
     let dt = self.dt;
     let half = T::from_f64_fast(0.5);
+    let boundary = VarianceBoundary::FullTruncation;
+    let mut carried = v[0];
     for i in 1..self.n {
       let t_prev = T::from_usize_(i - 1) * dt;
-      let v_prev = v[i - 1].max(T::zero());
+      let v_prev = boundary.observed(carried);
       let sqrt_v = v_prev.sqrt();
       let l = self.leverage.call(t_prev, s[i - 1]);
 
       let log_inc = (self.mu - half * l * l * v_prev) * dt + l * sqrt_v * dws[i - 1];
       s[i] = s[i - 1] * log_inc.exp();
 
-      let dv = self.kappa * (self.theta - v_prev) * dt + self.sigma_mixed * sqrt_v * dwv[i - 1];
-      v[i] = (v_prev + dv).max(T::zero());
+      let (kappa, theta, sigma) = (self.kappa, self.theta, self.sigma_mixed);
+      carried = boundary.square_root_step(carried, kappa, theta, sigma, dt, dwv[i - 1]);
+      v[i] = boundary.observed(carried);
     }
   }
 }

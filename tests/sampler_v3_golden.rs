@@ -103,7 +103,7 @@ fn golden_heston_streams() {
     N,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [s, v] = heston.sample();
@@ -309,7 +309,7 @@ fn golden_bates_streams() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [s, v] = bates.sample();
@@ -356,7 +356,7 @@ fn golden_bates_streams() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [s_zero, _] = zero_lambda.sample();

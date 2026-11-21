@@ -56,7 +56,7 @@ mod gated {
         POINTS,
         Some(1.0),
         HestonPow::Sqrt,
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         seed(),
       )
       .on::<Metal>(),
