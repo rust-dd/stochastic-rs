@@ -418,10 +418,10 @@ pub(crate) fn vanilla_payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
   }
 }
 
-/// The payoff at `tau = 0` under rates that are not NaN, NaN at or past expiry otherwise, and
-/// `None` before expiry.
+/// The payoff at `tau = 0` under rates that are not NaN, NaN at or past expiry otherwise and for an
+/// infinite `tau`, and `None` before expiry.
 pub(crate) fn expired(tau: f64, rates: &[f64], payoff: impl FnOnce() -> f64) -> Option<f64> {
-  if tau > 0.0 {
+  if tau > 0.0 && tau < f64::INFINITY {
     return None;
   }
   let defined = tau == 0.0 && rates.iter().all(|rate| !rate.is_nan());

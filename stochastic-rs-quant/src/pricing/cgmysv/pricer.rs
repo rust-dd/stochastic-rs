@@ -102,7 +102,8 @@ impl<S: SeedExt> CgmysvPricer<S> {
     (s_paths, v_paths)
   }
 
-  /// The estimate off the simulation: `payoff` at `tau = 0`, NaN past expiry, `None` before it.
+  /// The estimate off the simulation: `payoff` at `tau = 0`, NaN past expiry or for an infinite
+  /// `tau`, `None` before it.
   fn at_expiry(&self, tau: f64, payoff: impl FnOnce() -> f64) -> Option<McEstimate<f64>> {
     expired(tau, &[self.r, self.q], payoff).map(pathless)
   }

@@ -44,7 +44,7 @@ fn vanilla(option_type: OptionType, s: f64) -> f64 {
   }
 }
 
-/// `price(type, s, tau)` is `payoff(type, s)` at `tau = 0` and NaN at `tau = −1` and a NaN `tau`.
+/// `price(type, s, tau)` is `payoff(type, s)` at `tau = 0` and NaN at `tau = −1`, NaN and `+∞`.
 fn assert_expiry_rule(
   what: &str,
   price: impl Fn(OptionType, f64, f64) -> f64,
@@ -54,7 +54,7 @@ fn assert_expiry_rule(
     for s in SPOTS {
       let (got, want) = (price(option_type, s, 0.0), payoff(option_type, s));
       assert_eq!(got, want, "{what} {option_type:?} at s = {s}, tau = 0");
-      for tau in [-1.0, f64::NAN] {
+      for tau in [-1.0, f64::NAN, f64::INFINITY] {
         let got = price(option_type, s, tau);
         assert!(
           got.is_nan(),

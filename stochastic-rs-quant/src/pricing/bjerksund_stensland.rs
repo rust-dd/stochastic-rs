@@ -189,7 +189,8 @@ impl BjerksundStensland2002Pricer {
   }
 }
 
-/// The payoff, which is the exercise value, at `tau = 0`; NaN past expiry or for a NaN query.
+/// The payoff, which is the exercise value, at `tau = 0`; NaN past expiry, for an infinite `tau`
+/// or for a NaN query.
 fn off_the_formula(s: f64, k: f64, r: f64, q: f64, tau: f64, leg: OptionType) -> Option<f64> {
   if s.is_nan() || k.is_nan() {
     return Some(f64::NAN);
