@@ -5,8 +5,10 @@
 //! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
 //! $$
 //!
-//! Each `v_i` is CIR-style; the pairs are uncoupled, and `dW^v` and `dW^F` are independent.
+//! Each `v_i` is a CIR that always steps by full truncation; the pairs are uncoupled, and `dW^v`
+//! and `dW^F` are independent.
 //!
+//! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -141,8 +143,8 @@ impl<T: FloatExt, S: SeedExt, B> WuZhang<T, S, B> {
   }
 }
 
-/// One pair's recursion on tails pre-filled with `N(0, dt)`, the rate's first: each step floors
-/// and mean-reverts the variance, floors it again, and moves the rate by `lambda · √v`.
+/// One pair's recursion on tails pre-filled with `N(0, dt)`, the rate's first: each step moves
+/// the variance by full truncation and the rate by `lambda · √v⁺`.
 fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
   f: &mut [T],
   v: &mut [T],

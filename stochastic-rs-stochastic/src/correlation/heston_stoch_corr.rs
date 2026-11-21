@@ -7,7 +7,9 @@
 //! $$
 //!
 //! The Brownian correlations are Eq. 2.4 with ρ₁ = 0: `dW^S dW^v = ρ_t dt` and `dW^v dW^ρ = ρ₂ dt`.
+//! The variance always steps by full truncation: the carried `ṽ` keeps its sign, `v = ṽ⁺` is read.
 //!
+//! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 //! Reference: Teng et al. (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
 
 use ndarray::Array1;

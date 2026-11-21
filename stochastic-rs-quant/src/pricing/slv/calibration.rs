@@ -32,8 +32,8 @@
 //! $(S_0, v_0)$, so the $t = 0$ slice is exact: $L(0, s) =
 //! \sigma_{\text{LV}}(0, s) / \sqrt{v_0}$. Each step evolves the cloud from
 //! $t_k$ to $t_{k+1}$ under $L(t_k, \cdot)$ and regresses at $t_{k+1}$, the
-//! log-spot by Euler–Maruyama and the variance by the crate's Euler scheme
-//! with absorption at zero, the same recursion
+//! log-spot by Euler–Maruyama and the variance by Euler under full truncation
+//! (Lord, Koekkoek & van Dijk, 2010), the same recursion
 //! [`HestonSlvPricer`](super::HestonSlvPricer) and the `HestonSlv` process
 //! run.
 //!
