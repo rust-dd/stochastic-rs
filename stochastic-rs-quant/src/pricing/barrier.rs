@@ -79,6 +79,7 @@ impl BarrierPricer {
     };
     match (breached, knock_in) {
       (true, false) => return rebate,
+      (true, true) if self.sigma == 0.0 => return deterministic(option, s, r, q, tau),
       (true, true) => {
         let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
         return vanilla.price_option(s, k, r, q, tau, option_type);
@@ -199,8 +200,8 @@ impl BarrierPricer {
   }
 }
 
-/// An unbreached barrier on the path `S e^{(r−q)t}`, which meets `H` at `t* = ln(H/S)/(r − q)` or
-/// never: a knock-out pays its rebate at `t*`, a knock-in its rebate at expiry.
+/// The path `S e^{(r−q)t}`, which meets `H` at `t* = ln(H/S)/(r − q)` or never: a knock-out pays
+/// its rebate at `t*`, a knock-in its payoff once in, breached at the start or not, else its rebate.
 fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
   let BarrierOption {
     strike: k,
@@ -214,8 +215,8 @@ fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f6
   }
   let terminal = s * ((r - q) * tau).exp();
   let hit = match barrier_type {
-    BarrierType::DownAndIn | BarrierType::DownAndOut => terminal <= h,
-    BarrierType::UpAndIn | BarrierType::UpAndOut => terminal >= h,
+    BarrierType::DownAndIn | BarrierType::DownAndOut => s.min(terminal) <= h,
+    BarrierType::UpAndIn | BarrierType::UpAndOut => s.max(terminal) >= h,
   };
   let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
   let discount = (-r * tau).exp();

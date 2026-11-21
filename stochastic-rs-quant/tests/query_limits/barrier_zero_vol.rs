@@ -75,3 +75,63 @@ fn a_barrier_at_zero_volatility_prices_its_deterministic_path() {
   };
   assert!(BarrierPricer::new(0.0).price(&call, s, R, Q, tau).is_nan());
 }
+
+/// A knock-in already breached is its vanilla, whose forward `S e^{(r−q)τ}` sits at the strike
+/// here: 72 cases where the closed form read BSM's `0/0`.
+#[test]
+fn a_knocked_in_barrier_at_zero_volatility_with_its_forward_at_the_strike_is_worth_nothing() {
+  use BarrierType::*;
+  let (s, k, r, q) = (100.0_f64, 100.0_f64, 0.03_f64, 0.03_f64);
+  let mut cases = 0;
+  for (barrier_type, barriers) in [
+    (UpAndIn, [80.0, 97.0, 99.0]),
+    (DownAndIn, [101.0, 103.0, 120.0]),
+  ] {
+    for option_type in [OptionType::Call, OptionType::Put] {
+      for barrier in barriers {
+        for rebate in [0.0, 3.0] {
+          for tau in [0.5, 1.0, 2.0] {
+            let option = BarrierOption {
+              strike: k,
+              barrier,
+              rebate,
+              barrier_type,
+              option_type,
+            };
+            let closed = BarrierPricer::new(0.0).price(&option, s, r, q, tau);
+            let mc = McBarrierPricer::new(0.0, 1, 2000).price(&option, s, r, q, tau);
+            assert_eq!((closed, mc.mean), (0.0, 0.0), "{option:?} at tau = {tau}");
+            cases += 1;
+          }
+        }
+      }
+    }
+  }
+  assert_eq!(cases, 72);
+}
+
+/// A breached knock-in off the strike, with a drift that carries the path back across the barrier.
+#[test]
+fn a_knocked_in_barrier_at_zero_volatility_stays_knocked_in() {
+  let (s, tau, r, q) = (100.0_f64, 1.0_f64, 0.01_f64, 0.06_f64);
+  let option = BarrierOption {
+    strike: 90.0,
+    barrier: 97.0,
+    rebate: 3.0,
+    barrier_type: BarrierType::UpAndIn,
+    option_type: OptionType::Call,
+  };
+  let terminal = s * ((r - q) * tau).exp();
+  assert!(terminal < option.barrier);
+  let want = (terminal - 90.0) * (-r * tau).exp();
+  let closed = BarrierPricer::new(0.0).price(&option, s, r, q, tau);
+  assert!((closed - want).abs() < 1e-12, "{closed} vs {want}");
+  let mc = McBarrierPricer::new(0.0, 1, 2000).price(&option, s, r, q, tau);
+  assert!((mc.mean - closed).abs() < 1e-10, "{} vs {closed}", mc.mean);
+  let nan_strike = BarrierOption {
+    strike: NAN,
+    ..option
+  };
+  let closed = BarrierPricer::new(0.0).price(&nan_strike, s, r, q, tau);
+  assert!(closed.is_nan());
+}
