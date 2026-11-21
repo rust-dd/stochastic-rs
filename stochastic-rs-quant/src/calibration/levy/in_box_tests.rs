@@ -89,3 +89,21 @@ fn no_raw_step_across_a_bound_leaves_its_coordinate_where_it_was() {
     }
   }
 }
+
+/// At `α`'s ceiling the domain leaves `β` its whole box: each step across it moves the model's `β`.
+#[test]
+fn no_step_inside_its_box_leaves_the_nig_asymmetry_where_it_was() {
+  let model = LevyModelType::Nig;
+  let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes());
+  let mut problem = LevyProblem::new(&calibrator, default_params(model));
+  let mut beta = |raw: f64| {
+    problem.set_params(ndarray::array![50.0, raw, 0.5].view());
+    problem.params.values[1]
+  };
+  let (lo, hi) = param_bounds(model)[1];
+  for raw in (0..=400).map(|i| lo + (hi - lo) * f64::from(i) / 400.0) {
+    let (here, beside) = (beta(raw), beta(raw + 1e-3));
+    assert!(here != beside, "{raw}: {here}");
+  }
+  assert_eq!((lo, hi), (-49.99, 48.99));
+}

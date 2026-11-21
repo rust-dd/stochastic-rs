@@ -71,7 +71,9 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
       vec![(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)]
     }
     LevyModelType::Nig => {
-      vec![(0.01, 50.0), (-50.0, 50.0), (0.001, 5.0)]
+      // `β`'s box is where `α ≥ max(|β|, |β + 1|) + DOMAIN_MARGIN` has room under `α`'s ceiling.
+      let top = 50.0 - DOMAIN_MARGIN;
+      vec![(0.01, 50.0), (-top, top - 1.0), (0.001, 5.0)]
     }
     LevyModelType::Cgmy => {
       // `E[e^X]` is finite for `M > 1`, the compensator's `(M − 1)^Y`.
@@ -120,10 +122,7 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
     }
     // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
     LevyModelType::Nig => {
-      // `β` leaves `α` room under its own ceiling.
-      let top = param_bounds(model_type)[0].1 - DOMAIN_MARGIN;
-      let beta = params[1].clamp(-top, top - 1.0);
-      params[1] = beta;
+      let beta = params[1];
       params[0] = params[0].max(beta.abs().max((beta + 1.0).abs()) + DOMAIN_MARGIN);
     }
     _ => {}
