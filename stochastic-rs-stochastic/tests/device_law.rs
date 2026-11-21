@@ -4,6 +4,7 @@
 #![cfg(device_backend)]
 
 mod device_law {
+  pub(crate) mod boundaries;
   pub(crate) mod bounded;
   pub(crate) mod coefficients;
   pub(crate) mod common;
