@@ -97,6 +97,16 @@ For processes that take a seed source as the last constructor argument:
 let fou = Fou::new(0.3, 0.001, -3.2, 1.0, 500, None, None, Deterministic::new(42));
 ```
 
+A Monte Carlo pricer or estimator in quant takes its seed through
+`with_seed` and defaults to `Unseeded`, so a test that leaves it out
+draws fresh entropy:
+
+```rust
+let est = McBarrierPricer::new(0.2, 4_000, 32)
+  .with_seed(Deterministic::new(42))
+  .price(&up_and_out, 100.0, 0.03, 0.0, 1.0);
+```
+
 Pin the seed at a value where the test passes with margin > 5σ — the
 roll-spread test in `microstructure/spread.rs` documents seed = 11
 because that's where the empirical mean lands well within tolerance.
@@ -106,8 +116,8 @@ because that's where the empirical mean lands well within tolerance.
 When a test asserts agreement with a paper's published table:
 
 ```rust
-/// Reference: Heston (1993), Table 1, row 4 — call price 6.8061 at
-/// (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
+/// Call price 6.8061 at (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
+/// Reference: Heston (1993), RFS 6(2), 327-343, Table 1, row 4, DOI 10.1093/rfs/6.2.327
 #[test]
 fn heston_table1_row4() {
     // Model parameters on the struct.

@@ -12,7 +12,8 @@ fn tn(mu: f64, sigma: f64, lo: f64, up: f64) -> SimdTruncatedNormal<f64> {
   SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up)
 }
 
-/// The bulk, the sampler's own narrow interval and an open tail: rows the erf forms met, which the engine must keep.
+/// The bulk, the sampler's own narrow interval and an open tail: rows the erf forms met, which the
+/// engine must keep.
 #[test]
 fn bulk_and_open_tail() {
   check(

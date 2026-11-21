@@ -12,9 +12,12 @@ use super::calibrator::HestonCalibrator;
 use super::calibrator::HestonMleSeed;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
-use super::transform::from_optimizer_coordinates;
+use super::transform::BOUNDS;
+use super::transform::apply_chain_rule;
 use super::transform::to_optimizer_coordinates;
 use crate::calibration::clip_negative;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
@@ -103,61 +106,56 @@ impl HestonCalibrator {
     self.residual_weights.as_ref().map_or(1.0, |w| w[idx])
   }
 
-  /// Numerically approximate the residual Jacobian with respect to physical parameters.
+  /// The residual Jacobian in the physical parameters, at the unprojected prices.
   #[cfg(test)]
-  #[allow(non_snake_case)]
   pub(super) fn numeric_jacobian(&self, params: &HestonParams) -> Array2<f64> {
-    self.finite_difference_jacobian(params, false)
+    self.physical_jacobian(params, false, 1.0)
   }
 
+  /// In the optimiser's coordinates, through Feller's projection from the free point.
   pub(super) fn numeric_optimizer_jacobian(&self, params: &HestonParams) -> Array2<f64> {
-    self.finite_difference_jacobian(params, true)
+    let physical = self.physical_jacobian(params, true, 1.0);
+    apply_chain_rule(physical, to_optimizer_coordinates(params).view())
   }
 
-  #[allow(non_snake_case)]
-  fn finite_difference_jacobian(
+  /// `∂r/∂θ` at `params`, each stencil inside the box and projected where `projected` says;
+  /// `scale` times the shared step.
+  pub(super) fn physical_jacobian(
     &self,
     params: &HestonParams,
-    optimizer_denominator: bool,
+    projected: bool,
+    scale: f64,
   ) -> Array2<f64> {
-    let n = self.quotes.len();
-    let p = 5usize;
-    let coordinates = to_optimizer_coordinates(params);
-    let mut J = Array2::zeros((n, p));
-    // A physical column divides by its own parameter's change, so it differentiates the unprojected prices.
-    let project = |params: HestonParams| {
-      if optimizer_denominator {
-        self.feller_projected(params)
-      } else {
-        params
-      }
-    };
-
-    for col in 0..p {
-      let h = 1e-5 * (1.0 + coordinates[col].abs());
-      let mut plus = coordinates.clone();
-      let mut minus = coordinates.clone();
-      plus[col] += h;
-      minus[col] -= h;
-      let params_plus = project(from_optimizer_coordinates(plus.view()));
-      let params_minus = project(from_optimizer_coordinates(minus.view()));
-
-      let r_plus = self.residuals_for(&params_plus);
-      let r_minus = self.residuals_for(&params_minus);
-      let denominator = if optimizer_denominator {
-        2.0 * h
-      } else {
-        let plus_physical = Array1::from(params_plus);
-        let minus_physical = Array1::from(params_minus);
-        plus_physical[col] - minus_physical[col]
-      };
-      let diff = (r_plus - r_minus) / denominator;
-      for row in 0..n {
-        J[(row, col)] = diff[row];
-      }
+    let point = [
+      params.v0,
+      params.kappa,
+      params.theta,
+      params.sigma,
+      params.rho,
+    ];
+    let mut jacobian = Array2::zeros((self.quotes.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), BOUNDS[j], |value| {
+        let mut moved = point;
+        moved[j] = value;
+        let [v0, kappa, theta, sigma, rho] = moved;
+        let moved = HestonParams {
+          v0,
+          kappa,
+          theta,
+          sigma,
+          rho,
+        };
+        let moved = if projected {
+          self.feller_projected(moved)
+        } else {
+          moved
+        };
+        self.residuals_for(&moved)
+      }));
     }
-
-    J
+    jacobian
   }
 }
 

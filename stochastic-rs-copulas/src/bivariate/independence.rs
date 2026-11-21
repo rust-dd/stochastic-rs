@@ -1,4 +1,4 @@
-//! # Independence
+//! Independence (product) copula `C(u, v) = uv`, the zero-dependence reference.
 //!
 //! $$
 //! C(u,v)=uv
@@ -134,7 +134,8 @@ mod tests {
 
   use super::*;
 
-  /// No parameter to set, so a new copula is fitted already: `theta` is 0, the tails are 0 and it samples.
+  /// No parameter to set, so a new copula is fitted already: `theta` is 0, the tails are 0 and it
+  /// samples.
   #[test]
   fn independence_is_fitted_from_the_start() {
     let c = Independence::new();

@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::QuantError;
@@ -59,7 +60,7 @@ fn log_euler_reconstructs_the_price_noise_exactly() {
     tau: 1.0,
     n_steps: 17,
   };
-  let paths = params.sample_with_seed(0x10_6e_01);
+  let paths = params.sample(&Deterministic::new(0x10_6e_01));
 
   for asset in 0..2 {
     let terminal = paths.prices[[asset, paths.n_steps - 1]];
@@ -92,7 +93,7 @@ fn paths_with_stochastic_leverage_reject_conditional_weights() {
     tau: 1.0,
     n_steps: 3,
   };
-  let paths = params.sample_with_seed(0x1e_ee_01);
+  let paths = params.sample(&Deterministic::new(0x1e_ee_01));
   let covariance_error = paths
     .try_gamma_inv(Array2::<f64>::eye(2).view(), params.tau)
     .unwrap_err();

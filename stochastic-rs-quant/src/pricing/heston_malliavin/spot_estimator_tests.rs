@@ -1,5 +1,7 @@
 use std::cell::Cell;
 
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::HESTON_MALLIAVIN_SPOT_OBSERVABLES;
 use super::HestonMalliavinConfig;
 use super::HestonMalliavinEstimator;
@@ -25,18 +27,18 @@ fn model() -> HestonModel {
   }
 }
 
-fn config() -> HestonMalliavinConfig {
+fn config() -> HestonMalliavinConfig<Deterministic> {
   HestonMalliavinConfig {
     paths: 2_048,
     steps: 32,
-    seed: 0x5350_4f54,
     ..HestonMalliavinConfig::default()
   }
+  .with_seed(Deterministic::new(0x5350_4f54))
 }
 
 #[test]
 fn base_path_estimate_matches_the_full_estimators_first_three_observables() {
-  let estimator = HestonMalliavinEstimator::new(model(), config()).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model(), config());
   let payoff = VanillaPortfolio::vertical(crate::OptionType::Put, 95.0, 85.0);
   let full = estimator.estimate(&payoff).unwrap();
   let spot = estimator.estimate_spot_greeks(&payoff).unwrap();
@@ -58,7 +60,6 @@ fn base_path_estimate_matches_the_full_estimators_first_three_observables() {
   }
   assert_eq!(spot.paths, config().paths);
   assert_eq!(spot.independent_samples, config().paths / 2);
-  assert_eq!(spot.seed, config().seed);
   assert_eq!(
     spot.provenance,
     HestonMalliavinSpotProvenance::BaseAntitheticPaths
@@ -73,7 +74,6 @@ fn spot_entry_point_uses_one_fifth_the_full_estimators_path_evaluations() {
     (95.0 - terminal_spot).max(0.0)
   };
   let estimate = HestonMalliavinEstimator::new(model(), config())
-    .unwrap()
     .estimate_spot_greeks(&spot_payoff)
     .unwrap();
   let full_calls = Cell::new(0_usize);
@@ -82,7 +82,6 @@ fn spot_entry_point_uses_one_fifth_the_full_estimators_path_evaluations() {
     (95.0 - terminal_spot).max(0.0)
   };
   HestonMalliavinEstimator::new(model(), config())
-    .unwrap()
     .estimate(&full_payoff)
     .unwrap();
 
@@ -94,7 +93,6 @@ fn spot_entry_point_uses_one_fifth_the_full_estimators_path_evaluations() {
 #[test]
 fn spot_entry_point_preserves_payoff_validation() {
   let error = HestonMalliavinEstimator::new(model(), config())
-    .unwrap()
     .estimate_spot_greeks(&|_| f64::NAN)
     .unwrap_err();
 

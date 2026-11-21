@@ -1,4 +1,5 @@
-//! The panels of an interval: each branch point's ladder of rungs, the slope and curvature budgets, and the nodes.
+//! The panels of an interval: each branch point's ladder of rungs, the slope and curvature budgets,
+//! and the nodes.
 
 use std::ops::ControlFlow;
 
@@ -96,7 +97,8 @@ pub(super) struct Panel {
   pub(super) l: f64,
   pub(super) r: f64,
   pub(super) graded: bool,
-  /// The exponent `e < 1` on the panel beside a singular branch point, which integrates in `u = (t/h)^e`.
+  /// The exponent `e < 1` on the panel beside a singular branch point, which integrates in
+  /// `u = (t/h)^e`.
   pub(super) singular: Option<f64>,
 }
 
@@ -106,7 +108,8 @@ pub(super) struct Panel {
 pub(in crate::truncated) struct Cut {
   pub(in crate::truncated) x: f64,
   from: Option<(f64, f64, f64)>,
-  /// On an end within a tenth of the width of a singular branch point `(s, e)`: its piece is the innermost.
+  /// On an end within a tenth of the width of a singular branch point `(s, e)`: its piece is the
+  /// innermost.
   inner: Option<(f64, f64)>,
 }
 
@@ -133,7 +136,8 @@ impl Cut {
     }
   }
 
-  /// `x`, its own double, also held beside `s` by `rest`: a span from a point beside `s` reads `rest`, not `x − s`.
+  /// `x`, its own double, also held beside `s` by `rest`: a span from a point beside `s` reads
+  /// `rest`, not `x − s`.
   pub(in crate::truncated) fn held(x: f64, s: f64, rest: f64) -> Self {
     Self {
       x,
@@ -142,7 +146,8 @@ impl Cut {
     }
   }
 
-  /// `(s, lo, t)`: the double it is held beside, that double's rest and the offset, `(x, 0, 0)` for a plain point.
+  /// `(s, lo, t)`: the double it is held beside, that double's rest and the offset, `(x, 0, 0)` for
+  /// a plain point.
   pub(in crate::truncated) fn parts(self) -> (f64, f64, f64) {
     self.from.unwrap_or((self.x, 0.0, 0.0))
   }
@@ -163,7 +168,8 @@ impl Cut {
     }
   }
 
-  /// `(s, lo + t)`: the double it is held beside and the rest, so `x − self` is `(x − s) − (lo + t)`.
+  /// `(s, lo + t)`: the double it is held beside and the rest, so `x − self` is
+  /// `(x − s) − (lo + t)`.
   pub(in crate::truncated) fn near(self) -> (f64, f64) {
     let (s, lo, t) = self.parts();
     (s, lo + t)
@@ -178,7 +184,8 @@ impl Cut {
     span(Self::at(origin), self)
   }
 
-  /// Equal to the bit, zeros' signs included, so a panel rebuilt from one reads as one from the other.
+  /// Equal to the bit, zeros' signs included, so a panel rebuilt from one reads as one from the
+  /// other.
   pub(super) fn same(self, other: Self) -> bool {
     let bits = |c: Self| {
       (
@@ -267,7 +274,8 @@ pub(super) fn panels<K: Kernel, B>(
         .filter(move |&t| tl < t && t < tr && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
         .map(move |t| Cut::beside(s, t))
     });
-  // Each end keeps the cut it was given, so a walk from it forms `x − end` from the two points themselves.
+  // Each end keeps the cut it was given, so a walk from it forms `x − end` from the two points
+  // themselves.
   let end = |cut: Cut| Cut {
     inner: ladders
       .into_iter()
@@ -286,7 +294,8 @@ pub(super) fn panels<K: Kernel, B>(
   }
 }
 
-/// A walk's direction, and whether its pieces take their origin at the end it starts from rather than at `c`.
+/// A walk's direction, and whether its pieces take their origin at the end it starts from rather
+/// than at `c`.
 #[derive(Clone, Copy)]
 struct Walk {
   c: Cut,
@@ -334,7 +343,8 @@ fn piece<K: Kernel, B>(
       singular: Some(e),
     });
   }
-  // By exact offsets: a reference point within an ulp of a branch point still leaves the pieces beside it graded.
+  // By exact offsets: a reference point within an ulp of a branch point still leaves the pieces
+  // beside it graded.
   let distance = |z: Cut| {
     let (dl, dr) = (span(z, cl), span(z, cr));
     if dl <= 0.0 && dr >= 0.0 {

@@ -1,106 +1,12 @@
-use std::f64::consts::FRAC_1_PI;
-
-use num_complex::Complex64;
-
-use super::EPS;
+use super::types::LevyModel;
 use super::types::LevyModelType;
 use crate::OptionType;
 use crate::calibration::clip_negative;
-use crate::pricing::cf_quadrature::integrate_to_convergence;
+use crate::pricing::cf_quadrature::Rule;
+use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::fourier::LewisPricer;
 
-/// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
-/// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
-///
-/// The martingale correction $-T\,\psi(-i)$ ensures that $E\left[S_T\right] = S_0 e^{(r-q)T}$.
-pub(super) fn levy_char_exponent(
-  model_type: LevyModelType,
-  params: &[f64],
-  xi: Complex64,
-) -> Complex64 {
-  let i = Complex64::i();
-  match model_type {
-    LevyModelType::VarianceGamma => {
-      let sigma = params[0];
-      let theta = params[1];
-      let nu = params[2];
-      let inner = Complex64::new(1.0, 0.0) - i * theta * nu * xi
-        + Complex64::new(0.5 * sigma * sigma * nu, 0.0) * xi * xi;
-      -inner.ln() / nu
-    }
-    LevyModelType::Nig => {
-      let alpha = params[0];
-      let beta = params[1];
-      let delta = params[2];
-      let a2 = alpha * alpha;
-      let b2 = beta * beta;
-      let base = Complex64::new(a2 - b2, 0.0).sqrt();
-      let shifted = Complex64::new(beta, 0.0) + i * xi;
-      let branch = (Complex64::new(a2, 0.0) - shifted * shifted).sqrt();
-      delta * (base - branch)
-    }
-    LevyModelType::Cgmy => {
-      let c = params[0];
-      let g = params[1];
-      let m = params[2];
-      let y = params[3];
-      let gamma_neg_y = gamma_neg_y_fn(y);
-      let m_shift = (Complex64::new(m, 0.0) - i * xi).powf(y);
-      let g_shift = (Complex64::new(g, 0.0) + i * xi).powf(y);
-      let m_y = Complex64::new(m.powf(y), 0.0);
-      let g_y = Complex64::new(g.powf(y), 0.0);
-      c * gamma_neg_y * (m_shift - m_y + g_shift - g_y)
-    }
-    LevyModelType::MertonJd => {
-      let sigma = params[0];
-      let lambda = params[1];
-      let mu_j = params[2];
-      let sigma_j = params[3];
-      let diffusion = Complex64::new(-0.5 * sigma * sigma, 0.0) * xi * xi;
-      let jump_exp = (i * mu_j * xi - Complex64::new(0.5 * sigma_j * sigma_j, 0.0) * xi * xi).exp();
-      diffusion + lambda * (jump_exp - 1.0)
-    }
-    LevyModelType::Kou => {
-      let sigma = params[0];
-      let lambda = params[1];
-      let p = params[2];
-      let eta1 = params[3];
-      let eta2 = params[4];
-      let diffusion = Complex64::new(-0.5 * sigma * sigma, 0.0) * xi * xi;
-      let up = p * eta1 / (Complex64::new(eta1, 0.0) - i * xi);
-      let dn = (1.0 - p) * eta2 / (Complex64::new(eta2, 0.0) + i * xi);
-      diffusion + lambda * (up + dn - 1.0)
-    }
-  }
-}
-
-/// $\Gamma(-Y)$ for Cgmy, using reflection formula.
-fn gamma_neg_y_fn(y: f64) -> Complex64 {
-  if y.abs() < EPS {
-    return Complex64::new(1e15, 0.0);
-  }
-  if y < 0.0 {
-    Complex64::new(stochastic_rs_distributions::special::gamma(-y), 0.0)
-  } else if (y - 1.0).abs() < EPS {
-    Complex64::new(stochastic_rs_distributions::special::gamma(-0.999), 0.0)
-  } else {
-    let g = stochastic_rs_distributions::special::gamma(y);
-    let sin_val = (std::f64::consts::PI * y).sin();
-    if sin_val.abs() < EPS || g.abs() < EPS {
-      Complex64::new(1e15, 0.0)
-    } else {
-      Complex64::new(-std::f64::consts::PI / (y * sin_val * g), 0.0)
-    }
-  }
-}
-
-/// Price a European call option using the damped Lewis inversion integral.
-///
-/// $$
-/// C = S e^{-qT} - \frac{\sqrt{SK}e^{-rT}}{\pi}
-/// \int_0^\infty \operatorname{Re}\!\left[
-/// \frac{e^{-iu\log(K/S)}\phi_T(u-i/2)}{u^2+1/4}
-/// \right]du.
-/// $$
+/// The call of the fit's own model by Lewis, as its `ModelPricer` prices it, run as `walk` says.
 pub(super) fn fourier_call_price(
   model_type: LevyModelType,
   params: &[f64],
@@ -109,32 +15,15 @@ pub(super) fn fourier_call_price(
   r: f64,
   q: f64,
   t: f64,
+  walk: &mut Walk<'_, Rule>,
 ) -> f64 {
-  let ln_ks = (k / s).ln();
-  let rq = r - q;
-
-  // The correction enforces E[S_T] = S_0 exp((r-q)T).
-  let psi_neg_i = levy_char_exponent(model_type, params, Complex64::new(0.0, -1.0));
-  let omega = -psi_neg_i;
-
-  let integral = integrate_to_convergence(
-    |u| {
-      let xi = Complex64::new(u, -0.5);
-      let psi = levy_char_exponent(model_type, params, xi);
-      let log_cf = Complex64::i() * xi * ((rq + omega.re) * t) + psi * t;
-      let phi = log_cf.exp();
-      let kernel = (Complex64::new(0.0, -u * ln_ks)).exp() / (u * u + 0.25);
-      (kernel * phi).re
-    },
-    0.0,
-    1e-9,
-  );
-
-  let disc_r = (-r * t).exp();
-  let disc_q = (-q * t).exp();
-
-  let call = s * disc_q - (s * k).sqrt() * disc_r * FRAC_1_PI * integral;
-  clip_negative(call)
+  match LevyModel::of(model_type, params) {
+    LevyModel::VarianceGamma(m) => LewisPricer::price_call_walk(&m, s, k, r, q, t, walk),
+    LevyModel::Nig(m) => LewisPricer::price_call_walk(&m, s, k, r, q, t, walk),
+    LevyModel::Cgmy(m) => LewisPricer::price_call_walk(&m, s, k, r, q, t, walk),
+    LevyModel::MertonJd(m) => LewisPricer::price_call_walk(&m, s, k, r, q, t, walk),
+    LevyModel::Kou(m) => LewisPricer::price_call_walk(&m, s, k, r, q, t, walk),
+  }
 }
 
 /// Price a European option (call or put) via put-call parity from the Fourier call price.
@@ -147,8 +36,9 @@ pub(super) fn fourier_option_price(
   q: f64,
   t: f64,
   option_type: OptionType,
+  walk: &mut Walk<'_, Rule>,
 ) -> f64 {
-  let call = fourier_call_price(model_type, params, s, k, r, q, t);
+  let call = fourier_call_price(model_type, params, s, k, r, q, t, walk);
   match option_type {
     OptionType::Call => call,
     OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
@@ -203,10 +93,7 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
 
 /// Project parameters into their admissible bounds.
 pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
-  let bounds = param_bounds(model_type);
-  for (p, (lo, hi)) in params.iter_mut().zip(bounds.iter()) {
-    *p = p.clamp(*lo, *hi);
-  }
+  clamp_params(model_type, params);
   // The NIG exponent is defined only when alpha > |beta|.
   if model_type == LevyModelType::Nig {
     let alpha = params[0];
@@ -214,5 +101,12 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
     if alpha <= beta.abs() {
       params[0] = beta.abs() + 0.01;
     }
+  }
+}
+
+/// Each parameter clamped into its bounds, NIG's `α > |β|` aside.
+pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
+  for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
+    *p = p.clamp(lo, hi);
   }
 }

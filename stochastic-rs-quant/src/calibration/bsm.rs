@@ -8,6 +8,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
@@ -198,9 +199,9 @@ impl<'a> BsmProblem<'a> {
 
 impl LeastSquaresProblem for BsmProblem<'_> {
   /// Levenberg–Marquardt is unconstrained, so each iterate is stored reflected.
-  fn set_params(&mut self, params: &Array1<f64>) {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
     self.reflection = if params[0] < 0.0 { -1.0 } else { 1.0 };
-    self.params = BsmParams::from(params.clone()).projected();
+    self.params = BsmParams::from(params.to_owned()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -234,7 +235,7 @@ impl LeastSquaresProblem for BsmProblem<'_> {
 
     self
       .trail
-      .stage(options, &self.market, &prices, &params, &residuals);
+      .stage(options, &self.market, &prices, &params, residuals.view());
     Some(residuals)
   }
 

@@ -1,5 +1,5 @@
-//! The elliptical copula cdfs are deterministic: Genz–Bretz on Sobol points from `d = 3`, pinned against scipy at `1e-9`
-//! and the trivariate orthant identity, and closed forms at `d = 2`, pinned against 50-digit mpmath values.
+//! The elliptical cdfs are deterministic: Genz–Bretz on Sobol points from `d = 3` (scipy at `1e-9`,
+//! the trivariate orthant identity), closed forms at `d = 2` (50-digit mpmath).
 
 use std::time::Duration;
 use std::time::Instant;
@@ -13,8 +13,8 @@ use stochastic_rs_copulas::multivariate::t::TMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
-/// `(nu, rho, u, v, C)` by 50-digit mpmath: the quantiles by Newton on the cdf, the density integrated through the
-/// conditional `t_{ν+1}` law.
+/// `(nu, rho, u, v, C)` by 50-digit mpmath: the quantiles by Newton on the cdf, the density
+/// integrated through the conditional `t_{ν+1}` law.
 const T_PINS: [(f64, f64, f64, f64, f64); 42] = [
   (1.0, -0.95, 0.3, 0.6, 0.017041316339198472),
   (1.0, 0.95, 0.02, 0.03, 0.01867772588235791),
@@ -60,8 +60,8 @@ const T_PINS: [(f64, f64, f64, f64, f64); 42] = [
   (30.5, 0.3, 0.77, 0.21, 0.18465976720811114),
 ];
 
-/// `(rho, u, v, C)` by mpmath at 40 and 60 digits, the conditional normal integral scaled by its largest value, as `quad`'s
-/// tolerance is absolute, and Owen's form at 260.
+/// `(rho, u, v, C)` by mpmath at 40 and 60 digits, the conditional normal integral scaled by its
+/// largest value, as `quad`'s tolerance is absolute, and Owen's form at 260.
 const GAUSSIAN_PINS: [(f64, f64, f64, f64); 16] = [
   (-0.95, 0.3, 0.6, 0.012781131020882781),
   (-0.95, 1e-06, 2e-06, 2.1107372263704096e-195),
@@ -104,7 +104,8 @@ fn near_singular() -> Array2<f64> {
   ]
 }
 
-/// Smallest eigenvalue `1.00004e-3`; sweeping its third coordinate crosses an order switch that steps back `4.7e-4`.
+/// Smallest eigenvalue `1.00004e-3`; sweeping its third coordinate crosses an order switch that
+/// steps back `4.7e-4`.
 fn near_singular_six() -> Array2<f64> {
   array![
     [
@@ -182,8 +183,8 @@ fn sweep(base: &[f64], j: usize, from: f64, to: f64, n: usize) -> Array2<f64> {
   })
 }
 
-/// The rule's largest absolute error against scipy's Genz–Bretz over 240 random correlations, `d` from 3 to 10 with the
-/// smallest eigenvalue down to `1e-3`.
+/// The rule's largest absolute error against scipy's Genz–Bretz over 240 random correlations, `d`
+/// from 3 to 10 with the smallest eigenvalue down to `1e-3`.
 const QMC_ENVELOPE: f64 = 2.9e-4;
 
 const U3: [[f64; 3]; 4] = [
@@ -258,8 +259,8 @@ fn t_cdf_matches_genz_bretz_references() {
   assert_eq!(cdf, copula.cdf(u.view()).unwrap());
 }
 
-/// At `d = 2` both t copulas evaluate the same closed form: Dunnett–Sobel for an integer `ν`, Genz's generalized
-/// Plackett integral otherwise.
+/// At `d = 2` both t copulas evaluate the same closed form: Dunnett–Sobel for an integer `ν`,
+/// Genz's generalized Plackett integral otherwise.
 #[test]
 fn bivariate_t_cdf_matches_50_digit_references() {
   for (nu, rho, u, v, want) in T_PINS {
@@ -277,7 +278,8 @@ fn bivariate_t_cdf_matches_50_digit_references() {
   }
 }
 
-/// `(ρ, ν, u, v, C)` where `H` steps across the march's first panel: `¼ + asin ρ/(2π)` at `(½, ½)`, else 40-digit mpmath.
+/// `(ρ, ν, u, v, C)` where `H` steps across the march's first panel: `¼ + asin ρ/(2π)` at `(½, ½)`,
+/// else 40-digit mpmath.
 const STEP_PINS: [(f64, f64, f64, f64, f64); 7] = [
   (-0.999999, 0.3, 0.5, 0.5, 0.0002250790977991068),
   (0.999999, 1.5, 0.5, 0.5, 0.4997749209022009),
@@ -311,8 +313,8 @@ fn the_t_cdf_resolves_a_step_of_h_in_the_first_panel() {
   }
 }
 
-/// `(ρ, ν, u, v, C)` where the scores nearly cancel at `ρ ≈ −1`, so the cdf reads `x + y` from the exact `u + v − 1`: the
-/// re-review's mpmath (`refs.bvt_cdf`, 35 and 50 digits), the last at a level within `2.3e-11` of 1.
+/// `(ρ, ν, u, v, C)` where the scores nearly cancel at `ρ ≈ −1`, so the cdf reads `x + y` from the
+/// exact `u + v − 1`: mpmath (`refs.bvt_cdf`, 35 and 50 digits), the last within `2.3e-11` of 1.
 const COUNTERMONOTONE_PINS: [(f64, f64, f64, f64, f64); 3] = [
   (-0.9999999999999986, 99.5, 0.3, 0.7, 7.447260837254137e-9),
   (
@@ -342,8 +344,8 @@ fn the_t_cdf_reads_the_countermonotone_crossing_from_the_exact_sum() {
   }
 }
 
-/// Two noise-free cells near `ρ = −1` that need fine panels where the integrand vanishes: within `1e-12` of mpmath (Owen's
-/// form, the conditional integral), each in under the 500 ms the large-`ν` rows allow.
+/// Two noise-free cells near `ρ = −1` needing fine panels where the integrand vanishes: within
+/// `1e-12` of mpmath (Owen's form, the conditional integral), each under 500 ms.
 #[test]
 fn the_cells_near_the_countermonotone_limit_return_promptly() {
   let start = Instant::now();
@@ -365,8 +367,8 @@ fn the_cells_near_the_countermonotone_limit_return_promptly() {
   }
 }
 
-/// A step back is the difference of two errors where a query's order switches, so monotonicity holds to about twice the
-/// envelope, swept along every coordinate; the Fréchet bound holds to the envelope itself.
+/// A step back is two errors' difference where a query's order switches, so monotonicity holds to
+/// about twice the envelope along every coordinate; the Fréchet bound to the envelope itself.
 #[test]
 fn cdfs_are_monotone_and_bounded() {
   let levels = [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
@@ -404,8 +406,8 @@ fn cdfs_are_monotone_and_bounded() {
   }
 }
 
-/// Uncorrelated coordinates leave exact zeros in `L`: an underflowing factor gives 0, not `0 · ∞`, so the value is finite
-/// (the product, for the Gaussian), and at `u₃ = ½` both copulas are `C₁₂(u₁, u₂) / 2` exactly.
+/// Uncorrelated coordinates leave exact zeros in `L`: an underflowing factor gives 0, not `0 · ∞`,
+/// the value finite (the Gaussian's the product), and at `u₃ = ½` both are `C₁₂(u₁, u₂) / 2`.
 #[test]
 fn a_block_correlation_matrix_gives_the_product_not_nan() {
   for (rho, nu, u1, u2) in [
@@ -447,7 +449,8 @@ fn a_block_correlation_matrix_gives_the_product_not_nan() {
   assert!((0.0..=1e-300).contains(&tiny), "{tiny}");
 }
 
-/// A coordinate at 0 gives 0 and one at 1 drops out: what is left is the lower-dimensional copula's own value.
+/// A coordinate at 0 gives 0 and one at 1 drops out: what is left is the lower-dimensional copula's
+/// own value.
 #[test]
 fn a_zero_coordinate_gives_zero_and_a_unit_coordinate_drops_out() {
   let q2 = array![
@@ -506,8 +509,8 @@ fn a_zero_coordinate_gives_zero_and_a_unit_coordinate_drops_out() {
   }
 }
 
-/// A unit coordinate sorts last and drops out: the trivariate copula's value bit for bit at any position, whenever every
-/// conditional variance clears MVSORT's `1e-10·i` (below it the row falls back to the unordered estimator).
+/// A unit coordinate sorts last and drops out: the trivariate value bit for bit at any position
+/// while every conditional variance clears MVSORT's `1e-10·i` (else the unordered estimator).
 #[test]
 fn a_unit_coordinate_drops_out_bit_for_bit_at_any_position() {
   let r = r5();

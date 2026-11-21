@@ -1,10 +1,10 @@
-//! # Inverse Gauss
+//! Inverse Gaussian law, sampled by the Michael–Schucany–Haas transformation with multiple roots.
 //!
 //! $$
 //! f(x)=\sqrt{\frac{\lambda}{2\pi x^3}}\exp\!\left(-\frac{\lambda(x-\mu)^2}{2\mu^2 x}\right),\ x>0
 //! $$
 //!
-//! Sampling: Michael, J.R., Schucany, W.R., Haas, R.W. (1976), "Generating Random Variates Using Transformations with Multiple Roots", *The American Statistician* 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
+//! Reference: Michael et al. (1976), Am. Stat. 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
 
 use std::mem::MaybeUninit;
 
@@ -24,14 +24,16 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_INVERSE_GAUSS_THRESHOLD: usize = 16;
 
-/// Inverse Gaussian law with mean `mu` and shape `lambda`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Inverse Gaussian law with mean `mu` and shape `lambda`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdInverseGauss<T> {
   mu: T,
   lambda: T,
 }
 
-/// A stream with its own standard normal sub-stream, its own uniform engine and its single-draw buffer.
+/// A stream with its own standard normal sub-stream, its own uniform engine and its single-draw
+/// buffer.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct NormalPlusOwnState<T: SimdFloatExt, R: SimdRngExt> {
@@ -225,7 +227,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
     let sqrt_lambda_over_x = (lambda / x).sqrt();
     let a = sqrt_lambda_over_x * (x / mu - 1.0);
     let b = sqrt_lambda_over_x * (x / mu + 1.0);
-    // F(x) = Φ(a) + e^{2λ/μ} Φ(−b), the second term in log space: e^{2λ/μ} alone overflows past λ/μ ≈ 355.
+    // F(x) = Φ(a) + e^{2λ/μ} Φ(−b), the second term in log space: e^{2λ/μ} alone overflows past λ/μ
+    // ≈ 355.
     Some(crate::special::norm_cdf(a) + (2.0 * lambda / mu + crate::special::ln_norm_cdf(-b)).exp())
   }
 

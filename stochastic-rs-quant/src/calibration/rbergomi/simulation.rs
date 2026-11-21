@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use ndarray::Array2;
 use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 use stochastic_rs_distributions::special::gamma;
@@ -67,12 +69,8 @@ impl MsoeEngine {
   }
 }
 
-/// Simulates terminal prices under the rBergomi model with an mSOE approximation
-/// for the Volterra kernel history term.
-///
-/// The log-stock drift is `(r - q - 0.5·V_t) dt`. The `q` argument is the
-/// continuously-compounded dividend yield (or foreign rate for FX); callers
-/// who don't pay dividends should pass `0.0`.
+/// Terminal prices under the rBergomi model, the Volterra history by the mSOE kernel and the log
+/// drift `(r − q − V_t/2) dt`; each path's stream derives from `seed`'s next seed and its index.
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_rbergomi_terminal_samples(
   params: &RBergomiParams,
@@ -83,7 +81,7 @@ pub fn simulate_rbergomi_terminal_samples(
   paths: usize,
   steps_per_year: usize,
   msoe_terms: usize,
-  seed: u64,
+  seed: &impl SeedExt,
 ) -> Vec<f64> {
   assert!(
     maturity.is_finite() && maturity > 0.0,
@@ -106,13 +104,14 @@ pub fn simulate_rbergomi_terminal_samples(
   ));
   let rho = params.rho;
   let rho_orth = (1.0 - rho * rho).max(0.0).sqrt();
+  let seed = seed.next_seed();
 
   (0..paths)
     .into_par_iter()
     .map(|path_idx| {
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
-      let seed_ext = stochastic_rs_core::simd_rng::Deterministic::new(path_seed);
+      let seed_ext = Deterministic::new(path_seed);
       let mut normal =
         stochastic_rs_distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
       let dim = engine.dim();

@@ -1,4 +1,5 @@
-//! Every copula draw takes its seed: `Deterministic` replays, `Unseeded` does not, and a shared seed advances.
+//! Every copula draw takes its seed: `Deterministic` replays, `Unseeded` does not, and a shared
+//! seed advances.
 
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::multivariate::dvine::DVine;

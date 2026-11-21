@@ -18,6 +18,7 @@ use ndarray::ArrayView2;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
+use crate::calibration::Calibrated;
 use crate::calibration::quote::validate_quotes;
 use crate::total_order::ascending;
 
@@ -363,7 +364,7 @@ impl SmileSlice {
   pub fn fit_svi(
     &self,
     initial: Option<super::svi::SviRawParams<f64>>,
-  ) -> super::svi::SviRawParams<f64> {
+  ) -> Calibrated<super::svi::SviRawParams<f64>> {
     super::svi::calibrate_svi(&self.log_moneyness, &self.total_variance, initial)
   }
 
@@ -435,7 +436,7 @@ impl SmileSlice {
 
 impl ImpliedVolSurface {
   /// Fit SVI parameters to each maturity slice independently.
-  pub fn fit_svi_slices(&self) -> Vec<super::svi::SviRawParams<f64>> {
+  pub fn fit_svi_slices(&self) -> Vec<Calibrated<super::svi::SviRawParams<f64>>> {
     let nt = self.maturities.len();
     (0..nt).map(|j| self.smile_slice(j).fit_svi(None)).collect()
   }
@@ -447,17 +448,27 @@ impl ImpliedVolSurface {
   pub fn fit_ssvi(
     &self,
     initial: Option<super::ssvi::SsviParams<f64>>,
-  ) -> super::ssvi::SsviSurface<f64> {
+  ) -> Calibrated<super::ssvi::SsviSurface<f64>> {
     let nt = self.maturities.len();
     let slices: Vec<super::ssvi::SsviSlice<f64>> = (0..nt)
       .map(|j| self.smile_slice(j).to_ssvi_slice())
       .collect();
 
-    let params = super::ssvi::calibrate_ssvi(&slices, initial);
+    let fit = super::ssvi::calibrate_ssvi(&slices, initial);
 
     let thetas: Vec<f64> = slices.iter().map(|s| s.theta).collect();
 
-    super::ssvi::SsviSurface::new(params, thetas, self.maturities.clone())
+    let surface = super::ssvi::SsviSurface::new(fit.params, thetas, self.maturities.clone());
+    Calibrated {
+      params: surface,
+      loss: fit.loss,
+      converged: fit.converged,
+      iterations: fit.iterations,
+      message: fit.message,
+      max_error: fit.max_error,
+      history: Vec::new(),
+      diagnostics: (),
+    }
   }
 }
 

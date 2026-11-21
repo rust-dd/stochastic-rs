@@ -1,5 +1,5 @@
-//! `theta_from_tau` meets the closed forms of Clayton, Gumbel and the Gaussian copula and round-trips Frank's Debye
-//! inversion through `tau_from_theta`; a τ at the edge of a family's range is an error, not an infinite θ.
+//! `theta_from_tau` meets the Clayton, Gumbel and Gaussian closed forms, round-trips Frank's Debye
+//! inversion via `tau_from_theta`, and errs on a τ at a family's range edge.
 
 use stochastic_rs_copulas::CopulaError;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
@@ -92,7 +92,8 @@ fn independence_theta_is_zero() {
   approx_eq(Independence::new().theta_from_tau(0.3).unwrap(), 0.0, 1e-12);
 }
 
-/// Frank's τ → θ by Brent and back through the Debye integral: the signs agree and the residual is at Brent's tolerance.
+/// Frank's τ → θ by Brent and back through the Debye integral: the signs agree and the residual is
+/// at Brent's tolerance.
 #[test]
 fn frank_tau_theta_roundtrip() {
   let frank = Frank::default();

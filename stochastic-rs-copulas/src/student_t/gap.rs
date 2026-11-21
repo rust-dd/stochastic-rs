@@ -1,22 +1,24 @@
-//! `Law::quantile_gap`: two near quantiles' difference from their exact level gap, the mass by 16-node Gauss–Legendre
-//! at exact offsets, in panels each within `e⁴` where the density changes by more across the gap.
+//! `Law::quantile_gap`: two near quantiles' difference from their exact level gap, the mass by
+//! 16-node Gauss–Legendre at exact offsets, in `e⁴` panels where the density varies more.
 
 use stochastic_rs_distributions::special::two_sum;
 
 use crate::bivariate::integral::rule;
 use crate::student_t::Law;
 
-/// At most this many panels: past them the rest of a wide gap lies under `e⁻⁶⁴` of the first panel's density.
+/// At most this many panels: past them the rest of a wide gap lies under `e⁻⁶⁴` of the first
+/// panel's density.
 const PANELS: usize = 16;
 
 impl Law {
-  /// `T⁻¹(u) − T⁻¹(u − g)` (`x + y` at `g = u + v − 1`, `x − y` at `u − v`), `x̂ ≈ T⁻¹(u)`'s own error removed: Newton on
-  /// `(T(x̂) − T(x̂ − d))/f(x̂) = (g + r)/f(x̂)`, `r = T(x̂) − u`, from `start`, less `r/f(x̂)`; in panels past `e⁴` in `f`.
+  /// `d = T⁻¹(u) − T⁻¹(u − g)` (`g = u + v − 1` or `u − v`), `x̂ ≈ T⁻¹(u)`: Newton on
+  /// `(T(x̂) − T(x̂ − d))/f(x̂) = (g + r)/f(x̂)`, `r = T(x̂) − u`, from `start`, less `r/f(x̂)`.
   pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64, in_panels: bool) -> f64 {
     if g == 0.0 {
       return 0.0;
     }
-    // Only `f(x)` carries the density's large exponent, which `precise_pdf` forms past double precision.
+    // Only `f(x)` carries the density's large exponent, which `precise_pdf` forms past double
+    // precision.
     let fx = self.inner.precise_pdf(x);
     let r = if x <= 0.0 {
       self.cdf_at(x) - u
@@ -29,7 +31,8 @@ impl Law {
     self.solve(x, (g + r) / fx, start) - r / fx
   }
 
-  /// `f(s + o)/f(s) = (1 + o(2s + o)/(ν + s²))^{−(ν + 1)/2}` at the exact offset `o`, not at a node rounded to `s`'s ulps.
+  /// `f(s + o)/f(s) = (1 + o(2s + o)/(ν + s²))^{−(ν + 1)/2}` at the exact offset `o`, not at a node
+  /// rounded to `s`'s ulps.
   fn ratio(&self, s: f64) -> impl Fn(f64) -> f64 {
     let (nu, inv_root) = (self.nu, self.nu.sqrt().hypot(s).recip());
     move |o| {
@@ -52,8 +55,8 @@ impl Law {
     d
   }
 
-  /// `quantile_gap` past `e⁴`: `T(x) − T(ŷ)` to the double `ŷ = x − start` once in panels, each scaled by its own
-  /// `precise_pdf` so no node carries the gap's whole exponent, then Newton from `ŷ`.
+  /// `quantile_gap` past `e⁴`: `T(x) − T(ŷ)` at the double `ŷ = x − start` once in panels, each by
+  /// its own `precise_pdf` so no node carries the whole exponent, then Newton from `ŷ`.
   fn wide_gap(&self, x: f64, level_gap: f64, start: f64, shift: f64) -> f64 {
     let y = x - start;
     let (hi, lo) = two_sum(x, -y);
@@ -67,8 +70,8 @@ impl Law {
     hi + ((lo + offset) - shift)
   }
 
-  /// `|T(a) − T(b)|`, `a, b` of one sign: panels from the denser end, each within `e⁴` by `ν + s'² = (ν + s²)e^{8/(ν + 1)}`,
-  /// each width's rounding added at its far end's density.
+  /// `|T(a) − T(b)|`, `a, b` of one sign: panels from the denser end, each within `e⁴` by
+  /// `ν + s'² = (ν + s²)e^{8/(ν + 1)}`, each width's rounding added at its far end's density.
   fn span(&self, a: f64, b: f64) -> f64 {
     let (mut s, end) = if a.abs() <= b.abs() { (a, b) } else { (b, a) };
     let grow = (8.0 / (self.nu + 1.0)).exp_m1();

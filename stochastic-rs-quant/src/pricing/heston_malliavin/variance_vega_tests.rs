@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::HestonInitialVarianceVegaStability;
 use super::HestonMalliavinConfig;
 use super::HestonMalliavinEstimator;
@@ -33,14 +35,14 @@ fn under_sampled_model() -> HestonModel {
   }
 }
 
-fn under_sampled_config(paths: usize, seed: u64) -> HestonMalliavinConfig {
+fn under_sampled_config(paths: usize, seed: u64) -> HestonMalliavinConfig<Deterministic> {
   HestonMalliavinConfig {
     paths,
     steps: 32,
-    seed,
     initial_variance_bump: 1e-4,
     ..HestonMalliavinConfig::default()
   }
+  .with_seed(Deterministic::new(seed))
 }
 
 fn out_of_the_money_put_vertical() -> VanillaPortfolio {
@@ -52,14 +54,12 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
   let model = under_sampled_model();
   let payoff = out_of_the_money_put_vertical();
   let robust_config = under_sampled_config(4_096, UNDER_SAMPLED_SEED);
-  let robust = HestonMalliavinEstimator::new(model, robust_config)
-    .unwrap()
+  let robust = HestonMalliavinEstimator::new(model, robust_config.clone())
     .estimate(&payoff)
     .unwrap();
-  let mut legacy_config = robust_config;
+  let mut legacy_config = robust_config.clone();
   legacy_config.minimum_relative_initial_variance_bump = 0.0;
-  let legacy = HestonMalliavinEstimator::new(model, legacy_config)
-    .unwrap()
+  let legacy = HestonMalliavinEstimator::new(model, legacy_config.clone())
     .estimate(&payoff)
     .unwrap();
 
@@ -70,22 +70,18 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
     diagnostics.stability,
     HestonInitialVarianceVegaStability::Stable
   );
-  assert!(robust.initial_variance_vega.value > 0.0);
+  assert!(robust.initial_variance_vega.mean > 0.0);
+  assert!(robust.initial_variance_vega.std_err < 0.15 * legacy.initial_variance_vega.std_err);
   assert!(
-    robust.initial_variance_vega.standard_error
-      < 0.15 * legacy.initial_variance_vega.standard_error
+    (robust.initial_variance_vega.mean - REFERENCE_CF_VEGA).abs()
+      <= 4.0 * robust.initial_variance_vega.std_err + 1.0
   );
-  assert!(
-    (robust.initial_variance_vega.value - REFERENCE_CF_VEGA).abs()
-      <= 4.0 * robust.initial_variance_vega.standard_error + 1.0
-  );
-  assert!(legacy.initial_variance_vega.value < 0.0);
+  assert!(legacy.initial_variance_vega.mean < 0.0);
   assert_eq!(
     legacy.initial_variance_vega_diagnostics.stability,
     HestonInitialVarianceVegaStability::SamplingUnresolved
   );
   let error = HestonMalliavinEstimator::new(model, legacy_config)
-    .unwrap()
     .estimate_requiring_stable_initial_variance_vega(&payoff)
     .unwrap_err();
   assert!(
@@ -97,7 +93,6 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
     "{error}"
   );
   HestonMalliavinEstimator::new(model, robust_config)
-    .unwrap()
     .estimate_requiring_stable_initial_variance_vega(&payoff)
     .unwrap();
 }
@@ -108,12 +103,11 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
   let payoff = out_of_the_money_put_vertical();
   for seed in [UNDER_SAMPLED_SEED, 1, 5] {
     let estimate = HestonMalliavinEstimator::new(model, under_sampled_config(4_096, seed))
-      .unwrap()
       .estimate(&payoff)
       .unwrap();
-    assert!(estimate.initial_variance_vega.value > 0.0, "seed={seed}");
+    assert!(estimate.initial_variance_vega.mean > 0.0, "seed={seed}");
     assert!(
-      estimate.initial_variance_vega.standard_error < 2.5,
+      estimate.initial_variance_vega.std_err < 2.5,
       "seed={seed}, estimate={estimate:?}"
     );
     assert_ne!(
@@ -124,17 +118,15 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
   }
 
   let low = HestonMalliavinEstimator::new(model, under_sampled_config(4_096, UNDER_SAMPLED_SEED))
-    .unwrap()
     .estimate(&payoff)
     .unwrap();
   let high = HestonMalliavinEstimator::new(model, under_sampled_config(65_536, UNDER_SAMPLED_SEED))
-    .unwrap()
     .estimate(&payoff)
     .unwrap();
-  assert!(high.initial_variance_vega.standard_error < low.initial_variance_vega.standard_error);
+  assert!(high.initial_variance_vega.std_err < low.initial_variance_vega.std_err);
   assert!(
-    (high.initial_variance_vega.value - REFERENCE_CF_VEGA).abs()
-      <= 4.0 * high.initial_variance_vega.standard_error + 0.5
+    (high.initial_variance_vega.mean - REFERENCE_CF_VEGA).abs()
+      <= 4.0 * high.initial_variance_vega.std_err + 0.5
   );
 }
 
@@ -158,18 +150,18 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     let config = HestonMalliavinConfig {
       paths: 32_768,
       steps: 8,
-      seed,
       ..HestonMalliavinConfig::default()
-    };
+    }
+    .with_seed(Deterministic::new(seed));
+    let steps = config.steps;
     let estimate = HestonMalliavinEstimator::new(model, config)
-      .unwrap()
       .estimate(&payoff)
       .unwrap();
     let bump = estimate.initial_variance_vega_diagnostics.effective_bump;
     assert!((bump - 0.0012).abs() < 1e-15);
-    let dt = model.tau / config.steps as f64;
-    let discrete_loading = (1.0 - (1.0 - model.params.kappa * dt).powi(config.steps as i32))
-      / (model.params.kappa * model.tau);
+    let dt = model.tau / steps as f64;
+    let discrete_loading =
+      (1.0 - (1.0 - model.params.kappa * dt).powi(steps as i32)) / (model.params.kappa * model.tau);
     let price = |variance: f64| {
       BsmPricer::new(variance.sqrt(), BsmCoc::Merton1973).price_call(
         model.s,
@@ -183,8 +175,8 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
       - price(model.params.v0 - bump * discrete_loading))
       / (2.0 * bump);
     assert!(
-      (estimate.initial_variance_vega.value - reference).abs()
-        <= 5.0 * estimate.initial_variance_vega.standard_error + 0.5,
+      (estimate.initial_variance_vega.mean - reference).abs()
+        <= 5.0 * estimate.initial_variance_vega.std_err + 0.5,
       "seed={seed}, reference={reference}, estimate={estimate:?}"
     );
     assert_ne!(

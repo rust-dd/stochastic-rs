@@ -1,10 +1,10 @@
-//! # Beta
+//! Beta law, sampled as `G1/(G1 + G2)` of two gamma draws.
 //!
 //! $$
 //! f(x)=\frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)},\ x\in(0,1)
 //! $$
 //!
-//! Sampling: `G1/(G1 + G2)` of two gammas, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.4, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §IX.4, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 
@@ -40,7 +40,8 @@ pub(crate) fn ratio<T: SimdFloatExt>(a: T, b: T) -> T {
   }
 }
 
-/// Beta law `Beta(alpha, beta)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Beta law `Beta(alpha, beta)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in
+/// bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdBeta<T> {
   alpha: T,

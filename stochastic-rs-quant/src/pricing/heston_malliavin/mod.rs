@@ -28,7 +28,6 @@ mod variance_vega;
 
 use crate::QuantError;
 
-pub use estimator::EstimateWithError;
 pub use estimator::HestonMalliavinConfig;
 pub use estimator::HestonMalliavinEstimate;
 pub use estimator::HestonMalliavinEstimator;

@@ -9,6 +9,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
@@ -21,6 +22,8 @@ use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
 use crate::calibration::scale_columns;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
 use crate::pricing::sabr::forward_fx;
@@ -221,46 +224,37 @@ impl SabrProblem<'_> {
     Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q))
   }
 
-  fn numeric_jacobian(&self, p: &SabrParams) -> Array2<f64> {
-    let base = p.as_lm_vec();
-    let mut jacobian = Array2::zeros((self.market.len(), base.len()));
-    for col in 0..base.len() {
-      let x = base[col];
-      let mut h = 1e-5_f64.max(1e-3 * x.abs());
-      let mut p_plus = *p;
-      let mut p_minus = *p;
-      match col {
-        0 => {
-          p_plus.alpha = (x + h).abs().max_or_nan(ALPHA_MIN);
-          p_minus.alpha = (x - h).abs().max_or_nan(ALPHA_MIN);
-        }
-        1 => {
-          p_plus.nu = (x + h).abs().max_or_nan(NU_MIN);
-          p_minus.nu = (x - h).abs().max_or_nan(NU_MIN);
-        }
-        2 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          p_plus.rho = clamp(x + h);
-          p_minus.rho = clamp(x - h);
-          if (p_plus.rho - p_minus.rho).abs() < 0.5 * h {
-            h = 1e-4;
-            p_plus.rho = clamp(x + h);
-            p_minus.rho = clamp(x - h);
-          }
-        }
-        _ => unreachable!(),
-      }
-      p_plus.project_in_place();
-      p_minus.project_in_place();
-      let diff = (self.residuals_for(&p_plus) - self.residuals_for(&p_minus)) / (2.0 * h);
-      jacobian.column_mut(col).assign(&diff);
+  /// `∂r/∂(α, ν, ρ)` at the projected point, each stencil inside the box; `scale` times the shared
+  /// step.
+  fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let point = self.params.as_lm_vec();
+    let bounds = [
+      (ALPHA_MIN, f64::INFINITY),
+      (NU_MIN, f64::INFINITY),
+      (-RHO_BOUND, RHO_BOUND),
+    ];
+    let mut jacobian = Array2::zeros((self.market.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), bounds[j], |value| {
+        let mut moved = point.clone();
+        moved[j] = value;
+        let (alpha, nu, rho) = (moved[0], moved[1], moved[2]);
+        let beta = self.params.beta;
+        self.residuals_for(&SabrParams {
+          alpha,
+          beta,
+          rho,
+          nu,
+        })
+      }));
     }
     jacobian
   }
 }
 
 impl LeastSquaresProblem for SabrProblem<'_> {
-  fn set_params(&mut self, x: &Array1<f64>) {
+  fn set_params(&mut self, x: ArrayView1<f64>) {
     let sign = |x: f64| if x < 0.0 { -1.0 } else { 1.0 };
     self.reflections = ndarray::array![sign(x[0]), sign(x[1]), 1.0];
     self.params = SabrParams {
@@ -280,14 +274,18 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     let model = self.model_prices(&self.params);
     let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q));
     let options = &self.calibrator.options;
-    self
-      .trail
-      .stage(options, &self.market, &model, &self.params, &residuals);
+    self.trail.stage(
+      options,
+      &self.market,
+      &model,
+      &self.params,
+      residuals.view(),
+    );
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.params);
+    let jacobian = self.difference_jacobian(1.0);
     Some(scale_columns(jacobian, self.reflections.view()))
   }
 

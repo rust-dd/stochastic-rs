@@ -7,7 +7,8 @@ use crate::special::ldexp;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 
-/// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
+/// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$
+/// takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum TailProposal {
   /// The translated exponential of rate $\alpha^\*$ (Robert 1995, §2.1, Proposition 2.3).
@@ -16,7 +17,8 @@ pub(super) enum TailProposal {
   Uniform,
 }
 
-/// The standardised one-sided interval $[a, a + w]$, $a \ge 0$, of a tail draw, negated back when `mirrored`.
+/// The standardised one-sided interval $[a, a + w]$, $a \ge 0$, of a tail draw, negated back when
+/// `mirrored`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TailSetup {
   pub(super) a: f64,
@@ -33,7 +35,8 @@ impl TailSetup {
     let root = (a * a + 4.0).sqrt();
     // Past 1.34e154 `a²` overflows, where `√(a² + 4)` rounds to `a`.
     let root = if root.is_finite() { root } else { a };
-    // Past `MAX/2` the sum overflows where the rate `a + 2/(a + √(a² + 4))` is `a` to its last double.
+    // Past `MAX/2` the sum overflows where the rate `a + 2/(a + √(a² + 4))` is `a` to its last
+    // double.
     let alpha_star = match 0.5 * (a + root) {
       rate if rate.is_finite() => rate,
       _ => a,
@@ -96,11 +99,13 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// Robert (1995) accept-reject on the standardised one-sided interval, forming no cdf: deep in a
   /// tail `F(upper) − F(lower)` loses its digits, and past about 8.3σ inversion returns `+inf`.
   fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
-    // A standardised width below the doubles holds no offset: in the law's own coordinate, as past `μ ± σ·MAX`.
+    // A standardised width below the doubles holds no offset: in the law's own coordinate, as past
+    // `μ ± σ·MAX`.
     if setup.a == f64::INFINITY || setup.width < f64::MIN_POSITIVE {
       return T::from_f64_fast(self.beyond_draw(setup, src.uniform()));
     }
-    // The offset `y = z − a` from the near bound, which the law's own coordinate takes without `μ + σz`'s cancellation.
+    // The offset `y = z − a` from the near bound, which the law's own coordinate takes without
+    // `μ + σz`'s cancellation.
     let y = match setup.proposal {
       TailProposal::Exponential { alpha_star } => loop {
         // `1 - u` keeps the generator's `[0, 1)` off the `ln`'s zero.
@@ -115,7 +120,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       },
       TailProposal::Uniform => loop {
         let y = src.uniform() * setup.width;
-        // `(a² − z²)/2` as `−y(a + y/2)`: `z = a + y` rounds `y` away where `a·w` is still of order 1.
+        // `(a² − z²)/2` as `−y(a + y/2)`: `z = a + y` rounds `y` away where `a·w` is still of
+        // order 1.
         if src.uniform() <= (-y * (setup.a + 0.5 * y)).exp() {
           break y;
         }
@@ -131,7 +137,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     })
   }
 
-  /// $F^{-1}(F(\text{lower}) + u (F(\text{upper}) - F(\text{lower})))$: the sampler's inverse-cdf map.
+  /// $F^{-1}(F(\text{lower}) + u (F(\text{upper}) - F(\text{lower})))$: the sampler's inverse-cdf
+  /// map.
   pub(super) fn inverse_cdf(&self, u: f64) -> f64 {
     self.unstandardise(crate::special::ndtri(
       self.f_lo + u * (self.f_up - self.f_lo),
@@ -167,7 +174,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
         (near + y).min(far)
       };
     }
-    // `near ± W·g` rounded once, `g → u` as `ρ → 0`: over a few subnormal doubles the law is uniform on their cells.
+    // `near ± W·g` rounded once, `g → u` as `ρ → 0`: over a few subnormal doubles the law is
+    // uniform on their cells.
     let g = if rho < f64::EPSILON {
       u
     } else {

@@ -20,9 +20,37 @@ pub(super) const BOX: [(f64, f64); 8] = [
   P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_MU_J, P_SIGMA_J,
 ];
 
+/// Where a boxed value lies: `BOX`, with `ρ` clamped inside its reflection's range.
+pub(super) const BOXED: [(f64, f64); 8] = [
+  P_V0,
+  P_KAPPA,
+  P_THETA,
+  P_SIGMA_V,
+  (-RHO_BOUND, RHO_BOUND),
+  P_LAMBDA,
+  P_MU_J,
+  P_SIGMA_J,
+];
+
 impl SvjParams {
   /// Project parameters to satisfy admissibility constraints (box + Feller condition).
   pub fn project_in_place(&mut self) {
+    self.project_box();
+    self.project_feller();
+  }
+
+  pub fn projected(mut self) -> Self {
+    self.project_in_place();
+    self
+  }
+
+  /// The box alone: Feller's condition, which couples three values, stays for `project_feller`.
+  pub(super) fn boxed(mut self) -> Self {
+    self.project_box();
+    self
+  }
+
+  fn project_box(&mut self) {
     use crate::calibration::periodic_map;
 
     self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
@@ -37,7 +65,9 @@ impl SvjParams {
     self.sigma_j = periodic_map(self.sigma_j, P_SIGMA_J.0, P_SIGMA_J.1)
       .abs()
       .max(P_SIGMA_J.0);
+  }
 
+  fn project_feller(&mut self) {
     if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
       let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
       if sigma_star >= P_SIGMA_V.0 {
@@ -47,11 +77,6 @@ impl SvjParams {
         self.theta = theta_star.min(P_THETA.1);
       }
     }
-  }
-
-  pub fn projected(mut self) -> Self {
-    self.project_in_place();
-    self
   }
 }
 

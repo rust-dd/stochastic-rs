@@ -1,8 +1,8 @@
 //! Special functions for the closed forms: Lanczos `gamma` and `ln_gamma`, Acklam's `ndtri`,
 //! `libm`'s `erf` and `erfc`, Mills' ratio, the incomplete gamma and beta, Bessel `I` and `K`.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.8 (Stirling's series for `ln Γ(z + h)`, at `h = ½` less `h = 0` the ratio of eq. 5.11.13), <https://dlmf.nist.gov/5.11.8>.
-//! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal cumulative distribution function" (the rational approximation and Halley step of `ndtri`).
+//! Reference: NIST DLMF, eq. 7.9.3, <https://dlmf.nist.gov/7.9.3>.
+//! Reference: NIST DLMF, eqs. 5.11.8 and 5.11.13, <https://dlmf.nist.gov/5.11.8>.
+//! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal CDF".
 
 mod bessel;
 mod bessel_i;
@@ -170,7 +170,8 @@ pub fn gamma(x: f64) -> f64 {
 pub(crate) fn gamma_ratio_half(a: f64) -> f64 {
   const LIFT: f64 = 8.0;
 
-  /// `−(2 − 2^{1−2m})B_{2m}/(2m(2m − 1))`, `m = 1, 2, …`: the coefficient of `a^{1−2m}` in `ln Γ(a + ½) − ln Γ(a) − ½ ln a`.
+  /// `−(2 − 2^{1−2m})B_{2m}/(2m(2m − 1))`, `m = 1, 2, …`: the coefficient of `a^{1−2m}` in
+  /// `ln Γ(a + ½) − ln Γ(a) − ½ ln a`.
   const C: [f64; 11] = [
     -1.0 / 8.0,
     1.0 / 192.0,
@@ -236,7 +237,8 @@ pub fn digamma(x: f64) -> f64 {
   digamma_one_plus(-x) - pi_cot_pi(x)
 }
 
-/// `ψ(1 + u)` from the exact `u ≥ 0`, so no rounded `1 + u` enters below 10: `u − k` steps down onto `[0, 1)`.
+/// `ψ(1 + u)` from the exact `u ≥ 0`, so no rounded `1 + u` enters below 10: `u − k` steps down
+/// onto `[0, 1)`.
 fn digamma_one_plus(u: f64) -> f64 {
   if u >= 9.0 {
     return digamma_series(1.0 + u);
@@ -281,7 +283,8 @@ fn digamma_near_root(t: f64) -> f64 {
   g.mul_add(Y, g * r)
 }
 
-/// DLMF 5.11.2 from 10: `ln x − 1/(2x) − Σ_{k≤8} B₂ₖ/(2k x²ᵏ)`, whose next term is under `2e-18` of it.
+/// DLMF 5.11.2 from 10: `ln x − 1/(2x) − Σ_{k≤8} B₂ₖ/(2k x²ᵏ)`, whose next term is under `2e-18` of
+/// it.
 fn digamma_series(x: f64) -> f64 {
   x.ln() - 0.5 / x - digamma_tail(x)
 }
@@ -313,7 +316,8 @@ fn pi_cot_pi(x: f64) -> f64 {
   }
 }
 
-/// From this shape the gamma law's entropy reads its series, where `k`, `ln Γ(k)` and `(1 − k)ψ(k)` cancel.
+/// From this shape the gamma law's entropy reads its series, where `k`, `ln Γ(k)` and `(1 − k)ψ(k)`
+/// cancel.
 pub(crate) const ENTROPY_SERIES_FROM: f64 = 100.0;
 
 /// `k + ln Γ(k) + (1 − k)ψ(k)` from `ENTROPY_SERIES_FROM`, DLMF 5.11.1 with 5.11.2: `½(1 + ln 2πk)`
@@ -433,7 +437,8 @@ fn ndtri_lower(p: f64) -> f64 {
       / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
   };
 
-  // On [¼, ½] `p − ½` is exact and `erf` keeps the residual's digits next to ½, where `Φ(x) − p` cancels.
+  // On [¼, ½] `p − ½` is exact and `erf` keeps the residual's digits next to ½, where `Φ(x) − p`
+  // cancels.
   let e = if p >= 0.25 {
     0.5 * erf(x / std::f64::consts::SQRT_2) - (p - 0.5)
   } else {
@@ -461,7 +466,8 @@ pub fn norm_cdf(x: f64) -> f64 {
   0.5 * erfc(-x / std::f64::consts::SQRT_2)
 }
 
-/// `R(k/2)`, `k = 0, …, 8`, in two parts (mpmath, 60 and 120 digits): the nodes of `mills_ratio`'s Taylor series.
+/// `R(k/2)`, `k = 0, …, 8`, in two parts (mpmath, 60 and 120 digits): the nodes of `mills_ratio`'s
+/// Taylor series.
 const MILLS_NODES: [(f64, f64); 9] = [
   (1.2533141373155003, -9.164289990229583e-17),
   (0.8763644564536923, 2.6901721135929454e-17),
@@ -478,7 +484,8 @@ const MILLS_NODES: [(f64, f64); 9] = [
 /// the fraction needs at most 31 steps.
 const MILLS_TAYLOR_BELOW: f64 = 4.25;
 
-/// `1/(n + 1)`, `n = 1, …, 16`: the divisors of the Taylor recurrence `(n + 1)c_{n+1} = z₀c_n + c_{n−1}`.
+/// `1/(n + 1)`, `n = 1, …, 16`: the divisors of the Taylor recurrence
+/// `(n + 1)c_{n+1} = z₀c_n + c_{n−1}`.
 const MILLS_DIVISORS: [f64; 16] = [
   1.0 / 2.0,
   1.0 / 3.0,

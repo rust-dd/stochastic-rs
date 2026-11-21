@@ -3,8 +3,8 @@ use crate::correlation::kendall_tau;
 use crate::multivariate::nac::sample::Frailty;
 use crate::multivariate::nac::sample::tilted_stable;
 
-/// `(θ, ζ₁)` of Clayton, ζ₁ = Var(1 − 2U − 2V + 4C(U, V)) by quadrature, for Hoeffding's (1948, Eq. (9.15)) variance
-/// of Kendall's τ̂, Var τ̂ = 2[2(n − 2)ζ₁ + 1 − τ²]/(n(n − 1)).
+/// `(θ, ζ₁)` of Clayton, ζ₁ = Var(1 − 2U − 2V + 4C(U, V)) by quadrature, for Hoeffding's (1948, Eq.
+/// (9.15)) variance of Kendall's τ̂, Var τ̂ = 2[2(n − 2)ζ₁ + 1 − τ²]/(n(n − 1)).
 const CLAYTON_ZETA1: [(f64, f64); 8] = [
   (0.25, 0.112392),
   (0.5, 0.109010),
@@ -18,7 +18,8 @@ const CLAYTON_ZETA1: [(f64, f64); 8] = [
 
 const NESTED_N: usize = 20_000;
 
-/// Kolmogorov's 0.999 quantile: the √n-scaled distance a uniform sample stays under with probability 0.999.
+/// Kolmogorov's 0.999 quantile: the √n-scaled distance a uniform sample stays under with
+/// probability 0.999.
 const KS_999: f64 = 1.9495;
 
 /// A flat (single-level) Clayton NAC with all leaves under one root must
@@ -39,8 +40,8 @@ fn nac_clayton_flat_is_exchangeable_clayton() {
   }
 }
 
-/// The tilted stable's empirical LST is `exp(−v₀((1 + t)^α − 1))` within 4 SE, `Var e^{−tX} = L(2t) − L(t)²`, for one
-/// summand (`v₀ ≤ 1`, and `1 < v₀ < 2 ln 2`) and for several, down to `α = 1/500`.
+/// The tilted stable's empirical LST is `exp(−v₀((1 + t)^α − 1))` within 4 SE for one summand
+/// (`v₀ ≤ 1`, and `1 < v₀ < 2 ln 2`) and for several, down to `α = 1/500`.
 #[test]
 fn nac_clayton_tilted_stable_has_its_laplace_transform() {
   let n = 20_000;
@@ -78,8 +79,8 @@ fn nac_clayton_tilted_stable_has_its_laplace_transform() {
   }
 }
 
-/// `d = 3` at `α = 1/4` and at `α = 1`, `d = 4` at `α = 1/16`, and three levels at `d = 6` down to `α = 1/40` under a root
-/// whose frailty has mean 4, so the tilted stable runs with one summand and with several.
+/// `d = 3` at `α = 1/4` and `α = 1`, `d = 4` at `α = 1/16`, three levels at `d = 6` to `α = 1/40`
+/// under a root frailty of mean 4: the tilted stable with one summand and several.
 fn nested_clayton_trees() -> Vec<NestedArchimedean> {
   let lg = NacNode::leaf_group;
   let nest = |mut node: NacNode, children| {
@@ -121,7 +122,8 @@ fn ancestor_theta(node: &NacNode, i: usize, j: usize) -> f64 {
     .map_or(node.theta, |c| ancestor_theta(c, i, j))
 }
 
-/// Every pair of a nested Clayton sample is Clayton on its youngest common ancestor's θ: τ̂ within 4 SE of θ/(θ + 2).
+/// Every pair of a nested Clayton sample is Clayton on its youngest common ancestor's θ: τ̂ within
+/// 4 SE of θ/(θ + 2).
 #[test]
 fn nac_clayton_nested_pairs_follow_their_youngest_common_ancestor() {
   let n = NESTED_N as f64;
@@ -148,7 +150,8 @@ fn nac_clayton_nested_pairs_follow_their_youngest_common_ancestor() {
   }
 }
 
-/// The share of a nested Clayton sample at or below `q` is the copula's cdf at `q`, within 4 binomial SE.
+/// The share of a nested Clayton sample at or below `q` is the copula's cdf at `q`, within 4
+/// binomial SE.
 #[test]
 fn nac_clayton_nested_sample_matches_the_cdf() {
   let points = [
@@ -181,7 +184,8 @@ fn nac_clayton_nested_sample_matches_the_cdf() {
   }
 }
 
-/// A leaf of each tree's most strongly nested node is uniform: √n·KS below Kolmogorov's 0.999 quantile.
+/// A leaf of each tree's most strongly nested node is uniform: √n·KS below Kolmogorov's 0.999
+/// quantile.
 #[test]
 fn nac_clayton_nested_margin_is_uniform() {
   let n = NESTED_N as f64;

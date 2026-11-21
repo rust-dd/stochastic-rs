@@ -1,5 +1,5 @@
-//! One input convention for every copula: a batch method answers `MarginalOutOfRange` for a value outside `[0, 1]` or
-//! NaN, the densities are NaN on the boundary, where none lives, and the fits and tests on pseudo-observations need them inside `(0, 1)`.
+//! One input convention for every copula: `MarginalOutOfRange` off `[0, 1]` or at NaN, densities
+//! NaN on the boundary, and pseudo-observation fits and tests need `(0, 1)`.
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -48,8 +48,8 @@ fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
   copula
 }
 
-/// Densities NaN on every edge and corner and finite inside; `cdf` exact on the edges and `h` and its inverse in `[0, 1]`
-/// there; each batch method `MarginalOutOfRange` at a bad value, and `DimensionMismatch` on one or three columns first.
+/// Densities NaN on every edge and corner, finite inside; `cdf` exact on the edges, `h` and its
+/// inverse in `[0, 1]`; `MarginalOutOfRange` at a bad value, after `DimensionMismatch`.
 fn bivariate(copula: &dyn BivariateExt) {
   for (got, fill) in [(1, 0.5), (3, 0.5), (1, f64::NAN), (3, f64::NAN)] {
     let x = Array2::from_elem((2, got), fill);
@@ -147,8 +147,8 @@ bivariate_families! {
   t_follows_the_boundary_convention => TCopula::new(0.5, 4.0),
 }
 
-/// Densities NaN on a row with a coordinate at 0 or 1 and finite on an interior row, and `MarginalOutOfRange` from
-/// `pdf`, `log_pdf` and `cdf` at a bad value.
+/// Densities NaN on a row with a coordinate at 0 or 1 and finite on an interior row, and
+/// `MarginalOutOfRange` from `pdf`, `log_pdf` and `cdf` at a bad value.
 fn multivariate(copula: &impl MultivariateExt) {
   let rows = array![
     [0.3, 0.6, 0.45],
@@ -233,8 +233,8 @@ fn data(columns: usize, cell: (usize, usize), value: f64) -> Array2<f64> {
   x
 }
 
-/// The rule of every parametric fit and of the test: a 0 or 1 is a `MarginalOnBoundary` at its cell, saying `(0, 1)`, a
-/// value off `[0, 1]` stays `MarginalOutOfRange`.
+/// The rule of every parametric fit and of the test: a 0 or 1 is a `MarginalOnBoundary` at its
+/// cell, saying `(0, 1)`, a value off `[0, 1]` stays `MarginalOutOfRange`.
 fn assert_fit_rule(fit: impl Fn(ArrayView2<f64>) -> Result<(), CopulaError>, columns: usize) {
   for value in [0.0, 1.0] {
     let got = fit(data(columns, (7, columns - 1), value).view());
@@ -259,8 +259,8 @@ fn the_bb_likelihood_fits_reject_a_zero_or_one() {
   assert_fit_rule(|x| Bb7::default().fit(x), 2);
 }
 
-/// Every bivariate family's `fit`, the Kendall inversions included: the rule holds before the sample's τ, which some
-/// families cannot represent, is read.
+/// Every bivariate family's `fit`, the Kendall inversions included: the rule holds before the
+/// sample's τ, which some families cannot represent, is read.
 #[test]
 fn every_bivariate_fit_rejects_a_zero_or_one() {
   let mut families: Vec<Box<dyn BivariateExt>> = vec![
@@ -355,8 +355,8 @@ fn the_goodness_of_fit_test_rejects_a_zero_or_one() {
   );
 }
 
-/// The empirical copula's cdf keeps the convention: its edges and corners on the closed square, `MarginalOutOfRange` at a
-/// bad value in either coordinate.
+/// The empirical copula's cdf keeps the convention: its edges and corners on the closed square,
+/// `MarginalOutOfRange` at a bad value in either coordinate.
 #[test]
 fn the_empirical_copula_follows_the_boundary_convention() {
   let copula = EmpiricalCopula2D::new(
@@ -379,7 +379,8 @@ fn the_empirical_copula_follows_the_boundary_convention() {
   }
 }
 
-/// Marshall–Olkin's degenerate pairs, one shock rate at 1: `h` at `v ∈ {0, 1}` and its inverse at `y, v ∈ {0, 1}` finite.
+/// Marshall–Olkin's degenerate pairs, one shock rate at 1: `h` at `v ∈ {0, 1}` and its inverse at
+/// `y, v ∈ {0, 1}` finite.
 #[test]
 fn marshall_olkin_degenerate_pairs_stay_finite_on_the_edges() {
   for (alpha, beta) in [(1.0, 0.4), (0.7, 1.0)] {

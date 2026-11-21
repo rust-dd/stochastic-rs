@@ -296,7 +296,8 @@ macro_rules! py_two_parameter {
         Ok(theta)
       }
 
-      /// Maximum-likelihood fit of both parameters; a successful fit replaces the tau set last with the fitted model's.
+      /// Maximum-likelihood fit of both parameters; a successful fit replaces the tau set last with
+      /// the fitted model's.
       fn fit<'py>(&mut self, x: PyReadonlyArray2<'py, f64>) -> PyResult<()> {
         BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)?;
         self.pending_tau = None;
@@ -468,8 +469,8 @@ pub fn fit_vine<'py>(
   Ok(out)
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of the `family` (`clayton`, `gumbel`, `frank`, `gaussian`, `bb1`, `bb7`) fitted
-/// to the pseudo-observations `u`; returns `(statistic, p_value)`, and `alpha` fixes the rejection the Rust result carries.
+/// Parametric-bootstrap Cramér–von Mises test of `family` (`clayton`, `gumbel`, `frank`,
+/// `gaussian`, `bb1`, `bb7`) fitted to pseudo-observations `u`, giving `(statistic, p_value)`.
 #[pyfunction]
 #[pyo3(signature = (family, u, replications=200, seed=42, alpha=0.05))]
 pub fn copula_gof<'py>(
@@ -520,8 +521,8 @@ pub fn copula_gof<'py>(
   Ok((result.statistic, result.p_value))
 }
 
-/// Pseudo-observations `rank / (n + 1)` of every column of raw data, ties sharing their mean rank — the input every
-/// copula `fit`, `fit_vine` and `copula_gof` expects.
+/// Pseudo-observations `rank / (n + 1)` of every column of raw data, ties sharing their mean rank —
+/// the input every copula `fit`, `fit_vine` and `copula_gof` expects.
 #[pyfunction]
 pub fn pseudo_observations<'py>(
   py: Python<'py>,

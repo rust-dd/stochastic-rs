@@ -145,7 +145,7 @@ pub trait CalibrationResult {
 
 `Greeks` is a plain `f64` struct with nine named fields, not generic over `T`. It is what a pricer's inherent `greeks(s, k, r, q, tau, option_type)` returns; `BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` share that one signature.
 
-`GreeksExt` is a separate, narrower trait: nine accessors that return `Option<f64>` (`delta` required, the other eight `None` unless the estimator exposes them) and an aggregating `greeks()` that writes NaN for a `None`, all taking `&self` and nothing else. Only the Monte Carlo Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`) implement it; their `greeks()` runs one simulation, so the nine numbers come from the same paths. It is not in the prelude — import `stochastic_rs::traits::GreeksExt`.
+`GreeksExt` is a separate, narrower trait: nine accessors that return `Option<McEstimate<f64>>`, each estimate with its standard error (`delta` required, the other eight `None` unless the estimator exposes them), and an aggregating `greeks()` that writes each mean, NaN for a `None`, all taking `&self` and nothing else. Only the Monte Carlo Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`) implement it; their `greeks()` runs one simulation, so the nine numbers come from the same paths. It is not in the prelude — import `stochastic_rs::traits::GreeksExt`.
 
 <RustExample path="tests/doctest_concepts_greeks_shape.rs" />
 

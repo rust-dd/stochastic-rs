@@ -1,13 +1,11 @@
-//! # Gamma
+//! Gamma law, scale form with mean `αθ`, by Marsaglia–Tsang's squeeze in a scalar loop (8 lanes ran
+//! slower on 128-bit SIMD); `α < 1` as `Gamma(α + 1)·U^{1/α}`.
 //!
 //! $$
 //! f(x)=\frac{1}{\theta^\alpha\Gamma(\alpha)}x^{\alpha-1}e^{-x/\theta},\ x>0
 //! $$
 //!
-//! Scale form, mean `αθ`: Marsaglia–Tsang's squeeze over the SIMD normal and uniform streams, the
-//! loop scalar (8 lanes ran slower on 128-bit SIMD), `α < 1` lifted as `Gamma(α + 1)·U^{1/α}`.
-//!
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
+//! Reference: Marsaglia, Tsang (2000), ACM TOMS 26(3), 363-372, DOI 10.1145/358407.358414.
 use std::mem::MaybeUninit;
 
 use rand::Rng;
@@ -26,14 +24,16 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Gamma law `Gamma(alpha, scale)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Gamma law `Gamma(alpha, scale)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in
+/// bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGamma<T> {
   alpha: T,
   scale: T,
 }
 
-/// A gamma stream: the normal sub-stream the squeeze pops, the uniform engine and the single-draw buffer.
+/// A gamma stream: the normal sub-stream the squeeze pops, the uniform engine and the single-draw
+/// buffer.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct GammaState<T: SimdFloatExt, R: SimdRngExt> {
@@ -75,7 +75,8 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     self.scale
   }
 
-  /// Marsaglia–Tsang's `(d, c)` for `α` (`α + 1` below one), and `1/α` when the `U^{1/α}` boost applies.
+  /// Marsaglia–Tsang's `(d, c)` for `α` (`α + 1` below one), and `1/α` when the `U^{1/α}` boost
+  /// applies.
   #[inline]
   fn squeeze(&self) -> (T, T, Option<T>) {
     let third = T::from(1.0 / 3.0).unwrap();
@@ -123,7 +124,8 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     }
   }
 
-  /// Kept out of line because inlined into a pop loop's refill this rejection kernel slows the loop.
+  /// Kept out of line because inlined into a pop loop's refill this rejection kernel slows the
+  /// loop.
   #[inline(never)]
   fn fill_parts<R: SimdRngExt>(
     &self,
@@ -148,7 +150,8 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     }
   }
 
-  /// `(ln(scale·G(α + 1)), ln u)`, the draw's log being `ln_core + ln u/α`; `ln u = 0` at or above a unit shape.
+  /// `(ln(scale·G(α + 1)), ln u)`, the draw's log being `ln_core + ln u/α`; `ln u = 0` at or above
+  /// a unit shape.
   fn log_parts<S: NormalUniformSource<T>>(&self, src: &mut S) -> (T, T) {
     let (d, c, inv_alpha) = self.squeeze();
     let log_core = self.scale.ln() + Self::mt_one(src, d, c).ln();
@@ -254,7 +257,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    // `θ` enters the solver, which rounds the root once at its final scale, below the normals included.
+    // `θ` enters the solver, which rounds the root once at its final scale, below the normals
+    // included.
     Some(crate::special::gamma_p_inv(alpha, p, scale))
   }
 
@@ -411,7 +415,8 @@ mod tests {
     );
   }
 
-  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf, boosted shape included.
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf, boosted shape
+  /// included.
   #[test]
   fn scalar_sample_matches_cdf() {
     for (alpha, scale) in [(2.5, 1.5), (0.5, 2.0)] {

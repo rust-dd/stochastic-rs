@@ -53,7 +53,8 @@ fn ulp(x: f64) -> f64 {
   a.next_up() - a
 }
 
-/// 1e-12 relative, or the reference's own double where the true value is no normal double (0, ±∞, a subnormal).
+/// 1e-12 relative, or the reference's own double where the true value is no normal double (0, ±∞, a
+/// subnormal).
 pub fn within(got: f64, want: f64) -> bool {
   got == want || ((got - want) / want).abs() <= 1e-12
 }
@@ -369,7 +370,8 @@ fn sweep<D>(
   tally.laws += 1;
 }
 
-/// `lo⁺`, four ulps above `lo`, `lo + 1e-12·(up − lo)`, and their mirrors at `up`, each strictly inside.
+/// `lo⁺`, four ulps above `lo`, `lo + 1e-12·(up − lo)`, and their mirrors at `up`, each strictly
+/// inside.
 pub fn beside_points(lo: f64, up: f64, scale: f64) -> Vec<f64> {
   let width = if lo.is_finite() && up.is_finite() {
     2.0 * (0.5 * up - 0.5 * lo)

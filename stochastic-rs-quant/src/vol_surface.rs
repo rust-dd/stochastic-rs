@@ -21,8 +21,8 @@
 //!                      build_surface_from_model()                    ▼
 //!                      ══════════════════════════════════════► VolSurfaceResult
 //!                                                              ├─ iv_surface
-//!                      build_surface(prices)                   ├─ svi_params
-//!                      ─────────────────────────────────────►  ├─ ssvi_surface
+//!                      build_surface(prices)                   ├─ svi_fits
+//!                      ─────────────────────────────────────►  ├─ ssvi_fit
 //!                                                              ├─ analytics
 //!                      build_surface_from_iv(iv)               ├─ butterfly_checks
 //!                      ─────────────────────────────────────►  └─ calendar_spread_free
@@ -155,6 +155,7 @@
 //! samples into a `Calibrated` for `build_surface_from_calibration`. Known parameters price as:
 //!
 //! ```
+//! use stochastic_rs_core::simd_rng::Deterministic;
 //! use stochastic_rs_quant::calibration::rbergomi::{RBergomiParams, RBergomiXi0};
 //! use stochastic_rs_quant::pricing::RBergomiPricer;
 //! use stochastic_rs_quant::vol_surface::build_surface_from_model;
@@ -163,7 +164,7 @@
 //!     hurst: 0.1, rho: -0.7, eta: 1.9, xi0: RBergomiXi0::Constant(0.04),
 //! })
 //! .with_paths(2_000)
-//! .with_seed(42);
+//! .with_seed(Deterministic::new(42));
 //! let surface = build_surface_from_model(&pricer, 100.0, 0.05, 0.0, &[95., 100., 105.], &[0.5]);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (1, 3));
 //! ```

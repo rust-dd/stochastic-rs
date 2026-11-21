@@ -2,17 +2,13 @@ use std::f64::consts::FRAC_1_PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::SvjParams;
-use super::calibrator::KAPPA_MIN;
-use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::SvjCalibrator;
-use super::calibrator::THETA_MIN;
 use super::params::BOX;
-use super::params::P_MU_J;
-use super::params::P_SIGMA_J;
-use super::params::RHO_BOUND;
+use super::params::BOXED;
 use crate::OptionType;
 use crate::calibration::clip_negative;
 use crate::calibration::integrate_gl_to_convergence;
@@ -20,6 +16,8 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
 use crate::calibration::scale_columns;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -143,83 +141,27 @@ impl<'a> SvjProblem<'a> {
     )
   }
 
-  /// Central finite-difference Jacobian.
-  fn numeric_jacobian(&self, params: &SvjParams) -> Array2<f64> {
-    let n = self.calibrator.quotes.len();
-    let p = 8usize;
-
-    let base_params_vec: Array1<f64> = (*params).into();
-    let mut j_mat = Array2::zeros((n, p));
-
-    for col in 0..p {
-      let x = base_params_vec[col];
-      let mut h = 1e-5_f64.max(1e-3 * x.abs());
-
-      let mut params_plus = *params;
-      let mut params_minus = *params;
-
-      match col {
-        0 => {
-          params_plus.v0 = (x + h).max(0.0);
-          params_minus.v0 = (x - h).max(0.0);
-        }
-        1 => {
-          params_plus.kappa = (x + h).max(KAPPA_MIN);
-          params_minus.kappa = (x - h).max(KAPPA_MIN);
-        }
-        2 => {
-          params_plus.theta = (x + h).max(THETA_MIN);
-          params_minus.theta = (x - h).max(THETA_MIN);
-        }
-        3 => {
-          params_plus.sigma = (x + h).abs().max(SIGMA_V_MIN);
-          params_minus.sigma = (x - h).abs().max(SIGMA_V_MIN);
-        }
-        4 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho = clamp(x + h);
-          params_minus.rho = clamp(x - h);
-          if (params_plus.rho - params_minus.rho).abs() < 0.5 * h {
-            h = 1e-4;
-            params_plus.rho = clamp(x + h);
-            params_minus.rho = clamp(x - h);
-          }
-        }
-        5 => {
-          params_plus.lambda = (x + h).max(0.0);
-          params_minus.lambda = (x - h).max(0.0);
-        }
-        6 => {
-          params_plus.mu_j = (x + h).clamp(P_MU_J.0, P_MU_J.1);
-          params_minus.mu_j = (x - h).clamp(P_MU_J.0, P_MU_J.1);
-        }
-        7 => {
-          params_plus.sigma_j = (x + h).abs().max(P_SIGMA_J.0);
-          params_minus.sigma_j = (x - h).abs().max(P_SIGMA_J.0);
-        }
-        _ => unreachable!(),
-      }
-
-      params_plus.project_in_place();
-      params_minus.project_in_place();
-
-      let r_plus = self.residuals_for(&params_plus);
-      let r_minus = self.residuals_for(&params_minus);
-
-      let diff = (r_plus - r_minus) / (2.0 * h);
-      for row in 0..n {
-        j_mat[(row, col)] = diff[row];
-      }
+  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil; `scale` times the shared
+  /// step.
+  pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let point = Array1::from(self.params.boxed());
+    let mut jacobian = Array2::zeros((self.market.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+        let mut moved = point.clone();
+        moved[j] = value;
+        self.residuals_for(&SvjParams::from(moved).projected())
+      }));
     }
-
-    j_mat
+    jacobian
   }
 }
 
 impl LeastSquaresProblem for SvjProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.reflections = periodic_slopes(params.view(), &BOX);
-    self.params = SvjParams::from(params.clone()).projected();
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
+    self.params = SvjParams::from(params.to_owned()).boxed();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -233,12 +175,12 @@ impl LeastSquaresProblem for SvjProblem<'_> {
     let options = &self.calibrator.options;
     self
       .trail
-      .stage(options, &self.market, &model, &params_eff, &residuals);
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.effective_params());
+    let jacobian = self.difference_jacobian(1.0);
     Some(scale_columns(jacobian, self.reflections.view()))
   }
 

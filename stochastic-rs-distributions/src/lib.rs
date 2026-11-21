@@ -1,8 +1,5 @@
-//! # stochastic-rs-distributions
-//!
-//! SIMD-sampled probability laws with closed-form analytics through [`DistributionExt`], and the
-//! `RealExt` / `SimdFloatExt` / `FloatExt` scalar traits the workspace builds on.
-//! Choosing a law: <https://stochastic.rust-dd.com/docs/distributions#choosing-a-distribution>
+//! SIMD-sampled [laws](https://stochastic.rust-dd.com/docs/distributions#choosing-a-distribution)
+//! with closed forms through [`DistributionExt`], and the scalar [`traits`].
 
 // A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]

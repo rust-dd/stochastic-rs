@@ -12,6 +12,7 @@ use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
+use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::fourier::VarianceGammaFourier;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
@@ -53,6 +54,7 @@ fn vg_pricer_matches_reference() {
       0.05,
       0.0,
       1.0,
+      &mut Walk::Adaptive,
     );
     assert!(
       (price - VG_REF[i]).abs() < 0.05,
@@ -67,7 +69,16 @@ fn mjd_pricer_matches_reference() {
   // Verify our internal Fourier pricer reproduces reference MJD prices
   let params = [0.15, 1.0, -0.05, 0.1]; // sigma, lambda, mu_j, sigma_j
   for (i, &k) in STRIKES.iter().enumerate() {
-    let price = fourier_call_price(LevyModelType::MertonJd, &params, 100.0, k, 0.05, 0.0, 1.0);
+    let price = fourier_call_price(
+      LevyModelType::MertonJd,
+      &params,
+      100.0,
+      k,
+      0.05,
+      0.0,
+      1.0,
+      &mut Walk::Adaptive,
+    );
     assert!(
       (price - MJD_REF[i]).abs() < 0.05,
       "MJD K={k}: got {price:.6}, expected {:.6}",
@@ -145,12 +156,56 @@ fn nig_to_model_matches_calibrator_pricer() {
   let model = result.to_model();
 
   for &k in &STRIKES {
-    let from_calibrator = fourier_call_price(LevyModelType::Nig, &params, s, k, r, q, t);
+    let from_calibrator = fourier_call_price(
+      LevyModelType::Nig,
+      &params,
+      s,
+      k,
+      r,
+      q,
+      t,
+      &mut Walk::Adaptive,
+    );
     let from_model = <LevyModel as ModelPricer>::price_call(&model, s, k, r, q, t);
     assert!(
       (from_model - from_calibrator).abs() < 1e-6,
       "NIG to_model mismatch at K={k}: model={from_model:.10} calibrator={from_calibrator:.10}",
     );
+  }
+}
+
+/// A fit prices its quotes as its model does: the loss is the blanket `ModelPricer`'s Lewis.
+#[test]
+fn a_fitted_point_prices_as_its_model_bit_for_bit() {
+  for (model_type, reference) in [
+    (LevyModelType::VarianceGamma, VG_REF),
+    (LevyModelType::MertonJd, MJD_REF),
+  ] {
+    let quotes = calls(&STRIKES, &reference, 1.0);
+    let fit = LevyCalibrator::new(model_type, 100.0, 0.05, 0.0, quotes.clone())
+      .calibrate(None)
+      .unwrap();
+    let model = fit.to_model();
+    for quote in &quotes {
+      let (k, tau) = (quote.strike, quote.tau);
+      let values = &fit.params.values;
+      let loss = fourier_call_price(
+        model_type,
+        values,
+        100.0,
+        k,
+        0.05,
+        0.0,
+        tau,
+        &mut Walk::Adaptive,
+      );
+      let priced = model.price_call(100.0, k, 0.05, 0.0, tau);
+      assert_eq!(
+        loss.to_bits(),
+        priced.to_bits(),
+        "{model_type:?} K = {k}: {loss} vs {priced}"
+      );
+    }
   }
 }
 
@@ -212,6 +267,7 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
         0.0,
         tau,
         side,
+        &mut Walk::Adaptive,
       );
       assert_eq!(*residual, quote.price - model);
     }
@@ -319,19 +375,63 @@ fn a_capped_fit_counts_the_optimiser_iterations() {
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::calibrator::LevyProblem;
-  use crate::calibration::least_squares::tests::box_points;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::box_points;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let quotes = calls(&STRIKES, &VG_REF, 1.0);
   let calibrator = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, quotes);
   let mut problem = LevyProblem::new(&calibrator, vec![0.2, -0.1, 0.5]);
   let bounds = [(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)];
+  // Every box point keeps `1 − θν − σ²ν/2 > 0`, where Variance Gamma has its `E[e^X]`.
   for base in [
     ndarray::array![0.2, -0.1, 0.5],
-    ndarray::array![1.2, 0.6, 3.0],
+    ndarray::array![1.2, -0.6, 0.5],
   ] {
-    for (label, point) in box_points(&base, &bounds, &[false; 3]) {
-      let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(1e-2));
+    for (label, point) in box_points(base.view(), &bounds, &[false; 3]) {
+      let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
+  }
+}
+
+/// Without `E[e^X]` (`1 − θν − σ²ν/2 < 0`) the fit's price is NaN, as its model's is.
+#[test]
+fn a_point_without_a_martingale_prices_nan_as_its_model_does() {
+  let values = [1.2, 0.6, 3.0];
+  let walk = &mut Walk::Adaptive;
+  let price = fourier_call_price(
+    LevyModelType::VarianceGamma,
+    &values,
+    100.0,
+    100.0,
+    0.05,
+    0.0,
+    1.0,
+    walk,
+  );
+  let model = VarianceGammaFourier {
+    sigma: values[0],
+    theta: values[1],
+    nu: values[2],
+  };
+  assert!(price.is_nan() && model.price_call(100.0, 100.0, 0.05, 0.0, 1.0).is_nan());
+}
+
+/// On the rule each price's own walk took, `J(h)` is `J(2h)` at every model's default start.
+#[test]
+fn the_jacobian_at_twice_its_step_is_the_same() {
+  use super::calibrator::LevyProblem;
+  use super::loss::default_params;
+  use crate::calibration::least_squares::checks::step_doubling_error;
+  for model in [
+    LevyModelType::VarianceGamma,
+    LevyModelType::Nig,
+    LevyModelType::Cgmy,
+    LevyModelType::MertonJd,
+    LevyModelType::Kou,
+  ] {
+    let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0));
+    let problem = LevyProblem::new(&calibrator, default_params(model));
+    let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
+    assert!(error < 1e-4, "{model:?}: {error:e}");
   }
 }

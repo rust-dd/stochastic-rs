@@ -1,18 +1,16 @@
-//! # Correlation
+//! Kendall's τ-b and its conversion between τ-parametrised bivariate copulas and the Gaussian
+//! copula's correlation matrix, exact for it, approximate for elliptical ones.
 //!
 //! $$
 //! \rho_{ij}=\frac{\operatorname{Cov}(X_i,X_j)}{\sigma_i\sigma_j}
 //! $$
 //!
-//! Kendall τ-b, and its conversion between the bivariate copulas (parametrised by τ) and the Gaussian multivariate copula
-//! (parametrised by a correlation matrix), exact for the Gaussian copula and the canonical approximation for elliptical ones:
-//!
 //! $$
 //! \rho = \sin\!\left(\frac{\pi\tau}{2}\right)
 //! $$
 //!
-//! Reference: Knight, W. R. (1966), "A Computer Method for Calculating Kendall's Tau with Ungrouped Data", Journal of the American Statistical Association 61(314), 436–439, doi:10.1080/01621459.1966.10480879.
-//! Reference: Kendall, M. G. (1945), "The treatment of ties in ranking problems", Biometrika 33(3), 239–251, doi:10.1093/biomet/33.3.239.
+//! Reference: Knight (1966), J. Am. Stat. Assoc. 61, 436–439, DOI 10.1080/01621459.1966.10480879.
+//! Reference: Kendall, M. G. (1945), Biometrika 33(3), 239–251, DOI 10.1093/biomet/33.3.239.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -23,8 +21,8 @@ use ndarray::ArrayView2;
 
 use crate::error::CopulaError;
 
-/// Kendall's τ-b of two columns (Knight's O(n log n) count, ties counted per margin): NaN where it is undefined (a
-/// constant column or a NaN entry); `DimensionMismatch` on unequal lengths, `InsufficientData` below two rows.
+/// Kendall's τ-b of two columns (Knight's O(n log n) count, ties per margin): NaN for a constant
+/// column or a NaN; `DimensionMismatch` on unequal lengths, `InsufficientData` below two rows.
 pub fn kendall_tau_b(u: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<f64, CopulaError> {
   if u.len() != v.len() {
     return Err(CopulaError::DimensionMismatch {
@@ -58,8 +56,8 @@ fn as_slice(column: ArrayView1<'_, f64>) -> Cow<'_, [f64]> {
     .map_or_else(|| Cow::Owned(column.to_vec()), Cow::Borrowed)
 }
 
-/// Pairwise Kendall τ-b matrix of the columns of `data` ([`kendall_tau_b`] per pair, ones on the diagonal);
-/// `InsufficientData` below two rows.
+/// Pairwise Kendall τ-b matrix of the columns of `data` ([`kendall_tau_b`] per pair, ones on the
+/// diagonal); `InsufficientData` below two rows.
 pub fn kendall_tau(data: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
   if data.nrows() < 2 {
     return Err(CopulaError::InsufficientData {
@@ -79,8 +77,8 @@ pub fn kendall_tau(data: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
   Ok(tau)
 }
 
-/// `InvalidStructure` naming the columns of the τ-b matrix `tau` whose entries with every other column are NaN (a constant
-/// or NaN column): the fits that invert τ need every column to vary.
+/// `InvalidStructure` naming the columns of the τ-b matrix `tau` whose entries with every other
+/// column are NaN (a constant or NaN column): the fits that invert τ need every column to vary.
 pub(crate) fn check_defined(tau: ArrayView2<f64>) -> Result<(), CopulaError> {
   match undefined_columns(tau) {
     Some(columns) => Err(undefined_tau_b(&columns, "")),
@@ -88,7 +86,8 @@ pub(crate) fn check_defined(tau: ArrayView2<f64>) -> Result<(), CopulaError> {
   }
 }
 
-/// The columns `check_defined` names: those NaN against every other column, else the first NaN pair; `None` when all are defined.
+/// The columns `check_defined` names: those NaN against every other column, else the first NaN
+/// pair; `None` when all are defined.
 pub(crate) fn undefined_columns(tau: ArrayView2<f64>) -> Option<Vec<usize>> {
   let d = tau.nrows();
   let ((i, j), _) = tau.indexed_iter().find(|(_, t)| t.is_nan())?;
@@ -102,7 +101,8 @@ pub(crate) fn undefined_columns(tau: ArrayView2<f64>) -> Option<Vec<usize>> {
   })
 }
 
-/// The `InvalidStructure` of `check_defined` for the data columns `columns`, `given` qualifying them.
+/// The `InvalidStructure` of `check_defined` for the data columns `columns`, `given` qualifying
+/// them.
 pub(crate) fn undefined_tau_b(columns: &[usize], given: &str) -> CopulaError {
   CopulaError::InvalidStructure(match columns {
     [column] => {
@@ -116,8 +116,8 @@ pub(crate) fn undefined_tau_b(columns: &[usize], given: &str) -> CopulaError {
   })
 }
 
-/// $\rho = \sin(\pi\tau/2)$: the correlation of the Gaussian or t copula with Kendall's `tau`, NaN outside `[-1, 1]`;
-/// feeds a `BivariateExt` fit into the `MultivariateExt` Gaussian constructor.
+/// $\rho = \sin(\pi\tau/2)$: the correlation of the Gaussian or t copula with Kendall's `tau`, NaN
+/// outside `[-1, 1]`; feeds a `BivariateExt` fit into the `MultivariateExt` Gaussian constructor.
 pub fn tau_to_corr(tau: f64) -> f64 {
   if tau.abs() > 1.0 {
     return f64::NAN;
@@ -130,8 +130,8 @@ pub fn corr_to_tau(rho: f64) -> f64 {
   2.0 / std::f64::consts::PI * rho.asin()
 }
 
-/// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a Gaussian-copula correlation matrix on the same
-/// indexing, NaN wherever `|τ| > 1`.
+/// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a Gaussian-copula
+/// correlation matrix on the same indexing, NaN wherever `|τ| > 1`.
 pub fn tau_matrix_to_corr_matrix(tau: ArrayView2<f64>) -> Array2<f64> {
   tau.mapv(tau_to_corr)
 }
@@ -180,7 +180,8 @@ mod tests {
     assert!((corr_to_tau(1.0) - 1.0).abs() < 1e-15);
   }
 
-  /// τ-b counts ties in each margin (Kendall 1945): on `(1,1,2,3)` × `(1,2,2,3)` it is `0.8` where τ-a is `2/3`.
+  /// τ-b counts ties in each margin (Kendall 1945): on `(1,1,2,3)` × `(1,2,2,3)` it is `0.8` where
+  /// τ-a is `2/3`.
   #[test]
   fn kendall_tau_is_tau_b() {
     let data = ndarray::array![[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]];
@@ -191,7 +192,8 @@ mod tests {
     assert!((kendall_tau_b(data.column(0), data.column(1)).unwrap() - 0.8).abs() < 1e-15);
   }
 
-  /// scipy 1.17 `kendalltau(x, y, variant="b")` on samples with ties in both margins (τ-a of the first is -0.249).
+  /// scipy 1.17 `kendalltau(x, y, variant="b")` on samples with ties in both margins (τ-a of the
+  /// first is -0.249).
   #[test]
   fn kendall_tau_b_agrees_with_scipy() {
     let x = ndarray::array![
@@ -210,8 +212,8 @@ mod tests {
     assert!((tau + 0.4714045207910316).abs() < 1e-14, "{tau}");
   }
 
-  /// Knight's O(n log n) count against `(P − Q) / √((P + Q + T)(P + Q + U))` from the pair definition, with `T` and `U`
-  /// the pairs tied in `u` only and in `v` only.
+  /// Knight's O(n log n) count against `(P − Q) / √((P + Q + T)(P + Q + U))` from the pair
+  /// definition, with `T` and `U` the pairs tied in `u` only and in `v` only.
   #[test]
   fn kendall_tau_b_matches_the_pair_count_on_tied_samples() {
     let mut state = 0x2545_f491_4f6c_dd1d_u64;
@@ -248,7 +250,8 @@ mod tests {
     }
   }
 
-  /// A constant column or a NaN entry leaves τ-b undefined, which is NaN; the sort behind it panics on a NaN.
+  /// A constant column or a NaN entry leaves τ-b undefined, which is NaN; the sort behind it panics
+  /// on a NaN.
   #[test]
   fn kendall_tau_b_is_nan_where_it_is_undefined() {
     let ramp = ndarray::Array1::from_shape_fn(50, |i| i as f64);
@@ -287,8 +290,8 @@ mod tests {
     );
   }
 
-  /// The guard names the column whose τ-b with every other column is NaN, not the first NaN pair row by row; where
-  /// several columns qualify (two columns, or two constant ones) it lists them.
+  /// The guard names the column whose τ-b with every other column is NaN, not the first NaN pair
+  /// row by row; where several columns qualify (two columns, or two constant ones) it lists them.
   #[test]
   fn an_undefined_tau_names_the_column_that_has_none() {
     let ramp = ndarray::Array1::from_shape_fn(20, |i| i as f64);

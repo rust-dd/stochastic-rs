@@ -99,12 +99,6 @@ fn double_barrier_wide_converges_to_vanilla() {
 }
 
 #[test]
-#[should_panic(expected = "terms must satisfy `terms >= 0`, got terms = -1")]
-fn double_barrier_refuses_a_negative_series_length() {
-  let _ = DoubleBarrierPricer::new(0.2).with_terms(-1);
-}
-
-#[test]
 #[should_panic(
   expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"
 )]

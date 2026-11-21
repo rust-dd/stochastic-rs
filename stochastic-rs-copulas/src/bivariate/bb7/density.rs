@@ -10,8 +10,8 @@ use crate::bivariate::conditional::ln_one_minus_pow_ratio;
 use crate::bivariate::conditional::ln_ratio_complement;
 use crate::bivariate::conditional::softplus;
 
-/// One coordinate at `θ`: `ln(1 − u)`, `ln α = θ ln(1 − u)`, `w = −ln(1 − α)` and `κ = ln w − ln α`, the limit `α/2`
-/// where `α` is below rounding, so `ln w` survives the underflow of `w`.
+/// One coordinate at `θ`: `ln(1 − u)`, `ln α = θ ln(1 − u)`, `w = −ln(1 − α)` and
+/// `κ = ln w − ln α`, `α/2` once `α` is below rounding, so `ln w` survives `w`'s underflow.
 struct Leg {
   ln_bar: f64,
   ln_alpha: f64,
@@ -37,8 +37,8 @@ impl Leg {
   }
 }
 
-/// `ln(1 − T)` and its pieces: `R = ln(1 − T) − θt`, `t ≥ b` the two of `ln(1 − u)`, `ln(1 − v)`, `b − t`, `Δ = |w_u − w_v|`,
-/// the smaller `w`, `ℓ = ln(1 + e^{−δΔ}(1 − e^{−δw_min}))` and `ℓ/δ`, so `ln s = δw_max + ℓ`.
+/// `ln(1 − T)` and its pieces: `R = ln(1 − T) − θt`, `t ≥ b` of `ln(1 − u)`, `ln(1 − v)`, `b − t`,
+/// `Δ = |w_u − w_v|`, `w_min`, `ℓ = ln(1 + e^{−δΔ}(1 − e^{−δw_min}))`, `ℓ/δ`; `ln s = δw_max + ℓ`.
 struct Tail {
   ln_1mt: f64,
   r: f64,
@@ -73,8 +73,8 @@ impl Bb7Density {
     }
   }
 
-  /// `ln c` on the open square: the module's `c` term by term while its terms are finite and under `L`, `7Lε ≤ 1e-12 ·
-  /// max(1, |ln c|)`, each then within a few `ε` of `L`, and `θ ln(1 − u)`, `s − 1`, `−ln T` are normal; else `recentred`.
+  /// `ln c` on the open square: `c` term by term while its terms are finite and under `L` with
+  /// `7Lε ≤ 1e-12 · max(1, |ln c|)` and `θ ln(1 − u)`, `s − 1`, `−ln T` normal; else `recentred`.
   pub(crate) fn ln_c(&self, u: f64, v: f64) -> f64 {
     let (theta, delta) = (self.theta, self.delta);
     let (bar_u, bar_v) = ((-u).ln_1p(), (-v).ln_1p());
@@ -103,8 +103,8 @@ impl Bb7Density {
     self.recentred(u, v, bar_u, bar_v)
   }
 
-  /// `ln c` re-centred twice: `(θ − 1)(b − t) − t + (1/θ − 2)R` for `(θ − 1)(t + b) + (1/θ − 2) ln(1 − T)` and
-  /// `−δΔ + w_min − (1/δ + 2)ℓ` for `−(1/δ + 2) ln s + (δ + 1)(w_u + w_v)`, the last factor `(θδ + 1)(1 − T) + θ − 1`.
+  /// `ln c` re-centred twice, as `(θ − 1)(b − t) − t + (1/θ − 2)R` and `−δΔ + w_min − (1/δ + 2)ℓ`,
+  /// the last factor `(θδ + 1)(1 − T) + θ − 1`.
   fn recentred(&self, u: f64, v: f64, bar_u: f64, bar_v: f64) -> f64 {
     let (theta, delta) = (self.theta, self.delta);
     let t = self.tail(u, v, bar_u, bar_v);
@@ -114,11 +114,12 @@ impl Bb7Density {
       + ln_add_exp(self.ln_1p_theta_delta + t.ln_1mt, self.ln_theta_m1)
   }
 
-  /// `T = s^{−1/δ}`, `s = 1 + F(α) + F(β)`, `F = expm1(δw)`: while `δw_max < 1`, `ln(L/δ)`, `L = ln s`, from `ln(S/δ) − θt`
-  /// of the `κ`s, which holds as `α` underflows; past it `L/δ = w_max + ℓ/δ`, `ℓ/δ` from `expm1(t)/t`, free of `ln δ`.
+  /// `T = s^{−1/δ}`, `s = 1 + F(α) + F(β)`, `F = expm1(δw)`: at `δw_max < 1` `ln(L/δ)`, `L = ln s`,
+  /// from `ln(S/δ) − θt` of the `κ`s, which holds as `α` underflows; else `L/δ = w_max + ℓ/δ`.
   fn tail(&self, u: f64, v: f64, bar_u: f64, bar_v: f64) -> Tail {
     let (theta, delta) = (self.theta, self.delta);
-    // `w` grows as `u` falls, so the order of `u, v` is that of `w` where both powers underflow and `Δ` rounds to 0.
+    // `w` grows as `u` falls, so the order of `u, v` is that of `w` where both powers underflow and
+    // `Δ` rounds to 0.
     let (hi, lo) = if u <= v {
       (Leg::new(theta, bar_u), Leg::new(theta, bar_v))
     } else {
@@ -149,7 +150,8 @@ impl Bb7Density {
       let ln_ld = (hi.w + ell_over).ln();
       (ln_ld, ln_ld - hi.ln_alpha)
     };
-    // `ln(1 − e^{−z})` directly once `z = L/δ ≥ 1`, where `ln z + ln φ(z)` would round its small value away.
+    // `ln(1 − e^{−z})` directly once `z = L/δ ≥ 1`, where `ln z + ln φ(z)` would round its small
+    // value away.
     let ld = ln_ld.exp();
     let (ln_1mt, r) = if ld >= 1.0 {
       let ln_1mt = ln_one_minus_exp(-ld);

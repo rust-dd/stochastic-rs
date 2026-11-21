@@ -140,8 +140,10 @@ fn hkde_calibrate_self_consistency() {
     .zip(market)
     .map(|(&k, price)| OptionQuote::new(k, tau, price, OptionType::Call))
     .collect();
+  // Nine strikes fix few of the nine values, so the fit runs to any budget; 200 iterations suffice.
   let result = HkdeCalibrator::new(s_val, r, q, quotes)
     .with_start(initial)
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
     .calibrate(None)
     .unwrap();
   assert!(
@@ -209,7 +211,8 @@ fn the_trail_records_weighted_market_minus_model() {
   );
   let problem = super::loss::HkdeProblem::new(&calibrator, START).unwrap();
   for entry in &fit.history {
-    let fit_rows = problem.weighted_residuals_for(&entry.params);
+    let model = problem.compute_model_prices_for(&entry.params);
+    let fit_rows = problem.weighted_residuals_of(&model);
     for (i, quote) in quotes.iter().enumerate() {
       let model = HkdeFourier::new(entry.params).price_call(100.0, quote.strike, 0.05, 0.0, 1.0);
       let weight = fit_rows[i] / (model - quote.price);
@@ -395,8 +398,10 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::HkdeProblem;
   use super::params::*;
   use crate::calibration::least_squares::LeastSquaresProblem;
-  use crate::calibration::least_squares::tests::box_points;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::beside_points;
+  use crate::calibration::least_squares::checks::beside_reference;
+  use crate::calibration::least_squares::checks::box_points;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = HkdeProblem::new(&calibrator, START).unwrap();
   let bounds = [
@@ -404,15 +409,38 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   ];
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, 0.2, 30.0, 25.0];
   for base in [problem.params(), ndarray::Array1::from(SHOP), far] {
-    for (label, point) in box_points(&base, &bounds, &[true; 9]) {
-      // Where Feller's projection binds the stencil runs from the projected point, and at
-      // ρ = −0.98 the Gil–Pelaez price jumps inside it (the p_up column reads 2.4 times its slope).
-      let capped = 2.0 * point[1] * point[2] < point[3].powi(2);
-      if capped || label == "lower 4" {
-        continue;
-      }
-      let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(1e-2));
+    for (label, point) in box_points(base.view(), &bounds, &[true; 9]) {
+      let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
+    let boxed = [P_V0, P_KAPPA, P_THETA, P_SIGMA_V, (-RHO_BOUND, RHO_BOUND)];
+    for (label, point) in beside_points(base.view(), &[&boxed[..], &bounds[5..]].concat()) {
+      // `η₁ = 1.01` is `1e-2` from `E[e^J]`'s pole at 1, where the price turns on a `1e-4` scale.
+      if label == "beside lower 7" {
+        continue;
+      }
+      let error = jacobian_error(&mut problem, point.view(), beside_reference);
+      assert!(error < 2e-2, "{label} of {base}: {error:e}");
+    }
+  }
+}
+
+/// On the rules each price's own walks took, a difference never straddles a stop of the
+/// Gil–Pelaez walks: `J(h)` is `J(2h)` at `ρ = −0.98` and at the start.
+#[test]
+fn the_jacobian_at_twice_its_step_is_the_same() {
+  use super::loss::HkdeProblem;
+  use crate::calibration::least_squares::checks::step_doubling_error;
+  let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  for point in [
+    START,
+    HkdeParams {
+      rho: -0.98,
+      ..START
+    },
+  ] {
+    let problem = HkdeProblem::new(&calibrator, point).unwrap();
+    let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
+    assert!(error < 1e-4, "{point:?}: {error:e}");
   }
 }

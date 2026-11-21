@@ -21,6 +21,7 @@ mod heston;
 mod hybrid;
 mod levy;
 mod pricer;
+mod quadrature;
 
 pub use bsm::BsmFourier;
 pub use cos::CosEngine;
@@ -28,7 +29,6 @@ pub use cumulants::Cumulants;
 pub(crate) use cumulants::heston_cumulants;
 pub(crate) use cumulants::mean_integrated_variance;
 pub use frft::FrftCarrMadanPricer;
-pub use frft::frft;
 pub use heston::DoubleHestonFourier;
 pub use heston::HestonFourier;
 pub(crate) use heston::factor_cd;
@@ -43,8 +43,8 @@ pub use levy::MertonJdFourier;
 pub use levy::NigFourier;
 pub use levy::VarianceGammaFourier;
 pub use pricer::CarrMadanPricer;
-pub use pricer::GilPelaezPricer;
-pub use pricer::LewisPricer;
+pub use quadrature::GilPelaezPricer;
+pub use quadrature::LewisPricer;
 
 /// Trait for models that expose a characteristic function of the log-price,
 /// enabling pricing via Fourier inversion.
@@ -57,24 +57,15 @@ pub trait FourierModelExt {
   fn cumulants(&self, t: f64) -> Cumulants;
 }
 
-/// Blanket implementation: every [`FourierModelExt`] model automatically
-/// implements [`crate::traits::ModelPricer`] via Gil-Pelaez quadrature.
+/// Every [`FourierModelExt`] model prices through [`LewisPricer`].
 impl<T: FourierModelExt> crate::traits::ModelPricer for T {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    GilPelaezPricer::price_call(self, s, k, r, q, tau)
+    LewisPricer::price_call(self, s, k, r, q, tau)
   }
 }
 
-/// Every [`FourierModelExt`] model is a European vanilla call pricer:
-/// [`GilPelaezPricer::price_call`] returns
-/// $Se^{-q\tau}P_1-Ke^{-r\tau}P_2$, the vanilla European call, on the
-/// forward $Se^{(r-q)\tau}$ the default reports.
+/// [`LewisPricer::price_call`] is the vanilla European call on the forward $Se^{(r-q)\tau}$.
 impl<T: FourierModelExt> crate::traits::VanillaEuropeanCall for T {}
-
-/// Compute $\Gamma(-Y)$ via the reflection formula.
-pub fn gamma_neg_y_pub(y: f64) -> f64 {
-  gamma_neg_y(y)
-}
 
 pub(crate) fn gamma_neg_y(y: f64) -> f64 {
   if y.abs() < 1e-8 {

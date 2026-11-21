@@ -10,12 +10,12 @@ use super::build;
 use super::matches;
 use super::on_grid;
 
-/// `<family> <cdf|log_pdf> <parameters> ; <values>`, row-major in the first argument, `cdf` on `GRID` and `log_pdf` on its
-/// open part: mpmath of the stable forms, each proved equal to `C` or to sympy's `∂²C/∂u∂v` (`ln` of it) in sympy.
+/// `<family> <cdf|log_pdf> <parameters> ; <values>`, row-major in the first argument, `cdf` on
+/// `GRID`, `log_pdf` inside: mpmath of stable forms proved `= C`, `∂²C/∂u∂v` in sympy.
 const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
 
-/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time; a bound is four times a debug
-/// evaluation at least, CI's build.
+/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time; a bound is
+/// four times a debug evaluation at least, CI's build.
 const WALL_CLOCK: [(f64, f64, u64); 4] = [
   (0.5, 1e8, 500),
   (-0.8, 1e13, 2000),
@@ -76,8 +76,8 @@ fn cdf_and_log_density_match_the_mpmath_table() {
   );
 }
 
-/// At large `ν` each cdf returns within its budget in milliseconds: the `WALL_CLOCK` grids, the median and the far lower
-/// corner, and two cells of the band where `C` is the Fréchet floor.
+/// At large `ν` each cdf returns within its budget in milliseconds: the `WALL_CLOCK` grids, the
+/// median and the far lower corner, and two cells of the band where `C` is the Fréchet floor.
 #[test]
 fn the_t_cdf_is_time_bounded_at_large_nu() {
   let mut cells: Vec<(f64, f64, f64, f64, u64)> = vec![
@@ -109,7 +109,8 @@ fn the_t_cdf_is_time_bounded_at_large_nu() {
   assert!(slow.is_empty(), "{slow:#?}");
 }
 
-/// The copula is continuous across the switch to the Gaussian at `ν = 1e22`: at `ν = 9.99e21` the t cdf is its value.
+/// The copula is continuous across the switch to the Gaussian at `ν = 1e22`: at `ν = 9.99e21` the t
+/// cdf is its value.
 #[test]
 fn the_t_cdf_is_continuous_at_the_gaussian_switch() {
   for (rho, a, b) in [

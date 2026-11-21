@@ -145,7 +145,7 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
     swap.value_at(&curve, 0.0, 0.03).abs() < 1e-6 * swap.notional,
     "par swap at inception"
   );
-  let profile = swap.profile(&curve, 4_000, 0.95, Deterministic::new(5));
+  let profile = swap.profile(&curve, 4_000, 0.95, &Deterministic::new(5));
   assert!(profile.epe[0] > 0.0 && profile.epe[1] > profile.epe[0] * 0.5);
   assert_eq!(profile.epe[4], 0.0);
   assert!(profile.pfe[1] >= profile.epe[1]);
@@ -153,8 +153,24 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
   let low = cva(&profile, &flat_hazard(0.01), &discount, 0.6);
   let high = cva(&profile, &flat_hazard(0.05), &discount, 0.6);
   assert!(low > 0.0 && high > low, "cva {low} -> {high}");
-  let again = swap.profile(&curve, 4_000, 0.95, Deterministic::new(5));
+  let again = swap.profile(&curve, 4_000, 0.95, &Deterministic::new(5));
   assert_eq!(profile, again);
+}
+
+#[test]
+fn a_fresh_seed_replays_the_exposure_and_a_shared_one_advances() {
+  let curve = flat_discount(0.03);
+  let swap = HullWhiteSwapExposure::new(0.1, 0.01, 1_000_000.0, 0.03, vec![1.0, 2.0, 3.0], 1.0)
+    .with_steps_per_year(12);
+  let profile = |seed: &Deterministic| swap.profile(&curve, 500, 0.95, seed);
+  assert_eq!(
+    profile(&Deterministic::new(5)),
+    profile(&Deterministic::new(5))
+  );
+  let shared = Deterministic::new(5);
+  assert_ne!(profile(&shared), profile(&shared));
+  let mtm = || swap.mtm_matrix(&curve, 500, &Deterministic::new(5));
+  assert_eq!(mtm(), mtm());
 }
 
 #[test]

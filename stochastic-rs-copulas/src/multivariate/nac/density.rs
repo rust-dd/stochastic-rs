@@ -8,12 +8,12 @@ use super::NacNode;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_ratio;
 
-/// Up to this `θa` Clayton's offset is `ln(1 + t) − θa`, `t = Σ(e^{θ·part} − 1)`, cancelling by at most `θa` roundings;
-/// past it the sum is taken about the anchor, `ln(Σ e^{θ·gap}(1 − e^{−θ·part}) + e^{−θa})`.
+/// Up to this `θa` Clayton's offset is `ln(1 + t) − θa`, `t = Σ(e^{θ·part} − 1)`, cancelling at
+/// most `θa` roundings; past it, about the anchor, `ln(Σ e^{θ·gap}(1 − e^{−θ·part}) + e^{−θa})`.
 const CLAYTON_SUM_BELOW: f64 = 36.0;
 
-/// Up to this `θ` the Gumbel gap is the difference of the cached `ln y`, whose rounding (`|ln y| < 37` on the open
-/// interval) `θ` keeps under `1e-13`; past it, near a ratio of 1, the exact `ln(y_j/y_a)`.
+/// Up to this `θ` the Gumbel gap is the cached `ln y`'s difference, whose rounding (`|ln y| < 37`
+/// inside) `θ` keeps under `1e-13`; past it, near a ratio of 1, the exact `ln(y_j/y_a)`.
 const GUMBEL_EXACT_ABOVE: f64 = 4.0;
 
 /// A subtree node with `ln |s_nl(α)|`, `α = θ_parent / θ`, for `l ≤ n ≤ size`.
@@ -26,15 +26,16 @@ struct Node {
   ln_s: Vec<f64>,
 }
 
-/// The tree children-first, and the root's derivative table: Clayton `ln (1/θ)_n` (rising), Gumbel `ln |s_nk(1/θ)|`.
+/// The tree children-first, and the root's derivative table: Clayton `ln (1/θ)_n` (rising), Gumbel
+/// `ln |s_nk(1/θ)|`.
 pub(super) struct Density {
   generator: Generator,
   nodes: Vec<Node>,
   root_table: Vec<f64>,
 }
 
-/// Per node, the leaf of its subtree's smallest `u`, whose `a = −ln u` is the largest `y`, and the offset `o` of
-/// `L = −ln C` from `a`: Clayton `θ(L − a)`, Gumbel `θ ln(L/a)`, between 0 and `ln` of the subtree's leaf count.
+/// Per node, the subtree's leaf of smallest `u` (largest `y = a = −ln u`) and `L = −ln C`'s offset
+/// `o` from `a`: Clayton `θ(L − a)`, Gumbel `θ ln(L/a)`, between 0 and `ln` of the leaf count.
 struct Scratch {
   anchor: Vec<usize>,
   offset: Vec<f64>,
@@ -82,8 +83,8 @@ impl Density {
       .collect()
   }
 
-  /// Hofert & Pham's sums, coefficients made positive (§5), a node's `Ã` by eq. (31) to any depth, in logs, each node
-  /// re-centred on its anchor so `θ·L` and `θ·y` enter only as `θ` times an exact gap.
+  /// Hofert & Pham's sums with positive coefficients (§5), a node's `Ã` by eq. (31) at any depth,
+  /// in logs re-centred on each anchor, so `θ·L`, `θ·y` enter as `θ` times an exact gap.
   fn row(&self, u: ArrayView1<f64>, s: &mut Scratch) -> f64 {
     if u.iter().any(|&x| x <= 0.0 || x >= 1.0) {
       return f64::NAN;
@@ -121,8 +122,8 @@ impl Density {
     ln_jacobian + self.root_sum(&s.b, s.y[s.anchor[last]], s.offset[last])
   }
 
-  /// `θ` times the gap from anchor leaf `a` to leaf `j`, `≤ 0`: Clayton `ln(u_a/u_j)`, Gumbel `ln(y_j/y_a)`, each exact
-  /// near a ratio of 1, where `θ` would scale the rounding of two separate logarithms.
+  /// `θ` times the gap from anchor leaf `a` to leaf `j`, `≤ 0`: Clayton `ln(u_a/u_j)`, Gumbel
+  /// `ln(y_j/y_a)`, exact near a ratio of 1, where `θ` would scale two logarithms' rounding.
   fn gap(&self, theta: f64, u: ArrayView1<f64>, s: &Scratch, a: usize, j: usize) -> f64 {
     if a == j {
       return 0.0;
@@ -138,8 +139,8 @@ impl Density {
     }
   }
 
-  /// Sets node `i`'s anchor and offset, `s.b` to the product of its part polynomials (a leaf is `v`, a child's comes
-  /// shifted to this anchor), and adds its leaves' re-centred Jacobian terms.
+  /// Sets node `i`'s anchor and offset, `s.b` to the product of its part polynomials (a leaf is
+  /// `v`, a child's comes shifted to this anchor), and adds its leaves' re-centred Jacobian terms.
   fn gather(&self, i: usize, u: ArrayView1<f64>, s: &mut Scratch, ln_jacobian: &mut f64) {
     let node = &self.nodes[i];
     let anchor = node
@@ -211,7 +212,7 @@ impl Density {
   }
 
   /// `ln Σ_n B̃_n (−1)^n ψ^{(n)}(t)` re-centred: Clayton `(1/θ)_n e^{−(n + 1/θ)o}`, Gumbel
-  /// `e^{−no − L} Σ_k |s_nk(1/θ)| L^k`, `L = a e^{o/θ}` (Hofert, Mächler & McNeil 2012, Thm 3.2 (2) and (4)).
+  /// `e^{−no − L} Σ_k |s_nk(1/θ)| L^k`, `L = a e^{o/θ}` (Hofert et al. 2012, Thm 3.2 (2), (4)).
   fn root_sum(&self, b: &[f64], a: f64, offset: f64) -> f64 {
     let theta = self.nodes[self.nodes.len() - 1].theta;
     let table = &self.root_table;
@@ -236,7 +237,8 @@ impl Density {
   }
 }
 
-/// Pushes the subtree children-first and returns its index; a subtree without leaves has `C = 1` and is dropped.
+/// Pushes the subtree children-first and returns its index; a subtree without leaves has `C = 1`
+/// and is dropped.
 fn flatten(node: &NacNode, parent_theta: Option<f64>, out: &mut Vec<Node>) -> Option<usize> {
   let children = node
     .children
@@ -263,8 +265,8 @@ fn tri(n: usize, k: usize) -> usize {
   n * (n + 1) / 2 + k
 }
 
-/// `ln |s_nk(α)|`, `k ≤ n ≤ top`, by `|s_{n+1,k}| = (n − αk)|s_nk| + α|s_{n,k−1}|`: positive terms for `0 < α ≤ 1`, where
-/// the Stirling sum of Hofert, Mächler & McNeil (2012), Thm 3.2 (4), alternates and cancels.
+/// `ln |s_nk(α)|`, `k ≤ n ≤ top`, by `|s_{n+1,k}| = (n − αk)|s_nk| + α|s_{n,k−1}|`: positive at
+/// `0 < α ≤ 1`, where the Stirling sum of Hofert, Mächler & McNeil (2012), Thm 3.2 (4), cancels.
 fn ln_s_triangle(alpha: f64, top: usize) -> Vec<f64> {
   let mut out = vec![f64::NEG_INFINITY; tri(top + 1, 0)];
   out[0] = 0.0;

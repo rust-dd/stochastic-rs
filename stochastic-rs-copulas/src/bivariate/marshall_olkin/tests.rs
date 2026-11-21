@@ -98,8 +98,8 @@ fn mo_partial_derivative_is_the_v_derivative_in_each_sector() {
   }
 }
 
-/// The generalised inverse at `v = 0.37`: both continuous pieces and the atom, with the `α = 1`, `β = 1` and
-/// `α = β = 1` branches.
+/// The generalised inverse at `v = 0.37`: both continuous pieces and the atom, with the `α = 1`,
+/// `β = 1` and `α = β = 1` branches.
 #[test]
 fn mo_percent_point_matches_the_reference_table() {
   let v = 0.37_f64;
@@ -155,8 +155,8 @@ fn mo_percent_point_inverts_the_h_function() {
   }
 }
 
-/// Below the atom `v^{−β}` passes `f64::MAX` at a subnormal `v` once `β > 0.953`: h keeps the 80-digit mpmath value,
-/// and 0 at `β = 1`, where `0·∞` would be NaN.
+/// Below the atom `v^{−β}` passes `f64::MAX` at a subnormal `v` once `β > 0.953`: h keeps the
+/// 80-digit mpmath value, and 0 at `β = 1`, where `0·∞` would be NaN.
 #[test]
 fn mo_h_holds_where_v_to_the_minus_beta_overflows() {
   for (alpha, beta, u, v, want) in [
@@ -175,7 +175,8 @@ fn mo_h_holds_where_v_to_the_minus_beta_overflows() {
   }
 }
 
-/// τ, the singular mass and the cdf on a grid, against Nelsen's closed forms; no `Numerical` failure at any `n`.
+/// τ, the singular mass and the cdf on a grid, against Nelsen's closed forms; no `Numerical`
+/// failure at any `n`.
 #[test]
 fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
   for n in [1_usize, 5, 20, 200] {
@@ -238,7 +239,8 @@ fn mo_tail_dependence_matches_min_alpha_beta() {
   assert_eq!(td.lower, 0.0);
 }
 
-/// `set_theta(5.0)` would resolve to `(alpha, beta) = (5.0, 5.0)`, outside `(0, 1]`: a panic, never `λ_U = 5.0`.
+/// `set_theta(5.0)` would resolve to `(alpha, beta) = (5.0, 5.0)`, outside `(0, 1]`: a panic, never
+/// `λ_U = 5.0`.
 #[test]
 #[should_panic(
   expected = "theta must satisfy `0.0 <= theta <= 1.0, theta not in [0.0]`, got theta = 5.0"

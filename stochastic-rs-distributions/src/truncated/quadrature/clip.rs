@@ -69,7 +69,8 @@ pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: Cut, floor: f6
     }
     _ => (c, inside, outside),
   };
-  // Toward an end at a branch point the halvings run down to the crossing however deep (2⁻¹⁰⁷⁴ at most).
+  // Toward an end at a branch point the halvings run down to the crossing however deep (2⁻¹⁰⁷⁴ at
+  // most).
   for _ in 0..1200 {
     if (outside - inside).abs() <= 4.0 * f64::EPSILON * outside.abs() {
       break;

@@ -14,7 +14,8 @@ use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
 use crate::traits::SimdDistribution;
 
-/// Hörmann (1993) above the table: the chi-square against the cdf on the central ±3√λ, scalar and seeded paths.
+/// Hörmann (1993) above the table: the chi-square against the cdf on the central ±3√λ, scalar and
+/// seeded paths.
 #[test]
 fn ptrs_draws_match_the_cdf() {
   for (lambda, window) in [(1500.0, (1_384, 1_616)), (100_000.0, (99_051, 100_949))] {
@@ -38,7 +39,8 @@ fn ptrs_draws_match_the_cdf() {
   );
 }
 
-/// `new(1e300)` builds no table, whose walk could not end past `k = 2^53`; its draws saturate and its quantile ends.
+/// `new(1e300)` builds no table, whose walk could not end past `k = 2^53`; its draws saturate and
+/// its quantile ends.
 #[test]
 fn huge_rates_construct_and_draw() {
   let d = SimdPoisson::<u64>::new(1e300);
@@ -54,7 +56,8 @@ fn huge_rates_construct_and_draw() {
   assert!((k - 1e15).abs() < 1e9, "{k}");
 }
 
-/// The median from Choi's bracket: one count from 2⁵¹ to `MAX`, and the search's count on each side of both ends of the window `frac(λ) ∈ (2/3, ln 2]`.
+/// The median from Choi's bracket: one count from 2⁵¹ to `MAX`, and the search's count on each side
+/// of both ends of the window `frac(λ) ∈ (2/3, ln 2]`.
 #[test]
 fn median_is_chois_bracket() {
   for (lambda, median) in [
@@ -106,7 +109,8 @@ fn median_and_half_quantile_are_zero_through_ln_2() {
   );
 }
 
-/// `cdf(0) = e^{−λ}` within 1 ulp of mpmath at 60 and 120 digits (they agree), from `1e-300` to past the underflow at `λ ≈ 745.13`.
+/// `cdf(0) = e^{−λ}` within 1 ulp of mpmath at 60 and 120 digits (they agree), from `1e-300` to
+/// past the underflow at `λ ≈ 745.13`.
 #[test]
 fn cdf_below_one_is_the_exponential() {
   for (lambda, want) in [
@@ -133,7 +137,8 @@ fn cdf_below_one_is_the_exponential() {
   );
 }
 
-/// Below the threshold the one-shot count inverts every uniform as the table does, at each entry and its neighbours; above it, PTRS's draw.
+/// Below the threshold the one-shot count inverts every uniform as the table does, at each entry
+/// and its neighbours; above it, PTRS's draw.
 #[test]
 fn one_shot_count_is_the_draw_of_the_law() {
   for lambda in [1e-300, 0.3, 1.0, 12.0, 744.5, 760.0, 999.75] {
@@ -157,7 +162,8 @@ fn one_shot_count_is_the_draw_of_the_law() {
   }
 }
 
-/// `pdf` within `1e-12` of mpmath at rates where `k ln λ − λ − ln k!` loses its digits, at the mode and in the tails.
+/// `pdf` within `1e-12` of mpmath at rates where `k ln λ − λ − ln k!` loses its digits, at the mode
+/// and in the tails.
 #[test]
 fn pdf_keeps_its_digits_at_large_rates() {
   for (lambda, k, want) in [
@@ -177,7 +183,8 @@ fn pdf_keeps_its_digits_at_large_rates() {
   }
 }
 
-/// `cdf(k) = Q(⌊k⌋ + 1, λ)`, `quantile` the smallest `k` with `cdf(k) ≥ p`, the median and the exact entropy; mpmath.
+/// `cdf(k) = Q(⌊k⌋ + 1, λ)`, `quantile` the smallest `k` with `cdf(k) ≥ p`, the median and the
+/// exact entropy; mpmath.
 #[test]
 fn analytics_without_a_table() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -229,7 +236,8 @@ fn analytics_without_a_table() {
   assert_eq!(d.quantile(1e-300), Some(0.0));
 }
 
-/// Past λ ≈ 745 `exp(−λ)` underflows, so the table is built in log space; at λ = 800 it must end and keep the mean.
+/// Past λ ≈ 745 `exp(−λ)` underflows, so the table is built in log space; at λ = 800 it must end
+/// and keep the mean.
 #[test]
 fn poisson_large_lambda_table_terminates() {
   let dist = SimdPoisson::<u64>::new(800.0);
@@ -275,7 +283,8 @@ fn poisson_small_lambda_moments() {
   assert!((var - 3.5).abs() < 0.15, "variance drift: {var}");
 }
 
-/// The honest `Distribution` draws from the caller's rng and agrees with the cdf, the log-space table included.
+/// The honest `Distribution` draws from the caller's rng and agrees with the cdf, the log-space
+/// table included.
 #[test]
 fn scalar_sample_matches_cdf() {
   for (lambda, window) in [(12.0, (0, 40)), (800.0, (574, 1027))] {

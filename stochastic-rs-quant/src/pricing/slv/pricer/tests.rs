@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::pricing::heston::HestonParams;
@@ -27,11 +28,11 @@ fn unit_leverage() -> LeverageSurface {
   )
 }
 
-fn tune(pricer: HestonSlvPricer) -> HestonSlvPricer {
+fn tune(pricer: HestonSlvPricer) -> HestonSlvPricer<Deterministic> {
   pricer
     .with_paths(4_000)
     .with_steps_per_year(48)
-    .with_seed(7)
+    .with_seed(Deterministic::new(7))
 }
 
 #[test]
@@ -190,7 +191,7 @@ fn unit_leverage_reprices_the_closed_form_heston_call() {
   let pricer = HestonSlvPricer::unanchored(p, unit_leverage())
     .with_paths(60_000)
     .with_steps_per_year(250)
-    .with_seed(99);
+    .with_seed(Deterministic::new(99));
   let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.01, 0.5);
   let estimate = pricer.price_call_estimate(s, k, r, q, tau);
   let exact = HestonPricer::new(p.heston).price_call(s, k, r, q, tau);

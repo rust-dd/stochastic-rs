@@ -1,6 +1,6 @@
 //! Heston implied-volatility surrogate (`Heston/NNHeston.ipynb`). Inputs `[xi0, rho, sigma, theta,
 //! kappa]`: initial variance, correlation, vol-of-vol, long-run variance, mean-reversion speed.
-//! <https://github.com/amuguruza/NN-StochVol-Calibrations>
+//! Source: <https://github.com/amuguruza/NN-StochVol-Calibrations>
 
 use std::path::Path;
 

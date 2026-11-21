@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::calibrator::clean_local_vol;
@@ -51,14 +52,14 @@ fn dense_maturities() -> Vec<f64> {
   (1..=10).map(|k| 0.1 * k as f64).collect()
 }
 
-fn method() -> ParticleMethod {
+fn method() -> ParticleMethod<Deterministic> {
   ParticleMethod::default()
     .with_particles(20_000)
     .with_steps_per_year(100)
-    .with_seed(2026)
+    .with_seed(Deterministic::new(2026))
 }
 
-fn calibrator(eta: f64) -> HestonSlvCalibrator {
+fn calibrator(eta: f64) -> HestonSlvCalibrator<Deterministic> {
   let (strikes, maturities) = (fine_strikes(), dense_maturities());
   let calls = heston_surface(&strikes, &maturities);
   HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
@@ -331,7 +332,7 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
   assert!(!fit.history.is_empty() && result.history.is_empty());
 }
 
-fn small_surface() -> HestonSlvCalibrator {
+fn small_surface() -> HestonSlvCalibrator<Deterministic> {
   let strikes = Array1::linspace(80.0, 120.0, 9).to_vec();
   let maturities = vec![0.25, 0.5];
   let calls = heston_surface(&strikes, &maturities);

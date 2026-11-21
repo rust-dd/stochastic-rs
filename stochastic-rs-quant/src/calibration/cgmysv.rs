@@ -12,19 +12,27 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::Regularization;
 use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
-use crate::calibration::least_squares::minimize;
+use crate::calibration::least_squares::natural_cosines;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
 use crate::calibration::quote::validate_quotes;
+use crate::calibration::reseat::minimize_reseated;
+use crate::calibration::reseat::reseat;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
+use crate::pricing::cf_quadrature::Rule;
+use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::cgmysv::CgmysvModel;
 use crate::pricing::cgmysv::CgmysvParams;
 use crate::pricing::fourier::LewisPricer;
@@ -121,18 +129,19 @@ fn to_vec(p: &CgmysvParams) -> Vec<f64> {
   ]
 }
 
+const NAMES: [&str; N_PARAMS] = [
+  "alpha",
+  "lambda_plus",
+  "lambda_minus",
+  "kappa",
+  "eta",
+  "zeta",
+  "rho",
+  "v0",
+];
+
 fn check_start(p: &CgmysvParams) -> Result<(), QuantError> {
-  let names = [
-    "alpha",
-    "lambda_plus",
-    "lambda_minus",
-    "kappa",
-    "eta",
-    "zeta",
-    "rho",
-    "v0",
-  ];
-  let fields = names.into_iter().zip(to_vec(p)).collect::<Vec<_>>();
+  let fields = NAMES.into_iter().zip(to_vec(p)).collect::<Vec<_>>();
   check_finite_start(&fields)
 }
 
@@ -161,11 +170,19 @@ fn project(p: &mut [f64]) {
 }
 
 /// Price a European call using the CGMYSV characteristic function via Lewis (2001).
-fn fourier_call_price(params: &CgmysvParams, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
+fn fourier_call_price(
+  params: &CgmysvParams,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  t: f64,
+  walk: &mut Walk<'_, Rule>,
+) -> f64 {
   let model = CgmysvModel {
     params: params.clone(),
   };
-  LewisPricer::price_call(&model, s, k, r, q, t)
+  LewisPricer::price_call_walk(&model, s, k, r, q, t, walk)
 }
 
 fn fourier_option_price(
@@ -176,8 +193,9 @@ fn fourier_option_price(
   q: f64,
   t: f64,
   option_type: OptionType,
+  walk: &mut Walk<'_, Rule>,
 ) -> f64 {
-  let call = fourier_call_price(params, s, k, r, q, t);
+  let call = fourier_call_price(params, s, k, r, q, t, walk);
   match option_type {
     OptionType::Call => call,
     OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
@@ -203,15 +221,28 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
     let mut params = start.map_or_else(default_params, |start| to_vec(&start));
     project(&mut params);
     let lm = self.options.lm(true, N_PARAMS)?;
-    let (fitted, report) = minimize(CgmysvProblem::new(self, params), lm);
+    let (fitted, report, iterations, stop) = minimize_reseated(
+      CgmysvProblem::new(self, params),
+      &lm,
+      |fitted| fitted.reseated(lm.regularization.as_ref()),
+      |fitted, start| CgmysvProblem {
+        params: start,
+        ..fitted
+      },
+    );
     let model = fitted.compute_model_prices();
-    report.calibrated(
+    let fit = report.calibrated(
       to_cgmysv_params(&fitted.params),
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    )
+    )?;
+    let fit = fit.with_iterations(iterations);
+    Ok(match stop {
+      Some(j) => fit.at_bound(NAMES[j]),
+      None => fit,
+    })
   }
 }
 
@@ -232,15 +263,64 @@ impl<'a> CgmysvProblem<'a> {
     }
   }
 
-  fn price(&self, params: &CgmysvParams, quote: &OptionQuote) -> f64 {
+  fn price(&self, params: &CgmysvParams, quote: &OptionQuote, walk: &mut Walk<'_, Rule>) -> f64 {
     let CgmysvCalibrator { s, r, q, .. } = *self.calibrator;
-    fourier_option_price(params, s, quote.strike, r, q, quote.tau, quote.option_type)
+    let (k, tau) = (quote.strike, quote.tau);
+    fourier_option_price(params, s, k, r, q, tau, quote.option_type, walk)
   }
 
   fn compute_model_prices(&self) -> Vec<f64> {
     let p = to_cgmysv_params(&self.params);
     let quotes = self.calibrator.quotes.iter();
-    quotes.map(|quote| self.price(&p, quote)).collect()
+    quotes
+      .map(|quote| self.price(&p, quote, &mut Walk::Adaptive))
+      .collect()
+  }
+
+  /// `∂C/∂θ` in the natural parameters, each price on the rule the point's own price walked, so a
+  /// difference never straddles a stop of Lewis's walk; `scale` times the shared step.
+  fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let quotes = &self.calibrator.quotes;
+    let at = to_cgmysv_params(&self.params);
+    let rules = quotes.iter().map(|quote| {
+      let mut rules = Vec::new();
+      self.price(&at, quote, &mut Walk::Record(&mut rules));
+      rules
+    });
+    let rules = rules.collect::<Vec<_>>();
+    let mut jacobian = Array2::zeros((quotes.len(), N_PARAMS));
+    let columns = jacobian.columns_mut().into_iter().zip(param_bounds());
+    for (j, (mut column, bounds)) in columns.enumerate() {
+      let x = self.params[j];
+      column.assign(&derivative(x, scale * step(x), bounds, |value| {
+        let mut moved = self.params.clone();
+        moved[j] = value;
+        let moved = to_cgmysv_params(&moved);
+        let replay = quotes.iter().zip(&rules);
+        Array1::from_iter(
+          replay.map(|(quote, rules)| self.price(&moved, quote, &mut Walk::Replay(rules.iter()))),
+        )
+      }));
+    }
+    jacobian
+  }
+
+  /// The stop with each saturated coordinate the cost pulls inward, read in the natural parameters,
+  /// re-seated inside its bounds, and the first such parameter; `None` when none is.
+  fn reseated(&mut self, pull: Option<&Regularization>) -> Option<(Vec<f64>, usize)> {
+    let jacobian = self.difference_jacobian(1.0);
+    let cosines = natural_cosines(self, jacobian, pull)?;
+    let bounds = param_bounds();
+    let place = self.params.iter().zip(bounds);
+    let mut units = place
+      .map(|(&v, (lo, hi))| (v - lo) / (hi - lo))
+      .collect::<Vec<_>>();
+    let first = reseat(&mut units, &cosines)?;
+    let values = units
+      .iter()
+      .zip(bounds)
+      .map(|(&unit, (lo, hi))| lo + (hi - lo) * unit);
+    Some((values.collect(), first))
   }
 
   /// `∂θⱼ/∂xⱼ` of the logistic map from the optimiser's coordinates onto each parameter's bounds.
@@ -251,7 +331,7 @@ impl<'a> CgmysvProblem<'a> {
 }
 
 impl LeastSquaresProblem for CgmysvProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
     self.params = params
       .iter()
       .zip(param_bounds())
@@ -281,43 +361,22 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
     let residuals = Array1::from_iter(rows.map(|(market, model)| model - market));
     let options = &self.calibrator.options;
     let params = to_cgmysv_params(&self.params);
-    self
-      .trail
-      .stage(options, &self.market, &model_prices, &params, &residuals);
+    self.trail.stage(
+      options,
+      &self.market,
+      &model_prices,
+      &params,
+      residuals.view(),
+    );
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let n = self.calibrator.quotes.len();
-    let mut jac = Array2::zeros((n, N_PARAMS));
-    for j in 0..N_PARAMS {
-      // The Lewis integral is adaptive to 1e-8, so a smaller step differences its noise.
-      let h = 1e-5_f64.max(1e-3 * self.params[j].abs());
-      let mut p_up = self.params.clone();
-      let mut p_dn = self.params.clone();
-      p_up[j] += h;
-      p_dn[j] -= h;
-      project(&mut p_up);
-      project(&mut p_dn);
-
-      let params_up = to_cgmysv_params(&p_up);
-      let params_dn = to_cgmysv_params(&p_dn);
-      let denom = p_up[j] - p_dn[j];
-      if denom.abs() < 1e-15 {
-        continue;
-      }
-
-      for (i, quote) in self.calibrator.quotes.iter().enumerate() {
-        let price_up = self.price(&params_up, quote);
-        let price_dn = self.price(&params_dn, quote);
-        jac[(i, j)] = (price_up - price_dn) / denom;
-      }
+    let mut jacobian = self.difference_jacobian(1.0);
+    for (j, slope) in self.logistic_factors().enumerate() {
+      jacobian.column_mut(j).mapv_inplace(|v| v * slope);
     }
-
-    for (j, derivative) in self.logistic_factors().enumerate() {
-      jac.column_mut(j).mapv_inplace(|v| v * derivative);
-    }
-    Some(jac)
+    Some(jacobian)
   }
 
   fn accept(&mut self) {

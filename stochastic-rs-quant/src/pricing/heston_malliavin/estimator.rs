@@ -1,14 +1,16 @@
 //! Seeded Monte Carlo estimation under correlated Heston dynamics.
 
-use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::TerminalPayoff;
 use super::non_finite_payoff;
+use super::simulation::assert_config;
 use super::simulation::assert_model;
 use super::simulation::simulate_path;
-use super::simulation::validate_config;
 use super::statistics::OnlineCovariance;
 use super::statistics::OnlineScalar;
 use super::variance_vega::DEFAULT_MINIMUM_RELATIVE_BUMP;
@@ -36,14 +38,14 @@ pub struct HestonModel {
 }
 
 /// Monte Carlo controls for the Malliavin estimator.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HestonMalliavinConfig {
+#[derive(Debug, Clone, Copy)]
+pub struct HestonMalliavinConfig<S: SeedExt = Unseeded> {
   /// Total raw path count, which must be even for antithetic pairing.
   pub paths: usize,
   /// Number of full-truncation log-Euler time steps.
   pub steps: usize,
-  /// Reproducible random seed.
-  pub seed: u64,
+  /// Each estimate draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
   /// Symmetric bump of initial variance used by the CRN variance vega.
   pub initial_variance_bump: f64,
   /// Minimum effective bump as a fraction of initial variance.
@@ -64,7 +66,7 @@ impl Default for HestonMalliavinConfig {
     Self {
       paths: 100_000,
       steps: 64,
-      seed: 0x4853_544e_4d43,
+      seed: Unseeded,
       initial_variance_bump: 1e-4,
       minimum_relative_initial_variance_bump: DEFAULT_MINIMUM_RELATIVE_BUMP,
       minimum_integrated_variance: 1e-14,
@@ -74,26 +76,33 @@ impl Default for HestonMalliavinConfig {
   }
 }
 
-/// One Monte Carlo estimate and its sampling standard error.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct EstimateWithError {
-  /// Monte Carlo mean.
-  pub value: f64,
-  /// Standard error of the mean, accounting for antithetic pairing.
-  pub standard_error: f64,
+impl<S: SeedExt> HestonMalliavinConfig<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> HestonMalliavinConfig<S2> {
+    HestonMalliavinConfig {
+      paths: self.paths,
+      steps: self.steps,
+      seed,
+      initial_variance_bump: self.initial_variance_bump,
+      minimum_relative_initial_variance_bump: self.minimum_relative_initial_variance_bump,
+      minimum_integrated_variance: self.minimum_integrated_variance,
+      minimum_conditional_variance: self.minimum_conditional_variance,
+      minimum_orthogonal_variance_fraction: self.minimum_orthogonal_variance_fraction,
+    }
+  }
 }
 
-/// Joint price and state-Greek estimate.
+/// Joint price and state-Greek estimate; each standard error is over the antithetic pairs, which
+/// its `n_samples` counts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HestonMalliavinEstimate {
   /// Discounted option value.
-  pub price: EstimateWithError,
+  pub price: McEstimate<f64>,
   /// Spot derivative estimated with an exact Malliavin integration-by-parts weight.
-  pub spot_delta: EstimateWithError,
+  pub spot_delta: McEstimate<f64>,
   /// Second spot derivative from the exact conditional-lognormal Malliavin weight.
-  pub spot_gamma: EstimateWithError,
+  pub spot_gamma: McEstimate<f64>,
   /// Initial-variance derivative estimated by centered common random numbers.
-  pub initial_variance_vega: EstimateWithError,
+  pub initial_variance_vega: McEstimate<f64>,
   /// Effective bump and paired half-bump reliability evidence for the CRN vega.
   pub initial_variance_vega_diagnostics: HestonInitialVarianceVegaDiagnostics,
   /// Covariance of antithetic-pair observations in price, delta, gamma, vega order.
@@ -104,8 +113,6 @@ pub struct HestonMalliavinEstimate {
   pub paths: usize,
   /// Number of independent antithetic pairs used for standard errors.
   pub independent_samples: usize,
-  /// Seed used by the simulation.
-  pub seed: u64,
 }
 
 /// Raw path contribution for diagnostics and later conditional regressions.
@@ -150,18 +157,18 @@ pub struct HestonMalliavinPathContribution {
 /// little integrated or orthogonal conditional variance to invert safely, the
 /// complete estimate fails closed instead of clipping the Malliavin weight.
 #[derive(Debug, Clone, Copy)]
-pub struct HestonMalliavinEstimator {
+pub struct HestonMalliavinEstimator<S: SeedExt = Unseeded> {
   model: HestonModel,
-  config: HestonMalliavinConfig,
+  config: HestonMalliavinConfig<S>,
 }
 
-impl HestonMalliavinEstimator {
-  /// Panics on a `model` outside [`HestonModel`]'s domain; `InvalidInput` for a bad `config`, or
-  /// one that leaves `rho` too little orthogonal variance.
-  pub fn new(model: HestonModel, config: HestonMalliavinConfig) -> Result<Self, QuantError> {
+impl<S: SeedExt> HestonMalliavinEstimator<S> {
+  /// Panics on a `model` outside [`HestonModel`]'s domain, a `config` outside its own, or a pair
+  /// that leaves `rho` less orthogonal variance than `minimum_orthogonal_variance_fraction`.
+  pub fn new(model: HestonModel, config: HestonMalliavinConfig<S>) -> Self {
     assert_model(model);
-    validate_config(model, config)?;
-    Ok(Self { model, config })
+    assert_config(model, &config);
+    Self { model, config }
   }
 
   /// Estimates price, Malliavin spot delta and gamma, and CRN initial-variance vega.
@@ -179,7 +186,7 @@ impl HestonMalliavinEstimator {
     &self,
     payoff: &P,
   ) -> Result<super::HestonMalliavinSpotEstimate, QuantError> {
-    super::spot_estimator::estimate_spot_greeks(self.model, self.config, payoff)
+    super::spot_estimator::estimate_spot_greeks(self.model, &self.config, payoff)
   }
 
   /// Estimates all observables and rejects an unresolved or bump-sensitive vega.
@@ -231,7 +238,7 @@ impl HestonMalliavinEstimator {
     QuantError,
   > {
     let pairs = self.config.paths / 2;
-    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.config.seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.config.seed.clone());
     let mut statistics = OnlineCovariance::<OBSERVABLES>::default();
     let mut comparison_statistics = OnlineScalar::default();
     let mut bump_difference_statistics = OnlineScalar::default();
@@ -287,7 +294,7 @@ impl HestonMalliavinEstimator {
         self.model.params.v0,
         self.config.initial_variance_bump,
         self.config.minimum_relative_initial_variance_bump,
-      )?,
+      ),
       initial_variance_vega,
       comparison_statistics.finish()?,
       bump_difference_statistics.finish()?,
@@ -303,7 +310,6 @@ impl HestonMalliavinEstimator {
         estimator_covariance: summary.estimator_covariance,
         paths: self.config.paths,
         independent_samples: summary.independent_samples,
-        seed: self.config.seed,
       },
       contributions,
     ))
@@ -322,7 +328,7 @@ impl HestonMalliavinEstimator {
       self.model.params.v0,
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
-    )?;
+    );
     let comparison_bump = 0.5 * effective_bump;
     let base = simulate_path(
       self.model,

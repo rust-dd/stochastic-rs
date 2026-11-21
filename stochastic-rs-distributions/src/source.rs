@@ -1,4 +1,5 @@
-//! Scalar draw sources: the SIMD engines for the kernels' slow paths, any `rand` rng for the honest draws.
+//! Scalar draw sources: the SIMD engines for the kernels' slow paths, any `rand` rng for the honest
+//! draws.
 
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
@@ -71,7 +72,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> NormalUniformSource<T>
 }
 
 impl<T: SimdFloatExt, G: Rng + ?Sized> NormalUniformSource<T> for AnyRng<'_, G> {
-  /// Kept out of line because inlined into the forced-inline gamma trial this scalar ziggurat slows the honest draw.
+  /// Kept out of line because inlined into the forced-inline gamma trial this scalar ziggurat slows
+  /// the honest draw.
   #[inline(never)]
   fn normal(&mut self) -> T {
     SimdNormal::<T>::standard().draw_with(self.0)

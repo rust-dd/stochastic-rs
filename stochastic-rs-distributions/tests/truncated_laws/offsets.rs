@@ -1,4 +1,5 @@
-//! Offsets beside a bound or a clip that no double near a far point holds, against mpmath at 60 and 120 digits.
+//! Offsets beside a bound or a clip that no double near a far point holds, against mpmath at 60 and
+//! 120 digits.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -86,7 +87,8 @@ fn beside_a_lower_end_finer_than_its_standardised_ulp() {
   }
 }
 
-/// A quantile walked from a clip held beside a bound maps back from that bound, not through `μ + σz`.
+/// A quantile walked from a clip held beside a bound maps back from that bound, not through
+/// `μ + σz`.
 #[test]
 fn a_quantile_walked_from_a_clip_maps_back_from_its_bound() {
   let laws: [Law; 4] = [
@@ -124,7 +126,8 @@ fn a_quantile_walked_from_a_clip_maps_back_from_its_bound() {
   }
 }
 
-/// Next to 1 with the reference point below ½, `1 − x` comes from the point itself, not from the rounded `1 − c`.
+/// Next to 1 with the reference point below ½, `1 − x` comes from the point itself, not from the
+/// rounded `1 − c`.
 #[test]
 fn the_betas_kernel_next_to_one_from_a_centre_far_below() {
   let laws: [Law; 2] = [

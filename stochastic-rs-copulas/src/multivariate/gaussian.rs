@@ -1,4 +1,4 @@
-//! # Gaussian
+//! Multivariate Gaussian copula of a correlation matrix, with no tail dependence.
 //!
 //! $$
 //! C_\Sigma(u)=\Phi_\Sigma\!\left(\Phi^{-1}(u_1),\dots,\Phi^{-1}(u_d)\right)
@@ -135,8 +135,8 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(u)
   }
 
-  /// Fit the Gaussian copula from U in (0,1)^{n x d}, `InvalidStructure` for a constant column; an indefinite or
-  /// near-singular estimate is shrunk toward the identity until every eigenvalue is at least `1e-3`.
+  /// Fit the Gaussian copula from U in (0,1)^{n x d} (`InvalidStructure` for a constant column), an
+  /// indefinite or near-singular estimate shrunk toward the identity to eigenvalues `≥ 1e-3`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -178,7 +178,8 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(self.log_pdf(x)?.mapv(f64::exp))
   }
 
-  /// `ln c = −½(ln|R| + zᵀ(R⁻¹ − I)z)`, `z = Φ⁻¹(u)`, on the open cube: finite where `c` underflows.
+  /// `ln c = −½(ln|R| + zᵀ(R⁻¹ − I)z)`, `z = Φ⁻¹(u)`, on the open cube: finite where `c`
+  /// underflows.
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
     let corr = self.fitted()?;
@@ -193,8 +194,8 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(on_open_cube(x, out))
   }
 
-  /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the bivariate
-  /// copula's cdf, more are Genz's separation-of-variables integral over the Sobol points in that query's prioritized order.
+  /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0, a unit one drops out; two left
+  /// are the bivariate cdf, more Genz's integral over Sobol points in prioritized order.
   fn cdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(uv)?;
     let corr = self.fitted()?;
@@ -253,7 +254,8 @@ mod tests {
     }
   }
 
-  /// As many rows as columns leave the sample correlation of rank `d - 1`, which the fit lifts to the eigenvalue floor.
+  /// As many rows as columns leave the sample correlation of rank `d - 1`, which the fit lifts to
+  /// the eigenvalue floor.
   #[test]
   fn a_fit_with_as_many_rows_as_columns_has_its_rank_deficiency_floored() {
     let u = GaussianMultivariate::new(Array2::<f64>::eye(6))
@@ -269,7 +271,8 @@ mod tests {
     assert!(condition_number(corr.view()) <= 6.0 / 1e-3);
   }
 
-  /// Perfectly dependent columns estimate 1 to rounding, a singular matrix, which the shrink's floor fits to `0.999`.
+  /// Perfectly dependent columns estimate 1 to rounding, a singular matrix, which the shrink's
+  /// floor fits to `0.999`.
   #[test]
   fn a_fit_of_perfectly_dependent_columns_stops_at_the_floor() {
     let column = Array1::from_shape_fn(50, |i| (i + 1) as f64 / 51.0);
@@ -280,7 +283,8 @@ mod tests {
     assert!((0.999 - 1e-6..=0.999).contains(&rho), "{rho}");
   }
 
-  /// A constant column has no correlation to estimate, which the fit names instead of fitting a zero to it.
+  /// A constant column has no correlation to estimate, which the fit names instead of fitting a
+  /// zero to it.
   #[test]
   fn a_fit_rejects_a_constant_column() {
     let u = Array2::from_shape_fn(

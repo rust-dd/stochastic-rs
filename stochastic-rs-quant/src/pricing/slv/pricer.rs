@@ -1,6 +1,7 @@
 //! Monte Carlo pricing under a pre-calibrated leverage surface.
 
-use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::mc::McEstimate;
@@ -20,7 +21,7 @@ const RATE_MATCH_TOL: f64 = 1e-12;
 /// Heston-SLV Monte Carlo under a calibrated leverage surface: NaN outside the surface's `(s, tau)`
 /// extent, where it would hold flat, and, from [`new`](Self::new), at rates other than its own.
 #[derive(Debug, Clone)]
-pub struct HestonSlvPricer {
+pub struct HestonSlvPricer<S: SeedExt = Unseeded> {
   /// Model parameters.
   pub params: HestonSlvParams,
   /// Calibrated leverage surface.
@@ -34,8 +35,8 @@ pub struct HestonSlvPricer {
   pub n_paths: usize,
   /// Time-discretization steps per year.
   pub steps_per_year: usize,
-  /// RNG seed.
-  pub seed: u64,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl HestonSlvPricer {
@@ -48,7 +49,7 @@ impl HestonSlvPricer {
       calibration_rates: Some((r, q)),
       n_paths: 100_000,
       steps_per_year: 200,
-      seed: 42,
+      seed: Unseeded,
     }
   }
 
@@ -66,10 +67,12 @@ impl HestonSlvPricer {
       calibration_rates: None,
       n_paths: 100_000,
       steps_per_year: 200,
-      seed: 42,
+      seed: Unseeded,
     }
   }
+}
 
+impl<S: SeedExt> HestonSlvPricer<S> {
   pub fn with_paths(mut self, n: usize) -> Self {
     self.n_paths = n;
     self
@@ -80,9 +83,15 @@ impl HestonSlvPricer {
     self
   }
 
-  pub fn with_seed(mut self, seed: u64) -> Self {
-    self.seed = seed;
-    self
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> HestonSlvPricer<S2> {
+    HestonSlvPricer {
+      params: self.params,
+      leverage: self.leverage,
+      calibration_rates: self.calibration_rates,
+      n_paths: self.n_paths,
+      steps_per_year: self.steps_per_year,
+      seed,
+    }
   }
 
   /// Whether `(r, q)` is the pair the surface was calibrated at; always for an unanchored pricer.
@@ -108,7 +117,7 @@ impl HestonSlvPricer {
     let sigma_mixed = self.params.sigma_mixed();
     let rho_bar = (1.0 - self.params.heston.rho * self.params.heston.rho).sqrt();
 
-    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.seed));
+    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.seed.clone());
     let mut payoff_sum = 0.0;
     let mut payoff_sq_sum = 0.0;
 
@@ -152,7 +161,7 @@ impl HestonSlvPricer {
   }
 }
 
-impl ModelPricer for HestonSlvPricer {
+impl<S: SeedExt> ModelPricer for HestonSlvPricer<S> {
   /// NaN for `(s, tau)` outside [`LeverageSurface::covers`] and, for a pricer from
   /// [`new`](HestonSlvPricer::new), at rates other than its calibration's.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -162,7 +171,7 @@ impl ModelPricer for HestonSlvPricer {
 
 /// European vanilla call: the particle simulation averages $(S_T-K)^+$
 /// under a log-spot drifted at $r-q$, so the default forward applies.
-impl VanillaEuropeanCall for HestonSlvPricer {}
+impl<S: SeedExt> VanillaEuropeanCall for HestonSlvPricer<S> {}
 
 #[cfg(test)]
 mod tests;

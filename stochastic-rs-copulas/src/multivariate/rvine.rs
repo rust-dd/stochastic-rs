@@ -1,17 +1,9 @@
-//! # Regular vine (R-vine)
+//! A regular vine is trees `T_1, …, T_{d−1}` on `d` variables, edges of `T_{k+1}` sharing a node of
+//! `T_k`; [`RVine`] covers the path ([`DVine`]) and star ([`CVine`]) cases only.
 //!
-//! A regular vine is trees $T_1,\dots,T_{d-1}$ on $d$ variables, edges of $T_{k+1}$ sharing a node
-//! of $T_k$; [`RVine`] covers the path ([`DVine`]) and star ([`CVine`]) cases only.
-//!
-//! References:
-//! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model for
-//!   dependent random variables", *Annals of Statistics* 30, 1031-1068.
-//! - Joe, H., Kurowicka, D. (2011), "Dependence Modeling: Vine Copula
-//!   Handbook", World Scientific.
-//! - Dißmann, J., Brechmann, E.C., Czado, C., Kurowicka, D. (2013),
-//!   "Selecting and estimating regular vine copulae and application to
-//!   financial returns", *Computational Statistics & Data Analysis* 59,
-//!   52-69.
+//! Reference: Bedford, Cooke (2002), Ann. Stat. 30, 1031-1068, DOI 10.1214/aos/1031689016.
+//! Reference: Joe, H., Kurowicka, D. (2011), World Scientific, DOI 10.1142/7699.
+//! Reference: Dißmann et al. (2013), 59, 52-69, DOI 10.1016/j.csda.2012.08.010.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -226,7 +218,8 @@ mod tests {
     assert_eq!(rv.structure(), VineStructure::DVine);
   }
 
-  /// An all-independence vine of fewer than two margins is `InvalidStructure`, at `dim = 0` as at 1.
+  /// An all-independence vine of fewer than two margins is `InvalidStructure`, at `dim = 0` as
+  /// at 1.
   #[test]
   fn an_independence_vine_needs_two_margins() {
     for dim in [0, 1] {

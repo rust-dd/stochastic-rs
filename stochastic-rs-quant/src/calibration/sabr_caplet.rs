@@ -167,7 +167,27 @@ impl SabrCapletCalibrator {
       };
       return Err(QuantError::InvalidQuote { index, reason });
     }
-    Ok(())
+    let Some(weights) = &self.weights else {
+      return Ok(());
+    };
+    if weights.len() != self.strikes.len() {
+      return Err(QuantError::DimensionMismatch {
+        what: "weights, one per strike",
+        expected: self.strikes.len(),
+        got: weights.len(),
+      });
+    }
+    match weights
+      .iter()
+      .enumerate()
+      .find(|(_, w)| !(w.is_finite() && **w >= 0.0))
+    {
+      Some((index, w)) => Err(QuantError::invalid(
+        "weights",
+        format!("weight {index} must satisfy `w.is_finite() && w >= 0.0`, got w = {w:?}"),
+      )),
+      None => Ok(()),
+    }
   }
 }
 
@@ -176,8 +196,8 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
   type Output = Calibrated<SabrCapletParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, `β` and the shift included; `InvalidInput` unless it
-  /// passes `SabrParams::new` with a finite shift, and the `CalibrationOptions` errors.
+  /// A start replaces `self.start` whole, `β` and the shift included. Errors: `InvalidInput`,
+  /// `InvalidQuote`, `InsufficientData`, `DimensionMismatch` and the `CalibrationOptions` ones.
   fn calibrate(&self, initial: Option<SabrCapletParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     if let Some(reason) = start.violation() {
@@ -243,7 +263,7 @@ impl SabrCapletCost {
     }
   }
 
-  /// NaN for parameters `SabrParams::new` refuses, which `hagan_implied_vol` would panic on.
+  /// NaN for parameters `SabrParams::new` refuses; `hagan_implied_vol` panics on a bad `α` or `ρ`.
   fn model_vols(&self, params: &SabrParams) -> Vec<f64> {
     if params.violation().is_some() {
       return vec![f64::NAN; self.strikes.len()];

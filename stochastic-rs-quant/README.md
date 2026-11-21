@@ -20,8 +20,10 @@ surfaces, curves, instruments and risk.
   (Hull-White, Black-Karasinski, G2++), Bermudan LSM, Snell envelope,
   Heston SLV, autocallables, baskets.
 - **Greeks** — first and second order from each pricer's inherent
-  `greeks(s, k, r, q, tau, option_type)`, plus Malliavin Greeks
-  (Thalmaier and El Khatib schemes, which expose `GreeksExt`) and a
+  `greeks(s, k, r, q, tau, option_type)`, plus Malliavin Greeks by
+  Monte Carlo (the GBM and Heston estimators behind `GreeksExt`, whose
+  every Greek is an `McEstimate` with its standard error, El Khatib's
+  Heston delta and the multi-asset Malliavin–Thalmaier engine) and a
   Fourier-Malliavin volatility estimator.
 - **Calibration** — Heston (Cui analytic Jacobian), SABR, SVJ, Lévy, rough
   Bergomi, double Heston, HKDE, Hull-White swaption grids, BSM.

@@ -23,7 +23,8 @@ fn gamma_p_known_values() {
   }
 }
 
-/// mpmath at 60 digits: the direct upper tail, the log forms where the value underflows, the overflow of Γ(a).
+/// mpmath at 60 digits: the direct upper tail, the log forms where the value underflows, the
+/// overflow of Γ(a).
 #[test]
 fn incomplete_gammas_keep_their_digits_in_the_tails() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -338,7 +339,8 @@ fn small_shapes_keep_the_upper_tail_below_a_plus_one() {
   assert!(rel(below, above) < 1e-14, "{below:e} against {above:e}");
 }
 
-/// `(k, p, χ²_k quantile, κ)` by DLMF 8.12's uniform expansion at 120 and 200 digits, its truncation below `1e-40`.
+/// `(k, p, χ²_k quantile, κ)` by DLMF 8.12's uniform expansion at 120 and 200 digits, its
+/// truncation below `1e-40`.
 const LARGE_K: [(f64, f64, f64, f64); 12] = [
   (1e16, 1e-300, 9999994760750312.0, 3.814565222494844e-10),
   (1e16, 0.01, 9999999671004732.0, 5.30619102617046e-09),
@@ -435,7 +437,8 @@ fn gamma_q_inv_at_a_tiny_shape_inverts_the_upper_tail() {
   }
 }
 
-/// At a subnormal shape `bt` lies below the doubles and the scaled path forms it from `ln(a·B(a, b))`: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
+/// At a subnormal shape `bt` is below the doubles, so the scaled path forms it from
+/// `ln(a·B(a, b))`: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value correctly rounded.
 #[test]
 fn beta_i_at_subnormal_shapes() {
   for (a, b, x, want) in [
@@ -454,7 +457,8 @@ fn beta_i_at_subnormal_shapes() {
   }
 }
 
-/// Past the switch at a small `b` the complement in `1 − x` (DLMF 8.17.7) holds a tail `bt`'s rounding would reach: mpmath at 60 and 120 digits raised by |log₁₀ b|, a subnormal correctly rounded.
+/// Past the switch at a small `b` the complement in `1 − x` (DLMF 8.17.7) keeps a tail `bt`'s
+/// rounding would reach: mpmath at 60 and 120 digits plus |log₁₀ b|, a subnormal correctly rounded.
 #[test]
 fn beta_i_reads_a_small_far_tail_from_the_complement() {
   for (a, b, x, want) in [
@@ -502,7 +506,8 @@ fn beta_i_reads_a_value_next_to_1_from_the_complement() {
   assert_eq!(beta_i(1e-300, 1e8, 1e-10), 1.0);
 }
 
-/// Below the switch at a first shape at most 1 a value next to 1 stays at or below 1, within 1e-12 of mpmath's, where the direct fraction passes 1 (`1.0000000000000007` at survey law 475's bounds).
+/// Below the switch at a first shape ≤ 1 a value next to 1 stays ≤ 1, within 1e-12 of mpmath's,
+/// where the direct fraction passes 1 (`1.0000000000000007` at survey law 475's bounds).
 #[test]
 fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
   for (a, b, x, want) in [

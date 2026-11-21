@@ -1,5 +1,5 @@
-//! Every family answers `tail_dependence` through the `Result` channel, `NotFitted` before its parameters are set
-//! (Independence has none), and no family stores one outside its range, a NaN included.
+//! Every family answers `tail_dependence` through `Result`, `NotFitted` before its parameters are
+//! set (Independence has none), and stores none outside its range, NaN included.
 
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
@@ -67,7 +67,8 @@ fn every_family_gates_tail_dependence_on_its_parameters() {
   }
 }
 
-/// Every setter panics on a NaN `theta` with the parameter's message and keeps its state, so no gate ever sees one.
+/// Every setter panics on a NaN `theta` with the parameter's message and keeps its state, so no
+/// gate ever sees one.
 #[test]
 fn no_family_stores_a_nan_theta() {
   for mut c in unfitted() {

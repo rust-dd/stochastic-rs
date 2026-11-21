@@ -227,7 +227,8 @@ looking for the `b == r - r_f` consistency check, it belongs there.
 If the corresponding pricer (Carr-Madan, Lewis, COS) needs a
 characteristic function, the model implements `FourierModelExt`
 (`chf(t, xi)` + `cumulants(t)`) on the **quant** side, which
-blanket-implements `ModelPricer` via Gil-Pelaez quadrature. See
+blanket-implements `ModelPricer` through `LewisPricer`, Lewis (2001), less
+a Gaussian control. See
 `calibration-pattern`. The Lévy-Khintchine triplet must agree with the
 SDE actually simulated here:
 

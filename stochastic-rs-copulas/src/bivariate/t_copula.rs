@@ -1,16 +1,12 @@
-//! # Bivariate Student-t copula
+//! Bivariate Student-t copula: `T_{ρ,ν}` is the bivariate t cdf of correlation `ρ`, `t_ν⁻¹` the
+//! quantile; `ν → ∞` gives the Gaussian copula, and `cdf.rs` evaluates `T_{ρ,ν}`.
 //!
 //! $$
 //! C_{\rho,\nu}(u,v) = T_{\rho,\nu}\!\big(t_\nu^{-1}(u),\, t_\nu^{-1}(v)\big),
 //! $$
-//! $T_{\rho,\nu}$ is the bivariate Student-t cdf of correlation $\rho$, $t_\nu^{-1}$ the quantile;
-//! $\nu \to \infty$ gives the Gaussian copula, and `cdf.rs` evaluates $T_{\rho,\nu}$.
 //!
-//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
-//! "Modelling Dependence with Copulas and Applications to Risk
-//! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
-//! Elsevier, ch. 8.
-//! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
+//! Reference: Embrechts et al. (2003), ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
+//! Reference: Aas et al. (2009), 44(2), 182-198, App. B.2, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use std::cell::Cell;
 
@@ -40,7 +36,8 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// Below this a quantile's square, `ν` added, stays finite: past it the h-function and its inverse take logarithms.
+/// Below this a quantile's square, `ν` added, stays finite: past it the h-function and its inverse
+/// take logarithms.
 const LARGE: f64 = 1e150;
 
 #[derive(Debug, Clone)]
@@ -91,8 +88,8 @@ impl TCopula {
     self.nu = nu;
   }
 
-  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, in logarithms where a quantile passes
-  /// `LARGE`, and the two-point law the `v → 0, 1` limit of `∂_v C` leaves at the edges.
+  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, in logarithms past
+  /// `LARGE`; at the edges the two-point law `∂_v C` leaves as `v → 0, 1`.
   pub(crate) fn inverse(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
     let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
@@ -115,7 +112,8 @@ impl TCopula {
         let ln_scale = 0.5 * (nu + x.value * x.value).ln() + ln_spread;
         return law.cdf(q.value.signum(), q.ln_abs() + ln_scale);
       }
-      // `B = xw`, `w = ρ + sgn(x) q √((1 + ν/x²)(1 − ρ²)/(ν + 1))`, whose `ν/x²` is below every rounding unit here.
+      // `B = xw`, `w = ρ + sgn(x) q √((1 + ν/x²)(1 − ρ²)/(ν + 1))`, whose `ν/x²` is below every
+      // rounding unit here.
       let (sign_w, ln_w) = if q.value.is_finite() {
         let w = rho + x.value.signum() * q.value * ln_spread.exp();
         (w.signum(), w.abs().ln())
@@ -126,8 +124,8 @@ impl TCopula {
     }
   }
 
-  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, in logarithms past `LARGE`; on
-  /// the open square the Gaussian copula's from `NORMAL_ABOVE`, at `v ∈ {0, 1}` the limit `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`.
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`,
+  /// logarithmic past `LARGE`, Gaussian from `NORMAL_ABOVE`, the `v → 0, 1` limits at the edges.
   pub(crate) fn h(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
     let gaussian = GaussianCopula::h(rho);
     let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
@@ -162,7 +160,8 @@ impl TCopula {
         }
         return wide.cdf_at(gap * scale);
       }
-      // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the argument alone.
+      // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the
+      // argument alone.
       let (ln_x_over_root, y_over_root, logs) = if y.value.abs() < LARGE {
         let root = (nu + y.value * y.value).sqrt();
         (x.ln_abs() - root.ln(), y.value / root, None)
@@ -178,7 +177,8 @@ impl TCopula {
       let ratio = x.value.signum() * ln_x_over_root.exp();
       if ratio.is_finite() {
         let gap = match logs {
-          // Where the signs and `ρ` cancel, `(|x| − |ρy|)/√(ν + y²) = e^{−lift}(expm1(ln|x/y|) + (1 − |ρ|))`.
+          // Where the signs and `ρ` cancel,
+          // `(|x| − |ρy|)/√(ν + y²) = e^{−lift}(expm1(ln|x/y|) + (1 − |ρ|))`.
           Some((ln_ratio, lift)) if x.value.signum() * y.value.signum() == rho.signum() => {
             x.value.signum() * (-lift).exp() * (ln_ratio.exp_m1() + (1.0 - rho.abs()))
           }
@@ -191,8 +191,8 @@ impl TCopula {
     }
   }
 
-  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where that form's rounding,
-  /// `|x ∓ y| + (1 − |ρ|)r_y`, is at most the plain `r_x + |ρ|r_y` (`r`, `rounding`), which carried passes `150ε`.
+  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where
+  /// that rounding is at most the plain `r_x + |ρ|r_y` (`r` the `rounding`), carried past `150ε`.
   fn shifted_gap(
     law: &Law,
     (rho, nu, scale): (f64, f64, f64),
@@ -212,7 +212,8 @@ impl TCopula {
     }
     .abs()
       + (1.0 - rho.abs()) * ry;
-    // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in the lower tail.
+    // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in
+    // the lower tail.
     let z = (plain * scale).abs();
     if rho == 0.0 || size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || shifted > size {
       plain
@@ -223,22 +224,22 @@ impl TCopula {
     }
   }
 
-  /// `|q| + min(p, 1 − p)/f(q)`: a quantile's rounding, its own and what the law's rounding of `p` moves it, which near the
-  /// median outgrows `|q|`.
+  /// `|q| + min(p, 1 − p)/f(q)`: a quantile's rounding, its own and what the law's rounding of `p`
+  /// moves it, which near the median outgrows `|q|`.
   fn rounding(law: &Law, p: f64, q: f64) -> f64 {
     q.abs() + p.min(1.0 - p) / law.ln_pdf(q).exp()
   }
 
-  /// `(ln f(b), in_panels)` where `quantile_gap`'s 16-node mass holds to `ε` over the gap `d` from `a` to `b`: within a
-  /// quarter of the density's scale `√(ν + a²)` and the density normal at `a`, in panels past a factor `e⁴` at `b`.
+  /// `(ln f(b), in_panels)` where `quantile_gap`'s 16-node mass holds to `ε` over `d` from `a` to
+  /// `b`: within a quarter of the scale `√(ν + a²)`, the density normal at `a`; panels past `e⁴`.
   fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<(f64, bool)> {
     let (ln_a, ln_b) = (law.ln_pdf(a), law.ln_pdf(b));
     let holds = d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && ln_b.is_finite();
     holds.then_some((ln_b, (ln_a - ln_b).abs() > 4.0))
   }
 
-  /// `x − y` from the tails where both quantiles have one, else from the exact level gap where it is `integrable` and its
-  /// rounding over the density beats `size`.
+  /// `x − y` from the tails where both quantiles have one, else from the exact level gap where it
+  /// is `integrable` and its rounding over the density beats `size`.
   fn difference(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
     if let Some(gap) = law.tail_gap(x, y).filter(|_| x.sign() == y.sign()) {
       return x.sign() * gap;
@@ -263,7 +264,8 @@ impl TCopula {
     }
   }
 
-  /// `x + y` alike, from the exact `u + v − 1`, where the levels lie in opposite halves or the gap's rounding beats `size`.
+  /// `x + y` alike, from the exact `u + v − 1`, where the levels lie in opposite halves or the
+  /// gap's rounding beats `size`.
   fn sum(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
     if let Some(gap) = law.tail_gap(y, x).filter(|_| x.sign() != y.sign()) {
       return y.sign() * gap;
@@ -285,8 +287,8 @@ impl TCopula {
     }
   }
 
-  /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at the law's scores,
-  /// else `student_t::ln_density` at their features, whose gap stays exact past `f64::MAX`.
+  /// `ln c` on the open square: Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at
+  /// the scores, else `student_t::ln_density` at their features, exact past `f64::MAX`.
   fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
     Self::ln_density_at(self.theta.unwrap(), self.nu)
   }
@@ -354,8 +356,8 @@ impl BivariateExt for TCopula {
     on_open_square(x, self.ln_density())
   }
 
-  /// To a relative `1e-12` but where `C ≪ u` off the countermonotone solve, where the t quantiles' last bits move it (up to
-  /// `2.3e-12` measured, `cdf.rs`); the Gaussian copula from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
+  /// To a relative `1e-12` but where `C ≪ u` off the countermonotone solve (the t quantiles' last
+  /// bits, up to `2.3e-12` measured); Gaussian from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);
@@ -400,7 +402,7 @@ impl BivariateExt for TCopula {
   /// \lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)
   /// $$
   /// Symmetric and positive for finite $\nu$; the Gaussian copula's are zero.
-  /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
+  /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2, DOI 10.1016/B978-044450896-6.50010-8.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let rho = self.theta.unwrap();

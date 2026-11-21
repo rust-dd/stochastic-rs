@@ -83,6 +83,8 @@
 #![allow(clippy::needless_range_loop)]
 
 #[cfg(doctest)]
+mod doctest_fields;
+#[cfg(doctest)]
 mod doctest_names;
 mod error;
 mod linalg;

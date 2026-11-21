@@ -15,6 +15,7 @@ use crate::pricing::exotic::CliquetOption;
 use crate::pricing::exotic::CompoundOption;
 use crate::pricing::exotic::DoubleBarrierOption;
 use crate::pricing::exotic::LookbackOption;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::lookback::LookbackPricer;
 use crate::pricing::variance_swap::VarianceSwapPricer;
 
@@ -384,7 +385,14 @@ impl PyVarianceSwapPricer {
 
   /// Heston closed-form fair-variance strike (Brockhaus-Long 2000).
   fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
-    VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, self.tau)
+    let params = HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma: 0.0,
+      rho: 0.0,
+    };
+    VarianceSwapPricer::fair_strike_heston(&params, self.tau)
   }
 
   /// Demeterfi-Derman-Kamal-Zou static-replication fair strike.

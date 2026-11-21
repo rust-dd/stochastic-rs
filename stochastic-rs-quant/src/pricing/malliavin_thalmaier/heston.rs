@@ -4,7 +4,6 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
@@ -63,10 +62,8 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.assets.len()
   }
 
-  /// Validate model, time-grid and joint-correlation inputs.
-  ///
-  /// This must be called before [`Self::sample`] or [`Self::sample_with_seed`]
-  /// for user-supplied parameters. Their fallible variants call it directly.
+  /// Validate model, time-grid and joint-correlation inputs, which [`Self::sample`] needs for
+  /// user-supplied parameters and [`Self::try_sample`] runs itself.
   pub fn validate(&self) -> Result<(), QuantError> {
     const CORR: &str = "cross-asset correlation";
     const ASSETS: &str = "asset parameters";
@@ -248,39 +245,16 @@ impl<T: FloatExt> MultiHestonParams<T> {
     }
   }
 
-  /// Simulate one set of paths. Requires LAPACK for Cholesky.
-  ///
-  /// **Precondition:** `self.cross_corr` must be a valid `d×d` symmetric
-  /// positive-definite correlation matrix (jointly with the per-asset `rho`s).
-  /// Call [`Self::validate`] up-front when the matrix is user-supplied —
-  /// the underlying Cholesky factorisation panics on a non-SPD input. Prefer
-  /// [`Self::try_sample`] when the matrix comes from external user input.
-  pub fn sample(&self) -> MultiHestonPaths<T> {
-    self.sample_with_fill(T::fill_standard_normal_slice)
-  }
-
-  /// Fallible variant of [`Self::sample`]. Runs [`Self::validate`] first and
-  /// returns an error when the joint Brownian correlation matrix fails the
-  /// positive-definite check (otherwise [`Self::sample`] would panic on the
-  /// internal Cholesky factorisation).
-  pub fn try_sample(&self) -> Result<MultiHestonPaths<T>, QuantError> {
-    self.validate()?;
-    Ok(self.sample_with_fill(T::fill_standard_normal_slice))
-  }
-
-  /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
-  /// tests and benchmark comparisons.
-  pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T> {
-    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
+  /// One set of paths drawn from `seed`, which advances; the Cholesky factorisation panics unless
+  /// [`Self::validate`] passes, which [`Self::try_sample`] reports as an error instead.
+  pub fn sample(&self, seed: &impl SeedExt) -> MultiHestonPaths<T> {
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
     self.sample_with_fill(|z| normal.fill_slice(z))
   }
 
-  /// Fallible variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
-  /// for the failure mode (non-SPD joint Brownian correlation).
-  pub fn try_sample_with_seed(&self, seed: u64) -> Result<MultiHestonPaths<T>, QuantError> {
+  pub fn try_sample(&self, seed: &impl SeedExt) -> Result<MultiHestonPaths<T>, QuantError> {
     self.validate()?;
-    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
-    Ok(self.sample_with_fill(|z| normal.fill_slice(z)))
+    Ok(self.sample(seed))
   }
 
   fn brownian_cholesky(&self) -> Array2<T> {

@@ -1,4 +1,4 @@
-//! # Generalized Inverse Gaussian (GIG)
+//! Generalized inverse Gaussian (GIG) law, the GH clock (IG at `λ = −½`); no closed cdf.
 //!
 //! $$
 //! f(x) = \frac{(\psi/\chi)^{\lambda/2}}{2K_\lambda(\sqrt{\chi\psi})}\,x^{\lambda-1}
@@ -7,13 +7,13 @@
 //! \frac{K_{\lambda+k}(\sqrt{\chi\psi})}{K_\lambda(\sqrt{\chi\psi})},
 //! $$
 //!
-//! The GH family's clock, the inverse Gaussian at `λ = −½`, no closed cdf; at `χ, ψ > 0` (the edges
-//! are gamma and inverse gamma) drawn as `Y/√(ψ/χ)` by `GIGrvg`'s three regimes, `1/Y` at `λ < 0`.
+//! Drawn by `GIGrvg`'s three regimes as `Y/√(ψ/χ)` at `χ, ψ > 0` (an edge is gamma or inverse
+//! gamma), `1/Y` at `λ < 0`.
 //!
-//! Reference: Hörmann, W., Leydold, J. (2014), "Generating generalized inverse Gaussian random variates", *Statistics and Computing* 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
-//! Reference: Dagpunar, J.S. (1989), "An easily implemented generalised inverse Gaussian generator", *Communications in Statistics — Simulation and Computation* 18(2), 703-710, DOI 10.1080/03610918908812785.
-//! Reference: Jørgensen, B. (1982), *Statistical Properties of the Generalized Inverse Gaussian Distribution*, Lecture Notes in Statistics 9, Springer, DOI 10.1007/978-1-4612-5698-4.
-//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
+//! Reference: Hörmann, Leydold (2014), Stat. Comput. 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
+//! Reference: Dagpunar (1989), 18(2), 703-710, DOI 10.1080/03610918908812785.
+//! Reference: Jørgensen, B. (1982), Lecture Notes in Statistics 9, DOI 10.1007/978-1-4612-5698-4.
+//! Reference: Olver, F.W.J. et al., *NIST DLMF*, eq. 10.30.2, <https://dlmf.nist.gov/10.30.E2>.
 
 use std::mem::MaybeUninit;
 
@@ -41,10 +41,12 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Under this `χψ` a ratio's limit `g_ν → ν` may hold within `2⁻¹¹²`, which [`ratio_moment::limit_moment`] then tests.
+/// Under this `χψ` a ratio's limit `g_ν → ν` may hold within `2⁻¹¹²`, which
+/// [`ratio_moment::limit_moment`] then tests.
 const LIMIT_CLOCK: f64 = 7.703_719_777_548_943e-34;
 
-/// From here a mean, whose doubles miss by up to `43ε` on the ratios' route, is formed again in two parts ([`near_max`]).
+/// From here a mean, whose doubles miss by up to `43ε` on the ratios' route, is formed again in two
+/// parts ([`near_max`]).
 pub(crate) const NEAR_MAX: f64 = f64::MAX * (1.0 - 64.0 * f64::EPSILON);
 
 /// Which Hörmann–Leydold generator the parameters select.
@@ -326,7 +328,8 @@ impl<T: SimdFloatExt> SimdGig<T> {
     near_max::moment(self, k, v)
   }
 
-  /// [`Self::raw_moment`] at `(λ, √χ, √ψ)`, which the GH mixture forms from `δ` and `γ` without squaring them.
+  /// [`Self::raw_moment`] at `(λ, √χ, √ψ)`, which the GH mixture forms from `δ` and `γ` without
+  /// squaring them.
   pub(crate) fn raw_moment_at(clock: (f64, f64, f64), k: u32) -> f64 {
     Self::scaled_raw_moment_at(clock, k, 1.0)
   }
@@ -348,7 +351,8 @@ impl<T: SimdFloatExt> SimdGig<T> {
       if moment.is_normal() && value.is_normal() {
         return value;
       }
-      // Past the doubles `w_k = 2ʲm` and the factor apart, so no `ε·|ln w_k|` enters, as a logarithm's would.
+      // Past the doubles `w_k = 2ʲm` and the factor apart, so no `ε·|ln w_k|` enters, as a
+      // logarithm's would.
       let (m, j) = ratio_moment::saddle_scale(lambda, order, (root_chi, root_psi));
       let ((b, n), (e, mk)) = (split_pow2(factor.abs()), split_pow2(m.powf(order)));
       let p = (i64::from(j) * i64::from(k) + i64::from(b + e)).clamp(-100_000, 100_000) as i32;

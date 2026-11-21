@@ -5,11 +5,12 @@ use stochastic_rs_copulas::traits::BivariateExt;
 
 use super::agrees;
 
-/// `<family> <θ> ; <τ> <ln |τ|> <ln(1 − |τ|)>`: mpmath at 40 and 60 digits, rounding alike, of Plackett's closed inner
-/// integral of Nelsen's Thm 5.1.3 and of Gudendorf & Segers' `∫ t(1 − t)/A dA'` with its form by parts.
+/// `<family> <θ> ; <τ> <ln |τ|> <ln(1 − |τ|)>`: mpmath at 40 and 60 digits of Plackett's closed
+/// inner integral of Nelsen's Thm 5.1.3 and Gudendorf & Segers' `∫ t(1 − t)/A dA'`.
 const TABLE: &str = include_str!("../fixtures/kendall_tau.txt");
 
-/// Where the `τ` an f64 holds still fixes `θ` to `1e-9`: past these, one ulp of `τ` near 1 moves `θ` by more.
+/// Where the `τ` an f64 holds still fixes `θ` to `1e-9`: past these, one ulp of `τ` near 1 moves
+/// `θ` by more.
 const RECOVERABLE: [(&str, f64, f64); 3] = [
   ("plackett", 1e-12, 1e14),
   ("galambos", 1e-3, 1e7),
@@ -33,8 +34,8 @@ fn rows() -> impl Iterator<Item = (&'static str, f64, f64)> {
   })
 }
 
-/// `τ` within `1e-12`, and within `1e-12` of itself below `|τ| = 1e-3`, Plackett's either side of `θ = 1` included: the
-/// families' whole ranges.
+/// `τ` within `1e-12`, and within `1e-12` of itself below `|τ| = 1e-3`, Plackett's either side of
+/// `θ = 1` included: the families' whole ranges.
 #[test]
 fn kendall_tau_matches_the_mpmath_table() {
   let mut failures = Vec::new();
@@ -68,8 +69,8 @@ fn theta_from_tau_recovers_theta_from_the_exact_tau() {
   assert!(failures.is_empty(), "{failures:#?}");
 }
 
-/// The Galambos `τ` falls as `(π/4)2^{−1/θ}` toward independence, never negative and 0 under the smallest subnormal.
-/// `τ = 1e-300` inverts to mpmath's `θ`, and `τ` there to mpmath's: an ulp of `θ` moves that `τ` by `690` ulps.
+/// The Galambos `τ` falls as `(π/4)2^{−1/θ}` toward independence, never negative, 0 below the
+/// smallest subnormal; `τ = 1e-300` round-trips mpmath's `θ`, an ulp of `θ` moving it 690 ulps.
 #[test]
 fn galambos_tau_stays_non_negative_and_relative_toward_independence() {
   let c = Galambos::default();
@@ -88,8 +89,8 @@ fn galambos_tau_stays_non_negative_and_relative_toward_independence() {
   assert_eq!(c.tau_from_theta(9e-4), 0.0);
 }
 
-/// Where τ is tiny its relative accuracy is the rounding of `ln τ`: Galambos at θ = 1e-3, `ln τ = −693.39` to 2 ulps, is
-/// `2.7e-13` off mpmath's `7.328123094736333e-302`, the largest relative error while τ is normal.
+/// A tiny τ is as accurate as `ln τ`'s rounding: Galambos at θ = 1e-3, `ln τ = −693.39` to 2 ulps,
+/// is `2.7e-13` off mpmath's `7.328123094736333e-302`, the worst while τ is normal.
 #[test]
 fn a_tiny_tau_holds_its_logarithm_floor() {
   let got = Galambos::default().tau_from_theta(1e-3);

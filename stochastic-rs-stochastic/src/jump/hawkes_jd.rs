@@ -7,8 +7,8 @@
 //!
 //! Jumps arrive by a self-exciting Hawkes process, which clusters volatility and correlates jumps.
 //!
-//! Reference: Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
-//! Reference: Merton (1976), "Option pricing when underlying stock returns are discontinuous"
+//! Reference: Hawkes (1971), DOI 10.1093/biomet/58.1.83
+//! Reference: Merton (1976), DOI 10.1016/0304-405X(76)90022-2
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

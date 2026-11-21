@@ -5,7 +5,7 @@ use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::invalid_input;
 use super::simulation::assert_model;
-use super::variance_vega::effective_initial_variance_bump;
+use super::variance_vega::checked_initial_variance_bump;
 use crate::QuantError;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
@@ -78,7 +78,7 @@ pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
       "maximum_relative_bump_difference must be finite and non-negative, got {tolerance}"
     )));
   }
-  let effective_bump = effective_initial_variance_bump(
+  let effective_bump = checked_initial_variance_bump(
     model.params.v0,
     config.initial_variance_bump,
     config.minimum_relative_initial_variance_bump,

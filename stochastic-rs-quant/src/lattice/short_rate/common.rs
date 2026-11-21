@@ -7,104 +7,114 @@ use crate::lattice::tree::TrinomialBranch;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
-/// Zero-mean Ornstein-Uhlenbeck factor used as a primitive for Gaussian
-/// short-rate constructions (G2++, curve-fitted Hull-White, …).
-#[derive(Debug, Clone)]
+/// The state every short-rate tree is built for, `dx = a(m − x)dt + σ dW` from `initial_state`.
+#[derive(Debug, Clone, Copy)]
 pub(super) struct OrnsteinUhlenbeckFactor<T: RealExt> {
   pub(super) initial_state: T,
+  pub(super) long_run_mean: T,
   pub(super) mean_reversion: T,
   pub(super) sigma: T,
 }
 
-impl<T: RealExt> OneFactorShortRateModel<T> for OrnsteinUhlenbeckFactor<T> {
-  fn initial_state(&self) -> T {
-    self.initial_state
-  }
-
-  fn drift(&self, _time: T, state: T) -> T {
-    -self.mean_reversion * state
-  }
-
-  fn diffusion(&self, _time: T, _state: T) -> T {
-    self.sigma
-  }
-
-  fn short_rate(&self, _time: T, state: T) -> T {
-    state
-  }
-}
-
-pub(super) fn build_one_factor_trinomial_tree<T: RealExt, M: OneFactorShortRateModel<T>>(
-  model: &M,
+/// Each level on the state's exact mean, each branch on the nearest node: no branch below 1/24.
+///
+/// $$
+/// M = x\,e^{-a\Delta t},\quad V = \sigma^2\,\frac{1-e^{-2a\Delta t}}{2a},\quad
+/// \Delta x = \sqrt{3V},\quad k = \operatorname{round}(M/\Delta x),\quad \eta = M - k\,\Delta x
+/// $$
+/// $$
+/// p_u = \frac16 + \frac{\eta^2}{6V} + \frac{\eta}{2\sqrt{3V}},\qquad
+/// p_m = \frac23 - \frac{\eta^2}{3V},\qquad
+/// p_d = \frac16 + \frac{\eta^2}{6V} - \frac{\eta}{2\sqrt{3V}}
+/// $$
+///
+/// Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, §II, note 5, DOI 10.3905/jod.1994.407902
+/// Reference: Brigo & Mercurio (2006), §3.3.3, p. 78, read in Baldvinsdóttir & Palmborg (2011)
+/// Reference: Hull & White (1996), J. Deriv. 3(3), 26–36, §I: each level on the analytic mean
+pub(super) fn build_one_factor_trinomial_tree<T: RealExt>(
+  factor: &OrnsteinUhlenbeckFactor<T>,
   horizon: T,
   steps: usize,
 ) -> TrinomialTree<T> {
-  assert!(steps > 0, "steps must be strictly positive");
+  require_positive("horizon", horizon);
+  assert!(
+    steps > 0,
+    "steps must satisfy `steps > 0`, got steps = {steps}"
+  );
+  let OrnsteinUhlenbeckFactor {
+    initial_state,
+    long_run_mean,
+    mean_reversion,
+    sigma,
+  } = *factor;
   let dt = horizon / T::from_usize_(steps);
-  let sigma = model.diffusion(T::zero(), model.initial_state()).abs();
-  let x0 = model.initial_state();
-  let diffusion_dx = sigma * (T::from_f64_fast(3.0) * dt).sqrt();
-  let drift_dx = model.drift(T::zero(), x0).abs() * dt;
-  let dx = diffusion_dx.max(drift_dx).max(T::from_f64_fast(1e-6));
+  let two_a_dt = (mean_reversion + mean_reversion) * dt;
+  // `(1 − e^{−2aΔt})/(2aΔt)`, so `σ` is never squared and `a = 0` is `V = σ²Δt`.
+  let variance_share = if two_a_dt > T::zero() {
+    -(-two_a_dt).exp_m1() / two_a_dt
+  } else {
+    T::one()
+  };
+  let dx = sigma * (T::from_f64_fast(3.0) * dt * variance_share).sqrt();
+  let decay = (-mean_reversion * dt).exp();
+  let offset = |j: usize, i: usize| T::from_f64_fast(j as f64 - i as f64);
 
   let states = (0..=steps)
-    .map(|level| {
-      let center = level as isize;
-      Array1::from_iter((0..(2 * level + 1)).map(|idx| {
-        let j = idx as isize - center;
-        x0 + T::from_f64_fast(j as f64) * dx
-      }))
+    .map(|i| {
+      let time = T::from_usize_(i) * dt;
+      let mean = long_run_mean + (initial_state - long_run_mean) * (-mean_reversion * time).exp();
+      Array1::from_iter((0..=2 * i).map(|j| mean + offset(j, i) * dx))
     })
     .collect::<Vec<_>>();
 
   let branches = (0..steps)
-    .map(|level| {
-      let time = T::from_usize_(level) * dt;
-      let next_center = (level + 1) as isize;
-      (0..(2 * level + 1))
-        .map(|idx| {
-          let state = states[level][idx];
-          let mean = state + model.drift(time, state) * dt;
-          let variance = model.diffusion(time, state).powi(2) * dt;
-
-          if variance <= T::min_positive_val() {
-            // mean/x0/dx are all derived from finite model coefficients here,
-            // but defensively fall back to the centre node (j=0) if any
-            // intermediate produces NaN (e.g. zero-diffusion *and* zero-drift
-            // pathological inputs that bypass earlier validation).
-            let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
-            let j = j.clamp(-next_center + 1, next_center - 1);
-            return TrinomialBranch {
-              center_index: (j + next_center) as usize,
-              down_probability: T::zero(),
-              middle_probability: T::one(),
-              up_probability: T::zero(),
-            };
-          }
-
-          let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
-          let j = j.clamp(-next_center + 1, next_center - 1);
-          let target = x0 + T::from_f64_fast(j as f64) * dx;
-          let eta = mean - target;
-          let dx2 = dx * dx;
-          let q = (variance + eta * eta) / dx2;
-          let mut down = T::from_f64_fast(0.5) * (q - eta / dx);
-          let mut up = T::from_f64_fast(0.5) * (q + eta / dx);
-          let mut middle = T::one() - q;
-          sanitize_probabilities(&mut down, &mut middle, &mut up);
-
-          TrinomialBranch {
-            center_index: (j + next_center) as usize,
-            down_probability: down,
-            middle_probability: middle,
-            up_probability: up,
-          }
-        })
+    .map(|i| {
+      (0..=2 * i)
+        .map(|j| nearest_node_branch(offset(j, i) * decay, i + 1))
         .collect::<Vec<_>>()
     })
     .collect::<Vec<_>>();
 
   TrinomialTree::new(dt, states, branches)
+}
+
+pub(super) fn require_finite<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite(),
+    "{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_non_negative<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value >= T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} >= T::zero()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_positive<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value > T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} > T::zero()`, got {name} = {value:?}"
+  );
+}
+
+/// The branch whose exact conditional mean lies `target = M/Δx` spacings off the next centre.
+fn nearest_node_branch<T: RealExt>(target: T, next_center: usize) -> TrinomialBranch<T> {
+  let k = target.round();
+  // `e = η/Δx`: with `Δx² = 3V` the formulas above are `1/6 + e²/2 ± e/2` and `2/3 − e²`.
+  let e = target - k;
+  let half = T::from_f64_fast(0.5);
+  let outer = T::from_f64_fast(1.0 / 6.0) + half * e * e;
+  let k = k.to_isize().expect("a finite target rounds to an integer");
+  TrinomialBranch {
+    center_index: next_center
+      .checked_add_signed(k)
+      .expect("|k| is at most the node's offset"),
+    down_probability: outer - half * e,
+    middle_probability: T::from_f64_fast(2.0 / 3.0) - e * e,
+    up_probability: outer + half * e,
+  }
 }
 
 pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
@@ -118,30 +128,6 @@ pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
   })
 }
 
-fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) {
-  let zero = T::zero();
-  let tol = T::from_f64_fast(1e-12);
-  if *down < zero && *down > -tol {
-    *down = zero;
-  }
-  if *middle < zero && *middle > -tol {
-    *middle = zero;
-  }
-  if *up < zero && *up > -tol {
-    *up = zero;
-  }
-  let sum = *down + *middle + *up;
-  if sum > zero {
-    *down = *down / sum;
-    *middle = *middle / sum;
-    *up = *up / sum;
-  } else {
-    *down = zero;
-    *middle = T::one();
-    *up = zero;
-  }
-}
-
 /// G2++ joint probabilities `Π⁰ + s̄·(|ρ|/36)·M`, Brigo–Mercurio's `M` +5 on the corners ρ favours,
 /// −1 on the other two, −4 on the edges, +8 at the centre; `s̄ ≤ 1`, the largest keeping `Π ≥ 0`.
 /// Auer (2009), Proc. World Congress on Engineering II, 1388–1389: Brigo–Mercurio's pattern, BM′.
@@ -150,8 +136,8 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   y_branch: TrinomialBranch<T>,
   rho: T,
 ) -> [[T; 3]; 3] {
-  let px = non_negative(x_branch.probabilities());
-  let py = non_negative(y_branch.probabilities());
+  let px = x_branch.probabilities();
+  let py = y_branch.probabilities();
   let mut joint = [[T::zero(); 3]; 3];
   for i in 0..3 {
     for j in 0..3 {
@@ -192,17 +178,6 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
     }
   }
   joint
-}
-
-/// A branch whose spacing exceeds 2σ√Δt, or whose mean leaves the grid, has a negative probability;
-/// its non-negative part, renormalised, is contained here until the builder is fixed.
-fn non_negative<T: RealExt>(p: [T; 3]) -> [T; 3] {
-  if p.iter().all(|&q| q >= T::zero()) {
-    return p;
-  }
-  let clipped = p.map(|q| q.max_or_nan(T::zero()));
-  let total = clipped[0] + clipped[1] + clipped[2];
-  clipped.map(|q| q / total)
 }
 
 #[cfg(test)]
@@ -288,30 +263,5 @@ mod tests {
       (realised + 7.0 * 177.0_f64.sqrt() / 118.0).abs() < 1e-14,
       "{realised}"
     );
-  }
-
-  #[test]
-  fn a_branch_with_a_negative_probability_enters_by_its_non_negative_part() {
-    // An off-centre node of a factor whose vol is under the grid floor: (3/8, 3/4, −1/8).
-    let off_grid = TrinomialBranch {
-      center_index: 1,
-      down_probability: 0.375,
-      middle_probability: 0.75,
-      up_probability: -0.125,
-    };
-    for rho in [0.0, -0.9, 0.9] {
-      let joint = correlated_joint_probabilities(symmetric(), off_grid, rho);
-      let cells = joint.iter().flatten().copied();
-      assert!(
-        f64::min_or_nan_fold(cells.clone()) >= 0.0,
-        "rho {rho}: {joint:?}"
-      );
-      assert!(
-        (cells.sum::<f64>() - 1.0).abs() < 1e-15,
-        "rho {rho}: {joint:?}"
-      );
-      let up = joint[0][2] + joint[1][2] + joint[2][2];
-      assert!(up.abs() < 1e-15, "rho {rho}: the clipped move keeps {up}");
-    }
   }
 }

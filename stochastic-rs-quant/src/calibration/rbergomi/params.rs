@@ -338,8 +338,6 @@ pub struct RBergomiCalibrationConfig {
   pub adam_beta2: f64,
   /// Adam numerical epsilon.
   pub adam_eps: f64,
-  /// Common-random-number seed used in objective evaluations.
-  pub random_seed: u64,
   /// Optional target tolerance (e.g. bid-ask derived) for early stop.
   pub stop_loss: Option<f64>,
   /// Stop if absolute loss improvement drops below this threshold.
@@ -357,7 +355,6 @@ impl Default for RBergomiCalibrationConfig {
       adam_beta1: 0.9,
       adam_beta2: 0.999,
       adam_eps: 1e-8,
-      random_seed: 42,
       stop_loss: None,
       improvement_tol: 1e-6,
     }

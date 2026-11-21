@@ -1,4 +1,5 @@
-/// One law from one seed: seed budget, first eight draws, heads of steps 2–9 (one per fill of step 3) and of the worker chunks, ten hashes.
+/// One law from one seed: seed budget, first eight draws, heads of steps 2–9 (one per fill of
+/// step 3) and of the worker chunks, ten hashes.
 #[derive(Debug)]
 pub struct Snapshot {
   pub seed: u64,

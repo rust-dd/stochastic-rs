@@ -6,14 +6,14 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use crate::error::CopulaError;
 use crate::multivariate::MultivariateFamily;
 
-/// `cdf`, `pdf` and `log_pdf` answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, and `pdf` and `log_pdf`
-/// are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
+/// `cdf`, `pdf` and `log_pdf` answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, and
+/// `pdf` and `log_pdf` are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait MultivariateExt {
   /// Which family this copula is.
   fn family(&self) -> MultivariateFamily;
 
-  /// `n` rows from `seed`, each coordinate in `(0, 1)` (one rounded to 0 or 1 moves one ulp inside): a fresh
-  /// `Deterministic` replays them, a shared one advances; generic over the seed, so not on a `dyn MultivariateExt`.
+  /// `n` rows from `seed` inside `(0, 1)` (a rounded 0 or 1 moves one ulp in): a fresh
+  /// `Deterministic` replays them, a shared one advances; generic over the seed, so not on `dyn`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where
     Self: Sized;

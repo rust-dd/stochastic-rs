@@ -1,11 +1,9 @@
-//! # BB1
+//! BB1, Joe's Archimedean copula with generator `(t^{−θ} − 1)^δ`: Clayton at `δ = 1`, Gumbel as
+//! `θ → 0`.
 //!
 //! $$
 //! C_{\theta,\delta}(u,v)=\Bigl(1+\bigl[(u^{-\theta}-1)^\delta+(v^{-\theta}-1)^\delta\bigr]^{1/\delta}\Bigr)^{-1/\theta},\qquad \theta>0,\ \delta\ge1
 //! $$
-//!
-//! Joe's Archimedean family, generator $(t^{-\theta}-1)^\delta$. It nests Clayton ($\delta=1$) and
-//! Gumbel ($\theta\to0$); with $x, y, s, w$ below
 //!
 //! $$
 //! x=u^{-\theta}-1,\ y=v^{-\theta}-1,\ s=x^\delta+y^\delta,\ w=s^{1/\delta},
@@ -20,9 +18,8 @@
 //! \bigl[\theta(\delta-1)+(\theta\delta+1)w\bigr].
 //! $$
 //!
-//! References: Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
-//! Chapman & Hall, §5.2 (family BB1); Joe, H. (2014), *Dependence Modeling
-//! with Copulas*, CRC Press, §4.13.1.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.2, DOI 10.1201/b13150.
+//! Reference: Joe, H. (2014), CRC Press, §4.13.1, DOI 10.1201/b17116.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -55,8 +52,8 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// The expanded h exponentiates logarithms that grow with `θ`, `δ` and `|ln u|`; below `2⁷` in magnitude their rounding
-/// stays under `2⁻⁴²` relative.
+/// The expanded h exponentiates logarithms that grow with `θ`, `δ` and `|ln u|`; below `2⁷` in
+/// magnitude their rounding stays under `2⁻⁴²` relative.
 const EXPANDED_LIMIT: f64 = 128.0;
 
 #[derive(Debug, Clone)]
@@ -115,13 +112,14 @@ impl Bb1 {
     Ok((self.theta.expect("checked"), self.delta))
   }
 
-  /// `ln(X/Y)`, `X, Y = u^{−θ} − 1, v^{−θ} − 1`, as `θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, exact near a ratio of 1.
+  /// `ln(X/Y)`, `X, Y = u^{−θ} − 1, v^{−θ} − 1`, as `θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, exact
+  /// near a ratio of 1.
   fn ln_generator_ratio(u: f64, v: f64, ln_u: f64, ln_v: f64, theta: f64) -> f64 {
     theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v)
   }
 
-  /// `(W, P, ln r, ℓ)` while `θ max(x, y) ≤ 700`, `x, y = −ln u, −ln v`: `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`,
-  /// `r = X_min/X_max`, `ℓ = ln(1 + r^δ)`, `W = w/θ = Pe^{ℓ/δ}`, so a small `θ` keeps its digits.
+  /// `(W, P, ln r, ℓ)` at `θ max(x, y) ≤ 700`, `x, y = −ln u, −ln v`: `r = X_min/X_max`,
+  /// `ℓ = ln(1 + r^δ)`, `W = Pe^{ℓ/δ}`, `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`.
   fn scaled(u: f64, v: f64, ln_u: f64, ln_v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
     let ln_xy = Self::ln_generator_ratio(u, v, ln_u, ln_v, theta);
     let big = -(if ln_xy >= 0.0 { ln_u } else { ln_v });
@@ -131,8 +129,8 @@ impl Bb1 {
     (p_big * (ell / delta).exp(), p_big, ln_r, ell)
   }
 
-  /// `(λ_M, λ_m, ln r, ℓ, ln w)` past `θ max(x, y) = 700`, `λ = ln(1 − u^θ)` of the smaller and larger coordinate,
-  /// `ln w = θM + λ_M + ℓ/δ` with `M = −ln min(u, v)`.
+  /// `(λ_M, λ_m, ln r, ℓ, ln w)` past `θ max(x, y) = 700`, `λ = ln(1 − u^θ)` of the smaller and
+  /// larger coordinate, `ln w = θM + λ_M + ℓ/δ` with `M = −ln min(u, v)`.
   fn recentred(
     u: f64,
     v: f64,
@@ -157,7 +155,8 @@ impl Bb1 {
     )
   }
 
-  /// `C = (1 + w)^{−1/θ}`: `e^{−W ln(1 + θW)/(θW)}` by `Bb1::scaled`, past it `min(u, v) e^{−(λ_M + ℓ/δ + ln(1 + 1/w))/θ}`.
+  /// `C = (1 + w)^{−1/θ}`: `e^{−W ln(1 + θW)/(θW)}` by `Bb1::scaled`, past it
+  /// `min(u, v) e^{−(λ_M + ℓ/δ + ln(1 + 1/w))/θ}`.
   pub(crate) fn cdf_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_u, ln_v) = (u.ln(), v.ln());
     if -theta * ln_u.min(ln_v) <= 700.0 {
@@ -168,8 +167,8 @@ impl Bb1 {
     u.min(v) * (-(lam_big + ell / delta + (-ln_w).exp().ln_1p()) / theta).exp()
   }
 
-  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
-  /// `v = 1` (`u^{θ+1}` at `δ = 1`, else `δ₁`).
+  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at
+  /// `v = 0` (`δ₀`) and `v = 1` (`u^{θ+1}` at `δ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       return 1.0;
@@ -189,7 +188,8 @@ impl Bb1 {
       .min_or_nan(1.0)
   }
 
-  /// `(ln X, ln Y, ln s, ln(1 + w))` of the expanded h, `s = X^δ + Y^δ`, `w = s^{1/δ}`, each from logarithms.
+  /// `(ln X, ln Y, ln s, ln(1 + w))` of the expanded h, `s = X^δ + Y^δ`, `w = s^{1/δ}`, each from
+  /// logarithms.
   fn expanded_logs(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
     let ln_x = -theta * u.ln() + ln_one_minus_exp(theta * u.ln());
     let ln_y = -theta * v.ln() + ln_one_minus_exp(theta * v.ln());
@@ -205,8 +205,8 @@ impl Bb1 {
     (ln_x, ln_y, ln_s, ln_1pw)
   }
 
-  /// `ln ∂_v C` on the open square: the expanded form while `ln x`, `ln y` and its exponent terms stay below
-  /// `EXPANDED_LIMIT`, `ln_h_log` past it.
+  /// `ln ∂_v C` on the open square: the expanded form while `ln x`, `ln y` and its exponent terms
+  /// stay below `EXPANDED_LIMIT`, `ln_h_log` past it.
   fn ln_h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_x, ln_y, ln_s, ln_1pw) = Self::expanded_logs(u, v, theta, delta);
     let terms = [
@@ -222,8 +222,8 @@ impl Bb1 {
     Self::ln_h_log(u, v, theta, delta)
   }
 
-  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h` keeps its digits near 1:
-  /// what `percent_point` inverts.
+  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h`
+  /// keeps its digits near 1: what `percent_point` inverts.
   pub(crate) fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       0.0
@@ -240,8 +240,8 @@ impl Bb1 {
     }
   }
 
-  /// `ln h = −((δ − 1)/δ)S − (1 + 1/θ) ln(1 + (1 − v^θ) expm1(S/δ))`, `S = ln(1 + (x/y)^δ)`, with
-  /// `ln(x/y) = θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, every factor a logarithm, so nothing overflows, cancels or underflows.
+  /// `ln h = −((δ − 1)/δ)S − (1 + 1/θ) ln(1 + (1 − v^θ) expm1(S/δ))`, `S = ln(1 + (x/y)^δ)`,
+  /// `ln(x/y) = θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`: no factor overflows, cancels or underflows.
   fn ln_h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_u, ln_v) = (u.ln(), v.ln());
     let ln_x_over_y = theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v);
@@ -253,15 +253,16 @@ impl Bb1 {
     };
     let z = s / delta;
     let ln_p = ln_one_minus_pow(theta, ln_v) + ln_expm1(z, s.ln() - delta.ln());
-    // `P < 1` as `(1 + θ)((1 − v^θ)/θ) expm1(S/δ) ln(1 + P)/P`: through `ln P` the `1/θ` would scale its rounding.
+    // `P < 1` as `(1 + θ)((1 − v^θ)/θ) expm1(S/δ) ln(1 + P)/P`: through `ln P` the `1/θ` would
+    // scale its rounding.
     let tail = if ln_p < 0.0 {
       let p = ln_p.exp();
       let ln_1p_over = if p == 0.0 { 1.0 } else { p.ln_1p() / p };
       let e = Self::expm1_s_over_delta(ln_u, ln_v, theta, delta, ln_x_over_y, z);
       (1.0 + theta) * (-ln_v * expm1_over(theta * ln_v)) * e * ln_1p_over
     } else if theta < 0.5 {
-      // `1 + P = v^θ(1 + w)`: `ln P`'s rounding, up to `1500ε`, scaled by `1 + 1/θ`, past `5e-13` below `θ = 1/2`, where
-      // `P ≥ 1` needs `w ≳ 1`, so the generators' terms stay under `2000ε`.
+      // `1 + P = v^θ(1 + w)`: `ln P`'s rounding, up to `1500ε`, scaled by `1 + 1/θ`, past `5e-13`
+      // below `θ = 1/2`, where `P ≥ 1` needs `w ≳ 1`, so the generators' terms stay under `2000ε`.
       let (_, _, ln_s, _) = Self::expanded_logs(u, v, theta, delta);
       (theta + 1.0) * ln_v + (1.0 + 1.0 / theta) * softplus(ln_s / delta)
     } else {
@@ -287,7 +288,8 @@ impl Bb1 {
     })
   }
 
-  /// `φ(t) = (t^{−θ} − 1)^δ` as `exp(δ ln expm1(−θ ln t))`, which keeps the digits `t^{−θ} − 1` loses as `θ → 0`.
+  /// `φ(t) = (t^{−θ} − 1)^δ` as `exp(δ ln expm1(−θ ln t))`, which keeps the digits `t^{−θ} − 1`
+  /// loses as `θ → 0`.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|t| {
@@ -316,8 +318,8 @@ impl Bb1Density {
     }
   }
 
-  /// `ln c` on the open square: `Bb1::scaled`'s form, `ln θ` cancelled, while `θ max(x, y) ≤ 700`, else re-centred on
-  /// `−θδ(M − m)`, where the `θ`-sized terms of `−(1/θ + 2) ln(1 + w) + (θ + 1)(x + y) − ln X_max` cancel exactly.
+  /// `ln c` on the open square: `Bb1::scaled`'s form, `ln θ` cancelled, at `θ max(x, y) ≤ 700`,
+  /// else re-centred on `−θδ(M − m)` so the `θ`-sized terms cancel exactly.
   pub(crate) fn ln_c(&self, u: f64, v: f64) -> f64 {
     let (theta, delta) = (self.theta, self.delta);
     let (ln_u, ln_v) = (u.ln(), v.ln());
@@ -344,8 +346,8 @@ impl Bb1Density {
 }
 
 impl Bb1 {
-  /// `expm1(S/δ) = (1 + r^δ)^{1/δ} − 1`, `r = x/y`: past `S/δ = 1`, `r e^{ln(1 + r^{−δ})/δ} − 1` with `r` formed directly,
-  /// as exponentiating `ln r` would cost `|ln r|` rounding units.
+  /// `expm1(S/δ) = (1 + r^δ)^{1/δ} − 1`, `r = x/y`: past `S/δ = 1`, `r e^{ln(1 + r^{−δ})/δ} − 1`
+  /// with `r` formed directly, as exponentiating `ln r` would cost `|ln r|` rounding units.
   fn expm1_s_over_delta(ln_u: f64, ln_v: f64, theta: f64, delta: f64, ln_r: f64, z: f64) -> f64 {
     let (t_u, t_v) = (-theta * ln_u, -theta * ln_v);
     let r = if t_u <= 1.0 && t_v <= 1.0 {
@@ -360,8 +362,8 @@ impl Bb1 {
     }
   }
 
-  /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
-  /// pseudo-observations; a `τ̂` outside BB1's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
+  /// Maximum-likelihood `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine
+  /// fitter; a `τ̂` outside `(0, 1)` or a `try_new` rejection is an error, storing nothing.
   pub(crate) fn fit_parameters(
     &mut self,
     u: ArrayView1<f64>,
@@ -501,7 +503,8 @@ mod tests {
   use super::*;
   use crate::bivariate::two_parameter::kendall_tau_numeric;
 
-  /// Kendall's τ from the h-function alone, which cross-checks the closed form and with it the conditional cdf.
+  /// Kendall's τ from the h-function alone, which cross-checks the closed form and with it the
+  /// conditional cdf.
   fn kendall_tau_from_h(c: &Bb1, panels: usize) -> f64 {
     let (theta, delta) = c.params().unwrap();
     kendall_tau_numeric(|u, v| Bb1::h_scalar(u, v, theta, delta), panels)

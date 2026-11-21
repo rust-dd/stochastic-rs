@@ -29,9 +29,11 @@ pub(super) struct BetaKernel {
   /// The mode is stationary, a double-double of exact `α − 1` and `β − 1`: zeroing its slope shifts
   /// the law by 2⁻¹⁰⁴ of its place, an ε of an ulp, which no shape statistic sees.
   exact: bool,
-  /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
+  /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal
+  /// pdf, stays in 1e-12.
   plain: bool,
-  /// The logs' size, times the exponent, past which `far_log` reads the quotient's log: 450 holds 1e-13, 0 an ε.
+  /// The logs' size, times the exponent, past which `far_log` reads the quotient's log: 450 holds
+  /// 1e-13, 0 an ε.
   budget: f64,
 }
 
@@ -124,7 +126,8 @@ impl BetaKernel {
         (e - 1.0) * ln_1p_mx(z)
       }
     };
-    // Below a quarter of `c`, or of `1 − c` from 1, the quotient's log: the shape multiplies its error, not `u·ln x`.
+    // Below a quarter of `c`, or of `1 − c` from 1, the quotient's log: the shape multiplies its
+    // error, not `u·ln x`.
     let (ll, lr) = (
       if zl < -0.75 {
         ln_ratio(x, self.c, self.ln_c)
@@ -150,7 +153,8 @@ impl BetaKernel {
     }
   }
 
-  /// `(e − 1)·y/d`, 0 for a unit exponent, whose end `d` may be 0, one quotient where `y/d` overflows.
+  /// `(e − 1)·y/d`, 0 for a unit exponent, whose end `d` may be 0, one quotient where `y/d`
+  /// overflows.
   #[inline]
   fn per(&self, e: f64, y: f64, d: f64) -> f64 {
     let q = y / d;
@@ -220,7 +224,8 @@ impl Kernel for BetaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
-  /// The plain form, which past `α + β = 1e4` loses digits to its two factors' cancelling linear parts.
+  /// The plain form, which past `α + β = 1e4` loses digits to its two factors' cancelling linear
+  /// parts.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if y == 0.0 {
@@ -321,7 +326,8 @@ impl Kernel for BetaKernel {
     (0.0, 1.0)
   }
 
-  /// The closed forms in `r = (a − b)/√(ab)` and `1/(a + b)`, so no product of the shapes over- or underflows.
+  /// The closed forms in `r = (a − b)/√(ab)` and `1/(a + b)`, so no product of the shapes over- or
+  /// underflows.
   #[inline]
   fn base_moments(&self) -> [f64; 4] {
     let (a, b) = (self.a, self.b);
@@ -339,7 +345,8 @@ impl Kernel for BetaKernel {
     let inv = self.length_scale();
     let f = inv * (1.0 + inv) / ((1.0 + 2.0 * inv) * (1.0 + 3.0 * inv));
     let rf = (a - b) * f.sqrt() / root;
-    // From the nearer end: a subnormal `1/(a + b)` carries few bits, which `a·inv` scales up to `1`'s ulp.
+    // From the nearer end: a subnormal `1/(a + b)` carries few bits, which `a·inv` scales up to
+    // `1`'s ulp.
     let mean = if a > b { 1.0 - b * inv } else { a * inv };
     [
       mean,
@@ -360,7 +367,8 @@ fn half_less_one(x: f64) -> (f64, f64) {
 /// zero below; else the end the density rises to, a U's heavier (0 if tied), ½ if uniform.
 fn held_mode(a: f64, b: f64) -> (Cut, bool) {
   if a > 1.0 && b > 1.0 {
-    // Halves of the exact `a − 1` and `b − 1`, so their sum cannot overflow, divided to a double-double.
+    // Halves of the exact `a − 1` and `b − 1`, so their sum cannot overflow, divided to a
+    // double-double.
     let ((ha, ha_lo), (hb, hb_lo)) = (half_less_one(a), half_less_one(b));
     let (d, d_e) = two_sum(ha, hb);
     let d_lo = d_e + (ha_lo + hb_lo);

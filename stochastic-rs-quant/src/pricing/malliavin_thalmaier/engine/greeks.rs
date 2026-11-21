@@ -1,4 +1,9 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+
 use super::super::heston::MultiHestonParams;
+use super::super::heston::MultiHestonPaths;
 use super::payoff::MtPayoff;
 use crate::QuantError;
 use crate::traits::FloatExt;
@@ -9,6 +14,7 @@ use crate::traits::FloatExt;
 ///
 /// ```
 /// use ndarray::Array2;
+/// use stochastic_rs_core::simd_rng::Deterministic;
 /// use stochastic_rs_quant::pricing::malliavin_thalmaier::{
 ///     AssetParams, MtGreeks, MtPayoff, MultiHestonParams,
 /// };
@@ -22,21 +28,23 @@ use crate::traits::FloatExt;
 ///     assets: vec![first, second], cross_corr, r: 0.0, tau: 1.0, n_steps: 9,
 /// };
 ///
-/// let engine = MtGreeks::new(params, 0.01, 16);
+/// let engine = MtGreeks::new(params, 0.01, 16).with_seed(Deterministic::new(42));
 /// let payoff = MtPayoff::DigitalPut2D { strikes: [100.0, 100.0] };
-/// // `_with_seed` keeps this doctest deterministic.
-/// let deltas = engine.all_deltas_with_seed(&payoff, 42);
+/// let deltas = engine.all_deltas(&payoff);
 /// assert_eq!(deltas.len(), 2);
 /// ```
 #[derive(Debug, Clone)]
-pub struct MtGreeks<T: FloatExt> {
-  pub params: MultiHestonParams<T>,
+pub struct MtGreeks<T: FloatExt, S: SeedExt = Unseeded> {
+  pub(super) params: MultiHestonParams<T>,
   /// Positive Poisson-kernel regularisation parameter.
   ///
   /// Its bias/variance trade-off is payoff- and model-dependent; the paper
   /// does not prescribe a universal numerical interval.
-  pub h: T,
-  pub n_paths: usize,
+  pub(super) h: T,
+  pub(super) n_paths: usize,
+  /// Each estimate draws its paths' seeds from a clone, and a bump pair reads one draw of them,
+  /// its common random numbers.
+  pub seed: S,
 }
 
 impl<T: FloatExt> MtGreeks<T> {
@@ -58,27 +66,53 @@ impl<T: FloatExt> MtGreeks<T> {
     if n_paths == 0 {
       return Err(QuantError::invalid("n_paths", "must be positive, got 0"));
     }
-    Ok(Self { params, h, n_paths })
+    Ok(Self {
+      params,
+      h,
+      n_paths,
+      seed: Unseeded,
+    })
+  }
+}
+
+impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> MtGreeks<T, S2> {
+    MtGreeks {
+      params: self.params,
+      h: self.h,
+      n_paths: self.n_paths,
+      seed,
+    }
   }
 
   /// Plain Monte Carlo price.
   pub fn price(&self, payoff: &MtPayoff<T>) -> T {
-    self.price_from_sampler(payoff, || self.params.sample())
+    self.price_at(payoff, &self.path_seeds())
   }
 
-  /// Deterministic variant of [`price`](Self::price).
-  pub fn price_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> T {
-    let mut seed_state = seed;
-    self.price_from_sampler(payoff, || {
-      self
-        .params
-        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
-    })
+  pub(super) fn path_seeds(&self) -> Vec<u64> {
+    let seed = self.seed.clone();
+    (0..self.n_paths).map(|_| seed.next_seed()).collect()
+  }
+
+  pub(super) fn sampler<'a>(
+    &'a self,
+    seeds: &'a [u64],
+  ) -> impl FnMut() -> MultiHestonPaths<T> + 'a {
+    let mut seeds = seeds.iter();
+    move || {
+      let seed = seeds.next().expect("one seed per path");
+      self.params.sample(&Deterministic::new(*seed))
+    }
+  }
+
+  pub(super) fn price_at(&self, payoff: &MtPayoff<T>, seeds: &[u64]) -> T {
+    self.price_from_sampler(payoff, self.sampler(seeds))
   }
 
   fn price_from_sampler<F>(&self, payoff: &MtPayoff<T>, mut sample: F) -> T
   where
-    F: FnMut() -> super::super::heston::MultiHestonPaths<T>,
+    F: FnMut() -> MultiHestonPaths<T>,
   {
     let disc = <T as num_traits::Float>::exp(-self.params.r * self.params.tau);
     let mut sum = T::zero();

@@ -11,7 +11,7 @@
 //! $$ \ln(1+J) \sim p\,\mathrm{Exp}(\eta_1) + (1-p)\,(-\mathrm{Exp}(\eta_2)) $$
 //!
 //! Reference: Kirkby, PROJ_Option_Pricing_Matlab
-//! Reference: Kou (2002), "A Jump-Diffusion Model for Option Pricing"
+//! Reference: Kou (2002), DOI 10.1287/mnsc.48.8.1086.166
 //!
 
 use ndarray::Array1;

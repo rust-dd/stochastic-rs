@@ -56,7 +56,8 @@ impl Kernel for NormalKernel {
   }
 }
 
-/// `e^{−y²/2 + s·y}` beside a bound at `y = 0`, `s` the tilted mode's exact offset from it: the mgf's tilt.
+/// `e^{−y²/2 + s·y}` beside a bound at `y = 0`, `s` the tilted mode's exact offset from it: the
+/// mgf's tilt.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TiltedKernel {
   pub(super) s: f64,

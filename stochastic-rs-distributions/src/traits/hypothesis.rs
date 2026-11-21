@@ -1,3 +1,5 @@
+//! `HypothesisTest`, the result trait the stats tests and the copula goodness of fit share.
+
 /// A test result: its statistic, and the rejection at the alpha the test was run with — `None` when
 /// the result carries no rejection rule (informational statistics, a bootstrap p-value alone).
 pub trait HypothesisTest {

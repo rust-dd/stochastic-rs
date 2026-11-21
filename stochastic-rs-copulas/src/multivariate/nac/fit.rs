@@ -14,7 +14,8 @@ use crate::traits::BivariateExt;
 use crate::traits::bivariate::tau_out_of_range;
 
 impl Generator {
-  /// The family's Kendall inversion on the nested range: a Clayton node needs `θ > 0` (a `Γ(1/θ)` frailty), so `τ > 0`.
+  /// The family's Kendall inversion on the nested range: a Clayton node needs `θ > 0` (a `Γ(1/θ)`
+  /// frailty), so `τ > 0`.
   pub(super) fn theta_from_tau(self, tau: f64) -> Result<f64, CopulaError> {
     match self {
       Self::Clayton if !(tau > 0.0 && tau < 1.0) => {
@@ -56,8 +57,8 @@ impl Item {
   }
 }
 
-/// The checks run in the order every multivariate fit uses: columns, rows, range, the open square, then a defined τ-b
-/// for every column.
+/// The checks run in the order every multivariate fit uses: columns, rows, range, the open square,
+/// then a defined τ-b for every column.
 pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNode, CopulaError> {
   let (n, d) = (x.nrows(), x.ncols());
   if d < 2 {
@@ -75,8 +76,8 @@ pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNo
   agglomerate(generator, tau.view())
 }
 
-/// Górecki, Hofert & Holeňa (2016), Algorithm 3 with the average over `d ≥ 2` columns: join the clusters `I`, `J` of
-/// largest mean τ̂ over `I × J` (the first in label order on a tie), θ = τ⁻¹ of that mean trimmed to the children's θ.
+/// Górecki, Hofert & Holeňa (2016), Algorithm 3 averaged over `d ≥ 2` columns: join the clusters of
+/// largest mean τ̂ (first label order on ties), θ = τ⁻¹ of it trimmed to the children's.
 pub(super) fn agglomerate(
   generator: Generator,
   tau: ArrayView2<f64>,
@@ -100,8 +101,8 @@ pub(super) fn agglomerate(
       .map_err(|e| between(e, &clusters[best.0].1, &clusters[best.1].1))?;
     let (item_b, members_b) = clusters.remove(best.1);
     let (item_a, mut members) = clusters.remove(best.0);
-    // Average linkage keeps a parent's mean at or below its children's (Górecki et al. 2017, Corollary 6.2), so the trim
-    // only absorbs the rounding of the means.
+    // Average linkage keeps a parent's mean at or below its children's (Górecki et al. 2017,
+    // Corollary 6.2), so the trim only absorbs the rounding of the means.
     let theta = [item_a.theta(), item_b.theta()]
       .into_iter()
       .flatten()
@@ -115,7 +116,8 @@ pub(super) fn agglomerate(
   }
 }
 
-/// The τ error of a join, its constraint naming the two clusters' columns, the cluster of the smaller column first.
+/// The τ error of a join, its constraint naming the two clusters' columns, the cluster of the
+/// smaller column first.
 fn between(error: CopulaError, a: &[usize], b: &[usize]) -> CopulaError {
   let CopulaError::InvalidParameter {
     name,

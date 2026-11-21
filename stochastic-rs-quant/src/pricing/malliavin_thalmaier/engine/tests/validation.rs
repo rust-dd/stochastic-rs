@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -29,16 +31,12 @@ fn correlated_stochastic_volatility_returns_a_recoverable_error() {
   let mut params = constant_volatility_params();
   params.assets[0].xi = 0.3;
   params.assets[0].rho = -0.7;
-  let engine = MtGreeks::new(params, 0.01, 8);
+  let engine = MtGreeks::new(params, 0.01, 8).with_seed(Deterministic::new(0xc077_e1a7));
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-  let error = engine
-    .try_delta_with_seed(&payoff, 0, 0xc077_e1a7)
-    .unwrap_err();
-  let cross_error = engine
-    .try_cross_gamma_with_seed(&payoff, 0, 1, 0xc077_e1a7)
-    .unwrap_err();
+  let error = engine.try_delta(&payoff, 0).unwrap_err();
+  let cross_error = engine.try_cross_gamma(&payoff, 0, 1).unwrap_err();
 
   assert!(
     error.to_string().contains("xi == 0 or rho == 0"),
@@ -59,7 +57,12 @@ fn stochastic_volatility_is_supported_when_price_noise_is_independent() {
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-  assert!(engine.try_delta_with_seed(&payoff, 0, 0x1ade_0e0d).is_ok());
+  assert!(
+    engine
+      .with_seed(Deterministic::new(0x1ade_0e0d))
+      .try_delta(&payoff, 0)
+      .is_ok()
+  );
 }
 
 /// Conditional on variance paths with `rho=0` and independent asset-price
@@ -80,16 +83,16 @@ fn independent_stochastic_vol_delta_matches_conditional_benchmark() {
   let n_paths = 10_000;
   let seed = 0x1ade_c011_d17a;
   let estimate = MtGreeks::new(params.clone(), 0.01, n_paths)
-    .try_delta_with_seed(&payoff, 0, seed)
+    .with_seed(Deterministic::new(seed))
+    .try_delta(&payoff, 0)
     .unwrap();
   let dt = params.tau / (params.n_steps - 1) as f64;
   let discount = (-params.r * params.tau).exp();
-  let mut seed_state = seed;
+  let seeds = Deterministic::new(seed);
   let mut conditional_sum = 0.0;
 
   for _ in 0..n_paths {
-    let path_seed = stochastic_rs_core::simd_rng::derive_seed(&mut seed_state);
-    let paths = params.sample_with_seed(path_seed);
+    let paths = params.sample(&Deterministic::new(seeds.next_seed()));
     let integrated = (0..2)
       .map(|asset| {
         (0..params.n_steps - 1)
@@ -126,7 +129,8 @@ fn cross_gamma_keeps_the_down_bump_positive_for_small_spots() {
 
   assert!(
     engine
-      .try_cross_gamma_with_seed(&payoff, 1, 0, 0x5a11_5a07)
+      .with_seed(Deterministic::new(0x5a11_5a07))
+      .try_cross_gamma(&payoff, 1, 0)
       .is_ok()
   );
 }
@@ -153,6 +157,6 @@ fn fallible_delta_rejects_invalid_payoff_parameters() {
   ];
 
   for payoff in invalid {
-    assert!(engine.try_delta_with_seed(&payoff, 0, 0xf1a1_7e00).is_err());
+    assert!(engine.try_delta(&payoff, 0).is_err());
   }
 }

@@ -1,7 +1,7 @@
-//! Genz's separation-of-variables integrand for `P(Z ≤ b)`, `Z ~ N(0, LLᵀ)`, and its t form over the `χ_ν/√ν` scale,
-//! with the variables ordered per query by Gibson, Glasbey & Elston's prioritization as Genz's MVSORT applies it.
-//! Reference: Genz, A. (1992), "Numerical Computation of Multivariate Normal Probabilities", JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§§2–3)
-//! Reference: Genz, A., Bretz, F. (2002), "Comparison of Methods for the Computation of Multivariate t Probabilities", JCGS 11(4) 950–971, DOI 10.1198/106186002394 (§2.3, eqs. 13–14)
+//! Genz's separation-of-variables integrand for `P(Z ≤ b)`, `Z ~ N(0, LLᵀ)`, and its t form over
+//! the `χ_ν/√ν` scale, ordered per query by Gibson–Glasbey–Elston prioritization (Genz's MVSORT).
+//! Reference: Genz, A. (1992), JCGS 1(2) 141–149, DOI 10.1080/10618600.1992.10477010 (§§2–3)
+//! Reference: Genz, Bretz (2002), JCGS 11(4) 950–971, DOI 10.1198/106186002394 (§2.3, eqs. 13–14)
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -15,7 +15,8 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::qmc::sobol_points;
 
-/// The coordinates of a cdf row below 1, or `None` when one is 0 and the row's cdf is 0: a unit coordinate drops out.
+/// The coordinates of a cdf row below 1, or `None` when one is 0 and the row's cdf is 0: a unit
+/// coordinate drops out.
 pub(crate) fn open_coordinates(u: ArrayView1<f64>) -> Option<Vec<usize>> {
   if u.iter().any(|&x| x == 0.0) {
     return None;
@@ -23,8 +24,8 @@ pub(crate) fn open_coordinates(u: ArrayView1<f64>) -> Option<Vec<usize>> {
   Some((0..u.len()).filter(|&i| u[i] < 1.0).collect())
 }
 
-/// Genz (1992) §2 with `a = −∞`: `y_i = Φ⁻¹(w_i e_i)`, `e_{i+1} = Φ((b_{i+1} − Σ_{j≤i} l_{i+1,j} y_j)/l_{i+1,i+1})`,
-/// value `∏ e_i` from `e₁ = Φ(b₁/l₁₁)`; a subnormal `e_i` gives 0, as `w_i e_i` could underflow and `Φ⁻¹(0)` meet a zero of `L`.
+/// Genz (1992) §2 at `a = −∞`: `e_{i+1} = Φ((b_{i+1} − Σ_{j≤i} l_{i+1,j} y_j)/l_{i+1,i+1})`,
+/// `y_i = Φ⁻¹(w_i e_i)`, `∏ e_i`; a subnormal `e_i` gives 0, lest `Φ⁻¹(0)` meet a zero of `L`.
 fn integrand(l: &Array2<f64>, b: &[f64], mut e: f64, w: &[f64], y: &mut [f64]) -> f64 {
   let mut f = e;
   for i in 1..b.len() {
@@ -39,8 +40,8 @@ fn integrand(l: &Array2<f64>, b: &[f64], mut e: f64, w: &[f64], y: &mut [f64]) -
   f
 }
 
-/// Genz's MVSORT on the open coordinates: each step puts next the variable of least conditional probability given the
-/// expected values before it, returning that order's factor and limits; `None` once no conditional variance passes `1e-10·i`.
+/// Genz's MVSORT: each step takes the variable of least conditional probability given the expected
+/// values before it; `None` once no conditional variance passes `1e-10·i`.
 pub(crate) fn prioritize(
   corr: &Array2<f64>,
   open: &[usize],
@@ -80,7 +81,8 @@ pub(crate) fn prioritize(
   Some((l, lim))
 }
 
-/// `P(Z ≤ b)` for `Z ~ N(0, LLᵀ)`, `L` lower triangular, averaged over `points` of shape `(N, d − 1)`.
+/// `P(Z ≤ b)` for `Z ~ N(0, LLᵀ)`, `L` lower triangular, averaged over `points` of shape
+/// `(N, d − 1)`.
 pub(crate) fn mvn_upper(l: &Array2<f64>, b: &[f64], points: ArrayView2<f64>) -> f64 {
   let mut y = vec![0.0; b.len() - 1];
   let e = norm_cdf(b[0] / l[[0, 0]]);
@@ -92,8 +94,8 @@ pub(crate) fn mvn_upper(l: &Array2<f64>, b: &[f64], points: ArrayView2<f64>) -> 
   total / points.nrows() as f64
 }
 
-/// `√(χ²_ν⁻¹(w₀)/ν)` over the first Sobol coordinate, which every dimension shares: the radial scale of Genz & Bretz
-/// (2002) eqs. 13–14.
+/// `√(χ²_ν⁻¹(w₀)/ν)` over the first Sobol coordinate, which every dimension shares: the radial
+/// scale of Genz & Bretz (2002) eqs. 13–14.
 pub(crate) fn chi_scale(nu: f64) -> Array1<f64> {
   let chi = SimdChiSquared::<f64>::new(nu);
   sobol_points(1).column(0).mapv(|w| {
@@ -102,8 +104,8 @@ pub(crate) fn chi_scale(nu: f64) -> Array1<f64> {
   })
 }
 
-/// `P(T ≤ b)` for `T = Z/r`, `r = χ_ν/√ν`: the normal integrand at `r b` over `points[:, 1..]`, the scale from
-/// [`chi_scale`].
+/// `P(T ≤ b)` for `T = Z/r`, `r = χ_ν/√ν`: the normal integrand at `r b` over `points[:, 1..]`, the
+/// scale from [`chi_scale`].
 pub(crate) fn mvt_upper(
   l: &Array2<f64>,
   b: &[f64],

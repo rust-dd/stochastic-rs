@@ -143,11 +143,11 @@ def test_callable_bond_on_the_hull_white_tree():
 
 def test_callable_bond_tree_reads_each_of_its_arguments():
     tree = sr.HullWhiteCallableBond(initial_rate=0.04, mean_reversion=0.3, theta=0.05, sigma=0.012, horizon=3.0, steps=36)
-    assert tree.zero_coupon_bond_price() == pytest.approx(0.8783392453205547, rel=1e-12)
+    assert tree.zero_coupon_bond_price() == pytest.approx(0.8784165416032598, rel=1e-12)
     priced = tree.price(100.0, 0.05, [0.5, 1.0, 1.5, 2.0, 2.5, 3.0], calls=[(2.0, 101.0)], puts=[(1.0, 99.0)])
-    assert priced == pytest.approx((101.63286707384307, 101.76964775896076, 0.20929394231848164, 0.07118099152962998), rel=1e-9)
+    assert priced == pytest.approx((101.64174381552358, 101.77794153378728, 0.2028463240456233, 0.06617004095160439), rel=1e-9)
     positional = sr.HullWhiteCallableBond(0.02, 0.1, 0.03, 0.008, 2.0, 24)
-    assert positional.zero_coupon_bond_price() == pytest.approx(0.9591242666357012, rel=1e-12)
+    assert positional.zero_coupon_bond_price() == pytest.approx(0.9591305136608149, rel=1e-12)
 
 def test_bachelier_pricer_round_trips_the_normal_volatility():
     pricer = sr.BachelierPricer(s=100.0, v=20.0, k=95.0, r=0.05, tau=0.75, q=0.02)
@@ -171,7 +171,7 @@ def test_tree_swaption_calibrators_fit_a_small_grid():
     assert a > 0.0 and sigma > 0.0 and math.isfinite(rmse)
     hw = sr.HullWhiteSwaptionCalibrator(quotes, curve, initial_rate=0.03, theta=0.03).calibrate()
     assert hw[1] > 0.0 and math.isfinite(hw[2])
-    g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=60).calibrate()
+    g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, max_iters=60).calibrate()
     assert len(g2) == 7 and abs(g2[4]) < 1.0 and math.isfinite(g2[5])
     assert "max_iters=None" in sr.G2ppSwaptionCalibrator.__text_signature__
     sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, max_iters=None)
@@ -600,16 +600,34 @@ def test_a_degenerate_sabr_vol_and_an_expired_option_keep_their_pairs():
 
 
 def test_the_jump_fourier_models_keep_their_keywords_and_prices():
+    # The pins are Lewis's integral by mpmath at 40 digits.
     bates = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, mu_j=-0.05, sigma_j=0.1)
     kw = sr.BatesFourier(**{"lambda": 0.5}, **bates)
-    assert kw.price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(5.684829693931341, rel=1e-12)
+    assert kw.price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(5.6848297048328975, rel=1e-12)
     positional = sr.BatesFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, -0.05, 0.1)
-    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(9.646596119102071, rel=1e-12)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(9.64659612731218, rel=1e-12)
     hkde = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, lam=0.5, p_up=0.4, eta1=10.0, eta2=5.0)
-    assert sr.HKDEFourier(**hkde).price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(6.559356757760902, rel=1e-12)
+    assert sr.HKDEFourier(**hkde).price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(6.559356772752303, rel=1e-12)
     positional = sr.HKDEFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, 0.4, 10.0, 5.0)
-    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(10.316255693798205, rel=1e-12)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(10.316255704617463, rel=1e-12)
     with pytest.raises(ValueError, match=r"lambda must satisfy `lambda\.is_finite\(\) && lambda >= 0\.0`, got lambda = -0\.5"):
         sr.HKDEFourier(**{**hkde, "lam": -0.5})
     with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`, got sigma = -0\.3"):
         sr.HKDEFourier(**{**hkde, "sigma_v": -0.3})
+
+
+def test_the_svi_and_ssvi_calibrators_carry_their_fits_stop():
+    truth = sr.SviRawParams(0.02, 0.1, -0.4, 0.05, 0.2)
+    ks = [-0.5 + 0.05 * i for i in range(21)]
+    fit = sr.SviCalibrator(ks, [truth.total_variance(k) for k in ks])
+    assert fit.converged() and fit.message() == "converged" and fit.rmse() < 1e-9
+    # eta = 2.5 breaks the calendar bound over these thetas, so the projection caps it.
+    capped = sr.SsviParams(-0.3, 2.5, 0.5)
+    grid = [-0.3 + 0.05 * i for i in range(13)]
+    slices = [
+        (grid, [capped.total_variance(k, theta) for k in grid], theta)
+        for theta in (0.02, 0.04, 0.08)
+    ]
+    projected = sr.SsviCalibrator(slices)
+    assert not projected.converged() and projected.rmse() > 1e-3
+    assert projected.message() == "stopped at the bound of eta"

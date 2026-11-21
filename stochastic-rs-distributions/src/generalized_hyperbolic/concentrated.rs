@@ -1,4 +1,5 @@
-//! The density from `r = √(λ² + δ²γ²) = 50`: the normal mixture at its GIG clock's saddles, as the Debye forms meet.
+//! The density from `r = √(λ² + δ²γ²) = 50`: the normal mixture at its GIG clock's saddles, as the
+//! Debye forms meet.
 
 use super::gamma_of;
 use crate::special::LARGE_ORDER;
@@ -59,7 +60,8 @@ pub(super) fn of_law((lambda, alpha, beta, delta): (f64, f64, f64, f64)) -> Opti
   clock((lambda, alpha, beta, delta), (gamma, r0))
 }
 
-/// The [`Clock`] of a law whose saddle the density takes as it is: within `2^{±512}`, both squares normal.
+/// The [`Clock`] of a law whose saddle the density takes as it is: within `2^{±512}`, both squares
+/// normal.
 pub(super) fn clock(
   (lambda, alpha, beta, delta): (f64, f64, f64, f64),
   (gamma, r0): (f64, f64),
@@ -134,7 +136,8 @@ pub(super) fn at_saddle(
   }
   let (chi, psi, order, w0, r0, omega) = (c.chi, c.psi, c.order, c.w0, c.r0, c.omega);
   let w1 = saddle(order.0, root, alpha);
-  // Past the normal range `w₁` puts `d` beyond the law's reach: the divergence from `w₀` passes `e^{−10⁴}`.
+  // Past the normal range `w₁` puts `d` beyond the law's reach: the divergence from `w₀` passes
+  // `e^{−10⁴}`.
   if !w1.is_normal() {
     return 0.0;
   }

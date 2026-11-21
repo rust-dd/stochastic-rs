@@ -1,4 +1,4 @@
-//! Levenberg–Marquardt fit of a surrogate $\tilde F$ on its exact Jacobian (Horvath et al., §3.3):
+//! Levenberg–Marquardt fit of `F̃` on its exact Jacobian (§3.3 of "Deep learning volatility"):
 //!
 //! $$
 //! \hat\theta = \arg\min_{\theta}\ \sum_{k}
@@ -6,7 +6,7 @@
 //! $$
 //!
 //! Works in scaled box coordinates; a solution on the box edge is a warning rather than an answer.
-//! Horvath, Muguruza & Tomas (2021), "Deep learning volatility", Quant. Finance 21(1), 11–27.
+//! Reference: Horvath et al. (2021), Quant. Finance 21(1), 11–27, DOI 10.1080/14697688.2020.1817974
 
 use std::cell::RefCell;
 
@@ -14,6 +14,7 @@ use anyhow::Result;
 use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::calibration::least_squares::LmOptions;
 use stochastic_rs_quant::calibration::least_squares::minimize;
@@ -298,8 +299,8 @@ impl<M: SurrogateModel> Problem<'_, M> {
 }
 
 impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
-  fn set_params(&mut self, x: &Array1<f64>) {
-    self.x = x.clone();
+  fn set_params(&mut self, x: ArrayView1<f64>) {
+    self.x = x.to_owned();
     *self.cache.borrow_mut() = None;
   }
 

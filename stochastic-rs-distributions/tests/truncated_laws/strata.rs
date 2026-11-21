@@ -31,7 +31,8 @@ const HANG_LAWS: [(f64, f64, f64, f64); 7] = [
   (MAX, 1.0, -MAX, -1.0),
 ];
 
-/// `per_stratum` cases of `stratum` from its own stream of `seed`; the extremes begin with the hang laws.
+/// `per_stratum` cases of `stratum` from its own stream of `seed`; the extremes begin with the hang
+/// laws.
 pub fn draw(stratum: Stratum, seed: u64, per_stratum: usize) -> Vec<Case> {
   let mut g = Gen(seed ^ (0xA076_1D64_78BD_642F_u64.wrapping_mul(stratum as u64 + 1)));
   let mut out = Vec::new();
@@ -96,7 +97,8 @@ fn beta_interval(g: &mut Gen) -> (f64, f64) {
   }
 }
 
-/// The gamma's interval within a few scales of its mode: a bound at 0, ordinary bounds, an open end.
+/// The gamma's interval within a few scales of its mode: a bound at 0, ordinary bounds, an open
+/// end.
 fn gamma_interval(g: &mut Gen, k: f64, theta: f64) -> (f64, f64) {
   let (m, sd) = ((k - 1.0).max(0.0) * theta, k.sqrt() * theta);
   let lo = if g.coin(0.3) {
@@ -130,7 +132,8 @@ fn unit(g: &mut Gen) -> Option<Law> {
   }
 }
 
-/// Shapes in `[0.1, 100]`, bounds within a few standard deviations of the mode: the parents keep their digits here.
+/// Shapes in `[0.1, 100]`, bounds within a few standard deviations of the mode: the parents keep
+/// their digits here.
 fn ordinary(g: &mut Gen) -> Option<Law> {
   match g.next() % 4 {
     0 => {
@@ -203,7 +206,8 @@ fn bound(g: &mut Gen) -> Option<Law> {
   Some(Law::B { a, b, lo, up })
 }
 
-/// A shape below 1 whose bound lies between its singular end's first rungs (a tenth and a hundredth of the width).
+/// A shape below 1 whose bound lies between its singular end's first rungs (a tenth and a hundredth
+/// of the width).
 fn rungs(g: &mut Gen) -> Option<Law> {
   if g.coin(0.5) {
     let (k, theta) = (g.log_uniform(0.02, 0.98), g.log_uniform(1e-3, 1e3));

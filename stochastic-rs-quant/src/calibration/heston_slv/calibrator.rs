@@ -1,5 +1,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::traits::Grid2D;
 
 use crate::OptionQuote;
@@ -47,10 +49,10 @@ impl ToModel for Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>> {
 /// the forward Kolmogorov equation after Wyns & Du Toit. Both reproduce the
 /// vanilla surface; the cloud is cheap and noisy, the PDE deterministic and
 /// smooth, and the fit each reports is read off its own density.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum LeverageMethod {
-  Particle(ParticleMethod),
+pub enum LeverageMethod<S: SeedExt = Unseeded> {
+  Particle(ParticleMethod<S>),
   FokkerPlanck(FokkerPlanckMethod),
 }
 
@@ -77,7 +79,7 @@ impl Default for LeverageMethod {
 /// - Cozma, Mariapragassam & Reisinger (2017), arXiv:1701.06001, §3.4
 /// - Wyns & Du Toit (2016), arXiv:1611.02961, §4
 #[derive(Clone, Debug)]
-pub struct HestonSlvCalibrator {
+pub struct HestonSlvCalibrator<S: SeedExt = Unseeded> {
   /// Spot.
   s: f64,
   /// Risk-free rate.
@@ -99,8 +101,8 @@ pub struct HestonSlvCalibrator {
   pub local_vol: Option<Array2<f64>>,
   /// [`Dupire::eps`], the floor of the Dupire denominator.
   pub dupire_eps: f64,
-  /// How the leverage is calibrated and tuned.
-  pub method: LeverageMethod,
+  /// How the leverage is calibrated and tuned; its seed is the particle cloud's.
+  pub method: LeverageMethod<S>,
   /// The Heston fit's knobs, its trail in `diagnostics`; the grid reads `loss_metrics`, a pinned
   /// fit refuses the rest, and `regularization` is `Unsupported`.
   pub options: CalibrationOptions,
@@ -132,7 +134,9 @@ impl HestonSlvCalibrator {
       options: CalibrationOptions::default(),
     }
   }
+}
 
+impl<S: SeedExt> HestonSlvCalibrator<S> {
   pub fn s(&self) -> f64 {
     self.s
   }
@@ -187,10 +191,25 @@ impl HestonSlvCalibrator {
     self
   }
 
-  /// Calibrate the leverage by the particle method with this tuning.
-  pub fn with_particle_method(mut self, method: ParticleMethod) -> Self {
-    self.method = LeverageMethod::Particle(method);
-    self
+  /// Calibrate the leverage by the particle method with this tuning and seed.
+  pub fn with_particle_method<S2: SeedExt>(
+    self,
+    method: ParticleMethod<S2>,
+  ) -> HestonSlvCalibrator<S2> {
+    HestonSlvCalibrator {
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      strikes: self.strikes,
+      maturities: self.maturities,
+      calls: self.calls,
+      eta: self.eta,
+      heston_params: self.heston_params,
+      local_vol: self.local_vol,
+      dupire_eps: self.dupire_eps,
+      method: LeverageMethod::Particle(method),
+      options: self.options,
+    }
   }
 
   /// Calibrate the leverage by the forward Kolmogorov equation with this
@@ -352,7 +371,7 @@ impl HestonSlvCalibrator {
   }
 }
 
-impl HestonSlvCalibrator {
+impl<S: SeedExt> HestonSlvCalibrator<S> {
   /// The leverage by the chosen method, and the input grid repriced from
   /// that method's own density — the particle cloud's payoff averages, or
   /// the trapezoid rule over the finite-volume marginal — row-major in the
@@ -449,7 +468,7 @@ fn first_where(values: &[f64], bad: impl Fn(f64) -> bool) -> Option<(usize, f64)
   values.iter().copied().enumerate().find(|&(_, v)| bad(v))
 }
 
-impl Calibrator for HestonSlvCalibrator {
+impl<S: SeedExt> Calibrator for HestonSlvCalibrator<S> {
   type Params = HestonSlvFit;
   type Output = Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>>;
   type Error = QuantError;

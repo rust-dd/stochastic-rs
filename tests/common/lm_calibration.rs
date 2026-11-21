@@ -171,15 +171,7 @@ pub fn cases() -> Vec<Case> {
     max_rmse: 1e-9,
     run: Box::new(move || {
       let fit = calibrate_svi(&svi_ks, &ws, None);
-      let rmse = (svi_ks
-        .iter()
-        .zip(&ws)
-        .map(|(&k, &w)| (fit.total_variance(k) - w).powi(2))
-        .sum::<f64>()
-        / ws.len() as f64)
-        .sqrt();
-      // Surface calibration returns parameters without a termination report.
-      (None, rmse)
+      (Some(fit.converged), fit.rmse())
     }),
   });
   let truth = SsviParams::new(-0.4, 0.7, 0.4);
@@ -193,17 +185,7 @@ pub fn cases() -> Vec<Case> {
     max_rmse: 1e-9,
     run: Box::new(move || {
       let fit = calibrate_ssvi(&slices, None);
-      let squared = slices
-        .iter()
-        .flat_map(|s| {
-          s.log_moneyness
-            .iter()
-            .zip(&s.total_variance)
-            .map(move |(&k, &w)| (fit.total_variance(k, s.theta) - w).powi(2))
-        })
-        .sum::<f64>();
-      let rmse = (squared / (slices.len() * slices[0].log_moneyness.len()) as f64).sqrt();
-      (None, rmse)
+      (Some(fit.converged), fit.rmse())
     }),
   });
   cases

@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::HestonMalliavinConfig;
 use super::HestonMalliavinEstimator;
 use super::HestonModel;
@@ -6,11 +8,11 @@ use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
 
-fn config() -> HestonMalliavinConfig {
+fn config() -> HestonMalliavinConfig<Deterministic> {
   HestonMalliavinConfig {
     paths: 140_000,
     steps: 64,
-    seed: 8_675_309,
+    seed: Deterministic::new(8_675_309),
     initial_variance_bump: 1e-4,
     minimum_relative_initial_variance_bump: 0.03,
     minimum_integrated_variance: 1e-14,
@@ -57,7 +59,7 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
     tau: 0.5,
   };
   let strike = 100.0;
-  let estimator = HestonMalliavinEstimator::new(model, config()).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, config());
   let result = estimator.estimate(&VanillaPortfolio::call(strike)).unwrap();
   let spot_bump = 0.1;
   let variance_bump = 1e-5;
@@ -71,26 +73,26 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
   let reference_variance_vega = (variance_up - variance_down) / (2.0 * variance_bump);
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference_price,
     1.5e-2,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference_delta,
     5e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference_gamma,
     1.5e-3,
   );
   assert_mc_close(
-    result.initial_variance_vega.value,
-    result.initial_variance_vega.standard_error,
+    result.initial_variance_vega.mean,
+    result.initial_variance_vega.std_err,
     reference_variance_vega,
     4e-1,
   );

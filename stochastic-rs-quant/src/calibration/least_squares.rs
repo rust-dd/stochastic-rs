@@ -20,6 +20,7 @@ use basin::StepOutcome;
 use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
@@ -33,7 +34,7 @@ use crate::calibration::Regularization;
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
 /// Model coordinates and parameter projections remain owned by the calibrator.
 pub trait LeastSquaresProblem {
-  fn set_params(&mut self, params: &Array1<f64>);
+  fn set_params(&mut self, params: ArrayView1<f64>);
 
   fn params(&self) -> Array1<f64>;
 
@@ -170,6 +171,25 @@ pub(crate) fn cosines<P: LeastSquaresProblem>(
   Some(column_cosines(&residuals, &pulled_jacobian(problem, pull)?))
 }
 
+/// [`cosines`] from `jacobian`, `∂r/∂θ` in the natural parameters: a coordinate whose map has
+/// rounded onto its bound keeps a column there, where the optimiser's coordinates zero it.
+pub(crate) fn natural_cosines<P: LeastSquaresProblem>(
+  problem: &mut P,
+  jacobian: Array2<f64>,
+  pull: Option<&Regularization>,
+) -> Option<Vec<f64>> {
+  let pull = pull.filter(|reg| reg.is_active());
+  let residuals = pulled_residuals(problem, pull)?;
+  let jacobian = match pull {
+    Some(reg) => {
+      let rows = reg.jacobian_rows(Array2::eye(jacobian.ncols()));
+      reg.augment_jacobian(jacobian, rows)
+    }
+    None => jacobian,
+  };
+  Some(column_cosines(&residuals, &jacobian))
+}
+
 impl LmReport {
   /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
   pub fn message(&self) -> &'static str {
@@ -216,18 +236,29 @@ impl LmReport {
         reason: "the start's residuals or Jacobian are not finite".into(),
       });
     }
+    Ok(self.fit(params, market, model, metrics, history))
+  }
+
+  /// The fit as [`calibrated`](Self::calibrated) builds it, a start it could not evaluate included:
+  /// that one reads `solver failed` at the start's parameters.
+  pub(crate) fn fit<P>(
+    &self,
+    params: P,
+    market: &[f64],
+    model: &[f64],
+    metrics: &[LossMetric],
+    history: Vec<CalibrationHistory<P>>,
+  ) -> Calibrated<P> {
     let fit = Calibrated::repriced(params, market, model, metrics, self.converged);
     let settled = self.settled(fit.loss.get(LossMetric::Rmse), market, PRICER_ACCURACY);
     let fit = Calibrated {
       converged: settled.converged,
       ..fit
     };
-    Ok(
-      fit
-        .with_iterations(self.iterations)
-        .with_message(settled.message())
-        .with_history(history),
-    )
+    fit
+      .with_iterations(self.iterations)
+      .with_message(settled.message())
+      .with_history(history)
   }
 }
 
@@ -263,15 +294,15 @@ impl<P: Clone> Trail<P> {
     market: &[f64],
     model: &[f64],
     params: &P,
-    residuals: &Array1<f64>,
+    residuals: ArrayView1<f64>,
   ) {
     if !options.record_history {
       return;
     }
     let residuals = if self.negated {
-      -residuals
+      -&residuals
     } else {
-      residuals.clone()
+      residuals.to_owned()
     };
     let loss = CalibrationLossScore::compute_selected(market, model, options.loss_metrics);
     let entry = CalibrationHistory::new(self.entries.len(), params.clone(), residuals, loss);
@@ -305,7 +336,7 @@ impl<P: LeastSquaresProblem> Objective<P> {
     let mut coordinates = self.coordinates.borrow_mut();
     let mut model = self.model.borrow_mut();
     if coordinates.as_ref() != Some(x) {
-      model.set_params(x);
+      model.set_params(x.view());
       *coordinates = Some(x.clone());
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
@@ -462,7 +493,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     model.accept();
   }
   // A rejected or failed trial may be the last callback. Return the accepted fit.
-  model.set_params(&best);
+  model.set_params(best.view());
   (
     model,
     LmReport {
@@ -524,4 +555,7 @@ where
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+pub(crate) mod checks;
+
+#[cfg(test)]
+mod tests;

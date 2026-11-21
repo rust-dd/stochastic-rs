@@ -1,17 +1,13 @@
-//! # Farlie-Gumbel-Morgenstern (FGM) copula
+//! Farlie–Gumbel–Morgenstern (FGM) copula, a symmetric perturbation of independence with no tail
+//! dependence; `|τ| ≤ 2/9`, so it suits weakly dependent margins only.
 //!
 //! $$
 //! C_\theta(u,v) = uv + \theta\, u(1-u)\, v(1-v), \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Symmetric perturbation of independence with no tail dependence; Kendall's tau is bounded by
-//! $|\tau| \le 2/9 \approx 0.222$, so it suits weakly dependent margins only.
-//!
-//! Reference: Farlie, D.J.G. (1960), "The Performance of Some Correlation
-//! Coefficients for a General Bivariate Distribution", *Biometrika* 47, 307-323.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Example 3.12.
-//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Morgenstern generator (the conditional inverse), DOI 10.1002/9781118150740.
+//! Reference: Farlie, D.J.G. (1960), Biometrika 47, 307-323, DOI 10.1093/biomet/47.3-4.307.
+//! Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Example 3.12, DOI 10.1007/0-387-28678-0.
+//! Reference: Johnson, M.E. (1987), Wiley, the Morgenstern generator, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -52,8 +48,8 @@ impl Fgm {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `a = θ(1 − 2v)` and `1 ± a`, the one below 1/2 as `1 − |a| = (1 − |θ|) + 2|θ| min(v, 1 − v)`: non-negative terms,
-  /// `1 − |θ|` and `1 − v` exact there, where `1 ± a` would round `1 − 2v` and cancel.
+  /// `a = θ(1 − 2v)` and `1 ± a`, the one below 1/2 as `1 − |a| = (1 − |θ|) + 2|θ| min(v, 1 − v)`:
+  /// non-negative terms, exact there, where `1 ± a` would round `1 − 2v` and cancel.
   fn slope(theta: f64, v: f64) -> (f64, f64, f64) {
     let a = theta * (1.0 - 2.0 * v);
     let near = || (1.0 - theta.abs()) + 2.0 * theta.abs() * v.min(1.0 - v);
@@ -63,8 +59,8 @@ impl Fgm {
     (a, above, below)
   }
 
-  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
-  /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
+  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)`, `D` a
+  /// sum of non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` is `0/0`.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
       let (a, above, below) = Self::slope(theta, v);
@@ -73,7 +69,8 @@ impl Fgm {
       } else {
         above * above - 4.0 * a * y
       };
-      // `(1 + a) + √D` vanishes only at level 0 on `a = −1`; the floor answers 0 there without a branch.
+      // `(1 + a) + √D` vanishes only at level 0 on `a = −1`; the floor answers 0 there without a
+      // branch.
       2.0 * y / (above + discriminant.sqrt()).max(f64::MIN_POSITIVE)
     }
   }
@@ -128,7 +125,8 @@ impl BivariateExt for Fgm {
     copula_cdf(x, |u, v| u * v + theta * u * (1.0 - u) * v * (1.0 - v))
   }
 
-  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, as `u((1 + a) − au)`: two non-negative terms, `a = θ(1 − 2v)`.
+  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, as `u((1 + a) − au)`: two non-negative
+  /// terms, `a = θ(1 − 2v)`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -167,7 +165,7 @@ impl BivariateExt for Fgm {
 
   /// FGM is a bounded perturbation of independence — no tail dependence
   /// in either tail, for any $\theta \in [-1, 1]$.
-  /// Reference: Nelsen, R.B. (2006), Table 5.1.
+  /// Reference: Nelsen, R.B. (2006), Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {

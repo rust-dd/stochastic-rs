@@ -9,12 +9,12 @@
 //! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2} = e^{S_e}\cosh S_o.
 //! $$
 //!
-//! Reference: Temme, N.M. (1975), "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
-//! Reference: Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions I_ν(z) and K_ν(z) of real order and complex argument, to selected accuracy", *Computer Physics Communications* 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
-//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.6 (`bessik`).
-//! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2–10.30.3 (`K_ν` as `x → 0`, below `x = 1e-307`), <https://dlmf.nist.gov/10.30>.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (the recurrence whose ratio form sums `ln K` where `K` overflows), <https://dlmf.nist.gov/10.29.1>.
+//! Reference: Temme (1975), J. Comput. Phys. 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
+//! Reference: Thompson, Barnett (1987), 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
+//! Reference: Press, W.H. et al. (2007), Numerical Recipes 3rd ed., Cambridge UP, §6.6 (`bessik`).
+//! Reference: Olver (1954), Philos. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021.
+//! Reference: NIST DLMF, eq. 10.30.2–10.30.3, <https://dlmf.nist.gov/10.30>.
+//! Reference: NIST DLMF, eq. 10.29.1, <https://dlmf.nist.gov/10.29.1>.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::PI;
@@ -96,7 +96,8 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
   (gam1, scale * odd.cosh())
 }
 
-/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
+/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at
+/// `x = ∞`.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   if !nu.is_finite() || x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -191,7 +192,8 @@ pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
   debye_factor(nu, x).ln()
 }
 
-/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding of its own.
+/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding
+/// of its own.
 pub(crate) fn debye_shape_parts(nu: f64, x: f64) -> (f64, f64) {
   ln_parts(debye_factor(nu, x), 0.0, 0)
 }
@@ -208,7 +210,8 @@ fn ln_debye_k(nu: f64, x: f64) -> f64 {
   m.ln() - d.eta_minus_z
 }
 
-/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow at a finite order.
+/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow
+/// at a finite order.
 fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
   let d = debye(nu, x);
   (
@@ -249,7 +252,8 @@ fn tiny_argument(nu: f64, x: f64, log: bool) -> f64 {
   }
 }
 
-/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on with, from `d = ln(2/x)`.
+/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on
+/// with, from `d = ln(2/x)`.
 fn temme_head(mu: f64, d: f64) -> (f64, f64, f64, f64) {
   let pimu = PI * mu;
   let fact = if pimu.abs() < EPS {

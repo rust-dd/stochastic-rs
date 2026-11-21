@@ -27,6 +27,7 @@ use stochastic_rs::quant::pricing::chooser::ChooserPricer;
 use stochastic_rs::quant::pricing::cliquet::CliquetPricer;
 use stochastic_rs::quant::pricing::compound::CompoundPricer;
 use stochastic_rs::quant::pricing::compound::CompoundType;
+use stochastic_rs::quant::pricing::exotic::AutocallableNote;
 use stochastic_rs::quant::pricing::exotic::BarrierOption;
 use stochastic_rs::quant::pricing::exotic::CliquetOption;
 use stochastic_rs::quant::pricing::exotic::ComplexChooserOption;
@@ -52,6 +53,7 @@ use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs::quant::pricing::spread::McSpreadPricer;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::ModelPricer;
 
 const S: f64 = 100.0;
@@ -126,6 +128,14 @@ fn fourier(c: &mut Criterion) {
       STRIKES
         .iter()
         .map(|&k| LewisPricer::price_call(&heston, S, k, R, Q, 1.0))
+        .sum::<f64>()
+    })
+  });
+  group.bench_function("blanket_9", |b| {
+    b.iter(|| {
+      STRIKES
+        .iter()
+        .map(|&k| heston.price_call(S, k, R, Q, 1.0))
         .sum::<f64>()
     })
   });
@@ -274,14 +284,14 @@ fn bench_exotics(c: &mut Criterion) {
   group.bench_function("barrier_up_out_call", |b| {
     b.iter(|| black_box(&barrier).price(black_box(&up_out), S, R, Q, 1.0))
   });
-  let double = DoubleBarrierPricer::new(0.25).with_terms(50);
+  let double = DoubleBarrierPricer::new(0.25);
   let corridor = DoubleBarrierOption {
     strike: 100.0,
     lower: 70.0,
     upper: 130.0,
     option_type: OptionType::Call,
   };
-  group.bench_function("double_barrier_50_terms", |b| {
+  group.bench_function("double_barrier", |b| {
     b.iter(|| black_box(&double).price(black_box(&corridor), S, R, Q, 1.0))
   });
   let lookback = LookbackPricer::new(0.25);
@@ -335,41 +345,39 @@ fn bench_mc_exotics(c: &mut Criterion) {
   group
     .sample_size(10)
     .measurement_time(Duration::from_secs(10));
-  let barrier = McBarrierPricer {
-    n_paths: 20_000,
-    n_steps: 252,
+  let barrier = McBarrierPricer::new(0.2, 20_000, 252).with_seed(Deterministic::new(1));
+  let up_and_out = BarrierOption {
+    strike: 100.0,
+    barrier: 120.0,
+    rebate: 0.0,
+    barrier_type: BarrierType::UpAndOut,
+    option_type: OptionType::Call,
   };
   group.bench_function("mc_barrier_20k_paths_252_steps", |b| {
     b.iter(|| {
       black_box(&barrier).price(
+        black_box(&up_and_out),
         black_box(S),
-        black_box(100.0),
-        black_box(120.0),
         black_box(R),
-        black_box(0.2),
+        black_box(0.0),
         black_box(1.0),
-        black_box(BarrierType::UpAndOut),
-        black_box(OptionType::Call),
       )
     })
   });
-  let cliquet = McCliquetPricer {
-    s: S,
+  let cliquet = McCliquetPricer::new(0.2, 20_000).with_seed(Deterministic::new(2));
+  let capped = CliquetOption {
     notional: 100.0,
-    m: 12,
-    tau: 1.0,
-    r: R,
-    q: Q,
-    sigma: 0.2,
+    periods: 12,
     local_floor: Some(0.0),
     local_cap: Some(0.08),
     global_floor: Some(0.0),
     global_cap: Some(0.5),
-    n_paths: 20_000,
   };
-  group.bench_function("mc_cliquet_20k", |b| b.iter(|| black_box(&cliquet).price()));
-  let autocallable = AutocallablePricer {
-    s: S,
+  group.bench_function("mc_cliquet_20k", |b| {
+    b.iter(|| black_box(&cliquet).price(black_box(&capped), R, Q, 1.0))
+  });
+  let autocallable = AutocallablePricer::new(0.3, 20_000, 8).with_seed(Deterministic::new(3));
+  let note = AutocallableNote {
     notional: 100.0,
     observation_times: Array1::from_iter((1..=8).map(|i| 0.25 * i as f64)),
     autocall_barrier: 1.0,
@@ -378,16 +386,11 @@ fn bench_mc_exotics(c: &mut Criterion) {
     knock_in_barrier: 0.65,
     knock_in_style: KnockInStyle::Continuous,
     memory: false,
-    r: 0.03,
-    q: 0.01,
-    sigma: 0.3,
-    n_paths: 20_000,
-    steps_per_period: 8,
   };
   group.bench_function("autocallable_20k_continuous", |b| {
-    b.iter(|| black_box(&autocallable).price())
+    b.iter(|| black_box(&autocallable).price(black_box(&note), S, 0.03, 0.01))
   });
-  let spread = McSpreadPricer::new(0.3, 0.2, 0.5, 50_000);
+  let spread = McSpreadPricer::new(0.3, 0.2, 0.5, 50_000).with_seed(Deterministic::new(4));
   group.bench_function("mc_spread_50k", |b| {
     b.iter(|| {
       black_box(&spread).price_call(
@@ -408,7 +411,8 @@ fn bench_mc_exotics(c: &mut Criterion) {
     Array1::from_vec(vec![0.2, 0.25, 0.3]),
     rho,
     50_000,
-  );
+  )
+  .with_seed(Deterministic::new(5));
   let spots = Array1::from_elem(3, S);
   let yields = Array1::from_elem(3, Q);
   group.bench_function("mc_basket_3_assets_50k", |b| {
@@ -452,14 +456,15 @@ fn bench_malliavin_thalmaier(c: &mut Criterion) {
   group
     .sample_size(10)
     .measurement_time(Duration::from_secs(10));
-  let engine = MtGreeks::new(mt_paper_params(), 0.01, 2_000);
+  let engine =
+    MtGreeks::new(mt_paper_params(), 0.01, 2_000).with_seed(Deterministic::new(0x1580_0011));
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
   group.bench_function("mt_delta_2k_paths", |b| {
     b.iter(|| {
       black_box(&engine)
-        .try_delta_with_seed(black_box(&payoff), black_box(0), black_box(0x1580_0011))
+        .try_delta(black_box(&payoff), black_box(0))
         .unwrap()
     })
   });

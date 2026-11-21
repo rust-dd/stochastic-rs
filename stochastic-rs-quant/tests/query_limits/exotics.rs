@@ -17,6 +17,7 @@ use stochastic_rs_quant::pricing::exotic::ComplexChooserOption;
 use stochastic_rs_quant::pricing::exotic::CompoundOption;
 use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
 use stochastic_rs_quant::pricing::variance_swap::VarianceSwapPricer;
 use stochastic_rs_quant::pricing::variance_swap::VolatilitySwapPricer;
@@ -34,6 +35,16 @@ fn barrier(barrier_type: BarrierType, option_type: OptionType, barrier: f64) -> 
     rebate: 3.0,
     barrier_type,
     option_type,
+  }
+}
+
+fn heston(v0: f64, kappa: f64, theta: f64, sigma: f64) -> HestonParams {
+  HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma,
+    rho: -0.7,
   }
 }
 
@@ -234,11 +245,11 @@ fn the_variance_swap_strikes_answer_a_maturity_outside_their_domain_with_nan() {
     );
   }
   for tau in [-1.0, f64::NAN] {
-    assert!(VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, tau).is_nan());
-    assert!(VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.3, tau).is_nan());
+    assert!(VarianceSwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.06, 0.3), tau).is_nan());
+    assert!(VolatilitySwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.06, 0.3), tau).is_nan());
   }
   assert_eq!(
-    VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.0),
+    VarianceSwapPricer::fair_strike_heston(&heston(0.04, 1.5, 0.06, 0.3), 0.0),
     0.04
   );
 }
@@ -489,7 +500,7 @@ fn the_replication_strike_needs_a_positive_spot_and_the_vol_strike_expires_at_sq
     VarianceSwapPricer::fair_strike_replication(&strikes, &otm, 100.0, R, Q, 0.5).is_finite()
   );
   for v0 in [0.0, 0.04, 0.09] {
-    let at_expiry = VolatilitySwapPricer::fair_strike_heston(v0, 1.5, 0.04, 0.3, 0.0);
+    let at_expiry = VolatilitySwapPricer::fair_strike_heston(&heston(v0, 1.5, 0.04, 0.3), 0.0);
     assert_eq!(at_expiry, v0.sqrt(), "{v0}");
   }
 }
@@ -498,11 +509,11 @@ fn the_replication_strike_needs_a_positive_spot_and_the_vol_strike_expires_at_sq
 #[test]
 fn a_heston_variance_strike_of_0_is_a_vol_strike_of_0_and_a_nan_one_is_nan() {
   for (v0, theta, tau) in [(0.0, 0.04, 1e-20), (0.0, 0.0, 1.0)] {
-    let strike = VolatilitySwapPricer::fair_strike_heston(v0, 1.5, theta, 0.3, tau);
+    let strike = VolatilitySwapPricer::fair_strike_heston(&heston(v0, 1.5, theta, 0.3), tau);
     assert_eq!(strike, 0.0, "{v0} {theta} {tau}");
   }
   for (v0, kappa, tau) in [(f64::NAN, 1.5, 1.0), (0.04, 0.0, f64::INFINITY)] {
-    let strike = VolatilitySwapPricer::fair_strike_heston(v0, kappa, 0.04, 0.3, tau);
+    let strike = VolatilitySwapPricer::fair_strike_heston(&heston(v0, kappa, 0.04, 0.3), tau);
     assert!(strike.is_nan(), "{v0} {kappa} {tau}: {strike}");
   }
 }

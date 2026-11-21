@@ -13,6 +13,30 @@ const P: HestonParams = HestonParams {
   rho: -0.7,
 };
 
+/// Read back, never written: a write would pass `with_grid`'s or `with_barrier`'s check.
+#[test]
+fn the_grid_and_the_barrier_are_read_through_getters() {
+  let pricer = HestonAdiPricer::new(P)
+    .with_grid(4, 6, 1)
+    .with_barrier(50.0);
+  assert_eq!((pricer.grid(), pricer.barrier()), ((4, 6, 1), Some(50.0)));
+  assert_eq!(HestonAdiPricer::new(P).grid(), (100, 50, 50));
+  assert_eq!(HestonAdiPricer::new(P).barrier(), None);
+}
+
+/// The setters are the only gate, so a barrier of `+∞` is refused as one at zero is.
+#[test]
+#[should_panic(expected = "barrier must satisfy `barrier.is_finite() && barrier > 0.0`, got")]
+fn an_infinite_barrier_is_refused() {
+  let _ = HestonAdiPricer::new(P).with_barrier(f64::INFINITY);
+}
+
+#[test]
+#[should_panic(expected = "m2 must satisfy `m2 >= 4`, got m2 = 3")]
+fn a_grid_check_names_its_argument_and_value() {
+  let _ = HestonAdiPricer::new(P).with_grid(4, 3, 1);
+}
+
 #[test]
 fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
   let model = HestonAdiPricer::new(HestonParams {

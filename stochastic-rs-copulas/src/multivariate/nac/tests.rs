@@ -4,8 +4,8 @@ use super::*;
 use crate::bivariate::clayton::Clayton;
 use crate::traits::BivariateExt;
 
-/// In a two-level Clayton NAC's cdf, a pair across levels is exchangeable Clayton on the root generator, a pair inside
-/// the sub-tree on the inner one: with the third coordinate at 1, its bivariate margin, to `1e-12` relative.
+/// In a two-level Clayton NAC's cdf a pair across levels is Clayton on the root generator, a pair
+/// in the sub-tree on the inner one: the bivariate margin, third coordinate at 1, to `1e-12`.
 #[test]
 fn nac_clayton_two_level_cdf_pair_margins() {
   let inner = NacNode::leaf_group(4.0, vec![1, 2]);
@@ -52,7 +52,8 @@ fn nac_snc_violation_rejected() {
   assert!(why.contains("sufficient nesting condition"), "{why}");
 }
 
-/// A θ outside the generator's domain is a named error: Gumbel needs `θ ≥ 1`, Clayton `0 < 1/θ < ∞`.
+/// A θ outside the generator's domain is a named error: Gumbel needs `θ ≥ 1`, Clayton
+/// `0 < 1/θ < ∞`.
 #[test]
 fn nac_below_family_min_rejected() {
   let gumbel = NestedArchimedean::new(
@@ -94,7 +95,8 @@ fn nac_leaf_index_validation() {
   assert!(NestedArchimedean::new(BivariateFamily::Clayton, oor, 3).is_err());
 }
 
-/// Next to independence (a small Clayton θ; θ = 0 itself has no frailty) the cdf is close to the product of the margins.
+/// Next to independence (a small Clayton θ; θ = 0 itself has no frailty) the cdf is close to the
+/// product of the margins.
 #[test]
 fn nac_clayton_independence_cdf() {
   let root = NacNode::leaf_group(0.01, vec![0, 1, 2]);
@@ -127,8 +129,8 @@ fn leaf_sets(node: &NacNode) -> Vec<Vec<usize>> {
     .collect()
 }
 
-/// A nested Gumbel truth `((0,1)_{3.0}, (2,3)_{2.5})_{1.5}` is recovered: two children with those leaves, every θ
-/// within sampling error, the root below both children.
+/// A nested Gumbel truth `((0,1)_{3.0}, (2,3)_{2.5})_{1.5}` is recovered: two children with those
+/// leaves, every θ within sampling error, the root below both children.
 #[test]
 fn nac_fit_recovers_a_nested_gumbel_structure() {
   let root = NacNode {
@@ -165,7 +167,8 @@ fn nac_fit_recovers_a_nested_gumbel_structure() {
   assert!(fitted.sample(16, &Deterministic::new(1)).is_ok());
 }
 
-/// On exchangeable Clayton data the binary tree's parameters all sit near the one true θ, and the nested fit samples.
+/// On exchangeable Clayton data the binary tree's parameters all sit near the one true θ, and the
+/// nested fit samples.
 #[test]
 fn nac_fit_on_a_flat_clayton_sample_keeps_every_theta_near_the_truth() {
   let truth = NestedArchimedean::new(
@@ -221,7 +224,8 @@ fn nac_fit_rejects_negative_dependence_and_an_unfitted_copula_reports_it() {
   ));
 }
 
-/// A join no generator represents names its two clusters: columns 0 and 1 move together, column 2 against both.
+/// A join no generator represents names its two clusters: columns 0 and 1 move together, column 2
+/// against both.
 #[test]
 fn nac_fit_names_the_clusters_whose_join_fails() {
   let x = ndarray::Array2::from_shape_fn((100, 3), |(i, j)| match j {
@@ -240,8 +244,8 @@ fn nac_fit_names_the_clusters_whose_join_fails() {
   );
 }
 
-/// Average linkage on a hand-made τ̂ matrix: after `(0,1)` at 0.8 it joins `(2,3)` at 0.5, not `{0,1}` with 2 (a mean of
-/// 0.4, where single linkage would see 0.7), and the root inverts the mean 0.35 of its four cross pairs.
+/// Average linkage on a hand-made τ̂: after `(0,1)` at 0.8 it joins `(2,3)` at 0.5, not `{0,1}`
+/// with 2 (mean 0.4; single linkage sees 0.7); the root inverts the cross pairs' mean 0.35.
 #[test]
 fn nac_fit_joins_the_clusters_with_the_largest_mean_cross_tau() {
   let tau = ndarray::array![
@@ -259,7 +263,8 @@ fn nac_fit_joins_the_clusters_with_the_largest_mean_cross_tau() {
   assert!((root.theta - gumbel(0.35)).abs() < 1e-12, "{}", root.theta);
 }
 
-/// A nested Gumbel node reaches independence (τ = 0, θ = 1); a Clayton node needs τ > 0, as its frailty is `Γ(1/θ)`.
+/// A nested Gumbel node reaches independence (τ = 0, θ = 1); a Clayton node needs τ > 0, as its
+/// frailty is `Γ(1/θ)`.
 #[test]
 fn nac_kendall_inversion_covers_each_nested_range() {
   assert_eq!(Generator::Gumbel.theta_from_tau(0.0), Ok(1.0));
@@ -273,8 +278,8 @@ fn nac_kendall_inversion_covers_each_nested_range() {
   assert!(Generator::Gumbel.theta_from_tau(-0.2).is_err());
 }
 
-/// Average linkage never lifts a parent's mean above its children's in exact arithmetic, but five equal τ̂ = 0.2509 make
-/// the root's six-pair mean round above them, so the untrimmed tree would fail the sufficient nesting condition.
+/// Average linkage never lifts a parent's mean above its children's in exact arithmetic, but five
+/// equal τ̂ = 0.2509 round the root's six-pair mean above them, failing nesting untrimmed.
 #[test]
 fn nac_fit_trims_a_parent_whose_mean_rounds_above_its_children() {
   let tau = ndarray::Array2::from_shape_fn((5, 5), |(i, j)| if i == j { 1.0 } else { 0.2509 });
@@ -302,7 +307,8 @@ fn nac_fit_trims_a_parent_whose_mean_rounds_above_its_children() {
   }
 }
 
-/// The fit checks what every multivariate fit checks, in its order: columns, rows, range, then a τ-b for every column.
+/// The fit checks what every multivariate fit checks, in its order: columns, rows, range, then a
+/// τ-b for every column.
 #[test]
 fn nac_fit_checks_columns_rows_range_then_tau() {
   let fit = |x: ndarray::Array2<f64>| {
@@ -335,7 +341,8 @@ fn nac_fit_checks_columns_rows_range_then_tau() {
   );
 }
 
-/// A Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `new`, at the root and below it.
+/// A Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `new`, at the root
+/// and below it.
 #[test]
 fn nac_clayton_theta_without_a_frailty_is_rejected_by_name() {
   for theta in [0.0, 1e-320] {

@@ -1,8 +1,8 @@
 //! Truncated gamma: rejection while the interval holds 1e-3 of its base mass, else inversion; a
 //! shape < 1 is untruncated at `θ(2α + 260)`, `upper` > `MAX·2^{e+1022}`, `2^e ≤ lower < 2⁻¹⁰¹³`.
 //!
-//! Reference: Coffey, C. S. & Muller, K. E. (2000), "Properties of doubly-truncated gamma variables", *Communications in Statistics - Theory and Methods* 29(4), 851-857, DOI 10.1080/03610920008832519 (truncated gamma moments).
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).
+//! Reference: Coffey & Muller (2000), 29(4), 851-857, DOI 10.1080/03610920008832519.
+//! Reference: Devroye, L. (1986), Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8.
 
 use std::fmt;
 use std::mem::MaybeUninit;
@@ -46,7 +46,8 @@ pub struct SimdTruncatedGamma<T> {
   mass: f64,
   /// The kernel's unit `2^p`: see `unit_exponent`.
   p: i32,
-  /// `2^{−p}`, exact even at `p = 1024` (a subnormal power of two), and `ln 2^p`: a coordinate costs one product.
+  /// `2^{−p}`, exact even at `p = 1024` (a subnormal power of two), and `ln 2^p`: a coordinate
+  /// costs one product.
   inv_unit: f64,
   ln_unit: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
@@ -70,7 +71,8 @@ impl<T: PartialEq> PartialEq for SimdTruncatedGamma<T> {
   }
 }
 
-/// The base draw and the `[0, 1)` uniform a truncated-gamma draw consumes, from a stream or the caller's rng.
+/// The base draw and the `[0, 1)` uniform a truncated-gamma draw consumes, from a stream or the
+/// caller's rng.
 trait TruncatedGammaSource<T: SimdFloatExt> {
   fn base(&mut self, law: &SimdGamma<T>) -> T;
 
@@ -142,7 +144,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       lower.to_f64().unwrap() / theta,
       upper.to_f64().unwrap() / theta,
     );
-    // Past the mean `P(k, b) − P(k, a)` cancels; the switch needs a few digits of the side that does not.
+    // Past the mean `P(k, b) − P(k, a)` cancels; the switch needs a few digits of the side that
+    // does not.
     let mass = if x_lo < k {
       crate::special::gamma_p(k, x_up) - crate::special::gamma_p(k, x_lo)
     } else {
@@ -150,7 +153,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     };
     let (lo, up) = (lower.to_f64().unwrap(), upper.to_f64().unwrap());
     let p = unit_exponent(theta.min(up));
-    // At most 2^1022 times `lower`'s exponent, so `lower/2^p` is normal and offsets by it exact where `min((2k + 260)θ, upper)` fits the unit; past it `lower/2^p` underflows, the law untruncated.
+    // At most 2^1022 times `lower`'s exponent, so `lower/2^p` is normal and offsets by it exact
+    // where `min((2k + 260)θ, upper)` fits the unit; beyond, it underflows (untruncated).
     let floor = split_pow2(lo).0 + 1022;
     let reach = (ldexp(theta, -floor) * (2.0 * k + 260.0)).min(ldexp(up, -floor));
     let p = if lo > 0.0 && floor < p && reach.is_finite() {
@@ -186,7 +190,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let (lo_u, up_u) = (self.units(lo), self.units(up));
     Some(self.analytics.get_or_init(|| {
-      // Past θ·f64::MAX the law sits at `lo`, its mode `(k − 1)θ` below: an exponential of scale θ there.
+      // Past θ·f64::MAX the law sits at `lo`, its mode `(k − 1)θ` below: an exponential of scale θ
+      // there.
       if lo_u == f64::INFINITY
         && let Some(l) = self.local(lo)
       {
@@ -219,7 +224,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     )
   }
 
-  /// The clipped upper end of the mass, in the law's coordinate: the interval's end for a law its local model holds.
+  /// The clipped upper end of the mass, in the law's coordinate: the interval's end for a law its
+  /// local model holds.
   pub(super) fn clipped_end(&self) -> Option<f64> {
     Some(match self.analytics()? {
       Model::Full(t) => ldexp(t.clipped().1, self.p),
@@ -236,13 +242,15 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     self.ln_unit
   }
 
-  /// `x/2^p` below the normal doubles beside 0, given by its log: where the lower end is 0 the engine reads it there.
+  /// `x/2^p` below the normal doubles beside 0, given by its log: where the lower end is 0 the
+  /// engine reads it there.
   fn beside_zero(&self, x: f64, u: f64) -> Option<f64> {
     (x > 0.0 && u < f64::MIN_POSITIVE && self.lower.to_f64()? == 0.0)
       .then(|| x.ln() - self.ln_unit())
   }
 
-  /// A position the engine reports, back in the law's coordinate: beside a point its log carries the unit.
+  /// A position the engine reports, back in the law's coordinate: beside a point its log carries
+  /// the unit.
   fn located(&self, point: Point) -> f64 {
     match point {
       Point::Beside { s, sign, ln_t } => ldexp(s, self.p) + sign * (ln_t + self.ln_unit()).exp(),
@@ -299,7 +307,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     self.upper
   }
 
-  /// Rejection from the base while the interval holds 1e-3 of its mass (10⁵ tries bound the loop), else the inverse cdf.
+  /// Rejection from the base while the interval holds 1e-3 of its mass (10⁵ tries bound the loop),
+  /// else the inverse cdf.
   #[inline]
   fn draw<S: TruncatedGammaSource<T>>(&self, src: &mut S) -> T {
     if self.mass >= 1e-3 {
@@ -364,7 +373,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdTruncatedGamma<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedGamma<T> {
-  /// The same rejection or inverse-cdf draw, on scalar gamma draws and uniforms from the caller's rng.
+  /// The same rejection or inverse-cdf draw, on scalar gamma draws and uniforms from the caller's
+  /// rng.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw(&mut AnyRng(rng))
   }
@@ -486,7 +496,8 @@ mod tests {
     }
   }
 
-  /// Rejection draws leave the analytics unbuilt; equality and `Debug` read the parameters, not the cache.
+  /// Rejection draws leave the analytics unbuilt; equality and `Debug` read the parameters, not the
+  /// cache.
   #[test]
   fn construction_and_rejection_draws_skip_the_quadrature() {
     let law = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);

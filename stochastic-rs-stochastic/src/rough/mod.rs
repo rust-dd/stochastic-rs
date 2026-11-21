@@ -12,7 +12,7 @@
 //! $$
 //!
 //! Reference: Bilokon & Wong (2026), J. Appl. Probab., doi:10.1017/jpr.2025.10071
-//! Reference: Ma & Wu (2021), SIAM Review 22, 447–462
+//! Reference: Ma & Wu (2021), Quant. Finance 22(3), 447–462, DOI 10.1080/14697688.2021.1970213
 //! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
 pub mod kernel;
 mod markov_lift;

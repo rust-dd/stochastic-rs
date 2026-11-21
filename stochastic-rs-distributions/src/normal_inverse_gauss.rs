@@ -1,10 +1,10 @@
-//! # Normal Inverse Gauss
+//! Normal inverse Gaussian (NIG) law, sampled as `μ + βW + √W·Z` with `W ~ IG(δ/γ, δ²)`.
 //!
 //! $$
 //! X\sim\mathrm{Nig}(\alpha,\beta,\delta,\mu),\ \psi(u)=\mu u+\delta\left(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+iu)^2}\right)
 //! $$
 //!
-//! Sampling: `μ + βW + √W·Z` with `W ~ IG(δ/γ, δ²)`, Barndorff-Nielsen, O.E. (1997), "Normal Inverse Gaussian Distributions and Stochastic Volatility Modelling", *Scandinavian Journal of Statistics* 24(1), 1-13, DOI 10.1111/1467-9469.00045.
+//! Reference: Barndorff-Nielsen (1997), Scand. J. Stat. 24(1), 1-13, DOI 10.1111/1467-9469.00045.
 
 use std::mem::MaybeUninit;
 
@@ -26,7 +26,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_NIG_THRESHOLD: usize = 16;
 
-/// Normal-inverse-Gaussian law `NIG(alpha, beta, delta, mu)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Normal-inverse-Gaussian law `NIG(alpha, beta, delta, mu)`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdNormalInverseGauss<T> {
   alpha: T,
@@ -210,7 +211,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormalInverseGauss<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
-  /// `μ + βW + √W·Z` from one scalar inverse-Gaussian and one scalar normal draw on the caller's rng.
+  /// `μ + βW + √W·Z` from one scalar inverse-Gaussian and one scalar normal draw on the caller's
+  /// rng.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }
@@ -412,7 +414,8 @@ mod tests {
     }
   }
 
-  /// A fill below `SMALL_NIG_THRESHOLD` pops both sub-streams' buffers instead of filling from their engines.
+  /// A fill below `SMALL_NIG_THRESHOLD` pops both sub-streams' buffers instead of filling from
+  /// their engines.
   #[test]
   fn nig_fill_slice_small_n_is_deterministic_and_finite() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);

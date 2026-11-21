@@ -1,4 +1,4 @@
-//! # Gumbel
+//! Gumbel copula, Archimedean and extreme-value, with upper-tail dependence only.
 //!
 //! $$
 //! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1
@@ -50,8 +50,8 @@ impl Gumbel {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `ln ∂_v C = (w − m) − m expm1(L/θ) − (1 − 1/θ)L + (θ − 1) ln(w/m)`, `x, w = −ln u, −ln v`, `m = max(x, w)`,
-  /// `L = ln(1 + (min/m)^θ)`, the ratio's logarithm by `ln_log_ratio`; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  /// `ln ∂_v C = (w − m) − m expm1(L/θ) − (1 − 1/θ)L + (θ − 1) ln(w/m)`, `x, w = −ln u, −ln v`,
+  /// `m = max(x, w)`, `L = ln(1 + (min/m)^θ)` via `ln_log_ratio`; `δ₀`, `δ₁` at `v = 0, 1`.
   pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |u, v| {
       if u >= 1.0 || v <= 0.0 {
@@ -73,8 +73,8 @@ impl Gumbel {
     }
   }
 
-  /// `ln c = m − M expm1(ℓ/θ) + (θ − 1) ln(m/M) − 2(1 − 1/θ)ℓ + ln(1 + (θ − 1)/W)`, `W = M e^{ℓ/θ}`: the `θ`-sized parts of
-  /// `(θ − 1) ln(xy) + (1 − 2θ) ln W` cancelled exactly, the last term as a softplus of logarithms.
+  /// `ln c = m − M expm1(ℓ/θ) + (θ − 1) ln(m/M) − 2(1 − 1/θ)ℓ + ln(1 + (θ − 1)/W)`,
+  /// `W = M e^{ℓ/θ}`: `θ`-sized parts cancelled exactly, the last term a softplus of logarithms.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 1.0 {
       return 0.0;
@@ -143,7 +143,8 @@ impl BivariateExt for Gumbel {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as `e^{−M} = min(u, v)`; `uv` at `θ = 1`.
+  /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as
+  /// `e^{−M} = min(u, v)`; `uv` at `θ = 1`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -196,7 +197,7 @@ impl BivariateExt for Gumbel {
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no lower-tail dependence
   /// ($\lambda_L = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Table 5.1.
+  /// Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();
@@ -265,7 +266,8 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: no copula holds it.
+  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: no copula holds
+  /// it.
   #[test]
   fn gumbel_rejects_an_invalid_theta() {
     assert!(matches!(

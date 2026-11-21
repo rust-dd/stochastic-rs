@@ -278,7 +278,8 @@ fn half_negative_lambda_boundary_mgf_is_the_inverse_gaussian() {
   }
 }
 
-/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary `t = ψ/2` and inside it, and the density.
+/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary `t = ψ/2` and
+/// inside it, and the density.
 #[test]
 fn mgf_and_pdf_hold_where_k_overflows() {
   let gig = SimdGig::<f64>::new(-172.0, 1.0, 1.0);
@@ -343,7 +344,8 @@ fn heavy_tails_keep_their_moments() {
   assert_eq!(d.kurtosis(), Some(f64::INFINITY));
 }
 
-/// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, which no factor of the mean may form; within `1e-14`.
+/// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, which no factor of the mean may form; within
+/// `1e-14`.
 #[test]
 fn a_subnormal_scale_ratio_keeps_the_mean() {
   let mean = SimdGig::<f64>::new(0.5, 1e-300, 1e20).mean().unwrap();
@@ -450,7 +452,8 @@ fn far_tails_answer_the_exact_zero_or_infinity() {
   assert_eq!(wide.moment_generating_function(0.4), Some(f64::INFINITY));
 }
 
-/// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
+/// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as
+/// `t → −∞`.
 #[test]
 fn pdf_and_mgf_at_infinity() {
   for lambda in [-0.5, 1.0, 2.0] {

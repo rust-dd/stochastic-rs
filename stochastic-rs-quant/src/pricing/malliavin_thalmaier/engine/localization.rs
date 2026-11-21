@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::super::kernel;
 use super::greeks::MtGreeks;
@@ -13,7 +14,7 @@ pub(super) struct MtLocalization<T: FloatExt> {
   pub(super) box_width: Vec<T>,
 }
 
-impl<T: FloatExt> MtGreeks<T> {
+impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
   pub(super) fn compute_g(&self, payoff: &MtPayoff<T>, st: &[T]) -> Array2<T> {
     let d = self.params.n_assets();
     match payoff {

@@ -25,6 +25,8 @@ fn ssvi_recovers_its_parameters_and_is_arbitrage_free() {
     .collect::<Vec<_>>();
 
   let fit = calibrate_ssvi(&slices, None);
+  assert!(fit.converged);
+  let fit = fit.params;
   assert!((fit.rho + 0.4).abs() < 1e-6 && (fit.eta - 0.6).abs() < 1e-6);
   assert!(fit.satisfies_no_butterfly_condition()); // eta (1 + |rho|) <= 2
 

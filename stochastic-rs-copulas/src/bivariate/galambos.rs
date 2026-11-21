@@ -1,4 +1,5 @@
-//! # Galambos (1975) extreme-value copula
+//! Galambos (1975) extreme-value copula, its Pickands function `A` the negative-logistic one below;
+//! `θ → 0` is independence (`A ≡ 1`), `θ → ∞` comonotone.
 //!
 //! $$
 //! C_\theta(u,v) = u v \cdot \exp\!\Big\{\big[(-\ln u)^{-\theta} +
@@ -6,18 +7,14 @@
 //! \qquad \theta \in (0, \infty).
 //! $$
 //!
-//! Negative-logistic max-stable family with Pickands dependence function
 //! $$
 //! A(t) = 1 - \big(t^{-\theta} + (1-t)^{-\theta}\big)^{-1/\theta},
 //! \qquad t \in [0, 1].
 //! $$
-//! $\theta \to 0$ is independence ($A \equiv 1$), $\theta \to \infty$ the comonotone copula.
 //!
-//! Reference: Galambos, J. (1975), "Order statistics of samples from
-//! multivariate distributions", *JASA* 70(351), 674-680.
-//! Reference: Joe, H. (1997), "Multivariate Models and Dependence
-//! Concepts", Chapman & Hall, §5.4.
-//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
+//! Reference: Galambos, J. (1975), JASA 70(351), 674-680, DOI 10.1080/01621459.1975.10482493.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.4, DOI 10.1201/b13150.
+//! Reference: Gudendorf & Segers (2010), arXiv:0911.1015, §4, DOI 10.1007/978-3-642-12465-5_6.
 
 use std::f64::consts::LN_2;
 
@@ -47,7 +44,8 @@ use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// The ends of the τ inversion's bracket in `θ`: below `1e-4`, `τ < e^{−6900}`, and past `1e17`, `1 − τ < 2⁻⁵⁴`.
+/// The ends of the τ inversion's bracket in `θ`: below `1e-4`, `τ < e^{−6900}`, and past `1e17`,
+/// `1 − τ < 2⁻⁵⁴`.
 const THETA_BRACKET: (f64, f64) = (1e-4, 1e17);
 
 #[derive(Debug, Clone, Default)]
@@ -73,8 +71,8 @@ impl Galambos {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `ln ∂_v C = −x + T + ln(1 − (T/y)^{θ+1})`, `x, y = −ln u, −ln v`, `T = m(1 + (m/M)^θ)^{−1/θ}`, `m ≤ M` the two: through
-  /// `expm1`/`ln_1p` of `(m/M)^θ`, whose logarithm `ln_log_ratio` keeps near `m = M`; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  /// `ln ∂_v C = −x + T + ln(1 − (T/y)^{θ+1})`, `T = m(1 + (m/M)^θ)^{−1/θ}`, `m ≤ M` of
+  /// `x, y = −ln u, −ln v`, via `expm1`/`ln_1p` of `(m/M)^θ`; `δ₀`, `δ₁` at `v = 0, 1`.
   pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let exponent = 1.0 + 1.0 / theta;
     move |u, v| {
@@ -85,7 +83,8 @@ impl Galambos {
         return f64::NEG_INFINITY;
       }
       let (x, y) = (-u.ln(), -v.ln());
-      // The branch follows the sign of the exact `ln(x/y)`: `x` and `y` can round to one value while `(x/y)^θ` is not 1.
+      // The branch follows the sign of the exact `ln(x/y)`: `x` and `y` can round to one value
+      // while `(x/y)^θ` is not 1.
       let q = ln_log_ratio(u, v, x, y);
       if q <= 0.0 {
         let s = (theta * q).exp();
@@ -94,7 +93,8 @@ impl Galambos {
       } else {
         let s = (-theta * q).exp();
         let l = s.ln_1p();
-        // `1 − (1 + s)^{−c}` is `cs` to rounding where `s` leaves the normal range, and `ln s = −θq` keeps its digits.
+        // `1 − (1 + s)^{−c}` is `cs` to rounding where `s` leaves the normal range, and
+        // `ln s = −θq` keeps its digits.
         let ln_tail = if s >= f64::MIN_POSITIVE {
           ln_one_minus_exp(-exponent * l)
         } else {
@@ -105,8 +105,8 @@ impl Galambos {
     }
   }
 
-  /// `ln c = T + θ ln(m/M) + ln(a₁a₂/s + (θ + 1)(1 + s)^{−2−1/θ}/M)`, `a₁ = 1 − (1 + s)^{−k}`, `a₂ = 1 − (s/(1 + s))^k`,
-  /// `k = 1 + 1/θ`: the `(1 − (T/x)^{θ+1})` factor of the chain rule kept as `a₁/s`, its limit `k` once `s` is subnormal.
+  /// `ln c = T + θ ln(m/M) + ln(a₁a₂/s + (θ + 1)(1 + s)^{−2−1/θ}/M)`, `a₁ = 1 − (1 + s)^{−k}`,
+  /// `a₂ = 1 − (s/(1 + s))^k`, `k = 1 + 1/θ`: the chain rule's `a₁/s`, `k` at a subnormal `s`.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 0.0 {
       return 0.0;
@@ -127,8 +127,8 @@ impl Galambos {
     small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
   }
 
-  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, NaN outside `[0, 1]`, by
-  /// `ln_pickands` at the nearer end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
+  /// Pickands dependence function `A(t) = 1 − (t^{−θ} + (1 − t)^{−θ})^{−1/θ}`, NaN outside
+  /// `[0, 1]`, by `ln_pickands` at `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
   pub fn pickands(theta: f64, t: f64) -> f64 {
     if !(0.0..=1.0).contains(&t) {
       return f64::NAN;
@@ -140,13 +140,14 @@ impl Galambos {
     Self::ln_pickands(theta, s.ln(), softplus(theta * (s / (1.0 - s)).ln())).exp()
   }
 
-  /// `ln A = ln(1 − s(1 + ρ)^{−1/θ})` from `ln s`, `s = min(t, 1 − t)`, and `sp = ln(1 + ρ)`, `ρ = (s/(1 − s))^θ ≤ 1`.
+  /// `ln A = ln(1 − s(1 + ρ)^{−1/θ})` from `ln s`, `s = min(t, 1 − t)`, and `sp = ln(1 + ρ)`,
+  /// `ρ = (s/(1 − s))^θ ≤ 1`.
   fn ln_pickands(theta: f64, ln_s: f64, sp: f64) -> f64 {
     ln_one_minus_exp(ln_s - sp / theta)
   }
 
-  /// `(ln τ, ln(1 − τ))` from `τ = ∫ t(1 − t)A''/A dt` and, by parts, `1 − τ = ∫ (A − tA')(A + (1 − t)A')/A² dt`, over
-  /// the logit `ℓ` of `t ∈ [1/2, 1]` in terms of `ρ = e^{−θℓ}`; the smaller is integrated, the other follows.
+  /// `(ln τ, ln(1 − τ))`, the smaller integrated over the logit of `t ∈ [1/2, 1]`:
+  /// `τ = ∫ t(1 − t)A''/A dt`, `1 − τ = ∫ (A − tA')(A + (1 − t)A')/A² dt` by parts.
   fn ln_tau_parts(theta: f64) -> (f64, f64) {
     // `ln A` at `t ≥ 1/2`, where `s = 1 − t`, `ln(1 − t) = −softplus(ℓ)` and `sp = ln(1 + ρ)`.
     let ln_a = |ln_one_minus_t: f64, sp: f64| Self::ln_pickands(theta, ln_one_minus_t, sp);
@@ -164,7 +165,8 @@ impl Galambos {
         );
       (ln_tau, ln_one_minus_exp(ln_tau))
     } else {
-      // `1 − τ = (2/θ)∫ t(1 − t)(1 − (1 + ρ)^{−k})(1 − (1 + 1/ρ)^{−k})/A² dw`, `w = θℓ`, `k = 1 + 1/θ`
+      // `1 − τ = (2/θ)∫ t(1 − t)(1 − (1 + ρ)^{−k})(1 − (1 + 1/ρ)^{−k})/A² dw`, `w = θℓ`,
+      // `k = 1 + 1/θ`
       let k = 1.0 + 1.0 / theta;
       let ln_complement = LN_2 - theta.ln()
         + ln_integral_from_peak(
@@ -229,7 +231,8 @@ impl BivariateExt for Galambos {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `conditional::log_score_parts`, as `e^{−M} = min(u, v)`.
+  /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `conditional::log_score_parts`, as
+  /// `e^{−M} = min(u, v)`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -266,7 +269,8 @@ impl BivariateExt for Galambos {
     Some(self.unchecked_inverse(y, v))
   }
 
-  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `Galambos::ln_tau_parts`; 0 below `θ = 1e-4`.
+  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `Galambos::ln_tau_parts`; 0
+  /// below `θ = 1e-4`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     if theta < THETA_BRACKET.0 {
       return 0.0;
@@ -279,8 +283,8 @@ impl BivariateExt for Galambos {
     }
   }
 
-  /// Brent on `ln θ` over `THETA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past it, so every `τ` in
-  /// `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
+  /// Brent on `ln θ` over `THETA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past it,
+  /// so every `τ` in `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     if !(0.0..1.0).contains(&tau) {
       return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".to_string()));
@@ -302,7 +306,8 @@ impl BivariateExt for Galambos {
     admitted(self, tau, theta)
   }
 
-  /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe 1997, §5.4).
+  /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe
+  /// 1997, §5.4).
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();
@@ -319,8 +324,8 @@ mod tests {
 
   use super::*;
 
-  /// `(ln τ, ln(1 − τ))`, the logarithm each inversion matches, against the τ table's second and third columns: each
-  /// within `1e-12` of itself, or `f64::MIN_POSITIVE` where it is subnormal.
+  /// `(ln τ, ln(1 − τ))`, the logarithm each inversion matches, against the τ table's second and
+  /// third columns: each within `1e-12` of itself, or `f64::MIN_POSITIVE` where it is subnormal.
   #[test]
   fn the_tau_logarithms_match_the_tau_table() {
     let rows = include_str!("../../tests/fixtures/kendall_tau.txt")
@@ -415,7 +420,8 @@ mod tests {
     );
   }
 
-  /// 50-digit values of `A(t)`, which the plain form loses past `θ ≈ 1023`, and the limit `max(t, 1 − t)` at the top.
+  /// 50-digit values of `A(t)`, which the plain form loses past `θ ≈ 1023`, and the limit
+  /// `max(t, 1 − t)` at the top.
   #[test]
   fn galambos_pickands_holds_to_the_top_of_its_range() {
     let pins = [
@@ -461,7 +467,8 @@ mod tests {
     );
   }
 
-  /// `τ = 0` inverts to `θ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and from a fit at `τ̂ = 0`.
+  /// `τ = 0` inverts to `θ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and
+  /// from a fit at `τ̂ = 0`.
   #[test]
   fn galambos_tau_zero_inverts_to_independence() {
     let c = Galambos::from_tau(0.0).unwrap();

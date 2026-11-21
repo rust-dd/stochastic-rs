@@ -1,3 +1,5 @@
+//! What the surrogates share: the network and its training, the datasets, scaling and metadata.
+
 mod dataset;
 mod init;
 mod metadata;

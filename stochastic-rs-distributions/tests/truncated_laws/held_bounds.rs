@@ -11,7 +11,8 @@ fn tn(mu: f64, sigma: f64, lo: f64, up: f64) -> SimdTruncatedNormal<f64> {
   SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up)
 }
 
-/// `(what, value, mpmath)` rows of one law, each to 1e-12; shape numbers to 1e-12 absolute below a size of 1.
+/// `(what, value, mpmath)` rows of one law, each to 1e-12; shape numbers to 1e-12 absolute below a
+/// size of 1.
 fn rows(name: &str, cells: &[(&str, f64, f64)]) {
   for &(what, got, want) in cells {
     let atol = if matches!(what, "skewness" | "kurtosis") {

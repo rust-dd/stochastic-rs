@@ -6,7 +6,8 @@ use crate::bivariate::amh::Amh;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::galambos::Galambos;
 
-/// Overrides no provided method, so every default body answers for it; `pdf`, `cdf` and `partial_derivative` fail.
+/// Overrides no provided method, so every default body answers for it; `pdf`, `cdf` and
+/// `partial_derivative` fail.
 struct DummyNonArchimedean {
   theta: Option<f64>,
 }
@@ -123,7 +124,8 @@ impl BivariateExt for ParameterisedWithoutTheta {
   }
 }
 
-/// Overrides `percent_point` alone, as an implementor outside the crate may: half the level, so its draws show it.
+/// Overrides `percent_point` alone, as an implementor outside the crate may: half the level, so its
+/// draws show it.
 struct HalvesTheLevel;
 
 impl BivariateExt for HalvesTheLevel {
@@ -187,7 +189,8 @@ impl BivariateExt for HalvesTheLevel {
   }
 }
 
-/// An inverse that answers only the edges, 0 below level 1/2 and 1 from it, so every draw it makes is a rounding case.
+/// An inverse that answers only the edges, 0 below level 1/2 and 1 from it, so every draw it makes
+/// is a rounding case.
 struct AnswersTheEdges;
 
 impl BivariateExt for AnswersTheEdges {
@@ -251,8 +254,8 @@ impl BivariateExt for AnswersTheEdges {
   }
 }
 
-/// Overrides `percent_point` with a call to the hidden hook it leaves at its default, then the halving map: the hook's
-/// `None` ends the call, so neither the sampler nor `percent_point` can recurse.
+/// Overrides `percent_point` with a call to the hidden hook left at its default, then the halving
+/// map: the hook's `None` ends the call, so neither sampler nor `percent_point` recurses.
 struct CallsTheHook;
 
 impl BivariateExt for CallsTheHook {
@@ -349,7 +352,8 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
   );
 }
 
-/// The bracket starts at 0, so a level far below `h(EPSILON | v)` finds its own root, below `EPSILON`.
+/// The bracket starts at 0, so a level far below `h(EPSILON | v)` finds its own root, below
+/// `EPSILON`.
 #[test]
 fn percent_point_numerical_solves_below_epsilon() {
   let amh = Amh::from_tau(0.25).unwrap();
@@ -367,8 +371,8 @@ fn percent_point_numerical_solves_below_epsilon() {
   );
 }
 
-/// A conditional law with a point mass at `u = 1`, Galambos's at `v = 1`, answers the top of the bracket within Brent's
-/// `6 macheps |x| + 2t`.
+/// A conditional law with a point mass at `u = 1`, Galambos's at `v = 1`, answers the top of the
+/// bracket within Brent's `6 macheps |x| + 2t`.
 #[test]
 fn percent_point_numerical_answers_a_point_mass_at_one() {
   let mut galambos = Galambos::default();
@@ -392,7 +396,8 @@ fn percent_point_numerical_answers_zero_at_level_zero() {
   }
 }
 
-/// Levels far below `√f64::MIN_POSITIVE` reach Brent's `zero`, whose sign test never multiplies two gaps.
+/// Levels far below `√f64::MIN_POSITIVE` reach Brent's `zero`, whose sign test never multiplies two
+/// gaps.
 #[test]
 fn percent_point_numerical_solves_levels_below_the_product_underflow() {
   let mut galambos = Galambos::default();
@@ -423,8 +428,8 @@ fn percent_point_numerical_round_trips_through_the_h_function() {
   }
 }
 
-/// `#[doc(hidden)]` hides `partial_derivative_scalar` from the docs, not from callers: this stops compiling if it, or the
-/// public `check_marginal`, becomes less visible.
+/// `#[doc(hidden)]` hides `partial_derivative_scalar` from the docs, not from callers: this stops
+/// compiling if it, or the public `check_marginal`, becomes less visible.
 #[test]
 fn doc_hidden_methods_remain_callable_in_crate() {
   let c = Clayton::from_tau(0.5).unwrap();
@@ -462,8 +467,8 @@ fn sampling_gates_on_the_family_check_fit() {
   assert!(uv.iter().all(|x| (0.0..=1.0).contains(x)));
 }
 
-/// The default `percent_point_unchecked` calls `percent_point`, so a sampler draws through an override of it alone, and the
-/// default `percent_point` solves numerically without calling back.
+/// The default `percent_point_unchecked` calls `percent_point`, so a sampler draws through an
+/// override of it alone, and the default `percent_point` solves numerically without calling back.
 #[test]
 fn a_sampler_draws_through_an_override_of_percent_point_alone() {
   let own = HalvesTheLevel.sample(64, &Deterministic::new(7)).unwrap();

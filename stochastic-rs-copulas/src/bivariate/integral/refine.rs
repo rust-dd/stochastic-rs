@@ -1,5 +1,5 @@
-//! A march's panel refined as QUADPACK's QAG refines one: worst piece first, QAGS's roundoff events and noise floor, a
-//! cut at an isolated step, and the subdivision cap past which an integration answers NaN.
+//! A march's panel refined as QUADPACK's QAG does: worst piece first, QAGS's roundoff events and
+//! noise floor, a cut at an isolated step, NaN past the subdivision cap.
 
 use std::collections::BinaryHeap;
 
@@ -9,11 +9,12 @@ use super::panel;
 use super::refinable;
 use crate::bivariate::conditional::ln_add_exp;
 
-/// QUADPACK's roundoff test (QAGS, `dqagse.f`): a bisection whose halves agree with their parent to `1e-5` while their error
-/// falls by under 1 % is a roundoff event; from the tenth in one integration on, halves that agree stand at the noise floor.
+/// QUADPACK's roundoff test (QAGS, `dqagse.f`): halves agreeing with their parent to `1e-5` while
+/// the error falls under 1 % are a roundoff event; from the tenth on, agreeing halves are noise.
 const ROUNDOFF_EVENTS: u32 = 10;
 
-/// The subdivisions one integration may take; past them, neither converged nor at the noise floor, it answers NaN.
+/// The subdivisions one integration may take; past them, neither converged nor at the noise floor,
+/// it answers NaN.
 const SUBDIVISIONS: u32 = 1 << 14;
 
 /// What one integration has spent: its roundoff events and its subdivisions.
@@ -31,7 +32,8 @@ impl Spent {
   }
 }
 
-/// A piece of a panel being refined, `from` toward `to`, ranked by its error against the sums when it was cut.
+/// A piece of a panel being refined, `from` toward `to`, ranked by its error against the sums when
+/// it was cut.
 struct Piece {
   from: f64,
   to: f64,
@@ -59,8 +61,8 @@ impl Ord for Piece {
   }
 }
 
-/// `∫ e^g` and `∫ e^f` over `span` as QUADPACK's QAG refines a panel, worst piece first, each kept once settled against
-/// `before` and the pieces' own sums, unrefinable or at the noise floor; `None` past `SUBDIVISIONS`.
+/// `∫ e^g` and `∫ e^f` over `span`, refined QAG-style worst piece first, a piece kept once settled,
+/// unrefinable or at the noise floor; `None` past `SUBDIVISIONS`.
 pub(super) fn refine(
   eval: &impl Fn(f64) -> (f64, f64),
   (from, to): (f64, f64),
@@ -120,7 +122,8 @@ pub(super) fn refine(
       pending.extend(halves);
       continue;
     };
-    // A half that keeps its parent's disagreement beside a settled one holds a step: cut where it lies, not halved to it.
+    // A half that keeps its parent's disagreement beside a settled one holds a step: cut where it
+    // lies, not halved to it.
     let [a, b] = halves;
     let (settled, stepped) = if held == 0 { (b, a) } else { (a, b) };
     pending.push(settled);
@@ -147,7 +150,8 @@ pub(super) fn refine(
   Some(sum)
 }
 
-/// `parent` exchanged in `sums` for its `parts`, summed afresh over every piece when the difference drains the digits.
+/// `parent` exchanged in `sums` for its `parts`, summed afresh over every piece when the difference
+/// drains the digits.
 fn exchange(
   sums: &mut (Sum, Sum),
   parent: &Panel,
@@ -162,7 +166,8 @@ fn exchange(
   }
 }
 
-/// A sum `Σ e^{k_i}` held as `e^m s`, a piece exchanged for its halves without summing the rest again.
+/// A sum `Σ e^{k_i}` held as `e^m s`, a piece exchanged for its halves without summing the rest
+/// again.
 #[derive(Debug, Clone, Copy)]
 struct Sum {
   m: f64,
@@ -206,7 +211,8 @@ impl Sum {
     }
   }
 
-  /// `parent` exchanged for `left` and `right`; true when the difference has drained the sum's digits.
+  /// `parent` exchanged for `left` and `right`; true when the difference has drained the sum's
+  /// digits.
   fn swap(&mut self, parent: f64, left: f64, right: f64) -> bool {
     self.add(left);
     self.add(right);
@@ -221,8 +227,8 @@ impl Sum {
   }
 }
 
-/// The half of a bisection, and the exponent, where the parent's disagreement over `KRONROD_AGREEMENT` stays undiminished
-/// beside a half that agrees: the mark of a step narrower than the half.
+/// The half, and exponent, where the parent's disagreement over `KRONROD_AGREEMENT` stays
+/// undiminished beside an agreeing half: the mark of a step narrower than the half.
 fn isolated(parent: &Panel, left: &Panel, right: &Panel) -> Option<(usize, usize)> {
   let rel = |p: &Panel, e: usize| if e == 0 { p.0.1 } else { p.1.1 };
   let mut exponents = [0, 1];
@@ -241,8 +247,8 @@ fn isolated(parent: &Panel, left: &Panel, right: &Panel) -> Option<(usize, usize
   })
 }
 
-/// Where in `[p, q]` the step of exponent `e` lies, to the resolution of `origin + x`: of three equal parts, the one the
-/// second differences at their ends single out, free of the background's slope, its curvature shrinking with the part.
+/// Where in `[p, q]` the step of exponent `e` lies, to `origin + x`'s resolution: the third the
+/// second differences at its ends single out, free of the background's slope.
 fn step_at(
   eval: &impl Fn(f64) -> (f64, f64),
   e: usize,
@@ -272,14 +278,14 @@ fn step_at(
   0.5 * (p + q)
 }
 
-/// Whether K15 and G7 part by more than `KRONROD_AGREEMENT` on `panel`, its error over `e^{−40}` of the sums (not so at a
-/// zero of the integrand) and over `e^{floor}`.
+/// Whether K15 and G7 part by more than `KRONROD_AGREEMENT` on `panel`, its error over `e^{−40}` of
+/// the sums (not so at a zero of the integrand) and over `e^{floor}`.
 fn unsettled(panel: (f64, f64), ln_total: f64, floor: f64) -> bool {
   panel.1 > KRONROD_AGREEMENT && panel.0 + panel.1.ln() > (ln_total - 40.0).max(floor)
 }
 
-/// QUADPACK's first roundoff condition for one exponent: the halves agree with their parent, `|K − (K_l + K_r)| ≤
-/// 1e-5 (K_l + K_r)`.
+/// QUADPACK's first roundoff condition for one exponent: the halves agree with their parent,
+/// `|K − (K_l + K_r)| ≤ 1e-5 (K_l + K_r)`.
 fn agrees(parent: (f64, f64), left: (f64, f64), right: (f64, f64)) -> bool {
   let sum = ln_add_exp(left.0, right.0);
   sum.is_finite() && ((parent.0 - sum).exp() - 1.0).abs() <= 1e-5

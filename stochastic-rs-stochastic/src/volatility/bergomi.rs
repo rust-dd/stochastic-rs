@@ -11,7 +11,7 @@
 //! ```
 //!
 //! Reference: Bergomi (2005), "Smile Dynamics II", Risk 18(10), 67-73
-//! Reference: Bergomi (2016), "Stochastic Volatility Modeling", §7
+//! Reference: Bergomi (2016), "Stochastic Volatility Modeling", §7, DOI 10.1201/b19649
 
 use ndarray::Array1;
 use ndarray::s;

@@ -93,7 +93,8 @@ fn near_unit_index_takes_the_general_formula() {
   );
 }
 
-/// β = ±1 on the light side: mpmath's closed form, which a quadrature of scipy's S1 density matches to 1e-15.
+/// β = ±1 on the light side: mpmath's closed form, which a quadrature of scipy's S1 density matches
+/// to 1e-15.
 #[test]
 fn totally_skewed_mgf_is_finite_on_the_light_side() {
   for (alpha, beta, scale, location, t, want) in [

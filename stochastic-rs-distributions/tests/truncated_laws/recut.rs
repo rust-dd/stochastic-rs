@@ -1,4 +1,5 @@
-//! An open tail far below `μ`: the law is the exponential below its bound, each value against mpmath.
+//! An open tail far below `μ`: the law is the exponential below its bound, each value against
+//! mpmath.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;

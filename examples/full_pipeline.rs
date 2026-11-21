@@ -89,12 +89,7 @@ fn main() {
   );
 
   let k_var_bsm = VarianceSwapPricer::fair_strike_bsm(vol_q.value());
-  let k_var_heston = VarianceSwapPricer::fair_strike_heston(
-    heston_params.v0,
-    heston_params.kappa,
-    heston_params.theta,
-    1.0,
-  );
+  let k_var_heston = VarianceSwapPricer::fair_strike_heston(&heston_params, 1.0);
 
   println!("Portfolio leg 2 — variance swap (fair variance strike):");
   println!(

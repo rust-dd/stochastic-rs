@@ -152,6 +152,7 @@ fn a_non_finite_vertex_costs_nan() {
     (1, f64::NAN),
     (2, f64::NAN),
     (0, f64::INFINITY),
+    (1, f64::INFINITY),
   ] {
     let mut x = vec![0.03, 0.3, -0.1];
     x[axis] = bad;
@@ -162,7 +163,7 @@ fn a_non_finite_vertex_costs_nan() {
 }
 
 #[test]
-fn a_nan_strike_forward_or_weight_never_starts_a_fit() {
+fn a_nan_strike_or_forward_never_starts_a_fit() {
   let mut nan_strike = smile();
   nan_strike.strikes[2] = f64::NAN;
   assert!(matches!(
@@ -178,7 +179,30 @@ fn a_nan_strike_forward_or_weight_never_starts_a_fit() {
       ..
     }
   ));
-  let mut nan_weight = smile();
-  nan_weight.weights = Some(vec![f64::NAN; nan_weight.strikes.len()]);
-  assert!(nan_weight.calibrate(None).is_ok_and(|fit| !fit.converged));
+}
+
+/// The `weights` field is data, so a weight `with_weights` refuses is an error at `calibrate`.
+#[test]
+fn a_weight_that_with_weights_refuses_never_starts_a_fit() {
+  for (index, bad) in [(0, f64::NAN), (2, -1.0), (4, f64::INFINITY)] {
+    let mut calibrator = smile();
+    let mut weights = vec![1.0; calibrator.strikes.len()];
+    weights[index] = bad;
+    calibrator.weights = Some(weights);
+    let err = calibrator.calibrate(None).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "weights", reason } if reason.contains(&format!("weight {index} "))),
+      "{bad}: {err}"
+    );
+  }
+  let mut short = smile();
+  short.weights = Some(vec![1.0; 3]);
+  assert!(matches!(
+    short.calibrate(None).unwrap_err(),
+    QuantError::DimensionMismatch {
+      expected: 11,
+      got: 3,
+      ..
+    }
+  ));
 }

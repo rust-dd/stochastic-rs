@@ -10,13 +10,16 @@
 //! - Margrabe, W. (1978), "The Value of an Option to Exchange One Asset for Another", J. Finance 33
 //! - Kirk, E. (1995), "Correlation in the Energy Markets" — see [`super::kirk`] for non-zero strikes.
 //!
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Floor a payoff at zero without letting the floor swallow a `NaN`.
 ///
@@ -183,15 +186,17 @@ impl MargrabePricer {
 /// println!("{atm}"); // e.g. "11.2 ± 0.05"
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct McSpreadPricer {
+pub struct McSpreadPricer<S: SeedExt = Unseeded> {
   /// Volatility of asset 1.
-  pub sigma1: f64,
+  sigma1: f64,
   /// Volatility of asset 2.
-  pub sigma2: f64,
+  sigma2: f64,
   /// Correlation.
-  pub rho: f64,
+  rho: f64,
   /// Number of MC paths.
-  pub n_paths: usize,
+  n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McSpreadPricer {
@@ -219,18 +224,24 @@ impl McSpreadPricer {
       sigma2,
       rho,
       n_paths,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McSpreadPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McSpreadPricer<S2> {
+    McSpreadPricer {
+      sigma1: self.sigma1,
+      sigma2: self.sigma2,
+      rho: self.rho,
+      n_paths: self.n_paths,
+      seed,
     }
   }
 
-  /// Price either leg at one query point with a single simulation.
-  ///
-  /// The per-path payoff floors through `floor_payoff`. With a bare
-  /// `.max(0.0)` **every** poisoned path zeroed independently, so the
-  /// average came back `0.0` rather than `NaN` — a whole simulation's
-  /// worth of undefined payoffs reported as a worthless option. Both a
-  /// `NaN` query coordinate (`s1`, `s2`, `k`, a dividend yield) and a
-  /// `NaN` model parameter (`rho`, either volatility) reach it, the
-  /// latter through the `pub` fields whatever [`new`](Self::new) accepts.
+  /// Either leg at one query point from one simulation; a NaN query coordinate prices NaN, where a
+  /// bare `max(0.0)` would floor every path to a worthless option.
   pub fn price_option(
     &self,
     s1: f64,
@@ -254,7 +265,10 @@ impl McSpreadPricer {
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).max(0.0).sqrt();
 
     let mut all_z = vec![0.0_f64; self.n_paths * 2];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |i: usize| -> f64 {
       let z1 = all_z[2 * i];
@@ -264,21 +278,7 @@ impl McSpreadPricer {
       let s2_t = s2 * (drift2 + vol2 * z2).exp();
       floor_payoff(phi * (s1_t - s2_t - k))
     };
-    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|i| {
-        let y = payoff_of(i);
-        y * y
-      })
-      .sum();
-
-    let discount = (-r * tau).exp();
-    McEstimate {
-      mean: discount * sum / self.n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, self.n_paths),
-      n_samples: self.n_paths,
-    }
+    par_estimate(self.n_paths, (-r * tau).exp(), payoff_of)
   }
 
   /// Price the spread call $\max(S_1-S_2-K,0)$ at one query point.
