@@ -60,7 +60,8 @@ impl Greeks {
 /// Prices a call or put at any `(s, k, r, q, tau)` query with the model on the struct; exercise is
 /// the implementor's. A bad parameter panics, an off-domain query is `NaN`, never a sentinel `0.0`.
 pub trait ModelPricer {
-  /// Price a call option.
+  /// Price a call option; test the query first to avoid an off-domain `NaN` rather than detect it
+  /// (`CarrMadanPricer::strike_in_grid` is the pattern).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
 
   /// Put by European parity; override unless the carry is `e^{−qτ}` and exercise European, as the
@@ -79,11 +80,11 @@ pub trait ModelPricer {
   }
 }
 
-/// Marks `price_call` as a European vanilla `(S_T − K)⁺` on [`Self::vanilla_call_forward`], which
+/// Marks `price_call`, at every instance and query, as a European vanilla `(S_T − K)⁺`, which
 /// `ModelSurface`'s Black inversion needs: any other payoff inverts to a finite, wrong vol.
 pub trait VanillaEuropeanCall: ModelPricer {
-  /// Forward `price_call` is struck on, `Se^{(r−q)τ}` unless the carry differs (`Black1976`: `S`);
-  /// `NaN` where this instance is no European vanilla (American `FiniteDifferencePricer`).
+  /// Forward `price_call` is struck on; override unless `Se^{(r−q)τ}` (`Black1976`: `S`), and give
+  /// `NaN` where an instance is no European vanilla (American `FiniteDifferencePricer`).
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     s * ((r - q) * tau).exp()
   }
