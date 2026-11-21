@@ -68,7 +68,7 @@ pub trait GreeksExt {
     fn volga(&self) -> Option<McEstimate<f64>> { None }
     fn veta(&self)  -> Option<McEstimate<f64>> { None }
 
-    // The two MC estimators override this so one simulation backs the whole set (section 4).
+    // Both MC estimators override it to share one simulation; Heston's vega is a bump (section 4).
     fn greeks(&self) -> Greeks { /* every accessor's mean, NaN where one is None */ }
 }
 ```
@@ -112,8 +112,7 @@ impl BsmPricer {
 
 The Greeks struct is a flat `f64` bundle by design. `BsmPricer`, `HestonPricer`
 and `Merton1976Pricer` fill all nine; `CashOrNothingPricer` fills delta, gamma and
-vega and `AssetOrNothingPricer` delta alone, the rest NaN in the aggregate (`None`
-from a `GreeksExt` accessor).
+vega and `AssetOrNothingPricer` delta alone, the rest NaN in the aggregate.
 
 ## 3. `None` and NaN — when you don't compute a Greek
 
@@ -225,6 +224,9 @@ that knows three of them:
 ```rust
 impl XyzPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         match ot {
             OptionType::Call => norm_cdf(d1),
@@ -233,11 +235,17 @@ impl XyzPricer {
     }
 
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         norm_pdf(d1) / (s * self.sigma * tau.sqrt())
     }
 
     pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         s * norm_pdf(d1) * tau.sqrt()
     }
