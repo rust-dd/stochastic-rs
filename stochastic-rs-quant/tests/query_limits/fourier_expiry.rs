@@ -126,6 +126,8 @@ fn a_fractional_surface_off_the_domain_has_no_finite_log_strike() {
     (0.0, 1.0),
     (-5.0, 1.0),
     (f64::NAN, 1.0),
+    (f64::INFINITY, 1.0),
+    (f64::INFINITY, 0.0),
     (110.0, f64::NAN),
     (110.0, f64::INFINITY),
   ] {
@@ -139,6 +141,17 @@ fn a_fractional_surface_off_the_domain_has_no_finite_log_strike() {
       prices[128]
     );
   }
+}
+
+/// At expiry a spot of 0 puts every node at the strike `e^{−∞} = 0`, whose payoff `(0 − 0)⁺`
+/// stands as any payoff does.
+#[test]
+fn a_fractional_surface_at_expiry_pays_a_zero_spot_its_payoff() {
+  let fractional = FrftCarrMadanPricer::new(256, 1.5, 0.25, 0.01);
+  let (log_strikes, prices) = fractional.price_call_surface(&BSM, 0.0, R, Q, 0.0);
+  assert!(log_strikes.iter().all(|k| *k == f64::NEG_INFINITY));
+  assert!(prices.iter().all(|p| *p == 0.0));
+  assert_eq!((log_strikes.len(), prices.len()), (256, 256));
 }
 
 /// Parity on a payoff rounds: `(0.3 − 0.1) − 0.3 + 0.1` is `−2.8e-17`, and the put is 0.
