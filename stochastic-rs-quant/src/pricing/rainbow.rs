@@ -23,14 +23,17 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use owens_t::biv_norm;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::QuantError;
 use crate::error::check_grid_shape;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Type of multi-asset rainbow payoff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,7 +270,7 @@ impl StulzRainbowPricer {
 /// is the only advertised way to surface either as an `Err`, and a
 /// constructor that panicked on them first would leave it nothing to report.
 #[derive(Debug, Clone)]
-pub struct McRainbowPricer {
+pub struct McRainbowPricer<S: SeedExt = Unseeded> {
   /// Payoff type — a term of the contract, not a market quote.
   pub payoff: RainbowPayoff,
   /// Annualised Black–Scholes volatility of each asset.
@@ -276,6 +279,8 @@ pub struct McRainbowPricer {
   pub rho: Array2<f64>,
   /// Number of MC paths.
   pub n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McRainbowPricer {
@@ -319,6 +324,19 @@ impl McRainbowPricer {
       sigma,
       rho,
       n_paths,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McRainbowPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McRainbowPricer<S2> {
+    McRainbowPricer {
+      payoff: self.payoff,
+      sigma: self.sigma,
+      rho: self.rho,
+      n_paths: self.n_paths,
+      seed,
     }
   }
 
@@ -382,7 +400,10 @@ impl McRainbowPricer {
     let n_paths = self.n_paths;
 
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       let z = &all_z[p * n_assets..(p + 1) * n_assets];
@@ -399,21 +420,7 @@ impl McRainbowPricer {
         .collect();
       self.payoff.evaluate(&s_t, k)
     };
-    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    let discount = (-r * tau).exp();
-    McEstimate {
-      mean: discount * sum / n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, n_paths),
-      n_samples: n_paths,
-    }
+    par_estimate(n_paths, (-r * tau).exp(), payoff_of)
   }
 }
 

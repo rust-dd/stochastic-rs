@@ -17,7 +17,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::linalg::lstsq;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::mc::McEstimate;
@@ -131,8 +131,9 @@ impl BermudanLsmPricer {
   }
 }
 
-/// `n_paths` independent [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column
-/// `0` and the terminal value in column `n_steps`; panics if `n_steps` is zero.
+/// `n_paths` [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column `0`, drawn
+/// from a child of `seed`, which advances; panics if `n_steps` is zero.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_gbm_paths(
   s0: f64,
   r: f64,
@@ -141,19 +142,20 @@ pub fn generate_gbm_paths(
   t: f64,
   n_paths: usize,
   n_steps: usize,
+  seed: &impl SeedExt,
 ) -> Array2<f64> {
   assert!(
     n_steps >= 1,
     "n_steps must satisfy `n_steps >= 1`, got n_steps = {n_steps:?}"
   );
   let b = r - q;
-  let process = GbmLog::<f64>::new(
+  let process = GbmLog::<f64, _>::new(
     Drift::CostOfCarry(b),
     sigma,
     n_steps + 1,
     s0,
     Some(t),
-    Unseeded,
+    seed.derive(),
   );
   let samples = process.sample_par(n_paths);
   let mut paths = Array2::<f64>::zeros((n_paths, n_steps + 1));
@@ -165,6 +167,8 @@ pub fn generate_gbm_paths(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::*;
 
   /// Bermudan put on the *full* exercise grid (every step) should match an
@@ -179,7 +183,7 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 50;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
@@ -210,7 +214,7 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 60;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
 
@@ -238,7 +242,7 @@ mod tests {
     let n_paths = 50_000;
     let n_steps = 30;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
     let berm = bermudan.price(paths.view(), &[n_steps], payoff).mean;
@@ -255,6 +259,6 @@ mod tests {
   #[test]
   #[should_panic(expected = "n_steps must satisfy `n_steps >= 1`, got n_steps = 0")]
   fn a_grid_of_no_steps_is_refused() {
-    let _ = generate_gbm_paths(100.0, 0.05, 0.0, 0.2, 1.0, 8, 0);
+    let _ = generate_gbm_paths(100.0, 0.05, 0.0, 0.2, 1.0, 8, 0, &Unseeded);
   }
 }

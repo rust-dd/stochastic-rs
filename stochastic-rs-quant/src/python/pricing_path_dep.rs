@@ -155,21 +155,27 @@ impl PyMcEstimate {
   }
 }
 
-/// The Rust model holds `sigma`, which Python passes to `price`, so the wrapper keeps the counts.
+/// The Rust model holds `sigma`, which Python passes to `price`, so the wrapper keeps the counts
+/// and the seed, `None` drawing fresh paths at every call.
 #[pyclass(name = "MCBarrierPricer", unsendable)]
 pub struct PyMcBarrierPricer {
   n_paths: usize,
   n_steps: usize,
+  seed: Option<u64>,
 }
 
 #[pymethods]
 impl PyMcBarrierPricer {
   #[new]
-  #[pyo3(signature = (n_paths=10000, n_steps=252))]
-  fn new(n_paths: usize, n_steps: usize) -> pyo3::PyResult<Self> {
+  #[pyo3(signature = (n_paths=10000, n_steps=252, seed=None))]
+  fn new(n_paths: usize, n_steps: usize, seed: Option<u64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
       crate::pricing::barrier::McBarrierPricer::new(0.0, n_paths, n_steps);
-      Self { n_paths, n_steps }
+      Self {
+        n_paths,
+        n_steps,
+        seed,
+      }
     })
   }
 
@@ -207,9 +213,14 @@ impl PyMcBarrierPricer {
       option_type: parse_option_type(option_type)?,
     };
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      crate::pricing::barrier::McBarrierPricer::new(sigma, self.n_paths, self.n_steps)
-        .price(&option, s, r, q, t)
-        .into()
+      let pricer = crate::pricing::barrier::McBarrierPricer::new(sigma, self.n_paths, self.n_steps);
+      match self.seed {
+        Some(seed) => pricer
+          .with_seed(stochastic_rs_core::simd_rng::Deterministic::new(seed))
+          .price(&option, s, r, q, t),
+        None => pricer.price(&option, s, r, q, t),
+      }
+      .into()
     })
   }
 }

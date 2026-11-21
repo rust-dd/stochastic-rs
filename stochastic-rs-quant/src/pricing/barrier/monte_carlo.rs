@@ -1,6 +1,5 @@
 //! Monte Carlo barrier pricing on Gbm paths monitored at every step.
 
-use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -13,16 +12,19 @@ use super::BarrierType;
 use crate::OptionType;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::assert_sigma;
-use crate::pricing::mc_stats::std_err_from_sums;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Monte Carlo price of the [`BarrierOption`] the closed form prices, rebate included, on
 /// `n_paths` Gbm paths monitored at each of `n_steps` steps and at the spot.
 #[derive(Debug, Clone, Copy)]
-pub struct McBarrierPricer {
+pub struct McBarrierPricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   pub n_paths: usize,
   pub n_steps: usize,
+  /// Each call reads a clone's next seed as its base, and each path derives its stream from that
+  /// base and its index, so a `Deterministic` seed replays whatever rayon's schedule.
+  pub seed: S,
 }
 
 impl McBarrierPricer {
@@ -41,37 +43,24 @@ impl McBarrierPricer {
       sigma,
       n_paths,
       n_steps,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McBarrierPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McBarrierPricer<S2> {
+    McBarrierPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      seed,
     }
   }
 
-  /// Discounted estimate under the log drift `(r − q − σ²/2) dt`, from a fresh base seed; NaN for
-  /// a NaN query or term, `tau < 0` or a spot not positive before expiry, as the closed form.
+  /// Discounted estimate under the log drift `(r − q − σ²/2) dt`; NaN for a NaN query or term,
+  /// `tau < 0` or a spot not positive before expiry, as the closed form.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
-    self.price_from(option, s, r, q, tau, Unseeded.next_seed())
-  }
-
-  /// [`price`](Self::price) from the base `seed`, each path's stream derived from it and its index.
-  pub fn price_seeded(
-    &self,
-    option: &BarrierOption,
-    s: f64,
-    r: f64,
-    q: f64,
-    tau: f64,
-    seed: u64,
-  ) -> McEstimate<f64> {
-    self.price_from(option, s, r, q, tau, seed)
-  }
-
-  fn price_from(
-    &self,
-    option: &BarrierOption,
-    s: f64,
-    r: f64,
-    q: f64,
-    tau: f64,
-    base_seed: u64,
-  ) -> McEstimate<f64> {
     let BarrierOption {
       strike: k,
       barrier: h,
@@ -94,6 +83,7 @@ impl McBarrierPricer {
     let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
     let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
     let breached = |x: f64| if up { x >= h } else { x <= h };
+    let base_seed = self.seed.clone().next_seed();
 
     let payoff_of = |path: usize| -> f64 {
       // Golden-ratio stride keeps consecutive path seeds far apart in the
@@ -123,19 +113,6 @@ impl McBarrierPricer {
         (false, Some(step)) => rebate * (r * (tau - step as f64 * dt)).exp(),
       }
     };
-    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|path| {
-        let y = payoff_of(path);
-        y * y
-      })
-      .sum();
-
-    McEstimate {
-      mean: discount * sum / self.n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, self.n_paths),
-      n_samples: self.n_paths,
-    }
+    par_estimate(self.n_paths, discount, payoff_of)
   }
 }

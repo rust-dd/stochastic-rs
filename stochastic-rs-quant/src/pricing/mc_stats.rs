@@ -1,5 +1,25 @@
 //! Shared standard-error arithmetic for the bespoke Monte Carlo pricers.
 
+use rayon::prelude::*;
+use stochastic_rs_stochastic::mc::McEstimate;
+
+/// The estimate of `n` payoffs evaluated in parallel and summed in path order, so one seed gives
+/// one value on any thread pool; `scale` (a discount, a notional) multiplies both moments.
+pub(crate) fn par_estimate(
+  n: usize,
+  scale: f64,
+  payoff: impl Fn(usize) -> f64 + Sync + Send,
+) -> McEstimate<f64> {
+  let payoffs = (0..n).into_par_iter().map(payoff).collect::<Vec<f64>>();
+  let sum: f64 = payoffs.iter().sum();
+  let sum_sq: f64 = payoffs.iter().map(|y| y * y).sum();
+  McEstimate {
+    mean: scale * sum / n as f64,
+    std_err: scale.abs() * std_err_from_sums(sum, sum_sq, n),
+    n_samples: n,
+  }
+}
+
 /// Standard error of a Monte Carlo mean from the running sums a payoff
 /// pass produces: sample variance `(sum_sq - sum²/n) / (n - 1)`, then
 /// `sqrt(var / n)` (Glasserman 2003, §1.1).

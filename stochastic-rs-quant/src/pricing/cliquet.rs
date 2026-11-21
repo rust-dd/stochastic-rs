@@ -19,15 +19,18 @@
 //!   arXiv:1810.09670, DOI: 10.15559/18-VMSTA107
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::pricing::exotic::CliquetOption;
 use crate::pricing::exotic::assert_sigma;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Closed-form cliquet on $M$ equal sub-periods under Black-Scholes.
 ///
@@ -101,10 +104,12 @@ impl CliquetPricer {
 /// Monte Carlo price of a [`CliquetOption`], global floor and cap included, which the closed form
 /// answers with NaN.
 #[derive(Debug, Clone, Copy)]
-pub struct McCliquetPricer {
+pub struct McCliquetPricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   pub n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McCliquetPricer {
@@ -115,7 +120,21 @@ impl McCliquetPricer {
       n_paths >= 1,
       "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
-    Self { sigma, n_paths }
+    Self {
+      sigma,
+      n_paths,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McCliquetPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McCliquetPricer<S2> {
+    McCliquetPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      seed,
+    }
   }
 
   /// Discounted estimate at [`CliquetPricer::price`]'s query, which reads no spot; NaN for a
@@ -145,7 +164,10 @@ impl McCliquetPricer {
     let c_g = global_cap.unwrap_or(f64::INFINITY);
 
     let mut all_z = vec![0.0_f64; self.n_paths * m];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       let returns = all_z[p * m..(p + 1) * m]
@@ -153,21 +175,7 @@ impl McCliquetPricer {
         .map(|&z| (drift + vol * z).exp_m1().max(f_l).min(c_l));
       returns.sum::<f64>().min(c_g).max(f_g)
     };
-    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    let scale = notional * (-r * tau).exp();
-    McEstimate {
-      mean: scale * sum / self.n_paths as f64,
-      std_err: scale.abs() * std_err_from_sums(sum, sum_sq, self.n_paths),
-      n_samples: self.n_paths,
-    }
+    par_estimate(self.n_paths, notional * (-r * tau).exp(), payoff_of)
   }
 }
 

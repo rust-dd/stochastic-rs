@@ -6,15 +6,18 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
 use crate::QuantError;
 use crate::error::check_grid_shape;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Which average the basket is struck against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +52,7 @@ pub enum BasketAverageType {
 /// a constructor that panicked on them first would leave it nothing to
 /// report.
 #[derive(Debug, Clone)]
-pub struct McBasketPricer {
+pub struct McBasketPricer<S: SeedExt = Unseeded> {
   /// Weights — a term of the contract, not a market quote.
   pub weights: Array1<f64>,
   /// Average type — likewise a term of the contract.
@@ -60,6 +63,8 @@ pub struct McBasketPricer {
   pub rho: Array2<f64>,
   /// Number of MC paths.
   pub n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McBasketPricer {
@@ -100,6 +105,20 @@ impl McBasketPricer {
       sigma,
       rho,
       n_paths,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McBasketPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McBasketPricer<S2> {
+    McBasketPricer {
+      weights: self.weights,
+      avg_type: self.avg_type,
+      sigma: self.sigma,
+      rho: self.rho,
+      n_paths: self.n_paths,
+      seed,
     }
   }
 
@@ -169,10 +188,11 @@ impl McBasketPricer {
     };
     let n_paths = self.n_paths;
 
-    // Generate one big block of standard normals using the project's
-    // SIMD ziggurat path, then map paths in parallel.
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       let z = &all_z[p * n_assets..(p + 1) * n_assets];
@@ -201,21 +221,7 @@ impl McBasketPricer {
       };
       (phi * (basket - k)).max(0.0)
     };
-    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    let discount = (-r * tau).exp();
-    McEstimate {
-      mean: discount * sum / n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, n_paths),
-      n_samples: n_paths,
-    }
+    par_estimate(n_paths, (-r * tau).exp(), payoff_of)
   }
 
   /// Price the basket call at one query point.

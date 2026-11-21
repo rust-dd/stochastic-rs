@@ -14,13 +14,16 @@
 //! - Cibrario, F. et al. (2025), "Autocallable Options Pricing with
 //!   Integration-Based Exponential Amplitude Loading", arXiv:2507.19039
 //!
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::pricing::exotic::AutocallableNote;
 use crate::pricing::exotic::assert_sigma;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Barrier observation style for the knock-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,11 +40,13 @@ pub enum KnockInStyle {
 /// Monte Carlo price of an [`AutocallableNote`] on Gbm paths; continuous knock-in monitoring
 /// takes `steps_per_period` steps between observation dates, the other styles one.
 #[derive(Debug, Clone, Copy)]
-pub struct AutocallablePricer {
+pub struct AutocallablePricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   pub n_paths: usize,
   pub steps_per_period: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl AutocallablePricer {
@@ -61,6 +66,18 @@ impl AutocallablePricer {
       sigma,
       n_paths,
       steps_per_period,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> AutocallablePricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> AutocallablePricer<S2> {
+    AutocallablePricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      steps_per_period: self.steps_per_period,
+      seed,
     }
   }
 
@@ -92,7 +109,10 @@ impl AutocallablePricer {
       _ => n_obs,
     };
     let mut all_z = vec![0.0_f64; n_paths * max_normals_per_path];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       {
@@ -163,20 +183,7 @@ impl AutocallablePricer {
         pv
       }
     };
-    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    McEstimate {
-      mean: sum / n_paths as f64,
-      std_err: std_err_from_sums(sum, sum_sq, n_paths),
-      n_samples: n_paths,
-    }
+    par_estimate(n_paths, 1.0, payoff_of)
   }
 }
 
