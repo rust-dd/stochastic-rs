@@ -59,8 +59,10 @@ fn bates_pricer_matches_heston_reference() {
 
 #[test]
 fn svj_calibrate_recovers_heston_prices() {
+  // The fit descends along Feller's boundary to any budget; 100 iterations show the rmse falls.
   let result = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
     .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(100))
     .calibrate(None)
     .unwrap();
   assert!(

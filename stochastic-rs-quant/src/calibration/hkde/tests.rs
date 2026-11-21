@@ -140,8 +140,10 @@ fn hkde_calibrate_self_consistency() {
     .zip(market)
     .map(|(&k, price)| OptionQuote::new(k, tau, price, OptionType::Call))
     .collect();
+  // Nine strikes fix few of the nine values, so the fit runs to any budget; 200 iterations suffice.
   let result = HkdeCalibrator::new(s_val, r, q, quotes)
     .with_start(initial)
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
     .calibrate(None)
     .unwrap();
   assert!(

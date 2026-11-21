@@ -116,9 +116,10 @@ const START: DoubleHestonParams = DoubleHestonParams {
 
 #[test]
 fn double_heston_calibrate_to_heston_surface() {
-  // Calibrate to Heston prices: we expect the RMSE to be small.
+  // The fit descends along Feller's boundary to any budget; 100 iterations show the rmse falls.
   let result = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
     .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(100))
     .calibrate(None)
     .unwrap();
   assert!(
