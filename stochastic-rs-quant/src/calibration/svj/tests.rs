@@ -102,7 +102,11 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
   let quotes = heston_ref_quotes();
   let fit = SvjCalibrator::new(100.0, 0.05, 0.0, quotes.clone())
     .with_start(START)
-    .with_options(CalibrationOptions::default().with_record_history(true))
+    .with_options(
+      CalibrationOptions::default()
+        .with_record_history(true)
+        .with_max_iterations(8),
+    )
     .calibrate(None)
     .unwrap();
   assert!(fit.history.len() > 1, "{} entries", fit.history.len());
