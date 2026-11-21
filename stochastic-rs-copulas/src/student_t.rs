@@ -308,8 +308,7 @@ impl TDensity {
   }
 
   /// `G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + Q/ν) + ((ν + 1)/2) ln((1 + x²/ν)(1 + y²/ν))`,
-  /// `Q = (x − ρy)²/(1 − ρ²) + y²`; `None` unless `9εS ≤ 1e-12 max(1, |ln c|)`, `S` the terms' sizes
-  /// summed.
+  /// `Q = (x − ρy)²/(1 − ρ²) + y²`; `None` unless `9εS ≤ 1e-12 max(1, |ln c|)`, `S` their size sum.
   pub(crate) fn moderate(&self, x: f64, y: f64) -> Option<f64> {
     let d = (-self.rho).mul_add(y, x);
     let q = d * d * self.inv_one_minus_rho2 + y * y;
