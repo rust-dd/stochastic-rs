@@ -279,6 +279,7 @@ fn heston_greeks_nan_at_degenerate_inputs() {
 /// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
 /// and a violated Feller condition.
 mod construction_validation;
+mod evaluation_counts;
 
 /// `E₂[∫₀^τ v] = τ(v0·ℓ + κθτ·s)` against mpmath at 40 digits across `|x| = 1e-3`, `x = κτ`:
 /// `ℓ = (1 − e⁻ˣ)/x` alone at `θ = 0`, `s = (x − 1 + e⁻ˣ)/x²` alone at `v0 = 0`.

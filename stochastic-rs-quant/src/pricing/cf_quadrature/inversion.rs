@@ -132,7 +132,7 @@ where
       r.scale = self.scale;
       &mut r.body
     });
-    let (body, end) = walk(
+    let (body, end, _) = walk(
       scaled,
       start / self.scale,
       BODY_TOLERANCE,
