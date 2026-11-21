@@ -33,7 +33,7 @@ const MJD_REF: [f64; 9] = [
   24.537096, 20.322713, 16.420092, 12.915553, 9.877019, 7.340385, 5.303578, 3.729825, 2.557790,
 ];
 
-/// The fit's start from `values`: clamped, its tied parameter read in its own coordinate.
+/// The fit's start from `values`: clamped, its coupled parameters read in their own coordinates.
 fn project(model: LevyModelType, values: &[f64]) -> Vec<f64> {
   use super::coordinates::to_coordinates;
   use super::coordinates::to_values;
@@ -492,8 +492,8 @@ fn a_projected_point_has_a_martingale_in_every_model() {
   }
 }
 
-/// A point inside its condition by more than the margin, NIG's `α` up to 50 over its floor, is
-/// left as it is, to the map's rounding.
+/// A point inside its condition and its box by more than the margin, NIG's `α` over 50 included,
+/// is left as it is, to the map's rounding.
 #[test]
 fn a_point_with_a_martingale_is_its_own_projection() {
   use super::loss::default_params;
@@ -501,7 +501,7 @@ fn a_point_with_a_martingale_is_its_own_projection() {
     (LevyModelType::VarianceGamma, vec![1.2, -0.6, 4.95]),
     (LevyModelType::Nig, vec![6.02, 5.0, 0.5]),
     (LevyModelType::Nig, vec![60.0, 20.0, 0.5]),
-    (LevyModelType::Nig, vec![94.0, -45.0, 0.5]),
+    (LevyModelType::Nig, vec![54.0, -45.0, 0.5]),
     (LevyModelType::Cgmy, vec![1.0, 5.0, 1.02, 0.5]),
     (LevyModelType::Kou, vec![0.15, 3.0, 0.5, 1.02, 10.0]),
   ];

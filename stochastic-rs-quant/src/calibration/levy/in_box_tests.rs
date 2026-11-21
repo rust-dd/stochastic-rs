@@ -90,22 +90,26 @@ fn no_raw_step_across_a_bound_leaves_its_coordinate_where_it_was() {
   }
 }
 
-/// `α` on its ceiling, 50 over its floor: each step of `β` across its box moves the model's `β`.
+/// `β = (u − v − 1)/2` spans `[−49.99, 48.99]`: at either end of `u`'s box, each step of `v`
+/// across its own moves the model's `β`.
 #[test]
 fn no_step_inside_its_box_leaves_the_nig_asymmetry_where_it_was() {
   let model = LevyModelType::Nig;
   let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes());
   let mut problem = LevyProblem::new(&calibrator, default_params(model));
-  let mut beta = |raw: f64| {
-    problem.set_params(ndarray::array![50.0, raw, 0.5].view());
-    problem.params.values[1]
-  };
-  let (lo, hi) = param_bounds(model)[1];
-  for raw in (0..=400).map(|i| lo + (hi - lo) * f64::from(i) / 400.0) {
-    let (here, beside) = (beta(raw), beta(raw + 1e-3));
-    assert!(here != beside, "{raw}: {here}");
+  let bounds = coordinate_bounds(model);
+  let (lo, hi) = bounds[1];
+  for u in [bounds[0].0, bounds[0].1] {
+    let mut beta = |raw: f64| {
+      problem.set_params(ndarray::array![u, raw, 0.5].view());
+      problem.params.values[1]
+    };
+    for raw in (0..=400).map(|i| lo + (hi - lo) * f64::from(i) / 400.0) {
+      let (here, beside) = (beta(raw), beta(raw + 1e-3));
+      assert!(here != beside, "{u}, {raw}: {here}");
+    }
   }
-  assert_eq!((lo, hi), (-49.99, 48.99));
+  assert_eq!(param_bounds(model)[1], (-49.99, 48.99));
 }
 
 /// Nine one-year calls of `truth`, each rounded to `1e-6` if `rounded`.
@@ -200,15 +204,17 @@ fn a_nig_fit_beside_the_end_of_its_floor_is_not_converged_where_the_valley_falls
   );
 }
 
-/// Where its coupled condition binds, `α`'s floor at `β = 20` and at both ends of `β`'s box, and
-/// `ν`'s cap at `θ + σ²/2 = 1`: each step of a coordinate across its box moves the model.
+/// Along each edge of NIG's box, where a condition binds or `α` meets its ceiling, and at `ν`'s
+/// cap at `θ + σ²/2 = 1`: each step of a coordinate across its box raises `α` or `ν`.
 #[test]
 fn no_step_across_its_box_leaves_a_coupled_parameter_where_it_was() {
-  for (model, at, j) in [
-    (LevyModelType::Nig, [0.0, 20.0, 0.5], 0),
-    (LevyModelType::Nig, [0.0, -49.99, 0.5], 0),
-    (LevyModelType::Nig, [0.0, 48.99, 0.5], 0),
-    (LevyModelType::VarianceGamma, [1.0, 0.5, 0.0], 2),
+  let span = coordinate_bounds(LevyModelType::Nig)[0].1;
+  for (model, at, j, k) in [
+    (LevyModelType::Nig, [0.0, 0.0, 0.5], 0, 0),
+    (LevyModelType::Nig, [0.0, span, 0.5], 0, 0),
+    (LevyModelType::Nig, [0.0, 0.0, 0.5], 1, 0),
+    (LevyModelType::Nig, [span, 0.0, 0.5], 1, 0),
+    (LevyModelType::VarianceGamma, [1.0, 0.5, 0.0], 2, 2),
   ] {
     let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes());
     let mut problem = LevyProblem::new(&calibrator, default_params(model));
@@ -217,7 +223,7 @@ fn no_step_across_its_box_leaves_a_coupled_parameter_where_it_was() {
       let mut x = Array1::from_vec(at.to_vec());
       x[j] = lo + (hi - lo) * f64::from(i) / 200.0;
       problem.set_params(x.view());
-      problem.params.values[j]
+      problem.params.values[k]
     });
     let values = values.collect::<Vec<_>>();
     assert!(
@@ -227,8 +233,8 @@ fn no_step_across_its_box_leaves_a_coupled_parameter_where_it_was() {
   }
 }
 
-/// A pull acts on the parameters: the tied one's row runs through its own coordinate and the edge
-/// that `σ` and `θ`, or `β` on either side of −½, move; a reflected coordinate's slope is −1.
+/// A pull acts on the parameters: `ν`'s row runs through its share and the cap `σ` and `θ` move,
+/// NIG's `α` and `β` rows through `u` and `v`; a reflected coordinate's slope is −1.
 #[test]
 fn the_natural_jacobian_matches_central_differences() {
   use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
