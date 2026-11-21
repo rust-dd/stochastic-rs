@@ -129,8 +129,8 @@ fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
   }
 }
 
-/// `P₁`'s head reads `φ(u − i)` down to `u = 1e-16`: a chf `2.6e-11` off near `1e-8` moved every
-/// strike's price by the same `3.4e-10`.
+/// `P₁`'s head reads `φ(u − i)` down to `u = 1e-16`, where `e^{−iuκ}` is 1: an error of the chf
+/// near `1e-8` is the same error in the price at every strike.
 #[test]
 fn gil_pelaez_holds_a_share_measure_with_structure_near_1e_8() {
   let model = hkde_past_its_share_measure();
