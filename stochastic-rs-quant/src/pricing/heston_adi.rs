@@ -160,7 +160,7 @@ impl HestonAdiPricer {
   fn solve_call(&self, s: f64, k: f64, r_d: f64, r_f: f64, tau: f64) -> f64 {
     let p = self.params;
     let alive = self.barrier.is_none_or(|barrier| s > barrier);
-    let call = || vanilla_payoff(OptionType::Call, if alive { s } else { k }, k);
+    let call = || vanilla_payoff(OptionType::Call, if alive || s.is_nan() { s } else { k }, k);
     if let Some(value) = expired(tau, &[r_d, r_f], call) {
       return value;
     }

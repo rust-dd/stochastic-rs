@@ -161,6 +161,7 @@ fn the_adi_down_and_out_call_at_expiry_is_its_payoff_above_the_barrier() {
   assert_eq!(adi.price_call(90.0, K, R, Q, 0.0), 0.0);
   assert_eq!(adi.price_call(110.0, K, R, Q, 0.0), 10.0);
   assert!(adi.price_call(110.0, K, R, Q, -1.0).is_nan());
+  assert!(adi.price_call(f64::NAN, K, R, Q, 0.0).is_nan());
   assert!(adi.price_put(110.0, K, R, Q, 0.0).is_nan());
 }
 

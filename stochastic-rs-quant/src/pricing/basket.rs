@@ -366,6 +366,9 @@ fn expired_basket(
   q: ArrayView1<'_, f64>,
   payoff: impl FnOnce() -> f64,
 ) -> Option<f64> {
+  if tau > 0.0 {
+    return None;
+  }
   let rates = q.iter().copied().chain([r]).collect::<Vec<f64>>();
   expired(tau, &rates, payoff)
 }
