@@ -172,11 +172,7 @@ impl FrftCarrMadanPricer {
       let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
       let denom = Complex64::new(alpha * alpha + alpha - v_j * v_j, (2.0 * alpha + 1.0) * v_j);
       let psi = disc * phi / denom;
-      // e^{-i v_j b}: the Carr-Madan kernel is e^{-i v_j k_u} =
-      // e^{-i v_j b} · e^{-2πi γ j u}, so the b-phase carries a negative
-      // sign. (The 0-centred standard FFT pricer can use +i v_j b because
-      // a symmetric grid makes the real part sign-insensitive; a forward-
-      // shifted grid does not, so the sign must be correct here.)
+      // `e^{−iv_jk_u} = e^{−iv_jb}·e^{−2πiγju}`: the b-phase carries the kernel's negative sign.
       input[j] = (-i_unit * v_j * b).exp() * psi * weight;
     }
 

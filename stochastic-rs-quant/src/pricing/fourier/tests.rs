@@ -193,8 +193,8 @@ fn carr_madan_heston_vs_analytical() {
   );
 }
 
-/// A range inside the default grid leaves `eta` at 0.25, where Simpson's half-period image is
-/// 2.7e-3 on a spot of 100; the image grows with the step, to 0.56 at `eta = 0.59`.
+/// A range inside the default grid leaves `eta` at 0.25, where the trapezoid rule's image is
+/// `Se^{−2πα/η} = 6.5e-7` on a spot of 100.
 #[test]
 fn carr_madan_cumulant_sized_matches_black_scholes() {
   let model = BsmFourier { sigma: 0.2 };

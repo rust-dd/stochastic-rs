@@ -68,7 +68,6 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let frft =
         FrftCarrMadanPricer::cumulant_sized(&bsm, 1.0, 12.0).price_call(&bsm, 100.0, k, r, q, 1.0);
       let want = closed.price_call(100.0, k, r, q, 1.0);
-      // Gil–Pelaez's band is its quadrature error.
       for (name, got, tol) in [
         ("gil-pelaez", gp, 1e-12),
         ("lewis", lw, 1e-9),
@@ -84,7 +83,7 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let call = m.price_call(100.0, k, r, q, 1.0);
       let put = cos.price(&m, 100.0, k, r, q, 1.0, OptionType::Put);
       let parity = 100.0 * (-q * 1.0_f64).exp() - k * (-r * 1.0_f64).exp();
-      // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the rest, ≤ 4e-8, is Gil–Pelaez's.
+      // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the blanket's Lewis call adds less.
       assert!(
         (call - put - parity).abs() < 1e-9,
         "parity at ({r}, {q}), k = {k}: {call} - {put} vs {parity}"

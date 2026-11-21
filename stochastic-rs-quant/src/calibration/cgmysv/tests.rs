@@ -234,8 +234,8 @@ fn the_natural_jacobian_matches_central_differences() {
   assert!(worst < 1e-6, "{worst:e}");
 }
 
-/// A point where a panel of the Lewis quadrature switches inside a `1e-6` stencil of η, in
-/// `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
+/// A point beside which a walk that stops on its envelope moves the Lewis price of K = 2525 by
+/// 3.3e-5 within `1e-6` of η, in `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
 const STALLED: [f64; 8] = [
   0.591203583519947,
   22.88796593498391,
@@ -247,8 +247,7 @@ const STALLED: [f64; 8] = [
   0.009934101706378984,
 ];
 
-/// At `STALLED` the Lewis price of K = 2525 jumps by 3.3e-5 within 8.75e-7 of η, so the
-/// Jacobian's step must bound a jump's share: `2e-3·|θ|` reads each column within 6.3e-3.
+/// A step of `2e-3·|θ|` in each natural parameter reads every column within 2e-2.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
   use crate::calibration::least_squares::checks::jacobian_error;
@@ -315,8 +314,8 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
   }
 }
 
-/// On the rule each price's own walk took, a difference never straddles a stop of Lewis's walk:
-/// at `STALLED`, where a walk's price jumps by 3.3e-5 inside the η stencil, `J(h)` is `J(2h)`.
+/// On the rule each price's own walk took, a difference integrates one fixed rule: at `STALLED`,
+/// `J(h)` is `J(2h)`.
 #[test]
 fn the_jacobian_at_twice_its_step_is_the_same_where_a_walk_jumps() {
   use crate::calibration::least_squares::checks::step_doubling_error;

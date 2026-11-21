@@ -232,10 +232,9 @@ assert_model_pricer!(
 // all.
 //
 // Absent from the list because a blanket impl in `pricing/fourier/mod.rs`
-// covers them: every `FourierModelExt` model. Gil-Pelaez prices
-// `S e^{-q tau} P_1 - K e^{-r tau} P_2` — the vanilla European call — for all
-// of them, so they are covered by the same one-line reasoning rather than one
-// entry each. `BLANKET_IMPLS` below pins that blanket, so a *second* one
+// covers them: every `FourierModelExt` model. Lewis's integral prices the
+// vanilla European call for all of them, so they are covered by the same
+// one-line reasoning rather than one entry each. `BLANKET_IMPLS` below pins that blanket, so a *second* one
 // arriving is a test failure rather than a silent widening.
 //
 // `FiniteDifferencePricer` is the one member whose answer is per-instance: it
