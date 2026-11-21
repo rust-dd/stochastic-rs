@@ -14,8 +14,8 @@ use crate::traits::VanillaEuropeanCall;
 
 mod greeks;
 
-/// Merton (1976) jump-diffusion pricer; a query discounts at `r` and carries at
-/// [`BsmPricer::b`]`(r, q)` under `self.b`, so a carry `b₀` at discount `r₀` is `(r₀, r₀ − b₀)`.
+/// Merton (1976) jump diffusion; a query discounts at `r`, carries at [`BsmPricer::b`]`(r, q)`, and
+/// where `b = r − q` (`Merton1973`, `GarmanKohlhagen1983`) carry `b₀` at `r₀` is `(r₀, r₀ − b₀)`.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::bsm::BsmCoc;
