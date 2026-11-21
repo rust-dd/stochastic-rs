@@ -12,6 +12,7 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::ndarray::array;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::autoregressive::ar::Ar;
 use stochastic_rs::stochastic::autoregressive::arima::Arima;
@@ -28,7 +29,6 @@ use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs::traits::FloatExt;
 use stochastic_rs::traits::ProcessExt;
-use stochastic_rs_core::simd_rng::Deterministic;
 
 fn bench_process_generation(c: &mut Criterion) {
   let mut group = c.benchmark_group("ProcessGeneration");
