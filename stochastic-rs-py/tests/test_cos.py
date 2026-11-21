@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 import pytest
@@ -51,12 +52,18 @@ def test_cos_engine_prices_every_fourier_model_as_its_own_quadrature_does():
 
 
 def test_cos_engine_refuses_a_bad_grid_a_bad_option_type_and_a_model_it_cannot_price():
-    with pytest.raises(ValueError, match="CosEngine requires l > 0 and n >= 2"):
+    with pytest.raises(ValueError, match=re.escape("n must satisfy `n >= 2`, got n = 1")):
         sr.CosEngine(1)
-    with pytest.raises(ValueError, match="CosEngine requires l > 0"):
-        sr.CosEngine(l=0.0)
+    for l, shown in ((0.0, "0.0"), (math.inf, "inf"), (math.nan, "NaN")):
+        message = re.escape(f"l must satisfy `l.is_finite() && l > 0.0`, got l = {shown}")
+        with pytest.raises(ValueError, match=message):
+            sr.CosEngine(l=l)
+        with pytest.raises(ValueError, match=message):
+            sr.CosEngine(256, l)
     engine, model = sr.CosEngine(), sr.BSMFourier(0.2)
+    assert sr.CosEngine(l=10.0).price(model, 100.0, 90.0, 0.05, 0.02, 1.0) == engine.price(model, 100.0, 90.0, 0.05, 0.02, 1.0)
     with pytest.raises(ValueError, match="option_type must be 'call' or 'put', got 'x'"):
         engine.price(model, 100.0, 100.0, 0.05, 0.02, 1.0, option_type="x")
     with pytest.raises(TypeError, match="model must be one of the Fourier models .*, got CarrMadanPricer"):
         engine.price(sr.CarrMadanPricer(), 100.0, 100.0, 0.05, 0.02, 1.0)
+

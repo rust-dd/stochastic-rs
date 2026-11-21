@@ -152,15 +152,54 @@ fn cos_invalid_cumulants_gives_nan() {
 }
 
 #[test]
-#[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
+#[should_panic(expected = "l must satisfy `l.is_finite() && l > 0.0`, got l = 0.0")]
 fn cos_engine_new_rejects_nonpositive_l() {
   CosEngine::new(256, 0.0);
 }
 
 #[test]
-#[should_panic(expected = "CosEngine requires l > 0 and n >= 2")]
+#[should_panic(expected = "l must satisfy `l.is_finite() && l > 0.0`, got l = inf")]
+fn cos_engine_new_rejects_an_infinite_l() {
+  CosEngine::new(256, f64::INFINITY);
+}
+
+#[test]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn cos_engine_new_rejects_too_few_terms() {
   CosEngine::new(1, 10.0);
+}
+
+#[test]
+#[should_panic(expected = "l must satisfy `l.is_finite() && l > 0.0`, got l = NaN")]
+fn cos_engine_adaptive_rejects_a_nan_l() {
+  CosEngine::adaptive(f64::NAN);
+}
+
+/// `adaptive(l)` is the default's term rule at its own `l`, where 256 terms fall short.
+#[test]
+fn adaptive_adds_terms_at_its_own_width_as_the_default_does() {
+  let model = HestonFourier::new(HestonParams {
+    v0: 0.02,
+    kappa: 0.5,
+    theta: 0.09,
+    sigma: 1.0,
+    rho: -0.9,
+  });
+  let at = |engine: CosEngine, k| engine.price(&model, 100.0, k, 0.05, 0.01, 2.0, OptionType::Put);
+  for k in [80.0, 100.0, 120.0] {
+    let want = model.price_put(100.0, k, 0.05, 0.01, 2.0);
+    let adaptive = at(CosEngine::adaptive(12.0), k);
+    let fixed = at(CosEngine::new(256, 12.0), k);
+    assert!(
+      (adaptive - want).abs() < 5e-6,
+      "K={k}: {adaptive} vs {want}"
+    );
+    assert!((fixed - want).abs() > 1e-3, "K={k}: {fixed} vs {want}");
+    assert_eq!(
+      at(CosEngine::adaptive(10.0), k),
+      at(CosEngine::default(), k)
+    );
+  }
 }
 
 /// A characteristic function that returns `NaN` (standing in for a

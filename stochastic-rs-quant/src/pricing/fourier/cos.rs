@@ -32,15 +32,29 @@ const CHF_FLOOR: f64 = 1e-9;
 
 impl Default for CosEngine {
   fn default() -> Self {
-    Self { n: None, l: 10.0 }
+    Self::adaptive(10.0)
   }
 }
 
 impl CosEngine {
-  /// Exactly `n` terms over half-width `l`; panics unless `l > 0` and `n ≥ 2`.
+  /// Exactly `n` terms over `l` cumulant standard deviations; panics unless `n >= 2` and `l` is
+  /// finite and positive.
   pub fn new(n: usize, l: f64) -> Self {
-    assert!(l > 0.0 && n >= 2, "CosEngine requires l > 0 and n >= 2");
-    Self { n: Some(n), l }
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
+    Self {
+      n: Some(n),
+      ..Self::adaptive(l)
+    }
+  }
+
+  /// The default's term rule over `l` cumulant standard deviations; panics unless `l` is finite
+  /// and positive.
+  pub fn adaptive(l: f64) -> Self {
+    assert!(
+      l.is_finite() && l > 0.0,
+      "l must satisfy `l.is_finite() && l > 0.0`, got l = {l:?}"
+    );
+    Self { n: None, l }
   }
 
   /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is

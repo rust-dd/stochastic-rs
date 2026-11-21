@@ -414,10 +414,7 @@ impl PyCosEngine {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: match n {
         Some(n) => crate::pricing::fourier::CosEngine::new(n, l),
-        None => {
-          assert!(l > 0.0, "CosEngine requires l > 0");
-          crate::pricing::fourier::CosEngine { n: None, l }
-        }
+        None => crate::pricing::fourier::CosEngine::adaptive(l),
       },
     })
   }
