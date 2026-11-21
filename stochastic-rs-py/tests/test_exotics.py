@@ -126,8 +126,9 @@ def test_an_exotic_pricer_at_zero_volatility_prices_its_deterministic_limit_or_n
     assert floored.price() == pytest.approx(2.8859742821983847, **LIBM)
     corridor = sr.DoubleBarrierPricer(s=100.0, t=1.0, **{**CORRIDOR, "sigma": 0.0})
     assert corridor.price() == pytest.approx(2.896924880604118, **LIBM)
+    barrier = sr.BarrierPricer(h=130.0, t=1.0, barrier_type="up_out", **{**BARRIER, "sigma": 0.0})
+    assert barrier.price() == pytest.approx(2.896924880604118, **LIBM)
     for pricer in [
-        sr.BarrierPricer(h=130.0, t=1.0, barrier_type="up_out", **{**BARRIER, "sigma": 0.0}),
         sr.FloatingLookbackPricer(t=1.0, **{**LOOKBACK, "sigma": 0.0}),
         sr.CompoundPricer(s=100.0, k1=5.0, k2=100.0, t1=0.25, t2=1.0, r=0.05, q=0.02, sigma=0.0, compound_type="coc"),
     ]:

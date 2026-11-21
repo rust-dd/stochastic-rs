@@ -176,18 +176,16 @@ fn realized_variance_rejects_an_empty_path() {
   let _ = VarianceSwapPricer::realized_variance(&[], BUSINESS_DAY_252_DT);
 }
 
-/// A negative variance strike is a programmer error, and a zero one leaves the Jensen term dividing
-/// by `k_var^{3/2}`.
+/// The variance strike is a computed input: off `k_var > 0` the Jensen term has no value.
 #[test]
-#[should_panic(expected = "variance strike k_var must be strictly positive (got -0.01)")]
-fn vol_swap_rejects_a_negative_variance_strike() {
-  let _ = VolatilitySwapPricer::fair_strike_from_var(-0.01, 0.001);
-}
-
-#[test]
-#[should_panic(expected = "variance strike k_var must be strictly positive (got 0)")]
-fn vol_swap_rejects_a_zero_variance_strike() {
-  let _ = VolatilitySwapPricer::fair_strike_from_var(0.0, 0.001);
+fn vol_swap_is_nan_for_a_variance_strike_that_is_not_positive() {
+  for k_var in [-0.01, 0.0, f64::NAN] {
+    let k_vol = VolatilitySwapPricer::fair_strike_from_var(k_var, 0.001);
+    assert!(k_vol.is_nan(), "k_var = {k_var}: {k_vol}");
+  }
+  assert!(VolatilitySwapPricer::fair_strike_from_var(0.04, f64::NAN).is_nan());
+  let k_vol = VolatilitySwapPricer::fair_strike_from_var(0.04, 0.001);
+  assert!((k_vol - (0.2 - 0.001 / (8.0 * 0.008))).abs() < 1e-15);
 }
 
 /// A NaN vol-of-vol, which the variance strike's guard cannot see, prices NaN rather than the

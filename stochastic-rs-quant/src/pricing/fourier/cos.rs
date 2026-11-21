@@ -9,6 +9,8 @@ use num_complex::Complex64;
 
 use super::FourierModelExt;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 /// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1)
 /// cumulant standard deviations, so understated `cumulants()` misprice silently.
@@ -38,8 +40,8 @@ impl CosEngine {
     Self { n: Some(n), l }
   }
 
-  /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is
-  /// the put plus `S e^{−qt} − K e^{−rt}`; NaN where `truncation_half_width` or `chf` is.
+  /// A call is the put plus `S e^{−qt} − K e^{−rt}`; the payoff at `t = 0`; NaN past expiry and
+  /// where `truncation_half_width` or `chf` is.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
@@ -50,6 +52,9 @@ impl CosEngine {
     t: f64,
     option_type: OptionType,
   ) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(option_type, s0, k)) {
+      return value;
+    }
     let cumulants = model.cumulants(t);
     let half_width = cumulants.truncation_half_width(self.l);
     if !half_width.is_finite() {
@@ -262,17 +267,15 @@ mod tests {
     );
   }
 
-  /// Degenerate maturity `t=0` collapses `c2` (and `c4`) to zero, so the
-  /// truncation half-width is zero — the crate convention is `NaN`, never a
-  /// silently-wrong `0.0` (see `carr_madan_out_of_grid_returns_nan_not_zero`
-  /// in `super::super::tests` for the same convention elsewhere in this module).
+  /// A zero volatility collapses `c2` and `c4` to zero and the truncation half-width with them:
+  /// NaN, never a silently wrong `0.0`.
   #[test]
   fn cos_invalid_cumulants_gives_nan() {
-    let model = BsmFourier { sigma: 0.25 };
-    let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 0.0, OptionType::Call);
+    let model = BsmFourier { sigma: 0.0 };
+    let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
     assert!(
       price.is_nan(),
-      "degenerate t=0 cumulants must give NaN, got {price}"
+      "degenerate cumulants must give NaN, got {price}"
     );
   }
 

@@ -19,6 +19,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::OptionType;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::DoubleBarrierOption;
@@ -50,7 +51,7 @@ pub struct BarrierPricer {
 }
 
 impl BarrierPricer {
-  /// Panics unless `sigma` is finite and `>= 0`; at `0` an unbreached barrier is NaN before expiry.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the path `S e^{(r−q)t}` is priced.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }
@@ -79,6 +80,8 @@ impl BarrierPricer {
     };
     match (breached, knock_in) {
       (true, false) => return rebate,
+      (true, true) if tau > 0.0 && not_positive(&[k]) => return f64::NAN,
+      (true, true) if self.sigma == 0.0 => return deterministic(option, s, r, q, tau),
       (true, true) => {
         let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
         return vanilla.price_option(s, k, r, q, tau, option_type);
@@ -88,6 +91,9 @@ impl BarrierPricer {
       _ => {}
     }
     let sigma = self.sigma;
+    if sigma == 0.0 {
+      return deterministic(option, s, r, q, tau);
+    }
 
     let sigma2 = sigma * sigma;
     let sqrt_t = tau.sqrt();
@@ -193,6 +199,33 @@ impl BarrierPricer {
         }
       }
     }
+  }
+}
+
+/// The path `S e^{(r−q)t}`, which meets `H` at `t* = ln(H/S)/(r − q)` or never: a knock-out pays
+/// its rebate at `t*`, a knock-in its payoff once in, at the start or later, else its rebate.
+fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+  let BarrierOption {
+    strike: k,
+    barrier: h,
+    rebate,
+    barrier_type,
+    option_type,
+  } = *option;
+  if k.is_nan() || rebate.is_nan() {
+    return f64::NAN;
+  }
+  let terminal = s * ((r - q) * tau).exp();
+  let hit = match barrier_type {
+    BarrierType::DownAndIn | BarrierType::DownAndOut => s.min(terminal) <= h,
+    BarrierType::UpAndIn | BarrierType::UpAndOut => s.max(terminal) >= h,
+  };
+  let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
+  let discount = (-r * tau).exp();
+  match (knock_in, hit) {
+    (false, true) => rebate * (-r * (h / s).ln() / (r - q)).exp(),
+    (true, false) => rebate * discount,
+    _ => discount * vanilla_payoff(option_type, terminal, k),
   }
 }
 

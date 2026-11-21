@@ -9,6 +9,9 @@ use ndarray::s;
 
 use crate::OptionStyle;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -85,8 +88,18 @@ impl FiniteDifferencePricer {
     }
   }
 
-  /// Solve the PDE for one option direction at one query point.
+  /// Solve the PDE for one option direction at one query point: the payoff at `s` itself at
+  /// `tau = 0`; NaN past expiry, for a NaN query or, before expiry, a spot or strike not positive.
   pub fn price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if s.is_nan() || k.is_nan() {
+      return f64::NAN;
+    }
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(option_type, s, k)) {
+      return value;
+    }
+    if r.is_nan() || q.is_nan() || not_positive(&[s, k]) {
+      return f64::NAN;
+    }
     let solve = FdSolve {
       model: self,
       s,

@@ -24,6 +24,7 @@ use stochastic_rs_stochastic::mc::McEstimate;
 use crate::pricing::exotic::AutocallableNote;
 use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
 
 /// Barrier observation style for the knock-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,8 +82,8 @@ impl<S: SeedExt> AutocallablePricer<S> {
     }
   }
 
-  /// Present value at spot `s`, the level the note's barriers are fractions of; its last
-  /// observation date is the maturity. Panics on a note with no observation date.
+  /// Present value at spot `s`, the level the note's barriers are fractions of: NaN for a NaN
+  /// query or a spot not positive. Panics on a note with no observation date.
   pub fn price(&self, note: &AutocallableNote, s: f64, r: f64, q: f64) -> McEstimate<f64> {
     let n_obs = note.observation_times.len();
     assert!(
@@ -90,6 +91,9 @@ impl<S: SeedExt> AutocallablePricer<S> {
       "observation_times must satisfy `observation_times.len() > 0`, got observation_times.len() \
        = 0"
     );
+    if s.is_nan() || s <= 0.0 || r.is_nan() || q.is_nan() {
+      return pathless(f64::NAN);
+    }
     let auto_b = note.autocall_barrier * s;
     let coup_b = note.coupon_barrier * s;
     let ki_b = note.knock_in_barrier * s;

@@ -25,6 +25,8 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::OptionType;
 use crate::instruments::option::caplet::bachelier_forward_caplet;
 use crate::instruments::option::caplet::bachelier_forward_floorlet;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -46,8 +48,11 @@ impl BachelierPricer {
     s * ((r - q) * tau).exp()
   }
 
-  /// Normal vega `e^{−rτ} √τ φ(d)`, shared by calls and puts.
+  /// Normal vega `e^{−rτ} √τ φ(d)`, shared by calls and puts; NaN at and past expiry.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau <= 0.0 {
+      return f64::NAN;
+    }
     let forward = self.forward(s, r, q, tau);
     let sqrt_tau = tau.sqrt();
     let d = (forward - k) / (self.sigma * sqrt_tau);
@@ -74,12 +79,18 @@ impl BachelierPricer {
 
 impl ModelPricer for BachelierPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     (-r * tau).exp() * bachelier_forward_caplet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 
   /// The closed form $(K-F)\Phi(-d)+\sigma\sqrt\tau\,\varphi(d)$, not the parity default, which
   /// recomposes the put from the call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Put, s, k)) {
+      return value;
+    }
     (-r * tau).exp() * bachelier_forward_floorlet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 }

@@ -17,7 +17,11 @@ use stochastic_rs_stochastic::mc::McEstimate;
 use crate::OptionType;
 use crate::QuantError;
 use crate::error::check_grid_shape;
+use crate::pricing::mc_stats::off_domain;
 use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
+use crate::pricing::rainbow::assert_volatilities;
+use crate::traits::RealExt;
 
 /// Which average the basket is struck against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,20 +72,8 @@ pub struct McBasketPricer<S: SeedExt = Unseeded> {
 }
 
 impl McBasketPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if any `sigma[i]` is negative or `NaN` — not a volatility
-  /// - if `n_paths` is `0`
-  ///
-  /// `rho`, the weights and the dimensions are **deliberately unchecked
-  /// here**, for the reason given on
-  /// [`McRainbowPricer::new`](crate::pricing::rainbow::McRainbowPricer::new):
-  /// [`try_price`](Self::try_price) is the only advertised way to surface
-  /// a non-SPD correlation or a dimension mismatch as an `Err`, and a
-  /// panicking constructor would leave it nothing to report. The two
-  /// closed-form basket pricers, which have no `try_price`, do get the
-  /// correlation range check and the shape check.
+  /// Panics unless every `sigma[i]` is finite and `>= 0` and `n_paths >= 1`; `rho`, the weights
+  /// and the dimensions are data, which [`try_price`](Self::try_price) reports as an `Err`.
   pub fn new(
     weights: Array1<f64>,
     avg_type: BasketAverageType,
@@ -89,15 +81,10 @@ impl McBasketPricer {
     rho: Array2<f64>,
     n_paths: usize,
   ) -> Self {
-    for (i, &v) in sigma.iter().enumerate() {
-      assert!(
-        v >= 0.0,
-        "McBasketPricer::new: sigma[{i}] must be a non-negative volatility (got {v})"
-      );
-    }
+    assert_volatilities(&sigma);
     assert!(
       n_paths >= 1,
-      "McBasketPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     Self {
       weights,
@@ -160,11 +147,8 @@ impl<S: SeedExt> McBasketPricer<S> {
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }
 
-  /// Price either leg at one query point with a single simulation.
-  ///
-  /// # Panics
-  /// If the correlation matrix is not positive definite — call
-  /// [`try_price`](Self::try_price) to handle that gracefully.
+  /// Either leg from one simulation: NaN for a NaN query, `tau < 0` or a spot not positive before
+  /// expiry; panics on a `rho` that is not positive definite, which `try_price` reports.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -174,6 +158,11 @@ impl<S: SeedExt> McBasketPricer<S> {
     tau: f64,
     option_type: OptionType,
   ) -> McEstimate<f64> {
+    let spots = s.iter().copied().collect::<Vec<f64>>();
+    let others = q.iter().copied().chain([k, r]).collect::<Vec<f64>>();
+    if off_domain(&spots, &others, tau) {
+      return pathless(f64::NAN);
+    }
     let n_assets = s.len();
     let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
@@ -219,7 +208,7 @@ impl<S: SeedExt> McBasketPricer<S> {
           log_g.exp()
         }
       };
-      (phi * (basket - k)).max(0.0)
+      (phi * (basket - k)).max_or_nan(0.0)
     };
     par_estimate(n_paths, (-r * tau).exp(), payoff_of)
   }
