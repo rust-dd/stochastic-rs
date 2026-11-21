@@ -102,7 +102,8 @@ impl<T: RealExt> Svensson<T> {
   /// Instantaneous forward rate at `tau`; NaN at a negative or non-finite `tau`.
   ///
   /// $$
-  /// f(\tau) = \beta_0 + \beta_1 e^{-\tau/\lambda_1} + \beta_2 \frac{\tau}{\lambda_1} e^{-\tau/\lambda_1} + \beta_3 \frac{\tau}{\lambda_2} e^{-\tau/\lambda_2}
+  /// f(\tau) = \beta_0 + \beta_1 e^{-\tau/\lambda_1} + \beta_2 \frac{\tau}{\lambda_1} e^{-\tau/\lambda_1} +
+  ///   \beta_3 \frac{\tau}{\lambda_2} e^{-\tau/\lambda_2}
   /// $$
   pub fn forward_rate(&self, tau: T) -> T {
     if !on_curve(tau) {

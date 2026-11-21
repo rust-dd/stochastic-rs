@@ -281,9 +281,8 @@ impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
     (chi, grad)
   }
 
-  /// Numerical quadrature for non-compact payoffs is truncated to a positive
-  /// orthant box `[0, hi]^d`. This is a practical localization, not an exact
-  /// treatment of the infinite domain.
+  /// Quadrature for a non-compact payoff truncates to the orthant box `[0, hi]^d`: a practical
+  /// localisation, not an exact treatment of the infinite domain.
   fn quadrature_bounds(&self, payoff: &MtPayoff<T>, st: &[T]) -> (Vec<T>, Vec<T>) {
     let spot_scale = T::max_or_nan_fold(
       self

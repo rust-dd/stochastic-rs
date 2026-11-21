@@ -87,10 +87,7 @@ fn calibrated_pricer_answers_nan_at_another_rate_through_price_put() {
   assert!(pricer.price_put(100.0, 100.0, 0.02, 0.0, 0.5).is_nan());
 }
 
-/// `unit_leverage` spans `50 ..= 150` out to `tau = 1`. Every query below is
-/// outside that box, and every one of them returned a finite, plausible,
-/// in-band number before the gate: `69.01` at `s = 1000`, `0.345` at
-/// `s = 5`, `29.05` at `tau = 5`.
+/// `unit_leverage` spans `50 ..= 150` out to `tau = 1`; a query outside that box prices `NaN`.
 #[test]
 fn price_call_above_the_spot_grid_is_nan() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -112,9 +109,8 @@ fn price_call_beyond_the_horizon_is_nan() {
   assert!(c.is_nan(), "tau = 5 is past the 1.0 horizon, got {c}");
 }
 
-/// The gate is a bound and not a "spot must equal `s0`" equality: a strike
-/// ladder around the calibration spot is what the type is for, and the grid
-/// edges themselves are inside.
+/// The gate is the grid's extent, not `s == s0`: a strike ladder around the calibration spot and
+/// the grid edges themselves price.
 #[test]
 fn price_call_on_the_grid_boundary_still_prices() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -179,11 +175,9 @@ fn a_query_wrong_on_both_counts_is_nan() {
   assert!(pricer.price_call(1000.0, 1000.0, 0.2, 0.0, 5.0).is_nan());
 }
 
-/// `L ≡ 1` under the full vol-of-vol is the Heston model, so the Monte Carlo
-/// price has to land on the closed form: within three standard errors, plus
-/// the weak-order-one bias of the Euler scheme at 250 steps a year (Lord,
-/// Koekkoek & van Dijk 2010 put the absorption scheme's bias at this step
-/// size in the low cents for these parameters).
+/// `L ≡ 1` is Heston, so the Monte Carlo price lands on the closed form within three standard
+/// errors plus the Euler scheme's bias at 250 steps a year.
+/// Reference: Lord et al. (2010), Quant. Finance 10(2), 177–194
 #[test]
 fn unit_leverage_reprices_the_closed_form_heston_call() {
   use crate::pricing::heston::HestonPricer;

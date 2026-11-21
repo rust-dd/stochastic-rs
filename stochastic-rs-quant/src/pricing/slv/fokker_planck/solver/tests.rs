@@ -65,10 +65,8 @@ fn the_mixed_boundary_flux_depends_on_attainability() {
   assert!((forward_entries.iter().map(|(_, c)| c).sum::<f64>() - expected).abs() < 1e-15);
 }
 
-/// A Dirac start excites modes stiff in both directions. Four full Euler
-/// half-steps bound the negative mass below 0.1%; the Douglas start gives
-/// 2.1% on this mesh. Independently checked with SciPy's sparse LU applied
-/// to the Wyns–Du Toit finite-volume operator: negative mass 0.000341566.
+/// Four implicit Euler half-steps keep a Dirac start's negative mass below 0.1% (Douglas: 2.1%);
+/// SciPy's sparse LU on the same operator gives 0.000341566.
 #[test]
 fn rannacher_damps_the_dirac_start_in_both_directions() {
   let mesh = Mesh::new(

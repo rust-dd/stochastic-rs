@@ -1,5 +1,5 @@
-//! Rating migration: a row-stochastic one-period matrix $P$ whose last state, default, is
-//! absorbing, and a generator $Q$ with $P(t)=\exp(tQ)$.
+//! Rating migration: a row-stochastic one-period matrix `P` whose last state, default, is
+//! absorbing, and a generator `Q` with `P(t) = exp(tQ)`.
 //!
 //! $$
 //! P_{ij}\ge 0,\quad \sum_j P_{ij}=1,\quad P_{n,\cdot}=(0,\dots,0,1),\qquad

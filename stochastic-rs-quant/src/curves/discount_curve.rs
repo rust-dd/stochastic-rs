@@ -1,13 +1,6 @@
-//! Discount curve with rate extraction utilities.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006). DOI: 10.1007/978-3-540-34604-3
-//!
-//! The discount curve stores calibrated (time, discount factor) pairs and provides:
-//! - Discount factor interpolation: $D(t)$
-//! - Zero rate extraction: $r(t) = -\ln D(t) / t$
-//! - Forward rate extraction: $f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}$
-//! - Par rate computation
+//! Discount curve on calibrated `(t, D)` pairs: interpolated `D(t)`, zero rates `−ln D(t)/t`,
+//! forwards `−(ln D(t₂) − ln D(t₁))/(t₂ − t₁)` and par rates.
+//! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
 
 use crate::calendar::Frequency;
 use ndarray::Array1;

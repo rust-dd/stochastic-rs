@@ -129,7 +129,8 @@ impl LeastSquaresProblem for HestonProblem<'_> {
       }
     };
     Some(match self.feller_row_weight {
-      // w·σ(x) differentiates in the free coordinates, −w·σ(P(x)) through the projection as the price rows do.
+      // w·σ(x) differentiates in the free coordinates, −w·σ(P(x)) through the projection as the
+      // price rows do.
       Some(weight) => {
         let overshoot = apply_chain_rule(sigma_row(weight), optimizer_coordinates.view())
           + self.to_optimizer(sigma_row(-weight), &free);
@@ -163,8 +164,8 @@ fn sigma_row(weight: f64) -> Array2<f64> {
   Array2::from_shape_fn((1, 5), |(_, j)| if j == 3 { weight } else { 0.0 })
 }
 
-/// Where the Feller projection caps σ at √(2κθ), σ's column moves into κ's and θ's by ∂σ/∂κ = σ/(2κ) and
-/// ∂σ/∂θ = σ/(2θ), and the coordinate σ no longer moves the residuals.
+/// Where the Feller projection caps σ at √(2κθ), σ's column moves into κ's and θ's by
+/// `∂σ/∂κ = σ/(2κ)` and `∂σ/∂θ = σ/(2θ)`, and σ itself then moves no residual.
 fn through_feller_cap(mut jacobian: Array2<f64>, free: &HestonParams) -> Array2<f64> {
   let cap = feller_sigma_cap(free.kappa, free.theta);
   let sigma_column = jacobian.column(3).to_owned();

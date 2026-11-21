@@ -1,3 +1,5 @@
+//! Zero-coupon bonds priced directly off the discount curve.
+
 use chrono::NaiveDate;
 
 use crate::calendar::DayCountConvention;

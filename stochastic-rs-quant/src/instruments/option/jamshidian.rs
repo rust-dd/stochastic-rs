@@ -1,19 +1,13 @@
-//! Jamshidian decomposition for Hull-White European swaptions.
+//! Jamshidian decomposition of Hull-White European swaptions:
 //!
 //! $$
 //! V_{\mathrm{payer}}(0)=\sum_{i=1}^{n} c_i\,\mathrm{ZBP}(0,T_0,T_i,X_i),\qquad
 //! \sum_{i=1}^{n} c_i\,P(T_0,T_i;r^\star)=N
 //! $$
 //!
-//! The cash-flow strip of the underlying receiver coupon bond is expressed as a
-//! portfolio of zero-coupon-bond puts (payer swaption) or calls (receiver
-//! swaption), each with a Jamshidian strike $X_i=A(T_0,T_i)e^{-B(T_0,T_i)r^\star}$.
-//!
-//! Reference: Jamshidian, "An Exact Bond Option Formula", Journal of Finance
-//! 44(1), 205-209 (1989).
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §3.3.
+//! with zero-coupon-bond puts (payer) or calls (receiver) at `X_i = A(T₀, T_i)e^{−B(T₀, T_i)r*}`.
+//! Reference: Jamshidian (1989), J. Finance 44(1), 205–209
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §3.3, DOI 10.1007/978-3-540-34604-3
 
 use stochastic_rs_distributions::special::norm_cdf;
 

@@ -29,12 +29,8 @@ fn hscm_start(guess: [f64; 9]) -> HscmParams {
   }
 }
 
-/// Heston-stochastic-correlation model wrapper. Implements the Carr-Madan
-/// pricer through `ModelPricer`. 9 parameters: `(v0, kappa_v, theta_v,
-/// sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2)`.
-///
-/// The Python class name is unchanged; the Rust type it wraps is now
-/// `HestonStochCorrPricer`, which absorbed the former `HscmModel`.
+/// Heston with stochastic correlation, priced by Carr-Madan through `ModelPricer`, from
+/// `(v0, kappa_v, theta_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2)`.
 #[pyclass(name = "HscmModel", from_py_object, unsendable)]
 #[derive(Clone)]
 pub struct PyHscmModel {
@@ -127,9 +123,8 @@ impl PyHscmMarketOption {
   }
 }
 
-/// Heston-stochastic-correlation calibrator (SLSQP, 9 parameters).
-/// Mirrors the Rust `Calibrator` trait surface — pass `initial_guess` to
-/// override the default mild-skew SPX-style start.
+/// Heston-stochastic-correlation calibrator (SLSQP, 9 parameters); `initial_guess` overrides the
+/// default mild-skew SPX-style start.
 #[pyclass(name = "HscmCalibrator", unsendable)]
 pub struct PyHscmCalibrator {
   inner: crate::calibration::heston_stoch_corr::HscmCalibrator,
@@ -158,9 +153,8 @@ impl PyHscmCalibrator {
     })?
   }
 
-  /// Returns `(kappa_v, theta_v, sigma_v, v0, kappa_r, mu_r, sigma_r, rho0,
-  /// rho2, rmse, converged)`. The 9-vector matches `HscmCalibrator::calibrate`'s
-  /// internal parameter ordering (NOT the `HscmModel` constructor order).
+  /// `(kappa_v, theta_v, sigma_v, v0, kappa_r, mu_r, sigma_r, rho0, rho2, rmse, converged)`, the
+  /// calibrator's internal order, not `HscmModel`'s constructor order.
   #[pyo3(signature = (initial_guess=None))]
   #[allow(clippy::type_complexity)]
   fn calibrate(

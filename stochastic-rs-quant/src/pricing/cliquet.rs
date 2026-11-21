@@ -1,7 +1,5 @@
-//! # Cliquet
+//! Cliquet (ratchet) options, chains of forward-start options; the common payoffs:
 //!
-//! A cliquet (or "ratchet") option is a chain of forward-start options.
-//! Common payoffs:
 //! $$
 //! \text{Cliquet} = N \sum_{i=1}^M \min\!\Big(\max(R_i, f_l), c_l\Big),\quad
 //! R_i = \frac{S_{t_i}}{S_{t_{i-1}}} - 1
@@ -13,12 +11,9 @@
 //!   \sum_i \min(\max(R_i, f_l), c_l)\Big)\Big)
 //! $$
 //!
-//! Source:
-//! - Wilmott, P. (2002), "Cliquet Options and Volatility Models", *Wilmott Magazine*
-//! - Hess, M. (2018), "Cliquet option pricing in a jump-diffusion Lévy model",
-//!   arXiv:1810.09670, DOI: 10.15559/18-VMSTA107
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
-//!
+//! Reference: Wilmott (2002), Wilmott Mag.
+//! Reference: Hess (2018), Mod. Stoch. Theory Appl., arXiv:1810.09670, DOI 10.15559/18-VMSTA107
+//! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed.
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -32,12 +27,8 @@ use crate::pricing::exotic::CliquetOption;
 use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::par_estimate;
 
-/// Closed-form cliquet on $M$ equal sub-periods under Black-Scholes.
-///
-/// Each period contributes a forward-start payoff
-/// $\min(\max(R_i, f_l), c_l)$. Under BSM the price reduces to a finite sum
-/// of forward-start option values, which by scaling invariance share a
-/// common value (so the total is $M$ times one).
+/// Closed-form cliquet on `M` equal sub-periods under Black-Scholes: each period's forward-start
+/// `min(max(R_i, f_l), c_l)` has one value by scaling invariance, so the price is `M` times it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CliquetPricer {
   /// Constant volatility.
@@ -69,9 +60,8 @@ impl CliquetPricer {
     option.notional * option.periods as f64 * per_period * (-r * tau).exp()
   }
 
-  /// Risk-neutral expectation $E^Q[\min(\max(R, f_l), c_l)]$ for one
-  /// period of length $\tau$ — undiscounted; the BSM scaling invariance
-  /// makes this the same for every period.
+  /// Undiscounted `E^Q[min(max(R, f_l), c_l)]` over one period of length `τ`, the same for every
+  /// period by Black-Scholes scaling invariance.
   fn expected_period_payoff(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> f64 {
     let v = self.sigma;
     let drift = r - q;

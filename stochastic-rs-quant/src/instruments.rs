@@ -1,4 +1,5 @@
-//! Fixed-income and vanilla swap instruments on the cash-flow and curve stack.
+//! Bonds, deposits, FRAs, swaps (vanilla, basis, cross-currency, total-return), caps, floors and
+//! swaptions valued off the curves; `EuropeanOption` and `DigitalOption` feed the engine harness.
 //!
 //! $$
 //! V=\sum_{i=1}^{n} D(t_i)\,C_i,\qquad

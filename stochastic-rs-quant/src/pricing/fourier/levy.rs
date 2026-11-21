@@ -1,7 +1,6 @@
-//! Pure-jump Lévy and jump-diffusion Fourier models: Variance Gamma, CGMY, Merton jump-diffusion,
-//! Kou double-exponential and Normal Inverse Gaussian.
-//!
-//! Cumulants of the jump parts: Cont & Tankov (2004), Financial Modelling with Jump Processes, Chapman & Hall/CRC, DOI 10.1201/9780203485217, Prop. 3.13 (κₙ = λ t E[Yⁿ]).
+//! Lévy Fourier models (Variance Gamma, CGMY, Merton, Kou, Normal Inverse Gaussian); the jump
+//! part's cumulants are `κₙ = λtE[Yⁿ]`.
+//! Reference: Cont & Tankov (2004), Chapman & Hall/CRC, Prop. 3.13, DOI 10.1201/9780203485217
 
 use num_complex::Complex64;
 
@@ -208,25 +207,16 @@ impl FourierModelExt for KouFourier {
   }
 }
 
-/// Normal Inverse Gaussian (NIG) Lévy model for Fourier pricing.
-///
-/// Characteristic exponent (Barndorff-Nielsen 1997, with the standard
-/// martingale correction so $E\left[S_T\right] = S_0 e^{(r-q)T}$):
+/// Normal Inverse Gaussian Lévy model, martingale-corrected to `E[S_T] = S₀e^{(r−q)T}`; `α > 0`
+/// tail heaviness, `β ∈ (−α, α)` skew, `δ > 0` scale.
 ///
 /// $$
 /// \psi(\xi) = \delta\bigl(\sqrt{\alpha^2 - \beta^2}
 ///                          - \sqrt{\alpha^2 - (\beta + i\xi)^2}\bigr).
 /// $$
 ///
-/// Parameters:
-/// - $\alpha > 0$: tail heaviness.
-/// - $\beta \in (-\alpha, \alpha)$: skewness.
-/// - $\delta > 0$: scale.
-///
-/// References:
-/// - Barndorff-Nielsen (1997), "Normal inverse Gaussian distributions and
-///   stochastic volatility modelling", Scand. J. Statist. 24, 1-13.
-/// - Schoutens (2003), *Lévy Processes in Finance*, §5.3.
+/// Reference: Barndorff-Nielsen (1997), Scand. J. Stat. 24, 1–13
+/// Reference: Schoutens (2003), Lévy Processes in Finance, §5.3
 #[derive(Debug, Clone)]
 pub struct NigFourier {
   /// Tail heaviness ($\alpha > 0$).

@@ -1,15 +1,12 @@
-//! Hull-White calibration to a European swaption volatility grid.
-//!
-//! Minimizes the sum of squared differences between Jamshidian Hull-White
-//! prices and Black-76 ATM prices computed from market volatilities.
+//! Hull-White calibration to a European swaption vol grid, least squares between Jamshidian
+//! Hull-White prices and Black-76 ATM prices:
 //!
 //! $$
 //! (\hat a,\hat\sigma)=\arg\min_{a,\sigma}
 //!   \sum_{i} w_i\bigl(V^{HW}_i(a,\sigma)-V^{B76}_i(\sigma^{mkt}_i)\bigr)^2
 //! $$
 //!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §3.3.2 & §3.11.
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §3.3.2, §3.11, DOI 10.1007/978-3-540-34604-3
 
 use std::convert::Infallible;
 

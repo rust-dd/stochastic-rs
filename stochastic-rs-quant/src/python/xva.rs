@@ -4,9 +4,8 @@ use super::curves::PyDiscountCurve;
 use super::survival::survival_input;
 use crate::risk::xva;
 
-/// Exposure profile (EPE / ENE / PFE on a date grid) with the valuation
-/// adjustments integrated against a discount curve; every `hazard_rate`
-/// argument takes a flat rate or a `SurvivalCurve`.
+/// Exposure profile (EPE, ENE and PFE on a date grid) with its adjustments against a discount
+/// curve; each `hazard_rate` takes a flat rate or a `SurvivalCurve`.
 #[pyclass(name = "ExposureProfile", unsendable)]
 pub struct PyExposureProfile {
   inner: xva::ExposureProfile,

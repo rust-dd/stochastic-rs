@@ -1,21 +1,12 @@
-//! # Execution-cost-adjusted pricing
-//!
-//! Bridges [`crate::microstructure`] with the option-pricing layer: applies
-//! the Almgren-Chriss expected execution cost as an add-on to a model price,
-//! reflecting the cost of unwinding a delta-hedge under finite liquidity.
-//!
-//! Use when comparing model fair value to executable mid-quotes — pure
-//! Black-Scholes / Heston / Bates prices ignore liquidation friction and
-//! over-state realisable PnL on illiquid books.
+//! Execution-cost-adjusted pricing: a model price plus the Almgren–Chriss cost of unwinding its
+//! delta hedge, to compare fair value with executable quotes on illiquid books.
 
 use crate::microstructure::AlmgrenChrissParams;
 use crate::microstructure::optimal_execution;
 use crate::traits::RealExt;
 
-/// Add the Almgren-Chriss expected execution cost to a model price.
-///
-/// Returns `model_price + plan.expected_cost`, with optional weighting on
-/// the variance term via `lambda` for risk-adjusted execution cost.
+/// `model_price` plus the Almgren–Chriss plan's risk-adjusted cost, `lambda` weighting its
+/// variance.
 pub fn execution_adjusted_price<T: RealExt>(
   model_price: T,
   execution: &AlmgrenChrissParams<T>,

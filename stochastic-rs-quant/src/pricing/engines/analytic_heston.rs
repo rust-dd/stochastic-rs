@@ -1,8 +1,5 @@
-//! Closed-form Heston engine for [`EuropeanOption`].
-//!
-//! Wraps [`HestonPricer`] behind reactive market handles. Heston Greeks
-//! are produced by central finite differences against the analytic
-//! characteristic-function call price.
+//! Closed-form Heston engine for [`EuropeanOption`] over [`HestonPricer`] on live market handles;
+//! its Greeks are central differences of the characteristic-function price.
 
 use std::sync::Arc;
 

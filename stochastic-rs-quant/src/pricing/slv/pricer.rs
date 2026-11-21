@@ -12,10 +12,8 @@ use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Largest absolute deviation between a queried rate and the rate the
-/// leverage surface was calibrated at that still counts as a match. Rates
-/// live on the order of $10^{-2}$, so this is "equal up to float round-trip
-/// noise" rather than a tolerance band.
+/// A queried rate matches the calibration's up to float round-trip noise (rates are about `1e-2`),
+/// not within a tolerance band.
 const RATE_MATCH_TOL: f64 = 1e-12;
 
 /// Heston-SLV Monte Carlo under a calibrated leverage surface: NaN outside the surface's `(s, tau)`
@@ -26,10 +24,8 @@ pub struct HestonSlvPricer<S: SeedExt = Unseeded> {
   pub params: HestonSlvParams,
   /// Calibrated leverage surface.
   pub leverage: LeverageSurface,
-  /// The `(r, q)` pair [`leverage`](Self::leverage) was calibrated against,
-  /// or `None` when the surface carries no rate provenance. Not a pricing
-  /// input — the rates that price come from the [`ModelPricer`] query; this
-  /// is the guard those queries are checked against.
+  /// The `(r, q)` [`leverage`](Self::leverage) was calibrated at, which each query's rates must
+  /// match, or `None` without provenance; it never prices.
   pub calibration_rates: Option<(f64, f64)>,
   /// Number of MC paths.
   pub n_paths: usize,
@@ -53,13 +49,8 @@ impl HestonSlvPricer {
     }
   }
 
-  /// Pricer for a `leverage` surface with no rate provenance: the query's
-  /// `r` and `q` drive drift and discounting, and no rate is rejected.
-  ///
-  /// Use this only for a surface that was *not* produced by calibrating
-  /// against market data at a particular rate. A calibrated surface priced
-  /// this way returns a confident number that no longer reprices the surface
-  /// it was fitted to.
+  /// A pricer for a `leverage` with no rate provenance, rejecting no query rate; a surface
+  /// calibrated at a rate and priced this way does not reprice its fit.
   pub fn unanchored(params: HestonSlvParams, leverage: LeverageSurface) -> Self {
     Self {
       params,

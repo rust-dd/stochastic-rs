@@ -66,16 +66,8 @@ fn char_func_at_zero_is_one() {
   }
 }
 
-/// φ(−i) = E\[S_τ\] = S·e^{(r−q)τ}: the risk-neutral martingale condition,
-/// with a closed form on the right-hand side and no free parameters.
-///
-/// This is the sharp guard the suite was missing. A stray `e^{-rτ}` inside
-/// the characteristic function scales φ(−i) by exactly that factor, so this
-/// assertion fails by `1 − e^{-rτ}` — 3.7% at `r = 0.05, τ = 0.75` and 8.6%
-/// at `r = 0.12, τ = 0.75` — against a 1e-12 band. It also pins `q` into the
-/// drift, which is what the two former put-call-parity tests were reaching
-/// for and could not reach: they derived the put *from* the call by parity,
-/// so parity held by construction whatever the call was worth.
+/// `φ(−i) = E[S_τ] = Se^{(r−q)τ}`, the martingale condition: a stray `e^{−rτ}` in the chf misses it
+/// by `1 − e^{−rτ}`, and `q` is pinned in the drift.
 #[test]
 fn char_func_reproduces_the_forward() {
   let model = paper_model();
@@ -291,9 +283,8 @@ fn price_multiple_strikes() {
   }
 }
 
-/// Cross-arch tolerance: the goldens come from an adaptive quadrature over
-/// an RK4-integrated ODE, so the last bits differ between aarch64-darwin
-/// and CI's ubuntu x86_64.
+/// Cross-arch tolerance: the goldens come from adaptive quadrature over an RK4 ODE, whose last bits
+/// differ between aarch64-darwin and x86_64.
 const TOL: f64 = 1e-12;
 
 const GOLDEN_QUERY: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
@@ -305,7 +296,7 @@ fn hscm_model_pricer_goldens() {
   let m = paper_model();
   let (s, k, r, q, tau) = GOLDEN_QUERY;
 
-  // q = 0, the shape the pre-query struct defaulted to.
+  // The dividend-free query, `q = 0`.
   let CallPut { call: c0, put: p0 } = m.price_call_put(s, k, r, 0.0, tau);
   assert!((c0 - 4.82832421223066).abs() < TOL, "q=0 call {c0}");
   assert!((p0 - 5.963738072916939).abs() < TOL, "q=0 put {p0}");
@@ -316,13 +307,10 @@ fn hscm_model_pricer_goldens() {
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
-  // Inverts a given price for a vol and reads none of the model's own
-  // parameters, so the discount fix leaves it where it was.
+  // Inverts a given price for a vol, reading none of the model's own parameters.
   let iv = m.implied_volatility(4.0, s, k, r, q, tau, OptionType::Call);
   assert!((iv - 0.15110131862455398).abs() < TOL, "iv {iv}");
 
-  // The former `price_call_at_strike(110.0)`, which cloned the pricer with
-  // a new strike; a strike is now just a different argument.
   let at_110 = m.price_call_carr_madan(s, 110.0, r, q, tau);
   assert!((at_110 - 2.365470328642592).abs() < TOL, "K=110 {at_110}");
 }
@@ -359,9 +347,7 @@ fn hscm_put_is_parity_and_is_floored_at_zero() {
     }
   }
 
-  // The floor itself, with a deterministic trigger rather than whichever
-  // grid point happens to land a few ulp negative. It is the same split the
-  // poison check needs: a negative price floors, a `NaN` does not.
+  // The floor on a deterministic trigger: a negative price floors to `0`, a `NaN` does not.
   assert_eq!(super::pricer::floor_price(-1e-12), 0.0);
   assert_eq!(super::pricer::floor_price(-5.0), 0.0);
   assert_eq!(super::pricer::floor_price(3.5), 3.5);
@@ -395,7 +381,7 @@ fn hscm_preserves_nan_market_inputs() {
   }
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike/maturity grid.
 #[test]
 fn hscm_one_model_prices_a_grid() {
   let m = paper_model();
@@ -409,26 +395,8 @@ fn hscm_one_model_prices_a_grid() {
   }
 }
 
-/// `HestonStochCorrPricer::new` validates the parameters that have a
-/// domain, at the layer the caller supplies them.
-///
-/// Nothing announced itself before: every invalid value below produced a
-/// finite, plausible Carr-Madan price against a reference of `6.9417`
-/// (`s = k = 100, r = 0.05, τ = 0.5`) — `v0 = -0.04` gave `2.3422`,
-/// `theta_v = -0.04` gave `4.9724`, `rho0 = -1.5` gave `7.0771` and
-/// `rho2 = -1.5` gave `6.9712`. The last is within `0.03` of the correct
-/// answer, which is the whole problem: it is indistinguishable from a small
-/// modelling difference.
-///
-/// `sigma_v = 0` is deliberately **accepted**, unlike on
-/// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-/// rejected. The reason is the characteristic function: Heston's closed
-/// form divides by `sigma^2`, while this model integrates a Riccati system
-/// by RK4 in which `sigma_v` only ever multiplies, so a zero vol-of-vol is
-/// the deterministic-variance limit rather than a division by zero.
-///
-/// `kappa_v` and `kappa_r` stay unconstrained, matching
-/// [`HestonPricer::new`]'s treatment of `kappa`.
+/// `new` refuses a negative or NaN variance or volatility and a correlation off `[−1, 1]`; it takes
+/// `sigma_v = 0` (the RK4 Riccati system only multiplies by it) and any `kappa_v` and `kappa_r`.
 mod construction_validation {
   use super::*;
 
@@ -472,11 +440,8 @@ mod construction_validation {
     let _ = build(p);
   }
 
-  /// Three separate correlations, all bounded, all checked — `rho0` is the
-  /// initial level, `mu_r` the level it mean-reverts to and `rho2` the
-  /// correlation between the two driving Brownians. Leaving any one out
-  /// would put a number outside `[-1, 1]` into the same expansion the other
-  /// two are protected from.
+  /// `rho0` (initial level), `mu_r` (reversion level) and `rho2` (Brownian correlation) are each
+  /// checked in `[−1, 1]`.
   #[test]
   fn every_correlation_is_bounded() {
     for (idx, name) in [(4_usize, "rho0"), (6, "mu_r"), (8, "rho2")] {
@@ -502,9 +467,8 @@ mod construction_validation {
     }
   }
 
-  /// The calibrator's `BOUNDS` box and the admissible degenerate edges must
-  /// all still construct — a guard tighter than the box would abort a
-  /// calibration on a legal iterate.
+  /// The calibrator's `BOUNDS` box and the admissible degenerate edges all construct, so no legal
+  /// iterate aborts a calibration.
   #[test]
   fn the_calibrators_bounds_box_stays_constructible() {
     let lo = build([0.001, 0.01, 0.001, 0.01, -0.99, 0.01, -0.99, 0.01, -0.99]);

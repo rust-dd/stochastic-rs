@@ -1,8 +1,5 @@
-//! Diffs the hand-written registry against the inventory derived from source.
-//!
-//! Kept beside the derivation rather than in `pricer_registry.rs` so the
-//! comparison and the thing it compares against can be exercised together on
-//! synthetic inventories, without waiting on a scan of the real tree.
+//! Diffs the hand-written registry against the source-derived inventory, beside the derivation so
+//! both run on synthetic inventories without scanning the real tree.
 
 use std::collections::BTreeSet;
 
@@ -24,9 +21,8 @@ pub struct Registered<'a> {
   pub pricing_engine: &'a [(&'a str, &'a str)],
   /// `(struct, reason)` entries of the deliberate-omission list.
   pub no_trait_by_design: &'a [(&'a str, &'a str)],
-  /// `(trait, bound)` for each blanket impl the registry knows of. A blanket
-  /// impl hands a pricing trait to types no list can name, so it is pinned
-  /// here instead: a new one is a change in what the registry even covers.
+  /// `(trait, bound)` of each blanket impl the registry knows, pinned as it hands a trait to types
+  /// no list can name.
   pub blanket_impls: &'a [(&'a str, &'a str)],
 }
 
@@ -93,9 +89,8 @@ pub fn audit(inventory: &Inventory, registered: &Registered<'_>) -> Vec<String> 
   problems
 }
 
-/// `assert_vanilla_european_call!` and its complement have to tile
-/// `assert_model_pricer!` exactly: every `ModelPricer` is either invertible
-/// through the Black formula or explicitly is not, and none is both.
+/// The vanilla list and its complement tile `assert_model_pricer!`: every `ModelPricer` is in
+/// exactly one.
 fn partition_problems(registered: &Registered<'_>) -> Vec<String> {
   let mut problems = Vec::new();
   let model = names(registered.model_pricer);
@@ -126,10 +121,8 @@ fn partition_problems(registered: &Registered<'_>) -> Vec<String> {
   problems
 }
 
-/// The union of both pricer signals has to be exactly what the file accounts
-/// for: a type in neither a trait list nor the deliberate-omission list is
-/// the orphan this guard exists to catch, and a name in the omission list
-/// that the source no longer has is a stale excuse.
+/// Both signals' union must be exactly what the file accounts for: a type in no list is an orphan,
+/// and an omission the source has dropped is a stale excuse.
 fn coverage_problems(inventory: &Inventory, registered: &Registered<'_>) -> Vec<String> {
   let mut problems = Vec::new();
   let no_trait = registered

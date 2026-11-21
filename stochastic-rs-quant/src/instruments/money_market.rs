@@ -1,4 +1,4 @@
-//! Money-market deposit at contract rate $R$ with accrual $\alpha$ from value date to maturity,
+//! Money-market deposit at contract rate `R` with accrual `α` from value date to maturity,
 //! discounted on the funding (OIS) curve.
 //!
 //! $$

@@ -194,7 +194,8 @@ pub struct CalibrationOptions {
   pub patience: usize,
   /// Record the start and the optimiser's accepted iterates into `Calibrated::history`.
   pub record_history: bool,
-  /// Metrics computed for the result and each history entry, every one by default; `rmse()` always has Rmse.
+  /// Metrics computed for the result and each history entry, every one by default; `rmse()` always
+  /// has Rmse.
   pub loss_metrics: &'static [LossMetric],
   /// Tikhonov pull on the parameters in the order each calibrator's `options` names; rows in a
   /// Levenberg–Marquardt fit, a cost in Nelder–Mead, and `DimensionMismatch` at another length.

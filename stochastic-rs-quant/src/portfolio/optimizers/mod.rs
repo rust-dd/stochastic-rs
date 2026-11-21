@@ -1,10 +1,8 @@
-//! # Portfolio Optimizers
+//! Long-only and long-short portfolio allocation optimizers on a penalised objective:
 //!
 //! $$
 //! \min_{\mathbf{w}} \ \mathcal{L}(\mathbf{w}) + \lambda(\mu_p-r^\*)^2
 //! $$
-//!
-//! Collection of long-only and long-short allocation optimizers.
 
 use std::convert::Infallible;
 
@@ -43,16 +41,8 @@ use crate::portfolio::types::OptimizerMethod;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
-/// Configuration for portfolio optimizer entry points.
-///
-/// `periods_per_year`: annualization factor for returns (252 = trading days,
-/// 252 = daily; 52 = weekly; 12 = monthly; 365 = calendar daily; 24*365 = hourly).
-/// Default 252.
-///
-/// `lambda`: target-return penalty coefficient in mean-variance / mean-CVaR
-/// objectives (`min Var + λ·(R − R*)²`). Default 10. Higher values pull the
-/// portfolio toward `target_return` more aggressively; lower values let the
-/// risk term dominate.
+/// Optimizer configuration: `periods_per_year` annualises returns (default 252; 52 weekly, 12
+/// monthly, 365 calendar, 8760 hourly), `lambda` (default 10) weights the target term `λ(R − R*)²`.
 #[derive(Clone, Debug)]
 pub struct OptimizerConfig {
   pub periods_per_year: f64,

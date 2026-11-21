@@ -4,10 +4,8 @@ use super::parse_option_type;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `(sigma, coc)` only, so the wrapper carries the
-/// `(s, k, r, q, tau)` query and the option type that the Python-visible
-/// no-argument methods are defined at. Python's constructor signature is
-/// unchanged.
+/// Black-Scholes-Merton prices and Greeks at the stored `(s, k, r, q, tau)` and option type, which
+/// the Rust model takes per query.
 #[pyclass(name = "BSMPricer", unsendable)]
 pub struct PyBsmPricer {
   inner: crate::pricing::bsm::BsmPricer,
@@ -110,9 +108,8 @@ impl PyBsmPricer {
   }
 }
 
-/// The Rust model holds the six Heston parameters only, so the wrapper
-/// carries the `(s, k, r, q, tau)` query the Python-visible no-argument
-/// methods are defined at. Python's constructor signature is unchanged.
+/// Heston prices and Greeks at the stored `(s, k, r, q, tau)`, which the Rust model takes per
+/// query.
 #[pyclass(name = "HestonPricer", unsendable)]
 pub struct PyHestonPricer {
   inner: crate::pricing::heston::HestonPricer,
@@ -238,14 +235,8 @@ impl PySabrPricer {
   }
 }
 
-/// The Rust model holds `(sigma, lambda, gamma, m, coc)` only, so the wrapper
-/// carries the `(s, k, r, q, tau)` query and the option type the
-/// Python-visible no-argument methods are defined at. Python's constructor
-/// signature is unchanged.
-///
-/// `q` remains a no-op here, exactly as before: this class hardcodes
-/// `BsmCoc::Bsm1973`, whose cost of carry is `r` and never reads the
-/// dividend yield.
+/// Merton (1976) prices at the stored `(s, k, r, q, tau)` and option type; `q`, default 0, is the
+/// dividend yield: this class carries at `BsmCoc::Merton1973`, `b = r − q`.
 #[pyclass(name = "Merton1976Pricer", unsendable)]
 pub struct PyMerton1976Pricer {
   inner: crate::pricing::merton_jump::Merton1976Pricer,
@@ -309,10 +300,7 @@ impl PyMerton1976Pricer {
   }
 }
 
-/// The Rust model holds `(σ_S, σ_E, ρ, r_f, E_p)` only, so the wrapper
-/// carries the `(s, k, r, q, tau)` query and the option type that the
-/// Python-visible no-argument methods are defined at; `r` is the domestic
-/// rate.
+/// Quanto prices at the stored `(s, k, r, q, tau)` and option type, `r` the domestic rate.
 #[pyclass(name = "QuantoPricer", unsendable)]
 pub struct PyQuantoPricer {
   inner: crate::pricing::quanto::QuantoPricer,
@@ -381,9 +369,7 @@ impl PyQuantoPricer {
   }
 }
 
-/// The Rust model holds the normal volatility only, so the wrapper carries
-/// the `(s, k, r, q, tau)` query and the option type that the Python-visible
-/// no-argument methods are defined at.
+/// Bachelier prices at the stored `(s, k, r, q, tau)` and option type.
 #[pyclass(name = "BachelierPricer", unsendable)]
 pub struct PyBachelierPricer {
   inner: crate::pricing::bachelier::BachelierPricer,
@@ -462,10 +448,8 @@ impl PyBachelierPricer {
   }
 }
 
-/// The Rust model holds the Heston parameters and the ADI numerics, so the
-/// wrapper carries the `(s, k, r, q, tau)` query the Python-visible
-/// no-argument methods are defined at; `r` is the domestic rate and `q` the
-/// foreign rate / dividend yield.
+/// Heston ADI prices at the stored `(s, k, r, q, tau)`, `r` the domestic rate and `q` the foreign
+/// rate or dividend yield.
 #[pyclass(name = "HestonAdiPricer", unsendable)]
 pub struct PyHestonAdiPricer {
   inner: crate::pricing::heston_adi::HestonAdiPricer,

@@ -1,16 +1,13 @@
-//! Nelson-Siegel parametric yield curve model.
-//!
-//! Reference: Nelson & Siegel, "Parsimonious Modeling of Yield Curves",
-//! Journal of Business, 60(4), 473-489 (1987).
-//!
-//! Reference: Diebold & Li, "Forecasting the Term Structure of Government Bond Yields",
-//! Journal of Econometrics, 130(2), 337-364 (2006).
+//! The Nelson-Siegel parametric yield curve, level, slope and curvature:
 //!
 //! $$
 //! y(\tau) = \beta_0 +
 //!   \beta_1 \frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} +
 //!   \beta_2 \left(\frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} - e^{-\tau/\lambda}\right)
 //! $$
+//!
+//! Reference: Nelson & Siegel (1987), J. Bus. 60(4), 473–489
+//! Reference: Diebold & Li (2006), J. Econom. 130(2), 337–364
 
 use ndarray::ArrayView1;
 

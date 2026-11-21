@@ -63,9 +63,8 @@ pub fn calibrate_ssvi<T: RealExt>(
 
   let mut p64 = SsviParams::<f64>::from_dvector(result.params.view());
   let unprojected = p64.into_dvector();
-  // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
-  // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
-  // projection when no positive θ is available (degenerate input).
+  // Gatheral–Jacquier (2014) power-law calendar admissibility (eq. 4.4) over the observed θ range;
+  // butterfly-only projection when no θ is positive.
   if theta_max > 0.0 {
     p64.project_with_theta_range(theta_max);
   } else {
@@ -128,11 +127,8 @@ impl LeastSquaresProblem for SsviLmProblem {
     Some(r)
   }
 
-  /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
-  /// parameters $(\rho, \eta, \gamma)$.
-  ///
-  /// Let $\phi(\theta) = \eta\,\theta^{-\gamma}(1+\theta)^{\gamma-1}$ and
-  /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:
+  /// Closed-form Jacobian of the total-variance residual in `(ρ, η, γ)`, with
+  /// `φ(θ) = ηθ^{−γ}(1 + θ)^{γ−1}` and `r = √((φk + ρ)² + 1 − ρ²)`:
   ///
   /// $$
   /// \begin{aligned}

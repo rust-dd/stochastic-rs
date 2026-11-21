@@ -1,21 +1,17 @@
-//! # SVI — Stochastic Volatility Inspired parameterization
-//!
-//! Raw SVI total-variance slice (Gatheral, *The Volatility Surface*, 2006):
+//! SVI (stochastic volatility inspired) parameterisations: raw total variance and jump-wings.
 //!
 //! $$
 //! w(k)=a+b\bigl(\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\bigr)
 //! $$
 //!
-//! where $w=\sigma_{\mathrm{imp}}^2 T$ is total implied variance and
-//! $k=\ln(K/F)$ is log-forward moneyness.
-//!
-//! Jump-Wings (JW) parameterization (Gatheral, 2004):
+//! with `w = σ²_imp T` and `k = ln(K/F)`, and the jump-wings form (Gatheral 2004):
 //!
 //! $$
 //! v_t = a+b\bigl(-\rho m+\sqrt{m^2+\sigma^2}\bigr),\quad
 //! \psi_t = \frac{b}{2}\Bigl(\frac{-m}{\sqrt{m^2+\sigma^2}}+\rho\Bigr)
 //! $$
 //!
+//! Reference: Gatheral (2006), The Volatility Surface
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
 use ndarray::Array1;
@@ -106,8 +102,8 @@ impl<T: RealExt> SviRawParams<T> {
     self.b >= zero && self.rho.abs() < one && self.sigma > zero && self.min_variance() >= zero
   }
 
-  /// Project onto the admissible box (`b ≥ 0`, `|ρ| ≤ 0.9999`, `σ ≥ 1e-8`, non-negative minimum variance), not butterfly-free (see
-  /// [`Self::project_with_butterfly_check`]); a NaN parameter stays NaN instead of landing on a bound.
+  /// Projects onto the box `b ≥ 0`, `|ρ| ≤ 0.9999`, `σ ≥ 1e-8`, minimum variance `≥ 0`, not onto
+  /// butterfly-freedom ([`Self::project_with_butterfly_check`]); a `NaN` parameter stays `NaN`.
   pub fn project(&mut self) {
     let zero = T::zero();
     let bound = T::from_f64_fast(0.9999);
@@ -125,18 +121,10 @@ impl<T: RealExt> SviRawParams<T> {
     }
   }
 
-  /// Check butterfly arbitrage-freeness via Durrleman (2009) condition:
-  /// `g(k) := (1 - k·w'/(2w))^2 − (w')^2·(1/w + 1/4)/4 + w''/2 ≥ 0`
-  /// for every log-moneyness `k` on the supplied grid. `w(k)` is the
-  /// total variance returned by [`Self::total_variance`]; `w'`, `w''`
-  /// are its analytic derivatives.
-  ///
-  /// Returns `true` if `g(k) ≥ -tol` for all grid points; `tol`
-  /// defaults to `1e-9` to absorb floating-point noise around the
-  /// boundary.
-  ///
-  /// Reference: Gatheral & Jacquier (2014), "Arbitrage-free SVI volatility
-  /// surfaces", §4 / Durrleman (2009), eq. (1.2).
+  /// Durrleman's `g(k) = (1 − kw'/(2w))² − w'²(1/w + 1/4)/4 + w''/2 ≥ −1e-9` at every grid `k`,
+  /// with analytic `w'`, `w''` of [`Self::total_variance`].
+  /// Reference: Gatheral & Jacquier (2014), Quant. Finance 14(1), 59–71, §4
+  /// Reference: Durrleman (2009), eq. (1.2)
   pub fn is_butterfly_arb_free(&self, ks: &[T]) -> bool {
     self.is_butterfly_arb_free_with_tol(ks, T::from_f64_fast(1e-9))
   }
@@ -152,11 +140,8 @@ impl<T: RealExt> SviRawParams<T> {
     true
   }
 
-  /// Durrleman's `g(k)` density-positivity functional (Gatheral-Jacquier
-  /// 2014, eq. 4.1). The risk-neutral density of the underlying is
-  /// proportional to `g(k)`, so a negative `g(k)` at any strike implies
-  /// a butterfly-arbitrage opportunity. Exposed so callers can integrate
-  /// it into custom calibration penalty terms.
+  /// Durrleman's `g(k)` (Gatheral & Jacquier 2014, eq. 4.1), proportional to the risk-neutral
+  /// density, so `g < 0` anywhere is butterfly arbitrage; public for custom calibration penalties.
   pub fn durrleman_g(&self, k: T) -> T {
     let half = T::from_f64_fast(0.5);
     let quarter = T::from_f64_fast(0.25);
@@ -181,11 +166,8 @@ impl<T: RealExt> SviRawParams<T> {
     term1 - term2 + term3
   }
 
-  /// Project, then run [`Self::is_butterfly_arb_free`] over `ks`.
-  /// Returns `true` if butterfly arbitrage-free after projection,
-  /// `false` if the projected parameters still violate butterfly
-  /// arb-freeness on the grid (caller is then free to apply an
-  /// additional penalty / re-fit).
+  /// [`Self::project`], then [`Self::is_butterfly_arb_free`] over `ks`: `false` if the projected
+  /// slice still has butterfly arbitrage on that grid.
   pub fn project_with_butterfly_check(&mut self, ks: &[T]) -> bool {
     self.project();
     self.is_butterfly_arb_free(ks)
@@ -241,10 +223,8 @@ impl SviRawParams<f64> {
   }
 }
 
-/// Jump-Wings (JW) SVI parameterization.
-///
-/// Parametrizes the smile in terms of observable market quantities:
-/// ATM variance, ATM skew, put/call wing slopes, and minimum variance.
+/// Jump-wings SVI: the smile in market quantities, ATM variance and skew, put and call wing slopes
+/// and the minimum variance.
 #[derive(Clone, Copy, Debug)]
 pub struct SviJumpWings<T: RealExt> {
   /// ATM total variance

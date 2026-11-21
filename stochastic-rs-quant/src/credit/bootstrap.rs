@@ -1,5 +1,5 @@
-//! Piecewise-constant hazard curve from CDS par spreads sorted by maturity: each $h_k$ is the
-//! Brent root that reprices the $k$-th quote given $h_1,\ldots,h_{k-1}$.
+//! Piecewise-constant hazard curve from CDS par spreads sorted by maturity: each `h_k` is the
+//! Brent root that reprices the `k`-th quote given `h_1, …, h_{k−1}`.
 //!
 //! $$
 //! h(t)=h_k\quad\text{for }t\in(t_{k-1},t_k]

@@ -16,11 +16,8 @@ pub(super) struct Mesh {
 }
 
 impl Mesh {
-  /// A log-spot mesh clustered at `x0` by `x = x0 + c sinh(ξ)` on a uniform
-  /// `ξ`, `x0` a node (`m1` is made odd). The variance mesh is uniform on
-  /// `[0, v0]` and stretched by `v = v0 + d sinh(ξ)` above it, resolving
-  /// both the attainable boundary and the Dirac start as required by
-  /// Wyns & Du Toit (2016), §4. Both `0` and `v0` are exact nodes.
+  /// Log-spot mesh `x0 + c sinh(ξ)` with `x0` a node (`m1` odd); variance uniform on `[0, v0]` and
+  /// `v0 + d sinh(ξ)` above, so `0` and `v0` are exact nodes (Wyns & Du Toit (2016), §4).
   pub(crate) fn new(
     x0: f64,
     x_half_width: f64,
@@ -145,9 +142,8 @@ impl Mesh {
       .sum()
   }
 
-  /// Wyns & Du Toit's (4.5): the trapezoid `Σ_j v_j |P_{i,j}| ω'_j /
-  /// Σ_j |P_{i,j}| ω'_j` per log-spot node, `None` where the column carries
-  /// no mass beyond round-off — below `threshold` of the heaviest column.
+  /// Wyns & Du Toit's (4.5), `Σ_j v_j |P_{i,j}| ω'_j / Σ_j |P_{i,j}| ω'_j` per log-spot node;
+  /// `None` where the column's mass is below `threshold` of the heaviest column's.
   pub(crate) fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
     let m1 = self.m1();
     let sums = (0..m1)

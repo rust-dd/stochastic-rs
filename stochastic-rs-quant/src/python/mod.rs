@@ -1,8 +1,5 @@
-//! PyO3 wrappers for `stochastic-rs-quant`.
-//!
-//! Pricing engines (analytic + Fourier), calibrators, vol-surface parameterisations,
-//! and bond-pricing closed forms exposed as `#[pyclass]` types. Registered by the
-//! `stochastic-rs-py` cdylib.
+//! PyO3 classes for `stochastic-rs-quant`'s pricers, calibrators, vol-surface parameterisations and
+//! bond closed forms, registered by the `stochastic-rs-py` cdylib.
 
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]

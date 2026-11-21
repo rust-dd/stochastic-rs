@@ -1,6 +1,5 @@
-//! The four ADI time-stepping schemes of in 't Hout & Foulon (2008), §2.4,
-//! eqs. (2.17)–(2.20), on the split operator `F = F_0 + F_1 + F_2`, plus the
-//! Rannacher start-up damping of §2.5.
+//! In 't Hout & Foulon's (2010) four ADI schemes, §2.4 (2.17)–(2.20), on `F = F_0 + F_1 + F_2`,
+//! with §2.5's Rannacher start.
 
 use super::operators::Operators;
 
@@ -98,10 +97,8 @@ pub(super) fn step(
   }
 }
 
-/// Marches `u0` from `t = 0` to `tau` in `steps` steps. With `damping` the
-/// first step is replaced by two Douglas steps of `Δt/2` at `θ = 1`, the
-/// practical form of the Rannacher backward-Euler start-up the paper applies
-/// to damp the non-smooth payoff (§2.5).
+/// Marches `u0` from `t = 0` to `tau` in `steps` steps; `damping` makes the first step two `Δt/2`
+/// Douglas steps at `θ = 1`, the Rannacher start (§2.5) for the non-smooth payoff.
 pub(super) fn march(
   ops: &Operators,
   scheme: AdiScheme,

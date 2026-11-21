@@ -1,17 +1,12 @@
-//! # Sabr Smile
+//! FX smile calibration under Hagan's SABR expansion with general β.
 //!
-//! FX volatility smile calibrator using the Hagan (2002) Sabr approximation
-//! with general β support.
-//!
-//! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
-//! *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
-//!
-//! α is derived analytically from the ATM vol (Eq. A.69b) so the
-//! optimizer only searches over (ρ, ν) plus the four 25-delta strike levels.
+//! `α` follows from the ATM vol (eq. A.69b), so the search is `(ρ, ν)` and four 25-delta strikes:
 //!
 //! $$
 //! \sigma_{imp}(K)\approx \sigma_{Hagan}(K;\alpha(\sigma_{ATM},\rho,\nu),\beta,\rho,\nu)
 //! $$
+//!
+//! Reference: Hagan et al. (2002), Wilmott Mag., 84–108
 
 mod calibrate;
 mod objective;

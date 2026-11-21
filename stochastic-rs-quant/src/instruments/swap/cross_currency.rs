@@ -1,3 +1,5 @@
+//! Cross-currency swaps, one floating leg per currency.
+
 use chrono::NaiveDate;
 
 use super::shared::floating_leg_spread_annuity;

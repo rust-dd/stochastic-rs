@@ -1,8 +1,5 @@
-//! Equity vanilla / digital options as first-class [`Instrument`]s.
-//!
-//! These types describe the payoff only — strike, exercise, type. Pair
-//! with an engine from [`crate::pricing::engines`] (analytic Black-Scholes,
-//! analytic Heston, …) to obtain a price.
+//! Equity vanilla and digital options as [`Instrument`]s, payoff only (strike, exercise, type),
+//! priced by an engine from [`crate::pricing::engines`].
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;

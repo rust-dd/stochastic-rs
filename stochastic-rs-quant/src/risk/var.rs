@@ -1,5 +1,5 @@
 //! Value at Risk, parametric, historical and Monte Carlo, loss-positive: the smallest loss
-//! threshold exceeded with probability at most $1-\alpha$. PnL samples take `PnlOrLoss::Pnl`.
+//! threshold exceeded with probability at most `1 − α`. PnL samples take `PnlOrLoss::Pnl`.
 //!
 //! $$
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell\in\mathbb{R}:\mathbb{P}(L>\ell)\le 1-\alpha\}.

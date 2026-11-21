@@ -246,11 +246,8 @@ impl HestonCalibrator {
     }
   }
 
-  /// Compute model prices and residual Jacobian via the Cui analytic formulation.
-  ///
-  /// Source:
-  /// - Cui et al. (2017), fast and accurate Heston calibration
-  ///   https://doi.org/10.1016/j.ejor.2017.05.018
+  /// Model prices and the residual Jacobian by Cui et al.'s analytic formulation.
+  /// Reference: Cui et al. (2017), Eur. J. Oper. Res. 263, 625–638, DOI 10.1016/j.ejor.2017.05.018
   pub(super) fn compute_model_prices_and_residual_jacobian_cui(
     &self,
     params: &HestonParams,

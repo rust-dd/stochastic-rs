@@ -66,9 +66,8 @@ impl PyDiscountCurve {
       .into_pyarray(py)
   }
 
-  /// Bootstraps an OIS discount curve from par OIS quotes: one fixed-leg
-  /// payment schedule (year fractions, last entry = maturity) per quote, the
-  /// swap equation `1 = S Σ δ_i D(t_i) + D(t_n)` solved pillar by pillar.
+  /// OIS discount curve bootstrapped from par quotes, one fixed-leg schedule of year fractions per
+  /// quote (last entry the maturity), solving `1 = S Σ δ_i D(t_i) + D(t_n)` pillar by pillar.
   #[staticmethod]
   #[pyo3(signature = (payment_schedules, rates, interp="log_df"))]
   fn bootstrap_ois(

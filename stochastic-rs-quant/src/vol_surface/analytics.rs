@@ -1,16 +1,7 @@
-//! # Smile and Skew Analytics
+//! Smile and skew analytics of an implied-vol slice or an SVI/SSVI fit: ATM vol, skew and convexity
+//! in `k`, the 25-delta risk reversal and butterfly, and their term structures.
 //!
-//! Smile-level analytics computed from an implied volatility slice or
-//! a parametric representation (SVI / SSVI).
-//!
-//! Key quantities:
-//! - ATM implied volatility
-//! - ATM skew $\partial\sigma/\partial k\big|_{k=0}$
-//! - ATM convexity $\partial^2\sigma/\partial k^2\big|_{k=0}$
-//! - 25-delta risk reversal and butterfly
-//! - Term structure of ATM vol and skew
-//!
-//! Reference: Gatheral, *The Volatility Surface* (2006), Ch. 2–3
+//! Reference: Gatheral (2006), The Volatility Surface, Ch. 2–3
 
 use super::ssvi::SsviParams;
 use super::svi::SviRawParams;
@@ -146,10 +137,8 @@ pub fn skew_term_structure<T: RealExt>(
   (maturities.to_vec(), skews)
 }
 
-/// 25-delta risk reversal from an SVI slice.
-///
-/// RR₂₅ ≈ σ(k₊) − σ(k₋) where k₊, k₋ are approximate 25-delta
-/// log-moneyness points: $k \approx \pm \sigma_{\mathrm{ATM}}\sqrt{T} \cdot 0.6745$.
+/// 25-delta risk reversal `σ(k₊) − σ(k₋)` of an SVI slice at the approximate 25-delta points
+/// `k± ≈ ±0.6745 σ_ATM √T`.
 pub fn risk_reversal_25d<T: RealExt>(params: &SviRawParams<T>, tau: T) -> T {
   let zero = T::zero();
   let z = T::from_f64_fast(0.6745);

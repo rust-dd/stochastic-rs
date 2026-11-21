@@ -60,7 +60,7 @@ pub(crate) fn mean_integrated_variance(v0: f64, b: f64, kappa_theta: f64, t: f64
 
 /// `c1 = −½E[∫v]`, Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of
 /// the Little-Trap chf, grouped by powers of `e^{−κt}`.
-/// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848.
+/// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
 pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
   let HestonParams {
     v0,

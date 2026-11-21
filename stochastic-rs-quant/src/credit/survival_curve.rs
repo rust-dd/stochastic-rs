@@ -1,19 +1,15 @@
-//! Survival probability curves and piecewise-constant hazard rates.
+//! Survival curves and piecewise-constant hazard rates, the risk-neutral survival being
 //!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006), Chapter 22.
-//!
-//! Reference: O'Kane & Turnbull, "Valuation of Credit Default Swaps",
-//! Lehman Brothers Quantitative Credit Research Quarterly (2003).
-//!
-//! The risk-neutral survival probability is related to the hazard rate by
 //! $$
 //! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),
 //! $$
-//! and the instantaneous forward hazard between two grid times $t_1<t_2$ is
+//! and the forward hazard between grid times `t₁ < t₂`
 //! $$
 //! h(t_1,t_2)=-\frac{\ln Q(t_2)-\ln Q(t_1)}{t_2-t_1}.
 //! $$
+//!
+//! Reference: Brigo & Mercurio (2006), 2nd ed., Ch. 22, DOI 10.1007/978-3-540-34604-3
+//! Reference: O'Kane & Turnbull (2003), Lehman Brothers Quant. Credit Res. Q.
 
 use std::fmt::Display;
 
@@ -56,9 +52,8 @@ pub struct SurvivalPoint<T: RealExt> {
 /// Calibrated survival curve $Q(t)=\mathbb{P}(\tau>t)$.
 #[derive(Debug, Clone)]
 pub struct SurvivalCurve<T: RealExt> {
-  /// **Invariant:** `points` is never empty. [`Self::new`] inserts the
-  /// $(0, 1)$ anchor if absent, so every interior method can assume
-  /// `points.first()` and `points.last()` succeed.
+  /// Never empty: [`Self::new`] inserts the `(0, 1)` anchor if absent, so `points.first()` and
+  /// `points.last()` always succeed.
   points: Vec<SurvivalPoint<T>>,
   method: HazardInterpolation,
 }
@@ -169,9 +164,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       return T::one();
     }
 
-    // Constructor invariant: `points` always contains the $(0, 1)$ anchor,
-    // so `last()` is `Some`. Falling back to `T::one()` is a defensive
-    // no-op for any future refactor that breaks the invariant.
+    // `new`'s `(0, 1)` anchor makes `last()` `Some`; `T::one()` only guards a broken invariant.
     let Some(last) = self.points.last() else {
       return T::one();
     };

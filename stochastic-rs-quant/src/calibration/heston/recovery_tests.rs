@@ -54,7 +54,8 @@ const CASES: [HestonParams; 4] = [
   },
 ];
 
-// Beside the fallback start, which sits past the cap: one start near the boundary (2κθ/σ² = 1.25), one well inside (2.25).
+// Beside the fallback start, which sits past the cap: one start near the boundary (2κθ/σ² = 1.25),
+// one well inside (2.25).
 const NEAR_START: HestonParams = HestonParams {
   v0: 0.05,
   kappa: 2.0,

@@ -1,4 +1,4 @@
-//! Leg construction helpers.
+//! Helpers that build fixed and floating coupon legs from a schedule.
 
 use chrono::NaiveDate;
 

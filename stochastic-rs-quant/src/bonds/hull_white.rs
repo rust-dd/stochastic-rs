@@ -1,5 +1,5 @@
-//! Hull–White extended Vasicek zero-coupon bond with $\theta(t)$ fitted to an initial market
-//! curve $P^M(0,\cdot)$, where $f^M(0,t) = -\partial_T \ln P^M(0,t)$.
+//! Hull–White extended Vasicek zero-coupon bond with `θ(t)` fitted to an initial market curve
+//! `P^M(0, ·)`, where `f^M(0, t) = −∂_T ln P^M(0, t)`.
 //!
 //! $$
 //! dr_t = (\theta(t) - a\,r_t)\,dt + \sigma\,dW_t,\qquad

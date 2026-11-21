@@ -1,4 +1,4 @@
-//! Fixed-income bond analytics.
+//! Fixed-income bonds: fixed-rate, floating-rate, zero-coupon, amortizing and inflation-linked.
 //!
 //! $$
 //! P=\sum_{i=1}^{n}\frac{CF_i}{(1+y/m)^{m t_i}},\qquad

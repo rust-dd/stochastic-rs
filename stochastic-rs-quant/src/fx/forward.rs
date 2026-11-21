@@ -1,15 +1,11 @@
-//! FX forward pricing via covered interest rate parity.
+//! FX forward by covered interest parity:
 //!
 //! $$
 //! F = S \cdot e^{(r_d - r_f)\,\tau}
 //! $$
 //!
-//! where $S$ is the spot rate, $r_d$ the domestic (quote-currency) rate,
-//! $r_f$ the foreign (base-currency) rate, and $\tau$ the time to maturity
-//! in years.
-//!
-//! Reference: Hull, *Options, Futures, and Other Derivatives*, 11th ed.,
-//! Chapter 5 — Determination of Forward and Futures Prices.
+//! with `S` the spot, `r_d` the domestic (quote) rate, `r_f` the foreign (base) rate, `τ` in years.
+//! Reference: Hull, Options, Futures, and Other Derivatives, 11th ed., Ch. 5
 
 use super::quoting::CurrencyPair;
 use crate::traits::RealExt;

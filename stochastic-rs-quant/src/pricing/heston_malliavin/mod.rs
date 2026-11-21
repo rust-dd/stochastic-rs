@@ -1,22 +1,7 @@
-//! Malliavin Monte Carlo Greeks for Heston options.
-//!
-//! The Monte Carlo spot score uses the Brownian direction orthogonal to the
-//! variance driver. This avoids the non-adapted approximation in
-//! `pricing::malliavin_greeks` and gives an exact integration-by-parts
-//! identity for the discretized correlated-Heston terminal spot whenever
-//! `abs(rho) < 1`.
-//!
-//! The initial-variance Greek has different provenance: it is a centered
-//! common-random-number finite difference with a bump-stability gate, not a
-//! Malliavin-weight estimator.
-//!
-//! References:
-//! - Fournié, Lasry, Lebuchoux, Lions & Touzi (1999), "Applications of
-//!   Malliavin calculus to Monte Carlo methods in finance", *Finance and
-//!   Stochastics* 3(4), 391-412. DOI: 10.1007/s007800050068
-//! - Lord, Koekkoek & van Dijk (2010), "A comparison of biased simulation
-//!   schemes for stochastic volatility models" (full-truncation Euler),
-//!   *Quantitative Finance* 10(2), 177-194. DOI: 10.1080/14697680802392496
+//! Malliavin Monte Carlo Greeks for Heston: the spot score on the Brownian orthogonal to the
+//! variance, exact at `|ρ| < 1`; the `v0` Greek is a bump-gated common-random-number difference.
+//! Reference: Fournié et al. (1999), Finance Stoch. 3(4), 391–412, DOI 10.1007/s007800050068
+//! Reference: Lord et al. (2010), Quant. Finance 10(2), 177–194, DOI 10.1080/14697680802392496
 
 mod estimator;
 mod payoff;

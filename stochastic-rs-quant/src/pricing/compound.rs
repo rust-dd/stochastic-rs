@@ -194,9 +194,8 @@ mod tests {
     }
   }
 
-  /// Geske (1979) classic example: S=50, K1=10, K2=50, T1=0.5, T2=1.0,
-  /// r=0.05, b=0.05, sigma=0.40 — Call on Call should be positive and bounded
-  /// above by the inner call $C(S, K_2, T_2)$.
+  /// Geske (1979)'s example (S=50, K1=10, K2=50, T1=0.5, T2=1, r=b=0.05, σ=0.4): a call on a call
+  /// is positive and below the inner call `C(S, K₂, T₂)`.
   #[test]
   fn call_on_call_basic() {
     use crate::pricing::bsm::BsmCoc;

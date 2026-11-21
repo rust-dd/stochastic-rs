@@ -11,7 +11,7 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
   s * ((r_d - r_f) * tau).exp()
 }
 
-/// Hagan et al. (2002), "Managing Smile Risk", Wilmott Magazine, 84–108, eq. A.69a (general β).
+/// Reference: Hagan et al. (2002), Wilmott Mag., 84–108, eq. A.69a (general β)
 ///
 /// $$
 /// \sigma(K)\approx

@@ -167,12 +167,8 @@ fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
   assert!(errors[3] < 2e-3);
   let richardson =
     (4.0 * diagnostics[0].comparison_value - diagnostics[0].finite_difference_value) / 3.0;
-  // Richardson kills the h^2 term but multiplies the price's differential
-  // noise by `4/(3·2·5e-5) ≈ 1.3e4`. On independent adaptive Gauss-Kronrod
-  // prices this same extrapolation lands `4.2e-9` from the exact reference,
-  // so `5e-8` was a fair band for a noiseless price; the crate's uniform
-  // ~1e-10 leaves `4.0e-7`. What the assertion still shows is that the
-  // extrapolation removes the `3.5e-6` truncation error, which is the point.
+  // Richardson removes the `3.5e-6` truncation error but scales the price's `~1e-10` noise by
+  // `4/(3·2·5e-5) ≈ 1.3e4`, to `4.0e-7`, which sets the band.
   assert!(
     (richardson - estimate.value).abs() < 1e-6,
     "richardson={richardson:.12} value={:.12}",

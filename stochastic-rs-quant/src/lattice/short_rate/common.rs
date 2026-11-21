@@ -130,7 +130,7 @@ pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
 
 /// G2++ joint probabilities `Π⁰ + s̄·(|ρ|/36)·M`, Brigo–Mercurio's `M` +5 on the corners ρ favours,
 /// −1 on the other two, −4 on the edges, +8 at the centre; `s̄ ≤ 1`, the largest keeping `Π ≥ 0`.
-/// Auer (2009), Proc. World Congress on Engineering II, 1388–1389: Brigo–Mercurio's pattern, BM′.
+/// Reference: Auer (2009), Proc. World Congress on Engineering II, 1388–1389, Brigo–Mercurio's BM′
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,

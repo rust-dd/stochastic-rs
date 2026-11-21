@@ -1,21 +1,11 @@
-//! # Merton Jump
+//! Merton (1976) jump-diffusion priced as a Poisson-weighted series of Black-Scholes terms.
 //!
 //! $$
 //! V=\sum_{n=0}^{\infty}e^{-\lambda\tau}\frac{(\lambda\tau)^n}{n!}V_{BS}(\sigma_n),
 //! \qquad\sigma_n=\sqrt{d^2+z^2\tfrac{n}{\tau}}
 //! $$
 //!
-//! `d` is the diffusive volatility and `z` the per-jump log-size standard
-//! deviation, both implied by the total volatility `sigma` and the jump
-//! variance share `gamma`.
-//!
-//! Discount rate and cost of carry are the same in every term because the
-//! jumps are taken with $E(Y)=1$: Merton's per-term
-//! $r_n = r-\lambda k+n\ln(1+k)/\tau$ collapses to `r` at
-//! $k = E(Y)-1 = 0$, and the intensity needs no $\lambda(1+k)$ re-weighting
-//! either. That is the same specialisation Haug prints, and the reason this
-//! model carries no mean-jump-size parameter.
-//!
+//! `d`, `z`: diffusive and jump log-size std from `sigma`, `gamma`; jumps of `E(Y) = 1` keep `r`.
 use super::bsm::BsmCoc;
 use super::bsm::BsmPricer;
 use crate::CallPut;
@@ -24,23 +14,8 @@ use crate::traits::VanillaEuropeanCall;
 
 mod greeks;
 
-/// Merton (1976) jump-diffusion pricer.
-///
-/// The struct holds **model state only** — the total volatility, the jump
-/// intensity and jump-variance share, the Poisson-series truncation limit
-/// and the cost-of-carry convention. Spot, strike, rate, dividend yield and
-/// maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`] and to every Greek, so one instance prices a
-/// whole strike/maturity grid.
-///
-/// The query's `(r, q)` pair is **`(discount rate, carry offset)`**, not
-/// necessarily `(risk-free rate, dividend yield)`: this pricer discounts at
-/// `r` and carries at [`BsmPricer::b(r, q)`](BsmPricer::b), whose value
-/// depends on `self.b`. To reproduce a discount `r₀` with a carry `b₀` —
-/// Garman-Kohlhagen's `b₀ = r_d − r_f`, say — pass
-/// `(r, q) = (r₀, r₀ − b₀)`, which is an identity rather than an
-/// approximation because GK's `b(r, q) = r − q`. See
-/// `merton_gk_carries_at_rd_minus_rf_and_discounts_at_r`.
+/// Merton (1976) jump diffusion; a query discounts at `r`, carries at [`BsmPricer::b`]`(r, q)`, and
+/// where `b = r − q` (`Merton1973`, `GarmanKohlhagen1983`) carry `b₀` at `r₀` is `(r₀, r₀ − b₀)`.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::bsm::BsmCoc;
@@ -66,32 +41,18 @@ pub struct Merton1976Pricer {
   pub b: BsmCoc,
 }
 
-/// Where one Poisson term's query sits, which is what decides whether its
-/// closed forms are the value or stand in need of a $\sigma \to 0^+$ limit.
-///
-/// A term whose [`term_vol`](Merton1976Pricer::term_vol) is exactly `0`
-/// prices a zero-volatility Black-Scholes option, and its
-/// $d_1 = (\ln(S/K) + b\tau)/(\sigma\sqrt\tau) + \sigma\sqrt\tau/2$ is then
-/// $\infty \cdot x$ — never finite. *Which* infinity decides everything, and
-/// the two cases have different limits, which is why one blanket `0` could
-/// not serve both.
+/// Where a Poisson term's query sits: at `σ_n = 0` its `d₁` is `±∞` or `0/0`, and the two cases
+/// have different `σ → 0⁺` limits, so no blanket `0` serves both.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum TermRegime {
   /// $\sigma_n > 0$, or a query the closed forms already answer with `NaN`
   /// and must go on answering with one. The closed form *is* the value.
   Ordinary,
-  /// $\sigma_n = 0$ away from the forward. $d_1 \to \pm\infty$, both normal
-  /// CDFs saturate, and everything but the $1/\sigma$-shaped quantities is
-  /// already its own limit. Those — `gamma` alone among the nine — are
-  /// $0/0$, and their limit is `0`: $\varphi(d_1)$ decays like
-  /// $e^{-c^2/2\sigma^2}$ and beats the linear $1/\sigma$.
+  /// `σ_n = 0` off the forward: `d₁ → ±∞` and the CDFs saturate; only `gamma` is `0/0`, with
+  /// limit `0`, since `φ(d₁) ~ e^{−c²/2σ²}` beats `1/σ`.
   Saturated,
-  /// $\sigma_n = 0$ **at** the forward $Se^{b\tau} = K$. $d_1$ is $0/0$, so
-  /// every closed form is `NaN` and each needs its own limit. Both CDFs
-  /// converge to $\tfrac12$ — $d_1 = \sigma\sqrt\tau/2 \to 0^+$ and
-  /// $d_2 = -\sigma\sqrt\tau/2 \to 0^-$ — which leaves the price and the
-  /// first-order Greeks finite; `gamma` still divides by $\sigma$ and
-  /// diverges.
+  /// `σ_n = 0` at the forward `Se^{bτ} = K`: each closed form is `0/0`; both CDFs tend to `½`, so
+  /// the price and first-order Greeks have finite limits and `gamma` diverges.
   AtTheForward,
 }
 
@@ -162,47 +123,23 @@ impl Merton1976Pricer {
     (self.sigma.powi(2) - jump_variance_rate).sqrt()
   }
 
-  /// Per-term volatility of the `n`-jump-conditional Black-Scholes term,
-  /// $\sigma_n = \sqrt{d^2 + z^2 n/\tau}$ — Merton (1976) eq. (18), whose
-  /// per-term option is "a Black-Scholes option where the formal variance
-  /// per unit time on the stock is $\sigma^2 + n\delta^2/\tau$", and
-  /// §6.9.1 of Haug's *Complete Guide to Option Pricing Formulas*, which
-  /// prints it as $\sigma_i = \sqrt{z^2 + \delta^2(i/T)}$ at exactly this
-  /// pricer's parameterisation.
-  ///
-  /// Conditioning on `n` jumps over the option's life leaves the log-return
-  /// as the diffusion plus `n` i.i.d. jump sizes, so its variance is
-  /// `d²·τ + n·z²`: the diffusion runs for the *whole* of `τ` however many
-  /// jumps land in it, and only the jump part scales with the count. A
-  /// Black-Scholes term consumes that as `σ_n²·τ`, which gives the
-  /// expression above — and in particular $\sigma_0 = d$, the diffusive
-  /// volatility, rather than `0`.
-  ///
-  /// This is what makes `sigma` the total volatility the field claims it is.
-  /// Averaging the conditional variance over `N ~ Poisson(λτ)` gives
-  /// `d²τ + λτ·z² = σ²τ` exactly, which is the identity
-  /// [`diffusive_std`](Self::diffusive_std)'s `σ² − λz²` subtraction exists
-  /// to arrange; the subtraction is dead weight under any other `σ_n`.
-  /// `merton_gamma_zero_is_black_scholes` and
-  /// `merton_conditional_variance_averages_to_the_total` pin the two ends
-  /// of that statement.
+  /// `σ_n = √(d² + z²n/τ)`: the diffusion runs all of `τ` whatever the jump count, so `σ_0 = d`,
+  /// and the Poisson mean of `σ_n²τ` is `σ²τ`, which makes `sigma` the total volatility.
+  /// Reference: Merton (1976), J. Financ. Econ. 3, 125–144, eq. (18)
+  /// Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed., §6.9.1
   fn term_vol(&self, n: usize, tau: f64) -> f64 {
     (self.diffusive_std().powi(2) + self.jump_size_std().powi(2) * n as f64 / tau).sqrt()
   }
 
-  /// Poisson weight `e^{-λτ}(λτ)^n / n!` for the `n`-th term. Accumulates
-  /// `(λτ)^n / n!` as a running `f64` product rather than an integer `n!`
-  /// (which overflows `usize` past `n ≈ 20`, unlike the Poisson weight
-  /// itself — bounded in `[0, 1]` for every `n`).
+  /// `e^{−λτ}(λτ)^n/n!` with `(λτ)^n/n!` as a running `f64` product: an integer `n!` overflows
+  /// `usize` past `n ≈ 20`, while the weight stays in `[0, 1]`.
   fn poisson_weight(&self, n: usize, tau: f64) -> f64 {
     let lt = self.lambda * tau;
     let ratio = (0..n).fold(1.0, |acc, i| acc * lt / (i as f64 + 1.0));
     (-lt).exp() * ratio
   }
 
-  /// `BsmPricer` at this pricer's cost-of-carry convention and total
-  /// volatility `self.sigma` (the no-jump / Black-Scholes limit);
-  /// [`term_bsm`](Self::term_bsm) swaps in the per-term volatility.
+  /// The no-jump Black-Scholes limit, at total volatility `sigma`.
   fn base_bsm(&self) -> BsmPricer {
     BsmPricer::new(self.sigma, self.b)
   }
@@ -211,21 +148,8 @@ impl Merton1976Pricer {
     BsmPricer::new(self.term_vol(n, tau), self.b)
   }
 
-  /// Classify one Poisson term's query — see [`TermRegime`].
-  ///
-  /// The three guards are what keep a *poisoned* query out of the two
-  /// degenerate arms, where a limit expression would answer it with a
-  /// plausible number instead of propagating. At `sigma == 0` the term
-  /// volatility is exactly `0` for an infinite or negative `tau` just as
-  /// much as for a good one — `(-0.0f64).sqrt()` is `-0.0`, which compares
-  /// equal to `0.0` — and `d₁` is `NaN` for a non-positive `s` or `k` for a
-  /// reason that has nothing to do with the forward. All three keep the
-  /// closed form's own `NaN`, which is case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// The `NaN`/`Saturated` split needs no third arm: at `σ_n = 0` the
-  /// leading `1/(σ√τ)` is `+∞`, so `d₁` is `±∞` for any non-zero numerator
-  /// and `NaN` for a zero one, and cannot come out finite.
+  /// Classifies a term's query ([`TermRegime`]); a query failing `0 < tau < ∞`, `s > 0` or `k > 0`
+  /// (a NaN fails, `+∞` passes) stays `Ordinary`, so the closed form answers it, not a limit.
   fn term_regime(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
     if term.sigma != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
       return TermRegime::Ordinary;
@@ -257,27 +181,17 @@ impl ModelPricer for Merton1976Pricer {
     self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default for the same reason
-  /// [`BsmPricer::price_put`] does, inherited term by term: each element of
-  /// the Poisson series carries at $e^{(b-r)\tau}$, which equals the
-  /// default's $e^{-q\tau}$ only when $b = r - q$ — false for
-  /// [`BsmCoc::Bsm1973`] at `q != 0` and for [`BsmCoc::Black1976`] /
-  /// [`BsmCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
+  /// Not the parity default: each term carries at `e^{(b−r)τ}`, the default's `e^{−qτ}` only when
+  /// `b = r − q`, false for [`BsmCoc::Bsm1973`] at `q ≠ 0` and for `Black1976` and `Asay1982`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_call_put(s, k, r, q, tau).put
   }
 }
 
-/// European vanilla call — every term of the Poisson series is one, priced
-/// through [`BsmPricer`], so this inherits that type's carry question along
-/// with its answer.
+/// Each Poisson term is a European vanilla priced by [`BsmPricer`], whose carry this inherits.
 impl VanillaEuropeanCall for Merton1976Pricer {
-  /// $Se^{b\tau}$ at the [`BsmCoc`] convention
-  /// held in `self.b`, delegated to
-  /// [`BsmPricer::vanilla_call_forward`] for the same reason
-  /// [`price_put`](ModelPricer::price_put) delegates: the series carries term
-  /// by term at whatever the underlying `BsmPricer` carries at, so the two
-  /// must not be able to disagree.
+  /// `Se^{bτ}` under `self.b`, from [`BsmPricer::vanilla_call_forward`], so the forward and the
+  /// series' terms cannot carry differently.
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.base_bsm().vanilla_call_forward(s, r, q, tau)
   }

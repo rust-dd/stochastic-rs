@@ -1,11 +1,7 @@
 use super::*;
 
-/// Cash-or-nothing call: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-/// T=0.75 → 7.3444 (verified analytically against Q*e^{-rT}*N(d2)).
-///
-/// `b = 0.06` is expressed as the query's `q = r - b = 0`, which is how
-/// every scenario in this file names its cost of carry now that the model
-/// derives $b$ from the query instead of storing it.
+/// Cash-or-nothing call (S=100, K=80, Q=10, r=b=0.06, σ=0.35, T=0.75) prices 7.3444,
+/// `Qe^{−rT}N(d₂)`; the carry `b` enters as the query's `q = r − b = 0`.
 #[test]
 fn cash_or_nothing_call_closed_form() {
   let p = CashOrNothingPricer::new(10.0, 0.35);
@@ -13,9 +9,7 @@ fn cash_or_nothing_call_closed_form() {
   assert!((price - 7.3444).abs() < 0.005, "price={price}");
 }
 
-/// Cash-or-nothing put: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-/// T=0.75 → ~ Q*e^{-rT}*N(-d2) = 10 * 0.95599 * (1 - 0.97264/Q*e^{rT})
-/// ≈ 0.0303
+/// Cash-or-nothing put on the same scenario: `Qe^{−rT}N(−d₂) ≈ 0.0303`.
 #[test]
 fn cash_call_put_parity() {
   // CoN call + CoN put = Q * e^{-rT}
@@ -82,9 +76,8 @@ fn supershare_positive() {
   assert!(price < 100.0, "supershare must be < S");
 }
 
-/// Cash-or-nothing delta uses finite difference vs analytic, on both option
-/// types — the put's delta is the call's negated, and checking only the call
-/// would leave the `option_type` wiring of every digital Greek unpinned.
+/// Cash-or-nothing delta against a finite difference for the call and the put, which pins the
+/// `option_type` wiring of every digital Greek.
 #[test]
 fn cash_delta_matches_fd() {
   let h = 0.01;
@@ -103,12 +96,8 @@ fn cash_delta_matches_fd() {
   }
 }
 
-/// The aggregate is the only place the exposed Greeks are mapped into
-/// [`Greeks`]'s nine members, so it gets the same guard `BsmPricer`'s does:
-/// every member either equals its accessor or is `NaN`, and the `NaN`s are
-/// the ones the pricer genuinely does not expose (which is what the removed
-/// `GreeksExt` defaults produced). A hand-written struct literal at a call
-/// site is what loses this pin.
+/// The aggregate maps each exposed Greek to its [`Greeks`] member and leaves `NaN` only where the
+/// pricer exposes none.
 #[test]
 fn digital_greeks_aggregates_match_their_accessors() {
   let (s, k, r, q, tau, ot) = (100.0, 100.0, 0.05, 0.03, 0.5, OptionType::Put);
@@ -139,12 +128,8 @@ fn digital_greeks_aggregates_match_their_accessors() {
   }
 }
 
-/// The gap put has its own parity identity, $C - P = Se^{-qT} - K_2e^{-rT}$
-/// (derived from the closed forms; holds regardless of $K_1$), which is not
-/// the trait's vanilla parity against the query strike — the two differ
-/// exactly because $K_1 \ne K_2$ here. Same scenario as
-/// `gap_haug_negative_payoff`, so this doubles as proof that the query
-/// strike binds to $K_1$ and `self.k2` to the payoff strike.
+/// The gap parity `C − P = Se^{−qT} − K₂e^{−rT}` (any `K₁`), not the vanilla one: the query strike
+/// binds to `K₁` and `self.k2` to the payoff strike.
 #[test]
 fn gap_put_matches_its_own_parity() {
   let p = GapPricer::new(57.0, 0.20);
@@ -163,9 +148,7 @@ fn gap_put_matches_its_own_parity() {
   );
 }
 
-/// The documented no-put contract: Haug (2007) defines only the supershare
-/// payoff, so `price_put` returns `NaN` rather than the trait's
-/// vanilla-parity default.
+/// Haug (2007) defines only the supershare payoff, so `price_put` is `NaN`, not the parity default.
 #[test]
 fn supershare_has_no_put_analogue() {
   let p = SuperSharePricer::new(110.0, 0.2);
@@ -175,9 +158,7 @@ fn supershare_has_no_put_analogue() {
   );
 }
 
-/// One model instance prices a whole strike/maturity grid — the capability
-/// [`ModelPricer`] exists for and the pre-query struct could not offer
-/// without rebuilding itself per point.
+/// One model instance prices a whole strike/maturity grid.
 #[test]
 fn digital_one_model_prices_a_grid() {
   let con = CashOrNothingPricer::new(10.0, 0.25);
@@ -195,11 +176,8 @@ fn digital_one_model_prices_a_grid() {
   }
 }
 
-/// Every argument the trait hands a digital must reach its price. A
-/// parameter that is accepted and then ignored — or precomputed at
-/// construction from an earlier query — returns a plausible in-range number
-/// with nothing to distinguish it, so each of the five is perturbed on its
-/// own and required to move the price.
+/// Each of the five query arguments, perturbed alone, moves the price: none is ignored or fixed at
+/// construction.
 #[test]
 fn every_query_argument_drives_the_price() {
   let base = (100.0, 100.0, 0.05, 0.01, 0.5);

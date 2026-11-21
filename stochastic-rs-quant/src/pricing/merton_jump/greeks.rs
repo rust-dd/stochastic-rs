@@ -1,63 +1,5 @@
-//! Poisson-weighted-series Greeks for the Merton (1976) jump-diffusion
-//! model, at an explicit `(s, k, r, q, tau)` query point.
-//!
-//! Spot and rate Greeks sum the corresponding Black–Scholes Greeks.
-//! Volatility Greeks apply the chain rule to each conditional volatility
-//! `sigma_n = v * sqrt(1 - gamma + gamma * n / (lambda * tau))`.
-//! Calendar-time derivatives use centred maturity differences, including
-//! the dependence of the Poisson weights and conditional volatilities on time.
-//!
-//! A **degenerate term** — one whose `σ_n` is exactly `0`, reachable at
-//! `sigma == 0` and, for `n = 0` alone, at the pure-jump corner `gamma == 1` —
-//! has no closed form to evaluate, only a `σ → 0⁺` limit, and the limit
-//! differs per Greek and per side of the forward. Each accessor states its
-//! own against [`TermRegime`].
-//! `delta → ½e^{(b−r)τ}` and `rho → ½Kτe^{−rτ}` at the forward and keep
-//! their saturated closed forms away from it, `gamma → +∞` at the forward
-//! and `0` away from it. Volatility Greeks use their right limits at zero
-//! volatility; maturity differences inherit the degenerate price limit.
-//!
-//! `theta`/`charm`/`veta`'s `λ > 0` path additionally guards near expiry —
-//! case 2 of the crate's [failure
-//! convention](crate::traits::ModelPricer#how-pricing-fails):
-//! at `τ ≤ h_τ` the down-`τ` bump would evaluate the price series at a
-//! negative time-to-maturity, whose derivative is undefined. The guard is
-//! an explicit statement of that, not the only thing standing behind it:
-//! nothing zeroes those terms, so a negative bumped maturity reaches the
-//! caller as `NaN` on its own. It stays
-//! because saying so at the accessor is clearer than relying on which
-//! terms happen to go non-finite, and because it also covers a
-//! non-finite `τ`. Mirrors
-//! [`HestonPricer`](crate::pricing::heston::HestonPricer)'s identical
-//! guard.
-//!
-//! # Which Greeks take an `option_type`
-//!
-//! Five do — `delta`, `theta`, `rho`, `charm` and (vacuously) the
-//! aggregator — and four do not: `vega`, `vanna`, `volga` and `veta`.
-//! The line between them is generalised put-call parity, whose spread
-//! $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$ carries **no $\sigma$**. A derivative
-//! that touches $\sigma$ even once annihilates the spread, so it is one
-//! number rather than two:
-//!
-//! | Greek | derivative | in $\sigma$ | takes `option_type` |
-//! |---|---|---|---|
-//! | `vega` | $\partial_\sigma$ | yes | no |
-//! | `vanna` | $\partial_S\partial_\sigma$ | yes | no |
-//! | `volga` | $\partial_\sigma\partial_\sigma$ | yes | no |
-//! | `veta` | $\partial_\sigma\partial_\tau$ | yes | no |
-//! | `gamma` | $\partial_S\partial_S$ | no | no |
-//! | `delta` | $\partial_S$ | no | yes |
-//! | `theta` | $-\partial_\tau$ | no | yes |
-//! | `rho` | $\partial_r$ | no | yes |
-//! | `charm` | $-\partial_S\partial_\tau$ | no | yes |
-//!
-//! `gamma` is in the "no `option_type`" column for the *other* reason the
-//! spread admits — it is linear in $S$, so a second $S$-derivative kills
-//! it too — and has never taken one. The four that do take one each leave
-//! a surviving spread term, whose form depends on which
-//! [`BsmCoc`](crate::pricing::bsm::BsmCoc) supplies $b$.
-//!
+//! Merton (1976) Greeks: Poisson sums of Black–Scholes Greeks, through `σ_n = σ√(1 − γ + γn/(λτ))`.
+//! `gamma` and the Greeks in `σ` take no `option_type`: parity's spread is `σ`-free, linear in `S`.
 
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -121,15 +63,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Delta — $\partial V/\partial S$.
-  ///
-  /// A degenerate term at the forward (`TermRegime::AtTheForward`)
-  /// contributes the $\sigma \to 0^+$ limit of $e^{(b-r)\tau}N(d_1)$, which
-  /// is $\tfrac12 e^{(b-r)\tau}$ for the call and
-  /// $-\tfrac12 e^{(b-r)\tau}$ for the put — the closed form at
-  /// $N(d_1) = \tfrac12$, and no more than that. Written as an expression
-  /// in `r` and `τ` rather than as the number it evaluates to, so a
-  /// non-finite rate still propagates.
+  /// Delta `∂V/∂S`; a `σ_n = 0` term at its forward adds the limit `±½e^{(b−r)τ}`, written in `r`
+  /// and `τ` so a non-finite rate propagates.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -165,15 +100,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Rho — $\partial V/\partial r$.
-  ///
-  /// A degenerate term at the forward (`TermRegime::AtTheForward`)
-  /// contributes the $\sigma \to 0^+$ limit of $K\tau e^{-r\tau}N(d_2)$,
-  /// which is $\tfrac12 K\tau e^{-r\tau}$ for the call and its negation for
-  /// the put — the closed form at $N(d_2) = \tfrac12$. `rho` is the one of
-  /// the three whose limit carries the *discount* factor rather than the
-  /// carry factor, so it is the accessor that would catch a mix-up of the
-  /// two.
+  /// Rho `∂V/∂r`; a `σ_n = 0` term at its forward adds `±½Kτe^{−rτ}`, the one limit on the
+  /// discount factor rather than the carry factor.
   pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -192,14 +120,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Vega — $\partial V/\partial\sigma$.
-  ///
-  /// Takes no `option_type`. Put-call parity's spread
-  /// $Se^{(b-r)\tau}-Ke^{-r\tau}$ carries no $\sigma$, so a derivative
-  /// that touches $\sigma$ annihilates it and the call and the put share
-  /// one answer. `gamma` loses its parameter for the sibling reason — the
-  /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
-  /// each leave a surviving spread term and keep theirs.
+  /// Vega `∂V/∂σ`, one value for call and put (parity's spread is free of `σ`); a `σ_n = 0` term
+  /// adds its right limit.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -219,11 +141,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Theta — $\partial V/\partial t$ (calendar convention).
-  ///
-  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
-  /// inherits its behaviour instead.
+  /// Theta `∂V/∂t` (calendar) by a centred `τ` difference; `NaN` at `λ > 0` for a non-finite `tau`
+  /// or `tau ≤ 1e-5` (the bump), [`BsmPricer`]'s answer at `λ ≤ 0`.
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -240,14 +159,7 @@ impl Merton1976Pricer {
       / (2.0 * h)
   }
 
-  /// Vanna — $\partial^2 V/\partial S\partial\sigma$.
-  ///
-  /// Takes no `option_type`. Put-call parity's spread
-  /// $Se^{(b-r)\tau}-Ke^{-r\tau}$ carries no $\sigma$, so a derivative
-  /// that touches $\sigma$ annihilates it and the call and the put share
-  /// one answer. `gamma` loses its parameter for the sibling reason — the
-  /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
-  /// each leave a surviving spread term and keep theirs.
+  /// Vanna `∂²V/∂S∂σ`, one value for call and put, since parity's spread is free of `σ`.
   pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -267,11 +179,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
-  ///
-  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
-  /// inherits its behaviour instead.
+  /// Charm `∂²V/∂S∂t` (delta decay) by a centred `τ` difference; `NaN` at `λ > 0` for a non-finite
+  /// `tau` or `tau ≤ 1e-5`, [`BsmPricer`]'s answer at `λ ≤ 0`.
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -291,14 +200,7 @@ impl Merton1976Pricer {
       / (4.0 * hs * ht)
   }
 
-  /// Volga — $\partial^2 V/\partial\sigma^2$.
-  ///
-  /// Takes no `option_type`. Put-call parity's spread
-  /// $Se^{(b-r)\tau}-Ke^{-r\tau}$ carries no $\sigma$, so a derivative
-  /// that touches $\sigma$ annihilates it and the call and the put share
-  /// one answer. `gamma` loses its parameter for the sibling reason — the
-  /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
-  /// each leave a surviving spread term and keep theirs.
+  /// Volga `∂²V/∂σ²`, one value for call and put, since parity's spread is free of `σ`.
   pub fn volga(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
@@ -316,18 +218,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Veta — $\partial^2 V/\partial\sigma\partial t$ (vega decay).
-  ///
-  /// Takes no `option_type`. Put-call parity's spread
-  /// $Se^{(b-r)\tau}-Ke^{-r\tau}$ carries no $\sigma$, so a derivative
-  /// that touches $\sigma$ annihilates it and the call and the put share
-  /// one answer. `gamma` loses its parameter for the sibling reason — the
-  /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
-  /// each leave a surviving spread term and keep theirs.
-  ///
-  /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
-  /// inherits its behaviour instead.
+  /// Veta `∂²V/∂σ∂t` (vega decay), one value for call and put; `NaN` at `λ > 0` for a non-finite
+  /// `tau` or `tau ≤ 1e-5`, [`BsmPricer`]'s answer at `λ ≤ 0`.
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau == 0.0 {
       return f64::NAN;
