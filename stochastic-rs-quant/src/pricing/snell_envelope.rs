@@ -1,4 +1,5 @@
 //! Snell envelope (American options) on a CRR binomial tree, one two-state step at a time:
+//!
 //! $$
 //! Y_N = g(S_N),\qquad
 //! Y_i = \max\left(g(S_i), e^{-r\Delta t}\mathbb{E}^{\mathbb{Q}}[Y_{i+1}\mid\mathcal{F}_i]\right).

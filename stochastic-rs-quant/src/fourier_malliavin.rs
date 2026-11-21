@@ -1,5 +1,5 @@
 //! Non-parametric Fourier–Malliavin estimators of volatility, covariance, leverage, vol of vol and
-//! quarticity; [`FmVol`](crate::fourier_malliavin::FmVol) computes the Fourier coefficients once.
+//! quarticity; [`FmVol`] computes the Fourier coefficients once.
 //!
 //! $$
 //! \widehat\sigma^2_{n,N,M}(\tau)=\sum_{|k|\le M}\!\Bigl(1-\frac{|k|}{M+1}\Bigr)

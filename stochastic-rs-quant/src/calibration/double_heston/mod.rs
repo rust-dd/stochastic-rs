@@ -1,4 +1,5 @@
 //! Double Heston calibration: two variance factors, each with its own spot Brownian:
+//!
 //! $$
 //! \begin{aligned}
 //! dS_t &= (r-q)S_t\,dt + \sqrt{v_{1,t}}\,S_t\,dW_{1,t}^S + \sqrt{v_{2,t}}\,S_t\,dW_{2,t}^S \\

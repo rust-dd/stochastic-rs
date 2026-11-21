@@ -1,4 +1,5 @@
 //! SVJ (Bates) calibration: Heston with i.i.d. log-jumps `J_t ~ N(μ_J, σ_J²)` at Poisson rate `λ`:
+//!
 //! $$
 //! \begin{aligned}
 //! dS_t &= (r-q-\lambda\bar k)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t \\

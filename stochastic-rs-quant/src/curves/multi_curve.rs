@@ -1,5 +1,6 @@
 //! Multi-curve framework: an OIS discount curve for present values and one forecast curve per
 //! floating tenor for projected fixings:
+//!
 //! $$
 //! \text{PV}_{\text{float}} = \sum_j D_{\text{OIS}}(t_j)\,\delta_j\,L_{\text{forecast}}(t_{j-1}, t_j)\,N
 //! $$

@@ -1,4 +1,5 @@
 //! Cliquet (ratchet) options, chains of forward-start options; the common payoffs:
+//!
 //! $$
 //! \text{Cliquet} = N \sum_{i=1}^M \min\!\Big(\max(R_i, f_l), c_l\Big),\quad
 //! R_i = \frac{S_{t_i}}{S_{t_{i-1}}} - 1

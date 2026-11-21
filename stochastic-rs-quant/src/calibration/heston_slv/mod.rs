@@ -1,4 +1,5 @@
 //! Heston stochastic-local volatility calibration: a Heston fit, Dupire's local vol, then `L`:
+//!
 //! $$
 //! \begin{aligned}
 //! \frac{dS_t}{S_t} &= (r-q)\,dt + L(t, S_t)\,\sqrt{V_t}\,dW_t^S,\\

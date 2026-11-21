@@ -1,4 +1,4 @@
-//! Same-currency floating-versus-floating basis swaps.
+//! Same-currency basis swaps, one floating leg against another.
 
 use chrono::NaiveDate;
 

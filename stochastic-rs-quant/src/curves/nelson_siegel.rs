@@ -1,4 +1,4 @@
-//! Nelson-Siegel parametric yield curve:
+//! The Nelson-Siegel parametric yield curve, level, slope and curvature:
 //!
 //! $$
 //! y(\tau) = \beta_0 +

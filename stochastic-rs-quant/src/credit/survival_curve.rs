@@ -1,4 +1,5 @@
 //! Survival curves and piecewise-constant hazard rates, the risk-neutral survival being
+//!
 //! $$
 //! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),
 //! $$

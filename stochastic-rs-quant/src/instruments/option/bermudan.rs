@@ -1,4 +1,5 @@
 //! Bermudan swaption on a short-rate trinomial lattice, the swap reduced to zero-coupon bonds:
+//!
 //! $$
 //! V_{\mathrm{float}}(t)=N\,\bigl[1-P(t,T_N)\bigr],\qquad
 //! V_{\mathrm{fixed}}(t)=N\,K\,\sum_{T_i>t}\delta_i\,P(t,T_i)
