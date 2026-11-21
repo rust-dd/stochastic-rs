@@ -444,3 +444,52 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
     assert!(error < 1e-4, "{point:?}: {error:e}");
   }
 }
+
+/// `ρ` meets its lower bound while the cost still falls across it: the other values are fitted
+/// along the bound, and `ρ` leaves it once the cost turns.
+#[test]
+fn the_default_start_leaves_the_rho_bound_for_the_heston_reference() {
+  let fit = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let rmse = fit.loss.get(LossMetric::Rmse);
+  assert!(rmse < 1e-5 && fit.params.rho > -0.75, "{rmse:e}: {fit:?}");
+}
+
+/// A coordinate's room is its boxed value's distance to each bound, swapped where the raw point
+/// lies reflected, and 0 across `ρ`'s clamped strip.
+#[test]
+fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
+  use super::params::room_in_box;
+  let base = ndarray::Array1::from(START);
+  let rooms = |j: usize, value: f64| {
+    let mut x = base.clone();
+    x[j] = value;
+    let room = room_in_box(x.view());
+    (room.down[j], room.up[j])
+  };
+  let near = |(down, up): (f64, f64), want: (f64, f64)| {
+    (down - want.0).abs() < 1e-12 && (up - want.1).abs() < 1e-12
+  };
+  for (j, value, want) in [
+    (4, -0.6, (0.3999, 1.5999)),
+    (4, -0.9995, (4e-4, 1.9994)),
+    (4, -0.99995, (0.0, 1.9998)),
+    (4, -1.00005, (1.9998, 0.0)),
+    (4, 1.0005, (4e-4, 1.9994)),
+    (1, 19.99, (19.89, 0.01)),
+    (1, 20.01, (0.01, 19.89)),
+    (5, 5e-6, (5e-6, 10.0 - 5e-6)),
+    (5, -5e-6, (10.0 - 5e-6, 5e-6)),
+  ] {
+    assert!(
+      near(rooms(j, value), want),
+      "{j} at {value}: {:?}",
+      rooms(j, value)
+    );
+  }
+  let room = room_in_box(base.view());
+  assert_eq!(room.strip[4], 6e-4);
+  assert!(room.down.iter().chain(&room.up).all(|room| *room > 1e-2));
+}

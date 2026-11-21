@@ -9,13 +9,9 @@ use super::super::integrate_gl_to_convergence;
 use super::calibrator::DoubleHestonCalibrator;
 use super::params::BOXED;
 use super::params::DoubleHestonParams;
-use super::params::P_SIGMA;
-use super::params::P_V0;
+use super::params::FOLD;
 use crate::OptionType;
 use crate::calibration::clip_negative;
-use crate::calibration::heston::params::P_KAPPA;
-use crate::calibration::heston::params::P_RHO;
-use crate::calibration::heston::params::P_THETA;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
@@ -158,8 +154,7 @@ impl<'a> DoubleHestonProblem<'a> {
 
 impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
-    let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
-    self.reflections = periodic_slopes(params, &[factor, factor].concat());
+    self.reflections = periodic_slopes(params, &FOLD);
     self.params = DoubleHestonParams::from(params.to_owned()).boxed();
   }
 
