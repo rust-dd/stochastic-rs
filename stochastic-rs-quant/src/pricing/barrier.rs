@@ -18,7 +18,7 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::special::ln_norm_cdf;
+use stochastic_rs_distributions::special::mills_ratio;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
@@ -282,8 +282,8 @@ impl DoubleBarrierPricer {
     self.image_series(option_type, (s, k, l, u), (alpha, beta), r, q, tau)
   }
 
-  /// Haug's series with each power joined to its normal difference in logs, where neither can
-  /// overflow, out to `n = ±N` for `N` below.
+  /// The series, each power folded into its Gaussian so that no image cancels as `σ → 0`, out to
+  /// `n = ±N` for `N` below.
   fn image_series(
     &self,
     option_type: OptionType,
@@ -296,30 +296,26 @@ impl DoubleBarrierPricer {
     let sigma = self.sigma;
     let sd = sigma * tau.sqrt();
     let b = r - q;
-    let mu1 = 2.0 * b / (sigma * sigma) + 1.0;
-    let drift = (b + 0.5 * sigma * sigma) * tau / sd;
-    let (ln_s, ln_l, ln_u) = (s.ln(), l.ln(), u.ln());
-    let (ln_alpha, ln_beta) = (alpha.ln(), beta.ln());
-    let width = ln_u - ln_l;
-    let z = sd / width;
+    let corridor = Corridor::new(s, (l, u), (alpha, beta));
+    let z = sd / corridor.width;
     if z > IMAGE_SPREAD_CUTOFF {
       return 0.0;
     }
     let n_max = (1.0 + 0.5 * IMAGE_DECAY * z * z).sqrt().ceil() as i32;
+    let drift = (b + 0.5 * sigma * sigma) * tau / sd;
+    let mu1 = 2.0 * b / (sigma * sigma) + 1.0;
+    let [asset_leg, cash_leg] = [(drift, mu1), (drift - sd, mu1 - 2.0)].map(|(drift, mu)| Leg {
+      drift,
+      mu,
+      ln_pdf: corridor
+        .ends
+        .map(|end| ln_norm_pdf(end.spot_over_end / sd + drift)),
+    });
     let (mut asset, mut cash) = (0.0, 0.0);
     for n in -n_max..=n_max {
-      let n = f64::from(n);
-      let shift = 2.0 * n * width;
-      let mirror = 2.0 * (n + 1.0) * ln_l - 2.0 * n * ln_u - ln_s;
-      let d1 = (ln_s - ln_alpha + shift) / sd + drift;
-      let d2 = (ln_s - ln_beta + shift) / sd + drift;
-      let d3 = (mirror - ln_alpha) / sd + drift;
-      let d4 = (mirror - ln_beta) / sd + drift;
-      let direct = n * width;
-      let reflected = (n + 1.0) * ln_l - n * ln_u - ln_s;
-      asset += weighted(mu1 * direct, d1, d2) - weighted(mu1 * reflected, d3, d4);
-      cash += weighted((mu1 - 2.0) * direct, d1 - sd, d2 - sd)
-        - weighted((mu1 - 2.0) * reflected, d3 - sd, d4 - sd);
+      let [direct, reflected] = corridor.images(n, sd);
+      asset += asset_leg.weighted(&direct, sd) - asset_leg.weighted(&reflected, sd);
+      cash += cash_leg.weighted(&direct, sd) - cash_leg.weighted(&reflected, sd);
     }
     let (spot, strike) = (s * (-q * tau).exp(), k * (-r * tau).exp());
     let price = match option_type {
@@ -336,30 +332,122 @@ const IMAGE_DECAY: f64 = 40.0;
 /// Past `z = σ√T / ln(U/L) = 27` the survival probability is below `2e^{-π²z²/2} < e^{-3590}`.
 const IMAGE_SPREAD_CUTOFF: f64 = 27.0;
 
-/// `e^{ln_coef} (N(x) − N(y))` for `x ≥ y`, joined in logs.
-fn weighted(ln_coef: f64, x: f64, y: f64) -> f64 {
-  if x == y {
-    return 0.0;
-  }
-  (ln_coef + ln_norm_diff(x, y)).exp()
+/// The logs of the ratios between the spot, the corridor `[L, U]` and each end `a` of the strike
+/// range, all `≥ 0` but `ln(S/a)`.
+struct Corridor {
+  width: f64,
+  spot_over_lower: f64,
+  upper_over_spot: f64,
+  ends: [End; 2],
 }
 
-/// `ln(N(x) − N(y))` for `x ≥ y`, read from the tail where both terms are small.
-fn ln_norm_diff(x: f64, y: f64) -> f64 {
-  let (upper, lower) = if y >= 0.0 {
-    (ln_norm_cdf(-y), ln_norm_cdf(-x))
-  } else if x <= 0.0 {
-    (ln_norm_cdf(x), ln_norm_cdf(y))
-  } else {
-    return (norm_cdf(x) - norm_cdf(y)).ln();
-  };
-  let gap = lower - upper;
-  upper
-    + if gap > -std::f64::consts::LN_2 {
-      (-gap.exp_m1()).ln()
-    } else {
-      (-gap.exp()).ln_1p()
+#[derive(Clone, Copy)]
+struct End {
+  spot_over_end: f64,
+  end_over_lower: f64,
+  upper_over_end: f64,
+}
+
+impl Corridor {
+  fn new(s: f64, (l, u): (f64, f64), (alpha, beta): (f64, f64)) -> Self {
+    Self {
+      width: (u / l).ln(),
+      spot_over_lower: (s / l).ln(),
+      upper_over_spot: (u / s).ln(),
+      ends: [alpha, beta].map(|a| End {
+        spot_over_end: (s / a).ln(),
+        end_over_lower: (a / l).ln(),
+        upper_over_end: (u / a).ln(),
+      }),
     }
+  }
+
+  /// The direct and the reflected image `n`, each `c` and `c + ln(S/a)` summed from terms of one
+  /// sign, so that `E ≤ 0` keeps its digits and is exactly 0 where it vanishes.
+  fn images(&self, n: i32, sd: f64) -> [Image; 2] {
+    let (w, p, p_up) = (self.width, self.spot_over_lower, self.upper_over_spot);
+    let (nw, outer) = (f64::from(n) * w, f64::from(n.abs() - 1) * w);
+    let reflected_c = if n >= 0 { -(p + nw) } else { p_up + outer };
+    let direct = self.ends.map(|end| {
+      let c_plus_log = match n {
+        0 => 0.0,
+        1.. => outer + p + end.upper_over_end,
+        _ => -(outer + p_up + end.end_over_lower),
+      };
+      (end.spot_over_end + 2.0 * nw, c_plus_log)
+    });
+    let reflected = self.ends.map(|end| {
+      let c_plus_log = if n >= 0 {
+        -(end.end_over_lower + nw)
+      } else {
+        end.upper_over_end + outer
+      };
+      (2.0 * reflected_c + end.spot_over_end, c_plus_log)
+    });
+    [
+      Image::new(nw, direct, sd),
+      Image::new(reflected_c, reflected, sd),
+    ]
+  }
+}
+
+/// One image: its power `e^{μc}` and, per end, its argument's numerator `c″` and its `E`.
+struct Image {
+  c: f64,
+  ends: [(f64, f64); 2],
+}
+
+impl Image {
+  fn new(c: f64, ends: [(f64, f64); 2], sd: f64) -> Self {
+    let c_over_sd = c / sd;
+    let ends = ends.map(|(numerator, g)| (numerator, -2.0 * c_over_sd * (g / sd)));
+    Self { c, ends }
+  }
+}
+
+/// The asset leg (`D`, `μ₁`) or the cash leg (`D − σ√T`, `μ₁ − 2`), with `ln φ` at each end's
+/// argument for `n = 0`, which every folded image shares.
+struct Leg {
+  drift: f64,
+  mu: f64,
+  ln_pdf: [f64; 2],
+}
+
+impl Leg {
+  /// `e^{μc}(N(x_α) − N(x_β))` for `x = c″/σ√T + D`; in a tail each `e^{μc}φ(x)` is folded, and
+  /// Mills' ratio carries the rest:
+  /// $$
+  /// e^{\mu c}\,\varphi\Bigl(\frac{c''}{\sigma\sqrt T}+D\Bigr)
+  /// =\varphi\Bigl(\frac{\ln(S/a)}{\sigma\sqrt T}+D\Bigr)\,e^{E},\qquad
+  /// E=-\frac{2c\,\bigl(c+\ln(S/a)\bigr)}{\sigma^2T}\le0
+  /// $$
+  fn weighted(&self, image: &Image, sd: f64) -> f64 {
+    let [x, y] = image.ends.map(|(numerator, _)| numerator / sd + self.drift);
+    if x == y {
+      return 0.0;
+    }
+    let folded = |end: usize, t: f64| self.ln_pdf[end] + image.ends[end].1 + mills_ratio(t).ln();
+    let (near, far) = if y >= 0.0 {
+      (folded(1, y), folded(0, x))
+    } else if x <= 0.0 {
+      (folded(0, -x), folded(1, -y))
+    } else {
+      let power = if image.c == 0.0 {
+        1.0
+      } else {
+        (self.mu * image.c).exp()
+      };
+      return power * (norm_cdf(x) - norm_cdf(y));
+    };
+    if near == f64::NEG_INFINITY {
+      return 0.0;
+    }
+    near.exp() * -(far - near).exp_m1()
+  }
+}
+
+fn ln_norm_pdf(x: f64) -> f64 {
+  -0.5 * x * x - 0.5 * std::f64::consts::TAU.ln()
 }
 
 /// Monte Carlo barrier option pricer using Gbm path simulation.

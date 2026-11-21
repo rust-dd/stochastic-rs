@@ -33,15 +33,19 @@ def test_the_barrier_pricer_keeps_its_prices(barrier_type, option_type, plain, w
 
 def test_the_double_barrier_pricer_keeps_its_prices():
     pinned = [
-        ("call", 90.0, 1.0, 1.7990839293170566),
+        ("call", 90.0, 1.0, 1.7990839293170673),
         ("call", 100.0, 1.0, 2.1200695605968036),
-        ("call", 110.0, 0.25, 6.769301632409984),
-        ("put", 90.0, 1.0, 4.151662102871615),
+        ("call", 110.0, 0.25, 6.769301632410013),
+        ("put", 90.0, 1.0, 4.1516621028716365),
         ("put", 100.0, 0.25, 4.448559533559411),
     ]
     for option_type, s, t, price in pinned:
         pricer = sr.DoubleBarrierPricer(s=s, t=t, option_type=option_type, **CORRIDOR)
         assert pricer.price() == pytest.approx(price, **LIBM), (option_type, s, t)
+    tiny = dict(s=100.0, k=100.0, h_lower=70.0, r=0.05, q=-0.03, t=1.0)
+    for sigma, h_upper, price in [(1e-9, 108.32870687582458, 6.665563224788113), (1e-10, 108.32870677832874, 6.665564841963476)]:
+        pricer = sr.DoubleBarrierPricer(h_upper=h_upper, sigma=sigma, **tiny)
+        assert pricer.price() == pytest.approx(price, rel=4.8e-16 / sigma, abs=0.0), sigma
 
 
 def test_the_lookback_pricers_keep_their_prices():

@@ -90,6 +90,16 @@ fn the_double_barrier_matches_the_series_where_quantlib_does_not_reach() {
   }
 }
 
+/// `sigma` at 1e-9 and 1e-10 with the forward within `σ√τ` of a bound, against the series in mpmath
+/// at 80 digits; one ulp of the spot moves these prices by up to `2.4e-16/σ`, so twice that.
+#[test]
+fn the_double_barrier_keeps_its_digits_as_sigma_vanishes_by_a_bound() {
+  for (words, mpmath) in rows("dbs") {
+    let tolerance = 4.8e-16 / number(&words, 7);
+    assert_close(double_barrier(&words).0, mpmath, tolerance, &words);
+  }
+}
+
 /// QuantLib's continuous engines where `r != q`, which they divide by, and at `r = q` the formula's
 /// `b -> 0` limit in mpmath; the crate is within 2.6e-14 of either.
 #[test]
