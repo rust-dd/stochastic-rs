@@ -4,7 +4,10 @@ use ndarray::ArrayView1;
 use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::THETA_MIN;
+use crate::calibration::feller_share;
+use crate::calibration::feller_share::P_SHARE;
 use crate::calibration::least_squares::Room;
+use crate::calibration::periodic_map;
 use crate::calibration::periodic_slopes;
 use crate::calibration::stencil::room;
 use crate::pricing::fourier::SvjParams;
@@ -20,26 +23,27 @@ pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_LAMBDA: (f64, f64) = (0.0, 10.0);
 pub(super) const P_MU_J: (f64, f64) = (-0.5, 0.5);
 pub(super) const P_SIGMA_J: (f64, f64) = (0.001, 1.0);
+/// The box each raw coordinate folds into; σ's is its share of the way to Feller's cap.
 pub(super) const BOX: [(f64, f64); 8] = [
-  P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_MU_J, P_SIGMA_J,
+  P_V0, P_KAPPA, P_THETA, P_SHARE, P_RHO, P_LAMBDA, P_MU_J, P_SIGMA_J,
 ];
 
-/// Where a boxed value lies: `BOX`, with `ρ` clamped inside its reflection's range.
+/// Where a folded value lies: `BOX`, with `ρ` clamped inside its reflection's range.
 pub(super) const BOXED: [(f64, f64); 8] = [
   P_V0,
   P_KAPPA,
   P_THETA,
-  P_SIGMA_V,
+  P_SHARE,
   (-RHO_BOUND, RHO_BOUND),
   P_LAMBDA,
   P_MU_J,
   P_SIGMA_J,
 ];
 
-/// Each raw coordinate's room before its boxed value meets a bound of `BOXED`.
+/// Each raw coordinate's room before its folded value meets a bound of `BOXED`.
 pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
-  let boxed = Array1::from(SvjParams::from(x.to_owned()).boxed());
-  room(&boxed, &BOXED, periodic_slopes(x, &BOX).view())
+  let folded = Array1::from(SvjParams::from(x.to_owned()).folded());
+  room(&folded, &BOXED, periodic_slopes(x, &BOX).view())
 }
 
 impl SvjParams {
@@ -54,15 +58,33 @@ impl SvjParams {
     self
   }
 
-  /// The box alone: Feller's condition, which couples three values, stays for `project_feller`.
-  pub(super) fn boxed(mut self) -> Self {
+  /// A raw point folded into `BOX`: `sigma` holds σ's share, the fit's coordinate.
+  pub(super) fn folded(mut self) -> Self {
+    let share = periodic_map(self.sigma, P_SHARE.0, P_SHARE.1);
     self.project_box();
+    self.sigma = share;
     self
   }
 
-  fn project_box(&mut self) {
-    use crate::calibration::periodic_map;
+  /// The folded point of a start: its box projection, σ as its share, 1 where it breaks Feller.
+  pub(super) fn to_share(mut self) -> Self {
+    self.project_box();
+    self.sigma = feller_share::share(self.sigma, self.kappa, self.theta, P_SIGMA_V);
+    self
+  }
 
+  /// The model's values at a folded point, inside Feller's condition at every share.
+  pub(super) fn from_share(mut self) -> Self {
+    self.sigma = feller_share::sigma(self.sigma, self.kappa, self.theta, P_SIGMA_V);
+    self
+  }
+
+  /// `[∂σ/∂κ, ∂σ/∂θ, ∂σ/∂w]` at a folded point.
+  pub(super) fn share_slopes(&self) -> [f64; 3] {
+    feller_share::slopes(self.sigma, self.kappa, self.theta, P_SIGMA_V)
+  }
+
+  fn project_box(&mut self) {
     self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
     self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
     self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);

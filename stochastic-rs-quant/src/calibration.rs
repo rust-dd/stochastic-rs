@@ -16,6 +16,7 @@ pub mod bsm;
 mod calibrated;
 pub mod cgmysv;
 pub mod double_heston;
+mod feller_share;
 pub mod heston;
 pub mod heston_slv;
 pub mod heston_stoch_corr;

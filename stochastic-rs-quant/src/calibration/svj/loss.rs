@@ -11,6 +11,7 @@ use super::params::BOX;
 use super::params::BOXED;
 use crate::OptionType;
 use crate::calibration::clip_negative;
+use crate::calibration::feller_share::natural_jacobian;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
@@ -88,6 +89,7 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
 
 pub(super) struct SvjProblem<'a> {
   calibrator: &'a SvjCalibrator,
+  /// The folded point: `sigma` holds σ's share of the way to Feller's cap.
   params: SvjParams,
   /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
   reflections: Array1<f64>,
@@ -99,7 +101,7 @@ impl<'a> SvjProblem<'a> {
   pub(super) fn new(calibrator: &'a SvjCalibrator, start: SvjParams) -> Self {
     Self {
       calibrator,
-      params: start,
+      params: start.to_share(),
       reflections: Array1::ones(8),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::new(),
@@ -107,7 +109,7 @@ impl<'a> SvjProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> SvjParams {
-    self.params.projected()
+    self.params.from_share()
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &SvjParams) -> Vec<f64> {
@@ -141,17 +143,17 @@ impl<'a> SvjProblem<'a> {
     )
   }
 
-  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil; `scale` times the shared
+  /// `∂r/∂x` at the folded point, each stencil point through σ's share; `scale` times the shared
   /// step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
-    let point = Array1::from(self.params.boxed());
+    let point = Array1::from(self.params);
     let mut jacobian = Array2::zeros((self.market.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        self.residuals_for(&SvjParams::from(moved).projected())
+        self.residuals_for(&SvjParams::from(moved).from_share())
       }));
     }
     jacobian
@@ -161,11 +163,11 @@ impl<'a> SvjProblem<'a> {
 impl LeastSquaresProblem for SvjProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
     self.reflections = periodic_slopes(params, &BOX);
-    self.params = SvjParams::from(params.to_owned()).boxed();
+    self.params = SvjParams::from(params.to_owned()).folded();
   }
 
   fn params(&self) -> Array1<f64> {
-    self.effective_params().into()
+    self.params.into()
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
@@ -186,5 +188,13 @@ impl LeastSquaresProblem for SvjProblem<'_> {
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    Array1::from(self.effective_params()).to_vec()
+  }
+
+  fn natural_jacobian(&self) -> Array2<f64> {
+    natural_jacobian(self.reflections.view(), &[(1, self.params.share_slopes())])
   }
 }

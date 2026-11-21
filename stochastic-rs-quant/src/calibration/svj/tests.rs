@@ -106,7 +106,14 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
     .calibrate(None)
     .unwrap();
   assert!(fit.history.len() > 1, "{} entries", fit.history.len());
-  assert_eq!(fit.history[0].params, START.projected());
+  // The start returns from σ's share within a rounding.
+  let opened = fit.history[0].params;
+  assert!((opened.sigma - START.sigma).abs() < 1e-15, "{opened:?}");
+  let exact = SvjParams {
+    sigma: START.sigma,
+    ..opened
+  };
+  assert_eq!(exact, START.projected());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -182,8 +189,8 @@ fn the_fit_converts_to_the_bates_model_of_its_parameters() {
   assert_eq!(fit.to_model().params(), fit.params);
 }
 
-#[test]
-fn test_svj_calibrate() {
+/// Twelve half-year calls no Bates model reprices, and a start that breaks Feller's condition.
+fn market_fit() -> SvjCalibrator {
   let k = [
     80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0,
   ];
@@ -195,17 +202,21 @@ fn test_svj_calibrate() {
     .zip(c_market)
     .map(|(&k, price)| OptionQuote::new(k, 0.5, price, OptionType::Call))
     .collect();
-  let result = SvjCalibrator::new(100.0, 0.01, 0.0, quotes)
-    .with_start(SvjParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.5,
-      rho: -0.7,
-      lambda: 0.5,
-      mu_j: -0.05,
-      sigma_j: 0.1,
-    })
+  SvjCalibrator::new(100.0, 0.01, 0.0, quotes).with_start(SvjParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.5,
+    rho: -0.7,
+    lambda: 0.5,
+    mu_j: -0.05,
+    sigma_j: 0.1,
+  })
+}
+
+#[test]
+fn test_svj_calibrate() {
+  let result = market_fit()
     .with_options(CalibrationOptions::default().with_record_history(true))
     .calibrate(None)
     .unwrap();
@@ -223,9 +234,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = SvjProblem::new(&calibrator, START);
-  let bounds = [
-    P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_MU_J, P_SIGMA_J,
-  ];
+  let bounds = BOX;
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, -0.3, 0.5];
   for base in [problem.params(), far] {
     for (label, point) in box_points(base.view(), &bounds, &[true; 8]) {
@@ -271,34 +280,89 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   }
 }
 
-/// From `START` the cost falls across `σ_J`'s lower bound. A held coordinate does not move, so a
-/// raw value two successive Jacobians see within the stencil step of the fold is the fold itself.
+/// The market fit starts on Feller's cap, `w = 1`, and its cost falls across it. A held coordinate
+/// does not move, so a share two successive Jacobians see within its stencil step of 1 is 1.
 #[test]
-fn a_jump_volatility_held_at_its_bound_is_on_it_not_beside_it() {
+fn a_volatility_held_at_fellers_cap_is_on_it_not_beside_it() {
   use std::cell::RefCell;
   use std::rc::Rc;
 
   use super::loss::SvjProblem;
-  use super::params::P_SIGMA_J;
   use super::params::room_in_box;
   use crate::calibration::least_squares::minimize_in_box;
   let options = CalibrationOptions::default().with_max_iterations(150);
-  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes()).with_options(options);
+  let calibrator = market_fit().with_options(options);
   let seen = Rc::new(RefCell::new(Vec::new()));
   let log = seen.clone();
   let rooms = move |x: ndarray::ArrayView1<f64>| {
-    log.borrow_mut().push(x[7] - P_SIGMA_J.0);
+    log.borrow_mut().push(x[3] - 1.0);
     room_in_box(x)
   };
   let lm = calibrator.options.lm(true, 8).unwrap();
-  minimize_in_box(SvjProblem::new(&calibrator, START), lm, rooms);
+  let start = calibrator.start.unwrap();
+  minimize_in_box(SvjProblem::new(&calibrator, start), lm, rooms);
   let path = seen.take();
   let held = path
     .windows(2)
-    .filter(|at| at[0] == at[1] && at[0].abs() <= 1e-5);
+    .filter(|at| at[0] == at[1] && at[0].abs() <= 1e-3);
   let beside = held.clone().filter(|at| at[0] != 0.0).count();
   assert!(
     held.count() > 0 && beside == 0,
-    "held beside the fold at {beside} Jacobians"
+    "held beside the cap at {beside} Jacobians"
   );
+}
+
+/// The default start breaks Feller's condition, so it begins on the cap, σ's upper bound: the fit
+/// leaves it for the reference's `σ = 0.3` under a cap of `0.35`.
+#[test]
+fn the_default_start_leaves_fellers_cap_for_the_heston_reference() {
+  let fit = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let (rmse, p) = (fit.loss.get(LossMetric::Rmse), fit.params);
+  let cap = (2.0 * p.kappa * p.theta).sqrt();
+  assert!(rmse < 5e-5 && p.sigma < 0.99 * cap, "{rmse:e}: {p:?}");
+}
+
+/// A pull acts on `(v0, κ, θ, σ, …)`: σ's row runs through its share and the cap's `κ` and `θ`,
+/// and a reflected coordinate's slope is −1.
+#[test]
+fn the_natural_jacobian_matches_central_differences() {
+  use super::loss::SvjProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+  use crate::calibration::least_squares::checks::worst_relative_error;
+  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let mut problem = SvjProblem::new(&calibrator, START);
+  for x in [
+    ndarray::array![0.04, 1.5, 0.04, 0.6, -0.5, 0.5, -0.05, 0.1],
+    ndarray::array![0.04, 20.5, 0.3, 0.4, -0.5, -0.2, 0.6, 0.1],
+    ndarray::array![0.04, 1.5, 0.04, 1.3, -0.5, 0.5, -0.05, 0.1],
+  ] {
+    problem.set_params(x.view());
+    let analytic = problem.natural_jacobian();
+    let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+    let worst = worst_relative_error(analytic.view(), numeric.view());
+    assert!(worst < 1e-6, "{x}: {worst:e}");
+  }
+}
+
+/// A start inside Feller's condition is its own model point, and one that breaks it is the cap.
+#[test]
+fn a_start_maps_to_its_share_and_back() {
+  use super::loss::SvjProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let inside = SvjProblem::new(&calibrator, START);
+  assert!((inside.effective_params().sigma - START.sigma).abs() < 1e-15);
+  let breaking = SvjParams {
+    sigma: 0.9,
+    ..START
+  };
+  let capped = SvjProblem::new(&calibrator, breaking);
+  assert_eq!(capped.params()[3], 1.0);
+  let (capped, want) = (capped.effective_params(), breaking.projected());
+  assert!((capped.sigma - want.sigma).abs() < 1e-15, "{capped:?}");
+  assert!(capped.sigma * capped.sigma <= 2.0 * capped.kappa * capped.theta);
 }

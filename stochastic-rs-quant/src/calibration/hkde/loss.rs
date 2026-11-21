@@ -11,6 +11,7 @@ use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::clip_negative;
+use crate::calibration::feller_share::natural_jacobian;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
@@ -30,6 +31,7 @@ const EPS: f64 = 1e-8;
 pub(super) struct HkdeProblem<'a> {
   calibrator: &'a HkdeCalibrator,
   sqrt_weights: Vec<f64>,
+  /// The folded point: `sigma` holds σ's share of the way to Feller's cap.
   params: HkdeParams,
   /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
   reflections: Array1<f64>,
@@ -54,7 +56,7 @@ impl<'a> HkdeProblem<'a> {
     Ok(Self {
       calibrator,
       sqrt_weights,
-      params: start,
+      params: start.to_share(),
       reflections: Array1::ones(9),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::negated(),
@@ -62,7 +64,7 @@ impl<'a> HkdeProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> HkdeParams {
-    self.params.projected()
+    self.params.from_share()
   }
 
   fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
@@ -93,10 +95,10 @@ impl<'a> HkdeProblem<'a> {
     Array1::from_iter(rows.map(|((market, model), w)| w * (model - market)))
   }
 
-  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil and every price on the
+  /// `∂r/∂x` at the folded point, each stencil point through σ's share and every price on the
   /// rules the point's own prices walked; `scale` times the shared step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
-    let point = Array1::from(self.params.boxed());
+    let point = Array1::from(self.params);
     let quotes = &self.calibrator.quotes;
     let at = self.effective_params();
     let rules = quotes.iter().map(|quote| {
@@ -111,7 +113,7 @@ impl<'a> HkdeProblem<'a> {
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        let moved = HkdeParams::from(moved).projected();
+        let moved = HkdeParams::from(moved).from_share();
         let replay = quotes.iter().zip(&rules);
         let model =
           replay.map(|(quote, rules)| self.price(&moved, quote, &mut Walk::Replay(rules.iter())));
@@ -125,11 +127,11 @@ impl<'a> HkdeProblem<'a> {
 impl LeastSquaresProblem for HkdeProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
     self.reflections = periodic_slopes(params, &BOX);
-    self.params = HkdeParams::from(params.to_owned()).boxed();
+    self.params = HkdeParams::from(params.to_owned()).folded();
   }
 
   fn params(&self) -> Array1<f64> {
-    self.effective_params().into()
+    self.params.into()
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
@@ -150,6 +152,14 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    Array1::from(self.effective_params()).to_vec()
+  }
+
+  fn natural_jacobian(&self) -> Array2<f64> {
+    natural_jacobian(self.reflections.view(), &[(1, self.params.share_slopes())])
   }
 }
 

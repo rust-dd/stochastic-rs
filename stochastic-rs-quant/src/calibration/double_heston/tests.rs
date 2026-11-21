@@ -154,7 +154,16 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
     .calibrate(None)
     .unwrap();
   assert!(fit.history.len() > 1, "{} entries", fit.history.len());
-  assert_eq!(fit.history[0].params, START.projected());
+  // The start returns from each σ's share within a rounding.
+  let mut opened = fit.history[0].params;
+  for (factor, start) in [
+    (&mut opened.first, START.first),
+    (&mut opened.second, START.second),
+  ] {
+    assert!((factor.sigma - start.sigma).abs() < 1e-15, "{factor:?}");
+    factor.sigma = start.sigma;
+  }
+  assert_eq!(opened, START.projected());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -252,8 +261,8 @@ fn double_heston_params_to_model() {
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::DoubleHestonProblem;
-  use super::params::P_SIGMA;
   use super::params::P_V0;
+  use crate::calibration::feller_share::P_SHARE;
   use crate::calibration::heston::params::P_KAPPA;
   use crate::calibration::heston::params::P_THETA;
   use crate::calibration::heston::params::RHO_BOUND;
@@ -264,7 +273,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = DoubleHestonProblem::new(&calibrator, START);
-  let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-1.0, 1.0)];
+  let factor = [P_V0, P_KAPPA, P_THETA, P_SHARE, (-1.0, 1.0)];
   let bounds = [factor, factor].concat();
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 0.15, 6.0, 0.2, 0.7, -0.8];
   for base in [problem.params(), far] {
@@ -272,7 +281,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
-    let boxed = [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-RHO_BOUND, RHO_BOUND)];
+    let boxed = [P_V0, P_KAPPA, P_THETA, P_SHARE, (-RHO_BOUND, RHO_BOUND)];
     for (label, point) in beside_points(base.view(), &[boxed, boxed].concat()) {
       let error = jacobian_error(&mut problem, point.view(), beside_reference);
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
@@ -320,4 +329,53 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
       rooms(j, value)
     );
   }
+}
+
+/// A pull acts on each factor's `(v0, κ, θ, σ, ρ)`: σ's row runs through its share and its
+/// cap's `κ` and `θ`, and a reflected coordinate's slope is −1.
+#[test]
+fn the_natural_jacobian_matches_central_differences() {
+  use super::loss::DoubleHestonProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+  use crate::calibration::least_squares::checks::worst_relative_error;
+  let calibrator = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let mut problem = DoubleHestonProblem::new(&calibrator, START);
+  for x in [
+    ndarray::array![0.03, 2.0, 0.03, 0.6, -0.5, 0.01, 0.8, 0.02, 0.3, -0.4],
+    ndarray::array![0.03, 20.5, 0.3, 0.4, -0.5, 0.26, 0.8, 0.02, 1.2, -0.4],
+  ] {
+    problem.set_params(x.view());
+    let analytic = problem.natural_jacobian();
+    let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+    let worst = worst_relative_error(analytic.view(), numeric.view());
+    assert!(worst < 1e-6, "{x}: {worst:e}");
+  }
+}
+
+/// A start inside Feller's condition is its own model point, and a factor that breaks it starts
+/// on its cap.
+#[test]
+fn a_start_maps_to_its_shares_and_back() {
+  use super::loss::DoubleHestonProblem;
+  use crate::calibration::least_squares::LeastSquaresProblem;
+  let calibrator = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  let inside = DoubleHestonProblem::new(&calibrator, START).effective_params();
+  assert!((inside.first.sigma - START.first.sigma).abs() < 1e-15);
+  assert!((inside.second.sigma - START.second.sigma).abs() < 1e-15);
+  let breaking = DoubleHestonParams {
+    second: HestonParams {
+      sigma: 0.9,
+      ..START.second
+    },
+    ..START
+  };
+  let capped = DoubleHestonProblem::new(&calibrator, breaking);
+  assert_eq!(capped.params()[8], 1.0);
+  let (capped, want) = (
+    capped.effective_params().second,
+    breaking.projected().second,
+  );
+  assert!((capped.sigma - want.sigma).abs() < 1e-15, "{capped:?}");
+  assert!(capped.sigma * capped.sigma <= 2.0 * capped.kappa * capped.theta);
 }

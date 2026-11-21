@@ -12,6 +12,7 @@ use super::params::DoubleHestonParams;
 use super::params::FOLD;
 use crate::OptionType;
 use crate::calibration::clip_negative;
+use crate::calibration::feller_share::natural_jacobian;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
@@ -82,6 +83,7 @@ pub(super) fn double_heston_call_price(
 
 pub(super) struct DoubleHestonProblem<'a> {
   calibrator: &'a DoubleHestonCalibrator,
+  /// The folded point: each `sigma` holds its σ's share of the way to Feller's cap.
   params: DoubleHestonParams,
   /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
   reflections: Array1<f64>,
@@ -93,7 +95,7 @@ impl<'a> DoubleHestonProblem<'a> {
   pub(super) fn new(calibrator: &'a DoubleHestonCalibrator, start: DoubleHestonParams) -> Self {
     Self {
       calibrator,
-      params: start,
+      params: start.to_share(),
       reflections: Array1::ones(10),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::new(),
@@ -101,7 +103,7 @@ impl<'a> DoubleHestonProblem<'a> {
   }
 
   pub(super) fn effective_params(&self) -> DoubleHestonParams {
-    self.params.projected()
+    self.params.from_share()
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Vec<f64> {
@@ -135,17 +137,17 @@ impl<'a> DoubleHestonProblem<'a> {
     )
   }
 
-  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil; `scale` times the shared
-  /// step.
+  /// `∂r/∂x` at the folded point, each stencil point through the σ shares; `scale` times the
+  /// shared step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
-    let point = Array1::from(self.params.boxed());
+    let point = Array1::from(self.params);
     let mut jacobian = Array2::zeros((self.market.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
       column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
-        self.residuals_for(&DoubleHestonParams::from(moved).projected())
+        self.residuals_for(&DoubleHestonParams::from(moved).from_share())
       }));
     }
     jacobian
@@ -155,11 +157,11 @@ impl<'a> DoubleHestonProblem<'a> {
 impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
     self.reflections = periodic_slopes(params, &FOLD);
-    self.params = DoubleHestonParams::from(params.to_owned()).boxed();
+    self.params = DoubleHestonParams::from(params.to_owned()).folded();
   }
 
   fn params(&self) -> Array1<f64> {
-    self.effective_params().into()
+    self.params.into()
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
@@ -180,5 +182,14 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    Array1::from(self.effective_params()).to_vec()
+  }
+
+  fn natural_jacobian(&self) -> Array2<f64> {
+    let [first, second] = self.params.share_slopes();
+    natural_jacobian(self.reflections.view(), &[(1, first), (6, second)])
   }
 }
