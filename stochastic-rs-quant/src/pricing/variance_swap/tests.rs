@@ -219,15 +219,21 @@ fn vol_swap_heston_lowers_the_root_by_the_variance_of_the_realised_variance() {
   assert_eq!(VolatilitySwapPricer::fair_strike_heston(&flat, 1.0), naive);
 }
 
-/// A negative variance strike, from a literal on either mean-reversion branch or from a negative
-/// `kappa` with `v0 < theta` at a long `tau`, is NaN; at `tau = 1` the latter is still finite.
+/// A negative variance strike is NaN: a literal's on either branch, or a literal's negative `kappa`
+/// with `v0 < theta` at a long `tau` (`new` refuses it); at `tau = 1` the latter is finite.
 #[test]
 fn vol_swap_heston_is_nan_for_a_negative_variance_strike() {
   for &kappa in &[1e-12, 1.5] {
     let strike = VolatilitySwapPricer::fair_strike_heston(&heston(-0.04, kappa, -0.04), 1.0);
     assert!(strike.is_nan(), "kappa={kappa}: {strike}");
   }
-  let reverting_away = HestonParams::new(0.02, -0.5, 0.04, 0.3, -0.7);
+  let reverting_away = HestonParams {
+    v0: 0.02,
+    kappa: -0.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
   for tau in [4.0, f64::INFINITY] {
     assert!(
       VarianceSwapPricer::fair_strike_heston(&reverting_away, tau) < 0.0,
