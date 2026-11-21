@@ -1,4 +1,4 @@
-//! Heston equity on two-factor Hull-White rates (H-G2++), simulated in full by `Euler` or `AndersenQe`.
+//! Heston equity on two-factor Hull-White rates (H-G2++), stepped by `Euler` or `AndersenQe`.
 //!
 //! $$
 //! \begin{aligned}
@@ -9,10 +9,9 @@
 //! \end{aligned}
 //! $$
 //!
-//! The rate enters the spot and `∫r` through one trapezoidal sum, so the discounted spot carries
-//! no discretisation bias from the rate leg.
+//! The rate enters the spot and `∫r` through one trapezoidal sum, so discounting adds no bias.
 //!
-//! Reference: Grzelak et al. (2011), Quant. Finance 11(11), 1647-1663, DOI 10.1080/14697688.2011.615216
+//! Reference: Grzelak et al. (2011), Quant. Finance 11, 1647-1663, DOI 10.1080/14697688.2011.615216
 
 use std::marker::PhantomData;
 
@@ -111,7 +110,7 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
 
 impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
   /// Panics unless all are finite, `s0 > 0`, `v0`, `kappa`, `theta`, `sigma`, `sigma1`, `sigma2`
-  /// are non-negative, `n >= 2`, a given `t > 0` and `rho` is a `4 × 4` positive-definite correlation.
+  /// are non-negative, `n >= 2`, a given `t > 0` and `rho` is a `4 × 4` positive-definite matrix.
   pub fn new(
     s0: T,
     v0: T,
