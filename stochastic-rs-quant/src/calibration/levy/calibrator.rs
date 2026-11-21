@@ -70,7 +70,7 @@ impl LevyCalibrator {
   }
 
   /// Panics unless `start` is this model's, of its parameter count, finite and inside the model's
-  /// `E[e^X] < ∞` as given; the fit starts from it clamped to bounds, then `0.01` inside the domain.
+  /// `E[e^X] < ∞` as given; the fit starts from it clamped to bounds, then `0.01` inside that.
   pub fn with_start(mut self, start: LevyParams) -> Self {
     if let Some(reason) = start_violation(self.model_type, &start) {
       panic!("{reason}");
