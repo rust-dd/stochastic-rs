@@ -48,8 +48,11 @@ impl BachelierPricer {
     s * ((r - q) * tau).exp()
   }
 
-  /// Normal vega `e^{−rτ} √τ φ(d)`, shared by calls and puts.
+  /// Normal vega `e^{−rτ} √τ φ(d)`, shared by calls and puts; NaN at and past expiry.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau <= 0.0 {
+      return f64::NAN;
+    }
     let forward = self.forward(s, r, q, tau);
     let sqrt_tau = tau.sqrt();
     let d = (forward - k) / (self.sigma * sqrt_tau);

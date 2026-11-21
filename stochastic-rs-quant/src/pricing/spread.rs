@@ -137,8 +137,11 @@ impl MargrabePricer {
     s1 * (-q1 * tau).exp() * norm_cdf(d1) - s2 * (-q2 * tau).exp() * norm_cdf(d2)
   }
 
-  /// Greek delta with respect to $S_1$ at one query point.
+  /// Delta with respect to $S_1$; NaN at and past expiry.
   pub fn delta1(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau <= 0.0 {
+      return f64::NAN;
+    }
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
       return (-q1 * tau).exp();
@@ -147,8 +150,11 @@ impl MargrabePricer {
     (-q1 * tau).exp() * norm_cdf(d1)
   }
 
-  /// Greek delta with respect to $S_2$ at one query point.
+  /// Delta with respect to $S_2$; NaN at and past expiry.
   pub fn delta2(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    if tau.is_nan() || tau <= 0.0 {
+      return f64::NAN;
+    }
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
       return -(-q2 * tau).exp();

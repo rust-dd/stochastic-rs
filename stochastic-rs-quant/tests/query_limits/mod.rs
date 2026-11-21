@@ -41,6 +41,7 @@ mod crr;
 mod exotic_edges;
 mod exotics;
 mod expiry_census;
+mod expiry_greeks;
 mod kemna_vorst;
 
 const R: f64 = 0.05;
