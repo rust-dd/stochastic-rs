@@ -246,6 +246,7 @@ fn a_non_finite_parameter_reaches_the_residuals_as_nan() {
     (1, f64::NAN),
     (2, f64::NAN),
     (0, f64::INFINITY),
+    (1, f64::INFINITY),
   ] {
     let mut x = DEFAULT_START.as_lm_vec();
     x[axis] = bad;
@@ -254,7 +255,7 @@ fn a_non_finite_parameter_reaches_the_residuals_as_nan() {
     let residuals = problem.residuals().unwrap();
     assert!(residuals.iter().all(|r| r.is_nan()), "axis {axis}: {bad}");
     let jacobian = problem.jacobian().unwrap();
-    assert!(jacobian.iter().any(|d| d.is_nan()), "axis {axis}: {bad}");
+    assert!(jacobian.iter().all(|d| d.is_nan()), "axis {axis}: {bad}");
   }
 }
 

@@ -10,6 +10,7 @@ use basin::MoreThuente;
 use basin::Problem;
 use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::RealExt;
 
 use super::types::SmileStrikes;
 use crate::QuantError;
@@ -131,20 +132,21 @@ impl CostFunction for SabrSmileProblem {
     let x = self.clamp_params(x);
     let (k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho) = (x[0], x[1], x[2], x[3], x[4], x[5]);
 
+    // Parameters Hagan's formula refuses, a NaN coordinate's among them, price nothing.
+    if !(rho > -1.0 && rho < 1.0) {
+      return Ok(f64::NAN);
+    }
     let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
     let alpha = alpha_from_atm_vol(self.sigma_atm, f, self.tau, self.beta, rho, nu);
-    if !(alpha.is_finite() && alpha > 0.0) {
-      // Outside the Hagan formula's domain: an infeasible point of the search,
-      // scored as such rather than letting the formula's contract panic.
-      return Ok(f64::MAX);
-    }
-
     let params = SabrParams {
       alpha,
       beta: self.beta,
       rho,
       nu,
     };
+    if params.violation().is_some() {
+      return Ok(f64::NAN);
+    }
     let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, self.tau, &params) - self.sigma_rr).powi(2);
 
     let call_sigma_rr = hagan_implied_vol(k_rr_c, f, self.tau, &params);
@@ -178,10 +180,10 @@ impl Gradient for SabrSmileProblem {
     for i in 0..NVARS {
       let mut x_plus = x.to_vec();
       let mut x_minus = x.to_vec();
-      x_plus[i] = (x_plus[i] + eps).min(self.bounds_hi[i]);
-      x_minus[i] = (x_minus[i] - eps).max(self.bounds_lo[i]);
+      x_plus[i] = (x_plus[i] + eps).min_or_nan(self.bounds_hi[i]);
+      x_minus[i] = (x_minus[i] - eps).max_or_nan(self.bounds_lo[i]);
       let step = x_plus[i] - x_minus[i];
-      if step > 0.0 {
+      if step != 0.0 {
         grad[i] = (self.cost(&x_plus)? - self.cost(&x_minus)?) / step;
       }
     }
