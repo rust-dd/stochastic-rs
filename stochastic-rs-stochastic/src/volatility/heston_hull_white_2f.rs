@@ -1,4 +1,4 @@
-//! # Heston Hull-White 2F
+//! Heston equity on two-factor Hull-White rates (H-G2++), simulated in full by `Euler` or `AndersenQe`.
 //!
 //! $$
 //! \begin{aligned}
@@ -9,20 +9,10 @@
 //! \end{aligned}
 //! $$
 //!
-//! The Heston-Gaussian two-factor hybrid (H-G2++): Heston equity on the [`HullWhite2F`] short rate, the
-//! four drivers `(x, v, r, u)` under one correlation matrix, simulated in full rather than as the affine
-//! approximation the paper prices with. The output is [`HestonHullWhite2FPaths`].
+//! The rate enters the spot and `∫r` through one trapezoidal sum, so the discounted spot carries
+//! no discretisation bias from the rate leg.
 //!
-//! The rate enters the spot and the integrated short rate through the same trapezoidal sum, so the
-//! discounted spot carries no discretisation bias from the rate leg; the variance step is [`Euler`]
-//! (full truncation) or [`AndersenQe`], the latter with the rate-variance correlations at zero as in
-//! the paper's matrix (2.4).
-//!
-//! Reference: Grzelak L. A., Oosterlee C. W. & van Weeren S. (2011), *The affine Heston model with
-//! correlated Gaussian interest rates for pricing hybrid derivatives*, Quantitative Finance 11(11),
-//! 1647-1663, DOI: 10.1080/14697688.2011.615216.
-//!
-//! [`HullWhite2F`]: crate::interest::hull_white_2f::HullWhite2F
+//! Reference: Grzelak et al. (2011), Quant. Finance 11(11), 1647-1663, DOI 10.1080/14697688.2011.615216
 
 use std::marker::PhantomData;
 
@@ -85,22 +75,22 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   pub s0: T,
   /// Initial variance, not a volatility.
   pub v0: T,
-  /// Mean-reversion speed κ of the variance.
+  /// Mean-reversion speed of the variance.
   pub kappa: T,
-  /// Long-run variance θ, a variance and not a volatility.
+  /// Long-run level of the variance, itself a variance.
   pub theta: T,
-  /// Volatility of variance σ.
+  /// Volatility of the variance.
   pub sigma: T,
   /// Drift target θ_r(t) of the short rate, as `HullWhite2F::theta`; a non-finite value makes the
   /// rate rows, the spot and the integrated rate NaN from that grid point on.
   pub theta_r: Fn1D<T>,
-  /// Mean-reversion speed of the short rate.
+  /// Mean-reversion speed of `r`, which reverts to `(theta_r(t) + u) / a`.
   pub a: T,
-  /// Volatility of the short rate.
+  /// Volatility of `r`, per unit time and in rate units, not relative.
   pub sigma1: T,
-  /// Volatility of the auxiliary factor `u`.
+  /// Volatility of the auxiliary factor `u`, which enters the drift of `r`.
   pub sigma2: T,
-  /// Mean-reversion speed of `u`.
+  /// Mean-reversion speed of `u` towards zero.
   pub b: T,
   /// Correlation of the drivers in the order `(x, v, r, u)`; [`with_rho`](Self::with_rho) replaces
   /// it together with its factor.
@@ -111,7 +101,7 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   pub n: usize,
   /// Horizon (defaults to 1).
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// Cholesky factor of `rho` in the driver order the scheme steps, see [`HybridScheme::factor`].
   chol: Array2<T>,
@@ -121,8 +111,8 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
 }
 
 impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
-  /// Panics unless every parameter is finite, `s0 > 0`, `v0`, `kappa`, `theta`, `sigma`, `sigma1` and
-  /// `sigma2` are non-negative, `n >= 2`, a given `t` is positive and `rho` is a `4 × 4` correlation.
+  /// Panics unless all are finite, `s0 > 0`, `v0`, `kappa`, `theta`, `sigma`, `sigma1`, `sigma2`
+  /// are non-negative, `n >= 2`, a given `t > 0` and `rho` is a `4 × 4` positive-definite correlation.
   pub fn new(
     s0: T,
     v0: T,
@@ -176,13 +166,13 @@ impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
   }
 }
 
-/// The drift target that holds the short rate's mean at the 3 percent of the paper's experiment 4.2.
+/// Holds the short rate's mean at experiment 4.2's 3 percent under `a = 1.1`.
 fn flat_drift_target<T: FloatExt>(_t: T) -> T {
   T::from_f64_fast(1.1 * 0.03)
 }
 
-/// Grzelak, Oosterlee and van Weeren (2011), experiment 4.2: κ = 0.8, θ = 0.2, σ = 0.2, a = 1.1,
-/// σ₁ = 0.01, b = 0.8, σ₂ = 0.015, ρ_xv = −0.3, ρ_xr = 0.35, ρ_xu = 0.08, ρ_ru = −0.4, S₀ = 1, r₀ = 0.03.
+/// Grzelak et al. (2011), experiment 4.2 with its matrix (4.4): Feller holds, `2κθ = 0.32 ≥ σ²`;
+/// t=1, 252 points.
 impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
   fn default() -> Self {
     let f = T::from_f64_fast;
@@ -257,7 +247,7 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
     require!(b.is_finite(), b);
   }
 
-  /// The factor of `rho` in this scheme's driver order; the Cholesky pivots reject an indefinite one.
+  /// The factor of `rho` in this scheme's driver order; a non-positive pivot rejects the matrix.
   fn check_rho(rho: &Array2<T>) -> Array2<T> {
     let dim = rho.dim();
     assert!(
@@ -385,7 +375,7 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
     self
   }
 
-  /// `theta_r` at every grid point, tabulated once: a Python callable costs a GIL round trip a call.
+  /// `theta_r` at every grid point, tabulated once: a Python callable costs a GIL round trip.
   fn rate_curve(&self) -> Vec<T> {
     let dt = self.dt();
     (0..self.n)
@@ -400,7 +390,7 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
 }
 
 impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
-  /// Re-tags the model with the [`AndersenQe`] variance step; panics unless `kappa`, `theta` and
+  /// Re-tag the model with the [`AndersenQe`] variance step; panics unless `kappa`, `theta`,
   /// `sigma` are positive and the rate-variance correlations `rho[(1, 2)]`, `rho[(1, 3)]` are zero.
   pub fn qe(self) -> HestonHullWhite2F<T, AndersenQe, S, B> {
     let model = HestonHullWhite2F {

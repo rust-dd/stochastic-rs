@@ -1,7 +1,7 @@
 use super::*;
 
-/// `theta_r` is a Python callable of time; `rho` a `4 × 4` array in the order `(x, v, r, u)`; `scheme`
-/// is `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance step.
+/// `theta_r` is a Python callable of time, `rho` a `4 × 4` array in the order `(x, v, r, u)`,
+/// `scheme` `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance step.
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHestonHullWhite2F {

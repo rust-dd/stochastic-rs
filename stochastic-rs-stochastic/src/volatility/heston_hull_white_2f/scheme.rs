@@ -1,6 +1,5 @@
-//! Variance steps of [`HestonHullWhite2F`]: [`Euler`] (full truncation, every driver correlated through
-//! one Cholesky factor) and [`AndersenQe`] (the quadratic-exponential variance with the spot's
-//! variance component replaced by the integrated variance, Andersen 2008 eq. 33).
+//! The variance steps of [`HestonHullWhite2F`]: [`Euler`], floored at zero as `Heston`'s is, and
+//! [`AndersenQe`], whose spot step is Andersen's eq. 33 with the rate's trapezoid as its drift.
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -27,15 +26,16 @@ impl sealed::Sealed for Euler {}
 
 impl sealed::Sealed for AndersenQe {}
 
-/// Compile-time selector of the variance step [`HestonHullWhite2F`] runs, sealed to [`Euler`] and [`AndersenQe`].
+/// Compile-time selector of [`HestonHullWhite2F`]'s variance step, sealed to [`Euler`] and
+/// [`AndersenQe`].
 pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
-  /// Lower Cholesky factor of the `(x, v, r, u)` correlation matrix in the driver order this scheme steps.
+  /// Lower Cholesky factor of `rho`, permuted to the driver order this scheme steps.
   fn factor<T: FloatExt>(rho: &Array2<T>) -> Array2<T>;
 
   /// Panics unless the variance parameters and `rho` meet this scheme's own preconditions.
   fn check_parameters<T: FloatExt>(kappa: T, theta: T, sigma: T, rho: &Array2<T>);
 
-  /// One path into `out`, from `seed`, the sampler's basis; `curve[i]` is `theta_r` at grid point `i`.
+  /// One path into `out` from `seed`, the sampler's basis; `curve[i]` is `theta_r` at point `i`.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Self, S, B>,
     curve: &[T],
@@ -46,7 +46,7 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
 }
 
 impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
-  /// One Euler step of the rate leg; `target` is `theta_r` at the step's end, as `HullWhite2F` reads it.
+  /// One Euler step of the rate leg; `target` is `theta_r` at the step's end, as in `HullWhite2F`.
   fn rate_step(&self, target: T, dt: T, r: T, u: T, dw_r: T, dw_u: T) -> (T, T) {
     let r_next = r + (target + u - self.a * r) * dt + self.sigma1 * dw_r;
     let u_next = u - self.b * u * dt + self.sigma2 * dw_u;
@@ -84,7 +84,6 @@ impl HybridScheme for Euler {
     out.assert_points(n);
     let dt = model.dt();
     let half = T::from_f64_fast(0.5);
-    // Increments of variance dt for the four independent drivers, correlated below through `chol`.
     let mut z = Array2::<T>::zeros((4, n - 1));
     let mut normal = SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(seed);
     for mut row in z.rows_mut() {
@@ -172,7 +171,7 @@ impl HybridScheme for AndersenQe {
     let k2 = half * dt * (krho_eps - half) + rho_xv / eps;
     let sqrt_dt = dt.sqrt();
     let lq = &model.chol;
-    // Normals for the quadratic branch and the three shocks; a derived uniform stream for the exponential branch.
+    // The uniform stream derives from the basis, which keeps it independent of the normals.
     let mut normal = SimdNormal::<T>::new(T::zero(), one).seeded(seed);
     let mut urng = seed.derive().rng();
     let (s0, v0, r0) = model.start();
