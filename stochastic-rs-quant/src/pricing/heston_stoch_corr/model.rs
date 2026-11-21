@@ -61,34 +61,8 @@ pub struct HestonStochCorrPricer {
 }
 
 impl HestonStochCorrPricer {
-  /// Validating constructor.
-  ///
-  /// Nothing here announced itself before: every invalid value below
-  /// produced a finite, plausible Carr-Madan price. A `rho2` of `-1.5` came
-  /// within `0.03` of the correct answer, which is the whole problem — it
-  /// is indistinguishable from a small modelling difference.
-  ///
-  /// # Panics
-  /// - if `v0` or `theta_v` is negative or `NaN` — a variance cannot be either
-  /// - if `sigma_v` or `sigma_r` is negative or `NaN` — a volatility cannot be
-  /// - if `rho0`, `mu_r` or `rho2` is outside `[-1, 1]` or `NaN`. All three
-  ///   are correlations: the initial level, the level it mean-reverts to
-  ///   and the correlation between the two driving Brownians. Leaving any
-  ///   one out would put an out-of-range number into the same expansion the
-  ///   other two are protected from.
-  ///
-  /// `sigma_v == 0` is **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer). The reason is the
-  /// characteristic function: Heston's closed form divides by $\sigma^2$,
-  /// while this model integrates a Riccati system by Rk4 in which
-  /// `sigma_v` only ever multiplies, so a zero vol-of-vol is the
-  /// deterministic-variance limit rather than a division by zero.
-  ///
-  /// `kappa_v` and `kappa_r` are unconstrained, matching
-  /// [`HestonPricer`](crate::pricing::HestonPricer)'s treatment of
-  /// `kappa`. The calibrator's
-  /// `BOUNDS` box lies strictly inside every check above, so no legal
-  /// calibration iterate can trip this.
+  /// Panics unless `v0`, `theta_v`, `sigma_v`, `sigma_r` are finite and `≥ 0`, the `kappa`s finite,
+  /// `κ_v θ_v ≥ 0` and each correlation in `[−1, 1]`; `sigma_v = 0` is the deterministic variance.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     v0: f64,
@@ -101,26 +75,41 @@ impl HestonStochCorrPricer {
     sigma_r: f64,
     rho2: f64,
   ) -> Self {
-    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
     assert!(
-      theta_v >= 0.0,
-      "theta_v must satisfy `theta_v >= 0.0`, got theta_v = {theta_v:?}"
+      v0.is_finite() && v0 >= 0.0,
+      "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = {v0:?}"
     );
     assert!(
-      sigma_v >= 0.0,
-      "sigma_v must satisfy `sigma_v >= 0.0`, got sigma_v = {sigma_v:?}"
+      kappa_v.is_finite(),
+      "kappa_v must satisfy `kappa_v.is_finite()`, got kappa_v = {kappa_v:?}"
     );
     assert!(
-      sigma_r >= 0.0,
-      "sigma_r must satisfy `sigma_r >= 0.0`, got sigma_r = {sigma_r:?}"
+      theta_v.is_finite() && theta_v >= 0.0,
+      "theta_v must satisfy `theta_v.is_finite() && theta_v >= 0.0`, got theta_v = {theta_v:?}"
+    );
+    assert!(
+      kappa_v * theta_v >= 0.0,
+      "kappa_v must satisfy `kappa_v * theta_v >= 0.0`, got kappa_v = {kappa_v:?}"
+    );
+    assert!(
+      sigma_v.is_finite() && sigma_v >= 0.0,
+      "sigma_v must satisfy `sigma_v.is_finite() && sigma_v >= 0.0`, got sigma_v = {sigma_v:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho0),
       "rho0 must satisfy `(-1.0..=1.0).contains(&rho0)`, got rho0 = {rho0:?}"
     );
     assert!(
+      kappa_r.is_finite(),
+      "kappa_r must satisfy `kappa_r.is_finite()`, got kappa_r = {kappa_r:?}"
+    );
+    assert!(
       (-1.0..=1.0).contains(&mu_r),
       "mu_r must satisfy `(-1.0..=1.0).contains(&mu_r)`, got mu_r = {mu_r:?}"
+    );
+    assert!(
+      sigma_r.is_finite() && sigma_r >= 0.0,
+      "sigma_r must satisfy `sigma_r.is_finite() && sigma_r >= 0.0`, got sigma_r = {sigma_r:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho2),
