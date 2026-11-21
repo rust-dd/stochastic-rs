@@ -147,7 +147,8 @@ impl TryRng for SimdRng {
     Ok(self.u64_buf[idx])
   }
 
-  /// The little-endian bytes of the words `next_u64` would return; a tail discards its word's unused bytes.
+  /// The little-endian bytes of the words `next_u64` would return; a tail discards its word's
+  /// unused bytes.
   fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
     let (words, tail) = dest.as_chunks_mut::<8>();
     let (buffered, words) = words.split_at_mut(words.len().min(4 - self.u64_idx));
@@ -155,7 +156,8 @@ impl TryRng for SimdRng {
       *word = self.u64_buf[self.u64_idx].to_le_bytes();
       self.u64_idx += 1;
     }
-    // Past the buffered words, four words at a time are a fresh block, as four `next_u64` calls would draw.
+    // Past the buffered words, four words at a time are a fresh block, as four `next_u64` calls
+    // would draw.
     let (blocks, words) = words.as_chunks_mut::<4>();
     for block in blocks {
       for (word, w) in block.iter_mut().zip(self.f64_engine.next().to_array()) {
