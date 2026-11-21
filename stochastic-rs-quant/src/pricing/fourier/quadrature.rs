@@ -64,7 +64,7 @@ impl LewisPricer {
     let kappa = (k / forward).ln();
     let w = control_variance(model, t);
     let chf = |u: f64| model.chf(t, Complex64::new(u, -0.5));
-    let (reach, scale) = reach_and_scale(|u| chf(u).norm(), kappa);
+    let (reach, scale) = reach_and_scale(chf, kappa);
     let kernel = |u: f64| Complex64::new(0.0, -u * kappa).exp() / (u * u + 0.25);
     let inversion = Inversion {
       chf_part: |u: f64| kernel(u) * chf(u),
@@ -110,7 +110,7 @@ impl GilPelaezPricer {
     if !(share_norm.is_finite() && share_norm.norm() > 0.0) {
       return f64::NAN;
     }
-    let (reach, scale) = reach_and_scale(|u| model.chf(t, Complex64::from(u)).norm(), kappa);
+    let (reach, scale) = reach_and_scale(|u| model.chf(t, Complex64::from(u)), kappa);
     let share = |u_j: f64, shift: f64, norm: Complex64| {
       let mean = u_j * w;
       let chf = |u: f64| model.chf(t, Complex64::new(u, shift)) / norm;

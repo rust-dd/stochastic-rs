@@ -6,6 +6,8 @@ use stochastic_rs_quant::pricing::fourier::CarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
 use stochastic_rs_quant::pricing::fourier::VarianceGammaFourier;
@@ -86,6 +88,35 @@ fn every_pricer_holds_a_price_whose_share_measure_explodes() {
   assert_within("gil-pelaez", gil_pelaez, want, 2e-8);
   let closed = HestonPricer::new(EXPLODING).price_call(s, k, r, q, tau);
   assert_within("heston", closed, want, 1e-11);
+}
+
+/// HKDE at `ρσ ≥ κ` and `τ = 15`: the jumps' compensator turns the integrand's phase 0.83 radians
+/// per unit `u` beside `κ`'s 0.3, and the walk hands over to the tail rule on the sum.
+#[test]
+fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
+  let model = HkdeFourier::new(HkdeParams {
+    v0: 0.09,
+    kappa: 0.2,
+    theta: 0.01,
+    sigma: 1.5,
+    rho: 0.95,
+    lambda: 1.0,
+    p_up: 0.4,
+    eta1: 10.0,
+    eta2: 5.0,
+  });
+  let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
+  // The last strike is the forward, where `κ = 0`.
+  for (k, want) in [
+    (100.0, 40.091_698_837_618_036),
+    (80.0, 46.355_092_420_111_84),
+    (134.985_880_757_600_32, 31.704_182_907_960_47),
+  ] {
+    let name = format!("k = {k}");
+    assert_within(&name, model.price_call(s, k, r, q, tau), want, 1e-11);
+    let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
+    assert_within(&name, lewis, want, 1e-11);
+  }
 }
 
 /// `(k, τ)` and Black–Scholes's call at `σ = 0.2`, `(s, r, q) = (100, 0.05, 0)`.

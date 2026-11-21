@@ -21,9 +21,9 @@ const NEAR_TOLERANCE: f64 = 1e-12;
 /// The head covers `(0, 1]` in panels of `x = ln u` this wide, until three in a row add nothing.
 const HEAD_WIDTH: f64 = 2.0;
 const MAX_HEAD_PANELS: usize = 400;
-/// The radians of `e^{−iuκ}` the walk covers before the tail rule takes over; `|κ|` floored.
+/// The radians the integrand's phase turns before the tail rule takes over; its rate is floored.
 const PHASE_BUDGET: f64 = 20.0;
-const KAPPA_FLOOR: f64 = 1e-5;
+const RATE_FLOOR: f64 = 1e-5;
 /// `|φ|` past which the walk need not reach, probed at powers of two up to `2⁴⁰`.
 const NEGLIGIBLE_CHF: f64 = 1e-12;
 
@@ -61,18 +61,33 @@ pub(crate) struct Rule {
   tails: [Option<TailRule>; 2],
 }
 
-/// `(reach, scale)`: the walk ends at `min(u*, PHASE_BUDGET/|κ|)`, `u*` the first power of two
-/// where `modulus` is negligible; it walks `y = u/scale` so that its panel budget covers the reach.
-pub(crate) fn reach_and_scale(modulus: impl Fn(f64) -> f64, kappa: f64) -> (f64, f64) {
-  let mut decayed = 1.0_f64;
-  while decayed < 1.1e12 {
-    if modulus(decayed) <= NEGLIGIBLE_CHF {
+/// `(reach, scale)`: the walk ends where `e^{−iuκ}chf(u)` has turned `PHASE_BUDGET` radians, or at
+/// the first power of two where `chf` is negligible; it walks `y = u/scale` over its panel budget.
+pub(crate) fn reach_and_scale(chf: impl Fn(f64) -> Complex64, kappa: f64) -> (f64, f64) {
+  let mut rate = -kappa;
+  let mut reach = 1.0_f64;
+  while reach < 1.1e12 {
+    let at = chf(reach);
+    let live = at.norm() > NEGLIGIBLE_CHF || at.is_nan();
+    if live {
+      rate = phase_rate(&chf, reach, at) - kappa;
+    }
+    let budget = PHASE_BUDGET / rate.abs().max(RATE_FLOOR);
+    if !live || budget <= reach {
+      // The rate settles as `u` grows, so the budget is not read back past the probe before.
+      let floor = if reach > 1.0 { 0.5 * reach } else { 0.0 };
+      reach = reach.min(budget.max(floor));
       break;
     }
-    decayed *= 2.0;
+    reach *= 2.0;
   }
-  let reach = decayed.min(PHASE_BUDGET / kappa.abs().max(KAPPA_FLOOR));
   (reach, (reach / 4000.0).max(1.0))
+}
+
+/// `d arg part/du` at `u` by a forward step of `1e-6·max(u, 1)`, given `at = part(u)`.
+fn phase_rate(part: &impl Fn(f64) -> Complex64, u: f64, at: Complex64) -> f64 {
+  let step = 1e-6 * u.max(1.0);
+  (part(u + step) / at).arg() / step
 }
 
 /// The first `u = 1e-8·10⁻⁴ⁿ` at which `gap`, a chf's distance from its `u → 0` limit, is under
@@ -223,10 +238,7 @@ where
     P: Fn(f64) -> Complex64,
   {
     let at = part(start);
-    let frequency = frequency.unwrap_or_else(|| {
-      let step = 1e-6 * start.max(1.0);
-      (part(start + step) / at).arg() / step
-    });
+    let frequency = frequency.unwrap_or_else(|| phase_rate(part, start, at));
     let span = start.max(1.0 / frequency.abs());
     (at.norm() * span > 1e-3 * BODY_TOLERANCE || at.is_nan()).then(|| TailRule {
       start,
@@ -275,5 +287,24 @@ where
       ooura::tail(|u| part(u).conj(), start, -omega)
     };
     total + far.re
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// `e^{−u/50}` is negligible from the power of two 2048, and `κ = −0.25` alone turns 20 radians
+  /// by 80; a chf turning 0.75 a unit brings that to 20, and one turning with `κ` leaves none.
+  #[test]
+  fn the_reach_counts_the_phase_the_chf_turns_itself() {
+    let reach = |rate: f64, kappa: f64| {
+      reach_and_scale(|u| Complex64::new(-0.02 * u, rate * u).exp(), kappa).0
+    };
+    assert_eq!(reach(0.0, -0.25), 80.0);
+    assert!((reach(0.75, -0.25) - 20.0).abs() < 1e-6);
+    assert_eq!(reach(-0.25, -0.25), 2048.0);
+    assert_eq!(reach(0.0, 0.0), 2048.0);
+    assert_eq!(reach(0.0, 100.0), 0.2);
   }
 }
