@@ -4,6 +4,7 @@ curve's first pillar and the interpolation between pillars."""
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 import pytest
@@ -153,6 +154,7 @@ def test_a_discount_curve_needs_distinct_times_from_the_origin_on():
 
 SVENSSON = (0.04, -0.02, 0.01, 0.005, 0.5, 2.0)
 NELSON_SIEGEL = (0.04, -0.02, 0.01, 0.5)
+MATURITIES = np.array([0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0])
 
 
 def svensson_zero(tau, beta0, beta1, beta2, beta3, lambda1, lambda2):
@@ -189,19 +191,6 @@ def test_a_svensson_fit_recovers_the_curve_that_made_its_quotes():
     assert all(abs(got - want) < 1e-9 for got, want in zip(fitted.params(), SVENSSON))
 
 
-def test_svensson_refuses_a_decay_that_is_not_positive_and_a_fit_it_cannot_solve():
-    for lambda1, lambda2, name in ((0.0, 2.0, "lambda1"), (0.5, -1.0, "lambda2"), (NAN, 2.0, "lambda1")):
-        with pytest.raises(ValueError, match=f"{name} must be finite and > 0"):
-            sr.Svensson(0.04, -0.02, 0.01, 0.005, lambda1, lambda2)
-    taus = np.array([1.0, 2.0, 5.0, 10.0, 30.0])
-    with pytest.raises(ValueError, match="must have one length, got 5 and 4"):
-        sr.Svensson.fit_curve(taus, np.full(4, 0.03))
-    with pytest.raises(ValueError, match="needs at least 4 points, got 3"):
-        sr.Svensson.fit_curve(taus[:3], np.full(3, 0.03))
-    with pytest.raises(TypeError):
-        sr.Svensson(*SVENSSON).zero_rates(taus.astype(np.float32))
-
-
 def test_a_parametric_curve_is_nan_at_a_maturity_with_no_rate():
     for curve in (sr.Svensson(*SVENSSON), sr.NelsonSiegel(*NELSON_SIEGEL)):
         for tau in (-1.0, math.inf, -math.inf, NAN):
@@ -210,3 +199,57 @@ def test_a_parametric_curve_is_nan_at_a_maturity_with_no_rate():
         assert curve.zero_rate(0.0) == curve.forward_rate(0.0) == 0.02
         assert curve.discount_factor(0.0) == 1.0
     assert np.isnan(sr.Svensson(*SVENSSON).zero_rates(np.array([-1.0, math.inf]))).all()
+
+
+def test_svensson_refuses_a_parameter_off_its_domain_and_quotes_it_cannot_fit():
+    for args, message in (
+        ((NAN, -0.02, 0.01, 0.005, 0.5, 2.0), "beta0 must satisfy `beta0.is_finite()`, got beta0 = NaN"),
+        ((0.04, -0.02, 0.01, math.inf, 0.5, 2.0), "beta3 must satisfy `beta3.is_finite()`, got beta3 = inf"),
+        (
+            (0.04, -0.02, 0.01, 0.005, 0.0, 2.0),
+            "lambda1 must satisfy `lambda1.is_finite() && lambda1 > T::zero()`, got lambda1 = 0.0",
+        ),
+        (
+            (0.04, -0.02, 0.01, 0.005, 0.5, -1.0),
+            "lambda2 must satisfy `lambda2.is_finite() && lambda2 > T::zero()`, got lambda2 = -1.0",
+        ),
+    ):
+        with pytest.raises(ValueError, match=re.escape(message)):
+            sr.Svensson(*args)
+    quotes = sr.Svensson(*SVENSSON).zero_rates(MATURITIES)
+    with pytest.raises(ValueError, match="market rates, one per maturity: expected 11, got 10"):
+        sr.Svensson.fit_curve(MATURITIES, quotes[:10])
+    with pytest.raises(ValueError, match="quotes for a Svensson fit: needs at least 6, got 5"):
+        sr.Svensson.fit_curve(MATURITIES[:5], quotes[:5])
+    nan_quote = quotes.copy()
+    nan_quote[4] = NAN
+    rate = "quote 4 cannot be used: rate must satisfy `rate.is_finite()`, got rate = NaN"
+    with pytest.raises(ValueError, match=re.escape(rate)):
+        sr.Svensson.fit_curve(MATURITIES, nan_quote)
+    maturity = "quote 0 cannot be used: maturity must satisfy `maturity.is_finite() && maturity >= T::zero()`"
+    with pytest.raises(ValueError, match=re.escape(maturity)):
+        sr.Svensson.fit_curve(-MATURITIES, quotes)
+    with pytest.raises(TypeError):
+        sr.Svensson(*SVENSSON).zero_rates(MATURITIES.astype(np.float32))
+
+
+def test_nelson_siegel_refuses_a_parameter_off_its_domain_and_quotes_it_cannot_fit():
+    for args, message in (
+        ((NAN, -0.02, 0.01, 0.5), "beta0 must satisfy `beta0.is_finite()`, got beta0 = NaN"),
+        ((0.04, -0.02, 0.01, 0.0), "lambda must satisfy `lambda.is_finite() && lambda > T::zero()`, got lambda = 0.0"),
+    ):
+        with pytest.raises(ValueError, match=re.escape(message)):
+            sr.NelsonSiegel(*args)
+    curve = sr.NelsonSiegel(*NELSON_SIEGEL)
+    quotes = np.array([curve.zero_rate(t) for t in MATURITIES])
+    fitted = sr.NelsonSiegel.fit_curve(MATURITIES, quotes)
+    assert max(abs(fitted.zero_rate(t) - q) for t, q in zip(MATURITIES, quotes)) < 1e-12
+    with pytest.raises(ValueError, match="market rates, one per maturity: expected 11, got 10"):
+        sr.NelsonSiegel.fit_curve(MATURITIES, quotes[:10])
+    with pytest.raises(ValueError, match="quotes for a Nelson-Siegel fit: needs at least 4, got 3"):
+        sr.NelsonSiegel.fit_curve(MATURITIES[:3], quotes[:3])
+    nan_quote = quotes.copy()
+    nan_quote[4] = NAN
+    rate = "quote 4 cannot be used: rate must satisfy `rate.is_finite()`, got rate = NaN"
+    with pytest.raises(ValueError, match=re.escape(rate)):
+        sr.NelsonSiegel.fit_curve(MATURITIES, nan_quote)

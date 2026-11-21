@@ -220,18 +220,19 @@ impl PyNelsonSiegel {
     })
   }
 
-  /// Fit Nelson-Siegel parameters to market zero rates.
+  /// Least squares on the betas at each decay of the grid 0.1, 0.11, …, 5.0, so a decay off it is
+  /// not recovered; four quotes at least, one per parameter.
   #[staticmethod]
   fn fit_curve<'py>(
     maturities: numpy::PyReadonlyArray1<'py, f64>,
     market_rates: numpy::PyReadonlyArray1<'py, f64>,
-  ) -> Self {
-    Self {
-      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(
-        maturities.as_array(),
-        market_rates.as_array(),
-      ),
-    }
+  ) -> PyResult<Self> {
+    <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(
+      maturities.as_array(),
+      market_rates.as_array(),
+    )
+    .map(|inner| Self { inner })
+    .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   fn zero_rate(&self, tau: f64) -> f64 {
@@ -265,42 +266,21 @@ impl PySvensson {
     lambda1: f64,
     lambda2: f64,
   ) -> PyResult<Self> {
-    for (name, lambda) in [("lambda1", lambda1), ("lambda2", lambda2)] {
-      if !(lambda.is_finite() && lambda > 0.0) {
-        return Err(PyValueError::new_err(format!(
-          "{name} must be finite and > 0, got {name} = {lambda:?}"
-        )));
-      }
-    }
-    Ok(Self {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::svensson::Svensson::new(beta0, beta1, beta2, beta3, lambda1, lambda2),
     })
   }
 
-  /// Fit to market zero rates: a grid over both decays with the betas by least squares at each
-  /// node. The four betas need at least four points.
+  /// Least squares on the betas at each decay pair of the grid 0.1, 0.15, …, 5.0, so a decay off
+  /// it is not recovered; six quotes at least, one per parameter.
   #[staticmethod]
   fn fit_curve<'py>(
     maturities: numpy::PyReadonlyArray1<'py, f64>,
     market_rates: numpy::PyReadonlyArray1<'py, f64>,
   ) -> PyResult<Self> {
-    let (maturities, market_rates) = (maturities.as_array(), market_rates.as_array());
-    if maturities.len() != market_rates.len() {
-      return Err(PyValueError::new_err(format!(
-        "maturities and market_rates must have one length, got {} and {}",
-        maturities.len(),
-        market_rates.len()
-      )));
-    }
-    if maturities.len() < 4 {
-      return Err(PyValueError::new_err(format!(
-        "a Svensson fit needs at least 4 points, got {}",
-        maturities.len()
-      )));
-    }
-    Ok(Self {
-      inner: <crate::curves::svensson::Svensson<f64>>::fit(maturities, market_rates),
-    })
+    <crate::curves::svensson::Svensson<f64>>::fit(maturities.as_array(), market_rates.as_array())
+      .map(|inner| Self { inner })
+      .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   /// Returns `(beta0, beta1, beta2, beta3, lambda1, lambda2)`.
