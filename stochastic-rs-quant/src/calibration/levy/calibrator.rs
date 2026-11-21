@@ -66,9 +66,8 @@ impl LevyCalibrator {
     self.q
   }
 
-  /// Panics unless `start.model_type == self.model_type`, `start.values.len()` is the model's
-  /// parameter count and every value is finite; the fit starts from the values clamped to bounds
-  /// and moved inside the model's `E[e^X] < ∞`.
+  /// Panics unless `start` is this model's, of its parameter count and finite; the fit starts from
+  /// its values clamped to bounds and moved inside the model's `E[e^X] < ∞`.
   pub fn with_start(mut self, start: LevyParams) -> Self {
     if let Some(reason) = start_violation(self.model_type, &start) {
       panic!("{reason}");
