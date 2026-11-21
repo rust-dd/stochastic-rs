@@ -570,6 +570,8 @@ mod in_box;
 mod trail;
 
 use in_box::Bounds;
+#[cfg(test)]
+pub(crate) use in_box::HELD;
 pub(crate) use in_box::Room;
 use in_box::Rooms;
 use in_box::restarted;
