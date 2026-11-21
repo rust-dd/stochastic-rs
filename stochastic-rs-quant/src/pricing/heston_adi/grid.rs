@@ -1,5 +1,5 @@
 //! The sinh-stretched `s`, `v` meshes (2.6), (2.8) and the first (2.9a–c), second (2.10) and mixed
-//! (2.11) derivative stencils of in 't Hout & Foulon (2008), §2.2, on arbitrary meshes.
+//! (2.11) derivative stencils of in 't Hout & Foulon (2010), §2.2, on arbitrary meshes.
 
 /// `s`-mesh `s_i = K + c sinh(ξ_i)` clustering around the strike (2.6);
 /// `s_0 = lower`, `s_{m} = upper`, `c = K / 5`.

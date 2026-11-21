@@ -7,7 +7,7 @@
 //! $$\theta = \theta^* - \rho\psi k^*,\qquad \psi \le \min\bigl(\psi_+(\rho, k^*, \theta^*),\ 4/(1+|\rho|)\bigr)$$
 //!
 //! Fitted forward from the nearest-the-money `(k*, θ*)`, `ψ/θ` non-increasing, `(θ, ψ, ρψ)` linear.
-//! Reference: Corbetta et al. (2019), arXiv:1804.04924
+//! Reference: Corbetta et al. (2019), Decis. Econ. Finance 42(2), 665–677, arXiv:1804.04924
 //! Reference: Hendriks & Martini (2019), J. Comput. Finance 22(5)
 //! Reference: Gatheral & Jacquier (2014), Quant. Finance 14(1), 59–71
 //! Reference: Pasquazzi (2023), arXiv:2304.02106, Proposition 4.14, §2.1

@@ -13,7 +13,7 @@
 //! $$
 //!
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
-//! Reference: Cohort et al. (2018), arXiv:1804.04924
+//! Reference: Corbetta et al. (2019), Decis. Econ. Finance 42(2), 665–677, arXiv:1804.04924
 
 mod calibrate;
 mod params;

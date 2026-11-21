@@ -1,4 +1,4 @@
-//! In 't Hout & Foulon's (2008) four ADI schemes, §2.4 (2.17)–(2.20), on `F = F_0 + F_1 + F_2`,
+//! In 't Hout & Foulon's (2010) four ADI schemes, §2.4 (2.17)–(2.20), on `F = F_0 + F_1 + F_2`,
 //! with §2.5's Rannacher start.
 
 use super::operators::Operators;

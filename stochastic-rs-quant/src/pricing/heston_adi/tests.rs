@@ -1,4 +1,4 @@
-//! The ADI solver against the semi-analytic Heston price on in 't Hout & Foulon's (2008) Table 1
+//! The ADI solver against the semi-analytic Heston price on in 't Hout & Foulon's (2010) Table 1
 //! sets, and the schemes' structural identities.
 
 use super::*;

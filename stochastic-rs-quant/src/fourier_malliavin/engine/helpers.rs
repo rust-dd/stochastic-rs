@@ -44,7 +44,7 @@ impl<T: RealExt> FmVol<T> {
     })
   }
 
-  /// Bias-correction constant `K` of Toscano et al. (2024), eq. (51), with `c_M = Mρ(n)^{1/2}`,
+  /// Bias-correction constant `K` of Toscano et al. (2022), eq. (51), with `c_M = Mρ(n)^{1/2}`,
   /// `c_N = Nρ(n)`, `η(a) = r(a)(1 − r(a))/(2a²)`, `r(a) = a − ⌊a⌋`, rescaled to a period `T`:
   ///
   /// $$
@@ -52,7 +52,7 @@ impl<T: RealExt> FmVol<T> {
   /// K = \frac{M^2\rho(n)}{3T}\left(1 + 2\eta\left(\frac{2N\rho(n)}{T}\right)\right)
   /// $$
   ///
-  /// Reference: Toscano et al. (2024), arXiv:2112.14529v3, p. 42
+  /// Reference: Toscano et al. (2022), arXiv:2112.14529v3, p. 42
   pub(super) fn compute_bias_correction_constant(&self, big_m: usize) -> T {
     let two = T::from_f64_fast(2.0);
     let three = T::from_f64_fast(3.0);
