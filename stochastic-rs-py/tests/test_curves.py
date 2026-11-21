@@ -4,6 +4,7 @@ curve's first pillar and the interpolation between pillars."""
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 import pytest
@@ -149,3 +150,105 @@ def test_a_discount_curve_needs_distinct_times_from_the_origin_on():
     for times, message in (([1.0, 1.0, 2.0], "a.time != b.time"), ([-1.0, 1.0, 2.0], "p.time >= T::zero"), ([NAN, 1.0, 2.0], "is_finite")):
         with pytest.raises(ValueError, match=message):
             sr.DiscountCurve.from_zero_rates(np.array(times), np.full(3, 0.03), interp="linear")
+
+
+SVENSSON = (0.04, -0.02, 0.01, 0.005, 0.5, 2.0)
+NELSON_SIEGEL = (0.04, -0.02, 0.01, 0.5)
+MATURITIES = np.array([0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0])
+
+
+def svensson_zero(tau, beta0, beta1, beta2, beta3, lambda1, lambda2):
+    """Svensson (1994) zero rate from the formula, the loadings through `expm1`."""
+    x1, x2 = tau / lambda1, tau / lambda2
+    slope1, slope2 = -math.expm1(-x1) / x1, -math.expm1(-x2) / x2
+    return beta0 + beta1 * slope1 + beta2 * (slope1 - math.exp(-x1)) + beta3 * (slope2 - math.exp(-x2))
+
+
+def test_svensson_reads_its_closed_forms_at_a_point_and_on_an_array():
+    curve = sr.Svensson(*SVENSSON)
+    assert curve.params() == SVENSSON
+    taus = np.array([0.01, 0.5, 1.0, 5.0, 30.0, 100.0])
+    zeros, forwards, discounts = curve.zero_rates(taus), curve.forward_rates(taus), curve.discount_factors(taus)
+    assert np.abs(zeros - [svensson_zero(t, *SVENSSON) for t in taus]).max() < 1e-15
+    assert np.abs(discounts - np.exp(-zeros * taus)).max() < 1e-15
+    assert list(zeros) == [curve.zero_rate(t) for t in taus]
+    assert list(forwards) == [curve.forward_rate(t) for t in taus]
+    assert list(discounts) == [curve.discount_factor(t) for t in taus]
+    # The instantaneous forward is the derivative of tau * y(tau).
+    h = 1e-5
+    slope = ((taus + h) * curve.zero_rates(taus + h) - (taus - h) * curve.zero_rates(taus - h)) / (2 * h)
+    assert np.abs(slope - forwards).max() < 1e-9
+    assert curve.zero_rate(0.0) == curve.forward_rate(0.0) == SVENSSON[0] + SVENSSON[1]
+    assert curve.discount_factor(0.0) == 1.0
+
+
+def test_a_svensson_fit_recovers_the_curve_that_made_its_quotes():
+    taus = np.array([0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0])
+    quotes = sr.Svensson(*SVENSSON).zero_rates(taus)
+    fitted = sr.Svensson.fit_curve(taus, quotes)
+    assert np.abs(fitted.zero_rates(taus) - quotes).max() < 1e-12
+    assert all(abs(got - want) < 1e-9 for got, want in zip(fitted.params(), SVENSSON))
+
+
+def test_a_parametric_curve_is_nan_at_a_maturity_with_no_rate():
+    for curve in (sr.Svensson(*SVENSSON), sr.NelsonSiegel(*NELSON_SIEGEL)):
+        for tau in (-1.0, math.inf, -math.inf, NAN):
+            values = (curve.zero_rate(tau), curve.forward_rate(tau), curve.discount_factor(tau))
+            assert all(math.isnan(v) for v in values), (type(curve).__name__, tau, values)
+        assert curve.zero_rate(0.0) == curve.forward_rate(0.0) == 0.02
+        assert curve.discount_factor(0.0) == 1.0
+    assert np.isnan(sr.Svensson(*SVENSSON).zero_rates(np.array([-1.0, math.inf]))).all()
+
+
+def test_svensson_refuses_a_parameter_off_its_domain_and_quotes_it_cannot_fit():
+    for args, message in (
+        ((NAN, -0.02, 0.01, 0.005, 0.5, 2.0), "beta0 must satisfy `beta0.is_finite()`, got beta0 = NaN"),
+        ((0.04, -0.02, 0.01, math.inf, 0.5, 2.0), "beta3 must satisfy `beta3.is_finite()`, got beta3 = inf"),
+        (
+            (0.04, -0.02, 0.01, 0.005, 0.0, 2.0),
+            "lambda1 must satisfy `lambda1.is_finite() && lambda1 > T::zero()`, got lambda1 = 0.0",
+        ),
+        (
+            (0.04, -0.02, 0.01, 0.005, 0.5, -1.0),
+            "lambda2 must satisfy `lambda2.is_finite() && lambda2 > T::zero()`, got lambda2 = -1.0",
+        ),
+    ):
+        with pytest.raises(ValueError, match=re.escape(message)):
+            sr.Svensson(*args)
+    quotes = sr.Svensson(*SVENSSON).zero_rates(MATURITIES)
+    with pytest.raises(ValueError, match="market rates, one per maturity: expected 11, got 10"):
+        sr.Svensson.fit_curve(MATURITIES, quotes[:10])
+    with pytest.raises(ValueError, match="quotes for a Svensson fit: needs at least 6, got 5"):
+        sr.Svensson.fit_curve(MATURITIES[:5], quotes[:5])
+    nan_quote = quotes.copy()
+    nan_quote[4] = NAN
+    rate = "quote 4 cannot be used: rate must satisfy `rate.is_finite()`, got rate = NaN"
+    with pytest.raises(ValueError, match=re.escape(rate)):
+        sr.Svensson.fit_curve(MATURITIES, nan_quote)
+    maturity = "quote 0 cannot be used: maturity must satisfy `maturity.is_finite() && maturity >= T::zero()`"
+    with pytest.raises(ValueError, match=re.escape(maturity)):
+        sr.Svensson.fit_curve(-MATURITIES, quotes)
+    with pytest.raises(TypeError):
+        sr.Svensson(*SVENSSON).zero_rates(MATURITIES.astype(np.float32))
+
+
+def test_nelson_siegel_refuses_a_parameter_off_its_domain_and_quotes_it_cannot_fit():
+    for args, message in (
+        ((NAN, -0.02, 0.01, 0.5), "beta0 must satisfy `beta0.is_finite()`, got beta0 = NaN"),
+        ((0.04, -0.02, 0.01, 0.0), "lambda must satisfy `lambda.is_finite() && lambda > T::zero()`, got lambda = 0.0"),
+    ):
+        with pytest.raises(ValueError, match=re.escape(message)):
+            sr.NelsonSiegel(*args)
+    curve = sr.NelsonSiegel(*NELSON_SIEGEL)
+    quotes = np.array([curve.zero_rate(t) for t in MATURITIES])
+    fitted = sr.NelsonSiegel.fit_curve(MATURITIES, quotes)
+    assert max(abs(fitted.zero_rate(t) - q) for t, q in zip(MATURITIES, quotes)) < 1e-12
+    with pytest.raises(ValueError, match="market rates, one per maturity: expected 11, got 10"):
+        sr.NelsonSiegel.fit_curve(MATURITIES, quotes[:10])
+    with pytest.raises(ValueError, match="quotes for a Nelson-Siegel fit: needs at least 4, got 3"):
+        sr.NelsonSiegel.fit_curve(MATURITIES[:3], quotes[:3])
+    nan_quote = quotes.copy()
+    nan_quote[4] = NAN
+    rate = "quote 4 cannot be used: rate must satisfy `rate.is_finite()`, got rate = NaN"
+    with pytest.raises(ValueError, match=re.escape(rate)):
+        sr.NelsonSiegel.fit_curve(MATURITIES, nan_quote)

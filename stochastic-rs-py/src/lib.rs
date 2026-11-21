@@ -312,6 +312,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyCirBond;
   use stochastic_rs_quant::python::PyCliquetPricer;
   use stochastic_rs_quant::python::PyCompoundPricer;
+  use stochastic_rs_quant::python::PyCosEngine;
   use stochastic_rs_quant::python::PyDoubleBarrierPricer;
   use stochastic_rs_quant::python::PyDoubleHestonCalibrator;
   use stochastic_rs_quant::python::PyDoubleHestonFourier;
@@ -389,6 +390,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyNigFourier>()?;
   m.add_class::<PyBatesFourier>()?;
   m.add_class::<PyCarrMadanPricer>()?;
+  m.add_class::<PyCosEngine>()?;
   m.add_class::<PyVasicekBond>()?;
   m.add_class::<PyCirBond>()?;
   m.add_class::<PyHullWhiteBond>()?;
@@ -448,6 +450,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PySchedule;
   use stochastic_rs_quant::python::PyScheduleBuilder;
   use stochastic_rs_quant::python::PySurvivalCurve;
+  use stochastic_rs_quant::python::PySvensson;
   use stochastic_rs_quant::python::PyZeroCouponInflationCurve;
   m.add_class::<PyAlmgrenChrissPlan>()?;
   m.add_class::<PyKyleEquilibrium>()?;
@@ -463,6 +466,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBlackKarasinskiSwaptionCalibrator>()?;
   m.add_class::<PyG2ppSwaptionCalibrator>()?;
   m.add_class::<PyNelsonSiegel>()?;
+  m.add_class::<PySvensson>()?;
   m.add_class::<PyZeroCouponInflationCurve>()?;
   m.add_class::<PySabrCapletCalibrator>()?;
   m.add_class::<PyCgmysvCalibrator>()?;
