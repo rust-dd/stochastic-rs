@@ -37,6 +37,7 @@ use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
 
 mod credit_and_rates;
+mod crr;
 mod exotic_edges;
 mod exotics;
 mod kemna_vorst;
