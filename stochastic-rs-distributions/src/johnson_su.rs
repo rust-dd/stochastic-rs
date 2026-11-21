@@ -255,7 +255,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdJohnsonSu<T> {
     Some(0.5 * lambda * lambda * (omega - 1.0) * (omega * (2.0 * big).cosh() + 1.0))
   }
 
-  /// $-\lambda^3\sqrt\omega(\omega-1)^2[\omega(\omega+2)\sinh 3\Omega + 3\sinh\Omega]/(4\,\mathrm{Var}^{3/2})$.
+  /// $$-\lambda^3\sqrt\omega(\omega-1)^2[\omega(\omega+2)\sinh 3\Omega + 3\sinh\Omega]/(4\,\mathrm{Var}^{3/2})$$
   fn skewness(&self) -> Option<f64> {
     let (_, _, _, lambda) = self.params();
     let (omega, big) = self.omegas();

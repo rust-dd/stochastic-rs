@@ -67,7 +67,7 @@ fn sinc(x: f64) -> f64 {
   }
 }
 
-/// $B(x)/B(0) = \mathcal S(x) / \bigl(\mathcal S(\alpha x)^\alpha\,\mathcal S((1-\alpha)x)^{1-\alpha}\bigr)$.
+/// $$B(x)/B(0) = \mathcal S(x) / \bigl(\mathcal S(\alpha x)^\alpha\,\mathcal S((1-\alpha)x)^{1-\alpha}\bigr)$$
 #[inline]
 fn zolotarev_ratio(alpha: f64, x: f64) -> f64 {
   sinc(x) / (sinc(alpha * x).powf(alpha) * sinc((1.0 - alpha) * x).powf(1.0 - alpha))
