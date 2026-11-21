@@ -206,8 +206,8 @@ impl<'a> LevyProblem<'a> {
       .collect()
   }
 
-  /// `∂r/∂θ` at the folded point, the domain's projection inside each stencil and every price on
-  /// the rule the point's own price walked; `scale` times the shared step.
+  /// `∂r/∂c` in the folded coordinates, each stencil's point through `to_values` and every price
+  /// on the rule the point's own price walked; `scale` times the shared step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
     let model_type = self.calibrator.model_type;
     let quotes = &self.calibrator.quotes;

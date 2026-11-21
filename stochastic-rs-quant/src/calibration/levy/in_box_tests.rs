@@ -64,8 +64,8 @@ fn an_interior_start_is_not_converged_where_a_restart_improves_it_tenfold() {
   }
 }
 
-/// Across each bound of each box, NIG's `β` at `α`'s ceiling included: a raw step that left its
-/// coordinate unmoved would move no price.
+/// Across each bound of each coordinate's box: a raw step that left its coordinate unmoved would
+/// move no price.
 #[test]
 fn no_raw_step_across_a_bound_leaves_its_coordinate_where_it_was() {
   for model in MODELS {
@@ -90,7 +90,7 @@ fn no_raw_step_across_a_bound_leaves_its_coordinate_where_it_was() {
   }
 }
 
-/// At `α`'s ceiling the domain leaves `β` its whole box: each step across it moves the model's `β`.
+/// `α` on its ceiling, 50 over its floor: each step of `β` across its box moves the model's `β`.
 #[test]
 fn no_step_inside_its_box_leaves_the_nig_asymmetry_where_it_was() {
   let model = LevyModelType::Nig;
@@ -108,7 +108,7 @@ fn no_step_inside_its_box_leaves_the_nig_asymmetry_where_it_was() {
   assert_eq!((lo, hi), (-49.99, 48.99));
 }
 
-/// Nine one-year calls of `truth`, to the cent's millionth a quote is rounded to if `rounded`.
+/// Nine one-year calls of `truth`, each rounded to `1e-6` if `rounded`.
 fn calls(model: LevyModelType, truth: &[f64], rounded: bool) -> Vec<OptionQuote> {
   let call =
     |k: f64| fourier_call_price(model, truth, 100.0, k, 0.05, 0.0, 1.0, &mut Walk::Adaptive);
