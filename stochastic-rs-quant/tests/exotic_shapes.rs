@@ -407,7 +407,7 @@ fn the_jump_models_hold_their_params_privately() {
   assert_eq!(bates.params(), svj);
   assert_pinned_value(
     bates.price_call(S, K, R, Q, TAU),
-    5.6848296939312775,
+    5.684829704832908,
     "bates",
   );
   let hkde_params = HkdeParams {
@@ -423,7 +423,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let hkde = HkdeFourier::new(hkde_params);
   assert_eq!(hkde.params(), hkde_params);
-  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838, "hkde");
+  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356772752325, "hkde");
 }
 
 #[test]

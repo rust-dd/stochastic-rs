@@ -3,8 +3,15 @@
 
 use std::cell::Cell;
 
+mod inversion;
 mod nodes;
+mod ooura;
 mod tanh_sinh;
+
+pub(crate) use inversion::Inversion;
+pub(crate) use inversion::Rule;
+pub(crate) use inversion::head_floor;
+pub(crate) use inversion::reach_and_scale;
 
 /// Starting panel width. Wide enough that a smooth integrand clears it in one
 /// tanh-sinh pass, narrow enough that the rule's fixed ~350-point budget still
@@ -94,7 +101,7 @@ pub(crate) fn integrate_to_convergence<F>(f: F, a: f64, tol: f64) -> f64
 where
   F: Fn(f64) -> f64,
 {
-  walk(f, a, tol, None)
+  walk(f, a, tol, f64::INFINITY, None).0
 }
 
 /// [`integrate_to_convergence`] run as `mode` says: recorded, or on a rule recorded before.
@@ -103,12 +110,14 @@ where
   F: Fn(f64) -> f64,
 {
   mode.run(
-    |leaves| walk(&f, a, tol, leaves),
+    |leaves| walk(&f, a, tol, f64::INFINITY, leaves).0,
     |panels| integrate_on(&f, panels),
   )
 }
 
-fn walk<F>(f: F, a: f64, tol: f64, mut leaves: Option<&mut Panels>) -> f64
+/// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, past it
+/// whatever the envelope says, so that a price's panels move only with `reach`.
+fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64)
 where
   F: Fn(f64) -> f64,
 {
@@ -133,10 +142,13 @@ where
   let mut prev_env = f64::INFINITY;
 
   for panel_index in 0..MAX_PANELS {
+    if lo >= reach {
+      break;
+    }
     peak.set(0.0);
     let (panel, depth_used) = refine(&watched, lo, lo + width, tol, MAX_DEPTH, &mut leaves);
     if poisoned.get() {
-      return f64::NAN;
+      return (f64::NAN, lo);
     }
     total += panel;
     lo += width;
@@ -144,7 +156,7 @@ where
     let env = peak.get();
     scale = scale.max(env);
 
-    if panel_index > 0 && env <= tol * scale {
+    if reach.is_infinite() && panel_index > 0 && env <= tol * scale {
       let decay = (prev_env / env).ln() / width;
       if decay > 0.0 && env / decay <= tol * total.abs().max(1.0) {
         break;
@@ -159,7 +171,7 @@ where
     };
   }
 
-  total
+  (total, lo)
 }
 
 /// `∫ f` on recorded panels, each at the levels its walk took; NaN as the walk would give it.

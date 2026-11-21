@@ -1,6 +1,5 @@
-//! Carr-Madan FFT, Gil-Pelaez and Lewis quadrature pricers.
+//! The Carr–Madan FFT pricer.
 
-use std::f64::consts::FRAC_1_PI;
 use std::f64::consts::PI;
 
 use ndarray::Array1;
@@ -9,14 +8,11 @@ use ndrustfft::ndfft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
-use crate::pricing::cf_quadrature::Panels;
-use crate::pricing::cf_quadrature::Walk;
-use crate::pricing::cf_quadrature::integrate_walk;
 
 /// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
 /// `f64::max` would turn into a plausible `0.0`.
 #[inline]
-fn floor_price(x: f64) -> f64 {
+pub(super) fn floor_price(x: f64) -> f64 {
   if x.is_nan() { x } else { x.max(0.0) }
 }
 
@@ -223,120 +219,13 @@ impl CarrMadanPricer {
   }
 }
 
-/// Gil-Pelaez (1951) quadrature pricer.
-///
-/// Uses numerical quadrature on the two half-integrals $P_1,P_2$.
-pub struct GilPelaezPricer;
-
-impl GilPelaezPricer {
-  /// The blanket `ModelPricer::price_call` of every [`FourierModelExt`] model, by quadrature:
-  /// NaN for a non-finite `s`, `k`, `r`, `q` or `t`, otherwise floored at zero.
-  pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
-  }
-
-  /// [`Self::price_call`] with its two integrals, `P₁`'s then `P₂`'s, run as `walk` says.
-  pub(crate) fn price_call_walk(
-    model: &impl FourierModelExt,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    t: f64,
-    walk: &mut Walk<'_, Panels>,
-  ) -> f64 {
-    // The carry e^{iu(r−q)t} of both integrands folds into the kernel's phase as ln(K/F).
-    let ln_kf = (k / s).ln() - (r - q) * t;
-
-    let i_unit = Complex64::i();
-    let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
-    let no_share_measure = phi_neg_i.norm() < 1e-30;
-
-    let integrand_p1 = |u: f64| -> f64 {
-      if u.abs() < 1e-12 || no_share_measure {
-        return 0.0;
-      }
-      let xi = Complex64::new(u, -1.0);
-      let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
-      (kernel * phi / phi_neg_i).re
-    };
-
-    let integrand_p2 = |u: f64| -> f64 {
-      if u.abs() < 1e-12 {
-        return 0.0;
-      }
-      let xi = Complex64::new(u, 0.0);
-      let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
-      (kernel * phi).re
-    };
-
-    let p1 = 0.5 + FRAC_1_PI * integrate_walk(integrand_p1, 1e-8, 1e-8, walk);
-    let p2 = 0.5 + FRAC_1_PI * integrate_walk(integrand_p2, 1e-8, 1e-8, walk);
-
-    let call = s * (-q * t).exp() * p1 - k * (-r * t).exp() * p2;
-    floor_price(call)
-  }
-}
-
-/// Lewis (2001) single-strike quadrature pricer.
-///
-/// $$
-/// C=Se^{-qT}-\frac{\sqrt{SK}\,e^{-(r+q)T/2}}{\pi}
-/// \int_0^\infty\!\operatorname{Re}\!\left[\frac{e^{-iu\ln(K/F)}\,\phi_X(u-\tfrac i2)}{u^2+\tfrac14}\right]du
-/// $$
-pub struct LewisPricer;
-
-impl LewisPricer {
-  /// Price a European call by Lewis (2001) single-strike quadrature.
-  ///
-  /// Returns [`f64::NAN`] when any of `s`, `k`, `r`, `q` or `t` is non-finite,
-  /// on the same terms as [`GilPelaezPricer::price_call`]; the result is
-  /// otherwise floored at zero by `floor_price`.
-  pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
-  }
-
-  /// [`Self::price_call`] with its integral run as `walk` says.
-  pub(crate) fn price_call_walk(
-    model: &impl FourierModelExt,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    t: f64,
-    walk: &mut Walk<'_, Panels>,
-  ) -> f64 {
-    let carry = (r - q) * t;
-    // e^{iξ(r−q)t} at ξ = u − i/2 is a phase, folded into ln(K/F), times e^{(r−q)t/2}.
-    let ln_kf = (k / s).ln() - carry;
-    let half_carry = (0.5 * carry).exp();
-    let disc = (-r * t).exp();
-    let fwd_factor = carry.exp();
-    let sqrt_sk = (s * k).sqrt();
-
-    let i_unit = Complex64::i();
-
-    let integrand = |u: f64| -> f64 {
-      let xi = Complex64::new(u, -0.5);
-      let phi = model.chf(t, xi);
-      let kernel = half_carry * (-i_unit * u * ln_kf).exp() / (u * u + 0.25);
-      (kernel * phi).re
-    };
-
-    let integral = integrate_walk(integrand, 0.0, 1e-8, walk);
-
-    let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
-    floor_price(call)
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::pricing::fourier::BsmFourier;
   use crate::pricing::fourier::Cumulants;
+  use crate::pricing::fourier::GilPelaezPricer;
+  use crate::pricing::fourier::LewisPricer;
 
   /// A characteristic function that overflows to `NaN`, standing in for a
   /// user model blowing up at a parameter corner. Mirrors `cos.rs`'s

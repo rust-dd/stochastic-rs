@@ -244,9 +244,9 @@ impl FrftCarrMadanPricer {
 mod tests {
   use num_complex::Complex64;
 
+  use super::super::GilPelaezPricer;
   use super::super::bsm::BsmFourier;
   use super::super::heston::HestonFourier;
-  use super::super::pricer::GilPelaezPricer;
   use super::*;
   use crate::pricing::heston::HestonParams;
 
