@@ -156,3 +156,77 @@ fn a_knocked_in_barrier_is_nan_at_a_strike_that_is_not_positive_at_any_volatilit
     }
   }
 }
+
+/// An unbreached barrier reads its strike, so it is NaN before expiry at a strike that is not
+/// positive at any volatility; at expiry it pays out, and a knocked-out one pays its rebate.
+#[test]
+fn an_unbreached_barrier_is_nan_before_expiry_at_a_strike_that_is_not_positive() {
+  use BarrierType::*;
+  for (barrier_type, barrier) in [
+    (UpAndOut, 110.0),
+    (UpAndIn, 110.0),
+    (DownAndOut, 90.0),
+    (DownAndIn, 90.0),
+  ] {
+    for option_type in [OptionType::Call, OptionType::Put] {
+      for k in [0.0, -5.0] {
+        let option = BarrierOption {
+          strike: k,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        let knock_in = matches!(barrier_type, UpAndIn | DownAndIn);
+        let payoff = match option_type {
+          OptionType::Call => 100.0 - k,
+          OptionType::Put => 0.0,
+        };
+        for sigma in [0.0, 0.2] {
+          let price = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 1.0);
+          assert!(price.is_nan(), "{option:?}, sigma = {sigma}: {price}");
+          let expired = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 0.0);
+          let want = if knock_in { 3.0 } else { payoff };
+          assert_eq!(expired, want, "{option:?}, sigma = {sigma}");
+        }
+      }
+    }
+  }
+  let knocked_out = BarrierOption {
+    strike: 0.0,
+    barrier: 95.0,
+    rebate: 3.0,
+    barrier_type: UpAndOut,
+    option_type: OptionType::Call,
+  };
+  assert_eq!(
+    BarrierPricer::new(0.2).price(&knocked_out, 100.0, R, Q, 1.0),
+    3.0
+  );
+}
+
+/// An infinite barrier is NaN, as a NaN one is, at and before expiry.
+#[test]
+fn a_barrier_that_is_not_finite_is_nan() {
+  use BarrierType::*;
+  for barrier in [f64::INFINITY, f64::NEG_INFINITY] {
+    for barrier_type in [UpAndOut, UpAndIn, DownAndOut, DownAndIn] {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        let option = BarrierOption {
+          strike: 100.0,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        for (sigma, tau) in [(0.0, 1.0), (0.2, 1.0), (0.2, 0.0)] {
+          let price = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, tau);
+          assert!(
+            price.is_nan(),
+            "{option:?}, sigma = {sigma}, tau = {tau}: {price}"
+          );
+        }
+      }
+    }
+  }
+}
