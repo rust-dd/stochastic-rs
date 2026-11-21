@@ -196,8 +196,8 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
   type Output = Calibrated<SabrCapletParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, `β` and the shift included; `InvalidInput` for a start
-  /// outside `SabrParams::new`, a shift not finite or a weight `with_weights` refuses, and so on.
+  /// A start replaces `self.start` whole, `β` and the shift included. Errors: `InvalidInput`,
+  /// `InvalidQuote`, `InsufficientData`, `DimensionMismatch` and the `CalibrationOptions` ones.
   fn calibrate(&self, initial: Option<SabrCapletParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     if let Some(reason) = start.violation() {
