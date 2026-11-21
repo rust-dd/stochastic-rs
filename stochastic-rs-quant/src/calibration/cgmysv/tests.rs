@@ -302,3 +302,30 @@ fn the_jacobian_at_twice_its_step_is_the_same_where_a_walk_jumps() {
   let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
   assert!(error < 1e-4, "{error:e}");
 }
+
+/// On `ρ`'s upper bound, `1e-6` of the box from it, the quotes pull `ρ` inward: the stop re-seats it
+/// `0.005` of the box inside and names it, where the first-order check alone passes.
+#[test]
+fn a_stop_on_a_bound_the_cost_pulls_away_from_is_reseated() {
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));
+  let mut natural = to_vec(&known_params());
+  natural[6] = 5.0 - 1e-5;
+  let mut problem = CgmysvProblem::new(&calibrator, natural.clone());
+  let (start, first) = problem.reseated(None).expect("ρ is pulled inward");
+  assert_eq!(first, 6);
+  assert!((start[6] - (5.0 - 0.005 * 10.0)).abs() < 1e-12, "{start:?}");
+  let others = (0..N_PARAMS).filter(|&j| j != 6);
+  assert!(
+    others
+      .into_iter()
+      .all(|j| (start[j] - natural[j]).abs() < 1e-12 * natural[j].abs())
+  );
+  let mut inside = to_vec(&known_params());
+  inside[6] = 0.0;
+  assert!(
+    CgmysvProblem::new(&calibrator, inside)
+      .reseated(None)
+      .is_none()
+  );
+}

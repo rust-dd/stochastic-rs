@@ -19,13 +19,16 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::Regularization;
 use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
-use crate::calibration::least_squares::minimize;
+use crate::calibration::least_squares::cosines;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
 use crate::calibration::quote::validate_quotes;
+use crate::calibration::reseat::minimize_reseated;
+use crate::calibration::reseat::reseat;
 use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
 use crate::pricing::cf_quadrature::Panels;
@@ -126,18 +129,19 @@ fn to_vec(p: &CgmysvParams) -> Vec<f64> {
   ]
 }
 
+const NAMES: [&str; N_PARAMS] = [
+  "alpha",
+  "lambda_plus",
+  "lambda_minus",
+  "kappa",
+  "eta",
+  "zeta",
+  "rho",
+  "v0",
+];
+
 fn check_start(p: &CgmysvParams) -> Result<(), QuantError> {
-  let names = [
-    "alpha",
-    "lambda_plus",
-    "lambda_minus",
-    "kappa",
-    "eta",
-    "zeta",
-    "rho",
-    "v0",
-  ];
-  let fields = names.into_iter().zip(to_vec(p)).collect::<Vec<_>>();
+  let fields = NAMES.into_iter().zip(to_vec(p)).collect::<Vec<_>>();
   check_finite_start(&fields)
 }
 
@@ -217,15 +221,31 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
     let mut params = start.map_or_else(default_params, |start| to_vec(&start));
     project(&mut params);
     let lm = self.options.lm(true, N_PARAMS)?;
-    let (fitted, report) = minimize(CgmysvProblem::new(self, params), lm);
+    let (fitted, report, iterations, stop) = minimize_reseated(
+      CgmysvProblem::new(self, params),
+      &lm,
+      |fitted| fitted.reseated(lm.regularization.as_ref()),
+      |fitted, start| CgmysvProblem {
+        params: start,
+        ..fitted
+      },
+    );
     let model = fitted.compute_model_prices();
-    report.calibrated(
+    let fit = report.calibrated(
       to_cgmysv_params(&fitted.params),
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    )
+    )?;
+    let fit = fit.with_iterations(iterations);
+    Ok(match stop {
+      Some(stop) => Calibrated {
+        converged: false,
+        ..fit.with_message(stop.message(&NAMES))
+      },
+      None => fit,
+    })
   }
 }
 
@@ -286,6 +306,23 @@ impl<'a> CgmysvProblem<'a> {
       }));
     }
     jacobian
+  }
+
+  /// The stop with each saturated coordinate the cost pulls inward re-seated inside its bounds,
+  /// and the first such parameter; `None` when none is.
+  fn reseated(&mut self, pull: Option<&Regularization>) -> Option<(Vec<f64>, usize)> {
+    let cosines = cosines(self, pull)?;
+    let bounds = param_bounds();
+    let place = self.params.iter().zip(bounds);
+    let mut units = place
+      .map(|(&v, (lo, hi))| (v - lo) / (hi - lo))
+      .collect::<Vec<_>>();
+    let first = reseat(&mut units, &cosines)?;
+    let values = units
+      .iter()
+      .zip(bounds)
+      .map(|(&unit, (lo, hi))| lo + (hi - lo) * unit);
+    Some((values.collect(), first))
   }
 
   /// `∂θⱼ/∂xⱼ` of the logistic map from the optimiser's coordinates onto each parameter's bounds.

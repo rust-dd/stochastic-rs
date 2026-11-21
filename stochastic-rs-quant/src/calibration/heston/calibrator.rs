@@ -3,21 +3,17 @@ use stochastic_rs_distributions::RealExt;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
 use super::lsq::HestonProblem;
+use super::lsq::NAMES;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
-use crate::calibration::least_squares::LmOptions;
-use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
+use crate::calibration::reseat::minimize_reseated;
 use crate::pricing::heston::HestonParams;
-
-/// Restarts of a fit that stopped on a saturated coordinate the cost pulls inward, each from
-/// inside the box; the Nelder–Mead driver's count.
-const MAX_RESEATS: usize = 3;
 
 /// Spot and variance series whose NMLE, PMLE or NMLE-CEKF fit starts the calibration.
 /// Wang et al. (2018), Sci. China Inf. Sci. 61, 042202, DOI 10.1007/s11432-017-9215-8.
@@ -219,30 +215,17 @@ impl crate::traits::Calibrator for HestonCalibrator {
     if self.feller_projection {
       problem.feller_row_weight = Some(self.feller_row_weight_at(problem.effective_params()));
     }
-    let (mut fitted, mut report) = minimize(problem, lm.clone());
-    let cap = lm.iteration_cap(5);
-    let mut iterations = report.iterations;
-    let mut bound = None;
-    for restart in 0..=MAX_RESEATS {
-      let pull = lm.regularization.as_ref();
-      bound = report
-        .solver_converged()
-        .then(|| fitted.reseated(pull))
-        .flatten();
-      let left = cap.saturating_sub(iterations);
-      let Some((start, _)) = bound.filter(|_| restart < MAX_RESEATS && left > 0) else {
-        break;
-      };
-      let mut problem = HestonProblem::new(self, start);
-      problem.feller_row_weight = fitted.feller_row_weight;
-      problem.trail = fitted.trail;
-      let rest = LmOptions {
-        max_iterations: Some(left),
-        ..lm.clone()
-      };
-      (fitted, report) = minimize(problem, rest);
-      iterations += report.iterations;
-    }
+    let (fitted, report, iterations, stop) = minimize_reseated(
+      problem,
+      &lm,
+      |fitted| fitted.reseated(lm.regularization.as_ref()),
+      |fitted, start| {
+        let mut problem = HestonProblem::new(self, start);
+        problem.feller_row_weight = fitted.feller_row_weight;
+        problem.trail = fitted.trail;
+        problem
+      },
+    );
     let params = fitted.effective_params();
     let model = self.compute_model_prices_for(&params).to_vec();
     let fit = report.calibrated(
@@ -253,10 +236,10 @@ impl crate::traits::Calibrator for HestonCalibrator {
       fitted.trail.into_entries(),
     )?;
     let fit = fit.with_iterations(iterations);
-    Ok(match bound {
-      Some((_, name)) => Calibrated {
+    Ok(match stop {
+      Some(stop) => Calibrated {
         converged: false,
-        ..fit.with_message(format!("stopped at the bound of {name}"))
+        ..fit.with_message(stop.message(&NAMES))
       },
       None => fit,
     })

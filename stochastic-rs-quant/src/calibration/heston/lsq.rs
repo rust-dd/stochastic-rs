@@ -15,16 +15,10 @@ use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::cosines;
+use crate::calibration::reseat::reseat;
 use crate::pricing::heston::HestonParams;
 
-const NAMES: [&str; 5] = ["v0", "kappa", "theta", "sigma", "rho"];
-
-/// Within this of an end of its box a coordinate's logistic slope is under 1e-3 of the box; the
-/// same bound on its orthogonality measure tells a stop on the box from one against it.
-const SATURATED: f64 = 1e-3;
-
-/// Where a saturated coordinate restarts: the slope there is 0.005 of the box.
-const RESEAT: f64 = 0.005;
+pub(super) const NAMES: [&str; 5] = ["v0", "kappa", "theta", "sigma", "rho"];
 
 pub(super) struct HestonProblem<'a> {
   calibrator: &'a HestonCalibrator,
@@ -57,25 +51,16 @@ impl<'a> HestonProblem<'a> {
     self.calibrator.feller_projected(self.free_params())
   }
 
-  /// The stop with each saturated coordinate whose descent direction points into the box moved
-  /// `RESEAT` of the box inside, and the first such parameter's name; `None` when none is.
+  /// The stop with each saturated coordinate the cost pulls inward re-seated inside the box, and
+  /// the first such parameter; `None` when none is.
   pub(super) fn reseated(
     &mut self,
     pull: Option<&Regularization>,
-  ) -> Option<(HestonParams, &'static str)> {
+  ) -> Option<(HestonParams, usize)> {
     let cosines = cosines(self, pull)?;
     let mut units = units(&self.free_params());
-    let mut name = None;
-    for (j, unit) in units.iter_mut().enumerate() {
-      let (low, high) = (*unit < SATURATED, *unit > 1.0 - SATURATED);
-      // The cost falls along −Jⱼᵀr, which is inward for a negative cosine at the lower end.
-      let inward = if low { -cosines[j] } else { cosines[j] };
-      if (low || high) && inward > SATURATED {
-        *unit = if low { RESEAT } else { 1.0 - RESEAT };
-        name.get_or_insert(NAMES[j]);
-      }
-    }
-    name.map(|name| (at_units(units), name))
+    let first = reseat(&mut units, &cosines)?;
+    Some((at_units(units), first))
   }
 
   /// A Jacobian in the physical parameters, through the Feller cap where it binds, in the
