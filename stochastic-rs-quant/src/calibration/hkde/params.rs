@@ -2,8 +2,9 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::super::periodic_map;
+use crate::calibration::least_squares::Room;
 use crate::calibration::periodic_slopes;
-use crate::calibration::stencil::sides;
+use crate::calibration::stencil::room;
 use crate::pricing::fourier::HkdeParams;
 
 pub(super) const EPS: f64 = 1e-8;
@@ -46,10 +47,10 @@ pub(super) const BOXED: [(f64, f64); 9] = [
   P_ETA2,
 ];
 
-/// Per raw coordinate, the sign of the step out of the box where its boxed value rests on a bound.
-pub(super) fn outward(x: ArrayView1<f64>) -> Array1<f64> {
+/// Each raw coordinate's room before its boxed value meets a bound of `BOXED`.
+pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
   let boxed = Array1::from(HkdeParams::from(x.to_owned()).boxed());
-  sides(&boxed, &BOXED) * periodic_slopes(x, &BOX)
+  room(&boxed, &BOXED, periodic_slopes(x, &BOX).view())
 }
 
 impl HkdeParams {

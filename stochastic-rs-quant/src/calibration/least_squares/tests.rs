@@ -260,7 +260,7 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
     rows: RefCell::new(None),
-    outward: None,
+    rooms: None,
     sizes: RefCell::new(Array1::zeros(2)),
     flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),

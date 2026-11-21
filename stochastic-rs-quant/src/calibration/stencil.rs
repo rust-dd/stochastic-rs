@@ -1,5 +1,8 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
+
+use crate::calibration::least_squares::Room;
 
 /// `1e-3·|x|`, at least `1e-5`, every numeric Jacobian's step: `ε^{1/3}` for the Fourier walks'
 /// `ε ≈ 1e-8` (Nocedal & Wright 2006, ch. 8), shared by `HestonPricer` at a `1e-6` truncation.
@@ -30,16 +33,20 @@ pub(crate) fn derivative(
   (residuals(above) - residuals(below)) / (above - below)
 }
 
-/// Per coordinate −1 within its step of `lo`, 1 within it of `hi`, 0 where the central stencil
-/// fits: the bound a point rests on.
-pub(crate) fn sides(point: &Array1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
-  let places = point.iter().zip(bounds);
-  let side = |(&x, &(lo, hi)): (&f64, &(f64, f64))| match step(x) {
-    h if x - h < lo => -1.0,
-    h if x + h > hi => 1.0,
-    _ => 0.0,
-  };
-  places.map(side).collect()
+/// `point`'s `Room` in `bounds`: a coordinate whose map's slope is −1 falls as its value rises.
+pub(crate) fn room(point: &Array1<f64>, bounds: &[(f64, f64)], slopes: ArrayView1<f64>) -> Room {
+  let places = point.iter().zip(bounds).zip(slopes);
+  let (lower, upper) = places
+    .map(|((&x, &(lo, hi)), &slope)| match slope < 0.0 {
+      true => ((hi - x).max(0.0), (x - lo).max(0.0)),
+      false => ((x - lo).max(0.0), (hi - x).max(0.0)),
+    })
+    .unzip::<_, _, Vec<_>, Vec<_>>();
+  Room {
+    down: Array1::from_vec(lower),
+    up: Array1::from_vec(upper),
+    strip: point.mapv(step),
+  }
 }
 
 #[cfg(test)]

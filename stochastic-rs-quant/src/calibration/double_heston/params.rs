@@ -7,8 +7,9 @@ use crate::calibration::heston::params::P_RHO;
 use crate::calibration::heston::params::P_THETA;
 use crate::calibration::heston::params::RHO_BOUND;
 use crate::calibration::heston::params::THETA_MIN;
+use crate::calibration::least_squares::Room;
 use crate::calibration::periodic_slopes;
-use crate::calibration::stencil::sides;
+use crate::calibration::stencil::room;
 use crate::pricing::heston::HestonParams;
 
 pub(super) const P_V0: (f64, f64) = (0.001, 0.25);
@@ -22,11 +23,15 @@ pub(super) const BOXED: [(f64, f64); 10] = [
   FACTOR[3], FACTOR[4],
 ];
 
-/// Per raw coordinate, the sign of the step out of the box where its boxed value rests on a bound.
-pub(super) fn outward(x: ArrayView1<f64>) -> Array1<f64> {
+/// Each raw coordinate's room before its boxed value meets a bound of `BOXED`.
+pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
   let boxed = Array1::from(DoubleHestonParams::from(x.to_owned()).boxed());
   let fold = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
-  sides(&boxed, &BOXED) * periodic_slopes(x, &[fold, fold].concat())
+  room(
+    &boxed,
+    &BOXED,
+    periodic_slopes(x, &[fold, fold].concat()).view(),
+  )
 }
 
 /// Double Heston model parameters: two independent Heston factors.

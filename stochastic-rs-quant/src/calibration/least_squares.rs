@@ -271,7 +271,7 @@ struct Objective<P> {
   flat: Cell<bool>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
-  outward: Option<Outward>,
+  rooms: Option<Rooms>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
@@ -373,8 +373,9 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
       self.flat.set(true);
       return Err(());
     }
-    if let Some(outward) = &self.outward {
-      rest_on_bounds(&mut jacobian, &residuals, &outward(x.view()));
+    if let Some(rooms) = &self.rooms {
+      let held = held(&jacobian, &residuals, &rooms(x.view()));
+      rest_on_bounds(&mut jacobian, &held);
     }
     *rows = Some(residuals);
     Ok(jacobian)
@@ -386,20 +387,20 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   drive(problem, options, None)
 }
 
-/// [`minimize`] for a problem whose map folds or clamps at a box: `outward` names the bound each
-/// coordinate rests on, and one the cost falls across is held there.
+/// [`minimize`] for a problem whose map folds or clamps at a box: a coordinate resting on a bound
+/// the cost falls across, as `rooms` and `in_box::held` tell, is held there.
 pub(crate) fn minimize_in_box<P: LeastSquaresProblem>(
   problem: P,
   options: LmOptions,
-  outward: impl Fn(ArrayView1<f64>) -> Array1<f64> + 'static,
+  rooms: impl Fn(ArrayView1<f64>) -> Room + 'static,
 ) -> (P, LmReport) {
-  drive(problem, options, Some(Box::new(outward)))
+  drive(problem, options, Some(Box::new(rooms)))
 }
 
 fn drive<P: LeastSquaresProblem>(
   problem: P,
   options: LmOptions,
-  outward: Option<Outward>,
+  rooms: Option<Rooms>,
 ) -> (P, LmReport) {
   let initial = problem.params();
   let max_iter = options.iteration_cap(initial.len());
@@ -411,7 +412,7 @@ fn drive<P: LeastSquaresProblem>(
     sizes: RefCell::new(Array1::zeros(initial.len())),
     flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
-    outward,
+    rooms,
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
   let gradient_tolerance = if options.tolerance.is_some() {
@@ -530,7 +531,9 @@ where
 mod in_box;
 mod trail;
 
-use in_box::Outward;
+pub(crate) use in_box::Room;
+use in_box::Rooms;
+use in_box::held;
 use in_box::rest_on_bounds;
 pub(crate) use trail::Trail;
 

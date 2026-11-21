@@ -1,5 +1,5 @@
 use super::loss::HkdeProblem;
-use super::params::outward;
+use super::params::room_in_box;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
@@ -95,7 +95,7 @@ impl crate::traits::Calibrator for HkdeCalibrator {
       return Err(QuantError::invalid("start", reason));
     }
     let lm = self.options.lm(true, 9)?;
-    let (fitted, report) = minimize_in_box(HkdeProblem::new(self, start)?, lm, outward);
+    let (fitted, report) = minimize_in_box(HkdeProblem::new(self, start)?, lm, room_in_box);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
     report.calibrated(
