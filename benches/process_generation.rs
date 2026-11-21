@@ -19,7 +19,10 @@ use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::stochastic::jump::cgmy::Cgmy;
 use stochastic_rs::stochastic::jump::cts::Cts;
 use stochastic_rs::stochastic::noise::gn::Gn;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::bm::Bm;
+use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_process_generation(c: &mut Criterion) {
@@ -68,6 +71,26 @@ fn bench_process_generation(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("process/Ou.sample", n), &n, |b, &n| {
       let ou = Ou::<f64, _>::new(2.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Unseeded);
       b.iter(|| black_box(ou.sample()));
+    });
+
+    // The default boundary on a sub-Feller grid, so the step's boundary branch is taken.
+    group.bench_with_input(BenchmarkId::new("process/Heston.sample", n), &n, |b, &n| {
+      let (pow, boundary) = (HestonPow::Sqrt, VarianceBoundary::default());
+      let heston = Heston::<f64>::new(
+        100.0,
+        0.05,
+        0.4,
+        0.2,
+        0.6,
+        -0.7,
+        0.0,
+        n,
+        Some(5.0),
+        pow,
+        boundary,
+        Unseeded,
+      );
+      b.iter(|| black_box(heston.sample()));
     });
 
     group.bench_with_input(BenchmarkId::new("process/Bm.old_style", n), &n, |b, &n| {
