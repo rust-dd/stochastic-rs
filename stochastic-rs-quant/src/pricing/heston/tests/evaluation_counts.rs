@@ -12,42 +12,26 @@ fn evaluations(run: impl Fn(&HestonPricer, f64) -> f64) -> usize {
   EVALUATIONS.with(|n| n.get())
 }
 
-/// 7,098 and 9,744 are the counts of the walk before the head in `ln φ` and the tail rule, which
-/// took 13,848 and 13,048; 3 % allows a panel that another libm splits.
+/// The head in `ln φ` and the two tails cost 1.95 and 1.34 times a walk from `1e-8` on these
+/// strikes (7,098 and 9,744); 3 % allows a panel that another libm splits.
 #[test]
-fn an_ordinary_price_costs_what_the_plain_walk_costs() {
-  for (tau, plain) in [(1.0, 7_098), (0.02, 9_744)] {
+fn a_price_keeps_its_evaluation_count() {
+  for (tau, pinned) in [(1.0, 13_848), (0.02, 13_048)] {
     let count = evaluations(|pricer, k| pricer.price_call(100.0, k, 0.05, 0.02, tau));
     assert!(
-      count.abs_diff(plain) * 100 <= 3 * plain,
-      "tau = {tau}: {count} evaluations against {plain}"
+      count.abs_diff(pinned) * 100 <= 3 * pinned,
+      "tau = {tau}: {count} evaluations against {pinned}"
     );
   }
 }
 
-/// 7,242 and 9,936 are the unsplit vega's counts at the same tolerance; the head and tails took
-/// 14,520 and 15,256.
 #[test]
-fn an_ordinary_vega_costs_what_the_plain_walk_costs() {
-  for (tau, plain) in [(1.0, 7_242), (0.02, 9_936)] {
+fn a_vega_keeps_its_evaluation_count() {
+  for (tau, pinned) in [(1.0, 14_520), (0.02, 15_256)] {
     let count = evaluations(|pricer, k| pricer.initial_variance_vega(100.0, k, 0.05, 0.02, tau));
     assert!(
-      count.abs_diff(plain) * 100 <= 3 * plain,
-      "tau = {tau}: {count} evaluations against {plain}"
+      count.abs_diff(pinned) * 100 <= 3 * pinned,
+      "tau = {tau}: {count} evaluations against {pinned}"
     );
   }
-}
-
-/// Past the control's cap, `E₁[∫v] = 3.7e4` here, both `P_j` take the sized walk: `f_1(1e-8)` is
-/// then `1.8e-4` from 1, a head the plain walk's start would drop.
-#[test]
-fn a_capped_control_takes_the_head_in_ln_phi() {
-  let pricer = HestonPricer::new(HestonParams {
-    kappa: 0.5,
-    sigma: 1.0,
-    rho: 0.9,
-    ..P
-  });
-  assert!(pricer.sized(30.0) && !pricer.sized(1.0));
-  assert!(!HestonPricer::new(P).sized(1.0));
 }

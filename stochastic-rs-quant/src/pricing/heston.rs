@@ -4,9 +4,7 @@
 //! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
 //! $$
 //!
-use std::cell::OnceCell;
 use std::f64::consts::FRAC_1_PI;
-use std::ops::Range;
 
 use num_complex::Complex64;
 use stochastic_rs_distributions::special::norm_pdf;
@@ -16,7 +14,6 @@ use super::cf_quadrature::Inversion;
 use super::cf_quadrature::Walk;
 use super::cf_quadrature::gaussian_share;
 use super::cf_quadrature::head_floor;
-use super::cf_quadrature::integrate_until_settled;
 use super::cf_quadrature::reach_and_scale;
 use super::fourier::mean_integrated_variance;
 use super::fourier::riccati_cd;
@@ -30,17 +27,6 @@ mod greeks;
 mod params;
 
 pub use params::HestonParams;
-
-/// Where the plain walk starts, and its target per panel for the price and for the vega.
-const LOWER_LIMIT: f64 = 1e-8;
-const REST_TOLERANCE: f64 = 1e-10;
-const VEGA_TOLERANCE: f64 = 1e-8;
-/// `√w` at which the plain walk, which ends near `φ = 8,000`, stops inside the Gaussian, `1/√w`
-/// wide, with a rest it cannot neglect; below it a rest that dies with the Gaussian is negligible.
-const UNCOVERED: Range<f64> = 1e-5..1e-3;
-
-/// The sized walk's `(reach, scale)`, found on first use: the plain walk needs neither.
-type Reach = OnceCell<(f64, f64)>;
 
 #[cfg(test)]
 thread_local! {
@@ -118,9 +104,9 @@ impl HestonPricer {
         put: payoff(OptionType::Put),
       };
     }
-    let reach = Reach::new();
-    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), &reach)
-      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), &reach);
+    let reach = self.reach(tau, (s, k, r, q));
+    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), reach)
+      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), reach);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
     CallPut { call, put }
@@ -167,9 +153,9 @@ impl HestonPricer {
     if tau.is_nan() || tau <= 0.0 {
       return f64::NAN;
     }
-    let reach = Reach::new();
-    s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, (s, k, r, q), &reach)
-      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, (s, k, r, q), &reach)
+    let reach = self.reach(tau, (s, k, r, q));
+    s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, (s, k, r, q), reach)
+      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, (s, k, r, q), reach)
   }
 
   pub(self) fn u(&self, j: u8) -> f64 {
@@ -232,30 +218,14 @@ impl HestonPricer {
     }
   }
 
-  /// Whether both `P_j` skip the plain walk for the one sized to the chf's decay, with its head in
-  /// `ln φ` and its tails: a capped control, or a `√w` the plain walk does not cover.
-  fn sized(&self, tau: f64) -> bool {
-    let root = self.mean_integrated_variance(2, tau).sqrt();
-    let capped = |j| self.mean_integrated_variance(j, tau) > CONTROL_VARIANCE_CAP;
-    // Below `UNCOVERED` the rest is negligible only where the chf is its Gaussian's (`v0 ≫ σ²τ`),
-    // `e^{−1/2}` in modulus at `φ = 1/√w`.
-    let gaussian = || (self.f_and_d(2, 1.0 / root, tau).0.norm() - (-0.5_f64).exp()).abs() < 1e-6;
-    capped(1) || capped(2) || UNCOVERED.contains(&root) || root < UNCOVERED.start && !gaussian()
-  }
-
-  /// The plain walk of `rest` from `LOWER_LIMIT`, `None` where `P_j` needs the sized one: by
-  /// `sized`, or because the panel budget ended it above `UNCOVERED`, inside a slow chf.
-  fn plain(&self, tau: f64, tolerance: f64, rest: impl Fn(f64) -> f64) -> Option<f64> {
-    if self.sized(tau) {
-      return None;
-    }
-    let (integral, settled) = integrate_until_settled(rest, LOWER_LIMIT, tolerance);
-    let root = self.mean_integrated_variance(2, tau).sqrt();
-    (settled || root < UNCOVERED.start).then_some(integral)
-  }
-
   /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`.
-  pub(self) fn p(&self, j: u8, tau: f64, (s, k, r, q): (f64, f64, f64, f64), reach: &Reach) -> f64 {
+  pub(self) fn p(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    (reach, scale): (f64, f64),
+  ) -> f64 {
     if !self.mean_integrated_variance(j, tau).is_finite() {
       return f64::NAN;
     }
@@ -264,25 +234,15 @@ impl HestonPricer {
     let kappa = (k / s).ln() - (r - q) * tau;
     // The phase is `φκ`, `κ = ln(K/F)`: `φ ln F` and `φ ln K` apart round to 1e-8 rad at `φ = 1e7`.
     let kernel = |phi: f64| Complex64::new(0.0, -phi * kappa).exp() / Complex64::new(0.0, phi);
-    let chf_part = |phi: f64| kernel(phi) * self.f_and_d(j, phi, tau).0;
-    let control_part = |phi: f64| kernel(phi) * gaussian(phi, mean, w);
-    let integral = self
-      .plain(tau, REST_TOLERANCE, |phi| {
-        (chf_part(phi) - control_part(phi)).re
-      })
-      .unwrap_or_else(|| {
-        let (reach, scale) = *reach.get_or_init(|| self.reach(tau, (s, k, r, q)));
-        let inversion = Inversion {
-          chf_part,
-          control_part,
-          control_frequency: mean - kappa,
-          head_floor: Some(self.head_floor(j, tau)),
-          reach,
-          scale,
-        };
-        inversion.integrate(&mut Walk::Adaptive)
-      });
-    gaussian_share(kappa, mean, w) + FRAC_1_PI * integral
+    let inversion = Inversion {
+      chf_part: |phi: f64| kernel(phi) * self.f_and_d(j, phi, tau).0,
+      control_part: |phi: f64| kernel(phi) * gaussian(phi, mean, w),
+      control_frequency: mean - kappa,
+      head_floor: Some(self.head_floor(j, tau)),
+      reach,
+      scale,
+    };
+    gaussian_share(kappa, mean, w) + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
   }
 
   /// `∂P_j/∂v₀`: the share's `n(d_j)∂d_j/∂v₀`, and under the integral `D_j f_j` less the control's.
@@ -291,7 +251,7 @@ impl HestonPricer {
     j: u8,
     tau: f64,
     (s, k, r, q): (f64, f64, f64, f64),
-    reach: &Reach,
+    (reach, scale): (f64, f64),
   ) -> f64 {
     if !self.mean_integrated_variance(j, tau).is_finite() {
       return f64::NAN;
@@ -300,36 +260,26 @@ impl HestonPricer {
     let u = self.u(j);
     let kappa = (k / s).ln() - (r - q) * tau;
     let kernel = |phi: f64| Complex64::new(0.0, -phi * kappa).exp() / Complex64::new(0.0, phi);
-    let chf_part = |phi: f64| {
-      let (f, big_d) = self.f_and_d(j, phi, tau);
-      kernel(phi) * big_d * f
+    let inversion = Inversion {
+      chf_part: |phi: f64| {
+        let (f, big_d) = self.f_and_d(j, phi, tau);
+        kernel(phi) * big_d * f
+      },
+      control_part: |phi: f64| {
+        let exponent_slope = Complex64::new(-0.5 * phi * phi, u * phi) * slope;
+        kernel(phi) * gaussian(phi, u * w, w) * exponent_slope
+      },
+      control_frequency: u * w - kappa,
+      head_floor: Some(self.head_floor(j, tau)),
+      reach,
+      scale,
     };
-    let control_part = |phi: f64| {
-      let exponent_slope = Complex64::new(-0.5 * phi * phi, u * phi) * slope;
-      kernel(phi) * gaussian(phi, u * w, w) * exponent_slope
-    };
-    let integral = self
-      .plain(tau, VEGA_TOLERANCE, |phi| {
-        (chf_part(phi) - control_part(phi)).re
-      })
-      .unwrap_or_else(|| {
-        let (reach, scale) = *reach.get_or_init(|| self.reach(tau, (s, k, r, q)));
-        let inversion = Inversion {
-          chf_part,
-          control_part,
-          control_frequency: u * w - kappa,
-          head_floor: Some(self.head_floor(j, tau)),
-          reach,
-          scale,
-        };
-        inversion.integrate(&mut Walk::Adaptive)
-      });
     let share = if w > 0.0 {
       norm_pdf((u * w - kappa) / w.sqrt()) * (u * w + kappa) / (2.0 * w * w.sqrt()) * slope
     } else {
       0.0
     };
-    share + FRAC_1_PI * integral
+    share + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
   }
 
   /// Where `f_j` is within `1e-6` of its `φ → 0` limit 1.

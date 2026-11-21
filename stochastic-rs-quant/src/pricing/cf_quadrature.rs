@@ -106,19 +106,9 @@ where
   walk(f, a, tol, f64::INFINITY, None).0
 }
 
-/// [`integrate_to_convergence`] and whether the envelope ended the walk: `false` where the panel
-/// budget did, and the tail past it is unbounded.
-pub(crate) fn integrate_until_settled<F>(f: F, a: f64, tol: f64) -> (f64, bool)
-where
-  F: Fn(f64) -> f64,
-{
-  let (total, _, settled) = walk(f, a, tol, f64::INFINITY, None);
-  (total, settled)
-}
-
-/// `(∫, end, settled)` from `a`: until the envelope bounds the tail or, given a finite `reach`,
-/// past it whatever the envelope says, so that a price's panels move only with `reach`.
-fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64, bool)
+/// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, past it
+/// whatever the envelope says, so that a price's panels move only with `reach`.
+fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64)
 where
   F: Fn(f64) -> f64,
 {
@@ -141,17 +131,15 @@ where
   let mut total = 0.0_f64;
   let mut scale = 0.0_f64;
   let mut prev_env = f64::INFINITY;
-  let mut settled = false;
 
   for panel_index in 0..MAX_PANELS {
     if lo >= reach {
-      settled = true;
       break;
     }
     peak.set(0.0);
     let (panel, depth_used) = refine(&watched, lo, lo + width, tol, MAX_DEPTH, &mut leaves);
     if poisoned.get() {
-      return (f64::NAN, lo, true);
+      return (f64::NAN, lo);
     }
     total += panel;
     lo += width;
@@ -162,7 +150,6 @@ where
     if reach.is_infinite() && panel_index > 0 && env <= tol * scale {
       let decay = (prev_env / env).ln() / width;
       if decay > 0.0 && env / decay <= tol * total.abs().max(1.0) {
-        settled = true;
         break;
       }
     }
@@ -175,7 +162,7 @@ where
     };
   }
 
-  (total, lo, settled)
+  (total, lo)
 }
 
 /// `∫ f` on recorded panels, each at the levels its walk took; NaN as the walk would give it.
