@@ -29,9 +29,8 @@ fn bs_put(s: f64, k: f64, r: f64, sigma: f64, tau: f64) -> f64 {
   k * (-r * tau).exp() * norm_cdf(-d2) - s * norm_cdf(-d1)
 }
 
-/// Build a Gbm payoff closure: generate a Gbm terminal price from standard
-/// normals `z` (single time step, exact solution) and return the discounted
-/// call payoff.
+/// Gbm payoff closure: a single-step exact terminal price from standard normals `z`, returning the
+/// discounted call payoff.
 fn gbm_call_payoff(s0: f64, k: f64, r: f64, sigma: f64, tau: f64) -> impl Fn(&Array1<f64>) -> f64 {
   move |z: &Array1<f64>| {
     let s_t = s0 * ((r - 0.5 * sigma * sigma) * tau + sigma * tau.sqrt() * z[0]).exp();
@@ -160,11 +159,8 @@ fn importance_sampling_vs_bs_call() {
   );
 }
 
-/// Stratified sampling: price matches BS with higher accuracy than plain MC.
-///
-/// Note: stratified samples are not i.i.d., so the naive sample-variance SE
-/// over-estimates the true SE. We compare estimation accuracy (|mean − BS|)
-/// rather than reported SE.
+/// Stratified sampling matches BS more accurately than plain MC; its samples are not i.i.d., so the
+/// naive SE over-estimates and the test compares |mean − BS| instead.
 #[test]
 fn stratified_vs_bs_call() {
   let bs = bs_call(S0, K, R, SIGMA, TAU);
@@ -212,13 +208,8 @@ fn stratified_vs_bs_call() {
 
 // 2. QMC: convergence rate faster than MC
 
-/// Integrate f(x) = prod_i (4x_i − 2) over [0,1]^d.
-///
-/// Analytical integral = 0 for d > 1 (each factor integrates to 0), but for
-/// d = 1 the integral = ∫(4x − 2)dx = [2x² − 2x]₀¹ = 0 as well.
-///
-/// Instead we use f(x) = exp(-sum x_i²) whose integral has a closed form.
-/// For d = 1: ∫₀¹ exp(-x²) dx = √π/2 · erf(1) ≈ 0.74682.
+/// Integrate f(x) = exp(-sum x_i²) over [0,1]^d, which has a closed form; for d = 1,
+/// ∫₀¹ exp(-x²) dx = √π/2 · erf(1) ≈ 0.74682.
 fn exp_neg_x_sq_integral_1d() -> f64 {
   std::f64::consts::PI.sqrt() / 2.0 * stochastic_rs::distributions::special::erf(1.0)
 }
@@ -306,9 +297,8 @@ fn sobol_exactness_power_of_two() {
 
 // 3. MLMC: convergence rates α ≈ 1, β ≈ 1 for Euler Gbm
 
-/// Least-squares slope of `log2 |v[l]|` against `l` over `lo..=hi`, negated so
-/// a decaying sequence yields a positive rate. `floor` guards the logarithm
-/// against a level whose estimate lands on zero.
+/// Least-squares slope of `log2 |v[l]|` against `l` over `lo..=hi`, negated so a decaying sequence
+/// yields a positive rate; `floor` guards the logarithm against a zero estimate.
 fn neg_log2_slope(v: &[f64], lo: usize, hi: usize, floor: f64) -> f64 {
   let xs = (lo..=hi).map(|l| l as f64).collect::<Vec<_>>();
   let ys = (lo..=hi)
@@ -337,7 +327,8 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   let tau = 1.0;
   let bs = bs_call(s0, k, r, sigma, tau);
 
-  // Fixed-level sampling to measure α and β, seeded: an unseeded stream made the rate estimates a coin flip.
+  // Fixed-level sampling to measure α and β, seeded: an unseeded stream made the rate estimates a
+  // coin flip.
   let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(2718));
   let n_per_level = 20_000;
   let max_level = 6;
@@ -383,13 +374,8 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     level_vars.push(var);
   }
 
-  // |E[Y_l]| ≈ C · 2^{-α·l} and Var[Y_l] ≈ C · 2^{-β·l}, so α and β are the
-  // negated slopes of log2 of each quantity against the level index. Giles
-  // (2015) §2.1 estimates them by least squares across all levels rather than
-  // by averaging consecutive log-ratios: at high levels the correction term is
-  // small enough that Monte Carlo noise dominates the denominator, and the
-  // pairwise estimator amplifies it. Across six seeds the pairwise α spanned
-  // 0.60 to 2.02 while the regression stayed inside 1.02 to 1.58.
+  // α, β: |E[Y_l]| ≈ C·2^{-α·l}, Var[Y_l] ≈ C·2^{-β·l}, fitted by least squares over all levels
+  // (Giles 2015, §2.1) since pairwise ratios amplify noise (six seeds: α 0.60–2.02 vs 1.02–1.58).
   let alpha_avg = neg_log2_slope(&level_means, 1, max_level, 1e-15);
   let beta_avg = neg_log2_slope(&level_vars, 1, max_level, 1e-30);
 
@@ -495,10 +481,8 @@ fn generate_gbm_paths(
   paths
 }
 
-/// Longstaff-Schwartz 2001 Table 1 benchmark (σ = 0.2, T = 1).
-///
-/// Finite-difference American put benchmarks:
-///   S=36 → 4.478,  S=38 → 3.250,  S=40 → 2.314,  S=42 → 1.617,  S=44 → 1.110
+/// Longstaff-Schwartz 2001 Table 1 benchmark (σ = 0.2, T = 1): finite-difference American put
+/// values S=36 → 4.478, 38 → 3.250, 40 → 2.314, 42 → 1.617, 44 → 1.110.
 ///
 /// Reference: Longstaff & Schwartz (2001), DOI: 10.1093/rfs/14.1.113, Table 1.
 #[test]

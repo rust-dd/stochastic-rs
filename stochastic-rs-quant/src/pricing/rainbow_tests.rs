@@ -239,7 +239,7 @@ mod construction_validation {
   /// a plausible `14.204697` against the correct `6.572032`.
   #[test]
   #[should_panic(
-    expected = "StulzRainbowPricer::new: sigma2 must be a non-negative volatility (got -0.3)"
+    expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = -0.3"
   )]
   fn stulz_rejects_a_negative_second_volatility() {
     let _ = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, 0.20, -0.30, 0.5);
@@ -248,7 +248,7 @@ mod construction_validation {
   /// `8.485818` on the `CallOnMin` leg, `3.445723` on `CallOnMax`.
   #[test]
   #[should_panic(
-    expected = "StulzRainbowPricer::new: sigma1 must be a non-negative volatility (got -0.2)"
+    expected = "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = -0.2"
   )]
   fn stulz_rejects_a_negative_first_volatility() {
     let _ = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, -0.20, 0.30, 0.5);
@@ -260,13 +260,13 @@ mod construction_validation {
   /// The same `rho` is a silent wrong number on the `PutOnMin` /
   /// `PutOnMax` legs, which route through `MargrabePricer`.
   #[test]
-  #[should_panic(expected = "StulzRainbowPricer::new: rho must be in [-1, 1] (got 5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 5.0")]
   fn stulz_rejects_a_correlation_above_one() {
     let _ = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.20, 0.30, 5.0);
   }
 
   #[test]
-  #[should_panic(expected = "StulzRainbowPricer::new: rho must be in [-1, 1] (got -5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -5.0")]
   fn stulz_rejects_a_correlation_below_minus_one() {
     let _ = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.20, 0.30, -5.0);
   }
@@ -287,7 +287,7 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "McRainbowPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
+    expected = "sigma[1] must satisfy `sigma[1].is_finite() && sigma[1] >= 0.0`, got sigma[1] = -0.3"
   )]
   fn mc_rainbow_rejects_a_negative_volatility() {
     let _ = McRainbowPricer::new(
@@ -299,7 +299,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "McRainbowPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn mc_rainbow_rejects_a_zero_path_count() {
     let _ = McRainbowPricer::new(
       RainbowPayoff::CallOnMin,

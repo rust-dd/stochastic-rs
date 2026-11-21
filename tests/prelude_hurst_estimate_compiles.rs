@@ -1,13 +1,5 @@
-//! Guards `stochastic_rs::prelude::*` against the gap this task found: the
-//! umbrella hub re-exported zero stats traits, so a consumer importing only
-//! the prelude could not write a first `.estimate()` call at all — a
-//! compile failure, not an inconvenience.
-//!
-//! This is that fresh consumer: nothing here is imported except the
-//! prelude (plus concrete, non-trait module paths for the process/
-//! estimator types themselves, which bring no methods into scope on their
-//! own). Before `HurstEstimator` was added to the prelude, this file did
-//! not compile — see `task-6-report.md` for the captured `E0599`.
+//! Guards the prelude against a missing stats trait: a consumer importing only
+//! `stochastic_rs::prelude::*` plus concrete module paths must still compile a first `.estimate()`.
 
 use stochastic_rs::prelude::*;
 use stochastic_rs::simd_rng::Deterministic;

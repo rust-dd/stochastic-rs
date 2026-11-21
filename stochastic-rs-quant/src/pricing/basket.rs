@@ -24,41 +24,60 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::rainbow::assert_volatilities;
 
 mod monte_carlo;
 
 pub use monte_carlo::BasketAverageType;
 pub use monte_carlo::McBasketPricer;
 
-/// Model-internal shape agreement for a basket pricer's three parameters.
-///
-/// The `who` prefix keeps the two callers' panic messages distinct, so a
-/// `should_panic` anchored on one cannot be satisfied by the other firing.
-fn assert_basket_shape(who: &str, weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
-  let n = sigma.len();
-  assert!(
-    weights.len() == n && rho.shape() == [n, n],
-    "{who}::new: weights, sigma and rho must agree on the asset count \
-     (got weights {}, sigma {n}, rho {:?})",
-    weights.len(),
-    rho.shape()
-  );
-}
-
-/// Range checks for a basket pricer's volatilities and correlation matrix.
-fn assert_basket_parameters(who: &str, sigma: &Array1<f64>, rho: &Array2<f64>) {
-  for (i, &v) in sigma.iter().enumerate() {
-    assert!(
-      v >= 0.0,
-      "{who}::new: sigma[{i}] must be a non-negative volatility (got {v})"
-    );
-  }
+/// One weight and one volatility per asset, a square `rho`, and each entry in its range.
+#[track_caller]
+fn assert_basket_model(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
+  assert_basket_shape(weights, sigma, rho);
+  assert_volatilities(sigma);
   for ((i, j), &v) in rho.indexed_iter() {
     assert!(
       (-1.0..=1.0).contains(&v),
-      "{who}::new: rho[{i}][{j}] must be in [-1, 1] (got {v})"
+      "rho[{i}][{j}] must satisfy `(-1.0..=1.0).contains(&rho[{i}][{j}])`, got rho[{i}][{j}] = {v:?}"
     );
   }
+}
+
+/// `weights` and `rho` agree with `sigma` on the asset count.
+fn assert_basket_shape(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
+  let (n, shape) = (sigma.len(), rho.dim());
+  assert!(
+    weights.len() == n,
+    "weights must satisfy `weights.len() == sigma.len()`, got weights.len() = {:?}",
+    weights.len()
+  );
+  assert!(
+    shape == (n, n),
+    "rho must satisfy `rho.dim() == (sigma.len(), sigma.len())`, got rho.dim() = {shape:?}"
+  );
+}
+
+/// A query's spot and yield vectors hold one entry per asset; the model's `pub` fields may have
+/// been written since `new`, so its shape is read again.
+fn assert_basket_query(
+  (weights, sigma, rho): (&Array1<f64>, &Array1<f64>, &Array2<f64>),
+  s: ArrayView1<'_, f64>,
+  q: ArrayView1<'_, f64>,
+) {
+  assert_basket_shape(weights, sigma, rho);
+  let (n, spots, yields) = (sigma.len(), s.len(), q.len());
+  assert!(
+    spots == n,
+    "s must satisfy `s.len() == sigma.len()`, got s.len() = {spots:?}"
+  );
+  assert!(
+    yields == n,
+    "q must satisfy `q.len() == sigma.len()`, got q.len() = {yields:?}"
+  );
 }
 
 /// Geometric basket call/put on $n$ correlated Gbm assets. Uses the fact
@@ -133,11 +152,10 @@ pub struct GeometricBasketPricer {
 }
 
 impl GeometricBasketPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
-  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and
+  /// `≥ 0` and `rho` in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
-    assert_basket_shape("GeometricBasketPricer", &weights, &sigma, &rho);
-    assert_basket_parameters("GeometricBasketPricer", &sigma, &rho);
+    assert_basket_model(&weights, &sigma, &rho);
     Self {
       weights,
       sigma,
@@ -145,15 +163,8 @@ impl GeometricBasketPricer {
     }
   }
 
-  /// Price either leg at one query point.
-  ///
-  /// Returns NaN when the basket volatility or `tau` is zero and the
-  /// geometric forward sits exactly at the strike (`d₁` is 0/0); any other
-  /// degenerate volatility prices the discounted intrinsic value.
-  ///
-  /// # Panics
-  /// If the query's spot or yield vector disagrees with the length the
-  /// weights, volatilities and correlation matrix fix between them.
+  /// Either leg: the payoff at `tau = 0`; NaN past expiry, for a spot or strike not positive before
+  /// it, or at zero volatility with the forward at the strike; panics on a mis-sized `s` or `q`.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -163,11 +174,20 @@ impl GeometricBasketPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    let n_assets = s.len();
-    assert_eq!(self.weights.len(), n_assets);
-    assert_eq!(self.sigma.len(), n_assets);
-    assert_eq!(q.len(), n_assets);
-    assert_eq!(self.rho.shape(), [n_assets, n_assets]);
+    let n_assets = self.sigma.len();
+    assert_basket_query((&self.weights, &self.sigma, &self.rho), s, q);
+    let spot = || {
+      (0..n_assets)
+        .map(|i| self.weights[i] * s[i].ln())
+        .sum::<f64>()
+        .exp()
+    };
+    if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
+      return value;
+    }
+    if not_positive(&[k]) || !s.iter().all(|&spot| spot > 0.0) {
+      return f64::NAN;
+    }
 
     // Geometric basket vol: sigma_G^2 = sum_i sum_j w_i w_j rho_{ij} sigma_i sigma_j
     let mut sigma_g_sq = 0.0;
@@ -277,11 +297,10 @@ pub struct ArithmeticBasketLevyPricer {
 }
 
 impl ArithmeticBasketLevyPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
-  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and
+  /// `≥ 0` and `rho` in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
-    assert_basket_shape("ArithmeticBasketLevyPricer", &weights, &sigma, &rho);
-    assert_basket_parameters("ArithmeticBasketLevyPricer", &sigma, &rho);
+    assert_basket_model(&weights, &sigma, &rho);
     Self {
       weights,
       sigma,
@@ -289,11 +308,8 @@ impl ArithmeticBasketLevyPricer {
     }
   }
 
-  /// Price either leg at one query point using Levy (1992) two-moment
-  /// lognormal approximation.
-  ///
-  /// Returns NaN when the two matched moments do not define a lognormal
-  /// (a non-positive `m2 / m1²`), rather than flooring the variance.
+  /// Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry, for a spot or
+  /// strike not positive, or where the moments define no lognormal; panics on a mis-sized `s`, `q`.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -303,6 +319,14 @@ impl ArithmeticBasketLevyPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
+    assert_basket_query((&self.weights, &self.sigma, &self.rho), s, q);
+    let spot = || (0..s.len()).map(|i| self.weights[i] * s[i]).sum::<f64>();
+    if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
+      return value;
+    }
+    if not_positive(&[k]) || !s.iter().all(|&spot| spot > 0.0) {
+      return f64::NAN;
+    }
     let m1 = first_moment(s, self.weights.view(), q, r, tau);
     let m2 = second_moment(
       s,
@@ -362,6 +386,20 @@ impl ArithmeticBasketLevyPricer {
   ) -> f64 {
     self.price_option(s, k, r, q, tau, OptionType::Put)
   }
+}
+
+/// [`expired`] over the rate and every asset's dividend yield.
+fn expired_basket(
+  tau: f64,
+  r: f64,
+  q: ArrayView1<'_, f64>,
+  payoff: impl FnOnce() -> f64,
+) -> Option<f64> {
+  if tau > 0.0 && tau < f64::INFINITY {
+    return None;
+  }
+  let rates = q.iter().copied().chain([r]).collect::<Vec<f64>>();
+  expired(tau, &rates, payoff)
 }
 
 fn first_moment(s: ArrayView1<f64>, w: ArrayView1<f64>, q: ArrayView1<f64>, r: f64, t: f64) -> f64 {

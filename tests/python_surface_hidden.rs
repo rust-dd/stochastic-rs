@@ -1,5 +1,5 @@
-//! The library crates' `python` feature is internal: every `pub mod python…`, `pyclass` attribute and
-//! `pub use` of a `python…` path outside a hidden `python` module is `#[doc(hidden)]`.
+//! The library crates' `python` feature is internal: every `pub mod python…`, `pyclass` attribute
+//! and `pub use` of a `python…` path outside a hidden `python` module is `#[doc(hidden)]`.
 
 use std::fs;
 use std::path::Path;

@@ -230,7 +230,7 @@ fn a_zero_intensity_bates_is_its_diffusion() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(9),
   );
   let [s, v] = p.sample();

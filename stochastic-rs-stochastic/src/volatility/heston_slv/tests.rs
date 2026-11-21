@@ -51,7 +51,7 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   )
   .sample();

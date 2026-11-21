@@ -65,7 +65,7 @@ guard!(squared_bessel, "SquaredBessel", |s| SquaredBessel::new(
   N,
   Some(1.0),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 
@@ -74,7 +74,7 @@ guard!(bessel, "Bessel", |s| Bessel::new(
   N,
   Some(1.0),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 
@@ -107,7 +107,7 @@ guard!(cir, "Cir", |s| Cir::new(
   N,
   Some(0.04),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 
@@ -134,7 +134,7 @@ guard!(fcir, "Fcir", |s| Fcir::new(
   N,
   Some(0.04),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 
@@ -145,7 +145,7 @@ guard!(feller_logistic, "FellerLogistic", |s| FellerLogistic::new(
   N,
   Some(0.04),
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::Absorption,
   s
 ));
 

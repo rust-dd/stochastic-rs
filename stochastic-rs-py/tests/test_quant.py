@@ -1,8 +1,5 @@
-"""Quant-surface pytest coverage.
-
-Exercises the analytic Black-Scholes-Merton pricer binding: ATM price
-range, monotonicity in strike, and the no-arbitrage call price bounds.
-"""
+"""Analytic Black-Scholes-Merton pricer binding: ATM price range, monotonicity in strike and the
+no-arbitrage call price bounds."""
 
 from __future__ import annotations
 
@@ -506,7 +503,7 @@ HESTON_MODEL = dict(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
     [
         (lambda: sr.BSMPricer(v=0.25, **CALL_PUT_QUERY), (7.356284457997674, 9.980504358377694)),
         (lambda: sr.BachelierPricer(v=20.0, **CALL_PUT_QUERY), (5.425620481356887, 8.049840381736892)),
-        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.2776906533992545, 7.067347664422634)),
+        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.153366046571449, 7.259388579304414)),
         (lambda: sr.BjerksundStensland2002Pricer(v=0.25, **CALL_PUT_QUERY), (7.35628449811837, 10.292928328280922)),
         (
             lambda: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, **CALL_PUT_QUERY),
@@ -546,15 +543,16 @@ def test_a_degenerate_sabr_vol_and_an_expired_option_keep_their_pairs():
 
 
 def test_the_jump_fourier_models_keep_their_keywords_and_prices():
+    # The pins are Lewis's integral by mpmath at 40 digits.
     bates = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, mu_j=-0.05, sigma_j=0.1)
     kw = sr.BatesFourier(**{"lambda": 0.5}, **bates)
-    assert kw.price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(5.684829693931341, rel=1e-12)
+    assert kw.price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(5.6848297048328975, rel=1e-12)
     positional = sr.BatesFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, -0.05, 0.1)
-    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(9.646596119102071, rel=1e-12)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(9.64659612731218, rel=1e-12)
     hkde = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, lam=0.5, p_up=0.4, eta1=10.0, eta2=5.0)
-    assert sr.HKDEFourier(**hkde).price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(6.559356757760902, rel=1e-12)
+    assert sr.HKDEFourier(**hkde).price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(6.559356772752303, rel=1e-12)
     positional = sr.HKDEFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, 0.4, 10.0, 5.0)
-    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(10.316255693798205, rel=1e-12)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(10.316255704617463, rel=1e-12)
     with pytest.raises(ValueError, match=r"lambda must satisfy `lambda\.is_finite\(\) && lambda >= 0\.0`, got lambda = -0\.5"):
         sr.HKDEFourier(**{**hkde, "lam": -0.5})
     with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`, got sigma = -0\.3"):

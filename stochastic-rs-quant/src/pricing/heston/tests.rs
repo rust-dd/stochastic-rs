@@ -277,134 +277,8 @@ fn heston_greeks_nan_at_degenerate_inputs() {
 
 /// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
 /// and a violated Feller condition.
-mod construction_validation {
-  use super::*;
-
-  #[test]
-  #[should_panic(expected = "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = -0.01")]
-  fn new_rejects_negative_v0() {
-    let _ = HestonPricer::new(HestonParams { v0: -0.01, ..P });
-  }
-
-  /// A NaN `v0` is caught before it reaches a price that would come back NaN with no origin.
-  #[test]
-  #[should_panic(expected = "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = NaN")]
-  fn new_rejects_nan_v0() {
-    let _ = HestonPricer::new(HestonParams { v0: f64::NAN, ..P });
-  }
-
-  /// `theta` is a variance, so it is checked like `v0`.
-  #[test]
-  #[should_panic(
-    expected = "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = -0.04"
-  )]
-  fn new_rejects_negative_theta() {
-    let _ = HestonPricer::new(HestonParams { theta: -0.04, ..P });
-  }
-
-  /// `C` divides by `σ²`: a `sigma == 0` would reach the caller as a NaN price naming no cause.
-  #[test]
-  #[should_panic(
-    expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0"
-  )]
-  fn new_rejects_zero_sigma() {
-    let _ = HestonPricer::new(HestonParams { sigma: 0.0, ..P });
-  }
-
-  #[test]
-  #[should_panic(
-    expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = -0.3"
-  )]
-  fn new_rejects_negative_sigma() {
-    let _ = HestonPricer::new(HestonParams { sigma: -0.3, ..P });
-  }
-
-  #[test]
-  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -1.5")]
-  fn new_rejects_out_of_range_rho() {
-    let _ = HestonPricer::new(HestonParams { rho: -1.5, ..P });
-  }
-
-  /// The admissible edges the validation must not swallow. `v0 == 0` is
-  /// separately relied on by `heston_greeks_nan_at_degenerate_inputs`.
-  #[test]
-  fn new_accepts_the_admissible_edges() {
-    let zero_variances = HestonPricer::new(HestonParams::new(0.0, 1.5, 0.0, 1e-12, -1.0));
-    assert_eq!(zero_variances.params.v0, 0.0);
-    assert_eq!(zero_variances.params.theta, 0.0);
-    assert_eq!(zero_variances.params.rho, -1.0);
-    assert_eq!(
-      HestonPricer::new(HestonParams { rho: 1.0, ..P }).params.rho,
-      1.0
-    );
-  }
-
-  #[test]
-  fn new_reads_back_exactly_the_parameters_it_took() {
-    let p = HestonParams::new(0.0123, -0.7, 0.0456, 0.789, 0.25);
-    let m = HestonPricer::new(p);
-    assert_eq!(m.params(), p);
-    assert_eq!(m.with_vol_risk_premium(0.5).params(), p);
-  }
-
-  /// A zero λ and the default are one model.
-  #[test]
-  fn vol_risk_premium_zero_is_the_default() {
-    let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
-    assert_eq!(
-      HestonPricer::new(P)
-        .with_vol_risk_premium(0.0)
-        .price_call(s, k, r, q, tau),
-      HestonPricer::new(P).price_call(s, k, r, q, tau)
-    );
-  }
-
-  /// `violation` is `new`'s first failing check in its panic's words, and a NaN is a violation.
-  #[test]
-  fn violation_names_the_first_failing_parameter() {
-    assert_eq!(P.violation(), None);
-    let nan_rho = HestonParams { rho: f64::NAN, ..P };
-    assert_eq!(
-      nan_rho.violation().as_deref(),
-      Some("rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = NaN")
-    );
-    let two = HestonParams {
-      v0: -0.01,
-      sigma: 0.0,
-      ..P
-    };
-    assert!(two.violation().unwrap().starts_with("v0 must satisfy"));
-    assert!(
-      HestonParams {
-        kappa: f64::INFINITY,
-        ..P
-      }
-      .violation()
-      .is_some()
-    );
-  }
-
-  /// Feller stays a warning condition: `2κθ = 0.04` against `σ² = 2.25`
-  /// violates it, and the model must still construct and price.
-  #[test]
-  fn new_does_not_enforce_feller() {
-    let m = HestonPricer::new(HestonParams::new(0.04, 0.5, 0.04, 1.5, -0.7));
-    let feller = 2.0 * m.params.kappa * m.params.theta;
-    assert!(
-      feller < m.params.sigma * m.params.sigma,
-      "not a Feller violation"
-    );
-    assert!(m.price_call(100.0, 100.0, 0.05, 0.0, 1.0).is_finite());
-  }
-
-  /// A `κ ≤ 0` is a non-stationary but well-defined affine model; the calibrator's `P_KAPPA`
-  /// floor is a search box, not a validity claim.
-  #[test]
-  fn new_does_not_constrain_kappa() {
-    let m = HestonPricer::new(HestonParams::new(0.04, -1.5, 0.04, 0.3, -0.7));
-    assert_eq!(m.params.kappa, -1.5);
-  }
-}
+mod construction_validation;
+mod evaluation_counts;
 
 /// `E₂[∫₀^τ v] = τ(v0·ℓ + κθτ·s)` against mpmath at 40 digits across `|x| = 1e-3`, `x = κτ`:
 /// `ℓ = (1 − e⁻ˣ)/x` alone at `θ = 0`, `s = (x − 1 + e⁻ˣ)/x²` alone at `v0 = 0`.
@@ -425,14 +299,16 @@ fn the_integrated_variance_mean_holds_its_digits_at_any_b_tau() {
     (-1.0114e-3, 1.0005058705314434, 0.5001686092973714),
   ];
   for (x, level, slope) in cases {
-    let kappa = 1.5_f64.copysign(x);
-    let tau = x / kappa;
+    // `b₂ = κ + λ` takes the sign of `x`; `κ` stays positive, so `κθ ≥ 0`.
+    let b = 1.5_f64.copysign(x);
+    let tau = x / b;
     let mean = |v0: f64, theta: f64| {
-      HestonPricer::new(HestonParams::new(v0, kappa, theta, 0.3, -0.7))
+      HestonPricer::new(HestonParams::new(v0, 1.5, theta, 0.3, -0.7))
+        .with_vol_risk_premium(b - 1.5)
         .mean_integrated_variance(2, tau)
     };
     let got_level = mean(1.0, 0.0) / tau;
-    let got_slope = mean(0.0, 1.0) / (kappa * tau * tau);
+    let got_slope = mean(0.0, 1.0) / (1.5 * tau * tau);
     assert!(
       (got_level / level - 1.0).abs() < 1e-12,
       "x = {x}: level {got_level} vs {level}"
@@ -454,7 +330,8 @@ fn the_control_variance_is_minus_twice_the_first_cumulant() {
     (0.5, 1e-3),
     (-0.4, 3.0),
   ] {
-    let params = HestonParams::new(0.04, kappa, 0.09, 0.3, -0.7);
+    let theta = if kappa < 0.0 { 0.0 } else { 0.09 };
+    let params = HestonParams::new(0.04, kappa, theta, 0.3, -0.7);
     let control = HestonPricer::new(params).mean_integrated_variance(2, tau);
     let c1 = crate::pricing::fourier::heston_cumulants(&params, tau).c1;
     assert_eq!(control, -2.0 * c1, "kappa = {kappa}, tau = {tau}");
@@ -469,11 +346,11 @@ fn the_integrand_shares_the_chf_riccati_exponent() {
   let pricer = HestonPricer::new(params);
   let factor_d = |xi: Complex64| crate::pricing::fourier::factor_cd(&params, 0.75, xi).1;
   for phi in [1e-8, 0.3, 7.0, 150.0] {
-    let (_, d2) = pricer.f_and_d(2, phi, 0.75, 100.0, 0.05, 0.02);
+    let (_, d2) = pricer.f_and_d(2, phi, 0.75);
     assert_eq!(d2, factor_d(Complex64::new(phi, 0.0)), "phi = {phi}");
   }
   for phi in [0.3, 7.0, 150.0] {
-    let (_, d1) = pricer.f_and_d(1, phi, 0.75, 100.0, 0.05, 0.02);
+    let (_, d1) = pricer.f_and_d(1, phi, 0.75);
     let want = factor_d(Complex64::new(phi, -1.0));
     assert!(
       (d1 - want).norm() <= 1e-14 * want.norm(),
@@ -500,22 +377,22 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
-  // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
+  // From `φ = 0`, as mpmath gives it at 30 digits: `44.2102926490`.
   let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
-    (v0_vega - 44.21029252905521).abs() < TOL,
+    (v0_vega - 44.2102926489992).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
     0.5179825268957217,
     0.025354655903697676,
-    17.684117011622085,
+    17.684117059600023,
     -5.490198593349759,
     34.92624529677357,
     0.18739798181670153,
     -0.13335185400364935,
-    45.78517450630034,
+    45.78517474306364,
     2.628564235038766,
   ];
   // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent

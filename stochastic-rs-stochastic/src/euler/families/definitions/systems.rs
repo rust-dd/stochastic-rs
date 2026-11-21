@@ -5,7 +5,7 @@ macro_rules! euler_systems {
       ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// `dS = μS dt + S√V dW`, `dV = κ(θ − V) dt + σV^p dB`, `corr(W, B) = ρ`, the variance
-  /// truncated at zero: Heston under Euler. The noises are drawn independently and correlated here.
+  /// absorbed at zero: Heston under Euler. The noises are drawn independently and correlated here.
   35 => Heston { mu, kappa, theta, sigma, rho, pow_v }
     state (s, v)
     noise (dw, dz)
@@ -17,8 +17,7 @@ macro_rules! euler_systems {
     }
     report { s, v },
 
-  /// [`Heston`](Family::Heston) with the variance reflected at zero instead
-  /// of truncated.
+  /// [`Heston`](Family::Heston) with the variance reflected at zero.
   36 => HestonReflected { mu, kappa, theta, sigma, rho, pow_v }
     state (s, v)
     noise (dw, dz)
@@ -69,8 +68,8 @@ macro_rules! euler_systems {
     }
     report { x, y },
 
-  /// Heston stepped in log-price, so `S` stays positive. The variance is truncated at zero and,
-  /// unlike the arithmetic form, the truncated value is what the next step starts from.
+  /// Heston stepped in log-price, so `S` stays positive. The variance is absorbed at zero: the
+  /// positive part is what the next step starts from.
   40 => LogHeston { drift, kappa, theta, xi, rho }
     state (s, v)
     noise (dw, dq)
@@ -97,7 +96,7 @@ macro_rules! euler_systems {
     report { s, v },
 
   /// Two independent square-root variance factors driving one spot, each correlated with the
-  /// spot's shock: the double Heston model, both variances truncated at zero.
+  /// spot's shock: the double Heston model, both variances absorbed at zero.
   42 => DoubleHeston {
     mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2
   }
@@ -131,8 +130,8 @@ macro_rules! euler_systems {
     }
     report { s, v1, v2 },
 
-  /// A Heston spot whose correlation with its variance is a mean-reverting process reported
-  /// through `tanh`. The log increment reads the correlation after its step, so it is bound once.
+  /// A Heston spot, its variance under full truncation, whose correlation with the variance is a
+  /// mean-reverting process reported through `tanh`, read after its step and so bound once.
   44 => StochasticCorrelationHeston {
     kappa_r, mu_r, sigma_r, kappa_v, mu_v, sigma_v, r, rho2
   }
@@ -150,10 +149,10 @@ macro_rules! euler_systems {
           + rho2 * sv * drho
           + indep * sv * dx_w
       ),
-      positive(vp + kappa_v * (mu_v - vp) * $dt + sigma_v * sv * dv_w),
+      v + kappa_v * (mu_v - vp) * $dt + sigma_v * sv * dv_w,
       xc
     }
-    report { s, v, tanh(x) },
+    report { s, positive(v), tanh(x) },
 
   /// `dr = (θ(t) − αr) dt + σ dW`: Hull-White, whose mean-reversion level is
   /// the time-varying coefficient the launch carries.
@@ -179,7 +178,7 @@ macro_rules! euler_systems {
     step { y * decay + $ct * pull + sigma_eff * dz }
     report { exp(y) },
 
-  /// A square-root diffusion shifted by a deterministic curve, truncated at
+  /// A square-root diffusion shifted by a deterministic curve, absorbed at
   /// zero before the shift: CIR++.
   48 => ShiftedSquareRoot { theta, mu, sigma }
     state (x)
@@ -236,7 +235,7 @@ macro_rules! euler_systems {
     report { x, $u },
 
   /// Two independent square-root factors whose sum, shifted by the curve, is the short rate:
-  /// two-factor CIR. A flag per factor picks reflection or truncation, sparing four families.
+  /// two-factor CIR. A flag per factor picks reflection or absorption, sparing four families.
   54 => TwoFactorSquareRoot {
     theta1, mu1, sigma1, theta2, mu2, sigma2, sym1, sym2
   }
@@ -266,7 +265,7 @@ macro_rules! euler_systems {
     report { r, x },
 
   /// Two Heston assets under one 4×4 Cholesky factor: both log-prices and both variances step
-  /// together, with every cross-correlation in one launch. The variances are truncated at zero.
+  /// together, with every cross-correlation in one launch. The variances are absorbed at zero.
   56 => TwoAssetHeston {
     mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
     l11, l21, l22, l31, l32, l33, l41, l42, l43, l44

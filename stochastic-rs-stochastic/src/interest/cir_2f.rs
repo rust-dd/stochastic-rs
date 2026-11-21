@@ -33,8 +33,8 @@ use crate::traits::ProcessExt;
 /// use stochastic_rs_stochastic::diffusion::cir::Cir;
 /// use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 /// use stochastic_rs_stochastic::params::VarianceBoundary;
-/// let floor = VarianceBoundary::Floor;
-/// let factor = |n| Cir::new(1.0_f64, 0.04, 0.2, n, Some(0.04), Some(1.0), floor, Unseeded);
+/// let absorption = VarianceBoundary::Absorption;
+/// let factor = |n| Cir::new(1.0_f64, 0.04, 0.2, n, Some(0.04), Some(1.0), absorption, Unseeded);
 /// let mut p = Cir2F::new(factor(10), factor(10), (|t: f64| t) as fn(f64) -> f64, Unseeded);
 /// p.x.n = 1000;
 /// ```
@@ -152,10 +152,25 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Cir2F<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let flag = |boundary| match boundary {
-      VarianceBoundary::Floor => T::zero(),
-      VarianceBoundary::Reflect => T::one(),
-    };
+    let ft = VarianceBoundary::FullTruncation;
+    if self.x.boundary == ft || self.y.boundary == ft {
+      let scheme = |boundary| match boundary {
+        VarianceBoundary::FullTruncation => T::zero(),
+        VarianceBoundary::Absorption => T::one(),
+        VarianceBoundary::Reflect => T::from_usize_(2),
+      };
+      return crate::euler::EulerSpec::TwoFactorSquareRootSchemes([
+        self.x.theta,
+        self.x.mu,
+        self.x.sigma,
+        self.y.theta,
+        self.y.mu,
+        self.y.sigma,
+        scheme(self.x.boundary),
+        scheme(self.y.boundary),
+      ]);
+    }
+    let flag = |boundary| T::from_usize_(usize::from(boundary == VarianceBoundary::Reflect));
     crate::euler::EulerSpec::TwoFactorSquareRoot {
       theta1: self.x.theta,
       mu1: self.x.mu,
@@ -169,16 +184,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x.x0.unwrap_or(T::zero())
+    self.initial_state()[0]
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.x.x0.unwrap_or(T::zero()),
-      self.y.x0.unwrap_or(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    let entered = |factor: &Cir<T, S>| factor.boundary.carried(factor.x0.unwrap_or(T::zero()));
+    [entered(&self.x), entered(&self.y), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -320,9 +331,9 @@ mod tests {
 
   #[test]
   fn default_time_horizon_is_one() {
-    let floor = VarianceBoundary::Floor;
-    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, floor, Unseeded);
-    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, floor, Unseeded);
+    let absorption = VarianceBoundary::Absorption;
+    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, absorption, Unseeded);
+    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, absorption, Unseeded);
     let model = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
 
     let out = model.sample();
@@ -341,7 +352,7 @@ mod tests {
       3,
       Some(0.0),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     );
     let y = Cir::new(
@@ -351,7 +362,7 @@ mod tests {
       4,
       Some(0.0),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     );
     let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
@@ -366,7 +377,7 @@ mod tests {
         32,
         Some(0.03),
         Some(1.0),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed_x),
       ),
       Cir::new(
@@ -376,7 +387,7 @@ mod tests {
         32,
         Some(0.02),
         Some(1.0),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed_y),
       ),
     )
@@ -419,7 +430,7 @@ mod tests {
         64,
         Some(0.05),
         Some(1.0),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(0),
       )
     };

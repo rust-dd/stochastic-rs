@@ -1,8 +1,5 @@
-//! Comparison tests for the cashflow engine.
-//!
-//! Fixed-leg PV and CMS forwards are verified against direct discounted-cashflow
-//! formulas. Floating coupon projection is verified against the multicurve
-//! forward-rate identity.
+//! Comparison tests for the cashflow engine: fixed-leg PV and CMS forwards against
+//! discounted-cashflow formulas, floating coupons against the multicurve forward identity.
 
 use chrono::NaiveDate;
 use ndarray::array;

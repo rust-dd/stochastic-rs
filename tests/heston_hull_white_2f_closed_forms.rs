@@ -405,7 +405,7 @@ fn feller_violated(seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   )
 }
 
-/// The Euler step floors the variance it stores, as `Heston`'s `Floor` step does: absorption
+/// The Euler step floors the variance it stores, as `Heston`'s `Absorption` step does: absorption
 /// in Lord et al.'s terms, which lifts `E[v_T]` above `θ` here; QE keeps the exact mean.
 /// Reference: Lord et al. (2010), Quant. Finance 10(2), 177-194, DOI 10.1080/14697680802392496
 #[test]
@@ -434,7 +434,7 @@ fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
       61,
       Some(5.0),
       HestonPow::Sqrt,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(seed + 1),
     )
     .sample_map(FELLER_PATHS, |[_, v]| v[60]);
@@ -450,11 +450,11 @@ fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
       z_from_theta(&qe).abs(),
     )
   });
-  println!("(|z| against Heston's Floor, Euler z from θ, QE |z| from θ): {runs:.2?}");
+  println!("(|z| against Heston's Absorption, Euler z from θ, QE |z| from θ): {runs:.2?}");
   let heston = best(runs.map(|(z, _, _)| z));
   assert!(
     heston < Z_MAX,
-    "every seed is {heston:.2} SE or more from Heston's Floor step"
+    "every seed is {heston:.2} SE or more from Heston's Absorption step"
   );
   let qe = best(runs.map(|(_, _, z)| z));
   assert!(qe < Z_MAX, "QE: every seed is {qe:.2} SE or more from θ");

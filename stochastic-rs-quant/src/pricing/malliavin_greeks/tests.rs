@@ -409,3 +409,25 @@ fn every_malliavin_greek_carries_its_standard_error() {
     );
   }
 }
+
+#[test]
+#[should_panic(expected = "n_steps must satisfy `n_steps >= 2`, got n_steps = 0")]
+fn the_gbm_greeks_refuse_a_grid_without_a_step() {
+  GbmMalliavinGreeks::new(0.2, 100.0, 100.0, 0.05, 0.0, 1.0, 100, 0);
+}
+
+#[test]
+#[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
+fn the_gbm_greeks_refuse_an_empty_sample() {
+  GbmMalliavinGreeks::new(0.2, 100.0, 100.0, 0.05, 0.0, 1.0, 0, 16);
+}
+
+#[test]
+fn the_gbm_greeks_constructor_builds_the_literal() {
+  let built = GbmMalliavinGreeks::new(0.2, 100.0, 105.0, 0.05, 0.01, 1.0, 64, 16);
+  assert_eq!(
+    (built.sigma, built.s, built.k, built.r, built.q, built.tau),
+    (0.2, 100.0, 105.0, 0.05, 0.01, 1.0)
+  );
+  assert_eq!((built.n_paths, built.n_steps), (64, 16));
+}

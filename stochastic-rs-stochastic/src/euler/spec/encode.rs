@@ -789,6 +789,31 @@ impl<T: FloatExt> EulerSpec<T> {
         values[8..].copy_from_slice(&l);
         (Family::LiborMarket4.code(), pad(values))
       }
+      EulerSpec::HestonFullTruncation(p) => (Family::HestonFullTruncation.code(), pad(p)),
+      EulerSpec::LogHestonFullTruncation(p) => (Family::LogHestonFullTruncation.code(), pad(p)),
+      EulerSpec::DoubleHestonFullTruncation(p) => {
+        (Family::DoubleHestonFullTruncation.code(), pad(p))
+      }
+      EulerSpec::TwoAssetHestonFullTruncation(p) => {
+        (Family::TwoAssetHestonFullTruncation.code(), pad(p))
+      }
+      EulerSpec::BatesJumpFullTruncation(p) => (Family::BatesJumpFullTruncation.code(), pad(p)),
+      EulerSpec::Bates1996FullTruncation(p) => (Family::Bates1996FullTruncation.code(), pad(p)),
+      EulerSpec::KouJumpHestonFullTruncation(p) => {
+        (Family::KouJumpHestonFullTruncation.code(), pad(p))
+      }
+      EulerSpec::ShiftedSquareRootFullTruncation(p) => {
+        (Family::ShiftedSquareRootFullTruncation.code(), pad(p))
+      }
+      EulerSpec::TwoFactorSquareRootSchemes(p) => {
+        (Family::TwoFactorSquareRootSchemes.code(), pad(p))
+      }
+      EulerSpec::SquaredBesselFullTruncation(p) => {
+        (Family::SquaredBesselFullTruncation.code(), pad(p))
+      }
+      EulerSpec::BesselFromSquaredFullTruncation(p) => {
+        (Family::BesselFromSquaredFullTruncation.code(), pad(p))
+      }
       EulerSpec::HestonHullWhite2F {
         kappa,
         theta,

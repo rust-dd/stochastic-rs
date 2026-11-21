@@ -136,12 +136,17 @@ Traps, each learned from a real failure:
   that is why the lifted value is `lv`.
 - **Noise components are increments `√dt · z`**, so a term the host adds as a
   standard normal is written `residual_sd * (de / sqrt(dt))`.
+- **A family's name is at most 31 characters at a three-digit code** (`digits(code) +
+  len(Name) ≤ 34`). rustfmt keeps a call's arguments on one line up to 60 columns, so a longer
+  name wraps the generated `entrypoint!(euler_N_0_0, Name, false, false);` line, and `build.rs`
+  reads a wrapped entry as stale under `METAL_OXIDE_ARTIFACTS=locked`.
+  `every_kernel_entry_stays_on_the_one_line_rustfmt_keeps` fails first.
 - **A family may keep more state slots than it reports** — `Family::components()`
   counts *report* expressions (planes written), `Family::slots()` counts *state*;
   `RoughHestonMemory` has four states, two reports.
 
 **2b. The `EulerSpec` variant.** `src/euler/spec.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (123 today, one-to-one) and
+`pub enum EulerSpec<T: FloatExt>` variant per family (134 today, one-to-one) and
 `src/euler/spec/encode.rs` its `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump

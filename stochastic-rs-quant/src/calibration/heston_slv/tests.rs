@@ -13,6 +13,7 @@ use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::LeverageSurface;
 use crate::pricing::slv::ParticleMethod;
+use crate::total_order::ascending;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
@@ -90,7 +91,7 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
       }
     }
   }
-  central.sort_by(f64::total_cmp);
+  central.sort_by(ascending);
   let median = central[central.len() / 2];
   let worst = central[central.len() - 1];
   assert!(
@@ -139,7 +140,7 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
       }
     }
   }
-  central.sort_by(f64::total_cmp);
+  central.sort_by(ascending);
   let median = central[central.len() / 2];
   let worst = central[central.len() - 1];
   assert!(

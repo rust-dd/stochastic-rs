@@ -1,4 +1,4 @@
-//! Euler scheme of the non-zero-mean fCIR, floored or reflected at zero as `diffusion::cir::Cir`.
+//! Euler scheme of the non-zero-mean fCIR under a `VarianceBoundary`, as `diffusion::cir::Cir`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t}\,dB_t^H
@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 /// use stochastic_rs_stochastic::params::VarianceBoundary;
-/// let boundary = VarianceBoundary::Floor;
+/// let boundary = VarianceBoundary::Absorption;
 /// let mut p = Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 10, None, None, boundary, Unseeded);
 /// p.n = 1000;
 /// ```
@@ -73,12 +73,13 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     Self::check_x0(x0);
     check_t(t);
     check_n(n);
-    if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
+    if T::from_usize_(2) * theta * mu < sigma.powi(2)
+      && boundary != VarianceBoundary::FullTruncation
+    {
       log::warn!(
         "Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         under VarianceBoundary::Floor; the path floors at zero on every \
-         boundary hit instead of reflecting — pass VarianceBoundary::Reflect \
-         for the standard sub-Feller mitigation"
+         under VarianceBoundary::{boundary:?}; the Euler path reaches zero and this \
+         boundary biases it there, full truncation least"
       );
     }
 
@@ -295,16 +296,14 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FcirSampler<'_, T, S, B> {
     let dt = p.fgn.dt();
     let fgn = p.fgn.try_noise(&self.seed)?;
 
-    out[0] = p.x0.unwrap_or(T::zero());
-    let mut prev = out[0];
+    let x0 = p.x0.unwrap_or(T::zero());
+    out[0] = p.boundary.observed(x0);
+    let mut prev = p.boundary.carried(x0);
     for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
-      let dfcir = p.theta * (p.mu - prev) * dt + p.sigma * prev.abs().sqrt() * *inc;
-      let next = match p.boundary {
-        VarianceBoundary::Floor => (prev + dfcir).max(T::zero()),
-        VarianceBoundary::Reflect => (prev + dfcir).abs(),
-      };
-      *dst = next;
-      prev = next;
+      let x = p.boundary.observed(prev);
+      let dfcir = p.theta * (p.mu - x) * dt + p.sigma * x.sqrt() * *inc;
+      prev = p.boundary.carried(prev + dfcir);
+      *dst = p.boundary.observed(prev);
     }
     Ok(())
   }
@@ -338,13 +337,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FcirSampler<'
   }
 }
 
-/// The Euler engine's view of fractional CIR, in the floored or the mirrored form by its boundary.
+/// The Euler engine's view of fractional CIR, in the form its boundary names.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Fcir<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::ReflectedSquareRoot {
+      VarianceBoundary::FullTruncation => crate::euler::EulerSpec::SquareRoot {
+        kappa: self.theta,
+        theta: self.mu,
+        sigma: self.sigma,
+      },
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::ReflectedSquareRoot {
         theta: self.theta,
         mu: self.mu,
         sigma: self.sigma,
@@ -358,7 +362,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.carried(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {
@@ -423,9 +427,8 @@ mod tests {
     );
   }
 
-  /// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
   #[test]
-  fn fcir_accepts_sub_feller_under_the_floor() {
+  fn fcir_accepts_sub_feller_under_absorption() {
     let fcir = Fcir::<f64, _>::new(
       0.7,
       0.5,
@@ -434,7 +437,7 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(7),
     );
     let path = fcir.sample();

@@ -137,10 +137,10 @@ impl<S: SeedExt> HestonSlvPricer<S> {
 
         let l = self.leverage.interpolate(s_curr, t);
 
-        v = (v
+        // Full truncation, as `HestonSlv` steps: `v` keeps its sign and every read is `v_pos`.
+        v = v
           + self.params.heston.kappa * (self.params.heston.theta - v_pos) * dt
-          + sigma_mixed * sqrt_v * dw_v)
-          .max(0.0);
+          + sigma_mixed * sqrt_v * dw_v;
 
         let drift = (r - q) - 0.5 * l * l * v_pos;
         x += drift * dt + l * sqrt_v * dw_x;

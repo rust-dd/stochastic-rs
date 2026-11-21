@@ -5,12 +5,16 @@
 //! $$
 //!
 use std::f64::consts::FRAC_1_PI;
-use std::ops::Range;
 
 use num_complex::Complex64;
-use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
-use super::cf_quadrature::integrate_to_convergence;
+use super::cf_quadrature::CONTROL_VARIANCE_CAP;
+use super::cf_quadrature::Inversion;
+use super::cf_quadrature::Walk;
+use super::cf_quadrature::gaussian_share;
+use super::cf_quadrature::head_floor;
+use super::cf_quadrature::reach_and_scale;
 use super::fourier::mean_integrated_variance;
 use super::fourier::riccati_cd;
 use crate::CallPut;
@@ -24,22 +28,11 @@ mod params;
 
 pub use params::HestonParams;
 
-/// Where the `P_j` integrals start: Gil–Pelaez's lower limit.
-const LOWER_LIMIT: f64 = 1e-8;
-/// Each panel's target for the tanh-sinh rule's last level difference; measured within `3.1e-9` on
-/// 2,420 prices and `1.4e-8` on 3,208 strikes, on a spot of 100.
-const REST_TOLERANCE: f64 = 1e-10;
-/// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
-/// sub-panel: the control variate keeps this variance and no longer matches the mean.
-const CONTROL_VARIANCE_CAP: f64 = 2e3;
-/// The `E_j[∫v]` up to which the head the unmatched mean leaves below `LOWER_LIMIT` is its first
-/// order, `LOWER_LIMIT·u_j·(E_j[∫v] − w)`, to 5.9e-6 on a spot of 100; 5.7e-3 at `1e6`.
-const EXPECTED_VARIANCE_BOUND: f64 = 1e5;
-/// `√w` at which the walk, which ends near `φ = 8,000`, stops inside the Gaussian, `1/√w` wide,
-/// with an integrand it can no longer neglect.
-const UNCOVERED: Range<f64> = 1e-5..1e-3;
-/// Standard deviations `√w` from the money past which `P_j` is its Gaussian share to rounding.
-const FAR: f64 = 60.0;
+#[cfg(test)]
+thread_local! {
+  /// This thread's `f_and_d` calls, the cost the evaluation-count tests hold.
+  static EVALUATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -90,8 +83,8 @@ impl HestonPricer {
     self.lambda
   }
 
-  /// Call and put from one pair `P_1`, `P_2`: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
-  /// past `1e5`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
+  /// Call and put from one pair `P_1`, `P_2`: NaN for a negative or NaN `tau` or a non-finite
+  /// `E_j[∫₀^τ v]`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -111,9 +104,9 @@ impl HestonPricer {
         put: payoff(OptionType::Put),
       };
     }
-    let scale = self.rest_scale(tau, s, k, r, q);
-    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), scale)
-      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), scale);
+    let reach = self.reach(tau, (s, k, r, q));
+    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), reach)
+      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), reach);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
     CallPut { call, put }
@@ -154,14 +147,15 @@ impl ModelPricer for HestonPricer {
 impl VanillaEuropeanCall for HestonPricer {}
 
 impl HestonPricer {
-  /// `∂C/∂v₀ = ∂P/∂v₀` under the Fourier integral as `D_j f_j`, no finite difference; NaN for
+  /// `∂C/∂v₀ = ∂P/∂v₀`, the price's own split differentiated in `v₀`, no finite difference; NaN for
   /// `tau ≤ 0` or a NaN `tau`, as an expired option has a value and no sensitivity.
   pub fn initial_variance_vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau.is_nan() || tau <= 0.0 {
       return f64::NAN;
     }
-    s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, s, k, r, q)
-      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, s, k, r, q)
+    let reach = self.reach(tau, (s, k, r, q));
+    s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, (s, k, r, q), reach)
+      - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, (s, k, r, q), reach)
   }
 
   pub(self) fn u(&self, j: u8) -> f64 {
@@ -180,9 +174,9 @@ impl HestonPricer {
     }
   }
 
-  /// `(f_j, D_j)` at `φ`: the chf's own exponent at `β = b_j − iρσφ`, `m = φ² − 2iu_jφ`, which for
-  /// `j = 1` is the chf at `φ − i`, the share measure's.
-  fn f_and_d(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> (Complex64, Complex64) {
+  /// `(f_j, D_j)` at `φ`, `f_j` of `ln(S_T/F)`: the chf's own exponent at `β = b_j − iρσφ`,
+  /// `m = φ² − 2iu_jφ`, which for `j = 1` is the chf at `φ − i`, the share measure's.
+  fn f_and_d(&self, j: u8, phi: f64, tau: f64) -> (Complex64, Complex64) {
     let HestonParams {
       v0,
       kappa,
@@ -190,12 +184,13 @@ impl HestonPricer {
       sigma,
       rho,
     } = self.params;
+    #[cfg(test)]
+    EVALUATIONS.with(|n| n.set(n.get() + 1));
     let i = Complex64::i();
     let beta = self.b(j) - rho * sigma * i * phi;
     let moment = Complex64::new(phi * phi, -2.0 * self.u(j) * phi);
     let (big_c, big_d) = riccati_cd(beta, moment, kappa * theta, sigma * sigma, tau);
-    let ln_forward = s.ln() + (r - q) * tau;
-    ((big_c + big_d * v0 + i * phi * ln_forward).exp(), big_d)
+    ((big_c + big_d * v0).exp(), big_d)
   }
 
   /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`, its Gaussian control variate's variance: the
@@ -207,90 +202,95 @@ impl HestonPricer {
     mean_integrated_variance(v0, self.b(j), kappa * theta, tau)
   }
 
-  pub(self) fn re(
-    &self,
-    j: u8,
-    tau: f64,
-    (s, k, r, q): (f64, f64, f64, f64),
-    control_variance: f64,
-  ) -> impl Fn(f64) -> f64 {
-    let self_ = *self;
-    let ln_forward = s.ln() + (r - q) * tau;
-    move |phi: f64| -> f64 {
-      let i_phi = Complex64::i() * phi;
-      let gaussian =
-        (i_phi * ln_forward + (self_.u(j) * i_phi - 0.5 * phi * phi) * control_variance).exp();
-      let (f, _) = self_.f_and_d(j, phi, tau, s, r, q);
-      ((f - gaussian) * (-i_phi * k.ln()).exp() / i_phi).re
+  /// The walk's `(reach, scale)`, from the chf's decay and `κ = ln(K/F)`; one for both `P_j`.
+  fn reach(&self, tau: f64, (s, k, r, q): (f64, f64, f64, f64)) -> (f64, f64) {
+    let kappa = (k / s).ln() - (r - q) * tau;
+    reach_and_scale(|phi| self.f_and_d(2, phi, tau).0.norm(), kappa)
+  }
+
+  /// `(w, ∂w/∂v₀)`: `E_j[∫v]`, the Gaussian control's variance, held at the cap past it.
+  fn control(&self, j: u8, tau: f64) -> (f64, f64) {
+    let expected = self.mean_integrated_variance(j, tau);
+    if expected > CONTROL_VARIANCE_CAP {
+      (CONTROL_VARIANCE_CAP, 0.0)
+    } else {
+      (expected, mean_integrated_variance(1.0, self.b(j), 0.0, tau))
     }
   }
 
-  fn re_initial_variance_derivative(
-    &self,
-    j: u8,
-    tau: f64,
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-  ) -> impl Fn(f64) -> f64 {
-    let self_ = *self;
-    move |phi: f64| -> f64 {
-      let (f, big_d) = self_.f_and_d(j, phi, tau, s, r, q);
-      (big_d * f * (-Complex64::i() * phi * k.ln()).exp() / (Complex64::i() * phi)).re
-    }
-  }
-
-  /// The factor that rescales `φ` so that the walk ends past the Gaussian, one for both `P_j`;
-  /// `None` where nothing is left to integrate, `FAR` from the money at a `√w` in `UNCOVERED`.
-  fn rest_scale(&self, tau: f64, s: f64, k: f64, r: f64, q: f64) -> Option<f64> {
-    let root = self.mean_integrated_variance(2, tau).sqrt();
-    // A chf that outlasts the Gaussian (`v0 ≪ σ²τ`) has no such scale, and `φ` stays as it is.
-    if !UNCOVERED.contains(&root) || self.f_and_d(2, 8.0 / root, tau, s, r, q).0.norm() >= 1e-8 {
-      return Some(1.0);
-    }
-    let log_moneyness = (s / k).ln() + (r - q) * tau;
-    (log_moneyness.abs() <= FAR * root).then_some(1e-2 / root)
-  }
-
-  /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`, a
-  /// step at `w = 0`: the rest vanishes at `φ → 0`, and almost everywhere at a `τ` of seconds.
+  /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`.
   pub(self) fn p(
     &self,
     j: u8,
     tau: f64,
     (s, k, r, q): (f64, f64, f64, f64),
-    scale: Option<f64>,
+    (reach, scale): (f64, f64),
   ) -> f64 {
-    let expected = self.mean_integrated_variance(j, tau);
-    if !expected.is_finite() || expected > EXPECTED_VARIANCE_BOUND {
+    if !self.mean_integrated_variance(j, tau).is_finite() {
       return f64::NAN;
     }
-    let w = expected.min(CONTROL_VARIANCE_CAP);
-    let log_moneyness = (s / k).ln() + (r - q) * tau + self.u(j) * w;
-    let d = if log_moneyness == 0.0 {
-      0.0
-    } else {
-      log_moneyness / w.sqrt()
+    let (w, _) = self.control(j, tau);
+    let mean = self.u(j) * w;
+    let kappa = (k / s).ln() - (r - q) * tau;
+    // The phase is `φκ`, `κ = ln(K/F)`: `φ ln F` and `φ ln K` apart round to 1e-8 rad at `φ = 1e7`.
+    let kernel = |phi: f64| Complex64::new(0.0, -phi * kappa).exp() / Complex64::new(0.0, phi);
+    let inversion = Inversion {
+      chf_part: |phi: f64| kernel(phi) * self.f_and_d(j, phi, tau).0,
+      control_part: |phi: f64| kernel(phi) * gaussian(phi, mean, w),
+      control_frequency: mean - kappa,
+      head_floor: Some(self.head_floor(j, tau)),
+      reach,
+      scale,
     };
-    let Some(scale) = scale else {
-      return norm_cdf(d);
-    };
-    let rest = self.re(j, tau, (s, k, r, q), w);
-    let scaled = |y: f64| scale * rest(scale * y);
-    let head = LOWER_LIMIT * self.u(j) * (expected - w);
-    let integral = integrate_to_convergence(scaled, LOWER_LIMIT / scale, REST_TOLERANCE);
-    norm_cdf(d) + FRAC_1_PI * (head + integral)
+    gaussian_share(kappa, mean, w) + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
   }
 
-  fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    FRAC_1_PI
-      * integrate_to_convergence(
-        self.re_initial_variance_derivative(j, tau, s, k, r, q),
-        LOWER_LIMIT,
-        1e-8,
-      )
+  /// `∂P_j/∂v₀`: the share's `n(d_j)∂d_j/∂v₀`, and under the integral `D_j f_j` less the control's.
+  fn p_initial_variance_derivative(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    (reach, scale): (f64, f64),
+  ) -> f64 {
+    if !self.mean_integrated_variance(j, tau).is_finite() {
+      return f64::NAN;
+    }
+    let (w, slope) = self.control(j, tau);
+    let u = self.u(j);
+    let kappa = (k / s).ln() - (r - q) * tau;
+    let kernel = |phi: f64| Complex64::new(0.0, -phi * kappa).exp() / Complex64::new(0.0, phi);
+    let inversion = Inversion {
+      chf_part: |phi: f64| {
+        let (f, big_d) = self.f_and_d(j, phi, tau);
+        kernel(phi) * big_d * f
+      },
+      control_part: |phi: f64| {
+        let exponent_slope = Complex64::new(-0.5 * phi * phi, u * phi) * slope;
+        kernel(phi) * gaussian(phi, u * w, w) * exponent_slope
+      },
+      control_frequency: u * w - kappa,
+      head_floor: Some(self.head_floor(j, tau)),
+      reach,
+      scale,
+    };
+    let share = if w > 0.0 {
+      norm_pdf((u * w - kappa) / w.sqrt()) * (u * w + kappa) / (2.0 * w * w.sqrt()) * slope
+    } else {
+      0.0
+    };
+    share + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
   }
+
+  /// Where `f_j` is within `1e-6` of its `φ → 0` limit 1.
+  fn head_floor(&self, j: u8, tau: f64) -> f64 {
+    head_floor(|phi| (self.f_and_d(j, phi, tau).0 - 1.0).norm())
+  }
+}
+
+/// The control's characteristic function of `ln(S_T/F) ~ N(mean, w)` at `φ`.
+fn gaussian(phi: f64, mean: f64, w: f64) -> Complex64 {
+  Complex64::new(-0.5 * phi * phi * w, phi * mean).exp()
 }
 
 #[cfg(test)]

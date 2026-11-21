@@ -1,9 +1,5 @@
-//! Integration tests for the market data framework.
-//!
-//! Covers reactive repricing through handles, SOFR/EURIBOR/TONAR factory
-//! conventions, FRA and money-market NPV reconciliation with the curve
-//! bootstrapper, and rate-helper driven curve construction reacting to
-//! quote updates.
+//! Integration tests for the market data framework: reactive repricing through handles, SOFR /
+//! EURIBOR / TONAR conventions, FRA and money-market NPV against the bootstrapper, rate helpers.
 
 use std::sync::Arc;
 

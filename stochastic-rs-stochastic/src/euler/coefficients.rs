@@ -1,6 +1,7 @@
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::*;
+use crate::params::VarianceBoundary;
 
 /// A process the device kernels can run: its coefficients, initial value, grid, horizon and the
 /// seed the launch derives from the process's seed source.
@@ -289,15 +290,20 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Ou<T,
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Cir<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
-    EulerSpec::SquareRoot {
-      kappa: self.theta,
-      theta: self.mu,
-      sigma: self.sigma,
+    let (theta, mu, sigma) = (self.theta, self.mu, self.sigma);
+    match self.boundary {
+      VarianceBoundary::FullTruncation => EulerSpec::SquareRoot {
+        kappa: theta,
+        theta: mu,
+        sigma,
+      },
+      VarianceBoundary::Absorption => EulerSpec::ReflectedSquareRoot { theta, mu, sigma },
+      VarianceBoundary::Reflect => EulerSpec::MirroredSquareRoot { theta, mu, sigma },
     }
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.carried(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {

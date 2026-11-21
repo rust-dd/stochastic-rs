@@ -34,7 +34,7 @@ fn heston(seed: u64) -> Heston<f64, Euler, Deterministic> {
     32,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(seed),
   )
 }

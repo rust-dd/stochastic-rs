@@ -4,6 +4,7 @@
 #![cfg(device_backend)]
 
 mod device_law {
+  pub(crate) mod boundaries;
   pub(crate) mod bounded;
   pub(crate) mod coefficients;
   pub(crate) mod common;
@@ -15,10 +16,12 @@ mod device_law {
   pub(crate) mod jumps;
   pub(crate) mod levy;
   pub(crate) mod memory;
+  pub(crate) mod negative_start;
   pub(crate) mod rows;
   pub(crate) mod seed;
   pub(crate) mod series;
   pub(crate) mod sheet;
   pub(crate) mod stable;
   pub(crate) mod systems;
+  pub(crate) mod truncation;
 }

@@ -32,7 +32,7 @@ fn bates_with_jumps(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(seed),
   )
 }
@@ -51,7 +51,7 @@ fn bates_lambda(lambda: f64, seed: u64) -> Bates<f64, SimdNormal<f64>, Determini
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(seed),
   )
 }

@@ -15,8 +15,8 @@ use stochastic_rs::simd_rng::Unseeded;
 
 use super::SIZES;
 
-/// The buffered stream, a bulk fill and the honest scalar draw on a `SimdRng`, against `rand_distr`'s same law on
-/// that `SimdRng`.
+/// The buffered stream, a bulk fill and the scalar draw on a `SimdRng`, against `rand_distr`'s same
+/// law on that `SimdRng`.
 macro_rules! bench_discrete {
   ($fn_name:ident, $group_name:expr, $law:expr, $rand_distr:expr) => {
     pub fn $fn_name(c: &mut Criterion) {

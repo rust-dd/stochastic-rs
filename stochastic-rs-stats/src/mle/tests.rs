@@ -139,7 +139,7 @@ fn mle_cir_euler_via_process_ext() {
     5001,
     Some(0.04),
     Some(20.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(55),
   );
   let path = cir.sample();
@@ -152,7 +152,7 @@ fn mle_cir_euler_via_process_ext() {
     100,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
@@ -250,7 +250,7 @@ fn density_cir_euler_reference() {
     100,
     Some(0.4),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let dt = 1.0 / 250.0;
@@ -271,7 +271,7 @@ fn density_cir_kessler_reference() {
     100,
     Some(0.4),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let dt = 1.0 / 250.0;
@@ -368,7 +368,7 @@ fn cir_kessler_mle() {
     1251,
     Some(0.4),
     Some(5.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let path = cir.sample();
@@ -381,7 +381,7 @@ fn cir_kessler_mle() {
     100,
     Some(0.4),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();

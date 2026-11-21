@@ -1,6 +1,8 @@
 macro_rules! euler_multifactor {
   ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
-    $emit! {
+    euler_truncations! {
+      $emit;
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// The two-dimensional Wishart process by the exact Ahdida–Alfonsi step: carried to
   /// `y = θ⁻¹ m X mᵀ θ⁻ᵀ`, stepped one coordinate at a time, and carried back by `θ Y θᵀ`.
@@ -94,7 +96,7 @@ macro_rules! euler_multifactor {
     lift { drift ($pv) diffusion ($pv2) shock (dz) },
 
   /// Heston stochastic-local volatility: the log-spot by Euler–Maruyama under the leverage `pv`,
-  /// the variance truncated at zero under the vol-of-vol `η σ` the host folds into `sigma`.
+  /// the variance under full truncation and the vol-of-vol `η σ` the host folds into `sigma`.
   120 => HestonSlv { mu, kappa, theta, sigma, rho }
     state (s, v)
     noise (dw, dz)
@@ -103,13 +105,13 @@ macro_rules! euler_multifactor {
       bind db = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dz;
       bind l = $pv;
       s * exp((mu - l * l * vp * lit(0.5)) * $dt + l * sqrt(vp) * dw),
-      positive(v + kappa * (theta - vp) * $dt + sigma * sqrt(vp) * db)
+      v + kappa * (theta - vp) * $dt + sigma * sqrt(vp) * db
     }
-    report { s, v },
+    report { s, positive(v) },
 
   /// Heston's log-spot on two-factor Hull-White rates by Euler, under one lower factor `l` of the
   /// `(x, v, r, u)` correlation; the spot reads the rate's trapezoid, the variance is truncated.
-  121 => HestonHullWhite2F {
+  132 => HestonHullWhite2F {
     kappa, theta, sigma, a, b, sigma1, sigma2, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33
   }
     state (y, v, r, w)
@@ -130,7 +132,7 @@ macro_rules! euler_multifactor {
 
   /// [`HestonHullWhite2F`](Family::HestonHullWhite2F) under Andersen's quadratic-exponential
   /// variance: `l` factors `(v, r, u, x)` with the rate-variance correlations zero.
-  122 => HestonHullWhite2FQe {
+  133 => HestonHullWhite2FQe {
     theta, e_kd, c1, c2, k0, k1, k2, a, b, sigma1, sigma2, l11, l21, l22, l31, l32, l33
   }
     state (y, v, r, w)

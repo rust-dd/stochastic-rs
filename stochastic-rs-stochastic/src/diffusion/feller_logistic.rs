@@ -99,11 +99,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::FellerLogistic {
-        kappa: self.kappa,
-        theta: self.theta,
-        sigma: self.sigma,
-      },
+      // Full truncation's negative state never moves again, so its report is absorption's.
+      VarianceBoundary::FullTruncation | VarianceBoundary::Absorption => {
+        crate::euler::EulerSpec::FellerLogistic {
+          kappa: self.kappa,
+          theta: self.theta,
+          sigma: self.sigma,
+        }
+      }
       VarianceBoundary::Reflect => crate::euler::EulerSpec::FellerLogisticReflected {
         kappa: self.kappa,
         theta: self.theta,
@@ -113,7 +116,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.observed(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {
@@ -216,20 +219,21 @@ impl<T: FloatExt> FellerLogisticSampler<T> {
     if out.is_empty() {
       return;
     }
-    out[0] = self.x0;
+    let mut prev = self.boundary.observed(self.x0);
+    out[0] = prev;
     if out.len() == 1 {
       return;
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    let mut prev = self.x0;
     for z in tail.iter_mut() {
       let xi = prev.max(T::zero());
       let drift = self.kappa * (self.theta - xi) * xi * self.dt;
       let diff = self.diff_scale * xi.sqrt() * *z;
+      // Zero absorbs this diffusion, so full truncation's stuck negative state reads as absorption.
       let next = xi + drift + diff;
       let clamped = match self.boundary {
-        VarianceBoundary::Floor => next.max(T::zero()),
+        VarianceBoundary::FullTruncation | VarianceBoundary::Absorption => next.max(T::zero()),
         VarianceBoundary::Reflect => next.abs(),
       };
       *z = clamped;

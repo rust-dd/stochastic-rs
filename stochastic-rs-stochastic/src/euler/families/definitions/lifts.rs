@@ -62,7 +62,7 @@ macro_rules! euler_lifts {
     report { x },
 
   /// Bates (1996) by Euler in the spot: the drift arrives compensated, the jump multiplies the
-  /// spot by `1 + js` under the product law `∏ (1 + y_j) − 1`, and the variance is truncated.
+  /// spot by `1 + js` under the product law `∏ (1 + y_j) − 1`, and the variance is absorbed.
   99 => Bates1996 { drift_c, alpha, beta, sigma, rho }
     state (s, v)
     noise (dw, dq)

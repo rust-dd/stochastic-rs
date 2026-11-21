@@ -106,7 +106,7 @@ fn fcir_setters_match_fresh_construction() {
   .with_points(64)
   .with_x0(Some(0.04))
   .with_horizon(Some(1.0))
-  .with_boundary(VarianceBoundary::Floor)
+  .with_boundary(VarianceBoundary::Absorption)
   .with_seed(seed(7));
   let fresh = Fcir::<f64, _>::new(
     0.7,
@@ -116,7 +116,7 @@ fn fcir_setters_match_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed(7),
   );
 
@@ -131,7 +131,7 @@ fn fcir_setters_match_fresh_construction() {
   );
   assert_eq!(
     (chained.n(), chained.x0(), chained.t(), chained.boundary()),
-    (64, Some(0.04), Some(1.0), VarianceBoundary::Floor)
+    (64, Some(0.04), Some(1.0), VarianceBoundary::Absorption)
   );
   assert_eq!(chained.seed().current(), 7);
   assert_eq!(chained.sample(), fresh.sample());

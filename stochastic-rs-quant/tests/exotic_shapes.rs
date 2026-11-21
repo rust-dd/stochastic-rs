@@ -50,7 +50,7 @@ const fn pair(call: f64, put: f64) -> CallPut {
 }
 
 const HESTON_LAMBDA: CallPut = pair(5.081933443026998, 7.706153343407024);
-const HESTON_VEGA: f64 = 51.66113350364657;
+const HESTON_VEGA: f64 = 51.66113364237551;
 const MERTON: CallPut = pair(7.15321711897312, 9.777437019353142);
 const HSCM: CallPut = pair(5.383063358956783, 8.007283259336816);
 const MALLIAVIN: CallPut = pair(5.747134860337733, 8.371354760717765);
@@ -59,7 +59,7 @@ const KIRK: CallPut = pair(8.547483131757428, 3.6709335716157754);
 const SABR: CallPut = pair(5.633121359954366, 8.257341260334393);
 const SABR_BETA: CallPut = pair(5.529815233702159, 8.154035134082179);
 const BACHELIER: CallPut = pair(5.425620481356887, 8.049840381736892);
-const ASIAN: CallPut = pair(3.2776906533992545, 7.067347664422634);
+const ASIAN: CallPut = pair(3.153366046571449, 7.259388579304414);
 const QUANTO: CallPut = pair(8.111646452569918, 12.84376640716852);
 const BS2002: CallPut = pair(7.35628449811837, 10.292928328280922);
 const LAMBDA_CALL: f64 = 6.625327774385489;
@@ -316,10 +316,9 @@ fn the_other_carries_and_the_edges_keep_their_values() {
   );
   let malliavin = GbmMalliavinPricer::new(0.2, 400, 64, 0.25).with_seed(Deterministic::new(7));
   let zero_spot = malliavin.price_call_put_localized(0.0, K, R, Q, TAU);
-  assert_pinned(
-    zero_spot,
-    pair(0.0, 101.13541386068628),
-    "malliavin at zero spot",
+  assert!(
+    zero_spot.call.is_nan() && zero_spot.put.is_nan(),
+    "{zero_spot:?}"
   );
   let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);
   let far_out = hscm.price_call_put(S, 400.0, R, Q, 0.05);
@@ -406,7 +405,7 @@ fn the_jump_models_hold_their_params_privately() {
   assert_eq!(bates.params(), svj);
   assert_pinned_value(
     bates.price_call(S, K, R, Q, TAU),
-    5.6848296939312775,
+    5.684829704832908,
     "bates",
   );
   let hkde_params = HkdeParams {
@@ -422,7 +421,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let hkde = HkdeFourier::new(hkde_params);
   assert_eq!(hkde.params(), hkde_params);
-  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838, "hkde");
+  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356772752325, "hkde");
 }
 
 #[test]

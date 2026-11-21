@@ -205,7 +205,7 @@ refuses! {
   a_fractional_sheet_refuses_a_nan_hurst: "hurst must satisfy `hurst.is_finite()`, got hurst = NaN"
     => Fbs::<f64>::new(f64::NAN, 16, 16, 1.0, Unseeded);
   a_volatility_model_refuses_a_nan_correlation: "rho must satisfy `rho.is_finite()`, got rho = NaN"
-    => Heston::<f64>::new(100.0, 0.04, 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
+    => Heston::<f64>::new(100.0, 0.04, 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, VarianceBoundary::Absorption, Unseeded);
   a_volterra_kernel_refuses_a_nan_weight: "c must satisfy `c.is_finite()`, got c = NaN"
     => ExponentialKernel::<f64>::new(1.0, f64::NAN);
   a_volterra_volatility_refuses_a_nan_level: "theta must satisfy `theta.is_finite()`, got theta = NaN"
@@ -258,28 +258,28 @@ refuses! {
   a_log_price_model_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
     => GbmLog::<f64>::new(Drift::Mu(0.05), 0.2, 64, 0.0, None, Unseeded);
   a_log_heston_refuses_a_negative_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = -1.0"
-    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, -1.0, 0.04, None, VarianceBoundary::Floor, Unseeded);
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, -1.0, 0.04, None, VarianceBoundary::Absorption, Unseeded);
   a_log_jump_diffusion_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
     => MjdLog::<f64>::new(Drift::Mu(0.05), 0.2, 1.0, 0.0, 0.1, 64, 0.0, None, Unseeded);
   a_double_exponential_heston_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
-    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 0.0, None, VarianceBoundary::Floor, Unseeded);
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 0.0, None, VarianceBoundary::Absorption, Unseeded);
   the_log_heston_spot_setter_checks_its_value: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
-    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_s0(0.0);
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded).with_s0(0.0);
   the_double_exponential_heston_spot_setter_checks_its_value: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
-    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_s0(0.0);
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Absorption, Unseeded).with_s0(0.0);
   a_bates_model_refuses_a_negative_initial_variance: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
-    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, -0.01, None, VarianceBoundary::Floor, Unseeded);
+    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, -0.01, None, VarianceBoundary::Absorption, Unseeded);
   a_double_exponential_heston_refuses_a_negative_initial_variance: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
-    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, -0.01, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded);
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, -0.01, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Absorption, Unseeded);
   the_bates_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
-    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
+    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded).with_v0(-0.01);
   the_double_exponential_heston_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
-    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Absorption, Unseeded).with_v0(-0.01);
 
   a_bates_model_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
-    => Bates::<f64>::new(Drift::Mu(0.05), -0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded);
+    => Bates::<f64>::new(Drift::Mu(0.05), -0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded);
   the_bates_intensity_setter_checks_its_value: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
-    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_lambda(-0.5);
+    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded).with_lambda(-0.5);
   a_merton_model_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
     => Merton::<f64, SimdNormal<f64>>::new(0.05, 0.2, -0.5, 0.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
   the_merton_intensity_setter_checks_its_value: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
@@ -340,7 +340,7 @@ refuses! {
   a_sabr_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
     => Sabr::<f64>::default().with_points(0);
   a_bates_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
-    => Bates::<f64, _>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.7, SimdNormal::new(0.0, 1.0), 64, 100.0, 0.04, Some(1.0), VarianceBoundary::Floor, Unseeded).with_points(0);
+    => Bates::<f64, _>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.7, SimdNormal::new(0.0, 1.0), 64, 100.0, 0.04, Some(1.0), VarianceBoundary::Absorption, Unseeded).with_points(0);
   a_bergomi_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
     => Bergomi::<f64>::default().with_points(0);
   a_rough_bergomi_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
@@ -364,11 +364,11 @@ refuses! {
   the_gbm_start_setter_checks_positivity: "x0 must satisfy `x0 > T::zero()`, got x0 = 0.0"
     => Gbm::<f64>::default().with_x0(0.0);
   the_log_heston_spot_setter_checks_finiteness: "s0 must satisfy `s0.is_finite()`, got s0 = inf"
-    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_s0(f64::INFINITY);
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded).with_s0(f64::INFINITY);
   the_bates_variance_setter_checks_finiteness: "v0 must satisfy `v0.is_finite()`, got v0 = inf"
-    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(f64::INFINITY);
+    => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Absorption, Unseeded).with_v0(f64::INFINITY);
   the_double_exponential_heston_spot_setter_checks_finiteness: "s0 must satisfy `s0.is_finite()`, got s0 = inf"
-    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_s0(f64::INFINITY);
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Absorption, Unseeded).with_s0(f64::INFINITY);
   a_bessel_setter_refuses_a_nan_dimension: "delta must satisfy `delta.is_finite()`, got delta = NaN"
     => Bessel::<f64>::default().with_delta(f64::NAN);
   a_squared_bessel_setter_refuses_a_nan_start: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
@@ -394,7 +394,7 @@ refuses! {
   a_fractional_jacobi_setter_refuses_a_nan_start: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
     => Fjacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Unseeded).with_x0(Some(f64::NAN));
   a_fractional_cir_setter_refuses_a_nan_speed: "theta must satisfy `theta.is_finite()`, got theta = NaN"
-    => Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 16, None, None, VarianceBoundary::Floor, Unseeded).with_theta(f64::NAN);
+    => Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 16, None, None, VarianceBoundary::Absorption, Unseeded).with_theta(f64::NAN);
   a_fractional_gbm_setter_refuses_a_nan_drift: "mu must satisfy `mu.is_finite()`, got mu = NaN"
     => Fgbm::<f64>::new(0.7, 0.05, 0.2, 16, None, None, Unseeded).with_mu(f64::NAN);
   a_fractional_ou_setter_refuses_a_nan_volatility: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"

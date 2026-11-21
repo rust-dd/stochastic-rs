@@ -115,6 +115,15 @@ pub(super) fn every_three_component_family() -> Vec<SystemProbe<3>> {
       lift: None,
       program: None,
     },
+    // Sub-Feller, so both signed variances go below zero.
+    SystemProbe {
+      spec: EulerSpec::DoubleHestonFullTruncation([
+        0.03, 0.5, 0.04, 1.0, -0.7, 0.4, 0.02, 0.8, -0.3,
+      ]),
+      x0: [100.0, 0.04, 0.02],
+      lift: None,
+      program: None,
+    },
   ]
 }
 
@@ -252,6 +261,16 @@ pub(super) fn every_four_component_family() -> Vec<SystemProbe<4>> {
         rho: -0.6,
       },
       x0: [100.0, 0.04, 0.0, 0.0],
+      lift: None,
+      program: None,
+    },
+    // Sub-Feller, under a lower Cholesky factor with unit rows.
+    SystemProbe {
+      spec: EulerSpec::TwoAssetHestonFullTruncation([
+        0.03, 0.02, 0.5, 0.04, 1.0, 0.4, 0.03, 0.8, 1.0, -0.6, 0.8, 0.3, 0.2, 0.93, 0.1, 0.1, 0.2,
+        0.97,
+      ]),
+      x0: [4.6, 0.04, 4.6, 0.03],
       lift: None,
       program: None,
     },

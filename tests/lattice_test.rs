@@ -1,7 +1,5 @@
-//! Comparison tests for the lattice framework.
-//!
-//! Binomial pricing is verified against Black-Scholes. Short-rate trees are
-//! checked against analytic Gaussian-model bond prices or deterministic limits.
+//! Comparison tests for the lattice framework: binomial pricing against Black-Scholes, short-rate
+//! trees against analytic Gaussian-model bond prices or deterministic limits.
 
 use ndarray::Array1;
 use stochastic_rs::quant::calibration::BlackKarasinskiParams;

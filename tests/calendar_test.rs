@@ -1,7 +1,5 @@
-//! Comparison tests for the calendar module.
-//!
-//! Day count values verified against ISDA 2006 worked examples and QuantLib.
-//! Holiday dates verified against published exchange calendars.
+//! Comparison tests for the calendar module: day counts against ISDA 2006 worked examples and
+//! QuantLib, holiday dates against published exchange calendars.
 
 use chrono::Datelike;
 use chrono::NaiveDate;
@@ -35,9 +33,8 @@ fn act_365_year_fraction() {
 
 #[test]
 fn thirty360_year_fraction() {
-  // QuantLib: 30/360 Bond Basis, 2024-01-31 to 2024-07-31
-  // d1=31→30, d2=31 and d1==30 → d2=30
-  // 360*(0) + 30*(6) + (30-30) = 180 → 180/360 = 0.5
+  // QuantLib 30/360 Bond Basis, 2024-01-31 to 2024-07-31: d1=31→30, d2=31 and d1==30 → d2=30,
+  // so 360*0 + 30*6 + (30-30) = 180 → 180/360 = 0.5.
   let yf: f64 = DayCountConvention::Thirty360.year_fraction(d(2024, 1, 31), d(2024, 7, 31));
   assert!((yf - 0.5).abs() < 1e-12);
 }
@@ -68,10 +65,8 @@ fn act_act_isda_same_year() {
 
 #[test]
 fn act_act_isda_cross_year() {
-  // 2023 (non-leap) to 2024 (leap)
-  // 2023-11-01 to 2024-05-01
-  // 2023 portion: Nov 1 to Jan 1 = 61 days / 365
-  // 2024 portion: Jan 1 to May 1 = 121 days / 366
+  // 2023-11-01 to 2024-05-01 crosses into a leap year: 61 days of 2023 (Nov 1 to Jan 1) over 365
+  // plus 121 days of 2024 (Jan 1 to May 1) over 366.
   let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2023, 11, 1), d(2024, 5, 1));
   let expected = 61.0 / 365.0 + 121.0 / 366.0;
   assert!((yf - expected).abs() < 1e-12);
@@ -306,9 +301,8 @@ fn business_days_between() {
 #[test]
 fn advance_business_days() {
   let cal = Calendar::new(HolidayCalendar::UnitedStates);
-  // Advance 5 biz days from Friday Jan 12, 2024
-  // Sat 13 skip, Sun 14 skip, Mon 15 MLK skip, Tue 16 (1), Wed 17 (2),
-  // Thu 18 (3), Fri 19 (4), Sat 20 skip, Sun 21 skip, Mon 22 (5)
+  // Advance 5 business days from Fri 2024-01-12: the weekends and Mon 15 (MLK) are skipped, so Tue
+  // 16 is day 1 and Mon 22 is day 5.
   let result = cal.advance(d(2024, 1, 12), 5);
   assert_eq!(result, d(2024, 1, 22));
 }

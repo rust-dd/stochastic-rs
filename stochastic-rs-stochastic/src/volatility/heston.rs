@@ -125,7 +125,7 @@ impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
       252,
       Some(T::one()),
       HestonPow::Sqrt,
-      VarianceBoundary::Floor,
+      VarianceBoundary::default(),
       Unseeded,
     )
   }
@@ -314,8 +314,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       HestonPow::Sqrt => T::from_f64_fast(0.5),
       HestonPow::ThreeHalves => T::from_f64_fast(1.5),
     };
+    let (mu, kappa, theta, sigma, rho) = (self.mu, self.kappa, self.theta, self.sigma, self.rho);
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::Heston {
+      VarianceBoundary::FullTruncation => {
+        crate::euler::EulerSpec::HestonFullTruncation([mu, kappa, theta, sigma, rho, pow_v])
+      }
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::Heston {
         mu: self.mu,
         kappa: self.kappa,
         theta: self.theta,

@@ -196,14 +196,14 @@ mod construction_validation {
   /// degenerate branch turns that into the discounted intrinsic: `10.0`
   /// against `16.190433`.
   #[test]
-  #[should_panic(expected = "MargrabePricer::new: rho must be in [-1, 1] (got 5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 5.0")]
   fn margrabe_rejects_a_correlation_above_one() {
     let _ = MargrabePricer::new(0.25, 0.20, 5.0);
   }
 
   /// `rho = -5` merely inflates the variance: `36.943253`.
   #[test]
-  #[should_panic(expected = "MargrabePricer::new: rho must be in [-1, 1] (got -5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -5.0")]
   fn margrabe_rejects_a_correlation_below_minus_one() {
     let _ = MargrabePricer::new(0.25, 0.20, -5.0);
   }
@@ -212,7 +212,7 @@ mod construction_validation {
   /// combined variance the same way, so both are checked.
   #[test]
   #[should_panic(
-    expected = "MargrabePricer::new: sigma1 must be a non-negative volatility (got -0.25)"
+    expected = "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = -0.25"
   )]
   fn margrabe_rejects_a_negative_first_volatility() {
     let _ = MargrabePricer::new(-0.25, 0.20, 0.4);
@@ -220,14 +220,14 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "MargrabePricer::new: sigma2 must be a non-negative volatility (got -0.2)"
+    expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = -0.2"
   )]
   fn margrabe_rejects_a_negative_second_volatility() {
     let _ = MargrabePricer::new(0.25, -0.20, 0.4);
   }
 
   #[test]
-  #[should_panic(expected = "MargrabePricer::new: rho must be in [-1, 1] (got NaN)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = NaN")]
   fn margrabe_rejects_a_nan_correlation() {
     let _ = MargrabePricer::new(0.25, 0.20, f64::NAN);
   }
@@ -235,14 +235,14 @@ mod construction_validation {
   /// `13.620211` at `rho = 5`, `35.354151` at `rho = -5`, against
   /// `~10.69`.
   #[test]
-  #[should_panic(expected = "McSpreadPricer::new: rho must be in [-1, 1] (got 5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 5.0")]
   fn mc_spread_rejects_a_correlation_above_one() {
     let _ = McSpreadPricer::new(0.25, 0.20, 5.0, 1_000);
   }
 
   #[test]
   #[should_panic(
-    expected = "McSpreadPricer::new: sigma1 must be a non-negative volatility (got -0.25)"
+    expected = "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = -0.25"
   )]
   fn mc_spread_rejects_a_negative_first_volatility() {
     let _ = McSpreadPricer::new(-0.25, 0.20, 0.4, 1_000);
@@ -250,7 +250,7 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "McSpreadPricer::new: sigma2 must be a non-negative volatility (got -0.2)"
+    expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = -0.2"
   )]
   fn mc_spread_rejects_a_negative_second_volatility() {
     let _ = McSpreadPricer::new(0.25, -0.20, 0.4, 1_000);
@@ -260,7 +260,7 @@ mod construction_validation {
   /// average is already `NaN`. It is refused where the path count is
   /// supplied instead.
   #[test]
-  #[should_panic(expected = "McSpreadPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn mc_spread_rejects_a_zero_path_count() {
     let _ = McSpreadPricer::new(0.25, 0.20, 0.4, 0);
   }

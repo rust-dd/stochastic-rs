@@ -1,10 +1,5 @@
-//! Benchmarks for the credit module.
-//!
-//! Hot paths measured:
-//! - Merton structural model: PD / equity / spread analytical formulas.
-//! - CDS valuation at daily integration granularity.
-//! - Hazard-rate bootstrap over a 5-quote CDS term structure.
-//! - Continuous-time generator → 10Y transition matrix via matrix exponential.
+//! Credit benches: Merton PD / equity / spread formulas, daily-grid CDS valuation, a 5-quote hazard
+//! bootstrap and the 10Y transition matrix from a generator by matrix exponential.
 
 use chrono::NaiveDate;
 use criterion::Criterion;

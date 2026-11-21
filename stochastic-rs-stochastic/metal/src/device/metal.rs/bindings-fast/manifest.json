@@ -3009,6 +3009,138 @@
         "requires": []
       },
       {
+        "name": "euler_123_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_124_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_125_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_125_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_126_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_126_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_127_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_127_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_128_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_129_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_130_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_131_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
         "name": "fft_columns_1",
         "signature": 6,
         "required_block": null,
@@ -3144,14 +3276,14 @@
   },
   "checks": [],
   "files": {
-    "msl": "cba781e6a89005cb21ffa6f8f715299456d7da5fffb0dc99365bf565f28d0b6e",
-    "oxide_ir": "707cea368491c6a84561056f3c9b7876e1c51721743a0a937343b4dd9a463630",
-    "rustc_args": "cef607e8f2b1687bfd08951af62707e7dc5a5fd0df43ba265de613d295c2ef5c",
-    "ir": "4a3c22d7548f47f8f37c25bfaba1839a6fc8e64fffe6f2f14c52a7743d0e8b49",
-    "metallib": "a99b770ab495f95ebb40433ff020c111b3536c75c12e863ea7769497bb12c88c"
+    "msl": "25cc2499d0a9e144b35ba511b46dd4af27102853aa194d511982821f7b5d0ff3",
+    "oxide_ir": "1df8e19e73f9e7c0076577d292af910827f73e0fe72c5959dabd88720a135625",
+    "rustc_args": "c2df12082da159cd15b931f7b67f6cc9a01182176ff525566e1f9b84493a9f94",
+    "ir": "a54dceeb7b0d5080560c817184533e64350f0685c69be4d49b3f74b31375d1bc",
+    "metallib": "0516489018895548c3f5dc42eb88d1c4a26160f75cce7dffc6c06ada3c2d5937"
   },
   "build": {
-    "fingerprint": "67b3e12e14ba0d1c65d9b85d04738921630e2dc277a356960d5c7e0a2ccbb65c",
+    "fingerprint": "9dbe425f71f38bb45397617fd64a993b1e13a60597eed94fdb16f00f9e840911",
     "compiler": "4348fd85b672f6cc5b45c86eeb28c80f52d83bbdd7f1e64fddd34ef6a808762d",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.922 (metalfe-32023.922.4)",

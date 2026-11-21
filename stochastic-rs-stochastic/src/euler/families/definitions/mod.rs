@@ -4,6 +4,8 @@
 // and uses retain one macro hygiene context after the declarations are joined.
 
 #[macro_use]
+mod truncations;
+#[macro_use]
 mod multifactor;
 #[macro_use]
 mod memory;

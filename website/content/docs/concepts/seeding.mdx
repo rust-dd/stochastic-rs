@@ -6,7 +6,7 @@ since: 2.2.0
 status: stable
 ---
 
-Every stochastic source takes a [`SeedExt`](#seedext) strategy. A process takes it by value as the last constructor argument, `new(args…, seed)`; a distribution is a stateless law that binds to a seeded stream with `.seeded(&seed)` (see [Distributions](/docs/distributions#construction)).
+Every stochastic source takes a [`SeedExt`](#seedext) strategy. A process takes it by value as the last constructor argument, `new(args…, seed)`; a distribution is a stateless law that binds to a seeded stream with `.seeded(&seed)` (see [Distributions](/docs/distributions#construction)); a Monte Carlo pricer or estimator in `quant` holds its `seed`, `Unseeded` until `with_seed(seed)` sets it, and draws each call from a clone of it, so a `Deterministic` seed gives the same value at every call.
 
 ## The two seed strategies
 

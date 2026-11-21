@@ -1,7 +1,5 @@
-//! Comparison tests for Kirk's spread option and Bjerksund-Stensland 2002.
-//!
-//! Reference values taken from Haug's "The Complete Guide to Option Pricing
-//! Formulas" and the Python notebook by arawn10 (Kaggle, 2023).
+//! Comparison tests for Kirk's spread option and Bjerksund-Stensland 2002, with values from Haug's
+//! "The Complete Guide to Option Pricing Formulas" and arawn10's Python notebook (Kaggle, 2023).
 
 use stochastic_rs::quant::CallPut;
 use stochastic_rs::quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
@@ -76,9 +74,8 @@ fn kirk_spread_high_correlation() {
   );
 }
 
-// Bjerksund-Stensland 2002 tests.
-// Reference values from Haug's book, reproduced in the Python notebook.
-// The notebook uses b=0 (Black-76 style), so q = r for equivalent.
+// Bjerksund-Stensland 2002 values from Haug's book, reproduced in the notebook; the notebook uses
+// b=0 (Black-76 style), so q = r is the equivalent.
 
 #[test]
 fn bs2002_call_otm() {
@@ -125,9 +122,8 @@ fn bs2002_put_otm() {
 
 #[test]
 fn bs2002_symmetric_at_zero_rate() {
-  // When r=0, b=0: C(S,X) == P(X,S) by symmetry
-  // "Testing that American valuation works for integer inputs"
-  // c(100, 100, T=1, r=0, b=0, v=0.35) → 13.892
+  // When r=0, b=0: C(S,X) == P(X,S) by symmetry; the notebook's "Testing that American valuation
+  // works for integer inputs" gives c(100, 100, T=1, r=0, b=0, v=0.35) → 13.892
   let call_price = BjerksundStensland2002Pricer::new(0.35).price_call(100.0, 100.0, 0.0, 0.0, 1.0);
   let put_price = BjerksundStensland2002Pricer::new(0.35).price_put(100.0, 100.0, 0.0, 0.0, 1.0);
   assert_close(call_price, 13.892, 0.01);

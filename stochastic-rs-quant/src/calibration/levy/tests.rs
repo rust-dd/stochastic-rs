@@ -174,6 +174,41 @@ fn nig_to_model_matches_calibrator_pricer() {
   }
 }
 
+/// A fit prices its quotes as its model does: the loss is the blanket `ModelPricer`'s Lewis.
+#[test]
+fn a_fitted_point_prices_as_its_model_bit_for_bit() {
+  for (model_type, reference) in [
+    (LevyModelType::VarianceGamma, VG_REF),
+    (LevyModelType::MertonJd, MJD_REF),
+  ] {
+    let quotes = calls(&STRIKES, &reference, 1.0);
+    let fit = LevyCalibrator::new(model_type, 100.0, 0.05, 0.0, quotes.clone())
+      .calibrate(None)
+      .unwrap();
+    let model = fit.to_model();
+    for quote in &quotes {
+      let (k, tau) = (quote.strike, quote.tau);
+      let values = &fit.params.values;
+      let loss = fourier_call_price(
+        model_type,
+        values,
+        100.0,
+        k,
+        0.05,
+        0.0,
+        tau,
+        &mut Walk::Adaptive,
+      );
+      let priced = model.price_call(100.0, k, 0.05, 0.0, tau);
+      assert_eq!(
+        loss.to_bits(),
+        priced.to_bits(),
+        "{model_type:?} K = {k}: {loss} vs {priced}"
+      );
+    }
+  }
+}
+
 #[test]
 fn test_levy_merton_calibrate() {
   let quotes = calls(
@@ -346,15 +381,39 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   let calibrator = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, quotes);
   let mut problem = LevyProblem::new(&calibrator, vec![0.2, -0.1, 0.5]);
   let bounds = [(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)];
+  // Every box point keeps `1 − θν − σ²ν/2 > 0`, where Variance Gamma has its `E[e^X]`.
   for base in [
     ndarray::array![0.2, -0.1, 0.5],
-    ndarray::array![1.2, 0.6, 3.0],
+    ndarray::array![1.2, -0.6, 0.5],
   ] {
     for (label, point) in box_points(base.view(), &bounds, &[false; 3]) {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
   }
+}
+
+/// Without `E[e^X]` (`1 − θν − σ²ν/2 < 0`) the fit's price is NaN, as its model's is.
+#[test]
+fn a_point_without_a_martingale_prices_nan_as_its_model_does() {
+  let values = [1.2, 0.6, 3.0];
+  let walk = &mut Walk::Adaptive;
+  let price = fourier_call_price(
+    LevyModelType::VarianceGamma,
+    &values,
+    100.0,
+    100.0,
+    0.05,
+    0.0,
+    1.0,
+    walk,
+  );
+  let model = VarianceGammaFourier {
+    sigma: values[0],
+    theta: values[1],
+    nu: values[2],
+  };
+  assert!(price.is_nan() && model.price_call(100.0, 100.0, 0.05, 0.0, 1.0).is_nan());
 }
 
 /// On the rule each price's own walk took, `J(h)` is `J(2h)` at every model's default start.

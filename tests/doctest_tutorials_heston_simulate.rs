@@ -21,7 +21,7 @@ fn heston_paths_under_euler_and_qe() {
     252,       // n grid points, t = 0 included
     Some(1.0), // t
     HestonPow::Sqrt,
-    VarianceBoundary::Floor, // max(v, 0) on the variance; Reflect takes |v|
+    VarianceBoundary::FullTruncation, // the default; Absorption and Reflect are the other two
     Deterministic::new(42),
   );
   let [s, v] = euler.sample();

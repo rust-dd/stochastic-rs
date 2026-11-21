@@ -1,7 +1,6 @@
 // docs: getting-started/quickstart#3-estimate-hurst-from-a-fractional-brownian-path
-//! Backs vignette 3 (estimate Hurst) on the quickstart page. Uses the
-//! rescaled-range estimator — see `doctest_stats_hurst.rs` for why the
-//! Fukasawa/Whittle one is the wrong tool for a raw sampled path.
+//! Backs vignette 3 (estimate Hurst) on the quickstart page with the rescaled-range estimator; see
+//! `doctest_stats_hurst.rs` for why the Fukasawa/Whittle one is wrong for a raw sampled path.
 
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::hurst::HurstEstimator;
