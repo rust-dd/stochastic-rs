@@ -12,13 +12,12 @@ The single-underlying pricing trait. A plain `f64` trait, not generic over `T: F
 pub trait ModelPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
 
-  // default: put-call parity from price_call
+  // override unless the carry is e^{-qτ} and exercise European (below)
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let call = self.price_call(s, k, r, q, tau);
     call - s * (-q * tau).exp() + k * (-r * tau).exp()
   }
 
-  // default: dispatches to price_call / price_put
   fn price_option(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     match option_type {
       OptionType::Call => self.price_call(s, k, r, q, tau),

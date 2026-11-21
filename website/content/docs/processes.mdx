@@ -162,7 +162,7 @@ import numpy as np
 
 fgn = srs.PyFgn(hurst=0.3, n=4096, t=1.0, seed=42)
 increments = fgn.sample()
-fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
+fbm = np.cumsum(increments)
 ```
 </Tab>
 </Tabs>
@@ -340,8 +340,7 @@ import stochastic_rs as srs
 paths = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
 ou = srs.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0).sample_par(10_000)
-# device= names one backend: "cuda", "metal" or "accelerate", each needing
-# the matching cargo feature of the build;
+# device= takes "cuda", "metal" or "accelerate" when the build has that feature;
 # the single-precision devices want dtype="f32" and return float32 arrays
 gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="metal").sample_par(20_000)
 ```
@@ -371,7 +370,8 @@ let sde = Sde::new(
   NoiseModel::Gaussian,
   None,
 );
-let paths = sde.solve(&array![100.0], 0.0, 1.0, 1000, 100, SdeMethod::Milstein, &Deterministic::new(42)); // [100, 1001, 1]
+// paths: [n_paths, steps + 1, dim] = [100, 1001, 1]
+let paths = sde.solve(&array![100.0], 0.0, 1.0, 1000, 100, SdeMethod::Milstein, &Deterministic::new(42));
 ```
 
 Reach for `Sde` when the equation is not one of the built-in processes, or to compare schemes on one equation; a built-in model has its own sampler and its place in the pricing stack. Every scheme takes one Brownian increment $\Delta W_n \sim \mathcal N(0, \Delta t)$ per step, and under `NoiseModel::Fractional` the field `hursts` holds one Hurst exponent $H \in (0, 1)$ per dimension.

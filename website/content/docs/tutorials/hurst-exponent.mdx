@@ -79,11 +79,13 @@ for est in (srs.Dfa(), srs.Gph(), srs.Wavelet()):
     se = "none" if r.std_err is None else f"{r.std_err:.3f}"
     print(f"{type(est).__name__:8s} H = {r.hurst:.3f}  std err = {se}")
 print(f"Higuchi  H = {srs.Higuchi().estimate_hurst(path).hurst:.3f}")
+```
 
-# Dfa      H = 0.684  std err = none
-# Gph      H = 0.634  std err = 0.053
-# Wavelet  H = 0.720  std err = 0.032
-# Higuchi  H = 0.690
+```
+Dfa      H = 0.684  std err = none
+Gph      H = 0.634  std err = 0.053
+Wavelet  H = 0.720  std err = 0.032
+Higuchi  H = 0.690
 ```
 </Tab>
 </Tabs>
