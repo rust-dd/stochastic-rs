@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
@@ -88,8 +89,8 @@ struct SsviLmProblem {
 }
 
 impl LeastSquaresProblem for SsviLmProblem {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.params.assign(params);
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.params.assign(&params);
   }
 
   fn params(&self) -> Array1<f64> {
@@ -175,7 +176,7 @@ impl LeastSquaresProblem for SsviLmProblem {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
 
   /// The unconstrained SSVI Jacobian at a start, at the truth and at a far point.
   #[test]
@@ -205,7 +206,7 @@ mod tests {
       ndarray::array![0.9, 4.0, 0.9],
     ];
     for point in points {
-      let error = jacobian_error(&mut problem, &point, |_, _| 1e-6);
+      let error = jacobian_error(&mut problem, point.view(), |_, _| 1e-6);
       assert!(error < 1e-8, "{point}: {error:e}");
     }
   }

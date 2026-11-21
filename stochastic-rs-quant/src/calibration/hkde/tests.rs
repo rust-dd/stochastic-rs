@@ -395,8 +395,8 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::HkdeProblem;
   use super::params::*;
   use crate::calibration::least_squares::LeastSquaresProblem;
-  use crate::calibration::least_squares::tests::box_points;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::box_points;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = HkdeProblem::new(&calibrator, START).unwrap();
   let bounds = [
@@ -404,14 +404,14 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   ];
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, 0.2, 30.0, 25.0];
   for base in [problem.params(), ndarray::Array1::from(SHOP), far] {
-    for (label, point) in box_points(&base, &bounds, &[true; 9]) {
+    for (label, point) in box_points(base.view(), &bounds, &[true; 9]) {
       // Where Feller's projection binds the stencil runs from the projected point, and at
       // ρ = −0.98 the Gil–Pelaez price jumps inside it (the p_up column reads 2.4 times its slope).
       let capped = 2.0 * point[1] * point[2] < point[3].powi(2);
       if capped || label == "lower 4" {
         continue;
       }
-      let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(1e-2));
+      let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
   }

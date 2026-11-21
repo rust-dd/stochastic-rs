@@ -1,8 +1,8 @@
 use super::*;
 use crate::LossMetric;
 use crate::calibration::CalibrationHistory;
-use crate::calibration::least_squares::tests::natural_jacobian_by_differences;
-use crate::calibration::least_squares::tests::worst_relative_error;
+use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+use crate::calibration::least_squares::checks::worst_relative_error;
 use crate::traits::Calibrator;
 
 fn known_params() -> CgmysvParams {
@@ -75,7 +75,7 @@ fn optimizer_coordinates_preserve_both_signs_of_rho() {
     problem.params[6] = rho;
     let physical = problem.params.clone();
     let coordinates = LeastSquaresProblem::params(&problem);
-    problem.set_params(&coordinates);
+    problem.set_params(coordinates.view());
     for (&actual, &expected) in problem.params.iter().zip(&physical) {
       assert!((actual - expected).abs() < 1e-12);
     }
@@ -86,7 +86,7 @@ fn optimizer_coordinates_preserve_both_signs_of_rho() {
       .to_vec();
     let coordinates = LeastSquaresProblem::params(&problem);
     assert!(coordinates.iter().all(|v| v.is_finite()));
-    problem.set_params(&coordinates);
+    problem.set_params(coordinates.view());
     for (&value, (lo, hi)) in problem.params.iter().zip(param_bounds()) {
       assert!(value > lo && value < hi);
     }
@@ -99,16 +99,16 @@ fn optimizer_jacobian_matches_finite_differences() {
   let calibrator = CgmysvCalibrator::new(100.0, 0.03, 0.0, quotes.to_vec());
   let mut problem = problem(&calibrator);
   let coordinates = LeastSquaresProblem::params(&problem);
-  problem.set_params(&coordinates);
+  problem.set_params(coordinates.view());
   let jacobian = problem.jacobian().unwrap();
   let step = 1e-5;
   for j in 0..N_PARAMS {
     let mut shifted = coordinates.clone();
     shifted[j] += step;
-    problem.set_params(&shifted);
+    problem.set_params(shifted.view());
     let up = problem.residuals().unwrap();
     shifted[j] -= 2.0 * step;
-    problem.set_params(&shifted);
+    problem.set_params(shifted.view());
     let down = problem.residuals().unwrap();
     for i in 0..3 {
       let numeric = (up[i] - down[i]) / (2.0 * step);
@@ -206,10 +206,10 @@ fn the_natural_jacobian_matches_central_differences() {
   let calibrator = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes);
   let mut problem = CgmysvProblem::new(&calibrator, to_vec(&known_params()));
   let x = problem.params();
-  problem.set_params(&x);
+  problem.set_params(x.view());
   let analytic = problem.natural_jacobian();
-  let numeric = natural_jacobian_by_differences(&mut problem, &x, 1e-6);
-  let worst = worst_relative_error(&analytic, &numeric);
+  let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+  let worst = worst_relative_error(analytic.view(), numeric.view());
   assert!(worst < 1e-6, "{worst:e}");
 }
 
@@ -230,17 +230,17 @@ const STALLED: [f64; 8] = [
 /// Jacobian's step must bound a jump's share: `2e-3·|θ|` reads each column within 6.3e-3.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
   let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));
   let mut problem = problem(&calibrator);
   for natural in [STALLED.to_vec(), to_vec(&known_params()), default_params()] {
     problem.params = natural.clone();
     let x = problem.params();
-    problem.set_params(&x);
+    problem.set_params(x.view());
     let factors = problem.logistic_factors().collect::<Vec<_>>();
     let step = |j: usize, _| 2e-3 * natural[j].abs() / factors[j];
-    let error = jacobian_error(&mut problem, &x, step);
+    let error = jacobian_error(&mut problem, x.view(), step);
     assert!(error < 2e-2, "{natural:?}: {error:e}");
   }
 }
@@ -248,7 +248,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
 /// Each coordinate saturated to within 1e-3 of an end of its logistic map.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let quotes = vec![OptionQuote::new(100.0, 0.5, 5.0, OptionType::Call)];
   let calibrator = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes);
   let mut problem = problem(&calibrator);
@@ -257,13 +257,13 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
     for end in [-6.9, 6.9] {
       let mut point = start.clone();
       point[coordinate] = end;
-      problem.set_params(&point);
+      problem.set_params(point.view());
       // The model has no price where `E[e^L]` is infinite, at the low end of `λ₊`.
       if (coordinate, end) == (1, -6.9) {
         assert!(problem.residuals().unwrap().iter().all(|r| r.is_nan()));
         continue;
       }
-      let error = jacobian_error(&mut problem, &point, |_, _| 1e-2);
+      let error = jacobian_error(&mut problem, point.view(), |_, _| 1e-2);
       assert!(error < 2e-2, "coordinate {coordinate} at {end}: {error:e}");
     }
   }

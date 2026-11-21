@@ -9,6 +9,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
@@ -260,7 +261,7 @@ impl SabrProblem<'_> {
 }
 
 impl LeastSquaresProblem for SabrProblem<'_> {
-  fn set_params(&mut self, x: &Array1<f64>) {
+  fn set_params(&mut self, x: ArrayView1<f64>) {
     let sign = |x: f64| if x < 0.0 { -1.0 } else { 1.0 };
     self.reflections = ndarray::array![sign(x[0]), sign(x[1]), 1.0];
     self.params = SabrParams {
@@ -280,9 +281,13 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     let model = self.model_prices(&self.params);
     let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q));
     let options = &self.calibrator.options;
-    self
-      .trail
-      .stage(options, &self.market, &model, &self.params, &residuals);
+    self.trail.stage(
+      options,
+      &self.market,
+      &model,
+      &self.params,
+      residuals.view(),
+    );
     Some(residuals)
   }
 

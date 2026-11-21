@@ -1,5 +1,3 @@
-use stochastic_rs_distributions::RealExt;
-
 use super::*;
 
 struct Rosenbrock {
@@ -23,14 +21,14 @@ impl Rosenbrock {
     }
   }
 
-  fn cost(x: &Array1<f64>) -> f64 {
+  fn cost(x: ArrayView1<f64>) -> f64 {
     50.0 * (x[1] - x[0].powi(2)).powi(2) + 0.5 * (1.0 - x[0]).powi(2)
   }
 }
 
 impl LeastSquaresProblem for Rosenbrock {
-  fn set_params(&mut self, x: &Array1<f64>) {
-    self.x.clone_from(x);
+  fn set_params(&mut self, x: ArrayView1<f64>) {
+    self.x.assign(&x);
   }
 
   fn params(&self) -> Array1<f64> {
@@ -80,7 +78,7 @@ fn the_start_and_each_trial_that_lowers_the_cost_are_accepted() {
     assert!(
       accepted
         .windows(2)
-        .all(|pair| Rosenbrock::cost(&pair[1]) < Rosenbrock::cost(&pair[0]))
+        .all(|pair| Rosenbrock::cost(pair[1].view()) < Rosenbrock::cost(pair[0].view()))
     );
     assert_eq!(accepted.last(), Some(&problem.x));
   }
@@ -98,7 +96,7 @@ fn rosenbrock_converges_with_consistent_evaluation_counts() {
     );
     assert!(report.converged, "{report:?}");
     assert_eq!(report.message(), "converged");
-    assert!(distance_to_optimum(&problem.x) < 1e-8);
+    assert!(distance_to_optimum(problem.x.view()) < 1e-8);
     assert_eq!(report.evaluations, problem.calls.get());
   }
 }
@@ -128,10 +126,10 @@ fn a_trail_keeps_the_last_staged_point_once_per_accept_and_numbers_it() {
   let options = CalibrationOptions::default().with_record_history(true);
   let (market, rows) = ([1.0, 2.0], Array1::from_vec(vec![0.5, -1.0]));
   let mut trail = Trail::new();
-  trail.stage(&options, &market, &[0.5, 3.0], &0.1, &rows);
+  trail.stage(&options, &market, &[0.5, 3.0], &0.1, rows.view());
   trail.accept();
-  trail.stage(&options, &market, &[9.0, 9.0], &0.2, &rows);
-  trail.stage(&options, &market, &[1.0, 2.0], &0.3, &rows);
+  trail.stage(&options, &market, &[9.0, 9.0], &0.2, rows.view());
+  trail.stage(&options, &market, &[1.0, 2.0], &0.3, rows.view());
   trail.accept();
   trail.accept();
   let entries = trail.into_entries();
@@ -147,13 +145,19 @@ fn a_negated_trail_stores_the_rows_negated_and_an_unrecorded_one_nothing() {
   let rows = Array1::from_vec(vec![0.5, -0.0, f64::NAN]);
   let mut recorded = Trail::negated();
   let options = CalibrationOptions::default().with_record_history(true);
-  recorded.stage(&options, &[1.0; 3], &[1.0; 3], &(), &rows);
+  recorded.stage(&options, &[1.0; 3], &[1.0; 3], &(), rows.view());
   recorded.accept();
   let stored = &recorded.into_entries()[0].residuals;
   let bits = |v: &Array1<f64>| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
   assert_eq!(bits(stored), bits(&rows.mapv(|x| -x)));
   let mut unrecorded = Trail::negated();
-  unrecorded.stage(&CalibrationOptions::default(), &[1.0], &[2.0], &(), &rows);
+  unrecorded.stage(
+    &CalibrationOptions::default(),
+    &[1.0],
+    &[2.0],
+    &(),
+    rows.view(),
+  );
   unrecorded.accept();
   assert!(unrecorded.into_entries().is_empty());
 }
@@ -186,7 +190,7 @@ fn an_iteration_cap_below_the_budget_stops_the_fit() {
   assert!(!report.converged, "{report:?}");
   assert_eq!(report.reason, TerminationReason::MaxIter);
   assert!(report.evaluations < free_report.evaluations);
-  assert!(distance_to_optimum(&capped.x) > distance_to_optimum(&free.x));
+  assert!(distance_to_optimum(capped.x.view()) > distance_to_optimum(free.x.view()));
   let fit = report
     .calibrated(capped.x.to_vec(), &[1.0], &[1.0], &LossMetric::ALL, vec![])
     .unwrap();
@@ -244,7 +248,7 @@ fn nonfinite_trial_shrinks_the_step_and_recovers() {
     );
     assert!(problem.nonfinite_trials.get() > 0);
     assert!(report.converged, "{report:?}");
-    assert!(distance_to_optimum(&problem.x) < 1e-8);
+    assert!(distance_to_optimum(problem.x.view()) < 1e-8);
   }
 }
 
@@ -294,102 +298,15 @@ fn a_zero_weight_pull_is_the_unpulled_fit_bit_for_bit() {
   assert_eq!(plain_report.evaluations, zero_report.evaluations);
 }
 
-fn distance_to_optimum(x: &Array1<f64>) -> f64 {
-  let distance = x - &Array1::from_elem(2, 1.0);
+fn distance_to_optimum(x: ArrayView1<f64>) -> f64 {
+  let distance = &x - &Array1::from_elem(2, 1.0);
   distance.dot(&distance).sqrt()
-}
-
-/// `∂θ/∂x` of a problem's natural parameters by central differences of step `h` around `x`.
-pub(crate) fn natural_jacobian_by_differences<P: LeastSquaresProblem>(
-  problem: &mut P,
-  x: &Array1<f64>,
-  h: f64,
-) -> Array2<f64> {
-  let mut at = |y: &Array1<f64>| {
-    problem.set_params(y);
-    Array1::from_vec(problem.natural_params())
-  };
-  let rows = at(x).len();
-  let mut jacobian = Array2::zeros((rows, x.len()));
-  for column in 0..x.len() {
-    let (mut up, mut down) = (x.clone(), x.clone());
-    up[column] += h;
-    down[column] -= h;
-    let derivative = (at(&up) - at(&down)) / (2.0 * h);
-    jacobian.column_mut(column).assign(&derivative);
-  }
-  problem.set_params(x);
-  jacobian
-}
-
-/// The largest entrywise `|a − b| / max(|a|, |b|)`, zero where both are zero; NaN propagates.
-pub(crate) fn worst_relative_error(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
-  let ratio = |(x, y): (&f64, &f64)| {
-    let scale = x.abs().max(y.abs());
-    if scale == 0.0 {
-      0.0
-    } else {
-      (x - y).abs() / scale
-    }
-  };
-  f64::max_or_nan_fold(a.iter().zip(b).map(ratio))
-}
-
-/// MINPACK's `chkder` as a test: the worst column's `‖J − D‖/‖D‖` at `x`, `D` the central
-/// difference of the residuals over `step(x_j)`; two zero columns read 0.
-pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
-  problem: &mut P,
-  x: &Array1<f64>,
-  step: impl Fn(usize, f64) -> f64,
-) -> f64 {
-  let mut at = |y: &Array1<f64>| {
-    problem.set_params(y);
-    problem.residuals().expect("residuals beside the point")
-  };
-  let columns = (0..x.len())
-    .map(|column| {
-      let h = step(column, x[column]);
-      let (mut up, mut down) = (x.clone(), x.clone());
-      up[column] += h;
-      down[column] -= h;
-      (at(&up) - at(&down)) / (2.0 * h)
-    })
-    .collect::<Vec<_>>();
-  problem.set_params(x);
-  let jacobian = problem.jacobian().expect("a Jacobian at the point");
-  let norm = |v: &Array1<f64>| v.dot(v).sqrt();
-  f64::max_or_nan_fold(columns.iter().enumerate().map(|(j, difference)| {
-    let gap = norm(&(&jacobian.column(j) - difference));
-    let scale = norm(difference);
-    if scale == 0.0 { gap } else { gap / scale }
-  }))
-}
-
-/// `base`, then per coordinate each bound and, where the box reflects, `base`'s mirror image
-/// below the lower one; 1 % inside a bound, since a stencil that reaches it is one-sided.
-pub(crate) fn box_points(
-  base: &Array1<f64>,
-  bounds: &[(f64, f64)],
-  reflecting: &[bool],
-) -> Vec<(String, Array1<f64>)> {
-  let mut points = vec![("base".to_string(), base.clone())];
-  for (j, &(lower, upper)) in bounds.iter().enumerate() {
-    let inset = 0.01 * (upper - lower);
-    let mirror = reflecting[j].then_some(("mirror", 2.0 * lower - base[j]));
-    let sides = [("lower", lower + inset), ("upper", upper - inset)];
-    for (side, value) in sides.into_iter().chain(mirror) {
-      let mut point = base.clone();
-      point[j] = value;
-      points.push((format!("{side} {j}"), point));
-    }
-  }
-  points
 }
 
 struct Flat;
 
 impl LeastSquaresProblem for Flat {
-  fn set_params(&mut self, _: &Array1<f64>) {}
+  fn set_params(&mut self, _: ArrayView1<f64>) {}
 
   fn params(&self) -> Array1<f64> {
     Array1::from_vec(vec![1.0])
@@ -427,7 +344,7 @@ struct Line {
 }
 
 impl LeastSquaresProblem for Line {
-  fn set_params(&mut self, x: &Array1<f64>) {
+  fn set_params(&mut self, x: ArrayView1<f64>) {
     self.x = x[0];
   }
 
@@ -512,7 +429,7 @@ impl Mapped {
 }
 
 impl LeastSquaresProblem for Mapped {
-  fn set_params(&mut self, x: &Array1<f64>) {
+  fn set_params(&mut self, x: ArrayView1<f64>) {
     self.x = x[0];
   }
 
@@ -590,4 +507,27 @@ fn the_verdict_and_the_message_agree_at_every_stop() {
     let named = report.message() == "converged";
     assert_eq!(report.converged, named, "{map:?} from {x}: {report:?}");
   }
+}
+
+/// The trait, the trail and the shared checks read views: a row of a wider array goes in as it is.
+#[test]
+fn a_problem_its_trail_and_the_checks_read_views() {
+  let rows = ndarray::array![[0.5, 0.25], [1.0, 1.0]];
+  let mut problem = Rosenbrock::new();
+  problem.set_params(rows.row(0));
+  assert_eq!(problem.x, rows.row(0));
+  let error = checks::jacobian_error(&mut problem, rows.row(1), |_, _| 1e-6);
+  assert!(error < 1e-8, "{error:e}");
+  let differences = checks::natural_jacobian_by_differences(&mut problem, rows.row(1), 1e-6);
+  let identity = Array2::eye(2);
+  assert!(checks::worst_relative_error(differences.view(), identity.view()) < 1e-9);
+  assert_eq!(
+    checks::box_points(rows.row(1), &[(0.0, 2.0); 2], &[false; 2]).len(),
+    5
+  );
+  let mut trail = Trail::new();
+  let options = CalibrationOptions::default().with_record_history(true);
+  trail.stage(&options, &[1.0, 1.0], &[1.5, 1.25], &(), rows.row(0));
+  trail.accept();
+  assert_eq!(trail.into_entries()[0].residuals, rows.row(0));
 }

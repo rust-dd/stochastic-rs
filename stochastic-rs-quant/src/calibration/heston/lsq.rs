@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
@@ -92,8 +93,8 @@ impl<'a> HestonProblem<'a> {
 }
 
 impl LeastSquaresProblem for HestonProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.point = from_optimizer_coordinates(params.view());
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.point = from_optimizer_coordinates(params);
   }
 
   fn params(&self) -> Array1<f64> {
@@ -113,7 +114,7 @@ impl LeastSquaresProblem for HestonProblem<'_> {
       &self.market,
       model,
       &params_eff,
-      &weighted_residuals,
+      weighted_residuals.view(),
     );
 
     Some(match self.feller_row_weight {

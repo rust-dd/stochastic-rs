@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::EPS;
 use super::loss::default_params;
@@ -228,7 +229,7 @@ impl<'a> LevyProblem<'a> {
 }
 
 impl LeastSquaresProblem for LevyProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
     let mut p: Vec<f64> = params.to_vec();
     project_params(self.calibrator.model_type, &mut p);
     self.params.values = p;
@@ -243,9 +244,13 @@ impl LeastSquaresProblem for LevyProblem<'_> {
     let rows = self.market.iter().zip(&c_model);
     let residuals = Array1::from_iter(rows.map(|(market, model)| market - model));
     let options = &self.calibrator.options;
-    self
-      .trail
-      .stage(options, &self.market, &c_model, &self.params, &residuals);
+    self.trail.stage(
+      options,
+      &self.market,
+      &c_model,
+      &self.params,
+      residuals.view(),
+    );
     Some(residuals)
   }
 

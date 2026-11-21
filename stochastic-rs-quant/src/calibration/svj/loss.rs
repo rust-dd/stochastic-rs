@@ -2,6 +2,7 @@ use std::f64::consts::FRAC_1_PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::SvjParams;
@@ -217,9 +218,9 @@ impl<'a> SvjProblem<'a> {
 }
 
 impl LeastSquaresProblem for SvjProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.reflections = periodic_slopes(params.view(), &BOX);
-    self.params = SvjParams::from(params.clone()).projected();
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
+    self.params = SvjParams::from(params.to_owned()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -233,7 +234,7 @@ impl LeastSquaresProblem for SvjProblem<'_> {
     let options = &self.calibrator.options;
     self
       .trail
-      .stage(options, &self.market, &model, &params_eff, &residuals);
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
     Some(residuals)
   }
 

@@ -20,6 +20,7 @@ use basin::StepOutcome;
 use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
@@ -33,7 +34,7 @@ use crate::calibration::Regularization;
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
 /// Model coordinates and parameter projections remain owned by the calibrator.
 pub trait LeastSquaresProblem {
-  fn set_params(&mut self, params: &Array1<f64>);
+  fn set_params(&mut self, params: ArrayView1<f64>);
 
   fn params(&self) -> Array1<f64>;
 
@@ -263,15 +264,15 @@ impl<P: Clone> Trail<P> {
     market: &[f64],
     model: &[f64],
     params: &P,
-    residuals: &Array1<f64>,
+    residuals: ArrayView1<f64>,
   ) {
     if !options.record_history {
       return;
     }
     let residuals = if self.negated {
-      -residuals
+      -&residuals
     } else {
-      residuals.clone()
+      residuals.to_owned()
     };
     let loss = CalibrationLossScore::compute_selected(market, model, options.loss_metrics);
     let entry = CalibrationHistory::new(self.entries.len(), params.clone(), residuals, loss);
@@ -305,7 +306,7 @@ impl<P: LeastSquaresProblem> Objective<P> {
     let mut coordinates = self.coordinates.borrow_mut();
     let mut model = self.model.borrow_mut();
     if coordinates.as_ref() != Some(x) {
-      model.set_params(x);
+      model.set_params(x.view());
       *coordinates = Some(x.clone());
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
@@ -462,7 +463,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     model.accept();
   }
   // A rejected or failed trial may be the last callback. Return the accepted fit.
-  model.set_params(&best);
+  model.set_params(best.view());
   (
     model,
     LmReport {
@@ -524,4 +525,7 @@ where
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+pub(crate) mod checks;
+
+#[cfg(test)]
+mod tests;

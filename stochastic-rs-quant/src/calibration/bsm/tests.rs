@@ -3,7 +3,7 @@
 use super::*;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
-use crate::calibration::least_squares::tests::jacobian_error;
+use crate::calibration::least_squares::checks::jacobian_error;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 
@@ -156,7 +156,7 @@ fn the_trail_has_the_start_and_one_entry_per_iteration() {
 fn sigma_is_reflected_not_clamped() {
   let cal = synthetic(0.2);
   let mut problem = BsmProblem::new(&cal, cal.start);
-  problem.set_params(&Array1::from_vec(vec![-0.3]));
+  problem.set_params(Array1::from_vec(vec![-0.3]).view());
   assert_eq!(
     problem.params.sigma, 0.3,
     "a negative step must reflect, not clamp"
@@ -170,7 +170,7 @@ fn sigma_is_reflected_not_clamped() {
     bsm(0.3)
   );
 
-  problem.set_params(&Array1::from_vec(vec![f64::NAN]));
+  problem.set_params(Array1::from_vec(vec![f64::NAN]).view());
   assert_eq!(
     problem.params.sigma, V_MIN,
     "a projection onto a set must be total"
@@ -268,7 +268,9 @@ fn the_jacobian_is_the_slope_of_the_residuals_at_a_reflected_coordinate() {
   let mut problem = BsmProblem::new(&calibrator, BsmParams { sigma: 0.2 });
   // The start, the truth, a far point, and each of them reflected.
   for x in [0.2, TRUE_SIGMA, 12.2458, -0.2, -TRUE_SIGMA, -12.2458] {
-    let error = jacobian_error(&mut problem, &ndarray::array![x], |_, x| 1e-6 * x.abs());
+    let error = jacobian_error(&mut problem, ndarray::array![x].view(), |_, x| {
+      1e-6 * x.abs()
+    });
     assert!(error < 1e-4, "x = {x}: {error}");
   }
 }

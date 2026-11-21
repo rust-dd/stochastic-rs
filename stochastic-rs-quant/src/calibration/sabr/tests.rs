@@ -185,7 +185,7 @@ fn a_start_written_through_the_field_is_validated_like_an_explicit_one() {
 
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_at_reflected_coordinates() {
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let truth = SabrParams {
     alpha: 0.2,
     beta: 1.0,
@@ -213,7 +213,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_at_reflected_coordinates() {
     ndarray::array![0.2, 0.6, 0.98],
   ];
   for point in points {
-    let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(0.1));
+    let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(0.1));
     assert!(error < 2e-2, "{point}: {error:e}");
   }
 }
@@ -243,7 +243,7 @@ fn a_non_finite_parameter_reaches_the_residuals_as_nan() {
   ] {
     let mut x = DEFAULT_START.as_lm_vec();
     x[axis] = bad;
-    problem.set_params(&x);
+    problem.set_params(x.view());
     assert!(!problem.params()[axis].is_finite(), "axis {axis}: {bad}");
     let residuals = problem.residuals().unwrap();
     assert!(residuals.iter().all(|r| r.is_nan()), "axis {axis}: {bad}");

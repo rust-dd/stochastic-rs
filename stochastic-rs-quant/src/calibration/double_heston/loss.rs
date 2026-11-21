@@ -2,6 +2,7 @@ use std::f64::consts::FRAC_1_PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::super::integrate_gl_to_convergence;
@@ -214,10 +215,10 @@ impl<'a> DoubleHestonProblem<'a> {
 }
 
 impl LeastSquaresProblem for DoubleHestonProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
     let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
-    self.reflections = periodic_slopes(params.view(), &[factor, factor].concat());
-    self.params = DoubleHestonParams::from(params.clone()).projected();
+    self.reflections = periodic_slopes(params, &[factor, factor].concat());
+    self.params = DoubleHestonParams::from(params.to_owned()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -231,7 +232,7 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
     let options = &self.calibrator.options;
     self
       .trail
-      .stage(options, &self.market, &model, &params_eff, &residuals);
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
     Some(residuals)
   }
 

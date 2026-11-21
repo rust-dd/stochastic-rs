@@ -12,6 +12,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use crate::OptionQuote;
 use crate::OptionType;
@@ -251,7 +252,7 @@ impl<'a> CgmysvProblem<'a> {
 }
 
 impl LeastSquaresProblem for CgmysvProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
     self.params = params
       .iter()
       .zip(param_bounds())
@@ -281,9 +282,13 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
     let residuals = Array1::from_iter(rows.map(|(market, model)| model - market));
     let options = &self.calibrator.options;
     let params = to_cgmysv_params(&self.params);
-    self
-      .trail
-      .stage(options, &self.market, &model_prices, &params, &residuals);
+    self.trail.stage(
+      options,
+      &self.market,
+      &model_prices,
+      &params,
+      residuals.view(),
+    );
     Some(residuals)
   }
 

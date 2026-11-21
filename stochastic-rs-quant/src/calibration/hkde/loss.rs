@@ -2,6 +2,7 @@ use std::f64::consts::PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::calibrator::HkdeCalibrator;
 use super::params::BOX;
@@ -161,9 +162,9 @@ impl<'a> HkdeProblem<'a> {
 }
 
 impl LeastSquaresProblem for HkdeProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.reflections = periodic_slopes(params.view(), &BOX);
-    self.params = HkdeParams::from(params.clone()).projected();
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
+    self.params = HkdeParams::from(params.to_owned()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -177,7 +178,7 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
     let options = &self.calibrator.options;
     self
       .trail
-      .stage(options, &self.market, &model, &params_eff, &residuals);
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
     Some(residuals)
   }
 
