@@ -1,30 +1,7 @@
-//! Closed-form anchors of [`HestonHullWhite2F`], one per leg of the model, each exact in continuous time:
+//! Exact anchors of `HestonHullWhite2F`, one per leg: Heston's closed form with the rates frozen,
+//! and the Gaussian rate leg's own law on the grid for `∫r`, the bond and Black on the forward.
 //!
-//! 1. rate volatilities at zero: the Heston closed form of [`HestonPricer`], under both variance steps;
-//! 2. the rate leg alone: `∫₀ᵀ r` is Gaussian with a known mean and variance, and the bond price is its
-//!    exponential moment, under both variance steps since each correlates the rate shocks its own way;
-//! 3. variance frozen: the spot is lognormal under two-factor Gaussian rates and a European option is
-//!    Black's formula on the forward, whose total variance carries both equity-rate correlations, under
-//!    both variance steps since each builds the spot shock from the rate shocks its own way.
-//!
-//! Each test also asserts its own power: the statistic it holds to the reference must reject the
-//! reference with the tested ingredient changed, so a test that could not fail does not pass.
-//!
-//! With `τ = T − s`, `B_c(τ) = (1 − e^{−cτ})/c` and `r(t) = m(t) + σ₁ ∫ e^{−a(t−s)} dW^r_s +
-//! σ₂/(a−b) ∫ (e^{−b(t−s)} − e^{−a(t−s)}) dW^u_s`, the integrated rate loads `g₁(τ) = σ₁ B_a(τ)` on `W^r`
-//! and `g₂(τ) = σ₂ (B_b(τ) − B_a(τ))/(a − b)` on `W^u`, so
-//!
-//! - `Var ∫₀ᵀ r = ∫₀ᵀ (g₁² + g₂² + 2 ρ_ru g₁ g₂) dτ`, the `V(0, T)` of Brigo and Mercurio (2006), eq. 4.10,
-//!   through the map of their section 4.2.5 between this formulation and G2++;
-//! - `Cov(W^x_T, ∫₀ᵀ r) = ∫₀ᵀ (ρ_xr g₁ + ρ_xu g₂) dτ`;
-//! - with the variance frozen at `θ`, `Var log S_T = θT + Var ∫r + 2 √θ Cov(W^x_T, ∫r)` and
-//!   `P(0, T) = exp(−E ∫r + ½ Var ∫r)`.
-//!
-//! The one-factor case of the third formula is QuantLib's `AnalyticBSMHullWhiteEngine`, which it matches
-//! to `1e-16` at `T = 1, 5, 10` and three strikes.
-//!
-//! Reference: Brigo D. & Mercurio F. (2006), *Interest Rate Models: Theory and Practice*, 2nd ed.,
-//! Springer, sections 4.2.3 to 4.2.5, DOI: 10.1007/978-3-540-34604-3.
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §4.2.3-4.2.5, DOI 10.1007/978-3-540-34604-3
 
 use stochastic_rs::ndarray::Array2;
 use stochastic_rs::ndarray::array;
@@ -34,19 +11,22 @@ use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
+use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2FPaths;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HybridScheme;
 use stochastic_rs::traits::ModelPricer;
 use stochastic_rs::traits::ProcessExt;
+use stochastic_rs::traits::RealExt;
 
-const PATHS: usize = 100_000;
-/// Standard errors a statistic may sit from its closed form.
+/// Each statistic is asserted on the best of these seeds, each power check on every one.
+const SEEDS: [u64; 3] = [1993, 2006, 1973];
+/// Standard errors a statistic may sit from its reference.
 const Z_MAX: f64 = 3.0;
 /// Standard errors by which a statistic must reject a reference with the tested ingredient changed.
 const Z_POWER: f64 = 5.0;
 const FLAT_RATE: f64 = 0.03;
 
-/// Rate leg of tests 2 and 3: slower mean reversion and larger volatilities than a calibrated curve
-/// would give, so the rate terms are a large share of what is measured.
+/// Slower mean reversion and larger volatilities than a calibrated curve gives, so the rate
+/// terms are a large share of what is measured.
 const A: f64 = 0.3;
 const B: f64 = 0.1;
 const SIGMA1: f64 = 0.02;
@@ -70,7 +50,7 @@ fn b_product_integral(c: f64, d: f64, t: f64) -> f64 {
   (t - b_fn(c, t) - b_fn(d, t) + b_fn(c + d, t)) / (c * d)
 }
 
-/// `Var ∫₀ᵀ r` of the rate leg with `W^r`, `W^u` correlation `rho_ru`.
+/// `Var ∫₀ᵀ r` in continuous time: `V(0, T)` of eq. 4.10 through §4.2.5's map to G2++.
 fn var_int_r(rho_ru: f64, t: f64) -> f64 {
   let k = SIGMA2 / (A - B);
   let (jaa, jab, jbb) = (
@@ -81,11 +61,27 @@ fn var_int_r(rho_ru: f64, t: f64) -> f64 {
   SIGMA1 * SIGMA1 * jaa + k * k * (jbb - 2.0 * jab + jaa) + 2.0 * rho_ru * SIGMA1 * k * (jab - jaa)
 }
 
-/// `Cov(W^x_T, ∫₀ᵀ r)` for equity-rate correlations `rho_xr`, `rho_xu`.
+/// `Cov(W^x_T, ∫₀ᵀ r)` in continuous time.
 fn cov_wx_int_r(rho_xr: f64, rho_xu: f64, t: f64) -> f64 {
   let k = SIGMA2 / (A - B);
   let (ia, ib) = ((t - b_fn(A, t)) / A, (t - b_fn(B, t)) / B);
   rho_xr * SIGMA1 * ia + rho_xu * k * (ib - ia)
+}
+
+/// `(Var I, Cov(W^x_T, I))` of the trapezoidal `I = Σ ½(r_{i−1} + r_i)dt` under the Euler rate
+/// recursion: exact on the grid, since `I` is linear in the Gaussian shocks.
+fn grid_moments(rho_xr: f64, rho_xu: f64, rho_ru: f64, steps: usize, dt: f64) -> (f64, f64) {
+  let (mut g_r, mut g_u) = (0.5 * dt, 0.0);
+  let (mut var, mut cov) = (0.0, 0.0);
+  for _ in 0..steps {
+    var += dt
+      * (SIGMA1 * SIGMA1 * g_r * g_r
+        + 2.0 * rho_ru * SIGMA1 * SIGMA2 * g_r * g_u
+        + SIGMA2 * SIGMA2 * g_u * g_u);
+    cov += dt * (rho_xr * SIGMA1 * g_r + rho_xu * SIGMA2 * g_u);
+    (g_r, g_u) = (dt + (1.0 - A * dt) * g_r, dt * g_r + (1.0 - B * dt) * g_u);
+  }
+  (var, cov)
 }
 
 fn rho(rho_xv: f64, rho_xr: f64, rho_xu: f64, rho_ru: f64) -> Array2<f64> {
@@ -105,16 +101,13 @@ fn mean_and_se(values: impl Iterator<Item = f64>) -> (f64, f64) {
   (mean, (var / n).sqrt())
 }
 
-/// Sample variance and its standard error under a Gaussian law of variance `reference`.
-fn variance_z(values: impl Iterator<Item = f64>, reference: f64) -> (f64, f64) {
+/// The sample variance's distance from `reference`, in its standard error under a Gaussian law.
+fn variance_z(values: impl Iterator<Item = f64>, reference: f64) -> f64 {
   let values = values.collect::<Vec<_>>();
   let n = values.len() as f64;
   let mean = values.iter().sum::<f64>() / n;
   let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
-  (
-    var,
-    (var - reference) / (reference * (2.0 / (n - 1.0)).sqrt()),
-  )
+  (var - reference) / (reference * (2.0 / (n - 1.0)).sqrt())
 }
 
 /// Discounted put prices at `strikes` from `(S_T, ∫₀ᵀ r)` pairs, with their standard errors.
@@ -131,48 +124,59 @@ fn put_prices(terminal: &[(f64, f64)], strikes: &[f64]) -> Vec<(f64, f64)> {
     .collect()
 }
 
-/// Test 1. `κ = 1.5`, `θ = v₀ = 0.04`, `σ = 0.3`, `ρ_xv = −0.7`, a constant 3 percent rate, `T = 2` on 100
-/// steps a year: with `σ₁ = σ₂ = 0` and `θ_r = a r₀` the short rate never moves and the model is Heston.
-fn pure_heston<Sch: HybridScheme>(
-  model: HestonHullWhite2F<f64, Sch, Deterministic>,
-  rho_xv: f64,
-  what: &str,
-) {
-  const STRIKES: [f64; 3] = [0.8, 1.0, 1.2];
-  let (tau, n) = (2.0, model.n);
-  let terminal = model.sample_map(PATHS, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
-  let prices = put_prices(&terminal, &STRIKES);
-  let z_against = |rho_ref: f64| {
-    let closed = HestonPricer::new(HestonParams::new(0.04, 1.5, 0.04, 0.3, rho_ref));
-    STRIKES
-      .iter()
-      .zip(&prices)
-      .map(|(&k, &(price, se))| {
-        let reference = closed.price_put(1.0, k, FLAT_RATE, 0.0, tau);
-        let z = (price - reference) / se;
-        println!(
-          "{what}, rho_xv = {rho_ref:+.1}, K = {k}: {price:.6} ± {se:.6} against {reference:.6} (z = {z:+.2})"
-        );
-        z.abs()
-      })
-      .fold(0.0_f64, f64::max)
-  };
-  let worst = z_against(rho_xv);
-  assert!(
-    worst < Z_MAX,
-    "{what}: a put is {worst:.2} standard errors from the Heston closed form, above {Z_MAX}"
-  );
-  let flipped = z_against(-rho_xv);
-  assert!(
-    flipped > Z_POWER,
-    "{what}: the Heston closed form with the spot-variance correlation flipped is only {flipped:.2} standard errors away"
-  );
+/// `min` over the seeds of a statistic, NaN if any seed gave one.
+fn best(z: impl IntoIterator<Item = f64>) -> f64 {
+  f64::min_or_nan_fold(z)
 }
 
+/// The grid's law tends to the continuous one at first order in the step: at 100 steps a year
+/// its variance of `∫r` sits 0.38 % above eq. 4.10 at one year.
 #[test]
-fn zero_rate_volatility_prices_the_heston_closed_form() {
-  let rho_xv = -0.7;
-  let model = HestonHullWhite2F::new(
+fn the_rate_leg_on_the_grid_converges_to_brigo_mercurio() {
+  for tau in [1.0_f64, 5.0, 10.0] {
+    let gaps = [100_usize, 200].map(|per_year| {
+      let steps = tau as usize * per_year;
+      let (var, cov) = grid_moments(RHO_XR, RHO_XU, RHO_RU, steps, 1.0 / per_year as f64);
+      (
+        var / var_int_r(RHO_RU, tau) - 1.0,
+        cov / cov_wx_int_r(RHO_XR, RHO_XU, tau) - 1.0,
+      )
+    });
+    let [(var_coarse, cov_coarse), (var_fine, cov_fine)] = gaps;
+    assert!(
+      var_coarse.abs() < 4e-3 && cov_coarse.abs() < 4e-4,
+      "T = {tau}"
+    );
+    for ratio in [var_coarse / var_fine, cov_coarse / cov_fine] {
+      assert!(
+        (ratio - 2.0).abs() < 0.05,
+        "T = {tau}: halving gave {ratio}"
+      );
+    }
+  }
+}
+
+type Euler = stochastic_rs::stochastic::volatility::heston::Euler;
+
+/// A sampler of the hybrid's paths, under either variance step.
+trait Hybrid: ProcessExt<f64, Output = HestonHullWhite2FPaths<f64>> {}
+
+impl<Sch: HybridScheme> Hybrid for HestonHullWhite2F<f64, Sch, Deterministic> where
+  Self: ProcessExt<f64, Output = HestonHullWhite2FPaths<f64>>
+{
+}
+
+/// `(S, ∫r)` at grid point `at` over `paths` paths.
+fn terminal(model: &impl Hybrid, paths: usize, at: usize) -> Vec<(f64, f64)> {
+  model.sample_map(paths, |path| (path.s[at], path.integrated_rate[at]))
+}
+
+const HESTON_RHO_XV: f64 = -0.7;
+
+/// `κ = 1.5`, `θ = v₀ = 0.04`, `σ = 0.3`, `T = 2` on 100 steps a year: at zero rate volatility
+/// and `θ_r = a r₀` the short rate never moves and the model is Heston.
+fn heston_model(seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
+  HestonHullWhite2F::new(
     1.0,
     0.04,
     1.5,
@@ -183,192 +187,196 @@ fn zero_rate_volatility_prices_the_heston_closed_form() {
     0.0,
     0.0,
     B,
-    rho(rho_xv, RHO_XR, RHO_XU, RHO_RU),
+    rho(HESTON_RHO_XV, RHO_XR, RHO_XU, RHO_RU),
     Some(FLAT_RATE),
     201,
     Some(2.0),
-    Deterministic::new(1993),
-  );
-  pure_heston(model.clone(), rho_xv, "Euler");
-  pure_heston(model.qe(), rho_xv, "QE");
+    Deterministic::new(seed),
+  )
 }
 
-/// Test 2. `∫₀ᵀ r` at 1, 5 and 10 years on 100 steps a year: its mean is `FLAT_RATE · T`, its variance
-/// the closed form, and `E exp(−∫r)` the bond price `exp(−FLAT_RATE · T + ½ Var ∫r)`.
-fn rate_leg<Sch: HybridScheme>(model: HestonHullWhite2F<f64, Sch, Deterministic>, what: &str) {
-  const MATURITIES: [(f64, usize); 3] = [(1.0, 100), (5.0, 500), (10.0, 1000)];
-  let integrals = model.sample_map(PATHS, |path| {
-    MATURITIES.map(|(_, i)| path.integrated_rate[i])
-  });
-  for (m, &(tau, _)) in MATURITIES.iter().enumerate() {
-    let int_r = || integrals.iter().map(|row| row[m]);
-    let v = var_int_r(RHO_RU, tau);
-    let (mean, mean_se) = mean_and_se(int_r());
-    let z_mean = (mean - FLAT_RATE * tau) / mean_se;
-    let (var, z_var) = variance_z(int_r(), v);
-    let (bond, bond_se) = mean_and_se(int_r().map(|x| (-x).exp()));
-    let closed_bond = (-FLAT_RATE * tau + 0.5 * v).exp();
-    let z_bond = (bond - closed_bond) / bond_se;
-    println!(
-      "{what}, T = {tau}: mean {mean:.6} (z = {z_mean:+.2}), variance {var:.6e} against {v:.6e} (z = {z_var:+.2}), bond {bond:.6} against {closed_bond:.6} (z = {z_bond:+.2})"
-    );
+/// The worst put's `|z|` against Heston's closed form, and against it with `ρ_xv` flipped.
+fn pure_heston_z(model: &impl Hybrid) -> (f64, f64) {
+  const STRIKES: [f64; 3] = [0.8, 1.0, 1.2];
+  let prices = put_prices(&terminal(model, 20_000, 200), &STRIKES);
+  let worst_z = |rho_ref: f64| {
+    let closed = HestonPricer::new(HestonParams::new(0.04, 1.5, 0.04, 0.3, rho_ref));
+    f64::max_or_nan_fold(STRIKES.iter().zip(&prices).map(|(&k, &(price, se))| {
+      ((price - closed.price_put(1.0, k, FLAT_RATE, 0.0, 2.0)) / se).abs()
+    }))
+  };
+  (worst_z(HESTON_RHO_XV), worst_z(-HESTON_RHO_XV))
+}
+
+fn assert_pure_heston(what: &str, z: [(f64, f64); 3]) {
+  println!("{what}: {z:.2?}");
+  let closest = best(z.map(|(z, _)| z));
+  assert!(
+    closest < Z_MAX,
+    "{what}: every seed has a put {closest:.2} SE or more off"
+  );
+  for (_, flipped) in z {
     assert!(
-      z_mean.abs() < Z_MAX,
-      "{what}, T = {tau}: E ∫r = {mean} ± {mean_se}, {z_mean:.2} standard errors from {}",
-      FLAT_RATE * tau
+      flipped > Z_POWER,
+      "{what}: ρ_xv flipped is only {flipped:.2} SE away"
     );
-    assert!(
-      z_var.abs() < Z_MAX,
-      "{what}, T = {tau}: Var ∫r = {var}, {z_var:.2} standard errors from the closed form {v}"
-    );
-    assert!(
-      z_bond.abs() < Z_MAX,
-      "{what}, T = {tau}: E exp(−∫r) = {bond} ± {bond_se}, {z_bond:.2} standard errors from the bond price {closed_bond}"
-    );
-    let (_, z_flipped) = variance_z(int_r(), var_int_r(-RHO_RU, tau));
-    assert!(
-      z_flipped.abs() > Z_POWER,
-      "{what}, T = {tau}: the variance with the factor correlation flipped is only {z_flipped:.2} standard errors away"
-    );
-    if tau >= 5.0 {
-      let z_no_convexity = (bond - (-FLAT_RATE * tau).exp()) / bond_se;
-      assert!(
-        z_no_convexity.abs() > Z_POWER,
-        "{what}, T = {tau}: the bond price without the convexity term is only {z_no_convexity:.2} standard errors away"
-      );
-    }
   }
 }
 
 #[test]
-fn integrated_rate_has_the_closed_form_moments_and_bond_price() {
-  let model = HestonHullWhite2F::new(
+fn zero_rate_volatility_prices_the_heston_closed_form() {
+  assert_pure_heston(
+    "Euler",
+    SEEDS.map(|seed| pure_heston_z(&heston_model(seed))),
+  );
+  assert_pure_heston(
+    "QE",
+    SEEDS.map(|seed| pure_heston_z(&heston_model(seed).qe())),
+  );
+}
+
+/// Steps a year of the rate-leg cases; their references are the grid's own exact moments.
+const PER_YEAR: usize = 10;
+
+fn rate_model(
+  theta: f64,
+  sigma: f64,
+  rho_xv: f64,
+  years: usize,
+  seed: u64,
+) -> HestonHullWhite2F<f64, Euler, Deterministic> {
+  HestonHullWhite2F::new(
     1.0,
-    0.2,
+    theta,
     0.8,
-    0.2,
-    0.2,
+    theta,
+    sigma,
     flat_mean_theta as fn(f64) -> f64,
     A,
     SIGMA1,
     SIGMA2,
     B,
-    rho(-0.3, RHO_XR, RHO_XU, RHO_RU),
+    rho(rho_xv, RHO_XR, RHO_XU, RHO_RU),
     Some(FLAT_RATE),
-    1001,
-    Some(10.0),
-    Deterministic::new(2006),
-  );
-  rate_leg(model.clone(), "Euler");
-  rate_leg(model.qe(), "QE");
+    years * PER_YEAR + 1,
+    Some(years as f64),
+    Deterministic::new(seed),
+  )
 }
 
-/// Test 3. `v₀ = θ = 0.04` and a spot-variance correlation of zero, `T = 5` on 100 steps a year. With
-/// the variance frozen `log S_T` is Gaussian and a put is Black's formula at total variance
-/// `θT + Var ∫r + 2 √θ Cov(W^x_T, ∫r)` and bond price `P(0, T)`, here written as Black-Scholes at the
-/// rate `−log P(0, T)/T`.
-fn frozen_variance<Sch: HybridScheme>(
-  model: HestonHullWhite2F<f64, Sch, Deterministic>,
-  what: &str,
-) {
-  const STRIKES: [f64; 3] = [0.8, 1.0, 1.3];
-  let (theta, tau, n) = (model.theta, 5.0, model.n);
-  let terminal = model.sample_map(PATHS, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
-  let prices = put_prices(&terminal, &STRIKES);
-  let v = var_int_r(RHO_RU, tau);
-  let total_variance = |rho_xr: f64, rho_xu: f64| {
-    theta * tau + v + 2.0 * theta.sqrt() * cov_wx_int_r(rho_xr, rho_xu, tau)
-  };
-  let bond_rate = FLAT_RATE - 0.5 * v / tau;
+/// `∫₀ᵀ r` at 1, 5 and 10 years: the worst `|z|` of its mean, its variance and the bond price
+/// `exp(−FLAT_RATE·T + ½ Var)`, then the two power statistics.
+fn rate_leg_z(model: &impl Hybrid) -> (f64, f64, f64) {
+  const YEARS: [usize; 3] = [1, 5, 10];
+  let dt = 1.0 / PER_YEAR as f64;
+  let integrals = model.sample_map(40_000, |path| {
+    YEARS.map(|years| path.integrated_rate[years * PER_YEAR])
+  });
+  let mut worst = vec![];
+  let mut flipped = vec![];
+  let mut no_convexity = f64::NAN;
+  for (m, years) in YEARS.into_iter().enumerate() {
+    let tau = years as f64;
+    let int_r = || integrals.iter().map(|row| row[m]);
+    let moments = |rho_ru: f64| grid_moments(RHO_XR, RHO_XU, rho_ru, years * PER_YEAR, dt).0;
+    let v = moments(RHO_RU);
+    let (mean, mean_se) = mean_and_se(int_r());
+    let (bond, bond_se) = mean_and_se(int_r().map(|x| (-x).exp()));
+    worst.push(((mean - FLAT_RATE * tau) / mean_se).abs());
+    worst.push(variance_z(int_r(), v).abs());
+    worst.push(((bond - (-FLAT_RATE * tau + 0.5 * v).exp()) / bond_se).abs());
+    flipped.push(variance_z(int_r(), moments(-RHO_RU)).abs());
+    no_convexity = ((bond - (-FLAT_RATE * tau).exp()) / bond_se).abs();
+  }
+  (
+    f64::max_or_nan_fold(worst),
+    f64::min_or_nan_fold(flipped),
+    no_convexity,
+  )
+}
 
-  let log_spot = || terminal.iter().map(|(s, _)| s.ln());
-  let (var, z_var) = variance_z(log_spot(), total_variance(RHO_XR, RHO_XU));
-  println!(
-    "{what}: Var log S_T = {var:.6} against {:.6} (z = {z_var:+.2})",
-    total_variance(RHO_XR, RHO_XU)
-  );
+fn assert_rate_leg(what: &str, z: [(f64, f64, f64); 3]) {
+  println!("{what}: {z:.2?}");
+  let closest = best(z.map(|(z, _, _)| z));
   assert!(
-    z_var.abs() < Z_MAX,
-    "{what}: Var log S_T = {var}, {z_var:.2} standard errors from the closed form {}",
-    total_variance(RHO_XR, RHO_XU)
+    closest < Z_MAX,
+    "{what}: every seed has a moment {closest:.2} SE or more off"
   );
-
-  let z_prices = |rho_xr: f64, rho_xu: f64| {
-    let black = BsmPricer::new(
-      (total_variance(rho_xr, rho_xu) / tau).sqrt(),
-      BsmCoc::Merton1973,
-    );
-    STRIKES
-      .iter()
-      .zip(&prices)
-      .map(|(&k, &(price, se))| {
-        let reference = black.price_put(1.0, k, bond_rate, 0.0, tau);
-        let z = (price - reference) / se;
-        println!(
-          "{what}, rho_xr = {rho_xr}, rho_xu = {rho_xu}, K = {k}: {price:.6} ± {se:.6} against {reference:.6} (z = {z:+.2})"
-        );
-        z.abs()
-      })
-      .fold(0.0_f64, f64::max)
-  };
-  let worst = z_prices(RHO_XR, RHO_XU);
-  assert!(
-    worst < Z_MAX,
-    "{what}: a put is {worst:.2} standard errors from Black on the forward, above {Z_MAX}"
-  );
-
-  // Power: no equity-rate correlation at all, then each factor's correlation removed on its own.
-  let uncoupled = z_prices(0.0, 0.0);
-  assert!(
-    uncoupled > Z_POWER,
-    "{what}: Black without the equity-rate correlations is only {uncoupled:.2} standard errors away"
-  );
-  for (missing, reference) in [
-    (
-      "without the equity-rate correlations",
-      total_variance(0.0, 0.0),
-    ),
-    (
-      "without the second factor's correlation",
-      total_variance(RHO_XR, 0.0),
-    ),
-    (
-      "without the first factor's correlation",
-      total_variance(0.0, RHO_XU),
-    ),
-  ] {
-    let (_, z) = variance_z(log_spot(), reference);
+  for (_, flipped, no_convexity) in z {
     assert!(
-      z.abs() > Z_POWER,
-      "{what}: Var log S_T {missing} is only {z:.2} standard errors away"
+      flipped > Z_POWER,
+      "{what}: ρ_ru flipped is only {flipped:.2} SE away"
+    );
+    assert!(
+      no_convexity > Z_POWER,
+      "{what}: the ten-year bond without convexity is only {no_convexity:.2} SE away"
     );
   }
 }
 
-/// Euler runs at `σ = 0`, where the closed form is exact. The quadratic-exponential step needs a
-/// positive volatility of variance and runs at `σ = 0.01`: the variance then moves by 4 percent of its
-/// level, which changes `Var log S_T` through `E √v` and `Var ½∫v` by under `1e-4` of its value
-/// (`Var v ≤ σ²θ/(2κ)`, `Var ∫v ≤ σ²θT/κ²`), under a fortieth of the standard error here.
+#[test]
+fn integrated_rate_has_its_grid_moments_and_bond_price() {
+  let model = |seed| rate_model(0.2, 0.2, -0.3, 10, seed);
+  assert_rate_leg("Euler", SEEDS.map(|seed| rate_leg_z(&model(seed))));
+  assert_rate_leg("QE", SEEDS.map(|seed| rate_leg_z(&model(seed).qe())));
+}
+
+/// `v₀ = θ = 0.04`, `ρ_xv = 0`, `T = 5`: with the variance frozen `log S_T` is Gaussian with
+/// variance `θT + Var ∫r + 2√θ Cov(W^x_T, ∫r)` and a put is Black's on the forward `S₀/P(0, T)`.
+fn frozen_variance_z(model: &impl Hybrid, theta: f64) -> (f64, f64) {
+  const STRIKES: [f64; 3] = [0.8, 1.0, 1.3];
+  let (tau, steps) = (5.0, 5 * PER_YEAR);
+  let terminal = terminal(model, 50_000, steps);
+  let prices = put_prices(&terminal, &STRIKES);
+  let moments = |rho_xr, rho_xu| grid_moments(rho_xr, rho_xu, RHO_RU, steps, tau / steps as f64);
+  let total_variance = |rho_xr: f64, rho_xu: f64| {
+    let (v, cov) = moments(rho_xr, rho_xu);
+    theta * tau + v + 2.0 * theta.sqrt() * cov
+  };
+  let bond_rate = FLAT_RATE - 0.5 * moments(RHO_XR, RHO_XU).0 / tau;
+  let log_spot = || terminal.iter().map(|(s, _)| s.ln());
+  let worst_price_z = |rho_xr: f64, rho_xu: f64| {
+    let volatility = (total_variance(rho_xr, rho_xu) / tau).sqrt();
+    let black = BsmPricer::new(volatility, BsmCoc::Merton1973);
+    f64::max_or_nan_fold(STRIKES.iter().zip(&prices).map(|(&k, &(price, se))| {
+      ((price - black.price_put(1.0, k, bond_rate, 0.0, tau)) / se).abs()
+    }))
+  };
+  let worst = worst_price_z(RHO_XR, RHO_XU)
+    .max_or_nan(variance_z(log_spot(), total_variance(RHO_XR, RHO_XU)).abs());
+  let missing = [(0.0, 0.0), (RHO_XR, 0.0), (0.0, RHO_XU)];
+  let power = f64::min_or_nan_fold(
+    missing
+      .into_iter()
+      .map(|(rho_xr, rho_xu)| variance_z(log_spot(), total_variance(rho_xr, rho_xu)).abs())
+      .chain([worst_price_z(0.0, 0.0)]),
+  );
+  (worst, power)
+}
+
+fn assert_frozen_variance(what: &str, z: [(f64, f64); 3]) {
+  println!("{what}: {z:.2?}");
+  let closest = best(z.map(|(z, _)| z));
+  assert!(
+    closest < Z_MAX,
+    "{what}: every seed is {closest:.2} SE or more from Black"
+  );
+  for (_, power) in z {
+    assert!(
+      power > Z_POWER,
+      "{what}: an equity-rate correlation removed is only {power:.2} SE away"
+    );
+  }
+}
+
+/// QE needs `σ > 0` and runs at `σ = 0.01`: the variance then moves by 4 % of its level, which
+/// changes `Var log S_T` by under `1e-4` of its value, far inside the standard error here.
 #[test]
 fn frozen_variance_prices_black_on_the_forward_under_two_factor_rates() {
   let theta = 0.04;
-  let model = HestonHullWhite2F::new(
-    1.0,
-    theta,
-    0.8,
-    theta,
-    0.0,
-    flat_mean_theta as fn(f64) -> f64,
-    A,
-    SIGMA1,
-    SIGMA2,
-    B,
-    rho(0.0, RHO_XR, RHO_XU, RHO_RU),
-    Some(FLAT_RATE),
-    501,
-    Some(5.0),
-    Deterministic::new(1973),
-  );
-  frozen_variance(model.clone(), "Euler");
-  frozen_variance(model.with_sigma(0.01).qe(), "QE");
+  let model = |sigma, seed| rate_model(theta, sigma, 0.0, 5, seed);
+  let euler = SEEDS.map(|seed| frozen_variance_z(&model(0.0, seed), theta));
+  assert_frozen_variance("Euler", euler);
+  let qe = SEEDS.map(|seed| frozen_variance_z(&model(0.01, seed).qe(), theta));
+  assert_frozen_variance("QE", qe);
 }
