@@ -34,9 +34,7 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
   p.price_option(S + ds, K, R, Q, TAU + dtau, OT)
 }
 
-/// λ=0 collapses the Poisson sum to its single `n=0` term (weight 1),
-/// degenerating Merton (1976) to plain Black-Scholes at the input
-/// volatility — see `Σ_{n=0}^∞ e^{-λT}(λT)^n/n!` at `λ=0`.
+/// At `λ = 0` the series is its `n = 0` term, Black-Scholes at `sigma`.
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
@@ -142,20 +140,8 @@ fn merton_greeks_finite_at_m50() {
   assert!(put.is_finite(), "put not finite at m=50: {put}");
 }
 
-/// A second `(lambda, gamma)` pin, guarding
-/// [`Merton1976Pricer::poisson_weight`]'s running product against the
-/// integer `n!` it replaced (which overflows past `n ≈ 20`): the two
-/// accumulation orders are mathematically identical but not guaranteed
-/// bit-for-bit equal, so a `1e-12` absolute tolerance leaves headroom for
-/// the operation order while still catching a real regression.
-///
-/// Both values moved with the `σ_n` correction — they were `1.883107` and
-/// `4.290648`, computed with the diffusive variance scaled by `n/τ`. The
-/// call is adjudicated to `4.401577` by Gil-Pelaez inversion of the Merton
-/// characteristic function, which shares no code with the Poisson series,
-/// and the series lands on it; the `8.3e-6` gap it once showed was the
-/// Abramowitz-Stegun `erf` behind `norm_cdf`, since replaced. The put follows from it by the generalised parity
-/// `C - P = S - Ke^{-rτ}` asserted below, so the pair cannot drift apart.
+/// The `m = 10` pair against `4.401577`, the call a Gil-Pelaez inversion of Merton's chf confirms;
+/// the put follows by `C − P = S − Ke^{−rτ}`.
 #[test]
 fn merton_price_m10_matches_the_reference_value() {
   let m = merton(0.5, 0.3, 10);
@@ -174,12 +160,8 @@ fn merton_price_m10_matches_the_reference_value() {
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
 }
 
-/// At `τ` below the finite-difference step `H_TAU = 1e-5`, the `λ > 0`
-/// path's down-bump would evaluate the price series at a negative
-/// time-to-maturity. `theta`/`charm`/`veta` must return `NaN` there
-/// instead of the large finite garbage a silently-zeroed `NaN` term in the
-/// Poisson sum would otherwise produce — mirrors `HestonPricer::theta`'s
-/// identical near-expiry guard (`pricing::heston`).
+/// At `λ > 0` and `τ` under the `1e-5` bump, `theta`, `charm` and `veta` are `NaN`: the down-bump
+/// would price at a negative maturity.
 #[test]
 fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   let m = merton(0.5, 0.3, 20);
@@ -290,9 +272,7 @@ fn merton_pins_the_reference_price_and_greeks() {
   }
 }
 
-/// The aggregate must be the nine accessors and nothing else — in
-/// particular `volga`/`veta` must not be transposed, which is a mapping
-/// that has no other pin.
+/// The aggregate is the nine accessors, with `volga` and `veta` not transposed.
 #[test]
 fn merton_greeks_aggregate_matches_accessors() {
   let m = merton(0.5, 0.3, 20);
@@ -311,9 +291,8 @@ fn merton_greeks_aggregate_matches_accessors() {
   }
 }
 
-/// Each term of the Poisson series carries at `exp((b - r) * tau)`, which
-/// equals the trait default's `exp(-q * tau)` only when `b = r - q` —
-/// false for `Bsm1973` at `q != 0`, which is this test's configuration.
+/// Under `Bsm1973` at `q ≠ 0` each term carries at `e^{(b−r)τ} ≠ e^{−qτ}`, so the put is not the
+/// parity default.
 #[test]
 fn merton_price_put_overrides_vanilla_parity() {
   let m = merton(0.5, 0.4, 10);

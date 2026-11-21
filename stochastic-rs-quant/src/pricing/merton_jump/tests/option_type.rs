@@ -14,9 +14,8 @@ fn the_parity_spread_is_independent_of_volatility() {
   }
 }
 
-/// Independent references: 60-digit mpmath derivatives of the ten-term
-/// Poisson price, using erfc for the normal CDF. The n=3 term crosses d2=0
-/// in this strike range, where differencing an approximate CDF is unstable.
+/// Against 60-digit mpmath derivatives of the ten-term price (erfc for the CDF), where the `n = 3`
+/// term crosses `d₂ = 0` and differencing an approximate CDF is unstable.
 #[test]
 fn volga_is_stable_when_a_term_crosses_zero_d2() {
   let m = merton_at(0.2, 0.5, 0.3, 10);

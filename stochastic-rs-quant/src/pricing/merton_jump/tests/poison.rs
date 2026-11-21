@@ -75,24 +75,8 @@ fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
   assert!(tame.delta(S, K, R, Q, TAU, OT).is_finite());
 }
 
-/// The same disagreement one layer down, on a model whose terms **are**
-/// degenerate — the configuration the narrowed floor still laundered,
-/// because `term.sigma == 0.0` is true there by construction.
-///
-/// A frozen underlying has `σ_n = 0` for every `n`, so every closed form is
-/// `NaN` at every query, good or bad, and the floor could not tell the two
-/// apart. Seven of the nine families below came back with
-/// `delta = gamma = rho = 0.0` and `theta = charm = -0.0` against a `NaN`
-/// price. What separates them now is not the `NaN` — that is the same `NaN`
-/// — but `term_regime`'s three guards: a `τ` that is not finite and
-/// positive, or a non-positive `s` or `k`, leaves the closed form's own
-/// answer in place instead of claiming a limit for it.
-///
-/// The `τ = ∞` case is the one the guards were widened for. `term_vol` is
-/// `√(d² + z²n/∞) = 0` there, exactly as at a good query, and `d₁` is the
-/// same `0/0`; only `tau.is_finite()` tells them apart, and without it the
-/// carry factor `e^{(b−r)∞}` would have underflowed the limit to a
-/// confident `0.0`.
+/// On a frozen model every closed form is `NaN`, so `term_regime`'s guards keep a non-finite or
+/// non-positive `tau`, `s` or `k` (`τ = ∞` included) from claiming a limit.
 #[test]
 fn a_poisoned_query_poisons_a_degenerate_models_greeks_too() {
   let m = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
