@@ -1,4 +1,5 @@
-//! The truncated laws' analytics against mpmath at two precisions: far tails, widths 1e-2…1e-6, open and singular ends.
+//! The truncated laws' analytics against mpmath at two precisions: far tails, widths 1e-2…1e-6,
+//! open and singular ends.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 
@@ -40,7 +41,8 @@ pub fn rel(got: f64, want: f64) -> f64 {
   ((got - want) / want).abs()
 }
 
-/// Relative `rtol` or absolute `atol`, whichever is looser; kurtosis carries 1e-11 against a worst measured 2.2e-12.
+/// Relative `rtol` or absolute `atol`, whichever is looser; kurtosis carries 1e-11 against a worst
+/// measured 2.2e-12.
 pub fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) {
   assert!(
     (got - want).abs() <= atol || rel(got, want) <= rtol,
@@ -48,10 +50,12 @@ pub fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) 
   );
 }
 
-/// The levels next to 1 whose quantiles count the mass past an upper clip: the largest double below 1, and `1 − 1e-12`.
+/// The levels next to 1 whose quantiles count the mass past an upper clip: the largest double below
+/// 1, and `1 − 1e-12`.
 pub const NEXT_TO_ONE: [f64; 2] = [1.0 - f64::EPSILON / 2.0, 1.0 - 1e-12];
 
-/// The four moments at `check`'s bars; a reference that overflowed or underflowed is its rounding, matched exactly.
+/// The four moments at `check`'s bars; a reference that overflowed or underflowed is its rounding,
+/// matched exactly.
 pub fn moments_match(name: &str, law: &impl DistributionExt, want: [f64; 4]) {
   let got = [
     law.mean().unwrap(),
@@ -76,7 +80,8 @@ pub fn moments_match(name: &str, law: &impl DistributionExt, want: [f64; 4]) {
   }
 }
 
-/// A law with a singular lower end at 0: its four moments, its entropy and its cdf at 1e-200, 1e-20 and ½.
+/// A law with a singular lower end at 0: its four moments, its entropy and its cdf at 1e-200, 1e-20
+/// and ½.
 pub fn singular_row(name: &str, law: &impl DistributionExt, want: [f64; 8]) {
   moments_match(name, law, [want[0], want[1], want[2], want[3]]);
   close(name, "entropy", law.entropy().unwrap(), want[4], 1e-12, 0.0);

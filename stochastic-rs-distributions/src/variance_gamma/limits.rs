@@ -15,10 +15,12 @@ use crate::special::two_sum_far;
 /// From this rate down the clock's skewness `2√ν` moves a representable density by under `2⁻⁶²`.
 pub(super) const NORMAL_CLOCK: f64 = 6.842_277_657_836_021e-49;
 
-/// From this `νθ²/σ²` on the diffusion moves a representable density by under `2⁻⁶⁰`: `σ²/(νθ²)` times `1/(νg)`.
+/// From this `νθ²/σ²` on the diffusion moves a representable density by under `2⁻⁶⁰`: `σ²/(νθ²)`
+/// times `1/(νg)`.
 pub(super) const NARROW_DIFFUSION: f64 = 1.267_650_600_228_229_4e30;
 
-/// `N(θ, σ² + νθ²)` at `d` in two parts, `|d − θ|` scaled where it passes the doubles, the variance and `(d − θ)/s` scaled.
+/// `N(θ, σ² + νθ²)` at `d` in two parts, `|d − θ|` scaled where it passes the doubles, the variance
+/// and `(d − θ)/s` scaled.
 #[cold]
 #[inline(never)]
 pub(super) fn normal_clock(

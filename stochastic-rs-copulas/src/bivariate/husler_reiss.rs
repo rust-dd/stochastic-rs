@@ -1,4 +1,5 @@
-//! # Hüsler-Reiss (1989) extreme-value copula
+//! Hüsler-Reiss (1989) extreme-value copula: `λ = 0` is independence (`A ≡ 1`), `λ → ∞`
+//! comonotonicity; `λ_U = 2(1 − Φ(1/λ))`, `λ_L = 0`.
 //!
 //! ```text
 //! C_λ(u,v) = exp{ ln u · Φ(1/λ + (λ/2)·ln(ln u / ln v))
@@ -6,13 +7,8 @@
 //! A(t) = (1-t)·Φ(1/λ + (λ/2)·ln((1-t)/t)) + t·Φ(1/λ + (λ/2)·ln(t/(1-t))),   t ∈ [0, 1].
 //! ```
 //!
-//! `λ = 0` is independence (`A ≡ 1`), `λ → ∞` comonotonicity; `λ_U = 2(1 − Φ(1/λ))`, `λ_L = 0`. The identity
-//! `x φ(α) = y φ(β)`, `α = 1/λ + (λ/2) ln(x/y)`, `β = 2/λ − α`, collapses `∂_y ln C` to `−Φ(β)`.
-//!
-//! Reference: Hüsler, J., Reiss, R.-D. (1989), "Maxima of normal random
-//! vectors: between independence and complete dependence", *Statist.
-//! Probab. Lett.* 7(4), 283-286.
-//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §3.3 (the parameter space, `[0, ∞]` in the reciprocal of this `λ`, independence at its `∞`), §4 (Kendall's τ from the Pickands function).
+//! Reference: Hüsler, Reiss (1989), 7(4), 283-286, DOI 10.1016/0167-7152(89)90106-5.
+//! Reference: Gudendorf & Segers (2010), §3.3, §4, DOI 10.1007/978-3-642-12465-5_6.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::TAU;
@@ -45,7 +41,8 @@ use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// The ends of the τ inversion's bracket in `λ`: below `1e-2`, `τ < e^{−4900}`, and past `1e17`, `1 − τ < 2⁻⁵⁴`.
+/// The ends of the τ inversion's bracket in `λ`: below `1e-2`, `τ < e^{−4900}`, and past `1e17`,
+/// `1 − τ < 2⁻⁵⁴`.
 const LAMBDA_BRACKET: (f64, f64) = (1e-2, 1e17);
 
 #[derive(Debug, Clone, Default)]
@@ -73,8 +70,8 @@ impl HuslerReiss {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `ln ∂_v C = −xΦ(α) + yΦ(−β) + ln Φ(β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)`, `ln(x/y)` by `ln_log_ratio`,
-  /// and every normal tail through Mills' ratio, so `1 − h` keeps its digits; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  /// `ln ∂_v C = −xΦ(α) + yΦ(−β) + ln Φ(β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)`,
+  /// normal tails by Mills' ratio so `1 − h` keeps its digits; `δ₀`, `δ₁` at `v = 0, 1`.
   pub(crate) fn ln_h(lambda: f64) -> impl Fn(f64, f64) -> f64 {
     let inv = 1.0 / lambda;
     move |u, v| {
@@ -87,7 +84,8 @@ impl HuslerReiss {
       let (x, y) = (-u.ln(), -v.ln());
       let half = 0.5 * lambda * ln_log_ratio(u, v, x, y);
       let (alpha, beta) = (inv + half, inv - half);
-      // For `α < 0 < β` both terms are tails that nearly cancel; `xφ(α) = yφ(β)` turns them into one Mills difference.
+      // For `α < 0 < β` both terms are tails that nearly cancel; `xφ(α) = yφ(β)` turns them into
+      // one Mills difference.
       let tails = if alpha < 0.0 {
         y * norm_pdf(beta) * (mills_ratio(beta) - mills_ratio(-alpha))
       } else {
@@ -97,15 +95,16 @@ impl HuslerReiss {
     }
   }
 
-  /// `(x, y, α, β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)` with `ln(x/y)` by `ln_log_ratio`.
+  /// `(x, y, α, β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)` with `ln(x/y)` by
+  /// `ln_log_ratio`.
   fn scores(lambda: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
     let (x, y) = (-u.ln(), -v.ln());
     let half = 0.5 * lambda * ln_log_ratio(u, v, x, y);
     (x, y, 1.0 / lambda + half, 1.0 / lambda - half)
   }
 
-  /// `ln c = xΦ(−α) + yΦ(−β) + ln(Φ(α)Φ(β) + (λ/2)φ(α)/y)`, the last a log-sum of positive terms, each normal tail by
-  /// `ln_norm_cdf`, so the density holds where both terms underflow.
+  /// `ln c = xΦ(−α) + yΦ(−β) + ln(Φ(α)Φ(β) + (λ/2)φ(α)/y)`, the last a log-sum of positive terms,
+  /// each normal tail by `ln_norm_cdf`, so the density holds where both terms underflow.
   fn ln_density(lambda: f64, u: f64, v: f64) -> f64 {
     if lambda == 0.0 {
       return 0.0;
@@ -120,8 +119,8 @@ impl HuslerReiss {
       )
   }
 
-  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)`, NaN outside `[0, 1]`, by `pickands_at` at the logit of
-  /// `t`, an infinite `λℓ/2` meeting Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
+  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)`, NaN outside `[0, 1]`, by
+  /// `pickands_at` at `t`'s logit, where an infinite `λℓ/2` meets Φ's 0 or 1, up to `λ = f64::MAX`.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
     if !(0.0..=1.0).contains(&t) {
       return f64::NAN;
@@ -143,8 +142,8 @@ impl HuslerReiss {
     (ln_one_minus_t, ln_t, alpha, beta, a)
   }
 
-  /// `(ln τ, ln(1 − τ))`: as `A' = Φ(β) − Φ(α)`, `τ = λ∫ (1 − t)φ(α)/A` and, by parts, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²`
-  /// over the logit `ℓ` of `t ∈ [1/2, 1]`, `α, β = 1/λ ∓ λℓ/2`; the smaller is integrated, the other follows.
+  /// `(ln τ, ln(1 − τ))`, the smaller integrated over the logit `ℓ` of `t ∈ [1/2, 1]`,
+  /// `α, β = 1/λ ∓ λℓ/2`: `τ = λ∫ (1 − t)φ(α)/A`, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²` by parts.
   fn ln_tau_parts(lambda: f64) -> (f64, f64) {
     // `(ln(1 − t), ln t, α, β, ln A)` at `ℓ`.
     let at = |l: f64| {
@@ -263,7 +262,8 @@ impl BivariateExt for HuslerReiss {
     Some(self.unchecked_inverse(y, v))
   }
 
-  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `HuslerReiss::ln_tau_parts`; 0 below `λ = 1e-2`.
+  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `HuslerReiss::ln_tau_parts`; 0
+  /// below `λ = 1e-2`.
   fn tau_from_theta(&self, lambda: f64) -> f64 {
     if lambda < LAMBDA_BRACKET.0 {
       return 0.0;
@@ -276,8 +276,8 @@ impl BivariateExt for HuslerReiss {
     }
   }
 
-  /// Brent on `ln λ` over `LAMBDA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past it, so every `τ` in
-  /// `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
+  /// Brent on `ln λ` over `LAMBDA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past
+  /// it, so every `τ` in `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     if !(0.0..1.0).contains(&tau) {
       return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".to_string()));
@@ -301,7 +301,7 @@ impl BivariateExt for HuslerReiss {
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;
   /// Hüsler-Reiss has no lower-tail dependence.
-  /// Reference: Hüsler, J., Reiss, R.-D. (1989) (module header).
+  /// Reference: Hüsler, J., Reiss, R.-D. (1989), DOI 10.1016/0167-7152(89)90106-5.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let lambda = self.theta.unwrap();
@@ -319,8 +319,8 @@ mod tests {
 
   use super::*;
 
-  /// `(ln τ, ln(1 − τ))`, the logarithm each inversion matches, against the τ table's second and third columns: each
-  /// within `1e-12` of itself, or `f64::MIN_POSITIVE` where it is subnormal.
+  /// `(ln τ, ln(1 − τ))`, the logarithm each inversion matches, against the τ table's second and
+  /// third columns: each within `1e-12` of itself, or `f64::MIN_POSITIVE` where it is subnormal.
   #[test]
   fn the_tau_logarithms_match_the_tau_table() {
     let rows = include_str!("../../tests/fixtures/kendall_tau.txt")
@@ -543,7 +543,8 @@ mod tests {
     assert!(tau.abs() < 6.0 * se, "τ = {tau}");
   }
 
-  /// `τ = 0` inverts to `λ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and from a fit at `τ̂ = 0`.
+  /// `τ = 0` inverts to `λ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and
+  /// from a fit at `τ̂ = 0`.
   #[test]
   fn hr_tau_zero_inverts_to_independence() {
     let c = HuslerReiss::from_tau(0.0).unwrap();

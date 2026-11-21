@@ -29,7 +29,8 @@ pub(crate) fn two_sum_far(a: f64, b: f64) -> (f64, f64) {
   (2.0 * s, 2.0 * e)
 }
 
-/// `(m + lo)·2ᵉ` with `m ∈ [1, 2)` and `|lo|` within an ulp of `m`: a positive value whose exponent may lie past the doubles.
+/// `(m + lo)·2ᵉ` with `m ∈ [1, 2)` and `|lo|` within an ulp of `m`: a positive value whose exponent
+/// may lie past the doubles.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Scaled {
   m: f64,

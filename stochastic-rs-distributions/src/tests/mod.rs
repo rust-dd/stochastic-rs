@@ -19,7 +19,8 @@ pub(crate) fn holds(got: f64, want: f64, rel: f64) -> bool {
   (got - want).abs() <= (rel * want.abs()).max(f64::from_bits(1))
 }
 
-/// Best KS p-value of 20 000 honest `Distribution::sample` draws over three seeds, so one unlucky seed cannot fail a law.
+/// Best KS p-value of 20 000 honest `Distribution::sample` draws over three seeds, so one unlucky
+/// seed cannot fail a law.
 pub(crate) fn scalar_ks_best_p<D: Distribution<f64>>(d: &D, cdf: impl Fn(f64) -> f64) -> f64 {
   [2718u64, 999, 42]
     .into_iter()
@@ -38,7 +39,8 @@ pub(crate) fn scalar_ks_best_p<D: Distribution<f64>>(d: &D, cdf: impl Fn(f64) ->
     .fold(0.0_f64, f64::max)
 }
 
-/// Best pooled-bin chi-square p-value (Cochran's `min_expected = 5`) of 20 000 honest integer draws over three seeds.
+/// Best pooled-bin chi-square p-value (Cochran's `min_expected = 5`) of 20 000 honest integer draws
+/// over three seeds.
 pub(crate) fn scalar_chi_square_best_p<T: ToPrimitive, D: Distribution<T>>(
   d: &D,
   (k_lo, k_hi): (i64, i64),

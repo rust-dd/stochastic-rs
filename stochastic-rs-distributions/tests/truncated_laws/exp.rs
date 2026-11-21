@@ -14,7 +14,8 @@ fn te(lambda: f64, lo: f64, up: f64) -> SimdTruncatedExp<f64> {
   SimdTruncatedExp::<f64>::new(lambda, lo, up)
 }
 
-/// Every regime of `λL`: the bulk, the open tail, `λL` of 1e-9 and 1e-17 either way, and a far interval.
+/// Every regime of `λL`: the bulk, the open tail, `λL` of 1e-9 and 1e-17 either way, and a far
+/// interval.
 #[test]
 fn moments_pdf_cdf_and_quantile() {
   for (lam, lo, up, mid, scale, points, quarter, want) in [
@@ -151,7 +152,8 @@ fn moments_pdf_cdf_and_quantile() {
   }
 }
 
-/// Sums in units of the clipped width: a rate of 1e±100 at `λL = 2` keeps every moment (mpmath, 60 and 120 digits).
+/// Sums in units of the clipped width: a rate of 1e±100 at `λL = 2` keeps every moment (mpmath, 60
+/// and 120 digits).
 #[test]
 fn moments_at_extreme_rates() {
   for (lam, mean, variance) in [

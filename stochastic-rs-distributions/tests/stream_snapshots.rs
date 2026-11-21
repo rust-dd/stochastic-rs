@@ -66,7 +66,8 @@ use stream_snapshots::snapshot::ScalarKind;
 use stream_snapshots::snapshot::Snapshot;
 
 const SEEDS: [u64; 2] = [42, 7];
-/// Inverse of `Deterministic`'s splitmix64 increment mod 2^64, so a wrapped state difference still counts steps.
+/// Inverse of `Deterministic`'s splitmix64 increment mod 2^64, so a wrapped state difference still
+/// counts steps.
 const INV_GOLDEN: u64 = 0xf1de_83e1_9937_733d;
 /// `sample_matrix(64, 1024)` fans out to four workers of this many values each.
 const CHUNK: usize = 16_384;
@@ -112,9 +113,11 @@ where
   step_heads[1] = small[0].bits();
   step_heads[2] = small[7].bits();
   hashes[2] = fnv1a(small.iter().map(|x| x.bits()));
-  // A 32-, 64- or 128-value buffer keeps 28 of the first 100 pops; 40 more refill it once, by its own size.
+  // A 32-, 64- or 128-value buffer keeps 28 of the first 100 pops; 40 more refill it once, by its
+  // own size.
   let pops = (0..40).map(|_| pop(&mut d).bits()).collect::<Vec<_>>();
-  // A twin without the two direct fills shares the leftover pops; the head is the first pop that differs.
+  // A twin without the two direct fills shares the leftover pops; the head is the first pop that
+  // differs.
   let mut unfilled = make(&Deterministic::new(seed));
   let unfilled_pops = (0..140)
     .map(|_| pop(&mut unfilled).bits())
@@ -517,7 +520,8 @@ snapshot_singles! {
   };
 }
 
-/// Writes `constants.rs` under `STREAM_SNAPSHOT_REGEN=1`, only for a re-pin with a `### Numerical changes` entry.
+/// Writes `constants.rs` under `STREAM_SNAPSHOT_REGEN=1`, only for a re-pin with a
+/// `### Numerical changes` entry.
 #[test]
 #[ignore = "re-pin generator, gated on STREAM_SNAPSHOT_REGEN=1 (command in the module doc)"]
 fn print_constants() {

@@ -214,7 +214,8 @@ fn ndtri_matches_high_precision_references() {
   assert_eq!(ndtri(0.5), 0.0);
 }
 
-/// mpmath at 50 and 100 digits next to ½, where `Φ(x) − p` would carry an absolute error of ulp(½) into the step.
+/// mpmath at 50 and 100 digits next to ½, where `Φ(x) − p` would carry an absolute error of ulp(½)
+/// into the step.
 #[test]
 fn ndtri_keeps_its_digits_next_to_one_half() {
   let (a, b) = (2f64.powi(-30), 2f64.powi(-53));

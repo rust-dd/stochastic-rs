@@ -23,7 +23,8 @@ fn holds(e: f64, x: f64) -> bool {
   error <= f64::EPSILON / 2.0
 }
 
-/// The scale `1/(e − 1)` of the rate; `MAX` below a unit exponent, whose factor is 1 to within `x/MAX`.
+/// The scale `1/(e − 1)` of the rate; `MAX` below a unit exponent, whose factor is 1 to within
+/// `x/MAX`.
 fn scale(e: f64) -> f64 {
   if e > 1.0 {
     (1.0 / (e - 1.0)).min(f64::MAX)

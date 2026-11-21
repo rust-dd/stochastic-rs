@@ -47,7 +47,8 @@ fn bounds_past_theta_max() {
   );
 }
 
-/// θ = f64::MAX takes the unit 2¹⁰²⁴, which only its exponent holds, so `(k − 1)θ` in it stays finite.
+/// θ = f64::MAX takes the unit 2¹⁰²⁴, which only its exponent holds, so `(k − 1)θ` in it stays
+/// finite.
 #[test]
 fn a_scale_past_two_to_the_1023() {
   let law = tg(1e308, f64::MAX, 0.0, f64::INFINITY);
@@ -74,7 +75,8 @@ fn a_scale_past_two_to_the_1023() {
   close(name, "entropy", entropy, 1065.7997557476717, 1e-12, 0.0);
 }
 
-/// An interval past the doubles below θ takes its own length as the unit: the law is `k x^{k−1}/up^k` there.
+/// An interval past the doubles below θ takes its own length as the unit: the law is
+/// `k x^{k−1}/up^k` there.
 #[test]
 fn an_interval_far_below_theta() {
   for (k, theta, up, want) in [
@@ -120,7 +122,8 @@ fn an_interval_far_below_theta() {
   }
 }
 
-/// Below a unit shape the kernel's two terms share a sign, so where `y/c` overflows the pdf takes its limit 0.
+/// Below a unit shape the kernel's two terms share a sign, so where `y/c` overflows the pdf takes
+/// its limit 0.
 #[test]
 fn small_shape_pdf_where_the_offset_overflows() {
   let wide = tg(0.5, 1.0, 0.0, 1e308);

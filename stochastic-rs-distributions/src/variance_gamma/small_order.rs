@@ -14,7 +14,8 @@ use crate::special::ln_parts;
 use crate::special::mul_parts;
 use crate::special::sub_parts;
 
-/// `ln(½Γ(s))` at `s` in two parts, the low part through `ψ(s)`, below ½ as `ψ(1 + s) − 1/s`, since `ψ(2⁻¹⁰²⁴)` overflows.
+/// `ln(½Γ(s))` at `s` in two parts, the low part through `ψ(s)`, below ½ as `ψ(1 + s) − 1/s`, since
+/// `ψ(2⁻¹⁰²⁴)` overflows.
 fn ln_half_gamma((s, s_lo): (f64, f64)) -> (f64, f64) {
   let slope = if s < 0.5 {
     digamma(1.0 + s) * s_lo - s_lo / s

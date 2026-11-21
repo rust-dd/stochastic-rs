@@ -1,4 +1,5 @@
-//! One `&dist` across rayon workers with per-worker rngs, and per-index forks, give the serial output.
+//! One `&dist` across rayon workers with per-worker rngs, and per-index forks, give the serial
+//! output.
 
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;

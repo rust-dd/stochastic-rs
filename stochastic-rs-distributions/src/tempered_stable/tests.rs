@@ -174,7 +174,8 @@ const SMALL_ALPHA_CELLS: [SmallAlphaCell; 6] = [
   ),
 ];
 
-/// 10⁴ seeded draws of each `(α, θ, λ)` cell, from a thread the caller waits on within a bound sized for a debug build.
+/// 10⁴ seeded draws of each `(α, θ, λ)` cell, from a thread the caller waits on within a bound
+/// sized for a debug build.
 fn draws_within_a_bound(cells: Vec<(f64, f64, f64)>) -> Vec<((f64, f64, f64), Vec<f64>)> {
   let count = cells.len();
   let (tx, rx) = std::sync::mpsc::channel();
@@ -266,7 +267,8 @@ fn small_alpha_draws_follow_the_law() {
   }
 }
 
-/// At θ = 1e160 and α = ½ the law's relative spread is 1e-80: every draw is κ₁ = θαλ^{α−1} = 5e159 to 1e-12.
+/// At θ = 1e160 and α = ½ the law's relative spread is 1e-80: every draw is κ₁ = θαλ^{α−1} = 5e159
+/// to 1e-12.
 #[test]
 fn huge_scale_draws_sit_at_the_mean() {
   let mut xs = vec![0.0; 10_000];

@@ -7,7 +7,7 @@
 //!
 //! With `H < 1/2` it takes [`VolterraSde`]'s lift, any other [`reference_path`]'s `O(n²)` sum.
 //!
-//! Reference: Decreusefond, Üstünel (1999), Stochastic Analysis of the Fractional Brownian Motion
+//! Reference: Decreusefond & Üstünel (1999), DOI 10.1023/A:1008634027843
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

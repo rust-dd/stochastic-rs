@@ -31,7 +31,8 @@ pub(crate) fn pow_m1_over_xi<T: Float>(xi: T, ln_y: T) -> T {
   }
 }
 
-/// `ln(1 + ξz)/ξ` for `ξz > −1`, `z` at `ξ = 0`; where `ξz` overflows, its logarithm is `ln|ξ| + ln|z|` to the bit.
+/// `ln(1 + ξz)/ξ` for `ξz > −1`, `z` at `ξ = 0`; where `ξz` overflows, its logarithm is
+/// `ln|ξ| + ln|z|` to the bit.
 pub(crate) fn ln_1p_over_xi(xi: f64, z: f64) -> f64 {
   let xz = xi * z;
   if xz.is_finite() {
@@ -41,5 +42,6 @@ pub(crate) fn ln_1p_over_xi(xi: f64, z: f64) -> f64 {
   }
 }
 
-/// Below it `(y^{−ξ} − 1)/ξ` is `−ln y` to half an ulp: the correction `|ξ ln y|/2` stays under `2⁻⁵⁴` for `|ln y| ≤ 745`.
+/// Below it `(y^{−ξ} − 1)/ξ` is `−ln y` to half an ulp: the correction `|ξ ln y|/2` stays under
+/// `2⁻⁵⁴` for `|ln y| ≤ 745`.
 pub(crate) const SHAPE_CUT: f64 = 1e-19;

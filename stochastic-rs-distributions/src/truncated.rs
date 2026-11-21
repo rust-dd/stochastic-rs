@@ -1,5 +1,5 @@
-//! # Truncated distributions
-//! The normal, exponential, beta and gamma laws restricted to `[lower, upper]` and renormalised there.
+//! The normal, exponential, beta and gamma laws restricted to `[lower, upper]` and renormalised
+//! there.
 
 mod beta;
 mod exp;

@@ -97,7 +97,8 @@ fn ln_gamma_err(z: f64) -> f64 {
   2.0 * EPS * (ln_gamma(z).abs() + z + 1.0) + 1e-15
 }
 
-/// `N(μ, σ²)` at `x`: `z = (x − μ)/σ` to double-double, its rest carried into `erfc` by its derivative.
+/// `N(μ, σ²)` at `x`: `z = (x − μ)/σ` to double-double, its rest carried into `erfc` by its
+/// derivative.
 pub fn normal(mu: f64, sigma: f64, x: f64) -> Tails {
   if x.is_infinite() {
     return Tails::limit(if x > 0.0 { 1.0 } else { 0.0 });

@@ -18,8 +18,8 @@ fn defaults_sample_finite() {
   assert!(out.iter().all(|x| x.is_finite()));
 }
 
-/// `Frank` and `Gumbel` hold no seed state, so a clone draws exactly what the original draws under the same `Deterministic`
-/// seed, unlike a `ProcessExt` clone.
+/// `Frank` and `Gumbel` hold no seed state, so a clone draws exactly what the original draws under
+/// the same `Deterministic` seed, unlike a `ProcessExt` clone.
 #[test]
 fn clone_is_a_plain_value_copy() {
   let frank = Frank::new(6.0);

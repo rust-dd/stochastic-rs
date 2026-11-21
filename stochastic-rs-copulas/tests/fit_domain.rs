@@ -1,5 +1,5 @@
-//! A fit whose Kendall's τ the family cannot represent is `InvalidParameter { name: "tau", .. }`, never a stored
-//! out-of-range `theta`; a representable τ fits.
+//! A fit whose Kendall's τ the family cannot represent is `InvalidParameter { name: "tau", .. }`,
+//! never a stored out-of-range `theta`; a representable τ fits.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -104,8 +104,8 @@ fn a_fit_outside_the_family_domain_is_an_error_and_stores_nothing() {
   rejects!(Amh::default(), strong);
 }
 
-/// Four pairs with three concordances and three discordances: `τ̂ = 0`, which Marshall–Olkin reaches only at its
-/// excluded `θ = 0`.
+/// Four pairs with three concordances and three discordances: `τ̂ = 0`, which Marshall–Olkin
+/// reaches only at its excluded `θ = 0`.
 #[test]
 fn marshall_olkin_rejects_a_zero_tau() {
   let ranks = [2.0, 4.0, 1.0, 3.0];
@@ -120,8 +120,8 @@ fn marshall_olkin_rejects_a_zero_tau() {
   rejects!(MarshallOlkin::default(), data);
 }
 
-/// `τ̂ = +1` fits Marshall–Olkin at `θ = 1`, the upper Fréchet bound, and Independence, which ignores τ; BB1 and BB7
-/// reject `τ̂ ≥ 1` with the rest.
+/// `τ̂ = +1` fits Marshall–Olkin at `θ = 1`, the upper Fréchet bound, and Independence, which
+/// ignores τ; BB1 and BB7 reject `τ̂ ≥ 1` with the rest.
 #[test]
 fn a_comonotone_sample_fits_only_the_families_that_reach_tau_one() {
   let co = comonotone(200);
@@ -146,8 +146,8 @@ fn a_comonotone_sample_fits_only_the_families_that_reach_tau_one() {
   assert_eq!(independence.tau(), Some(0.0));
 }
 
-/// A Clayton(0.3) sample, `τ̂ ≈ 0.13`, lies in every family's range: an inversion fit stores the `θ` whose τ is `τ̂` to
-/// its τ rule's accuracy, and BB1's and BB7's likelihood fits land near it.
+/// A Clayton(0.3) sample, `τ̂ ≈ 0.13`, lies in every family's range: an inversion fit stores the
+/// `θ` whose τ is `τ̂` to its τ rule's accuracy, and BB1's and BB7's likelihood fits land near it.
 #[test]
 fn a_representable_tau_fits_every_family() {
   let mild = pseudo_observations(
@@ -254,8 +254,8 @@ fn theta_from_tau_round_trips_through_tau_from_theta() {
   }
 }
 
-/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, whose `ρ = sin(πτ̂/2)` rounds onto the excluded `ρ = 1`, and
-/// BB1(δ = 1.125) rounds onto `θ = 0` for the four floats above its lower τ: both are the τ error, never a stored θ.
+/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, its `ρ = sin(πτ̂/2)` rounding onto the
+/// excluded `ρ = 1`, and BB1(δ = 1.125) onto `θ = 0` just above its lower τ: both the τ error.
 #[test]
 fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
   let n = 30_000;
@@ -307,7 +307,8 @@ fn amh_fits_its_upper_tau() {
   assert_eq!(amh.tau(), Some(1.0 / 3.0));
 }
 
-/// One column, or three, is a `DimensionMismatch` before any column is read, whichever `fit` the family runs.
+/// One column, or three, is a `DimensionMismatch` before any column is read, whichever `fit` the
+/// family runs.
 #[test]
 fn fit_takes_exactly_two_columns() {
   let one = Array2::from_shape_fn((20, 1), |(i, _)| (i + 1) as f64 / 21.0);
@@ -383,7 +384,8 @@ impl BivariateExt for Careless {
   }
 }
 
-/// The default `fit` validates the θ an outside implementor's `theta_from_tau` answers before storing it.
+/// The default `fit` validates the θ an outside implementor's `theta_from_tau` answers before
+/// storing it.
 #[test]
 fn the_default_fit_validates_an_implementors_inverse() {
   let mut careless = Careless { theta: None };
@@ -395,8 +397,8 @@ fn the_default_fit_validates_an_implementors_inverse() {
   assert_eq!(careless.theta(), None);
 }
 
-/// Columns, then rows, then range, whichever `fit` the family runs: a 1 × 3 input is a `DimensionMismatch`, a 1 × 2 input
-/// of NaN is `InsufficientData`.
+/// Columns, then rows, then range, whichever `fit` the family runs: a 1 × 3 input is a
+/// `DimensionMismatch`, a 1 × 2 input of NaN is `InsufficientData`.
 #[test]
 fn fit_checks_columns_then_rows_then_range() {
   let wide = Array2::from_elem((1, 3), f64::NAN);
@@ -450,8 +452,8 @@ fn fit_rejects_a_value_outside_the_unit_interval() {
   }
 }
 
-/// Raw draws have uniform margins, yet a Kolmogorov–Smirnov gate at its 1 % bound fails some of these seeds by chance;
-/// `fit` tests the domain only, so every seed fits.
+/// Raw draws have uniform margins, yet a Kolmogorov–Smirnov gate at its 1 % bound fails some of
+/// these seeds by chance; `fit` tests the domain only, so every seed fits.
 #[test]
 fn a_raw_uniform_sample_fits_on_every_seed() {
   let truth = Clayton::new(3.0);
@@ -462,7 +464,8 @@ fn a_raw_uniform_sample_fits_on_every_seed() {
   }
 }
 
-/// Every `Ok` of `theta_from_tau` passes `validate_theta`, on a grid and at each range end and its float neighbours.
+/// Every `Ok` of `theta_from_tau` passes `validate_theta`, on a grid and at each range end and its
+/// float neighbours.
 #[test]
 fn every_inverse_is_an_admitted_theta() {
   let mut taus: Vec<f64> = (-100..=100).map(|i| f64::from(i) / 100.0).collect();

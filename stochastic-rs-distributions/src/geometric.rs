@@ -1,10 +1,11 @@
-//! # Geometric
+//! Geometric law, sampled by the inversion `⌊ln(1 − U)/ln(1 − p)⌋ + 1` with `ln(1 − p)` as
+//! `ln_1p(−p)`.
 //!
 //! $$
 //! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
 //! $$
 //!
-//! Sampling: inversion `⌊ln(1 − U)/ln(1 − p)⌋ + 1` with `ln(1 − p)` as `ln_1p(−p)`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -25,7 +26,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
 
-/// Geometric law on `{1, 2, …}` with success probability `p`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Geometric law on `{1, 2, …}` with success probability `p`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeometric<T: PrimInt> {
   p: f64,
@@ -405,7 +407,8 @@ mod tests {
     }
   }
 
-  /// `ln(1 − p)` through `ln_1p` and `ln(1 − prob)` likewise: at p = 1e-10 the plain logs lose eight digits (mpmath exact counts).
+  /// `ln(1 − p)` through `ln_1p` and `ln(1 − prob)` likewise: at p = 1e-10 the plain logs lose
+  /// eight digits (mpmath exact counts).
   #[test]
   fn quantile_and_median_keep_their_digits_at_small_p() {
     let rare = SimdGeometric::<u64>::new(1e-10);

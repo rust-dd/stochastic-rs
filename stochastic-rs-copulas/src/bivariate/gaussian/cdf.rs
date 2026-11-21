@@ -1,6 +1,6 @@
-//! The bivariate normal cdf to a relative `1e-12`: Owen's `T` form where its terms barely cancel, else the conditional
-//! integral over the rotated `V`, of positive terms only, by Gauss–Kronrod panels marched out of its maximum.
-//! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
+//! The bivariate normal cdf to a relative `1e-12`: Owen's `T` form where its terms barely cancel,
+//! else the conditional integral over the rotated `V`, positive terms only, by Gauss–Kronrod.
+//! Reference: Genz (2004), Stat. Comput. 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31.
 
 use std::f64::consts::FRAC_1_SQRT_2;
 use std::f64::consts::FRAC_2_SQRT_PI;
@@ -21,8 +21,8 @@ fn ln_pdf(x: f64) -> f64 {
   -0.5 * x * x - 0.5 * std::f64::consts::TAU.ln()
 }
 
-/// `ln(Φ(c + d/2) − Φ(c − d/2))`, `d > 0`, to a relative rounding: the density by Gauss–Legendre about `c` while
-/// `d max(1, |c|) ≤ 1`, where the tails' logarithms would cancel, else those logarithms on the side of `0` both lie.
+/// `ln(Φ(c + d/2) − Φ(c − d/2))`, `d > 0`, to a relative rounding: Gauss–Legendre on the density
+/// about `c` while `d max(1, |c|) ≤ 1`, where tail logs cancel, else the tails' logs.
 pub(crate) fn ln_normal_interval(c: f64, d: f64) -> f64 {
   if d.is_nan() || d <= 0.0 {
     return f64::NEG_INFINITY;
@@ -46,8 +46,8 @@ pub(crate) fn ln_normal_interval(c: f64, d: f64) -> f64 {
   }
 }
 
-/// `Φ⁻¹(p) − Φ⁻¹(p − g)` from `x ≈ Φ⁻¹(p)`, its residual `r = Φ(x) − p` and the exact gap `g`: Newton on `Φ(x) − Φ(x − D) =
-/// g + r` from `start`, less `r/φ(x)`, so two near quantiles differ to a few roundings, which their rounded values lose.
+/// `Φ⁻¹(p) − Φ⁻¹(p − g)` from `x ≈ Φ⁻¹(p)`, its residual `r = Φ(x) − p` and the exact gap `g`:
+/// Newton on `Φ(x) − Φ(x − D) = g + r` from `start`, less `r/φ(x)`, to a few roundings.
 pub(crate) fn quantile_gap(x: f64, p: f64, g: f64, start: f64) -> f64 {
   if g == 0.0 {
     return 0.0;
@@ -68,7 +68,8 @@ pub(crate) fn quantile_gap(x: f64, p: f64, g: f64, start: f64) -> f64 {
   d - r / pdf(x)
 }
 
-/// `φ(x)`, `x²` split by one fma, so `e^{−x²/2}` keeps the relative digits its rounded square would cost.
+/// `φ(x)`, `x²` split by one fma, so `e^{−x²/2}` keeps the relative digits its rounded square would
+/// cost.
 fn pdf(x: f64) -> f64 {
   let square = x * x;
   let low = x.mul_add(x, -square);
@@ -78,7 +79,8 @@ fn pdf(x: f64) -> f64 {
 /// `1/√(2π)`.
 const FRAC_1_SQRT_TAU: f64 = 0.398_942_280_401_432_7;
 
-/// `Φ(s + e)`, `e` the rounding of the sum `s`, corrected to first order, by the tail on the side of 0 `s` lies.
+/// `Φ(s + e)`, `e` the rounding of the sum `s`, corrected to first order, by the tail on the side
+/// of 0 `s` lies.
 fn phi_of_sum(s: f64, e: f64) -> f64 {
   if s <= 0.0 {
     upper_tail(-s) + e * pdf(s)
@@ -87,8 +89,8 @@ fn phi_of_sum(s: f64, e: f64) -> f64 {
   }
 }
 
-/// `Φ(x) − Φ(x − d)` at exact `x`, `d` to a few roundings: `dφ(x)∫₀¹ e^{tdx − t²d²/2} dt` by Gauss–Legendre while
-/// `|d| max(1, |x|) ≤ 1`, else the two tails on the side of 0 both ends lie, with `x − d` by TwoSum.
+/// `Φ(x) − Φ(x − d)`, `x` exact, `d` to a few roundings: `dφ(x)∫₀¹ e^{tdx − t²d²/2} dt` by
+/// Gauss–Legendre while `|d| max(1, |x|) ≤ 1`, else the ends' tails, `x − d` by TwoSum.
 fn normal_mass(x: f64, d: f64) -> f64 {
   if d.abs() * x.abs().max(1.0) <= 1.0 {
     let sum = rule()
@@ -112,8 +114,8 @@ fn normal_mass(x: f64, d: f64) -> f64 {
   }
 }
 
-/// `Φ₂(h, k; ρ) = P(X ≤ h, Y ≤ k)` to a relative `1e-12`: `owen` where it holds, else `conditional_integral`, which
-/// reads `h + k` from `sum` only at `ρ < 0`.
+/// `Φ₂(h, k; ρ) = P(X ≤ h, Y ≤ k)` to a relative `1e-12`: `owen` where it holds, else
+/// `conditional_integral`, which reads `h + k` from `sum` only at `ρ < 0`.
 pub(crate) fn bivariate_normal_cdf(h: f64, k: f64, rho: f64, sum: impl FnOnce() -> f64) -> f64 {
   if h == f64::NEG_INFINITY || k == f64::NEG_INFINITY {
     return 0.0;
@@ -127,8 +129,8 @@ pub(crate) fn bivariate_normal_cdf(h: f64, k: f64, rho: f64, sum: impl FnOnce() 
   owen(h, k, rho).unwrap_or_else(|| conditional_integral(h, k, rho, sum))
 }
 
-/// `Φ₂` as the integral over `V` of `X = (βU + αV)/2`, `sY = (βU − αV)/2`, `α, β = √(2(1 ∓ |ρ|))`, `s = sign ρ`, `U, V`
-/// independent: positive terms only, and no step as `|ρ| → 1`.
+/// `Φ₂` as the integral over `V` of `X = (βU + αV)/2`, `sY = (βU − αV)/2`, `α, β = √(2(1 ∓ |ρ|))`,
+/// `s = sign ρ`, `U, V` independent: positive terms only, and no step as `|ρ| → 1`.
 fn conditional_integral(h: f64, k: f64, rho: f64, sum: impl FnOnce() -> f64) -> f64 {
   let r = rho.abs();
   let (alpha, beta) = ((2.0 * (1.0 - r)).sqrt(), (2.0 * (1.0 + r)).sqrt());
@@ -144,8 +146,8 @@ fn conditional_integral(h: f64, k: f64, rho: f64, sum: impl FnOnce() -> f64) -> 
       BELOW_SUBNORMAL,
     )
   } else {
-    // `∫_{v ≤ (h + k)/α} φ(v)(Φ((2h − αv)/β) − Φ((αv − 2k)/β)) dv`: the interval's centre is `(h − k)/β` at every `v`, its
-    // width `2α(end − v)/β`, exact and 0 at the end, where `h + k − αv` would cancel.
+    // `∫_{v ≤ (h + k)/α} φ(v)(Φ((2h − αv)/β) − Φ((αv − 2k)/β)) dv`: centre `(h − k)/β` at every
+    // `v`, width `2α(end − v)/β`, exact and 0 at the end, where `h + k − αv` would cancel.
     let end = sum() / alpha;
     let centre = (h - k) / beta;
     ln_integral_concave(
@@ -160,26 +162,28 @@ fn conditional_integral(h: f64, k: f64, rho: f64, sum: impl FnOnce() -> f64) -> 
   ln_c.exp()
 }
 
-/// What a closed form may leave of `C`, relative: Owen's `Φ₂` at `S ≤ 14C`, its terms within `188ε`, reaches `5.8e-13`.
+/// What a closed form may leave of `C`, relative: Owen's `Φ₂` at `S ≤ 14C`, its terms within
+/// `188ε`, reaches `5.8e-13`.
 pub(crate) const CLOSED_FORM_BUDGET: f64 = 6e-13;
 
-/// Owen's `Φ₂` is taken where its terms' absolute sum `S` is within this of `C`: Patefield & Tandy's `T`, measured to
-/// `179ε` at `a ≤ 1`, `h ≤ 38` (eq. (11) past `a = 1`), the tails `Φ` to `2ε` and the sums to `7ε` keep each within `188ε`.
-/// Reference: Patefield, M., Tandy, D. (2000), "Fast and accurate calculation of Owen's T-function", *Journal of Statistical Software* 5(5), 1-25, eqs. (2), (10)-(11).
+/// Owen's `Φ₂` is used where its terms' absolute sum `S` is within this of `C`: P&T's `T` to `179ε`
+/// (`a ≤ 1`, `h ≤ 38`; eq. (11) above), `Φ` to `2ε` and sums to `7ε` keep each within `188ε`.
+/// Reference: Patefield, Tandy (2000), 5(5), 1-25, eqs. (2), (10)-(11), DOI 10.18637/jss.v005.i05.
 const OWEN_SPREAD: f64 = 14.0;
 
 /// The low half of `1/√2`, `1/√2 − FRAC_1_SQRT_2` to 17 digits.
 const FRAC_1_SQRT_2_LO: f64 = -4.833_646_656_726_457e-17;
 
-/// `Φ(−x)`, `x ≥ 0`, with the rounding of `x/√2` corrected to first order, which `erfc` would amplify `x²`-fold.
+/// `Φ(−x)`, `x ≥ 0`, with the rounding of `x/√2` corrected to first order, which `erfc` would
+/// amplify `x²`-fold.
 fn upper_tail(x: f64) -> f64 {
   let z = x * FRAC_1_SQRT_2;
   let lo = x.mul_add(FRAC_1_SQRT_2, -z) + x * FRAC_1_SQRT_2_LO;
   0.5 * erfc(z) - lo * (-z * z).exp() * 0.5 * FRAC_2_SQRT_PI
 }
 
-/// Owen's `Q(x, a) = ½Φ(−x) − T(x, a)`, `a = num/(xs)`, `x ≥ 0` (0 at `x = 0`), past `|a| = 1` by eq. (2) in `T(|a|x, 1/|a|)`
-/// so `T` sees `a ≤ 1` only; `spread` gathers its terms' absolute values.
+/// Owen's `Q(x, a) = ½Φ(−x) − T(x, a)`, `a = num/(xs)`, `x ≥ 0` (0 at `x = 0`), past `|a| = 1` by
+/// eq. (2) in `T(|a|x, 1/|a|)`, so `T` sees `a ≤ 1`; `spread` sums the terms' magnitudes.
 fn owen_q(x: f64, num: f64, s: f64, spread: &mut f64) -> f64 {
   if x == 0.0 {
     return 0.0;
@@ -205,8 +209,8 @@ fn owen_q(x: f64, num: f64, s: f64, spread: &mut f64) -> f64 {
   }
 }
 
-/// `Φ₂(h, k; ρ)` by Owen's `P(X > x, Y > y) = Q(x, a_x) + Q(y, a_y)` (P&T eq. (10)) in the orthant of `(h, k)`, `None`
-/// where its spread passes `OWEN_SPREAD` or `C < 1e-290`, below which a term short of the normal range could move it.
+/// `Φ₂(h, k; ρ)` by Owen's `P(X > x, Y > y) = Q(x, a_x) + Q(y, a_y)` (P&T eq. (10)) in `(h, k)`'s
+/// orthant; `None` past `OWEN_SPREAD` or below `C = 1e-290`, where a subnormal term could move it.
 fn owen(h: f64, k: f64, rho: f64) -> Option<f64> {
   let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
   let (a, b) = ((-rho).mul_add(h, k), (-rho).mul_add(k, h));
@@ -245,8 +249,8 @@ fn owen(h: f64, k: f64, rho: f64) -> Option<f64> {
 mod tests {
   use super::*;
 
-  /// Where Owen's form is taken it agrees with the conditional integral to the closed forms' budget, and the bench's 16
-  /// queries at `ρ = 0.5` all take it.
+  /// Where Owen's form is taken it agrees with the conditional integral to the closed forms'
+  /// budget, and the bench's 16 queries at `ρ = 0.5` all take it.
   #[test]
   fn owen_agrees_with_the_integral_where_taken() {
     let scores = [

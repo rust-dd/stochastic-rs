@@ -1,11 +1,9 @@
-//! # SIMD-accelerated random number generation
+//! SIMD random numbers: Xoshiro256++ lanes give `f64` and `u64`, Xoshiro128++ `f32` and `i32`;
+//! [`SimdRng::from_seed`] replays, [`SimdRng::new()`] is unique, [`SeedExt`] carries either.
 //!
 //! $$
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
 //! $$
-//!
-//! Xoshiro256++ lanes give `f64` and `u64`, Xoshiro128++ `f32` and `i32`, scalar draws buffered;
-//! [`SimdRng::from_seed`] replays, [`SimdRng::new()`] is unique, [`SeedExt`] carries either.
 
 use std::fmt::Debug;
 use std::mem::MaybeUninit;

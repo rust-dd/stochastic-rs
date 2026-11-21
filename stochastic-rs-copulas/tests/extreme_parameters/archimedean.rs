@@ -19,10 +19,12 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::GRID;
 use super::matches;
 
-/// `<family> <parameters> ; <values on GRID>`: each generator in mpmath at 700 digits, `−ln t` at `θ = 0`.
+/// `<family> <parameters> ; <values on GRID>`: each generator in mpmath at 700 digits, `−ln t` at
+/// `θ = 0`.
 const GENERATORS: &str = include_str!("../fixtures/generator_extremes.txt");
 
-/// `<family> <flat|nested> <θ…> | <u> ; <cdf> <pdf> <log pdf>`: sympy's derivative of `C` in mpmath at 400 and 900 digits.
+/// `<family> <flat|nested> <θ…> | <u> ; <cdf> <pdf> <log pdf>`: sympy's derivative of `C` in mpmath
+/// at 400 and 900 digits.
 const NAC: &str = include_str!("../fixtures/nac_extremes.txt");
 
 fn archimedean(family: &str, p: &[f64]) -> Box<dyn BivariateExt> {
@@ -58,7 +60,8 @@ fn archimedean_generators_match_the_mpmath_table() {
       }
     }
   }
-  // Clayton at `θ = 1e10` past `x = −θ ln t = ln(f64::MAX)`, at `x ≈ 710` and `731.8`: finite though `expm1(x)` is not.
+  // Clayton at `θ = 1e10` past `x = −θ ln t = ln(f64::MAX)`, at `x ≈ 710` and `731.8`: finite
+  // though `expm1(x)` is not.
   let t = Array1::from(vec![0.9999999290000026, 0.9999999268194176]);
   let got = Clayton::new(1e10).generator(t.view()).unwrap();
   for ((t, &got), want) in t
@@ -78,7 +81,8 @@ fn archimedean_generators_match_the_mpmath_table() {
   );
 }
 
-/// Every generator, the untabulated AMH and Gumbel too, falls from `φ(0) = ∞` to `φ(1) = 0` without a NaN.
+/// Every generator, the untabulated AMH and Gumbel too, falls from `φ(0) = ∞` to `φ(1) = 0` without
+/// a NaN.
 #[test]
 fn every_generator_falls_from_infinity_to_zero() {
   let mut grid = Array1::from(GRID.to_vec());
@@ -163,8 +167,8 @@ fn nested_archimedean_cdf_and_density_match_the_mpmath_table() {
   );
 }
 
-/// Draws from the smallest to the largest `θ` each generator admits: inside the square, uniform margins (√n·KS far from
-/// any collapse), and one value per row at the comonotone end.
+/// Draws from the smallest to the largest `θ` each generator admits: inside the square, uniform
+/// margins (√n·KS far from any collapse), and one value per row at the comonotone end.
 #[test]
 fn nested_archimedean_samples_hold_at_every_theta() {
   let n = 2_000;
@@ -233,8 +237,8 @@ fn nested_archimedean_samples_hold_at_every_theta() {
   }
 }
 
-/// τ̂ of every pair against its youngest common ancestor's `θ/(θ + 2)` (Clayton) or `1 − 1/θ` (Gumbel) within 4 SE of
-/// Hoeffding's (1948) variance, ζ₁ from the sample on the exact pair law: the NAC's `cdf`, third coordinate at 1.
+/// Every pair's τ̂ against its youngest common ancestor's `θ/(θ + 2)` (Clayton) or `1 − 1/θ`
+/// (Gumbel), within 4 SE of Hoeffding's (1948) variance on the exact pair law.
 #[test]
 fn strong_nesting_keeps_kendall_tau() {
   let n = 20_000;

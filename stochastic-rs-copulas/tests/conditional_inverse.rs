@@ -1,5 +1,5 @@
-//! The conditional inverse behind every bivariate sampler: it converges for every valid parameter, answers NaN outside
-//! the unit square, rejects unequal lengths, and its closed forms match 50-digit references and round-trip `h`.
+//! Every bivariate sampler's conditional inverse converges at every valid parameter, is NaN off the
+//! unit square and rejects unequal lengths; closed forms match 50-digit values and round-trip `h`.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -25,7 +25,8 @@ use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_core::simd_rng::Deterministic;
 
-/// `sample` is generic over the seed source and so out of a trait object's reach; a boxed family draws through this adapter.
+/// `sample` is generic over the seed source and so out of a trait object's reach; a boxed family
+/// draws through this adapter.
 trait Draw: BivariateExt + Send {
   fn draw(&self, n: usize, seed: &Deterministic) -> Result<Array2<f64>, CopulaError>;
 }
@@ -43,7 +44,8 @@ fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
   copula
 }
 
-/// The fifteen families at the stream fixture's parameters; Independence, which the fixture lacks, at `θ = 0`.
+/// The fifteen families at the stream fixture's parameters; Independence, which the fixture lacks,
+/// at `θ = 0`.
 fn families() -> Vec<Family> {
   vec![
     ("amh", Box::new(with_theta(Amh::default(), 0.5))),
@@ -92,7 +94,8 @@ fn every_family_samples_two_thousand_draws_for_fifty_seeds() {
   });
 }
 
-/// Every family answers the sampler's hidden hook with `Some` of the inverse its `percent_point` checks and returns.
+/// Every family answers the sampler's hidden hook with `Some` of the inverse its `percent_point`
+/// checks and returns.
 #[test]
 fn every_family_answers_the_hook_with_its_percent_point() {
   let y = array![1e-12, 0.3, 0.5, 0.9, 1.0 - 1e-12];
@@ -110,7 +113,8 @@ fn every_family_answers_the_hook_with_its_percent_point() {
   }
 }
 
-/// Levels and conditioning values a uniform draw can reach, where Joe's h is flat enough to cost Brent 150 iterations.
+/// Levels and conditioning values a uniform draw can reach, where Joe's h is flat enough to cost
+/// Brent 150 iterations.
 #[test]
 fn the_numerical_inverse_converges_at_extreme_levels() {
   let extremes = [
@@ -141,7 +145,8 @@ fn the_numerical_inverse_converges_at_extreme_levels() {
   }
 }
 
-/// Gumbel's and Joe's old h underflowed to `0·∞` near `u, v = 1` from `θ ≈ 30` on, so their samplers failed at these θ.
+/// Gumbel's and Joe's old h underflowed to `0·∞` near `u, v = 1` from `θ ≈ 30` on, so their
+/// samplers failed at these θ.
 #[test]
 fn gumbel_and_joe_sample_at_high_dependence() {
   std::thread::scope(|scope| {
@@ -208,7 +213,8 @@ const JOE_INVERSE: [Row; 6] = [
   (2.0, 1e-12, 0.5, 9.9999999999975e-13),
 ];
 
-/// `h` to 1e-12, as `θ ln_1p(−u)` alone carries `θ` rounding units at `θ = 200`; Brent's root to 1e-14.
+/// `h` to 1e-12, as `θ ln_1p(−u)` alone carries `θ` rounding units at `θ = 200`; Brent's root to
+/// 1e-14.
 fn assert_h_and_inverse(
   name: &str,
   family: impl Fn(f64) -> Box<dyn BivariateExt>,
@@ -237,7 +243,8 @@ fn gumbel_and_joe_match_the_60_digit_references() {
   assert_h_and_inverse("joe", joe, &JOE_H, &JOE_INVERSE);
 }
 
-/// `1 − 2⁻⁵³` is the largest uniform draw, and rounding near `y = 1` must not leave the square either.
+/// `1 − 2⁻⁵³` is the largest uniform draw, and rounding near `y = 1` must not leave the square
+/// either.
 #[test]
 fn the_edges_of_the_square_answer_inside_it() {
   let (y, v) = (array![0.0, 1.0, 0.3, 0.3], array![0.5, 0.5, 0.0, 1.0]);
@@ -275,8 +282,8 @@ fn the_edges_of_the_square_answer_inside_it() {
   }
 }
 
-/// Where `v ∈ {0, 1}` makes the Gaussian's `h(· | v)` a point mass at `m = Φ(ρΦ⁻¹(v))`, level 0 answers 0 and every
-/// other level `m`; at `ρ = 0` the inverse is the identity on the whole square.
+/// Where `v ∈ {0, 1}` makes the Gaussian's `h(· | v)` a point mass at `m = Φ(ρΦ⁻¹(v))`, level 0
+/// answers 0 and every other level `m`; at `ρ = 0` the inverse is the identity on the whole square.
 #[test]
 fn the_gaussian_inverse_answers_its_degenerate_laws() {
   let at = |rho: f64, y: f64, v: f64| {
@@ -331,7 +338,8 @@ fn independence_partial_derivative_is_the_v_derivative() {
   assert_eq!(h, array![0.3, 0.9]);
 }
 
-/// `(θ, y, v, h⁻¹(y | v))`: 50-digit mpmath bisection roots of the crate's own `h`, never a closed form.
+/// `(θ, y, v, h⁻¹(y | v))`: 50-digit mpmath bisection roots of the crate's own `h`, never a closed
+/// form.
 const FRANK: [(f64, f64, f64, f64); 16] = [
   (4.0, 0.3, 0.7, 0.49099526153020284),
   (4.0, 1e-06, 0.99, 1.2873803156983498e-05),
@@ -433,7 +441,8 @@ const PLACKETT: [(f64, f64, f64, f64); 12] = [
   (50.0, 0.999999, 0.3, 0.999975079298755),
 ];
 
-/// The same past `θ ≈ 1.3e154`, where `(θ − 1)²` overflowed: 700-digit roots, the comonotone `u = v` to rounding.
+/// The same past `θ ≈ 1.3e154`, where `(θ − 1)²` overflowed: 700-digit roots, the comonotone
+/// `u = v` to rounding.
 const PLACKETT_HUGE: [Row; 5] = [
   (1e154, 0.3, 0.7, 0.7),
   (1e200, 0.3, 0.7, 0.7),
@@ -442,8 +451,8 @@ const PLACKETT_HUGE: [Row; 5] = [
   (1e300, 0.999999, 0.3, 0.3),
 ];
 
-/// `(θ, y, v, h⁻¹(y | v))`: 300-digit bisection roots of `∂_v C`, where `y^{−θ/(1+θ)} + v^θ − 1` cancelled (`y` near 1)
-/// or `v^θ` underflows (`θ ≥ 100`, and `θ = 1000` at a subnormal `y`).
+/// `(θ, y, v, h⁻¹(y | v))`: 300-digit bisection roots of `∂_v C`, where `y^{−θ/(1+θ)} + v^θ − 1`
+/// cancelled (`y` near 1) or `v^θ` underflows (`θ ≥ 100`, and `θ = 1000` at a subnormal `y`).
 const CLAYTON: [Row; 9] = [
   (2.0, 0.3, 0.7, 0.5335212174600548),
   (2.0, 1.0 - f64::EPSILON / 2.0, 1e-15, 1.1623596208622918e-07),
@@ -456,7 +465,8 @@ const CLAYTON: [Row; 9] = [
   (1e-10, 0.999999, 1e-12, 0.9999989999999973),
 ];
 
-/// `(ρ, ν, y, v, h⁻¹(y | v))`: the inversion of `t_{ν+1}` in 50-digit mpmath, `h` re-evaluated at each to 1e-46.
+/// `(ρ, ν, y, v, h⁻¹(y | v))`: the inversion of `t_{ν+1}` in 50-digit mpmath, `h` re-evaluated at
+/// each to 1e-46.
 const T_COPULA: [(f64, f64, f64, f64, f64); 8] = [
   (0.5, 4.0, 0.3, 0.7, 0.43803740678313124),
   (0.5, 4.0, 1e-06, 0.99, 1.3078557464437567e-06),

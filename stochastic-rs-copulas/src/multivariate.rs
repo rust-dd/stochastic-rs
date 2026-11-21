@@ -1,4 +1,4 @@
-//! # Multivariate
+//! Multivariate copulas: Gaussian, Student-t, the C-, D- and R-vines and nested Archimedean.
 //!
 //! $$
 //! F_{X_1,\dots,X_d}(x)=C\left(F_1(x_1),\dots,F_d(x_d)\right)
@@ -21,7 +21,8 @@ pub(crate) mod spectrum;
 pub mod t;
 mod vine_order;
 
-/// `values` with NaN on every row of `x` that has a coordinate at 0 or 1, where a copula has no density.
+/// `values` with NaN on every row of `x` that has a coordinate at 0 or 1, where a copula has no
+/// density.
 pub(crate) fn on_open_cube(
   x: ndarray::ArrayView2<f64>,
   mut values: ndarray::Array1<f64>,
@@ -94,7 +95,8 @@ mod tests {
       "DVine"
     );
 
-    // The Clayton tree exercises the root-frailty draw, whose sub-seed comes off the caller's stream.
+    // The Clayton tree exercises the root-frailty draw, whose sub-seed comes off the caller's
+    // stream.
     let root = NacNode::leaf_group(2.0, vec![0, 1, 2]);
     let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
     assert_eq!(
@@ -116,8 +118,8 @@ mod tests {
 mod catalog_tests {
   use super::MultivariateFamily;
 
-  /// Guards `copulas.mdx`'s catalog table: the match has no wildcard arm on purpose, so a new variant is a compile
-  /// error here until its arm, its docs row and the count are added.
+  /// Guards `copulas.mdx`'s catalog table: the match has no wildcard arm on purpose, so a new
+  /// variant is a compile error here until its arm, its docs row and the count are added.
   #[test]
   fn multivariate_catalog_matches_docs_count() {
     let count = [

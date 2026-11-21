@@ -107,7 +107,8 @@ fn an_exactly_cancelling_exponent_keeps_its_finite_value() {
   assert_eq!(mgf(below, 1.5, below, inf, t), 0.0);
 }
 
-/// Either side of `B = 8`, the plain path and the exact one; and an exponent either side of `ln MAX`.
+/// Either side of `B = 8`, the plain path and the exact one; and an exponent either side of
+/// `ln MAX`.
 #[test]
 fn the_plain_path_and_its_neighbours() {
   for (name, got, want) in [

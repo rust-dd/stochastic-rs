@@ -1,10 +1,10 @@
-//! # Pareto
+//! Pareto law, sampled by inversion of its cdf.
 //!
 //! $$
 //! f(x)=\alpha x_m^\alpha x^{-(\alpha+1)},\ x\ge x_m
 //! $$
 //!
-//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 
@@ -22,7 +22,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_PARETO_THRESHOLD: usize = 16;
 
-/// Pareto (Type I) law with scale `x_m` and tail index `alpha`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Pareto (Type I) law with scale `x_m` and tail index `alpha`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdPareto<T> {
   x_m: T,
@@ -131,7 +132,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdPareto<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
-  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for `f32`).
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for
+  /// `f32`).
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }

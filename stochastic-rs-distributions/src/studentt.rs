@@ -1,11 +1,11 @@
-//! # Studentt
+//! Student t law, sampled as `Z/sqrt(V/ν)` with `V ~ χ²_ν`.
 //!
 //! $$
 //! f(x)=\frac{\Gamma((\nu+1)/2)}{\sqrt{\nu\pi}\,\Gamma(\nu/2)}\left(1+\frac{x^2}{\nu}\right)^{-(\nu+1)/2}
 //! $$
 //!
-//! Sampling: `Z/sqrt(V/ν)` with `V ~ χ²_ν`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the quantile, `g₁` to `g₄`).
+//! Reference: Devroye, L. (1986), Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 26.7.5.
 
 use std::mem::MaybeUninit;
 
@@ -57,7 +57,8 @@ const ENTROPY_TAIL: [f64; 14] = [
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
-/// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded)
+/// stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdStudentT<T> {
   nu: T,
@@ -177,7 +178,8 @@ impl<T: SimdFloatExt> SimdDistribution for SimdStudentT<T> {
   fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StudentTState<T, R>, u64) {
     let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
     let (chisq, _) = self.chisq.init::<R, S>(seed);
-    // No engine reads this fourth draw: it is the basis, and it keeps the seed budget later streams depend on.
+    // No engine reads this fourth draw: it is the basis, and it keeps the seed budget later streams
+    // depend on.
     let basis = seed.next_seed();
     (
       StudentTState {
@@ -228,7 +230,8 @@ fn ln_normaliser(ratio: f64) -> f64 {
   (ratio / std::f64::consts::TAU.sqrt()).ln()
 }
 
-/// A&S 26.7.5 to `g₄`: `t = z + g₁(z)/ν + g₂(z)/ν² + g₃(z)/ν³ + g₄(z)/ν⁴` at the normal quantile `z`.
+/// A&S 26.7.5 to `g₄`: `t = z + g₁(z)/ν + g₂(z)/ν² + g₃(z)/ν³ + g₄(z)/ν⁴` at the normal quantile
+/// `z`.
 fn cornish_fisher(z: f64, nu: f64) -> f64 {
   let z2 = z * z;
   let g1 = (z2 + 1.0) * z / 4.0;
@@ -274,12 +277,14 @@ fn lower_quantile(nu: f64, ratio: f64, p: f64) -> f64 {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
-  /// `R(ν/2)/√(2π) e^{−((ν + 1)/2) ln_1p(x²/ν)}`; past `x²/ν = f64::MAX` the logarithm from `ln|x|`.
+  /// `R(ν/2)/√(2π) e^{−((ν + 1)/2) ln_1p(x²/ν)}`; past `x²/ν = f64::MAX` the logarithm from
+  /// `ln|x|`.
   fn pdf(&self, x: f64) -> Option<f64> {
     Some(student_density(self.nu.to_f64().unwrap(), self.ratio, x))
   }
 
-  /// `½ ± ½ I_{x²/(ν+x²)}(½, ν/2)` near zero, `½ I_{ν/(ν+x²)}(ν/2, ½)` in the lower tail, the upper half by symmetry.
+  /// `½ ± ½ I_{x²/(ν+x²)}(½, ν/2)` near zero, `½ I_{ν/(ν+x²)}(ν/2, ½)` in the lower tail, the upper
+  /// half by symmetry.
   fn cdf(&self, x: f64) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     if x.is_nan() {
@@ -289,7 +294,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     Some(if x <= 0.0 { tail.lower() } else { tail.upper() })
   }
 
-  /// The lower half solved on `ln F`, the upper half its reflection `q(p) = −q(1 − p)`, `1 − p` exact.
+  /// The lower half solved on `ln F`, the upper half its reflection `q(p) = −q(1 − p)`, `1 − p`
+  /// exact.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
@@ -487,7 +493,8 @@ mod tests {
     assert!(best > 0.01, "best p = {best}");
   }
 
-  /// Every 5-wide `fill_with` builds a fresh stream from the caller's rng and takes the small-slice path.
+  /// Every 5-wide `fill_with` builds a fresh stream from the caller's rng and takes the small-slice
+  /// path.
   #[test]
   fn fill_with_is_deterministic_in_the_caller_rng() {
     let d = SimdStudentT::<f64>::new(6.0);

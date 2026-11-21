@@ -1,4 +1,5 @@
-//! Closed-form moments, quantiles and transforms against mpmath reference values; quantiles round-trip through the cdf.
+//! Closed-form moments, quantiles and transforms against mpmath reference values; quantiles
+//! round-trip through the cdf.
 
 use num_complex::Complex64;
 use stochastic_rs_distributions::DistributionExt;
@@ -511,7 +512,8 @@ fn hypergeometric_excess_kurtosis() {
   );
 }
 
-/// Where the general formulas read `0/0`: an empty or one-item population, and the `N = 2` two-point law.
+/// Where the general formulas read `0/0`: an empty or one-item population, and the `N = 2`
+/// two-point law.
 #[test]
 fn hypergeometric_mean_variance_skewness_at_the_edges() {
   let law = SimdHypergeometric::<u32>::new;

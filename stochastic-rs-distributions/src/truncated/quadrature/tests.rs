@@ -82,7 +82,8 @@ fn whole_line_mass_is_sqrt_two_pi() {
   );
 }
 
-/// A narrow interval far from the mode takes its midpoint as reference; mpmath's cdf at a quarter of the width.
+/// A narrow interval far from the mode takes its midpoint as reference; mpmath's cdf at a quarter
+/// of the width.
 #[test]
 fn narrow_interval_centres_on_its_midpoint() {
   let t = Filled::new(Normal::default(), 0.3, 0.3 + 1e-6);
@@ -178,7 +179,8 @@ fn ladder_reaches_an_end_far_below_the_clip() {
   assert!(((t.quantile(p).value() - 1e-200) / 1e-200).abs() < 1e-12);
 }
 
-/// `ln(1 + z) − z` to a few ulps across the series and the halved range below `−1/2` (mpmath, 60 and 120 digits).
+/// `ln(1 + z) − z` to a few ulps across the series and the halved range below `−1/2` (mpmath, 60
+/// and 120 digits).
 #[test]
 fn ln_1p_mx_keeps_its_digits_to_three_quarters() {
   for (z, want) in [
@@ -206,7 +208,8 @@ fn ln_1p_mx_keeps_its_digits_to_three_quarters() {
 fn power_rounds_a_subnormal_once() {
   let m = f64::from_bits(0x3FE9_9999_9999_BFFF);
   let got = zone::power(zone::Offset { m: 1.0, q: 0 }, 1.0, m.ln(), -1036);
-  // `power` scales `exp(ln m)`: `m` where `exp` and `ln` round it back; the exact scaled value from its bits otherwise.
+  // `power` scales `exp(ln m)`: `m` where `exp` and `ln` round it back; the exact scaled value from
+  // its bits otherwise.
   let x = m.ln().exp();
   let bits = (x.to_bits() & ((1 << 52) - 1)) | (1 << 52);
   let (q, r) = (bits >> 15, bits & 0x7fff);

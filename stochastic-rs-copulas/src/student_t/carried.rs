@@ -1,5 +1,5 @@
-//! `A` in two parts where `H`'s tail multiplies its rounding by `min(A², ν + 1)`: `c₀(sinh t_y − ρ sinh t)/cosh t` from
-//! Taylor series about 0 whose leading terms are exact, and `ln P(T ≤ a)` at the double `a` with the low part's first-order term.
+//! `A` in two parts where `H`'s tail scales its rounding by `min(A², ν + 1)`:
+//! `c₀(sinh t_y − ρ sinh t)/cosh t` by Taylor series, and `ln P(T ≤ a)` with the low part's slope.
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_norm_cdf;
@@ -26,7 +26,8 @@ const TAILS: [(f64, f64); 14] = {
   c
 };
 
-/// `Σ_{k≥2} x^{2k}/(2k + 1)!` and `Σ_{k≥2} x^{2k}/(2k)!` from `x²`: the series past `x³/3!` and `x²/2!`.
+/// `Σ_{k≥2} x^{2k}/(2k + 1)!` and `Σ_{k≥2} x^{2k}/(2k)!` from `x²`: the series past `x³/3!` and
+/// `x²/2!`.
 fn tails(x2: f64) -> (f64, f64) {
   let (s, c) = TAILS
     .iter()
@@ -37,7 +38,8 @@ fn tails(x2: f64) -> (f64, f64) {
   (s * x2 * x2, c * x2 * x2)
 }
 
-/// `sinh x` in two parts at `x ≥ 0` in two parts, `x ≤ 2·CARRIED_TO`: `x + x³/6` to `ε²`, the rest from `x⁵/120` on.
+/// `sinh x` in two parts at `x ≥ 0` in two parts, `x ≤ 2·CARRIED_TO`: `x + x³/6` to `ε²`, the rest
+/// from `x⁵/120` on.
 fn sinh_parts((x, x_lo): (f64, f64)) -> (f64, f64) {
   let (x2, x2_lo) = two_prod(x, x);
   let (x3, x3_err) = two_prod(x2, x);
@@ -52,7 +54,8 @@ fn sinh_parts((x, x_lo): (f64, f64)) -> (f64, f64) {
   )
 }
 
-/// `cosh x` in two parts at `x` in two parts, `|x| ≤ CARRIED_TO`: `1 + x²/2` to `ε²`, the rest from `x⁴/24` on.
+/// `cosh x` in two parts at `x` in two parts, `|x| ≤ CARRIED_TO`: `1 + x²/2` to `ε²`, the rest from
+/// `x⁴/24` on.
 fn cosh_parts((x, x_lo): (f64, f64)) -> (f64, f64) {
   let (x2, x2_lo) = two_prod(x, x);
   let (c, c_err) = two_sum(1.0, 0.5 * x2);
@@ -76,8 +79,8 @@ impl Conditional {
     self.abs_ty <= CARRIED_TO
   }
 
-  /// `A` in two parts at `|t|` and the gap `g = |t_y| − |t|` in two parts, `|t|, |t_y| ≤ CARRIED_TO`: `c₀` from its square in
-  /// two parts, and at the crossing `sinh|t_y| − |ρ| sinh|t| = 2cosh(|t| + g/2)·sinh(g/2) + (1 − |ρ|)sinh|t|` from the gap.
+  /// `A` in two parts from `|t|` and the two-part gap `g = |t_y| − |t|`, `c₀` from its square, and
+  /// `sinh|t_y| − |ρ| sinh|t| = 2cosh(|t| + g/2)·sinh(g/2) + (1 − |ρ|)sinh|t|` at the crossing.
   pub(crate) fn argument_parts(
     &self,
     nu: f64,
@@ -130,7 +133,8 @@ impl Conditional {
 }
 
 impl Law {
-  /// `ln P(T ≤ a)` at a double `a < 0`, whose magnitude does not round through its logarithm, and `f(a)/P(T ≤ a)`.
+  /// `ln P(T ≤ a)` at a double `a < 0`, whose magnitude does not round through its logarithm, and
+  /// `f(a)/P(T ≤ a)`.
   pub(crate) fn ln_lower_and_slope(&self, a: f64) -> (f64, f64) {
     let ln_lower = if self.nu >= NORMAL_ABOVE {
       ln_norm_cdf(a)

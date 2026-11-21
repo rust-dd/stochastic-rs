@@ -1,15 +1,13 @@
-//! # Poisson
+//! Poisson law, sampled by table inversion below `λ = 1000` and by Hörmann's PTRS from it on.
 //!
 //! $$
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-//! Sampling: table inversion below λ = 1000, Hörmann's PTRS from it on.
-//!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
-//! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
-//! Reference: Loader, C. (2000), "Fast and Accurate Computation of Binomial Probabilities", technical report, <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf> (the saddle-point `ln pₖ`).
-//! Reference: Choi, K.P. (1994), "On the medians of gamma distributions and an equation of Ramanujan", *Proceedings of the American Mathematical Society* 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8 (the median bracket `λ − ln 2 ≤ m < λ + 1/3`).
+//! Reference: Devroye, L. (1986), Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Hörmann (1993), Insur. Math. Econ. 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
+//! Reference: Loader (2000), <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf>.
+//! Reference: Choi (1994), 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8.
 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -32,16 +30,19 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Rates from here on draw by PTRS (Hörmann's own floor is 10); below it the table is exact inversion and holds ≤ 1 300 entries.
+/// Rates from here on draw by PTRS (Hörmann's own floor is 10); below it the table is exact
+/// inversion and holds ≤ 1 300 entries.
 const PTRS_MIN_LAMBDA: f64 = 1000.0;
 
-/// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`; below it `ln pₖ` is `k ln λ − λ − ln k!`.
+/// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`; below it `ln pₖ` is
+/// `k ln λ − λ − ln k!`.
 const STIRLING_FROM: f64 = 15.0;
 
 /// From this `P(N = 0)` on a zero count skips the search; below it the branch mispredicts too much.
 const ZERO_FIRST_FROM: f64 = 0.99;
 
-/// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk` from `STIRLING_FROM` on, which keeps the digits `k ln λ − λ − ln k!` cancels at large λ.
+/// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk` from `STIRLING_FROM` on, which keeps the digits
+/// `k ln λ − λ − ln k!` cancels at large λ.
 fn ln_pmf(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
   if k < STIRLING_FROM {
     return if k == 0.0 {
@@ -53,7 +54,8 @@ fn ln_pmf(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
   -stirling_tail(k.recip()) - bd0(k, lambda, ln_lambda) - HALF_LN_TAU.0 - 0.5 * k.ln()
 }
 
-/// `k ln(k/λ) + λ − k`: Loader's series in `v = (k − λ)/(k + λ)` for `|v| < ½`, whose terms do not cancel, the logarithm form outside.
+/// `k ln(k/λ) + λ − k`: Loader's series in `v = (k − λ)/(k + λ)` for `|v| < ½`, whose terms do not
+/// cancel, the logarithm form outside.
 fn bd0(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
   let d = k - lambda;
   let v = (0.5 * d) / (0.5 * k + 0.5 * lambda);
@@ -106,7 +108,8 @@ impl Ptrs {
     }
   }
 
-  /// Two uniforms per attempt, 88 % accepted from λ = 1000 on; the squeeze accepts without the logarithm.
+  /// Two uniforms per attempt, 88 % accepted from λ = 1000 on; the squeeze accepts without the
+  /// logarithm.
   #[inline]
   fn draw(&self, mut uniform: impl FnMut() -> f64) -> f64 {
     loop {
@@ -127,7 +130,8 @@ impl Ptrs {
     }
   }
 
-  /// [`Self::draw`] on `rng`, out of line so that a table law's scalar draw stays small enough to inline.
+  /// [`Self::draw`] on `rng`, out of line so that a table law's scalar draw stays small enough to
+  /// inline.
   #[inline(never)]
   fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> f64 {
     self.draw(|| uniform53(rng.next_u64()))
@@ -148,7 +152,8 @@ fn zero_first_index(table: &[f64], u: f64) -> u64 {
   }
 }
 
-/// Visits the table's entries `P(N ≤ k)` from `k = 0`, in log space as `exp(−λ)` underflows at λ ≳ 745, until `visit` answers `true` or the table ends; returns that `k`.
+/// Visits the table's entries `P(N ≤ k)` from `k = 0`, in log space as `exp(−λ)` underflows at λ ≳
+/// 745, until `visit` answers `true` or the table ends; returns that `k`.
 #[inline]
 fn walk(lambda: f64, mut visit: impl FnMut(f64) -> bool) -> f64 {
   let ln_lambda = lambda.ln();
@@ -174,7 +179,8 @@ fn walk_count(lambda: f64, u: f64) -> f64 {
   walk(lambda, |cum| cum >= u)
 }
 
-/// The count a `SimdPoisson` of `lambda` draws from `rng`, as an `f64` that keeps counts past `u64`: [`walk_count`] below `PTRS_MIN_LAMBDA`, PTRS from it on.
+/// The count a `SimdPoisson` of `lambda` draws from `rng`, as an `f64` that keeps counts past
+/// `u64`: [`walk_count`] below `PTRS_MIN_LAMBDA`, PTRS from it on.
 pub(crate) fn count_once<G: Rng + ?Sized>(lambda: f64, rng: &mut G) -> f64 {
   if lambda < PTRS_MIN_LAMBDA {
     walk_count(lambda, uniform53(rng.next_u64()))
@@ -190,7 +196,8 @@ enum Sampler {
   Ptrs(Ptrs),
 }
 
-/// Poisson law with rate `lambda`: the rate and its sampler (a table below λ = 1000, PTRS's constants from it on); a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Poisson law with rate `lambda`: the rate and its sampler (a table below λ = 1000, PTRS's
+/// constants from it on); a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimdPoisson<T: PrimInt> {
   lambda: f64,
@@ -237,7 +244,8 @@ impl<T: PrimInt> SimdPoisson<T> {
     self.lambda
   }
 
-  /// `k` as `T`, saturated past `T`'s range (an assertion in debug); PTRS's `f64` count saturates at `u64::MAX` first.
+  /// `k` as `T`, saturated past `T`'s range (an assertion in debug); PTRS's `f64` count saturates
+  /// at `u64::MAX` first.
   #[inline]
   fn count(k: u64) -> T {
     let cast = num_traits::cast(k);
@@ -248,7 +256,8 @@ impl<T: PrimInt> SimdPoisson<T> {
     cast.unwrap_or(T::max_value())
   }
 
-  /// Kept out of line because inlined into a consumer's per-step pop the table search slows that loop by about 30 %.
+  /// Kept out of line because inlined into a consumer's per-step pop the table search slows that
+  /// loop by about 30 %.
   #[inline(never)]
   fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
     match &self.sampler {
@@ -309,7 +318,8 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdPoisson<T> {
 }
 
 impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdPoisson<T> {
-  /// One draw on the caller's rng: the table inversion of a 53-bit uniform below λ = 1000, PTRS from it on.
+  /// One draw on the caller's rng: the table inversion of a 53-bit uniform below λ = 1000, PTRS
+  /// from it on.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }
@@ -326,7 +336,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(ln_pmf(x, self.lambda, self.lambda.ln()).exp())
   }
 
-  /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table; below 1 it is `e^{−λ}` itself, which `gamma_q(1, λ)` reads ulps off.
+  /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table; below 1 it is `e^{−λ}`
+  /// itself, which `gamma_q(1, λ)` reads ulps off.
   fn cdf(&self, x: f64) -> Option<f64> {
     if x.is_nan() {
       return Some(f64::NAN);
@@ -343,7 +354,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(gamma_q(x.floor() + 1.0, self.lambda))
   }
 
-  /// The smallest count with `cdf ≥ p`, bracketed from `λ + Φ⁻¹(p)√λ` and bisected over the doubles, so it ends where counts are a double apart; `+∞` past `f64::MAX`.
+  /// The smallest count with `cdf ≥ p`, bracketed from `λ + Φ⁻¹(p)√λ` and bisected over the
+  /// doubles, so it ends where counts are a double apart; `+∞` past `f64::MAX`.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
@@ -394,11 +406,13 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(self.lambda())
   }
 
-  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where `frac(λ) ∈ (2/3, ln 2]`, which one cdf comparison decides, except at `n = 0`, where `e^{−λ} ≥ ½` gives 0 without it.
+  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where
+  /// `frac(λ) ∈ (2/3, ln 2]`, decided by one cdf comparison, or by `e^{−λ} ≥ ½` at `n = 0`.
   fn median(&self) -> Option<f64> {
     let n = self.lambda.floor();
     let frac = self.lambda - n;
-    // No double lies between `LN_2` and ln 2, and the fused `3 frac − 2` keeps its sign, so both ends are exact.
+    // No double lies between `LN_2` and ln 2, and the fused `3 frac − 2` keeps its sign, so both
+    // ends are exact.
     let holds_n = frac <= std::f64::consts::LN_2;
     let holds_next = 3.0_f64.mul_add(frac, -2.0) > 0.0;
     Some(if n > 0.0 && holds_n && holds_next {

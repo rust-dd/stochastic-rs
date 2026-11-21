@@ -2,7 +2,8 @@ use super::*;
 use crate::multivariate::nac::sample::kanter;
 use crate::multivariate::nac::sample::stable_power;
 
-/// Kanter's draw at a subnormal `α` and the least angle, where `αΘ` underflows to 0: `Z` against mpmath at 120 digits.
+/// Kanter's draw at a subnormal `α` and the least angle, where `αΘ` underflows to 0: `Z` against
+/// mpmath at 120 digits.
 #[test]
 fn kanter_holds_where_alpha_theta_underflows() {
   let (alpha, theta) = (5.56e-310, std::f64::consts::PI * 1e-15);
@@ -11,8 +12,8 @@ fn kanter_holds_where_alpha_theta_underflows() {
   assert_eq!(z, 0.36651292058166435);
 }
 
-/// `stable_power` is `α ln S` of the positive stable: at `t = e^{c/α}`, `c ∈ {−1, 0, 1}`, the empirical Laplace transform
-/// is `exp(−e^c)` within 4 SE, `Var e^{−tS} = L(2t) − L(t)²`, down to `α = 1e-300`, and every draw is finite.
+/// `stable_power` is the positive stable's `α ln S`: at `t = e^{c/α}`, `c ∈ {−1, 0, 1}`, the
+/// empirical Laplace transform is `exp(−e^c)` within 4 SE down to `α = 1e-300`, every draw finite.
 #[test]
 fn stable_power_has_the_positive_stable_laplace_transform() {
   let n = 20_000;
@@ -43,8 +44,8 @@ fn stable_power_has_the_positive_stable_laplace_transform() {
   }
 }
 
-/// The Clayton root frailty's `w = ln V / θ`, `V ~ Γ(1/θ, 1)`: mean `aψ(a)` and variance `a²ψ'(a)`, `a = 1/θ`, within 4 SE,
-/// on both sides of the boost at `a = 1` and up to `θ = f64::MAX`, where `ln V` overflows.
+/// The Clayton root frailty's `w = ln V / θ`, `V ~ Γ(1/θ, 1)`: mean `aψ(a)`, variance `a²ψ'(a)`,
+/// `a = 1/θ`, within 4 SE across the boost at `a = 1` up to `θ = f64::MAX`, where `ln V` overflows.
 #[test]
 fn clayton_frailty_has_the_gamma_log_moments() {
   let n = 20_000;

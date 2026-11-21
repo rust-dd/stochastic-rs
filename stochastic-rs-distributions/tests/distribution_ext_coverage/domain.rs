@@ -1,4 +1,5 @@
-//! One rule for every law: NaN outside the domain, the support's ends at levels 0 and 1, `+∞` for a divergent mgf or a moment diverging beside a finite variance.
+//! One rule for every law: NaN outside the domain, the support's ends at levels 0 and 1, `+∞` for a
+//! divergent mgf or a moment diverging beside a finite variance.
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
@@ -225,7 +226,8 @@ fn out_of_domain_and_nan_arguments_answer_nan() {
   }
 }
 
-/// `quantile(0)` and `quantile(1)` are exactly the support's ends, for every `rows()` law with a `quantile` and every branch.
+/// `quantile(0)` and `quantile(1)` are exactly the support's ends, for every `rows()` law with a
+/// `quantile` and every branch.
 #[test]
 fn quantile_at_zero_and_one_is_the_support() {
   let mut ends = Vec::new();
@@ -282,7 +284,8 @@ fn an_open_end_has_density_zero_at_infinity() {
   }
 }
 
-/// `E[e^{tX}] = +∞` answers `+∞`; on the boundary of the GH and GIG regions with λ < 0 the K-limit is finite (mpmath).
+/// `E[e^{tX}] = +∞` answers `+∞`; on the boundary of the GH and GIG regions with λ < 0 the K-limit
+/// is finite (mpmath).
 #[test]
 fn a_divergent_mgf_is_infinite() {
   let cases: Vec<(&str, Box<dyn DistributionExt>, f64)> = vec![
@@ -380,7 +383,8 @@ fn a_divergent_mgf_is_infinite() {
   assert_eq!(gig.moment_generating_function(0.3), Some(f64::INFINITY));
 }
 
-/// A central moment diverging in one heavy tail answers `+∞`, as a divergent mgf does; NaN where no finite variance divides it or both tails are heavy (`∞ − ∞`).
+/// A central moment diverging in one heavy tail answers `+∞`, as a divergent mgf does; NaN where no
+/// finite variance divides it or both tails are heavy (`∞ − ∞`).
 #[test]
 fn a_divergent_moment_is_infinite() {
   let (p, nan) = (f64::INFINITY, f64::NAN);

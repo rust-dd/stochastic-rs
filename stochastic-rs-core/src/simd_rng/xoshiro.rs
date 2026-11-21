@@ -43,7 +43,8 @@ const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 /// trick as [`F64_MAGIC`] but with the upper 23 bits of a `u32`.
 const F32_MAGIC: u32 = 0x3F80_0000;
 
-// Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on Darwin.
+// Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on
+// Darwin.
 pub(crate) const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
 pub(crate) const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
 pub(crate) const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);

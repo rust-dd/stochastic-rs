@@ -20,7 +20,8 @@ fn truncated_normal_samples_within_bounds() {
   }
 }
 
-/// Draws on every proposal leave the analytics unbuilt; equality and `Debug` read the parameters, not the cache.
+/// Draws on every proposal leave the analytics unbuilt; equality and `Debug` read the parameters,
+/// not the cache.
 #[test]
 fn construction_and_draws_skip_the_quadrature() {
   for (lo, hi) in [(-1.0, 2.0), (3.0, 6.0), (1.5, 2.1)] {
@@ -98,7 +99,8 @@ fn scalar_far_tail_stays_in_bounds() {
   assert_far_tail_means(|d| scalar_draws(&d, 2718, 40_000));
 }
 
-/// The honest `Distribution` agrees with the cdf on the rejection, both tail proposals, the mirror and the inverse cdf.
+/// The honest `Distribution` agrees with the cdf on the rejection, both tail proposals, the mirror
+/// and the inverse cdf.
 #[test]
 fn scalar_sample_matches_cdf() {
   for (lo, hi) in [
@@ -257,7 +259,8 @@ fn draws_of_a_law_too_narrow_for_its_standardised_map() {
   }
 }
 
-/// A one-sided law whose standardised width is a subnormal spreads over its 603 207 doubles, as its mirror does.
+/// A one-sided law whose standardised width is a subnormal spreads over its 603 207 doubles, as its
+/// mirror does.
 #[test]
 fn a_subnormal_standardised_width_draws_its_law() {
   for (lo, up) in [(1e-300, 1.0000000001e-300), (-1.0000000001e-300, -1e-300)] {

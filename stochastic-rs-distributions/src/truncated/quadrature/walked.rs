@@ -6,7 +6,8 @@ use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 
-/// The marks held in place: the median law walks five panels, and a fill that keeps them inline allocates nothing.
+/// The marks held in place: the median law walks five panels, and a fill that keeps them inline
+/// allocates nothing.
 const INLINE: usize = 8;
 
 /// A panel's far end, an offset from its run's origin, and its mass.
@@ -46,7 +47,8 @@ impl Walked {
     }
   }
 
-  /// Appends the next panel of the walk and its mass; a panel joins the run only where it rebuilds to the bit.
+  /// Appends the next panel of the walk and its mass; a panel joins the run only where it rebuilds
+  /// to the bit.
   pub(super) fn push(&mut self, panel: &Panel, mass: f64) {
     let (near, far) = if self.rev {
       (panel.r, panel.l)

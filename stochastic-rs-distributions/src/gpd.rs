@@ -1,4 +1,5 @@
-//! # Generalized Pareto distribution (GPD)
+//! Generalized Pareto (GPD) limit law of the excesses over a high threshold, on `x ≥ μ` (and
+//! `x ≤ μ − σ/ξ` at `ξ < 0`), its order-`k` moment needing `ξ < 1/k`; drawn by the inverse cdf.
 //!
 //! $$
 //! F(x;\mu,\sigma,\xi) =
@@ -8,9 +9,6 @@
 //! \end{cases}
 //! $$
 //!
-//! The limit law of excesses over a high threshold, on `x ≥ μ` (and `x ≤ μ − σ/ξ` at `ξ < 0`), its
-//! order-`k` moment needing `ξ < 1/k`; drawn by the inverse cdf
-//!
 //! $$
 //! X = \begin{cases}
 //!   \mu + \dfrac{\sigma}{\xi}\,\mathrm{expm1}(-\xi\ln U), & \xi \neq 0 \\\\\[4pt\]
@@ -19,10 +17,10 @@
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
 //! $$
 //!
-//! Reference: Pickands, J. (1975), "Statistical Inference Using Extreme Order Statistics", *Annals of Statistics* 3(1), 119-131, DOI 10.1214/aos/1176343003.
-//! Reference: Balkema, A.A., de Haan, L. (1974), "Residual Life Time at Great Age", *Annals of Probability* 2(5), 792-804, DOI 10.1214/aop/1176996548.
-//! Reference: Hosking, J.R.M., Wallis, J.R. (1987), "Parameter and Quantile Estimation for the Generalized Pareto Distribution", *Technometrics* 29(3), 339-349, DOI 10.1080/00401706.1987.10488243 (moments).
-//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer, ch. 4.
+//! Reference: Pickands, J. (1975), Ann. Stat. 3(1), 119-131, DOI 10.1214/aos/1176343003.
+//! Reference: Balkema, de Haan (1974), Ann. Probab. 2(5), 792-804, DOI 10.1214/aop/1176996548.
+//! Reference: Hosking, Wallis (1987), 29(3), 339-349, DOI 10.1080/00401706.1987.10488243.
+//! Reference: Coles, S. (2001), Springer, ch. 4, DOI 10.1007/978-1-4471-3675-0.
 
 use std::mem::MaybeUninit;
 
@@ -91,7 +89,8 @@ impl<T: SimdFloatExt> SimdGpd<T> {
     self.xi
   }
 
-  /// Clamp a uniform draw to the open unit interval so its logarithm stays finite at the lane level.
+  /// Clamp a uniform draw to the open unit interval so its logarithm stays finite at the lane
+  /// level.
   #[inline]
   fn clamp_open_unit(x: T) -> T {
     let eps = T::from_f64_fast(1e-12);
@@ -390,7 +389,8 @@ mod tests {
     }
   }
 
-  /// mpmath at 50 and 80 digits: `1 − t^{−1/ξ}` and `((1 − p)^{−ξ} − 1)/ξ` through `exp_m1` at tiny ξ.
+  /// mpmath at 50 and 80 digits: `1 − t^{−1/ξ}` and `((1 − p)^{−ξ} − 1)/ξ` through `exp_m1` at tiny
+  /// ξ.
   #[test]
   fn tiny_shape_keeps_its_digits() {
     let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -436,7 +436,8 @@ mod tests {
     }
   }
 
-  /// mpmath at 50 and 100 digits: where `ξ ln(1 − p)` or `ξz` leaves the normals, the forms keep the exponential's digits.
+  /// mpmath at 50 and 100 digits: where `ξ ln(1 − p)` or `ξz` leaves the normals, the forms keep
+  /// the exponential's digits.
   #[test]
   fn subnormal_shape_products_keep_their_digits() {
     for xi in [1e-15, 1e-12] {

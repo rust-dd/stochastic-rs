@@ -1,4 +1,5 @@
-//! A model directory saved under candle 0.9.2 (`tests/data/heston_nn_candle_0_9_2`) must keep loading.
+//! A model directory saved under candle 0.9.2 (`tests/data/heston_nn_candle_0_9_2`) must keep
+//! loading.
 
 use std::path::Path;
 

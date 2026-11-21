@@ -1,6 +1,6 @@
 //! Error-free transformations: a sum or product of two doubles as an unevaluated sum of two.
-//! Reference: Dekker, T.J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083.
-//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
+//! Reference: Dekker, T.J. (1971), Numer. Math. 18(3), 224-242, DOI 10.1007/BF01397083.
+//! Reference: Shewchuk (1997), 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
 
 /// `s + e = a + b` exactly; public for the t copulas' level gaps, outside the stability promise.
 pub fn two_sum(a: f64, b: f64) -> (f64, f64) {

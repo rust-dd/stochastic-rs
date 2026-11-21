@@ -156,7 +156,8 @@ fn t_copula_log_pdf_matches_ln_pdf() {
   }
 }
 
-/// At `d = 2` the multivariate cdf is the bivariate copula's closed form, bit for bit, for an integer and a fractional `ν`.
+/// At `d = 2` the multivariate cdf is the bivariate copula's closed form, bit for bit, for an
+/// integer and a fractional `ν`.
 #[test]
 fn t_copula_cdf_matches_bivariate_reference() {
   use crate::traits::BivariateExt;
@@ -200,7 +201,8 @@ fn t_multivariate_exposes_nu() {
   assert_eq!(TCopula::try_new(0.3, 0.0).unwrap_err(), want);
 }
 
-/// An infinite `nu` is an error from the fallible entry points of either t-copula, so no χ² law is built with `k = ∞`.
+/// An infinite `nu` is an error from the fallible entry points of either t-copula, so no χ² law is
+/// built with `k = ∞`.
 #[test]
 fn an_infinite_nu_is_rejected_by_name() {
   let want = CopulaError::InvalidParameter {
@@ -233,8 +235,8 @@ fn the_multivariate_set_nu_panics_on_an_infinite_nu() {
 const TOLERANCE: f64 = 1e-6;
 const FLOOR: f64 = 1e-3;
 
-/// The `lambda` of `(1 - lambda) R + lambda I` that a fit applied, read off `R[[0, 1]]`, and its analytic minimum
-/// `(FLOOR - mu) / (1 - mu)` for a smallest eigenvalue `mu` of `R`.
+/// The `lambda` of `(1 - lambda) R + lambda I` that a fit applied, read off `R[[0, 1]]`, and its
+/// analytic minimum `(FLOOR - mu) / (1 - mu)` for a smallest eigenvalue `mu` of `R`.
 fn applied_and_minimal_lambda(raw: &Array2<f64>, fitted: &Array2<f64>) -> (f64, f64) {
   let mu = smallest_eigenvalue(raw.view());
   (
@@ -243,8 +245,8 @@ fn applied_and_minimal_lambda(raw: &Array2<f64>, fitted: &Array2<f64>) -> (f64, 
   )
 }
 
-/// Four shares that sum to a constant give a Kendall estimate that is not positive definite (smallest eigenvalue
-/// -4.2e-3); the fit shrinks it by the smallest `lambda` that leaves every eigenvalue at least 1e-3.
+/// Four shares summing to a constant give a Kendall estimate with smallest eigenvalue -4.2e-3; the
+/// fit shrinks it by the least `lambda` leaving every eigenvalue ≥ 1e-3.
 #[test]
 fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
   let ranks = [
@@ -283,8 +285,8 @@ fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
   assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
 }
 
-/// Ten observations of six shares give a Kendall estimate with smallest eigenvalue -0.156: the fit shrinks it by
-/// `(1e-3 - mu) / (1 - mu)` to the tolerance, so the result keeps its correlations and its eigenvalues stay above 1e-3.
+/// Ten observations of six shares give a Kendall estimate with smallest eigenvalue -0.156: shrunk
+/// by `(1e-3 - mu) / (1 - mu)`, it keeps its correlations and every eigenvalue above 1e-3.
 #[test]
 fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() {
   let ranks = [
@@ -320,7 +322,8 @@ fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() 
   assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
 }
 
-/// The fit inverts Kendall's τ-b, which counts ties per margin: `(1,1,2,3)` × `(1,2,2,3)` has τ-b `0.8` where τ-a is `2/3`.
+/// The fit inverts Kendall's τ-b, which counts ties per margin: `(1,1,2,3)` × `(1,2,2,3)` has τ-b
+/// `0.8` where τ-a is `2/3`.
 #[test]
 fn t_copula_fit_inverts_tau_b_on_tied_data() {
   let u = array![[0.25, 0.25], [0.25, 0.5], [0.5, 0.5], [0.75, 0.75]];
@@ -333,7 +336,8 @@ fn t_copula_fit_inverts_tau_b_on_tied_data() {
   );
 }
 
-/// A constant column leaves its τ-b undefined, which the fit names instead of fitting a zero correlation to it.
+/// A constant column leaves its τ-b undefined, which the fit names instead of fitting a zero
+/// correlation to it.
 #[test]
 fn t_copula_fit_rejects_a_constant_column() {
   let u = Array2::from_shape_fn(
@@ -349,8 +353,8 @@ fn t_copula_fit_rejects_a_constant_column() {
   );
 }
 
-/// Perfectly dependent columns have τ-b 1 and the estimate `sin(π/2) = 1`, uncapped, which the shrink's floor fits to
-/// `0.999`, as the Gaussian fit does.
+/// Perfectly dependent columns have τ-b 1 and the estimate `sin(π/2) = 1`, uncapped, which the
+/// shrink's floor fits to `0.999`, as the Gaussian fit does.
 #[test]
 fn t_copula_fit_of_perfectly_dependent_columns_stops_at_the_floor() {
   let column = Array1::from_shape_fn(50, |i| (i + 1) as f64 / 51.0);

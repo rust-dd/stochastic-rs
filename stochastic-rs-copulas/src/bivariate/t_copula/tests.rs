@@ -81,8 +81,8 @@ fn t_cdf_symmetry_in_rho() {
   assert!(approx(lhs, rhs, 1e-6), "symmetry: lhs = {lhs}, rhs = {rhs}");
 }
 
-/// The cdf's central difference in `v` is the closed-form h-function to the difference's own `O(step²)`; a smooth bias
-/// in the cdf, such as a quadrature's, shows up here.
+/// The cdf's central difference in `v` is the closed-form h-function to the difference's own
+/// `O(step²)`; a smooth bias in the cdf, such as a quadrature's, shows up here.
 #[test]
 fn t_partial_derivative_matches_finite_diff() {
   for nu in [4.0, 2.5] {
@@ -180,8 +180,8 @@ fn tcopula_nu_validated() {
   assert_eq!(c.nu(), 6.0);
 }
 
-/// The smallest subnormal passes `nu > 0` but halves to 0, which `SimdStudentT::new` and `SimdChiSquared::new` assert
-/// against: both t-copulas reject it up front, so `pdf`, `cdf`, `partial_derivative`, `percent_point` and `sample` cannot panic.
+/// The smallest subnormal passes `nu > 0` but halves to 0, which `SimdStudentT::new` and
+/// `SimdChiSquared::new` reject: both t-copulas refuse it up front, so no method can panic.
 #[test]
 fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
   let want = Err(CopulaError::InvalidParameter {
@@ -248,8 +248,8 @@ fn t_copula_set_theta_rejects_the_rho_boundary() {
   TCopula::default().set_theta(1.0);
 }
 
-/// `T_ν(h, k; ρ)` at `h ≈ sk`, `|ρ| = 0.999`, limits in the thousands and `ν` from 0.5 to 2000, against 50-digit mpmath:
-/// the copula at `u, v = t_ν(h), t_ν(k)`, whose rounding moves the answer by under `1e-15`.
+/// `T_ν(h, k; ρ)` at `h ≈ sk`, `|ρ| = 0.999`, limits in the thousands, `ν` from 0.5 to 2000,
+/// against 50-digit mpmath: the copula at `u, v = t_ν(h), t_ν(k)`, their rounding under `1e-15`.
 #[test]
 fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
   let pins = [
@@ -279,8 +279,8 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
   }
 }
 
-/// At `ν ≤ 0.05` the limits' squares overflow past `1.34e154·√ν` (50-digit values, eq. (21) and Cornish's χ mixture
-/// agreeing to `2e-29`).
+/// At `ν ≤ 0.05` the limits' squares overflow past `1.34e154·√ν` (50-digit values, eq. (21) and
+/// Cornish's χ mixture agreeing to `2e-29`).
 #[test]
 fn the_cdf_survives_limits_whose_squares_overflow() {
   for (nu, want) in [(0.01, 0.9822283110927638), (0.05, 0.999999985792761)] {
@@ -290,8 +290,8 @@ fn the_cdf_survives_limits_whose_squares_overflow() {
   }
 }
 
-/// `C(1e-12, 1e-12)` at `ν = 30`, `ρ = 0` is `1.8473145194549695e-17`, by the conditional integral at 80 digits and by
-/// Dunnett–Sobel's sums at 200, to its relative digits.
+/// `C(1e-12, 1e-12)` at `ν = 30`, `ρ = 0` is `1.8473145194549695e-17`, by the conditional integral
+/// at 80 digits and by Dunnett–Sobel's sums at 200, to its relative digits.
 #[test]
 fn a_tiny_probability_keeps_its_relative_digits() {
   let got = TCopula::new(0.0, 30.0)
@@ -301,8 +301,8 @@ fn a_tiny_probability_keeps_its_relative_digits() {
   assert!((got - want).abs() <= 1e-12 * want, "{got}");
 }
 
-/// Past the countermonotone crossing at a large `ν`, where `ln c₀` and `ln tanh|t|` near ±20 would cancel as logarithms:
-/// within `1e-12` of mpmath's `bvt_cdf` (60 and 120 digits, agreeing to 40).
+/// Past the countermonotone crossing at a large `ν`, where `ln c₀` and `ln tanh|t|` near ±20 would
+/// cancel as logarithms: within `1e-12` of mpmath's `bvt_cdf` (60 and 120 digits, agreeing to 40).
 #[test]
 fn the_cdf_past_the_countermonotone_crossing_holds_at_a_large_nu() {
   for (rho, nu, u, v, want) in [
@@ -357,8 +357,8 @@ fn the_cdf_past_the_countermonotone_crossing_holds_at_a_large_nu() {
   }
 }
 
-/// At small `|ρ|` `h` takes `x − ρy` as the quantiles' bits give it, whatever the libm: the shifted gap form, which reads these
-/// two cells `1.3e-14` and `1.2e-14` off, is not taken.
+/// At small `|ρ|` `h` takes `x − ρy` as the quantiles' bits give it, whatever the libm: the shifted
+/// gap form, which reads these two cells `1.3e-14` and `1.2e-14` off, is not taken.
 #[test]
 fn the_plain_form_holds_at_small_rho() {
   for (rho, nu, u, v) in [(-0.3_f64, 1e8_f64, 0.9, 1e-100), (0.0, 1e8, 1e-5, 1e-300)] {

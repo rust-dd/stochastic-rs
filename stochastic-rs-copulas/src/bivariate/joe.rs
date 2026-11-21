@@ -1,18 +1,14 @@
-//! # Joe (1997) copula
+//! Joe (1997) copula, Archimedean and upper-tail dependent, generator `φ(t) = −ln(1 − (1 − t)^θ)`;
+//! independence at `θ = 1`.
 //!
 //! $$
 //! C_\theta(u,v) = 1 - \left[(1-u)^\theta + (1-v)^\theta - (1-u)^\theta (1-v)^\theta\right]^{1/\theta},
 //! \qquad \theta \in [1, \infty).
 //! $$
 //!
-//! Archimedean upper-tail-dependent family with generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$;
-//! independence at $\theta = 1$.
-//!
-//! Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts",
-//! Chapman & Hall, §5.1.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Family BB1 / table 4.1.
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
+//! Reference: Joe, H. (1997), Chapman & Hall, §5.1, DOI 10.1201/b13150.
+//! Reference: Nelsen, R.B. (2006), Table 4.1, family (4.2.6), DOI 10.1007/0-387-28678-0.
+//! Reference: Hofert et al. (2012), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 
@@ -61,8 +57,8 @@ impl Joe {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `ln ∂_v C = ln(1 − a) + (1/θ − 1) ln(1 − a + a/b)`, `a, b = (1 − u)^θ, (1 − v)^θ`, in logarithms of `ln_1p(−u)` and
-  /// `ln_1p(−v)`, `ln(1 − a)` without forming the product `θ ln_1p(−u)` where it is subnormal; `δ₁` at `v = 1`.
+  /// `ln ∂_v C = ln(1 − a) + (1/θ − 1) ln(1 − a + a/b)`, `a, b = (1 − u)^θ, (1 − v)^θ`, from
+  /// `ln_1p(−u)`, `ln_1p(−v)`, `ln(1 − a)` not forming a subnormal `θ ln_1p(−u)`; `δ₁` at `v = 1`.
   pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |u, v| {
       if u >= 1.0 {
@@ -77,8 +73,8 @@ impl Joe {
     }
   }
 
-  /// `(t, b − t, ℓ)`, `t ≥ b` of `ln(1 − u)`, `ln(1 − v)`, the gap by `ln_ratio_complement`, `ℓ = ln S − θt` for
-  /// `S = (1 − u)^θ + (1 − v)^θ − ((1 − u)(1 − v))^θ`: `ln(1 + e^{θ(b − t)}(1 − e^{θt}))`, about its larger power.
+  /// `(t, b − t, ℓ)`, `t ≥ b` of `ln(1 − u)`, `ln(1 − v)`, the gap by `ln_ratio_complement`,
+  /// `ℓ = ln S − θt = ln(1 + e^{θ(b − t)}(1 − e^{θt}))`, `S` about its larger power.
   fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
     let top = (-u.min(v)).ln_1p();
     let gap = -ln_ratio_complement(u, v).abs();
@@ -86,8 +82,8 @@ impl Joe {
     (top, gap, ell)
   }
 
-  /// `ln S = ln(1 − (1 − (1 − u)^θ)(1 − (1 − v)^θ))`: `ln_1p` of the product while it is below `1/2`, so `S` near 1 keeps
-  /// its digits, else `θt + ℓ` of `Joe::parts`, so a power below rounding keeps its own.
+  /// `ln S = ln(1 − (1 − (1 − u)^θ)(1 − (1 − v)^θ))`: `ln_1p` of the product below `1/2`, so `S`
+  /// near 1 keeps its digits, else `Joe::parts`'s `θt + ℓ`, keeping a power below rounding.
   fn ln_s(theta: f64, u: f64, v: f64) -> f64 {
     let ln_product = ln_one_minus_pow(theta, (-u).ln_1p()) + ln_one_minus_pow(theta, (-v).ln_1p());
     if ln_product < -std::f64::consts::LN_2 {
@@ -98,8 +94,8 @@ impl Joe {
     }
   }
 
-  /// `ln c = (θ − 1)(b − t) − t + (1/θ − 2)ℓ + ln(θ − 1 + S)`: `(θ − 1)(t + b) + (1/θ − 2) ln S` with its `θ`-sized
-  /// parts cancelled exactly, so the density holds as `θ` grows and `(1 − u)^θ` underflows.
+  /// `ln c = (θ − 1)(b − t) − t + (1/θ − 2)ℓ + ln(θ − 1 + S)`, `θ`-sized parts cancelled, so the
+  /// density holds as `θ` grows and `(1 − u)^θ` underflows.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 1.0 {
       return 0.0;
@@ -122,8 +118,8 @@ impl Joe {
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
-  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep
-  /// their digits at both ends of `t` and of `θ`.
+  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and
+  /// `(1 − t)^θ` keep their digits at both ends of `t` and of `θ`.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -206,8 +202,8 @@ impl BivariateExt for Joe {
     Some(self.unchecked_inverse(y, v))
   }
 
-  /// `τ = 1 − 4Σ_{k≥1} 1/(k(θk + 2)(θ(k − 1) + 2))` (Hofert, Mächler & McNeil 2011, Table 2): 256 terms plus the
-  /// Euler–Maclaurin tail, its integral in closed form less `f(K)/2 + f'(K)/12`; 0 for `θ ≤ 1`.
+  /// `τ = 1 − 4Σ_{k≥1} 1/(k(θk + 2)(θ(k − 1) + 2))` (Hofert, Mächler & McNeil 2011, Table 2): 256
+  /// terms and an Euler–Maclaurin tail, `∫` in closed form less `f(K)/2 + f'(K)/12`; 0 for `θ ≤ 1`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     if theta <= 1.0 {
       return 0.0;
@@ -240,7 +236,7 @@ impl BivariateExt for Joe {
   }
 
   /// $\lambda_U = 2 - 2^{1/\theta}$, Gumbel's form; Joe has no lower-tail dependence.
-  /// Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts", Chapman & Hall, §5.1.
+  /// Reference: Joe, H. (1997), Chapman & Hall, §5.1, DOI 10.1201/b13150.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();
@@ -315,7 +311,8 @@ mod tests {
     );
   }
 
-  /// The series of Hofert, Mächler & McNeil (2011), Table 2, summed by mpmath at 50 digits; `τ(2) = 2 − π²/6`.
+  /// The series of Hofert, Mächler & McNeil (2011), Table 2, summed by mpmath at 50 digits;
+  /// `τ(2) = 2 − π²/6`.
   #[test]
   fn joe_tau_matches_the_cited_series() {
     let c = Joe::default();
@@ -331,8 +328,8 @@ mod tests {
     assert_eq!(c.tau_from_theta(1.0), 0.0);
   }
 
-  /// `τ(1) = 0` exactly, so the bracket from `θ = 1` changes sign for every positive `τ`, the tiniest included; Brent's
-  /// `1e-10` in `θ` bounds the error in `τ`.
+  /// `τ(1) = 0` exactly, so the bracket from `θ = 1` changes sign for every positive `τ`, the
+  /// tiniest included; Brent's `1e-10` in `θ` bounds the error in `τ`.
   #[test]
   fn joe_inverts_a_tau_near_independence() {
     let c = Joe::default();

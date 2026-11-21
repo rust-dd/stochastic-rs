@@ -7,7 +7,8 @@ use super::panels::GL64_W;
 use super::panels::GL64_X;
 
 impl<K: Kernel> Truncation<K> {
-  /// `(ψW, κW²)`, the slope and curvature at the midpoint in units of the width `W`, for a flat quadratic kernel.
+  /// `(ψW, κW²)`, the slope and curvature at the midpoint in units of the width `W`, for a flat
+  /// quadratic kernel.
   fn flat(&self) -> Option<(f64, f64)> {
     (K::QUADRATIC && !self.narrow && self.about_midpoint()).then(|| {
       let c = self.centre.x;
@@ -45,7 +46,8 @@ impl<K: Kernel> Truncation<K> {
   }
 }
 
-/// `∫_0^h f` by one 64-node rule, `h` of either sign: the integrands are entire and vary by less than `e` over it.
+/// `∫_0^h f` by one 64-node rule, `h` of either sign: the integrands are entire and vary by less
+/// than `e` over it.
 fn rule(h: f64, f: impl Fn(f64) -> f64) -> f64 {
   let half = 0.5 * h;
   let sum: f64 = GL64_X

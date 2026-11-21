@@ -13,7 +13,7 @@
 //! X_t=Y_t-Y_{t_1}+\sqrt{2c_2}\,t^\top Z,\quad Z\sim\mathcal N(0,I_2)
 //! $$
 //!
-//! Reference: Stein (2002), J. Comput. Graph. Statist. 11(3), 587–599
+//! Reference: Stein (2002), J. Comput. Graph. Statist. 11(3), 587–599, DOI 10.1198/106186002466
 //! Reference: Kroese & Botev (2015), Spatial process simulation, §4.4, eq. (16), arXiv:1308.0399
 //!
 

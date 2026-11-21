@@ -112,7 +112,7 @@ fn ma2_variance_and_acf_cut_off_after_the_order() {
 
 /// ARCH(1): unconditional variance `ω/(1 − α)` and kurtosis `3(1 − α²)/(1 − 3α²)`. `α = 0.25`
 /// keeps the eighth moment finite (`105α⁴ = 0.41 < 1`), so the kurtosis has a standard error.
-/// Reference: Engle (1982), eq. 22 and Theorem 1
+/// Reference: Engle (1982), eq. 22 and Theorem 1, DOI 10.2307/1912773
 #[test]
 fn arch1_unconditional_variance_and_kurtosis_match_engle() {
   let (omega, alpha) = (0.3, 0.25);
@@ -133,7 +133,7 @@ fn arch1_unconditional_variance_and_kurtosis_match_engle() {
 
 /// GARCH(1,1): unconditional variance `ω/(1 − α − β)` and kurtosis
 /// `3(1 − (α+β)²)/(1 − (α+β)² − 2α²)`, whose condition `2α² + (α+β)² < 1` holds here at 0.7675.
-/// Reference: Bollerslev (1986), eq. 10 and Theorem 2
+/// Reference: Bollerslev (1986), eq. 10 and Theorem 2, DOI 10.1016/0304-4076(86)90063-1
 #[test]
 fn garch11_unconditional_variance_and_kurtosis_match_bollerslev() {
   let (omega, alpha, beta) = (0.15, 0.15, 0.7);
@@ -160,7 +160,7 @@ fn garch11_unconditional_variance_and_kurtosis_match_bollerslev() {
 
 /// GARCH(1,1) squared series: `ρ₁ = α(1 − αβ − β²)/(1 − 2αβ − β²)` and `ρ_k = (α + β)^{k−1} ρ₁`
 /// past it. The level series is white noise, so lag one of the levels is checked too.
-/// Reference: Bollerslev (1988), eq. 12
+/// Reference: Bollerslev (1988), eq. 12, DOI 10.1111/j.1467-9892.1988.tb00459.x
 #[test]
 fn garch11_squared_series_acf_decays_at_alpha_plus_beta() {
   let (omega, alpha, beta) = (0.15, 0.15, 0.7);
@@ -189,7 +189,7 @@ fn garch11_squared_series_acf_decays_at_alpha_plus_beta() {
 
 /// GJR-GARCH: a symmetric innovation crosses zero half the time, so the threshold term enters
 /// the unconditional variance at half its coefficient, `ω/(1 − α − γ/2 − β)`.
-/// Reference: Glosten, Jagannathan & Runkle (1993), §I
+/// Reference: Glosten, Jagannathan & Runkle (1993), §I, DOI 10.1111/j.1540-6261.1993.tb05128.x
 #[test]
 fn gjr_garch_unconditional_variance_carries_the_half_threshold() {
   let (omega, alpha, gamma, beta) = (0.12, 0.06, 0.12, 0.7);
@@ -273,7 +273,7 @@ fn agarch_delta_is_the_gjr_gamma() {
 
 /// EGARCH(1,1): stationary `E[ln σ²] = ω/(1 − β)` and `Var[ln σ²] = (α²(1 − 2/π) + γ²)/(1 − β²)`,
 /// read through `ln X² = ln σ² + ln z²`, whose second term is an independent log-chi-square.
-/// Reference: Nelson (1991), §2.2
+/// Reference: Nelson (1991), §2.2, DOI 10.2307/2938260
 #[test]
 fn egarch_log_variance_moments_match_nelson() {
   let (omega, alpha, gamma, beta) = (-0.1, 0.2, -0.1, 0.9);

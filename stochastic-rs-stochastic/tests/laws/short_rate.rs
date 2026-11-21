@@ -43,7 +43,7 @@ fn euler_stationary_variance(theta: f64, sigma: f64, dt: f64) -> f64 {
 
 /// The mean-reversion rate a path implies, by least squares of the increment on the gap to the
 /// known mean, with the slope's `2φ/n` downward bias (two standard errors here) corrected.
-/// Reference: Marriott & Pope (1954)
+/// Reference: Marriott & Pope (1954), DOI 10.1093/biomet/41.3-4.390
 fn reversion_rate(x: &[f64], mu: f64, dt: f64) -> f64 {
   let (mut num, mut den) = (0.0, 0.0);
   for t in 1..x.len() {
@@ -66,8 +66,8 @@ fn diffusion_scale(x: &[f64], mu: f64, dt: f64, theta: f64) -> f64 {
 
 /// Vasicek: stationary mean `μ`, variance `σ²/(2θ)` and autocorrelation `e^{−θτ}`. The decay
 /// pins the reversion rate, which a mean and a variance leave free along one curve.
-/// Reference: Vasicek (1977), §2
-/// Reference: Uhlenbeck & Ornstein (1930)
+/// Reference: Vasicek (1977), §2, DOI 10.1016/0304-405X(77)90016-2
+/// Reference: Uhlenbeck & Ornstein (1930), DOI 10.1103/PhysRev.36.823
 #[test]
 fn vasicek_stationary_moments_match_the_ornstein_uhlenbeck_law() {
   let (theta, mu, sigma) = (1.5, 0.04, 0.3);
@@ -112,7 +112,7 @@ fn vasicek_stationary_moments_match_the_ornstein_uhlenbeck_law() {
 
 /// Started at `x0`, the mean returns to `μ` as `μ + (x₀ − μ)e^{−θt}`: the transient half of the
 /// solution, which a stationary case cannot see.
-/// Reference: Vasicek (1977)
+/// Reference: Vasicek (1977), DOI 10.1016/0304-405X(77)90016-2
 #[test]
 fn vasicek_reverts_at_the_rate_it_was_given() {
   let (theta, mu, sigma, x0) = (2.0, 0.04, 0.25, 0.14);
@@ -142,7 +142,7 @@ fn vasicek_reverts_at_the_rate_it_was_given() {
 
 /// Ho-Lee with a flat `θ`, `dr = θdt + σdW`: `r_t − r_0` has mean `θt` and variance `σ²t` with
 /// uncorrelated increments. Euler is exact here, so no scheme bias enters.
-/// Reference: Ho & Lee (1986)
+/// Reference: Ho & Lee (1986), DOI 10.1111/j.1540-6261.1986.tb02528.x
 #[test]
 fn ho_lee_is_a_brownian_motion_with_drift() {
   let (drift, sigma) = (0.02, 0.15);
@@ -180,7 +180,7 @@ fn ho_lee_is_a_brownian_motion_with_drift() {
 
 /// Hull-White with a constant `θ` is a Vasicek reverting to `θ/α`, the case of the extension
 /// whose stationary law is written down.
-/// Reference: Hull & White (1990), §2
+/// Reference: Hull & White (1990), §2, DOI 10.1093/rfs/3.4.573
 #[test]
 fn hull_white_with_a_flat_theta_reverts_to_theta_over_alpha() {
   const THETA: f64 = 0.09;
@@ -223,7 +223,7 @@ fn hull_white_with_a_flat_theta_reverts_to_theta_over_alpha() {
 
 /// Black-Karasinski: `ln r` is the Ornstein-Uhlenbeck process, with stationary mean `θ/a` and
 /// variance `σ²/(2a)`, so the rate is lognormal and positive.
-/// Reference: Black & Karasinski (1991), §1
+/// Reference: Black & Karasinski (1991), §1, DOI 10.2469/faj.v47.n4.52
 #[test]
 fn black_karasinski_log_rate_is_an_ornstein_uhlenbeck() {
   const THETA: f64 = -4.5;
@@ -261,7 +261,7 @@ fn black_karasinski_log_rate_is_an_ornstein_uhlenbeck() {
 
 /// Cox-Ingersoll-Ross: a stationary gamma with shape `2θμ/σ²` and scale `σ²/(2θ)`, so mean `μ`
 /// and variance `μσ²/(2θ)`. At `2θμ/σ² = 6` the Euler step's floor at zero is never reached.
-/// Reference: Cox, Ingersoll & Ross (1985), eq. 20
+/// Reference: Cox, Ingersoll & Ross (1985), eq. 20, DOI 10.2307/1911242
 #[test]
 fn cir_stationary_moments_match_the_gamma_law() {
   let (theta, mu, sigma) = (1.5, 0.05, 0.15);

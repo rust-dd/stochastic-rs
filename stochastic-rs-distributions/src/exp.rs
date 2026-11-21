@@ -1,10 +1,10 @@
-//! # Exp
+//! Exponential law, sampled by Marsaglia and Tsang's ziggurat.
 //!
 //! $$
 //! f(x)=\lambda e^{-\lambda x},\ x\ge 0
 //! $$
 //!
-//! Sampling: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), J. Stat. Softw. 5(8), DOI 10.18637/jss.v005.i08.
 
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;
@@ -250,7 +250,8 @@ fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(
   }
 }
 
-/// Exponential law `Exp(lambda)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Exponential law `Exp(lambda)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in
+/// bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdExp<T> {
   lambda: T,
@@ -416,7 +417,8 @@ mod zig_tests {
 
   use super::*;
 
-  /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it is a negative draw.
+  /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it is a negative
+  /// draw.
   #[test]
   fn minimum_hz_lane_is_rejected_into_the_fix_up() {
     let tables = exp_zig_tables();

@@ -16,8 +16,8 @@ use super::agrees;
 use super::build;
 use super::on_grid;
 
-/// `<family> <h|q> <parameters> ; <81 values>`, row-major in the first argument: mpmath at 60 or more digits of the
-/// stable forms, each proved equal to `∂_v C` in sympy, `q` by bisection of that `h` in `ln u` or its closed form.
+/// `<family> <h|q> <parameters> ; <81 values>`, row-major in the first argument: mpmath at 60+
+/// digits of the stable forms (each `= ∂_v C` in sympy), `q` by bisection in `ln u` or closed form.
 const REFERENCE: &str = include_str!("../fixtures/extreme_parameters.txt");
 
 #[test]
@@ -48,8 +48,8 @@ fn h_and_its_inverse_match_the_mpmath_table() {
   );
 }
 
-/// `<ρ> <u> <v> ; <h> <q> <ln c>` past the Gaussian h's rounding switch, where `x ∓ y` needs the exact gap: mpmath at
-/// 80 digits from the exact binary inputs, `q` reading `u` as a level.
+/// `<ρ> <u> <v> ; <h> <q> <ln c>` past the Gaussian h's rounding switch, where `x ∓ y` needs the
+/// exact gap: mpmath at 80 digits from the exact binary inputs, `q` reading `u` as a level.
 const GAUSSIAN_GAP: &str = include_str!("../fixtures/gaussian_gap_cells.txt");
 
 #[test]
@@ -77,8 +77,8 @@ fn the_gaussian_h_its_inverse_and_density_hold_past_the_rounding_switch() {
   }
 }
 
-/// Past the normal switch `h(· | v)` keeps the t's two-point law at `v ∈ {0, 1}`, mass `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`
-/// (mpmath quadrature at 40 and 60 digits), and `h⁻¹(· | v)` is its quantile: 0 up to the mass, 1 past it.
+/// Past the normal switch `h(· | v)` keeps the t's two-point law at `v ∈ {0, 1}` (mass
+/// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`, mpmath at 40, 60 digits), `h⁻¹(· | v)` its quantile.
 #[test]
 fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
   let rows = [
@@ -112,8 +112,8 @@ fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
   }
 }
 
-/// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, in panels past `e⁴`
-/// in the density, or its tails past `1e150` (mpmath at 50 to 120 digits), and meets the Gaussian copula's `h` across the switch.
+/// Near the diagonal as `|ρ| → 1`, below the normal switch, `h` takes `x − ρy` from the level gap
+/// (panels past `e⁴`, tails past `1e150`), meeting the Gaussian's across it.
 #[test]
 fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   let rows = [
@@ -244,8 +244,8 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   }
 }
 
-/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits) within four times `t_{ν+1}`'s `f/F` at `z = (x − ρy)s` times
-/// `s(ulp x + |ρ| ulp y)`, what an ulp of either quantile moves it; `4ε` in every `exp` and `ln` moves the rows by up to 3.3.
+/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50, 90 digits) within 4× `t_{ν+1}`'s `f/F` at
+/// `z = (x − ρy)s` times `s(ulp x + |ρ| ulp y)`; `4ε` per `exp`/`ln` moves rows ≤ 3.3.
 #[test]
 fn the_t_h_keeps_the_plain_form_at_small_rho() {
   let ulp = |q: f64| f64::from_bits(q.abs().to_bits() + 1) - q.abs();
@@ -270,8 +270,8 @@ fn the_t_h_keeps_the_plain_form_at_small_rho() {
   }
 }
 
-/// The vine pairs are their families' kernels, at strong dependence and across the open grid: `h` the family's
-/// `partial_derivative`, an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
+/// The vine pairs are their families' kernels, strongly dependent and on the open grid: `h` is
+/// `partial_derivative`, `h⁻¹` `percent_point`, `log_density` `log_pdf`.
 #[test]
 fn vine_pairs_are_their_bivariate_kernels() {
   let cases: Vec<(PairCopula, Box<dyn BivariateExt>)> = vec![

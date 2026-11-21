@@ -1,6 +1,6 @@
 //! Brent's procedure `zero`, the root solver of the sibling crates; outside the stability promise.
 //!
-//! Reference: Brent, R.P. (1973), "Algorithms for Minimization without Derivatives", Prentice-Hall, ch. 4: eqs. (2.9), (3.2)–(3.4) and procedure `zero`, §6, pp. 58–59.
+//! Reference: Brent (1973), ch. 4: eqs. (2.9), (3.2)–(3.4) and procedure `zero`, §6, pp. 58–59.
 
 /// Brent's `macheps` for rounded binary64, half of `f64::EPSILON`, so his `2 × macheps` is
 /// `f64::EPSILON`.
@@ -96,7 +96,8 @@ fn evaluation_bound(a: f64, b: f64, t: f64) -> usize {
   if ratio <= 1.0 {
     return 2;
   }
-  // ⌈log₂ ratio⌉ read off the binary exponent, exact where `log2().ceil()` can round across a power of two.
+  // ⌈log₂ ratio⌉ read off the binary exponent, exact where `log2().ceil()` can round across a power
+  // of two.
   let bits = ratio.to_bits();
   let k = (bits >> 52) as usize - 1023 + usize::from(bits & ((1 << 52) - 1) != 0);
   (k + 1).pow(2) - 2

@@ -1,4 +1,4 @@
-//! Augmented Dickey–Fuller unit-root test.
+//! Augmented Dickey–Fuller test of a unit root against a stationary alternative.
 //!
 //! Said–Dickey lags augment the regression, each candidate scored on one common sample (Ng–Perron).
 //!

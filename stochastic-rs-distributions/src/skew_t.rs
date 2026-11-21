@@ -1,4 +1,5 @@
-//! # Skewed Student-t (Hansen 1994)
+//! Skewed t of Hansen (1994), standardized as in `arch`, `η > 2`, `λ ∈ (−1, 1)`: each side a
+//! rescaled t, the cdf and quantile piecewise; skewness from `η > 3`, kurtosis `η > 4`.
 //!
 //! $$
 //! g(z) = b\,c\left(1 + \frac{1}{\eta - 2}
@@ -16,10 +17,7 @@
 //! s = 1 + \lambda \text{ w.p. } \tfrac{1 + \lambda}{2},\ \text{else } s = -(1 - \lambda).
 //! $$
 //!
-//! Hansen's zero-mean, unit-variance skewed t (`arch`'s), `η > 2`, `λ ∈ (−1, 1)`: each side a
-//! rescaled t, its cdf and quantile piecewise t; skewness from `η > 3`, kurtosis `η > 4`.
-//!
-//! Reference: Hansen, B.E. (1994), "Autoregressive Conditional Density Estimation", *International Economic Review* 35(3), 705-730, DOI 10.2307/2527081.
+//! Reference: Hansen, B.E. (1994), Int. Econ. Rev. 35(3), 705-730, DOI 10.2307/2527081.
 
 use std::mem::MaybeUninit;
 
@@ -53,7 +51,8 @@ pub struct SimdSkewT<T> {
   student: SimdStudentT<T>,
 }
 
-/// A skew-t stream: the Student-t sub-stream, the engine of the side flips and the single-draw buffer.
+/// A skew-t stream: the Student-t sub-stream, the engine of the side flips and the single-draw
+/// buffer.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct SkewTState<T: SimdFloatExt, R: SimdRngExt> {

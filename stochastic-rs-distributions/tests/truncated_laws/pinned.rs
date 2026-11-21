@@ -10,7 +10,8 @@ use crate::survey::Stratum;
 
 const TABLE: &str = include_str!("survey_refs.txt");
 
-/// One law's references by item: `mean`, `variance`, `skewness`, `kurtosis`, `entropy`, `cdf@x`, `mgf@t`.
+/// One law's references by item: `mean`, `variance`, `skewness`, `kurtosis`, `entropy`, `cdf@x`,
+/// `mgf@t`.
 pub struct Row(HashMap<String, Option<f64>>);
 
 impl Row {

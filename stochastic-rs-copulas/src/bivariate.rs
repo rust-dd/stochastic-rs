@@ -1,12 +1,9 @@
-//! # Bivariate
+//! Fifteen [families](https://stochastic.rust-dd.com/docs/copulas#choosing-a-copula)
+//! behind [`BivariateExt`]: `partial_derivative` is `∂_v C`, `percent_point` its inverse in `u`.
 //!
 //! $$
 //! F_{X_1,\dots,X_d}(x)=C\left(F_1(x_1),\dots,F_d(x_d)\right)
 //! $$
-//!
-//! Fifteen families behind [`BivariateExt`]; in every one `partial_derivative` is
-//! $\partial_v C$, the conditional cdf of `U` given `V = v`, and `percent_point` inverts it in `u`.
-//! Choosing a family: <https://stochastic.rust-dd.com/docs/copulas#choosing-a-copula>
 
 pub use crate::traits::BivariateExt;
 
@@ -81,8 +78,8 @@ impl BivariateFamily {
     Self::Bb7,
   ];
 
-  /// Free parameters of the family; Marshall-Olkin counts its shock rates (α, β), although its default fit path
-  /// estimates one symmetric θ.
+  /// Free parameters of the family; Marshall-Olkin counts its shock rates (α, β), although its
+  /// default fit path estimates one symmetric θ.
   pub fn parameter_count(self) -> usize {
     match self {
       Self::Independence => 0,
@@ -110,8 +107,8 @@ mod tests {
   use crate::bivariate::gumbel::Gumbel;
   use crate::traits::BivariateExt;
 
-  /// The trait-default `sample` replays bit-for-bit for one `Deterministic` seed, on one object and on two built alike.
-  /// Frank and Gumbel sit off the independence boundary their `percent_point` shortcuts around, so the general path runs.
+  /// The trait-default `sample` replays bit-for-bit per `Deterministic` seed, on one object and on
+  /// two built alike; Frank and Gumbel sit off their independence shortcut, on the general path.
   #[test]
   fn every_bivariate_sampler_is_seedable_and_deterministic() {
     let clayton = Clayton::from_tau(0.5).unwrap();
@@ -163,8 +160,8 @@ mod catalog_tests {
 
   use super::BivariateFamily;
 
-  /// Guards `copulas.mdx`'s catalog table and `CLAUDE.md`'s count: the match has no wildcard arm on purpose, so a new
-  /// variant is a compile error here until its arm, its docs row and the counts are added.
+  /// Guards `copulas.mdx`'s catalog and `CLAUDE.md`'s count: with no wildcard arm, a new variant
+  /// fails to compile here until its arm, docs row and counts are added.
   #[test]
   fn bivariate_catalog_matches_docs_count() {
     let count = BivariateFamily::ALL

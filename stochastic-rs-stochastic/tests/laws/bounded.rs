@@ -126,7 +126,7 @@ fn logistic_stationary_law_is_the_gamma_its_noise_shifts() {
 
 /// Pearson, `dX = κ(μ − X)dt + √(2κ(aX² + bX + c))dW`: stationarity forces
 /// `Var = (aμ² + bμ + c)/(1 − a)` in every family. The case takes `a > 0`, the Student branch.
-/// Reference: Forman & Sørensen (2008), §2
+/// Reference: Forman & Sørensen (2008), §2, DOI 10.1111/j.1467-9469.2007.00592.x
 #[test]
 fn pearson_stationary_variance_follows_from_its_quadratic() {
   let (kappa, mu, a, b, c) = (2.0, 0.5, 0.05, 0.0, 0.02);
@@ -153,7 +153,7 @@ fn pearson_stationary_variance_follows_from_its_quadratic() {
 
 /// Gompertz, `dX = (a − b ln X)X dt + σX dW`: `ln X` is an Ornstein-Uhlenbeck with rate `b` and
 /// mean `(a − σ²/2)/b`; a sampler without the Itô correction would sit `σ²/(2b)` too high.
-/// Reference: Gompertz (1825)
+/// Reference: Gompertz (1825), DOI 10.1098/rstl.1825.0026
 /// Reference: Lo (2007), §2 (the stochastic form)
 #[test]
 fn gompertz_log_state_is_an_ornstein_uhlenbeck_with_the_ito_shift() {

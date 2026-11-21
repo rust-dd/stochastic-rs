@@ -23,16 +23,19 @@ use crate::special::mul_parts;
 use crate::special::split_pow2;
 use crate::traits::RealExt;
 
-/// `ln(2⁻¹⁰²²)`: below it the cdf is a subnormal, which the doubles round on a grid coarser than 1e-12 of it.
+/// `ln(2⁻¹⁰²²)`: below it the cdf is a subnormal, which the doubles round on a grid coarser than
+/// 1e-12 of it.
 const LN_MIN_POSITIVE: f64 = -708.3964185322641;
 
 impl<K: Kernel> Truncation<K> {
-  /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
+  /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1
+  /// needs absolute digits.
   pub(in crate::truncated) fn cdf(&self, at: Cut) -> f64 {
     self.cdf_with(at, || self.kernel.ln_rel_two(at, span(self.centre, at)))
   }
 
-  /// `cdf`, where `ln_point` gives `ln k(x) − ln k(c)` in two parts at the law's exact point, which `at` may round.
+  /// `cdf`, where `ln_point` gives `ln k(x) − ln k(c)` in two parts at the law's exact point, which
+  /// `at` may round.
   pub(in crate::truncated) fn cdf_with(&self, at: Cut, ln_point: impl FnOnce() -> Two) -> f64 {
     debug_assert!(
       self.tails,
@@ -42,7 +45,8 @@ impl<K: Kernel> Truncation<K> {
     if x.is_nan() {
       return f64::NAN;
     }
-    // By the exact offset, as the upper side compares: a point beside `lo` finer than its ulp still lies above it.
+    // By the exact offset, as the upper side compares: a point beside `lo` finer than its ulp still
+    // lies above it.
     let t_lo = span(self.lo, at);
     if t_lo <= 0.0 {
       return 0.0;
@@ -61,7 +65,8 @@ impl<K: Kernel> Truncation<K> {
     if span(self.a, at) < 0.0 {
       return self.below_clip(at, ln_point);
     }
-    // The panels and running sum of `M₀`, so next to 1 the two sums differ only by the panel holding `x`.
+    // The panels and running sum of `M₀`, so next to 1 the two sums differ only by the panel
+    // holding `x`.
     let (sum, above) = match self.lower.holding(at) {
       Some((i, panel, t)) => {
         let mut sum = self.lower.below(i);
@@ -175,7 +180,8 @@ impl<K: Kernel> Truncation<K> {
       lower: Walked::default(),
       ..*self
     };
-    // Walked back from `x`, so each node's offset from it is exact where the slope would scale its rounding.
+    // Walked back from `x`, so each node's offset from it is exact where the slope would scale its
+    // rounding.
     let mut mass = Sum::default();
     let _ = there.walk(start, at, true, |panel| {
       mass.add(there.panel_mass(&panel, 0.0));

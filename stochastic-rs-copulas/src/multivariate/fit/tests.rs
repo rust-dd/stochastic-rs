@@ -13,8 +13,8 @@ fn first_tree(fit: &VineFit) -> &[PairCopula] {
   }
 }
 
-/// Two variables, candidates that do not nest Clayton: the selection picks it and recovers θ by maximum likelihood.
-/// BB1 and BB7 contain Clayton at a boundary that AIC cannot reject reliably, so `VINE_CANDIDATES` has its own test.
+/// Two variables, candidates not nesting Clayton: the selection picks it and recovers θ by maximum
+/// likelihood (BB1 and BB7 nest it at a boundary AIC cannot reliably reject).
 #[test]
 fn two_dimensional_fit_recovers_clayton() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
@@ -43,7 +43,8 @@ fn two_dimensional_fit_recovers_clayton() {
   assert!(fit.bic > fit.aic);
 }
 
-/// Over `VINE_CANDIDATES` the pick is Clayton, BB1 or BB7 (the families that contain it) and the fitted vine keeps the truth's τ = 0.5.
+/// Over `VINE_CANDIDATES` the pick is Clayton, BB1 or BB7 (the families that contain it) and the
+/// fitted vine keeps the truth's τ = 0.5.
 #[test]
 fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
@@ -232,7 +233,8 @@ fn fit_rejects_degenerate_inputs() {
   );
 }
 
-/// A candidate list that cannot represent an edge (Clayton on negative dependence, or no candidate at all) is `Unsupported`.
+/// A candidate list that cannot represent an edge (Clayton on negative dependence, or no candidate
+/// at all) is `Unsupported`.
 #[test]
 fn an_edge_no_candidate_represents_is_unsupported() {
   let u = Array2::from_shape_fn((40, 2), |(i, j)| {
@@ -253,7 +255,8 @@ fn an_edge_no_candidate_represents_is_unsupported() {
   }
 }
 
-/// `estimate` returns `Some` on positively dependent data for exactly the `VINE_CANDIDATES` and `None` for the rest.
+/// `estimate` returns `Some` on positively dependent data for exactly the `VINE_CANDIDATES` and
+/// `None` for the rest.
 #[test]
 fn estimate_covers_exactly_the_vine_candidates() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
@@ -265,7 +268,8 @@ fn estimate_covers_exactly_the_vine_candidates() {
   }
 }
 
-/// A constant column has no τ-b to rank by, so both structures name it instead of repeating a variable in the order.
+/// A constant column has no τ-b to rank by, so both structures name it instead of repeating a
+/// variable in the order.
 #[test]
 fn a_constant_column_is_rejected_by_both_structures() {
   let u = Array2::from_shape_fn(
@@ -292,7 +296,8 @@ fn path_weight(tau: ArrayView2<f64>, order: &[usize]) -> f64 {
   order.windows(2).map(|w| tau[(w[0], w[1])].abs()).sum()
 }
 
-/// Greedy extension from the strongest pair, |τ| 0.89 at {2, 3}, ends at 2.34; the heaviest path 0-2-3-1 weighs 2.47.
+/// Greedy extension from the strongest pair, |τ| 0.89 at {2, 3}, ends at 2.34; the heaviest path
+/// 0-2-3-1 weighs 2.47.
 #[test]
 fn the_first_dvine_tree_is_the_heaviest_path() {
   let tau = ndarray::array![
@@ -390,7 +395,8 @@ fn a_constant_conditioned_column_stops_the_cvine() {
 
 type ToPair = fn(f64) -> PairCopula;
 
-/// Each one-parameter estimate maximises the pair likelihood, here on Clayton data, and is no worse than its Kendall start.
+/// Each one-parameter estimate maximises the pair likelihood, here on Clayton data, and is no worse
+/// than its Kendall start.
 #[test]
 fn one_parameter_pairs_maximise_the_likelihood() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
@@ -439,7 +445,8 @@ fn one_parameter_pairs_maximise_the_likelihood() {
   }
 }
 
-/// The Student t maximises the likelihood in (ρ, ν) on t data, and gives way to the Gaussian past ν̂ = 30.
+/// The Student t maximises the likelihood in (ρ, ν) on t data, and gives way to the Gaussian past
+/// ν̂ = 30.
 #[test]
 fn student_t_pairs_maximise_the_likelihood_and_give_way_past_thirty() {
   let sample = TCopula::new(0.6, 4.0)
@@ -467,7 +474,8 @@ fn student_t_pairs_maximise_the_likelihood_and_give_way_past_thirty() {
   assert_eq!(fitted, None, "{fitted:?}");
 }
 
-/// Every vine fit checks columns, then rows, then range, then candidates, then τ: each row breaks the next check too.
+/// Every vine fit checks columns, then rows, then range, then candidates, then τ: each row breaks
+/// the next check too.
 #[test]
 fn the_vine_fits_check_columns_rows_range_candidates_then_tau() {
   let column = |n: usize, value: f64| Array2::from_elem((n, 1), value);
@@ -534,8 +542,8 @@ fn the_vine_fits_check_columns_rows_range_candidates_then_tau() {
   }
 }
 
-/// An edge no family represents is named by its data columns and conditioning set: here the second tree's edge, whose
-/// conditional dependence is negative, where Clayton cannot follow, in both structures.
+/// An edge no family represents is named by its columns and conditioning set: the second tree's
+/// edge, its conditional dependence negative where Clayton cannot follow, in both structures.
 #[test]
 fn an_edge_no_family_represents_names_its_columns() {
   let truth = DVine::new(

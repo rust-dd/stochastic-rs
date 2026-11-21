@@ -1,4 +1,5 @@
-//! Two trainings with one seed on the CPU agree bit for bit; the init is the crate's, not candle's unseedable RNG.
+//! Two trainings with one seed on the CPU agree bit for bit; the init is the crate's, not candle's
+//! unseedable RNG.
 
 use ndarray::Array2;
 use stochastic_rs_ai::Device;

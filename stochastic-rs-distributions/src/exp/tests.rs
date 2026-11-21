@@ -15,7 +15,8 @@ fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every platform.
+/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every
+/// platform.
 fn best_ks_p_value(
   n: usize,
   make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
