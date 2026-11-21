@@ -203,8 +203,8 @@ fn rho_full() -> Array2<f64> {
   ]
 }
 
-/// Sample correlations of one Euler step's increments, which are linear in the shocks;
-/// `log S − ∫r` drops the rate shock the trapezoid adds to the spot.
+/// Sample correlations of one Euler step's increments, linear in the shocks but where the
+/// reported variance truncates at zero (1.3 % of steps); `log S − ∫r` drops the rate shock.
 fn one_step_correlations(seed: u64) -> Array2<f64> {
   let m = 100_000;
   let model = paper(2, seed).with_rho(rho_full());

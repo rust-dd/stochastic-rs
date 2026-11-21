@@ -75,7 +75,7 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B: crate::euler::EulerBackend<T
     Sch::euler_spec(self.0)
   }
 
-  /// The families step `ln(S/S₀)` from zero and report `S₀ exp(·)`, so the first spot is `S₀` itself.
+  /// The families step `ln(S/S₀)` from zero and report `S₀ exp(·)`: the first spot is `S₀` itself.
   fn initial_state(&self) -> [T; 4] {
     let p = self.0;
     [T::zero(), p.v0, p.r0.unwrap_or(T::zero()), T::zero()]
