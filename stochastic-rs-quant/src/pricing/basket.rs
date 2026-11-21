@@ -37,6 +37,18 @@ pub use monte_carlo::McBasketPricer;
 /// One weight and one volatility per asset, a square `rho`, and each entry in its range.
 #[track_caller]
 fn assert_basket_model(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
+  assert_basket_shape(weights, sigma, rho);
+  assert_volatilities(sigma);
+  for ((i, j), &v) in rho.indexed_iter() {
+    assert!(
+      (-1.0..=1.0).contains(&v),
+      "rho[{i}][{j}] must satisfy `(-1.0..=1.0).contains(&rho[{i}][{j}])`, got rho[{i}][{j}] = {v:?}"
+    );
+  }
+}
+
+/// `weights` and `rho` agree with `sigma` on the asset count.
+fn assert_basket_shape(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
   let (n, shape) = (sigma.len(), rho.dim());
   assert!(
     weights.len() == n,
@@ -47,18 +59,17 @@ fn assert_basket_model(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<
     shape == (n, n),
     "rho must satisfy `rho.dim() == (sigma.len(), sigma.len())`, got rho.dim() = {shape:?}"
   );
-  assert_volatilities(sigma);
-  for ((i, j), &v) in rho.indexed_iter() {
-    assert!(
-      (-1.0..=1.0).contains(&v),
-      "rho[{i}][{j}] must satisfy `(-1.0..=1.0).contains(&rho[{i}][{j}])`, got rho[{i}][{j}] = {v:?}"
-    );
-  }
 }
 
-/// A query's spot and yield vectors hold one entry per asset.
-fn assert_basket_query(n: usize, s: ArrayView1<'_, f64>, q: ArrayView1<'_, f64>) {
-  let (spots, yields) = (s.len(), q.len());
+/// A query's spot and yield vectors hold one entry per asset; the model's `pub` fields may have
+/// been written since `new`, so its shape is read again.
+fn assert_basket_query(
+  (weights, sigma, rho): (&Array1<f64>, &Array1<f64>, &Array2<f64>),
+  s: ArrayView1<'_, f64>,
+  q: ArrayView1<'_, f64>,
+) {
+  assert_basket_shape(weights, sigma, rho);
+  let (n, spots, yields) = (sigma.len(), s.len(), q.len());
   assert!(
     spots == n,
     "s must satisfy `s.len() == sigma.len()`, got s.len() = {spots:?}"
@@ -164,7 +175,7 @@ impl GeometricBasketPricer {
     option_type: OptionType,
   ) -> f64 {
     let n_assets = self.sigma.len();
-    assert_basket_query(n_assets, s, q);
+    assert_basket_query((&self.weights, &self.sigma, &self.rho), s, q);
     let spot = || {
       (0..n_assets)
         .map(|i| self.weights[i] * s[i].ln())
@@ -308,7 +319,7 @@ impl ArithmeticBasketLevyPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    assert_basket_query(self.sigma.len(), s, q);
+    assert_basket_query((&self.weights, &self.sigma, &self.rho), s, q);
     let spot = || (0..s.len()).map(|i| self.weights[i] * s[i]).sum::<f64>();
     if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
       return value;

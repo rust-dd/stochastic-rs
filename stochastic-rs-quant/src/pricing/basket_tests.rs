@@ -407,12 +407,10 @@ mod construction_validation {
     );
   }
 
-  /// The accessor guards stay, because the fields are `pub` and so the
-  /// constructor is a front door and not a wall. A query whose asset count
-  /// disagrees with an internally consistent model is still the accessor's
-  /// to catch, and its message is not a substring of the constructor's.
+  /// The fields are `pub`, so the constructor is a front door and not a wall: the accessor checks
+  /// the query's asset count against the model's, and names the query's vector.
   #[test]
-  #[should_panic(expected = "assertion `left == right` failed")]
+  #[should_panic(expected = "s must satisfy `s.len() == sigma.len()`, got s.len() = 3")]
   fn the_query_length_check_stays_at_the_accessor() {
     let model = GeometricBasketPricer::new(
       array![0.5, 0.5],
