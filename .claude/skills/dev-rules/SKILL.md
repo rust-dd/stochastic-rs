@@ -112,7 +112,9 @@ A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: libr
 code, public API, tests, benches and examples. A line past 100 columns counts as its
 wrapped length. Write one only for what the code cannot say: a non-obvious constraint, a
 reason, a unit or a convention. A literature citation takes one `Reference:` line per
-source, with its locator and its DOI or ISBN, beside those two. Doc-test code does not count.
+source, with its locator and its DOI or ISBN, beside those two. That line fits 100 columns:
+drop the title, abbreviate the journal (ISO 4), write "et al." beyond two authors, never
+drop the locator or the DOI. Doc-test code does not count.
 A `$$ … $$` math display in a doc comment is exempt from the cap, for mathematics only; the
 prose around it is not. A module doc opens on a summary line without TeX, since rustdoc
 shows that line as the module-list row. Longer explanations belong in the PR body.
