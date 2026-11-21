@@ -1,12 +1,10 @@
-//! # Pair-copula families
+//! Pair-copula families: the bivariate kernels of the conditional cdf the vines propagate (`h`) and
+//! sample (`h_inverse`) through, all closed-form but BB1's and BB7's Brent `h_inverse`.
 //!
 //! $$
 //! h(u \mid v) = \frac{\partial C(u, v)}{\partial v}, \qquad
 //! h^{-1}(p, v) \text{ solves } h(u \mid v) = p
 //! $$
-//!
-//! the conditional cdf the vines propagate pseudo-observations through (`h`) and sample through
-//! (`h_inverse`): each family's bivariate kernels, closed-form but for BB1's and BB7's `h_inverse`, a Brent root.
 //!
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487), eq. (7) for h and App. B for the Gaussian, Student-t and Clayton h-functions and inverses.
 
@@ -21,8 +19,8 @@ use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
 
-/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees; a vine
-/// constructor admits the parameters the family's bivariate `try_new` does. Pairs must be exchangeable.
+/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their trees; a vine
+/// admits the parameters the bivariate `try_new` does. Pairs must be exchangeable.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum PairCopula {
@@ -39,8 +37,8 @@ pub enum PairCopula {
     /// Generator parameter $\theta > 0$.
     theta: f64,
   },
-  /// Frank: $C(u, v) = -\tfrac{1}{\theta}\ln\!\bigl(1 + \frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\bigr)$,
-  /// any real $\theta$. Symmetric tail-independent.
+  /// Frank, any real $\theta$, symmetric tail-independent:
+  /// $$C(u, v) = -\tfrac{1}{\theta}\ln\!\bigl(1 + \frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\bigr)$$
   Frank {
     /// Generator parameter $\theta$; $\theta = 0$ is the independence copula.
     theta: f64,
@@ -50,8 +48,8 @@ pub enum PairCopula {
   StudentT {
     /// Correlation $\rho \in (-1, 1)$.
     rho: f64,
-    /// Degrees of freedom, finite with $\nu / 2 > 0$; `h`, `h_inverse` and `log_density` panic otherwise, which the
-    /// vine constructors rule out.
+    /// Degrees of freedom, finite with $\nu / 2 > 0$; `h`, `h_inverse` and `log_density` panic
+    /// otherwise, which the vine constructors rule out.
     nu: f64,
   },
   /// BB1 (Clayton–Gumbel) copula — see [`crate::bivariate::bb1::Bb1`].
@@ -61,8 +59,8 @@ pub enum PairCopula {
 }
 
 impl PairCopula {
-  /// `h(u | v) = ∂C/∂v`, the conditional cdf $F_{U \mid V = v}(u)$: the bivariate family's own, an exact 0 or 1 moved
-  /// one ulp inside so the vine recursions never meet an edge they did not start from.
+  /// `h(u | v) = ∂C/∂v`, the conditional cdf of `U` given `V = v`: the bivariate family's own, an
+  /// exact 0 or 1 moved one ulp inside so the vine recursions meet no edge they did not start from.
   pub fn h(&self, u: f64, v: f64) -> f64 {
     let h = match *self {
       PairCopula::Independence => u,
@@ -76,8 +74,8 @@ impl PairCopula {
     inside(h)
   }
 
-  /// The `u` with `h(u | v) = p`, the vine samplers' step (Aas et al. 2009, Algorithms 1 and 2): the bivariate family's
-  /// own inverse under its quantile rule, BB1 and BB7 by Brent's `zero` on their `ln h`.
+  /// The `u` with `h(u | v) = p`, the vine samplers' step (Aas et al. 2009, Algorithms 1 and 2):
+  /// the bivariate family's inverse under its quantile rule, BB1's and BB7's by Brent on `ln h`.
   pub fn h_inverse(&self, p: f64, v: f64) -> f64 {
     let u = match *self {
       PairCopula::Independence => p,
@@ -96,8 +94,8 @@ impl PairCopula {
     confine(u)
   }
 
-  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u,v)}{\partial u\,\partial v}$, an edge's term of the
-  /// vine likelihood: the bivariate family's own.
+  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u,v)}{\partial u\,\partial v}$, an
+  /// edge's term of the vine likelihood: the bivariate family's own.
   pub fn log_density(&self, u: f64, v: f64) -> f64 {
     match *self {
       PairCopula::Independence => 0.0,
@@ -116,8 +114,8 @@ impl PairCopula {
   }
 }
 
-/// The `InvalidParameter` of the first pair whose parameters its bivariate family's `try_new` refuses, so a vine holds
-/// only pairs that family would build.
+/// The `InvalidParameter` of the first pair whose parameters its bivariate family's `try_new`
+/// refuses, so a vine holds only pairs that family would build.
 pub(crate) fn check_parameters(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
   for pair in trees.iter().flatten() {
     match *pair {
@@ -151,8 +149,8 @@ mod tests {
     }
   }
 
-  /// `h ∘ h⁻¹` is the identity in every closed-form family: to 1e-10 for Clayton and Frank, to 1e-6 where the chain
-  /// passes `ndtri` and `norm_cdf` (Gaussian) or the Student-t quantile and cdf.
+  /// `h ∘ h⁻¹` is the identity in every closed-form family: to 1e-10 for Clayton and Frank, to 1e-6
+  /// where the chain passes `ndtri` and `norm_cdf` (Gaussian) or the Student-t quantile and cdf.
   #[test]
   fn h_inverse_round_trips_all_families() {
     let cases: Vec<(PairCopula, f64)> = vec![
@@ -257,8 +255,8 @@ mod tests {
     assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);
   }
 
-  /// 50-digit mpmath values of the expanded formulas where f64 loses them: Frank's denominator cancels near (1, 1) and
-  /// Clayton's `u^{−θ}` overflows near (0, 0); the θ < 0 Frank rows cross the rotation.
+  /// Against 50-digit mpmath where f64 fails: Frank's denominator cancels near (1, 1), Clayton's
+  /// `u^{−θ}` overflows near (0, 0); θ < 0 Frank rows cross the rotation.
   #[test]
   fn log_density_holds_at_strong_dependence() {
     let frank = [
@@ -294,8 +292,8 @@ mod tests {
     }
   }
 
-  /// The Frank and Student-t pairs are the bivariate families' closed forms: Frank at `θ = 30` and through the `θ < 0`
-  /// reflection against 60-digit values, where an unfactored form lost up to four digits; the t pair bit for bit.
+  /// Frank and Student-t pairs are the bivariate closed forms: Frank at `θ = 30` and `θ < 0`
+  /// against 60-digit values (an unfactored form lost four digits), t bit for bit.
   #[test]
   fn frank_and_t_pairs_are_the_bivariate_closed_forms() {
     let frank = PairCopula::Frank { theta: 30.0 };
@@ -332,8 +330,8 @@ mod tests {
     }
   }
 
-  /// Each vine constructor refuses, with its error, a pair its bivariate family's `try_new` refuses, in any tree; the
-  /// match has no wildcard arm, so a new family does not compile until it has rows here.
+  /// Each vine constructor refuses, with its error, a pair its family's `try_new` refuses, in any
+  /// tree; with no wildcard arm a new family does not compile until it has rows here.
   #[test]
   fn the_vine_constructors_refuse_the_pairs_their_bivariate_families_refuse() {
     use crate::multivariate::cvine::CVine;
@@ -447,7 +445,8 @@ mod tests {
     PairCopula::StudentT { rho: 0.5, nu: -1.0 }.h(0.3, 0.6);
   }
 
-  /// The match has no wildcard arm, so a new family does not compile until it joins this exchangeability check.
+  /// The match has no wildcard arm, so a new family does not compile until it joins this
+  /// exchangeability check.
   #[test]
   fn every_pair_family_is_exchangeable() {
     let families = [

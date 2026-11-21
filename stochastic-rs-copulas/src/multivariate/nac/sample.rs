@@ -12,16 +12,16 @@ use super::NestedArchimedean;
 use crate::bivariate::conditional::inside;
 use crate::bivariate::conditional::softplus;
 
-/// A node's frailty `V` as `ln V` and `w = ln V / θ`: the first is finite at small `θ`, where `V` is large, the second at
-/// large `θ`, where `V` leaves the floating-point range.
+/// A node's frailty `V` as `ln V` and `w = ln V / θ`: the first is finite at small `θ`, where `V`
+/// is large, the second at large `θ`, where `V` leaves the floating-point range.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Frailty {
   pub(super) ln_v: f64,
   pub(super) w: f64,
 }
 
-/// `α ln S` of the positive stable `S` with Laplace transform `e^{−t^α}`: Kanter's `S = (A(Θ)/W)^{(1−α)/α}` (Devroye 2009,
-/// eq. (2)) in logarithms, finite for every `0 < α < 1`, where the product of powers underflows to `0/0` below `α ≈ 0.01`.
+/// `α ln S` of the positive stable `S`, Laplace transform `e^{−t^α}`: Kanter's
+/// `S = (A(Θ)/W)^{(1−α)/α}` (Devroye 2009, eq. (2)) in logarithms, finite at every `0 < α < 1`.
 pub(super) fn stable_power<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
   let theta = std::f64::consts::PI * rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
   let ln_w = (-rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15).ln()).ln();
@@ -31,8 +31,8 @@ pub(super) fn stable_power<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
 /// `stable_power` at the angle `Θ ∈ (0, π)` and `ln W`.
 pub(super) fn kanter(alpha: f64, theta: f64, ln_w: f64) -> f64 {
   let beta = 1.0 - alpha;
-  // Below `α = 2⁻¹⁰²²`, where `αΘ` can underflow to 0, `ln sin(αΘ) = ln α + ln Θ + ln(sin(αΘ)/(αΘ))` with the last term
-  // rounding to 0; from there on `αΘ ≥ 6.9e-323` and the plain logarithm is finite.
+  // Below `α = 2⁻¹⁰²²`, where `αΘ` can underflow, `ln sin(αΘ) = ln α + ln Θ + ln(sin(αΘ)/(αΘ))`,
+  // the last term rounding to 0; above it `αΘ ≥ 6.9e-323`, the plain logarithm finite.
   let ln_sin_alpha_theta = if alpha < f64::MIN_POSITIVE {
     alpha.ln() + theta.ln()
   } else {
@@ -41,8 +41,8 @@ pub(super) fn kanter(alpha: f64, theta: f64, ln_w: f64) -> f64 {
   alpha * ln_sin_alpha_theta + beta * (beta * theta).sin().ln() - theta.sin().ln() - beta * ln_w
 }
 
-/// The child frailty: Laplace transform `exp(−V₀((1 + t)^α − 1))` by Hofert's (2011) fast rejection, a sum of `m` positive
-/// stables of transform `exp(−(V₀/m) t^α)` each kept with probability `e^{−S}`, `m` minimising `m e^{V₀/m}`.
+/// Hofert's (2011) fast rejection for the child frailty `exp(−V₀((1 + t)^α − 1))`: `m` stables
+/// `exp(−(V₀/m) t^α)` kept with probability `e^{−S}`, `m` minimising `m e^{V₀/m}`.
 pub(super) fn tilted_stable<R: Rng + ?Sized>(
   rng: &mut R,
   alpha: f64,
@@ -76,7 +76,8 @@ pub(super) fn tilted_stable<R: Rng + ?Sized>(
       w: parent.w + z / theta_parent,
     };
   }
-  // `ln Σ S_i = y_max/α + ln Σ e^{(y_i − y_max)/α}` for `ln S_i = y_i/α`, kept as a running maximum.
+  // `ln Σ S_i = y_max/α + ln Σ e^{(y_i − y_max)/α}` for `ln S_i = y_i/α`, kept as a running
+  // maximum.
   let (mut y_max, mut sum) = (f64::NEG_INFINITY, 0.0);
   for _ in 0..m as u64 {
     let y = ln_scale + summand();
@@ -94,13 +95,14 @@ pub(super) fn tilted_stable<R: Rng + ?Sized>(
 }
 
 impl Generator {
-  /// The root frailty: Clayton `Γ(1/θ, 1)`, below shape 1 as `G U^{1/a}` with `G ~ Γ(1 + a)` (Marsaglia & Tsang 2000, the
-  /// note on `α < 1`), whose logarithms stay exact where `V` underflows; Gumbel `S(1/θ)`, the constant 1 at `θ = 1`.
+  /// The root frailty: Clayton `Γ(1/θ, 1)`, below shape 1 `G U^{1/a}`, `G ~ Γ(1 + a)` (Marsaglia &
+  /// Tsang 2000), logarithms exact where `V` underflows; Gumbel `S(1/θ)`, 1 at `θ = 1`.
   pub(super) fn root_frailty<R: Rng + ?Sized>(self, rng: &mut R, theta: f64) -> Frailty {
     match self {
       Self::Clayton => {
         let shape = 1.0 / theta;
-        // The sub-seed comes off `rng`: an `Unseeded` source would break the replay of every Clayton tree.
+        // The sub-seed comes off `rng`: an `Unseeded` source would break the replay of every
+        // Clayton tree.
         let sub_seed = Deterministic::new(rng.random::<u64>());
         if shape >= 1.0 {
           let ln_v = SimdGamma::<f64>::new(shape, 1.0)
@@ -133,8 +135,8 @@ impl Generator {
     }
   }
 
-  /// A child's frailty given its parent's, `α = θ_parent / θ` (Hofert & Mächler 2011, Table 3): Gumbel `V₀^{1/α} S(α)`,
-  /// Clayton the tilted stable; `α = 1` is the no-nesting case, the parent's own `V`.
+  /// A child's frailty given its parent's, `α = θ_parent / θ` (Hofert & Mächler 2011, Table 3):
+  /// Gumbel `V₀^{1/α} S(α)`, Clayton the tilted stable; at `α = 1` (no nesting) the parent's `V`.
   pub(super) fn child_frailty<R: Rng + ?Sized>(
     self,
     rng: &mut R,
@@ -161,8 +163,8 @@ impl Generator {
     }
   }
 
-  /// A leaf `ψ(E/V)`, `E ~ Exp(1)`: Clayton `exp(−ln(1 + E/V)/θ)`, from `v = V` where the node found it at least `1e-300`
-  /// and from the logarithms past that, `exp(w − ln E/θ)` where `E/V` overflows; Gumbel `exp(−e^{ln E/θ − w})`.
+  /// A leaf `ψ(E/V)`, `E ~ Exp(1)`: Clayton `exp(−ln(1 + E/V)/θ)` from `v = V` at `V ≥ 1e-300`,
+  /// else from logarithms, `exp(w − ln E/θ)` where `E/V` overflows; Gumbel `exp(−e^{ln E/θ − w})`.
   pub(super) fn leaf<R: Rng + ?Sized>(
     self,
     rng: &mut R,
@@ -204,8 +206,8 @@ impl NestedArchimedean {
     out
   }
 
-  /// Hofert & Mächler (2011), Algorithm 3.1: the node's frailty (from its parent's below the root), its leaves, then its
-  /// subtrees.
+  /// Hofert & Mächler (2011), Algorithm 3.1: the node's frailty (from its parent's below the root),
+  /// its leaves, then its subtrees.
   fn sample_node<R: Rng + ?Sized>(
     &self,
     rng: &mut R,
@@ -221,7 +223,8 @@ impl NestedArchimedean {
           .child_frailty(rng, frailty, theta_parent, node.theta)
       }
     };
-    // `E/V` cannot overflow from `V = 1e-300` on, where a Clayton leaf needs no logarithms: picked once for the node.
+    // `E/V` cannot overflow from `V = 1e-300` on, where a Clayton leaf needs no logarithms: picked
+    // once for the node.
     let direct = match self.generator {
       Generator::Clayton => Some(v.ln_v.exp()).filter(|v| (1e-300..f64::INFINITY).contains(v)),
       Generator::Gumbel => None,

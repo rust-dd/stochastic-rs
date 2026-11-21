@@ -1,4 +1,5 @@
-//! At `d = 2` every multivariate copula's density is its bivariate family's, near the edges as inside.
+//! At `d = 2` every multivariate copula's density is its bivariate family's, near the edges as
+//! inside.
 
 use ndarray::Array1;
 use ndarray::ArrayView2;

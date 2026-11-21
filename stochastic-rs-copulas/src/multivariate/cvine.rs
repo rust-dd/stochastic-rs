@@ -1,5 +1,5 @@
-//! C-vine: tree $T_j$ joins its root $j$ to each $j+i$ given $1, \dots, j-1$; sampled by Aas et al. (2009) Algorithm 1 and evaluated
-//! by its Algorithm 3 (density (9)) with the printed 1-based indices, taking an edge's ends in either order: exact, as every pair is exchangeable.
+//! C-vine: tree `T_j` joins root `j` to each `j + i` given `1, …, j − 1`; Aas et al. (2009)
+//! Algorithm 1 samples it, Algorithm 3 evaluates it, an edge's ends in either order.
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487).
 
 use ndarray::Array1;
@@ -35,8 +35,8 @@ pub struct CVine {
 }
 
 impl CVine {
-  /// Build a C-vine from a precomputed tree of pair copulas, under the shape and pair-parameter checks of
-  /// [`super::dvine::DVine::new`].
+  /// Build a C-vine from a precomputed tree of pair copulas, under the shape and pair-parameter
+  /// checks of [`super::dvine::DVine::new`].
   pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -68,7 +68,8 @@ impl CVine {
     })
   }
 
-  /// Which data column each vine variable reads; panics unless `order` is a permutation of `0..dim`.
+  /// Which data column each vine variable reads; panics unless `order` is a permutation of
+  /// `0..dim`.
   pub fn with_order(mut self, order: Vec<usize>) -> Self {
     self.order = VineOrder::new(order, self.dim);
     self
@@ -115,7 +116,8 @@ impl CVine {
     out
   }
 
-  /// Log-density of one observation by Aas et al. (2009) Algorithm 3, `v[j][i]` holding $v_{j,i}$ (row 0 is the data).
+  /// Log-density of one observation by Aas et al. (2009) Algorithm 3, `v[j][i]` holding $v_{j,i}$
+  /// (row 0 is the data).
   fn log_density_one(&self, x: ArrayView1<f64>, v: &mut [Vec<f64>]) -> f64 {
     let n = self.dim;
     let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
@@ -155,7 +157,8 @@ impl MultivariateExt for CVine {
     Ok(self.order.to_data(self.sample_with(n, &mut seed.rng())))
   }
 
-  /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the candidates and the criterion.
+  /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the
+  /// candidates and the criterion.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let (vine, _) = fit_cvine(x, BivariateFamily::VINE_CANDIDATES, SelectionCriterion::Aic)?;
     *self = vine;
@@ -182,8 +185,8 @@ impl MultivariateExt for CVine {
     Ok(on_open_cube(uv, self.log_density_rows(x.view())))
   }
 
-  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero
-  /// coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
+  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096
+  /// Sobol points; a zero coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
     Ok(rosenblatt::cdf(self, self.order.to_vine(x).view()))
@@ -195,7 +198,8 @@ impl Rosenblatt for CVine {
     vec![vec![0.0; self.dim + 1]; self.dim + 1]
   }
 
-  /// Aas et al. (2009) Algorithm 1 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
+  /// Aas et al. (2009) Algorithm 1 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$
+  /// in `v[i][1]`.
   fn walk(&self, v: &mut [Vec<f64>], mut target: impl FnMut(usize, &[Vec<f64>]) -> Option<f64>) {
     let n = self.dim;
     let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
@@ -216,7 +220,8 @@ impl Rosenblatt for CVine {
     }
   }
 
-  /// Algorithm 1's inversion loop run forward, `h` in place of `h⁻¹`, over $v_{k,k}$ for `k = 1, …, i − 1`.
+  /// Algorithm 1's inversion loop run forward, `h` in place of `h⁻¹`, over $v_{k,k}$ for
+  /// `k = 1, …, i − 1`.
   fn conditional_cdf(&self, i: usize, u: f64, v: &[Vec<f64>]) -> f64 {
     (1..i).fold(u, |t, k| self.pair_copulas[k - 1][i - k - 1].h(t, v[k][k]))
   }
@@ -311,7 +316,8 @@ mod tests {
     assert!(CVine::new(1, vec![]).is_err());
   }
 
-  /// `fit` roots the first tree at the variable with the largest total |τ| and keeps the data's column order outside.
+  /// `fit` roots the first tree at the variable with the largest total |τ| and keeps the data's
+  /// column order outside.
   #[test]
   fn cvine_fit_roots_the_strongest_variable() {
     let corr = ndarray::array![[1.0, 0.8, 0.6], [0.8, 1.0, 0.5], [0.6, 0.5, 1.0]];
@@ -329,7 +335,8 @@ mod tests {
     assert!(density.iter().all(|d| d.is_finite() && *d > 0.0));
   }
 
-  /// Aas et al. (2009) Eq. (9) at n = 3, c₁₂ · c₁₃ · c₂₃|₁, from the bivariate copulas' own densities and h-functions.
+  /// Aas et al. (2009) Eq. (9) at n = 3, c₁₂ · c₁₃ · c₂₃|₁, from the bivariate copulas' own
+  /// densities and h-functions.
   #[test]
   fn cvine_density_is_the_root_centred_product() {
     let tree = vec![
@@ -362,7 +369,8 @@ mod tests {
     }
   }
 
-  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 1's inversion run backwards.
+  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 1's inversion
+  /// run backwards.
   #[test]
   fn the_conditional_cdf_inverts_the_walk() {
     let trees = vec![

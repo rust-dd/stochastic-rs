@@ -5,11 +5,12 @@ use ndarray::Array2;
 use ndarray::s;
 use stochastic_rs_distributions::qmc::SobolSeq;
 
-/// A power of two, so the net's coordinates are multiples of `1/QMC_POINTS` and the half-cell shift is exact.
+/// A power of two, so the net's coordinates are multiples of `1/QMC_POINTS` and the half-cell shift
+/// is exact.
 pub(crate) const QMC_POINTS: usize = 4096;
 
-/// The full unscrambled Sobol net, origin included, shifted by half a cell: a cdf depends on its inputs alone, no
-/// coordinate is 0 or 1, and every column is the midpoint rule.
+/// The full unscrambled Sobol net, origin included, shifted by half a cell: a cdf depends on its
+/// inputs alone, no coordinate is 0 or 1, and every column is the midpoint rule.
 pub(crate) fn sobol_points(dims: usize) -> Array2<f64> {
   let mut points = Array2::<f64>::zeros((QMC_POINTS, dims));
   points

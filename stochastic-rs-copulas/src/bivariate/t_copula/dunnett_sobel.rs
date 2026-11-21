@@ -1,6 +1,8 @@
-//! Dunnett & Sobel's finite sums for `T_n(h, k; ρ)` at integer `n`, taken where their forward error bound is under the
-//! closed forms' budget of the result; the `ν/2` terms recur as Genz's BVTL evaluates them.
-//! Reference: Dunnett, C.W., Sobel, M. (1954), "A bivariate generalization of Student's t-distribution", *Biometrika* 41, 153-169; Genz, A. (2004), *Statistics and Computing* 14(3), 251-260, eq. (20); Higham, N.J. (2002), *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, ch. 3-4 (the forward bound).
+//! Dunnett & Sobel's finite sums for `T_n(h, k; ρ)` at integer `n`, taken where their forward error
+//! bound is within budget; the `ν/2` terms recur as in Genz's BVTL.
+//! Reference: Dunnett, C.W., Sobel, M. (1954), "A bivariate generalization of Student's t-distribution", *Biometrika* 41, 153-169, DOI 10.1093/biomet/41.1-2.153.
+//! Reference: Genz, A. (2004), *Statistics and Computing* 14(3), 251-260, eq. (20), DOI 10.1023/B:STCO.0000035304.20635.31.
+//! Reference: Higham, N.J. (2002), *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, ch. 3-4 (the forward bound), DOI 10.1137/1.9780898718027.
 
 use std::f64::consts::FRAC_2_PI;
 use std::f64::consts::PI;
@@ -10,19 +12,21 @@ use crate::bivariate::gaussian::CLOSED_FORM_BUDGET;
 
 const U: f64 = f64::EPSILON / 2.0;
 
-/// Whether `n` is an integer whose `m = ⌊n/2⌋` terms leave the recurrence's own `(28m + 20)u` of the terms within the budget.
+/// Whether `n` is an integer whose `m = ⌊n/2⌋` terms leave the recurrence's own `(28m + 20)u` of
+/// the terms within the budget.
 pub(crate) fn admits(n: f64) -> bool {
   n.fract() == 0.0 && n >= 1.0 && (28.0 * (0.5 * n).floor() + 20.0) * U <= CLOSED_FORM_BUDGET
 }
 
-/// `(√x, √(1 − x), sign d, r)` of `x = d²/r²`, `r² = d² + e²`, the incomplete beta argument of one sum.
+/// `(√x, √(1 − x), sign d, r)` of `x = d²/r²`, `r² = d² + e²`, the incomplete beta argument of one
+/// sum.
 fn beta_argument(d: f64, e: f64) -> (f64, f64, f64, f64) {
   let r = d.hypot(e);
   (d.abs() / r, e / r, if d < 0.0 { -1.0 } else { 1.0 }, r)
 }
 
-/// `T_n(h, k; ρ)` where the forward bound `u[(28m + 20)S + 1.13√(m + 1) Σ (20D/r + π)G]` is within the budget of it:
-/// `S` the terms' absolute sum, `G` each sum's `|g|`, `D/r` its angle's conditioning, and `1.13√(m + 1)` the slope of its betas.
+/// `T_n(h, k; ρ)` where the forward bound `u[(28m + 20)S + 1.13√(m + 1) Σ (20D/r + π)G]` is in
+/// budget: `S` the terms' absolute sum, `G` each sum's `|g|`, `D/r` its angle's conditioning.
 pub(crate) fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> Option<f64> {
   let rn = f64::from(n).sqrt();
   let (rh, rk) = (rn.hypot(h), rn.hypot(k));
@@ -88,8 +92,8 @@ pub(crate) fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> Option<f64> {
 mod tests {
   use super::*;
 
-  /// At exact scores the sums, where taken, are within the budget of 40-digit values (checked at 60) from the conditional
-  /// integral; a small result whose terms cancel is declined, and so is every `ν` past the recurrence's reach.
+  /// At exact scores the sums, where taken, are in budget of 40-digit values (checked at 60) from
+  /// the conditional integral; a small cancelling result or a `ν` past the recurrence is declined.
   #[test]
   fn the_sums_hold_where_taken() {
     let pins = [

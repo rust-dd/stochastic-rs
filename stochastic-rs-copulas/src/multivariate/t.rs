@@ -1,11 +1,9 @@
-//! # Multivariate Student-t copula
+//! Multivariate Student-t copula: `t_{Σ,ν}` the `d`-variate t cdf of correlation `Σ`, `t_ν⁻¹` the
+//! quantile, `z_j = t_ν⁻¹(u_j)`; every pair tail-dependent at finite `ν`.
 //!
 //! $$
 //! C_{\Sigma,\nu}(u) = t_{\Sigma,\nu}\!\big(t_\nu^{-1}(u_1), \dots, t_\nu^{-1}(u_d)\big),
 //! $$
-//!
-//! where $t_{\Sigma,\nu}$ is the $d$-variate t cdf of correlation $\Sigma$ and $t_\nu^{-1}$ the
-//! univariate quantile, $z_j = t_\nu^{-1}(u_j)$; the density is
 //!
 //! $$
 //! c_{\Sigma,\nu}(u) = \frac{f_{\Sigma,\nu}(z)}{\prod_{j=1}^{d} f_\nu(z_j)},
@@ -15,22 +13,14 @@
 //! \left(1 + \tfrac{1}{\nu}\,z^\top \Sigma^{-1} z\right)^{-\tfrac{\nu+d}{2}}.
 //! $$
 //!
-//! Each pair's tail dependence, upper and lower, is positive for finite $\nu$:
-//!
 //! $$
 //! \lambda = 2\,t_{\nu+1}\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big).
 //! $$
 //!
-//! References:
-//! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
-//!   *International Statistical Review* 73(1), 111-129.
-//! - Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling
-//!   Dependence with Copulas and Applications to Risk Management",
-//!   in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier,
-//!   ch. 8.
-//! - McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*,
-//!   Princeton UP, §7.5.
-//! - Brent, R.P. (1973), *Algorithms for Minimization without Derivatives*, Prentice-Hall, ch. 5 (`localmin`).
+//! Reference: Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas", *International Statistical Review* 73(1), 111-129, DOI 10.1111/j.1751-5823.2005.tb00254.x.
+//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling Dependence with Copulas and Applications to Risk Management", in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier, ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
+//! Reference: McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*, Princeton UP, §7.5.
+//! Reference: Brent, R.P. (1973), *Algorithms for Minimization without Derivatives*, Prentice-Hall, ch. 5 (`localmin`).
 
 use std::sync::OnceLock;
 
@@ -68,8 +58,8 @@ use crate::student_t::check_nu;
 use crate::student_t::ln_gamma_constant;
 use crate::traits::MultivariateExt;
 
-/// Multivariate Student-$t$ copula with correlation $\Sigma$ and degrees of freedom $\nu$; as $\nu \to \infty$ it
-/// collapses to the Gaussian copula, and for finite $\nu$ every pair has symmetric tail dependence.
+/// Multivariate Student-t copula with correlation `Σ` and `ν` degrees of freedom; as `ν → ∞` it
+/// collapses to the Gaussian copula, and at finite `ν` every pair has symmetric tail dependence.
 #[derive(Debug, Clone)]
 pub struct TMultivariate {
   /// Degrees of freedom, `0 < nu < inf`; 4 by default.
@@ -90,8 +80,8 @@ impl Default for TMultivariate {
 }
 
 impl TMultivariate {
-  /// The t copula of correlation `corr` and `nu` degrees of freedom; panics unless `corr` is a correlation matrix and
-  /// `0 < nu < ∞` with `nu / 2 > 0`.
+  /// The t copula of correlation `corr` and `nu` degrees of freedom; panics unless `corr` is a
+  /// correlation matrix and `0 < nu < ∞` with `nu / 2 > 0`.
   pub fn new(corr: Array2<f64>, nu: f64) -> Self {
     Self::try_new(corr, nu).unwrap_or_else(|e| panic!("{e}"))
   }
@@ -127,8 +117,8 @@ impl TMultivariate {
     self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
-  /// $\Sigma$ from the sample Kendall τ-b matrix through $\rho_{ij} = \sin(\pi\tau_{ij}/2)$, which holds for any elliptical
-  /// copula and so does not depend on $\nu$.
+  /// $\Sigma$ from the sample Kendall τ-b matrix through $\rho_{ij} = \sin(\pi\tau_{ij}/2)$, which
+  /// holds for any elliptical copula and so does not depend on $\nu$.
   fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
     let d = x.ncols();
     let tau = kendall_tau(x)?;
@@ -147,13 +137,14 @@ impl TMultivariate {
     Ok(corr)
   }
 
-  /// Log-likelihood of the data under `corr` at `nu`, the objective `optimise_nu` maximises with Σ held fixed.
+  /// Log-likelihood of the data under `corr` at `nu`, the objective `optimise_nu` maximises with Σ
+  /// held fixed.
   fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
     LogDensity::new(corr, nu).rows(x).sum()
   }
 
-  /// Brent's `localmin` on [2.1, 50] to 1e-6 (`eps = t = 1e-6`), the resolution the likelihood's rounding leaves in ν; a
-  /// likelihood that is not finite scores `+∞`, which the search steps away from.
+  /// Brent's `localmin` on [2.1, 50] to 1e-6 (`eps = t = 1e-6`), the resolution the likelihood's
+  /// rounding leaves in ν; a non-finite likelihood scores `+∞`, which the search avoids.
   fn optimise_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>) -> f64 {
     let nll = |nu: f64| {
       let ll = Self::log_likelihood_for_nu(corr, x, nu);
@@ -193,8 +184,8 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  /// Σ from Kendall's τ, shrunk until every eigenvalue is at least `1e-3`; ν by profile likelihood, Brent's `localmin`
-  /// on `[2.1, 50]` to a relative `1e-6`.
+  /// Σ from Kendall's τ, shrunk until every eigenvalue is at least `1e-3`; ν by profile likelihood,
+  /// Brent's `localmin` on `[2.1, 50]` to a relative `1e-6`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -239,8 +230,8 @@ impl MultivariateExt for TMultivariate {
     Ok(on_open_cube(x, out))
   }
 
-  /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the
-  /// bivariate closed form, more are Genz–Bretz over the Sobol points in that query's prioritized order.
+  /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0, a unit one drops out; two
+  /// left are the bivariate closed form, more Genz–Bretz over Sobol points, prioritized.
   fn cdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(uv)?;
     let corr = self.fitted()?;
@@ -279,15 +270,15 @@ impl MultivariateExt for TMultivariate {
   }
 }
 
-/// The t copula's log-density at one `(R, ν)`, with what no point changes formed once:
-/// `ln c = C_d − ½ ln|R| − ((ν + d)/2) ln(1 + zᵀR⁻¹z/ν) + ((ν + 1)/2) Σ ln(1 + z_j²/ν)` at the law's scores `z_j`.
+/// The t copula's log-density at one `(R, ν)`, the point-free parts formed once:
+/// `ln c = C_d − ½ ln|R| − ((ν + d)/2) ln(1 + zᵀR⁻¹z/ν) + ((ν + 1)/2) Σ ln(1 + z_j²/ν)`.
 struct LogDensity<'a> {
   law: Law,
   inverse: &'a Array2<f64>,
   nu: f64,
   ln_nu: f64,
-  /// `C_d − ½ ln|R|`, `C_d = ⌊d/2⌋G + Σ_{k<⌊d/2⌋} ln(1 + (2k + d mod 2)/ν)` from `G = student_t::ln_gamma_constant(ν)`,
-  /// the gammas' logarithms cancelled in closed form.
+  /// `C_d − ½ ln|R|`, `C_d = ⌊d/2⌋G + Σ_{k<⌊d/2⌋} ln(1 + (2k + d mod 2)/ν)` from
+  /// `G = student_t::ln_gamma_constant(ν)`, the gammas' logarithms cancelled in closed form.
   constant: f64,
 }
 
@@ -308,7 +299,8 @@ impl<'a> LogDensity<'a> {
     }
   }
 
-  /// `ln c` of every row of `x`, at the scores the law forms from its body quantiles, with one buffer for all rows.
+  /// `ln c` of every row of `x`, at the scores the law forms from its body quantiles, with one
+  /// buffer for all rows.
   fn rows(&self, x: ArrayView2<f64>) -> Array1<f64> {
     let body = self.law.body_quantiles(x);
     let scores: Vec<Score> = x
@@ -323,8 +315,8 @@ impl<'a> LogDensity<'a> {
       .collect()
   }
 
-  /// `ln c` at one row's scores: in the scores where they and `zᵀR⁻¹z` stay finite, else in `ln|z_j|`, scaled by the
-  /// largest, so a score past `f64::MAX` keeps its terms.
+  /// `ln c` at one row's scores: in the scores where they and `zᵀR⁻¹z` stay finite, else in
+  /// `ln|z_j|`, scaled by the largest, so a score past `f64::MAX` keeps its terms.
   fn at(&self, scores: &[Score], w: &mut [f64]) -> f64 {
     for (w, s) in w.iter_mut().zip(scores) {
       *w = s.value;

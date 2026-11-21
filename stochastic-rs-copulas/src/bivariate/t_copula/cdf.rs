@@ -1,5 +1,5 @@
-//! The bivariate t cdf to a relative `1e-12`, except where `C ≪ u` off the countermonotone solve and the t quantiles' own last
-//! bits move it: Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels marched out of each feature in `t`.
+//! The bivariate t cdf to a relative `1e-12` (not where `C ≪ u` off the countermonotone solve):
+//! Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels from each feature.
 //! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
 
 use std::cell::Cell;
@@ -29,23 +29,23 @@ use crate::student_t::asinh_shift;
 use crate::student_t::carried::CARRIED_TO;
 use crate::student_t::ln_cosh;
 
-/// Below this `ν` the copula is its `ν → 0` limit `pM + (1 − p)W` to rounding: the remainder is under `50ν/min(p, 1 − p)`,
-/// and `min(p, 1 − p) ≥ 4.7e-9` for every admitted `ρ`.
+/// Below this `ν` the copula is its `ν → 0` limit `pM + (1 − p)W` to rounding: the remainder is
+/// under `50ν/min(p, 1 − p)`, and `min(p, 1 − p) ≥ 4.7e-9` for every admitted `ρ`.
 const LIMIT_NU: f64 = 1e-30;
 
 /// A point `ln H` must settle within before a plateau takes over: a relative `2⁻⁵⁶` on `H`.
 const SETTLED: f64 = 1.0 / (1u64 << 56) as f64;
 
-/// What a march into a gap waits for: `H` on its plateau `ln H`, or, below `y`'s tail, the power law alone at the far end
-/// and the integrand `NEGLIGIBLE_FALL` under its own sum at the end nearer `|t_y|`.
+/// What a march into a gap waits for: `H` on its plateau `ln H`, or below `y`'s tail the power law
+/// alone at the far end and the integrand `NEGLIGIBLE_FALL` under its sum near `|t_y|`.
 #[derive(Debug, Clone, Copy)]
 enum Facing {
   Plateau(f64),
   BelowTail { near: bool },
 }
 
-/// What a march outward from an anchor leaves: up to offset `end` (`±∞` for a tail), where `ln H` is `ln_h_end`, with
-/// `H` monotone on either side of `turn`.
+/// What a march outward from an anchor leaves: up to offset `end` (`±∞` for a tail), where `ln H`
+/// is `ln_h_end`, with `H` monotone on either side of `turn`.
 #[derive(Debug, Clone, Copy)]
 struct Rest {
   end: f64,
@@ -53,7 +53,8 @@ struct Rest {
   turn: f64,
 }
 
-/// A feature of the integrand on `(−∞, t_x]`: `|t|`, its sign, `ν|t|` and `|t| − |t_y|`, the last two exact.
+/// A feature of the integrand on `(−∞, t_x]`: `|t|`, its sign, `ν|t|` and `|t| − |t_y|`, the last
+/// two exact.
 #[derive(Debug, Clone, Copy)]
 struct Anchor {
   sign: f64,
@@ -64,7 +65,8 @@ struct Anchor {
   inside_next: bool,
 }
 
-/// The bivariate t copula's cdf at one `(ρ, ν)`, its laws and constants hoisted out of the query loop.
+/// The bivariate t copula's cdf at one `(ρ, ν)`, its laws and constants hoisted out of the query
+/// loop.
 #[derive(Debug, Clone)]
 pub(crate) struct BivariateT {
   rho: f64,
@@ -80,13 +82,15 @@ pub(crate) struct BivariateT {
   power_from: f64,
   /// A march's first panel, under the width of the density's core, `1/√ν`.
   first_step: f64,
-  /// `1/(c₀|ρ|)`, the width of `H`'s step at the centre crossing, which a wider first panel's nodes could straddle unseen.
+  /// `1/(c₀|ρ|)`, the width of `H`'s step at the centre crossing, which a wider first panel's nodes
+  /// could straddle unseen.
   crossing_width: f64,
   ln_abs_rho: f64,
   /// The `ν → 0` limit's weights `p, 1 − p = (2/π) asin(√((1 ± ρ)/2))`.
   p: f64,
   q: f64,
-  /// `ln B(ν/2, 1/2)`, the normaliser of the density `sech^ν t` of `t`, to within `1/(4ν)` past `ν = 40`.
+  /// `ln B(ν/2, 1/2)`, the normaliser of the density `sech^ν t` of `t`, to within `1/(4ν)` past
+  /// `ν = 40`.
   ln_beta: f64,
   /// The integer `ν` whose Dunnett–Sobel sums can meet the closed forms' budget.
   sums: Option<u32>,
@@ -137,7 +141,8 @@ impl BivariateT {
       return gaussian_copula_cdf(u, v, self.rho);
     }
     if self.nu < LIMIT_NU {
-      // `u − floor` is `1 − v` past `u + v = 1`, exact; the smaller weight from `asin` of the smaller argument.
+      // `u − floor` is `1 − v` past `u + v = 1`, exact; the smaller weight from `asin` of the
+      // smaller argument.
       let band = if floor > 0.0 { 1.0 - v } else { u };
       return if self.rho >= 0.0 {
         u - self.q * band
@@ -155,8 +160,8 @@ impl BivariateT {
     (u * ratio).clamp(floor, u)
   }
 
-  /// `ln P(Y ≤ y | X ≤ x)` at `u ≤ v`: `∫ w H / ∫ w` over `t ≤ t_x`, `w = sech^ν t` the density of `t`, so its constant
-  /// cancels, and `H = T_{ν+1}(A)` the law of `Y` given `t`.
+  /// `ln P(Y ≤ y | X ≤ x)` at `u ≤ v`: `∫ w H / ∫ w` over `t ≤ t_x`, `w = sech^ν t` the density of
+  /// `t`, so its constant cancels, and `H = T_{ν+1}(A)` the law of `Y` given `t`.
   fn ln_conditional(&self, u: f64, v: f64, su: Score, sv: Score) -> f64 {
     let (fx, fy) = (self.law.feature(su), self.law.feature(sv));
     if !(self.reachable(u, &fx) && self.reachable(v, &fy)) {
@@ -167,7 +172,8 @@ impl BivariateT {
       .unwrap_or_else(|| (fy, self.law.abs_t_gap(&fy, &fx)));
     let cond = Conditional::new(self.rho, self.nu, &fy);
     let anchors = self.anchors(&fx, &fy, gap_x);
-    // Where `A`, and with it `H`, turns: `sinh t = −ρ/sinh t_y`; `H` is monotone on either side of it.
+    // Where `A`, and with it `H`, turns: `sinh t = −ρ/sinh t_y`; `H` is monotone on either side of
+    // it.
     let turn = if fy.sign == 0.0 {
       f64::NAN
     } else {
@@ -177,8 +183,8 @@ impl BivariateT {
     let add = |sums: &mut (f64, f64), d: f64, n: f64| {
       *sums = (ln_add_exp(sums.0, d), ln_add_exp(sums.1, n));
     };
-    // Every region but the left tail, each anchor's own marches out to the midpoints or into the gaps; a march outward
-    // ends once what is left of it is negligible against everything summed so far.
+    // Every region but the left tail: each anchor's marches out to the midpoints or into the gaps;
+    // one outward ends once its rest is negligible against everything summed so far.
     let mut toward_gap: Vec<(Option<March>, Option<March>)> = Vec::with_capacity(anchors.len());
     for (i, a) in anchors.iter().enumerate() {
       let step = self.step(a);
@@ -220,8 +226,8 @@ impl BivariateT {
       }
       toward_gap.push(sides);
     }
-    // The gaps between far anchors: the density's plateau in closed form, `H` its plateau or, below `y`'s tail, the
-    // integrand at the end nearer `|t_y|`, where the march stopped once it fell `NEGLIGIBLE_FALL` below its own sum.
+    // Gaps between far anchors: the density's plateau in closed form, `H` its plateau or, below
+    // `y`'s tail, the integrand near `|t_y|`, where its march stopped.
     for i in 0..anchors.len().saturating_sub(1) {
       let (a, b) = (&anchors[i], &anchors[i + 1]);
       if !self.far((b.d_y - a.d_y).abs()) {
@@ -252,7 +258,8 @@ impl BivariateT {
       };
       add(&mut sums, ln_band, ln_h);
     }
-    // The left tail last, against the rest: it ends on the plateaus, or once what is left of it to `−∞` is negligible.
+    // The left tail last, against the rest: it ends on the plateaus, or once what is left of it to
+    // `−∞` is negligible.
     let first = &anchors[0];
     let outer = sums;
     let rest = Rest {
@@ -285,8 +292,8 @@ impl BivariateT {
     sums.1 - sums.0
   }
 
-  /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_gap`) where at least two bits of
-  /// the opposite scores cancel in it, so neither their rounding nor the upper quantile's error moves the crossing.
+  /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_gap`)
+  /// where two bits of opposite scores cancel, so no error moves the crossing.
   fn countermonotone(&self, u: f64, v: f64, su: Score, sv: Score) -> Option<(Feature, f64)> {
     let (x, y) = (su.value, sv.value);
     let plain = x + y;
@@ -308,8 +315,8 @@ impl BivariateT {
     ))
   }
 
-  /// Whether the density can carry the tail beyond the quantile `f` of level `p`: the concave `ψ` bounds that tail's mass by
-  /// `e^ψ/(ν tanh|t|)`, so a `ψ` 50 under `ln min(p, 1 − p) B` is not the law's quantile.
+  /// Whether the density can carry the tail past the quantile `f` of level `p`: concave `ψ` bounds
+  /// its mass by `e^ψ/(ν tanh|t|)`, so a `ψ` 50 under `ln min(p, 1 − p) B` is not the quantile.
   fn reachable(&self, p: f64, f: &Feature) -> bool {
     if f.sign == 0.0 {
       return true;
@@ -323,8 +330,8 @@ impl BivariateT {
     psi >= tail.ln() + self.ln_beta + (self.nu * f.abs_t.tanh()).ln().min(0.0) - 50.0
   }
 
-  /// A march's first panel: `first_step`, under `1/(c₀|ρ|)` at an anchor within a few such widths of the centre crossing,
-  /// `y`'s anchors and an `x` beside them, where `H` steps.
+  /// A march's first panel: `first_step`, under `1/(c₀|ρ|)` at an anchor within a few such widths
+  /// of the centre crossing, `y`'s anchors and an `x` beside them, where `H` steps.
   fn step(&self, a: &Anchor) -> f64 {
     let near = a.d_y.abs() <= 8.0 * self.crossing_width + self.ln_abs_rho.abs();
     if near {
@@ -334,7 +341,8 @@ impl BivariateT {
     }
   }
 
-  /// The features on `(−∞, t_x]` in order: `−|t_y|`, `0`, `|t_y|` where inside, and `t_x`, which ends the domain.
+  /// The features on `(−∞, t_x]` in order: `−|t_y|`, `0`, `|t_y|` where inside, and `t_x`, which
+  /// ends the domain.
   fn anchors(&self, fx: &Feature, fy: &Feature, gap_x: f64) -> Vec<Anchor> {
     let mut out = Vec::with_capacity(4);
     let at_y = |sign: f64| Anchor {
@@ -390,7 +398,8 @@ impl BivariateT {
   fn ln_h(&self, cond: &Conditional, a: &Anchor, delta: f64) -> f64 {
     let (sign_t, abs_t, _, d) = self.point(a, delta);
     let (sign_a, ln_a) = cond.argument(sign_t, abs_t, -d);
-    // Where `H`'s tail multiplies `A`'s rounding by `min(A², ν + 1) > 64`, `A` in two parts at the node's exact `|t|`.
+    // Where `H`'s tail multiplies `A`'s rounding by `min(A², ν + 1) > 64`, `A` in two parts at the
+    // node's exact `|t|`.
     if sign_a < 0.0 && ln_a > 3.0 * LN_2 && self.nu > 63.0 && abs_t <= CARRIED_TO && cond.carried()
     {
       let (abs_t, gap) = self.node_parts(a, delta);
@@ -407,7 +416,8 @@ impl BivariateT {
     self.wide.ln_cdf(sign_a, ln_a)
   }
 
-  /// `|t|` and `|t_y| − |t|` at offset `delta` from `a`, each in two parts whose high part is `point`'s.
+  /// `|t|` and `|t_y| − |t|` at offset `delta` from `a`, each in two parts whose high part is
+  /// `point`'s.
   fn node_parts(&self, a: &Anchor, delta: f64) -> ((f64, f64), (f64, f64)) {
     let (abs_t, d) = if a.sign != 0.0 && delta.abs() < a.abs_t {
       let dt = a.sign * delta;
@@ -433,7 +443,8 @@ impl BivariateT {
     (psi, psi + self.ln_h(cond, a, delta))
   }
 
-  /// A gap past `|t_y|` holds `H` at `T_{ν+1}(−c₀ρ)`, one inside it at 1 for `y > 0` and below `y`'s tail for `y < 0`.
+  /// A gap past `|t_y|` holds `H` at `T_{ν+1}(−c₀ρ)`, one inside it at 1 for `y > 0` and below
+  /// `y`'s tail for `y < 0`.
   fn facing(&self, inside: bool, sign_y: f64, near: bool) -> Facing {
     if !inside {
       Facing::Plateau(self.ln_h_right)
@@ -444,8 +455,8 @@ impl BivariateT {
     }
   }
 
-  /// Whether `rest`, from offset `x` of `a` and away from `t = 0`, is under `e^{−45}` of `totals`: the concave `ψ` bounds
-  /// its density by `e^ψ min(|end − x|, 1/(ν tanh|t|))`, and `H` by `max(H(x), H(end))` where monotone, else by 1.
+  /// Whether `rest`, from offset `x` of `a` away from `t = 0`, is under `e^{−45}` of `totals`:
+  /// concave `ψ` bounds its density by `e^ψ min(|end − x|, 1/(ν tanh|t|))`, `H` by an end or 1.
   fn rest_negligible(
     &self,
     a: &Anchor,
@@ -497,14 +508,14 @@ impl BivariateT {
     )
   }
 
-  /// The magnitude of the operands a march out of `a` reads at offset `delta`, `|t|` and `|t| − |t_y|`, which bounds its
-  /// resolution.
+  /// The magnitude of the operands a march out of `a` reads at offset `delta`, `|t|` and
+  /// `|t| − |t_y|`, which bounds its resolution.
   fn origin(&self, a: &Anchor) -> f64 {
     a.abs_t.max(a.d_y.abs())
   }
 
-  /// A march's measure: the sums so far, and the floor under which a numerator panel's error cannot move `C = ∫e^f/B`, as
-  /// `∫e^g = uB` in closed form.
+  /// A march's measure: the sums so far, and the floor under which a numerator panel's error cannot
+  /// move `C = ∫e^f/B`, as `∫e^g = uB` in closed form.
   fn against(&self, outer: (f64, f64)) -> Against {
     Against {
       outer,
@@ -512,8 +523,8 @@ impl BivariateT {
     }
   }
 
-  /// The density a power law at offset `x` from `a` and `ln H` there, formed directly rather than as a difference of the
-  /// integrands' exponents, within `SETTLED` of `plateau`.
+  /// The density a power law at offset `x` from `a` and `ln H` there, formed directly rather than
+  /// as a difference of the integrands' exponents, within `SETTLED` of `plateau`.
   fn settled(&self, cond: &Conditional, a: &Anchor, x: f64, plateau: f64) -> bool {
     self.abs_t_at(a, x) >= self.power_from && (self.ln_h(cond, a, x) - plateau).abs() <= SETTLED
   }

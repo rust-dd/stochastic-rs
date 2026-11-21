@@ -1,5 +1,5 @@
-//! The C- and D-vine samplers draw the vine they declare (tree-1 pairs, tree-2 pairs given their neighbour and the
-//! Rosenblatt transform, each within 4 SE of Kendall's τ̂), and their densities match a conditional-CDF recursion.
+//! The C- and D-vine samplers draw their declared vine (tree-1 pairs, tree-2 pairs given their
+//! neighbour, the Rosenblatt transform, within 4 SE of τ̂); densities match a recursion.
 //! Reference: Hoeffding, W. (1948), "A class of statistics with asymptotically normal distribution", Annals of Mathematical Statistics 19(3), 293–325, doi:10.1214/aoms/1177730196.
 
 use ndarray::ArrayView1;
@@ -22,17 +22,20 @@ const TAU_GAUSSIAN: f64 = 1.0 / 3.0;
 
 const TAU_CLAYTON: f64 = 0.6;
 
-/// ζ₁ = Var(1 − 2U − 2V + 4C(U, V)) by Gauss–Legendre quadrature; the Gaussian value is 1/9 − 4 arcsin²(ρ/2)/π².
+/// ζ₁ = Var(1 − 2U − 2V + 4C(U, V)) by Gauss–Legendre quadrature; the Gaussian value is 1/9 − 4
+/// arcsin²(ρ/2)/π².
 const ZETA1_GAUSSIAN: f64 = 0.085235;
 
 const ZETA1_CLAYTON: f64 = 0.053182;
 
 const ZETA1_INDEPENDENCE: f64 = 1.0 / 9.0;
 
-/// Kolmogorov's 0.999 quantile: the √n-scaled distance a uniform sample stays under with probability 0.999.
+/// Kolmogorov's 0.999 quantile: the √n-scaled distance a uniform sample stays under with
+/// probability 0.999.
 const KS_999: f64 = 1.9495;
 
-/// Four standard errors of τ̂ at `N` draws, by Hoeffding (1948) Eq. (9.15): Var τ̂ = 2[2(n − 2)ζ₁ + 1 − τ²]/(n(n − 1)).
+/// Four standard errors of τ̂ at `N` draws, by Hoeffding (1948) Eq. (9.15): Var τ̂ = 2[2(n − 2)ζ₁ +
+/// 1 − τ²]/(n(n − 1)).
 fn four_se(tau: f64, zeta1: f64) -> f64 {
   let n = N as f64;
   4.0 * (2.0 * (2.0 * (n - 2.0) * zeta1 + 1.0 - tau * tau) / (n * (n - 1.0))).sqrt()
@@ -58,7 +61,8 @@ fn draws<C: MultivariateExt>(vine: &C, seed: u64) -> Vec<Vec<f64>> {
   sample.rows().into_iter().map(|r| r.to_vec()).collect()
 }
 
-/// Every tree carries a different family or parameter per edge, so an edge index that is off moves the draws.
+/// Every tree carries a different family or parameter per edge, so an edge index that is off moves
+/// the draws.
 fn mixed_trees() -> Vec<Vec<PairCopula>> {
   vec![
     vec![
@@ -80,8 +84,8 @@ fn mixed_trees() -> Vec<Vec<PairCopula>> {
   ]
 }
 
-/// `(log c(x), Rosenblatt z)` by recursion: entering tree s + 1, `a[e]` is F(x_e | x_{e+1..e+s}) and `b[e]` is
-/// F(x_{e+s} | x_{e..e+s−1}); edge e of that tree joins `a[e]` and `b[e + 1]`.
+/// `(log c(x), Rosenblatt z)` by recursion: entering tree s + 1, `a[e]` is F(x_e | x_{e+1..e+s})
+/// and `b[e]` is F(x_{e+s} | x_{e..e+s−1}); edge e of that tree joins `a[e]` and `b[e + 1]`.
 fn dvine_recursion(vine: &DVine, x: &[f64]) -> (f64, Vec<f64>) {
   let (mut a, mut b) = (x.to_vec(), x.to_vec());
   let mut log_c = 0.0;
@@ -100,7 +104,8 @@ fn dvine_recursion(vine: &DVine, x: &[f64]) -> (f64, Vec<f64>) {
   (log_c, z)
 }
 
-/// The same for a C-vine: entering tree t + 1, `g[k]` is F(x_k | x_0..x_{t−1}) and the tree's root is variable t.
+/// The same for a C-vine: entering tree t + 1, `g[k]` is F(x_k | x_0..x_{t−1}) and the tree's root
+/// is variable t.
 fn cvine_recursion(vine: &CVine, x: &[f64]) -> (f64, Vec<f64>) {
   let mut g = x.to_vec();
   let mut log_c = 0.0;

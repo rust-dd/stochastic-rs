@@ -21,17 +21,18 @@ pub enum CopulaError {
   InsufficientData { needed: usize, got: usize },
   /// A pseudo-observation outside `[0, 1]`.
   MarginalOutOfRange,
-  /// A pseudo-observation at 0 or 1, which every parametric fit and the goodness-of-fit test refuse, as ranks `k/(n + 1)`
-  /// never reach either end; the empirical copula ranks raw series itself, so takes none.
+  /// A pseudo-observation at 0 or 1, which every parametric fit and the goodness-of-fit test
+  /// refuse, as ranks `k/(n + 1)` never reach an end; the empirical copula ranks raw series itself.
   MarginalOnBoundary {
     row: usize,
     column: usize,
     value: f64,
   },
-  /// A column fails the uniformity test of [`BivariateExt::check_marginal`](crate::traits::BivariateExt::check_marginal), which no fit runs.
+  /// A column fails the uniformity test of
+  /// [`check_marginal`](crate::traits::BivariateExt::check_marginal), which no fit runs.
   MarginalNotUniform,
-  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, or data with no variation to
-  /// estimate from (a constant or non-finite margin, an undefined Kendall's τ).
+  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, or data
+  /// with no variation (a constant or non-finite margin, an undefined Kendall's τ).
   InvalidStructure(String),
   /// The family has no such operation (an Archimedean generator, an unimplemented fit).
   Unsupported(String),

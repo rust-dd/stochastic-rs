@@ -1,5 +1,5 @@
-//! `new` panics outside the family's domain, `try_new` and `from_tau` return the error, and the parameters are
-//! private: a constructed copula always samples.
+//! `new` panics outside the family's domain, `try_new` and `from_tau` return the error, and the
+//! parameters are private: a constructed copula always samples.
 
 use ndarray::array;
 use stochastic_rs_copulas::CopulaError;
@@ -60,7 +60,8 @@ fn try_new_and_from_tau_report_the_domain() {
   assert_eq!(Independence::new().theta(), Some(0.0));
 }
 
-/// A NaN is outside every domain and an infinite parameter outside every finite one, so neither constructs.
+/// A NaN is outside every domain and an infinite parameter outside every finite one, so neither
+/// constructs.
 #[test]
 fn a_nan_or_infinite_parameter_does_not_construct() {
   for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
@@ -227,7 +228,8 @@ fn the_multivariate_set_nu_panics_outside_the_domain() {
   TMultivariate::default().set_nu(-5.0);
 }
 
-/// The vines refuse a Student-t pair under the t copulas' `nu` rule, the `nu` its law would panic on when evaluated.
+/// The vines refuse a Student-t pair under the t copulas' `nu` rule, the `nu` its law would panic
+/// on when evaluated.
 #[test]
 fn the_vines_refuse_a_student_t_pair_whose_nu_the_law_refuses() {
   for nu in [-1.0, 0.0, f64::NAN, f64::INFINITY, 5e-324] {

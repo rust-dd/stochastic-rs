@@ -1,18 +1,15 @@
-//! # Plackett (1965) copula
+//! Plackett (1965) copula of constant local odds ratio `θ > 0`, its quadratic the closed form for
+//! `θ ≠ 1`; `θ = 1` is independence, `θ → 0⁺, ∞` the Fréchet bounds; no tail dependence.
 //!
-//! Constant local odds ratio $\theta > 0$; its quadratic gives the closed form for $\theta \neq 1$:
 //! $$
 //! \frac{C(u,v)\,[1 - u - v + C(u,v)]}{[u - C(u,v)][v - C(u,v)]} = \theta,
 //! $$
 //! $$
 //! C(u,v) = \frac{1 + (\theta-1)(u+v) - \sqrt{[1 + (\theta-1)(u+v)]^2 - 4 u v \theta (\theta-1)}}{2(\theta-1)}.
 //! $$
-//! $\theta = 1$ is independence, $\theta \to 0^+, \infty$ the Fréchet bounds; no tail dependence.
 //!
-//! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions",
-//! *Journal of the American Statistical Association* 60(310), 516-522.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives).
+//! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions", *Journal of the American Statistical Association* 60(310), 516-522, DOI 10.1080/01621459.1965.10480807.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives), DOI 10.1007/0-387-28678-0.
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
@@ -59,8 +56,8 @@ impl Plackett {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// The root in `[0, 1]` of `bu² − cu + e = 0` (`∂_v C = y` squared, `a = y(1 − y)`), as `(c + (2y − 1)d)/(2b)` from
-  /// `y = 1/2` up and the rationalised `2e/(c + (1 − 2y)d)` below, every coefficient divided by `θ` so none overflows.
+  /// The root in `[0, 1]` of `bu² − cu + e = 0`: `(c + (2y − 1)d)/(2b)` from `y = 1/2` up, the
+  /// rationalised `2e/(c + (1 − 2y)d)` below, coefficients over `θ` so none overflows.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let eta = theta - 1.0;
     let eta_squared_over_theta = eta * (eta / theta);
@@ -69,7 +66,8 @@ impl Plackett {
       let c = 2.0 * a * (v * theta + (1.0 - v) / theta) + (1.0 - 2.0 * a);
       let d = (1.0 + 4.0 * a * v * (1.0 - v) * eta_squared_over_theta).sqrt();
       let e = a * ((1.0 - v) + theta * v) * ((1.0 - v) / theta + v);
-      // Both roots share one division: selecting their operands first keeps either half of `y` free of a branch.
+      // Both roots share one division: selecting their operands first keeps either half of `y` free
+      // of a branch.
       let (numerator, denominator) = if y < 0.5 {
         (2.0 * e, c + (1.0 - 2.0 * y) * d)
       } else {
@@ -82,8 +80,8 @@ impl Plackett {
     }
   }
 
-  /// `∂_v C = (1 − b/√d)/2`, `b = w + θ(v − u)`, `d = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` from the exact
-  /// `w = 1 − u − v`, terms over the largest; `2θu(1 − u)/(√d(√d + b))` for `b ≥ 0`, as `d − b² = 4θu(1 − u)`.
+  /// `∂_v C = (1 − b/√d)/2`, `b = w + θ(v − u)`, `d = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²`,
+  /// `w = 1 − u − v` exact; at `b ≥ 0` `2θu(1 − u)/(√d(√d + b))`, as `d − b² = 4θu(1 − u)`.
   pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |u, v| {
       if u <= 0.0 {
@@ -95,7 +93,8 @@ impl Plackett {
       let w = -sum_minus_one(u, v);
       let shift = theta * (v - u);
       let spread = theta * (u * (1.0 - u) + v * (1.0 - v));
-      // Unscaled wherever `d` and `θu` are normal with room to spare, the scaled form only in the corners.
+      // Unscaled wherever `d` and `θu` are normal with room to spare, the scaled form only in the
+      // corners.
       let (d, mass) = (w * w + 2.0 * spread + shift * shift, theta * u);
       if d < 1e300 && d > 1e-300 && mass > 1e-300 {
         let (root, b) = (d.sqrt(), w + shift);
@@ -110,7 +109,8 @@ impl Plackett {
       let root = (w * w + 2.0 * (spread / scale / scale) + shift * shift).sqrt();
       let b = w + shift;
       if b >= 0.0 {
-        // `θu` itself is subnormal where both are small, and `u/scale` underflows where `θ` is large.
+        // `θu` itself is subnormal where both are small, and `u/scale` underflows where `θ` is
+        // large.
         let mass = theta * u;
         let ratio = if mass >= f64::MIN_POSITIVE {
           mass / scale / scale
@@ -139,8 +139,8 @@ impl Plackett {
 }
 
 impl Plackett {
-  /// `(w, σ, d/σ²)`, `d = a² − 4uvθ(θ − 1) = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` with the exact `w = 1 − u − v`, `σ`
-  /// the largest of `|w|`, `θ|u − v|`, `√(θ(u(1 − u) + v(1 − v)))`; `θ/σ` before each product, so none under- or overflows.
+  /// `(w, σ, d/σ²)`, `d = a² − 4uvθ(θ − 1)`, exact `w = 1 − u − v`, `σ` the largest of `|w|`,
+  /// `θ|u − v|`, `√(θ(u(1 − u) + v(1 − v)))`; `θ/σ` first, so no product under- or overflows.
   fn scaled_d(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
     let w = -sum_minus_one(u, v);
     let r = u * (1.0 - u) + v * (1.0 - v);
@@ -150,8 +150,8 @@ impl Plackett {
     (w, sigma, ws * ws + 2.0 * (ts * (r / sigma)) + shift * shift)
   }
 
-  /// `C = (a − √d)/(2(θ − 1))`, `a = 1 + (θ − 1)(u + v) = w + θ(u + v)`, rationalised to `2θuv/(a + √d)` where `a ≥ 0` and
-  /// scaled by the larger of `Plackett::scaled_d`'s `σ` and `θ max(u, v)`; the plain quotient where `a < 0`, so `θ < 1/2`.
+  /// `C = (a − √d)/(2(θ − 1))`, `a = w + θ(u + v)`, as `2θuv/(a + √d)` at `a ≥ 0`, scaled by the
+  /// larger of `Plackett::scaled_d`'s `σ` and `θ max(u, v)`; plain at `a < 0`, so `θ < 1/2`.
   fn cdf_interior(theta: f64, u: f64, v: f64) -> f64 {
     let (w, sigma, d) = Self::scaled_d(theta, u, v);
     let scale = sigma.max(theta * u.max(v));
@@ -165,8 +165,8 @@ impl Plackett {
     }
   }
 
-  /// `ln c = ln θ + ln(p + θq) − (3/2) ln d`, `p = uv + (1 − u)(1 − v)`, `q = u(1 − v) + v(1 − u)`: `1 + (θ − 1)(u + v − 2uv)`
-  /// in two terms `≥ 0` and `d` through `Plackett::scaled_d`, so neither cancels nor overflows.
+  /// `ln c = ln θ + ln(p + θq) − (3/2) ln d`, `p = uv + (1 − u)(1 − v)`, `q = u(1 − v) + v(1 − u)`:
+  /// two terms `≥ 0`, `d` by `Plackett::scaled_d`, so neither cancels nor overflows.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     let (u_bar, v_bar) = (1.0 - u, 1.0 - v);
     let (p, q) = (u * v + u_bar * v_bar, u * v_bar + u_bar * v);
@@ -174,8 +174,8 @@ impl Plackett {
     theta.ln() + (p + theta * q).ln() - 3.0 * sigma.ln() - 1.5 * d.ln()
   }
 
-  /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C` in `s = u + v − 1`, `d = u − v`, closed in `d`, is `∫ (2L/a)(αF − θL²G) dL`,
-  /// `L = 1 − s`; Gauss–Legendre in `√L`, panels halved to the corner layer `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
+  /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C`, closed in `d = u − v`, is `∫ (2L/a)(αF − θL²G) dL`,
+  /// `L = 1 − s`; Gauss–Legendre in `√L`, halved to the corner `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
   fn tau_complement(theta: f64) -> f64 {
     if theta == 1.0 {
       return 1.0;
@@ -205,12 +205,12 @@ impl Plackett {
   }
 }
 
-/// Below this `|ln θ|` Kendall's τ is its odd series `(2/9)s − (2/675)s³ + s⁵/66150` in `s = ln θ` (sympy, from Nelsen's
-/// `1 − 4∬ C_u C_v` term by term in `θ − 1`), whose next term `s⁷/661500` stays under `1e-13` of `τ`.
+/// Below this `|ln θ|`, τ is its odd series `(2/9)s − (2/675)s³ + s⁵/66150` in `s = ln θ` (sympy,
+/// from Nelsen's `1 − 4∬ C_u C_v`), the next term `s⁷/661500` under `1e-13` of `τ`.
 const TAU_SERIES_BELOW: f64 = 0.0495;
 
-/// `(F, G)`, `F(x) = atan(√x)/√x` and `G(x) = (1 − F(x))/x`, by `G`'s series `Σ (−x)ᵏ/(2k + 3)` below `x = 1/8`, where
-/// `1 − F` would cancel.
+/// `(F, G)`, `F(x) = atan(√x)/√x` and `G(x) = (1 − F(x))/x`, by `G`'s series `Σ (−x)ᵏ/(2k + 3)`
+/// below `x = 1/8`, where `1 − F` would cancel.
 fn arctan_ratios(x: f64) -> (f64, f64) {
   if x < 0.125 {
     let g = (0..18)
@@ -264,7 +264,7 @@ impl BivariateExt for Plackett {
     copula_cdf(x, |u, v| Self::cdf_interior(theta, u, v))
   }
 
-  /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$.
+  /// $$\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$$
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_cdf(x, Self::h(self.theta.unwrap()))
@@ -286,7 +286,8 @@ impl BivariateExt for Plackett {
     Some(self.unchecked_inverse(y, v))
   }
 
-  /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`, and the series of `TAU_SERIES_BELOW` near 1.
+  /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`, and the series of
+  /// `TAU_SERIES_BELOW` near 1.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     let s = theta.ln();
     if s.abs() <= TAU_SERIES_BELOW {
@@ -300,8 +301,8 @@ impl BivariateExt for Plackett {
     }
   }
 
-  /// Brent on `ln θ ≥ 0` for `|τ|`, matching `ln(1 − |τ|)` so a `τ` near ±1 keeps its digits, `1/θ` for `τ < 0`; the
-  /// bracket ends at `θ = 1e34`, where `1 − τ` is under `2⁻⁵⁴`, and at the bound `1e-12`.
+  /// Brent on `ln θ ≥ 0` for `|τ|`, matching `ln(1 − |τ|)` so a `τ` near ±1 keeps its digits, `1/θ`
+  /// for `τ < 0`; the bracket ends at `θ = 1e34` (`1 − τ < 2⁻⁵⁴`) and the bound `1e-12`.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     if tau == 0.0 {
       return admitted(self, tau, 1.0);
@@ -323,8 +324,7 @@ impl BivariateExt for Plackett {
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-  /// Springer, §2.3 / Example 3.11 (module header).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §2.3 / Example 3.11, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {
@@ -340,8 +340,8 @@ mod tests {
 
   use super::*;
 
-  /// `ln(1 − |τ|)`, which the inversion matches, against the third column of the τ table: within `1e-12` of itself (or
-  /// `f64::MIN_POSITIVE` below it), from `ln_1p(−|τ|)` while `|τ| < 1/2` and from the complement past it.
+  /// `ln(1 − |τ|)`, which the inversion matches, against the τ table's third column: within `1e-12`
+  /// of itself (`f64::MIN_POSITIVE` below), via `ln_1p(−|τ|)` at `|τ| < 1/2`, else the complement.
   #[test]
   fn the_complement_matches_the_tau_table() {
     let rows = include_str!("../../tests/fixtures/kendall_tau.txt")

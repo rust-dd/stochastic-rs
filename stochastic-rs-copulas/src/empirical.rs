@@ -1,13 +1,12 @@
-//! # Empirical
+//! Empirical copula on the pseudo-observations `U_i = rank_i/(n+1)`, a tie group taking its mean
+//! rank: asymptotically that of Deheuvels (1979).
 //!
 //! $$
 //! C_n(u,v)=\frac{1}{n}\sum_{i=1}^n \mathbf 1\{U_i\le u,\,V_i\le v\}
 //! $$
-//! on the pseudo-observations `U_i = rank_i/(n+1)`, a tie group taking the mean of its ranks: asymptotically the empirical
-//! copula of Deheuvels (1979).
 //!
 //! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§2.2: `U_ij = R_ij/(n+1)`; §3.1, Eq. (1): `C_n`).
-//! Reference: Deheuvels, P. (1979), "La fonction de dépendance empirique et ses propriétés. Un test non paramétrique d'indépendance", Acad. Roy. Belg. Bull. Cl. Sci. (5) 65, 274–292.
+//! Reference: Deheuvels, P. (1979), "La fonction de dépendance empirique et ses propriétés. Un test non paramétrique d'indépendance", Acad. Roy. Belg. Bull. Cl. Sci. (5) 65, 274–292, DOI 10.3406/barb.1979.58521.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -32,8 +31,8 @@ pub struct EmpiricalCopula2D {
 }
 
 impl EmpiricalCopula2D {
-  /// The empirical copula of `x` and `y`: `DimensionMismatch` for unequal lengths, `InsufficientData` for empty series,
-  /// `MarginalOutOfRange` for a NaN entry.
+  /// The empirical copula of `x` and `y`: `DimensionMismatch` for unequal lengths,
+  /// `InsufficientData` for empty series, `MarginalOutOfRange` for a NaN entry.
   pub fn new(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Result<Self, CopulaError> {
     if x.len() != y.len() {
       return Err(CopulaError::DimensionMismatch {
@@ -57,8 +56,8 @@ impl EmpiricalCopula2D {
     self.pseudo.view()
   }
 
-  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`: `DimensionMismatch` unless `x` has two columns, then
-  /// `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, as every copula's batch methods.
+  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`: `DimensionMismatch` unless two
+  /// columns, then `MarginalOutOfRange` off `[0, 1]` or at NaN, as every copula's batch methods.
   pub fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     if x.ncols() != 2 {
       return Err(CopulaError::DimensionMismatch {
@@ -109,7 +108,8 @@ mod tests {
 
   use super::*;
 
-  /// Pseudo-observations `k/(n+1)` (`gof::pseudo_observations`), the empirical copula on them, and a seeded bootstrap.
+  /// Pseudo-observations `k/(n+1)` (`gof::pseudo_observations`), the empirical copula on them, and
+  /// a seeded bootstrap.
   #[test]
   fn empirical_copula_ranks_cdf_and_bootstrap() {
     let x = Array1::from_vec(vec![3.0, 1.0, 2.0, 4.0]);
@@ -132,7 +132,8 @@ mod tests {
     assert_eq!(ec.sample(5, &Unseeded).nrows(), 5);
   }
 
-  /// The cdf is a step function of the pseudo-observations on the closed square; a value off it or NaN is refused.
+  /// The cdf is a step function of the pseudo-observations on the closed square; a value off it or
+  /// NaN is refused.
   #[test]
   fn the_cdf_is_defined_on_the_square_and_refuses_off_it() {
     let ec = EmpiricalCopula2D::new(
@@ -153,7 +154,8 @@ mod tests {
     }
   }
 
-  /// The empirical copula is a function of the data set: the same tied pairs in two row orders give the same cdf.
+  /// The empirical copula is a function of the data set: the same tied pairs in two row orders give
+  /// the same cdf.
   #[test]
   fn the_cdf_does_not_depend_on_the_row_order_of_tied_data() {
     let x = array![1.0, 1.0, 2.0, 3.0];

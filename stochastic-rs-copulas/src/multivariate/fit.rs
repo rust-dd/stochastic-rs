@@ -1,5 +1,5 @@
-//! Dißmann, Brechmann, Czado & Kurowicka (2013), Algorithm 3.1 with a path (D-vine) or a star (C-vine) for each tree of
-//! largest Σ|τ̂|, each edge's family by AIC or BIC over maximum-likelihood fits, its h-functions giving the next tree's data.
+//! Dißmann et al. (2013), Algorithm 3.1: per tree a path (D-vine) or star (C-vine) of largest
+//! Σ|τ̂|, each edge's family by AIC or BIC over ML fits, its h-functions the next tree's data.
 //! Reference: Dißmann, J., Brechmann, E. C., Czado, C. & Kurowicka, D. (2013), "Selecting and estimating regular vine copulae and application to financial returns", Computational Statistics & Data Analysis 59, 52–69, doi:10.1016/j.csda.2012.08.010 (preprint arXiv:1202.2002).
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001.
 //! Reference: Held, M. & Karp, R. M. (1962), "A Dynamic Programming Approach to Sequencing Problems", Journal of the Society for Industrial and Applied Mathematics 10(1), 196–210, doi:10.1137/0110015.
@@ -153,8 +153,8 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
   }
 }
 
-/// The τ the family reaches inside its θ bounds: `localmin` never evaluates the ends, and a τ past what `theta_from_tau`
-/// resolves scores `+∞`.
+/// The τ the family reaches inside its θ bounds: `localmin` never evaluates the ends, and a τ past
+/// what `theta_from_tau` resolves scores `+∞`.
 fn tau_range(copula: &impl BivariateExt) -> (f64, f64) {
   let (lo, hi) = copula.theta_bounds();
   let reach = |theta: f64| {
@@ -167,13 +167,14 @@ fn tau_range(copula: &impl BivariateExt) -> (f64, f64) {
   (reach(lo), reach(hi))
 }
 
-/// The minimised `−ll`, `+∞` where the likelihood is not finite, which `localmin` then steps away from.
+/// The minimised `−ll`, `+∞` where the likelihood is not finite, which `localmin` then steps away
+/// from.
 fn objective(ll: f64) -> f64 {
   if ll.is_finite() { -ll } else { f64::INFINITY }
 }
 
-/// The likelihood maximised by `localmin` over the family's τ range at θ = `theta_from_tau(τ)`, kept where it beats the
-/// Kendall start `tau`; `None` when the start has no finite likelihood.
+/// The likelihood maximised by `localmin` over the family's τ range at θ = `theta_from_tau(τ)`,
+/// kept where it beats the Kendall start `tau`; `None` when the start has no finite likelihood.
 fn maximise<C: BivariateExt + Default>(
   tau: f64,
   u: &[f64],
@@ -192,8 +193,8 @@ fn maximise<C: BivariateExt + Default>(
   at(if value <= start { best } else { tau })
 }
 
-/// Student t by maximum likelihood, ν by `localmin` on `(2, 50)` profiled over ρ; `None` past ν̂ = 30, where Dißmann et
-/// al. (2013, §3.2) take the Gaussian instead.
+/// Student t by maximum likelihood, ν by `localmin` on `(2, 50)` profiled over ρ; `None` past ν̂ =
+/// 30, where Dißmann et al. (2013, §3.2) take the Gaussian instead.
 fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let copula = TCopula::default();
   let (lo, hi) = tau_range(&copula);
@@ -229,8 +230,8 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
   })
 }
 
-/// The criterion's best family on the pair (copula, family, log-likelihood, parameter count), `None` if no family fits;
-/// independence competes by its score, without the optional Genest–Favre pre-test of Dißmann et al. (2013, §3.2).
+/// The criterion's best family on the pair, `None` if none fits; independence competes by its
+/// score, without the optional Genest–Favre pre-test of Dißmann et al. (2013, §3.2).
 fn select_pair(
   u: &[f64],
   v: &[f64],
@@ -259,7 +260,8 @@ fn select_pair(
   best.map(|(pair, family, ll, k, _)| (pair, family, ll, k))
 }
 
-/// `Unsupported` naming the data columns of the edge `a`–`b` given `given` that no family in `families` represents.
+/// `Unsupported` naming the data columns of the edge `a`–`b` given `given` that no family in
+/// `families` represents.
 fn unrepresented(a: usize, b: usize, given: &[usize], families: &[BivariateFamily]) -> CopulaError {
   let mut given = given.to_vec();
   given.sort_unstable();
@@ -275,8 +277,8 @@ fn unrepresented(a: usize, b: usize, given: &[usize], families: &[BivariateFamil
   ))
 }
 
-/// The first D-vine tree, the Hamiltonian path of largest Σ|τ̂| (Dißmann et al. 2013, §3.1): exact by Held–Karp up to
-/// `d = 8`, the greedy extension from the strongest pair above.
+/// The first D-vine tree, the Hamiltonian path of largest Σ|τ̂| (Dißmann et al. 2013, §3.1): exact
+/// by Held–Karp up to `d = 8`, the greedy extension from the strongest pair above.
 fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   if tau.nrows() <= 8 {
     heaviest_path(tau)
@@ -285,7 +287,8 @@ fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   }
 }
 
-/// Held–Karp: `weight[mask][j]` is the heaviest path through the columns in `mask` ending at `j`; returned from its smaller end.
+/// Held–Karp: `weight[mask][j]` is the heaviest path through the columns in `mask` ending at `j`;
+/// returned from its smaller end.
 fn heaviest_path(tau: ArrayView2<f64>) -> Vec<usize> {
   let d = tau.nrows();
   let full = (1_usize << d) - 1;
@@ -325,7 +328,8 @@ fn heaviest_path(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Start from the strongest pair and extend the path at whichever end has the strongest remaining neighbour.
+/// Start from the strongest pair and extend the path at whichever end has the strongest remaining
+/// neighbour.
 fn greedy_path(tau: ArrayView2<f64>) -> Vec<usize> {
   let d = tau.nrows();
   let mut best = (0, 1, 0.0_f64);
@@ -364,7 +368,8 @@ fn greedy_path(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Columns, rows, range and candidates every structure shares, then the τ-b matrix, defined for every column.
+/// Columns, rows, range and candidates every structure shares, then the τ-b matrix, defined for
+/// every column.
 fn check_vine_data(
   u: ArrayView2<f64>,
   families: &[BivariateFamily],
@@ -396,8 +401,8 @@ fn check_vine_data(
   Ok(tau)
 }
 
-/// Fits `structure` to the rows of `u`: `MarginalOutOfRange` off `[0, 1]` or for NaN, `MarginalOnBoundary` at 0 or 1,
-/// `Unsupported` for a family outside `VINE_CANDIDATES` or an edge none fits, `InvalidStructure` for a constant column.
+/// Fits `structure` to `u`'s rows: the marginal errors, `Unsupported` outside `VINE_CANDIDATES` or
+/// for an edge none fits, `InvalidStructure` for a constant column.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,
@@ -499,8 +504,8 @@ fn strongest(tau: ArrayView2<f64>) -> usize {
     .expect("non-empty")
 }
 
-/// The next C-vine root among `values`, the variables conditioned on the roots `given`: the one of largest Σ|τ̂|;
-/// `InvalidStructure` when one of them has no τ-b.
+/// The next C-vine root among `values`, the variables conditioned on the roots `given`: the one of
+/// largest Σ|τ̂|; `InvalidStructure` when one of them has no τ-b.
 fn next_root(values: &[(usize, Vec<f64>)], given: &[usize]) -> Result<usize, CopulaError> {
   let mut pseudo = Array2::<f64>::zeros((values[0].1.len(), values.len()));
   for (c, (_, col)) in values.iter().enumerate() {

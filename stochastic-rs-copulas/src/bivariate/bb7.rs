@@ -1,12 +1,10 @@
-//! # BB7
+//! BB7, the Joe–Clayton copula: Archimedean, generator `(1 − (1 − t)^θ)^{−δ} − 1`, Joe's upper tail
+//! and Clayton's lower.
 //!
 //! $$
 //! C_{\theta,\delta}(u,v)=1-\Bigl(1-\bigl[(1-\bar u^\theta)^{-\delta}+(1-\bar v^\theta)^{-\delta}-1\bigr]^{-1/\delta}
 //! \Bigr)^{1/\theta},\qquad \bar u=1-u,\ \theta\ge1,\ \delta>0
 //! $$
-//!
-//! Joe–Clayton copula: Archimedean, generator $(1-(1-t)^\theta)^{-\delta}-1$, Joe's upper tail and
-//! Clayton's lower; with $a, b, s, T$ below
 //!
 //! $$
 //! a=1-\bar u^\theta,\ b=1-\bar v^\theta,\ s=a^{-\delta}+b^{-\delta}-1,\ T=s^{-1/\delta},
@@ -21,10 +19,9 @@
 //! \bigl[\theta(\delta+1)-(\theta\delta+1)T\bigr].
 //! $$
 //!
-//! References: Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
-//! Chapman & Hall, §5.2 (family BB7); Joe, H. (2014), *Dependence Modeling
-//! with Copulas*, CRC Press, §4.13.2.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Corollary 5.1.4 (Kendall's τ `1 + 4∫₀¹ φ/φ′` of an Archimedean copula).
+//! Reference: Joe, H. (1997), *Multivariate Models and Dependence Concepts*, Chapman & Hall, §5.2 (family BB7), DOI 10.1201/b13150.
+//! Reference: Joe, H. (2014), *Dependence Modeling with Copulas*, CRC Press, §4.13.2, DOI 10.1201/b17116.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Corollary 5.1.4 (Kendall's τ `1 + 4∫₀¹ φ/φ′` of an Archimedean copula), DOI 10.1007/0-387-28678-0.
 
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
@@ -63,8 +60,8 @@ use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 use density::Bb7Density;
 
-/// `ψ(x) − ψ(y)` through `ψ(z) = ψ(z + 1) − 1/z` up past 30, where the asymptotic series of `digamma` holds its digits;
-/// Neumaier's compensated sum keeps the thirty-odd recurrence terms from piling up rounding.
+/// `ψ(x) − ψ(y)` by `ψ(z) = ψ(z + 1) − 1/z` up past 30, where `digamma`'s asymptotic series holds
+/// its digits; a Neumaier sum keeps the thirty-odd terms from piling up rounding.
 fn digamma_difference(mut x: f64, mut y: f64) -> f64 {
   let (mut sum, mut compensation) = (0.0_f64, 0.0_f64);
   let mut add = |v: f64| {
@@ -96,8 +93,8 @@ fn ln_one_minus_exp_from(z: f64, ln_z: f64) -> f64 {
   }
 }
 
-/// `ln φ(z) = ln((1 − e^{−z})/z)` for `z ≥ 0` given `ln z`: its series `−z/2 + z²/24` below `1e-5`, where the
-/// difference of the two logarithms would cancel, and 0 where `z` underflows.
+/// `ln φ(z) = ln((1 − e^{−z})/z)` for `z ≥ 0` given `ln z`: its series `−z/2 + z²/24` below `1e-5`,
+/// where the difference of the two logarithms would cancel, and 0 where `z` underflows.
 fn ln_phi(z: f64, ln_z: f64) -> f64 {
   if z < 1e-5 {
     z * (z / 24.0 - 0.5)
@@ -106,8 +103,8 @@ fn ln_phi(z: f64, ln_z: f64) -> f64 {
   }
 }
 
-/// The expanded h's terms are differences of logarithms that grow with `θ`, `δ` and `|ln v̄|`; below `2⁷` their rounding
-/// stays under `2⁻⁴²` relative.
+/// The expanded h's terms are differences of logarithms that grow with `θ`, `δ` and `|ln v̄|`;
+/// below `2⁷` their rounding stays under `2⁻⁴²` relative.
 const EXPANDED_LIMIT: f64 = 128.0;
 
 #[derive(Debug, Clone)]
@@ -182,8 +179,8 @@ impl Bb7 {
     Bb7Density::new(theta, delta).ln_c(u, v)
   }
 
-  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
-  /// `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
+  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at
+  /// `v = 0` (`δ₀`) and `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       return 1.0;
@@ -203,8 +200,8 @@ impl Bb7 {
       .min_or_nan(1.0)
   }
 
-  /// The four terms of the expanded `ln ∂_v C`, and the `ln s`, `ln T` its range check reads: the one plain kernel,
-  /// summed by `ln_h_interior` and by the Kendall quadrature of `mle_start`.
+  /// The four terms of the expanded `ln ∂_v C`, and the `ln s`, `ln T` its range check reads: the
+  /// one plain kernel, summed by `ln_h_interior` and by the Kendall quadrature of `mle_start`.
   #[inline(always)]
   fn expanded(u: f64, v: f64, theta: f64, delta: f64) -> ([f64; 4], f64, f64) {
     let (_, ln_b, ln_s, ln_t, ln_1mt) = Self::logs(u, v, theta, delta);
@@ -217,8 +214,8 @@ impl Bb7 {
     (terms, ln_s, ln_t)
   }
 
-  /// `ln ∂_v C` on the open square: the expanded terms' sum while `s − 1`, `−ln T` are normal and the terms stay below
-  /// `EXPANDED_LIMIT`, `ln_h_log` past it.
+  /// `ln ∂_v C` on the open square: the expanded terms' sum while `s − 1`, `−ln T` are normal and
+  /// the terms stay below `EXPANDED_LIMIT`, `ln_h_log` past it.
   fn ln_h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (terms, ln_s, ln_t) = Self::expanded(u, v, theta, delta);
     let normal = ln_s >= f64::MIN_POSITIVE && -ln_t >= f64::MIN_POSITIVE;
@@ -228,8 +225,8 @@ impl Bb7 {
     Self::ln_h_log(u, v, theta, delta)
   }
 
-  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h` keeps its digits near 1:
-  /// what `percent_point` inverts.
+  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h`
+  /// keeps its digits near 1: what `percent_point` inverts.
   pub(crate) fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       0.0
@@ -246,8 +243,8 @@ impl Bb7 {
     }
   }
 
-  /// `ln h = −((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q)`, `Q = F(α)/(1 + F(β))`, `F(x) = expm1(δw)`, `w = −ln(1 − x)`,
-  /// `α, β = ū^θ, v̄^θ`, and `R = ln((1 − T)/β) = softplus(ln((b/β)(1 − (1 + Q)^{−1/δ})))` from `T = b(1 + Q)^{−1/δ}`.
+  /// `ln h = −((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q)`, `Q = F(α)/(1 + F(β))`, `F = expm1(δw)`,
+  /// `α, β = ū^θ, v̄^θ`, `R = ln((1 − T)/β)` as a softplus from `T = b(1 + Q)^{−1/δ}`.
   fn ln_h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let ln_delta = delta.ln();
     let (ln_u_bar, ln_v_bar) = ((-u).ln_1p(), (-v).ln_1p());
@@ -257,7 +254,8 @@ impl Bb7 {
     let (z_alpha, z_beta) = (delta * w_alpha, delta * w_beta);
     let ln_z_alpha = ln_delta + ln_w_alpha;
     let w_gap = ln_one_minus_pow_ratio(theta, ln_v_bar, ln_u_bar);
-    // `ln Q = δ(w_α − w_β) + ln(1 − e^{−δw_α})`; with `Q < 1` and a small `δw_α`, the `1/δ` multiplies `Q`, not its log.
+    // `ln Q = δ(w_α − w_β) + ln(1 − e^{−δw_α})`; with `Q < 1` and a small `δw_α`, the `1/δ`
+    // multiplies `Q`, not its log.
     let ln_q = delta * w_gap + ln_one_minus_exp_from(z_alpha, ln_z_alpha);
     let second = if ln_q < 0.0 && z_alpha < 1.0 {
       let q = ln_q.exp();
@@ -268,7 +266,8 @@ impl Bb7 {
     if second == f64::INFINITY {
       return f64::NEG_INFINITY;
     }
-    // `ln(w_α/β)`, from `θ ln(ū/v̄)` where both powers are below `2⁻⁵³`, so the step at `u = v` survives underflow.
+    // `ln(w_α/β)`, from `θ ln(ū/v̄)` where both powers are below `2⁻⁵³`, so the step at `u = v`
+    // survives underflow.
     let lambda = if ln_alpha < -36.7 && ln_beta < -36.7 {
       theta * ln_ratio_complement(u, v) + 0.5 * ln_alpha.exp()
     } else {
@@ -282,16 +281,16 @@ impl Bb7 {
       (ln_l - ln_q, ln_l)
     };
     let ln_z = ln_l - ln_delta;
-    // `ln(w_α/β) + δ(w_α − w_β) + ln φ(δw_α) + ln(L/Q) + ln φ(L/δ) − w_β`, `L = ln(1 + Q)`: past the first, each term
-    // is `≤ 0` where `α < β`, so a small `R`, which `1 − h` and so the upper quantiles hang on, keeps its digits.
+    // `ln(w_α/β) + δ(w_α − w_β) + ln φ(δw_α) + ln(L/Q) + ln φ(L/δ) − w_β`, `L = ln(1 + Q)`: past
+    // the first, each `≤ 0` at `α < β`, so the small `R` the upper quantiles need keeps its digits.
     let x =
       lambda + delta * w_gap + ln_phi(z_alpha, ln_z_alpha) + ln_l_over_q + ln_phi(ln_z.exp(), ln_z)
         - w_beta;
     -(theta - 1.0) / theta * softplus(x) - second
   }
 
-  /// `(w, ln w)` for `w = −ln(1 − x)`, `x = e^{ln x}`: `ln w = ln x + x/2` to rounding below `x = 2⁻⁵³`, where `w` may
-  /// underflow with `x` while its logarithm stays exact.
+  /// `(w, ln w)` for `w = −ln(1 − x)`, `x = e^{ln x}`: `ln w = ln x + x/2` to rounding below
+  /// `x = 2⁻⁵³`, where `w` may underflow with `x` while its logarithm stays exact.
   fn w_of(theta: f64, ln_x_bar: f64, ln_x: f64) -> (f64, f64) {
     let w = -ln_one_minus_pow(theta, ln_x_bar);
     let ln_w = if ln_x < -36.7 {
@@ -302,8 +301,8 @@ impl Bb7 {
     (w, ln_w)
   }
 
-  /// `ln[Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)] = ∫₀^b ψ(1 + s) − ψ(δ + 2 + s) ds` by 12-point Gauss–Legendre, with its mean over
-  /// `[0, b]`, which stays exact at `b = 0`; the pole of `ψ(1 + s)` at `s = −1` keeps `b ≥ −1/2` accurate.
+  /// `ln[Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)] = ∫₀^b ψ(1 + s) − ψ(δ + 2 + s) ds` by 12-point
+  /// Gauss–Legendre, with its mean on `[0, b]`, exact at `b = 0`; accurate for `b ≥ −1/2`.
   fn ln_gamma_ratio(b: f64, delta: f64) -> (f64, f64) {
     static RULE: OnceLock<GaussLegendre> = OnceLock::new();
     let rule = RULE.get_or_init(|| GaussLegendre::new(NonZeroUsize::new(12).expect("12 > 0")));
@@ -315,11 +314,12 @@ impl Bb7 {
     (ell, ell / b)
   }
 
-  /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps, `1` when `τ(1) ≥ tau`.
+  /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps,
+  /// `1` when `τ(1) ≥ tau`.
   fn mle_start(&self, tau: f64) -> f64 {
     let delta = self.delta;
-    // For `1 ≤ θ ≤ 60` and `1e-147 ≤ δ ≤ 100` every node keeps `ln s` normal and each exponential below `e^617`, so the
-    // plain kernel needs no check there; `h_scalar` carries `δ` outside.
+    // For `1 ≤ θ ≤ 60` and `1e-147 ≤ δ ≤ 100` every node keeps `ln s` normal and each exponential
+    // below `e^617`, so the plain kernel needs no check there; `h_scalar` carries `δ` outside.
     let kendall_tau = |theta: f64| {
       if (1e-147..=100.0).contains(&delta) {
         kendall_tau_numeric(
@@ -360,8 +360,8 @@ impl Bb7 {
     })
   }
 
-  /// `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1` as `expm1(−δ ln(1 − (1 − t)^θ))` from `ln_1p(−t)`, exact where `δ` is small or
-  /// `(1 − t)^θ` underflows.
+  /// `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1` as `expm1(−δ ln(1 − (1 − t)^θ))` from `ln_1p(−t)`, exact
+  /// where `δ` is small or `(1 − t)^θ` underflows.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|t| (-delta * ln_one_minus_pow(theta, (-t).ln_1p())).exp_m1()))
@@ -369,8 +369,8 @@ impl Bb7 {
 }
 
 impl Bb7 {
-  /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
-  /// pseudo-observations; a `τ̂` outside BB7's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
+  /// Maximum-likelihood `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine
+  /// fitter; a `τ̂` outside `(0, 1)` or a `try_new` rejection is an error, storing nothing.
   pub(crate) fn fit_parameters(
     &mut self,
     u: ArrayView1<f64>,
@@ -472,8 +472,8 @@ impl BivariateExt for Bb7 {
     Some(self.unchecked_inverse(y, conditioning))
   }
 
-  /// `τ = 1 + 4[R(b) − 1/(1 + b)]/(θ²δb)`, `b = 2/θ − 1`, `R(b) = Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)`: Cor. 5.1.4's Beta form
-  /// `1 − 2/(δ(2 − θ)) + 4B(δ + 2, b)/(θ²δ)` without its pole at `θ = 2`; 1 above `θ = 1e100`, where `τ` rounds to it.
+  /// `τ = 1 + 4[R(b) − 1/(1 + b)]/(θ²δb)`, `b = 2/θ − 1`, `R(b) = Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)`:
+  /// Cor. 5.1.4's Beta form without its pole at `θ = 2`; 1 above `θ = 1e100`, as `τ` rounds.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     if theta > 1e100 {
       return 1.0;

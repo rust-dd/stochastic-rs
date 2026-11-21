@@ -1,12 +1,10 @@
-//! # Gaussian (univariate margin)
+//! Gaussian margin: [`GaussianUnivariate::fit`] takes `(mean, std)` from a column, `cdf` maps raw
+//! values onto `[0, 1]` for a copula `fit`, extrapolating, unlike [`crate::empirical`].
 //!
 //! $$
 //! F(x) = \Phi\!\left(\frac{x - \mu}{\sigma}\right), \qquad (\mu, \sigma)
 //! \text{ fit from data}
 //! $$
-//!
-//! [`GaussianUnivariate::fit`] estimates `(mean, std)` from a column and `cdf` maps raw values onto
-//! `[0, 1]`, as a copula `fit` expects; unlike [`crate::empirical`] it extrapolates smoothly.
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
@@ -49,8 +47,8 @@ impl GaussianUnivariate {
     Self { mu, sigma }
   }
 
-  /// Sample mean and (n − 1) standard deviation of `column`; `InsufficientData` below two values, `InvalidStructure`
-  /// for a constant or non-finite column.
+  /// Sample mean and (n − 1) standard deviation of `column`; `InsufficientData` below two values,
+  /// `InvalidStructure` for a constant or non-finite column.
   pub fn fit(column: ArrayView1<f64>) -> Result<Self, CopulaError> {
     let n = column.len();
     if n < 2 {
@@ -127,8 +125,8 @@ mod tests {
     assert!((g.percent_point(0.5) - 3.0).abs() < 1e-12);
   }
 
-  /// Two Gaussian columns through `fit` + `cdf` pass `check_marginal`'s uniformity diagnostic and fit a copula that
-  /// reaches both signs of τ, as the independent draws need.
+  /// Two Gaussian columns through `fit` + `cdf` pass `check_marginal`'s uniformity diagnostic and
+  /// fit a copula that reaches both signs of τ, as the independent draws need.
   #[test]
   fn gaussian_univariate_output_feeds_a_real_bivariate_copula() {
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));

@@ -1,16 +1,12 @@
-//! # Bivariate Gaussian copula
+//! Bivariate Gaussian copula: `Φ₂` is the bivariate normal cdf of correlation `ρ`, `Φ⁻¹` the normal
+//! quantile; `τ = (2/π) arcsin ρ` inverts in closed form, `λ_L = λ_U = 0`.
 //!
 //! $$
 //! C_\rho(u,v) = \Phi_2\big(\Phi^{-1}(u), \Phi^{-1}(v); \rho\big), \qquad \rho \in (-1, 1),
 //! $$
-//! $\Phi_2$ is the bivariate normal cdf of correlation $\rho$ and $\Phi^{-1}$ the normal quantile;
-//! $\tau = \tfrac{2}{\pi}\arcsin\rho$ inverts in closed form, and $\lambda_L = \lambda_U = 0$.
 //!
-//! Reference: Kruskal, W.H. (1958), "Ordinal Measures of Association", *JASA* 53(284), 814-861.
-//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
-//! "Modelling Dependence with Copulas and Applications to Risk
-//! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
-//! Elsevier, ch. 8.
+//! Reference: Kruskal, W.H. (1958), "Ordinal Measures of Association", *JASA* 53(284), 814-861, DOI 10.1080/01621459.1958.10501481.
+//! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003), "Modelling Dependence with Copulas and Applications to Risk Management", in *Handbook of Heavy Tailed Distributions in Finance*, Elsevier, ch. 8, DOI 10.1016/B978-044450896-6.50010-8.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -62,8 +58,8 @@ impl GaussianCopula {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, past the rounding bound below `x − ρy = (x − y) + (1 − ρ)y` from the exact gap (and
-  /// `(x + y) − (1 + ρ)y` at `ρ < 0`); at `v ∈ {0, 1}` the limit law, a point mass at 0 or 1 by the sign of `ρ`.
+  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` as `(x − y) + (1 − ρ)y` from the exact gap below its
+  /// rounding bound (`(x + y) − (1 + ρ)y` at `ρ < 0`); a point mass at `v ∈ {0, 1}`.
   pub(crate) fn h(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
     move |u, v| {
@@ -75,7 +71,8 @@ impl GaussianCopula {
       }
       let (x, y) = (ndtri(u), ndtri(v));
       let z = (x - rho * y) / s;
-      // `x − ρy` rounds by `ε(|x| + |y|)`, which `1/s` and Φ's relative slope `|z| + 1` amplify: past `150ε`, the gap.
+      // `x − ρy` rounds by `ε(|x| + |y|)`, which `1/s` and Φ's relative slope `|z| + 1` amplify:
+      // past `150ε`, the gap.
       if !z.is_finite() || (x.abs() + y.abs()) * (z.abs() + 1.0) <= 150.0 * s {
         return norm_cdf(z);
       }
@@ -93,7 +90,8 @@ impl GaussianCopula {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
     move |y, v| {
       let z = ndtri(y) * s + rho * ndtri(v);
-      // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts `h(· | v)`'s mass at 0.
+      // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts
+      // `h(· | v)`'s mass at 0.
       if z.is_nan() { 0.0 } else { norm_cdf(z) }
     }
   }
@@ -113,22 +111,23 @@ impl GaussianCopula {
   }
 }
 
-/// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the open square, the bivariate cdf of both Gaussian copulas, the Fréchet bounds
-/// holding the integral's rounding.
+/// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the open square, the bivariate cdf of both Gaussian
+/// copulas, the Fréchet bounds holding the integral's rounding.
 pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
   if rho == 0.0 {
     return u * v;
   }
   let (x, y) = (ndtri(u), ndtri(v));
-  // The integral reads `x + y` only at `ρ < 0`, at its end `(x + y)/α`, whose error it amplifies `end²`-fold up to `38`.
+  // The integral reads `x + y` only at `ρ < 0`, at its end `(x + y)/α`, whose error it amplifies
+  // `end²`-fold up to `38`.
   let reach = 38.0 * (2.0 * (1.0 - rho.abs())).sqrt();
   bivariate_normal_cdf(x, y, rho, || GaussianCopula::sum(u, v, x, y, reach))
     .clamp(sum_minus_one(u, v).max(0.0), u.min(v))
 }
 
 impl GaussianCopula {
-  /// `x + y` (`x, y = Φ⁻¹(u), Φ⁻¹(v)`) by `quantile_gap` from the exact gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`, and
-  /// below `reach` for levels in opposite halves or a `g` whose rounding over `φ` at the larger level beats `ε(|x| + |y|)`.
+  /// `x + y` by `quantile_gap` from the exact gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`, and
+  /// below `reach` for opposite halves or a `g` whose rounding over `φ` beats `ε(|x| + |y|)`.
   fn sum(u: f64, v: f64, x: f64, y: f64, reach: f64) -> f64 {
     let admit = |plain: f64, gap: f64, _, other: f64| {
       plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0)
@@ -140,8 +139,8 @@ impl GaussianCopula {
     level_sum((u, v, x, y), admit, quantile_gap)
   }
 
-  /// `x − y` by `quantile_gap` from the exact gap, anchored at the level farther from 1/2, wherever the gap's rounding
-  /// over `φ` at the nearer level stays below the quantiles' own `ε(|x| + |y|)`; the plain difference elsewhere.
+  /// `x − y` by `quantile_gap` from the exact gap, anchored at the level farther from 1/2, where
+  /// the gap's rounding over `φ` at the other stays below `ε(|x| + |y|)`; else plain.
   fn difference(u: f64, v: f64, x: f64, y: f64) -> f64 {
     let threshold = |_, partner: f64| {
       (x.abs() + y.abs()).ln() - 0.5 * partner * partner - 0.5 * std::f64::consts::TAU.ln()
@@ -149,8 +148,8 @@ impl GaussianCopula {
     level_difference((u, v, x, y), threshold, quantile_gap)
   }
 
-  /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
-  /// `ρ`, within `1e-12·max(1, |ln c|)`: `d` from the exact gap wherever its plain rounding would reach past `150ε` of that.
+  /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`,
+  /// `d = x ∓ y` by `ρ`'s sign, from the exact gap where its plain rounding would pass `150ε`.
   pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
     let (x, y) = (ndtri(u), ndtri(v));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
@@ -209,15 +208,16 @@ impl BivariateExt for GaussianCopula {
     on_open_square(x, |u, v| Self::ln_density(rho, u, v))
   }
 
-  /// `gaussian_copula_cdf`: to a relative `1e-12` at every admitted ρ and in both tails, exact on the edges.
+  /// `gaussian_copula_cdf`: to a relative `1e-12` at every admitted ρ and in both tails, exact on
+  /// the edges.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     copula_cdf(x, |u, v| gaussian_copula_cdf(u, v, rho))
   }
 
-  /// `GaussianCopula::h`: $\Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, inside,
-  /// and the point mass at 0 or 1 that `ρ`'s sign sends `u` to at `v ∈ {0, 1}`.
+  /// `GaussianCopula::h`: `Φ((x − ρy)/√(1 − ρ²))`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`, inside, and the point
+  /// mass at 0 or 1 that `ρ`'s sign sends `u` to at `v ∈ {0, 1}`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_cdf(x, Self::h(self.theta.unwrap()))
@@ -252,7 +252,7 @@ impl BivariateExt for GaussianCopula {
   }
 
   /// Asymptotic independence: $\lambda_L = \lambda_U = 0$ for every $\rho$, unlike the t copula.
-  /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
+  /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2, DOI 10.1016/B978-044450896-6.50010-8.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {
@@ -273,8 +273,8 @@ mod tests {
     (a - b).abs() <= tol
   }
 
-  /// The countermonotone window off the grid, `ρ` within `1e-4` of `−1`, a level near 0 against one near 1: within `1e-12`
-  /// of a fixed 96- and 192-node composite Gauss–Legendre rule at 60 digits, agreeing to `2e-58`.
+  /// The countermonotone window off the grid, `ρ` within `1e-4` of `−1`, levels near 0 and near 1:
+  /// within `1e-12` of 96- and 192-node Gauss–Legendre at 60 digits (agreeing to `2e-58`).
   #[test]
   fn the_countermonotone_window_holds_off_the_grid() {
     let cells = [
@@ -366,8 +366,8 @@ mod tests {
     }
   }
 
-  /// Both levels in one tail at `ρ < 0`, where the exact gap's solve would divide its rounding by a small `φ(y)`: within
-  /// `1e-12` of Owen's form in mpmath at `|log₁₀ C| + 45` digits.
+  /// Both levels in one tail at `ρ < 0`, where the exact gap's solve would divide its rounding by a
+  /// small `φ(y)`: within `1e-12` of Owen's form in mpmath at `|log₁₀ C| + 45` digits.
   #[test]
   fn both_levels_in_one_tail_keep_the_plain_sum() {
     for (rho, u, v, want) in [
@@ -491,8 +491,8 @@ mod tests {
     assert!(c.generator(t.view()).is_err());
   }
 
-  /// At `v ∈ {0, 1}` `h` is the limit law: a point mass at 0 where `ρ` and the edge agree in sign and at 1 otherwise,
-  /// counted at 0, with `h(1 | ·) = 1` and the identity at `ρ = 0`.
+  /// At `v ∈ {0, 1}` `h` is the limit law: a point mass at 0 where `ρ` and the edge agree in sign
+  /// and at 1 otherwise, counted at 0, with `h(1 | ·) = 1` and the identity at `ρ = 0`.
   #[test]
   fn gaussian_h_at_the_v_edges_is_the_limit_law() {
     let x = array![

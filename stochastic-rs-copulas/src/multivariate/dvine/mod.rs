@@ -1,5 +1,5 @@
-//! D-vine: tree $T_j$ joins $i$ and $i+j$ given $i+1, \dots, i+j-1$; sampled by Aas et al. (2009) Algorithm 2 and evaluated by its
-//! Algorithm 4 (density (8)) with the printed 1-based indices, taking an edge's ends in either order: exact, as every pair is exchangeable.
+//! D-vine: tree `T_j` joins `i` and `i + j` given `i + 1, …, i + j − 1`; Aas et al. (2009)
+//! Algorithm 2 samples it, Algorithm 4 evaluates it, an edge's ends in either order.
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487).
 
 use ndarray::Array1;
@@ -39,8 +39,8 @@ pub struct DVine {
 }
 
 impl DVine {
-  /// A D-vine on `dim` margins from its `dim − 1` trees, tree `m` holding `dim − 1 − m` pairs: `InvalidStructure` for any
-  /// other shape, and a pair's bivariate `InvalidParameter` for parameters outside its family's domain.
+  /// A D-vine on `dim` margins from its `dim − 1` trees, tree `m` holding `dim − 1 − m` pairs:
+  /// `InvalidStructure` for another shape, a pair's `InvalidParameter` outside its family's domain.
   pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -72,7 +72,8 @@ impl DVine {
     })
   }
 
-  /// Which data column each vine variable reads; panics unless `order` is a permutation of `0..dim`.
+  /// Which data column each vine variable reads; panics unless `order` is a permutation of
+  /// `0..dim`.
   pub fn with_order(mut self, order: Vec<usize>) -> Self {
     self.order = VineOrder::new(order, self.dim);
     self
@@ -119,7 +120,8 @@ impl DVine {
     out
   }
 
-  /// Log-density of one observation by Aas et al. (2009) Algorithm 4, `v[j][i]` holding $v_{j,i}$ (row 0 is the data).
+  /// Log-density of one observation by Aas et al. (2009) Algorithm 4, `v[j][i]` holding $v_{j,i}$
+  /// (row 0 is the data).
   fn log_density_one(&self, x: ArrayView1<f64>, v: &mut [Vec<f64>]) -> f64 {
     let n = self.dim;
     let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
@@ -175,7 +177,8 @@ impl MultivariateExt for DVine {
     Ok(self.order.to_data(self.sample_with(n, &mut seed.rng())))
   }
 
-  /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the candidates and the criterion.
+  /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the
+  /// candidates and the criterion.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let (vine, _) = fit_dvine(x, BivariateFamily::VINE_CANDIDATES, SelectionCriterion::Aic)?;
     *self = vine;
@@ -202,8 +205,8 @@ impl MultivariateExt for DVine {
     Ok(on_open_cube(uv, self.log_density_rows(x.view())))
   }
 
-  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero
-  /// coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
+  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096
+  /// Sobol points; a zero coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
     Ok(rosenblatt::cdf(self, self.order.to_vine(x).view()))
@@ -215,7 +218,8 @@ impl Rosenblatt for DVine {
     vec![vec![0.0; 2 * self.dim]; self.dim + 1]
   }
 
-  /// Aas et al. (2009) Algorithm 2 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
+  /// Aas et al. (2009) Algorithm 2 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$
+  /// in `v[i][1]`.
   fn walk(&self, v: &mut [Vec<f64>], mut target: impl FnMut(usize, &[Vec<f64>]) -> Option<f64>) {
     let n = self.dim;
     let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
@@ -253,8 +257,8 @@ impl Rosenblatt for DVine {
     }
   }
 
-  /// Algorithm 2's inversion loop run forward, `h` in place of `h⁻¹`: tree 1 given $v_{i-1,1}$, tree `k` given
-  /// $v_{i-1,2k-2}$.
+  /// Algorithm 2's inversion loop run forward, `h` in place of `h⁻¹`: tree 1 given $v_{i-1,1}$,
+  /// tree `k` given $v_{i-1,2k-2}$.
   fn conditional_cdf(&self, i: usize, u: f64, v: &[Vec<f64>]) -> f64 {
     if i == 1 {
       return u;
@@ -367,7 +371,8 @@ mod tests {
     assert!(DVine::new(1, bad3).is_err());
   }
 
-  /// `fit` learns the Dißmann order and families; the fitted vine evaluates and samples in the data's column order.
+  /// `fit` learns the Dißmann order and families; the fitted vine evaluates and samples in the
+  /// data's column order.
   #[test]
   fn dvine_fit_learns_structure_and_families_in_data_order() {
     use crate::correlation::kendall_tau;
@@ -390,7 +395,8 @@ mod tests {
     let mut fitted = DVine::independence(4).unwrap();
     fitted.fit(u.view()).unwrap();
     let position = |j: usize| fitted.order().iter().position(|&c| c == j).unwrap();
-    // data columns (1, 3), (3, 0), (0, 2) are the strong edges: they must be neighbours in the fitted order
+    // data columns (1, 3), (3, 0), (0, 2) are the strong edges: they must be neighbours in the
+    // fitted order
     for (a, b) in [(1, 3), (3, 0), (0, 2)] {
       assert_eq!(
         position(a).abs_diff(position(b)),
@@ -432,7 +438,8 @@ mod tests {
     let _ = DVine::independence(3).unwrap().with_order(vec![0, 0, 2]);
   }
 
-  /// Aas et al. (2009) Eq. (10), c₁₂ · c₂₃ · c₁₃|₂, from the bivariate copulas' own densities and h-functions.
+  /// Aas et al. (2009) Eq. (10), c₁₂ · c₂₃ · c₁₃|₂, from the bivariate copulas' own densities and
+  /// h-functions.
   #[test]
   fn dvine_density_is_the_three_pair_product() {
     let tree = vec![
@@ -465,7 +472,8 @@ mod tests {
     }
   }
 
-  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 2's inversion run backwards.
+  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 2's inversion
+  /// run backwards.
   #[test]
   fn the_conditional_cdf_inverts_the_walk() {
     let trees = vec![

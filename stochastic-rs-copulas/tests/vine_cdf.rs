@@ -1,5 +1,5 @@
-//! The vine cdfs are Genz's separation of variables through the Rosenblatt map their samplers walk: deterministic, about
-//! ten times their measured error from the bivariate closed forms and Joe's mixing integrals, exact at independence.
+//! The vine cdfs, Genz's separation of variables through the samplers' Rosenblatt map:
+//! deterministic, within ten times their error of the closed forms and Joe's integrals.
 //! Reference: Joe, H. (1996), "Families of m-variate distributions with given margins and m(m−1)/2 bivariate dependence parameters", IMS Lecture Notes – Monograph Series 28, 120–141, DOI 10.1214/lnms/1215452614 (eqs. (2.1), (2.2))
 
 use ndarray::Array1;
@@ -22,7 +22,8 @@ type Pins3 = &'static [([f64; 3], f64)];
 
 type Pins4 = &'static [([f64; 4], f64)];
 
-/// The largest error over the grids the bands come from, the four-dimensional D-vine's at `(0.75, 0.95, 0.95, 0.05)`.
+/// The largest error over the grids the bands come from, the four-dimensional D-vine's at
+/// `(0.75, 0.95, 0.95, 0.05)`.
 const ENVELOPE: f64 = 2.0e-4;
 
 fn moderate() -> Vec<Vec<PairCopula>> {
@@ -56,7 +57,8 @@ fn strong() -> Vec<Vec<PairCopula>> {
   ]
 }
 
-/// The conditioning pair of Joe's double integral (tree 1's middle edge of the D-vine, its first of the C-vine) is Frank.
+/// The conditioning pair of Joe's double integral (tree 1's middle edge of the D-vine, its first of
+/// the C-vine) is Frank.
 fn four(structure: char) -> Vec<Vec<PairCopula>> {
   let (gaussian, frank) = (
     PairCopula::Gaussian { rho: 0.6 },
@@ -77,7 +79,8 @@ fn four(structure: char) -> Vec<Vec<PairCopula>> {
   ]
 }
 
-/// `(u, C)` by Joe's eq. (2.1) in mpmath at 36 digits; the three-dimensional C-vine is the D-vine `2–1–3`.
+/// `(u, C)` by Joe's eq. (2.1) in mpmath at 36 digits; the three-dimensional C-vine is the D-vine
+/// `2–1–3`.
 const MODERATE_D: Pins3 = &[
   ([0.3, 0.6, 0.8], 0.22790327199148247),
   ([0.1, 0.5, 0.9], 0.0771401779758453),
@@ -156,7 +159,8 @@ const STRONG_C: Pins3 = &[
   ([0.75, 0.7, 0.8], 0.6642267981711698),
 ];
 
-/// `(u, C)` by Joe's eq. (2.2), nested mpmath quadrature at 20 digits, matching scipy's `dblquad` to `1e-14`.
+/// `(u, C)` by Joe's eq. (2.2), nested mpmath quadrature at 20 digits, matching scipy's `dblquad`
+/// to `1e-14`.
 const FOUR_D: Pins4 = &[
   ([0.3, 0.6, 0.8, 0.5], 0.2241393760058356),
   ([0.9, 0.2, 0.45, 0.7], 0.1523641814194358),
@@ -199,8 +203,8 @@ fn sweep(base: &[f64], j: usize, from: f64, to: f64, n: usize) -> Array2<f64> {
   })
 }
 
-/// At `d = 2` the rule is the one-dimensional midpoint rule; each band is about ten times the family's largest error on a
-/// 55 × 55 grid that reaches `1e-6` from either end, and holds the margins `C(1, v) = v` and `C(u, 1) = u` too.
+/// At `d = 2` the rule is the 1-D midpoint rule; each band is ten times the largest error on a 55 ×
+/// 55 grid reaching `1e-6` of either end, margins `C(1, v) = v`, `C(u, 1) = u` too.
 #[test]
 fn two_dimensional_vines_match_the_bivariate_closed_forms() {
   let levels = [0.02, 0.25, 0.5, 0.75, 0.98];
@@ -262,8 +266,8 @@ fn two_dimensional_vines_match_the_bivariate_closed_forms() {
   );
 }
 
-/// Each band is about ten times the largest error over the pins and the grid of levels `{0.02, 0.05, 0.1, 0.25, 0.4, 0.5,
-/// 0.6, 0.75, 0.9, 0.95, 0.98}` against Joe's integral in double precision: `5.75e-5`, `5.17e-5` and `1.87e-4`.
+/// Each band, `5.75e-5`, `5.17e-5` and `1.87e-4`, is ten times the largest error against Joe's
+/// integral over pins and levels `{0.02, 0.05, 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 0.95, 0.98}`.
 #[test]
 fn three_dimensional_vines_match_joes_integral() {
   for (label, trees, dvine, cvine, band) in [
@@ -278,7 +282,8 @@ fn three_dimensional_vines_match_joes_integral() {
   }
 }
 
-/// The band is about ten times the largest error over the 625-point grid `{0.05, 0.25, 0.5, 0.75, 0.95}⁴`, `1.98e-4`.
+/// The band is about ten times the largest error over the 625-point grid
+/// `{0.05, 0.25, 0.5, 0.75, 0.95}⁴`, `1.98e-4`.
 #[test]
 fn four_dimensional_vines_match_joes_double_integral() {
   let band = 2.0e-3;
@@ -293,7 +298,8 @@ fn four_dimensional_vines_match_joes_double_integral() {
   );
 }
 
-/// Every `e_i` is `u_i` at independence and the point count is a power of two, so the mean is the product itself.
+/// Every `e_i` is `u_i` at independence and the point count is a power of two, so the mean is the
+/// product itself.
 #[test]
 fn independence_vines_give_the_product_exactly() {
   let u3 = array![[0.2, 0.4, 0.7], [0.5, 0.5, 0.5], [0.9, 0.3, 0.6]];
@@ -313,8 +319,8 @@ fn independence_vines_give_the_product_exactly() {
   }
 }
 
-/// A zero coordinate gives 0 and the unit corner 1; a 1 at the vine's last variable in vine order leaves the vine of
-/// the first two bit for bit, a 1 elsewhere their copula within the envelope; outside `[0, 1]` is `MarginalOutOfRange`.
+/// A zero coordinate gives 0, the unit corner 1; a 1 at the last variable in vine order leaves the
+/// first two's vine bit for bit, elsewhere their copula within the envelope; off `[0, 1]` errs.
 #[test]
 fn zero_and_unit_coordinates() {
   let trees = moderate();
@@ -363,8 +369,8 @@ fn zero_and_unit_coordinates() {
   }
 }
 
-/// Swept along every coordinate, and on a grid at `d = 4`, the values never step back or leave the Fréchet bounds by
-/// more than the envelope.
+/// Swept along every coordinate, and on a grid at `d = 4`, the values never step back or leave the
+/// Fréchet bounds by more than the envelope.
 #[test]
 fn cdfs_are_monotone_and_within_the_frechet_bounds() {
   let mut evaluated = Vec::new();

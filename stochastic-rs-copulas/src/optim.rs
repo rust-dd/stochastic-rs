@@ -5,11 +5,12 @@
 
 use stochastic_rs_distributions::RealExt;
 
-/// Brent's `√macheps`, the `eps` he recommends for `localmin`: a smooth minimum is located to that relative precision only.
+/// Brent's `√macheps`, the `eps` he recommends for `localmin`: a smooth minimum is located to that
+/// relative precision only.
 pub(crate) const SQRT_MACHEPS: f64 = 1.053_671_212_772_350_9e-8;
 
-/// Brent's `localmin` with the author's errata: a minimum of `f` on `(a, b)`, never evaluated at `a` or `b`, within `3 tol`,
-/// `tol = eps |x| + t`, when `f` is δ-unimodal for a `δ < tol` (`eps ≥ 2 macheps`, `t > 0`); returns `(x, f(x))`.
+/// Brent's `localmin` with the author's errata: `(x, f(x))` at a minimum of `f` on `(a, b)`, never
+/// evaluated at `a` or `b`, within `3 tol`, `tol = eps |x| + t`, for a δ-unimodal `f`, `δ < tol`.
 pub(crate) fn localmin(
   a: f64,
   b: f64,
@@ -43,7 +44,8 @@ pub(crate) fn localmin(
         r = e;
         e = d;
       }
-      // Brent's errata correct the printed `p < q × (a − x)` to `p > q × (a − x)`, as his FORTRAN has it.
+      // Brent's errata correct the printed `p < q × (a − x)` to `p > q × (a − x)`, as his FORTRAN
+      // has it.
       if p.abs() < (0.5 * q * r).abs() && p > q * (a - x) && p < q * (b - x) {
         d = p / q;
         let u = x + d;
@@ -213,7 +215,8 @@ mod tests {
     assert_eq!(SQRT_MACHEPS, MACHEPS.sqrt());
   }
 
-  /// Parabolic interpolation lands on a parabola's vertex at once; with the printed `p < q × (a − x)` it took 39 evaluations.
+  /// Parabolic interpolation lands on a parabola's vertex at once; with the printed
+  /// `p < q × (a − x)` it took 39 evaluations.
   #[test]
   fn localmin_steps_onto_a_parabolas_vertex() {
     let mut evaluations = 0;
@@ -225,7 +228,8 @@ mod tests {
     assert!(evaluations <= 6, "{evaluations} evaluations");
   }
 
-  /// `x³ − 2x − 5` has its minimum at `√(2/3)` on `(0, 1)`, which `localmin` finds within `3 tol` (Brent ch. 5, §4).
+  /// `x³ − 2x − 5` has its minimum at `√(2/3)` on `(0, 1)`, which `localmin` finds within `3 tol`
+  /// (Brent ch. 5, §4).
   #[test]
   fn localmin_finds_an_interior_minimum_within_three_tolerances() {
     let t = 1e-10;
@@ -234,7 +238,8 @@ mod tests {
     assert!((x - (2.0_f64 / 3.0).sqrt()).abs() <= 3.0 * tol, "{x}");
   }
 
-  /// A minimum at an end is approached from inside, to within `2 tol`, and `f` is never evaluated at either end.
+  /// A minimum at an end is approached from inside, to within `2 tol`, and `f` is never evaluated
+  /// at either end.
   #[test]
   fn localmin_stays_inside_its_interval() {
     let t = 1e-6;

@@ -1,4 +1,5 @@
-//! Every input is an `ArrayView`: a strided column pair of a wider matrix reads exactly like its dense copy.
+//! Every input is an `ArrayView`: a strided column pair of a wider matrix reads exactly like its
+//! dense copy.
 
 use ndarray::Array2;
 use ndarray::s;

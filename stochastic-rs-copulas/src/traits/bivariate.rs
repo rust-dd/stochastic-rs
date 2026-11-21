@@ -25,16 +25,16 @@ use crate::bivariate::conditional::inside;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 
-/// Upper- and lower-tail dependence $\lambda_L = \lim_{u\to0^+} C(u,u)/u$ and
-/// $\lambda_U = \lim_{u\to1^-} (1 - 2u + C(u,u))/(1 - u)$; every [`BivariateExt`] impl in this crate is `f64`-based.
+/// Upper- and lower-tail dependence; every [`BivariateExt`] impl in this crate is `f64`-based.
+/// $$\lambda_L = \lim_{u\to0^+} \frac{C(u,u)}{u},\qquad \lambda_U = \lim_{u\to1^-} \frac{1 - 2u + C(u,u)}{1 - u}$$
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TailDependence<T> {
   pub lower: T,
   pub upper: T,
 }
 
-/// Every batch method, `generator` too, answers `DimensionMismatch` off two columns, then `MarginalOutOfRange` outside
-/// `[0, 1]` or for NaN; densities are NaN on the edges, and `fit` answers `MarginalOnBoundary` for a 0 or 1.
+/// Every batch method answers `DimensionMismatch` off two columns, then `MarginalOutOfRange` off
+/// `[0, 1]` or at NaN; densities are NaN on the edges, `fit` `MarginalOnBoundary` at 0 or 1.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
@@ -48,7 +48,8 @@ pub trait BivariateExt {
 
   fn invalid_thetas(&self) -> Vec<f64>;
 
-  /// A finite `theta` inside the family's bounds and off its exclusions: the one check every entry point runs.
+  /// A finite `theta` inside the family's bounds and off its exclusions: the one check every entry
+  /// point runs.
   fn validate_theta(&self, theta: f64) -> Result<(), CopulaError> {
     let (lower, upper) = self.theta_bounds();
     let invalid = self.invalid_thetas();
@@ -78,8 +79,8 @@ pub trait BivariateExt {
   /// Kendall's τ of the family at `theta`: a closed form, or quadrature where there is none.
   fn tau_from_theta(&self, theta: f64) -> f64;
 
-  /// The `theta` whose Kendall's τ is `tau`, always one `validate_theta` admits; `InvalidParameter { name: "tau", .. }`
-  /// outside the reachable range.
+  /// The `theta` whose Kendall's τ is `tau`, always one `validate_theta` admits;
+  /// `InvalidParameter { name: "tau", .. }` outside the reachable range.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;
 
   /// Kendall's τ implied by the current `theta`.
@@ -87,12 +88,12 @@ pub trait BivariateExt {
     self.theta().map(|theta| self.tau_from_theta(theta))
   }
 
-  /// Upper and lower tail-dependence coefficients at the current parameters; `NotFitted` before they are set,
-  /// `InvalidParameter` outside the family's range.
+  /// Upper and lower tail-dependence coefficients at the current parameters; `NotFitted` before
+  /// they are set, `InvalidParameter` outside the family's range.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 
-  /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$: `MarginalOutOfRange` outside
-  /// `[0, 1]` or for NaN, then the family's own, or `Unsupported`, named by `family()`, for a family with none.
+  /// Archimedean generator $\varphi$ of $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$:
+  /// `MarginalOutOfRange` off `[0, 1]` or at NaN, else the family's own or `Unsupported`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     check_unit(t)?;
     self.generator_unchecked(t).unwrap_or_else(|| {
@@ -109,8 +110,8 @@ pub trait BivariateExt {
     None
   }
 
-  /// `n` pairs by conditional inversion from `seed`, each coordinate in `(0, 1)` (one rounded to 0 or 1 moves one ulp
-  /// inside): a fresh `Deterministic` replays them, a shared one advances; generic, so not on a `dyn BivariateExt`.
+  /// `n` pairs from `seed` by conditional inversion, inside `(0, 1)`; a fresh `Deterministic`
+  /// replays them, a shared one advances; generic, so not on `dyn`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where
     Self: Sized,
@@ -131,7 +132,8 @@ pub trait BivariateExt {
     ud.fill_slice(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);
     ud.fill_slice(c.as_slice_mut().unwrap());
-    // The uniforms are its own, in `[0, 1]` and of equal length: nothing for a family's own inverse to check again.
+    // The uniforms are its own, in `[0, 1]` and of equal length: nothing for a family's own inverse
+    // to check again.
     let mut u = match self.percent_point_unchecked(c.view(), v.view()) {
       Some(u) => u?,
       None => self.percent_point(c.view(), v.view())?,
@@ -142,8 +144,8 @@ pub trait BivariateExt {
     Ok(stack![Axis(1), u, v])
   }
 
-  /// Kendall's τ-b of a two-column sample of pseudo-observations, inverted through `theta_from_tau`; nothing is stored
-  /// when the family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
+  /// Kendall's τ-b of two pseudo-observation columns inverted through `theta_from_tau`, storing
+  /// nothing when the family cannot represent it (`InvalidParameter`) or `validate_theta` fails.
   fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
     check_open(x)?;
@@ -154,7 +156,8 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  /// Sampling, evaluation and `tail_dependence` gate on this, so an override must validate the parameters it holds.
+  /// Sampling, evaluation and `tail_dependence` gate on this, so an override must validate the
+  /// parameters it holds.
   fn check_fit(&self) -> Result<(), CopulaError> {
     if self.theta().is_none() {
       return Err(CopulaError::NotFitted);
@@ -164,8 +167,8 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  /// Kolmogorov–Smirnov uniformity test of one margin at the bound `1.627/√n` (nominally 1 %), so a valid sample fails it
-  /// by chance: a diagnostic, which `fit` does not run.
+  /// Kolmogorov–Smirnov uniformity test of one margin at the bound `1.627/√n` (nominally 1 %), so a
+  /// valid sample fails it by chance: a diagnostic, which `fit` does not run.
   fn check_marginal(&self, u: ArrayView1<f64>) -> Result<(), CopulaError> {
     check_unit(u)?;
 
@@ -190,8 +193,8 @@ pub trait BivariateExt {
 
   fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`, its parameters and inputs checked once;
-  /// `percent_point_numerical` by default, which a family with its own inverse overrides.
+  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`, its parameters and inputs checked
+  /// once; `percent_point_numerical` by default, which a family with its own inverse overrides.
   #[doc(alias = "ppf")]
   fn percent_point(
     &self,
@@ -201,8 +204,8 @@ pub trait BivariateExt {
     self.percent_point_numerical(y, v)
   }
 
-  /// A family's own inverse on inputs already checked, as the sampler's uniforms are; `None` by default, so the sampler
-  /// takes `percent_point` and an override of `percent_point` that calls this cannot recurse.
+  /// A family's own inverse on checked inputs, as the sampler's uniforms are; `None` by default, so
+  /// the sampler takes `percent_point`, and an override calling this cannot recurse.
   #[doc(hidden)]
   fn percent_point_unchecked(
     &self,
@@ -212,8 +215,8 @@ pub trait BivariateExt {
     None
   }
 
-  /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
-  /// `[0, 1]`, on `[0, 1]`, saturating at its ends; `Err` for a NaN `partial_derivative` or its error.
+  /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` on `[0, 1]` of
+  /// `partial_derivative` clamped to `[0, 1]`, saturating at the ends; `Err` for its NaN or error.
   fn percent_point_numerical(
     &self,
     y: ArrayView1<f64>,
@@ -225,8 +228,8 @@ pub trait BivariateExt {
     numerical_inverse(self, y, v)
   }
 
-  /// `h(u | v) = ∂_v C(u, v)`, the conditional cdf of `U` given `V = v`, over the rows `(u, v)` of `x`: what
-  /// `percent_point` inverts in `u` and the samplers draw through; required, as no difference of `cdf` is exact.
+  /// `h(u | v) = ∂_v C(u, v)`, the cdf of `U` given `V = v`, at `x`'s rows: what `percent_point`
+  /// inverts and samplers draw through; required, as no `cdf` difference is exact.
   fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   #[doc(hidden)]
@@ -239,8 +242,8 @@ pub trait BivariateExt {
   }
 }
 
-/// Brent's `zero` on `residual(θ) = τ(θ) − τ` over `[lo, hi]` to the absolute `t` the family's τ rule resolves;
-/// `Numerical` without a sign change or past its bound.
+/// Brent's `zero` on `residual(θ) = τ(θ) − τ` over `[lo, hi]` to the absolute `t` the family's τ
+/// rule resolves; `Numerical` without a sign change or past its bound.
 pub(crate) fn invert_tau(
   residual: impl FnMut(f64) -> f64,
   lo: f64,
@@ -252,7 +255,8 @@ pub(crate) fn invert_tau(
   })
 }
 
-/// `percent_point` of a family with its own `inverse`: its parameters and inputs checked once, then that inverse.
+/// `percent_point` of a family with its own `inverse`: its parameters and inputs checked once, then
+/// that inverse.
 pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
   copula: &C,
   y: ArrayView1<f64>,
@@ -265,8 +269,8 @@ pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
   inverse(copula, y, v)
 }
 
-/// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked `(y, v)`: the body of
-/// `percent_point_numerical`.
+/// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked
+/// `(y, v)`: the body of `percent_point_numerical`.
 fn numerical_inverse<C: BivariateExt + ?Sized>(
   copula: &C,
   y: ArrayView1<f64>,
@@ -284,8 +288,8 @@ fn numerical_inverse<C: BivariateExt + ?Sized>(
       continue;
     }
 
-    // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the closure answers
-    // 0 so the solve stops there, and the parked error is re-raised after.
+    // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the
+    // closure answers 0 so the solve stops there, and the parked error is re-raised after.
     let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
     let gap = |u: f64| match copula.partial_derivative_scalar(u, v_i) {
       Ok(d) if !d.is_nan() => d.clamp(0.0, 1.0) - y_i,
@@ -335,7 +339,8 @@ fn numerical_inverse<C: BivariateExt + ?Sized>(
   Ok(results)
 }
 
-/// `theta` when the family admits it; an inverse that rounds onto an excluded value is the `tau` error, which names it.
+/// `theta` when the family admits it; an inverse that rounds onto an excluded value is the `tau`
+/// error, which names it.
 pub(crate) fn admitted<C: BivariateExt + ?Sized>(
   copula: &C,
   tau: f64,

@@ -1,5 +1,5 @@
-//! The Student-t law every t copula and the t pair copula evaluate through: `SimdStudentT`'s cdf and quantile, the
-//! log-density its `pdf` exponentiates, the t copula's log-density at t scores, and the one rule for `nu`.
+//! The Student-t law every t copula evaluates through: `SimdStudentT`'s cdf and quantile, the
+//! log-density its `pdf` exponentiates, the t copula's log-density at t scores, the one `nu` rule.
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the t quantile).
 
 use std::f64::consts::LN_2;
@@ -19,12 +19,12 @@ use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_ratio;
 use crate::error::CopulaError;
 
-/// Above this `ν` the law is normal to rounding: the expansion's first term `(x³ + x)/(4ν)` moves the quantile, and `Φ`
-/// by under `2⁻⁵⁴` of itself wherever `Φ(x) ≥ 2⁻¹⁰⁷⁴`, `|x| ≤ 38.5`, as `(38.5⁴ + 38.5²)/4 · 2⁵⁴ < 10²²`.
+/// Above this `ν` the law is normal to rounding: the first term `(x³ + x)/(4ν)` moves the quantile
+/// and `Φ` under `2⁻⁵⁴` where `Φ(x) ≥ 2⁻¹⁰⁷⁴` (`|x| ≤ 38.5`): `(38.5⁴ + 38.5²)/4 · 2⁵⁴ < 10²²`.
 pub(crate) const NORMAL_ABOVE: f64 = 1e22;
 
-/// The law of the t copulas' h-function and its inverse: `SimdStudentT` in the body, the leading tail term
-/// `P(T ≤ −t) = (K/ν)t^{−ν}` where its first correction `ν²(ν + 1)/(2(ν + 2)t²)` is below `2⁻⁵⁴`, the normal law past `NORMAL_ABOVE`.
+/// The t copulas' h-function law: `SimdStudentT` in the body, the tail term `(K/ν)t^{−ν}` where its
+/// first correction `ν²(ν + 1)/(2(ν + 2)t²)` is below `2⁻⁵⁴`, normal past `NORMAL_ABOVE`.
 #[derive(Debug, Clone)]
 pub(crate) struct Law {
   nu: f64,
@@ -33,11 +33,13 @@ pub(crate) struct Law {
   tail_level: f64,
   tail_start: f64,
   ln_tail_start: f64,
-  /// `ln Γ((ν + 1)/2) − ln Γ(ν/2) − ½ ln(νπ) = −½(ln 2π + G)`, free of the gammas' cancellation at large `ν`.
+  /// `ln Γ((ν + 1)/2) − ln Γ(ν/2) − ½ ln(νπ) = −½(ln 2π + G)`, free of the gammas' cancellation at
+  /// large `ν`.
   ln_norm: f64,
 }
 
-/// A quantile `t`, `+∞` where it overflows, and in the tail `ln|t|` and `ln P(T ≤ −|t|)`, which stay finite there.
+/// A quantile `t`, `+∞` where it overflows, and in the tail `ln|t|` and `ln P(T ≤ −|t|)`, which
+/// stay finite there.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Score {
   pub(crate) value: f64,
@@ -57,7 +59,8 @@ impl Score {
     }
   }
 
-  /// `ln|t|`: the tail's own, else formed from the value on demand, as only the overflow paths read it.
+  /// `ln|t|`: the tail's own, else formed from the value on demand, as only the overflow paths read
+  /// it.
   pub(crate) fn ln_abs(&self) -> f64 {
     if self.ln_tail.is_nan() {
       self.value.abs().ln()
@@ -94,7 +97,8 @@ impl Law {
     }
   }
 
-  /// The quantile at `p`; `±∞` at `p = 0, 1`, and a normal quantile at a subnormal tail refined by a Newton step on `ln Φ`.
+  /// The quantile at `p`; `±∞` at `p = 0, 1`, and a normal quantile at a subnormal tail refined by
+  /// a Newton step on `ln Φ`.
   pub(crate) fn quantile(&self, p: f64) -> Score {
     if p <= 0.0 || p >= 1.0 {
       return Score::of(if p <= 0.0 {
@@ -133,8 +137,8 @@ impl Law {
     p.min(1.0 - p) > self.tail_level && p != 0.5 && self.nu < NORMAL_ABOVE
   }
 
-  /// `SimdStudentT`'s quantile wherever `u` is in the body, NaN elsewhere, in a loop of its own: one the quantile
-  /// inlines into whole, so its work in `ν` alone leaves the loop.
+  /// `SimdStudentT`'s quantile wherever `u` is in the body, NaN elsewhere, in a loop of its own:
+  /// one the quantile inlines into whole, so its work in `ν` alone leaves the loop.
   pub(crate) fn body_quantiles(&self, u: ArrayView2<f64>) -> Array2<f64> {
     let nu = self.nu;
     let mut z = u.to_owned();
@@ -159,8 +163,8 @@ impl Law {
     }
   }
 
-  /// `ln(|a|/|b|)` of two of this law's quantiles: `ln(P_b/P_a)/ν` of their tail probabilities when both have one, so
-  /// the ratio of two quantiles past `f64::MAX` stays exact, and so does that of two near ones.
+  /// `ln(|a|/|b|)` of two of this law's quantiles, `ln(P_b/P_a)/ν` of their tail probabilities when
+  /// both have one: exact for two quantiles past `f64::MAX` and for two near ones.
   pub(crate) fn ln_ratio(&self, a: Score, b: Score) -> f64 {
     if a.ln_tail.is_nan() || b.ln_tail.is_nan() {
       a.ln_abs() - b.ln_abs()
@@ -188,8 +192,8 @@ impl Law {
     self.cdf_at(sign * ln_abs.exp())
   }
 
-  /// The cdf at `sign · |t| e^{ln_factor}` for a quantile `t`, through its tail probability `P(T ≤ −|t|)e^{−ν ln_factor}`
-  /// where both lie in the tail, which needs no `ln|t|`.
+  /// The cdf at `sign · |t| e^{ln_factor}` for a quantile `t`, through its tail probability
+  /// `P(T ≤ −|t|)e^{−ν ln_factor}` where both lie in the tail, which needs no `ln|t|`.
   pub(crate) fn cdf_scaled(&self, t: Score, sign: f64, ln_factor: f64) -> f64 {
     if ln_factor == f64::NEG_INFINITY {
       return self.cdf_at(0.0);
@@ -203,7 +207,8 @@ impl Law {
     self.cdf_at(sign * (t.ln_abs() + ln_factor).exp())
   }
 
-  /// `ln P(T ≤ sign · e^{ln_abs})` to a relative rounding in both tails, the upper one as `ln(1 − P(T ≤ −|t|))`.
+  /// `ln P(T ≤ sign · e^{ln_abs})` to a relative rounding in both tails, the upper one as
+  /// `ln(1 − P(T ≤ −|t|))`.
   pub(crate) fn ln_cdf(&self, sign: f64, ln_abs: f64) -> f64 {
     let ln_lower = if self.nu >= NORMAL_ABOVE {
       ln_norm_cdf(-ln_abs.exp())
@@ -223,7 +228,8 @@ impl Law {
     }
   }
 
-  /// `ν ln|t|` of a quantile, from its tail probability where it has one, so it stays exact past `f64::MAX`.
+  /// `ν ln|t|` of a quantile, from its tail probability where it has one, so it stays exact past
+  /// `f64::MAX`.
   pub(crate) fn nu_ln_abs(&self, t: Score) -> f64 {
     if t.ln_tail.is_nan() {
       self.nu * t.ln_abs()
@@ -238,8 +244,8 @@ impl Law {
   }
 }
 
-/// `0 < nu < ∞` and `nu / 2 > 0`, which only `5e-324` fails: what `SimdStudentT::new` and `SimdChiSquared::new` assert, so
-/// the t copulas and the vines' t pairs refuse up front a `nu` those laws would panic on.
+/// `0 < nu < ∞` and `nu / 2 > 0` (only `5e-324` fails it), what `SimdStudentT::new` and
+/// `SimdChiSquared::new` assert, so every t copula refuses a `nu` they would panic on.
 pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
   let constraint = if !nu.is_finite() || nu <= 0.0 {
     "0.0 < nu < inf"
@@ -261,7 +267,8 @@ pub(crate) fn cdf(x: f64, nu: f64) -> f64 {
     .expect("the Student-t law has a cdf")
 }
 
-/// `∓∞` at `p = 0` and `p = 1`; inlined, so a loop over `p` at one `nu` hoists the work that depends on `nu` alone.
+/// `∓∞` at `p = 0` and `p = 1`; inlined, so a loop over `p` at one `nu` hoists the work that
+/// depends on `nu` alone.
 #[inline(always)]
 pub(crate) fn quantile(p: f64, nu: f64) -> f64 {
   SimdStudentT::new(nu)
@@ -300,8 +307,8 @@ impl TDensity {
     })
   }
 
-  /// `G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + Q/ν) + ((ν + 1)/2) ln((1 + x²/ν)(1 + y²/ν))`, `Q = (x − ρy)²/(1 − ρ²) + y²`,
-  /// `x − ρy` by one fma, each term within `15u`: `None` unless the terms' sizes sum to `S` with `9εS ≤ 1e-12 max(1, |ln c|)`.
+  /// `G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + Q/ν) + ((ν + 1)/2) ln((1 + x²/ν)(1 + y²/ν))`,
+  /// `Q = (x − ρy)²/(1 − ρ²) + y²`, `x − ρy` one fma; `None` unless `9εS ≤ 1e-12 max(1, |ln c|)`.
   pub(crate) fn moderate(&self, x: f64, y: f64) -> Option<f64> {
     let d = (-self.rho).mul_add(y, x);
     let q = d * d * self.inv_one_minus_rho2 + y * y;
@@ -314,8 +321,8 @@ impl TDensity {
   }
 }
 
-/// A score `s` in `t = asinh(s/√ν)`, the coordinate the bivariate t's conditional law reads: `|t|` (rounded where huge),
-/// `ν|t|` exactly, and what an exact `|t_b| − |t_a|` needs.
+/// A score `s` in `t = asinh(s/√ν)`, the coordinate the bivariate t's conditional law reads: `|t|`
+/// (rounded where huge), `ν|t|` exactly, and what an exact `|t_b| − |t_a|` needs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Feature {
   pub(crate) sign: f64,
@@ -328,8 +335,8 @@ pub(crate) struct Feature {
 }
 
 impl Feature {
-  /// `abs = |s|`, read up to `√ν`, where `asinh(|s|/√ν)` keeps `|t|` to its rounding and `ln|s| − ½ ln ν`, whose terms pass
-  /// 10 at a large `ν`, would carry their ulps into it.
+  /// `abs = |s|`, read up to `√ν`, where `asinh(|s|/√ν)` keeps `|t|` to its rounding and
+  /// `ln|s| − ½ ln ν`, whose terms pass 10 at a large `ν`, would carry their ulps into it.
   fn new(sign: f64, abs: f64, ln_abs: f64, nu_ln_abs: f64, tail: f64, nu: f64) -> Self {
     if sign == 0.0 {
       return Self {
@@ -379,7 +386,8 @@ impl Law {
     )
   }
 
-  /// `|t_b| − |t_a|`, from the tail probabilities where both scores have one, so it stays exact past `f64::MAX`.
+  /// `|t_b| − |t_a|`, from the tail probabilities where both scores have one, so it stays exact
+  /// past `f64::MAX`.
   pub(crate) fn abs_t_gap(&self, a: &Feature, b: &Feature) -> f64 {
     if a.corr.is_nan() || b.corr.is_nan() {
       return b.abs_t - a.abs_t;
@@ -397,15 +405,16 @@ impl Law {
     self.ln_norm - 0.5 * (self.nu + 1.0) * (s * s / self.nu).ln_1p()
   }
 
-  /// `|a| − |b|` from the tail probabilities where both quantiles have one, so two near ones keep their difference.
+  /// `|a| − |b|` from the tail probabilities where both quantiles have one, so two near ones keep
+  /// their difference.
   pub(crate) fn tail_gap(&self, a: Score, b: Score) -> Option<f64> {
     (!a.ln_tail.is_nan() && !b.ln_tail.is_nan())
       .then(|| b.value.abs() * self.ln_ratio(a, b).exp_m1())
   }
 }
 
-/// `asinh(a + δ) − asinh(a)` for `a, a + δ ≥ 0`, without the cancellation of the two `asinh`; past `a = 1e8` the ratio's
-/// logarithm, which it equals to under `1/a²`.
+/// `asinh(a + δ) − asinh(a)` for `a, a + δ ≥ 0`, without the cancellation of the two `asinh`; past
+/// `a = 1e8` the ratio's logarithm, which it equals to under `1/a²`.
 pub(crate) fn asinh_shift(a: f64, delta: f64) -> f64 {
   if a > 1e8 {
     return (delta / a).ln_1p();
@@ -424,8 +433,9 @@ pub(crate) fn ln_cosh(t: f64) -> f64 {
   }
 }
 
-/// `ln(Γ(ν/2 + 1)Γ(ν/2)/Γ(ν/2 + ½)²)`: Stirling's series from `ν = 40`, where the gammas' logarithms cancel, its
-/// truncation under `4e-17`; `1/(4z) − 1/(96z³) + 1/(320z⁵) − 17/(7168z⁷) + 31/(9216z⁹)`, `z = ν/2`, proved in sympy.
+/// `ln(Γ(ν/2 + 1)Γ(ν/2)/Γ(ν/2 + ½)²)` by Stirling's series from `ν = 40`, where the gammas'
+/// logarithms cancel, truncated under `4e-17` (proved in sympy), `z = ν/2`:
+/// $$\frac{1}{4z} - \frac{1}{96z^3} + \frac{1}{320z^5} - \frac{17}{7168z^7} + \frac{31}{9216z^9}$$
 /// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 pub(crate) fn ln_gamma_constant(nu: f64) -> f64 {
   let z = 0.5 * nu;
@@ -437,12 +447,12 @@ pub(crate) fn ln_gamma_constant(nu: f64) -> f64 {
   (0.25 + w * (-1.0 / 96.0 + w * (1.0 / 320.0 + w * (-17.0 / 7168.0 + w * 31.0 / 9216.0)))) / z
 }
 
-/// `A = c₀(sinh t_y sech t − ρ tanh t)`, `c₀ = √((ν + 1)/(1 − ρ²))`: `y` standardized in its law given `X = √ν sinh t`,
-/// `t_{ν+1}`. Read from `|t|`, its sign and the exact `|t_y| − |t|`; the centre crossing by `expm1`.
+/// `A = c₀(sinh t_y sech t − ρ tanh t)`, `c₀ = √((ν + 1)/(1 − ρ²))`: `y` standardized in its
+/// `t_{ν+1}` law given `X = √ν sinh t`, from `|t|`, its sign and the exact `|t_y| − |t|`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Conditional {
-  /// `c₀`, finite as every caller keeps `ν < 1e22`; it multiplies `1 − e^{−2|t|}` before the logarithm, since at a large `ν`
-  /// `ln c₀` and `ln(1 − e^{−2|t|})` pass 10 each and cancel, their ulps a relative error in `A` that `H` multiplies by `A²`.
+  /// `c₀`, finite as callers keep `ν < 1e22`; it multiplies `1 − e^{−2|t|}` before the logarithm,
+  /// as at large `ν` the two logs pass 10 and cancel, an error in `A` that `H` multiplies by `A²`.
   c0: f64,
   rho: f64,
   ln_abs_rho: f64,
@@ -483,7 +493,8 @@ impl Conditional {
     } else if sign_r == 0.0 || ln_r == f64::NEG_INFINITY {
       (self.sign_y, ln_y)
     } else if self.sign_y == sign_r {
-      // Near the crossing `ln(1 − e^{−2|t_y|}) − ln(1 − e^{−2|t|})` from the exact `gap` alone, where the two would cancel.
+      // Near the crossing `ln(1 − e^{−2|t_y|}) − ln(1 − e^{−2|t|})` from the exact `gap` alone,
+      // where the two would cancel.
       let z = if gap.abs() < 1.0 {
         gap - self.ln_abs_rho - (-(2.0 * gap).exp_m1() / self.e2y).ln_1p()
       } else {
@@ -508,8 +519,8 @@ fn ln_abs_expm1(z: f64) -> f64 {
   }
 }
 
-/// `ln c = G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + A²/(ν + 1)) − ln cosh t_x + (ν + 1) ln cosh t_y`, `A` at `t_x`, from the
-/// features and the exact `|t_y| − |t_x|`: `(ν + 1)|t_y| − |t_x| = ν|t_y| + (|t_y| − |t_x|)` keeps huge scores' terms exact.
+/// `ln c = G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + A²/(ν + 1)) − ln cosh t_x + (ν + 1) ln cosh t_y`,
+/// `A` at `t_x`, via `(ν + 1)|t_y| − |t_x| = ν|t_y| + (|t_y| − |t_x|)`, exact at huge scores.
 pub(crate) fn ln_density(fx: &Feature, fy: &Feature, gap: f64, rho: f64, nu: f64) -> f64 {
   if gap.is_infinite() {
     return f64::NEG_INFINITY;

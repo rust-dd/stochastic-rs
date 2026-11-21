@@ -1,4 +1,5 @@
-//! # Nested Archimedean Copula (NAC)
+//! Nested Archimedean copula (NAC): `φ₀` the root generator, `L₀` its direct leaves, `C_i` a nested
+//! copula on `S_i` with `θ_i ≥ θ₀` (sufficient nesting); Clayton needs `θ > 0`, Gumbel `θ ≥ 1`.
 //!
 //! $$
 //! C(u_1, \dots, u_d) = \varphi_{0}^{-1}\!\bigg(
@@ -7,27 +8,20 @@
 //! \bigg),
 //! $$
 //!
-//! $\varphi_0$ is the root generator, $L_0$ its direct leaves, $C_i$ a nested copula on $S_i$ with
-//! $\theta_i \ge \theta_0$ (sufficient nesting); Clayton needs $\theta > 0$, Gumbel $\theta \ge 1$.
-//!
-//! References:
-//! - Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
-//!   Chapman & Hall, ch. 4.
-//! - Hofert, M. (2008), "Sampling Archimedean copulas",
-//!   *Computational Statistics & Data Analysis* 52(12), 5163-5174.
-//! - Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Art. 18, doi:10.1145/1596519.1596523.
-//! - Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM Transactions on Mathematical Software* 26(3), 363-372, doi:10.1145/358407.358414.
-//! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
-//! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
-//! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
-//! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
-//! - Gnedin, A., Pitman, J. (2006), "Exchangeable Gibbs partitions and Stirling triangles", *Journal of Mathematical Sciences* 138(3), 5674-5685, doi:10.1007/s10958-006-0335-z (arXiv:math/0412494).
-//! - McNeil, A.J. (2008), "Sampling nested Archimedean copulas",
-//!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
-//! - Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
-//! - Górecki, J., Hofert, M., Holeňa, M. (2017), "On structure, family and parameter estimation of hierarchical Archimedean copulas", *Journal of Statistical Computation and Simulation* 87(17), 3261-3324, doi:10.1080/00949655.2017.1365148.
-//! - Okhrin, O., Okhrin, Y., Schmid, W. (2013), "On the structure and estimation of hierarchical Archimedean copulas", *Journal of Econometrics* 173(2), 189-204, doi:10.1016/j.jeconom.2012.12.001.
-//! - Okhrin, O., Ristig, A. (2014), "Hierarchical Archimedean Copulae: The HAC Package", *Journal of Statistical Software* 58(4), 1-20, doi:10.18637/jss.v058.i04.
+//! Reference: Joe, H. (1997), *Multivariate Models and Dependence Concepts*, Chapman & Hall, ch. 4, DOI 10.1201/b13150.
+//! Reference: Hofert, M. (2008), "Sampling Archimedean copulas", *Computational Statistics & Data Analysis* 52(12), 5163-5174, DOI 10.1016/j.csda.2008.05.019.
+//! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Art. 18, doi:10.1145/1596519.1596523.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM Transactions on Mathematical Software* 26(3), 363-372, doi:10.1145/358407.358414.
+//! Reference: Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
+//! Reference: Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
+//! Reference: Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
+//! Reference: Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
+//! Reference: Gnedin, A., Pitman, J. (2006), "Exchangeable Gibbs partitions and Stirling triangles", *Journal of Mathematical Sciences* 138(3), 5674-5685, doi:10.1007/s10958-006-0335-z (arXiv:math/0412494).
+//! Reference: McNeil, A.J. (2008), "Sampling nested Archimedean copulas", *Journal of Statistical Computation and Simulation* 78(6), 567-581, DOI 10.1080/00949650701255834.
+//! Reference: Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
+//! Reference: Górecki, J., Hofert, M., Holeňa, M. (2017), "On structure, family and parameter estimation of hierarchical Archimedean copulas", *Journal of Statistical Computation and Simulation* 87(17), 3261-3324, doi:10.1080/00949655.2017.1365148.
+//! Reference: Okhrin, O., Okhrin, Y., Schmid, W. (2013), "On the structure and estimation of hierarchical Archimedean copulas", *Journal of Econometrics* 173(2), 189-204, doi:10.1016/j.jeconom.2012.12.001.
+//! Reference: Okhrin, O., Ristig, A. (2014), "Hierarchical Archimedean Copulae: The HAC Package", *Journal of Statistical Software* 58(4), 1-20, doi:10.18637/jss.v058.i04.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -47,7 +41,8 @@ mod density;
 mod fit;
 mod sample;
 
-/// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
+/// The two generators a nested Archimedean copula admits; the public API names them by
+/// `BivariateFamily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Generator {
   Clayton,
@@ -72,8 +67,8 @@ impl Generator {
     }
   }
 
-  /// `θ`'s domain: Gumbel `θ ≥ 1`; a Clayton `θ` needs its `Γ(1/θ, 1)` frailty, `0 < 1/θ < ∞` (Hofert & Mächler 2011,
-  /// Table 1), which also rules out a `θ` whose reciprocal overflows.
+  /// `θ`'s domain: Gumbel `θ ≥ 1`; a Clayton `θ` needs its `Γ(1/θ, 1)` frailty, `0 < 1/θ < ∞`
+  /// (Hofert & Mächler 2011, Table 1), which also rules out a `θ` whose reciprocal overflows.
   fn check_domain(self, theta: f64) -> Result<(), CopulaError> {
     let (inside, constraint) = match self {
       Self::Clayton => {
@@ -92,8 +87,8 @@ impl Generator {
     })
   }
 
-  /// `−ln C` of a node from its parts' `y = −ln C_k`, a leaf's `−ln u`: Clayton `ln(1 + Σ expm1(θy))/θ`, Gumbel
-  /// `(Σ y^θ)^{1/θ}`, each formed about the largest part, so it neither overflows nor drops the digits of a small `θ`.
+  /// `−ln C` of a node from its parts' `y = −ln C_k`: Clayton `ln(1 + Σ expm1(θy))/θ`, Gumbel
+  /// `(Σ y^θ)^{1/θ}`, about the largest part: no overflow, and a small `θ` keeps its digits.
   fn minus_ln_cdf(self, theta: f64, parts: &[f64]) -> f64 {
     let top = parts.iter().copied().fold(0.0, f64::max_or_nan);
     if top == 0.0 || top.is_infinite() {
@@ -129,7 +124,8 @@ impl Generator {
 /// `NestedArchimedean::new` checks that every child's `theta` is at least its parent's.
 #[derive(Debug, Clone)]
 pub struct NacNode {
-  /// Generator parameter $\theta$ of this node: $0 < 1/\theta < \infty$ for Clayton, $\theta \ge 1$ for Gumbel.
+  /// Generator parameter $\theta$ of this node: $0 < 1/\theta < \infty$ for Clayton, $\theta \ge 1$
+  /// for Gumbel.
   pub theta: f64,
   /// Marginal indices whose copula is governed directly by this node's
   /// generator (i.e. no further nesting below them).
@@ -177,8 +173,8 @@ impl NestedArchimedean {
     })
   }
 
-  /// Builds a NAC from a Clayton or Gumbel `family` (`Unsupported` otherwise) and a root node; checks the sufficient
-  /// nesting condition, the generator's parameter bounds and that every marginal index appears exactly once.
+  /// A NAC from a Clayton or Gumbel `family` (`Unsupported` otherwise) and a root node, checking
+  /// sufficient nesting, the generator's bounds and that every marginal index appears once.
   pub fn new(family: BivariateFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
     let generator = Generator::from_family(family)?;
     Self::validate_node(generator, &root, root.theta.min(f64::INFINITY), true)?;
@@ -217,8 +213,8 @@ impl NestedArchimedean {
     })
   }
 
-  /// Checks `node` and its subtree: every `θ` finite and in the generator's domain, and below the root at least
-  /// `parent_theta` (the sufficient nesting condition).
+  /// Checks `node` and its subtree: every `θ` finite and in the generator's domain, and below the
+  /// root at least `parent_theta` (the sufficient nesting condition).
   fn validate_node(
     generator: Generator,
     node: &NacNode,
@@ -247,7 +243,8 @@ impl NestedArchimedean {
     Ok(())
   }
 
-  /// The Archimedean family every node shares; the trait's `family()` is always `NestedArchimedean`.
+  /// The Archimedean family every node shares; the trait's `family()` is always
+  /// `NestedArchimedean`.
   pub fn generator_family(&self) -> BivariateFamily {
     self.generator.family()
   }
@@ -291,8 +288,8 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
 
-  /// Estimates the binary tree from Kendall's τ-b of `x` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
-  /// generator's range (`0 < τ < 1` Clayton, `0 ≤ τ < 1` Gumbel) is `InvalidParameter { name: "tau", .. }` and stores nothing.
+  /// The binary tree from Kendall's τ-b of `x` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean
+  /// τ̂ outside the generator's range is `InvalidParameter { name: "tau", .. }`, storing nothing.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let root = fit::estimate(self.generator, x)?;
     *self = Self::new(self.generator.family(), root, x.ncols())?;

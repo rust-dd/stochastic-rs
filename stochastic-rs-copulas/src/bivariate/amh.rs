@@ -1,20 +1,15 @@
-//! # Ali-Mikhail-Haq (AMH) copula
+//! Ali–Mikhail–Haq (AMH) copula, Archimedean, `φ(t) = ln((1 − θ(1 − t))/t)`; τ in
+//! `[(5 − 8 ln 2)/3, 1/3]`, tail dependence only at `θ = 1` (Clayton(1), `λ_L = 1/2`).
 //!
 //! $$
 //! C_\theta(u,v) = \frac{uv}{1 - \theta (1-u)(1-v)},
 //! \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Archimedean, `φ(t) = ln((1 − θ(1 − t))/t)`, which vanishes at `θ = 1`, where AMH is Clayton(1) (`φ = (1 − t)/t`,
-//! `λ_L = 1/2`; no tail dependence below it); independence at `θ = 0`; Kendall's τ in `[(5 − 8 ln 2)/3, 1/3]`.
-//!
-//! Reference: Ali, M.M., Mikhail, N.N., Haq, M.S. (1978), "A class of
-//! bivariate distributions including the bivariate logistic",
-//! *Journal of Multivariate Analysis* 8(3), 405-412.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Example 4.23 / Table 4.1 (family (3)).
+//! Reference: Ali, M.M., Mikhail, N.N., Haq, M.S. (1978), "A class of bivariate distributions including the bivariate logistic", *Journal of Multivariate Analysis* 8(3), 405-412, DOI 10.1016/0047-259X(78)90063-5.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 4.23 / Table 4.1 (family (3)), DOI 10.1007/0-387-28678-0.
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
+//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150, DOI 10.1016/j.jmva.2012.02.019.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -58,14 +53,14 @@ impl Amh {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, for
-  /// `θ ≠ 1`; `√(B² − 4AC)` is `hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)`, free of cancellation and underflow.
+  /// The root in `[0, 1]` of `Au² + Bu + C = 0`, `p = θ(1 − v)`, by `B`'s sign for `θ ≠ 1`;
+  /// `√(B² − 4AC) = hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)`, free of cancellation and underflow.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| Self::root::<false>(theta, y, v)
   }
 
-  /// `Amh::inverse` for `θ > 1/2`, `y` multiplied last into `2C/(√… − B)`: `C = y(1 − p)²` trails the root by
-  /// `(1 − θ)`, so near `θ = 1` it reaches the subnormals while the root is normal; at `θ ≤ 1/2` it costs at most one bit.
+  /// `Amh::inverse` for `θ > 1/2`, `y` multiplied last into `2C/(√… − B)`: `C = y(1 − p)²` trails
+  /// the root by `1 − θ`, subnormal near `θ = 1` while the root is normal.
   pub(crate) fn inverse_near_one(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| Self::root::<true>(theta, y, v)
   }
@@ -98,7 +93,8 @@ impl Amh {
       } else if minus_a > 0.0 {
         (b + root) / (2.0 * minus_a)
       } else {
-        // `A = 0` with `B ≥ 0` only at `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at `u = 0`.
+        // `A = 0` with `B ≥ 0` only at `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at
+        // `u = 0`.
         0.0
       }
     }
@@ -113,8 +109,8 @@ impl Amh {
     }
   }
 
-  /// `ln c = ln((1 − θ)D + 2θuv) − 3 ln D` on the open square: the numerator's terms in logarithms for `θ ≥ 0`, where
-  /// `uv` may underflow, and as `(1 + θ)(1 + θūv̄) − 2θ(ū + v̄)`, both terms `≥ 0`, for `θ < 0`.
+  /// `ln c = ln((1 − θ)D + 2θuv) − 3 ln D` on the open square: the numerator in logarithms at
+  /// `θ ≥ 0` (`uv` may underflow), as `(1 + θ)(1 + θūv̄) − 2θ(ū + v̄)`, terms `≥ 0`, at `θ < 0`.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     let ln_d = Self::denominator(theta, u, v).ln();
     let ln_numerator = if theta >= 0.0 {
@@ -129,8 +125,8 @@ impl Amh {
     ln_numerator - 3.0 * ln_d
   }
 
-  /// `(−A, B, 1 − p)` from same-signed terms, `1 − p = (1 − θ) + θv` and `C = y(1 − p)²`, and `hypot`'s second operand
-  /// `(1 − θ + 2θv)√y`.
+  /// `(−A, B, 1 − p)` from same-signed terms, `1 − p = (1 − θ) + θv` and `C = y(1 − p)²`, and
+  /// `hypot`'s second operand `(1 − θ + 2θv)√y`.
   fn quadratic(theta: f64, y: f64, v: f64) -> (f64, f64, f64, f64) {
     let p = theta * (1.0 - v);
     let one_minus_p = (1.0 - theta) + theta * v;
@@ -144,7 +140,8 @@ impl Amh {
     )
   }
 
-  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
+  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at
+  /// `θ = 1`.
   fn unchecked_inverse(
     &self,
     y: ArrayView1<f64>,
@@ -160,8 +157,8 @@ impl Amh {
     }
   }
 
-  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$; at `θ = 1`, where it vanishes, its limit
-  /// `φ/(1 − θ) → (1 − t)/t`, Clayton(1)'s.
+  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$; at `θ = 1`, where it
+  /// vanishes, its limit `φ/(1 − θ) → (1 − t)/t`, Clayton(1)'s.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -219,15 +216,16 @@ impl BivariateExt for Amh {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = uv/D`, `D` as in `Amh::ln_density`, as `(u/D)v`, so the product underflows only with the result.
+  /// `C = uv/D`, `D` as in `Amh::ln_density`, as `(u/D)v`, so the product underflows only with the
+  /// result.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     copula_cdf(x, |u, v| (u / Self::denominator(theta, u, v)) * v)
   }
 
-  /// `∂_v C = (u/D)((1 − θ + θu)/D)`, `D = 1 − θ + θ(u + v − uv)`: same-signed terms for `θ ≥ 0` and ratios formed before
-  /// the product, which underflows only with the result.
+  /// `∂_v C = (u/D)((1 − θ + θu)/D)`, `D = 1 − θ + θ(u + v − uv)`: same-signed terms for `θ ≥ 0`
+  /// and ratios formed before the product, which underflows only with the result.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -236,7 +234,8 @@ impl BivariateExt for Amh {
         return 1.0;
       }
       let d = (1.0 - theta) + theta * (u + v - u * v);
-      // `D = 0` only at `θ = 1`, `u = v = 0`: the atom at `u = 0` of the point mass `h(· | 0)` is there.
+      // `D = 0` only at `θ = 1`, `u = v = 0`: the atom at `u = 0` of the point mass `h(· | 0)` is
+      // there.
       if d == 0.0 {
         return 1.0;
       }
@@ -263,8 +262,8 @@ impl BivariateExt for Amh {
     Some(self.unchecked_inverse(y, v))
   }
 
-  /// `τ = 1 − 2[θ + (1−θ)² ln(1−θ)]/(3θ²)` (Hofert, Mächler & McNeil 2011, Table 2), with its limit `1/3` at `θ = 1`
-  /// and its series below `|θ| < 1e-4`.
+  /// `τ = 1 − 2[θ + (1−θ)² ln(1−θ)]/(3θ²)` (Hofert, Mächler & McNeil 2011, Table 2), with its limit
+  /// `1/3` at `θ = 1` and its series below `|θ| < 1e-4`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     if theta.abs() < 1e-4 {
       let t2 = theta * theta;
@@ -277,7 +276,8 @@ impl BivariateExt for Amh {
     1.0 - 2.0 * (theta + one_minus * one_minus * one_minus.ln()) / (3.0 * theta * theta)
   }
 
-  /// Brent on `[−1, 1]`, whose ends give the range `[(5 − 8 ln 2)/3, 1/3]` from the same `τ`, so every `τ` in it brackets.
+  /// Brent on `[−1, 1]`, whose ends give the range `[(5 − 8 ln 2)/3, 1/3]` from the same `τ`, so
+  /// every `τ` in it brackets.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     let (lo, hi) = (self.tau_from_theta(-1.0), self.tau_from_theta(1.0));
     if !(tau >= lo && tau <= hi) {
@@ -295,7 +295,8 @@ impl BivariateExt for Amh {
     admitted(self, tau, theta)
   }
 
-  /// `λ_L = lim_{u→0} u/(1 − θ(1 − u)²)`: 0 for `θ < 1`, `1/2` at `θ = 1`, where AMH is Clayton(1); `λ_U = 0`.
+  /// `λ_L = lim_{u→0} u/(1 − θ(1 − u)²)`: 0 for `θ < 1`, `1/2` at `θ = 1`, where AMH is Clayton(1);
+  /// `λ_U = 0`.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let lower = if self.theta.unwrap() == 1.0 { 0.5 } else { 0.0 };
@@ -366,7 +367,8 @@ mod tests {
     assert!(approx(c.tau_from_theta(0.999_999), 1.0 / 3.0, 1e-3));
   }
 
-  /// Below `|θ| = 1e-4` the series `2θ/9 + θ²/18 + θ³/45 + θ⁴/90` answers; mpmath's closed form at 50 digits.
+  /// Below `|θ| = 1e-4` the series `2θ/9 + θ²/18 + θ³/45 + θ⁴/90` answers; mpmath's closed form at
+  /// 50 digits.
   #[test]
   fn amh_series_matches_mpmath_below_the_switch() {
     let c = Amh::default();
@@ -391,7 +393,8 @@ mod tests {
     );
   }
 
-  /// Every `τ` of the range inverts, its ends included, where a bracket short of `±1` would leave no sign change.
+  /// Every `τ` of the range inverts, its ends included, where a bracket short of `±1` would leave
+  /// no sign change.
   #[test]
   fn amh_inverts_the_ends_of_its_range() {
     let c = Amh::default();
@@ -413,7 +416,8 @@ mod tests {
     assert!(approx(theta, 0.0, 1e-6), "τ=0 should give θ=0, got {theta}");
   }
 
-  /// AMH(1) is Clayton(1): `C(u, u)/u = 1/(2 − u) → 1/2`, a lower tail no `θ < 1` has, and `(1 − t)/t` generates it.
+  /// AMH(1) is Clayton(1): `C(u, u)/u = 1/(2 − u) → 1/2`, a lower tail no `θ < 1` has, and
+  /// `(1 − t)/t` generates it.
   #[test]
   fn amh_at_theta_one_is_clayton_one() {
     let amh = Amh::new(1.0);

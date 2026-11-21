@@ -1,5 +1,5 @@
-//! The quadrature of the elliptical cdfs and the extreme-value τ: `ln ∫ e^f` by Gauss–Kronrod panels marched out of an
-//! anchor, sized by the variation of `f` and Kronrod's error estimate, so the integral keeps its relative digits.
+//! Quadrature for the elliptical cdfs and the extreme-value τ: `ln ∫ e^f` by Gauss–Kronrod panels
+//! marched from an anchor, sized by `f`'s variation and Kronrod's error, keeping relative digits.
 
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
@@ -15,19 +15,23 @@ mod refine;
 use refine::Spent;
 use refine::refine;
 
-/// The variation of an exponent one panel may span before it is halved untried; Kronrod's estimate decides the rest.
+/// The variation of an exponent one panel may span before it is halved untried; Kronrod's estimate
+/// decides the rest.
 const PANEL_FALL: f64 = 12.0;
 
-/// Below the maximum by this the rest of the integral is under `e^{−50}` of it, as `f` falls at least linearly.
+/// Below the maximum by this the rest of the integral is under `e^{−50}` of it, as `f` falls at
+/// least linearly.
 const TAIL_FALL: f64 = 50.0;
 
 /// A maximum below this leaves nothing an f64 holds.
 const NEGLIGIBLE: f64 = -1000.0;
 
-/// `ln` of a value under half the smallest subnormal, `2^{−1075} = e^{−745.13}`: an error below it cannot move an f64 result.
+/// `ln` of a value under half the smallest subnormal, `2^{−1075} = e^{−745.13}`: an error below it
+/// cannot move an f64 result.
 pub(crate) const BELOW_SUBNORMAL: f64 = -746.0;
 
-/// `e^{−45}` of a sum: what a remainder's bound, or a panel's largest exponent, must fall under to leave it unmoved.
+/// `e^{−45}` of a sum: what a remainder's bound, or a panel's largest exponent, must fall under to
+/// leave it unmoved.
 pub(crate) const NEGLIGIBLE_FALL: f64 = 45.0;
 
 /// The 16-point Gauss–Legendre `(node, weight)` pairs on `[−1, 1]`.
@@ -38,8 +42,8 @@ pub(crate) fn rule() -> &'static [(f64, f64)] {
     .as_node_weight_pairs()
 }
 
-/// `(x, f(x))` at the maximum of a concave `f` on `[lo, hi]` (either end may be infinite): doubling uphill steps from
-/// `guess` to a bracket, then Brent's `localmin` on `−f`; an end where `f` still rises is the maximum.
+/// `(x, f(x))` at a concave `f`'s maximum on `[lo, hi]` (ends may be infinite): doubling uphill
+/// steps from `guess` to a bracket, then Brent's `localmin` on `−f`, or the end `f` rises to.
 fn concave_max(f: &impl Fn(f64) -> f64, lo: f64, hi: f64, guess: f64) -> (f64, f64) {
   let x = guess.clamp(lo, hi);
   let fx = f(x);
@@ -73,7 +77,8 @@ fn concave_max(f: &impl Fn(f64) -> f64, lo: f64, hi: f64, guess: f64) -> (f64, f
   }
 }
 
-/// `localmin` on `(a, b)` against a known point inside, so a flat `f` keeps its best evaluated point.
+/// `localmin` on `(a, b)` against a known point inside, so a flat `f` keeps its best evaluated
+/// point.
 fn best(f: &impl Fn(f64) -> f64, a: f64, b: f64, x: f64, fx: f64) -> (f64, f64) {
   if a.is_nan() || b.is_nan() || a >= b {
     return (x, fx);
@@ -82,8 +87,8 @@ fn best(f: &impl Fn(f64) -> f64, a: f64, b: f64, x: f64, fx: f64) -> (f64, f64) 
   if -neg >= fx { (xm, -neg) } else { (x, fx) }
 }
 
-/// `ln ∫_lo^hi e^{f(x)} dx` for a concave `f`: `march` out of its maximum on each side until `f` is `TAIL_FALL` below
-/// it; `breaks` end panels.
+/// `ln ∫_lo^hi e^{f(x)} dx` for a concave `f`: `march` out of its maximum on each side until `f` is
+/// `TAIL_FALL` below it; `breaks` end panels.
 pub(crate) fn ln_integral_concave(
   f: impl Fn(f64) -> f64,
   lo: f64,
@@ -96,7 +101,8 @@ pub(crate) fn ln_integral_concave(
     return f64::NEG_INFINITY;
   }
   let (x0, f0) = concave_max(&f, lo, hi, guess);
-  // Every integrand here has curvature at least 1, so the integral is under `e^{f0}√(2π)`: zero in f64 below this.
+  // Every integrand here has curvature at least 1, so the integral is under `e^{f0}√(2π)`: zero in
+  // f64 below this.
   if f0 < NEGLIGIBLE || f0.is_nan() {
     return f0;
   }
@@ -115,13 +121,14 @@ pub(crate) fn ln_integral_concave(
     })
     .ln_f
   };
-  // The side toward `lo` against the side toward `hi`, so an end where the integrand vanishes weighs against the whole.
+  // The side toward `lo` against the side toward `hi`, so an end where the integrand vanishes
+  // weighs against the whole.
   let upper = side(hi - x0, f64::NEG_INFINITY);
   ln_add_exp(upper, side(lo - x0, upper))
 }
 
-/// `ln ∫_0^∞ e^{f(x)} dx` for an `f` largest at 0 that then falls at least linearly: `march` until `f` is `TAIL_FALL`
-/// below `f(0)`, so an integral far below `f64::MIN_POSITIVE` keeps its logarithm.
+/// `ln ∫_0^∞ e^{f(x)} dx` for an `f` largest at 0, then falling at least linearly: `march` to
+/// `TAIL_FALL` below `f(0)`, so an integral far below `f64::MIN_POSITIVE` keeps its logarithm.
 pub(crate) fn ln_integral_from_peak(f: impl Fn(f64) -> f64, first_step: f64) -> f64 {
   let top = f(0.0);
   if !top.is_finite() {
@@ -143,8 +150,8 @@ pub(crate) fn ln_integral_from_peak(f: impl Fn(f64) -> f64, first_step: f64) -> 
   .ln_f
 }
 
-/// What a march weighs its panels against: `ln ∫ e^g` and `ln ∫ e^f` over the integral's other parts, and the `ln` of the
-/// error under which each exponent's panel stands as integrated.
+/// What a march weighs its panels against: `ln ∫ e^g` and `ln ∫ e^f` over the integral's other
+/// parts, and the `ln` of the error under which each exponent's panel stands as integrated.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Against {
   pub(crate) outer: (f64, f64),
@@ -159,9 +166,9 @@ impl Against {
   };
 }
 
-/// QUADPACK's 15-point Kronrod nodes on `[0, 1)` (with their mirrors) and weights, and the weights of the 7-point Gauss
-/// rule inside it on the odd nodes: K15 is exact to degree 23, G7 to 13, both checked in mpmath.
-/// Reference: Piessens, R., de Doncker-Kapenga, E., Überhuber, C.W., Kahaner, D.K. (1983), "QUADPACK: A Subroutine Package for Automatic Integration", Springer, routine QK15.
+/// QUADPACK's 15-point Kronrod nodes on `[0, 1)` (mirrored) and weights, and the 7-point Gauss
+/// weights on its odd nodes: K15 exact to degree 23, G7 to 13, both checked in mpmath.
+/// Reference: Piessens, R., de Doncker-Kapenga, E., Überhuber, C.W., Kahaner, D.K. (1983), "QUADPACK: A Subroutine Package for Automatic Integration", Springer, routine QK15, DOI 10.1007/978-3-642-61786-7.
 const KRONROD_NODES: [f64; 8] = [
   0.991_455_371_120_812_6,
   0.949_107_912_342_758_5,
@@ -191,11 +198,12 @@ const GAUSS_WEIGHTS: [f64; 4] = [
   0.417_959_183_673_469_4,
 ];
 
-/// A panel is kept once K15 and G7 agree to this, relative: for an integrand analytic on the panel, G7's error `r^{−14}`
-/// under `1e-9` puts K15's `r^{−23}` under `2e-15`, an extrapolation the tables test but no theorem bounds.
+/// A panel is kept once K15 and G7 agree to this, relative: for an analytic integrand G7's
+/// `r^{−14}` under `1e-9` puts K15's `r^{−23}` under `2e-15`, tested, not proven.
 const KRONROD_AGREEMENT: f64 = 1e-9;
 
-/// What `march` integrated: `ln ∫ e^g` and `ln ∫ e^f` from offset 0 to `end`, and `(g, f)` at `end`.
+/// What `march` integrated: `ln ∫ e^g` and `ln ∫ e^f` from offset 0 to `end`, and `(g, f)` at
+/// `end`.
 pub(crate) struct March {
   pub(crate) ln_g: f64,
   pub(crate) ln_f: f64,
@@ -203,8 +211,8 @@ pub(crate) struct March {
   pub(crate) last: (f64, f64),
 }
 
-/// `∫ e^g` and `∫ e^f` of `eval(x) = (g, f)` from offset 0 toward `end`, `eval` reading `origin + x`: panels halved untried
-/// past `PANEL_FALL`, then refined by `refine` against the sums with `outer`'s, doubled when gentle; NaN past `SUBDIVISIONS`.
+/// `∫ e^g`, `∫ e^f` of `eval(x) = (g, f)` from offset 0 toward `end`, at `origin + x`: panels
+/// halved untried past `PANEL_FALL`, refined against `outer`'s sums, doubled when gentle; else NaN.
 pub(crate) fn march(
   eval: impl Fn(f64) -> (f64, f64),
   origin: f64,
@@ -234,7 +242,8 @@ pub(crate) fn march(
     }
     let (gn, f_next) = eval(next);
     let width = (next - x).abs();
-    // An end where an exponent is −∞ is a zero of the integrand; the panel's variation is read just inside it.
+    // An end where an exponent is −∞ is a zero of the integrand; the panel's variation is read just
+    // inside it.
     let inside = if gn == f64::NEG_INFINITY || f_next == f64::NEG_INFINITY {
       eval(x + 0.9 * (next - x))
     } else {
@@ -245,7 +254,8 @@ pub(crate) fn march(
     if totals.0.is_nan() || totals.1.is_nan() {
       break;
     }
-    // An exponent `NEGLIGIBLE_FALL` under its sum at both ends cannot move it, so its variation halves nothing.
+    // An exponent `NEGLIGIBLE_FALL` under its sum at both ends cannot move it, so its variation
+    // halves nothing.
     let quiet_g = gx.max(inside.0) < totals.0 - NEGLIGIBLE_FALL;
     let quiet_f = fx.max(inside.1) < totals.1 - NEGLIGIBLE_FALL;
     let negligible = quiet_g && quiet_f;
@@ -282,8 +292,8 @@ pub(crate) fn march(
   }
 }
 
-/// Whether `[a, b]` can be halved: wider than 8 roundings of `origin + a` and `origin + b`, whose resolution is their
-/// larger operand's.
+/// Whether `[a, b]` can be halved: wider than 8 roundings of `origin + a` and `origin + b`, whose
+/// resolution is their larger operand's.
 fn refinable(a: f64, b: f64, origin: f64) -> bool {
   let width = (b - a).abs();
   width > 1e-300 && width > 8.0 * f64::EPSILON * a.abs().max(b.abs()).max(origin.abs())
@@ -313,7 +323,8 @@ fn moved(a: f64, b: f64) -> f64 {
   if a == b { 0.0 } else { (a - b).abs() }
 }
 
-/// `(ln K15, |K15 − G7|/K15)` of one exponent over a panel's nodes, which run from the right end to the left.
+/// `(ln K15, |K15 − G7|/K15)` of one exponent over a panel's nodes, which run from the right end to
+/// the left.
 fn kronrod(nodes: &[(f64, f64); 15], pick: impl Fn(&(f64, f64)) -> f64, half: f64) -> (f64, f64) {
   let peak = nodes.iter().fold(f64::NEG_INFINITY, |m, n| m.max(pick(n)));
   if peak == f64::NEG_INFINITY {

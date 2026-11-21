@@ -1,4 +1,4 @@
-//! # Marshall-Olkin (1967) bivariate copula
+//! Marshall-Olkin (1967) bivariate copula: non-exchangeable, `λ_U = min(α, β)`.
 //!
 //! $$
 //! C_{\alpha,\beta}(u,v) =
@@ -9,8 +9,7 @@
 //! \qquad \alpha, \beta \in (0, 1].
 //! $$
 //!
-//! Non-exchangeable; the curve `u^α = v^β` carries a singular mass `αβ/(α + β − αβ)`, which is also Kendall's τ.
-//! `theta` is the slice `α = β = θ`; [`MarshallOlkin::new`] takes the two shock rates; `λ_U = min(α, β)`.
+//! `u^α = v^β` carries a singular mass `αβ/(α + β − αβ)`, also Kendall's τ; `theta` sets `α = β`.
 //!
 //! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
@@ -67,8 +66,8 @@ impl MarshallOlkin {
     self.beta
   }
 
-  /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
-  /// closed form elsewhere; inside `[0, 1]` the `α = 1` and `β = 1` branches are never selected.
+  /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`,
+  /// `w = v^{β(1-α)/α}`, else closed form; the `α = 1`, `β = 1` branches never run.
   pub(crate) fn inverse(alpha: f64, beta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
       let w = v.powf(beta * (1.0 - alpha) / alpha);
@@ -178,8 +177,8 @@ impl BivariateExt for MarshallOlkin {
     })
   }
 
-  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump `β v^{β(1-α)/α}`, the singular mass,
-  /// sits at the rounded `v^{β/α}` that `percent_point` returns, so `h(percent_point(y | v) | v) ≥ y`.
+  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump `β v^{β(1-α)/α}` sits
+  /// at the rounded `v^{β/α}` `percent_point` returns, so `h(percent_point(y | v) | v) ≥ y`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -192,8 +191,8 @@ impl BivariateExt for MarshallOlkin {
       } else if u >= v.powf(beta / alpha) {
         u.powf(1.0 - alpha)
       } else {
-        // `u·v^{−β}` first, so a subnormal `u` meets the factor `1 − β` only once the product is normal; in logarithms
-        // where `v^{−β}` overflows, the product being below `v^{β(1/α − 1)} ≤ 1` here.
+        // `u·v^{−β}` first, so a subnormal `u` meets `1 − β` only once the product is normal; in
+        // logarithms where `v^{−β}` overflows, the product below `v^{β(1/α − 1)} ≤ 1`.
         let scaled = u * v.powf(-beta);
         let scaled = if scaled.is_finite() {
           scaled
@@ -242,8 +241,10 @@ impl BivariateExt for MarshallOlkin {
     }
   }
 
-  /// $\lambda_U = \min(\alpha,\beta)$, carried entirely by the singular component on $u^\alpha = v^\beta$; no lower-tail dependence.
-  /// Reference: Marshall, A.W., Olkin, I. (1967); Nelsen (2006) Example 5.22 (module header).
+  /// $\lambda_U = \min(\alpha,\beta)$, carried entirely by the singular component on
+  /// $u^\alpha = v^\beta$; no lower-tail dependence.
+  /// Reference: Marshall, A.W., Olkin, I. (1967), DOI 10.1080/01621459.1967.10482885.
+  /// Reference: Nelsen (2006), Example 5.22, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
