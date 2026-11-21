@@ -83,8 +83,8 @@ Default builds target the plain `x86-64` / `aarch64` baseline so the binary or w
 RUSTFLAGS="-C target-cpu=native" cargo build --release
 RUSTFLAGS="-C target-cpu=native" cargo bench
 
-# An x86-64-vN build runs on every CPU of that level: v2 adds SSE4.2, v3 AVX2 + FMA, v4
-# AVX-512 (absent from AMD Zen 1–3 and from Intel's client CPUs since the 12th generation).
+# x86-64-vN runs on any CPU of its level: v2 SSE4.2 + POPCNT (~2009), v3 AVX2 + BMI2 + FMA (~2013),
+# v4 AVX-512 (most server CPUs; not AMD Zen 1–3 or Intel's client CPUs since the 12th generation).
 RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
 ```
 
