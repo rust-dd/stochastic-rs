@@ -10,8 +10,7 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 use crate::pricing::digital::expired;
-use crate::pricing::digital::not_finite;
-use crate::pricing::digital::not_positive;
+use crate::pricing::digital::in_log_domain;
 use crate::pricing::digital::vanilla_payoff;
 
 /// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
@@ -25,7 +24,7 @@ pub(super) fn floor_price(x: f64) -> f64 {
 /// spot or strike that is not finite and positive or a rate that is not finite, as in COS.
 pub(super) fn settled_call(s: f64, k: f64, r: f64, q: f64, t: f64) -> Option<f64> {
   expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k))
-    .or_else(|| (not_positive(&[s, k]) || not_finite(&[s, k, r, q])).then_some(f64::NAN))
+    .or_else(|| (!in_log_domain(&[s, k], &[r, q])).then_some(f64::NAN))
 }
 
 /// The put by parity on `call`, and the payoff or NaN from expiry on, where parity on a payoff
@@ -56,7 +55,7 @@ pub(super) fn settled_surface(
       vanilla_payoff(OptionType::Call, s, k_u.exp())
     })
   };
-  if payoff(b).is_none() && !(not_positive(&[s]) || not_finite(&[s, r, q])) {
+  if payoff(b).is_none() && in_log_domain(&[s], &[r, q]) {
     return None;
   }
   let log_strikes = Array1::from_shape_fn(n, |u| b + lambda * u as f64);
