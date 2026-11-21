@@ -45,6 +45,9 @@ pub(super) fn fourier_option_price(
   }
 }
 
+/// How far inside its model's `E[e^X] < ∞` domain a fit's point stays.
+const DOMAIN_MARGIN: f64 = 0.01;
+
 pub(super) fn param_count(model_type: LevyModelType) -> usize {
   match model_type {
     LevyModelType::VarianceGamma => 3,
@@ -64,7 +67,10 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
       vec![(0.01, 50.0), (-50.0, 50.0), (0.001, 5.0)]
     }
     LevyModelType::Cgmy => {
-      vec![(0.001, 10.0), (0.01, 50.0), (0.01, 50.0), (-1.0, 1.999)]
+      // `E[e^X]` is finite for `M > 1`, the compensator's `(M − 1)^Y`.
+      // Reference: Carr, Geman, Madan & Yor (2002), DOI 10.1086/338705.
+      let m = (1.0 + DOMAIN_MARGIN, 50.0);
+      vec![(0.001, 10.0), (0.01, 50.0), m, (-1.0, 1.999)]
     }
     LevyModelType::MertonJd => {
       vec![(0.01, 2.0), (0.01, 20.0), (-1.0, 1.0), (0.01, 2.0)]
@@ -74,7 +80,9 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
         (0.01, 2.0),
         (0.01, 20.0),
         (0.01, 0.99),
-        (1.0, 100.0),
+        // `E[e^J]` is finite for `η₁ > 1`, the compensator's `pη₁/(η₁ − 1)`.
+        // Reference: Kou (2002), DOI 10.1287/mnsc.48.8.1086.166.
+        (1.0 + DOMAIN_MARGIN, 100.0),
         (1.0, 100.0),
       ]
     }
@@ -91,20 +99,28 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
   }
 }
 
-/// Project parameters into their admissible bounds.
+/// Each parameter clamped into its bounds, then the point moved `DOMAIN_MARGIN` inside its
+/// model's `E[e^X] < ∞`, where its compensator is real: Variance Gamma's `ν`, NIG's `α`.
 pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   clamp_params(model_type, params);
-  // The NIG exponent is defined only when alpha > |beta|.
-  if model_type == LevyModelType::Nig {
-    let alpha = params[0];
-    let beta = params[1];
-    if alpha <= beta.abs() {
-      params[0] = beta.abs() + 0.01;
+  match model_type {
+    // Reference: Madan, Carr & Chang (1998), eq. (22), DOI 10.1023/A:1009703431535.
+    LevyModelType::VarianceGamma => {
+      let rate = params[1] + 0.5 * params[0] * params[0];
+      if rate * params[2] > 1.0 - DOMAIN_MARGIN {
+        params[2] = (1.0 - DOMAIN_MARGIN) / rate;
+      }
     }
+    // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
+    LevyModelType::Nig => {
+      let beta = params[1];
+      params[0] = params[0].max(beta.abs().max((beta + 1.0).abs()) + DOMAIN_MARGIN);
+    }
+    _ => {}
   }
 }
 
-/// Each parameter clamped into its bounds, NIG's `α > |β|` aside.
+/// Each parameter clamped into its bounds, the domain's coupled conditions aside.
 pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
   for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
     *p = p.clamp(lo, hi);

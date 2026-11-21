@@ -435,3 +435,103 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
     assert!(error < 1e-4, "{model:?}: {error:e}");
   }
 }
+
+/// `(model, a point of its box without E[e^X], the model's own condition)`: Madan, Carr & Chang's
+/// `1 − θν − σ²ν/2`, Barndorff-Nielsen's `α − |β + 1|`, `M − 1` and `η₁ − 1`, each to be positive.
+fn points_without_a_martingale() -> Vec<(LevyModelType, Vec<f64>, fn(&[f64]) -> f64)> {
+  let vg = |p: &[f64]| 1.0 - p[1] * p[2] - 0.5 * p[0] * p[0] * p[2];
+  let nig = |p: &[f64]| p[0] - (p[1] + 1.0).abs().max(p[1].abs());
+  vec![
+    (LevyModelType::VarianceGamma, vec![1.2, 0.6, 3.0], vg),
+    (LevyModelType::VarianceGamma, vec![2.0, -1.0, 5.0], vg),
+    (LevyModelType::Nig, vec![3.0, 2.5, 0.5], nig),
+    (LevyModelType::Nig, vec![50.0, 49.5, 0.5], nig),
+    (LevyModelType::Nig, vec![3.0, -3.0, 0.5], nig),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 0.5, 0.5], |p| {
+      p[2] - 1.0
+    }),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 1.0, -0.5], |p| {
+      p[2] - 1.0
+    }),
+    (LevyModelType::Kou, vec![0.15, 3.0, 0.5, 1.0, 10.0], |p| {
+      p[3] - 1.0
+    }),
+  ]
+}
+
+/// The fit's projection moves each such point 0.01 inside its model's condition, where the price
+/// is finite; the point itself prices NaN or without a finite compensator.
+#[test]
+fn a_projected_point_has_a_martingale_in_every_model() {
+  use super::loss::project_params;
+  for (model, point, condition) in points_without_a_martingale() {
+    let price =
+      |p: &[f64]| fourier_call_price(model, p, 100.0, 100.0, 0.05, 0.0, 1.0, &mut Walk::Adaptive);
+    assert!(condition(&point) <= 0.0, "{model:?} {point:?}");
+    let mut projected = point.clone();
+    project_params(model, &mut projected);
+    let margin = condition(&projected);
+    assert!(margin >= 0.01 - 1e-12, "{model:?} {projected:?}: {margin}");
+    let (inside, outside) = (price(&projected), price(&point));
+    assert!(
+      inside.is_finite() && inside > 0.0 && inside < 100.0 + 1e-9,
+      "{model:?} {projected:?}: {inside}, the point itself {outside}"
+    );
+    let mut again = projected.clone();
+    project_params(model, &mut again);
+    assert_eq!(again, projected);
+  }
+}
+
+/// A point inside the condition by more than the margin is left as it is.
+#[test]
+fn a_point_with_a_martingale_is_its_own_projection() {
+  use super::loss::default_params;
+  use super::loss::project_params;
+  let inside = [
+    (LevyModelType::VarianceGamma, vec![1.2, -0.6, 4.95]),
+    (LevyModelType::Nig, vec![6.02, 5.0, 0.5]),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 1.02, 0.5]),
+    (LevyModelType::Kou, vec![0.15, 3.0, 0.5, 1.02, 10.0]),
+  ];
+  let defaults = [
+    LevyModelType::VarianceGamma,
+    LevyModelType::Nig,
+    LevyModelType::Cgmy,
+    LevyModelType::MertonJd,
+    LevyModelType::Kou,
+  ]
+  .map(|model| (model, default_params(model)));
+  for (model, point) in inside.into_iter().chain(defaults) {
+    let mut projected = point.clone();
+    project_params(model, &mut projected);
+    assert_eq!(projected, point, "{model:?}");
+  }
+}
+
+/// A start without `E[e^X]` is fitted from its projection and every accepted step has it, where
+/// the start's NaN residuals were an `Optimizer` error.
+#[test]
+fn a_fit_started_without_a_martingale_runs_inside_the_domain() {
+  for (model, point, condition) in points_without_a_martingale() {
+    let options = CalibrationOptions::default()
+      .with_max_iterations(12)
+      .with_record_history(true);
+    let fit = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0))
+      .with_start(LevyParams {
+        values: point.clone(),
+        model_type: model,
+      })
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_or_else(|error| panic!("{model:?} {point:?}: {error}"));
+    assert!(fit.rmse().is_finite(), "{model:?} {point:?}: {fit:?}");
+    for entry in &fit.history {
+      let margin = condition(&entry.params.values);
+      assert!(margin >= 0.01 - 1e-12, "{model:?} {:?}", entry.params);
+    }
+    let first = fit.history[0].residuals.dot(&fit.history[0].residuals);
+    let last = fit.history.last().unwrap();
+    assert!(last.residuals.dot(&last.residuals) <= first);
+  }
+}

@@ -67,7 +67,8 @@ impl LevyCalibrator {
   }
 
   /// Panics unless `start.model_type == self.model_type`, `start.values.len()` is the model's
-  /// parameter count and every value is finite; the fit starts from the values clamped to bounds.
+  /// parameter count and every value is finite; the fit starts from the values clamped to bounds
+  /// and moved inside the model's `E[e^X] < ∞`.
   pub fn with_start(mut self, start: LevyParams) -> Self {
     if let Some(reason) = start_violation(self.model_type, &start) {
       panic!("{reason}");
@@ -154,7 +155,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
 pub(super) struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
   params: LevyParams,
-  /// The coordinates clamped to their bounds, before NIG's `α > |β|` moves `α`.
+  /// The coordinates clamped to their bounds, before the model's domain moves one.
   clamped: Vec<f64>,
   market: Vec<f64>,
   trail: Trail<LevyParams>,
@@ -193,8 +194,8 @@ impl<'a> LevyProblem<'a> {
       .collect()
   }
 
-  /// `∂r/∂θ` at the clamped point, NIG's `α > |β|` inside each stencil and every price on the
-  /// rule the point's own price walked; `scale` times the shared step.
+  /// `∂r/∂θ` at the clamped point, the domain's projection inside each stencil and every price on
+  /// the rule the point's own price walked; `scale` times the shared step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
     let model_type = self.calibrator.model_type;
     let quotes = &self.calibrator.quotes;
