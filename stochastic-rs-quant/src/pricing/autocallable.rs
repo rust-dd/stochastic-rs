@@ -42,9 +42,9 @@ pub enum KnockInStyle {
 #[derive(Debug, Clone, Copy)]
 pub struct AutocallablePricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
-  pub sigma: f64,
-  pub n_paths: usize,
-  pub steps_per_period: usize,
+  sigma: f64,
+  n_paths: usize,
+  steps_per_period: usize,
   /// Each call draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
 }

@@ -164,6 +164,15 @@ fn malliavin_rejects_a_maturity_shorter_than_t_eval() {
   let _ = pricer(SEEDS[0]).price_call(S, K, R, 0.0, 0.25);
 }
 
+/// Read back, never written: a write would skip `new`'s checks.
+#[test]
+fn the_checked_fields_are_read_through_getters() {
+  assert_eq!(
+    (pricer(SEEDS[0]).sigma(), pricer(SEEDS[0]).t_eval()),
+    (0.1, 0.5)
+  );
+}
+
 /// The `l == 0` branch is the Dirac limit, so it has to be the *limit*:
 /// the kernel pair must agree with the step function the caller compares
 /// it against, or the localisation weight `pdf + (H - cdf)·t2` would come

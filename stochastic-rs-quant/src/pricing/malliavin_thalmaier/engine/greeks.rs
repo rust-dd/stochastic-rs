@@ -35,13 +35,13 @@ use crate::traits::FloatExt;
 /// ```
 #[derive(Debug, Clone)]
 pub struct MtGreeks<T: FloatExt, S: SeedExt = Unseeded> {
-  pub params: MultiHestonParams<T>,
+  pub(super) params: MultiHestonParams<T>,
   /// Positive Poisson-kernel regularisation parameter.
   ///
   /// Its bias/variance trade-off is payoff- and model-dependent; the paper
   /// does not prescribe a universal numerical interval.
-  pub h: T,
-  pub n_paths: usize,
+  pub(super) h: T,
+  pub(super) n_paths: usize,
   /// Each estimate draws its paths' seeds from a clone, and a bump pair reads one draw of them,
   /// its common random numbers.
   pub seed: S,

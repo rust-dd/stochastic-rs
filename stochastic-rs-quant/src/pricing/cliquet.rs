@@ -106,8 +106,8 @@ impl CliquetPricer {
 #[derive(Debug, Clone, Copy)]
 pub struct McCliquetPricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
-  pub sigma: f64,
-  pub n_paths: usize,
+  sigma: f64,
+  n_paths: usize,
   /// Each call draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
 }

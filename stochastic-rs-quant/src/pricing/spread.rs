@@ -188,13 +188,13 @@ impl MargrabePricer {
 #[derive(Debug, Clone, Copy)]
 pub struct McSpreadPricer<S: SeedExt = Unseeded> {
   /// Volatility of asset 1.
-  pub sigma1: f64,
+  sigma1: f64,
   /// Volatility of asset 2.
-  pub sigma2: f64,
+  sigma2: f64,
   /// Correlation.
-  pub rho: f64,
+  rho: f64,
   /// Number of MC paths.
-  pub n_paths: usize,
+  n_paths: usize,
   /// Each call draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
 }
@@ -240,15 +240,8 @@ impl<S: SeedExt> McSpreadPricer<S> {
     }
   }
 
-  /// Price either leg at one query point with a single simulation.
-  ///
-  /// The per-path payoff floors through `floor_payoff`. With a bare
-  /// `.max(0.0)` **every** poisoned path zeroed independently, so the
-  /// average came back `0.0` rather than `NaN` — a whole simulation's
-  /// worth of undefined payoffs reported as a worthless option. Both a
-  /// `NaN` query coordinate (`s1`, `s2`, `k`, a dividend yield) and a
-  /// `NaN` model parameter (`rho`, either volatility) reach it, the
-  /// latter through the `pub` fields whatever [`new`](Self::new) accepts.
+  /// Either leg at one query point from one simulation; a NaN query coordinate prices NaN, where a
+  /// bare `max(0.0)` would floor every path to a worthless option.
   pub fn price_option(
     &self,
     s1: f64,

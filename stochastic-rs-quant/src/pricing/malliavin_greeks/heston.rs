@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 pub struct HestonMalliavinGreeks<S: SeedExt = Unseeded> {
   /// Spot price.
   pub s: f64,
-  pub params: HestonParams,
+  pub(super) params: HestonParams,
   /// Risk-free rate.
   pub r: f64,
   /// Strike price
@@ -29,9 +29,9 @@ pub struct HestonMalliavinGreeks<S: SeedExt = Unseeded> {
   /// Time to maturity in years.
   pub tau: f64,
   /// Number of Monte Carlo paths
-  pub n_paths: usize,
+  pub(super) n_paths: usize,
   /// Number of time steps
-  pub n_steps: usize,
+  pub(super) n_steps: usize,
   /// Each estimator simulates from a clone, so a `Deterministic` seed replays its paths.
   pub seed: S,
 }

@@ -361,7 +361,7 @@ fn the_vocabulary_is_one_word_per_concept() {
   assert_eq!(AsianPricer::new(0.25).sigma, 0.25);
   assert_eq!(BjerksundStensland2002Pricer::new(0.25).sigma, 0.25);
   assert_eq!(SnellEnvelopePricer::new(0.25, 50).sigma, 0.25);
-  assert_eq!(GbmMalliavinPricer::new(0.2, 8, 4, 0.5).sigma, 0.2);
+  assert_eq!(GbmMalliavinPricer::new(0.2, 8, 4, 0.5).sigma(), 0.2);
   let quanto = QuantoPricer {
     sigma: 0.2,
     sigma_fx: 0.12,

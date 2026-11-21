@@ -40,7 +40,7 @@ pub struct RBergomiCalibrator<S: SeedExt = Unseeded> {
   pub start: RBergomiParams,
   /// Sorted by maturity in `new`; `calibrate` reports a slice by its index in this order.
   pub market_slices: Vec<RBergomiMarketSlice>,
-  pub config: RBergomiCalibrationConfig,
+  config: RBergomiCalibrationConfig,
   /// Adam reads `max_iterations` (default 60) and `record_history`; its stop is `config`'s, so
   /// `tolerance`, `patience`, `loss_metrics` and `regularization` are `Unsupported`.
   pub options: CalibrationOptions,

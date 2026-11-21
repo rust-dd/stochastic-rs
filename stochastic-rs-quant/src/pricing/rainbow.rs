@@ -274,11 +274,11 @@ pub struct McRainbowPricer<S: SeedExt = Unseeded> {
   /// Payoff type — a term of the contract, not a market quote.
   pub payoff: RainbowPayoff,
   /// Annualised Black–Scholes volatility of each asset.
-  pub sigma: Array1<f64>,
+  sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
   /// Number of MC paths.
-  pub n_paths: usize,
+  n_paths: usize,
   /// Each call draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
 }

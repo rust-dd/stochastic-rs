@@ -19,9 +19,9 @@ use crate::pricing::mc_stats::par_estimate;
 #[derive(Debug, Clone, Copy)]
 pub struct McBarrierPricer<S: SeedExt = Unseeded> {
   /// Annualised Black–Scholes volatility.
-  pub sigma: f64,
-  pub n_paths: usize,
-  pub n_steps: usize,
+  sigma: f64,
+  n_paths: usize,
+  n_steps: usize,
   /// Each call reads a clone's next seed as its base, and each path derives its stream from that
   /// base and its index, so a `Deterministic` seed replays whatever rayon's schedule.
   pub seed: S,
