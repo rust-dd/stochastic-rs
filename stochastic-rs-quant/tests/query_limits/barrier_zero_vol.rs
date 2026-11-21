@@ -1,5 +1,6 @@
 //! `BarrierPricer` on the deterministic path of a zero volatility.
 
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::pricing::barrier::BarrierPricer;
 use stochastic_rs_quant::pricing::barrier::BarrierType;
@@ -229,4 +230,42 @@ fn a_barrier_that_is_not_finite_is_nan() {
       }
     }
   }
+}
+
+/// The Monte Carlo estimate is NaN from no path exactly where the closed form is NaN, a knocked-out
+/// rebate included, and pays the closed form's payoff or rebate at expiry.
+#[test]
+fn a_monte_carlo_barrier_is_nan_where_the_closed_form_is() {
+  use BarrierType::*;
+  let (inf, mc) = (f64::INFINITY, McBarrierPricer::new(0.2, 64, 8));
+  let mc = mc.with_seed(Deterministic::new(7));
+  let mut apart = Vec::new();
+  for (barrier_type, barriers) in [
+    (UpAndOut, [110.0, 95.0, inf, -inf]),
+    (UpAndIn, [110.0, 95.0, inf, -inf]),
+    (DownAndOut, [90.0, 105.0, -inf, inf]),
+    (DownAndIn, [90.0, 105.0, -inf, inf]),
+  ] {
+    for (barrier, option_type) in barriers.into_iter().flat_map(|h| {
+      [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type))
+    }) {
+      for (strike, tau) in [100.0, 0.0, -5.0].into_iter().flat_map(|k| [(k, 1.0), (k, 0.0)]) {
+        let option = BarrierOption {
+          strike,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        let closed = BarrierPricer::new(0.2).price(&option, 100.0, R, Q, tau);
+        let estimate = mc.price(&option, 100.0, R, Q, tau);
+        let nan = estimate.mean.is_nan() && estimate.std_err.is_nan() && estimate.n_samples == 0;
+        let same = if tau == 0.0 { estimate.mean == closed } else { !estimate.mean.is_nan() };
+        if !(if closed.is_nan() { nan } else { same }) {
+          apart.push(format!("{option:?} at tau {tau}: {closed} vs {estimate:?}"));
+        }
+      }
+    }
+  }
+  assert!(apart.is_empty(), "{apart:#?}");
 }

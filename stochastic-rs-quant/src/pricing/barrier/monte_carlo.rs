@@ -10,6 +10,7 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::BarrierType;
 use crate::OptionType;
+use crate::pricing::digital::not_positive;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::par_estimate;
@@ -58,8 +59,8 @@ impl<S: SeedExt> McBarrierPricer<S> {
     }
   }
 
-  /// Discounted estimate under the log drift `(r − q − σ²/2) dt`; NaN for a NaN query or term,
-  /// `tau < 0` or a spot not positive before expiry, as the closed form.
+  /// Discounted estimate under the drift `(r − q − σ²/2) dt`, a knocked-out rebate at any strike;
+  /// NaN for a NaN term, a barrier not finite, `tau < 0`, or a spot or strike `≤ 0` before expiry.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
     let BarrierOption {
       strike: k,
@@ -68,8 +69,12 @@ impl<S: SeedExt> McBarrierPricer<S> {
       barrier_type,
       option_type,
     } = *option;
-    let undefined = [s, r, q, tau, k, h, rebate].iter().any(|x| x.is_nan());
-    if undefined || tau < 0.0 || (s <= 0.0 && tau > 0.0) {
+    let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
+    let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
+    let breached = |x: f64| if up { x >= h } else { x <= h };
+    let undefined = [s, r, q, tau, k, rebate].iter().any(|x| x.is_nan()) || !h.is_finite();
+    let unread = tau > 0.0 && (s <= 0.0 || (not_positive(&[k]) && (knock_in || !breached(s))));
+    if undefined || tau < 0.0 || unread {
       return McEstimate {
         mean: f64::NAN,
         std_err: f64::NAN,
@@ -80,9 +85,6 @@ impl<S: SeedExt> McBarrierPricer<S> {
     let drift = (r - q - 0.5 * self.sigma * self.sigma) * dt;
     let vol = self.sigma * dt.sqrt();
     let discount = (-r * tau).exp();
-    let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
-    let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
-    let breached = |x: f64| if up { x >= h } else { x <= h };
     let base_seed = self.seed.clone().next_seed();
 
     let payoff_of = |path: usize| -> f64 {
