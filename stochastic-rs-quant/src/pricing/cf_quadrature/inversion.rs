@@ -105,19 +105,20 @@ pub(crate) fn head_floor(gap: impl Fn(f64) -> f64) -> f64 {
 
 /// `∫₀^∞ Re[chf_part − control_part]`; `control_part` oscillates at `control_frequency`, and a
 /// `head_floor` below 1 says the kernel's `1/u` needs the head in `ln u`, walked at least that far.
-pub(crate) struct Inversion<A, B> {
+pub(crate) struct Inversion<A, B, R> {
   pub(crate) chf_part: A,
   pub(crate) control_part: B,
   pub(crate) control_frequency: f64,
   pub(crate) head_floor: Option<f64>,
-  pub(crate) reach: f64,
-  pub(crate) scale: f64,
+  /// [`reach_and_scale`], asked of a walk alone: a replay integrates its rule and probes nothing.
+  pub(crate) reach: R,
 }
 
-impl<A, B> Inversion<A, B>
+impl<A, B, R> Inversion<A, B, R>
 where
   A: Fn(f64) -> Complex64,
   B: Fn(f64) -> Complex64,
+  R: Fn() -> (f64, f64),
 {
   /// The integral, NaN if any sample is, walked or replayed as `walk` says.
   pub(crate) fn integrate(&self, walk: &mut Walk<'_, Rule>) -> f64 {
@@ -142,22 +143,17 @@ where
       }
       None => (0.0, 0.0),
     };
-    let scaled = |y: f64| self.scale * watched(self.scale * y);
+    let (reach, scale) = (self.reach)();
+    let scaled = |y: f64| scale * watched(scale * y);
     let leaves = rule.as_deref_mut().map(|r| {
-      r.scale = self.scale;
+      r.scale = scale;
       &mut r.body
     });
-    let (body, end) = walk(
-      scaled,
-      start / self.scale,
-      BODY_TOLERANCE,
-      self.reach / self.scale,
-      leaves,
-    );
+    let (body, end) = walk(scaled, start / scale, BODY_TOLERANCE, reach / scale, leaves);
     if poisoned.get() || body.is_nan() {
       return f64::NAN;
     }
-    let end = (end * self.scale).max(start);
+    let end = (end * scale).max(start);
     let mut tails = [
       self.tail_rule(&self.chf_part, end, None),
       self.tail_rule(&self.control_part, end, Some(self.control_frequency)),

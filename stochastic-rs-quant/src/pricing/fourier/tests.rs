@@ -462,3 +462,48 @@ fn cumulant_sizing_rejects_a_non_positive_spot_instead_of_a_default_grid() {
   let model = crate::pricing::fourier::BsmFourier { sigma: 0.2 };
   let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, -100.0, 12.0);
 }
+
+/// A replay integrates its recorded rule and asks nothing of the reach, whose probes a walk pays.
+#[test]
+fn a_replayed_lewis_price_does_not_probe_for_its_reach() {
+  use std::cell::Cell;
+
+  use crate::pricing::cf_quadrature::Walk;
+  use crate::pricing::cf_quadrature::reach_and_scale;
+
+  struct Counted(MertonJdFourier, Cell<usize>);
+
+  impl FourierModelExt for Counted {
+    fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+      self.1.set(self.1.get() + 1);
+      self.0.chf(t, xi)
+    }
+
+    fn cumulants(&self, t: f64) -> Cumulants {
+      self.0.cumulants(t)
+    }
+  }
+
+  let jumps = MertonJdFourier {
+    sigma: 0.15,
+    lambda: 0.5,
+    mu_j: -0.1,
+    sigma_j: 0.2,
+  };
+  let model = Counted(jumps, Cell::new(0));
+  let (s, k, r, q, t) = (100.0, 105.0, 0.05, 0.01, 0.5);
+  let mut rules = Vec::new();
+  let walked = LewisPricer::price_call_walk(&model, s, k, r, q, t, &mut Walk::Record(&mut rules));
+  let on_walk = model.1.replace(0);
+  let replayed =
+    LewisPricer::price_call_walk(&model, s, k, r, q, t, &mut Walk::Replay(rules.iter()));
+  let on_replay = model.1.replace(0);
+  let kappa = (k / s).ln() - (r - q) * t;
+  reach_and_scale(|u| model.chf(t, Complex64::new(u, -0.5)), kappa);
+  let probes = model.1.replace(0);
+  assert!((replayed - walked).abs() < 1e-12, "{replayed} vs {walked}");
+  assert!(
+    probes >= 8 && on_replay + probes <= on_walk,
+    "{on_replay} on the replay, {on_walk} on the walk, {probes} probes"
+  );
+}

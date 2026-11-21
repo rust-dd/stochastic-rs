@@ -64,15 +64,13 @@ impl LewisPricer {
     let kappa = (k / forward).ln();
     let w = control_variance(model, t);
     let chf = |u: f64| model.chf(t, Complex64::new(u, -0.5));
-    let (reach, scale) = reach_and_scale(chf, kappa);
     let kernel = |u: f64| Complex64::new(0.0, -u * kappa).exp() / (u * u + 0.25);
     let inversion = Inversion {
       chf_part: |u: f64| kernel(u) * chf(u),
       control_part: |u: f64| kernel(u) * (-0.5 * w * (u * u + 0.25)).exp(),
       control_frequency: -kappa,
       head_floor: None,
-      reach,
-      scale,
+      reach: || reach_and_scale(chf, kappa),
     };
     let integral = inversion.integrate(walk);
     let black = if w > 0.0 {
@@ -110,7 +108,7 @@ impl GilPelaezPricer {
     if !(share_norm.is_finite() && share_norm.norm() > 0.0) {
       return f64::NAN;
     }
-    let (reach, scale) = reach_and_scale(|u| model.chf(t, Complex64::from(u)), kappa);
+    let reach = reach_and_scale(|u| model.chf(t, Complex64::from(u)), kappa);
     let share = |u_j: f64, shift: f64, norm: Complex64| {
       let mean = u_j * w;
       let chf = |u: f64| model.chf(t, Complex64::new(u, shift)) / norm;
@@ -120,8 +118,7 @@ impl GilPelaezPricer {
         control_part: |u: f64| kernel(u) * Complex64::new(-0.5 * u * u * w, u * mean).exp(),
         control_frequency: mean - kappa,
         head_floor: Some(head_floor(|u| (chf(u) - 1.0).norm())),
-        reach,
-        scale,
+        reach: || reach,
       };
       gaussian_share(kappa, mean, w) + FRAC_1_PI * inversion.integrate(&mut Walk::Adaptive)
     };
