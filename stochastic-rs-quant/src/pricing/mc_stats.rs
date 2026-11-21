@@ -31,11 +31,11 @@ pub(crate) fn par_estimate(
   }
 }
 
-/// Whether a Monte Carlo query has no price: a NaN coordinate, `tau < 0`, or a spot that is not
-/// positive before expiry.
-pub(crate) fn off_domain(spots: &[f64], others: &[f64], tau: f64) -> bool {
-  let nan = spots.iter().chain(others).any(|x| x.is_nan()) || tau.is_nan();
-  nan || tau < 0.0 || (tau > 0.0 && spots.iter().any(|&s| s <= 0.0))
+/// Whether a Monte Carlo query has no price: a NaN coordinate, `tau < 0`, or one of `positive` (the
+/// spots, and a strike the payoff needs positive) that is not positive before expiry.
+pub(crate) fn off_domain(positive: &[f64], others: &[f64], tau: f64) -> bool {
+  let nan = positive.iter().chain(others).any(|x| x.is_nan()) || tau.is_nan();
+  nan || tau < 0.0 || (tau > 0.0 && positive.iter().any(|&x| x <= 0.0))
 }
 
 /// The estimate of a query no path is simulated for: exact for a number, NaN for a NaN.

@@ -96,6 +96,61 @@ fn the_monte_carlo_rainbow_and_basket_are_nan_for_a_query_off_their_domain() {
   assert_eq!((expired.mean, expired.std_err), (2.5, 0.0));
 }
 
+/// A rainbow or basket strike that is not positive is NaN before expiry, as the closed forms are;
+/// an arithmetic basket with a negative weight can end below zero, so its strike is a spread's.
+#[test]
+fn a_monte_carlo_rainbow_or_basket_is_nan_before_expiry_at_a_strike_that_is_not_positive() {
+  use BasketAverageType::*;
+  use RainbowPayoff::*;
+  let rho = array![[1.0, 0.4], [0.4, 1.0]];
+  let sigma = array![0.2, 0.3];
+  let (spots, yields) = (array![110.0, 95.0], array![0.0, 0.01]);
+  let basket = |weights: Array1<f64>, average| {
+    McBasketPricer::new(weights, average, sigma.clone(), rho.clone(), 64)
+      .with_seed(Deterministic::new(8))
+  };
+  let spread = McSpreadPricer::new(0.2, 0.3, 0.4, 64).with_seed(Deterministic::new(8));
+  for k in [0.0, -5.0] {
+    for payoff in [CallOnMax, CallOnMin, PutOnMax, PutOnMin] {
+      let rainbow = McRainbowPricer::new(payoff, sigma.clone(), rho.clone(), 64)
+        .with_seed(Deterministic::new(7));
+      let got = rainbow.price(spots.view(), k, R, yields.view(), 1.0);
+      assert!(is_undefined(got), "{payoff:?} at k = {k}: {got}");
+      let expired = rainbow.price(spots.view(), k, R, yields.view(), 0.0);
+      let want = payoff.evaluate(&[110.0, 95.0], k);
+      assert_eq!(
+        (expired.mean, expired.std_err),
+        (want, 0.0),
+        "{payoff:?} at k = {k}"
+      );
+    }
+    for (weights, average) in [
+      (array![0.5, 0.5], Arithmetic),
+      (array![0.5, 0.5], Geometric),
+      (array![1.0, -1.0], Geometric),
+    ] {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        let model = basket(weights.clone(), average);
+        let got = model.price_option(spots.view(), k, R, yields.view(), 1.0, option_type);
+        assert!(is_undefined(got), "{average:?} {weights} at k = {k}: {got}");
+      }
+    }
+    let expired =
+      basket(array![0.5, 0.5], Arithmetic).price_call(spots.view(), k, R, yields.view(), 0.0);
+    assert_eq!((expired.mean, expired.std_err), (102.5 - k, 0.0), "k = {k}");
+    for option_type in [OptionType::Call, OptionType::Put] {
+      let long_short = basket(array![1.0, -1.0], Arithmetic);
+      let got = long_short.price_option(spots.view(), k, R, yields.view(), 1.0, option_type);
+      let want = spread.price_option(110.0, 95.0, k, R, 0.0, 0.01, 1.0, option_type);
+      let gap = (got.mean - want.mean).abs();
+      assert!(
+        got.mean.is_finite() && gap <= 1e-12 * want.mean.abs().max(1.0),
+        "{option_type:?} at k = {k}: {got} vs the spread's {want}"
+      );
+    }
+  }
+}
+
 #[test]
 fn an_autocallable_is_nan_for_a_nan_query_or_a_spot_that_is_not_positive() {
   let note = AutocallableNote {

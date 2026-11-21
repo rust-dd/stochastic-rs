@@ -329,8 +329,8 @@ impl<S: SeedExt> McRainbowPricer<S> {
     Ok(self.price(s, k, r, q, tau))
   }
 
-  /// The contract at one query point: NaN for a NaN query, `tau < 0` or a spot not positive before
-  /// expiry; panics on a `rho` that is not positive definite, which `try_price` reports.
+  /// The contract at one query point: NaN for a NaN query, `tau < 0` or, before expiry, a spot or
+  /// strike not positive; panics on a `rho` not positive definite, which `try_price` reports.
   pub fn price(
     &self,
     s: ArrayView1<'_, f64>,
@@ -339,9 +339,9 @@ impl<S: SeedExt> McRainbowPricer<S> {
     q: ArrayView1<'_, f64>,
     tau: f64,
   ) -> McEstimate<f64> {
-    let spots = s.iter().copied().collect::<Vec<f64>>();
-    let others = q.iter().copied().chain([k, r]).collect::<Vec<f64>>();
-    if off_domain(&spots, &others, tau) {
+    let positive = s.iter().copied().chain([k]).collect::<Vec<f64>>();
+    let others = q.iter().copied().chain([r]).collect::<Vec<f64>>();
+    if off_domain(&positive, &others, tau) {
       return pathless(f64::NAN);
     }
     let n_assets = s.len();
