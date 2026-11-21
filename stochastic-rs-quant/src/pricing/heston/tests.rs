@@ -199,8 +199,9 @@ fn heston_greeks_match_engine_bumps() {
   let theta_tight = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_tight =
     (direct.theta(s, k, r, q, tau, ot) - theta_tight).abs() / theta_tight.abs().max(1e-8);
+  // A bump of `1e-7` turns the price's `1e-11` quadrature noise into `5e-5` of theta.
   assert!(
-    rel_tight < 1e-6,
+    rel_tight < 1e-5,
     "theta (tight-bump engine): mine={}, engine_tight={theta_tight}, rel={rel_tight}",
     direct.theta(s, k, r, q, tau, ot)
   );
@@ -345,11 +346,11 @@ fn the_integrand_shares_the_chf_riccati_exponent() {
   let pricer = HestonPricer::new(params);
   let factor_d = |xi: Complex64| crate::pricing::fourier::factor_cd(&params, 0.75, xi).1;
   for phi in [1e-8, 0.3, 7.0, 150.0] {
-    let (_, d2) = pricer.f_and_d(2, phi, 0.75, 100.0, 0.05, 0.02);
+    let (_, d2) = pricer.f_and_d(2, phi, 0.75);
     assert_eq!(d2, factor_d(Complex64::new(phi, 0.0)), "phi = {phi}");
   }
   for phi in [0.3, 7.0, 150.0] {
-    let (_, d1) = pricer.f_and_d(1, phi, 0.75, 100.0, 0.05, 0.02);
+    let (_, d1) = pricer.f_and_d(1, phi, 0.75);
     let want = factor_d(Complex64::new(phi, -1.0));
     assert!(
       (d1 - want).norm() <= 1e-14 * want.norm(),
@@ -376,22 +377,22 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
-  // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
+  // From `φ = 0`, as mpmath gives it at 30 digits: `44.2102926490`.
   let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
-    (v0_vega - 44.21029252905521).abs() < TOL,
+    (v0_vega - 44.2102926489992).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
     0.5179825268957217,
     0.025354655903697676,
-    17.684117011622085,
+    17.684117059600023,
     -5.490198593349759,
     34.92624529677357,
     0.18739798181670153,
     -0.13335185400364935,
-    45.78517450630034,
+    45.78517474306364,
     2.628564235038766,
   ];
   // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent
