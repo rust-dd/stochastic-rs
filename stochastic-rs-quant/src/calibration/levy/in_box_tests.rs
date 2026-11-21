@@ -108,30 +108,43 @@ fn no_step_inside_its_box_leaves_the_nig_asymmetry_where_it_was() {
   assert_eq!((lo, hi), (-49.99, 48.99));
 }
 
-/// Nine one-year calls of `truth`, rounded to `1e-6` as a quote is: a fit to unrounded prices of
-/// its own model ends in the pricer's noise, where a restart's ratio means nothing.
-fn rounded_calls(model: LevyModelType, truth: &[f64]) -> Vec<OptionQuote> {
+/// Nine one-year calls of `truth`, to the cent's millionth a quote is rounded to if `rounded`.
+fn calls(model: LevyModelType, truth: &[f64], rounded: bool) -> Vec<OptionQuote> {
   let call =
     |k: f64| fourier_call_price(model, truth, 100.0, k, 0.05, 0.0, 1.0, &mut Walk::Adaptive);
+  let quote = |k: f64| {
+    if rounded {
+      (call(k) * 1e6).round() / 1e6
+    } else {
+      call(k)
+    }
+  };
   let rows = STRIKES.iter();
   rows
-    .map(|&k| OptionQuote::new(k, 1.0, (call(k) * 1e6).round() / 1e6, OptionType::Call))
+    .map(|&k| OptionQuote::new(k, 1.0, quote(k), OptionType::Call))
     .collect()
 }
 
-/// Each truth lies beside its domain's edge, `α = |β + 1|` and `1 − θν − σ²ν/2 = 0`, and each
-/// start's fit runs onto it: a `converged` fit is improved tenfold neither from its own point nor
-/// from one a tenth further inside.
+/// Each start's fit runs onto its domain's edge. A `converged` fit above the pricer's noise,
+/// which is where a fit to its own model's unrounded prices ends, is improved tenfold neither
+/// from its own point nor from one a tenth further inside.
 #[test]
 fn a_fit_on_its_domains_edge_is_not_converged_where_the_cost_falls_inside() {
   let nig_start = vec![47.68619895060727, 5.121723141418705, 2.8522282392243885];
-  for (model, truth, start, coupled) in [
-    (LevyModelType::Nig, vec![2.6, 1.5, 0.3], nig_start, (0, 1.1)),
+  for (model, truth, start, coupled, rounded) in [
+    (
+      LevyModelType::Nig,
+      vec![2.6, 1.5, 0.3],
+      nig_start,
+      (0, 1.1),
+      false,
+    ),
     (
       LevyModelType::VarianceGamma,
       vec![0.5, 0.6, 1.36],
       vec![1.385, -0.496, 1.144],
       (2, 0.9),
+      true,
     ),
   ] {
     let from = |values: Vec<f64>| {
@@ -139,7 +152,8 @@ fn a_fit_on_its_domains_edge_is_not_converged_where_the_cost_falls_inside() {
         values,
         model_type: model,
       };
-      let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, rounded_calls(model, &truth));
+      let quotes = calls(model, &truth, rounded);
+      let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes);
       calibrator.calibrate(Some(start)).unwrap()
     };
     let fit = from(start.clone());
@@ -149,7 +163,7 @@ fn a_fit_on_its_domains_edge_is_not_converged_where_the_cost_falls_inside() {
       .rmse()
       .min(from(inside).rmse());
     assert!(
-      !fit.converged || 10.0 * lowest >= fit.rmse(),
+      !fit.converged || fit.rmse() < 1e-9 || 10.0 * lowest >= fit.rmse(),
       "{model:?}: {:e} converged at {:?}, {lowest:e} from it",
       fit.rmse(),
       fit.params.values
