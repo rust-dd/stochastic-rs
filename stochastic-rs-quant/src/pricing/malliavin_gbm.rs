@@ -1,9 +1,9 @@
-//! # Malliavin Gbm
+//! European prices on Gbm paths from the Malliavin conditional expectation, plain or localised.
 //!
 //! $$
 //! \Delta=\mathbb E\!\left[e^{-rT}\Phi(S_T)\,\frac{W_T}{S_0\sigma T}\right]
 //! $$
-//!
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
@@ -193,10 +193,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   ) -> CallPut {
     let t_eval = self.t_eval;
 
-    // Time-0 call price via tower property:
-    //   C(0) = E[ e^{-r t} C(t, S_t) ]
-    // Here we approximate E[ C(t, S_t) ] with the Monte Carlo average,
-    // but ignore non-finite pathwise estimates and enforce non-negativity.
+    // The tower property `C(0) = E[e^{−rt} C(t, S_t)]`, over the finite pathwise estimates and
+    // floored at zero.
     let disc_0t = (-r * t_eval).exp();
 
     let mut sum = 0.0_f64;
@@ -239,17 +237,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
 
-  /// Simulate Gbm paths S_t using the existing Gbm<f64> module.
-  ///
-  /// Returns:
-  ///   S: shape (M, N), with S[i, k] = S^{(i)}_{t_k}
-  ///
-  /// The process is handed a clone of [`self.seed`](Self#structfield.seed),
-  /// so the pricer's own seed state is unchanged by pricing and the whole
-  /// `M x N` block is reproducible from the constructor argument alone.
-  /// Each of the `M` `sample()` calls draws its own stream from that
-  /// clone, so the paths are independent of one another and still
-  /// identical run to run.
+  /// The `(M, N)` Gbm paths `S[i, k] = S^{(i)}_{t_k}`, each its own stream of a clone of the seed,
+  /// so they are independent, replay from the constructor argument and leave the seed alone.
   fn sample_paths(&self, s: f64, r: f64, q: f64, tau: f64) -> Array2<f64> {
     let mu = r - q;
 
@@ -277,21 +266,12 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 }
 
 impl<S: SeedExt> GbmMalliavinPricer<S> {
-  /// Malliavin-based conditional CALL prices C^M(t, S_t^{(i)}) for each path i.
-  ///
-  /// Returns:
-  ///   - S_t: shape (M,)
-  ///   - C^M(t, S_t^{(i)}): shape (M,)
-  ///
-  /// The estimator is:
-  ///   C^M(t, x) ≈ e^{-r(T-t)} * [ Σ_j φ(S_T^{(j)}) H(S_t^{(j)} - x) coef^{(j)} ] /
-  ///                                   [ Σ_j H(S_t^{(j)} - x) coef^{(j)} ],
-  /// where H is the Heaviside step function and coef^{(j)} is the Malliavin weight.
-  ///
-  /// An entry is `NaN` where that path's denominator collapses to ~0 — no
-  /// sampled path lands above `S_t^{(i)}` with appreciable weight, so the
-  /// conditional expectation has nothing to average and is undefined at that
-  /// point rather than zero. Raise `n_paths` if entries come back `NaN`.
+  /// Each path's `S_t` and Malliavin conditional call (`H` the Heaviside step, `w` the weight); NaN
+  /// where the denominator collapses, as no path lands above `S_t^{(i)}` (raise `n_paths`):
+  /// $$
+  /// C^M(t,x)\approx e^{-r(T-t)}\,
+  /// \frac{\sum_j \varphi(S_T^{(j)})\,H(S_t^{(j)}-x)\,w^{(j)}}{\sum_j H(S_t^{(j)}-x)\,w^{(j)}}
+  /// $$
   pub fn conditional_call_malliavin(
     &self,
     s: f64,
@@ -313,13 +293,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     let m = paths.nrows();
     let n = paths.ncols();
 
-    // Reconstruct Brownian paths W from S:
-    //
-    // Gbm Euler step:
-    //   S_k = S_{k-1} + μ S_{k-1} dt + σ S_{k-1} dW_{k-1}
-    // => dW_{k-1} = (S_k - S_{k-1} - μ S_{k-1} dt) / (σ S_{k-1})
-    //
-    // Then W_k = Σ_{j=0}^{k-1} dW_j.
+    // The Euler step `S_k = S_{k−1}(1 + μ dt + σ dW_{k−1})` inverted for `dW`, then summed to `W`.
     let w_paths = self.reconstruct_brownian(&paths, mu, dt);
 
     // Discrete index corresponding to t_eval
@@ -333,12 +307,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // Payoff φ(S_T) = (S_T - K)^+
     let payoff: Array1<f64> = s_final.iter().map(|&x_t| (x_t - k).max(0.0)).collect();
 
-    // Malliavin-weight (coef) for Gbm:
-    //
-    //   coef^{(i)} = ((T W_t^{(i)} - t_eval W_T^{(i)}) / (T - t_eval) + σ t_eval) / S_t^{(i)}
-    //
-    // This is the weight that appears after the Malliavin integration by parts
-    // when rewriting the conditional expectation with a Dirac delta as a ratio of expectations.
+    // The weight left by integrating the conditional's Dirac delta by parts:
+    // `w^{(i)} = ((T W_t^{(i)} − t W_T^{(i)})/(T − t) + σt) / S_t^{(i)}`, `t = t_eval`.
     let mut coef = Array1::<f64>::zeros(m);
     for i in 0..m {
       let st = s_t[i];
@@ -378,17 +348,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     (s_t, c_hat)
   }
 
-  /// Malliavin-based conditional CALL prices C^M(t, S_t^{(i)}) with localization
-  /// based on a Laplace kernel, following the reference implementation.
-  ///
-  /// Returns:
-  ///   - S_t: shape (M,)
-  ///   - Localized C^M(t, S_t^{(i)}): shape (M,)
-  ///
-  /// An entry is `NaN` where that path's localised denominator collapses to
-  /// ~0, for the same reason as
-  /// [`conditional_call_malliavin`](Self::conditional_call_malliavin) — the
-  /// Laplace kernel put no appreciable mass near `S_t^{(i)}`.
+  /// [`Self::conditional_call_malliavin`] localised by a Laplace kernel, as the reference
+  /// implementation does; NaN where the kernel puts no mass near `S_t^{(i)}`.
   pub fn conditional_call_malliavin_localized(
     &self,
     s: f64,

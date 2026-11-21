@@ -1,15 +1,14 @@
-//! # Spread
+//! Margrabe's exchange option in closed form and the spread option of any strike by Monte Carlo.
 //!
-//! Margrabe (1978) exchange option ($K=0$):
 //! $$
 //! M = S_1 e^{-q_1 T} N(d_1) - S_2 e^{-q_2 T} N(d_2),\quad
 //! \sigma = \sqrt{\sigma_1^2 + \sigma_2^2 - 2\rho\sigma_1\sigma_2}
 //! $$
 //!
-//! Source:
-//! - Margrabe, W. (1978), "The Value of an Option to Exchange One Asset for Another", J. Finance 33
-//! - Kirk, E. (1995), "Correlation in the Energy Markets" — see [`super::kirk`] for non-zero strikes.
-//!
+//! Kirk's approximation for a nonzero strike is [`super::kirk`].
+//! Reference: Margrabe (1978), J. Finance 33
+//! Reference: Kirk (1995), "Correlation in the Energy Markets"
+
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -44,35 +43,13 @@ pub(crate) fn assert_two_asset_model(sigma1: f64, sigma2: f64, rho: f64) {
   );
 }
 
-/// Margrabe (1978) exchange option: pays $\max(S_1 - S_2, 0)$.
+/// Margrabe (1978) exchange option, `max(S₁ − S₂, 0)`, with no rate (its two discounts cancel) and
+/// no [`ModelPricer`](crate::traits::ModelPricer), which prices one underlying against a strike.
 ///
 /// $$
 /// V = S_1 e^{-q_1 T} N(d_1) - S_2 e^{-q_2 T} N(d_2),\quad
 /// \sigma = \sqrt{\sigma_1^2 + \sigma_2^2 - 2\rho\sigma_1\sigma_2}
 /// $$
-///
-/// The struct holds **model state only** — the two volatilities and their
-/// correlation. The two spots, the two dividend yields and the maturity are
-/// the pricing *query* and travel as arguments to [`price`](Self::price),
-/// so one instance prices a whole spot/maturity grid.
-///
-/// The combined volatility $\sigma$ is the one place this differs from
-/// [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer). Kirk
-/// weights $\sigma_2$ by the query's own $F_2/(F_2+X)$ and therefore
-/// *cannot* cache it; Margrabe's depends on the model alone and could be
-/// cached, but is recomputed per call anyway, so no field on the struct is
-/// ever a number left over from an earlier query.
-///
-/// There is no rate. An exchange option's two discount factors cancel, so
-/// $r$ never enters the formula — an absence, not an omission.
-///
-/// A two-asset payoff with no strike carries no
-/// [`ModelPricer`](crate::traits::ModelPricer), whose
-/// `price_call(s, k, r, q, tau)` prices one underlying against one strike.
-/// Margrabe belongs to the multi-asset "convention, no trait" family
-/// alongside [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer)
-/// and [`McSpreadPricer`], and exposes the same model/query split through
-/// inherent methods.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::spread::MargrabePricer;
@@ -163,28 +140,8 @@ impl MargrabePricer {
   }
 }
 
-/// Monte-Carlo spread option pricer for general non-zero strikes under
-/// correlated geometric Brownian motion. Pays
-/// $\max\!\big(\phi(S_1 - S_2 - K), 0\big)$ where $\phi=\pm 1$.
-///
-/// The struct holds **model and method state only** — the two volatilities,
-/// their correlation, and the Monte Carlo path count. The two spots, the
-/// strike, the rate, the two dividend yields and the maturity are the
-/// pricing *query* and travel as arguments, so one instance prices a whole
-/// strike/maturity grid.
-///
-/// `n_paths` is neither model nor query but a convergence control, and it
-/// sits beside the model for the same reason
-/// `GbmMalliavinPricer` keeps its own path and step counts there: it fixes
-/// how accurately this instance answers, not what it is answering about.
-///
-/// [`price_call`](Self::price_call) and [`price_put`](Self::price_put) each
-/// run **one** simulation. Neither is derived from the other by put-call
-/// parity, which would quote the two legs off different samples.
-///
-/// Like [`MargrabePricer`] this is a two-asset payoff and so carries no
-/// [`ModelPricer`](crate::traits::ModelPricer); it follows the same
-/// "convention, no trait" split through inherent methods.
+/// Monte Carlo spread option `max(φ(S₁ − S₂ − K), 0)` on correlated Gbm at any strike; each leg is
+/// its own simulation, not parity off the other's sample.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::spread::McSpreadPricer;

@@ -25,15 +25,12 @@ fn iid_basket(
   (s, w, sig, q, rho_m)
 }
 
-/// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last bit
-/// is a hostage to FMA contraction and libm differences between the
-/// aarch64-darwin dev machine and CI's ubuntu x86_64.
+/// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
+/// aarch64-darwin and CI's ubuntu x86_64.
 const TOL: f64 = 1e-12;
 
-/// An asymmetric basket: distinct weights, spots, volatilities and dividend
-/// yields, an indefinite-looking off-diagonal correlation, a non-round
-/// strike and a non-unit maturity. Nothing here can survive a query field
-/// left behind on the struct by coinciding with a default.
+/// Distinct weights, spots, volatilities and yields, a non-round strike and a non-unit maturity,
+/// so no query value left on the struct can pass by matching a default.
 fn asymmetric_basket() -> (
   Array1<f64>,
   Array1<f64>,
@@ -50,9 +47,7 @@ fn asymmetric_basket() -> (
   )
 }
 
-/// Values captured from the bundled-market-data `GeometricBasketPricer`
-/// **before** the model/query reshape. The reshape is an API change only,
-/// so these must not move.
+/// The geometric basket's prices are pinned to the values it priced before the model/query split.
 #[test]
 fn geometric_basket_matches_pre_refactor_goldens() {
   let single = GeometricBasketPricer::new(array![1.0], array![0.2], array![[1.0]]);
@@ -71,9 +66,8 @@ fn geometric_basket_matches_pre_refactor_goldens() {
   assert!((put - 7.226225240544302).abs() < TOL, "asym put {put}");
 }
 
-/// One model instance prices a whole strike and maturity grid — the point
-/// of the split. A strike or maturity cached at construction would return
-/// the same number three times.
+/// One instance prices a strike and maturity grid, which a strike or maturity cached at
+/// construction would answer with one number.
 #[test]
 fn geometric_basket_one_model_prices_a_grid() {
   let (s, w, sig, q, rho) = asymmetric_basket();
@@ -128,9 +122,7 @@ fn geometric_below_arithmetic() {
   assert!(geo < ari, "geo={geo} should be < ari={ari}");
 }
 
-/// Values captured from the bundled-market-data
-/// `ArithmeticBasketLevyPricer` **before** the model/query reshape. The
-/// reshape is an API change only, so these must not move.
+/// The Levy basket's prices are pinned to the values it priced before the model/query split.
 #[test]
 fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   let (s, w, sig, q, rho) = asymmetric_basket();
@@ -213,15 +205,8 @@ fn mc_geometric_matches_closed_form() {
   );
 }
 
-/// The two closed-form basket constructors now reject a shape mismatch, a
-/// negative volatility and an out-of-range correlation entry; the Monte
-/// Carlo one rejects only the volatilities and the path count.
-///
-/// The shape check is the one with the sharpest evidence, and it comes
-/// from the Levy pricer: it has no dimension assertion anywhere, and its
-/// moment loops run over the *query*'s asset count while indexing the
-/// model's vectors, so a surplus model entry is silently discarded and a
-/// short one silently truncates the basket.
+/// The closed forms refuse a shape mismatch, a negative volatility and a correlation off `[−1, 1]`
+/// (Levy's loops would drop or truncate an asset); the Monte Carlo one the volatilities and paths.
 mod construction_validation {
   use super::*;
 
@@ -275,9 +260,7 @@ mod construction_validation {
     );
   }
 
-  /// The `sigma_g_sq.max(0.0)` floor swallows a negative basket variance
-  /// and the geometric call comes back **`0.0`** — the `f64::max` trap
-  /// again, this time on a model parameter rather than a price.
+  /// A `rho` of −5 makes the basket variance negative, which its `max(0)` floor priced at `0.0`.
   #[test]
   #[should_panic(
     expected = "rho[0][1] must satisfy `(-1.0..=1.0).contains(&rho[0][1])`, got rho[0][1] = -5.0"
@@ -303,9 +286,8 @@ mod construction_validation {
     );
   }
 
-  /// The range test covers the diagonal, so a matrix carrying variances
-  /// instead of correlations is caught by the same check: `16.837128`
-  /// against `10.224832`.
+  /// The range check covers the diagonal, so variances passed as `rho` (`16.837128` against
+  /// `10.224832`) are refused.
   #[test]
   #[should_panic(
     expected = "rho[0][0] must satisfy `(-1.0..=1.0).contains(&rho[0][0])`, got rho[0][0] = 3.0"
@@ -344,19 +326,8 @@ mod construction_validation {
     );
   }
 
-  /// The deliberate omissions, pinned so they cannot drift.
-  ///
-  /// The **weight sum** is free on both closed forms: a long/short basket
-  /// is a real product, and `w = [-1, 2]` prices at `29.444371` /
-  /// `22.810134` rather than at nonsense.
-  ///
-  /// **Symmetry** of `rho` is free, because an exact-equality test would
-  /// reject an estimator's round-off-symmetric matrix. The residual is
-  /// asserted rather than described: the geometric basket symmetrises an
-  /// asymmetric `rho` *bit-identically*, and the Levy basket does not.
-  ///
-  /// `McBasketPricer` leaves `rho` and the shapes to `try_price`, which
-  /// `mc_basket_try_price_reports_a_query_dimension_mismatch` needs.
+  /// A long/short weight sum and an asymmetric `rho` build (geometric symmetrises it bit for bit,
+  /// Levy does not); `McBasketPricer` leaves `rho` and the shapes to `try_price`.
   #[test]
   fn the_deliberate_omissions_stay_constructible() {
     let s = array![100.0, 100.0];
@@ -500,9 +471,8 @@ fn arithmetic_basket_parity() {
   assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
 }
 
-/// One Monte Carlo model instance prices a whole strike grid, both legs.
-/// The strikes are far enough apart that the ordering survives the sampling
-/// error of independent simulations.
+/// One Monte Carlo instance prices a strike grid, both legs, the strikes far enough apart for the
+/// order to survive independent sampling errors.
 #[test]
 fn mc_basket_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
@@ -519,9 +489,8 @@ fn mc_basket_one_model_prices_a_strike_grid() {
   );
 }
 
-/// The model and the weights fix how many assets there are; a query that
-/// disagrees is reported by `try_price` as an `Err`, not a panic. Pinned
-/// because that is the reason the check did not move to the constructor.
+/// A query whose asset count disagrees with the model's is `try_price`'s `Err`, not a panic, which
+/// is why the check stays out of the constructor.
 #[test]
 fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
   let (_, w, sig, _, rho) = iid_basket(3, 0.25, 0.4);
