@@ -26,7 +26,8 @@
 //! - Demeterfi, K., Derman, E., Kamal, M. & Zou, J. (1999),
 //!   "More Than You Ever Wanted to Know About Volatility Swaps", Goldman Sachs.
 //! - Brockhaus, O. & Long, D. (2000), "Volatility Swaps Made Simple", Risk 13.
-//! - Swishchuk, A. & Wang, Z. (2017), arXiv:1712.02735, eqs. 10–13: Brockhaus–Long for Heston.
+//! - Swishchuk, A. & Wang, Z. (2017), "Variance and Volatility Swaps and Futures Pricing for
+//!   Stochastic Volatility Models", arXiv:1712.02735, eqs. 10–13: Brockhaus–Long for Heston.
 //! - Bernard, C. & Cui, Z. (2013), "Prices and Asymptotics for Discrete
 //!   Variance Swaps", arXiv:1305.7092.
 //! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",

@@ -7,8 +7,10 @@
 //! Reference: Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
 //! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
 //! Reference: Vector Risk (2017), "Single Barrier Option", v8.0.7905, p. 2: Haug's §4.17.1, p. 152
-//! Reference: Kunitomo & Ikeda (1992), Math. Finance 2(4), DOI 10.1111/j.1467-9965.1992.tb00033.x
-//! Reference: Vector Risk (2017), "Double Barrier Option", v8.0.7970: Haug (1998), §2.10.2, p. 72
+//! Reference: Kunitomo & Ikeda (1992), "Pricing Options With Curved Boundaries", Math. Finance
+//! 2(4), 275–298, DOI 10.1111/j.1467-9965.1992.tb00033.x
+//! Reference: Vector Risk (2017), "Double Barrier Option", v8.0.7970, p. 2: Haug (1998), p. 72
+//! Reference: QuantLib 1.43, `analyticdoublebarrierengine.cpp`; its header: Haug (2007), p. 156
 //!
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -199,7 +201,7 @@ impl BarrierPricer {
   }
 }
 
-/// Double knock-out on flat barriers: Kunitomo–Ikeda's series as Haug (2007, p. 156) gives it, the
+/// Double knock-out on flat barriers: Kunitomo–Ikeda's series as QuantLib's engine codes it, the
 /// strike bounded to the corridor by `α` and `β` (Vector Risk 2017); a put flips both legs.
 ///
 /// $$
