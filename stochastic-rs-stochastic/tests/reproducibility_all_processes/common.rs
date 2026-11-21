@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::interest::hjm::HjmPaths;
 use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
+use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2FPaths;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
 
@@ -129,6 +130,15 @@ impl ReproBits for CompoundPaths<f64> {
 impl ReproBits for Heston2DPaths<f64> {
   fn repro_bits(&self) -> Vec<u64> {
     [&self.x1, &self.v1, &self.x2, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for HestonHullWhite2FPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.s, &self.v, &self.r, &self.u, &self.integrated_rate]
       .iter()
       .flat_map(|a| a.repro_bits())
       .collect()

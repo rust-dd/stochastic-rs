@@ -40,14 +40,12 @@ fn paper(n: usize, seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   )
 }
 
-fn check_shape_and_start(path: &Array2<f64>, n: usize) {
-  assert_eq!(path.dim(), (ROWS, n));
-  assert_eq!(path.column(0).to_vec(), vec![1.0, 0.2, 0.03, 0.0, 0.0]);
-  assert!(path.row(0).iter().all(|s| *s > 0.0), "spot stays positive");
-  assert!(
-    path.row(1).iter().all(|v| *v >= 0.0),
-    "variance stays non-negative"
-  );
+fn check_shape_and_start(path: &HestonHullWhite2FPaths<f64>, n: usize) {
+  let rows = [&path.s, &path.v, &path.r, &path.u, &path.integrated_rate];
+  assert!(rows.iter().all(|row| row.len() == n));
+  assert_eq!(rows.map(|row| row[0]), [1.0, 0.2, 0.03, 0.0, 0.0]);
+  assert!(path.s.iter().all(|s| *s > 0.0), "spot stays positive");
+  assert!(path.v.iter().all(|v| *v >= 0.0), "variance is non-negative");
 }
 
 #[test]
@@ -105,8 +103,8 @@ fn zero_rate_volatility_reproduces_hull_white_2f() {
   let [r, u] = rates.sample();
   let path = paper(n, 3).with_sigma1(0.0).with_sigma2(0.0).sample();
   for i in 0..n {
-    assert!((path[(2, i)] - r[i]).abs() < 1e-12, "r mismatch at {i}");
-    assert!((path[(3, i)] - u[i]).abs() < 1e-12, "u mismatch at {i}");
+    assert!((path.r[i] - r[i]).abs() < 1e-12, "r mismatch at {i}");
+    assert!((path.u[i] - u[i]).abs() < 1e-12, "u mismatch at {i}");
   }
 }
 
@@ -117,11 +115,8 @@ fn integrated_rate_row_is_the_trapezoidal_sum_of_the_rate_row() {
   let dt = 1.0 / (n as f64 - 1.0);
   let mut acc = 0.0;
   for i in 1..n {
-    acc += 0.5 * (path[(2, i - 1)] + path[(2, i)]) * dt;
-    assert!(
-      (path[(4, i)] - acc).abs() < 1e-14,
-      "integrated rate mismatch at {i}"
-    );
+    acc += 0.5 * (path.r[i - 1] + path.r[i]) * dt;
+    assert_eq!(path.integrated_rate[i], acc, "integrated rate at {i}");
   }
 }
 
@@ -133,7 +128,9 @@ fn discounted_spot_holds<Sch: HybridScheme>(
 ) {
   let n = model.n;
   let m = 20_000;
-  let values = model.sample_map(m, |path| path[(0, n - 1)] * (-path[(4, n - 1)]).exp());
+  let values = model.sample_map(m, |path| {
+    path.s[n - 1] * (-path.integrated_rate[n - 1]).exp()
+  });
   let mean = values.iter().sum::<f64>() / m as f64;
   let var = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (m as f64 - 1.0);
   let se = (var / m as f64).sqrt();
@@ -194,7 +191,7 @@ fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
     (800.0, 7.554386),
   ];
   let m = 20_000;
-  let terminal = model.sample_map(m, |path| (path[(0, n - 1)], path[(4, n - 1)]));
+  let terminal = model.sample_map(m, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
   for (k, cos) in REFERENCE {
     let payoffs = terminal
       .iter()

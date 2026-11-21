@@ -161,42 +161,44 @@ impl PyHestonHullWhite2F {
     })?
   }
 
-  /// One path as a `(5, n)` array: spot, variance, short rate, auxiliary factor, integrated short rate.
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+  /// One path as five arrays: spot, variance, short rate, auxiliary factor, integrated short rate.
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<[pyo3::Py<pyo3::PyAny>; 5]> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_hybrid_dispatch!(py_dispatch, self, |inner| inner
-        .sample()
-        .into_pyarray(py)
-        .into_py_any(py)
-        .unwrap())
+      py_hybrid_dispatch!(py_dispatch, self, |inner| {
+        let path = inner.sample();
+        [path.s, path.v, path.r, path.u, path.integrated_rate]
+          .map(|row| row.into_pyarray(py).into_py_any(py).unwrap())
+      })
     })
   }
 
-  /// `m` independent paths as an `(m, 5, n)` array. The GIL is released while the paths are
-  /// generated; `theta_r` re-acquires it, so it is called from the rayon workers one at a time.
+  /// `m` independent paths as five `(m, n)` arrays, in `sample`'s order. The GIL is released
+  /// meanwhile; `theta_r` re-acquires it, so the rayon workers call it one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+  ) -> pyo3::PyResult<[pyo3::Py<pyo3::PyAny>; 5]> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use ndarray::Array3;
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
       py_hybrid_dispatch!(py_dispatch, self, |inner| {
         let paths = py.detach(|| inner.sample_par(m));
-        let n = paths.first().map_or(0, |p| p.ncols());
-        let mut out = Array3::zeros((m, ROWS, n));
+        let n = paths.first().map_or(0, |p| p.s.len());
+        let mut out = std::array::from_fn::<_, 5, _>(|_| Array2::zeros((m, n)));
         for (i, path) in paths.iter().enumerate() {
-          out.index_axis_mut(ndarray::Axis(0), i).assign(path);
+          let rows = [&path.s, &path.v, &path.r, &path.u, &path.integrated_rate];
+          for (matrix, row) in out.iter_mut().zip(rows) {
+            matrix.row_mut(i).assign(row);
+          }
         }
-        out.into_pyarray(py).into_py_any(py).unwrap()
+        out.map(|matrix| matrix.into_pyarray(py).into_py_any(py).unwrap())
       })
     })
   }

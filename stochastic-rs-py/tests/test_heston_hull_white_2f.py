@@ -26,37 +26,37 @@ def _hybrid(**kwargs):
 
 
 @pytest.mark.parametrize("scheme", ["euler", "qe"])
-def test_sample_shape_rows_and_initial_state(scheme):
-    path = _hybrid(seed=42, scheme=scheme).sample()
-    assert path.shape == (5, 65)
-    assert path.dtype == np.float64
-    np.testing.assert_array_equal(path[:, 0], [1.0, 0.2, 0.03, 0.0, 0.0])
-    assert np.all(path[0] > 0.0) and np.all(path[1] >= 0.0)
-    # The integrated rate row is the trapezoidal sum of the rate row.
+def test_sample_rows_and_initial_state(scheme):
+    rows = _hybrid(seed=42, scheme=scheme).sample()
+    assert len(rows) == 5
+    assert all(row.shape == (65,) and row.dtype == np.float64 for row in rows)
+    spot, variance, rate, _, integrated_rate = rows
+    assert [row[0] for row in rows] == [1.0, 0.2, 0.03, 0.0, 0.0]
+    assert np.all(spot > 0.0) and np.all(variance >= 0.0)
     dt = 1.0 / 64
-    trapezoid = np.concatenate([[0.0], np.cumsum(0.5 * (path[2, :-1] + path[2, 1:]) * dt)])
-    np.testing.assert_allclose(path[4], trapezoid, atol=1e-12)
+    trapezoid = np.concatenate([[0.0], np.cumsum(0.5 * (rate[:-1] + rate[1:]) * dt)])
+    np.testing.assert_allclose(integrated_rate, trapezoid, atol=1e-12)
 
 
 @pytest.mark.parametrize("scheme", ["euler", "qe"])
 def test_seed_reproduces_and_seeds_differ(scheme):
-    a = _hybrid(seed=7, scheme=scheme).sample()
-    b = _hybrid(seed=7, scheme=scheme).sample()
-    c = _hybrid(seed=8, scheme=scheme).sample()
+    a = np.array(_hybrid(seed=7, scheme=scheme).sample())
+    b = np.array(_hybrid(seed=7, scheme=scheme).sample())
+    c = np.array(_hybrid(seed=8, scheme=scheme).sample())
     assert np.array_equal(a, b)
     assert not np.array_equal(a, c)
 
 
 def test_sample_par_shape_and_reproducibility():
-    paths = _hybrid(seed=3, scheme="qe").sample_par(16)
-    assert paths.shape == (16, 5, 65)
-    assert np.array_equal(paths, _hybrid(seed=3, scheme="qe").sample_par(16))
-    assert not np.array_equal(paths[0], paths[1])
+    paths = np.array(_hybrid(seed=3, scheme="qe").sample_par(16))
+    assert paths.shape == (5, 16, 65)
+    assert np.array_equal(paths, np.array(_hybrid(seed=3, scheme="qe").sample_par(16)))
+    assert not np.array_equal(paths[:, 0], paths[:, 1])
 
 
 def test_f32_dtype_samples():
-    path = _hybrid(seed=1, dtype="f32").sample()
-    assert path.dtype == np.float32 and path.shape == (5, 65)
+    rows = _hybrid(seed=1, dtype="f32").sample()
+    assert all(row.dtype == np.float32 and row.shape == (65,) for row in rows)
 
 
 @pytest.mark.parametrize(
@@ -100,7 +100,7 @@ import stochastic_rs as sr
 rho = np.array([[1.0, -0.3, 0.35, 0.08], [-0.3, 1.0, 0.0, 0.0], [0.35, 0.0, 1.0, -0.4], [0.08, 0.0, -0.4, 1.0]])
 p = sr.PyHestonHullWhite2F(0.8, 0.2, 0.2, lambda t: 0.033, 1.1, 0.01, 0.015, 0.8, rho, 16, s0=1.0, v0=0.2,
                            r0=0.03, t=1.0, seed=42, scheme=sys.argv[1])
-print(json.dumps(p.sample_par(70).tolist()))
+print(json.dumps([rows.tolist() for rows in p.sample_par(70)]))
 """
 
 
@@ -120,6 +120,6 @@ def test_sample_par_is_thread_count_independent(scheme):
         return np.array(json.loads(out.stdout))
 
     one = run(1)
-    assert one.shape == (70, 5, 16)
+    assert one.shape == (5, 70, 16)
     assert np.array_equal(one, run(3))
     assert np.array_equal(one, run(8))

@@ -140,7 +140,7 @@ fn pure_heston<Sch: HybridScheme>(
 ) {
   const STRIKES: [f64; 3] = [0.8, 1.0, 1.2];
   let (tau, n) = (2.0, model.n);
-  let terminal = model.sample_map(PATHS, |path| (path[(0, n - 1)], path[(4, n - 1)]));
+  let terminal = model.sample_map(PATHS, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
   let prices = put_prices(&terminal, &STRIKES);
   let z_against = |rho_ref: f64| {
     let closed = HestonPricer::new(HestonParams::new(0.04, 1.5, 0.04, 0.3, rho_ref));
@@ -197,7 +197,9 @@ fn zero_rate_volatility_prices_the_heston_closed_form() {
 /// the closed form, and `E exp(−∫r)` the bond price `exp(−FLAT_RATE · T + ½ Var ∫r)`.
 fn rate_leg<Sch: HybridScheme>(model: HestonHullWhite2F<f64, Sch, Deterministic>, what: &str) {
   const MATURITIES: [(f64, usize); 3] = [(1.0, 100), (5.0, 500), (10.0, 1000)];
-  let integrals = model.sample_map(PATHS, |path| MATURITIES.map(|(_, i)| path[(4, i)]));
+  let integrals = model.sample_map(PATHS, |path| {
+    MATURITIES.map(|(_, i)| path.integrated_rate[i])
+  });
   for (m, &(tau, _)) in MATURITIES.iter().enumerate() {
     let int_r = || integrals.iter().map(|row| row[m]);
     let v = var_int_r(RHO_RU, tau);
@@ -271,7 +273,7 @@ fn frozen_variance<Sch: HybridScheme>(
 ) {
   const STRIKES: [f64; 3] = [0.8, 1.0, 1.3];
   let (theta, tau, n) = (model.theta, 5.0, model.n);
-  let terminal = model.sample_map(PATHS, |path| (path[(0, n - 1)], path[(4, n - 1)]));
+  let terminal = model.sample_map(PATHS, |path| (path.s[n - 1], path.integrated_rate[n - 1]));
   let prices = put_prices(&terminal, &STRIKES);
   let v = var_int_r(RHO_RU, tau);
   let total_variance = |rho_xr: f64, rho_xu: f64| {

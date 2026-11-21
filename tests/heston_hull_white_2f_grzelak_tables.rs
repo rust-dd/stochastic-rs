@@ -174,10 +174,10 @@ fn terminal_states(kappa: f64, theta: f64, sigma: f64) -> Vec<[(f64, f64); 4]> {
     let mut out = [(0.0, 0.0); 4];
     let mut int_r = 0.0;
     let mut next = 0;
-    for i in 1..path.ncols() {
-      int_r += 0.5 * (path[(2, i - 1)] + path[(2, i)]) * dt;
+    for i in 1..path.r.len() {
+      int_r += 0.5 * (path.r[i - 1] + path.r[i]) * dt;
       if i == MATURITIES[next].1 {
-        out[next] = (path[(0, i)], int_r);
+        out[next] = (path.s[i], int_r);
         next += 1;
         if next == MATURITIES.len() {
           break;

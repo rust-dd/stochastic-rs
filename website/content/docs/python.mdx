@@ -70,7 +70,7 @@ mc_call = np.exp(-0.05) * payoffs.mean()
 print("MC call =", mc_call)
 ```
 
-The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`, `PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are generated and re-acquire it for each callback evaluation, so the callables run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an `(m, factors, n)` array, `PyHjm.sample_par(m)` three `(m, n)` arrays (short rate, bond price, forward rate) and `PyHestonHullWhite2F.sample_par(m)` an `(m, 5, n)` array (spot, variance, the two rate factors, the integrated short rate).
+The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`, `PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are generated and re-acquire it for each callback evaluation, so the callables run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an `(m, factors, n)` array, `PyHjm.sample_par(m)` three `(m, n)` arrays (short rate, bond price, forward rate) and `PyHestonHullWhite2F.sample_par(m)` five `(m, n)` arrays (spot, variance, the two rate factors, the integrated short rate).
 
 ## Devices
 

@@ -11,7 +11,7 @@
 //!
 //! The Heston-Gaussian two-factor hybrid (H-G2++): Heston equity on the [`HullWhite2F`] short rate, the
 //! four drivers `(x, v, r, u)` under one correlation matrix, simulated in full rather than as the affine
-//! approximation the paper prices with. The output is the `5 × n` matrix `[S, v, r, u, ∫r]`.
+//! approximation the paper prices with. The output is [`HestonHullWhite2FPaths`].
 //!
 //! The rate enters the spot and the integrated short rate through the same trapezoidal sum, so the
 //! discounted spot carries no discretisation bias from the rate leg; the variance step is [`Euler`]
@@ -26,6 +26,7 @@
 
 use std::marker::PhantomData;
 
+use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -45,8 +46,37 @@ pub use scheme::HybridScheme;
 pub use crate::volatility::heston::AndersenQe;
 pub use crate::volatility::heston::Euler;
 
-/// Rows of the output: spot, variance, short rate, auxiliary rate factor, integrated short rate.
-pub const ROWS: usize = 5;
+/// Spot, variance, short rate, auxiliary rate factor and the integrated short rate `∫₀ᵗ r`.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct HestonHullWhite2FPaths<T> {
+  pub s: Array1<T>,
+  pub v: Array1<T>,
+  pub r: Array1<T>,
+  pub u: Array1<T>,
+  pub integrated_rate: Array1<T>,
+}
+
+impl<T: FloatExt> HestonHullWhite2FPaths<T> {
+  fn zeros(n: usize) -> Self {
+    let row = || Array1::<T>::zeros(n);
+    Self {
+      s: row(),
+      v: row(),
+      r: row(),
+      u: row(),
+      integrated_rate: row(),
+    }
+  }
+
+  fn assert_points(&self, n: usize) {
+    let rows = [&self.s, &self.v, &self.r, &self.u, &self.integrated_rate];
+    assert!(
+      rows.iter().all(|row| row.len() == n),
+      "every output row must hold n = {n} points"
+    );
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt = Unseeded, B = Cpu>
@@ -390,7 +420,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonHullWhite2F<T, Sch, S, B>
 {
-  type Output = Array2<T>;
+  type Output = HestonHullWhite2FPaths<T>;
   type Sampler<'s>
     = HestonHullWhite2FSampler<'s, T, Sch, S, B>
   where
@@ -427,14 +457,14 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> crate::traits::
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> PathSampler<T>
   for HestonHullWhite2FSampler<'_, T, Sch, S, B>
 {
-  type Output = Array2<T>;
+  type Output = HestonHullWhite2FPaths<T>;
 
-  fn sample_into(&mut self, out: &mut Array2<T>) {
+  fn sample_into(&mut self, out: &mut HestonHullWhite2FPaths<T>) {
     Sch::simulate_into(self.model, &self.seed, out);
   }
 
-  fn sample(&mut self) -> Array2<T> {
-    let mut out = Array2::<T>::zeros((ROWS, self.model.n));
+  fn sample(&mut self) -> HestonHullWhite2FPaths<T> {
+    let mut out = HestonHullWhite2FPaths::zeros(self.model.n);
     self.sample_into(&mut out);
     out
   }

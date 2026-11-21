@@ -37,15 +37,16 @@ fn heston_hull_white_2f_sample() {
     Some(1.0), // t
     Deterministic::new(42),
   );
-  // Rows: spot, variance, short rate, auxiliary factor, integrated short rate.
+  // Spot, variance, short rate, auxiliary factor and the integrated short rate, 253 points each.
   let path = hybrid.sample();
-  assert_eq!(path.dim(), (5, 253));
-  assert_eq!(path.column(0).to_vec(), vec![1.0, 0.2, 0.03, 0.0, 0.0]);
+  assert_eq!(path.s.len(), 253);
+  assert_eq!((path.s[0], path.v[0], path.r[0]), (1.0, 0.2, 0.03));
+  assert_eq!((path.u[0], path.integrated_rate[0]), (0.0, 0.0));
 
   // The same model under Andersen's quadratic-exponential variance step.
   let discounted = hybrid
     .qe()
-    .sample_map(1_000, |p| p[(0, 252)] * (-p[(4, 252)]).exp());
+    .sample_map(1_000, |p| p.s[252] * (-p.integrated_rate[252]).exp());
   let mean = discounted.iter().sum::<f64>() / 1_000.0;
   assert!(
     (mean - 1.0).abs() < 0.1,

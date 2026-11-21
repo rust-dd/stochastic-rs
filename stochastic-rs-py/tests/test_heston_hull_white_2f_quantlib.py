@@ -55,11 +55,11 @@ def _simulated_puts():
             [0.0, 0.0, 0.0, 1.0],
         ]
     )
-    paths = sr.PyHestonHullWhite2F(
+    spot, _, _, _, integrated_rate = sr.PyHestonHullWhite2F(
         KAPPA, THETA, SIGMA, _theta_r, A, SIGMA1, 0.0, 0.1, rho, YEARS * STEPS_PER_YEAR + 1,
         s0=S0, v0=V0, r0=FLAT_RATE, t=float(YEARS), seed=SEED, scheme="qe",
     ).sample_par(PATHS)
-    spot, discount = paths[:, 0, -1], np.exp(-paths[:, 4, -1])
+    spot, discount = spot[:, -1], np.exp(-integrated_rate[:, -1])
     out = []
     for strike in STRIKES:
         payoff = np.maximum(strike - spot, 0.0) * discount

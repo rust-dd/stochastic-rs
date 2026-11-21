@@ -9,7 +9,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::HestonHullWhite2F;
-use super::ROWS;
+use super::HestonHullWhite2FPaths;
 use crate::linalg::cholesky_lower;
 use crate::traits::FloatExt;
 use crate::volatility::heston::AndersenQe;
@@ -32,11 +32,11 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
   /// Lower Cholesky factor of the `(x, v, r, u)` correlation matrix in the driver order this scheme steps.
   fn factor<T: FloatExt>(rho: &Array2<T>) -> Array2<T>;
 
-  /// Fills `out` (`5 × n`) with one path, drawing from `seed`, the calling sampler's own derived basis.
+  /// Fills `out`'s five rows of `n` points with one path, drawing from `seed`, the sampler's basis.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Self, S, B>,
     seed: &S,
-    out: &mut Array2<T>,
+    out: &mut HestonHullWhite2FPaths<T>,
   ) where
     Self: Sized;
 }
@@ -56,10 +56,13 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
   }
 }
 
-fn write_column<T: FloatExt>(out: &mut Array2<T>, i: usize, state: [T; ROWS]) {
-  for (row, value) in state.into_iter().enumerate() {
-    out[(row, i)] = value;
-  }
+fn write_point<T: FloatExt>(out: &mut HestonHullWhite2FPaths<T>, i: usize, state: [T; 5]) {
+  let [s, v, r, u, integrated_rate] = state;
+  out.s[i] = s;
+  out.v[i] = v;
+  out.r[i] = r;
+  out.u[i] = u;
+  out.integrated_rate[i] = integrated_rate;
 }
 
 impl HybridScheme for Euler {
@@ -70,10 +73,10 @@ impl HybridScheme for Euler {
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Euler, S, B>,
     seed: &S,
-    out: &mut Array2<T>,
+    out: &mut HestonHullWhite2FPaths<T>,
   ) {
     let n = model.n;
-    assert_eq!(out.dim(), (ROWS, n), "output must be {ROWS} × n");
+    out.assert_points(n);
     let dt = model.dt();
     let half = T::from_f64_fast(0.5);
     // Increments of variance dt for the four independent drivers, correlated below through `chol`.
@@ -89,7 +92,7 @@ impl HybridScheme for Euler {
     let l = &model.chol;
     let (s0, v0, r0) = model.start();
     let (mut log_s, mut v, mut r, mut u, mut int_r) = (s0.ln(), v0, r0, T::zero(), T::zero());
-    write_column(out, 0, [s0, v0, r0, u, int_r]);
+    write_point(out, 0, [s0, v0, r0, u, int_r]);
     for i in 1..n {
       let j = i - 1;
       let dw_x = l[(0, 0)] * z[(0, j)];
@@ -105,7 +108,7 @@ impl HybridScheme for Euler {
       let r_dt = half * (r + r_next) * dt;
       log_s = log_s + r_dt - half * v * dt + v.sqrt() * dw_x;
       int_r += r_dt;
-      write_column(out, i, [log_s.exp(), v_next, r_next, u_next, int_r]);
+      write_point(out, i, [log_s.exp(), v_next, r_next, u_next, int_r]);
       v = v_next;
       r = r_next;
       u = u_next;
@@ -127,11 +130,11 @@ impl HybridScheme for AndersenQe {
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, AndersenQe, S, B>,
     seed: &S,
-    out: &mut Array2<T>,
+    out: &mut HestonHullWhite2FPaths<T>,
   ) {
     model.assert_qe_parameters();
     let n = model.n;
-    assert_eq!(out.dim(), (ROWS, n), "output must be {ROWS} × n");
+    out.assert_points(n);
     let dt = model.dt();
     let (kappa, theta, eps) = (model.kappa, model.theta, model.sigma);
     let rho_xv = model.rho[(0, 1)];
@@ -153,7 +156,7 @@ impl HybridScheme for AndersenQe {
     let mut urng = seed.derive().rng();
     let (s0, v0, r0) = model.start();
     let (mut log_s, mut v, mut r, mut u, mut int_r) = (s0.ln(), v0, r0, T::zero(), T::zero());
-    write_column(out, 0, [s0, v0, r0, u, int_r]);
+    write_point(out, 0, [s0, v0, r0, u, int_r]);
     for i in 1..n {
       let m = theta + (v - theta) * e_kd;
       let s2 = v * c1 + c2;
@@ -186,7 +189,7 @@ impl HybridScheme for AndersenQe {
       let vol = (half * dt * (v + v_next)).max(T::zero()).sqrt();
       log_s = log_s + r_dt + k0 + k1 * v + k2 * v_next + vol * z_x;
       int_r += r_dt;
-      write_column(out, i, [log_s.exp(), v_next, r_next, u_next, int_r]);
+      write_point(out, i, [log_s.exp(), v_next, r_next, u_next, int_r]);
       v = v_next;
       r = r_next;
       u = u_next;
