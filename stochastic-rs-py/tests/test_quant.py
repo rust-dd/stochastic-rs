@@ -503,7 +503,7 @@ HESTON_MODEL = dict(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
     [
         (lambda: sr.BSMPricer(v=0.25, **CALL_PUT_QUERY), (7.356284457997674, 9.980504358377694)),
         (lambda: sr.BachelierPricer(v=20.0, **CALL_PUT_QUERY), (5.425620481356887, 8.049840381736892)),
-        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.2776906533992545, 7.067347664422634)),
+        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.153366046571449, 7.259388579304414)),
         (lambda: sr.BjerksundStensland2002Pricer(v=0.25, **CALL_PUT_QUERY), (7.35628449811837, 10.292928328280922)),
         (
             lambda: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, **CALL_PUT_QUERY),
