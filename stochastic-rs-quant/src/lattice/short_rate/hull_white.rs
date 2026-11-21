@@ -4,6 +4,8 @@ use super::OneFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use super::common::require_finite;
+use super::common::require_non_negative;
 use crate::calibration::hw_swaption::HullWhiteParams;
 use crate::instruments::option::BermudanSwaption;
 use crate::instruments::option::BermudanSwaptionValuation;
@@ -26,13 +28,23 @@ pub struct HullWhiteTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> HullWhiteTreeModel<T> {
+  /// Panics unless `mean_reversion` and `sigma` are finite and `≥ 0` and both rates are finite.
   pub fn new(params: HullWhiteParams) -> Self {
-    Self {
+    let model = Self {
       initial_rate: T::from_f64_fast(params.initial_rate),
       mean_reversion: T::from_f64_fast(params.mean_reversion),
       theta: T::from_f64_fast(params.theta),
       sigma: T::from_f64_fast(params.sigma),
-    }
+    };
+    model.check();
+    model
+  }
+
+  fn check(&self) {
+    require_non_negative("mean_reversion", self.mean_reversion);
+    require_non_negative("sigma", self.sigma);
+    require_finite("initial_rate", self.initial_rate);
+    require_finite("theta", self.theta);
   }
 }
 
@@ -66,8 +78,10 @@ pub struct HullWhiteTree<T: RealExt> {
 }
 
 impl<T: RealExt> HullWhiteTree<T> {
-  /// Build a Hull-White tree with `steps` time steps up to `horizon`.
+  /// `steps` levels up to `horizon`; panics unless `horizon` is finite and positive, `steps > 0`
+  /// and the model passes the checks of [`HullWhiteTreeModel::new`], which a struct literal skips.
   pub fn new(model: HullWhiteTreeModel<T>, horizon: T, steps: usize) -> Self {
+    model.check();
     let factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_rate,
       long_run_mean: model.theta,

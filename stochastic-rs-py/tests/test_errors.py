@@ -214,3 +214,11 @@ def test_kirk_checks_each_volatility_and_the_correlation_in_one_wording():
     with pytest.raises(ValueError, match=r"corr must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&corr\)`, got corr = 1\.7$"):
         sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=1.7, **query)
     assert sr.KirkSpreadPricer(v1=0.3, v2=0.25, corr=0.7, **query).price() == pytest.approx(8.547483131757428, rel=1e-12)
+
+
+def test_the_hull_white_tree_names_a_broken_precondition():
+    want = r"mean_reversion must satisfy `mean_reversion\.is_finite\(\) && mean_reversion >= T::zero\(\)`, got mean_reversion = -0\.1"
+    with pytest.raises(ValueError, match=want):
+        sr.HullWhiteCallableBond(0.04, -0.1, 0.04, 0.01, 3.0, 36)
+    with pytest.raises(ValueError, match=r"horizon must satisfy `horizon\.is_finite\(\) && horizon > T::zero\(\)`, got horizon = 0\.0"):
+        sr.HullWhiteCallableBond(0.04, 0.3, 0.04, 0.01, 0.0, 36)

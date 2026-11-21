@@ -9,6 +9,7 @@ use super::OneFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use super::common::require_non_negative;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::BermudanSwaption;
 use crate::instruments::option::BermudanSwaptionValuation;
@@ -73,8 +74,8 @@ pub struct CurveFittedHullWhiteTree<T: RealExt> {
 }
 
 impl<T: RealExt> CurveFittedHullWhiteTree<T> {
-  /// Build a Hull-White tree calibrated to `curve` with mean reversion `a`,
-  /// volatility `sigma`, and `steps` tree steps over `horizon`.
+  /// A Hull–White tree fitted to `curve`; panics unless `mean_reversion` and `sigma` are finite
+  /// and `≥ 0`, `horizon` is finite and positive, and `steps > 0`.
   pub fn new(
     mean_reversion: T,
     sigma: T,
@@ -82,6 +83,8 @@ impl<T: RealExt> CurveFittedHullWhiteTree<T> {
     horizon: T,
     steps: usize,
   ) -> Self {
+    require_non_negative("mean_reversion", mean_reversion);
+    require_non_negative("sigma", sigma);
     let factor = OrnsteinUhlenbeckFactor {
       initial_state: T::zero(),
       long_run_mean: T::zero(),

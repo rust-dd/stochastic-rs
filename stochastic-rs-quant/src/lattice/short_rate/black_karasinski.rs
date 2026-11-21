@@ -4,6 +4,9 @@ use super::OneFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use super::common::require_finite;
+use super::common::require_non_negative;
+use super::common::require_positive;
 use crate::calibration::tree_swaption::BlackKarasinskiParams;
 use crate::instruments::option::BermudanSwaption;
 use crate::instruments::option::BermudanSwaptionValuation;
@@ -26,14 +29,25 @@ pub struct BlackKarasinskiTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> BlackKarasinskiTreeModel<T> {
-  /// `theta_log` is the log of `params.long_run_rate`.
+  /// `theta_log` is the log of `params.long_run_rate`; panics unless both rates are finite and
+  /// positive, and `mean_reversion` and `sigma` finite and `≥ 0`.
   pub fn new(params: BlackKarasinskiParams) -> Self {
-    Self {
+    require_positive("long_run_rate", params.long_run_rate);
+    let model = Self {
       initial_rate: T::from_f64_fast(params.initial_rate),
       mean_reversion: T::from_f64_fast(params.mean_reversion),
       theta_log: T::from_f64_fast(params.long_run_rate).ln(),
       sigma: T::from_f64_fast(params.sigma),
-    }
+    };
+    model.check();
+    model
+  }
+
+  fn check(&self) {
+    require_non_negative("mean_reversion", self.mean_reversion);
+    require_non_negative("sigma", self.sigma);
+    require_positive("initial_rate", self.initial_rate);
+    require_finite("theta_log", self.theta_log);
   }
 }
 
@@ -67,8 +81,10 @@ pub struct BlackKarasinskiTree<T: RealExt> {
 }
 
 impl<T: RealExt> BlackKarasinskiTree<T> {
-  /// Build a Black-Karasinski tree with `steps` time steps up to `horizon`.
+  /// `steps` levels up to `horizon`; panics unless `horizon` is finite and positive, `steps > 0`
+  /// and the model passes [`BlackKarasinskiTreeModel::new`]'s checks, which a struct literal skips.
   pub fn new(model: BlackKarasinskiTreeModel<T>, horizon: T, steps: usize) -> Self {
+    model.check();
     let factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_rate.ln(),
       long_run_mean: model.theta_log,

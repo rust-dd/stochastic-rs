@@ -7,6 +7,8 @@ use super::TwoFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
+use super::common::require_finite;
+use super::common::require_non_negative;
 use crate::calibration::tree_swaption::G2ppParams;
 use crate::instruments::option::BermudanSwaption;
 use crate::instruments::option::BermudanSwaptionValuation;
@@ -37,9 +39,10 @@ pub struct G2ppTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> G2ppTreeModel<T> {
-  /// The two factors' time-0 values, then the calibrated parameters with their constant shift.
+  /// The two factors' time-0 values, then the calibrated parameters with their constant shift;
+  /// panics unless every value is finite, both reversions and vols are `≥ 0` and `−1 ≤ ρ ≤ 1`.
   pub fn new(initial_x: T, initial_y: T, params: G2ppParams) -> Self {
-    Self {
+    let model = Self {
       initial_x,
       initial_y,
       phi: T::from_f64_fast(params.phi),
@@ -48,7 +51,24 @@ impl<T: RealExt> G2ppTreeModel<T> {
       sigma_x: T::from_f64_fast(params.sigma_x),
       sigma_y: T::from_f64_fast(params.sigma_y),
       rho: T::from_f64_fast(params.rho),
-    }
+    };
+    model.check();
+    model
+  }
+
+  fn check(&self) {
+    require_finite("initial_x", self.initial_x);
+    require_finite("initial_y", self.initial_y);
+    require_non_negative("mean_reversion_x", self.mean_reversion_x);
+    require_non_negative("mean_reversion_y", self.mean_reversion_y);
+    require_non_negative("sigma_x", self.sigma_x);
+    require_non_negative("sigma_y", self.sigma_y);
+    let rho = self.rho;
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
+    );
+    require_finite("phi", self.phi);
   }
 }
 
@@ -103,8 +123,10 @@ pub struct G2ppTree<T: RealExt> {
 }
 
 impl<T: RealExt> G2ppTree<T> {
-  /// Build a G2++ tree with `steps` time steps up to `horizon`.
+  /// `steps` levels up to `horizon`; panics unless `horizon` is finite and positive, `steps > 0`
+  /// and the model passes the checks of [`G2ppTreeModel::new`], which a struct literal skips.
   pub fn new(model: G2ppTreeModel<T>, horizon: T, steps: usize) -> Self {
+    model.check();
     let x_factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_x,
       long_run_mean: T::zero(),

@@ -36,7 +36,11 @@ pub(super) fn build_one_factor_trinomial_tree<T: RealExt>(
   horizon: T,
   steps: usize,
 ) -> TrinomialTree<T> {
-  assert!(steps > 0, "steps must be strictly positive");
+  require_positive("horizon", horizon);
+  assert!(
+    steps > 0,
+    "steps must satisfy `steps > 0`, got steps = {steps}"
+  );
   let OrnsteinUhlenbeckFactor {
     initial_state,
     long_run_mean,
@@ -72,6 +76,27 @@ pub(super) fn build_one_factor_trinomial_tree<T: RealExt>(
     .collect::<Vec<_>>();
 
   TrinomialTree::new(dt, states, branches)
+}
+
+pub(super) fn require_finite<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite(),
+    "{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_non_negative<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value >= T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} >= T::zero()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_positive<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value > T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} > T::zero()`, got {name} = {value:?}"
+  );
 }
 
 /// The branch whose exact conditional mean lies `target = M/Δx` spacings off the next centre.

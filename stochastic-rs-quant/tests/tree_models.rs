@@ -172,6 +172,148 @@ fn a_bermudan_swaption_snaps_its_dates_to_tree_levels() {
   assert_pinned(swaption.npv(&hw_tree()), HW_PAYER);
 }
 
+/// A deterministic tree sits on the exact mean, `σ = 0` and `a = 0` included, and `|ρ| = 1` builds.
+#[test]
+fn the_domains_boundaries_build_and_price() {
+  let mean = |t: f64| 0.05 + (0.03 - 0.05) * (-0.1 * t).exp();
+  let left_sum = (0..20).map(|i| mean(i as f64 * 0.25) * 0.25).sum::<f64>();
+  let flat = HullWhiteTreeModel::<f64>::new(HullWhiteParams { sigma: 0.0, ..HW });
+  let bond = HullWhiteTree::new(flat, 5.0, 20).zero_coupon_bond_price();
+  assert!((bond - (-left_sum).exp()).abs() < 1e-14, "{bond}");
+  let ho_lee = HullWhiteTreeModel::<f64>::new(HullWhiteParams {
+    mean_reversion: 0.0,
+    ..HW
+  });
+  let bond = HullWhiteTree::new(ho_lee, 5.0, 20).zero_coupon_bond_price();
+  assert!(bond.is_finite() && bond > 0.0 && bond < 1.0, "{bond}");
+  for rho in [-1.0, 1.0] {
+    let model = G2ppTreeModel::<f64>::new(0.002, -0.001, G2ppParams { rho, ..G2 });
+    let bond = G2ppTree::new(model, 5.0, 20).zero_coupon_bond_price();
+    assert!(
+      bond.is_finite() && bond > 0.0 && bond < 1.0,
+      "rho {rho}: {bond}"
+    );
+  }
+}
+
+#[test]
+#[should_panic(
+  expected = "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion >= T::zero()`, got mean_reversion = -0.1"
+)]
+fn a_mean_fleeing_hull_white_model_is_a_precondition() {
+  HullWhiteTreeModel::<f64>::new(HullWhiteParams {
+    mean_reversion: -0.1,
+    ..HW
+  });
+}
+
+#[test]
+#[should_panic(expected = "theta must satisfy `theta.is_finite()`, got theta = NaN")]
+fn a_nan_hull_white_level_is_a_precondition() {
+  HullWhiteTreeModel::<f64>::new(HullWhiteParams {
+    theta: f64::NAN,
+    ..HW
+  });
+}
+
+#[test]
+#[should_panic(
+  expected = "long_run_rate must satisfy `long_run_rate.is_finite() && long_run_rate > T::zero()`, got long_run_rate = 0.0"
+)]
+fn a_black_karasinski_rate_at_zero_is_a_precondition() {
+  BlackKarasinskiTreeModel::<f64>::new(BlackKarasinskiParams {
+    long_run_rate: 0.0,
+    ..BK
+  });
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = inf"
+)]
+fn an_infinite_black_karasinski_volatility_is_a_precondition() {
+  BlackKarasinskiTreeModel::<f64>::new(BlackKarasinskiParams {
+    sigma: f64::INFINITY,
+    ..BK
+  });
+}
+
+#[test]
+#[should_panic(
+  expected = "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = 1.5"
+)]
+fn a_g2pp_correlation_past_one_is_a_precondition() {
+  G2ppTreeModel::<f64>::new(0.0, 0.0, G2ppParams { rho: 1.5, ..G2 });
+}
+
+#[test]
+#[should_panic(
+  expected = "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = NaN"
+)]
+fn a_nan_g2pp_correlation_is_a_precondition() {
+  G2ppTreeModel::<f64>::new(
+    0.0,
+    0.0,
+    G2ppParams {
+      rho: f64::NAN,
+      ..G2
+    },
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma_y must satisfy `sigma_y.is_finite() && sigma_y >= T::zero()`, got sigma_y = -0.005"
+)]
+fn a_negative_g2pp_volatility_is_a_precondition() {
+  G2ppTreeModel::<f64>::new(
+    0.0,
+    0.0,
+    G2ppParams {
+      sigma_y: -0.005,
+      ..G2
+    },
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "horizon must satisfy `horizon.is_finite() && horizon > T::zero()`, got horizon = 0.0"
+)]
+fn a_tree_without_a_horizon_is_a_precondition() {
+  HullWhiteTree::new(HullWhiteTreeModel::new(HW), 0.0, 20);
+}
+
+#[test]
+#[should_panic(expected = "steps must satisfy `steps > 0`, got steps = 0")]
+fn a_tree_without_a_step_is_a_precondition() {
+  G2ppTree::new(G2ppTreeModel::new(0.0, 0.0, G2), 5.0, 0);
+}
+
+/// The fields are public, so the tree checks a model a struct literal built.
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = -0.01"
+)]
+fn a_tree_checks_a_model_its_constructor_never_saw() {
+  let mut model = HullWhiteTreeModel::<f64>::new(HW);
+  model.sigma = -0.01;
+  HullWhiteTree::new(model, 5.0, 20);
+}
+
+#[test]
+#[should_panic(
+  expected = "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion >= T::zero()`, got mean_reversion = NaN"
+)]
+fn a_curve_fitted_tree_checks_its_mean_reversion() {
+  let curve = stochastic_rs_quant::curves::DiscountCurve::from_zero_rates(
+    ndarray::array![1.0, 5.0].view(),
+    ndarray::array![0.03, 0.035].view(),
+    stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
+  );
+  CurveFittedHullWhiteTree::new(f64::NAN, 0.012, &curve, 5.0, 20);
+}
+
 const HW_ZCB: f64 = 0.845_050_365_283_299_2;
 const BK_ZCB: f64 = 0.807_717_097_467_35;
 const G2_ZCB: f64 = 0.814_831_268_530_417_7;
