@@ -31,7 +31,12 @@ use crate::traits::ProcessExt;
 use crate::volatility::heston::AndersenQe;
 use crate::volatility::heston::Euler;
 
+mod device;
 mod scheme;
+#[doc(hidden)]
+pub use device::HestonHullWhite2FLaunch;
+#[doc(hidden)]
+pub use device::HestonHullWhite2FLaunchSampler;
 pub use scheme::HybridScheme;
 
 /// Spot, variance, short rate, auxiliary rate factor and the integrated short rate `∫₀ᵗ r`.
@@ -104,7 +109,7 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   /// Cholesky factor of `rho` in the driver order the scheme steps, see [`HybridScheme::factor`].
   chol: Array2<T>,
   _scheme: PhantomData<Sch>,
-  /// The sampling backend: [`Cpu`] by default, a host handle after [`on`](Self::on).
+  /// The sampling backend: [`Cpu`] by default, a device handle after [`on`](Self::on).
   pub backend: B,
 }
 
@@ -423,6 +428,30 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T
 {
 }
 
+impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
+  /// Derives (not clones) `self.seed`, so every chunk of `sample_par` owns a hash-mixed basis.
+  fn host_sampler(&self) -> HestonHullWhite2FSampler<'_, T, Sch, S, B> {
+    HestonHullWhite2FSampler {
+      model: self,
+      curve: self.rate_curve(),
+      seed: self.seed.derive(),
+    }
+  }
+
+  /// A launch's four rows with `∫r` rebuilt from the rate row.
+  fn paths(&self, slots: [Array1<T>; 4]) -> HestonHullWhite2FPaths<T> {
+    let [s, v, r, u] = slots;
+    let integrated_rate = device::integrated_rate(&r, self.dt());
+    HestonHullWhite2FPaths {
+      s,
+      v,
+      r,
+      u,
+      integrated_rate,
+    }
+  }
+}
+
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonHullWhite2F<T, Sch, S, B>
 {
@@ -432,18 +461,52 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed`, so every chunk of `sample_par` owns a hash-mixed basis.
   fn sampler(&self) -> HestonHullWhite2FSampler<'_, T, Sch, S, B> {
-    HestonHullWhite2FSampler {
-      model: self,
-      curve: self.rate_curve(),
-      seed: self.seed.derive(),
-    }
+    self.host_sampler()
   }
 
-  /// No device family carries the hybrid yet, so every configuration samples on the host.
-  fn device_fallback(&self) -> Option<&'static str> {
-    Some("no device family steps the hybrid's four drivers yet")
+  /// Through the Euler engine: a device steps `(log S, v, r, u)` in its kernel, the host runs
+  /// this process's own scheme; `∫r` is the trapezoid of the rate row either way.
+  fn sample(&self) -> HestonHullWhite2FPaths<T> {
+    self.paths(self.backend.system_sample(&HestonHullWhite2FLaunch(self)))
+  }
+
+  fn sample_map<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(&HestonHullWhite2FPaths<T>) -> R + Sync,
+  ) -> Vec<R> {
+    self
+      .backend
+      .system_paths_map(&HestonHullWhite2FLaunch(self), m, |slots| {
+        f(&self.paths(slots.clone()))
+      })
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<HestonHullWhite2FPaths<T>> {
+    self
+      .backend
+      .system_paths(&HestonHullWhite2FLaunch(self), m)
+      .into_iter()
+      .map(|slots| self.paths(slots))
+      .collect()
+  }
+
+  fn try_sample(&self) -> Result<HestonHullWhite2FPaths<T>, crate::device::DeviceError> {
+    let slots = self
+      .backend
+      .try_system_sample(&HestonHullWhite2FLaunch(self))?;
+    Ok(self.paths(slots))
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<HestonHullWhite2FPaths<T>>, crate::device::DeviceError> {
+    let batch = self
+      .backend
+      .try_system_paths(&HestonHullWhite2FLaunch(self), m)?;
+    Ok(batch.into_iter().map(|slots| self.paths(slots)).collect())
   }
 }
 

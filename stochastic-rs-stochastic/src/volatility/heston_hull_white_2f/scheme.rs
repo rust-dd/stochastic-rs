@@ -35,6 +35,14 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
   /// Panics unless the variance parameters and `rho` meet this scheme's own preconditions.
   fn check_parameters<T: FloatExt>(kappa: T, theta: T, sigma: T, rho: &Array2<T>);
 
+  /// The device family of this step, its constants folded once.
+  #[doc(hidden)]
+  fn euler_spec<T: FloatExt, S: SeedExt, B>(
+    model: &HestonHullWhite2F<T, Self, S, B>,
+  ) -> crate::euler::EulerSpec<T>
+  where
+    Self: Sized;
+
   /// One path into `out` from `seed`, the sampler's basis; `curve[i]` is `theta_r` at point `i`.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Self, S, B>,
@@ -74,6 +82,33 @@ impl HybridScheme for Euler {
 
   fn check_parameters<T: FloatExt>(_kappa: T, _theta: T, _sigma: T, _rho: &Array2<T>) {}
 
+  fn euler_spec<T: FloatExt, S: SeedExt, B>(
+    model: &HestonHullWhite2F<T, Euler, S, B>,
+  ) -> crate::euler::EulerSpec<T> {
+    let l = &model.chol;
+    crate::euler::EulerSpec::HestonHullWhite2F {
+      kappa: model.kappa,
+      theta: model.theta,
+      sigma: model.sigma,
+      a: model.a,
+      b: model.b,
+      sigma1: model.sigma1,
+      sigma2: model.sigma2,
+      l: [
+        l[(0, 0)],
+        l[(1, 0)],
+        l[(1, 1)],
+        l[(2, 0)],
+        l[(2, 1)],
+        l[(2, 2)],
+        l[(3, 0)],
+        l[(3, 1)],
+        l[(3, 2)],
+        l[(3, 3)],
+      ],
+    }
+  }
+
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Euler, S, B>,
     curve: &[T],
@@ -83,7 +118,6 @@ impl HybridScheme for Euler {
     let n = model.n;
     out.assert_points(n);
     let dt = model.dt();
-    let half = T::from_f64_fast(0.5);
     let mut z = Array2::<T>::zeros((4, n - 1));
     let mut normal = SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(seed);
     for mut row in z.rows_mut() {
@@ -93,30 +127,41 @@ impl HybridScheme for Euler {
           .expect("HestonHullWhite2F noise rows must be contiguous"),
       );
     }
-    let l = &model.chol;
     let (s0, v0, r0) = model.start();
-    let (mut log_s, mut v, mut r, mut u, mut int_r) = (s0.ln(), v0, r0, T::zero(), T::zero());
-    write_point(out, 0, [s0, v0, r0, u, int_r]);
+    let (mut state, mut int_r) = ([s0.ln(), v0, r0, T::zero()], T::zero());
+    write_point(out, 0, [s0, v0, r0, T::zero(), int_r]);
     for i in 1..n {
       let j = i - 1;
-      let dw_x = l[(0, 0)] * z[(0, j)];
-      let dw_v = l[(1, 0)] * z[(0, j)] + l[(1, 1)] * z[(1, j)];
-      let dw_r = l[(2, 0)] * z[(0, j)] + l[(2, 1)] * z[(1, j)] + l[(2, 2)] * z[(2, j)];
-      let dw_u = l[(3, 0)] * z[(0, j)]
-        + l[(3, 1)] * z[(1, j)]
-        + l[(3, 2)] * z[(2, j)]
-        + l[(3, 3)] * z[(3, j)];
-      let v_next =
-        (v + model.kappa * (model.theta - v) * dt + model.sigma * v.sqrt() * dw_v).max(T::zero());
-      let (r_next, u_next) = model.rate_step(curve[i], dt, r, u, dw_r, dw_u);
-      let r_dt = half * (r + r_next) * dt;
-      log_s = log_s + r_dt - half * v * dt + v.sqrt() * dw_x;
+      let shocks = [z[(0, j)], z[(1, j)], z[(2, j)], z[(3, j)]];
+      let (next, r_dt) = model.euler_step(curve[i], dt, state, shocks);
       int_r += r_dt;
-      write_point(out, i, [log_s.exp(), v_next, r_next, u_next, int_r]);
-      v = v_next;
-      r = r_next;
-      u = u_next;
+      write_point(out, i, [next[0].exp(), next[1], next[2], next[3], int_r]);
+      state = next;
     }
+  }
+}
+
+/// The variance after one Euler step from `v >= 0`, floored at zero as `Heston`'s `Floor` step.
+fn floored_variance<T: FloatExt>(v: T, kappa: T, theta: T, sigma: T, dt: T, dw_v: T) -> T {
+  (v + kappa * (theta - v) * dt + sigma * v.sqrt() * dw_v).max(T::zero())
+}
+
+impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
+  /// One Euler step of `(log S, v, r, u)` from four independent increments, with `½(r + r′)dt`,
+  /// the trapezoid the spot and the integrated rate share.
+  pub(super) fn euler_step(&self, target: T, dt: T, state: [T; 4], z: [T; 4]) -> ([T; 4], T) {
+    let half = T::from_f64_fast(0.5);
+    let l = &self.chol;
+    let [log_s, v, r, u] = state;
+    let dw_x = l[(0, 0)] * z[0];
+    let dw_v = l[(1, 0)] * z[0] + l[(1, 1)] * z[1];
+    let dw_r = l[(2, 0)] * z[0] + l[(2, 1)] * z[1] + l[(2, 2)] * z[2];
+    let dw_u = l[(3, 0)] * z[0] + l[(3, 1)] * z[1] + l[(3, 2)] * z[2] + l[(3, 3)] * z[3];
+    let v_next = floored_variance(v, self.kappa, self.theta, self.sigma, dt, dw_v);
+    let (r_next, u_next) = self.rate_step(target, dt, r, u, dw_r, dw_u);
+    let r_dt = half * (r + r_next) * dt;
+    let log_s_next = log_s + r_dt - half * v * dt + v.sqrt() * dw_x;
+    ([log_s_next, v_next, r_next, u_next], r_dt)
   }
 }
 
@@ -141,6 +186,39 @@ impl HybridScheme for AndersenQe {
         value == T::zero(),
         "{what} must satisfy `{what} == T::zero()`, got {what} = {value:?}"
       );
+    }
+  }
+
+  fn euler_spec<T: FloatExt, S: SeedExt, B>(
+    model: &HestonHullWhite2F<T, AndersenQe, S, B>,
+  ) -> crate::euler::EulerSpec<T> {
+    Self::check_parameters(model.kappa, model.theta, model.sigma, &model.rho);
+    let dt = model.dt();
+    let (two, half) = (T::from_f64_fast(2.0), T::from_f64_fast(0.5));
+    let (kappa, theta, eps, rho_xv) = (model.kappa, model.theta, model.sigma, model.rho[(0, 1)]);
+    let e_kd = (-kappa * dt).exp();
+    let krho_eps = kappa * rho_xv / eps;
+    let lq = &model.chol;
+    crate::euler::EulerSpec::HestonHullWhite2FQe {
+      theta,
+      e_kd,
+      c1: eps * eps * e_kd / kappa,
+      c2: theta * eps * eps / (two * kappa),
+      k0: -rho_xv * kappa * theta * dt / eps,
+      k1: half * dt * (krho_eps - half) - rho_xv / eps,
+      k2: half * dt * (krho_eps - half) + rho_xv / eps,
+      a: model.a,
+      b: model.b,
+      sigma1: model.sigma1,
+      sigma2: model.sigma2,
+      l: [
+        lq[(1, 1)],
+        lq[(2, 1)],
+        lq[(2, 2)],
+        lq[(3, 1)],
+        lq[(3, 2)],
+        lq[(3, 3)],
+      ],
     }
   }
 

@@ -76,6 +76,21 @@ def test_invalid_input_is_a_value_error(bad):
         _hybrid(**bad)
 
 
+def test_device_queries_and_the_device_keyword():
+    hybrid = _hybrid(seed=1)
+    assert hybrid.device_ready() and hybrid.device_fallback() is None
+    assert np.array_equal(np.array(_hybrid(seed=1, device="cpu").sample()), np.array(hybrid.sample()))
+    with pytest.raises(ValueError):
+        _hybrid(device="tpu")
+    for device in ("cuda", "metal"):
+        try:
+            rows = _hybrid(seed=1, dtype="f32", device=device, scheme="qe").sample_par(8)
+        except (ValueError, RuntimeError):
+            continue
+        assert all(row.shape == (8, 65) and np.all(np.isfinite(row)) for row in rows)
+        assert np.all(rows[0][:, 0] == 1.0) and np.all(rows[4][:, 0] == 0.0)
+
+
 def test_qe_rejects_a_rate_variance_correlation():
     rho = RHO.copy()
     rho[1, 2] = rho[2, 1] = 0.2

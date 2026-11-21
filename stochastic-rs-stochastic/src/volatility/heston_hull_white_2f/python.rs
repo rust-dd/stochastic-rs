@@ -9,6 +9,8 @@ pub struct PyHestonHullWhite2F {
   inner_f64: Option<HestonHullWhite2F<f64>>,
   seeded_f32: Option<HestonHullWhite2F<f32, Euler, crate::python_device::SharedSeed>>,
   seeded_f64: Option<HestonHullWhite2F<f64, Euler, crate::python_device::SharedSeed>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
   qe: Option<PyHestonHullWhite2FQe>,
 }
 
@@ -18,6 +20,7 @@ struct PyHestonHullWhite2FQe {
   inner_f64: Option<HestonHullWhite2F<f64, AndersenQe>>,
   seeded_f32: Option<HestonHullWhite2F<f32, AndersenQe, crate::python_device::SharedSeed>>,
   seeded_f64: Option<HestonHullWhite2F<f64, AndersenQe, crate::python_device::SharedSeed>>,
+  device: crate::python_device::Device,
 }
 
 macro_rules! py_hybrid_dispatch {
@@ -74,7 +77,7 @@ struct Args {
 #[pyo3::prelude::pymethods]
 impl PyHestonHullWhite2F {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0=None, t=None, seed=None, dtype=None, scheme="euler"))]
+  #[pyo3(signature = (kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0=None, t=None, seed=None, dtype=None, device=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -92,6 +95,7 @@ impl PyHestonHullWhite2F {
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
+    device: Option<&str>,
     scheme: &str,
   ) -> pyo3::PyResult<Self> {
     let args = Args {
@@ -119,14 +123,22 @@ impl PyHestonHullWhite2F {
           )));
         }
       };
+      let dtype = dtype.unwrap_or("f64");
+      if !matches!(dtype, "f32" | "f64") {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "dtype must be 'f32' or 'f64', got '{dtype}'"
+        )));
+      }
+      let device = crate::python_device::Device::parse(device, dtype)?;
       let mut s = Self {
         inner_f32: None,
         inner_f64: None,
         seeded_f32: None,
         seeded_f64: None,
+        device,
         qe: None,
       };
-      match (seed, dtype.unwrap_or("f64")) {
+      match (seed, dtype) {
         (Some(sd), "f32") => {
           s.seeded_f32 = Some(build(
             &args,
@@ -134,7 +146,7 @@ impl PyHestonHullWhite2F {
             crate::python_device::SharedSeed::new(sd),
           ));
         }
-        (Some(sd), "f64") => {
+        (Some(sd), _) => {
           s.seeded_f64 = Some(build(
             &args,
             theta_r,
@@ -142,12 +154,7 @@ impl PyHestonHullWhite2F {
           ));
         }
         (None, "f32") => s.inner_f32 = Some(build(&args, theta_r, Unseeded)),
-        (None, "f64") => s.inner_f64 = Some(build(&args, theta_r, Unseeded)),
-        (_, other) => {
-          return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "dtype must be 'f32' or 'f64', got '{other}'"
-          )));
-        }
+        (None, _) => s.inner_f64 = Some(build(&args, theta_r, Unseeded)),
       }
       if qe {
         s.qe = Some(PyHestonHullWhite2FQe {
@@ -155,10 +162,24 @@ impl PyHestonHullWhite2F {
           inner_f64: s.inner_f64.take().map(HestonHullWhite2F::qe),
           seeded_f32: s.seeded_f32.take().map(HestonHullWhite2F::qe),
           seeded_f64: s.seeded_f64.take().map(HestonHullWhite2F::qe),
+          device: s.device,
         });
       }
       Ok(s)
     })?
+  }
+
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
+  fn device_fallback(&self) -> Option<&'static str> {
+    use crate::traits::ProcessExt;
+    py_hybrid_dispatch!(py_dispatch, self, |inner| inner.device_fallback())
+  }
+
+  /// Whether this configuration runs on a device kernel: the absence of a
+  /// [`device_fallback`](Self::device_fallback) reason.
+  fn device_ready(&self) -> bool {
+    self.device_fallback().is_none()
   }
 
   /// One path as five arrays: spot, variance, short rate, auxiliary factor, integrated short rate.
@@ -168,7 +189,7 @@ impl PyHestonHullWhite2F {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_hybrid_dispatch!(py_dispatch, self, |inner| {
+      py_hybrid_dispatch!(py_device_dispatch, self, |inner| {
         let path = inner.sample();
         [path.s, path.v, path.r, path.u, path.integrated_rate]
           .map(|row| row.into_pyarray(py).into_py_any(py).unwrap())
@@ -188,7 +209,7 @@ impl PyHestonHullWhite2F {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_hybrid_dispatch!(py_dispatch, self, |inner| {
+      py_hybrid_dispatch!(py_device_dispatch, self, |inner| {
         let paths = py.detach(|| inner.sample_par(m));
         let n = paths.first().map_or(0, |p| p.s.len());
         let mut out = std::array::from_fn::<_, 5, _>(|_| Array2::zeros((m, n)));

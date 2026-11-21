@@ -3,6 +3,9 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::euler::EulerSpec;
+use crate::euler::families::Family;
+use crate::euler::families::host_step;
 use crate::interest::hull_white_2f::HullWhite2F;
 use crate::traits::ProcessExt;
 use crate::traits::RealExt;
@@ -423,4 +426,129 @@ fn with_rho_refactors_in_the_scheme_order() {
     paper(16, 9).qe().with_rho(rho.clone()).sample(),
     fresh().qe().sample()
   );
+}
+
+fn family_step(
+  family: Family,
+  state: [f64; 4],
+  spec: EulerSpec<f64>,
+  ct: f64,
+  u: f64,
+  dz: [f64; 4],
+) -> [f64; 4] {
+  let (code, params) = spec.encode();
+  assert_eq!(code, family.code());
+  let mut out = [0.0; 4];
+  let dt = 1.0 / 32.0;
+  host_step(
+    family, &state, &params, dt, ct, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, u, 0.0,
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, &dz, &mut out,
+  );
+  out
+}
+
+/// The Euler family is the host step's operations in the host's order, so the device kernel
+/// and the host sampler compute one recursion.
+#[test]
+fn the_euler_device_family_steps_as_the_host_does_bit_for_bit() {
+  let model = paper(33, 1).with_rho(rho_full());
+  let dt = model.dt();
+  for (state, dz) in [
+    ([0.1, 0.2, 0.03, -0.004], [0.11, -0.2, 0.05, 0.3]),
+    ([-0.3, 0.0, -0.01, 0.02], [-0.25, 0.4, -0.1, 0.02]),
+    ([0.0, 1e-4, 0.05, 0.0], [0.3, -0.9, 0.2, -0.1]),
+  ] {
+    let (host, _) = model.euler_step(0.033, dt, state, dz);
+    let spec = Euler::euler_spec(&model);
+    let device = family_step(Family::HestonHullWhite2F, state, spec, 0.033, 0.0, dz);
+    assert_eq!(device, host);
+  }
+}
+
+/// One QE step written out from Andersen's eq. 17-33, with the rate leg and its trapezoid.
+fn qe_reference(eps: f64, state: [f64; 4], ct: f64, u: f64, z: [f64; 4]) -> [f64; 4] {
+  let (kappa, theta, rho_xv) = (0.8_f64, 0.2_f64, -0.3_f64);
+  let (a, b, sigma1, sigma2) = (1.1, 0.8, 0.01, 0.015);
+  let (rho_xr, rho_xu, rho_ru) = (0.35_f64, 0.08_f64, -0.4_f64);
+  let dt = 1.0 / 32.0_f64;
+  let [log_s, v, r, w] = state;
+  let [zv, z_r, z_3, z_4] = z;
+  let e = (-kappa * dt).exp();
+  let m = theta + (v - theta) * e;
+  let s2 =
+    v * eps * eps * e / kappa * (1.0 - e) + theta * eps * eps / (2.0 * kappa) * (1.0 - e).powi(2);
+  let psi = s2 / (m * m);
+  let v_next = if psi <= 1.5 {
+    let b2 = 2.0 / psi - 1.0 + (2.0 / psi * (2.0 / psi - 1.0)).sqrt();
+    m / (1.0 + b2) * (b2.sqrt() + zv).powi(2)
+  } else {
+    let p = (psi - 1.0) / (psi + 1.0);
+    if u <= p {
+      0.0
+    } else {
+      ((1.0 - p) / (1.0 - u)).ln() * m / (1.0 - p)
+    }
+  };
+  let l22 = (1.0 - rho_ru * rho_ru).sqrt();
+  let l32 = (rho_xu - rho_xr * rho_ru) / l22;
+  let l33 = (1.0 - rho_xv * rho_xv - rho_xr * rho_xr - l32 * l32).sqrt();
+  let r_next = r + (ct + w - a * r) * dt + sigma1 * dt.sqrt() * z_r;
+  let w_next = w - b * w * dt + sigma2 * dt.sqrt() * (rho_ru * z_r + l22 * z_3);
+  let k0 = -rho_xv * kappa * theta * dt / eps;
+  let k1 = 0.5 * dt * (kappa * rho_xv / eps - 0.5) - rho_xv / eps;
+  let k2 = 0.5 * dt * (kappa * rho_xv / eps - 0.5) + rho_xv / eps;
+  let z_x = rho_xr * z_r + l32 * z_3 + l33 * z_4;
+  let log_s_next = log_s
+    + 0.5 * (r + r_next) * dt
+    + k0
+    + k1 * v
+    + k2 * v_next
+    + (0.5 * dt * (v + v_next)).sqrt() * z_x;
+  [log_s_next, v_next, r_next, w_next]
+}
+
+/// At `σ = 1` and a variance near zero `ψ = σ²/(2κθ) > 1.5`, the exponential branch: a uniform
+/// under `p` is the atom at zero, one above it the tail.
+#[test]
+fn the_qe_device_family_is_andersens_step_on_both_branches() {
+  let low = [0.0, 1e-5, 0.02, 0.01];
+  let cases = [
+    (0.2, [0.1, 0.2, 0.03, -0.004], 0.4, [0.3, -0.2, 0.5, 0.1]),
+    (1.0, low, 0.999, [-0.4, 0.7, -0.3, 0.2]),
+    (1.0, low, 0.01, [1.2, -0.1, 0.4, -0.6]),
+  ];
+  let variances = cases.map(|(eps, state, u, z)| {
+    let model = paper(33, 1).with_sigma(eps).qe();
+    let dz = z.map(|z| model.dt().sqrt() * z);
+    let spec = AndersenQe::euler_spec(&model);
+    let device = family_step(Family::HestonHullWhite2FQe, state, spec, 0.033, u, dz);
+    let reference = qe_reference(eps, state, 0.033, u, z);
+    for (got, want) in device.into_iter().zip(reference) {
+      assert!(
+        (got - want).abs() <= 1e-12 * want.abs().max(1.0),
+        "{got} vs {want}"
+      );
+    }
+    device[1]
+  });
+  assert!(variances[1] > 1e-3, "the tail of the exponential branch");
+  assert_eq!(variances[2], 0.0, "the atom of the exponential branch");
+}
+
+/// `sample` and `sample_par` rebuild `∫r` from the launch's rate row; the samplers accumulate
+/// their own inside the step.
+#[test]
+fn the_rebuilt_integrated_rate_is_the_samplers_own_row_bit_for_bit() {
+  use crate::traits::process::sample_par_chunked;
+  for seed in SEEDS {
+    let own = paper(129, seed).sampler().sample();
+    let rebuilt = super::device::integrated_rate(&own.r, paper(129, seed).dt());
+    assert_eq!(rebuilt, own.integrated_rate);
+    assert_eq!(paper(129, seed).sample(), own, "Euler");
+    let own = paper(129, seed).qe().sampler().sample();
+    assert_eq!(paper(129, seed).qe().sample(), own, "QE");
+    let own = sample_par_chunked(&paper(17, seed).qe(), 70);
+    assert_eq!(paper(17, seed).qe().sample_par(70), own, "chunked");
+    assert_eq!(paper(17, seed).qe().try_sample_par(70).unwrap(), own);
+  }
 }

@@ -363,6 +363,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
     EulerSpec::StochasticVolatilityCgmy { .. } => "StochasticVolatilityCgmy",
     EulerSpec::WishartTwo { .. } => "WishartTwo",
+    EulerSpec::HestonHullWhite2F { .. } => "HestonHullWhite2F",
+    EulerSpec::HestonHullWhite2FQe { .. } => "HestonHullWhite2FQe",
   }
 }
 

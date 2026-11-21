@@ -35,3 +35,5 @@ entrypoint!(euler_117_0_0, HawkesEvents2, false, false);
 entrypoint!(euler_118_0_0, CheyetteLocalVol, false, false);
 entrypoint!(euler_119_0_0, VolterraProgram, false, false);
 entrypoint!(euler_120_0_0, HestonSlv, false, false);
+entrypoint!(euler_121_0_0, HestonHullWhite2F, false, false);
+entrypoint!(euler_122_0_0, HestonHullWhite2FQe, false, false);

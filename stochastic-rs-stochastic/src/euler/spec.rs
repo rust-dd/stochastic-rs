@@ -661,6 +661,34 @@ pub enum EulerSpec<T: FloatExt> {
     delta: [T; 4],
     l: [T; 10],
   },
+  /// Heston on two-factor Hull-White rates by Euler: `l` is the lower Cholesky factor of the
+  /// `(x, v, r, u)` correlation, row-major; `theta_r` travels as the first curve.
+  HestonHullWhite2F {
+    kappa: T,
+    theta: T,
+    sigma: T,
+    a: T,
+    b: T,
+    sigma1: T,
+    sigma2: T,
+    l: [T; 10],
+  },
+  /// [`HestonHullWhite2F`](Self::HestonHullWhite2F) under the quadratic-exponential variance, its
+  /// constants as [`AndersenQe`](Self::AndersenQe)'s; `l` is the `(v, r, u, x)` factor past `v`.
+  HestonHullWhite2FQe {
+    theta: T,
+    e_kd: T,
+    c1: T,
+    c2: T,
+    k0: T,
+    k1: T,
+    k2: T,
+    a: T,
+    b: T,
+    sigma1: T,
+    sigma2: T,
+    l: [T; 6],
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.

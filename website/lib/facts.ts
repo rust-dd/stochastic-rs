@@ -18,11 +18,11 @@ function workspaceVersion(): string {
 export const FACTS = {
   /** `[workspace.package] version` in the root `Cargo.toml`, read at build time. */
   version: workspaceVersion(),
-  /** Root `CLAUDE.md`, `ProcessExt`: 139 implementors over 130 processes. */
+  /** Root `CLAUDE.md`, `ProcessExt`: 140 implementors over 130 processes. */
   processes: 130,
   /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
-  deviceFamilies: 121,
-  processesOnEngine: 127,
+  deviceFamilies: 123,
+  processesOnEngine: 128,
   /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */
   distributions: 36,
   /** 15 bivariate + 6 multivariate `BivariateExt` / `MultivariateExt` implementors. */
