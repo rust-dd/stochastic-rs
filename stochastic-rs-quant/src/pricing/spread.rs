@@ -19,6 +19,8 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::mc_stats::par_estimate;
 
 /// Floor a payoff at zero without letting the floor swallow a `NaN`.
@@ -121,9 +123,12 @@ impl MargrabePricer {
     (d1, d1 - v * sqrt_t)
   }
 
-  /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side); the σ → 0
-  /// branch floors through `floor_payoff`, so a NaN `tau` stays NaN there too.
+  /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side): the payoff at
+  /// `tau = 0`, NaN past expiry.
   pub fn price(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[q1, q2], || vanilla_payoff(OptionType::Call, s1, s2)) {
+      return value;
+    }
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
       return floor_payoff(s1 * (-q1 * tau).exp() - s2 * (-q2 * tau).exp());

@@ -40,6 +40,7 @@ mod credit_and_rates;
 mod crr;
 mod exotic_edges;
 mod exotics;
+mod expiry_census;
 mod kemna_vorst;
 
 const R: f64 = 0.05;

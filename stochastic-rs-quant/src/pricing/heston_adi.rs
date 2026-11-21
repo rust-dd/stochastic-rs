@@ -36,6 +36,9 @@ use self::grid::origin_centred_mesh;
 use self::grid::strike_centred_mesh;
 use self::operators::HestonCoefficients;
 use self::operators::Operators;
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -152,9 +155,15 @@ impl HestonAdiPricer {
       .unwrap_or_else(|| self.scheme.default_theta())
   }
 
-  /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`.
+  /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`; at `tau = 0` the
+  /// payoff, zero at or below a barrier, and NaN past expiry.
   fn solve_call(&self, s: f64, k: f64, r_d: f64, r_f: f64, tau: f64) -> f64 {
     let p = self.params;
+    let alive = self.barrier.is_none_or(|barrier| s > barrier);
+    let call = || vanilla_payoff(OptionType::Call, if alive { s } else { k }, k);
+    if let Some(value) = expired(tau, &[r_d, r_f], call) {
+      return value;
+    }
     if !(s > 0.0 && k > 0.0 && tau > 0.0 && p.v0 >= 0.0)
       || [s, k, tau, r_d, r_f, p.v0].iter().any(|v| !v.is_finite())
     {

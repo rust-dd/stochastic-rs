@@ -5,6 +5,8 @@
 use super::pricer::floor_price;
 use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -140,9 +142,13 @@ impl HestonStochCorrPricer {
     }
   }
 
-  /// Call and put from one Carr-Madan inversion, each floored at zero, as the quadrature can turn
-  /// slightly negative deep out of the money; NaN for a non-finite `s`, `k`, `r`, `q` or `tau`.
+  /// Call and put from one Carr-Madan inversion, each floored at zero; the payoffs at `tau = 0`;
+  /// NaN past expiry and for a non-finite `s`, `k`, `r`, `q` or `tau`.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    let payoff = |leg| expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
+    if let (Some(call), Some(put)) = (payoff(OptionType::Call), payoff(OptionType::Put)) {
+      return CallPut { call, put };
+    }
     let call = self.price_call_carr_madan(s, k, r, q, tau);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 

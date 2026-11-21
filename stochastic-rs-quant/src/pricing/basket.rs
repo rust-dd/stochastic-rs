@@ -24,6 +24,8 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 mod monte_carlo;
 
@@ -145,15 +147,8 @@ impl GeometricBasketPricer {
     }
   }
 
-  /// Price either leg at one query point.
-  ///
-  /// Returns NaN when the basket volatility or `tau` is zero and the
-  /// geometric forward sits exactly at the strike (`d₁` is 0/0); any other
-  /// degenerate volatility prices the discounted intrinsic value.
-  ///
-  /// # Panics
-  /// If the query's spot or yield vector disagrees with the length the
-  /// weights, volatilities and correlation matrix fix between them.
+  /// Either leg: the payoff at `tau = 0`; NaN past expiry or at zero basket volatility with the
+  /// forward at the strike; panics unless `s` and `q` have one entry per asset.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -168,6 +163,15 @@ impl GeometricBasketPricer {
     assert_eq!(self.sigma.len(), n_assets);
     assert_eq!(q.len(), n_assets);
     assert_eq!(self.rho.shape(), [n_assets, n_assets]);
+    let spot = || {
+      (0..n_assets)
+        .map(|i| self.weights[i] * s[i].ln())
+        .sum::<f64>()
+        .exp()
+    };
+    if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
+      return value;
+    }
 
     // Geometric basket vol: sigma_G^2 = sum_i sum_j w_i w_j rho_{ij} sigma_i sigma_j
     let mut sigma_g_sq = 0.0;
@@ -289,11 +293,8 @@ impl ArithmeticBasketLevyPricer {
     }
   }
 
-  /// Price either leg at one query point using Levy (1992) two-moment
-  /// lognormal approximation.
-  ///
-  /// Returns NaN when the two matched moments do not define a lognormal
-  /// (a non-positive `m2 / m1²`), rather than flooring the variance.
+  /// Either leg by Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry or
+  /// where the matched moments define no lognormal (a non-positive `m2 / m1²`).
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -303,6 +304,10 @@ impl ArithmeticBasketLevyPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
+    let spot = || (0..s.len()).map(|i| self.weights[i] * s[i]).sum::<f64>();
+    if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
+      return value;
+    }
     let m1 = first_moment(s, self.weights.view(), q, r, tau);
     let m2 = second_moment(
       s,
@@ -362,6 +367,17 @@ impl ArithmeticBasketLevyPricer {
   ) -> f64 {
     self.price_option(s, k, r, q, tau, OptionType::Put)
   }
+}
+
+/// [`expired`] over the rate and every asset's dividend yield.
+fn expired_basket(
+  tau: f64,
+  r: f64,
+  q: ArrayView1<'_, f64>,
+  payoff: impl FnOnce() -> f64,
+) -> Option<f64> {
+  let rates = q.iter().copied().chain([r]).collect::<Vec<f64>>();
+  expired(tau, &rates, payoff)
 }
 
 fn first_moment(s: ArrayView1<f64>, w: ArrayView1<f64>, q: ArrayView1<f64>, r: f64, t: f64) -> f64 {

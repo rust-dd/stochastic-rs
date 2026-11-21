@@ -33,6 +33,7 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::QuantError;
 use crate::error::check_grid_shape;
+use crate::pricing::digital::expired;
 use crate::pricing::mc_stats::par_estimate;
 
 /// Type of multi-asset rainbow payoff.
@@ -176,8 +177,11 @@ impl StulzRainbowPricer {
     }
   }
 
-  /// Price the contract at one query point.
+  /// The contract at one query point: its payoff at `tau = 0`, NaN past expiry.
   pub fn price(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q1, q2], || self.payoff.evaluate(&[s1, s2], k)) {
+      return value;
+    }
     match self.payoff {
       RainbowPayoff::CallOnMin => self.call_on_min(s1, s2, k, r, q1, q2, tau),
       RainbowPayoff::CallOnMax => self.call_on_max(s1, s2, k, r, q1, q2, tau),

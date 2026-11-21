@@ -25,6 +25,8 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::OptionType;
 use crate::instruments::option::caplet::bachelier_forward_caplet;
 use crate::instruments::option::caplet::bachelier_forward_floorlet;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -74,12 +76,18 @@ impl BachelierPricer {
 
 impl ModelPricer for BachelierPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
     (-r * tau).exp() * bachelier_forward_caplet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 
   /// The closed form $(K-F)\Phi(-d)+\sigma\sqrt\tau\,\varphi(d)$, not the parity default, which
   /// recomposes the put from the call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Put, s, k)) {
+      return value;
+    }
     (-r * tau).exp() * bachelier_forward_floorlet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 }

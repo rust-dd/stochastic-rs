@@ -69,8 +69,8 @@ impl MsoeEngine {
   }
 }
 
-/// Terminal prices under the rBergomi model, the Volterra history by the mSOE kernel and the log
-/// drift `(r − q − V_t/2) dt`; each path's stream derives from `seed`'s next seed and its index.
+/// Terminal prices by the mSOE kernel under the log drift `(r − q − V_t/2) dt`: `s0` at zero
+/// maturity, NaN for a NaN or negative one, a NaN rate or a spot not positive; panics on no path.
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_rbergomi_terminal_samples(
   params: &RBergomiParams,
@@ -84,11 +84,17 @@ pub fn simulate_rbergomi_terminal_samples(
   seed: &impl SeedExt,
 ) -> Vec<f64> {
   assert!(
-    maturity.is_finite() && maturity > 0.0,
-    "maturity must be > 0"
+    paths > 0,
+    "paths must satisfy `paths > 0`, got paths = {paths:?}"
   );
-  assert!(paths > 0, "paths must be > 0");
-  assert!(steps_per_year > 0, "steps_per_year must be > 0");
+  assert!(
+    steps_per_year > 0,
+    "steps_per_year must satisfy `steps_per_year > 0`, got steps_per_year = {steps_per_year:?}"
+  );
+  let defined = s0 > 0.0 && maturity >= 0.0 && maturity.is_finite() && (r - q).is_finite();
+  if !defined || maturity == 0.0 {
+    return vec![if defined { s0 } else { f64::NAN }; paths];
+  }
 
   let params = params.clone().projected();
   let steps = ((maturity * steps_per_year as f64).ceil() as usize).max(2);
@@ -119,7 +125,7 @@ pub fn simulate_rbergomi_terminal_samples(
       let mut xi = vec![0.0_f64; dim];
       let mut history = vec![0.0_f64; engine.terms()];
 
-      let mut s = s0.max(1e-12);
+      let mut s = s0;
       let mut v_prev = params.xi0.value(0.0).max(XI0_MIN);
 
       for step in 1..=steps {

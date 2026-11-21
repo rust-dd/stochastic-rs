@@ -22,7 +22,11 @@
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 
 /// Bjerksund-Stensland 2002 pricer for American options.
 ///
@@ -181,22 +185,36 @@ impl BjerksundStensland2002Pricer {
       - x * self.psi(fs, t2, 0.0, i1, i2, i1, t1, r, b, v)
       + x * self.psi(fs, t2, 0.0, x, i2, i1, t1, r, b, v);
 
-    // Ensure at least the European value
-    f64::max(value, e_value)
+    value.max_or_nan(e_value)
   }
+}
+
+/// The payoff, which is the exercise value, at `tau = 0`; NaN past expiry or for a NaN query.
+fn off_the_formula(s: f64, k: f64, r: f64, q: f64, tau: f64, leg: OptionType) -> Option<f64> {
+  if s.is_nan() || k.is_nan() {
+    return Some(f64::NAN);
+  }
+  let past = expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
+  past.or_else(|| (r.is_nan() || q.is_nan()).then_some(f64::NAN))
 }
 
 impl ModelPricer for BjerksundStensland2002Pricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = off_the_formula(s, k, r, q, tau, OptionType::Call) {
+      return value;
+    }
     self.bs2002_call(s, k, tau, r, Self::b(r, q), self.sigma)
   }
 
   /// The symmetry value $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$ floored at the European put, not the
   /// parity default: an American put carries an early-exercise premium the call does not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = off_the_formula(s, k, r, q, tau, OptionType::Put) {
+      return value;
+    }
     let b = Self::b(r, q);
     let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.sigma);
-    f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.sigma))
+    put_as_call.max_or_nan(self.gbs_put(s, k, tau, r, b, self.sigma))
   }
 }
 

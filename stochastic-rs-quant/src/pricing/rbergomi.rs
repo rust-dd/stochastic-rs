@@ -18,8 +18,12 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::mc::McEstimate;
 
+use crate::OptionType;
 use crate::calibration::rbergomi::RBergomiParams;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::pathless;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -89,11 +93,18 @@ impl<S: SeedExt> RBergomiPricer<S> {
     self
   }
 
-  /// Call-price estimate with its Monte Carlo error bar. The mean is the
-  /// value [`ModelPricer::price_call`] reports; under antithetic sampling
-  /// the error bar is computed over the per-path antithetic-pair means,
-  /// the unit that actually averages to the estimate.
+  /// Call estimate, its error bar over the pair means under antithetic sampling; the payoff on no
+  /// path at `tau = 0`, NaN past expiry, for a NaN query or a spot not positive.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
+    if s.is_nan() || k.is_nan() {
+      return pathless(f64::NAN);
+    }
+    if let Some(payoff) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return pathless(payoff);
+    }
+    if !(s > 0.0 && (r - q).is_finite() && tau.is_finite()) {
+      return pathless(f64::NAN);
+    }
     let seed = self.seed.clone();
     let samples = simulate_rbergomi_terminal_samples(
       &self.params,

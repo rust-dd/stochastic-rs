@@ -31,6 +31,15 @@ pub(crate) fn par_estimate(
   }
 }
 
+/// The estimate of a query no path is simulated for: exact for a number, NaN for a NaN.
+pub(crate) fn pathless(mean: f64) -> McEstimate<f64> {
+  McEstimate {
+    mean,
+    std_err: 0.0 * mean,
+    n_samples: 0,
+  }
+}
+
 /// Standard error of a Monte Carlo mean from the running sums a payoff
 /// pass produces: sample variance `(sum_sq - sum²/n) / (n - 1)`, then
 /// `sqrt(var / n)` (Glasserman 2003, §1.1).
