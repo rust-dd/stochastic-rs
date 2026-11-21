@@ -1,10 +1,5 @@
-//! Pricing engines — `(model, market, method)` triples that consume an
-//! [`crate::traits::Instrument`] and return a price.
-//!
-//! Engines hold [`crate::market::Handle`]s to live market quotes so prices
-//! reactively follow market updates. Existing `*Pricer` types remain — the
-//! engines wrap them and expose the unified [`crate::traits::PricingEngine`]
-//! trait surface.
+//! Pricing engines: `(model, market, method)` triples pricing an [`crate::traits::Instrument`] off
+//! [`crate::market::Handle`]s, so a price follows its quotes.
 
 pub mod analytic_bs;
 pub mod analytic_heston;

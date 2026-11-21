@@ -189,10 +189,8 @@ fn boundaries_discount_from_the_terminal_payoff() {
   }
 }
 
-/// The dividend-yield term this task added to the PDE actually moves the
-/// price, in the direction and roughly the magnitude Black-Scholes says
-/// it should. Without this, `q` could be threaded through and silently
-/// ignored — the `pricing/slv.rs` failure mode.
+/// The PDE's dividend-yield term moves the price in the direction and roughly the magnitude
+/// Black-Scholes gives, so `q` is not ignored.
 #[test]
 fn fd_dividend_yield_drives_the_price() {
   let model = FiniteDifferencePricer::new(
@@ -218,10 +216,7 @@ fn fd_dividend_yield_drives_the_price() {
   );
 }
 
-/// American exercise binds for a call once the dividend yield exceeds the
-/// rate — the case that is unreachable without a `q` input, and the
-/// reason the pre-query pricer's American and European calls were always
-/// equal.
+/// An American call's early exercise binds once the dividend yield exceeds the rate.
 #[test]
 fn fd_american_call_beats_european_under_dividends() {
   let eu = FiniteDifferencePricer::new(
@@ -283,12 +278,8 @@ fn fd_one_model_prices_a_grid() {
   }
 }
 
-/// `t_n` and `s_n` are grid *counts*, so zero is not a coarse grid — it
-/// is no grid. `t_n = 0` skips the time loop and returns the payoff read
-/// straight off the initial grid: `0.6667` for an ATM call, a small
-/// finite number that looks exactly like a cheap short-dated option.
-/// `s_n = 0` is louder — it underflows `s_n - 1` — but neither is a
-/// price, and only one of the two announced itself.
+/// `t_n` and `s_n` count grid points, so `0` is no grid: `t_n = 0` would read the payoff off the
+/// initial grid (`0.6667` at the money), so both panic.
 #[test]
 #[should_panic(expected = "t_n must satisfy `t_n >= 1`, got t_n = 0")]
 fn new_rejects_zero_time_steps() {
@@ -313,9 +304,7 @@ fn new_rejects_zero_price_steps() {
   );
 }
 
-/// The PDE coefficients use `σ²`, so a negative volatility prices as its
-/// own absolute value — the solver silently answers a question the caller
-/// did not ask rather than the one they did.
+/// The PDE uses `σ²`, so a negative volatility would price as its absolute value; `new` panics.
 #[test]
 #[should_panic(
   expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"

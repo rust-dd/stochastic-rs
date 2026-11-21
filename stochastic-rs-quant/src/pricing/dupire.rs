@@ -16,7 +16,8 @@ pub struct Dupire {
   pub ks: Vec<f64>,
   /// Maturities in years (ascending), length N_T
   pub ts: Vec<f64>,
-  /// Call price surface with shape (N_T, N_K), row = fixed T_j, col = K_i, values are present call prices C(K_i, T_j)
+  /// Call price surface with shape (N_T, N_K), row = fixed T_j, col = K_i, values are present call
+  /// prices C(K_i, T_j)
   pub calls: Array2<f64>,
   /// Risk-free rate.
   pub r: f64,
@@ -26,7 +27,8 @@ pub struct Dupire {
   pub eps: f64,
   /// Optional pre-calculated ∂C/∂K with shape (N_T, N_K) (overrides finite-difference computation)
   pub dc_dk: Option<Array2<f64>>,
-  /// Optional pre-calculated ∂²C/∂K² with shape (N_T, N_K) (overrides finite-difference computation)
+  /// Optional pre-calculated ∂²C/∂K² with shape (N_T, N_K) (overrides finite-difference
+  /// computation)
   pub d2c_dk2: Option<Array2<f64>>,
   /// Optional pre-calculated ∂C/∂T with shape (N_T, N_K) (overrides finite-difference computation)
   pub dc_dt: Option<Array2<f64>>,
@@ -133,25 +135,8 @@ impl DupireBuilder {
 }
 
 impl Dupire {
-  /// Compute local volatility surface on the same (T, K) grid as the input call surface.
-  ///
-  /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j).
-  ///
-  /// A cell is left `NaN` wherever the Dupire formula has no admissible
-  /// value there, which is case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) and the shared
-  /// contract of every `local_vol_*` method on this type:
-  ///
-  /// - the two `K` boundary columns, where the 3-point second-derivative
-  ///   stencil does not fit;
-  /// - any cell whose `T` stencil spans a zero `dt` (duplicate maturities);
-  /// - any cell whose denominator `½K²∂²C/∂K²` is below `eps` or non-finite,
-  ///   or whose implied `σ²` comes out negative — a call surface that is not
-  ///   locally arbitrage-free.
-  ///
-  /// `NaN` rather than `0.0` because a zero local vol is a *usable-looking*
-  /// number that would propagate into a degenerate simulation instead of
-  /// flagging the bad cell.
+  /// `σ_loc` on the input `(T, K)` grid, `(N_T, N_K)`; `NaN`, not a usable-looking `0`, at the `K`
+  /// edges, a zero-`dt` stencil, or a `½K²∂²C/∂K²` below `eps`, non-finite or giving `σ² < 0`.
   #[must_use]
   pub fn local_vol_surface(&self) -> Array2<f64> {
     assert_eq!(
@@ -232,13 +217,8 @@ impl Dupire {
     sigma
   }
 
-  /// Compute local volatility surface using pre-calculated partial derivatives ∂C/∂K, ∂²C/∂K², ∂C/∂T.
-  /// Requires `dc_dk`, `d2c_dk2`, and `dc_dt` fields to be populated.
-  ///
-  /// Returns Array2 (N_T, N_K) with σ_loc(K_i, T_j).
-  ///
-  /// Panics if any of the three custom-derivative fields is `None` — for a
-  /// non-panicking variant use [`Self::try_local_vol_surface_from_custom_derivatives`].
+  /// [`local_vol_surface`](Self::local_vol_surface) from the supplied `dc_dk`, `d2c_dk2`, `dc_dt`;
+  /// panics if one is `None` (see [`Self::try_local_vol_surface_from_custom_derivatives`]).
   #[must_use]
   pub fn local_vol_surface_from_custom_derivatives(&self) -> Array2<f64> {
     self
@@ -246,13 +226,8 @@ impl Dupire {
       .unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Falliable variant of [`Self::local_vol_surface_from_custom_derivatives`].
-  /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None` or has
-  /// the wrong shape.
-  ///
-  /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
-  /// `NaN` contract, minus the stencil-boundary cases — supplying the
-  /// derivatives directly means every column is computable in principle.
+  /// Fallible [`Self::local_vol_surface_from_custom_derivatives`]: `Err` for a `None` or misshapen
+  /// derivative; cells follow the `NaN` contract but for the stencil edges.
   pub fn try_local_vol_surface_from_custom_derivatives(&self) -> Result<Array2<f64>, QuantError> {
     let (dc_dk, d2c_dk2, dc_dt) = self.custom_derivatives()?;
     let nt = self.ts.len();
@@ -284,11 +259,8 @@ impl Dupire {
     Ok(sigma)
   }
 
-  /// Convenience: compute local volatility for a single maturity slice at time index j.
-  ///
-  /// Cells follow [`local_vol_surface`](Self::local_vol_surface)'s `NaN`
-  /// contract. A slice shorter than 3 strikes is returned entirely `NaN`:
-  /// the second-derivative stencil never fits.
+  /// Maturity slice `j` under [`local_vol_surface`](Self::local_vol_surface)'s `NaN` contract; all
+  /// `NaN` below 3 strikes.
   #[must_use]
   pub fn local_vol_slice(&self, j: usize) -> Vec<f64> {
     assert!(
@@ -360,11 +332,8 @@ impl Dupire {
     out
   }
 
-  /// Compute local volatility for a single maturity slice using pre-calculated partial derivatives.
-  /// Requires `dc_dk`, `d2c_dk2`, and `dc_dt` fields to be populated.
-  ///
-  /// Panics if any of the three custom-derivative fields is `None` — for a
-  /// non-panicking variant use [`Self::try_local_vol_slice_from_custom_derivatives`].
+  /// One slice from the supplied derivatives; panics if one is `None` (see
+  /// [`Self::try_local_vol_slice_from_custom_derivatives`]).
   #[must_use]
   pub fn local_vol_slice_from_custom_derivatives(&self, j: usize) -> Vec<f64> {
     self
@@ -372,12 +341,8 @@ impl Dupire {
       .unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Falliable variant of [`Self::local_vol_slice_from_custom_derivatives`].
-  /// Returns an error if any of `dc_dk`, `d2c_dk2`, `dc_dt` is `None`, has the
-  /// wrong shape, or `j` is out of range.
-  ///
-  /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
-  /// `NaN` contract.
+  /// Fallible [`Self::local_vol_slice_from_custom_derivatives`]: `Err` for a `None` or misshapen
+  /// derivative or an out-of-range `j`; cells follow the `NaN` contract.
   pub fn try_local_vol_slice_from_custom_derivatives(
     &self,
     j: usize,

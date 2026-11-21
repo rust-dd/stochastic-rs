@@ -75,11 +75,8 @@ fn bsm_model_pricer_matches_pre_refactor_goldens() {
   }
 }
 
-/// `Asay1982` and `Black1976` are the same model in this crate — both carry
-/// at `b = 0` and discount at `exp(-r * tau)`. Asay (1982)'s margined
-/// futures convention (no discounting at all) is *not* implemented; this
-/// pins the equality so a future Asay implementation is a deliberate,
-/// visible change rather than a silent one.
+/// `Asay1982` equals `Black1976` here (`b = 0`, discounted at `e^{−rτ}`): Asay's undiscounted
+/// margined-futures convention is not implemented, and this pins it.
 #[test]
 fn bsm_asay_currently_equals_black76() {
   let (s, k, r, q, tau) = Q;
@@ -93,11 +90,8 @@ fn bsm_asay_currently_equals_black76() {
   }
 }
 
-/// [`ModelPricer::price_put`]'s default is vanilla parity
-/// (`C - S e^{-q tau} + K e^{-r tau}`), which assumes `b = r - q`. It is
-/// therefore correct for `Merton1973` / `GarmanKohlhagen1983` and wrong for
-/// the other three — the reason `BsmPricer` overrides it. This test is the
-/// evidence for that override.
+/// The parity default assumes `b = r − q`, right for `Merton1973` and `GarmanKohlhagen1983`, wrong
+/// for the other three, so `BsmPricer` overrides `price_put`.
 #[test]
 fn bsm_price_put_overrides_vanilla_parity() {
   let (s, k, r, q, tau) = Q;
@@ -340,9 +334,7 @@ fn bsm_dcc_pricing_diverges_from_default() {
   );
 }
 
-/// One model instance prices a whole strike/maturity grid — the capability
-/// [`ModelPricer`] exists for and the pre-query struct could not offer
-/// without rebuilding itself per point.
+/// One model instance prices a whole strike/maturity grid.
 #[test]
 fn bsm_one_model_prices_a_grid() {
   let model = BsmPricer::new(0.2, BsmCoc::Merton1973);

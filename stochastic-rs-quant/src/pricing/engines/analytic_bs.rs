@@ -1,9 +1,5 @@
-//! Closed-form Black-Scholes engine for [`EuropeanOption`] /
-//! [`DigitalOption`].
-//!
-//! Wraps [`BsmPricer`] / [`CashOrNothingPricer`] / [`AssetOrNothingPricer`]
-//! behind reactive market handles so the engine re-prices automatically
-//! after a market update.
+//! Closed-form Black-Scholes engine for [`EuropeanOption`] and [`DigitalOption`], over
+//! [`BsmPricer`], [`CashOrNothingPricer`] and [`AssetOrNothingPricer`] on live market handles.
 
 use std::sync::Arc;
 
@@ -22,11 +18,8 @@ use crate::traits::PricingEngine;
 use crate::traits::StandardResult;
 use crate::traits::TimeExt;
 
-/// Analytic Black-Scholes engine.
-///
-/// Holds [`Handle`]s to spot, volatility, risk-free rate, and dividend
-/// yield quotes — relinking any handle takes effect on the next
-/// [`calculate`](Self::calculate) call.
+/// Analytic Black-Scholes engine on spot, volatility, rate and dividend-yield [`Handle`]s; a
+/// relinked handle takes effect at the next [`calculate`](Self::calculate).
 #[derive(Clone)]
 pub struct AnalyticBsEngine {
   pub s: Handle<SimpleQuote<f64>>,
@@ -199,11 +192,8 @@ mod tests {
     );
   }
 
-  /// The engine's Greeks are exactly [`BsmPricer::greeks`] at the handles'
-  /// current values and the instrument's own τ — all nine members, not just
-  /// the three whose sign `european_call_atm_round_trip` checks. Guards the
-  /// engine's wiring (quote reads, τ resolution, option type) rather than
-  /// the Greek formulas, which `bsm/tests.rs` pins.
+  /// The engine's Greeks are [`BsmPricer::greeks`] at the handles' values and the instrument's `τ`,
+  /// all nine members: the wiring, not the formulas.
   #[test]
   fn engine_greeks_match_the_model_aggregate() {
     let opt = EuropeanOption::new(105.0, OptionType::Put, Maturity::Tau(0.75));
@@ -254,10 +244,8 @@ mod tests {
     );
   }
 
-  /// Each of the four handles independently, on both instrument types the
-  /// engine serves, and through the Greeks as well as the NPV. Naming them
-  /// one at a time is what stops the guard passing because some *other*
-  /// input happened to be missing.
+  /// Each of the four handles unlinked alone poisons the NPV and the Greeks, on both instrument
+  /// types.
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
     let call = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
@@ -329,13 +317,8 @@ mod tests {
     assert!(r.npv() > 0.0 && r.npv() < 1.0);
   }
 
-  /// The digital arm is exactly its model at the handles' current values and
-  /// the instrument's own τ — the same guard
-  /// `engine_greeks_match_the_model_aggregate` gives the European arm, and
-  /// what makes "one file, one convention" checkable rather than asserted.
-  /// Both kinds and both option types, since the engine's job here is the
-  /// wiring (quote reads, τ, strike, payout, call/put dispatch) and not the
-  /// formulas, which `digital_tests.rs` pins.
+  /// The digital arm is its model at the handles' values and the instrument's `τ`, for both kinds
+  /// and option types: the wiring (quotes, `τ`, strike, payout, dispatch), not the formulas.
   #[test]
   fn digital_npv_matches_the_model_at_the_same_query() {
     let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);

@@ -1,4 +1,4 @@
-//! # Lookback
+//! Closed-form lookback options; the floating-strike call:
 //!
 //! $$
 //! c_{\text{float}}=Se^{-qT}N(a_1)-S_{\min}e^{-rT}N(a_1-\sigma\sqrt T)
@@ -6,13 +6,10 @@
 //! N\!\left(-a_1+\frac{2b\sqrt T}{\sigma}\right)-e^{bT}N(-a_1)\right]
 //! $$
 //!
-//! where $b=r-q$ is the cost of carry.
-//!
-//! Source:
-//! - Goldman, M.B., Sosin, H.B. & Gatto, M.A. (1979), "Path Dependent Options: Buy at the Low, Sell at the High"
-//! - Conze, A. & Viswanathan, R. (1991), "Path Dependent Options: The Case of Lookback Options"
-//! - Haug, E.G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
-//!
+//! where `b = r − q` is the cost of carry.
+//! Reference: Goldman, Sosin & Gatto (1979), J. Finance 34(5), 1111–1127
+//! Reference: Conze & Viswanathan (1991), J. Finance 46(5), 1893–1907
+//! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed.
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
@@ -243,7 +240,8 @@ mod tests {
 
   #[test]
   fn fixed_call_geq_vanilla() {
-    // Fixed-strike lookback call ≥ vanilla call (since payoff = max(S_max - K, 0) ≥ max(S_T - K, 0))
+    // Fixed-strike lookback call ≥ vanilla call (since payoff = max(S_max - K, 0) ≥ max(S_T - K,
+    // 0))
     let option = lookback(Some(100.0), None, Some(100.0), OptionType::Call);
     let price = LookbackPricer::new(0.2).price(&option, 100.0, 0.05, 0.0, 1.0);
     // BSM vanilla call ≈ 10.45
