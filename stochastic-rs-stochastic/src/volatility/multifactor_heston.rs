@@ -255,8 +255,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
     ])
   }
 
-  /// The spot and the factors, the latter floored at zero exactly as the
-  /// host sampler floors its own starting variances.
+  /// The spot and the factors, each start read as `v₀⁺`, as the host sampler reads it.
   fn initial_state(&self) -> [T; 4] {
     let p = self.0;
     let v0 = |k: usize| {

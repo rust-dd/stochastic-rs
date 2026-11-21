@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "0b52ec31f9118e8cabc9b7304df8828926b27f2c238c722d55e651f88ef2cb39",
+  "artifact": "9dbe425f71f38bb45397617fd64a993b1e13a60597eed94fdb16f00f9e840911",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -46,7 +46,7 @@
     "../stochastic-rs-metal-kernels/src/random.rs": "0479df598ed024be5d574c71746c691987d2c94ffae5f88577bf08edc2f18304",
     "../stochastic-rs-metal-kernels/src/sheet.rs": "241f236ddb91af1c20bf1be8c24fcb2204e3947bed3519d505475f78ceb199f4",
     "../stochastic-rs-metal-kernels/src/tile.rs": "3a5923926b67cc647bdd9bf8b52713e25cd81e07a982d1dcc51f4f586a4d19c4",
-    "src/euler/families/definitions/diffusions.rs": "92b037b596ef9d29a62ba241a48603bbf35c4b484193d0a89d9fa974789163d1",
+    "src/euler/families/definitions/diffusions.rs": "3fbf38dfdf90a2d9b6d8a75c8fe5b15dcae7b02355e0a4b25fdf5b90ee35c17c",
     "src/euler/families/definitions/jump_schemes.rs": "e692823dd0d1ce16cd8f1abb62dde40e75c1731d200e88ad6f9581e62f56b4d1",
     "src/euler/families/definitions/lifts.rs": "af2317c9a7b710a2b6eb759470525dc5a3e1b565a09c2f60825861cd0c28a973",
     "src/euler/families/definitions/memory.rs": "f33d44ffd762dc9928e9306d4706bb5260bf869b4db72797c5c9901163ac107a",
