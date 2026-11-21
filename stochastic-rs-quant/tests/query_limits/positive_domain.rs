@@ -147,7 +147,7 @@ fn a_lognormal_model_pricer_is_nan_for_a_spot_or_strike_that_is_not_positive() {
   assert!(priced.is_empty(), "{priced:#?}");
 }
 
-/// Its own test: before the rule, the quadrature at `s = 0` walked for minutes.
+/// Its own test: the answer comes before the quadrature, whose walk at `s = 0` has no bound.
 #[test]
 fn the_stochastic_correlation_pricer_is_nan_for_a_spot_or_strike_that_is_not_positive() {
   let hscm = HestonStochCorrPricer::new(0.04, 1.5, 0.04, 0.3, -0.5, 2.0, -0.4, 0.2, 0.3);

@@ -35,7 +35,7 @@ fn cgmysv(s: f64, r: f64) -> CgmysvPricer<Deterministic> {
   }
 }
 
-/// §14: a `0.0` is never a sentinel, and `0.0 ± 0.0` on 16 paths answered a NaN strike.
+/// §14: a `0.0` is never a sentinel, so an off-domain query is a NaN estimate from no path.
 #[test]
 fn the_cgmysv_entry_points_are_nan_for_a_query_off_their_domain() {
   let (nan, inf) = (f64::NAN, f64::INFINITY);

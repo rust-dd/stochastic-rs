@@ -77,7 +77,7 @@ fn a_barrier_at_zero_volatility_prices_its_deterministic_path() {
 }
 
 /// A knock-in already breached is its vanilla, whose forward `S e^{(r−q)τ}` sits at the strike
-/// here: 72 cases where the closed form read BSM's `0/0`.
+/// here: 72 cases, each worth the payoff `0` and not BSM's `0/0`.
 #[test]
 fn a_knocked_in_barrier_at_zero_volatility_with_its_forward_at_the_strike_is_worth_nothing() {
   use BarrierType::*;

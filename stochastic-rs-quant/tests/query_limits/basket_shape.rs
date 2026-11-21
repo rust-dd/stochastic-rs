@@ -14,7 +14,7 @@ fn geometric() -> GeometricBasketPricer {
   GeometricBasketPricer::new(array![0.5, 0.5], array![0.25, 0.2], rho)
 }
 
-/// One spot of a two-asset basket priced 45.0 at expiry, the payoff on half the basket.
+/// One spot of a two-asset basket has no price, at expiry as before it.
 #[test]
 #[should_panic(expected = "s must satisfy `s.len() == sigma.len()`, got s.len() = 1")]
 fn a_levy_basket_with_a_spot_too_few_is_a_precondition() {
