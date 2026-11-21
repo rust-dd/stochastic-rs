@@ -13,6 +13,17 @@ const P: HestonParams = HestonParams {
   rho: -0.7,
 };
 
+/// Read back, never written: a write would pass `with_grid`'s or `with_barrier`'s check.
+#[test]
+fn the_grid_and_the_barrier_are_read_through_getters() {
+  let pricer = HestonAdiPricer::new(P)
+    .with_grid(4, 6, 1)
+    .with_barrier(50.0);
+  assert_eq!((pricer.grid(), pricer.barrier()), ((4, 6, 1), Some(50.0)));
+  assert_eq!(HestonAdiPricer::new(P).grid(), (100, 50, 50));
+  assert_eq!(HestonAdiPricer::new(P).barrier(), None);
+}
+
 #[test]
 fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
   let model = HestonAdiPricer::new(HestonParams {

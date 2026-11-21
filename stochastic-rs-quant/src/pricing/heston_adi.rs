@@ -50,20 +50,16 @@ const SPOT_CAP_STRIKES: f64 = 8.0;
 pub struct HestonAdiPricer {
   /// `theta` is the paper's long-run variance `η`.
   params: HestonParams,
-  /// Mesh intervals in `s`.
-  pub m1: usize,
-  /// Mesh intervals in `v`.
-  pub m2: usize,
-  /// Time steps.
-  pub steps: usize,
+  m1: usize,
+  m2: usize,
+  steps: usize,
   /// Splitting scheme.
   pub scheme: AdiScheme,
   /// Scheme parameter `θ`; `None` takes the scheme's recommended value.
   pub adi_theta: Option<f64>,
   /// Rannacher start-up damping.
   pub damping: bool,
-  /// Down-and-out barrier on the spot, if any.
-  pub barrier: Option<f64>,
+  barrier: Option<f64>,
 }
 
 impl HestonAdiPricer {
@@ -94,6 +90,16 @@ impl HestonAdiPricer {
 
   pub fn params(&self) -> HestonParams {
     self.params
+  }
+
+  /// Mesh intervals in `s` and in `v`, and time steps.
+  pub fn grid(&self) -> (usize, usize, usize) {
+    (self.m1, self.m2, self.steps)
+  }
+
+  /// The down-and-out barrier on the spot, if any.
+  pub fn barrier(&self) -> Option<f64> {
+    self.barrier
   }
 
   /// Mesh intervals and time steps.
