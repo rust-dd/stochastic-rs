@@ -45,7 +45,7 @@ The default `price_put` recomposes the put from the call by **European** put-cal
 
 ## Blanket implementations
 
-- `impl<T: FourierModelExt> ModelPricer for T` — any model with a characteristic function is priced by Gil-Pelaez quadrature.
+- `impl<T: FourierModelExt> ModelPricer for T` — any model with a characteristic function is priced by `LewisPricer`, Lewis (2001), less a Gaussian control; `GilPelaezPricer` prices the same model by Gil–Pelaez's inversion.
 - `impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T` — any model that asserts it is a European vanilla call gets `vol_surface(s, r, q, strikes, maturities)`. A `ModelPricer` that is not one (a digital, an American put) has no such method.
 
 `ToModel` turns a calibration result into the concrete `ModelPricer` it determines:
