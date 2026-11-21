@@ -356,7 +356,7 @@ pub struct SuperSharePricer {
 }
 
 impl SuperSharePricer {
-  /// Panics for a negative or infinite `sigma` (NaN is kept, as on [`CashOrNothingPricer::new`]) and
+  /// Panics for a negative or infinite `sigma` (NaN stays, as on [`CashOrNothingPricer::new`]) and
   /// unless `x_high` is finite and `> 0`; a band inverted against the query's `k` prices negative.
   pub fn new(x_high: f64, sigma: f64) -> Self {
     assert_digital_sigma(sigma);
