@@ -12,7 +12,7 @@ a u32 label length, UTF-8 label, u32 value count and f32 bits in plane/path/step
 order. It records every output bit, including signs of zero and any non-finite
 results from diagnostic shape combinations. Comparison accepts no tolerance.
 
-The fixture contains 1,722 cases and 2,392,674 bytes from the Euler kernels in
+The fixture contains 1,748 cases and 2,476,012 bytes from the Euler kernels in
 `MathMode::Fast` (relaxed math, fast fp32 functions, fast contraction). Its
 `.meta` sibling records revision, metal-oxide version, the artifact's
 `kernels.metallib` hash, GPU, operating system, Xcode/SDK and math mode.

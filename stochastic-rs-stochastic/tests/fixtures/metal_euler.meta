@@ -1,5 +1,5 @@
-revision=f21590da9; metal-oxide=0.1.0-alpha.1; artifact=kernels.metallib sha256 051648901889; GPU=Apple M4 Max; OS=macOS27.2.1(26B131); Xcode=27.2(27B52); SDK=27.2; math=Fast; Euler=metal-oxide
+revision=c45eeb321; metal-oxide=0.1.0-alpha.1; artifact=kernels.metallib sha256 1a7adbe43ca6; GPU=Apple M4 Max; OS=macOS27.2.1(26B131); Xcode=27.2(27B52); SDK=27.2; math=Fast; Euler=metal-oxide
 format=STOEULR1
-families=132
-cases=1722
-bytes=2392674
+families=134
+cases=1748
+bytes=2476012
