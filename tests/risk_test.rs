@@ -1,9 +1,5 @@
-//! Integration tests for the risk-metrics module.
-//!
-//! Validates VaR / ES against analytical Gaussian references, drawdown and
-//! performance metrics against hand-computed tables, curve shifts against
-//! elementary algebra, and bucket DV01 against closed-form zero-coupon bond
-//! duration.
+//! Risk-metrics tests: VaR / ES against Gaussian closed forms, drawdown and performance metrics
+//! against hand-computed tables, curve shifts against algebra, DV01 against zero-coupon duration.
 
 use ndarray::Array1;
 use ndarray::array;
@@ -161,9 +157,8 @@ fn parallel_shift_adds_constant_to_every_zero_rate() {
 
 #[test]
 fn bucket_dv01_matches_zero_coupon_bond_duration() {
-  // A 5-year zero-coupon bond priced off the curve has PV = exp(-5r).
-  // dPV / dr at r = 0.03, for a 1 bp bump, should equal approximately
-  // -5 * exp(-0.15) * 1e-4 = -4.3 bp in dollar terms for a $1 notional.
+  // A 5-year zero-coupon bond has PV = exp(-5r), so a 1 bp bump at r = 0.03 moves it by about
+  // -5 * exp(-0.15) * 1e-4 = -4.3 bp per $1 notional.
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03];
   let curve = DiscountCurve::from_zero_rates(

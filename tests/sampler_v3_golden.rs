@@ -29,10 +29,8 @@ fn bits(a: &ndarray::Array1<f64>) -> Vec<u64> {
   a.iter().map(|x| x.to_bits()).collect()
 }
 
-/// Asserts each element of `actual` matches the golden value (stored as its
-/// `f64` bit pattern) within a tolerance that absorbs cross-architecture
-/// floating-point rounding while still catching any real behavioural drift —
-/// a genuine change shifts a value far more than `1e-9`.
+/// Asserts each element of `actual` matches its golden value (an `f64` bit pattern) within a
+/// tolerance that absorbs cross-architecture rounding but catches real drift, far above `1e-9`.
 fn assert_close(actual: &ndarray::Array1<f64>, golden_bits: &[u64]) {
   assert_eq!(actual.len(), golden_bits.len(), "length mismatch");
   for (i, (&a, &gb)) in actual.iter().zip(golden_bits).enumerate() {
@@ -179,9 +177,8 @@ fn golden_sabr_streams() {
 
 #[test]
 fn golden_fou_stream() {
-  // Pinned before the C1 correlation-fix rewrite lands — see
-  // `golden_sabr_streams` above. `Fou` is one of the 10 "lazy" types
-  // rewritten to own a seed at `sampler()` construction.
+  // `Fou` is one of the 10 "lazy" types rewritten to own a seed at `sampler()` construction (see
+  // `golden_sabr_streams`).
   let fou = Fou::<f64, _>::new(
     0.7,
     1.3,
@@ -340,9 +337,8 @@ fn golden_bates_streams() {
     ],
   );
 
-  // Not a diffusion-only pin: a lambda=0 counterfactual (same seed, same k,
-  // same everything else) diverges on the price path, which is only
-  // possible if the golden above actually depends on the jump term.
+  // Not diffusion-only: a lambda=0 counterfactual (same seed, same k) diverges on the price path,
+  // which is only possible if the golden depends on the jump term.
   let zero_lambda = Bates::new(
     Drift::Mu(0.05),
     0.0,
@@ -388,9 +384,8 @@ fn golden_fgn_stream() {
 
 #[test]
 fn sampler_first_path_matches_sample() {
-  // The first `sampler().sample()` reproduces `sample()` bit-for-bit because
-  // both derive the Gaussian source identically from the same seed. This is a
-  // same-machine comparison, so it stays exact and portable.
+  // The first `sampler().sample()` reproduces `sample()` bit-for-bit because both derive the
+  // Gaussian source identically from the same seed; same-machine, so it stays exact and portable.
   let a = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   let b = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   assert_eq!(bits(&a.sample()), bits(&b.sampler().sample()));

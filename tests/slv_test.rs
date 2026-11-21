@@ -1,9 +1,5 @@
-//! Tests for the Heston Stochastic Local Volatility (SLV) model.
-//!
-//! Validates the leverage calibration and the Monte Carlo pricer against
-//! known limiting cases: a variance that never moves (`eta = 0` at the
-//! long-run level) makes the leverage a closed form, and a flat local
-//! volatility then makes the model Black–Scholes.
+//! Heston SLV tests against limiting cases: a variance that never moves (`eta = 0` at the long-run
+//! level) makes the leverage a closed form, and a flat local volatility makes it Black–Scholes.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -148,9 +144,8 @@ fn slv_pricer_produces_positive_monotone_prices() {
   assert!(c_itm > c_atm && c_atm > c_otm && c_otm >= 0.0);
 }
 
-/// Flat local vol at `sqrt(v0)` under a variance that never moves is
-/// Black–Scholes, so the pricer has to land on the Black price within its
-/// own Monte Carlo error.
+/// Flat local vol at `sqrt(v0)` under a variance that never moves is Black–Scholes, so the pricer
+/// has to land on the Black price within its own Monte Carlo error.
 #[test]
 fn slv_pricer_flat_vol_is_black_scholes() {
   let params = heston_params(0.0);
@@ -184,9 +179,8 @@ fn slv_pricer_flat_vol_is_black_scholes() {
   );
 }
 
-/// A surface calibrated on 70..130 carries no information about a spot of
-/// 1000, but the bilinear clamp answers anyway; the pricer gates the query
-/// on the surface's extent instead.
+/// A surface calibrated on 70..130 carries no information about a spot of 1000, but the bilinear
+/// clamp answers anyway; the pricer gates the query on the surface's extent instead.
 #[test]
 fn slv_price_is_nan_outside_the_calibrated_spot_range() {
   let params = heston_params(1.0);
@@ -236,9 +230,8 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
   }
 }
 
-/// The process and the pricer run the same recursion under the same
-/// surface, so a vanilla priced from the process's own paths agrees with the
-/// pricer's estimate within the two Monte Carlo errors.
+/// The process and the pricer run the same recursion under the same surface, so a vanilla priced
+/// from the process's paths agrees with the pricer's estimate within the two Monte Carlo errors.
 #[test]
 fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
   use stochastic_rs::stochastic::volatility::heston_slv::HestonSlv;

@@ -79,10 +79,8 @@ mod gated {
     g.finish();
   }
 
-  /// Large-batch throughput on the **same `n × m` grid as `CUDA_BENCHMARK.md`**
-  /// (plus a `64k × 16k` ~4.3 GB case at the GPU memory wall), so the Apple figures
-  /// line up with the i9-285K + RTX numbers. CPU, Accelerate and Metal scale to all
-  /// of these on the 36 GB unified M4 Max.
+  /// Large-batch throughput on the `n × m` grid of `CUDA_BENCHMARK.md` plus a `64k × 16k` (~4.3 GB)
+  /// case at the GPU memory wall; CPU, Accelerate and Metal scale to all on the 36 GB M4 Max.
   fn bench_batch_large(c: &mut Criterion) {
     let mut g = c.benchmark_group("FGN_batch_large");
     g.measurement_time(Duration::from_secs(4));

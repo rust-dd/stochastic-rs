@@ -1,8 +1,6 @@
 // docs: quant#heston--semi-closed-form-pricer
-//! Backs the Heston pricer example on the quant catalog page. The model
-//! holds only its six Heston parameters; spot, strike, rate, dividend
-//! yield and maturity travel to the call, so one instance prices a whole
-//! strike/maturity grid.
+//! Backs the Heston pricer example on the quant catalog page: the model holds only its six Heston
+//! parameters, while spot, strike, rate, dividend yield and maturity travel to the call.
 
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::heston::HestonParams;

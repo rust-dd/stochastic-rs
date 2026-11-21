@@ -1,8 +1,5 @@
-"""Quant-surface pytest coverage.
-
-Exercises the analytic Black-Scholes-Merton pricer binding: ATM price
-range, monotonicity in strike, and the no-arbitrage call price bounds.
-"""
+"""Analytic Black-Scholes-Merton pricer binding: ATM price range, monotonicity in strike and the
+no-arbitrage call price bounds."""
 
 from __future__ import annotations
 

@@ -1,8 +1,5 @@
-//! European swaption pricing tests.
-//!
-//! Covers Black-76 put-call parity for payer vs receiver swaptions, the
-//! Bachelier-vs-Black ATM agreement at small volatility, and SABR /
-//! shifted-SABR sanity checks.
+//! European swaption tests: Black-76 put-call parity for payer vs receiver, Bachelier-vs-Black ATM
+//! agreement at small volatility, and SABR / shifted-SABR sanity checks.
 
 use chrono::NaiveDate;
 use ndarray::array;

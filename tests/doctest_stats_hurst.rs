@@ -1,13 +1,6 @@
 // docs: stats#hurst-exponent-estimation
-//! Backs the Hurst-estimator example on the statistics catalog page.
-//!
-//! Uses the rescaled-range estimator (`RescaledRange`) rather than the
-//! Fukasawa/Whittle one (`stats::hurst::whittle`): Fukasawa estimates the
-//! roughness of a *latent volatility* process from a realized-variance
-//! series, not the Hurst exponent of a path sampled directly from `Fgn` —
-//! feeding path samples straight into it silently recovers nonsense. See
-//! `stochastic-rs-stats/src/hurst/whittle.rs`'s own `simulate_log_rv` test
-//! helper for the realized-variance construction Fukasawa actually expects.
+//! Backs the statistics-page Hurst example with `RescaledRange`: the Fukasawa estimator
+//! (`stats::hurst::whittle`) reads realized variances of a latent volatility, not raw `Fgn` paths.
 
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::hurst::HurstEstimator;

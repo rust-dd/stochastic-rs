@@ -10,9 +10,8 @@ use stochastic_rs::traits::ProcessExt;
 
 #[test]
 fn adf_rejects_unit_root_on_a_mean_reverting_series() {
-  // An OU path is mean-reverting by construction, so the null (unit
-  // root) should be rejected — a stand-in for "prices or log-returns"
-  // that avoids a live data feed.
+  // An OU path is mean-reverting by construction, so the unit-root null should be rejected; it
+  // stands in for "prices or log-returns" without a live data feed.
   let series = Ou::<f64, _>::new(
     2.0,
     0.0,

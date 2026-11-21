@@ -1,6 +1,5 @@
-"""Surrogate (AI) binding coverage — only in `maturin develop --features ai`
-builds; the published wheels leave candle out, so the module is skipped when
-the classes are absent."""
+"""Surrogate (AI) binding coverage, only in `maturin develop --features ai` builds: the published
+wheels leave candle out, so the module is skipped when the classes are absent."""
 
 from __future__ import annotations
 

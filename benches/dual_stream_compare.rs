@@ -1,9 +1,5 @@
-//! A/B bench: a `SimdNormal` stream on the production `SimdRng` vs the experimental `SimdRngDual`.
-//! Same workload, same iteration counts, criterion-managed sampling.
-//!
-//! Also benches the raw uniform fill paths
-//! (`SimdRng::fill_uniform_f64` vs `SimdRngDual::fill_uniform_f64`) so we can
-//! attribute the speedup to RNG ILP vs Ziggurat unrolling.
+//! A/B bench: a `SimdNormal` stream on `SimdRng` vs the experimental `SimdRngDual`, plus their raw
+//! `fill_uniform_f64` paths to split the speedup between RNG ILP and Ziggurat unrolling.
 
 use std::hint::black_box;
 use std::time::Duration;

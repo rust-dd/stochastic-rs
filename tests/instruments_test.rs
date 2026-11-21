@@ -1,7 +1,5 @@
-//! Comparison tests for Tier 1 fixed-income instruments.
-//!
-//! Bond prices are checked against direct discounted-cashflow formulas and
-//! swap par rates are checked against textbook annuity identities.
+//! Comparison tests for Tier 1 fixed-income instruments: bond prices against direct
+//! discounted-cashflow formulas, swap par rates against textbook annuity identities.
 
 use chrono::NaiveDate;
 use ndarray::array;

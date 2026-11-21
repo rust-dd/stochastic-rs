@@ -42,8 +42,8 @@ const SMALL: usize = 1_000;
 const LARGE: usize = 100_000;
 const SIZES: &[(&str, usize)] = &[("small", SMALL), ("large", LARGE)];
 
-/// One group per law: the buffered stream, the honest scalar draw and a bulk fill, against `rand_distr`'s
-/// same law on `rand::rng()` (control) and on the same `SimdRng` as the scalar row.
+/// One group per law: the buffered stream, the scalar draw and a bulk fill, against `rand_distr`'s
+/// law on `rand::rng()` (control) and on the same `SimdRng` as the scalar row.
 macro_rules! bench_dist {
   ($fn_name:ident, $group_name:expr, $law_f32:expr, $law_f64:expr, $rand_f32:expr, $rand_f64:expr) => {
     fn $fn_name(c: &mut Criterion) {
@@ -364,7 +364,8 @@ fn bench_distribution_ext(c: &mut Criterion) {
   group.finish();
 }
 
-/// `sample_ncp` below `df = 1` builds its Gamma law per draw, so this row pays a constructor assert per sample.
+/// `sample_ncp` below `df = 1` builds its Gamma law per draw, so this row pays a constructor assert
+/// per sample.
 fn bench_ncx2_per_draw_construction(c: &mut Criterion) {
   let mut group = c.benchmark_group("NonCentralChiSquared/sample_ncp");
   group.measurement_time(Duration::from_secs(3));

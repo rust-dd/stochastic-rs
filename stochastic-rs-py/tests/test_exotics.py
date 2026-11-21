@@ -227,7 +227,8 @@ def test_the_mc_barrier_pricer_sees_q_and_replays_its_seed():
     assert (first.mean, first.std_err, first.n_samples) == (second.mean, second.std_err, 4_000)
     assert first.mean == sr.MCBarrierPricer(n_paths=4_000, n_steps=64, seed=11).price(*args).mean
     assert first.mean != sr.MCBarrierPricer(n_paths=4_000, n_steps=64, seed=12).price(*args).mean
-    shifted = 130.0 * math.exp(0.5826 * 0.2 * math.sqrt(1.0 / 64))  # Broadie, Glasserman & Kou (1997)
+    # Broadie, Glasserman & Kou (1997)
+    shifted = 130.0 * math.exp(0.5826 * 0.2 * math.sqrt(1.0 / 64))
     for q in (0.0, 0.04):
         estimate = seeded.price(*args, q=q)
         closed = sr.BarrierPricer(s=100.0, k=100.0, h=shifted, r=0.03, q=q, sigma=0.2, t=1.0, barrier_type="up_out").price()
