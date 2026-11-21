@@ -68,9 +68,8 @@ pub trait GreeksExt {
     fn volga(&self) -> Option<McEstimate<f64>> { None }
     fn veta(&self)  -> Option<McEstimate<f64>> { None }
 
-    // Aggregate. The default calls every accessor (NaN where one is None); the
-    // two MC estimators override it so one simulation backs the whole set (section 4).
-    fn greeks(&self) -> Greeks { /* default: calls every accessor */ }
+    // Both MC estimators override it to share one simulation; Heston's vega is a bump (section 4).
+    fn greeks(&self) -> Greeks { /* every accessor's mean, NaN where one is None */ }
 }
 ```
 
@@ -92,7 +91,7 @@ impl BsmPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 { ... }
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 { ... }
 
-    /// All nine Greeks at one query; a Monte Carlo pricer computes them from one set of paths.
+    /// Every Greek at one query point.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks { ... }
 }
 ```
@@ -111,11 +110,9 @@ impl BsmPricer {
 | volga  | $\partial^2 V / \partial \sigma^2$               | vol σ         |
 | veta   | $\partial \mathcal{V} / \partial T = -\partial^2 V/(\partial \sigma \partial T)$ | vol + T |
 
-The Greeks struct is a flat `f64` bundle by design. Per-pricer overrides
-typically fill only the Greeks that have analytic closed forms (e.g.
-BSM does delta/gamma/vega/theta/rho analytically) and leave the
-second-order cross-Greeks out (`None` from a `GreeksExt` accessor, NaN in
-the aggregate).
+The Greeks struct is a flat `f64` bundle by design. `BsmPricer`, `HestonPricer`
+and `Merton1976Pricer` fill all nine; `CashOrNothingPricer` fills delta, gamma and
+vega and `AssetOrNothingPricer` delta alone, the rest NaN in the aggregate.
 
 ## 3. `None` and NaN — when you don't compute a Greek
 
@@ -145,7 +142,8 @@ gammas / vegas don't share control variates. The user observes
 
 The mandated pattern: override `greeks()` so **one** simulation feeds
 every returned Greek. Both in-tree implementors do this with **Malliavin
-weights**, not with bump-and-reprice — there is no bumping machinery in
+weights**; the one exception is `HestonMalliavinGreeks`'s vega, `vega_v0`, a
+central bump of `v0` on common random numbers. There is no bump-and-reprice API in
 this crate. Do not reach for `with_spot_bump(...)`, `with_vol_bump(...)`,
 `with_bump_sizes(...)`, `price_from_paths(...)` or `simulate_with_seed(...)`:
 none of them exist anywhere in the repo.
@@ -217,17 +215,18 @@ the bumping API, not using an existing one. See
 
 ## 5. Analytic-pricer minimal impl
 
-For an analytic (closed-form) pricer, you usually only override the
-Greeks you know analytically:
-
 An analytic pricer holds model parameters only, so it does **not**
 implement `GreeksExt` — there is no spot on the struct to differentiate
 against. It exposes query-taking inherent methods, and every Greek it does
-not implement is simply absent rather than defaulting to anything:
+not implement is simply absent rather than defaulting to anything. A pricer
+that knows three of them:
 
 ```rust
-impl BsmPricer {
+impl XyzPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         match ot {
             OptionType::Call => norm_cdf(d1),
@@ -236,17 +235,26 @@ impl BsmPricer {
     }
 
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         norm_pdf(d1) / (s * self.sigma * tau.sqrt())
     }
 
     pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+        if tau == 0.0 {
+            return f64::NAN;
+        }
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         s * norm_pdf(d1) * tau.sqrt()
     }
 
-    /// All nine Greeks at one query.
+    /// Every Greek at one query point; all NaN at `tau = 0`, as in the five in-tree pricers.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks {
+        if tau == 0.0 {
+            return Greeks::nan();
+        }
         Greeks {
             delta: self.delta(s, k, r, q, tau, ot),
             gamma: self.gamma(s, k, r, q, tau),
@@ -272,9 +280,10 @@ Reference: `BsmPricer` in `pricing/bsm/greeks.rs`.
 ## 6. Bump-size conventions
 
 **There is no default finite-difference machinery in this crate**, and
-no `with_bump_sizes(...)` builder. `GreeksExt`'s accessors default to
-`None`, and the five inherent aggregators are closed-form. A Greek
-is either derived analytically, estimated by a Malliavin weight, or
+no `with_bump_sizes(...)` builder: `GreeksExt`'s accessors default to
+`None`. A Greek is analytic, a Malliavin weight, a central difference a
+pricer writes for itself (`HestonPricer`'s price differences, the
+τ-derivatives of `Merton1976Pricer`, `HestonMalliavinGreeks::vega_v0`), or
 absent.
 
 If you are *adding* a bump-and-reprice estimator, these are reasonable
@@ -328,8 +337,10 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
 ## 9. Reference impls
 
 - `pricing/bsm/greeks.rs` — analytic, inherent aggregator.
-- `pricing/heston/greeks.rs` — analytic, fills all nine fields.
-- `pricing/merton_jump/greeks.rs` — analytic, inherent aggregator.
+- `pricing/heston/greeks.rs` — central differences of the semi-closed price, the
+  σ-Greeks chained from the analytic `∂P/∂v0`; fills all nine fields.
+- `pricing/merton_jump/greeks.rs` — Poisson sums of Black–Scholes Greeks, theta,
+  charm and veta by τ-differences; fills all nine fields.
 - `pricing/digital.rs` — the cash-or-nothing and asset-or-nothing
   aggregators.
 - `pricing/malliavin_greeks/gbm.rs` — Malliavin-weighted single-pass

@@ -81,8 +81,8 @@ loss_metrics, regularization }` is the knob set fifteen of the sixteen take thro
 `with_options`; `SabrSmileCalibrator` keeps its basin-hopping knobs
 (`with_basin_hopping_iters`, `with_short_tenor_threshold`, `with_strike_bounds`,
 `with_success_tol`). `max_iterations: None` keeps each optimiser's own cap (the
-Levenberg–Marquardt budget `patience·(n + 1)`, Nelder–Mead 400 or 600, SLSQP 500,
-Adam 60). `regularization` is the Tikhonov pull of §4.
+Levenberg–Marquardt budget `patience·(n + 1)`, Nelder–Mead 400, 600 or 1000 (G2++),
+SLSQP 500, Adam 60). `regularization` is the Tikhonov pull of §4.
 
 A fit honours every knob it receives or, once the knob is set away from its default,
 answers `Err(QuantError::Unsupported { what })`: it names the knobs it cannot read to
@@ -117,6 +117,7 @@ A quote calibrator on the Levenberg–Marquardt core:
 // stochastic-rs-quant/src/calibration/xyz.rs
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use crate::OptionQuote;
 use crate::QuantError;
@@ -226,7 +227,7 @@ impl<'a> XyzProblem<'a> {
 }
 
 impl LeastSquaresProblem for XyzProblem<'_> {
-  fn set_params(&mut self, x: &Array1<f64>) {
+  fn set_params(&mut self, x: ArrayView1<f64>) {
     self.params = XyzParams { a: x[0], b: x[1], c: x[2] };
   }
 
@@ -238,7 +239,7 @@ impl LeastSquaresProblem for XyzProblem<'_> {
     let model = self.model_prices();
     let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, p)| m - p));
     let options = &self.calibrator.options;
-    self.trail.stage(options, &self.market, &model, &self.params, &residuals);
+    self.trail.stage(options, &self.market, &model, &self.params, residuals.view());
     Some(residuals)
   }
 
@@ -278,14 +279,18 @@ file you are copying from rather than assuming.
 
 - **`basin` Levenberg–Marquardt through `calibration::least_squares`** — the
   workhorse for a least-squares residual fit. Implement `LeastSquaresProblem`
-  (`set_params` / `params` / `residuals` / `jacobian` / `accept` over
-  `ndarray::Array1<f64>` and `Array2<f64>`) and drive it with
+  (`set_params` from an `ArrayView1<f64>`, then `params` / `residuals` / `jacobian` /
+  `accept` over `ndarray::Array1<f64>` and `Array2<f64>`) and drive it with
   `least_squares::minimize(problem, options.lm(pivoted_qr, n)?)`. Used by
   `BsmCalibrator`, `HestonCalibrator` (`calibration/heston/{calibrator,lsq}.rs`),
   `SabrCalibrator`, `SvjCalibrator`, `DoubleHestonCalibrator`, `HkdeCalibrator`,
   `LevyCalibrator`, `CgmysvCalibrator`, and both vol-surface fits
   (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`), which pass their own
-  `LmOptions`.
+  `LmOptions`. Two wrappers drive the same core: Heston and CGMYSV call
+  `reseat::minimize_reseated`, which restarts a fit stopped on a saturated logistic
+  coordinate, and the boxed fits (HKDE, SVJ, Double Heston and Lévy) call
+  `least_squares::minimize_in_box`, which holds a coordinate on a bound its step
+  reaches when the cost falls across it.
   - **The pull.** The core appends `CalibrationOptions::regularization`'s rows
     `√λⱼ(θⱼ − θ⁰ⱼ)` and their Jacobian to every fit; `options.lm(pivoted_qr, n)`
     answers a pull of another length with `DimensionMismatch`. A problem whose
@@ -305,7 +310,7 @@ file you are copying from rather than assuming.
   basin-hopping knobs rather than `CalibrationOptions`.
 - **`slsqp` crate** — explicit bounds and constraints. One in-tree user:
   `HscmCalibrator` (`calibration/heston_stoch_corr.rs`), whose `tolerance` is SLSQP's
-  `ftol_rel` and whose `converged` holds only for `Success`, `FtolReached`,
+  `ftol_abs` and whose `converged` holds only for `Success`, `FtolReached`,
   `XtolReached` or `StopValReached`.
 - **A hand-written routine** — a loss that is not a sum of squares.
   `RBergomiCalibrator` (`calibration/rbergomi/calibrator.rs`) runs projected Adam
@@ -421,11 +426,12 @@ the class in `stochastic-rs-py/src/lib.rs` with `m.add_class::<PyXyzCalibrator>(
 
 ## 10. Reference impls
 
-`bsm`, `heston`, `rbergomi`, `hkde`, `levy`, `double_heston`, `svj` and
-`heston_slv` are **directories** under `stochastic-rs-quant/src/calibration/`;
+`heston`, `rbergomi`, `hkde`, `levy`, `double_heston`, `svj` and `heston_slv` are
+**directories** under `stochastic-rs-quant/src/calibration/`; `bsm`,
 `heston_stoch_corr`, `cgmysv`, `sabr`, `sabr_caplet`, `hw_swaption` and
 `tree_swaption` are files with a sibling directory for their tests where they have
-one. In increasing complexity:
+one (`tree_swaption/` also holds `g2pp_european`, the G2++ European swaption). In
+increasing complexity:
 
 - `BsmCalibrator` (`calibration/bsm.rs`) — the simplest full example: one
   volatility, vega-weighted residuals, on `least_squares::minimize`.

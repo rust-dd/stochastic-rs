@@ -8,11 +8,7 @@ import { SITE } from '@/lib/site';
 import { docsPageJsonLd } from '@/lib/structured-data';
 import type { Metadata } from 'next';
 
-/**
- * Every docs page is prerendered from `generateStaticParams`, so an unknown
- * slug is answered with the static 404 instead of invoking the function —
- * which in production answered it with a 500.
- */
+/** An unknown slug gets the static 404; the function would answer it with a 500 in production. */
 export const dynamicParams = false;
 
 /** Brand suffix only while the whole title still fits a search result (~60 chars). */

@@ -1,25 +1,6 @@
 #!/usr/bin/env bun
-/**
- * Full docs audit. Run quarterly + in CI.
- *
- * Hard failures (exit 1):
- *   1. Frontmatter zod schema violation (delegates to lint-mdx.ts)
- *   2. `module_path` does not resolve (regex grep over the Rust workspace)
- *   3. New `pub struct` / `pub fn` in src/ with no matching MDX page
- *   4. MDX file missing from its directory's meta.json `pages` array
- *   5. <RustExample path="..." /> points at a non-existent file
- *
- * Soft warnings (printed to stdout, written to docs/DOCSITE_AUDIT_<date>.md):
- *   - last-checked sha older than 90 days while source has changed
- *   - description outside the 24-152 char comfort window
- *   - DOI / arXiv links failing to resolve (HEAD request)
- *
- * Output: website/audit/AUDIT_<YYYY-MM-DD>.md
- *
- * NOTE: this is a working scaffold. The grep-based module_path resolver
- * and the Rust public API differ are TODO — they require the public API
- * snapshot to be committed alongside the docs (a follow-up).
- */
+// CI's docs audit: `lint-mdx.ts`, every page listed in its directory's `meta.json`, and every
+// `<RustExample>` path present; it reports each miss and exits 1 after the last.
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -38,7 +19,6 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-// 1. delegate to lint-mdx
 {
   const r = spawnSync('bun', ['run', 'scripts/lint-mdx.ts'], {
     cwd: join(import.meta.dir, '..'),
@@ -49,7 +29,6 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-// 4. meta.json coverage check
 function checkMetaCoverage(dir: string) {
   const entries = readdirSync(dir);
   const metaPath = join(dir, 'meta.json');
@@ -92,7 +71,6 @@ function checkMetaCoverage(dir: string) {
 
 checkMetaCoverage(ROOT);
 
-// 5. <RustExample path="..." /> existence check
 const rustExampleRe = /<RustExample\s+path="([^"]+)"\s*\/>/g;
 for (const file of walk(ROOT)) {
   const src = readFileSync(file, 'utf8');
@@ -111,7 +89,7 @@ for (const file of walk(ROOT)) {
   rustExampleRe.lastIndex = 0;
 }
 
-// TODO: 2. module_path resolver, 3. Rust public API differ, soft-warn DOI checker
+// TODO: resolve each page's `module_path`, diff the public API, check the DOI and arXiv links.
 
 if (errors > 0) {
   console.error(`\n${errors} error(s).`);

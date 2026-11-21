@@ -4,11 +4,7 @@ import { llmText, source } from '@/lib/source';
 export const dynamic = 'force-static';
 export const dynamicParams = false;
 
-/**
- * The Markdown twin of every docs page. `next.config.mjs` rewrites
- * `/docs/<page>.md` and `/docs/<page>.mdx` here, and does the same for a
- * request to `/docs/<page>` whose `Accept` header asks for Markdown.
- */
+/** Each page's Markdown twin, reached through the rewrites in `next.config.mjs`. */
 export async function GET(_req: Request, { params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params;
   const page = source.getPage(slug);

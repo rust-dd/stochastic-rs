@@ -91,7 +91,8 @@ pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
-pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS); // Bergomi sets: grid::MONEYNESS
+// The Heston set is indexed by S0 / K; the Bergomi sets take `grid::MONEYNESS` as is.
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS);
 
 pub struct HestonNn {
   inner: StochVolNn,
@@ -134,7 +135,9 @@ impl HestonNn {
 
 Also delegate `predict_surfaces(&Array2<f32>)` and — behind
 `#[cfg(feature = "quant")]` — `predict_implied_vol_surface`, both
-taking `&[f32; INPUT_DIM]` on the wrapper.
+taking `&[f32; INPUT_DIM]` on the wrapper. Under the same gate, implement
+`crate::calibration::SurrogateModel` (`fn nn(&self) -> &StochVolNn { &self.inner }`)
+as the three wrappers do: it is the bound `SurrogateCalibrator` takes.
 
 Exporting `INPUT_DIM` / `OUTPUT_DIM` / `PARAM_LB` / `PARAM_UB` as `pub
 const` is the convention — downstream code sizes its arrays off them,

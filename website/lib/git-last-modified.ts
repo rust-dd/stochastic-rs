@@ -7,11 +7,8 @@ function git(args: string[]): string {
 }
 
 /**
- * The last commit that touched a docs file, or `null` when the answer would be
- * a guess. In a shallow clone (Vercel's default) every file older than the
- * clone boundary looks as if the boundary commit touched it, so there the
- * sitemap and the page footer leave the date out rather than state a wrong
- * one. `VERCEL_DEEP_CLONE=true` on the Vercel project gives real dates.
+ * `null` in a shallow clone (Vercel's default), where the boundary commit seems to touch every
+ * older file; `VERCEL_DEEP_CLONE=true` on the Vercel project gives real dates.
  */
 export async function gitLastModified(file: string): Promise<Date | null> {
   try {

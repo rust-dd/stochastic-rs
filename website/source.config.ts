@@ -16,10 +16,8 @@ export const docs = defineDocs({
     postprocess: {
       includeProcessedMarkdown: {
         headingIds: false,
-        // `remarkLLMs` replaces any `filterElement` passed here with its own, so
-        // the wrappers are unwrapped through `stringify`, which it does forward.
-        // Emitting the children as flow content also drops the indentation a
-        // JSX parent would put in front of each fenced code block.
+        // `remarkLLMs` replaces a `filterElement` with its own but forwards `stringify`; as flow
+        // content the children also lose the indent a JSX parent puts before each fenced block.
         stringify: (node, _parent, state, info) => {
           if (node.type !== 'mdxJsxFlowElement' || !TRANSPARENT.has(node.name ?? '')) return;
           return state.containerFlow(node, info);

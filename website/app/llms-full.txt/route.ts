@@ -3,11 +3,7 @@ import { SITE } from '@/lib/site';
 
 export const dynamic = 'force-static';
 
-/**
- * Every documentation page as Markdown, in sidebar order, so an assistant can
- * ingest the whole library in one fetch. Built from the processed Markdown of
- * each page, so the Rust examples are inlined code, not `<RustExample>` tags.
- */
+/** Every docs page as one Markdown file, so an assistant can ingest the library in one fetch. */
 export async function GET(): Promise<Response> {
   const sections = await Promise.all(pagesInOrder().map(llmText));
 
