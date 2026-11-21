@@ -7,7 +7,7 @@
 //!   -\sigma_i^{mkt}\bigr)^2
 //! $$
 //!
-//! Reference: Hagan et al. (2002), Wilmott Mag., Sept., 84–108
+//! Reference: Hagan et al. (2002), Wilmott Mag., 84–108
 //! Reference: Obłój (2008), Wilmott Mag.
 
 use std::convert::Infallible;

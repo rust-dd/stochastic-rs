@@ -6,7 +6,7 @@
 //! \sigma_{imp}(K)\approx \sigma_{Hagan}(K;\alpha(\sigma_{ATM},\rho,\nu),\beta,\rho,\nu)
 //! $$
 //!
-//! Reference: Hagan et al. (2002), Wilmott Mag., Sept., 84–108
+//! Reference: Hagan et al. (2002), Wilmott Mag., 84–108
 
 mod calibrate;
 mod objective;

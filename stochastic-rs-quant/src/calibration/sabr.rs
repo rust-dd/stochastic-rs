@@ -5,7 +5,7 @@
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-//! Reference: Hagan et al. (2002), Wilmott Mag., Sept., 84–108
+//! Reference: Hagan et al. (2002), Wilmott Mag., 84–108
 
 use ndarray::Array1;
 use ndarray::Array2;
