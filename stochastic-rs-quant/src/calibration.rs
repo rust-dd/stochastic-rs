@@ -28,8 +28,10 @@ mod nelder_mead;
 pub(crate) mod quote;
 pub mod rbergomi;
 pub mod regularization;
+mod reseat;
 pub mod sabr;
 pub mod sabr_caplet;
+pub(crate) mod stencil;
 pub mod svj;
 pub mod tree_swaption;
 

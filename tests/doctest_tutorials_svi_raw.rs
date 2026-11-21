@@ -19,7 +19,9 @@ fn raw_svi_fits_a_heston_smile() {
   let surface = model.vol_surface(100.0, 0.02, 0.0, &strikes, &[1.0]);
   let smile = surface.smile_slice(0); // log-forward moneyness k and total variance w = iv^2 t
 
-  let svi = smile.fit_svi(None);
+  let fit = smile.fit_svi(None);
+  assert!(fit.converged); // the Levenberg–Marquardt stop's verdict, with its `message`
+  let svi = fit.params;
   assert!(svi.is_admissible());
   for (&k, &w) in smile.log_moneyness.iter().zip(&smile.total_variance) {
     assert!((svi.total_variance(k) - w).abs() < 1e-5);

@@ -1,19 +1,22 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
+use crate::LossMetric;
+use crate::calibration::Calibrated;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
-/// Calibrate SSVI global parameters $(\rho, \eta, \gamma)$ to multiple
-/// maturity slices simultaneously.
+/// SSVI's global $(\rho, \eta, \gamma)$ fitted to every slice at once by Levenberg–Marquardt; the
+/// loss is in total variance, and a parameter the projection moves stops the fit at its bound.
 pub fn calibrate_ssvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   initial: Option<SsviParams<T>>,
-) -> SsviParams<T> {
+) -> Calibrated<SsviParams<T>> {
   let init_f64 = initial
     .map(|p| p.as_f64())
     .unwrap_or(SsviParams::<f64>::new(-0.3, 0.5, 0.5));
@@ -48,7 +51,7 @@ pub fn calibrate_ssvi<T: RealExt>(
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = minimize(
+  let (result, report) = minimize(
     problem,
     LmOptions {
       tolerance: Some(1e-12),
@@ -59,6 +62,7 @@ pub fn calibrate_ssvi<T: RealExt>(
   );
 
   let mut p64 = SsviParams::<f64>::from_dvector(result.params.view());
+  let unprojected = p64.into_dvector();
   // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
   // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
   // projection when no positive θ is available (degenerate input).
@@ -68,11 +72,25 @@ pub fn calibrate_ssvi<T: RealExt>(
     p64.project();
   }
 
-  SsviParams {
+  let slices = result.slices.iter();
+  let points = slices.flat_map(|s| {
+    s.log_moneyness
+      .iter()
+      .zip(&s.total_variance)
+      .map(|p| (s.theta, p))
+  });
+  let (market, model): (Vec<f64>, Vec<f64>) = points
+    .map(|(theta, (&k, &w))| (w, p64.total_variance(k, theta)))
+    .unzip();
+  let params = SsviParams {
     rho: T::from_f64_fast(p64.rho),
     eta: T::from_f64_fast(p64.eta),
     gamma: T::from_f64_fast(p64.gamma),
-  }
+  };
+  let (before, after) = (unprojected.to_vec(), p64.into_dvector().to_vec());
+  report
+    .fit(params, &market, &model, &LossMetric::ALL, Vec::new())
+    .projected(&["rho", "eta", "gamma"], &before, &after)
 }
 
 #[derive(Clone, Debug)]
@@ -88,8 +106,8 @@ struct SsviLmProblem {
 }
 
 impl LeastSquaresProblem for SsviLmProblem {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.params.assign(params);
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.params.assign(&params);
   }
 
   fn params(&self) -> Array1<f64> {
@@ -175,7 +193,7 @@ impl LeastSquaresProblem for SsviLmProblem {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
 
   /// The unconstrained SSVI Jacobian at a start, at the truth and at a far point.
   #[test]
@@ -205,7 +223,7 @@ mod tests {
       ndarray::array![0.9, 4.0, 0.9],
     ];
     for point in points {
-      let error = jacobian_error(&mut problem, &point, |_, _| 1e-6);
+      let error = jacobian_error(&mut problem, point.view(), |_, _| 1e-6);
       assert!(error < 1e-8, "{point}: {error:e}");
     }
   }

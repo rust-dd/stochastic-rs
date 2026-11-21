@@ -10,6 +10,8 @@ use plotly::common::Title;
 use plotly::layout::Axis;
 #[cfg(feature = "viz")]
 use plotly::layout::Layout;
+#[cfg(feature = "viz")]
+use stochastic_rs_distributions::RealExt;
 
 use super::objective::NU_BOUNDS;
 use super::objective::NVARS;
@@ -161,8 +163,8 @@ impl SabrSmileCalibrator {
     let tau = self.quotes.tau;
     let k = &result.diagnostics;
     let (k_min, k_max) = (
-      (k.k_rr_put.min(k.k_bf_put)).min(k.k_atm) * 0.95,
-      (k.k_rr_call.max(k.k_bf_call)).max(k.k_atm) * 1.05,
+      k.k_rr_put.min_or_nan(k.k_bf_put).min_or_nan(k.k_atm) * 0.95,
+      k.k_rr_call.max_or_nan(k.k_bf_call).max_or_nan(k.k_atm) * 1.05,
     );
     let n = 200usize;
     let xs: Vec<f64> = (0..n)
@@ -217,10 +219,10 @@ impl SabrSmileCalibrator {
       let k = &res.diagnostics;
       let fwd = forward_fx(s, q.tau, r_d, r_f);
 
-      let lo = k.k_rr_put.min(k.k_bf_put).min(k.k_atm);
-      let hi = k.k_rr_call.max(k.k_bf_call).max(k.k_atm);
+      let lo = k.k_rr_put.min_or_nan(k.k_bf_put).min_or_nan(k.k_atm);
+      let hi = k.k_rr_call.max_or_nan(k.k_bf_call).max_or_nan(k.k_atm);
       let pad = (hi - lo) * 0.25;
-      let k_lo = (lo - pad).max(1e-6);
+      let k_lo = (lo - pad).max_or_nan(1e-6);
       let k_hi = hi + pad;
 
       let n = 200usize;

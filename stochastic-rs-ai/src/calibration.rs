@@ -14,6 +14,7 @@ use anyhow::Result;
 use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::calibration::least_squares::LmOptions;
 use stochastic_rs_quant::calibration::least_squares::minimize;
@@ -298,8 +299,8 @@ impl<M: SurrogateModel> Problem<'_, M> {
 }
 
 impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
-  fn set_params(&mut self, x: &Array1<f64>) {
-    self.x = x.clone();
+  fn set_params(&mut self, x: ArrayView1<f64>) {
+    self.x = x.to_owned();
     *self.cache.borrow_mut() = None;
   }
 

@@ -6,8 +6,8 @@ use crate::calibration::heston::HestonCalibrator;
 use crate::calibration::heston::lsq::HestonProblem;
 use crate::calibration::heston::transform::to_optimizer_coordinates;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::tests::natural_jacobian_by_differences;
-use crate::calibration::least_squares::tests::worst_relative_error;
+use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+use crate::calibration::least_squares::checks::worst_relative_error;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
@@ -129,10 +129,10 @@ fn the_natural_jacobian_matches_central_differences_with_the_cap_free_and_bindin
     let calibrator = calibrator(None).with_feller_projection(feller);
     let mut problem = HestonProblem::new(&calibrator, point);
     let x = to_optimizer_coordinates(&point);
-    problem.set_params(&x);
+    problem.set_params(x.view());
     let analytic = problem.natural_jacobian();
-    let numeric = natural_jacobian_by_differences(&mut problem, &x, 1e-6);
-    let worst = worst_relative_error(&analytic, &numeric);
+    let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+    let worst = worst_relative_error(analytic.view(), numeric.view());
     assert!(worst < 1e-6, "feller {feller}, {point:?}: {worst:e}");
   }
 }

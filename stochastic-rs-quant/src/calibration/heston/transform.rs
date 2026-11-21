@@ -17,7 +17,9 @@ use crate::pricing::heston::HestonParams;
 
 const PARAMETER_COUNT: usize = 5;
 const INVERSE_UNIT_MARGIN: f64 = 1e-6;
-const BOUNDS: [(f64, f64); PARAMETER_COUNT] =
+
+/// Each physical parameter's box, in `(v0, κ, θ, σ, ρ)` order.
+pub(super) const BOUNDS: [(f64, f64); PARAMETER_COUNT] =
   [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-RHO_BOUND, RHO_BOUND)];
 
 pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> Array1<f64> {

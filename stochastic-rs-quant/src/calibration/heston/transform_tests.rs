@@ -116,9 +116,9 @@ fn least_squares_set_params_is_monotone_without_periodic_reflection() {
   let truth = non_feller_params();
   let calibrator = synthetic_calibrator(&truth, truth, HestonJacobianMethod::NumericFiniteDiff);
   let mut problem = problem(&calibrator);
-  problem.set_params(&Array1::from_elem(5, -3.0));
+  problem.set_params(Array1::from_elem(5, -3.0).view());
   let lower = problem.effective_params();
-  problem.set_params(&Array1::from_elem(5, 3.0));
+  problem.set_params(Array1::from_elem(5, 3.0).view());
   let upper = problem.effective_params();
 
   assert!(upper.v0 > lower.v0);
@@ -147,7 +147,7 @@ fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
   let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   calibrator.feller_projection = true;
   let mut problem = problem(&calibrator);
-  problem.set_params(&to_optimizer_coordinates(&params));
+  problem.set_params(to_optimizer_coordinates(&params).view());
   let analytic = problem.jacobian().unwrap();
   let numeric = calibrator.numeric_optimizer_jacobian(&problem.free_params());
   assert!(analytic.column(3).iter().all(|value| *value == 0.0));
@@ -162,7 +162,7 @@ fn feller_overshoot_row_differentiates_like_its_finite_difference() {
   let at = |coordinates: &Array1<f64>| {
     let mut problem = problem(&calibrator);
     problem.feller_row_weight = Some(2.0);
-    problem.set_params(coordinates);
+    problem.set_params(coordinates.view());
     problem
   };
   let coordinates = to_optimizer_coordinates(&params);

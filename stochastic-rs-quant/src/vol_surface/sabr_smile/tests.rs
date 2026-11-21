@@ -37,6 +37,33 @@ fn bounded_sabr_objective_clamps_strikes_and_model_parameters() {
   );
 }
 
+/// A NaN coordinate prices nothing: the cost and every partial are NaN, not a bound's value.
+#[test]
+fn a_nan_coordinate_costs_nan_and_has_a_nan_gradient() {
+  let problem = bounded_problem();
+  for axis in 0..objective::NVARS {
+    let mut x = vec![1.0, 1.0, 1.0, 1.0, 0.6, 0.1];
+    x[axis] = f64::NAN;
+    assert!(problem.cost(&x).unwrap().is_nan(), "axis {axis}");
+    let gradient = problem.gradient(&x).unwrap();
+    assert!(
+      gradient.iter().all(|g| g.is_nan()),
+      "axis {axis}: {gradient:?}"
+    );
+  }
+}
+
+/// From a start Hagan's formula refuses, whose cost is NaN, a hop that prices replaces it: the
+/// start ranks as `+∞`, where a NaN loses every comparison.
+#[test]
+fn a_hop_replaces_a_start_whose_cost_is_nan() {
+  let problem = bounded_problem();
+  let corner = [1.0, 1.0, 1.0, 1.0, 10.0, -0.99];
+  assert!(problem.cost(&corner.to_vec()).unwrap().is_nan());
+  let (_, best) = objective::basin_hopping_opt(corner, 20, 1.0, &problem);
+  assert!(best.is_finite(), "{best}");
+}
+
 #[test]
 fn bounded_sabr_gradient_retains_the_derivative_at_the_upper_bound() {
   let problem = bounded_problem();

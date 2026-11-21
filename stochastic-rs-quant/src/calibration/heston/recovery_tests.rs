@@ -143,7 +143,7 @@ fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let result = calibrator.calibrate(Some(*truth)).unwrap();
   let mut objective = HestonProblem::new(&calibrator, result.params);
   objective.feller_row_weight = Some(1.0);
-  objective.set_params(&to_optimizer_coordinates(&result.params));
+  objective.set_params(to_optimizer_coordinates(&result.params).view());
   let residuals = objective.residuals().unwrap();
   let quotes = calibrator.quotes.len();
   assert_eq!(residuals.len(), quotes + 1);
@@ -289,6 +289,22 @@ fn the_restarts_from_a_bound_draw_on_one_iteration_budget() {
   assert_eq!(capped.message(), Some("evaluation budget exhausted"));
 }
 
+/// Capped at the 53 iterations its first pass takes, the fit stops on the cap inside that pass,
+/// before it converges and so before a re-seat is asked, and says its budget ran out.
+#[test]
+fn a_fit_capped_inside_its_first_pass_reports_its_budget() {
+  let start = HestonParams {
+    rho: 1.0,
+    ..NEAR_START
+  };
+  let capped = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic)
+    .with_options(CalibrationOptions::default().with_max_iterations(53))
+    .calibrate(Some(start))
+    .unwrap();
+  assert_eq!((capped.converged, capped.iterations), (false, Some(53)));
+  assert_eq!(capped.message(), Some("evaluation budget exhausted"));
+}
+
 /// The pull holds ρ at its anchor against the quotes, so the price rows alone fall inward there.
 #[test]
 fn a_fit_held_beside_a_bound_by_its_pull_is_converged() {
@@ -322,7 +338,7 @@ fn a_fit_held_beside_a_bound_by_its_pull_is_converged() {
 /// default start, each truth, a far point, and each coordinate saturated to within 1e-3 of an end.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
   let mut problem = HestonProblem::new(&calibrator, NEAR_START);
   let far = ndarray::array![3.0, -3.0, 2.0, -2.0, 4.0];
@@ -339,7 +355,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     }
   }
   for point in points {
-    let error = jacobian_error(&mut problem, &point, |_, _| 1e-5);
+    let error = jacobian_error(&mut problem, point.view(), |_, _| 1e-5);
     assert!(error < 1e-3, "{point}: {error:e}");
   }
 }

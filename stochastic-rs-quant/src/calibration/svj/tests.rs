@@ -59,8 +59,10 @@ fn bates_pricer_matches_heston_reference() {
 
 #[test]
 fn svj_calibrate_recovers_heston_prices() {
+  // The fit descends along Feller's boundary to any budget; 100 iterations show the rmse falls.
   let result = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
     .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(100))
     .calibrate(None)
     .unwrap();
   assert!(
@@ -215,8 +217,10 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::SvjProblem;
   use super::params::*;
   use crate::calibration::least_squares::LeastSquaresProblem;
-  use crate::calibration::least_squares::tests::box_points;
-  use crate::calibration::least_squares::tests::jacobian_error;
+  use crate::calibration::least_squares::checks::beside_points;
+  use crate::calibration::least_squares::checks::beside_reference;
+  use crate::calibration::least_squares::checks::box_points;
+  use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = SvjProblem::new(&calibrator, START);
   let bounds = [
@@ -224,14 +228,15 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   ];
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, -0.3, 0.5];
   for base in [problem.params(), far] {
-    for (label, point) in box_points(&base, &bounds, &[true; 8]) {
-      // Where Feller's projection binds, the stencil runs from the projected point.
-      let capped = |k: usize| 2.0 * point[k] * point[k + 1] < point[k + 2].powi(2);
-      if [1].into_iter().any(capped) {
-        continue;
-      }
-      let error = jacobian_error(&mut problem, &point, |_, x| 2e-3 * x.abs().max(1e-2));
+    for (label, point) in box_points(base.view(), &bounds, &[true; 8]) {
+      let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
+    }
+    let mut boxed = bounds;
+    boxed[4] = (-RHO_BOUND, RHO_BOUND);
+    for (label, point) in beside_points(base.view(), &boxed) {
+      let error = jacobian_error(&mut problem, point.view(), beside_reference);
+      assert!(error < 1e-2, "{label} of {base}: {error:e}");
     }
   }
 }

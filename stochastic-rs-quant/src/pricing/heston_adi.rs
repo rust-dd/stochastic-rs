@@ -50,20 +50,16 @@ const SPOT_CAP_STRIKES: f64 = 8.0;
 pub struct HestonAdiPricer {
   /// `theta` is the paper's long-run variance `η`.
   params: HestonParams,
-  /// Mesh intervals in `s`.
-  pub m1: usize,
-  /// Mesh intervals in `v`.
-  pub m2: usize,
-  /// Time steps.
-  pub steps: usize,
+  m1: usize,
+  m2: usize,
+  steps: usize,
   /// Splitting scheme.
   pub scheme: AdiScheme,
   /// Scheme parameter `θ`; `None` takes the scheme's recommended value.
   pub adi_theta: Option<f64>,
   /// Rannacher start-up damping.
   pub damping: bool,
-  /// Down-and-out barrier on the spot, if any.
-  pub barrier: Option<f64>,
+  barrier: Option<f64>,
 }
 
 impl HestonAdiPricer {
@@ -96,11 +92,23 @@ impl HestonAdiPricer {
     self.params
   }
 
-  /// Mesh intervals and time steps.
+  /// Mesh intervals in `s` and in `v`, and time steps.
+  pub fn grid(&self) -> (usize, usize, usize) {
+    (self.m1, self.m2, self.steps)
+  }
+
+  /// The down-and-out barrier on the spot, if any.
+  pub fn barrier(&self) -> Option<f64> {
+    self.barrier
+  }
+
+  /// Mesh intervals and time steps; panics unless `m1 >= 4`, `m2 >= 4` and `steps >= 1`.
   pub fn with_grid(mut self, m1: usize, m2: usize, steps: usize) -> Self {
+    assert!(m1 >= 4, "m1 must satisfy `m1 >= 4`, got m1 = {m1}");
+    assert!(m2 >= 4, "m2 must satisfy `m2 >= 4`, got m2 = {m2}");
     assert!(
-      m1 >= 4 && m2 >= 4 && steps >= 1,
-      "grid needs at least four intervals per direction and one step"
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps}"
     );
     self.m1 = m1;
     self.m2 = m2;
@@ -126,10 +134,13 @@ impl HestonAdiPricer {
     self
   }
 
-  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B`
-  /// with `u(B, v, t) = 0` and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6).
+  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B` with `u(B, v, t) = 0`,
+  /// and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6); panics unless `B` is finite and positive.
   pub fn with_barrier(mut self, barrier: f64) -> Self {
-    assert!(barrier > 0.0, "barrier must be positive");
+    assert!(
+      barrier.is_finite() && barrier > 0.0,
+      "barrier must satisfy `barrier.is_finite() && barrier > 0.0`, got barrier = {barrier:?}"
+    );
     self.barrier = Some(barrier);
     self
   }

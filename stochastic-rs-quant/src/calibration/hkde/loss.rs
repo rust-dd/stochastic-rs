@@ -2,28 +2,28 @@ use std::f64::consts::PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::calibrator::HkdeCalibrator;
 use super::params::BOX;
-use super::params::ETA1_MIN;
-use super::params::ETA2_MIN;
-use super::params::KAPPA_MIN;
-use super::params::P_P_UP;
-use super::params::RHO_BOUND;
-use super::params::SIGMA_V_MIN;
-use super::params::THETA_MIN;
+use super::params::BOXED;
 use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
 use crate::calibration::scale_columns;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
+use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::fourier::GilPelaezPricer;
 use crate::pricing::fourier::HkdeFourier;
 use crate::pricing::fourier::HkdeParams;
-use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
@@ -70,100 +70,62 @@ impl<'a> HkdeProblem<'a> {
   }
 
   pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Vec<f64> {
-    let model = self.build_model(p);
-    let HkdeCalibrator { s, r, q, .. } = *self.calibrator;
-    self
-      .calibrator
-      .quotes
-      .iter()
-      .map(|quote| {
-        let price = model.price_option(s, quote.strike, r, q, quote.tau, quote.option_type);
-        clip_negative(price)
-      })
+    let quotes = self.calibrator.quotes.iter();
+    quotes
+      .map(|quote| self.price(p, quote, &mut Walk::Adaptive))
       .collect()
   }
 
+  /// The quote's Gil–Pelaez price, a put by parity, as `ModelPricer::price_option` gives it.
+  fn price(&self, p: &HkdeParams, quote: &OptionQuote, walk: &mut Walk<'_, Panels>) -> f64 {
+    let HkdeCalibrator { s, r, q, .. } = *self.calibrator;
+    let (k, tau) = (quote.strike, quote.tau);
+    let call = GilPelaezPricer::price_call_walk(&self.build_model(p), s, k, r, q, tau, walk);
+    clip_negative(match quote.option_type {
+      OptionType::Call => call,
+      OptionType::Put => call - s * (-q * tau).exp() + k * (-r * tau).exp(),
+    })
+  }
+
   /// `√w · (model − market)`, the fit's residual; a trail reads its negation.
-  fn weighted_residuals_of(&self, model: &[f64]) -> Array1<f64> {
+  pub(super) fn weighted_residuals_of(&self, model: &[f64]) -> Array1<f64> {
     let rows = self.market.iter().zip(model).zip(&self.sqrt_weights);
     Array1::from_iter(rows.map(|((market, model), w)| w * (model - market)))
   }
 
-  pub(super) fn weighted_residuals_for(&self, p: &HkdeParams) -> Array1<f64> {
-    self.weighted_residuals_of(&self.compute_model_prices_for(p))
-  }
-
-  /// Central finite-difference Jacobian of the weighted residuals.
-  pub(super) fn numeric_jacobian(&self, params: &HkdeParams) -> Array2<f64> {
-    let n = self.calibrator.quotes.len();
-    let p_dim = 9usize;
-    let base_vec: Array1<f64> = (*params).into();
-    let mut j_mat = Array2::zeros((n, p_dim));
-
-    for col in 0..p_dim {
-      let x = base_vec[col];
-      let h = 1e-5_f64.max(1e-3 * x.abs());
-
-      let mut plus = *params;
-      let mut minus = *params;
-      match col {
-        0 => {
-          plus.v0 = (x + h).max(0.0);
-          minus.v0 = (x - h).max(0.0);
-        }
-        1 => {
-          plus.kappa = (x + h).max(KAPPA_MIN);
-          minus.kappa = (x - h).max(KAPPA_MIN);
-        }
-        2 => {
-          plus.theta = (x + h).max(THETA_MIN);
-          minus.theta = (x - h).max(THETA_MIN);
-        }
-        3 => {
-          plus.sigma = (x + h).abs().max(SIGMA_V_MIN);
-          minus.sigma = (x - h).abs().max(SIGMA_V_MIN);
-        }
-        4 => {
-          plus.rho = (x + h).clamp(-RHO_BOUND, RHO_BOUND);
-          minus.rho = (x - h).clamp(-RHO_BOUND, RHO_BOUND);
-        }
-        5 => {
-          plus.lambda = (x + h).max(0.0);
-          minus.lambda = (x - h).max(0.0);
-        }
-        6 => {
-          plus.p_up = (x + h).clamp(P_P_UP.0, P_P_UP.1);
-          minus.p_up = (x - h).clamp(P_P_UP.0, P_P_UP.1);
-        }
-        7 => {
-          plus.eta1 = (x + h).max(ETA1_MIN);
-          minus.eta1 = (x - h).max(ETA1_MIN);
-        }
-        8 => {
-          plus.eta2 = (x + h).max(ETA2_MIN);
-          minus.eta2 = (x - h).max(ETA2_MIN);
-        }
-        _ => unreachable!(),
-      }
-      plus.project_in_place();
-      minus.project_in_place();
-
-      let r_plus = self.weighted_residuals_for(&plus);
-      let r_minus = self.weighted_residuals_for(&minus);
-      let diff = (r_plus - r_minus) / (2.0 * h);
-      for row in 0..n {
-        j_mat[(row, col)] = diff[row];
-      }
+  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil and every price on the
+  /// rules the point's own prices walked; `scale` times the shared step.
+  pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let point = Array1::from(self.params.boxed());
+    let quotes = &self.calibrator.quotes;
+    let at = self.effective_params();
+    let rules = quotes.iter().map(|quote| {
+      let mut rules = Vec::new();
+      self.price(&at, quote, &mut Walk::Record(&mut rules));
+      rules
+    });
+    let rules = rules.collect::<Vec<_>>();
+    let mut jacobian = Array2::zeros((quotes.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+        let mut moved = point.clone();
+        moved[j] = value;
+        let moved = HkdeParams::from(moved).projected();
+        let replay = quotes.iter().zip(&rules);
+        let model =
+          replay.map(|(quote, rules)| self.price(&moved, quote, &mut Walk::Replay(rules.iter())));
+        self.weighted_residuals_of(&model.collect::<Vec<_>>())
+      }));
     }
-
-    j_mat
+    jacobian
   }
 }
 
 impl LeastSquaresProblem for HkdeProblem<'_> {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.reflections = periodic_slopes(params.view(), &BOX);
-    self.params = HkdeParams::from(params.clone()).projected();
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
+    self.params = HkdeParams::from(params.to_owned()).boxed();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -177,12 +139,12 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
     let options = &self.calibrator.options;
     self
       .trail
-      .stage(options, &self.market, &model, &params_eff, &residuals);
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.effective_params());
+    let jacobian = self.difference_jacobian(1.0);
     Some(scale_columns(jacobian, self.reflections.view()))
   }
 
