@@ -50,7 +50,7 @@ const fn pair(call: f64, put: f64) -> CallPut {
 }
 
 const HESTON_LAMBDA: CallPut = pair(5.081933443026998, 7.706153343407024);
-const HESTON_VEGA: f64 = 51.66113350364657;
+const HESTON_VEGA: f64 = 51.66113364237551;
 const MERTON: CallPut = pair(7.15321711897312, 9.777437019353142);
 const HSCM: CallPut = pair(5.383063358956783, 8.007283259336816);
 const MALLIAVIN: CallPut = pair(5.747134860337733, 8.371354760717765);
@@ -406,7 +406,7 @@ fn the_jump_models_hold_their_params_privately() {
   assert_eq!(bates.params(), svj);
   assert_pinned_value(
     bates.price_call(S, K, R, Q, TAU),
-    5.6848296939312775,
+    5.684829704832908,
     "bates",
   );
   let hkde_params = HkdeParams {
@@ -422,7 +422,7 @@ fn the_jump_models_hold_their_params_privately() {
   };
   let hkde = HkdeFourier::new(hkde_params);
   assert_eq!(hkde.params(), hkde_params);
-  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356757760838, "hkde");
+  assert_pinned_value(hkde.price_call(S, K, R, Q, TAU), 6.559356772752325, "hkde");
 }
 
 #[test]

@@ -225,30 +225,8 @@ assert_model_pricer!(
   SuperSharePricer,
 );
 
-// The subset of the list above whose `price_call` is a European vanilla call,
-// and so may be inverted through the Black formula into an implied vol surface.
-// `ModelSurface` is blanket-implemented over this trait, not over
-// `ModelPricer`, so membership here is what makes `vol_surface` callable at
-// all.
-//
-// Absent from the list because a blanket impl in `pricing/fourier/mod.rs`
-// covers them: every `FourierModelExt` model. Gil-Pelaez prices
-// `S e^{-q tau} P_1 - K e^{-r tau} P_2` — the vanilla European call — for all
-// of them, so they are covered by the same one-line reasoning rather than one
-// entry each. `BLANKET_IMPLS` below pins that blanket, so a *second* one
-// arriving is a test failure rather than a silent widening.
-//
-// `FiniteDifferencePricer` is the one member whose answer is per-instance: it
-// holds its exercise style in a field, so it carries the trait and reports
-// `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BsmPricer` and
-// `Merton1976Pricer` are the two whose *forward* is per-instance, at `b(r, q)`
-// rather than the default `r - q`.
-// `HestonAdiPricer` is per-instance like `FiniteDifferencePricer`: a vanilla
-// European call at the default forward without a barrier, and `NaN` from
-// `vanilla_call_forward` once `with_barrier` turns it into a down-and-out call.
-// `BachelierPricer` is the normal-model member: its call is a European vanilla
-// on `S` at the default forward, so the Black inversion of its prices is the
-// normal-to-lognormal volatility conversion, strike by strike.
+// The pricers whose `price_call` is a European vanilla call, which `ModelSurface` may invert; a
+// `FourierModelExt` model has it through the blanket `BLANKET_IMPLS` pins, by Lewis's integral.
 assert_vanilla_european_call!(
   BachelierPricer,
   BsmPricer,

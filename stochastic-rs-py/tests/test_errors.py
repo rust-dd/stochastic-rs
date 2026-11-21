@@ -85,6 +85,15 @@ def test_the_jump_fourier_models_refuse_parameters_outside_their_domain():
         sr.BatesFourier(0.04, 1.5, 0.04, 0.0, -0.7, 0.5, -0.05, 0.1)
 
 
+def test_the_heston_family_refuses_a_negative_drift_at_zero_variance():
+    negative = r"kappa must satisfy `kappa \* theta >= 0\.0`, got kappa = -1\.5"
+    with pytest.raises(ValueError, match=negative):
+        sr.HestonFourier(0.04, -1.5, 0.04, 0.3, -0.7)
+    with pytest.raises(ValueError, match=negative):
+        sr.HestonPricer(100.0, 0.04, 100.0, 0.05, -1.5, 0.04, 0.3, -0.7, 1.0)
+    assert sr.HestonFourier(0.04, -1.5, 0.0, 0.3, -0.7).price_call(100.0, 100.0, 0.05, 0.0, 1.0) > 0.0
+
+
 def test_quant_data_error_raises_value_error_with_its_display():
     calibrator = sr.HestonSlvCalibrator(
         100.0, 0.02, 0.0, [90.0, float("nan"), 110.0], [0.5, 1.0], np.full((2, 3), 5.0)

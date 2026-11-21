@@ -67,7 +67,7 @@ fn heston_prices_where_rho_sigma_exceeds_kappa() {
         model.price_call(100.0, 100.0, 0.03, 0.01, 0.1),
         1e-7,
       ),
-      ("lewis", lewis, 2e-6),
+      ("lewis", lewis, 1e-12),
       (
         "closed",
         HestonPricer::new(p).price_call(100.0, 100.0, 0.03, 0.01, 0.1),
@@ -129,7 +129,7 @@ fn the_models_sharing_the_heston_factor_price_there_too() {
       ),
     ] {
       assert!(
-        (gil_pelaez - lewis).abs() < 2e-6,
+        (gil_pelaez - lewis).abs() < 1e-10,
         "{name} at ({kappa}, {sigma}, {rho}): {gil_pelaez} vs {lewis}"
       );
     }

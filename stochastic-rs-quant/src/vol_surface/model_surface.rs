@@ -104,14 +104,8 @@ pub trait ModelSurface: VanillaEuropeanCall {
 /// implied volatility to invert.
 impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T {}
 
-/// Generate an implied vol surface using Carr-Madan FFT for faster pricing
-/// with the default `(N_pow2 = 12, alpha = 0.75)` damping settings.
-///
-/// For large grids, FFT is significantly faster than per-strike Gil-Pelaez
-/// quadrature since it prices all log-strikes simultaneously.
-///
-/// To override the FFT grid size or damping factor, use
-/// [`fourier_model_surface_fft_with`] which exposes both as parameters.
+/// The surface by Carr–Madan's FFT at `(N_pow2 = 12, alpha = 0.75)`, one transform per maturity
+/// where `vol_surface` integrates each strike; [`fourier_model_surface_fft_with`] takes both.
 pub fn fourier_model_surface_fft(
   model: &impl FourierModelExt,
   s: f64,

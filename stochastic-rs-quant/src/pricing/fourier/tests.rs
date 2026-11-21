@@ -20,25 +20,25 @@ fn fourier_pricers_match_converged_short_dated() {
     sigma: 0.30,
     rho: -0.7,
   });
-  // (K, τ, converged call)
+  // (K, τ, the call by Lewis quadrature at 30 digits, mpmath)
   let cases = [
-    (100.0, 0.005, 0.576581),
-    (105.0, 0.01, 0.002966),
-    (95.0, 0.01, 5.052617),
+    (100.0, 0.005, 0.576_580_780_722_825_6),
+    (105.0, 0.01, 0.002_967_139_824_184_934_6),
+    (95.0, 0.01, 5.052_617_475_497_76),
   ];
   for (k, t, expected) in cases {
     let gp = GilPelaezPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
     let lw = LewisPricer::price_call(&model, 100.0, k, 0.05, 0.0, t);
     assert!(
-      (gp - expected).abs() < 1e-3,
+      (gp - expected).abs() < 1e-11,
       "Gil-Pelaez at K={k}, τ={t}: got {gp}, converged {expected}"
     );
     assert!(
-      (lw - expected).abs() < 1e-3,
+      (lw - expected).abs() < 1e-12,
       "Lewis at K={k}, τ={t}: got {lw}, converged {expected}"
     );
     assert!(
-      (gp - lw).abs() < 1e-3,
+      (gp - lw).abs() < 1e-11,
       "Gil-Pelaez {gp} and Lewis {lw} must agree"
     );
   }
@@ -193,8 +193,8 @@ fn carr_madan_heston_vs_analytical() {
   );
 }
 
-/// A range inside the default grid leaves `eta` at 0.25, where Simpson's half-period image is
-/// 2.7e-3 on a spot of 100; the image grows with the step, to 0.56 at `eta = 0.59`.
+/// A range inside the default grid leaves `eta` at 0.25, where the trapezoid rule's image is
+/// `Se^{−2πα/η} = 6.5e-7` on a spot of 100.
 #[test]
 fn carr_madan_cumulant_sized_matches_black_scholes() {
   let model = BsmFourier { sigma: 0.2 };
@@ -206,7 +206,7 @@ fn carr_madan_cumulant_sized_matches_black_scholes() {
       let price = pricer.price_call(&model, 100.0, k, 0.05, 0.01, tau);
       let want = closed.price_call(100.0, k, 0.05, 0.01, tau);
       assert!(
-        (price - want).abs() < 4e-3,
+        (price - want).abs() < 1e-6,
         "tau = {tau}, K = {k}: {price} vs {want}"
       );
     }

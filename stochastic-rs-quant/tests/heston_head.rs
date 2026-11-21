@@ -133,21 +133,38 @@ fn a_maturity_of_minutes_matches_the_converged_integral() {
   }
 }
 
-/// `v0 ≪ σ²τ` leaves a chf far wider than a Gaussian of variance `E[∫v]`, which sets no scale for
-/// `φ`: the call stays at its forward's intrinsic value, `100 − 100e^{−0.0005}`.
+/// The cell where a walk rescaled by `1e-2/√w` stopped `1.28e-6` low, 53 standard deviations from
+/// the money: Lewis quadrature at 30 digits (mpmath) puts the call at `1e-29`.
 #[test]
-fn a_variance_far_below_its_own_volatility_is_not_rescaled() {
+fn a_maturity_of_seconds_holds_its_price_far_from_the_money() {
+  let pricer = HestonPricer::new(HestonParams { v0: 0.0025, ..P });
+  let got = pricer.price_call(99.92267566708517, 100.0, 0.05, 0.0, 8.440805698964626e-8);
+  assert!(got.abs() < 1e-12, "{got:e}");
+}
+
+/// `∂C/∂v₀` at `τ = 1e-6` by a central difference of Lewis's price at 30 digits (mpmath); the
+/// integral of `D_j f_j` from `φ = 1e-8`, unsplit, answered `0.124`.
+#[test]
+fn the_initial_variance_vega_holds_at_a_maturity_of_seconds() {
+  let got = HestonPricer::new(P).initial_variance_vega(100.0, 100.0, 0.05, 0.0, 1e-6);
+  assert!((got - 0.099_735_488_231_518_72).abs() < 1e-12, "{got}");
+}
+
+/// `v0 ≪ σ²τ` leaves a chf decaying like `e^{−v0φ√(1−ρ²)/σ}`, far slower than a Gaussian of
+/// variance `E[∫v]`: heavy tails, `2.2e-6` over the forward's intrinsic (Lewis by Gauss–Legendre).
+#[test]
+fn a_variance_far_below_its_own_volatility_keeps_its_heavy_tails() {
   let pricer = HestonPricer::new(HestonParams {
     v0: 1e-8,
     theta: 0.0,
     ..P
   });
   let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1e-2);
-  assert!((got - 0.049987502083).abs() < 1e-6, "{got}");
+  assert!((got - 0.04998966413842719).abs() < 1e-12, "{got}");
 }
 
-/// `E₁[∫v] = 3.7e4` at `ρσ > κ`, where a Gaussian that narrow is past the quadrature: the control
-/// variance stops at its cap, and the mean it no longer matches is the head below `φ = 1e-8`.
+/// `E₁[∫v]` from 3.7e4 to 2e6 at `ρσ > κ`: the control variance stops at its cap, and the head in
+/// `ln φ` integrates the mean it no longer matches.
 #[test]
 fn an_exploding_share_measure_variance_keeps_the_quadrature() {
   let pricer = HestonPricer::new(HestonParams {
@@ -156,16 +173,15 @@ fn an_exploding_share_measure_variance_keeps_the_quadrature() {
     rho: 0.9,
     ..P
   });
-  // (τ, call at (100, 100, 0.05, 0)) by Lewis quadrature at 30 digits (mpmath).
-  for (tau, want, tol) in [
-    (10.0, 40.30940541896965, 1e-9),
-    (30.0, 77.97317902193187, 1e-6),
+  // (τ, call at (100, 100, 0.05, 0)) by Lewis quadrature, mpmath at 30 digits (50 at τ = 40).
+  for (tau, want) in [
+    (10.0, 40.30940541896965),
+    (30.0, 77.97317902193187),
+    (40.0, 86.61045297018654),
   ] {
     let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
-    assert!((got - want).abs() < tol, "tau = {tau}: {got} vs {want}");
+    assert!((got - want).abs() < 1e-9, "tau = {tau}: {got} vs {want}");
   }
-  let CallPut { call, put } = pricer.price_call_put(100.0, 100.0, 0.05, 0.0, 40.0);
-  assert!(call.is_nan() && put.is_nan(), "{call}, {put}");
 }
 
 /// Calls at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of the chf at 30 digits (mpmath).
@@ -208,17 +224,18 @@ fn a_zero_variance_model_prices_the_forward_payoff() {
   }
 }
 
-/// At `τ = 1` a risk premium of −50 puts `E[∫₀^τ v]` past the head term's reach, −800 past `f64`.
+/// At `τ = 1` a risk premium of −50 puts `E[∫₀^τ v]` near `1e18`, where the call is the spot to
+/// rounding; −800 puts it past `f64`, where the price is NaN.
 #[test]
-fn an_expected_variance_past_the_bound_prices_nan() {
-  for lambda in [-50.0, -800.0] {
-    let pricer = HestonPricer::new(P).with_vol_risk_premium(lambda);
-    for k in [80.0, 100.0, 120.0] {
-      let CallPut { call, put } = pricer.price_call_put(100.0, k, 0.05, 0.0, 1.0);
-      assert!(
-        call.is_nan() && put.is_nan(),
-        "lambda = {lambda}, k = {k}: {call}, {put}"
-      );
-    }
+fn the_call_tends_to_the_spot_until_the_expected_variance_overflows() {
+  let pricer = HestonPricer::new(P).with_vol_risk_premium(-50.0);
+  for k in [80.0, 100.0, 120.0] {
+    let call = pricer.price_call(100.0, k, 0.05, 0.0, 1.0);
+    assert!((call - 100.0).abs() < 1e-9, "k = {k}: {call}");
+  }
+  let pricer = HestonPricer::new(P).with_vol_risk_premium(-800.0);
+  for k in [80.0, 100.0, 120.0] {
+    let CallPut { call, put } = pricer.price_call_put(100.0, k, 0.05, 0.0, 1.0);
+    assert!(call.is_nan() && put.is_nan(), "k = {k}: {call}, {put}");
   }
 }

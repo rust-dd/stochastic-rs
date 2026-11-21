@@ -19,12 +19,12 @@ const CARRIES: [(f64, f64); 4] = [(0.0, 0.0), (0.05, 0.0), (0.05, 0.02), (-0.01,
 
 const STRIKES: [f64; 3] = [80.0, 100.0, 125.0];
 
-/// Gil–Pelaez calls at `STRIKES` per carry, from a chf with the carry inside its exponent.
+/// Heston calls at `STRIKES` per carry by Lewis's integral, mpmath at 30 digits.
 const HESTON_CALLS: [[f64; 3]; 4] = [
-  [21.69949294646453, 7.540266626493583, 0.5918210680365501],
-  [25.095177984849258, 10.361869008175255, 1.283597412731737],
-  [23.2699598769575, 9.011278395368443, 0.937799869242399],
-  [18.419386409807217, 5.394964048748129, 0.2817198807028918],
+  [21.699492971722037, 7.540266638818706, 0.5918210997105707],
+  [25.09517801643501, 10.36186902096611, 1.2835974366788698],
+  [23.269959905307026, 9.011278407541728, 0.9377998954923663],
+  [18.41938643020191, 5.394964061465379, 0.2817199189917139],
 ];
 
 fn heston() -> HestonFourier {
@@ -68,13 +68,12 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let frft =
         FrftCarrMadanPricer::cumulant_sized(&bsm, 1.0, 12.0).price_call(&bsm, 100.0, k, r, q, 1.0);
       let want = closed.price_call(100.0, k, r, q, 1.0);
-      // Gil–Pelaez's band is its quadrature error.
       for (name, got, tol) in [
-        ("gil-pelaez", gp, 2e-6),
+        ("gil-pelaez", gp, 1e-12),
         ("lewis", lw, 1e-9),
         ("cos", cs, 1e-8),
-        ("carr-madan", cm, 5e-3),
-        ("frft", frft, 5e-3),
+        ("carr-madan", cm, 1e-6),
+        ("frft", frft, 5e-5),
       ] {
         assert!(
           (got - want).abs() < tol,
@@ -84,9 +83,9 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let call = m.price_call(100.0, k, r, q, 1.0);
       let put = cos.price(&m, 100.0, k, r, q, 1.0, OptionType::Put);
       let parity = 100.0 * (-q * 1.0_f64).exp() - k * (-r * 1.0_f64).exp();
-      // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the rest, ≤ 4e-8, is Gil–Pelaez's.
+      // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the blanket's Lewis call adds less.
       assert!(
-        (call - put - parity).abs() < 1e-7,
+        (call - put - parity).abs() < 1e-9,
         "parity at ({r}, {q}), k = {k}: {call} - {put} vs {parity}"
       );
     }

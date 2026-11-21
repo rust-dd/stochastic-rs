@@ -130,6 +130,14 @@ fn fourier(c: &mut Criterion) {
         .sum::<f64>()
     })
   });
+  group.bench_function("blanket_9", |b| {
+    b.iter(|| {
+      STRIKES
+        .iter()
+        .map(|&k| heston.price_call(S, k, R, Q, 1.0))
+        .sum::<f64>()
+    })
+  });
   group.bench_function("carr_madan_surface", |b| {
     let pricer = CarrMadanPricer::default();
     b.iter(|| black_box(pricer.price_call_surface(&heston, S, R, Q, 1.0)))

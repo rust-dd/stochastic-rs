@@ -21,7 +21,7 @@ use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
 use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
-use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
 
 /// Lévy-model fit to vanilla quotes by Levenberg–Marquardt on a central-difference Jacobian.
@@ -174,7 +174,7 @@ impl<'a> LevyProblem<'a> {
     }
   }
 
-  fn price(&self, params: &[f64], quote: &OptionQuote, walk: &mut Walk<'_, Panels>) -> f64 {
+  fn price(&self, params: &[f64], quote: &OptionQuote, walk: &mut Walk<'_, Rule>) -> f64 {
     let LevyCalibrator {
       model_type,
       s,

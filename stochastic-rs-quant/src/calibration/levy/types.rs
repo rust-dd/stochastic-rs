@@ -56,13 +56,11 @@ impl crate::traits::ModelPricer for LevyModel {
 /// members are.
 impl crate::traits::VanillaEuropeanCall for LevyModel {}
 
-impl ToModel for Calibrated<LevyParams> {
-  type Model = LevyModel;
-
-  fn to_model(&self) -> LevyModel {
+impl LevyModel {
+  /// The Fourier model of `p`, laid out as `model_type` reads it.
+  pub(super) fn of(model_type: LevyModelType, p: &[f64]) -> Self {
     use crate::pricing::fourier::*;
-    let p = &self.params.values;
-    match self.params.model_type {
+    match model_type {
       LevyModelType::VarianceGamma => LevyModel::VarianceGamma(VarianceGammaFourier {
         sigma: p[0],
         theta: p[1],
@@ -93,5 +91,13 @@ impl ToModel for Calibrated<LevyParams> {
         eta2: p[4],
       }),
     }
+  }
+}
+
+impl ToModel for Calibrated<LevyParams> {
+  type Model = LevyModel;
+
+  fn to_model(&self) -> LevyModel {
+    LevyModel::of(self.params.model_type, &self.params.values)
   }
 }
