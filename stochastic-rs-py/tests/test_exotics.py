@@ -206,3 +206,9 @@ def test_the_exotics_answer_at_their_edges():
     assert sr.DoubleBarrierPricer(s=0.0, t=0.0, **CORRIDOR).price() == 0.0
     expired_put = sr.FixedLookbackPricer(s=0.0, k=100.0, r=0.05, q=0.02, sigma=0.25, t=0.0, option_type="put")
     assert expired_put.price() == 100.0
+    chooser = dict(s=0.0, k=100.0, r=0.05, q=0.02, sigma=0.25, t1=0.0)
+    assert sr.SimpleChooserPricer(t=0.0, **chooser).price() == 100.0
+    assert math.isnan(sr.SimpleChooserPricer(t=1.0, **chooser).price())
+    compound = dict(s=0.0, k1=5.0, k2=100.0, t1=0.0, r=0.05, q=0.02, sigma=0.25, compound_type="poc")
+    assert sr.CompoundPricer(t2=0.0, **compound).price() == 5.0
+    assert math.isnan(sr.CompoundPricer(t2=1.0, **compound).price())

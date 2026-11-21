@@ -7,8 +7,12 @@ use stochastic_rs_quant::pricing::barrier::DoubleBarrierPricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::chooser::ChooserPricer;
+use stochastic_rs_quant::pricing::compound::CompoundPricer;
+use stochastic_rs_quant::pricing::compound::CompoundType;
 use stochastic_rs_quant::pricing::exotic::BarrierOption;
 use stochastic_rs_quant::pricing::exotic::ChooserOption;
+use stochastic_rs_quant::pricing::exotic::ComplexChooserOption;
+use stochastic_rs_quant::pricing::exotic::CompoundOption;
 use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::ForwardStartOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
@@ -32,8 +36,8 @@ fn heston(v0: f64, kappa: f64, theta: f64) -> HestonParams {
   }
 }
 
-/// At expiry the barrier, double-barrier and lookback pricers pay out at a spot that is not
-/// positive, as `BsmPricer`, the choosers and the compound do; before it that spot is NaN.
+/// Every analytic exotic pays out at expiry at a spot that is not positive, as `BsmPricer` does;
+/// before expiry that spot is NaN.
 #[test]
 fn an_exotic_at_expiry_pays_its_payoff_at_a_spot_that_is_not_positive() {
   use BarrierType::*;
@@ -41,6 +45,8 @@ fn an_exotic_at_expiry_pays_its_payoff_at_a_spot_that_is_not_positive() {
   let barrier = BarrierPricer::new(SIGMA);
   let double = DoubleBarrierPricer::new(SIGMA);
   let lookback = LookbackPricer::new(SIGMA);
+  let chooser = ChooserPricer::new(SIGMA);
+  let compound = CompoundPricer::new(SIGMA);
   for s in [0.0, -5.0] {
     for (barrier_type, h, option_type, at_expiry) in [
       (DownAndOut, 80.0, Call, 3.0),
@@ -81,6 +87,83 @@ fn an_exotic_at_expiry_pays_its_payoff_at_a_spot_that_is_not_positive() {
     };
     assert_eq!(lookback.price(&fixed_put, s, R, Q, 0.0), 100.0 - s, "{s}");
     assert!(lookback.price(&fixed_put, s, R, Q, 1.0).is_nan(), "{s}");
+    let now = ChooserOption {
+      strike: 100.0,
+      choice_time: 0.0,
+    };
+    assert_eq!(chooser.price_simple(&now, s, R, Q, 0.0), 100.0 - s, "{s}");
+    for choice_time in [0.0, 0.5] {
+      let option = ChooserOption { choice_time, ..now };
+      assert!(
+        chooser.price_simple(&option, s, R, Q, 1.0).is_nan(),
+        "{option:?} {s}"
+      );
+    }
+    let expired = ComplexChooserOption {
+      call_strike: 105.0,
+      call_tau: 0.0,
+      put_strike: 95.0,
+      put_tau: 0.0,
+      choice_time: 0.0,
+    };
+    assert_eq!(chooser.price_complex(&expired, s, R, Q), 95.0 - s, "{s}");
+    for choice_time in [0.0, 0.25] {
+      let live = ComplexChooserOption {
+        call_tau: 1.0,
+        put_tau: 0.75,
+        choice_time,
+        ..expired
+      };
+      assert!(
+        chooser.price_complex(&live, s, R, Q).is_nan(),
+        "{live:?} {s}"
+      );
+    }
+    for (compound_type, at_expiry) in [
+      (CompoundType::CallOnCall, 0.0),
+      (CompoundType::CallOnPut, 95.0 - s),
+      (CompoundType::PutOnCall, 5.0),
+      (CompoundType::PutOnPut, 0.0),
+    ] {
+      let option = CompoundOption {
+        outer_strike: 5.0,
+        outer_tau: 0.0,
+        inner_strike: 100.0,
+        compound_type,
+      };
+      assert_eq!(
+        compound.price(&option, s, R, Q, 0.0),
+        at_expiry,
+        "{option:?} {s}"
+      );
+      for outer_tau in [0.0, 0.25] {
+        let live = CompoundOption {
+          outer_tau,
+          ..option
+        };
+        assert!(compound.price(&live, s, R, Q, 1.0).is_nan(), "{live:?} {s}");
+      }
+    }
+    let forward = ForwardStartOption {
+      moneyness: 1.0,
+      start_time: 0.0,
+      option_type: Call,
+    };
+    assert_eq!(
+      chooser.price_forward_start(&forward, s, R, Q, 0.0),
+      0.0,
+      "{s}"
+    );
+    for start_time in [0.0, 0.25] {
+      let live = ForwardStartOption {
+        start_time,
+        ..forward
+      };
+      assert!(
+        chooser.price_forward_start(&live, s, R, Q, 1.0).is_nan(),
+        "{live:?} {s}"
+      );
+    }
   }
   let knock_in = BarrierOption {
     strike: 100.0,
@@ -111,7 +194,7 @@ fn a_simple_chooser_deciding_at_0_takes_the_better_leg() {
 }
 
 /// The forward start pays `(s − αs)⁺` at expiry and when struck at it, and is NaN for a start
-/// outside `[0, tau]`, a NaN rate or a negative spot before expiry.
+/// outside `[0, tau]`, a NaN rate or a spot that is not positive before expiry.
 #[test]
 fn the_forward_start_pays_out_at_its_edges_and_is_nan_outside_them() {
   let pricer = ChooserPricer::new(SIGMA);
@@ -145,6 +228,7 @@ fn the_forward_start_pays_out_at_its_edges_and_is_nan_outside_them() {
     (f64::NAN, R, 100.0),
     (0.25, f64::NAN, 100.0),
     (0.25, R, -1.0),
+    (0.25, R, 0.0),
   ] {
     let option = started(1.0, start_time, OptionType::Call);
     let price = pricer.price_forward_start(&option, s, r, Q, 1.0);

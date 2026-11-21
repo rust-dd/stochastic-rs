@@ -41,8 +41,8 @@ impl ChooserPricer {
     Self { sigma }
   }
 
-  /// The simple chooser $W$ above at `(s, r, q, tau)`, the better leg at `choice_time = 0` and its
-  /// payoff `|s - strike|` at `tau = 0`; NaN for a NaN rate or unless `0 <= choice_time <= tau`.
+  /// The simple chooser $W$, the better leg at `choice_time = 0` and `|s - strike|` at `tau = 0`;
+  /// NaN for a NaN rate, `choice_time` off `[0, tau]` or a spot that is not positive before expiry.
   pub fn price_simple(&self, option: &ChooserOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let ChooserOption {
       strike: k,
@@ -53,6 +53,9 @@ impl ChooserPricer {
     }
     if tau == 0.0 {
       return (s - k).abs();
+    }
+    if s.is_nan() || s <= 0.0 {
+      return f64::NAN;
     }
     if t1 == 0.0 {
       let legs = BsmPricer::new(self.sigma, BsmCoc::Merton1973).price_call_put(s, k, r, q, tau);
@@ -72,8 +75,8 @@ impl ChooserPricer {
       + k * (-r * tau).exp() * norm_cdf(-y + v * sqrt_t1)
   }
 
-  /// The complex chooser at `(s, r, q)` through the spot $S^*$ where its legs are equal, the better
-  /// leg at `choice_time = 0`; NaN unless `0 <= choice_time <= min(call_tau, put_tau)`.
+  /// The complex chooser through $S^*$, where its legs are equal, and the better leg deciding at 0;
+  /// NaN for `choice_time` off `[0, min(call_tau, put_tau)]` or a spot not positive before expiry.
   pub fn price_complex(&self, option: &ComplexChooserOption, s: f64, r: f64, q: f64) -> f64 {
     let ComplexChooserOption {
       call_strike: k_call,
@@ -83,6 +86,9 @@ impl ChooserPricer {
       choice_time: t1,
     } = *option;
     if !(0.0 <= t1 && t1 <= t_call && t1 <= t_put) || t1.is_infinite() {
+      return f64::NAN;
+    }
+    if (s.is_nan() || s <= 0.0) && (t_call > 0.0 || t_put > 0.0) {
       return f64::NAN;
     }
     if t1 == 0.0 {
@@ -148,8 +154,8 @@ impl ChooserPricer {
     call - put
   }
 
-  /// The forward start at `(s, r, q, tau)`, struck at `start_time` at `moneyness` times that spot;
-  /// its payoff at `tau = 0`; NaN for a NaN rate, a negative spot or a `start_time` off `[0, tau]`.
+  /// The forward start struck at `moneyness` times the spot at `start_time`, its payoff at expiry;
+  /// NaN for a NaN rate, `start_time` off `[0, tau]` or a spot that is not positive before expiry.
   pub fn price_forward_start(
     &self,
     option: &ForwardStartOption,
@@ -169,7 +175,7 @@ impl ChooserPricer {
     if tau == 0.0 {
       return vanilla_payoff(option_type, s, alpha * s);
     }
-    if s < 0.0 {
+    if s.is_nan() || s <= 0.0 {
       return f64::NAN;
     }
     let remaining_tau = tau - t1;
