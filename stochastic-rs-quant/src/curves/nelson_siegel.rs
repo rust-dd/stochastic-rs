@@ -58,23 +58,29 @@ impl<T: RealExt> NelsonSiegel<T> {
     (T::one() - (-x).exp()) / x - (-x).exp()
   }
 
-  /// Zero rate `y(τ)` of the formula in the module doc.
+  /// Zero rate `y(τ)` of the formula in the module doc; NaN at a negative or non-finite `tau`.
   pub fn zero_rate(&self, tau: T) -> T {
+    if !on_curve(tau) {
+      return T::nan();
+    }
     self.beta0 + self.beta1 * self.slope_loading(tau) + self.beta2 * self.curvature_loading(tau)
   }
 
-  /// Compute the instantaneous forward rate at maturity `tau`.
+  /// Instantaneous forward rate at `tau`; NaN at a negative or non-finite `tau`.
   ///
   /// $$
   /// f(\tau) = \beta_0 + \beta_1 e^{-\tau/\lambda} + \beta_2 \frac{\tau}{\lambda} e^{-\tau/\lambda}
   /// $$
   pub fn forward_rate(&self, tau: T) -> T {
+    if !on_curve(tau) {
+      return T::nan();
+    }
     let x = tau / self.lambda;
     let exp_x = (-x).exp();
     self.beta0 + self.beta1 * exp_x + self.beta2 * x * exp_x
   }
 
-  /// Compute the discount factor at maturity `tau` (continuous compounding).
+  /// `e^{−τ y(τ)}`, 1 at `tau = 0`; NaN at a negative or non-finite `tau`.
   pub fn discount_factor(&self, tau: T) -> T {
     (-self.zero_rate(tau) * tau).exp()
   }
@@ -148,6 +154,11 @@ impl<T: RealExt> NelsonSiegel<T> {
   }
 }
 
+/// A maturity a curve has a rate at: finite and not negative, `tau = 0` at the formula's limit.
+pub(super) fn on_curve<T: RealExt>(tau: T) -> bool {
+  tau.is_finite() && tau >= T::zero()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -173,5 +184,24 @@ mod tests {
     let ns = NelsonSiegel::<f64>::new(0.04, -0.02, 0.01, 0.5);
     let df = ns.discount_factor(0.0);
     assert!((df - 1.0).abs() < 1e-12);
+  }
+
+  #[test]
+  fn a_maturity_off_the_curve_is_nan_and_the_origin_its_limit() {
+    let ns = NelsonSiegel::<f64>::new(0.04, -0.02, 0.01, 0.5);
+    for tau in [-1.0, -1e-300, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+      let values = [
+        ns.zero_rate(tau),
+        ns.forward_rate(tau),
+        ns.discount_factor(tau),
+      ];
+      assert!(values.iter().all(|v| v.is_nan()), "tau = {tau}: {values:?}");
+    }
+    let origin = [
+      ns.zero_rate(0.0),
+      ns.forward_rate(0.0),
+      ns.discount_factor(0.0),
+    ];
+    assert_eq!(origin, [0.02, 0.02, 1.0]);
   }
 }

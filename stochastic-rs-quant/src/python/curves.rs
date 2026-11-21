@@ -247,8 +247,8 @@ impl PyNelsonSiegel {
   }
 }
 
-/// Nelson-Siegel-Svensson curve (Svensson 1994): the zero rate, the instantaneous forward and the
-/// discount factor in closed form, at one maturity or on a maturity array.
+/// Nelson-Siegel-Svensson curve (Svensson 1994): the zero rate, instantaneous forward and discount
+/// factor at one maturity or on an array; NaN at a negative or non-finite maturity.
 #[pyclass(name = "Svensson", unsendable)]
 pub struct PySvensson {
   inner: crate::curves::svensson::Svensson<f64>,

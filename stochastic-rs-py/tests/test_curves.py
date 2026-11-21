@@ -152,6 +152,7 @@ def test_a_discount_curve_needs_distinct_times_from_the_origin_on():
 
 
 SVENSSON = (0.04, -0.02, 0.01, 0.005, 0.5, 2.0)
+NELSON_SIEGEL = (0.04, -0.02, 0.01, 0.5)
 
 
 def svensson_zero(tau, beta0, beta1, beta2, beta3, lambda1, lambda2):
@@ -199,3 +200,13 @@ def test_svensson_refuses_a_decay_that_is_not_positive_and_a_fit_it_cannot_solve
         sr.Svensson.fit_curve(taus[:3], np.full(3, 0.03))
     with pytest.raises(TypeError):
         sr.Svensson(*SVENSSON).zero_rates(taus.astype(np.float32))
+
+
+def test_a_parametric_curve_is_nan_at_a_maturity_with_no_rate():
+    for curve in (sr.Svensson(*SVENSSON), sr.NelsonSiegel(*NELSON_SIEGEL)):
+        for tau in (-1.0, math.inf, -math.inf, NAN):
+            values = (curve.zero_rate(tau), curve.forward_rate(tau), curve.discount_factor(tau))
+            assert all(math.isnan(v) for v in values), (type(curve).__name__, tau, values)
+        assert curve.zero_rate(0.0) == curve.forward_rate(0.0) == 0.02
+        assert curve.discount_factor(0.0) == 1.0
+    assert np.isnan(sr.Svensson(*SVENSSON).zero_rates(np.array([-1.0, math.inf]))).all()
