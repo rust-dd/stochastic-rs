@@ -509,11 +509,59 @@ fn a_point_with_a_martingale_is_its_own_projection() {
   }
 }
 
-/// A start without `E[e^X]` is fitted from its projection and every accepted step has it, where
-/// the start's NaN residuals were an `Optimizer` error.
+/// A start without `E[e^X]` has no price to fit from, and its projection is another model's start.
 #[test]
-fn a_fit_started_without_a_martingale_runs_inside_the_domain() {
-  for (model, point, condition) in points_without_a_martingale() {
+fn a_start_without_a_martingale_is_an_error_naming_its_condition() {
+  let conditions = [
+    (
+      LevyModelType::VarianceGamma,
+      "`1.0 - theta * nu - 0.5 * sigma * sigma * nu > 0.0`",
+    ),
+    (
+      LevyModelType::Nig,
+      "`alpha > beta.abs() && alpha >= (beta + 1.0).abs()`",
+    ),
+    (LevyModelType::Cgmy, "`m > 1.0`"),
+    (LevyModelType::Kou, "`eta1 > 1.0`"),
+  ];
+  for (model, point, _) in points_without_a_martingale() {
+    let start = LevyParams {
+      values: point.clone(),
+      model_type: model,
+    };
+    let fit = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0))
+      .calibrate(Some(start));
+    let condition = conditions
+      .iter()
+      .find(|(named, _)| *named == model)
+      .unwrap()
+      .1;
+    match fit {
+      Err(QuantError::InvalidInput {
+        what: "start",
+        reason,
+      }) => assert!(reason.contains(condition), "{model:?} {point:?}: {reason}"),
+      other => panic!("{model:?} {point:?}: {other:?}"),
+    }
+  }
+}
+
+#[test]
+#[should_panic(expected = "start.values[3] must satisfy `eta1 > 1.0`, got start.values[3] = 1.0")]
+fn with_start_panics_on_a_start_without_a_martingale() {
+  let _ =
+    LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.02, 0.0, Vec::new()).with_start(LevyParams {
+      values: vec![0.15, 3.0, 0.5, 1.0, 10.0],
+      model_type: LevyModelType::Kou,
+    });
+}
+
+/// From the domain's edge, the projection of each such point, every accepted step stays inside.
+#[test]
+fn a_fit_started_on_the_domains_edge_runs_inside_it() {
+  use super::loss::project_params;
+  for (model, mut point, condition) in points_without_a_martingale() {
+    project_params(model, &mut point);
     let options = CalibrationOptions::default()
       .with_max_iterations(12)
       .with_record_history(true);

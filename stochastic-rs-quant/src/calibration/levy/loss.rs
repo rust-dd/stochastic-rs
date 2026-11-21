@@ -120,6 +120,33 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
   }
 }
 
+/// The condition of `E[e^X] < ∞` that `p` breaks, the ones [`project_params`] keeps a fit inside,
+/// in a constructor panic's words.
+pub(super) fn domain_violation(model_type: LevyModelType, p: &[f64]) -> Option<String> {
+  let above_one = |i: usize, name: &str| {
+    let got = format!("got start.values[{i}] = {:?}", p[i]);
+    (p[i] <= 1.0).then(|| format!("start.values[{i}] must satisfy `{name} > 1.0`, {got}"))
+  };
+  match model_type {
+    LevyModelType::VarianceGamma => {
+      let margin = 1.0 - p[1] * p[2] - 0.5 * p[0] * p[0] * p[2];
+      let rule = "`1.0 - theta * nu - 0.5 * sigma * sigma * nu > 0.0`";
+      let got = format!("got {margin:?} at (sigma, theta, nu) = {p:?}");
+      (margin <= 0.0).then(|| format!("start.values must satisfy {rule}, {got}"))
+    }
+    LevyModelType::Nig => {
+      let (alpha, beta) = (p[0], p[1]);
+      let rule = "`alpha > beta.abs() && alpha >= (beta + 1.0).abs()`";
+      let got = format!("got (alpha, beta) = ({alpha:?}, {beta:?})");
+      let inside = alpha > beta.abs() && alpha >= (beta + 1.0).abs();
+      (!inside).then(|| format!("start.values must satisfy {rule}, {got}"))
+    }
+    LevyModelType::Cgmy => above_one(2, "m"),
+    LevyModelType::Kou => above_one(3, "eta1"),
+    LevyModelType::MertonJd => None,
+  }
+}
+
 /// Each parameter clamped into its bounds, the domain's coupled conditions aside.
 pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
   for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {

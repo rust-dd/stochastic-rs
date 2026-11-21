@@ -4,6 +4,7 @@ use ndarray::ArrayView1;
 
 use super::loss::clamp_params;
 use super::loss::default_params;
+use super::loss::domain_violation;
 use super::loss::fourier_option_price;
 use super::loss::param_bounds;
 use super::loss::param_count;
@@ -66,8 +67,8 @@ impl LevyCalibrator {
     self.q
   }
 
-  /// Panics unless `start` is this model's, of its parameter count and finite; the fit starts from
-  /// its values clamped to bounds and moved inside the model's `E[e^X] < ∞`.
+  /// Panics unless `start` is this model's, of its parameter count, finite and inside the model's
+  /// `E[e^X] < ∞`; the fit starts from its values clamped to bounds.
   pub fn with_start(mut self, start: LevyParams) -> Self {
     if let Some(reason) = start_violation(self.model_type, &start) {
       panic!("{reason}");
@@ -95,15 +96,17 @@ fn start_violation(model_type: LevyModelType, start: &LevyParams) -> Option<Stri
       "start.values must satisfy `start.values.len() == {count}`, got start.values.len() = {}",
       start.values.len()
     ))
-  } else {
-    let (i, value) = start
-      .values
-      .iter()
-      .enumerate()
-      .find(|(_, v)| !v.is_finite())?;
+  } else if let Some((i, value)) = start
+    .values
+    .iter()
+    .enumerate()
+    .find(|(_, v)| !v.is_finite())
+  {
     Some(format!(
       "start.values[{i}] must satisfy `start.values[{i}].is_finite()`, got start.values[{i}] = {value:?}"
     ))
+  } else {
+    domain_violation(model_type, &start.values)
   }
 }
 
@@ -128,8 +131,8 @@ impl crate::traits::Calibrator for LevyCalibrator {
   type Output = Calibrated<LevyParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless it is this model's and finite,
-  /// `DimensionMismatch` for a wrong count, `Optimizer`, and the `CalibrationOptions` errors.
+  /// A start replaces `self.start`; `InvalidInput` unless it is this model's, finite and inside
+  /// `E[e^X] < ∞`, `DimensionMismatch` for a wrong count, `Optimizer`, and the options' errors.
   fn calibrate(&self, initial: Option<LevyParams>) -> Result<Calibrated<LevyParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or_else(|| self.start.clone());
