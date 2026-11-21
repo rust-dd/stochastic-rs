@@ -9,6 +9,5 @@
 pub mod analytic_bs;
 pub mod analytic_heston;
 
-pub use analytic_bs::AnalyticBSEngine;
+pub use analytic_bs::AnalyticBsEngine;
 pub use analytic_heston::AnalyticHestonEngine;
-pub use analytic_heston::HestonStaticParams;

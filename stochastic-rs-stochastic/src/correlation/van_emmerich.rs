@@ -7,6 +7,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -15,16 +18,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Van Emmerich stochastic correlation process (Eq. 15 in Teng et al. 2016).
-///
-/// The diffusion coefficient vanishes *linearly* at ±1, keeping the
-/// process inside (−1, 1) when κ ≥ σ²/(1 ± μ).
+/// Van Emmerich's correlation process (Eq. 15 in Teng et al. 2016). Its diffusion vanishes
+/// linearly at ±1, which keeps the process inside (−1, 1) when κ ≥ σ²/(1 ± μ).
 #[derive(Debug, Clone)]
 pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Mean-reversion speed κ of the correlation process itself (ρ_t is
-  /// the state being simulated directly, unlike
-  /// [`TransformedOU`](crate::correlation::TransformedOU)'s X-space
-  /// indirection).
+  /// Mean-reversion speed κ of ρ_t itself, the simulated state; there is no X-space here, unlike
+  /// [`TransformedOu`](crate::correlation::TransformedOu).
   pub kappa: T,
   /// Long-run correlation level μ ∈ (−1, 1) that ρ_t reverts toward.
   pub mu: T,
@@ -35,7 +34,7 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho0: T,
   /// Number of points sampled along the correlation path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -45,7 +44,29 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      rho0.is_finite(),
+      "rho0 must satisfy `rho0.is_finite()`, got rho0 = {rho0:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       kappa,
@@ -58,8 +79,6 @@ impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> VanEmmerich<T, S, B> {}
 
 /// The Euler engine's view of the Van Emmerich stochastic correlation
 /// process.
@@ -99,6 +118,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] VanEmmerich<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VanEmmerich<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VanEmmerich<T, S, B>
 {
@@ -122,13 +146,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma: self.sigma,
       rho0: self.rho0,
       dt,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -158,11 +181,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`VanEmmerich`] sampling state: owns the Gaussian source and the
-/// precomputed step size. `fill_path` Euler-steps the Jacobi-type diffusion
-/// with the linear `√(1−ρ²)` coefficient and clamps to (−1, 1) in place; the
-/// owned source advances each call for independent paths.
+/// Reusable [`VanEmmerich`] sampling state: the Gaussian source and the step size. `fill_path`
+/// steps the `√(1−ρ²)` diffusion and clamps to (−1, 1); each call advances the source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VanEmmerichSampler<T: FloatExt> {
   n: usize,
   kappa: T,
@@ -170,7 +192,7 @@ pub struct VanEmmerichSampler<T: FloatExt> {
   sigma: T,
   rho0: T,
   dt: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> VanEmmerichSampler<T> {
@@ -199,6 +221,8 @@ impl<T: FloatExt> VanEmmerichSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for VanEmmerichSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for VanEmmerichSampler<T> {
   type Output = Array1<T>;

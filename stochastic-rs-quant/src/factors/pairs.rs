@@ -1,30 +1,21 @@
-//! Cointegrated pairs-trading framework.
+//! Cointegrated pairs trading: an OLS hedge ratio, the spread's z-score (rolling or full
+//! sample) and entry and exit signals; test the residual with `stochastic_rs_stats`'s `adf_test`.
 //!
-//! 1. Estimate the static hedge ratio $\hat\beta$ from
-//!    $y_t = \alpha + \beta x_t + \varepsilon_t$ by OLS.
-//! 2. Form the spread $s_t = y_t - \hat\alpha - \hat\beta x_t$.
-//! 3. Standardise to a z-score using a rolling or full-sample mean and
-//!    standard deviation.
-//! 4. Emit entry / exit signals around the supplied thresholds.
+//! $$
+//! y_t = \alpha + \beta x_t + \varepsilon_t,\qquad s_t = y_t - \hat\alpha - \hat\beta x_t
+//! $$
 //!
-//! For a formal mean-reversion check the residual $\varepsilon_t$ should be
-//! tested for unit-root with [`crate::stats::stationarity::adf::adf_test`].
-//!
-//! Reference: Engle, Granger, "Co-Integration and Error Correction:
-//! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
-//! (1987). DOI: 10.2307/1913236
-//!
-//! Reference: Gatev, Goetzmann, Rouwenhorst, "Pairs Trading: Performance of a
-//! Relative-Value Arbitrage Rule", Review of Financial Studies, 19(3),
-//! 797-827 (2006). DOI: 10.1093/rfs/hhj020
+//! Reference: Engle & Granger (1987), Econometrica 55(2), 251–276, DOI 10.2307/1913236
+//! Reference: Gatev, Goetzmann & Rouwenhorst (2006), Rev. Financ. Stud. 19(3), 10.1093/rfs/hhj020
 
 use std::fmt::Display;
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
-use crate::linalg::lstsq;
+use crate::QuantError;
 
 /// Side of an open pairs position.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,50 +58,45 @@ pub struct PairsStrategy {
   pub spread_std: f64,
 }
 
-/// Compute pairs-trading signals.
-///
-/// `entry_z`: enter when `|z| ≥ entry_z`. `exit_z`: close when `|z| ≤ exit_z`.
-/// Otherwise the previous signal persists. `entry_z` must exceed `exit_z`.
-///
-/// Panics if the hedge-ratio OLS is rank-deficient (constant input series).
-/// Use [`try_pairs_signals`] for a falliable variant returning
-/// [`crate::factors::FactorsError`].
+/// Pairs signals: enter at `|z| ≥ entry_z`, close at `|z| ≤ exit_z`, otherwise hold; panics where
+/// [`try_pairs_signals`] errs.
 pub fn pairs_signals(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   entry_z: f64,
   exit_z: f64,
 ) -> PairsStrategy {
-  try_pairs_signals(y, x, entry_z, exit_z)
-    .expect("pairs_signals: hedge-ratio OLS failed; use try_pairs_signals for falliable variant")
+  try_pairs_signals(y, x, entry_z, exit_z).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Falliable variant of [`pairs_signals`]. Returns
-/// [`crate::factors::FactorsError::OlsFailed`] when the hedge-ratio OLS is
-/// rank-deficient (e.g. one of the inputs is a constant series).
+/// [`pairs_signals`] with `DimensionMismatch` for series of unequal length, `InvalidInput` unless
+/// `entry_z > exit_z`, and `InsufficientData` below three observations.
 pub fn try_pairs_signals(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   entry_z: f64,
   exit_z: f64,
-) -> Result<PairsStrategy, crate::factors::FactorsError> {
+) -> Result<PairsStrategy, QuantError> {
   if y.len() != x.len() {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "y.len()={} must equal x.len()={}",
-      y.len(),
-      x.len()
-    )));
+    return Err(QuantError::DimensionMismatch {
+      what: "x, one per y observation",
+      expected: y.len(),
+      got: x.len(),
+    });
   }
   if entry_z <= exit_z {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "entry_z={entry_z} must exceed exit_z={exit_z}"
-    )));
+    return Err(QuantError::invalid(
+      "entry_z",
+      format!("must exceed exit_z = {exit_z}, got {entry_z}"),
+    ));
   }
   let n = y.len();
   if n < 3 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least three observations, got {n}"
-    )));
+    return Err(QuantError::InsufficientData {
+      what: "observations for pairs signals",
+      needed: 3,
+      got: n,
+    });
   }
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
@@ -118,7 +104,7 @@ pub fn try_pairs_signals(
     design[[i, 1]] = x[i];
   }
   let y_owned = y.to_owned();
-  let sol = lstsq(&design, &y_owned);
+  let sol = lstsq(design.view(), y_owned.view());
   let alpha = sol[0];
   let beta = sol[1];
   let mut spread = Array1::<f64>::zeros(n);
@@ -175,6 +161,8 @@ pub fn try_pairs_signals(
 mod tests {
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -191,7 +179,7 @@ mod tests {
   fn long_spread_triggered_by_negative_extreme() {
     let mut y_buf = vec![0.0_f64; 200];
     let mut x_buf = vec![0.0_f64; 200];
-    let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(1));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.01).seeded(&Deterministic::new(1));
     let mut shocks = vec![0.0_f64; 200];
     dist.fill_slice(&mut shocks);
     for i in 0..200 {
@@ -207,7 +195,7 @@ mod tests {
 
   #[test]
   fn beta_recovered_from_linear_relationship() {
-    let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.005).seeded(&Deterministic::new(7));
     let mut shocks = vec![0.0_f64; 500];
     dist.fill_slice(&mut shocks);
     let mut x_buf = vec![0.0_f64; 500];

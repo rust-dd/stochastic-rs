@@ -90,7 +90,7 @@ const THREAD: { title: string; body: string; code: string }[] = [
     title: 'Sample a batch',
     body: 'Every process is built the same way — parameters, grid, horizon, seed — and every one gives you a single path, a parallel batch, and a mapped form over it.',
     code: `let gbm = Gbm::<f32, _>::new(
-  0.05, 0.2, 1_024, Some(100.0), Some(1.0), Deterministic::new(7),
+  0.05, 0.2, 1_024, 100.0, Some(1.0), Deterministic::new(7),
 );
 let paths = gbm.sample_par(1_000);`,
   },
@@ -104,7 +104,7 @@ let paths = gbm.sample_par(1_000);`,
   {
     title: 'Price the same model in closed form',
     body: 'Simulators and pricers are separate: a pricer holds the parameters and takes the query as arguments, so a whole strike-maturity grid is one vectorised sweep.',
-    code: `let model = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+    code: `let model = HestonPricer::new(HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.7 });
 let call = model.price_call(100.0, 100.0, 0.05, 0.02, 0.75);
 // 7.7311`,
   },

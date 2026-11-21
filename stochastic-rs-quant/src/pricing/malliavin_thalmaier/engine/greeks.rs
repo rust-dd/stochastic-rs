@@ -1,5 +1,6 @@
 use super::super::heston::MultiHestonParams;
 use super::payoff::MtPayoff;
+use crate::QuantError;
 use crate::traits::FloatExt;
 
 /// Malliavin–Thalmaier Greeks engine for the supported conditional model.
@@ -42,17 +43,20 @@ impl<T: FloatExt> MtGreeks<T> {
   /// Construct an M-T engine for the given model, regularization level and
   /// Monte Carlo path count.
   pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {
-    Self::try_new(params, h, n_paths).expect("invalid Malliavin–Thalmaier engine parameters")
+    Self::try_new(params, h, n_paths).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible constructor with model and numerical-parameter validation.
-  pub fn try_new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> anyhow::Result<Self> {
+  pub fn try_new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Result<Self, QuantError> {
     params.validate()?;
     if !num_traits::Float::is_finite(h) || h <= T::zero() {
-      anyhow::bail!("h must be finite and positive");
+      return Err(QuantError::invalid(
+        "h",
+        format!("must be finite and positive, got {h:?}"),
+      ));
     }
     if n_paths == 0 {
-      anyhow::bail!("n_paths must be positive");
+      return Err(QuantError::invalid("n_paths", "must be positive, got 0"));
     }
     Ok(Self { params, h, n_paths })
   }
@@ -68,7 +72,7 @@ impl<T: FloatExt> MtGreeks<T> {
     self.price_from_sampler(payoff, || {
       self
         .params
-        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
     })
   }
 

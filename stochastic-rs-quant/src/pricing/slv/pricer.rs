@@ -1,11 +1,12 @@
 //! Monte Carlo pricing under a pre-calibrated leverage surface.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::HestonSlvParams;
 use super::LeverageSurface;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -16,48 +17,8 @@ use crate::traits::VanillaEuropeanCall;
 /// noise" rather than a tolerance band.
 const RATE_MATCH_TOL: f64 = 1e-12;
 
-/// Heston-SLV Monte Carlo pricer with a pre-calibrated leverage surface.
-///
-/// The leverage function is not rate-agnostic: [`calibrate_leverage`] evolves
-/// its particle cloud under the drift $r - q$, and a Dupire-sourced target
-/// surface carries $(r, q)$ in its own numerator. A surface calibrated at one
-/// rate does **not** reproduce the market at another, so [`ModelPricer`] queries
-/// are checked against the calibration rates rather than silently substituted.
-///
-/// Two constructors, two capabilities:
-///
-/// - [`HestonSlvPricer::new`] — the surface came out of a calibration at a
-///   known `(r, q)`. Pricing at any other rate panics naming both pairs.
-/// - [`HestonSlvPricer::unanchored`] — the surface is a hand-supplied
-///   $L(S,t)$ with no rate provenance (a pure-Heston $L \equiv 1$, say). The
-///   SDE is then fully specified by the query, so `r` and `q` drive drift and
-///   discounting directly and every rate is accepted.
-///
-/// # Spot and maturity are bounded by the surface, not by the rate anchor
-///
-/// The `s` and `tau` of a query are *honoured* — they drive the simulation —
-/// but [`LeverageSurface`] is indexed by absolute spot out to a finite
-/// horizon, and past either edge
-/// [`interpolate`](LeverageSurface::interpolate) holds the boundary value
-/// flat. Far enough out every path spends its whole life on that hold, and
-/// the price stops depending on the calibrated interior at all: two surfaces
-/// differing by a factor of three in the middle and agreeing on their edges
-/// return **bit-identical** prices there, while at the calibration spot they
-/// disagree by 95 %. The clamped answer is not marked in any way — it is
-/// finite, positive and inside the no-arbitrage band — so it is `NaN`-gated
-/// instead, on [`LeverageSurface::covers`].
-///
-/// This is a bound and not a rate-style equality check because a strike
-/// ladder around the calibration spot is what the type is *for*. Inside the
-/// grid the same flat hold only touches the wings of the terminal
-/// distribution, which no finite grid avoids and which
-/// [`calibrate_leverage`] applies to its own particles for the same reason.
-///
-/// Unlike the rate anchor this bound applies to **both** constructors: the
-/// extent belongs to the surface, whereas `(r, q)` provenance is something
-/// only a calibration can supply.
-///
-/// [`calibrate_leverage`]: super::calibrate_leverage
+/// Heston-SLV Monte Carlo under a calibrated leverage surface: NaN outside the surface's `(s, tau)`
+/// extent, where it would hold flat, and, from [`new`](Self::new), at rates other than its own.
 #[derive(Debug, Clone)]
 pub struct HestonSlvPricer {
   /// Model parameters.
@@ -78,11 +39,8 @@ pub struct HestonSlvPricer {
 }
 
 impl HestonSlvPricer {
-  /// Pricer for a `leverage` surface calibrated at `(r, q)` — the pair passed
-  /// to [`calibrate_leverage`](super::calibrate_leverage), or the
-  /// calibrator's own rates for a surface out of
-  /// [`HestonSlvCalibrator`](crate::calibration::heston_slv::HestonSlvCalibrator).
-  /// Pricing at any other rate panics.
+  /// A pricer for a surface calibrated at `(r, q)`, which prices NaN at any other rates: `L(S, t)`
+  /// depends on the drift it was fitted under.
   pub fn new(params: HestonSlvParams, leverage: LeverageSurface, r: f64, q: f64) -> Self {
     Self {
       params,
@@ -127,29 +85,17 @@ impl HestonSlvPricer {
     self
   }
 
-  /// Panic unless `(r, q)` is the pair the leverage surface was calibrated
-  /// at. A no-op for an [`unanchored`](Self::unanchored) pricer.
-  fn check_rates(&self, r: f64, q: f64) {
-    let Some((r0, q0)) = self.calibration_rates else {
-      return;
-    };
-    if (r - r0).abs() > RATE_MATCH_TOL || (q - q0).abs() > RATE_MATCH_TOL {
-      panic!(
-        "HestonSlvPricer: leverage surface calibrated at r={r0}, q={q0} but queried at r={r}, q={q}. \
-         L(S,t) is rate-dependent, so pricing at another rate would silently stop reproducing the \
-         calibrated surface. Recalibrate at the query rates, or build the pricer with \
-         HestonSlvPricer::unanchored if the surface has no rate provenance."
-      );
-    }
+  /// Whether `(r, q)` is the pair the surface was calibrated at; always for an unanchored pricer.
+  fn rates_match(&self, r: f64, q: f64) -> bool {
+    self
+      .calibration_rates
+      .is_none_or(|(r0, q0)| (r - r0).abs() <= RATE_MATCH_TOL && (q - q0).abs() <= RATE_MATCH_TOL)
   }
 
-  /// Call-price estimate with its Monte Carlo error bar, under the same
-  /// rate-anchoring panic and leverage-extent `NaN` rules as
-  /// [`ModelPricer::price_call`]; a query outside the surface's extent has
-  /// no paths to estimate from, so every field of the estimate is poisoned.
+  /// The call price with its Monte Carlo error bar; NaN in every field, and no sample, where
+  /// [`price_call`](ModelPricer::price_call) is NaN.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
-    self.check_rates(r, q);
-    if !self.leverage.covers(s, tau) {
+    if !(self.rates_match(r, q) && self.leverage.covers(s, tau)) {
       return McEstimate {
         mean: f64::NAN,
         std_err: f64::NAN,
@@ -160,21 +106,21 @@ impl HestonSlvPricer {
     let dt = tau / n_steps as f64;
     let sqrt_dt = dt.sqrt();
     let sigma_mixed = self.params.sigma_mixed();
-    let rho_bar = (1.0 - self.params.rho * self.params.rho).sqrt();
+    let rho_bar = (1.0 - self.params.heston.rho * self.params.heston.rho).sqrt();
 
-    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.seed));
+    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.seed));
     let mut payoff_sum = 0.0;
     let mut payoff_sq_sum = 0.0;
 
     for _ in 0..self.n_paths {
       let mut x = s.ln();
-      let mut v = self.params.v0;
+      let mut v = self.params.heston.v0;
 
       for step in 0..n_steps {
         let t = step as f64 * dt;
-        let dw_v = normals.sample_fast() * sqrt_dt;
-        let dw_ind = normals.sample_fast() * sqrt_dt;
-        let dw_x = self.params.rho * dw_v + rho_bar * dw_ind;
+        let dw_v = normals.sample() * sqrt_dt;
+        let dw_ind = normals.sample() * sqrt_dt;
+        let dw_x = self.params.heston.rho * dw_v + rho_bar * dw_ind;
 
         let v_pos = v.max(0.0);
         let sqrt_v = v_pos.sqrt();
@@ -182,9 +128,10 @@ impl HestonSlvPricer {
 
         let l = self.leverage.interpolate(s_curr, t);
 
-        v =
-          (v + self.params.kappa * (self.params.theta - v_pos) * dt + sigma_mixed * sqrt_v * dw_v)
-            .max(0.0);
+        v = (v
+          + self.params.heston.kappa * (self.params.heston.theta - v_pos) * dt
+          + sigma_mixed * sqrt_v * dw_v)
+          .max(0.0);
 
         let drift = (r - q) - 0.5 * l * l * v_pos;
         x += drift * dt + l * sqrt_v * dw_x;
@@ -206,24 +153,8 @@ impl HestonSlvPricer {
 }
 
 impl ModelPricer for HestonSlvPricer {
-  /// Returns [`f64::NAN`] when `(s, tau)` falls outside the leverage
-  /// surface's own extent — case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails), the same one
-  /// `CarrMadanPricer::price_call` reports for a strike outside its FFT grid.
-  /// Test with [`LeverageSurface::covers`] before pricing, or recalibrate
-  /// over a grid that spans the query. See [`HestonSlvPricer`] for what the
-  /// clamped answer would otherwise have been.
-  ///
-  /// The rate check runs first, so a query that is wrong on both counts
-  /// panics rather than returning `NaN`: a rate the pricer never agreed to
-  /// price at is a wiring error, and it should not be reported as a surface
-  /// edge.
-  ///
-  /// # Panics
-  ///
-  /// When the pricer came from [`HestonSlvPricer::new`] and `(r, q)` differs
-  /// from the pair the leverage surface was calibrated at — see
-  /// [`HestonSlvPricer`] for why substituting is not a valid reprojection.
+  /// NaN for `(s, tau)` outside [`LeverageSurface::covers`] and, for a pricer from
+  /// [`new`](HestonSlvPricer::new), at rates other than its calibration's.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_call_estimate(s, k, r, q, tau).mean
   }

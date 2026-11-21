@@ -1,27 +1,20 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Heston`
-//! (`volatility/heston.rs`). Cache: private `cgns: Cgns<T>` keyed on
-//! `(rho, n, t)`, same shape as the previous wave's `BatesSvj`/`Hkde`/etc.
-//! Setters are implemented generically over `Sch: HestonScheme` (not just
-//! `Euler`, the only scheme `new()`/`Default` produce) since `cgns` and
-//! every other field are scheme-independent — this is what lets
-//! `Heston::default().with_kappa(3.0).with_rho(-0.8)` (this wave's own
-//! headline example) type-check at all, since `default()` returns
-//! `Heston<T, Unseeded, Euler>` and the setters must accept that receiver.
-//! `HestonPow` has no `PartialEq`, so it is excluded from the generic
-//! field-equality snapshot and compared via `matches!` directly instead.
+//! `Heston`'s `with_*` setters, generic over the scheme so they chain after `qe()` too; `HestonPow`
+//! has no `PartialEq`, so it is compared with `matches!` outside the field snapshot.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
-fn heston_base_seeded<S: SeedExt>(seed: S) -> Heston<f64, S> {
+fn heston_base_seeded<S: SeedExt>(seed: S) -> Heston<f64, Euler, S> {
   Heston::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -30,7 +23,7 @@ fn heston_base_seeded<S: SeedExt>(seed: S) -> Heston<f64, S> {
     64,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }
@@ -41,8 +34,8 @@ fn heston_base() -> Heston<f64> {
 
 #[derive(Debug, PartialEq)]
 struct HestonFields {
-  s0: Option<f64>,
-  v0: Option<f64>,
+  s0: f64,
+  v0: f64,
   kappa: f64,
   theta: f64,
   sigma: f64,
@@ -50,10 +43,10 @@ struct HestonFields {
   mu: f64,
   n: usize,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
-fn fields<S: SeedExt>(x: &Heston<f64, S>) -> HestonFields {
+fn fields<S: SeedExt>(x: &Heston<f64, Euler, S>) -> HestonFields {
   HestonFields {
     s0: x.s0,
     v0: x.v0,
@@ -64,7 +57,7 @@ fn fields<S: SeedExt>(x: &Heston<f64, S>) -> HestonFields {
     mu: x.mu,
     n: x.n,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -86,38 +79,38 @@ macro_rules! plain_test {
   };
 }
 
-plain_test!(heston_with_s0_round_trip, with_s0, s0, Some(90.0));
-plain_test!(heston_with_v0_round_trip, with_v0, v0, Some(0.06));
+plain_test!(heston_with_s0_round_trip, with_s0, s0, 90.0);
+plain_test!(heston_with_v0_round_trip, with_v0, v0, 0.06);
 plain_test!(heston_with_mu_round_trip, with_mu, mu, 0.02);
 plain_test!(
-  heston_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  heston_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 
 #[test]
-#[should_panic(expected = "kappa must be non-negative")]
+#[should_panic(expected = "kappa must satisfy `kappa >= T::zero()`, got kappa = -1.0")]
 fn heston_with_kappa_rejects_negative() {
   let _ = heston_base().with_kappa(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "theta must be non-negative")]
+#[should_panic(expected = "theta must satisfy `theta >= T::zero()`, got theta = -0.01")]
 fn heston_with_theta_rejects_negative() {
   let _ = heston_base().with_theta(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "sigma must be non-negative")]
+#[should_panic(expected = "sigma must satisfy `sigma >= T::zero()`, got sigma = -0.1")]
 fn heston_with_sigma_rejects_negative() {
   let _ = heston_base().with_sigma(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "v0 must be non-negative")]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01")]
 fn heston_with_v0_rejects_negative() {
-  let _ = heston_base().with_v0(Some(-0.01));
+  let _ = heston_base().with_v0(-0.01);
 }
 
 #[test]
@@ -137,8 +130,8 @@ fn heston_with_rho_rebuilds_cgns_cache() {
   assert_eq!(fields(&got), fields(&expected));
 
   let want = Heston::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -147,7 +140,7 @@ fn heston_with_rho_rebuilds_cgns_cache() {
     64,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(7),
   )
   .sample();
@@ -158,17 +151,17 @@ fn heston_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn heston_with_steps_rebuilds_cgns_cache() {
+fn heston_with_points_rebuilds_cgns_cache() {
   let mut expected = heston_base();
   expected.n = 128;
-  let got = heston_base().with_steps(128);
+  let got = heston_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
 
   let want = Heston::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -177,12 +170,12 @@ fn heston_with_steps_rebuilds_cgns_cache() {
     128,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(9),
   )
   .sample();
   let got_seeded = heston_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }
@@ -196,8 +189,8 @@ fn heston_with_horizon_rebuilds_cgns_cache() {
   assert_eq!(fields(&got), fields(&expected));
 
   let want = Heston::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -206,7 +199,7 @@ fn heston_with_horizon_rebuilds_cgns_cache() {
     64,
     Some(2.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(11),
   )
   .sample();
@@ -227,10 +220,8 @@ fn heston_with_seed_matches_fresh_construction() {
 
 #[test]
 fn heston_setters_chain_after_default_and_after_qe() {
-  // The wave's own headline example: `Heston::default().with_kappa(3.0)
-  // .with_rho(-0.8)` must type-check and sample finitely, both for the
-  // `Euler`-scheme `default()` directly and after switching schemes via
-  // `.qe()` (setters are scheme-generic, not `Euler`-only).
+  // `Heston::default().with_kappa(3.0).with_rho(-0.8)` type-checks and samples finitely on the
+  // `Euler` default and after `.qe()`: the setters are generic over the scheme.
   let euler = Heston::<f64>::default().with_kappa(3.0).with_rho(-0.8);
   assert_eq!(euler.kappa, 3.0);
   assert_eq!(euler.rho, -0.8);

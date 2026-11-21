@@ -1,24 +1,11 @@
-//! End-to-end pricing pipeline demonstrating the v2 architecture.
-//!
-//! ```sh
-//! cargo run --release --example full_pipeline
-//! ```
-//!
-//! Walks through:
-//!   1. Build reactive market handles (`SimpleQuote` + `Handle`).
-//!   2. Wire two pricing engines (`AnalyticBSEngine`, `AnalyticHestonEngine`)
-//!      against the same market handles.
-//!   3. Define a multi-instrument portfolio: equity option, variance swap,
-//!      total return swap.
-//!   4. Show reactive re-pricing — change a spot quote and watch every
-//!      engine output update.
-//!   5. Build an FX vol smile (Vanna–Volga from ATM/RR/BFLY quotes).
-//!   6. Aggregate Greeks and run parametric VaR on simulated PnL.
+//! End-to-end pricing: two engines on shared reactive quotes, a mixed portfolio, a Vanna–Volga FX
+//! smile, aggregated Greeks and parametric VaR (`cargo run --release --example full_pipeline`).
 
 use std::sync::Arc;
 
 use ndarray::ArrayView1;
 use stochastic_rs::quant::OptionType;
+use stochastic_rs::quant::calendar::Maturity;
 use stochastic_rs::quant::fx::AtmConvention;
 use stochastic_rs::quant::fx::FxDeltaConvention;
 use stochastic_rs::quant::fx::FxMarketQuotes;
@@ -31,12 +18,12 @@ use stochastic_rs::quant::market::Handle;
 use stochastic_rs::quant::market::Quote;
 use stochastic_rs::quant::market::SimpleQuote;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
-use stochastic_rs::quant::microstructure::ExecutionDirection;
-use stochastic_rs::quant::pricing::AnalyticBSEngine;
+use stochastic_rs::quant::order_book::Side;
+use stochastic_rs::quant::pricing::AnalyticBsEngine;
 use stochastic_rs::quant::pricing::AnalyticHestonEngine;
-use stochastic_rs::quant::pricing::HestonStaticParams;
 use stochastic_rs::quant::pricing::VarianceSwapPricer;
 use stochastic_rs::quant::pricing::execution_adjusted_price;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::risk::liquidity_adjusted_var;
 use stochastic_rs::quant::risk::var::PnlOrLoss;
 use stochastic_rs::quant::risk::var::VarMethod;
@@ -65,14 +52,20 @@ fn main() {
   println!("  rate   = {:.4}", rate_q.value());
   println!("  div    = {:.4}\n", div_q.value());
 
-  let bs_engine = AnalyticBSEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
+  let bs_engine = AnalyticBsEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
 
-  let heston_params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.30, -0.7);
+  let heston_params = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.30,
+    rho: -0.7,
+  };
   let heston_engine =
     AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
 
-  let call = EuropeanOption::new_tau(110.0, OptionType::Call, 1.0);
-  let put = EuropeanOption::new_tau(95.0, OptionType::Put, 1.0);
+  let call = EuropeanOption::new(110.0, OptionType::Call, Maturity::Tau(1.0));
+  let put = EuropeanOption::new(95.0, OptionType::Put, Maturity::Tau(1.0));
 
   let bs_call = bs_engine.calculate(&call);
   let heston_call = heston_engine.calculate(&call);
@@ -95,15 +88,8 @@ fn main() {
     bs_put.greeks().unwrap().delta
   );
 
-  let var_swap = VarianceSwapPricer {
-    s: spot_q.value(),
-    r: rate_q.value(),
-    q: div_q.value(),
-    tau: 1.0,
-  };
-  let k_var_bsm = var_swap.fair_strike_bsm(vol_q.value());
-  let k_var_heston =
-    var_swap.fair_strike_heston(heston_params.v0, heston_params.kappa, heston_params.theta);
+  let k_var_bsm = VarianceSwapPricer::fair_strike_bsm(vol_q.value());
+  let k_var_heston = VarianceSwapPricer::fair_strike_heston(&heston_params, 1.0);
 
   println!("Portfolio leg 2 — variance swap (fair variance strike):");
   println!(
@@ -197,17 +183,17 @@ fn main() {
     })
     .collect();
   let pnl_arr = ndarray::Array1::from(pnl);
-  let var_95 = gaussian_var(ArrayView1::from(&pnl_arr), 0.95, PnlOrLoss::Pnl);
-  let var_99 = gaussian_var(ArrayView1::from(&pnl_arr), 0.99, PnlOrLoss::Pnl);
+  let var_95 = gaussian_var(ArrayView1::from(&pnl_arr), 0.95, PnlOrLoss::Pnl).expect("finite PnL");
+  let var_99 = gaussian_var(ArrayView1::from(&pnl_arr), 0.99, PnlOrLoss::Pnl).expect("finite PnL");
   println!("Portfolio risk (parametric 1d Gaussian, n={}):", n_sim);
   println!("  VaR(95%) = {:.4}", var_95);
   println!("  VaR(99%) = {:.4}\n", var_99);
 
   let exec = AlmgrenChrissParams {
+    side: Side::Sell,
     total_shares: 50_000.0,
     horizon: 1.0,
     n_intervals: 20,
-    direction: ExecutionDirection::Sell,
     volatility: vol_q.value(),
     gamma: 1e-7,
     eta: 5e-6,
@@ -220,7 +206,8 @@ fn main() {
     PnlOrLoss::Pnl,
     VarMethod::Historical,
     &exec,
-  );
+  )
+  .expect("finite PnL");
   let exec_adj_call = execution_adjusted_price(bs_call.npv(), &exec, exec.lambda);
   println!("Liquidity-adjusted view (Almgren-Chriss, 50k shares, T=1d):");
   println!("  VaR(95%) raw     = {:.4}", var_95);

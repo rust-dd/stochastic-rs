@@ -1,15 +1,15 @@
 // docs: quant#black-scholes-merton-closed-form-european-call
 //! Backs the BSM example on the quant catalog page.
 
-use stochastic_rs::quant::pricing::bsm::BSMCoc;
-use stochastic_rs::quant::pricing::bsm::BSMPricer;
-use stochastic_rs::quant::types::OptionType;
+use stochastic_rs::quant::OptionType;
+use stochastic_rs::quant::pricing::bsm::BsmCoc;
+use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::traits::ModelPricer;
 
 #[test]
 fn bsm_price_and_greeks() {
   // Model state only: volatility + cost-of-carry convention.
-  let model = BSMPricer::new(/* v */ 0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(/* v */ 0.2, BsmCoc::Bsm1973);
   // Query: (s, k, r, q, tau).
   let (s, k, r, q, tau) = (100.0, 100.0, 0.05, 0.0, 1.0);
 

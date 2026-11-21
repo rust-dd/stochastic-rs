@@ -1,19 +1,10 @@
-//! # Isonormal
+//! Isonormal Gaussian process `W` over a Hilbert space, whose inner product is its covariance.
 //!
 //! $$
 //! \mathbb{E}[W(h)W(g)] = \langle h, g \rangle_{\mathcal H}
 //! $$
 //!
-//! ## Precision
-//!
-//! This module is **`f64`-only by design**. The path generator relies on
-//! `ndrustfft::FftHandler<f64>` and `num_complex::Complex64`, and
-//! `gauss_quad::GaussLegendre` (used by [`l2_unit_inner_product`]) is
-//! parameterised over `f64`. None of these have a stable `f32` analogue
-//! in the current dependency stack, so the entire module commits to
-//! `f64`. Generic-precision Hilbert-space samplers should use
-//! [`crate::noise::fgn::Fgn`] or the strongly-typed
-//! [`crate::traits::ProcessExt`] processes instead.
+//! `f64` only: `ndrustfft`, `Complex64` and `gauss_quad` have no `f32` twin; `Fgn` is generic.
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::concatenate;
@@ -22,37 +13,28 @@ use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use ndrustfft::ndfft_inplace;
 use num_complex::Complex64;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::gamma;
 
 use crate::traits::FloatExt;
 
-/// Isonormal process
-///
-/// The Isonormal process is a generalization of the fractional Brownian motion (fBM) process.
-/// It represents a Gaussian process defined by an underlying inner product space, where the covariance
-/// structure of the process is governed by an inner product on that space. In mathematical terms,
-/// an Isonormal process \( X(\varphi) \) is a Gaussian family of random variables indexed by elements
-/// \( \varphi \) from a Hilbert space \( \mathcal{H} \), such that for all \( \varphi_1, \varphi_2 \in \mathcal{H} \):
-///
-/// \[ \mathbb{E}[X(\varphi_1) X(\varphi_2)] = \langle \varphi_1, \varphi_2 \rangle_{\mathcal{H}} \]
-///
-/// The fractional Brownian motion (fBM) is a special case of the Isonormal process when the inner product
-/// represents the covariance structure of the fBM increments.
-///
-/// # Example
+/// The Gaussian family `X(φ)` with `E[X(φ₁) X(φ₂)] = ⟨φ₁, φ₂⟩`, sampled by circulant embedding of
+/// `inner_product(i₀, iₖ)` over the `index_functions`, so the covariance must be stationary.
 ///
 /// ```
+/// use stochastic_rs_core::simd_rng::Deterministic;
 /// use stochastic_rs_stochastic::isonormal::{fbm_custom_inc_cov, IsoNormal};
 ///
 /// let inner_product = |_aux_idx: usize, idx: usize| -> f64 { fbm_custom_inc_cov(idx, 0.7) };
 /// let index_functions = vec![0, 1, 2, 3, 4];
-/// let mut iso_normal = IsoNormal::new(inner_product, index_functions);
-/// let _path = iso_normal.get_path();
+/// let mut iso_normal = IsoNormal::new(inner_product, index_functions, Deterministic::new(7));
+/// let _path = iso_normal.path();
 /// ```
-///
-/// In this example, an Isonormal process is defined using the fractional Brownian motion covariance increments.
-///
-pub struct IsoNormal<F>
+pub struct IsoNormal<F, S: SeedExt = Unseeded>
 where
   F: Fn(usize, usize) -> f64,
 {
@@ -61,19 +43,30 @@ where
   inner_product_structure: Option<Array1<f64>>,
   covariance_matrix_sqrt: Option<Array1<f64>>,
   fft_handler: Option<FftHandler<f64>>,
+  seed: S,
 }
 
-impl<F> IsoNormal<F>
+impl<F: Fn(usize, usize) -> f64, S: SeedExt + std::fmt::Debug> std::fmt::Debug for IsoNormal<F, S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("IsoNormal")
+      .field("index_functions", &self.index_functions)
+      .field("seed", &self.seed)
+      .finish_non_exhaustive()
+  }
+}
+
+impl<F, S: SeedExt> IsoNormal<F, S>
 where
   F: Fn(usize, usize) -> f64,
 {
-  pub fn new(inner_product: F, index_functions: Vec<usize>) -> Self {
+  pub fn new(inner_product: F, index_functions: Vec<usize>, seed: S) -> Self {
     IsoNormal {
       inner_product,
       index_functions,
       inner_product_structure: None,
       covariance_matrix_sqrt: None,
       fft_handler: None,
+      seed,
     }
   }
 
@@ -135,20 +128,22 @@ where
     self.fft_handler = Some(FftHandler::new(2 * n - 2));
   }
 
-  pub fn get_path(&mut self) -> Array1<f64> {
+  /// One path of `index_functions.len() - 1` values; each call draws a fresh stream from the seed.
+  pub fn path(&mut self) -> Array1<f64> {
     self.set_inner_product_structure();
     self.set_covariance_matrix_sqrt();
     let covariance_matrix_sqrt = self.covariance_matrix_sqrt.as_ref().unwrap();
     let fft = self.fft_handler.as_ref().unwrap();
     let n = self.inner_product_structure.as_ref().unwrap().len();
     let mut path = Array1::<f64>::zeros(n - 1);
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.seed);
 
     <f64 as FloatExt>::with_fgn_complex_scratch(covariance_matrix_sqrt.len(), |workspace| {
       // SAFETY: Complex64 is repr(C) with two f64 fields, matching [f64; 2] layout.
       let flat = unsafe {
         std::slice::from_raw_parts_mut(workspace.as_mut_ptr() as *mut f64, 2 * workspace.len())
       };
-      <f64 as FloatExt>::fill_standard_normal_slice(flat);
+      normal.fill_slice(flat);
 
       for (z, &w) in workspace.iter_mut().zip(covariance_matrix_sqrt.iter()) {
         z.re *= w;
@@ -207,8 +202,8 @@ where
   quad.integrate(0.0, 1.0, integrand)
 }
 
-// Fractional Lévy Ornstein-Uhlenbeck inner product function (Unstable)
-// https://projecteuclid.org/journals/bernoulli/volume-17/issue-1/Fractional-L%C3%A9vy-driven-OrnsteinUhlenbeck-processes-and-stochastic-differential-equations/10.3150/10-BEJ281.pdf
+// Fractional Lévy Ornstein–Uhlenbeck inner product (unstable).
+// Reference: Fink & Klüppelberg (2011), Bernoulli 17(1), 484–506, DOI 10.3150/10-BEJ281
 pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   assert!(
     d > 0.0 && d < 1.0,
@@ -228,4 +223,32 @@ pub fn cov_ld(t: f64, s: f64, d: f64, e_l1_squared: f64) -> f64 {
   let ts_term = (t - s).abs().powf(2.0 * d + 1.0);
 
   (e_l1_squared / denominator) * (t_term + s_term - ts_term)
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  fn fbm_space(seed: u64) -> IsoNormal<impl Fn(usize, usize) -> f64, Deterministic> {
+    IsoNormal::new(
+      |_, idx| fbm_custom_inc_cov(idx, 0.7),
+      (0..64).collect(),
+      Deterministic::new(seed),
+    )
+  }
+
+  #[test]
+  fn a_seeded_space_is_a_function_of_the_seed() {
+    assert_eq!(fbm_space(1).path(), fbm_space(1).path());
+    assert_ne!(fbm_space(1).path(), fbm_space(2).path());
+  }
+
+  #[test]
+  fn each_path_draws_a_fresh_stream() {
+    let mut space = fbm_space(1);
+    let first = space.path();
+    assert_ne!(first, space.path());
+  }
 }

@@ -2,24 +2,26 @@
 //! Simulates seeded Heston paths under the default Euler scheme and under Andersen's QE scheme.
 
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::traits::ProcessExt;
 
 #[test]
 fn heston_paths_under_euler_and_qe() {
-  let euler = Heston::<f64, _>::new(
-    Some(100.0), // s0
-    Some(0.04),  // v0, a variance
-    2.0,         // kappa
-    0.04,        // theta
-    0.3,         // sigma, the volatility of variance
-    -0.7,        // rho
-    0.03,        // mu
-    252,         // n grid points, t = 0 included
-    Some(1.0),   // t
+  let euler = Heston::<f64, Euler, _>::new(
+    100.0,     // s0
+    0.04,      // v0, a variance
+    2.0,       // kappa
+    0.04,      // theta
+    0.3,       // sigma, the volatility of variance
+    -0.7,      // rho
+    0.03,      // mu
+    252,       // n grid points, t = 0 included
+    Some(1.0), // t
     HestonPow::Sqrt,
-    Some(false), // truncate the variance at zero instead of reflecting it
+    VarianceBoundary::Floor, // max(v, 0) on the variance; Reflect takes |v|
     Deterministic::new(42),
   );
   let [s, v] = euler.sample();

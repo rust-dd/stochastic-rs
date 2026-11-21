@@ -14,12 +14,8 @@ use super::run_nelder_mead;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
-/// Markowitz mean-variance optimizer on simplex (long-only).
-///
-/// `lambda` is the target-return penalty coefficient
-/// (`min Var(w) + λ·(μ_p − R*)²`). Use [`super::OptimizerConfig::default`] for
-/// the historical 10.0 default, or tune per-frequency for non-daily
-/// portfolios.
+/// Long-only Markowitz mean-variance optimizer on the simplex; `lambda` is the target-return
+/// penalty of `min Var(w) + λ·(μ_p − R*)²`.
 pub fn optimize_markowitz(
   mu: &[f64],
   cov: &[Vec<f64>],

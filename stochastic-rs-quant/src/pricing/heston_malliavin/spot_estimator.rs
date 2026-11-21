@@ -1,15 +1,17 @@
 //! Base-path-only Malliavin estimation of Heston price and spot Greeks.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-use super::HestonMalliavinError;
 use super::TerminalPayoff;
 use super::estimator::EstimateWithError;
 use super::estimator::HestonMalliavinConfig;
 use super::estimator::HestonModel;
+use super::non_finite_payoff;
 use super::simulation::simulate_path;
 use super::statistics::OnlineCovariance;
+use crate::QuantError;
 
 /// Number of jointly estimated price and spot-Greek observables.
 pub const HESTON_MALLIAVIN_SPOT_OBSERVABLES: usize = 3;
@@ -50,9 +52,9 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
   model: HestonModel,
   config: HestonMalliavinConfig,
   payoff: &P,
-) -> Result<HestonMalliavinSpotEstimate, HestonMalliavinError> {
+) -> Result<HestonMalliavinSpotEstimate, QuantError> {
   let pairs = config.paths / 2;
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(config.seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(config.seed));
   let mut statistics = OnlineCovariance::<HESTON_MALLIAVIN_SPOT_OBSERVABLES>::default();
   let mut variance_normals = vec![0.0; config.steps];
   let mut orthogonal_normals = vec![0.0; config.steps];
@@ -60,10 +62,10 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
 
   for _ in 0..pairs {
     for draw in &mut variance_normals {
-      *draw = normal.sample_fast();
+      *draw = normal.sample();
     }
     for draw in &mut orthogonal_normals {
-      *draw = normal.sample_fast();
+      *draw = normal.sample();
     }
     let positive = spot_observation(
       model,
@@ -109,10 +111,10 @@ fn spot_observation<P: TerminalPayoff + ?Sized>(
   discount: f64,
   variance_normals: &[f64],
   orthogonal_normals: &[f64],
-) -> Result<[f64; HESTON_MALLIAVIN_SPOT_OBSERVABLES], HestonMalliavinError> {
+) -> Result<[f64; HESTON_MALLIAVIN_SPOT_OBSERVABLES], QuantError> {
   let path = simulate_path(
     model,
-    model.initial_variance,
+    model.params.v0,
     sign,
     variance_normals,
     orthogonal_normals,
@@ -121,7 +123,7 @@ fn spot_observation<P: TerminalPayoff + ?Sized>(
   )?;
   let payoff_value = payoff.value(path.terminal_spot);
   if !payoff_value.is_finite() {
-    return Err(HestonMalliavinError::NonFinitePayoff);
+    return Err(non_finite_payoff(payoff_value, path.terminal_spot));
   }
   let discounted_payoff = discount * payoff_value;
   Ok([

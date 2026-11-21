@@ -1,22 +1,9 @@
-//! Market-data provider abstraction.
-//!
-//! A [`MarketDataProvider`] decouples the rest of the library (vol-surface
-//! construction, portfolio return series, calibration) from where the data
-//! comes from. The concrete `crate::yahoo` connector is one
-//! implementation; [`MockProvider`] is an in-memory implementation backed
-//! by fixtures for offline, reproducible tests.
-//!
-//! The trait is **synchronous**: a live network provider blocks internally
-//! (the Yahoo connector wraps its async call in a current-thread runtime).
-//! A streaming / async-first provider surface is a separate concern left
-//! for a future `MarketStreamProvider`.
-//!
-//! Reference: the layered abstraction follows the QuantLib market-data
-//! design and the plan in `docs/YAHOO_INTEGRATION_PLAN.md` §2.
+//! [`MarketDataProvider`] decouples surface construction, return series and calibration from the
+//! data source; the trait is synchronous, so a live network provider blocks internally.
 
-use std::collections::HashMap;
-
-use crate::vol_surface::implied::OptionQuote;
+use crate::OptionQuote;
+use crate::OptionType;
+use crate::QuantError;
 
 /// How [`PriceHistory::returns`] differences successive adjusted closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,9 +17,7 @@ pub enum ReturnKind {
   Absolute,
 }
 
-/// OHLCV price history for a single symbol. Timestamps are Unix-epoch
-/// seconds so the type carries no calendar / `time` crate dependency and
-/// is available in the default build.
+/// OHLCV price history for a single symbol; timestamps are Unix-epoch seconds.
 #[derive(Debug, Clone)]
 pub struct PriceHistory {
   /// Ticker symbol.
@@ -96,8 +81,7 @@ pub struct ChainQuote {
   pub ask: f64,
   /// Provider-supplied implied volatility (when available).
   pub implied_vol: f64,
-  /// `true` for a call, `false` for a put.
-  pub is_call: bool,
+  pub option_type: OptionType,
 }
 
 impl ChainQuote {
@@ -120,7 +104,7 @@ pub struct OptionChain {
   pub symbol: String,
   /// Spot price.
   pub s: f64,
-  /// Quotes (calls and puts intermixed; use `is_call` to split).
+  /// Quotes, calls and puts intermixed.
   pub quotes: Vec<ChainQuote>,
 }
 
@@ -137,12 +121,7 @@ impl OptionChain {
       if price <= 0.0 || price.is_nan() || !cq.tau.is_finite() || cq.tau <= 0.0 {
         continue;
       }
-      quotes.push(OptionQuote {
-        strike: cq.strike,
-        tau: cq.tau,
-        price,
-        is_call: cq.is_call,
-      });
+      quotes.push(OptionQuote::new(cq.strike, cq.tau, price, cq.option_type));
       if !taus.iter().any(|&t| (t - cq.tau).abs() < 1e-12) {
         taus.push(cq.tau);
       }
@@ -155,85 +134,19 @@ impl OptionChain {
   }
 }
 
-/// Source of historical and option-chain market data.
-///
-/// Implementors: [`MockProvider`] (in-memory fixtures, offline) and
-/// `crate::yahoo`'s connector (live, behind the `yahoo` feature).
+/// Source of historical and option-chain market data, implemented by the caller's connector.
 pub trait MarketDataProvider {
   /// Historical OHLCV between `start` and `end` (Unix epoch seconds).
-  fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory>;
+  fn price_history(&self, symbol: &str, start: f64, end: f64) -> Result<PriceHistory, QuantError>;
 
   /// Current option-chain snapshot for `symbol`.
-  fn option_chain(&self, symbol: &str) -> anyhow::Result<OptionChain>;
+  fn option_chain(&self, symbol: &str) -> Result<OptionChain, QuantError>;
 }
 
-/// In-memory provider backed by fixtures, for offline reproducible tests
-/// and examples. Insert histories / chains, then query through the
-/// [`MarketDataProvider`] trait exactly as a live provider would be used.
-#[derive(Debug, Clone, Default)]
-pub struct MockProvider {
-  histories: HashMap<String, PriceHistory>,
-  chains: HashMap<String, OptionChain>,
-}
-
-impl MockProvider {
-  /// Empty provider.
-  pub fn new() -> Self {
-    Self::default()
-  }
-
-  /// Register a price history under its symbol.
-  pub fn insert_price_history(&mut self, history: PriceHistory) {
-    self.histories.insert(history.symbol.clone(), history);
-  }
-
-  /// Register an option chain under its symbol.
-  pub fn insert_option_chain(&mut self, chain: OptionChain) {
-    self.chains.insert(chain.symbol.clone(), chain);
-  }
-}
-
-impl MarketDataProvider for MockProvider {
-  fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory> {
-    let full = self
-      .histories
-      .get(symbol)
-      .ok_or_else(|| anyhow::anyhow!("MockProvider: no price history fixture for '{symbol}'"))?;
-    // Filter to the requested window so the mock behaves like a real
-    // ranged query.
-    let mut out = PriceHistory {
-      symbol: full.symbol.clone(),
-      timestamps: Vec::new(),
-      open: Vec::new(),
-      high: Vec::new(),
-      low: Vec::new(),
-      close: Vec::new(),
-      adj_close: Vec::new(),
-      volume: Vec::new(),
-    };
-    for i in 0..full.len() {
-      let ts = full.timestamps[i];
-      if ts >= start && ts <= end {
-        out.timestamps.push(ts);
-        out.open.push(full.open[i]);
-        out.high.push(full.high[i]);
-        out.low.push(full.low[i]);
-        out.close.push(full.close[i]);
-        out.adj_close.push(full.adj_close[i]);
-        out.volume.push(full.volume[i]);
-      }
-    }
-    Ok(out)
-  }
-
-  fn option_chain(&self, symbol: &str) -> anyhow::Result<OptionChain> {
-    self
-      .chains
-      .get(symbol)
-      .cloned()
-      .ok_or_else(|| anyhow::anyhow!("MockProvider: no option-chain fixture for '{symbol}'"))
-  }
-}
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+pub(crate) use mock::MockProvider;
 
 #[cfg(test)]
 mod tests {
@@ -326,7 +239,7 @@ mod tests {
           bid: 6.8,
           ask: 7.2,
           implied_vol: 0.2,
-          is_call: true,
+          option_type: OptionType::Call,
         },
         ChainQuote {
           strike: 105.0,
@@ -335,7 +248,7 @@ mod tests {
           bid: 1.9,
           ask: 2.1,
           implied_vol: 0.21,
-          is_call: true,
+          option_type: OptionType::Call,
         },
         // Degenerate quote (non-positive mid) — must be dropped.
         ChainQuote {
@@ -345,7 +258,7 @@ mod tests {
           bid: 0.0,
           ask: 0.0,
           implied_vol: 0.0,
-          is_call: true,
+          option_type: OptionType::Call,
         },
       ],
     };

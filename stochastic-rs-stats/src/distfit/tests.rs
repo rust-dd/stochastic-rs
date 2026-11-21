@@ -1,6 +1,7 @@
 use ndarray::Array1;
 
 use super::*;
+use crate::StatsError;
 
 /// Integer LCG uniforms, bit-identical to the Python generator behind the
 /// reference optima below.
@@ -14,10 +15,8 @@ fn lcg(seed: u64, n: usize) -> Vec<f64> {
     .collect()
 }
 
-/// Sum-of-twelve-uniform normal proxies pushed through a skewed cubic,
-/// `x = 0.05 + 0.6 z - 0.1 z² + c z³`: `c = 0.2` (heavy tails) for the
-/// Johnson SU and VG fits, `c = 0.03` for the skew-t fit, where the heavy
-/// version drives η to its boundary.
+/// Twelve-uniform normal proxies through `x = 0.05 + 0.6 z - 0.1 z² + c z³`: `c = 0.2` is heavy
+/// tailed, and `c = 0.03` keeps the skew-t's η off its boundary.
 fn skewed_sample(cubic: f64) -> Array1<f64> {
   let u = lcg(17, 12 * 1_500);
   (0..1_500)
@@ -42,11 +41,11 @@ fn samples_are_bit_identical_to_the_python_generator() {
   assert_close(x2[1_499], 0.218_595_920_201_029_36, 1e-13, "x2[1499]");
 }
 
-/// Reference: a tightly converged `scipy.optimize` Nelder–Mead on the same
-/// log-likelihood (`scipy.stats.johnsonsu.fit` lands within 3e-5 of it).
+/// Against a tightly converged `scipy.optimize` Nelder–Mead on the same log-likelihood;
+/// `scipy.stats.johnsonsu.fit` lands within 3e-5 of it.
 #[test]
 fn johnson_su_fit_matches_the_scipy_optimum() {
-  let fit = johnson_su_fit(skewed_sample(0.2).view());
+  let fit = fit_johnson_su(skewed_sample(0.2).view()).unwrap();
   assert!(fit.converged);
   assert_eq!(fit.nobs, 1_500);
   let loglik = -2_207.705_168_550_967_3;
@@ -64,11 +63,11 @@ fn johnson_su_fit_matches_the_scipy_optimum() {
   assert_close(fit.aic, 8.0 - 2.0 * fit.log_likelihood, 1e-9, "aic");
 }
 
-/// Reference: `scipy.optimize` Nelder–Mead on `arch`'s `SkewStudent`
-/// log-likelihood with location and scale.
+/// Against `scipy.optimize` Nelder–Mead on `arch`'s `SkewStudent` log-likelihood with location
+/// and scale.
 #[test]
 fn skew_t_fit_matches_the_arch_optimum() {
-  let fit = skew_t_fit(skewed_sample(0.03).view());
+  let fit = fit_skew_t(skewed_sample(0.03).view()).unwrap();
   assert!(fit.converged);
   let loglik = -1_538.591_372_939_148_2;
   assert!(
@@ -91,14 +90,11 @@ fn skew_t_fit_matches_the_arch_optimum() {
   );
 }
 
-/// Reference: `scipy.optimize` Nelder–Mead on the Bessel-form VG
-/// log-density evaluated with `scipy.special.kve`.
-/// The likelihood has a cusp in μ at every data point; both optimisers
-/// land on the same one, and the profile pass here ends a few 1e-5 above
-/// the reference likelihood.
+/// Against scipy's Nelder–Mead on the Bessel-form VG log-density (`scipy.special.kve`): both land
+/// on the same cusp in μ, and the profile pass here ends a few 1e-5 above the reference likelihood.
 #[test]
 fn variance_gamma_fit_matches_the_scipy_optimum() {
-  let fit = variance_gamma_fit(skewed_sample(0.2).view());
+  let fit = fit_variance_gamma(skewed_sample(0.2).view()).unwrap();
   assert!(fit.converged);
   let loglik = -2_215.084_505_676_344_6;
   assert!(
@@ -115,13 +111,17 @@ fn variance_gamma_fit_matches_the_scipy_optimum() {
 }
 
 #[test]
-#[should_panic(expected = "need at least 10 observations")]
 fn rejects_a_short_series() {
-  let _ = johnson_su_fit(Array1::from(vec![1.0_f64, 2.0, 3.0]).view());
+  assert_eq!(
+    fit_johnson_su(Array1::from(vec![1.0_f64, 2.0, 3.0]).view()).unwrap_err(),
+    StatsError::InsufficientData { needed: 10, got: 3 }
+  );
 }
 
 #[test]
-#[should_panic(expected = "observations must not be constant")]
 fn rejects_a_constant_series() {
-  let _ = skew_t_fit(Array1::from(vec![1.0_f64; 20]).view());
+  assert_eq!(
+    fit_skew_t(Array1::from(vec![1.0_f64; 20]).view()).unwrap_err(),
+    StatsError::DegenerateData("constant sample")
+  );
 }

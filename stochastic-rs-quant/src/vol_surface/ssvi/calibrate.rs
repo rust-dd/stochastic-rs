@@ -1,19 +1,22 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
+use crate::LossMetric;
+use crate::calibration::Calibrated;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
-/// Calibrate SSVI global parameters $(\rho, \eta, \gamma)$ to multiple
-/// maturity slices simultaneously.
+/// SSVI's global $(\rho, \eta, \gamma)$ fitted to every slice at once by Levenberg–Marquardt; the
+/// loss is in total variance, and a parameter the projection moves stops the fit at its bound.
 pub fn calibrate_ssvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   initial: Option<SsviParams<T>>,
-) -> SsviParams<T> {
+) -> Calibrated<SsviParams<T>> {
   let init_f64 = initial
     .map(|p| p.as_f64())
     .unwrap_or(SsviParams::<f64>::new(-0.3, 0.5, 0.5));
@@ -35,27 +38,31 @@ pub fn calibrate_ssvi<T: RealExt>(
     })
     .collect();
 
-  let theta_max = slices_f64
-    .iter()
-    .map(|s| s.theta)
-    .filter(|t| t.is_finite() && *t > 0.0)
-    .fold(0.0_f64, f64::max);
+  let theta_max = f64::max_or_nan_fold(
+    slices_f64
+      .iter()
+      .map(|s| s.theta)
+      .filter(|t| t.is_finite() && *t > 0.0),
+  )
+  .max_or_nan(0.0);
 
   let problem = SsviLmProblem {
     slices: slices_f64,
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = minimize(
+  let (result, report) = minimize(
     problem,
     LmOptions {
       tolerance: Some(1e-12),
       patience: 200,
       pivoted_qr: false,
+      ..LmOptions::default()
     },
   );
 
-  let mut p64 = SsviParams::<f64>::from_dvector(&result.params);
+  let mut p64 = SsviParams::<f64>::from_dvector(result.params.view());
+  let unprojected = p64.into_dvector();
   // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
   // (eq.4.4) over the calibration's observed θ range. Falls back to butterfly-only
   // projection when no positive θ is available (degenerate input).
@@ -65,11 +72,25 @@ pub fn calibrate_ssvi<T: RealExt>(
     p64.project();
   }
 
-  SsviParams {
+  let slices = result.slices.iter();
+  let points = slices.flat_map(|s| {
+    s.log_moneyness
+      .iter()
+      .zip(&s.total_variance)
+      .map(|p| (s.theta, p))
+  });
+  let (market, model): (Vec<f64>, Vec<f64>) = points
+    .map(|(theta, (&k, &w))| (w, p64.total_variance(k, theta)))
+    .unzip();
+  let params = SsviParams {
     rho: T::from_f64_fast(p64.rho),
     eta: T::from_f64_fast(p64.eta),
     gamma: T::from_f64_fast(p64.gamma),
-  }
+  };
+  let (before, after) = (unprojected.to_vec(), p64.into_dvector().to_vec());
+  report
+    .fit(params, &market, &model, &LossMetric::ALL, Vec::new())
+    .projected(&["rho", "eta", "gamma"], &before, &after)
 }
 
 #[derive(Clone, Debug)]
@@ -85,16 +106,16 @@ struct SsviLmProblem {
 }
 
 impl LeastSquaresProblem for SsviLmProblem {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.params.assign(params);
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.params.assign(&params);
   }
 
   fn params(&self) -> Array1<f64> {
     self.params.clone()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
-    let p = SsviParams::<f64>::from_dvector(&self.params);
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    let p = SsviParams::<f64>::from_dvector(self.params.view());
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
     let mut r = Array1::zeros(n);
     let mut idx = 0;
@@ -110,11 +131,7 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
   /// parameters $(\rho, \eta, \gamma)$.
   ///
-  /// Replaces the rc.0/rc.1 1-sided forward-difference Jacobian (`h = 1e-7`,
-  /// O(h) error + 3 extra `total_variance` evaluations per data point) with
-  /// the analytic derivative — O(eps) error, no extra evals.
-  ///
-  /// Let $\phi(\theta) = \eta \theta^{-\gamma}$ and
+  /// Let $\phi(\theta) = \eta\,\theta^{-\gamma}(1+\theta)^{\gamma-1}$ and
   /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:
   ///
   /// $$
@@ -122,11 +139,11 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// \partial_{\rho} w &= \tfrac{\theta}{2}\left(\phi k + \tfrac{\phi k}{r}\right) \\
   /// \partial_{\phi} w &= \tfrac{\theta k}{2}\left(\rho + \tfrac{\phi k + \rho}{r}\right) \\
   /// \partial_{\eta} w &= \partial_{\phi} w \cdot \phi / \eta \\
-  /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln \theta.
+  /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln\frac{\theta}{1+\theta}.
   /// \end{aligned}
   /// $$
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let p = SsviParams::<f64>::from_dvector(&self.params);
+    let p = SsviParams::<f64>::from_dvector(self.params.view());
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
     let mut jac = Array2::zeros((n, 3));
 
@@ -142,8 +159,8 @@ impl LeastSquaresProblem for SsviLmProblem {
         }
         continue;
       }
-      let phi = p.eta * theta.powf(-p.gamma);
-      let log_theta = theta.ln();
+      let phi = p.phi(theta);
+      let log_ratio = (theta / (1.0 + theta)).ln();
 
       for i in 0..slice.log_moneyness.len() {
         let k = slice.log_moneyness[i];
@@ -159,7 +176,7 @@ impl LeastSquaresProblem for SsviLmProblem {
         } else {
           0.0
         };
-        let dw_dgamma = -dw_dphi * phi * log_theta;
+        let dw_dgamma = -dw_dphi * phi * log_ratio;
 
         jac[(idx, 0)] = dw_drho;
         jac[(idx, 1)] = dw_deta;
@@ -170,5 +187,44 @@ impl LeastSquaresProblem for SsviLmProblem {
     }
 
     Some(jac)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::calibration::least_squares::checks::jacobian_error;
+
+  /// The unconstrained SSVI Jacobian at a start, at the truth and at a far point.
+  #[test]
+  fn the_jacobian_is_the_slope_of_the_residuals() {
+    let truth = SsviParams::<f64> {
+      rho: -0.4,
+      eta: 1.2,
+      gamma: 0.4,
+    };
+    let log_moneyness = vec![-0.3, -0.1, 0.0, 0.1, 0.3];
+    let slices = [0.02, 0.05, 0.12]
+      .into_iter()
+      .map(|theta| SsviSliceF64 {
+        total_variance: log_moneyness
+          .iter()
+          .map(|&k| truth.total_variance(k, theta))
+          .collect(),
+        log_moneyness: log_moneyness.clone(),
+        theta,
+      })
+      .collect();
+    let params = truth.into_dvector();
+    let mut problem = SsviLmProblem { slices, params };
+    let points = [
+      ndarray::array![0.0, 1.0, 0.5],
+      ndarray::array![-0.4, 1.2, 0.4],
+      ndarray::array![0.9, 4.0, 0.9],
+    ];
+    for point in points {
+      let error = jacobian_error(&mut problem, point.view(), |_, _| 1e-6);
+      assert!(error < 1e-8, "{point}: {error:e}");
+    }
   }
 }

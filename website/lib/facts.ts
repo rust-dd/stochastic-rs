@@ -18,22 +18,22 @@ function workspaceVersion(): string {
 export const FACTS = {
   /** `[workspace.package] version` in the root `Cargo.toml`, read at build time. */
   version: workspaceVersion(),
-  /** Root `CLAUDE.md`, `ProcessExt`: 142 implementors over 132 processes. */
-  processes: 132,
+  /** Root `CLAUDE.md`, `ProcessExt`: 138 implementors over 129 processes. */
+  processes: 129,
   /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
   deviceFamilies: 121,
-  processesOnEngine: 130,
+  processesOnEngine: 127,
   /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */
   distributions: 36,
-  /** 15 bivariate + 8 multivariate `BivariateExt` / `MultivariateExt` implementors. */
-  copulas: 23,
+  /** 15 bivariate + 6 multivariate `BivariateExt` / `MultivariateExt` implementors. */
+  copulas: 21,
   /** `impl Calibrator for` in stochastic-rs-quant. */
-  calibrators: 15,
+  calibrators: 16,
   /** `public/python-parity.json` count minus the four `ai`-feature registrations. */
-  pythonEntries: 308,
+  pythonEntries: 304,
   /** `#[test]` functions across the workspace, rounded down. */
   testsFloor: 3000,
 } as const;
 
-/** "130+" for prose that should stay true between releases. */
+/** The process count rounded down to ten, for prose that should stay true between releases. */
 export const PROCESSES_ROUNDED = `${Math.floor(FACTS.processes / 10) * 10}+`;

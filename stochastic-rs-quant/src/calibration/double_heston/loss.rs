@@ -2,21 +2,27 @@ use std::f64::consts::FRAC_1_PI;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::super::integrate_gl_to_convergence;
-use super::super::periodic_map;
 use super::calibrator::DoubleHestonCalibrator;
+use super::params::BOXED;
 use super::params::DoubleHestonParams;
-use super::params::KAPPA_MIN;
-use super::params::P_KAPPA;
 use super::params::P_SIGMA;
-use super::params::P_THETA;
 use super::params::P_V0;
-use super::params::RHO_BOUND;
-use super::params::SIGMA_MIN;
-use super::params::THETA_MIN;
 use crate::OptionType;
+use crate::calibration::clip_negative;
+use crate::calibration::heston::params::P_KAPPA;
+use crate::calibration::heston::params::P_RHO;
+use crate::calibration::heston::params::P_THETA;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
+use crate::calibration::periodic_slopes;
+use crate::calibration::scale_columns;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
+use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
 /// computed as the sum of two independent Heston contributions.
@@ -29,38 +35,10 @@ pub(super) fn double_heston_cf(
 ) -> Complex64 {
   let i = Complex64::i();
 
-  let (c1, d1) = factor_cd(p.kappa1, p.theta1, p.sigma1, p.rho1, tau, u);
-  let (c2, d2) = factor_cd(p.kappa2, p.theta2, p.sigma2, p.rho2, tau, u);
+  let (c1, d1) = factor_cd(&p.first, tau, u);
+  let (c2, d2) = factor_cd(&p.second, tau, u);
 
-  (c1 + c2 + d1 * p.v1_0 + d2 * p.v2_0 + i * u * (r - q) * tau).exp()
-}
-
-/// Single Heston factor $(C_j, D_j)$ at Fourier argument `u`.
-///
-/// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
-/// form (`g̃ = 1/g_original`, `exp(-d·τ)`) so each independent factor stays on
-/// the principal log-branch at long τ / high `|ρ_j|`.
-fn factor_cd(
-  kappa: f64,
-  theta: f64,
-  sigma: f64,
-  rho: f64,
-  tau: f64,
-  u: Complex64,
-) -> (Complex64, Complex64) {
-  let i = Complex64::i();
-  let sigma2 = sigma * sigma;
-  let rsi = rho * sigma * i;
-
-  let d = ((kappa - rsi * u).powi(2) + sigma2 * (i * u + u * u)).sqrt();
-  let g = (kappa - rsi * u - d) / (kappa - rsi * u + d);
-  let exp_dt = (-d * tau).exp();
-
-  let c_val = (kappa * theta / sigma2)
-    * ((kappa - rsi * u - d) * tau - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-  let d_val = ((kappa - rsi * u - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-  (c_val, d_val)
+  (c1 + c2 + d1 * p.first.v0 + d2 * p.second.v0 + i * u * (r - q) * tau).exp()
 }
 
 /// Price a European call option under the double Heston model via a
@@ -103,133 +81,109 @@ pub(super) fn double_heston_call_price(
   };
 
   let call = 0.5 * (s * disc_q - k * disc_r) + FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  clip_negative(call)
 }
 
-impl DoubleHestonCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
-    let n = self.c_market.len();
-    let mut c_model = Array1::zeros(n);
-    let q_val = self.q.unwrap_or(0.0);
+pub(super) struct DoubleHestonProblem<'a> {
+  calibrator: &'a DoubleHestonCalibrator,
+  params: DoubleHestonParams,
+  /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<DoubleHestonParams>,
+}
 
-    for idx in 0..n {
-      let tau = self.flat_t[idx];
-      let call = double_heston_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
-      c_model[idx] = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => {
-          let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-          if put.is_finite() { put.max(0.0) } else { put }
-        }
-      };
+impl<'a> DoubleHestonProblem<'a> {
+  pub(super) fn new(calibrator: &'a DoubleHestonCalibrator, start: DoubleHestonParams) -> Self {
+    Self {
+      calibrator,
+      params: start,
+      reflections: Array1::ones(10),
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     }
+  }
 
-    c_model
+  pub(super) fn effective_params(&self) -> DoubleHestonParams {
+    self.params.projected()
+  }
+
+  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Vec<f64> {
+    let DoubleHestonCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        let (k, tau) = (quote.strike, quote.tau);
+        let call = double_heston_call_price(p, s, k, r, q, tau);
+        match quote.option_type {
+          OptionType::Call => call,
+          OptionType::Put => clip_negative(call - s * (-q * tau).exp() + k * (-r * tau).exp()),
+        }
+      })
+      .collect()
   }
 
   pub(super) fn residuals_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(p)
+    self.market_minus(&self.compute_model_prices_for(p))
   }
 
-  /// Central finite-difference Jacobian over the 10 parameters.
-  pub(super) fn numeric_jacobian(&self, params: &DoubleHestonParams) -> Array2<f64> {
-    let n = self.c_market.len();
-    let p_dim = 10usize;
+  fn market_minus(&self, model: &[f64]) -> Array1<f64> {
+    Array1::from_iter(
+      self
+        .market
+        .iter()
+        .zip(model)
+        .map(|(market, model)| market - model),
+    )
+  }
 
-    let base_params_vec: Array1<f64> = (*params).into();
-    let mut j_mat = Array2::zeros((n, p_dim));
-
-    for col in 0..p_dim {
-      let x = base_params_vec[col];
-      let mut h = 1e-5_f64.max(1e-3 * x.abs());
-
-      let mut params_plus = *params;
-      let mut params_minus = *params;
-
-      let field_plus_minus = |x: f64, h: f64, lo: f64, hi: f64| -> (f64, f64) {
-        (periodic_map(x + h, lo, hi), periodic_map(x - h, lo, hi))
-      };
-
-      match col {
-        0 => {
-          let (a, b) = field_plus_minus(x, h, P_V0.0, P_V0.1);
-          params_plus.v1_0 = a.max(0.0);
-          params_minus.v1_0 = b.max(0.0);
-        }
-        1 => {
-          let (a, b) = field_plus_minus(x, h, P_KAPPA.0, P_KAPPA.1);
-          params_plus.kappa1 = a.max(KAPPA_MIN);
-          params_minus.kappa1 = b.max(KAPPA_MIN);
-        }
-        2 => {
-          let (a, b) = field_plus_minus(x, h, P_THETA.0, P_THETA.1);
-          params_plus.theta1 = a.max(THETA_MIN);
-          params_minus.theta1 = b.max(THETA_MIN);
-        }
-        3 => {
-          let (a, b) = field_plus_minus(x, h, P_SIGMA.0, P_SIGMA.1);
-          params_plus.sigma1 = a.abs().max(SIGMA_MIN);
-          params_minus.sigma1 = b.abs().max(SIGMA_MIN);
-        }
-        4 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho1 = clamp(x + h);
-          params_minus.rho1 = clamp(x - h);
-          if (params_plus.rho1 - params_minus.rho1).abs() < 0.5 * h {
-            h = 1e-4;
-            params_plus.rho1 = clamp(x + h);
-            params_minus.rho1 = clamp(x - h);
-          }
-        }
-        5 => {
-          let (a, b) = field_plus_minus(x, h, P_V0.0, P_V0.1);
-          params_plus.v2_0 = a.max(0.0);
-          params_minus.v2_0 = b.max(0.0);
-        }
-        6 => {
-          let (a, b) = field_plus_minus(x, h, P_KAPPA.0, P_KAPPA.1);
-          params_plus.kappa2 = a.max(KAPPA_MIN);
-          params_minus.kappa2 = b.max(KAPPA_MIN);
-        }
-        7 => {
-          let (a, b) = field_plus_minus(x, h, P_THETA.0, P_THETA.1);
-          params_plus.theta2 = a.max(THETA_MIN);
-          params_minus.theta2 = b.max(THETA_MIN);
-        }
-        8 => {
-          let (a, b) = field_plus_minus(x, h, P_SIGMA.0, P_SIGMA.1);
-          params_plus.sigma2 = a.abs().max(SIGMA_MIN);
-          params_minus.sigma2 = b.abs().max(SIGMA_MIN);
-        }
-        9 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho2 = clamp(x + h);
-          params_minus.rho2 = clamp(x - h);
-          if (params_plus.rho2 - params_minus.rho2).abs() < 0.5 * h {
-            h = 1e-4;
-            params_plus.rho2 = clamp(x + h);
-            params_minus.rho2 = clamp(x - h);
-          }
-        }
-        _ => unreachable!(),
-      }
-
-      params_plus.project_in_place();
-      params_minus.project_in_place();
-
-      let r_plus = self.residuals_for(&params_plus);
-      let r_minus = self.residuals_for(&params_minus);
-
-      let diff = (r_plus - r_minus) / (2.0 * h);
-      for row in 0..n {
-        j_mat[(row, col)] = diff[row];
-      }
+  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil; `scale` times the shared
+  /// step.
+  pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let point = Array1::from(self.params.boxed());
+    let mut jacobian = Array2::zeros((self.market.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+        let mut moved = point.clone();
+        moved[j] = value;
+        self.residuals_for(&DoubleHestonParams::from(moved).projected())
+      }));
     }
+    jacobian
+  }
+}
 
-    j_mat
+impl LeastSquaresProblem for DoubleHestonProblem<'_> {
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
+    self.reflections = periodic_slopes(params, &[factor, factor].concat());
+    self.params = DoubleHestonParams::from(params.to_owned()).boxed();
+  }
+
+  fn params(&self) -> Array1<f64> {
+    self.effective_params().into()
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    let params_eff = self.effective_params();
+    let model = self.compute_model_prices_for(&params_eff);
+    let residuals = self.market_minus(&model);
+    let options = &self.calibrator.options;
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, residuals.view());
+    Some(residuals)
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    let jacobian = self.difference_jacobian(1.0);
+    Some(scale_columns(jacobian, self.reflections.view()))
+  }
+
+  fn accept(&mut self) {
+    self.trail.accept();
   }
 }

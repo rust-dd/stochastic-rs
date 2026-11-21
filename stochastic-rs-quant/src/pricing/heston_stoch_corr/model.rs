@@ -3,6 +3,7 @@
 //! inversion in [`super::pricer`].
 
 use super::pricer::floor_price;
+use crate::CallPut;
 use crate::OptionType;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -139,30 +140,20 @@ impl HestonStochCorrPricer {
     }
   }
 
-  /// Call and put price at one query point. Both legs are floored at zero:
-  /// the Carr-Madan inversion is a numerical quadrature and can return a
-  /// small negative value deep out of the money.
-  ///
-  /// Returns `(NaN, NaN)` when any of `s`, `k`, `r`, `q` or `tau` is
-  /// non-finite. The floor tests for `NaN` before it clamps — see
-  /// `floor_price` in [`super::pricer`] — because `f64::max` would otherwise
-  /// turn an undefined price into a plausible zero.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Call and put from one Carr-Madan inversion, each floored at zero, as the quadrature can turn
+  /// slightly negative deep out of the money; NaN for a non-finite `s`, `k`, `r`, `q` or `tau`.
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     let call = self.price_call_carr_madan(s, k, r, q, tau);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
-    (floor_price(call), floor_price(put))
+    CallPut {
+      call: floor_price(call),
+      put: floor_price(put),
+    }
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on none of this model's own parameters — it inverts a price
-  /// for a volatility rather than pricing at one — but is kept here as the
-  /// inverse of [`call_put`](Self::call_put), sharing its `b = r - q` carry
-  /// convention.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the model's
+  /// parameters; NaN for a price outside the no-arbitrage bounds.
   pub fn implied_volatility(
     &self,
     c_price: f64,
@@ -173,37 +164,20 @@ impl HestonStochCorrPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    use implied_vol::DefaultSpecialFn;
-    use implied_vol::ImpliedBlackVolatility;
-
     let forward = s * ((r - q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for HestonStochCorrPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default. The arithmetic *is*
-  /// parity — this model's carry factor really is $e^{-q\tau}$ — but the
-  /// default drops the `max(0)` floor that
-  /// [`call_put`](HestonStochCorrPricer::call_put) applies to both legs,
-  /// and associates the three terms in a different order from the
-  /// pre-query `calculate_call_put`. Routing through `call_put` keeps both.
-  /// See `hscm_put_is_parity_and_is_floored_at_zero`.
+  /// The pair's put, floored at zero, which the parity default is not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 

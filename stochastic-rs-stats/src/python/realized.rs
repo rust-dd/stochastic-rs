@@ -2,6 +2,8 @@ use ndarray::ArrayView1;
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "RealizedMoments", unsendable)]
 pub struct PyRealizedMoments {
   rv: f64,
@@ -13,9 +15,8 @@ pub struct PyRealizedMoments {
 
 #[pymethods]
 impl PyRealizedMoments {
-  /// Compute realised variance, volatility, skewness, kurtosis and quarticity
-  /// from a log-return series. `annualisation` is multiplied into the realised
-  /// volatility result (e.g. 252.0 for daily-to-annual).
+  /// Realised variance, volatility, skewness, kurtosis and quarticity of a log-return series;
+  /// `annualisation` multiplies the volatility (252.0 for daily to annual).
   #[new]
   #[pyo3(signature = (returns, annualisation=1.0))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, annualisation: f64) -> pyo3::PyResult<Self> {
@@ -114,9 +115,12 @@ impl PyBNSJumpTest {
   #[new]
   #[pyo3(signature = (returns, alpha=0.05))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, alpha: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::bipower::bns_jump_test(returns.as_array(), alpha),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::bipower::bns_jump_test(returns.as_array(), alpha)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -125,13 +129,13 @@ impl PyBNSJumpTest {
   }
 
   #[getter]
-  fn p_value(&self) -> f64 {
+  fn p_value(&self) -> Option<f64> {
     self.inner.p_value
   }
 
   #[getter]
   fn reject_no_jump(&self) -> bool {
-    self.inner.reject_no_jump
+    self.inner.rejects_null
   }
 }
 
@@ -142,9 +146,8 @@ pub struct PyLeeMyklandJumpTest {
 
 #[pymethods]
 impl PyLeeMyklandJumpTest {
-  /// Lee-Mykland jump test of every return, with the local volatility taken
-  /// from the `window` observations before it; `alpha` defaults to the
-  /// paper's 1% level.
+  /// Lee–Mykland jump test of every return, its local volatility from the `window` observations
+  /// before it; `alpha` defaults to the paper's 1% level.
   #[new]
   #[pyo3(signature = (returns, window, alpha=0.01))]
   fn new<'py>(
@@ -152,9 +155,12 @@ impl PyLeeMyklandJumpTest {
     window: usize,
     alpha: f64,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// The paper's window rule: the smallest integer above
@@ -226,10 +232,8 @@ pub struct PyRealizedKernel {
 
 #[pymethods]
 impl PyRealizedKernel {
-  /// Realised kernel (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008).
-  /// `kernel`: one of "parzen" (default), "bartlett", "tukey_hanning",
-  /// "tukey_hanning2", "cubic", "quadratic_spectral". `bandwidth` (None →
-  /// Parzen automatic via `parzen_default_bandwidth`).
+  /// Realised kernel (Barndorff-Nielsen et al. 2008) with `kernel` "parzen" (default), "bartlett",
+  /// "tukey_hanning", "tukey_hanning2", "cubic" or "quadratic_spectral"; no `bandwidth` is Parzen.
   #[new]
   #[pyo3(signature = (returns, kernel="parzen", bandwidth=None))]
   fn new<'py>(
@@ -281,7 +285,7 @@ pub struct PyTwoScaleRV {
 #[pymethods]
 impl PyTwoScaleRV {
   /// Two-scale realised variance (Zhang-Mykland-Aït-Sahalia 2005).
-  /// `prices`: log-price series; `k`: subsample step.
+  /// `prices`: log-price series; `k`: subsample step, at least 2.
   #[new]
   fn new<'py>(prices: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
@@ -318,7 +322,7 @@ impl PyPreAveragedVariance {
 
 #[pyclass(name = "EwmaVariance", unsendable)]
 pub struct PyEwmaVariance {
-  inner: crate::realized::ewma::EwmaVariance,
+  inner: crate::realized::ewma::EwmaResult,
 }
 
 #[pymethods]
@@ -328,9 +332,12 @@ impl PyEwmaVariance {
   #[new]
   #[pyo3(signature = (returns, lambda_=0.94))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, lambda_: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Conditional variance series (same length as the input).
@@ -365,9 +372,11 @@ impl PyHarRv {
   /// Fit HAR-RV (Corsi 2009) on a daily realised-variance history.
   #[new]
   fn new<'py>(daily_rv: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::har::HarRv::fit(daily_rv.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::har::HarRv::fit(daily_rv.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -401,7 +410,10 @@ impl PyHarRv {
   }
 
   /// One-step-ahead point forecast given recent daily-RV history.
-  fn forecast<'py>(&self, recent_daily_rv: PyReadonlyArray1<'py, f64>) -> f64 {
-    self.inner.forecast(recent_daily_rv.as_array())
+  fn forecast<'py>(&self, recent_daily_rv: PyReadonlyArray1<'py, f64>) -> PyResult<f64> {
+    self
+      .inner
+      .forecast(recent_daily_rv.as_array())
+      .map_err(stats_error)
   }
 }

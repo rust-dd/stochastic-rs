@@ -2,24 +2,19 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
-use super::simd::RoughSimd;
 use crate::rough::kernel::RlKernel;
 use crate::traits::FloatExt;
 use crate::volterra::lift::VolterraLift;
 
-/// Single-path and batch Markov-lift stepper for $f,g$-driven RL-Volterra SDEs.
-///
-/// A thin, backward-compatible wrapper over the kernel-generic
-/// [`VolterraLift`]: `MarkovLift<T>` is `VolterraLift<T, RlKernel<T>>`, with
-/// `f`/`g` coefficients that take only the state (RL-Volterra SDEs in this
-/// crate are time-homogeneous) rather than `VolterraLift`'s `(t, x)` pair.
+/// The Markov-lift stepper for Riemann–Liouville Volterra SDEs: [`VolterraLift`] at [`RlKernel`],
+/// with `f` and `g` taking the state alone, since these SDEs are time-homogeneous.
 #[derive(Debug, Clone)]
 pub struct MarkovLift<T: FloatExt> {
   inner: VolterraLift<T, RlKernel<T>>,
 }
 
 impl<T: FloatExt> MarkovLift<T> {
-  /// Build a stepper for the given kernel and step size $\delta t > 0$.
+  /// A stepper for `kernel` at step $\delta t$; panics unless `dt > 0`.
   #[must_use]
   pub fn new(kernel: RlKernel<T>, dt: T) -> Self {
     Self {
@@ -27,15 +22,12 @@ impl<T: FloatExt> MarkovLift<T> {
     }
   }
 
-  /// The lift's precomputed per-node constants and boundary terms, which is
-  /// what a device launch ships instead of the kernel: the recursion on the
-  /// device is the one [`VolterraLift::simulate`] runs here.
+  /// The lift's per-node constants and boundary terms, which a device launch ships instead of the
+  /// kernel: the device runs the recursion of [`VolterraLift::simulate`].
   pub(crate) fn lift(&self) -> &VolterraLift<T, RlKernel<T>> {
     &self.inner
   }
-}
 
-impl<T: FloatExt + RoughSimd> MarkovLift<T> {
   /// Integrate a single path. `dw` carries Brownian increments on the same
   /// grid as the output (length $n{-}1$).
   pub fn simulate<F, G>(&self, x0: T, f: F, g: G, dw: &[T]) -> Array1<T>
@@ -46,9 +38,8 @@ impl<T: FloatExt + RoughSimd> MarkovLift<T> {
     self.inner.simulate(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 
-  /// Integrate $m$ independent paths driven by the given Brownian increment
-  /// matrix `dw` of shape $(m, n{-}1)$. Returns an $(m, n)$ path matrix. See
-  /// [`VolterraLift::simulate_batch`] for the cache-tiling strategy.
+  /// Integrate $m$ independent paths from the Brownian increments `dw` of shape $(m, n{-}1)$ into
+  /// an $(m, n)$ matrix; [`VolterraLift::simulate_batch`] has the cache tiling.
   pub fn simulate_batch<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T,
@@ -59,9 +50,8 @@ impl<T: FloatExt + RoughSimd> MarkovLift<T> {
       .simulate_batch(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 
-  /// Same as [`simulate_batch`](Self::simulate_batch) but parallelises the
-  /// outer tile loop with rayon — combines per-core SIMD path-batching with
-  /// multi-core scheduling. Requires `f` and `g` to be `Send + Sync`.
+  /// [`simulate_batch`](Self::simulate_batch) with the outer tile loop on rayon; `f` and `g` must
+  /// be `Send + Sync`.
   pub fn simulate_batch_par<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T) -> T + Send + Sync,
@@ -72,7 +62,3 @@ impl<T: FloatExt + RoughSimd> MarkovLift<T> {
       .simulate_batch_par(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 }
-
-/// Path block size for [`MarkovLift::simulate_batch`]. Re-exported from
-/// [`VolterraLift`]'s own tiling constant, which now owns the definition.
-pub use crate::volterra::lift::BATCH_TILE;

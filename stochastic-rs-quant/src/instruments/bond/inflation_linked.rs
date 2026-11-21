@@ -18,9 +18,9 @@ use crate::traits::RealExt;
 pub struct InflationLinkedBond<T: RealExt> {
   /// Real face amount redeemed at maturity before indexation.
   pub real_face_value: T,
-  /// Real coupon rate.
+  /// Coupon rate applied to the inflation-indexed principal.
   pub real_coupon_rate: T,
-  /// Coupon frequency.
+  /// Coupons per year, which also fix the accrual periods.
   pub coupon_frequency: Frequency,
   /// Coupon accrual day-count convention.
   pub coupon_day_count: DayCountConvention,

@@ -1,29 +1,20 @@
-//! # Fbs
-//!
-//! The isotropic fractional Brownian field (fractional Brownian surface) of
-//! Stein (2002): the zero-mean Gaussian field on the plane with
+//! Stein's (2002) isotropic fractional Brownian field, not the product-form sheet, by his exact
+//! intrinsic embedding. The correction is eq. (16)'s; the listed MATLAB's `kron` is not Gaussian.
 //!
 //! $$
 //! \operatorname{Cov}(X_s, X_t)=\|s\|^{\alpha}+\|t\|^{\alpha}-\|s-t\|^{\alpha},\qquad \alpha=2H,
+//! \qquad \mathbb E[(X_s-X_t)^2]=2\|s-t\|^{\alpha}\ \text{for}\ \|s-t\|\le 1\ \text{on}\ (0,r]^2
 //! $$
 //!
-//! so that `E[(X_s − X_t)²] = 2‖s − t‖^α` — the isotropic generalisation of
-//! fractional Brownian motion, not the product-form sheet. Sampled exactly by
-//! Stein's intrinsic embedding: a stationary field with the covariance
-//! `c₀ + c₂‖h‖² − ‖h‖^α` (cubic tail out to `r` when `α > 1.5`) is drawn by
-//! circulant embedding and a two-dimensional FFT, its value at the first grid
-//! point is subtracted, and the random linear term `√(2c₂) tᵀZ`, `Z` a pair
-//! of independent standard normals, restores the `c₂‖s − t‖²` the embedding
-//! took out. The law holds for pairs of points within unit distance of each
-//! other; the grid spans `(0, r]²`.
+//! $$
+//! \operatorname{Cov}(Y_s,Y_t)=\rho(s-t),\quad \rho(h)=\begin{cases}
+//! c_0+c_2\|h\|^2-\|h\|^{\alpha},&\|h\|\le 1\\ \beta\,(r-\|h\|)^3/\|h\|,&1<\|h\|\le r
+//! \end{cases}\quad(\beta=0,\ \alpha\le 1.5),\qquad
+//! X_t=Y_t-Y_{t_1}+\sqrt{2c_2}\,t^\top Z,\quad Z\sim\mathcal N(0,I_2)
+//! $$
 //!
-//! References: Stein, M. L. (2002), *Fast and exact simulation of fractional
-//! Brownian surfaces*, J. Comput. Graph. Statist. 11(3), 587–599; Kroese, D.
-//! P. & Botev, Z. I. (2015), *Spatial process simulation*, §4.4, in
-//! Stochastic Geometry, Spatial Statistics and Random Fields, Springer
-//! (arXiv:1308.0399). The linear correction is the one in their eq. (16)
-//! construction; their listed MATLAB adds `kron(ty'·Z₁, tx·Z₂)`, a product of
-//! two normals, which is neither Gaussian nor the right variogram.
+//! Reference: Stein (2002), J. Comput. Graph. Statist. 11(3), 587–599
+//! Reference: Kroese & Botev (2015), Spatial process simulation, §4.4, eq. (16), arXiv:1308.0399
 //!
 
 use std::sync::Arc;
@@ -36,6 +27,8 @@ use ndrustfft::ndfft;
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -46,53 +39,60 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[cfg(feature = "cuda")]
-mod cuda;
-#[cfg(feature = "metal")]
-mod metal;
+pub(crate) mod cuda;
+#[cfg(metal_backend)]
+pub(crate) mod metal;
 
 #[derive(Debug, Clone)]
 pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent `H`, `α = 2H` in the covariance; the field is isotropic,
   /// one exponent for both coordinates.
   pub hurst: T,
-  /// Grid resolution along the sheet's second coordinate axis (rows of
-  /// the output `Array2`).
-  pub m: usize,
-  /// Grid resolution along the sheet's first coordinate axis (columns of
-  /// the output `Array2`).
-  pub n: usize,
-  /// Physical domain extent for the simulation grid — the covariance
-  /// kernel in this type's internal `rho` helper is defined on `[0, r]²`
-  /// with a cutoff at distance `r`. Not a financial rate; this is a pure
-  /// covariance-field simulator.
+  /// Grid points along the sheet's second axis (rows of the output).
+  pub rows: usize,
+  /// Grid points along the sheet's first axis (columns of the output).
+  pub cols: usize,
+  /// Extent of the simulation grid: the covariance helper `rho` is defined on `[0, r]²` with a
+  /// cutoff at distance `r`. Not a financial rate.
   pub r: T,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-  /// The square roots of the circulant embedding's eigenvalues: the
-  /// `2(m − 1) × 2(n − 1)` block every sample scales its complex Gaussian
-  /// noise by, computed once here and uploaded once per device configuration.
+  /// Square roots of the circulant embedding's `2(rows − 1) × 2(cols − 1)` eigenvalues, which
+  /// scale every sample's complex noise; computed once, uploaded once per device configuration.
   pub(crate) lam: Arc<Array2<T>>,
-  /// The `c₂` of the intrinsic embedding at this Hurst exponent and cutoff:
-  /// the random linear term `√(2c₂) (t₁ Z₁ + t₂ Z₂)` added after the shift
-  /// restores the `c₂‖s − t‖²` the embedding took out of the variogram.
+  /// The intrinsic embedding's `c₂` at this Hurst exponent and cutoff: the linear term
+  /// `√(2c₂) (t₁ Z₁ + t₂ Z₂)` restores the `c₂‖s − t‖²` the embedding took out of the variogram.
   pub(crate) c2: T,
 }
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
-  pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
+  /// Panics unless `rows >= 2`, `cols >= 2` and every parameter is finite.
+  pub fn new(hurst: T, rows: usize, cols: usize, r: T, seed: S) -> Self {
     assert!(
-      m >= 2 && n >= 2,
-      "Fbs: the grid needs at least two points per axis"
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
     );
-    let (lam, c2) = Self::embedding(hurst, m, n, r);
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      rows >= 2,
+      "rows must satisfy `rows >= 2`, got rows = {rows:?}"
+    );
+    assert!(
+      cols >= 2,
+      "cols must satisfy `cols >= 2`, got cols = {cols:?}"
+    );
+    let (lam, c2) = Self::embedding(hurst, rows, cols, r);
     Self {
       backend: Cpu,
       hurst,
-      m,
-      n,
+      rows,
+      cols,
       r,
       seed,
       lam: Arc::new(lam),
@@ -100,11 +100,20 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
     }
   }
 
-  /// The circulant embedding of the covariance on the `m × n` grid: the
-  /// covariance block against the first grid point, mirrored into the
-  /// `2(m − 1) × 2(n − 1)` circulant whose two-dimensional FFT gives the
-  /// eigenvalues; the square roots of their positive parts come back with
-  /// the embedding's `c₂`.
+  /// Replace `rows` and rebuild the embedding, so it is defined on `Cpu` (move with `on`
+  /// afterwards); panics unless `rows >= 2`.
+  pub fn with_rows(self, rows: usize) -> Self {
+    Self::new(self.hurst, rows, self.cols, self.r, self.seed)
+  }
+
+  /// Replace `cols` and rebuild the embedding, so it is defined on `Cpu` (move with `on`
+  /// afterwards); panics unless `cols >= 2`.
+  pub fn with_cols(self, cols: usize) -> Self {
+    Self::new(self.hurst, self.rows, cols, self.r, self.seed)
+  }
+
+  /// The square roots of the positive eigenvalues of the `2(m − 1) × 2(n − 1)` circulant that
+  /// mirrors the covariance block against the first grid point, with the embedding's `c₂`.
   fn embedding(hurst: T, m: usize, n: usize, r: T) -> (Array2<T>, T) {
     let alpha = T::from_usize_(2) * hurst;
 
@@ -153,9 +162,8 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
-  /// One sheet from this process's own sampler, the seed advanced as
-  /// [`ProcessExt::sample`] advances it: what the host devices produce, and
-  /// what a device build falls back to off the powers of two.
+  /// One sheet from this process's own sampler, the seed advanced as [`ProcessExt::sample`]
+  /// advances it: the host devices' output, and a device build's off the powers of two.
   pub(crate) fn host_sheet(&self) -> Array2<T> {
     let out = self.sampler().sample();
     self.advance_chunk_seed();
@@ -163,7 +171,9 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, m, n, r, seed, lam, c2 } via sheet);
+backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, rows, cols, r, seed, lam, c2 } via sheet);
+
+impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> crate::traits::Sealed for Fbs<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B> {
   type Output = Array2<T>;
@@ -172,24 +182,21 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> FbsSampler<T, S> {
     FbsSampler {
       lam: Arc::clone(&self.lam),
       c2: self.c2,
-      m: self.m,
-      n: self.n,
+      m: self.rows,
+      n: self.cols,
       r: self.r,
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the backend's sheet pipeline when both embedding sides are
-  /// powers of two; any other grid samples on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the backend's sheet pipeline when both embedding sides are powers of two; any other
+  /// grid samples on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array2<T> {
     if self.device_ready() {
       self
@@ -239,20 +246,18 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
     }
   }
 
-  /// What a device runs here: both embedding sides, `2(m − 1)`
-  /// and `2(n − 1)`, powers of two, which is what the kernels' radix-2
-  /// transforms take. Any other grid samples on the host.
+  /// What a device runs here: both embedding sides, `2(rows − 1)` and `2(cols − 1)`, powers of
+  /// two, as the kernels' radix-2 transforms take; any other grid samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!((self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()))
+    (!((self.rows - 1).is_power_of_two() && (self.cols - 1).is_power_of_two()))
       .then_some("an embedding side that is not a power of two")
   }
 }
 
-/// Reusable [`Fbs`] sampling state: owns the seed source so a Monte-Carlo loop
-/// reuses the output field, and shares the process's embedding, so a sample
-/// is the noise transform alone. The matrix draw and the two normals of the
-/// linear correction come from the derived seed in that order.
+/// Reusable [`Fbs`] sampling state: owns the seed source and shares the process's embedding. The
+/// matrix draw, then the two normals of the linear correction come from the derived seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FbsSampler<T: FloatExt, S: SeedExt> {
   lam: Arc<Array2<T>>,
   c2: T,
@@ -270,9 +275,9 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     let fft_handler0 = FftHandler::<T>::new(big_m);
     let fft_handler1 = FftHandler::<T>::new(big_n);
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let z = Array2::from_shape_fn((big_m, big_n), |_| {
-      Complex::new(normal.sample_fast(), normal.sample_fast())
+      Complex::new(normal.sample(), normal.sample())
     });
 
     let prod = self.lam.mapv(|v| Complex::new(v, T::zero())) * z;
@@ -293,7 +298,7 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
 
     // Stein's correction: the random linear function √(2c₂) (t₁ Z₁ + t₂ Z₂),
     // whose increments carry exactly the c₂‖s − t‖² the embedding took out.
-    let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let mut normal_scalar = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut z_buf = [T::zero(); 2];
     normal_scalar.fill_slice(&mut z_buf);
     let z1 = z_buf[0];
@@ -311,6 +316,8 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     field
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FbsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FbsSampler<T, S> {
   type Output = Array2<T>;
@@ -357,11 +364,9 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   }
 }
 
-/// The per-launch view of a sheet the device pipelines share: the embedding's
-/// eigenvalue roots in the device's precision, the grid, the domain extent,
-/// the linear correction's coefficient `√(2 c₂)`, and a key that tells one
-/// embedding from another in a per-size cache.
-#[cfg(any(feature = "metal", feature = "cuda"))]
+/// The per-launch view the device pipelines share: the eigenvalue roots in the device's
+/// precision, the grid, the extent, `√(2 c₂)`, and a key that tells embeddings apart in a cache.
+#[cfg(device_backend)]
 pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) lam: &'a [F],
   pub(crate) m: usize,
@@ -371,11 +376,12 @@ pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) key: (u64, u64),
 }
 
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(device_backend)]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
-  /// The embedding's cells: `2(m − 1) · 2(n − 1)`.
+  /// The embedding's cells: `2(rows − 1) · 2(cols − 1)`.
+  #[cfg(feature = "cuda")]
   pub(crate) fn cells(&self) -> usize {
-    4 * (self.m - 1) * (self.n - 1)
+    4 * (self.rows - 1) * (self.cols - 1)
   }
 
   /// The key a per-size cache tells this embedding by: the Hurst exponent's
@@ -392,9 +398,9 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     (T::from_usize_(2) * self.c2).sqrt()
   }
 
-  /// A batch's flat `sheets · m · n` values as one array per sheet.
+  /// A batch's flat `sheets · rows · cols` values as one array per sheet.
   pub(crate) fn sheets_from_flat<F: Copy + Into<f64>>(&self, flat: &[F]) -> Vec<Array2<T>> {
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     flat
       .chunks_exact(m * n)
       .map(|sheet| {
@@ -405,7 +411,24 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
 }
 
 py_process_2d!(PyFbs, Fbs,
-  sig: (hurst, m, n, r, seed=None, dtype=None),
-  params: (hurst: f64, m: usize, n: usize, r: f64),
+  sig: (hurst, rows, cols, r, seed=None, dtype=None),
+  params: (hurst: f64, rows: usize, cols: usize, r: f64),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  #[test]
+  fn the_grid_setters_rebuild_the_embedding() {
+    let resized = Fbs::<f64, _>::new(0.7, 9, 5, 1.0, Deterministic::new(3))
+      .with_rows(17)
+      .with_cols(9);
+    let fresh = Fbs::<f64, _>::new(0.7, 17, 9, 1.0, Deterministic::new(3));
+    assert_eq!((resized.rows, resized.cols), (17, 9));
+    assert_eq!(resized.sample(), fresh.sample());
+  }
+}

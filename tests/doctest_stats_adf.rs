@@ -1,7 +1,5 @@
 // docs: stats#adf-stationarity-test
-//! Backs the ADF example on the statistics catalog page. `adf_test` lives
-//! under the `stationarity` module (OLS regression via
-//! `ndarray-linalg`), so the whole file is gated on that feature.
+//! Backs the ADF example on the statistics catalog page.
 
 use ndarray::ArrayView1;
 use stochastic_rs::simd_rng::Deterministic;
@@ -29,9 +27,10 @@ fn adf_rejects_unit_root_on_a_mean_reverting_series() {
   let result = adf_test(
     ArrayView1::from(series.as_slice().unwrap()),
     AdfConfig::default(),
-  );
+  )
+  .expect("500 finite points of a mean-reverting path");
   assert!(
-    result.reject_unit_root,
+    result.rejects_null,
     "expected the unit-root null to be rejected"
   );
 }

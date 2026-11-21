@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "GaussianHmm", unsendable)]
 pub struct PyGaussianHmm {
   inner: crate::econometrics::hmm::GaussianHmm,
@@ -38,9 +40,13 @@ impl PyGaussianHmm {
     &self,
     py: Python<'py>,
     observations: PyReadonlyArray1<'py, f64>,
-  ) -> pyo3::Bound<'py, numpy::PyArray1<usize>> {
+  ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<usize>>> {
     use numpy::IntoPyArray;
-    self.inner.viterbi(observations.as_array()).into_pyarray(py)
+    let path = self
+      .inner
+      .viterbi(observations.as_array())
+      .map_err(stats_error)?;
+    Ok(path.into_pyarray(py))
   }
 
   /// Train via Baum-Welch EM and return `(iterations, log_likelihood, converged)`.
@@ -49,10 +55,11 @@ impl PyGaussianHmm {
     observations: PyReadonlyArray1<'py, f64>,
     max_iter: usize,
     tol: f64,
-  ) -> (usize, f64, bool) {
+  ) -> PyResult<(usize, f64, bool)> {
     let fit = self
       .inner
-      .baum_welch(observations.as_array(), max_iter, tol);
-    (fit.iterations, fit.log_likelihood, fit.converged)
+      .baum_welch(observations.as_array(), max_iter, tol)
+      .map_err(stats_error)?;
+    Ok((fit.iterations, fit.log_likelihood, fit.converged))
   }
 }

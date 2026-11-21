@@ -1,11 +1,7 @@
 //! Short-rate zero-coupon bond pricing — `ShortRatePricer`.
 
-/// Zero-coupon bond pricing from a short-rate model.
-///
-/// The model holds its own parameters; the short rate and maturity are the
-/// query. This is the split that makes one model reusable across a maturity
-/// grid — `bonds::Cir` previously stored `r_t` and `tau` as fields, so a
-/// second maturity meant a second struct.
+/// Zero-coupon bond pricing from a short-rate model: the model holds its parameters, and the short
+/// rate and maturity are the query, so one model prices a whole maturity grid.
 pub trait ShortRatePricer {
   /// Price of a zero-coupon bond paying 1 at `tau`, given short rate `r0`.
   ///

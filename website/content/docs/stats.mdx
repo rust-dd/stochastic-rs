@@ -7,12 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stats` crate ships estimators for the most common
-quant-finance workflows. Most take an `ArrayView1<T>` (price or
-log-return series) and return a plain, flat `*Result` struct — but the
-struct's field names are estimator-specific (see
-[Common pattern](#common-pattern) below), not a single uniform
-`point`/`se`/`p_value` shape.
+The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat struct: an estimate (`*Fit`) with estimator-specific fields, or a hypothesis test (`*Test`) with the four fields every `HypothesisTest` shares (see [Common pattern](#common-pattern)).
 
 ## Sub-modules
 
@@ -21,15 +16,13 @@ struct's field names are estimator-specific (see
 | `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS-B via Basin. Plus the dedicated Heston MLE / NMLE-CEKF. |
 | `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, EWMA / RiskMetrics variance, Jacod pre-averaging, TSRV, multi-scale RV, BNS and Lee–Mykland jump tests. |
 | `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
-| `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability instead; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test) — the module's own name undersells how different these nine are. |
+| `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test). |
 | `econometrics`         | Engle-Granger and Johansen (trace + maximum-eigenvalue) cointegration with VECM estimation, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
-| `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood; L-BFGS-B + Paxson + Eq.16 corrections, intraday Table 1 validation), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors total. `hurst::whittle` additionally exposes `Whittle`'s own algorithm through dedicated one-shot functions (`estimate`, `estimate_from_prices`) outside the shared trait — see below |
-| `gaussian_kde`         | Gaussian KDE                                                                   |
-| `tail_index`           | Hill estimator + variants                                                      |
+| `hurst`                | Five native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **7** `HurstEstimator` implementors in total. `hurst::whittle::Whittle::fit` estimates a different quantity (the roughness of latent volatility from log realized variance, Fukasawa, Takabatake & Westphal 2019) and is not a `HurstEstimator` — see below |
+| `kde`                  | Gaussian KDE                                                                   |
 | `spectral`             | Periodogram and spectrum search                                                |
-| `leverage`             | Leverage-effect estimators                                                     |
-| `fou_estimator`        | fOU MLE with Hurst joint estimation                                            |
+| `fou`                  | fOU estimators by method: filtered variations and central differences (Brouste & Iacus 2013), power variation (Hu, Nualart & Zhou 2019) |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 | `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
 | `distfit`              | Maximum-likelihood fits of the skewed return laws: Johnson SU, Hansen skew-t with location and scale, variance gamma |
@@ -48,11 +41,7 @@ import stochastic_rs as srs
 import numpy as np
 
 log_returns = ...   # 1-min log-returns over a trading day
-# annualisation is a constructor argument, not a post-hoc multiplier — it
-# scales straight into `.volatility`. There is no standard-error field:
-# RealizedMoments reports variance/volatility/skewness/kurtosis/quarticity,
-# not a point estimate with a `se` — see the ADF section below for the
-# same "no se/p_value field" pattern on the stationarity tests.
+# annualisation scales straight into `.volatility`; there is no standard-error field
 res = srs.RealizedMoments(log_returns, annualisation=252.0)
 print("RV     =", res.variance)
 print("annVol =", res.volatility)
@@ -102,7 +91,7 @@ print("threshold on |L(i)|:", test.threshold)
 
 ### Johansen cointegration and VECM
 
-`johansen_test` returns both rank statistics of the concentrated likelihood — $\lambda_{\mathrm{trace}}(r) = -T\sum_{i>r}\log(1-\hat\lambda_i)$ and $\lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1})$ — with the 5% MacKinnon–Haug–Michelis critical values for an unrestricted constant, and the rank each sequential procedure selects. `vecm_fit` then gives the maximum-likelihood VECM at a chosen rank: $\hat\beta$ (Johansen's normalisation $\hat\beta' S_{11}\hat\beta = I$), $\hat\alpha$, $\hat\Pi = \hat\alpha\hat\beta'$, the short-run $\hat\Gamma_i$, the constant, residuals and their covariance.
+`johansen_test` returns both rank statistics of the concentrated likelihood — $\lambda_{\mathrm{trace}}(r) = -T\sum_{i>r}\log(1-\hat\lambda_i)$ and $\lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1})$ — with the 5% MacKinnon–Haug–Michelis critical values for an unrestricted constant, and the rank each sequential procedure selects. `fit_vecm` then gives the maximum-likelihood VECM at a chosen rank: $\hat\beta$ (Johansen's normalisation $\hat\beta' S_{11}\hat\beta = I$), $\hat\alpha$, $\hat\Pi = \hat\alpha\hat\beta'$, the short-run $\hat\Gamma_i$, the constant, residuals and their covariance.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -125,7 +114,7 @@ print("gamma_1:", fit.gamma()[0])
 
 ### GARCH-family QMLE
 
-`garch_fit` maximises the Gaussian quasi-likelihood of a GARCH($p$,$q$), GJR-GARCH($p$,$q$) or EGARCH($p$,$q$) recursion with a constant or zero mean, in unconstrained coordinates that keep the fit inside the stationarity region. The result carries the parameters, both the inverse-Hessian and the Bollerslev–Wooldridge robust standard errors (the latter stay valid under non-Gaussian innovations), the conditional-variance path, standardised residuals, log-likelihood, AIC/BIC and persistence. Pre-sample terms follow the backcast convention of the `arch` reference implementation, whose fits the test-suite reproduces.
+`fit_garch` maximises the Gaussian quasi-likelihood of a GARCH($p$,$q$), GJR-GARCH($p$,$q$) or EGARCH($p$,$q$) recursion with a constant or zero mean, in unconstrained coordinates that keep the fit inside the stationarity region. The result carries the parameters, both the inverse-Hessian and the Bollerslev–Wooldridge robust standard errors (the latter stay valid under non-Gaussian innovations), the conditional-variance path, standardised residuals, log-likelihood, AIC/BIC and persistence. Pre-sample terms follow the backcast convention of the `arch` reference implementation, and the fits match its results.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -145,7 +134,7 @@ print("persistence:", fit.persistence, "log-likelihood:", fit.log_likelihood)
 
 ### Extreme-value theory: Hill, peaks-over-threshold and block maxima
 
-`hill_estimator` is Hill's (1975) tail index from the $k$ largest positive observations with its $\hat\xi/\sqrt k$ standard error. `pot_fit` fits a generalised Pareto distribution to the excesses over a threshold by maximum likelihood (`gpd_fit` on its own for pre-computed excesses) and turns it into tail quantiles and expected shortfall with the McNeil–Frey–Embrechts formulas; `mean_excess` is the mean-residual-life plot for choosing the threshold. `block_maxima` and `gev_fit` are the block-maxima route, with `return_level(m)` for the level exceeded once every $m$ blocks. The MLE fitters report inverse-information standard errors, and the fits reproduce `scipy` on identical data.
+`fit_hill` is Hill's (1975) tail index from the $k$ largest positive observations with its $\hat\xi/\sqrt k$ standard error. `fit_pot` fits a generalised Pareto distribution to the excesses over a threshold by maximum likelihood (`fit_gpd` on its own for pre-computed excesses) and turns it into tail quantiles and expected shortfall with the McNeil–Frey–Embrechts formulas; `mean_excess` is the mean-residual-life plot for choosing the threshold. `block_maxima` and `fit_gev` are the block-maxima route, with `return_level(m)` for the level exceeded once every $m$ blocks. The MLE fitters report inverse-information standard errors, and the fits reproduce `scipy` on identical data.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -171,7 +160,7 @@ print("100-block return level:", gev.return_level(100.0))
 
 ### Fitting the skewed return distributions
 
-`distfit` fits the skewed laws of the distributions crate by maximum likelihood with their closed-form densities: `johnson_su_fit` (γ, δ, ξ, λ), `skew_t_fit` (Hansen's standardised skew-t with location μ and scale σ, so η > 2 and |λ| < 1 are kept by construction) and `variance_gamma_fit` (σ, ν, θ, μ through the Bessel-form density). Each returns the estimates, inverse-information standard errors, log-likelihood, AIC and BIC; the test-suite pins them to tightly converged `scipy` / `arch` optima on identical data. `evt::gpd_pwm` is the matching closed-form Hosking-Wallis estimator for threshold excesses.
+`distfit` fits the skewed laws of the distributions crate by maximum likelihood with their closed-form densities: `fit_johnson_su` (γ, δ, ξ, λ), `fit_skew_t` (Hansen's standardised skew-t with location μ and scale σ, so η > 2 and |λ| < 1 are kept by construction) and `fit_variance_gamma` (σ, ν, θ, μ through the Bessel-form density). Each returns the estimates, inverse-information standard errors, log-likelihood, AIC and BIC; the estimates match tightly converged `scipy` / `arch` optima on identical data. `evt::fit_gpd_pwm` is the matching closed-form Hosking-Wallis estimator for threshold excesses.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -193,11 +182,7 @@ print("sigma, nu, theta, mu:", vg.sigma, vg.nu, vg.theta, vg.mu)
 
 ### ADF stationarity test
 
-Null hypothesis: unit root (non-stationary). `adf_test` lives under the
-`stationarity` module and reports the rejection decision directly as
-`reject_unit_root: bool` at the `alpha` configured on `AdfConfig` — there
-is no separate `p_value` field, only the test statistic and tabulated
-critical values.
+Null hypothesis: unit root (non-stationary). `adf_test` lives in the `stationarity` module and reports the decision as `rejects_null` at the `alpha` set on `AdfConfig`; `p_value` is `None` (no p-value table) and `critical_values` holds the 1 %, 5 % and 10 % levels.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -207,10 +192,7 @@ critical values.
 ```python
 import stochastic_rs as srs
 
-# ADFTest is a class, not a free function; the fitted
-# object exposes .statistic/.reject_unit_root/.critical_values directly —
-# no .p_value, matching the "no separate p_value field" note above.
-res = srs.ADFTest(series, max_lags=5)
+res = srs.ADFTest(series, max_lags=5)        # .statistic, .reject_unit_root, .critical_values
 print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 ```
 </Tab>
@@ -218,13 +200,7 @@ print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 
 ### Hurst exponent estimation
 
-The `hurst` module unifies six estimators (rescaled-range, DFA, GPH,
-wavelet, Whittle, variations) behind one `HurstEstimator` trait —
-`estimate(x) -> Result<HurstResult, HurstError>` — plus two more
-(`Higuchi`, `Variogram`) that reach the same trait by adapting a
-fractal-dimension estimate. The example below uses `RescaledRange`
-(Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the
-Hurst exponent of a signal directly:
+The `hurst` module unifies five estimators (rescaled-range, DFA, GPH, wavelet, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstFit, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -241,102 +217,129 @@ print(f"H = {res.hurst:.3f}")
 </Tab>
 </Tabs>
 
-All eight `HurstEstimator` implementors are Python-bound (`RescaledRange`,
-`Dfa`, `Gph`, `Wavelet`, `Whittle`, `Variations`, `Higuchi`, `Variogram` —
-the last two also via `.estimate_hurst(x)` alongside their native
-`.estimate(x) -> FdResult` fractal-dimension output).
+All seven `HurstEstimator` implementors have Python classes (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Variations`, `Higuchi`, `Variogram` — the last two also via `.estimate_hurst(x)` alongside their native `.estimate(x) -> FdFit` fractal-dimension output).
 
-`Whittle` is a different kind of input from the other five native
-estimators: it and the free-standing `FukasawaHurst` class (Python) /
-`estimate`, `estimate_from_prices` functions (Rust, `stats::hurst::whittle`)
-are the **same** Fukasawa, Takabatake & Westphal (2019) adapted-Whittle
-quasi-likelihood estimator, just reached two ways — the generic trait or
-a dedicated one-shot constructor. Either way it estimates the roughness of
-a *latent volatility* process from a realized-variance time series, not
-the Hurst exponent of a path sampled directly from `Fgn`. Feeding raw path
-samples into it silently recovers nonsense; see
-`stochastic-rs-stats/src/hurst/whittle.rs`'s own `simulate_log_rv` test
-helper for the construction it actually expects (a simulated log-variance
-process aggregated into intraday realized-variance bins).
+`hurst::whittle::Whittle::fit` is the Fukasawa, Takabatake & Westphal (2019) adapted-Whittle quasi-likelihood, and it is not a `HurstEstimator`: it estimates the roughness of a *latent volatility* process from log realized variance, not the Hurst exponent of a path sampled directly from `Fgn`; fed raw path samples, it returns a number unrelated to the path's exponent. Build its input from intraday returns. In Python, `Whittle(...).estimate(log_rv)` returns a `FukasawaHurst`, as `FukasawaHurst.from_log_rv(log_rv, m, delta)` does.
 
 ## Choosing a stationarity test
 
-The `stationarity` module holds nine `HypothesisTest` implementors, but
-"stationarity" accurately describes only five of them — the other four
-test a different null hypothesis entirely, despite living in the same
-module. The module's own doc comment
-(`stochastic-rs-stats/src/stationarity.rs`) has the full comparison with
-literature citations and exact minimum-sample requirements; short version:
+The `stationarity` module holds nine `HypothesisTest` implementors on `ArrayView1<f64>` / `ArrayView2<f64>`, under four different null hypotheses. Pick by the null, not by the module name:
+
+| Test | H₀ | Input | Minimum observations |
+|---|---|---|---|
+| `adf::adf_test` (ADF) | unit root | 1 series | 20 |
+| `kpss::kpss_test` (KPSS) | (trend-)stationarity | 1 series | 20 |
+| `ers_dfgls::ers_dfgls_test` (ERS / DF-GLS) | unit root | 1 series | 20 |
+| `phillips_perron::phillips_perron_test` (PP) | unit root | 1 series | 20 |
+| `leybourne_mccabe::leybourne_mccabe_test` (LM) | (trend-)stationarity | 1 series | 40 |
+| `andrews_ploberger::andrews_ploberger_test` | regression-parameter constancy | series + design matrix | `3k + 4` |
+| `cusum::cusum_test` | regression-parameter constancy | series + design matrix | `k + 2` |
+| `lo_mackinlay::lo_mackinlay_test` | random walk (`VR(q) = 1`) | 1 series | `4q + 1` (`4q` returns) |
+| `reset::reset_test` | correct linear functional form | series + design matrix | `k + q + 2` |
+
+`k` is the number of design-matrix columns and `q` the aggregation horizon (Lo–MacKinlay) or the number of extra powers (RESET). The lag-dependent tests need more than their floor when the largest lag asks for it.
 
 | Question you're actually asking | Reach for |
 |---|---|
-| Does this series have a unit root? (H₀: unit root) | `adf::adf_test`, `ers_dfgls::ers_dfgls_test` (usually the better default — the module doc explains why), `phillips_perron::phillips_perron_test` |
+| Does this series have a unit root? (H₀: unit root) | `adf::adf_test`, `ers_dfgls::ers_dfgls_test` (usually the better default), `phillips_perron::phillips_perron_test` |
 | Is this series stationary? (H₀: stationarity) | `kpss::kpss_test`, `leybourne_mccabe::leybourne_mccabe_test` |
 | Are this regression's coefficients stable over time? | `andrews_ploberger::andrews_ploberger_test` (one unknown breakpoint) or `cusum::cusum_test` (gradual drift in the mean or variance) |
 | Is this specifically a random walk (uncorrelated increments)? | `lo_mackinlay::lo_mackinlay_test` |
 | Is my linear model's functional form correct? | `reset::reset_test` — not a time-series question at all |
 
-Run ADF and KPSS together, not either alone: their null hypotheses are
-opposite, so agreement between the two is real evidence, and disagreement
-is informative too — often a sign of long-range dependence rather than a
-clean unit-root/stationary split. See
-[Choosing a Hurst estimator](#choosing-a-hurst-estimator) below for
-estimating that directly instead of forcing a binary call.
+### Unit-root and stationarity tests on one series
+
+Failing to reject never proves the null, so run a unit-root test and a stationarity test together. Kwiatkowski, Phillips, Schmidt & Shin (1992, *Journal of Econometrics* 54(1-3), 159-178, DOI 10.1016/0304-4076(92)90104-Y) built KPSS to pair with ADF for this reason:
+
+| ADF (H₀: unit root) | KPSS (H₀: stationary) | Reading |
+|---|---|---|
+| rejects | fails to reject | stationary — both agree |
+| fails to reject | rejects | unit root — both agree |
+| rejects | rejects | contradiction, often long-range dependence rather than a clean I(0)/I(1) split — estimate `H` directly, see [Choosing a Hurst estimator](#choosing-a-hurst-estimator) |
+| fails to reject | fails to reject | inconclusive, usually a power problem rather than evidence either way |
+
+- **ADF.** The statistic is Dickey & Fuller's (1979, *Journal of the American Statistical Association* 74(366), 427-431, DOI 10.2307/2286348); the lagged differences that keep it valid under ARMA errors are Said & Dickey's (1984, *Biometrika* 71(3), 599-607).
+- **ERS / DF-GLS.** Elliott, Rothenberg & Stock (1996, *Econometrica* 64(4), 813-836, DOI 10.2307/2171846) GLS-detrend before testing, which recovers the power OLS-detrended ADF loses near a unit root; it takes `Trend::Constant` or `Trend::ConstantTrend` only, so a series with no deterministic component goes to ADF or PP with `Trend::None`.
+- **Phillips–Perron.** A Newey–West correction replaces ADF's lag augmentation (Phillips & Perron 1988, *Biometrika* 75(2), 335-346, DOI 10.1093/biomet/75.2.335); Schwert (1989, *Journal of Business & Economic Statistics* 7(2), 147-159, DOI 10.1080/07350015.1989.10509723) shows it is size-distorted under strong negative MA errors, and his lag rule is the default of ADF, DF-GLS, KPSS and PP here.
+- **Leybourne–McCabe.** AR prewhitening and a bootstrap p-value replace KPSS's long-run variance (Leybourne & McCabe 1994, *Journal of Business & Economic Statistics* 12(2), 157-166): more robust to strongly autocorrelated residuals, at twice the minimum sample, an AR order to choose and 400 bootstrap fits by default.
+
+### Structural-break tests on a regression
+
+Both take a design matrix `x` and test whether the regression's coefficients stay constant, which is a different question from a unit root even when `x` is one intercept column.
+
+- **Andrews–Ploberger** searches for one unknown breakpoint and reports where it is (Andrews 1993, *Econometrica* 61(4), 821-856; Andrews & Ploberger 1994, *Econometrica* 62(6), 1383-1414).
+- **CUSUM** follows the cumulated recursive residuals against a boundary (Brown, Durbin & Evans 1975, *JRSS B* 37(2), 149-192), which suits gradual drift better than one sharp break; `CusumVariant` chooses CUSUM for a shift in the mean and CUSUMQ for one in the variance.
+
+### Random-walk and functional-form tests
+
+- **Lo–MacKinlay** tests that increments are uncorrelated at horizon `q`, which is stronger than a unit root: an ARIMA(1,1,0) has one and fails it (Lo & MacKinlay 1988, *Review of Financial Studies* 1(1), 41-66). `statistic` is the heteroskedasticity-robust `M2`, which `HypothesisTest` decides on, and `z_iid` is `M1`.
+- **RESET** detects omitted nonlinearity in a linear regression's functional form (Ramsey 1969, *JRSS B* 31(2), 350-371); it has no series-only entry point and says nothing about persistence.
 
 ## Choosing a Hurst estimator
 
-Seven of the eight `HurstEstimator` implementors estimate the same
-quantity — the self-similarity exponent of the series handed to
-`.estimate()` — by different routes; the eighth, `Whittle`, estimates
-something else entirely (the warning in the example above). The full
-comparison, with the literature backing each method and exact data-size
-requirements, lives in the `hurst` module's own doc comment
-(`stochastic-rs-stats/src/hurst/mod.rs`). Short version:
+All seven `HurstEstimator` implementors estimate the same quantity — the self-similarity exponent of the series handed to `.estimate()` — by different routes; `Whittle::fit` estimates something else. Each returns a `HurstFit` with the estimate, an optional standard error, the sample size and a method-specific `HurstDiagnostic`.
 
 | Need | Reach for |
 |---|---|
-| A reasonable general-purpose default | `dfa::Dfa` — its polynomial detrending step is specifically why it tolerates real (trending) data better than `rs::RescaledRange` |
-| A confidence interval, not just a point estimate | `gph::Gph` or `wavelet::Wavelet` — the only two that populate a closed-form standard error |
+| A reasonable general-purpose default | `dfa::Dfa` — its polynomial detrending is why it tolerates real (trending) data better than `rs::RescaledRange` |
+| A confidence interval, not just a point estimate | `gph::Gph` or `wavelet::Wavelet` — the only two that report a closed-form standard error |
 | The series is believed to be a rough, mean-reverting (fractional-OU-like) process rather than pure fBM/fGN | `variations::Variations` with `VariationKind::PowerVariation` |
-| You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter — prefer `FractalDimEstimator` directly when a degenerate fit matters, since the adapter clamps silently |
-| Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle` — and only that input shape; feeding it a raw sampled path is the one mistake this table exists to prevent |
+| You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter, which reports `2 - D` unclamped; `FractalDimEstimator` gives `D` itself |
+| Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle::fit` — and only that input |
 
-`rs::RescaledRange` is the historical default (Hurst 1951) but is
-documented — in the same paper this crate cites for its own bias
-correction — as the least reliable of the group in finite samples; kept
-for continuity, not as a recommendation.
+The estimators fall into three groups.
+
+- **Path self-similarity** (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Variations`): a log-log or log-frequency regression on the series itself, after optional first-differencing.
+  - `RescaledRange` is the oldest (Hurst 1951) and, per Weron (2002), the least reliable in finite samples; it is cheap, not the recommended default.
+  - `Dfa` detrends every window with a degree-`order` polynomial, which is why Peng et al. (1994) and Kantelhardt et al. (2001) built it: robustness to the smooth trends that mislead `RescaledRange`.
+  - `Gph` (Geweke & Porter-Hudak 1983) and `Wavelet` (Veitch & Abry 1999) work in the frequency and scale domains and are the two that fill `std_err`. `Wavelet`'s Daubechies-4 filter has two vanishing moments, so it is blind to a linear trend but not to a quadratic one, which `Dfa` at a higher `order` removes.
+  - `Variations` (Achard & Coeurjolly 2010; Brouste & Iacus 2013, arXiv:1112.3777) is derived for a discretely observed fractional Ornstein–Uhlenbeck-type process; its three `VariationKind` values differ in the filter and, for `PowerVariation`, the power.
+- **Fractal-dimension route** (`fractal_dim::Higuchi`, `fractal_dim::Variogram`): curve length (Higuchi 1988) and the variogram ratio (Constantine & Hall 1994), converted by the fBM identity `H = 2 - D`. The adapter reports `2 - D` unclamped, so a noisy `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`. Both types implement `FractalDimEstimator` and `HurstEstimator`, so import the trait whose output you want.
+- **A different quantity** (`Whittle::fit`): Fukasawa, Takabatake & Westphal (2019, arXiv:1905.04852) estimate the roughness of a latent volatility process from log realized variance aggregated from intraday returns, not the self-similarity of a sampled path. `Whittle` is therefore not a `HurstEstimator`, and it returns a `FukasawaFit`.
+
+Data requirements, the hard validation floor for `f32` or `f64` input:
+
+| Estimator | Minimum observations (defaults) |
+|---|---|
+| `RescaledRange` | `4 (min_window + 1)` → 68 (`2 max(min_window + 1, 8)` with `max_window`) |
+| `Dfa` | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
+| `Gph` | 64 |
+| `Wavelet` | `max(64, 2^(j_min + 3) + 1)` → 64 |
+| `Variations` | 5 (`CentralDiff`, the default) to 7 (`Daubechies`), or `2k + 1` for `PowerVariation { k, .. }` |
+| `fractal_dim::Higuchi` | 3, far below what a log-log regression over `kmax` lags needs |
+| `fractal_dim::Variogram` | 3, with the same caveat |
+
+## Choosing a goodness-of-fit test
+
+`goodness_of_fit` tests a sample against a **fully specified** law, through any `cdf` closure such as a distribution's `DistributionExt::cdf`.
+
+- `kolmogorov_smirnov::kolmogorov_smirnov_test` is for continuous samples. Its p-value and critical value both come from Kolmogorov's (1933) limit, with no finite-sample correction, and the critical value solves `Q(c) = alpha` for the survival function `Q` the p-value reads, so the two agree on rejection.
+- `chi_square::chi_square_gof_test` is for discrete or binned counts: on an integer lattice the null CDF jumps at every support point and the KS statistic is not calibrated. `chi_square::pool_integer_bins` pools adjacent cells until each expects at least `min_expected` counts (Cochran's 1954 rule of thumb is 5), and the test answers `Err` when a bin expects fewer than 1.
+
+Neither test corrects for parameters fitted from the sample under test. A fitted CDF hugs the empirical one, so the plain tables under-reject; Lilliefors (1967) gives the corrected KS values, and a fitted chi-square loses one degree of freedom per estimated parameter.
 
 ## Common pattern
 
-Every estimator here returns a plain, flat struct — no boxed traits, no
-enums to match on — but the **field names are estimator-specific**, not
-a uniform `point`/`se`/`p_value` triple. For example:
+Every hypothesis test that answers through `HypothesisTest` shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`; `JohansenTest`, which tests every cointegrating rank, and `LeeMyklandTest`, which tests every return, carry their own fields instead. Estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
 
 ```rust
-// RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
-pub struct HurstResult<T: FloatExt = f64> {
+// RescaledRange, Dfa, Gph, Wavelet, Variations all return this:
+pub struct HurstFit<T: FloatExt = f64> {
   pub hurst: T,
   pub std_err: Option<T>, // only Gph and Wavelet populate this
-  pub n_obs: usize,
+  pub nobs: usize,
   pub diagnostic: HurstDiagnostic<T>,
 }
 
-// while the stationarity tests (ADF, KPSS, ...) return their own shape:
-pub struct AdfResult {
+// while every HypothesisTest leads with the four shared fields, then its own:
+pub struct AdfTest {
   pub statistic: f64,
+  pub p_value: Option<f64>,                    // None: no p-value table is shipped
+  pub critical_values: Option<CriticalValues>, // the 1 %, 5 % and 10 % levels
+  pub rejects_null: bool,
   pub used_lags: usize,
   pub nobs: usize,
-  pub critical_values: CriticalValues,
-  pub reject_unit_root: bool,
 }
 ```
 
-Check the specific estimator's result struct for its field names — the
-per-module source under `stochastic-rs-stats/src/` documents each one.
-
-## Adding an estimator
-
-See the
-[`stats-estimator`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/stats-estimator/SKILL.md)
-SKILL — covers the `ArrayView1<T>` input shape, `*Result` struct
-conventions, feature gating, and the paper-citation requirement.
+docs.rs documents each estimator's result struct.

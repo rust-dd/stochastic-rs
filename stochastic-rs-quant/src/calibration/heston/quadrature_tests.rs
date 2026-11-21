@@ -1,36 +1,22 @@
 use super::HestonCalibrator;
-use super::HestonParams;
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
+use crate::traits::ModelPricer;
 
 fn converged_call(params: &HestonParams, k: f64, tau: f64) -> f64 {
-  HestonPricer::new(
-    params.v0,
-    params.rho,
-    params.kappa,
-    params.theta,
-    params.sigma,
-    Some(0.0),
-  )
-  .call_put(100.0, k, 0.05, 0.0, tau)
-  .0
+  HestonPricer::new(*params).price_call(100.0, k, 0.05, 0.0, tau)
 }
 
 fn calibrator(params: &HestonParams, k: f64, tau: f64) -> HestonCalibrator {
   HestonCalibrator::new(
-    Some(params.clone()),
-    vec![0.0].into(),
-    vec![100.0].into(),
-    vec![k].into(),
+    100.0,
     0.05,
-    Some(0.0),
-    tau,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
+    0.0,
+    vec![OptionQuote::new(k, tau, 0.0, OptionType::Call)],
   )
+  .with_start(*params)
 }
 
 /// The Cui price integral must use the same converged tail as the standalone
@@ -93,8 +79,8 @@ fn cui_gradient_matches_converged_finite_difference() {
   let steps = [1e-5, 1e-4, 1e-5, 1e-5, 1e-5];
 
   for (component, step) in steps.into_iter().enumerate() {
-    let mut plus = params.clone();
-    let mut minus = params.clone();
+    let mut plus = params;
+    let mut minus = params;
     match component {
       0 => {
         plus.v0 += step;

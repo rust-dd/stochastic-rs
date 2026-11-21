@@ -4,118 +4,56 @@
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
+//! Merton (1973), Bell J. Econ. Manag. Sci. 4(1), 141–183, DOI 10.2307/3003143.
+
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use stochastic_rs_distributions::RealExt;
 
-use crate::CalibrationLossScore;
-use crate::LossMetric;
-use crate::OptionType;
+use crate::OptionQuote;
+use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::check_finite_start;
+use crate::calibration::quote::validate_quotes;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::fourier::BsmFourier;
 use crate::traits::ModelPricer;
+use crate::traits::ToModel;
 
-/// Lower edge of the projection box for `v`, matching
-/// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
-/// `ALPHA_MIN`: the same kind of parameter under the same optimiser. No
-/// upper edge, for the same reason SABR gives `alpha` none — a legitimate
-/// fit to a distressed surface can sit anywhere above it.
+/// `SabrCalibrator`'s `ALPHA_MIN`, with no upper edge for the same reason: a fit to a distressed
+/// surface can sit anywhere above it.
 const V_MIN: f64 = 1e-6;
 
-/// Calibration result for the BSM model.
-#[derive(Clone, Debug)]
-pub struct BSMCalibrationResult {
-  /// Calibrated implied volatility.
-  pub v: f64,
-  /// Calibration loss metrics.
-  pub loss: CalibrationLossScore,
-  /// Whether the optimiser converged.
-  pub converged: bool,
-}
+/// The weight of a quote whose vega has underflowed, so its residual stays finite.
+const VEGA_FLOOR: f64 = 1e-8;
 
-impl BSMCalibrationResult {
-  /// Convert to a [`BSMFourier`](crate::pricing::fourier::BSMFourier) model for pricing
-  /// / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BSMFourier {
-    crate::pricing::fourier::BSMFourier {
-      sigma: self.v,
-      r,
-      q,
+impl ToModel for Calibrated<BsmParams> {
+  type Model = BsmFourier;
+
+  fn to_model(&self) -> BsmFourier {
+    BsmFourier {
+      sigma: self.params.sigma,
     }
   }
 }
 
-impl crate::traits::ToModel for BSMCalibrationResult {
-  type Model = crate::pricing::fourier::BSMFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    BSMCalibrationResult::to_model(self, r, q)
-  }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BsmParams {
+  pub sigma: f64,
 }
 
-impl crate::traits::CalibrationResult for BSMCalibrationResult {
-  type Params = BSMParams;
-  fn rmse(&self) -> f64 {
-    self.loss.get(LossMetric::Rmse)
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    BSMParams { v: self.v }
-  }
-
-  fn loss_score(&self) -> Option<&CalibrationLossScore> {
-    Some(&self.loss)
-  }
-}
-
-impl crate::traits::Calibrator for BSMCalibrator {
-  type InitialGuess = BSMParams;
-  type Params = BSMParams;
-  type Output = BSMCalibrationResult;
-  type Error = anyhow::Error;
-
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(p) = initial {
-      this.set_initial_guess(p);
-    }
-    Ok(this.solve())
-  }
-}
-
-#[derive(Clone, Debug)]
-pub struct BSMParams {
-  /// Implied volatility
-  pub v: f64,
-}
-
-impl BSMParams {
-  /// Project onto the admissible set $[\text{V\_MIN}, \infty)$, in the
-  /// shape of
-  /// [`SabrParams::project_in_place`](crate::calibration::sabr::SabrParams::project_in_place).
-  ///
-  /// A negative `v` does not announce itself: $d_1$ and $d_2$ both flip
-  /// sign with $\sigma$ (the $\sigma^2/2$ in the numerator does not), so
-  /// [`BSMPricer`] hands back a finite, put-shaped number for a call and
-  /// the residual is built from it as if nothing happened.
-  ///
-  /// `abs()` rather than `max(V_MIN)` alone so the step keeps its
-  /// magnitude — the optimiser that overshot to `-0.3` is told `0.3`, not
-  /// `V_MIN` — which is what stops the box from stalling a live
-  /// calibration on one bad step. `sigma_is_reflected_not_clamped` pins
-  /// both halves.
-  ///
-  /// A `NaN` iterate lands on `V_MIN`, since `f64::max` returns the
-  /// non-`NaN` operand. Intended, and not the crate's laundering shape:
-  /// what is replaced is an optimiser *iterate*, not a computed price, and
-  /// a projection onto a set has to be total.
+impl BsmParams {
+  /// Reflect `sigma` onto `[V_MIN, ∞)`, keeping the magnitude of a step that overshot below zero,
+  /// where it would price a finite put-shaped call; a NaN iterate lands on `V_MIN`.
   pub fn project_in_place(&mut self) {
-    self.v = self.v.abs().max(V_MIN);
+    self.sigma = self.sigma.abs().max(V_MIN);
   }
 
   /// [`project_in_place`](Self::project_in_place), by value.
@@ -125,254 +63,214 @@ impl BSMParams {
   }
 }
 
-impl From<BSMParams> for Array1<f64> {
-  fn from(params: BSMParams) -> Self {
-    Array1::from_vec(vec![params.v])
+impl From<BsmParams> for Array1<f64> {
+  fn from(params: BsmParams) -> Self {
+    Array1::from_vec(vec![params.sigma])
   }
 }
 
-impl From<Array1<f64>> for BSMParams {
+impl From<Array1<f64>> for BsmParams {
   fn from(params: Array1<f64>) -> Self {
-    BSMParams { v: params[0] }
+    BsmParams { sigma: params[0] }
   }
 }
 
-#[derive(Clone)]
-pub struct BSMCalibrator {
-  /// Params to calibrate.
-  pub params: BSMParams,
-  /// Option prices from the market (flattened across all maturities).
-  pub c_market: Array1<f64>,
-  /// Underlying spot per quote.
-  pub s: Array1<f64>,
-  /// Strike per quote (flattened).
-  pub k: Array1<f64>,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Domestic risk-free rate
-  pub r_d: Option<f64>,
-  /// Foreign risk-free rate
-  pub r_f: Option<f64>,
-  /// Dividend yield.
-  pub q: Option<f64>,
-  /// Time to maturity in years (kept for the legacy single-tau constructor).
-  pub tau: f64,
-  /// Time to maturity per quote (flattened). Supports multi-maturity
-  /// joint calibration. Always populated — for the single-tau
-  /// `BSMCalibrator::new` constructor every entry equals `tau`.
-  pub flat_t: Vec<f64>,
-  /// Option type
-  pub option_type: OptionType,
-  /// Loss metrics to include in the calibration result.
-  pub loss_metrics: &'static [LossMetric],
+/// One volatility fitted to vanilla quotes by Levenberg–Marquardt on vega-weighted price
+/// residuals, each quote priced at the carry `r − q`.
+#[derive(Clone, Debug)]
+pub struct BsmCalibrator {
+  s: f64,
+  r: f64,
+  q: f64,
+  pub quotes: Vec<OptionQuote>,
+  /// Reflected onto `[1e-6, ∞)` before the first evaluation.
+  pub start: BsmParams,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `σ`.
+  pub options: CalibrationOptions,
 }
 
-impl BSMCalibrator {
-  /// Create a calibrator for a single maturity slice (backwards compatible).
-  pub fn new(
-    params: BSMParams,
-    c_market: Array1<f64>,
-    s: Array1<f64>,
-    k: Array1<f64>,
-    r: f64,
-    r_d: Option<f64>,
-    r_f: Option<f64>,
-    q: Option<f64>,
-    tau: f64,
-    option_type: OptionType,
-  ) -> Self {
-    let n = c_market.len();
+impl BsmCalibrator {
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
-      params,
-      c_market,
       s,
-      k,
       r,
-      r_d,
-      r_f,
       q,
-      tau,
-      flat_t: vec![tau; n],
-      option_type,
-      loss_metrics: &LossMetric::ALL,
+      quotes,
+      start: BsmParams { sigma: 0.2 },
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Create a calibrator from multiple maturity slices for joint
-  /// surface calibration. Mirrors the API of the Heston / SVJ
-  /// calibrators so a single chain of `MarketSlice`s can be used to
-  /// fit BSM, Heston and Bates side by side.
-  pub fn from_slices(
-    params: BSMParams,
-    slices: &[super::levy::MarketSlice],
-    s: f64,
-    r: f64,
-    r_d: Option<f64>,
-    r_f: Option<f64>,
-    q: Option<f64>,
-    option_type: OptionType,
-  ) -> Self {
-    let mut flat_prices = Vec::new();
-    let mut flat_strikes = Vec::new();
-    let mut flat_t = Vec::new();
-    let mut flat_s = Vec::new();
+  pub fn s(&self) -> f64 {
+    self.s
+  }
 
-    for slice in slices {
-      for i in 0..slice.strikes.len() {
-        flat_prices.push(slice.prices[i]);
-        flat_strikes.push(slice.strikes[i]);
-        flat_t.push(slice.tau);
-        flat_s.push(s);
-      }
-    }
+  pub fn r(&self) -> f64 {
+    self.r
+  }
 
-    Self {
-      params,
-      c_market: Array1::from_vec(flat_prices),
-      s: Array1::from_vec(flat_s),
-      k: Array1::from_vec(flat_strikes),
-      r,
-      r_d,
-      r_f,
-      q,
-      tau: 0.0,
-      flat_t,
-      option_type,
-      loss_metrics: &LossMetric::ALL,
-    }
+  pub fn q(&self) -> f64 {
+    self.q
+  }
+
+  /// Panics unless `start.sigma` is finite; the start is stored reflected onto `[1e-6, ∞)`.
+  pub fn with_start(mut self, start: BsmParams) -> Self {
+    let sigma = start.sigma;
+    assert!(
+      sigma.is_finite(),
+      "start.sigma must satisfy `start.sigma.is_finite()`, got start.sigma = {sigma:?}"
+    );
+    self.start = start.projected();
+    self
+  }
+
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
   }
 }
 
-impl BSMCalibrator {
-  fn solve(&self) -> BSMCalibrationResult {
-    let (result, report) = minimize(
-      self.clone(),
-      LmOptions {
-        pivoted_qr: false,
-        ..LmOptions::default()
-      },
-    );
-    let converged = report.converged;
-    let fitted = result.effective_params();
-    let c_model: Vec<f64> = result
-      .c_market
+impl crate::traits::Calibrator for BsmCalibrator {
+  type Params = BsmParams;
+  type Output = Calibrated<BsmParams>;
+  type Error = QuantError;
+
+  /// A start replaces `self.start`; `InvalidInput` unless the one used is finite, `Optimizer` when
+  /// the fit cannot evaluate it, and the `CalibrationOptions` errors.
+  fn calibrate(&self, initial: Option<BsmParams>) -> Result<Calibrated<BsmParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    let start = initial.unwrap_or(self.start);
+    check_finite_start(&[("sigma", start.sigma)])?;
+    let lm = self.options.lm(false, 1)?;
+    let (fitted, report) = minimize(BsmProblem::new(self, start.projected()), lm);
+    let params = fitted.effective_params();
+    let pricer = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
+    let model = self
+      .quotes
       .iter()
-      .enumerate()
-      .map(|(idx, _)| {
-        BSMPricer::new(fitted.v, BSMCoc::Bsm1973).price_option(
-          result.s[idx],
-          result.k[idx],
-          result.r,
-          result.q.unwrap_or(0.0),
-          result.flat_t[idx],
-          result.option_type,
+      .map(|quote| {
+        pricer.price_option(
+          self.s,
+          quote.strike,
+          self.r,
+          self.q,
+          quote.tau,
+          quote.option_type,
         )
       })
-      .collect();
-    let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_standard_layout().as_slice().unwrap(),
-      &c_model,
-      result.loss_metrics,
-    );
-
-    BSMCalibrationResult {
-      v: fitted.v,
-      loss,
-      converged,
-    }
-  }
-
-  /// Set the starting point, projected onto the admissible set — the
-  /// optimiser is never started outside the box it is confined to.
-  pub fn set_initial_guess(&mut self, params: BSMParams) {
-    self.params = params.projected();
-  }
-
-  /// The parameters the model is actually priced at: the stored ones,
-  /// projected — [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
-  /// `effective_params` under the same name.
-  ///
-  /// [`set_params`](LeastSquaresProblem::set_params) alone does not keep
-  /// [`BSMPricer::new`] inside the box: the least-squares solver
-  /// evaluates residuals and the Jacobian at the *starting* point before it
-  /// has a step to hand back, so the first call into the pricer reads
-  /// whatever the caller left in the `pub params` field. Projecting on read
-  /// closes that path and every other one at once;
-  /// `the_optimisers_first_evaluation_is_already_inside_the_box` fails
-  /// without it.
-  fn effective_params(&self) -> BSMParams {
-    self.params.clone().projected()
-  }
-
-  /// `(s, k, q, tau)` for quote `idx` — the per-quote half of the
-  /// `(s, k, r, q, tau)` query the [`BSMPricer`] model is priced at.
-  /// `q` defaults to `0.0`; the hard-coded [`BSMCoc::Bsm1973`] carries at
-  /// `b = r` and never reads it.
-  fn query(&self, idx: usize) -> (f64, f64, f64, f64) {
-    (
-      self.s[idx],
-      self.k[idx],
-      self.q.unwrap_or(0.0),
-      self.flat_t[idx],
+      .collect::<Vec<_>>();
+    report.calibrated(
+      params,
+      &fitted.market,
+      &model,
+      self.options.loss_metrics,
+      fitted.trail.into_entries(),
     )
   }
 }
 
-impl LeastSquaresProblem for BSMCalibrator {
-  /// Levenberg-Marquardt is unconstrained and steps wherever the
-  /// linearised model points, so the raw iterate is stored only after
-  /// projection — the same hook `SabrCalibrator` uses (`HestonStochCorr`
-  /// carries `BOUNDS`, and Heston moves in bounded logistic coordinates
-  /// instead).
-  fn set_params(&mut self, params: &Array1<f64>) {
-    self.params = BSMParams::from(params.clone()).projected();
+struct BsmProblem<'a> {
+  calibrator: &'a BsmCalibrator,
+  params: BsmParams,
+  /// `dσ/dx` of the reflection `σ = |x|` at the optimiser's raw coordinate.
+  reflection: f64,
+  market: Vec<f64>,
+  trail: Trail<BsmParams>,
+}
+
+impl<'a> BsmProblem<'a> {
+  fn new(calibrator: &'a BsmCalibrator, start: BsmParams) -> Self {
+    Self {
+      calibrator,
+      params: start,
+      reflection: 1.0,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
+    }
+  }
+
+  /// The stored iterate reflected, so even a raw start is priced inside the box.
+  fn effective_params(&self) -> BsmParams {
+    self.params.projected()
+  }
+}
+
+impl LeastSquaresProblem for BsmProblem<'_> {
+  /// Levenberg–Marquardt is unconstrained, so each iterate is stored reflected.
+  fn set_params(&mut self, params: ArrayView1<f64>) {
+    self.reflection = if params[0] < 0.0 { -1.0 } else { 1.0 };
+    self.params = BsmParams::from(params.to_owned()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
-    let mut residuals = Array1::zeros(self.c_market.len());
-    let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    let BsmCalibrator {
+      s,
+      r,
+      q,
+      ref quotes,
+      ref options,
+      ..
+    } = *self.calibrator;
+    let params = self.effective_params();
+    let model = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
+    let record = options.record_history;
+    let mut prices = Vec::with_capacity(if record { quotes.len() } else { 0 });
+    let mut residuals = Array1::zeros(quotes.len());
 
-    for (idx, &market) in self.c_market.iter().enumerate() {
-      let (s, k, q, tau) = self.query(idx);
-      let (call, put) = model.call_put(s, k, self.r, q, tau);
-
-      let price = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
-      };
-
+    for (idx, quote) in quotes.iter().enumerate() {
+      let price = model.price_option(s, quote.strike, r, q, quote.tau, quote.option_type);
       // Vega weighting approximates calibration in implied-volatility space.
-      let vega = model.vega(s, k, self.r, q, tau).abs().max(1e-8);
-      residuals[idx] = (price - market) / vega;
+      let vega = model.vega(s, quote.strike, r, q, quote.tau).abs();
+      residuals[idx] = (price - quote.price) / vega.max_or_nan(VEGA_FLOOR);
+      if record {
+        prices.push(price);
+      }
     }
 
+    self
+      .trail
+      .stage(options, &self.market, &prices, &params, residuals.view());
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    // For vega-weighted residuals r = (C_model - C_mkt)/Vega,
-    // dr/dsigma = 1 - r * (Vomma / Vega)
-    let n = self.c_market.len();
-    let mut J = Array2::zeros((n, 1));
+    // r = (C − M)/max(vega, floor): r′ = 1 − r·volga/vega above the floor, vega/floor on it,
+    // times dσ/dx.
+    let BsmCalibrator {
+      s,
+      r,
+      q,
+      ref quotes,
+      ..
+    } = *self.calibrator;
+    let model = BsmPricer::new(self.effective_params().sigma, BsmCoc::Merton1973);
+    let mut J = Array2::zeros((quotes.len(), 1));
 
-    for idx in 0..n {
-      let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
-      let (s, k, q, tau) = self.query(idx);
+    for (idx, quote) in quotes.iter().enumerate() {
+      let (k, tau) = (quote.strike, quote.tau);
+      let c_model_i = model.price_option(s, k, r, q, tau, quote.option_type);
 
-      let c_model_i = model.price_option(s, k, self.r, q, tau, self.option_type);
-
-      let vega = model.vega(s, k, self.r, q, tau).abs().max(1e-8);
-      let vomma = model.vomma(s, k, self.r, q, tau);
-      let r_i = (c_model_i - self.c_market[idx]) / vega;
-
-      J[(idx, 0)] = 1.0 - r_i * (vomma / vega);
+      let vega = model.vega(s, k, r, q, tau).abs();
+      let slope = if vega > VEGA_FLOOR {
+        let volga = model.volga(s, k, r, q, tau);
+        1.0 - (c_model_i - quote.price) / vega * (volga / vega)
+      } else {
+        vega / VEGA_FLOOR
+      };
+      J[(idx, 0)] = slope * self.reflection;
     }
 
     Some(J)
+  }
+
+  fn accept(&mut self) {
+    self.trail.accept();
   }
 }
 

@@ -31,28 +31,27 @@ The rules here keep the suite reproducible, gateable, and pruned.
 `thread_rng()`, no `rand::rng()`, no `OsRng::default()`, no
 `random::<f64>()`.
 
-### 1.1 The seed goes through the constructor, never through an `Rng` argument
+### 1.1 The seed reaches the stream through `.seeded(&seed)`, never through a draw
 
-This is the trap that cost a red CI on main. The workspace's SIMD
-distributions draw from their **own** internal stream, seeded at
-construction — the seed never travels as a call argument:
+This is the trap that cost a red CI on main. A `Simd*` law is stateless;
+its stream is a `Seeded<D>` built with `.seeded(&seed)`, and the bulk
+draws take no rng at all:
 
 ```rust
-pub fn fill_slice(&self, out: &mut [T])    // one argument, no RNG
+fn fill_slice(&mut self, out: &mut [T])    // on `Seeded<D>`: one argument, no RNG
 ```
 
-So the seed has exactly one way in, and it is the constructor's last
-parameter:
+So the seed has exactly one way into a stream, and it is `.seeded`:
 
 ```rust
 // WRONG — `&Unseeded` reseeds from entropy on every run
-let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
 dist.fill_slice(&mut x);
 ```
 
 ```rust
 // RIGHT — the seed reaches the stream that is actually used
-let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42));
 dist.fill_slice(&mut x);
 ```
 
@@ -60,12 +59,9 @@ dist.fill_slice(&mut x);
 claiming it defended against flakiness. It did not; it was three
 unseeded draws.
 
-Historical note, because older docs and older code both carry it: this
-API used to be `fill_slice(_rng, out)`, taking and silently discarding
-an `Rng`, with a `fill_slice_fast(out)` companion. **Neither exists any
-more** — every `Simd*` type has the single-argument form above, and
-there is no `fill_slice_fast` anywhere in the workspace. Code passing an
-`Rng` to `fill_slice` no longer compiles, which is the point.
+The one draw that does take an rng is the stateless law's honest
+`Distribution::sample(&mut rng)`: it draws from exactly the rng you pass,
+so a test seeds that rng (`SimdRng::from_seed(s)`) instead.
 
 ### 1.2 Statistical assertions need more than one seed
 
@@ -114,8 +110,8 @@ When a test asserts agreement with a paper's published table:
 /// (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
 #[test]
 fn heston_table1_row4() {
-    // Model parameters on the struct: v0, rho, kappa, theta, sigma, lambda.
-    let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.5, Some(0.0));
+    // Model parameters on the struct.
+    let model = HestonPricer::new(HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.5, rho: -0.5 });
     // Market query at the call: s, k, r, q, tau.
     let call = model.price_call(100.0, 100.0, 0.0, 0.0, 0.5);
     assert!(
@@ -159,15 +155,20 @@ If a test depends on a Cargo feature (e.g. uses a `metal`-gated
 backend), gate the *test* explicitly:
 
 ```rust
-#[cfg(feature = "metal")]
+#[cfg(metal_backend)]
 #[test]
 fn metal_backend_test() { /* ... */ }
 ```
 
+`metal_backend`, `accelerate_backend` and `device_backend` are the aliases
+`stochastic-rs-stochastic/build.rs` emits for that crate's own targets; a test of
+the umbrella spells the gate out, `all(feature = "metal", target_os = "macos",
+target_arch = "aarch64")`.
+
 If the entire test module depends on a feature, gate the module:
 
 ```rust
-#![cfg(feature = "metal")]
+#![cfg(metal_backend)]
 mod metal_tests {
     // ...
 }
@@ -257,7 +258,7 @@ For invariants that must hold:
 
 ```rust
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
     let _ = Fou::<f64>::new(0.5, 0.0, 1.0, 0.1, 1, None, None);
 }
@@ -276,11 +277,8 @@ If a test compares to a Python / R reference, embed the exact command
 in the doc comment:
 
 ```rust
-/// Reference: scipy.linalg.expm of [[-0.1, 0.1], [0.05, -0.05]],
-/// computed via:
-///   import scipy.linalg; import numpy as np
-///   scipy.linalg.expm(np.array([[-0.1, 0.1], [0.05, -0.05]]))
-/// Result: [[0.90713, 0.09287], [0.04643, 0.95357]]
+/// Reference: `scipy.linalg.expm(np.array([[-0.1, 0.1], [0.05, -0.05]]))`
+/// = `[[0.90713, 0.09287], [0.04643, 0.95357]]`.
 #[test]
 fn expm_matches_scipy() { /* ... */ }
 ```
@@ -294,7 +292,7 @@ For serialisation, parameter parsing, type conversions:
 ```rust
 #[test]
 fn params_roundtrip_through_dvector() {
-    let p1 = SabrParams::new(0.2, 0.5, 0.3, -0.5);
+    let p1 = SabrParams::new(0.2, 0.5, -0.5, 0.3);
     let v: Array1<f64> = p1.clone().into();
     let p2 = SabrParams::from(v);
     assert_eq!(p1, p2);

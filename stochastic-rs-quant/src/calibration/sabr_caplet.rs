@@ -1,4 +1,5 @@
-//! Per-expiry Sabr smile calibration for caplets / swaptions.
+//! Per-expiry SABR smile fit for caplets and swaptions: Nelder–Mead on `(α, ν, ρ)` at a fixed `β`
+//! against Black-76 vols, the forward and strikes displaced by the start's shift.
 //!
 //! $$
 //! (\hat\alpha,\hat\nu,\hat\rho)=\arg\min_{\alpha,\nu,\rho}
@@ -6,345 +7,236 @@
 //!   -\sigma_i^{mkt}\bigr)^2
 //! $$
 //!
-//! The Cev exponent $\beta$ is held fixed at a user-supplied value (commonly
-//! 0.5 or 1.0). The three free parameters $(\alpha,\nu,\rho)$ are minimized
-//! against the supplied per-strike Black-76 implied volatilities by
-//! Nelder-Mead.
-//!
-//! ## Negative and near-zero forwards
-//!
-//! The underlying Hagan expansion requires a strictly positive forward and
-//! strike. EUR, JPY and CHF caplet forwards were routinely negative from
-//! roughly 2015 to 2022, so [`SabrCapletCalibrator`] carries a `shift`
-//! displacing both before they reach the expansion — the same
-//! $F_s=F+\text{shift}$, $K_s=K+\text{shift}$ convention as
-//! [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility).
-//! `shift` defaults to `0.0` (set it with
-//! [`SabrCapletCalibrator::with_shift`]), which reproduces the unshifted
-//! formula exactly. `calibrate` returns `Err` naming the offending value
-//! rather than panicking when the configured shift still leaves the
-//! forward or a strike non-positive.
-//!
-//! Reference: P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
-//! "Managing Smile Risk", Wilmott Magazine (2002). Shift convention:
-//! J. Oblój, "Fine-tune your smile: Correction to Hagan et al.", Wilmott
-//! Magazine (2008).
+//! Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine, 84–108.
+//! Oblój (2008), "Fine-tune your smile: Correction to Hagan et al.", Wilmott Magazine.
 
 use std::convert::Infallible;
 
 use basin::CostFunction;
+use stochastic_rs_distributions::RealExt;
 
-use crate::calibration::run_nelder_mead;
+use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
+use crate::calibration::Regularization;
+use crate::calibration::nelder_mead_fit;
+use crate::calibration::start_vertex;
+use crate::instruments::option::ShiftedSabrVolatility;
+use crate::pricing::sabr::SabrParams;
+use crate::pricing::sabr::SabrPricer;
 use crate::pricing::sabr::hagan_implied_vol;
+use crate::traits::ToModel;
 
-/// Calibrated parameter set for a Sabr caplet smile.
-///
-/// Parallels [`crate::calibration::SabrParams`] but is dedicated to the
-/// caplet calibrator so the two pipelines can evolve independently.
+/// The caplet smile's Hagan parameters and the displacement they were calibrated under.
 #[derive(Debug, Clone, Copy)]
 pub struct SabrCapletParams {
-  pub alpha: f64,
-  pub beta: f64,
-  pub nu: f64,
-  pub rho: f64,
-  /// Displacement the smile was calibrated under; see the module
-  /// documentation. `0.0` unless the calibrator used
-  /// [`SabrCapletCalibrator::with_shift`]. `alpha`/`nu`/`rho` above are
-  /// expressed in *shifted* coordinates whenever this is nonzero.
+  pub sabr: SabrParams,
+  /// Displacement of forward and strikes; `sabr` is in shifted coordinates when it is nonzero.
   pub shift: f64,
 }
 
-/// Calibration result for a Sabr caplet smile.
+impl SabrCapletParams {
+  /// The first reason these cannot start a fit: `SabrParams::new`'s checks, then a finite shift.
+  fn violation(&self) -> Option<String> {
+    let shift = self.shift;
+    self.sabr.violation().or_else(|| {
+      (!shift.is_finite())
+        .then(|| format!("shift must satisfy `shift.is_finite()`, got shift = {shift:?}"))
+    })
+  }
+}
+
+impl ToModel for Calibrated<SabrCapletParams> {
+  type Model = SabrPricer;
+
+  /// Unshifted: with a nonzero shift, shift `s` and `k` yourself (non-positive ones price NaN) or
+  /// use [`Self::to_shifted_volatility`].
+  fn to_model(&self) -> SabrPricer {
+    SabrPricer::new(self.params.sabr)
+  }
+}
+
+impl Calibrated<SabrCapletParams> {
+  /// The fit as a [`ShiftedSabrVolatility`]: Black prices it on the shifted forward and strike.
+  pub fn to_shifted_volatility(&self) -> ShiftedSabrVolatility<f64> {
+    let SabrCapletParams { sabr, shift } = self.params;
+    ShiftedSabrVolatility::new(sabr.alpha, sabr.beta, sabr.rho, sabr.nu, shift)
+  }
+}
+
+/// Nelder–Mead fit of one expiry's Black-76 vol smile.
 #[derive(Debug, Clone)]
-pub struct SabrCapletCalibrationResult {
-  /// Sabr level $\alpha$.
-  pub alpha: f64,
-  /// Sabr Cev exponent $\beta$ (held fixed during calibration).
-  pub beta: f64,
-  /// Sabr volatility of volatility $\nu$.
-  pub nu: f64,
-  /// Sabr correlation $\rho$.
-  pub rho: f64,
-  /// Displacement the smile was calibrated under; see the module
-  /// documentation. `0.0` unless the calibrator used
-  /// [`SabrCapletCalibrator::with_shift`]. `alpha`/`nu`/`rho` above are
-  /// expressed in *shifted* coordinates whenever this is nonzero.
-  pub shift: f64,
-  /// Root-mean-square vol error across strikes.
-  pub rmse: f64,
-  /// Residuals $\sigma_{model}-\sigma_{mkt}$ in strike order.
-  pub residuals: Vec<f64>,
-  /// True when Nelder-Mead reported convergence.
-  pub converged: bool,
+pub struct SabrCapletCalibrator {
+  pub forward: f64,
+  /// Expiry in years.
+  pub tau: f64,
+  pub strikes: Vec<f64>,
+  /// Black-76 implied vols, one per strike.
+  pub market_vols: Vec<f64>,
+  /// Weights on the squared vol errors, one per strike; `None` weighs each strike 1.
+  pub weights: Option<Vec<f64>>,
+  /// Seeds `(α, ν, ρ)` and fixes `β` and the shift.
+  pub start: SabrCapletParams,
+  /// Nelder–Mead: `max_iterations` (default 600), `tolerance` its spread; pull `(α, ρ, ν)`, and
+  /// `patience` is `Unsupported`.
+  pub options: CalibrationOptions,
 }
 
-impl SabrCapletCalibrationResult {
-  /// Convert to a [`SabrPricer`](crate::pricing::sabr::SabrPricer) for pricing /
-  /// vol-surface generation.
-  ///
-  /// `alpha`/`nu`/`rho` stay in *shifted* coordinates whenever
-  /// `self.shift != 0.0`: [`ModelPricer`](crate::traits::ModelPricer)'s
-  /// `price_call` forwards `s`/`k` into the Hagan expansion undisplaced, so
-  /// pricing with this model requires shifting `s` and `k` by `self.shift`
-  /// yourself first — passing the original unshifted (possibly negative)
-  /// values reproduces the same panic this shift exists to avoid.
-  /// [`Self::to_shifted_volatility`] does the shifting internally and is
-  /// the safer conversion whenever `shift` is nonzero.
-  pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
-    crate::pricing::sabr::SabrPricer {
-      alpha: self.alpha,
-      beta: self.beta,
-      nu: self.nu,
-      rho: self.rho,
+impl SabrCapletCalibrator {
+  /// Panics unless `market_vols` has one vol per strike and `start.sabr` passes
+  /// [`SabrParams::new`] with a finite `start.shift`.
+  pub fn new(
+    forward: f64,
+    tau: f64,
+    strikes: Vec<f64>,
+    market_vols: Vec<f64>,
+    start: SabrCapletParams,
+  ) -> Self {
+    assert!(
+      market_vols.len() == strikes.len(),
+      "market_vols must satisfy `market_vols.len() == strikes.len()`, got market_vols.len() = {} \
+       for {} strikes",
+      market_vols.len(),
+      strikes.len()
+    );
+    if let Some(reason) = start.violation() {
+      panic!("{reason}");
+    }
+    Self {
+      forward,
+      tau,
+      strikes,
+      market_vols,
+      weights: None,
+      start,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Convert to a
-  /// [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility)
-  /// that applies `self.shift` to forward and strike on every
-  /// `implied_volatility` call, so callers never shift by hand. This is the
-  /// shift-safe counterpart to [`Self::to_model`], and the recommended
-  /// conversion whenever the calibrator used
-  /// [`SabrCapletCalibrator::with_shift`].
-  pub fn to_shifted_volatility(&self) -> crate::instruments::option::ShiftedSabrVolatility<f64> {
-    crate::instruments::option::ShiftedSabrVolatility::new(
-      self.alpha, self.beta, self.nu, self.rho, self.shift,
-    )
-  }
-}
-
-impl crate::traits::ToModel for SabrCapletCalibrationResult {
-  type Model = crate::pricing::sabr::SabrPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
-    SabrCapletCalibrationResult::to_model(self)
-  }
-}
-
-impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
-  type Params = SabrCapletParams;
-  fn rmse(&self) -> f64 {
-    self.rmse
+  /// Panics unless there is one weight per strike, each finite and non-negative.
+  pub fn with_weights(mut self, weights: Vec<f64>) -> Self {
+    assert!(
+      weights.len() == self.strikes.len(),
+      "weights must satisfy `weights.len() == strikes.len()`, got weights.len() = {} for {} strikes",
+      weights.len(),
+      self.strikes.len()
+    );
+    if let Some(w) = weights.iter().find(|w| !(w.is_finite() && **w >= 0.0)) {
+      panic!("weights must satisfy `w.is_finite() && w >= 0.0` for every w, got w = {w:?}");
+    }
+    self.weights = Some(weights);
+    self
   }
 
-  fn converged(&self) -> bool {
-    self.converged
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
   }
 
-  fn params(&self) -> Self::Params {
-    SabrCapletParams {
-      alpha: self.alpha,
-      beta: self.beta,
-      nu: self.nu,
-      rho: self.rho,
-      shift: self.shift,
+  /// `Err` for the first datum the fit cannot use under `shift`.
+  fn validate(&self, shift: f64) -> Result<(), QuantError> {
+    if self.strikes.is_empty() {
+      return Err(QuantError::InsufficientData {
+        what: "caplet vols",
+        needed: 1,
+        got: 0,
+      });
+    }
+    let (tau, forward) = (self.tau, self.forward);
+    if !(tau.is_finite() && tau > 0.0) {
+      let reason = format!("tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}");
+      return Err(QuantError::invalid("tau", reason));
+    }
+    if !forward.is_finite() {
+      let reason = format!("forward must satisfy `forward.is_finite()`, got forward = {forward:?}");
+      return Err(QuantError::invalid("forward", reason));
+    }
+    if forward + shift <= 0.0 {
+      let reason = format!("shift {shift} leaves forward {forward} non-positive");
+      return Err(QuantError::invalid("forward", reason));
+    }
+    for (index, (&k, &vol)) in self.strikes.iter().zip(&self.market_vols).enumerate() {
+      let reason = if !k.is_finite() {
+        format!("strike must satisfy `strike.is_finite()`, got strike = {k:?}")
+      } else if k + shift <= 0.0 {
+        format!("shift {shift} leaves strike {k} non-positive")
+      } else if !(vol.is_finite() && vol >= 0.0) {
+        format!("vol must satisfy `vol.is_finite() && vol >= 0.0`, got vol = {vol:?}")
+      } else {
+        continue;
+      };
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+    let Some(weights) = &self.weights else {
+      return Ok(());
+    };
+    if weights.len() != self.strikes.len() {
+      return Err(QuantError::DimensionMismatch {
+        what: "weights, one per strike",
+        expected: self.strikes.len(),
+        got: weights.len(),
+      });
+    }
+    match weights
+      .iter()
+      .enumerate()
+      .find(|(_, w)| !(w.is_finite() && **w >= 0.0))
+    {
+      Some((index, w)) => Err(QuantError::invalid(
+        "weights",
+        format!("weight {index} must satisfy `w.is_finite() && w >= 0.0`, got w = {w:?}"),
+      )),
+      None => Ok(()),
     }
   }
 }
 
 impl crate::traits::Calibrator for SabrCapletCalibrator {
-  type InitialGuess = (f64, f64, f64);
   type Params = SabrCapletParams;
-  type Output = SabrCapletCalibrationResult;
-  type Error = anyhow::Error;
+  type Output = Calibrated<SabrCapletParams>;
+  type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(g) = initial {
-      this.initial_guess = Some(g);
+  /// A start replaces `self.start` whole, `β` and the shift included. Errors: `InvalidInput`,
+  /// `InvalidQuote`, `InsufficientData`, `DimensionMismatch` and the `CalibrationOptions` ones.
+  fn calibrate(&self, initial: Option<SabrCapletParams>) -> Result<Self::Output, QuantError> {
+    let start = initial.unwrap_or(self.start);
+    if let Some(reason) = start.violation() {
+      return Err(QuantError::invalid("start", reason));
     }
-    this.validate_shift()?;
-    Ok(this.solve())
-  }
-}
-
-/// Sabr caplet smile calibrator — fits $(\alpha,\nu,\rho)$ for a single
-/// expiry.
-#[derive(Debug, Clone)]
-pub struct SabrCapletCalibrator {
-  /// Forward rate $F$ seen by every strike on this smile.
-  pub forward: f64,
-  /// Displacement applied to `forward` and every strike before pricing:
-  /// $F_s=F+\text{shift}$, $K_s=K+\text{shift}$ (Oblój 2008's shifted-Sabr
-  /// convention — see the module documentation and
-  /// [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility)).
-  /// `0.0` via [`Self::new`] reproduces the unshifted Hagan formula
-  /// exactly; set a positive shift with [`Self::with_shift`] when `forward`
-  /// or a strike can be zero or negative (market convention for EUR
-  /// caplets has been 2%-3%, i.e. `0.02`-`0.03`).
-  pub shift: f64,
-  /// Expiry $\tau$ in years.
-  pub expiry: f64,
-  /// Fixed Cev exponent $\beta$.
-  pub beta: f64,
-  /// Market strikes.
-  pub strikes: Vec<f64>,
-  /// Market Black-76 implied vols aligned with `strikes`.
-  pub market_vols: Vec<f64>,
-  /// Optional per-strike weights.
-  pub weights: Option<Vec<f64>>,
-  /// Initial guess for $(\alpha,\nu,\rho)$.
-  pub initial_guess: Option<(f64, f64, f64)>,
-  /// Maximum Nelder-Mead iterations.
-  pub max_iters: u64,
-  /// Convergence tolerance on the simplex standard deviation.
-  pub sd_tolerance: f64,
-}
-
-impl SabrCapletCalibrator {
-  /// Construct a calibrator with defaults.
-  pub fn new(
-    forward: f64,
-    expiry: f64,
-    beta: f64,
-    strikes: Vec<f64>,
-    market_vols: Vec<f64>,
-  ) -> Self {
-    assert_eq!(
-      strikes.len(),
-      market_vols.len(),
-      "strikes and market_vols must have equal length"
-    );
-    Self {
-      forward,
-      shift: 0.0,
-      expiry,
-      beta,
-      strikes,
-      market_vols,
-      weights: None,
-      initial_guess: None,
-      max_iters: 600,
-      sd_tolerance: 1e-10,
-    }
-  }
-
-  /// Displace `forward` and every strike by `shift` before calibration —
-  /// see the module documentation. Use a positive shift (market convention
-  /// for EUR caplets: `0.02`-`0.03`) whenever `forward` or a strike can be
-  /// zero or negative; `calibrate` then returns `Err` naming the offending
-  /// value if the shift is still insufficient.
-  pub fn with_shift(mut self, shift: f64) -> Self {
-    self.shift = shift;
-    self
-  }
-
-  /// Forward displaced into shifted coordinates: $F+\text{shift}$.
-  fn shifted_forward(&self) -> f64 {
-    self.forward + self.shift
-  }
-
-  /// Checks that `shift` makes the forward and every strike strictly
-  /// positive, as the underlying Hagan expansion requires. Called from
-  /// [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate) so an
-  /// insufficient shift surfaces as `Err`, naming the offending value,
-  /// instead of panicking inside the Nelder-Mead cost callback.
-  fn validate_shift(&self) -> Result<(), anyhow::Error> {
-    let shift = self.shift;
-    let forward = self.forward;
-    let shifted_forward = self.shifted_forward();
-    if !shifted_forward.is_finite() || shifted_forward <= 0.0 {
-      anyhow::bail!(
-        "SabrCapletCalibrator: shift {shift} does not make forward {forward} positive \
-         (forward + shift = {shifted_forward} <= 0); use a larger shift"
-      );
-    }
-    for (i, &k) in self.strikes.iter().enumerate() {
-      let shifted_k = k + shift;
-      if !shifted_k.is_finite() || shifted_k <= 0.0 {
-        anyhow::bail!(
-          "SabrCapletCalibrator: shift {shift} does not make strike[{i}] {k} positive \
-           (strike + shift = {shifted_k} <= 0); use a larger shift"
-        );
-      }
-    }
-    Ok(())
-  }
-
-  fn solve(&self) -> SabrCapletCalibrationResult {
-    let weights = self
-      .weights
-      .clone()
-      .unwrap_or_else(|| vec![1.0; self.strikes.len()]);
-
-    let (a0, nu0, rho0) = self.initial_guess.unwrap_or_else(|| {
-      let atm = self
-        .market_vols
-        .iter()
-        .zip(self.strikes.iter())
-        .min_by(|a, b| {
-          (a.1 - self.forward)
-            .abs()
-            .partial_cmp(&(b.1 - self.forward).abs())
-            .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|(v, _)| *v)
-        .unwrap_or(0.2);
-      (
-        atm * self.shifted_forward().powf(1.0 - self.beta),
-        0.4,
-        -0.2,
-      )
-    });
-
-    let problem = SabrCapletCost {
+    self.validate(start.shift)?;
+    let cost = SabrCapletCost {
       forward: self.forward,
-      shift: self.shift,
-      expiry: self.expiry,
-      beta: self.beta,
+      shift: start.shift,
+      tau: self.tau,
+      beta: start.sabr.beta,
       strikes: self.strikes.clone(),
       market_vols: self.market_vols.clone(),
-      weights: weights.clone(),
+      weights: self
+        .weights
+        .clone()
+        .unwrap_or_else(|| vec![1.0; self.strikes.len()]),
+      regularization: self.options.regularization_for(3)?,
     };
-
+    let SabrParams {
+      alpha: a0,
+      nu: nu0,
+      rho: rho0,
+      ..
+    } = start.sabr;
     let simplex = vec![
       vec![a0, nu0, rho0],
-      vec![a0 * 1.3, nu0, rho0],
-      vec![a0, nu0 * 1.5, rho0],
+      vec![start_vertex(a0, 1.3), nu0, rho0],
+      vec![a0, start_vertex(nu0, 1.5), rho0],
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
-
-    let (best, converged) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
-
-    let alpha = best[0].abs().max(1e-8);
-    let nu = best[1].abs().max(1e-8);
-    let rho = best[2].clamp(-0.9999, 0.9999);
-
-    let shifted_forward = self.shifted_forward();
-    let residuals: Vec<f64> = self
-      .strikes
-      .iter()
-      .zip(self.market_vols.iter())
-      .map(|(&k, &v_mkt)| {
-        let v_model = hagan_implied_vol(
-          k + self.shift,
-          shifted_forward,
-          self.expiry,
-          alpha,
-          self.beta,
-          nu,
-          rho,
-        );
-        v_model - v_mkt
-      })
-      .collect();
-    let ssr: f64 = residuals
-      .iter()
-      .zip(weights.iter())
-      .map(|(r, w)| (w.sqrt() * r).powi(2))
-      .sum();
-    let rmse = (ssr / residuals.len().max(1) as f64).sqrt();
-
-    SabrCapletCalibrationResult {
-      alpha,
-      beta: self.beta,
-      nu,
-      rho,
-      shift: self.shift,
-      rmse,
-      residuals,
-      converged,
-    }
+    nelder_mead_fit(cost.clone(), simplex, &self.options, 600, |x| {
+      let sabr = cost.params(x);
+      let fitted = SabrCapletParams {
+        sabr,
+        shift: start.shift,
+      };
+      (fitted, self.market_vols.clone(), cost.model_vols(&sabr))
+    })
   }
 }
 
@@ -352,11 +244,37 @@ impl SabrCapletCalibrator {
 struct SabrCapletCost {
   forward: f64,
   shift: f64,
-  expiry: f64,
+  tau: f64,
   beta: f64,
   strikes: Vec<f64>,
   market_vols: Vec<f64>,
   weights: Vec<f64>,
+  /// Hagan's `(α, ρ, ν)` order.
+  regularization: Option<Regularization>,
+}
+
+impl SabrCapletCost {
+  fn params(&self, x: &[f64]) -> SabrParams {
+    SabrParams {
+      alpha: x[0].abs().max_or_nan(1e-8),
+      beta: self.beta,
+      rho: x[2].clamp(-0.9999, 0.9999),
+      nu: x[1].abs().max_or_nan(1e-8),
+    }
+  }
+
+  /// NaN for parameters `SabrParams::new` refuses; `hagan_implied_vol` panics on a bad `α` or `ρ`.
+  fn model_vols(&self, params: &SabrParams) -> Vec<f64> {
+    if params.violation().is_some() {
+      return vec![f64::NAN; self.strikes.len()];
+    }
+    let forward = self.forward + self.shift;
+    self
+      .strikes
+      .iter()
+      .map(|&k| hagan_implied_vol(k + self.shift, forward, self.tau, params))
+      .collect()
+  }
 }
 
 impl CostFunction for SabrCapletCost {
@@ -365,29 +283,23 @@ impl CostFunction for SabrCapletCost {
   type Error = Infallible;
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
-    let alpha = x[0].abs().max(1e-8);
-    let nu = x[1].abs().max(1e-8);
-    let rho = x[2].clamp(-0.9999, 0.9999);
-    let shifted_forward = self.forward + self.shift;
+    let params = self.params(x);
     let mut sse = 0.0;
-    for ((&k, &v_mkt), &w) in self
-      .strikes
-      .iter()
-      .zip(self.market_vols.iter())
-      .zip(self.weights.iter())
+    for ((v_model, &v_mkt), &w) in self
+      .model_vols(&params)
+      .into_iter()
+      .zip(&self.market_vols)
+      .zip(&self.weights)
     {
-      let v_model = hagan_implied_vol(
-        k + self.shift,
-        shifted_forward,
-        self.expiry,
-        alpha,
-        self.beta,
-        nu,
-        rho,
-      );
       let diff = v_model - v_mkt;
       sse += w * diff * diff;
     }
-    Ok(sse)
+    let penalty = self.regularization.as_ref().map_or(0.0, |reg| {
+      reg.penalty(&[params.alpha, params.rho, params.nu])
+    });
+    Ok(sse + penalty)
   }
 }
+
+#[cfg(test)]
+mod tests;

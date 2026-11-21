@@ -65,7 +65,12 @@ fn ssvi_calibration_exact() {
     })
     .collect();
 
-  let fitted = calibrate_ssvi(&slices, None);
+  let fit = calibrate_ssvi(&slices, None);
+  assert!(
+    fit.converged && fit.message.as_deref() == Some("converged"),
+    "{fit:?}"
+  );
+  let fitted = fit.params;
 
   assert!((fitted.rho - true_params.rho).abs() < 1e-3, "rho mismatch");
   assert!((fitted.eta - true_params.eta).abs() < 1e-3, "eta mismatch");
@@ -91,10 +96,8 @@ fn ssvi_surface_interpolation() {
   assert!(iv_interp.is_finite() && iv_interp > 0.0);
 }
 
-/// Regression: a non-monotonic θ_t term structure must fail BOTH the ATM
-/// and the smile-wide checks. A monotonic θ_t with a strong-skew SSVI can
-/// still violate calendar arb off-ATM — pre-rc.1 the surface flag would
-/// say "arb-free" in that scenario, hiding the issue.
+/// A non-monotonic θ_t fails both the ATM and the smile-wide calendar checks; a monotonic θ_t with
+/// strong skew can still break calendar arbitrage off-ATM.
 #[test]
 fn calendar_spread_free_grid_catches_off_atm_violations() {
   let params = SsviParams::<f64>::new(-0.3, 0.5, 0.5);
@@ -102,4 +105,27 @@ fn calendar_spread_free_grid_catches_off_atm_violations() {
   let ks = vec![-1.0, 0.0, 1.0];
   assert!(!surface_decreasing.is_calendar_spread_free(&ks));
   assert!(!surface_decreasing.is_atm_calendar_spread_free());
+}
+
+/// An SSVI with `η = 2.5` breaks the calendar bound over these `θ`: the projection caps `η`, so
+/// the returned fit is short of the stop and names the bound it was moved onto.
+#[test]
+fn a_fit_the_projection_moves_stops_at_that_parameters_bound() {
+  let truth = SsviParams::<f64>::new(-0.3, 2.5, 0.5);
+  let ks = (-6..=6).map(|i| i as f64 * 0.05).collect::<Vec<_>>();
+  let slices = [0.02, 0.04, 0.08]
+    .into_iter()
+    .map(|theta| SsviSlice {
+      log_moneyness: ks.clone(),
+      total_variance: ks.iter().map(|&k| truth.total_variance(k, theta)).collect(),
+      theta,
+    })
+    .collect::<Vec<_>>();
+  let fit = calibrate_ssvi(&slices, None);
+  assert!(fit.params.eta < 1.0, "{fit:?}");
+  let stop = fit.message.as_deref();
+  assert!(
+    !fit.converged && stop == Some("stopped at the bound of eta"),
+    "{fit:?}"
+  );
 }

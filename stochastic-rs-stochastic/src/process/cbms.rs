@@ -1,4 +1,4 @@
-//! # Cbms
+//! Two Brownian motions correlated by `rho`: the running sums of a correlated Gaussian pair.
 //!
 //! $$
 //! dX_t=L\,dW_t,\quad LL^\top=\Sigma
@@ -15,15 +15,15 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
   /// Number of discrete time points in each path.
   pub n: usize,
-  /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -32,10 +32,21 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `-1 <= rho <= 1`, and `rho` is
+  /// finite.
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
 
     Self {
@@ -49,11 +60,8 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cbms<T, S, B> {}
-
-/// The Euler engine's view of a correlated Brownian pair: the shocks are
-/// drawn independently and correlated in the step, which is what the
-/// correlated-noise source does on the host.
+/// The Euler engine's view: the shocks are drawn independently and correlated in the step, as
+/// the correlated-noise source does on the host.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Cbms<T, S, B>
 {
@@ -92,6 +100,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Cbms<T, S> { rho, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cbms<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cbms<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -99,10 +112,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> CbmsSampler<T, S> {
     CbmsSampler {
       n: self.n,
@@ -111,9 +122,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -138,6 +148,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Cbms`] sampling state: owns the correlated-Gaussian generator and
 /// the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CbmsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   cgns: Cgns<T>,
@@ -158,6 +169,8 @@ impl<T: FloatExt, S: SeedExt> CbmsSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for CbmsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for CbmsSampler<T, S> {
   type Output = [Array1<T>; 2];

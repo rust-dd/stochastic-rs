@@ -1,7 +1,7 @@
 //! Online joint covariance for Heston Monte Carlo observables.
 
 use super::EstimateWithError;
-use super::HestonMalliavinError;
+use crate::QuantError;
 
 #[derive(Debug, Default)]
 pub(super) struct OnlineScalar {
@@ -11,9 +11,12 @@ pub(super) struct OnlineScalar {
 }
 
 impl OnlineScalar {
-  pub(super) fn push(&mut self, value: f64) -> Result<(), HestonMalliavinError> {
+  pub(super) fn push(&mut self, value: f64) -> Result<(), QuantError> {
     if !value.is_finite() {
-      return Err(HestonMalliavinError::NonFiniteSimulation);
+      return Err(QuantError::Numerical {
+        what: "the Heston simulation",
+        reason: format!("a Monte Carlo observable is {value}"),
+      });
     }
     self.count += 1;
     let difference = value - self.mean;
@@ -22,9 +25,13 @@ impl OnlineScalar {
     Ok(())
   }
 
-  pub(super) fn finish(self) -> Result<EstimateWithError, HestonMalliavinError> {
+  pub(super) fn finish(self) -> Result<EstimateWithError, QuantError> {
     if self.count < 2 {
-      return Err(HestonMalliavinError::InsufficientSamples);
+      return Err(QuantError::InsufficientData {
+        what: "samples for a Monte Carlo standard error",
+        needed: 2,
+        got: self.count,
+      });
     }
     let sample_variance = self.second_moment / (self.count - 1) as f64;
     Ok(EstimateWithError {
@@ -86,9 +93,13 @@ impl<const N: usize> OnlineCovariance<N> {
     }
   }
 
-  pub(super) fn finish(self) -> Result<CovarianceSummary<N>, HestonMalliavinError> {
+  pub(super) fn finish(self) -> Result<CovarianceSummary<N>, QuantError> {
     if self.count < 2 {
-      return Err(HestonMalliavinError::InsufficientSamples);
+      return Err(QuantError::InsufficientData {
+        what: "samples for a Monte Carlo covariance",
+        needed: 2,
+        got: self.count,
+      });
     }
     let divisor = (self.count - 1) as f64;
     let sample_covariance =

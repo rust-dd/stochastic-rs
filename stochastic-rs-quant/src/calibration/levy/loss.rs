@@ -4,7 +4,11 @@ use num_complex::Complex64;
 
 use super::EPS;
 use super::types::LevyModelType;
-use crate::pricing::cf_quadrature::integrate_to_convergence;
+use crate::OptionType;
+use crate::calibration::clip_negative;
+use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::cf_quadrature::integrate_walk;
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
@@ -48,7 +52,7 @@ pub(super) fn levy_char_exponent(
       let g_y = Complex64::new(g.powf(y), 0.0);
       c * gamma_neg_y * (m_shift - m_y + g_shift - g_y)
     }
-    LevyModelType::MertonJD => {
+    LevyModelType::MertonJd => {
       let sigma = params[0];
       let lambda = params[1];
       let mu_j = params[2];
@@ -107,6 +111,7 @@ pub(super) fn fourier_call_price(
   r: f64,
   q: f64,
   t: f64,
+  walk: &mut Walk<'_, Panels>,
 ) -> f64 {
   let ln_ks = (k / s).ln();
   let rq = r - q;
@@ -115,7 +120,7 @@ pub(super) fn fourier_call_price(
   let psi_neg_i = levy_char_exponent(model_type, params, Complex64::new(0.0, -1.0));
   let omega = -psi_neg_i;
 
-  let integral = integrate_to_convergence(
+  let integral = integrate_walk(
     |u| {
       let xi = Complex64::new(u, -0.5);
       let psi = levy_char_exponent(model_type, params, xi);
@@ -126,17 +131,14 @@ pub(super) fn fourier_call_price(
     },
     0.0,
     1e-9,
+    walk,
   );
 
   let disc_r = (-r * t).exp();
   let disc_q = (-q * t).exp();
 
   let call = s * disc_q - (s * k).sqrt() * disc_r * FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  clip_negative(call)
 }
 
 /// Price a European option (call or put) via put-call parity from the Fourier call price.
@@ -148,14 +150,13 @@ pub(super) fn fourier_option_price(
   r: f64,
   q: f64,
   t: f64,
-  is_call: bool,
+  option_type: OptionType,
+  walk: &mut Walk<'_, Panels>,
 ) -> f64 {
-  let call = fourier_call_price(model_type, params, s, k, r, q, t);
-  if is_call {
-    call
-  } else {
-    let put = call - s * (-q * t).exp() + k * (-r * t).exp();
-    if put.is_finite() { put.max(0.0) } else { put }
+  let call = fourier_call_price(model_type, params, s, k, r, q, t, walk);
+  match option_type {
+    OptionType::Call => call,
+    OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
   }
 }
 
@@ -164,7 +165,7 @@ pub(super) fn param_count(model_type: LevyModelType) -> usize {
     LevyModelType::VarianceGamma => 3,
     LevyModelType::Nig => 3,
     LevyModelType::Cgmy => 4,
-    LevyModelType::MertonJD => 4,
+    LevyModelType::MertonJd => 4,
     LevyModelType::Kou => 5,
   }
 }
@@ -180,7 +181,7 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
     LevyModelType::Cgmy => {
       vec![(0.001, 10.0), (0.01, 50.0), (0.01, 50.0), (-1.0, 1.999)]
     }
-    LevyModelType::MertonJD => {
+    LevyModelType::MertonJd => {
       vec![(0.01, 2.0), (0.01, 20.0), (-1.0, 1.0), (0.01, 2.0)]
     }
     LevyModelType::Kou => {
@@ -200,17 +201,14 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
     LevyModelType::VarianceGamma => vec![0.2, -0.1, 0.5],
     LevyModelType::Nig => vec![15.0, -5.0, 0.5],
     LevyModelType::Cgmy => vec![1.0, 10.0, 15.0, 0.5],
-    LevyModelType::MertonJD => vec![0.15, 1.0, -0.05, 0.1],
+    LevyModelType::MertonJd => vec![0.15, 1.0, -0.05, 0.1],
     LevyModelType::Kou => vec![0.15, 3.0, 0.5, 10.0, 10.0],
   }
 }
 
 /// Project parameters into their admissible bounds.
 pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
-  let bounds = param_bounds(model_type);
-  for (p, (lo, hi)) in params.iter_mut().zip(bounds.iter()) {
-    *p = p.clamp(*lo, *hi);
-  }
+  clamp_params(model_type, params);
   // The NIG exponent is defined only when alpha > |beta|.
   if model_type == LevyModelType::Nig {
     let alpha = params[0];
@@ -218,5 +216,12 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
     if alpha <= beta.abs() {
       params[0] = beta.abs() + 0.01;
     }
+  }
+}
+
+/// Each parameter clamped into its bounds, NIG's `α > |β|` aside.
+pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
+  for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
+    *p = p.clamp(lo, hi);
   }
 }

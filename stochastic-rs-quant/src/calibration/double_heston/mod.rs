@@ -32,11 +32,21 @@
 mod calibrator;
 mod loss;
 mod params;
-mod result;
 
 pub use calibrator::DoubleHestonCalibrator;
 pub use params::DoubleHestonParams;
-pub use result::DoubleHestonCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::pricing::fourier::DoubleHestonFourier;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<DoubleHestonParams> {
+  type Model = DoubleHestonFourier;
+
+  fn to_model(&self) -> DoubleHestonFourier {
+    self.params.to_model()
+  }
+}
 
 #[cfg(test)]
 mod quadrature_tests;

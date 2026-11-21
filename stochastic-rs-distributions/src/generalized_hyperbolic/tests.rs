@@ -1,0 +1,587 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
+use super::*;
+use crate::normal_inverse_gauss::SimdNormalInverseGauss;
+use crate::tests::assert_moments_within;
+use crate::tests::scalar_draws;
+use crate::traits::DistributionExt;
+use crate::traits::DistributionSampler;
+use crate::traits::distribution::SimdDistribution;
+use crate::uniform::SimdUniform;
+
+fn close(a: f64, b: f64, rel: f64) -> bool {
+  (a - b).abs() <= rel * b.abs().max(1e-300)
+}
+
+/// The Bessel-form density agrees with `scipy.integrate.quad` over the GIG-clock mixture
+/// (`norm.pdf(x; μ+βw, √w)·geninvgauss.pdf(w)`), and the mixture moments with `geninvgauss.stats`.
+#[test]
+fn pdf_and_moments_match_the_mixture_reference() {
+  type MixtureRow = ((f64, f64, f64, f64, f64), [f64; 6], f64, f64);
+  let cases: [MixtureRow; 3] = [
+    (
+      (1.0, 2.0, 0.5, 1.5, -0.2),
+      [
+        0.026_874_696_001_484_795,
+        0.289_432_836_608_569_1,
+        0.384_055_007_209_786_75,
+        0.389_575_357_963_150_46,
+        0.280_187_896_740_125_84,
+        0.030_237_901_725_699_894,
+      ],
+      0.400_326_852_907_575_25,
+      1.310_435_697_043_944,
+    ),
+    (
+      (-0.5, 3.0, -1.0, 0.8, 0.1),
+      [
+        0.016_014_118_038_505_026,
+        0.537_142_357_104_786_2,
+        0.823_021_530_784_875_8,
+        0.556_377_253_304_921_9,
+        0.048_358_038_340_823_45,
+        7.013_824_572_701_23e-6,
+      ],
+      -0.182_842_712_474_619_06,
+      0.318_198_051_533_946_4,
+    ),
+    (
+      (0.7, 1.5, 0.0, 2.0, 0.0),
+      [
+        0.084_874_755_258_301_43,
+        0.292_657_191_965_061_7,
+        0.323_634_547_066_262_05,
+        0.312_003_562_657_869_9,
+        0.220_286_315_784_668_7,
+        0.024_708_268_671_536_315,
+      ],
+      0.0,
+      1.880_316_791_495_301_4,
+    ),
+  ];
+  for ((lambda, alpha, beta, delta, mu), pdf, mean, var) in cases {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    for (x, want) in [-2.0, -0.5, 0.0, 0.3, 1.0, 3.0].into_iter().zip(pdf) {
+      assert!(
+        close(d.pdf(x).unwrap(), want, 1e-9),
+        "λ={lambda}: pdf({x}) = {} vs {want}",
+        d.pdf(x).unwrap()
+      );
+    }
+    assert!(
+      (d.mean().unwrap() - mean).abs() < 1e-10,
+      "λ={lambda}: mean {}",
+      d.mean().unwrap()
+    );
+    assert!(
+      close(d.variance().unwrap(), var, 1e-10),
+      "λ={lambda}: variance {}",
+      d.variance().unwrap()
+    );
+    assert!(close(
+      d.moment_generating_function(0.0).unwrap(),
+      1.0,
+      1e-12
+    ));
+  }
+}
+
+/// GH at λ = −1/2 is the normal-inverse Gaussian: densities, moments and the mgf's limit at the
+/// region's boundary coincide with the crate's own NIG, which needs neither `K_λ` nor the limit.
+#[test]
+fn half_negative_lambda_is_the_nig() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3);
+  let nig = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.3);
+  for x in [-3.0, -1.0, 0.0, 0.3, 1.0, 2.5, 6.0] {
+    assert!(
+      close(gh.pdf(x).unwrap(), nig.pdf(x).unwrap(), 1e-11),
+      "pdf({x}): {} vs {}",
+      gh.pdf(x).unwrap(),
+      nig.pdf(x).unwrap()
+    );
+  }
+  assert!(close(gh.mean().unwrap(), nig.mean().unwrap(), 1e-11));
+  assert!(close(
+    gh.variance().unwrap(),
+    nig.variance().unwrap(),
+    1e-10
+  ));
+  assert!(close(gh.skewness().unwrap(), nig.skewness().unwrap(), 1e-9));
+  assert!(close(gh.kurtosis().unwrap(), nig.kurtosis().unwrap(), 1e-8));
+  let edge = 2.0 - 0.5;
+  assert!(close(
+    gh.moment_generating_function(edge).unwrap(),
+    nig.moment_generating_function(edge).unwrap(),
+    1e-13
+  ));
+}
+
+/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary and inside it, and the density.
+#[test]
+fn mgf_and_pdf_hold_where_k_overflows() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(-172.0, 2.0, 0.5, 0.5, 0.0);
+  for (t, want) in [
+    (1.5, 1.001_371_548_223_024_8),
+    (1.0, 1.000_731_257_068_310_2),
+    (0.5, 1.000_274_158_392_503_7),
+  ] {
+    let got = gh.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
+  }
+  for (x, want) in [
+    (0.0, 14.786_515_072_456_567),
+    (0.4, 1.569_479_944_041_449e-36),
+  ] {
+    let got = gh.pdf(x).unwrap();
+    assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
+  }
+}
+
+#[test]
+fn pdf_integrates_to_one() {
+  let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  let (lo, hi, n) = (-30.0_f64, 30.0_f64, 600_000usize);
+  let h = (hi - lo) / n as f64;
+  let s: f64 = (0..n)
+    .map(|k| d.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+    .sum();
+  assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
+}
+
+#[test]
+fn sample_moments_match_closed_forms() {
+  let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  let n = 400_000;
+  let mut xs = vec![0.0; n];
+  d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
+  let mean = xs.iter().sum::<f64>() / n as f64;
+  let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+  let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
+  assert!(
+    (mean - d.mean().unwrap()).abs() < 0.01,
+    "mean {mean} vs {}",
+    d.mean().unwrap()
+  );
+  assert!(
+    (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.02,
+    "var {var}"
+  );
+  assert!(
+    (m3 / var.powf(1.5) - d.skewness().unwrap()).abs() < 0.05,
+    "skew {}",
+    m3 / var.powf(1.5)
+  );
+}
+
+#[test]
+fn scalar_sample_moments_match_closed_forms() {
+  let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  let xs = scalar_draws(&d, 23, 200_000);
+  assert_moments_within(
+    &xs,
+    d.mean().unwrap(),
+    d.variance().unwrap(),
+    None,
+    6.0,
+    "GH",
+  );
+}
+
+#[test]
+fn deterministic_seed_reproduces_stream() {
+  let mut a =
+    SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2).seeded(&Deterministic::new(7));
+  let mut b =
+    SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2).seeded(&Deterministic::new(7));
+  for _ in 0..256 {
+    assert_eq!(a.sample(), b.sample());
+  }
+}
+
+#[test]
+#[should_panic(expected = "alpha must satisfy `alpha > beta.abs()`")]
+fn rejects_beta_outside_alpha() {
+  let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0);
+}
+
+/// The density is 0 at ±∞ for every order, `λ = ½` (where `order · ln(root)` reads `0 · ∞`) included.
+#[test]
+fn pdf_vanishes_at_infinity() {
+  for lambda in [0.5, 1.0, -1.5] {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, 2.0, 0.5, 1.5, -0.2);
+    assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+    assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
+  }
+}
+
+/// mpmath at 120 and 250 digits, where the clock's `K` overflow.
+#[test]
+fn moments_hold_where_k_overflows() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(-172.0, 2.0, 0.5, 0.5, 0.0);
+  let (mean, var) = (gh.mean().unwrap(), gh.variance().unwrap());
+  assert!(close(mean, 0.000_365_494_129_274_587_7, 1e-12), "{mean}");
+  assert!(close(var, 0.000_730_989_044_336_110_9, 1e-12), "{var}");
+}
+
+/// mpmath at 60 and 120 digits: the central moments from the clock's cumulants within `1e-12`, `|λ|` from 1 to `10⁴`.
+#[test]
+fn central_moments_hold_at_every_order() {
+  for ((lambda, alpha, beta, delta, mu), want) in [
+    (
+      (1.0, 2.0, 0.5, 1.5, -0.2),
+      [
+        1.310_435_697_043_943_7,
+        0.473_839_414_347_962_9,
+        1.154_197_314_931_253_9,
+      ],
+    ),
+    (
+      (-30.0, 3.0, -1.0, 0.8, 0.1),
+      [
+        0.011_021_465_439_870_41,
+        -0.011_207_586_992_617_024,
+        0.107_045_163_423_584_04,
+      ],
+    ),
+    (
+      (300.0, 1.5, 0.3, 2.0, 0.0),
+      [
+        300.932_614_740_502_9,
+        0.046_805_130_591_743_065,
+        0.011_478_779_652_235_654,
+      ],
+    ),
+    (
+      (-1e4, 2.0, 0.5, 0.5, 0.0),
+      [
+        1.250_125_009_961_171_7e-5,
+        5.304_626_937_852_686e-7,
+        0.000_300_060_011_158_022_04,
+      ],
+    ),
+  ] {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let got = [d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
+    for (g, w) in got.into_iter().zip(want) {
+      assert!(
+        close(g, w, 1e-12),
+        "GH({lambda}, {alpha}, {beta}, {delta}, {mu}): {g}, want {w}"
+      );
+    }
+  }
+}
+
+/// mpmath at 60 and 120 digits, within `1e-12`: `|λ|` from `10³` to `10¹⁵` with the boundary
+/// `γ_t = 0`, `λ = 89.6` with only `e^{μt}` subnormal, and 0 where the density underflows.
+#[test]
+fn large_orders_hold_their_digits() {
+  for (lambda, t, want) in [
+    (-1e3, 1.5, 1.000_234_637_105_014),
+    (-1e10, 1.0, 1.000_000_000_012_5),
+    (-1e15, 1.5, 1.000_000_000_000_000_2),
+  ] {
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, 2.0, 0.5, 0.5, 0.0);
+    let got = gh.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "λ = {lambda}: {got}");
+  }
+  let scale_alone = SimdGeneralizedHyperbolic::<f64>::new(
+    89.641_103_510_172_57,
+    98.570_286_345_728_33,
+    5.015_087_874_221_497,
+    1.530_713_650_744_124_8,
+    8.526_535_614_418_794,
+  )
+  .moment_generating_function(-87.370_381_138_479_03)
+  .unwrap();
+  assert!(
+    close(scale_alone, 2.820_461_939_220_067e-263, 1e-12),
+    "{scale_alone}"
+  );
+  let farthest = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 0.5, 0.0);
+  assert_eq!(farthest.pdf(0.3), Some(0.0));
+}
+
+/// mpmath at 60 and 120 digits, within `1e-12`: the density where the clock is narrower than its
+/// saddle's rounding, by order (`λ ≈ 5·10³⁰`, `9·10³⁰`) and by `δγ = 10¹⁶` at `λ = 1`.
+#[test]
+fn concentrated_densities_hold_at_their_double_inputs() {
+  for ((lambda, alpha, beta, delta, mu, x), want) in [
+    (
+      (
+        5.095_194_993_501_368e30,
+        1.286_942_957_824_578,
+        0.580_858_049_278_676_8,
+        0.118_484_329_901_837_09,
+        0.866_872_290_154_687,
+        4.488_211_170_909_544_6e30,
+      ),
+      1.078_015_377_854_249_4e-16,
+    ),
+    (
+      (
+        9.344_831_002_277_795e30,
+        1.869_540_131_209_391_6,
+        1.427_749_172_120_334_8,
+        0.874_842_423_652_626,
+        0.836_776_605_561_320_2,
+        1.831_806_039_586_267_1e31,
+      ),
+      5.655_566_713_159_638e-17,
+    ),
+    ((1.0, 1e8, 0.0, 1e8, 0.0, 0.3), 0.381_387_815_460_524_1),
+  ] {
+    let got = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu)
+      .pdf(x)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "GH({lambda}, …).pdf({x}) = {got}");
+  }
+}
+
+/// mpmath at 60 and 120 digits, within `1e-12`: right tails of negative orders, `w₁/w₀` past 100,
+/// where `1 + e` from a rounded offset loses `|λ|ε·max(1 + e, 1/(1 + e))`.
+#[test]
+fn saddle_tails_hold_where_the_clocks_part_far() {
+  for ((lambda, alpha, beta, delta, mu, x), want) in [
+    (
+      (-50.5, 0.6, 0.1, 0.1, 0.0, 100.0),
+      1.345_260_355_692_504e-307,
+    ),
+    (
+      (-80.0, 2.0, 0.5, 0.5, 0.0, 30.0),
+      4.065_604_291_327_857e-284,
+    ),
+    (
+      (-50.0, 1.3, -0.9, 0.3, 0.2, 30.2),
+      1.898_543_567_319_823e-216,
+    ),
+  ] {
+    let got = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu)
+      .pdf(x)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).pdf({x}) = {got:e}, want {want:e}"
+    );
+  }
+}
+
+/// mpmath at 60 and 120 digits at admitted extremes: `β = 0`, saddles past the doubles, a subnormal
+/// clock scale, `β²·Var W` under them, and a mean whose `K`s overflow, from its Bessel ratios.
+#[test]
+fn extreme_parameters_keep_their_moments() {
+  let wide = SimdGeneralizedHyperbolic::<f64>::new(0.5, 1e-77, 0.0, 1.0, 0.0)
+    .variance()
+    .unwrap();
+  assert!(close(wide, 1e154, 1e-12), "{wide:e}");
+  let flat = SimdGeneralizedHyperbolic::<f64>::new(1e15, 1e-150, 0.0, 1.0, 0.0);
+  assert_eq!(
+    (flat.mean(), flat.variance()),
+    (Some(0.0), Some(f64::INFINITY))
+  );
+  let steep = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 1e150, 5e149, 1.0, 0.0);
+  let (v, k) = (steep.variance().unwrap(), steep.kurtosis().unwrap());
+  assert!(
+    close(v, 1.539_600_717_839_002_2e-150, 1e-12) && close(k, 6.928_203_230_275_51e-150, 1e-12),
+    "{v:e}, {k:e}"
+  );
+  let narrow = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 1e150, 5e149, 1e-150, 0.0);
+  let (m, s) = (narrow.mean().unwrap(), narrow.skewness().unwrap());
+  assert!(
+    close(m, 2.500_000_000_000_002_5e-166, 1e-12) && close(s, 3.354_101_966_249_693e-23, 1e-12),
+    "{m:e}, {s:e}"
+  );
+  let far = SimdGeneralizedHyperbolic::<f64>::new(50.0, 3.2e-154, 1e-154, 1e154, 0.0)
+    .mean()
+    .unwrap();
+  assert!(close(far, 1.083_270_490_233_109_3e155, 1e-12), "{far:e}");
+  let heavy = SimdGeneralizedHyperbolic::<f64>::new(-50.0, 1.0, 0.999999, 1e-150, 0.0)
+    .mean()
+    .unwrap();
+  assert!(
+    close(heavy, 1.020_407_142_857_142_8e-302, 1e-14),
+    "{heavy:e}"
+  );
+}
+
+/// mpmath at 60 and 120 digits where `δ²` or `γ² = (α − β)(α + β)` is subnormal: the clock from `δ`
+/// and `√(α − β)√(α + β)`, or the law of `X/2ᵏ`, never a square rounded on the subnormal grid.
+#[test]
+fn subnormal_clocks_keep_their_digits() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  let rows = [
+    (
+      gh(-5.0, 1e150, 5e149, 2.3e-162, 0.0).skewness(),
+      4.065_863_991_822_648e-13,
+    ),
+    (
+      gh(0.5, 2.3e-162, 1.15e-162, 1e-100, 0.0).mean(),
+      2.898_550_724_637_681_4e161,
+    ),
+    (
+      gh(-60.0, 0.001, 0.0, 2.3e-162, 0.0).pdf(0.0),
+      1.896_129_884_611_740_6e162,
+    ),
+    (
+      gh(0.5, 2.3e-162, 0.0, 1e-100, 0.0).pdf(0.0),
+      4.411_420_834_454_354e-160,
+    ),
+    (
+      gh(60.0, 2.3e-162, 0.0, 1e-100, 0.0).moment_generating_function(9.2e-163),
+      34_933.559_229_964_07,
+    ),
+  ];
+  for (i, (got, want)) in rows.into_iter().enumerate() {
+    let got = got.unwrap();
+    assert!(close(got, want, 1e-12), "row {i}: {got:e}");
+  }
+}
+
+/// mpmath, 120/240 digits: the power underflowing (`λ = −100`), its product with `K` overflowing
+/// (`λ = 100`), `e^{μt}` (`λ = 10`, `20`), both (`μ = −3.962`), or `e^{dx}` underflowing.
+#[test]
+fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
+  for ((lambda, alpha, beta, delta, mu, t), want) in [
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.2,
+        -87.370_381_138_479_03,
+      ),
+      1.182_768_930_948_921_4e-276,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.3,
+        -87.370_381_138_479_03,
+      ),
+      1.898_683_021_781_224_4e-280,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.4,
+        -87.370_381_138_479_03,
+      ),
+      3.047_930_261_668_773e-284,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.5,
+        -87.370_381_138_479_03,
+      ),
+      4.892_801_364_643_318e-288,
+    ),
+    (
+      (-100.0, 100.0, 0.0, 1.0, 0.0, 99.999_981_999_998_38),
+      7_765_652_107.033_232,
+    ),
+    (
+      (-100.0, 100.0, 0.0, 1.0, 0.0, 99.999_98),
+      7_765_644_262.952_732,
+    ),
+    (
+      (100.0, 1.0, 0.0, 1.0, 0.0, 0.998_198_377_077_422_4),
+      2.348_781_752_490_069_8e244,
+    ),
+    (
+      (10.0, 2.0, 0.0, 1.0, -372.0, 1.99),
+      3.620_739_539_038_555e-302,
+    ),
+    (
+      (-100.0, 100.0, 0.0, 1.0, -3.962, 99.95),
+      7.902_763_890_981_962e-163,
+    ),
+    (
+      (1.0, 10.0, 9.99, 77.3, -70.0, -9.99),
+      9.403_911_324_507_613e-20,
+    ),
+  ] {
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let got = gh.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
+  }
+}
+
+/// Cells: `λ ∈ (−50, 50)`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α`, `t` `1e-12·2α` to `2α` inside
+/// either end of `(−α − β, α − β)`: the ratio regime meets two-part logs to `ε(2Σ|ln terms| + 16)`.
+#[test]
+fn ratio_regime_agrees_with_the_log_regime() {
+  use crate::special::log_size;
+  use crate::special::ratio_regime;
+  let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_026));
+  let (mut ratios, mut logs) = (0, 0);
+  for _ in 0..8000 {
+    let lambda = 100.0 * u.sample() - 50.0;
+    let alpha = 10f64.powf(12.0 * u.sample() - 6.0);
+    let beta = alpha * (1.999_999 * u.sample() - 0.999_999_5);
+    let delta = 10f64.powf(12.0 * u.sample() - 6.0);
+    let mu = 10f64
+      .powf(12.0 * u.sample() - 6.0)
+      .copysign(u.sample() - 0.5);
+    let gap = 2.0 * alpha * 10f64.powf(12.0 * u.sample() - 12.0);
+    let t = if u.sample() < 0.5 {
+      alpha - beta - gap
+    } else {
+      gap - alpha - beta
+    };
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let (below, above) = gh.shifted_factors(t);
+    let shifted = below * above;
+    if shifted <= 0.0 {
+      continue;
+    }
+    let (power, num, den, dx) = gh.mgf_ratio(t, shifted);
+    let log = super::small_order::mgf((lambda, alpha, beta, delta, mu), t);
+    let Some(ratio) = ratio_regime(power, num, &den, dx) else {
+      logs += 1;
+      continue;
+    };
+    ratios += 1;
+    let tol = f64::EPSILON * (2.0 * log_size(power, num, &den, dx) + 16.0) * log.abs();
+    assert!(
+      (ratio - log).abs() <= tol,
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, two-part {log} ± {tol}"
+    );
+  }
+  assert!(
+    ratios > 500 && logs > 500,
+    "{ratios} ratio and {logs} log cells"
+  );
+}
+
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the
+/// far tails answer 0 and an mgf whose `μt` passes `4.5e15` answers `+∞`, not NaN.
+#[test]
+fn far_tails_answer_the_exact_zero_or_infinity() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  assert_eq!(gh.pdf(3e15), Some(0.0));
+  let nig = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3);
+  assert_eq!(nig.pdf(1e17), Some(0.0));
+  let shifted = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, 1e16);
+  assert_eq!(shifted.moment_generating_function(1.0), Some(f64::INFINITY));
+}
+
+/// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence steps.
+#[test]
+fn a_huge_index_returns() {
+  let d = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 1.0, 0.0);
+  assert!(d.pdf(0.0).is_some());
+}
+
+mod clock;
+mod ends;
+mod two_part;

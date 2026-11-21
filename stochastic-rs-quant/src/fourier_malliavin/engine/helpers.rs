@@ -1,9 +1,10 @@
 //! Internal helpers: window resolution, bias-correction constant, and Fejér inversion.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use num_complex::Complex;
 
-use super::FMVol;
+use super::FmVol;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
 use crate::traits::RealExt;
 
@@ -20,7 +21,7 @@ pub(super) fn default_bias_corrected_m<T: RealExt>(mesh: T) -> usize {
   scaled.floor().to_usize().unwrap_or(usize::MAX).max(1)
 }
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   /// Default smoothing window for spot-volatility / spot-leverage / spot-quarticity:
   /// `m ≈ √N`. This is the canonical Malliavin-Mancino choice (Malliavin & Mancino
   /// 2009, eq. 4.5 / Mancino-Recchioni 2015 §3): the bias from a finite Cesàro
@@ -136,13 +137,13 @@ impl<T: RealExt> FMVol<T> {
       self.n_freq + m,
       self.max_freq
     );
-    convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, m)
+    convolution_coefficients(self.dx.view(), self.dx.view(), self.period, self.n_freq, m)
   }
 }
 
 /// Fejér kernel inversion (internal helper).
 pub(super) fn fejer_inversion<T: RealExt>(
-  coeffs: &Array1<Complex<T>>,
+  coeffs: ArrayView1<Complex<T>>,
   m_freq: usize,
   period: T,
   tau: &[T],

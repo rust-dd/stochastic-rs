@@ -1,6 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Ou`
-//! (`diffusion/ou.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! stream fresh from `self.{theta,sigma,n,t,seed}` on every call.
+//! `with_*` setters on `Ou` (`diffusion/ou.rs`), which caches nothing: `sampler()` builds its
+//! Gaussian stream from `self.{theta,sigma,n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -52,7 +51,7 @@ plain_test!(ou_with_theta_round_trip, with_theta, theta, 3.0);
 plain_test!(ou_with_mu_round_trip, with_mu, mu, 0.05);
 plain_test!(ou_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(ou_with_x0_round_trip, with_x0, x0, Some(1.0));
-plain_test!(ou_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(ou_with_points_round_trip, with_points, n, 64usize);
 plain_test!(ou_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

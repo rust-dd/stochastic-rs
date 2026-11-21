@@ -35,7 +35,8 @@ QMC); Giles 2015 for MLMC.
 pub struct McEstimate<T: FloatExt> {
     /// Estimated mean.
     pub mean: T,
-    /// Standard error of the estimate.
+    /// Standard error of the estimate: the sample standard deviation (`n − 1`
+    /// denominator) over `√n`. `NaN` when fewer than two samples were used.
     pub std_err: T,
     /// Number of samples used.
     pub n_samples: usize,
@@ -57,75 +58,105 @@ Estimators always return `McEstimate<T>`, never raw `f64`. This keeps
 the variance information attached to the point estimate; callers
 asking for a CI never have to chase down the standard error separately.
 
+### One accumulator for every estimator
+
+Every estimator hands its per-path values to the crate-private
+`mc::estimate_from_samples(samples)` and returns what it gives back. The
+helper accumulates in `f64` with Welford's update (Welford 1962,
+DOI 10.1080/00401706.1962.10490022) whatever `T` is, uses the `n − 1` sample
+variance, and reports `std_err = sqrt(s² / n)`. Fewer than two samples have
+no variance estimate: no samples give a `NaN` mean and `std_err`, one sample
+a `NaN` `std_err`. A `NaN` or infinite payoff keeps the `std_err` `NaN`.
+
+The helper is a thin wrapper over the public `mc::Welford` accumulator.
+State that receives its samples in batches (MLMC's per-level statistics)
+holds a `Welford` per stream and `extend`s it with each batch; `count()`,
+`mean()`, `sample_variance()` and `std_err()` read it back, and
+`McEstimate::from(&acc)` turns it into the result type. `Welford::merge`
+combines two accumulators (Chan, Golub and LeVeque 1983, eq. 1.5). There is
+one recurrence in the crate.
+
+Never write a `sum` / `sum_sq` loop of your own. `sum_sq / n − mean²`
+cancels on a near-constant payoff (a negative variance, a `NaN` `std_err`)
+and a running `f32` sum stops growing past 2^24. Serial and parallel twins
+share the accumulator, so they cannot drift onto different formulas.
+
+A parallel estimator goes through `mc::welford::par_welford_seeded(n, seed,
+sample)`, never through a `Vec` of all the samples and never through rayon's
+`reduce`. A `Vec` leaves a serial pass over every sample after the parallel
+region (Amdahl: about 3 ns a path, +60% on a cheap payoff); `reduce` shapes its
+merge tree by the pool, so the last bits change with the thread count.
+`par_welford_seeded` cuts the indices into the data-derived chunks of
+`ProcessExt::sample_par`, forks one standard normal stream per chunk from
+`seed` on the calling thread in chunk order, folds each chunk into its own
+`Welford` in parallel and merges the chunks sequentially in chunk order; the
+`sample(i, &mut stream)` closure draws from its chunk's stream. Never fork
+inside the parallel map: `Seeded::fork` advances its basis on every call, so
+the order the workers reach it would decide which chunk gets which stream.
+
 ### The estimator signature
 
-The shipped estimators take a **payoff closure over a normal draw**,
-not a seed:
+The shipped estimators take a **payoff closure over a normal draw** and,
+last, the seed source `&S: SeedExt` the draws come from (`&Unseeded` for
+fresh entropy, `&Deterministic::new(s)` to reproduce):
 
 ```rust
 // mc/antithetic.rs
-pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
-where T: FloatExt, F: Fn(&Array1<T>) -> T;
-pub fn estimate_par<T, F>(…) -> McEstimate<T> where F: … + Sync;
+pub fn estimate<T, F, S>(n_paths: usize, dim: usize, payoff: F, seed: &S) -> McEstimate<T>
+where T: FloatExt, F: Fn(&Array1<T>) -> T, S: SeedExt;
+pub fn estimate_par<T, F, S>(…, seed: &S) -> McEstimate<T> where F: … + Sync;
 
 // mc/control_variates.rs
-pub fn estimate<T, F, G>(
-    n_paths: usize, dim: usize, payoff: F, control: G, control_mean: T,
+pub fn estimate<T, F, G, S>(
+    n_paths: usize, dim: usize, payoff: F, control: G, control_mean: T, seed: &S,
 ) -> McEstimate<T>;
 
 // mc/importance_sampling.rs
-pub fn estimate<T, F>(
-    n_paths: usize, dim: usize, payoff: F, shift: &Array1<T>,
+pub fn estimate<T, F, S>(
+    n_paths: usize, dim: usize, payoff: F, shift: &Array1<T>, seed: &S,
 ) -> McEstimate<T>;
+
+// mc/stratified.rs
+pub fn estimate<T, F, S>(n_paths: usize, dim: usize, payoff: F, seed: &S) -> McEstimate<T>;
+pub fn stratified_normals_1d<T, S>(n: usize, seed: &S) -> Array1<T>;
+pub fn stratified_normals<T, S>(n_samples: usize, dim: usize, seed: &S) -> Array2<T>;
 ```
 
-Match that shape for a new technique: `(n_paths, dim, payoff, …)`,
+Match that shape for a new technique: `(n_paths, dim, payoff, …, seed)`,
 returning `McEstimate<T>`, with an `estimate_par` twin where the payoff
-can be `Sync`.
-
-**Known limitation, not a thing to imitate:** `antithetic`,
-`control_variates` and `importance_sampling` draw from
-`T::normal_array(dim, 0, 1)`, which is unseeded — so those three are
-**not reproducible**. Only `stratified` exposes seeded variants
-(`stratified_normals_1d_seeded(n, seed)`,
-`stratified_normals_seeded(n_samples, dim, seed)`). If you add a
-technique, give it a seeded entry point; if you write a test against
-one of the unseeded three, it can only assert statistical bounds, not
-pinned numbers.
+can be `Sync`. A seeded estimator's test pins its seed: equal seeds give
+equal bits, and `estimate_par` gives the same bits under any pool size.
 
 ## 2. Antithetic — the cheapest win
 
 For an SDE driven by `Z ~ N(0, 1)`:
 
 ```rust
-// mc/antithetic.rs — the shipped body, abridged
-pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
-where T: FloatExt, F: Fn(&Array1<T>) -> T
+// mc/antithetic.rs — the shipped body
+pub fn estimate<T, F, S>(n_paths: usize, dim: usize, payoff: F, seed: &S) -> McEstimate<T>
+where T: FloatExt, F: Fn(&Array1<T>) -> T, S: SeedExt
 {
     let two = T::from_f64_fast(2.0);
-    let (mut sum, mut sum_sq) = (T::zero(), T::zero());
-
-    for _ in 0..n_paths {
-        // The workspace's own Gaussian draw. Per `dev-rules` §7a,
-        // `rand_distr::StandardNormal` and `StdRng` belong to `benches/`
-        // — never to library code.
-        let z = T::normal_array(dim, T::zero(), T::one());
-        let neg_z = z.mapv(|v| -v);
-        let y = (payoff(&z) + payoff(&neg_z)) / two;
-        sum += y;
-        sum_sq += y * y;
-    }
-
-    let n = T::from_usize_(n_paths);
-    let mean = sum / n;
-    let variance = sum_sq / n - mean * mean;
-    McEstimate { mean, std_err: (variance / n).sqrt(), n_samples: n_paths }
+    // The workspace's own Gaussian stream: `rand_distr` and `StdRng` are for benches only.
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
+    let mut z = Array1::<T>::zeros(dim);
+    estimate_from_samples((0..n_paths).map(|_| {
+        normal.fill_slice(z.as_slice_mut().expect("contiguous"));
+        let up = payoff(&z);
+        z.mapv_inplace(|v| -v);
+        (up + payoff(&z)) / two
+    }))
 }
 ```
 
 Note `n_samples: n_paths`, not `2 * n_paths`: a pair counts as one
 sample of the averaged estimator, which is what makes the standard
 error comparable to plain MC at the same `n_samples`.
+
+Negate the draw in place between the two payoff calls rather than
+building `−z` in a second array: in `estimate_par`, where each path
+draws its own array, the second allocation took a third of the time
+on the one-normal payoff of `benches/mc_antithetic.rs`.
 
 Antithetic works **only** when the payoff is monotonic in `z`. For
 strangles / digitals, antithetic can *increase* variance — always
@@ -160,13 +191,13 @@ terminal price itself: `Y = S_T - K e^{-rT}`, whose mean is known.
 ## 4. Quasi-MC — Halton / Sobol
 
 Replace the pseudo-random draw with a deterministic low-discrepancy
-sequence. Both generators are **in-tree** — there is no `sobol_rs`
-dependency:
+sequence. Both generators are **in-tree**, in `stochastic_rs_distributions::qmc` — there is no
+`sobol_rs` dependency:
 
 ```rust
-use crate::mc::sobol::Sobol;      // or crate::mc::halton::Halton
+use stochastic_rs_distributions::qmc::SobolSeq;   // or stochastic_rs_distributions::qmc::HaltonSeq
 
-let sobol = Sobol::new(dim);              // dim-dimensional sequence
+let sobol = SobolSeq::new(dim);           // dim-dimensional sequence
 let u = sobol.sample::<f64>(n_points);    // Array2<f64>, shape (n_points, dim)
 // map each u through the inverse normal CDF, then evaluate the payoff
 ```
@@ -191,7 +222,11 @@ E[P_∞] ≈ E[P_0] + Σ_l E[P_l - P_{l-1}]
 
 with `P_l` evaluated on `2^l` time steps. The number of paths
 decreases geometrically with level. See `mc/mlmc.rs` for the workspace
-implementation and Giles (2015) for the algorithmic details.
+implementation. It follows Giles (2008), *Operations Research* 56(3),
+607-617 (DOI 10.1287/opre.1070.0496): the allocation is its eq. (12),
+`N_l = ⌈2ε⁻² √(V_l/C_l) Σ√(V_k C_k)⌉`, where `V_l` is the variance of one
+level sample, estimated per level as the `n − 1` sample variance (the paper
+leaves the denominator open); Giles (2015) has the algorithmic details.
 
 ## 6. Common Random Numbers (CRN)
 
@@ -216,8 +251,8 @@ variance of the difference, often by a factor of 100×.
 ```rust
 #[test]
 fn antithetic_reduces_variance() {
-    let plain = plain_mc_estimate(10_000, dim, &payoff);
-    let anti  = antithetic::estimate(5_000, dim, &payoff);  // same draw budget
+    let plain = plain_mc_estimate(10_000, dim, &payoff, &Deterministic::new(1));
+    let anti  = antithetic::estimate(5_000, dim, &payoff, &Deterministic::new(2));  // same draw budget
     let factor = plain.std_err / anti.std_err;              // no vr_factor method
     assert!(
         factor > 1.5,
@@ -230,15 +265,17 @@ Compute the ratio explicitly — `McEstimate` has no `vr_factor`. The
 threshold (1.5x here) should be conservative but high enough that the
 test fails if the technique was wired backward.
 
-Pin the seed **where the technique lets you** (`stratified`'s `*_seeded`
-functions). For the three unseeded estimators the test is inherently
-statistical: choose a threshold with margin so it does not flake, and
-say so in a comment rather than pretending it is deterministic.
+Pin the seed with `&Deterministic::new(s)`: every shipped estimator takes
+one, so the test is deterministic. Still choose a threshold with margin, so
+that another seed passes it too.
 
 ## 8. Anti-patterns
 
 - **Do not** return a raw `f64` mean without a stderr. Always
   `McEstimate<T>`.
+- **Do not** compute the variance by hand (`sum_sq / n − mean²`, or a
+  per-estimator two-pass loop). Route the per-path values through
+  `estimate_from_samples` (see §1).
 - **Do not** apply antithetic to discontinuous payoffs (digital
   options, indicator functions). Variance can go up.
 - **Do not** silently reuse one sample for both the control-variate
@@ -250,33 +287,37 @@ say so in a comment rather than pretending it is deterministic.
   a randomised-QMC scheme. Plain Sobol mixed with a plain pseudo-random
   draw produces neither MC convergence nor QMC convergence.
 - **Do not** use `StdRng` or `rand_distr::StandardNormal` in an
-  estimator. `dev-rules` §7a reserves them for `benches/`; use
-  `T::normal_array` or a seeded `Simd*` distribution.
+  estimator. `dev-rules` §7a reserves them for `benches/`; draw from a
+  `Simd*` distribution seeded from the estimator's `seed`, never from the
+  thread-local `T::normal_array`.
 - **Do not** skip the variance-reduction test (§7). It's the only
   check that the technique is wired the right way around.
 
 ## 9. Reference impls
 
-The `mc/` module is nine files under
+The `mc/` module is eight files under
 `stochastic-rs-stochastic/src/mc/`:
 
-- `mod.rs` — `McEstimate<T>` and the module re-exports. Start here.
+- `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
+  accumulator and the module re-exports. Start here.
 - `antithetic.rs` — `estimate` / `estimate_par`; the template for a new
   technique's signature.
 - `control_variates.rs` — single control variate; see §3 on its
   coefficient estimation.
 - `importance_sampling.rs` — mean-shift tilt, takes `shift: &Array1<T>`.
-- `stratified.rs` — the only module with **seeded** entry points
-  (`stratified_normals_1d_seeded`, `stratified_normals_seeded`).
-- `sobol.rs`, `halton.rs` — in-tree low-discrepancy generators.
-- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` +
-  `estimate(level_sampler) -> MlmcResult<T>`; note it returns its own
-  result type, not `McEstimate`.
-- `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
-  `price(paths, payoff)`. Ungated — the least-squares solve runs on the
-  pure-Rust `faer`, so it is in every build —
-  it needs LAPACK for the regression step, so it is absent from a
-  default build.
+- `stratified.rs` — `stratified_normals_1d(n, seed)` and
+  `stratified_normals(n_samples, dim, seed)`; the strata arithmetic runs in
+  `f64` whatever `T` is.
+- `welford.rs` — `Welford` (re-exported as `mc::Welford`) and the
+  crate-private `par_welford_seeded` fold of §1.
+- `brownian_bridge_qmc.rs` — Brownian paths from a Sobol sequence; the generators `SobolSeq` and
+  `HaltonSeq` are in `stochastic_rs_distributions::qmc`, not here.
+- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` (`n0 ≥ 2`, a level
+  variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
+  note it returns its own result type, not `McEstimate`. Its per-level
+  mean and variance come from `mc::Welford`.
+- Longstaff–Schwartz is not here: it is quant's
+  `stochastic_rs_quant::pricing::BermudanLsmPricer`.
 
 ## Related SKILLs
 
@@ -284,7 +325,6 @@ The `mc/` module is nine files under
 - `add-diffusion-process` — produces the underlying paths; the seed is
   the constructor's last parameter, and CRN depends on `Clone`
   snapshotting it.
-- `feature-flag-management` — if a new
-  LAPACK-dependent technique needs the same treatment.
+- `feature-flag-management` — if a new technique needs a feature gate.
 - `bench-writing` — variance-reduction factor is a natural benchmark
   metric.

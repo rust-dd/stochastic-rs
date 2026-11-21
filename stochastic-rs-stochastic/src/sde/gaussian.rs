@@ -4,7 +4,8 @@ use ndarray::Array1;
 use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::s;
-use rand::Rng;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::Sde;
 use crate::device::FgnBackend;
@@ -22,12 +23,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
@@ -37,7 +37,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
         for i_dim in 0..dim {
@@ -59,12 +59,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
@@ -74,7 +73,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
         let correction = self.milstein_correction(&x, time, ArrayView1::from(&d_w[..]), dt);
@@ -93,20 +92,21 @@ where
     out
   }
 
-  /// Stochastic midpoint (RK2-style) method with Gaussian noise.
-  ///
-  /// 1. Predict: $\hat{X} = X_n + \frac{1}{2} a(X_n, t_n) \Delta t + \frac{1}{2} b(X_n, t_n) \Delta W$
-  /// 2. Correct: $X_{n+1} = X_n + a(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta t + b(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta W$
+  /// Stochastic midpoint (RK2-style) method with Gaussian noise: predict, then correct.
+  /// $$
+  /// \hat{X} = X_n + \frac{1}{2} a(X_n, t_n) \Delta t + \frac{1}{2} b(X_n, t_n) \Delta W,\quad
+  /// X_{n+1} = X_n + a(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta t +
+  /// b(\hat{X}, t_n + \frac{\Delta t}{2}) \Delta W
+  /// $$
   pub(super) fn solve_srk2_gauss(
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let half = T::from_f64_fast(0.5);
@@ -118,7 +118,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu1 = (self.drift)(&x, time);
         let sig1 = (self.diffusion)(&x, time);
         let mut x_half = x.clone();
@@ -145,20 +145,17 @@ where
     out
   }
 
-  /// Classical RK4 structure applied to both drift and diffusion, with Gaussian noise.
-  ///
-  /// Uses four stage evaluations with the standard $(1, 2, 2, 1)/6$ weighting for both
-  /// drift and diffusion averages. All stages share the same Brownian increment $\Delta W$.
+  /// Classical RK4 structure on drift and diffusion with Gaussian noise: four stages weighted
+  /// $(1, 2, 2, 1)/6$, all sharing one Brownian increment $\Delta W$.
   pub(super) fn solve_srk4_gauss(
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let half = T::from_f64_fast(0.5);
@@ -172,7 +169,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w_full, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w_full, sqrt_dt, normal);
         let k1_mu = (self.drift)(&x, time);
         let k1_sig = (self.diffusion)(&x, time);
         let mut x1 = x.clone();

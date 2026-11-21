@@ -1,11 +1,8 @@
-//! # Portfolio Momentum
+//! Momentum ranking, long/short baskets and decile analysis over any [`ModelEstimate`].
 //!
 //! $$
 //! \text{score}_i = \frac{\hat r_i - r_f}{\hat \sigma_i}
 //! $$
-//!
-//! Momentum ranking, long/short basket construction and decile analysis.
-//! Input is generic via [`ModelEstimate`], so users can plug their own model outputs.
 
 mod engine;
 mod signals;
@@ -24,7 +21,6 @@ pub use types::ModelEstimate;
 pub use types::MomentumBuildConfig;
 pub use types::MomentumPortfolio;
 pub use types::MomentumScore;
-pub use types::UnknownWeightScheme;
 pub use types::WeightScheme;
 
 #[cfg(test)]

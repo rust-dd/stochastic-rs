@@ -1,14 +1,11 @@
-//! # Adg
+//! `xn` independent latent factors, each mean-reverting and observed through a quadratic map.
 //!
 //! $$
 //! dX_{i,t}=(k(t)-\theta(t)X_{i,t})dt+\sigma_i dW_{i,t},\quad
 //! r_i(t)=\phi(t)+b(t)X_{i,t}+c(t)X_{i,t}^2
 //! $$
 //!
-//! `xn` independent latent factors, each an affine/quadratic-Gaussian-style
-//! diffusion with a time-dependent additive drift target `k(t)` and a
-//! time-dependent mean-reversion speed `θ(t)`, observed through a
-//! quadratic output map `phi(t) + b(t)X + c(t)X²`.
+//! Each reverts at speed `θ(t)` toward the target `k(t)`; the map is `phi(t) + b(t)X + c(t)X²`.
 //!
 
 use ndarray::Array1;
@@ -17,21 +14,24 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent additive drift target function k(t) — the level each
   /// latent factor is pulled toward, analogous to Hull-White's θ(t).
   pub k: Fn1D<T>,
-  /// Time-dependent mean-reversion speed function θ(t), multiplying the
-  /// pull-back term `−θ(t)·X_t`. Despite the name, this is a speed, not
-  /// a level — see `k` for the level.
+  /// Time-dependent mean-reversion speed θ(t), multiplying `−X_t`; a speed, not a level, which
+  /// is `k`.
   pub theta: Fn1D<T>,
   /// Per-factor diffusion scale vector σ_i, one entry per latent factor
   /// (length `xn`).
@@ -45,17 +45,16 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent quadratic loading c(t) on the squared latent factor
   /// in the observation equation (the "quadratic" in quadratic-Gaussian).
   pub c: Fn1D<T>,
-  /// Number of time steps per latent-factor path.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Number of independent latent factors (rows of the output matrix);
   /// each evolves as its own `dX_i = (k(t) − θ(t)X_i)dt + σ_i dW_i`.
   pub xn: usize,
   /// Initial values `X_i(0)` for each latent factor, length `xn`.
   pub x0: Array1<T>,
-  /// Simulation horizon [0, t] shared by all `xn` latent-factor paths
-  /// (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -63,6 +62,8 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Adg<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `sigma.len() == xn`,
+  /// `x0.len() == xn`, and every parameter is finite.
   pub fn new(
     k: impl Into<Fn1D<T>>,
     theta: impl Into<Fn1D<T>>,
@@ -76,19 +77,22 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert_eq!(
-      sigma.len(),
-      xn,
-      "sigma length ({}) must match xn ({})",
-      sigma.len(),
-      xn
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
+    assert!(
+      sigma.len() == xn,
+      "sigma.len() must satisfy `sigma.len() == xn`, got sigma.len() = {:?}",
+      sigma.len()
+    );
+    assert!(
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
     Self {
       backend: Cpu,
@@ -118,11 +122,8 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
     }
   }
 
-  /// One factor's row of the observed rate. The tail is pre-filled with
-  /// `N(0, dt)` draws, the state `x` walks its mean reversion under `k(t)`
-  /// and `theta(t)` consuming them, and each point is written back as the
-  /// quadratic observation `phi(t) + b(t) x + c(t) x^2` at the same time.
-  /// Shared by the matrix sampler and the row view so the two cannot drift.
+  /// One factor's row of the observed rate: the tail holds `N(0, dt)` draws, `x` reverts under
+  /// `k(t)` and `theta(t)`, and each point is written as `phi(t) + b(t) x + c(t) x^2`.
   fn fill_row<S2: SeedExt>(&self, row: &mut [T], factor: usize, seed: &S2) {
     if row.is_empty() {
       return;
@@ -134,7 +135,7 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
     if row.len() == 1 {
       return;
     }
-    let normal = SimdNormal::<T>::new(T::zero(), dt.sqrt(), seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(seed);
     normal.fill_slice(&mut row[1..]);
     for j in 1..row.len() {
       let t = T::from_usize_(j) * dt;
@@ -144,14 +145,16 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
   }
 }
 
-/// One factor of the model, stepped on its own. `Adg` reports every factor
-/// as a row of one matrix and the engine speaks in single paths, so this view
-/// is what carries a launch: factor `i` under its own diffusion scale, started
-/// at its own level, with the five time-varying coefficients tabulated once
-/// for all of them. It borrows rather than owns, so the seed it advances is
-/// the process's own.
+/// One factor as a path of its own, which carries a launch: its own diffusion scale and start,
+/// the five coefficients tabulated once. It borrows, so it advances the process's seed.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct AdgRow<'a, T: FloatExt, S: SeedExt, B>(&'a Adg<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRow<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AdgRow<'_, T, S, B>
@@ -173,10 +176,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// [`AdgRow`]'s sampler: one factor's recursion from a seed derived once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AdgRowSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   factor: usize,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRowSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -223,9 +232,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.0.seed)
   }
 
-  /// `k`, `theta`, `phi`, `b` and `c` at each grid point, in the order the
-  /// step names them as `ct` through `ct4`. Step `j` and the observation
-  /// written at it both read `j · dt`, which is what the host evaluates.
+  /// `k`, `theta`, `phi`, `b` and `c` at each grid point, in the step's order `ct` to `ct4`. Step
+  /// `j` and the observation written at it both read `j · dt`, as the host does.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
     let adg = self.0;
     let dt = adg.dt();
@@ -248,6 +256,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Adg<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Adg<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
@@ -255,14 +268,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives a seed once, at construction, for [`AdgSampler`] to own.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. The drift, level and
-  /// observation maps are user-supplied [`Fn1D`] callables (not clonable,
-  /// since the Python variant holds a `pyo3::Py`) so there is nothing else
-  /// reusable to hoist across calls beyond the borrowed process itself.
+  /// Derives one seed for [`AdgSampler`] to own; deriving, not cloning, decorrelates the chunks.
+  /// The [`Fn1D`] maps cannot be cloned (Python holds a `pyo3::Py`), so nothing else is hoisted.
   fn sampler(&self) -> AdgSampler<'_, T, S, B> {
     AdgSampler {
       adg: self,
@@ -270,11 +277,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine, one launch per factor: the factors are
-  /// independent, so a device steps each one's whole batch in one kernel
-  /// under the tabulated coefficients and the matrix is assembled here. On
-  /// the host devices each factor runs the same row recursion the matrix
-  /// sampler does.
+  /// Through the Euler engine, one launch per independent factor under the tabulated
+  /// coefficients, assembled into the matrix here; the host runs the same row recursion.
   fn sample(&self) -> Array2<T> {
     let mut out = Array2::<T>::zeros((self.xn, self.n));
     for i in 0..self.xn {
@@ -322,13 +326,18 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Adg`] sampler: borrows the process and owns a seed derived
-/// once at construction. Each row's Gaussian increments are generated
-/// inside the row recursion from that owned seed.
+/// Reusable [`Adg`] sampler: it borrows the process and owns a seed derived once, from which the
+/// row recursion draws its Gaussian increments.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -354,10 +363,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyAdg {
   inner: Option<Adg<f64>>,
-  seeded: Option<Adg<f64, crate::simd_rng::Deterministic>>,
+  seeded: Option<Adg<f64, stochastic_rs_core::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
@@ -428,9 +438,8 @@ impl PyAdg {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, factors, n)` array. The
-  /// GIL is released while the paths are generated; the Python callables
-  /// re-acquire it per evaluation.
+  /// `m` independent paths stacked into an `(m, factors, n)` array. The GIL is released
+  /// meanwhile; the Python callables re-acquire it per evaluation.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

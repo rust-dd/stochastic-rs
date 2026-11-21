@@ -5,46 +5,35 @@ edition = "2024"
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Neural-network surrogates for the Heston, Bergomi and rough Bergomi volatility models: fast implied-volatility surfaces and surrogate calibration in Rust (candle)."
+description = "Experimental neural-network surrogates for the Heston, Bergomi and rough Bergomi volatility models: fast implied-volatility surfaces and surrogate calibration in Rust (candle)."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-ai"
 repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["volatility", "neural-network", "finance", "quant", "surrogate"]
 categories = ["finance", "mathematics", "science"]
-exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
+exclude = ["tests/**"]
 
 [features]
 default = []
-# Bridge feature: enables `StochVolNn::predict_implied_vol_surface` which
-# packages a Nn prediction into a `stochastic_rs_quant::ImpliedVolSurface`.
+# Enables predict_implied_vol_surface and the calibration module (SurrogateModel, the surrogate calibrators).
 quant = ["dep:stochastic-rs-quant"]
-# Gates `volatility::common::write_surface_fit_plot_html`, the HTML fit-plot
-# helper. Plotly is optional so a caller that only trains/predicts doesn't
-# compile a plotting stack.
+# Gates write_surface_fit_plot_html so a train/predict-only build compiles no plotting stack.
 viz = ["dep:plotly"]
 python = ["quant", "dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python"]
-# candle Metal back-end; `device::best_available` prefers a GPU it can reach at run time.
-# CUDA is not a feature here: candle-kernels needs a CUDA toolkit to build, which the
-# workspace-wide `--all-features` check cannot assume — enable `candle-core/cuda` in the
-# consuming manifest instead.
+# candle's Metal back-end; CUDA stays in the consumer's manifest (candle-kernels needs the toolkit at build time).
 metal = ["candle-core/metal", "candle-nn/metal"]
 
 [dependencies]
+anyhow = { workspace = true }
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+flate2 = { workspace = true }
+ndarray = { workspace = true }
+ndarray-npy = { workspace = true }
+numpy = { workspace = true, optional = true }
+plotly = { workspace = true, optional = true }
+pyo3 = { workspace = true, optional = true }
+rand = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
-stochastic-rs-stochastic = { workspace = true }
 stochastic-rs-quant = { workspace = true, optional = true }
-candle-core = { workspace = true }
-candle-datasets = { workspace = true }
-candle-nn = { workspace = true }
-polars = { workspace = true, features = ["lazy"] }
-ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-npy = { workspace = true }
-flate2 = { workspace = true }
-rand = { workspace = true }
-num-traits = { workspace = true }
-anyhow = { workspace = true }
-parking_lot = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"], optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
-numpy = { workspace = true, optional = true }

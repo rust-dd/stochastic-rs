@@ -4,33 +4,15 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
-use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
-use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
+use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
+use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 
+use super::off_zero;
+use super::power_x;
+use super::power_xx;
+use super::root_x;
+use super::root_xx;
 use crate::mle::DiffusionModel;
-
-fn log_bessel_i(nu: f64, z: f64) -> f64 {
-  use stochastic_rs_distributions::special::ln_gamma;
-
-  if z.abs() < 1e-30 {
-    return f64::NEG_INFINITY;
-  }
-
-  let half_z = 0.5 * z;
-  let log_half_z = half_z.ln();
-  let max_terms = 80;
-  let mut log_terms = Vec::with_capacity(max_terms);
-  for k in 0..max_terms {
-    let kf = k as f64;
-    let log_term = 2.0 * kf * log_half_z - ln_gamma(kf + 1.0) - ln_gamma(nu + kf + 1.0);
-    log_terms.push(log_term);
-  }
-
-  let max_log = log_terms.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-  let sum: f64 = log_terms.iter().map(|&lt| (lt - max_log).exp()).sum();
-
-  nu * log_half_z + max_log + sum.ln()
-}
 
 impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn num_params(&self) -> usize {
@@ -63,31 +45,33 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
     self.sigma * x.abs().sqrt()
   }
 
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.theta
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  /// `σ/(2√x)`: unbounded at zero, so the trait's fixed difference step misses it below `1e-5`.
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    0.5 * self.sigma * x.signum() / x.abs().sqrt()
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    -0.25 * self.sigma / (x.abs() * x.abs().sqrt())
+  }
+
   fn is_positive(&self) -> bool {
     2.0 * self.theta * self.mu >= self.sigma * self.sigma
   }
 
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
-    let sig2 = self.sigma * self.sigma;
-    let e = (-self.theta * dt).exp();
-    let c = 2.0 * self.theta / (sig2 * (1.0 - e));
-    let q = 2.0 * self.theta * self.mu / sig2 - 1.0;
-    let u = c * x0.abs() * e;
-    let v = c * xt.abs();
+    Some(self.transition_pdf(dt, x0, xt))
+  }
 
-    if u < 1e-30 || v < 1e-30 {
-      return Some(1e-30);
-    }
-
-    let sqrt_uv = (u * v).sqrt();
-    let log_bessel = log_bessel_i(q, 2.0 * sqrt_uv);
-    let log_density = c.ln() - u - v + 0.5 * q * (v / u).ln() + log_bessel;
-    let density = log_density.exp();
-    Some(if density.is_finite() && density > 0.0 {
-      density
-    } else {
-      1e-30
-    })
+  fn exact_ln_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
+    Some(self.transition_ln_pdf(dt, x0, xt))
   }
 }
 
@@ -120,6 +104,22 @@ impl<S: SeedExt> DiffusionModel for Cev<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x.abs().powf(self.gamma)
+  }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.mu
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.sigma, self.gamma, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.sigma, self.gamma, x)
   }
 
   fn is_positive(&self) -> bool {
@@ -158,9 +158,25 @@ impl<S: SeedExt> DiffusionModel for Ckls<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.theta3 * x.abs().powf(self.theta4)
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.theta2
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.theta3, self.theta4, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.theta3, self.theta4, x)
+  }
 }
 
-impl<S: SeedExt> DiffusionModel for ModifiedCIR<f64, S> {
+impl<S: SeedExt> DiffusionModel for ModifiedCir<f64, S> {
   fn num_params(&self) -> usize {
     2
   }
@@ -189,9 +205,25 @@ impl<S: SeedExt> DiffusionModel for ModifiedCIR<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * (1.0 + x * x).sqrt()
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.kappa
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_x(1.0 + x * x, 2.0 * x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_xx(1.0 + x * x, 2.0 * x, 2.0)
+  }
 }
 
-impl<S: SeedExt> DiffusionModel for RadialOU<f64, S> {
+impl<S: SeedExt> DiffusionModel for RadialOu<f64, S> {
   fn num_params(&self) -> usize {
     2
   }
@@ -214,12 +246,22 @@ impl<S: SeedExt> DiffusionModel for RadialOU<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = if x.abs() < 1e-12 { 1e-12 } else { x };
+    let safe_x = off_zero(x);
     self.kappa / safe_x - safe_x
   }
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
     self.sigma
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    let safe_x = off_zero(x);
+    -self.kappa / (safe_x * safe_x) - 1.0
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    let safe_x = off_zero(x);
+    2.0 * self.kappa / (safe_x * safe_x * safe_x)
   }
 
   fn is_positive(&self) -> bool {

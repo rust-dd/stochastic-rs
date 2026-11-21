@@ -8,9 +8,10 @@ use ndarray::Array1;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+use stochastic_rs::stochastic::params::VarianceBoundary;
+use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
-use stochastic_rs::traits::PathSampler;
 use stochastic_rs::traits::ProcessExt;
 
 fn key(p: &Array1<f64>) -> Vec<u64> {
@@ -18,7 +19,7 @@ fn key(p: &Array1<f64>) -> Vec<u64> {
 }
 
 fn gbm<S: stochastic_rs::simd_rng::SeedExt>(n: usize, seed: S) -> Gbm<f64, S> {
-  Gbm::<f64, _>::new(0.05, 0.2, n, Some(1.0), Some(1.0), seed)
+  Gbm::<f64, _>::new(0.05, 0.2, n, 1.0, Some(1.0), seed)
 }
 
 #[test]
@@ -114,9 +115,9 @@ fn seed_not_stuck_across_block_boundary() {
 #[test]
 fn multistate_sample_par_paths_distinct() {
   // The same guarantees on a 2-state model (Heston): distinct asset paths.
-  let h = Heston::<f64, _>::new(
-    Some(1.0),
-    Some(0.04),
+  let h = Heston::<f64>::new(
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -125,7 +126,7 @@ fn multistate_sample_par_paths_distinct() {
     32,
     Some(1.0),
     HestonPow::Sqrt,
-    None,
+    VarianceBoundary::Floor,
     Unseeded,
   );
   let runs = h.sample_par(2000);

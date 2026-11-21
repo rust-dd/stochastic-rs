@@ -1,4 +1,4 @@
-//! # MJD Log
+//! Merton jump diffusion stepped in the log-spot, which keeps `S_t > 0`.
 //!
 //! $$
 //! \ln\!\bigl(\tfrac{S_{t+dt}}{S_t}\bigr) = (\mu - \lambda\kappa_J - \tfrac12\sigma^2)\,dt
@@ -6,49 +6,29 @@
 //!
 //! $$
 //!
-//! where $K\sim\mathrm{Poisson}(\lambda\,dt)$, $Z_j\sim\mathcal{N}(\nu,\omega^2)$,
-//! and $\kappa_J = e^{\nu+\frac12\omega^2}-1$.
-//! Log-spot scheme guarantees $S_t > 0$.
+//! `K ~ Poisson(λ dt)`, `Z_j ~ N(ν, ω²)` and `κ_J = exp(ν + ω²/2) − 1`.
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Drift;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
-
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift rate
-  pub mu: Option<T>,
-  /// Cost-of-carry rate
-  pub b: Option<T>,
-  /// Domestic risk-free interest rate
-  pub r: Option<T>,
-  /// Foreign risk-free interest rate
-  pub r_f: Option<T>,
+  /// The price's drift: `μ`, a cost of carry, or the rate pair.
+  pub drift: Drift<T>,
   /// Diffusion volatility
   pub sigma: T,
   /// Jump intensity (Poisson arrival rate)
@@ -59,9 +39,9 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub omega: T,
   /// Number of discrete time steps
   pub n: usize,
-  /// Initial asset price (must be > 0)
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -71,31 +51,64 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
+  /// Panics unless a given `t` is positive and finite, `n >= 2`, `sigma >= 0`, `lambda >= 0`,
+  /// `omega >= 0`, `s0 > 0`, and every parameter is finite.
   pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
+    drift: Drift<T>,
     sigma: T,
     lambda: T,
     nu: T,
     omega: T,
     n: usize,
-    s0: Option<T>,
+    s0: T,
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(sigma >= T::zero(), "sigma must be >= 0");
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
-    assert!(omega >= T::zero(), "omega must be >= 0");
-    validate_drift_args(mu, b, r, r_f, "MjdLog");
+    drift.assert_finite();
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      omega >= T::zero(),
+      "omega must satisfy `omega >= T::zero()`, got omega = {omega:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       sigma,
       lambda,
       nu,
@@ -108,17 +121,12 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
-  #[inline]
-  fn drift(&self) -> T {
-    match (self.r, self.r_f, self.b, self.mu) {
-      (Some(r), Some(r_f), _, _) => r - r_f,
-      (_, _, Some(b), _) => b,
-      (_, _, _, Some(mu)) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
+  /// Replace `drift`; panics unless its rate is finite.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
+    self
   }
 
   #[inline]
@@ -132,17 +140,16 @@ impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
   }
 }
 
-/// The Euler engine's view of Merton's jump diffusion. The whole log-drift is
-/// folded here, as the host sampler folds it, and the jump intensity travels
-/// as a launch argument rather than a family parameter: the kernel draws the
-/// count once per step and offers it to every family that asks.
+/// The Euler engine's view: the whole log-drift is folded here, as the host sampler folds it, and
+/// the jump intensity is a launch argument, since the kernel draws one count per step.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for MjdLog<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let half = T::from_f64_fast(0.5);
     let drift_ln =
-      (self.drift() - self.lambda * self.kappa_j() - half * self.sigma * self.sigma) * self.dt();
+      (self.drift.rate() - self.lambda * self.kappa_j() - half * self.sigma * self.sigma)
+        * self.dt();
     crate::euler::EulerSpec::MertonJumpLog {
       drift_ln,
       sigma: self.sigma,
@@ -150,7 +157,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.s0.unwrap_or(T::one())
+    self.s0
   }
 
   fn grid_points(&self) -> usize {
@@ -191,7 +198,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { drift, sigma, lambda, nu, omega, n, s0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MjdLog<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MjdLog<T, S, B> {
   type Output = Array1<T>;
@@ -201,54 +213,56 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> MjdLogSampler<T> {
-    // RNG, the Poisson jump-count driver, the diffusion source and the
-    // jump-size source are derived from `self.seed` in the same order as the
-    // legacy `sample()`, so the first fill reproduces it bit-for-bit; all
-    // owned sources advance on reuse for independent paths.
+    // The sources take their seeds from `self.seed` in a fixed order the pinned streams depend on;
+    // reuse advances them for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
-    let drift = self.drift();
+    let drift = self.drift.rate();
     let kappa_j = self.kappa_j();
     let half = T::from_f64_fast(0.5);
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let rng = self.seed.rng();
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
 
     let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
 
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
+    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
 
     MjdLogSampler {
       n: self.n,
       sigma: self.sigma,
       nu: self.nu,
       omega: self.omega,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       drift_ln,
-      rng,
       pois,
       normal,
       jump_normal,
     }
   }
 
-  /// Through the Euler engine: on a device the diffusion and the jump both
-  /// happen in the kernel, on the host devices it is this process's own
-  /// sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the diffusion and the jump in its kernel, the host
+  /// runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
-    self.backend.euler_sample(self)
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      <Self as crate::euler::EulerCoefficients<T>>::host_sample(self)
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    self.backend.euler_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_map_view<R: Send>(
@@ -256,26 +270,50 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.euler_paths_map_view(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map_view(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    self.backend.euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    self.backend.try_sample(self)
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    self.backend.try_euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// A step expecting more than 25 jumps samples on the host, past the kernels' 64-event count.
+  fn device_fallback(&self) -> Option<&'static str> {
+    crate::euler::count_fallback(
+      <Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self),
+      <Self as crate::euler::EulerCoefficients<T>>::time_step(self),
+    )
   }
 }
 
-/// Reusable [`MjdLog`] sampling state: owns the jump-count RNG, the Poisson
-/// driver and both Gaussian sources (diffusion and jump-size) so a
-/// Monte-Carlo loop pays their setup once.
+/// Reusable [`MjdLog`] sampling state: the Poisson driver and the Gaussian sources of the
+/// diffusion and of the jump sizes.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MjdLogSampler<T: FloatExt> {
   n: usize,
   sigma: T,
@@ -283,10 +321,9 @@ pub struct MjdLogSampler<T: FloatExt> {
   omega: T,
   s0: T,
   drift_ln: T,
-  rng: SimdRng,
-  pois: Option<SimdPoisson<u32>>,
-  normal: SimdNormal<T>,
-  jump_normal: SimdNormal<T>,
+  pois: Option<Seeded<SimdPoisson<u32>>>,
+  normal: Seeded<SimdNormal<T>>,
+  jump_normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> MjdLogSampler<T> {
@@ -295,8 +332,12 @@ impl<T: FloatExt> MjdLogSampler<T> {
       return;
     }
 
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
     let s0 = self.s0;
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
     out[0] = s0;
     if out.len() == 1 {
       return;
@@ -312,8 +353,8 @@ impl<T: FloatExt> MjdLogSampler<T> {
       let diff = self.sigma * *z;
 
       let mut jump_sum = T::zero();
-      if let Some(pois) = &self.pois {
-        let k: u32 = pois.sample(&mut self.rng);
+      if let Some(pois) = &mut self.pois {
+        let k = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];
@@ -329,6 +370,8 @@ impl<T: FloatExt> MjdLogSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for MjdLogSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for MjdLogSampler<T> {
   type Output = Array1<T>;
@@ -354,16 +397,13 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = MjdLog::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05_f64),
       0.2,
       0.5,
       -0.1,
       0.15,
       256,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );
@@ -372,8 +412,9 @@ mod tests {
   }
 }
 
-py_process_1d!(PyMjdLog, MjdLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0=None, t=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, lambda_: f64, nu: f64, omega: f64, n: usize, s0: Option<f64>, t: Option<f64>),
-  device
-);
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyMjdLog;

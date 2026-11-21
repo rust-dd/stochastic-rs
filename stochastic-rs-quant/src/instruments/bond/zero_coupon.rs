@@ -10,7 +10,7 @@ use crate::traits::RealExt;
 pub struct ZeroCouponBond<T: RealExt> {
   /// Face amount paid at maturity.
   pub face_value: T,
-  /// Maturity date.
+  /// Date `face_value` is paid and the discount factor is read.
   pub maturity_date: NaiveDate,
 }
 
@@ -52,7 +52,8 @@ impl<T: RealExt> ZeroCouponBond<T> {
     self.face_value * compounding.discount_factor(yield_to_maturity, tau)
   }
 
-  /// Yield-to-maturity implied by a price.
+  /// Yield to maturity implied by a price; `NaN` when the price is not positive and finite or
+  /// the maturity is not after the settlement date.
   pub fn yield_to_maturity(
     &self,
     settlement_date: NaiveDate,
@@ -60,8 +61,8 @@ impl<T: RealExt> ZeroCouponBond<T> {
     yield_day_count: DayCountConvention,
     compounding: Compounding,
   ) -> T {
-    if price <= T::zero() || self.maturity_date <= settlement_date {
-      return T::zero();
+    if !(price.is_finite() && price > T::zero()) || self.maturity_date <= settlement_date {
+      return T::nan();
     }
     let tau = yield_day_count.year_fraction(settlement_date, self.maturity_date);
     let discount_factor = price / self.face_value;

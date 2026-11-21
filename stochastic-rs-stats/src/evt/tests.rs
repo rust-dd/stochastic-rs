@@ -1,9 +1,12 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::pareto::SimdPareto;
 
 use super::*;
+use crate::StatsError;
 
 /// Integer LCG uniforms, bit-identical to the Python generator behind the
 /// `scipy` reference numbers below.
@@ -17,10 +20,8 @@ fn lcg(seed: u64, n: usize) -> Vec<f64> {
     .collect()
 }
 
-/// GPD(σ = 2, ξ = 0.25) excesses by inverse CDF; reference MLE from
-/// `scipy.optimize.minimize(..., method="Nelder-Mead", xatol=fatol=1e-12)`
-/// on the same negative log-likelihood (and `genpareto.fit(y, floc=0)`
-/// agreeing to 2e-5).
+/// GPD(σ = 2, ξ = 0.25) excesses by inverse CDF. The reference MLE is scipy's Nelder–Mead
+/// (`xatol=fatol=1e-12`) on the same likelihood; `genpareto.fit(y, floc=0)` agrees to 2e-5.
 fn gpd_sample() -> Array1<f64> {
   lcg(3, 2_000)
     .into_iter()
@@ -54,7 +55,7 @@ fn samples_are_bit_identical_to_the_python_generator() {
 
 #[test]
 fn gpd_fit_matches_scipy() {
-  let fit = gpd_fit(gpd_sample().view());
+  let fit = fit_gpd(gpd_sample().view()).unwrap();
   assert!(fit.converged);
   assert_eq!(fit.nobs, 2_000);
   assert_close(fit.sigma, 1.944_730_724_656_302_8, 1e-4, "sigma");
@@ -89,12 +90,11 @@ fn gpd_fit_matches_scipy() {
   );
 }
 
-/// With the threshold at zero every observation exceeds it, so the POT
-/// quantiles reduce to the GPD's own: VaR₉₉ and ES₉₉ from eq. 5.18 / 5.20
-/// at the reference optimum.
+/// With the threshold at zero every observation exceeds it, so the POT quantiles are the GPD's own:
+/// VaR₉₉ and ES₉₉ from eq. 5.18 / 5.20 at the reference optimum.
 #[test]
 fn pot_var_and_es_match_the_qrm_formulas() {
-  let pot = pot_fit(gpd_sample().view(), 0.0);
+  let pot = fit_pot(gpd_sample().view(), 0.0).unwrap();
   assert_eq!((pot.n_exceedances, pot.nobs), (2_000, 2_000));
   assert_close(pot.exceedance_rate, 1.0, 1e-15, "rate");
   let var = pot.quantile(0.99);
@@ -109,7 +109,7 @@ fn pot_var_and_es_match_the_qrm_formulas() {
   );
   assert!(es > var);
   // A higher threshold keeps only the tail and re-anchors the rate.
-  let high = pot_fit(gpd_sample().view(), 5.0);
+  let high = fit_pot(gpd_sample().view(), 5.0).unwrap();
   assert!(high.n_exceedances < 2_000 && high.n_exceedances >= 10);
   assert_close(
     high.exceedance_rate,
@@ -122,7 +122,7 @@ fn pot_var_and_es_match_the_qrm_formulas() {
 
 #[test]
 fn gev_fit_matches_scipy() {
-  let fit = gev_fit(gev_sample().view());
+  let fit = fit_gev(gev_sample().view()).unwrap();
   assert!(fit.converged);
   assert_eq!(fit.nobs, 500);
   assert_close(fit.mu, 1.051_093_874_083_600_7, 1e-4, "mu");
@@ -154,7 +154,7 @@ fn gev_fit_matches_scipy() {
 #[test]
 fn hill_matches_the_hand_computation() {
   let x = array![1.0_f64, 2.0, 4.0, 8.0, 16.0, 3.0, 5.0, 7.0, 11.0, 13.0];
-  let h = hill_estimator(x.view(), 4);
+  let h = fit_hill(x.view(), 4).unwrap();
   assert_close(h.xi, 0.507_808_574_489_568, 1e-12, "xi");
   assert_close(h.alpha, 1.0 / 0.507_808_574_489_568, 1e-12, "alpha");
   assert_close(h.std_error, 0.507_808_574_489_568 / 2.0, 1e-12, "se");
@@ -168,10 +168,10 @@ fn hill_recovers_a_pareto_tail_index() {
   let closest = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(seed));
+      let mut dist = SimdPareto::<f64>::new(1.0, 3.0).seeded(&Deterministic::new(seed));
       let mut xs = vec![0.0; 20_000];
       dist.fill_slice(&mut xs);
-      let h = hill_estimator(Array1::from(xs).view(), 500);
+      let h = fit_hill(Array1::from(xs).view(), 500).unwrap();
       (h.xi - 1.0 / 3.0).abs() / h.std_error
     })
     .fold(f64::INFINITY, f64::min);
@@ -196,68 +196,144 @@ fn mean_excess_is_the_mean_residual_life() {
   assert!(e[2].is_nan());
 }
 
+/// A NaN loss lies on no side of a threshold, so no mean excess is known.
 #[test]
-#[should_panic(expected = "k must be at least 1")]
+fn a_nan_observation_makes_every_mean_excess_nan() {
+  let x = array![1.0_f64, f64::NAN, 3.0, 4.0];
+  let e = mean_excess(x.view(), array![0.0, 2.0, 10.0].view());
+  assert!(e.iter().all(|v| v.is_nan()), "{e:?}");
+}
+
+#[test]
+#[should_panic(expected = "k must satisfy `k >= 1`, got k = 0")]
 fn hill_rejects_zero_k() {
-  let _ = hill_estimator(array![1.0_f64, 2.0].view(), 0);
+  let _ = fit_hill(array![1.0_f64, 2.0].view(), 0);
 }
 
 #[test]
-#[should_panic(expected = "need more than k = 3 positive observations")]
 fn hill_rejects_too_large_k() {
-  let _ = hill_estimator(array![1.0_f64, 2.0, -1.0, 3.0].view(), 3);
+  assert_eq!(
+    fit_hill(array![1.0_f64, 2.0, -1.0, 3.0].view(), 3).unwrap_err(),
+    StatsError::InsufficientData { needed: 4, got: 3 }
+  );
+}
+
+/// A NaN fails `x > 0`, so the positivity filter alone would drop it silently.
+#[test]
+fn hill_validates_before_its_positivity_filter() {
+  assert!(matches!(
+    fit_hill(array![1.0_f64, f64::NAN, -1.0, 3.0].view(), 1),
+    Err(StatsError::InvalidObservation {
+      index: 1,
+      constraint: "finite",
+      ..
+    })
+  ));
 }
 
 #[test]
-#[should_panic(expected = "exceedances must be non-negative")]
 fn gpd_fit_rejects_negative_excesses() {
   let mut y = gpd_sample();
   y[0] = -1.0;
-  let _ = gpd_fit(y.view());
+  assert_eq!(
+    fit_gpd(y.view()).unwrap_err(),
+    StatsError::InvalidObservation {
+      index: 0,
+      value: -1.0,
+      constraint: "finite and >= 0"
+    }
+  );
 }
 
 #[test]
-#[should_panic(expected = "need at least 10 block maxima")]
 fn gev_fit_rejects_a_short_series() {
-  let _ = gev_fit(array![1.0_f64, 2.0, 3.0].view());
+  assert_eq!(
+    fit_gev(array![1.0_f64, 2.0, 3.0].view()).unwrap_err(),
+    StatsError::InsufficientData { needed: 10, got: 3 }
+  );
 }
 
 #[test]
-#[should_panic(expected = "need at least 10 exceedances above the threshold")]
 fn pot_fit_rejects_a_threshold_too_high() {
-  let _ = pot_fit(gpd_sample().view(), 1_000.0);
+  assert_eq!(
+    fit_pot(gpd_sample().view(), 1_000.0).unwrap_err(),
+    StatsError::InsufficientData { needed: 10, got: 0 }
+  );
 }
 
 #[test]
-#[should_panic(expected = "block_size must be at least 1")]
+#[should_panic(expected = "block_size must satisfy `block_size >= 1`, got block_size = 0")]
 fn block_maxima_rejects_zero_block() {
   let _ = block_maxima(array![1.0_f64].view(), 0);
 }
 
 #[test]
-#[should_panic(expected = "period must exceed 1 block")]
-fn return_level_rejects_a_unit_period() {
-  let fit = gev_fit(gev_sample().view());
-  let _ = fit.return_level(1.0);
+fn a_return_period_of_at_most_one_block_gives_nan() {
+  let fit = fit_gev(gev_sample().view()).unwrap();
+  for period in [1.0, 0.5, -2.0, f64::NAN] {
+    assert!(fit.return_level(period).is_nan(), "period {period}");
+  }
 }
 
-/// Hosking–Wallis PWM on the reference GPD sample: the closed-form
-/// estimates reproduce the Python evaluation of eqs. 15-16 to rounding,
-/// and land near the σ = 2, ξ = 0.25 truth like the MLE does.
+/// The level check comes first, so the `ξ ≥ 1` branch answers `+∞` only inside `(0, 1)`.
+#[test]
+fn a_level_outside_the_unit_interval_gives_nan() {
+  let pot = fit_pot(gpd_sample().view(), 0.0).unwrap();
+  let heavy = PotFit {
+    gpd: GpdFit {
+      xi: 1.5,
+      ..pot.gpd.clone()
+    },
+    ..pot.clone()
+  };
+  for p in [0.0, 1.0, -0.5, 1.5, f64::NAN] {
+    assert!(pot.quantile(p).is_nan(), "quantile at {p}");
+    assert!(pot.expected_shortfall(p).is_nan(), "ES at {p}");
+    assert!(
+      heavy.expected_shortfall(p).is_nan(),
+      "ES at {p} for xi >= 1"
+    );
+  }
+  assert_eq!(heavy.expected_shortfall(0.99), f64::INFINITY);
+}
+
+/// Hosking–Wallis PWM on the reference GPD sample: the Python evaluation of eqs. 15-16 to rounding,
+/// and near the σ = 2, ξ = 0.25 truth as the MLE is.
 #[test]
 fn gpd_pwm_matches_the_hosking_wallis_formulas() {
-  let est = gpd_pwm(gpd_sample().view());
+  let est = fit_gpd_pwm(gpd_sample().view()).unwrap();
   assert_eq!(est.nobs, 2_000);
   assert_close(est.a0, 2.673_026_587_667_958, 1e-12, "a0");
   assert_close(est.a1, 0.561_686_053_844_953, 1e-12, "a1");
   assert_close(est.xi, 0.275_082_205_611_526_74, 1e-12, "xi");
   assert_close(est.sigma, 1.937_724_538_274_003, 1e-12, "sigma");
-  let mle = gpd_fit(gpd_sample().view());
+  let mle = fit_gpd(gpd_sample().view()).unwrap();
   assert!((est.xi - mle.xi).abs() < 0.01 && (est.sigma - mle.sigma).abs() < 0.02);
 }
 
 #[test]
-#[should_panic(expected = "need at least 2 exceedances")]
+fn gpd_pwm_rejects_a_constant_sample() {
+  for c in [0.0, 0.3] {
+    assert_eq!(
+      fit_gpd_pwm(Array1::<f64>::from_elem(400, c).view()).unwrap_err(),
+      StatsError::DegenerateData("constant excesses"),
+      "{c}"
+    );
+  }
+}
+
+#[test]
 fn gpd_pwm_rejects_a_single_excess() {
-  let _ = gpd_pwm(array![1.0_f64].view());
+  assert_eq!(
+    fit_gpd_pwm(array![1.0_f64].view()).unwrap_err(),
+    StatsError::InsufficientData { needed: 2, got: 1 }
+  );
+}
+
+/// A NaN observation is a NaN block maximum; `f64::max` would hide it behind its neighbours.
+#[test]
+fn a_nan_observation_makes_its_block_maximum_nan() {
+  let maxima = block_maxima(array![1.0_f64, 2.0, f64::NAN, 0.5, 3.0, 1.0].view(), 3);
+  assert!(maxima[0].is_nan());
+  assert_eq!(maxima[1], 3.0);
 }

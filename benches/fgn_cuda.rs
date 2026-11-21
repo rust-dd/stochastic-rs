@@ -10,6 +10,30 @@ use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
+struct StderrLogger;
+
+impl log::Log for StderrLogger {
+  fn enabled(&self, _: &log::Metadata) -> bool {
+    true
+  }
+
+  fn log(&self, record: &log::Record) {
+    eprintln!("{}", record.args());
+  }
+
+  fn flush(&self) {}
+}
+
+static LOGGER: StderrLogger = StderrLogger;
+
+fn profiled_criterion() -> Criterion {
+  if std::env::var_os("STOCHASTIC_RS_CUDA_PROFILE").is_some() {
+    let _ = log::set_logger(&LOGGER);
+    log::set_max_level(log::LevelFilter::Trace);
+  }
+  Criterion::default()
+}
+
 fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
   let mut group = c.benchmark_group("FGN_single_path_cpu_vs_cuda");
   group.measurement_time(Duration::from_secs(3));
@@ -81,9 +105,9 @@ fn bench_fgn_batch_cpu_vs_cuda(c: &mut Criterion) {
   group.finish();
 }
 
-criterion_group!(
-  benches,
-  bench_fgn_single_path_cpu_vs_cuda,
-  bench_fgn_batch_cpu_vs_cuda
-);
+criterion_group! {
+  name = benches;
+  config = profiled_criterion();
+  targets = bench_fgn_single_path_cpu_vs_cuda, bench_fgn_batch_cpu_vs_cuda
+}
 criterion_main!(benches);

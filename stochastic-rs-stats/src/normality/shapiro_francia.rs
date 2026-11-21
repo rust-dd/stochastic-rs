@@ -1,23 +1,27 @@
-//! Shapiro-Francia test for normality: squared correlation between the
-//! ordered sample and Blom-type expected normal order-statistic
-//! approximations. The p-value is obtained here by parametric bootstrap
-//! under the null rather than Shapiro & Francia's original
-//! normal-theory approximation formula for the mean/variance of `W`.
+//! Shapiro–Francia normality test: the squared correlation of the ordered sample and Blom scores.
 //!
-//! Reference: Shapiro S. S. & Francia R. S. (1972) — *An Approximate
-//! Analysis of Variance Test for Normality*, Journal of the American
-//! Statistical Association 67(337), 215–216,
-//! DOI: 10.1080/01621459.1972.10481232.
+//! The p-value is a parametric bootstrap under the null, not the paper's normal approximation.
+//!
+//! Reference: Shapiro & Francia (1972), JASA 67(337), 215–216, DOI: 10.1080/01621459.1972.10481232
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
+
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::reject_constant;
+use crate::input::validate;
 
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct ShapiroFranciaConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
   /// Number of parametric bootstrap samples used for p-value approximation.
   pub bootstrap_samples: usize,
@@ -35,24 +39,25 @@ impl Default for ShapiroFranciaConfig {
   }
 }
 
-/// Result of the Shapiro-Francia normality test.
-#[derive(Debug, Clone, Copy)]
-pub struct ShapiroFranciaResult {
+/// Shapiro–Francia test (null: normality), decided by its parametric-bootstrap p-value.
+#[derive(Debug, Clone)]
+pub struct ShapiroFranciaTest {
   /// Shapiro-Francia W statistic.
   pub statistic: f64,
   /// Bootstrap p-value (left tail, small W indicates non-normality).
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
   /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for ShapiroFranciaResult {
+impl crate::traits::HypothesisTest for ShapiroFranciaTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
@@ -90,40 +95,29 @@ fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
   (num * num / s2).clamp(0.0, 1.0)
 }
 
-/// Shapiro-Francia normality test using bootstrap p-values.
-///
-/// # Panics
-/// Panics if the sample has fewer than 8 points or contains non-finite values.
+/// Shapiro–Francia normality test with a bootstrap p-value; `Err` below 8 points, on a non-finite
+/// or constant sample, and panics unless `0 < alpha < 1` and `bootstrap_samples >= 1`.
 pub fn shapiro_francia_test(
   sample: ArrayView1<f64>,
   cfg: ShapiroFranciaConfig,
-) -> ShapiroFranciaResult {
-  let sample = sample
-    .as_slice()
-    .expect("shapiro_francia_test requires a contiguous ArrayView1");
+) -> Result<ShapiroFranciaTest, StatsError> {
+  assert_alpha(cfg.alpha);
   assert!(
-    sample.len() >= 8,
-    "Shapiro-Francia requires at least 8 observations"
+    cfg.bootstrap_samples >= 1,
+    "bootstrap_samples must satisfy `bootstrap_samples >= 1`, got bootstrap_samples = {:?}",
+    cfg.bootstrap_samples
   );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "Shapiro-Francia requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-  assert!(
-    cfg.bootstrap_samples > 0,
-    "bootstrap_samples must be positive"
-  );
+  let sample = as_slice_or_copy(sample);
+  validate(&sample, 8)?;
 
   let mut obs = sample.to_vec();
   obs.sort_by(f64::total_cmp);
+  reject_constant(&obs, "constant sample")?;
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(cfg.bootstrap_seed));
+  let mut normals =
+    SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut normal_draw = vec![0.0; n];
 
   let mut left_tail_hits = 0usize;
@@ -138,29 +132,31 @@ pub fn shapiro_francia_test(
 
   let p_value = (left_tail_hits as f64 + 1.0) / (cfg.bootstrap_samples as f64 + 1.0);
 
-  ShapiroFranciaResult {
+  Ok(ShapiroFranciaTest {
     statistic: obs_stat,
-    p_value,
-    reject_normality: p_value < cfg.alpha,
-  }
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::exp::SimdExp;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::ShapiroFranciaConfig;
   use super::shapiro_francia_test;
+  use crate::StatsError;
 
-  /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
-  /// `fill_slice` ignores the `Rng` it is handed and draws from the
-  /// distribution's own SIMD stream, so seeding an external `StdRng` has no
-  /// effect on the data at all.
+  /// From a `Deterministic` seed: `fill_slice` draws from the distribution's own stream, so only
+  /// the constructor's seed controls the data.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0; n];
     dist.fill_slice(&mut x);
     x
@@ -168,10 +164,8 @@ mod tests {
 
   #[test]
   fn shapiro_francia_accepts_normal_sample() {
-    // A correct test still rejects a genuine normal sample at rate `alpha`,
-    // and the SIMD stream differs between platforms, so one seed cannot be
-    // trusted to be lucky everywhere. Three independent seeds put the
-    // false-failure probability at roughly 1e-6 on any target.
+    // A correct test rejects a true normal sample at rate `alpha`, and the SIMD stream differs by
+    // platform: three independent seeds put a false failure near 1e-6 on any target.
     let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
@@ -181,7 +175,10 @@ mod tests {
           bootstrap_seed: 7,
           ..ShapiroFranciaConfig::default()
         };
-        shapiro_francia_test(ArrayView1::from(&x), cfg).p_value
+        shapiro_francia_test(ArrayView1::from(&x), cfg)
+          .unwrap()
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 
@@ -193,7 +190,7 @@ mod tests {
 
   #[test]
   fn shapiro_francia_rejects_skewed_sample() {
-    let dist = SimdExp::<f64>::new(1.0, &Deterministic::new(11));
+    let mut dist = SimdExp::<f64>::new(1.0).seeded(&Deterministic::new(11));
     let mut x = vec![0.0; 700];
     dist.fill_slice(&mut x);
 
@@ -202,10 +199,19 @@ mod tests {
       bootstrap_seed: 11,
       ..ShapiroFranciaConfig::default()
     };
-    let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
+    let res = shapiro_francia_test(ArrayView1::from(&x), cfg).unwrap();
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [2.5; 10];
+    assert_eq!(
+      shapiro_francia_test(ArrayView1::from(&x), ShapiroFranciaConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant sample")
     );
   }
 }

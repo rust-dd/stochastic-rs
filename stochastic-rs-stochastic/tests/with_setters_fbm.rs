@@ -1,12 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Fbm`
-//! (`process/fbm.rs`). Cache: private `fgn: Fgn<T, Unseeded, B>` (its own
-//! FFT-based cache, always keyed on the literal `Unseeded` — never
-//! consulted for randomness, since `FbmSampler` draws through a Gaussian
-//! source built from the *outer* `self.seed.derive()` and only borrows
-//! `fgn` for its cached FFT plan/eigenvalues). `with_hurst`/`with_steps`/
-//! `with_horizon` must rebuild `fgn` (`Fgn::new(hurst, n - 1, t, Unseeded)`,
-//! identical to `Fbm::new`'s own expression); `with_seed` does not, since
-//! `fgn`'s seed is a never-read dummy.
+//! `Fbm`'s setters: `with_hurst`, `with_points` and `with_horizon` rebuild the private `fgn` cache
+//! as `new` builds it; `with_seed` leaves it, since that cache's seed is never read.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -32,9 +25,9 @@ struct FbmFields {
 
 fn fields<S: SeedExt>(x: &Fbm<f64, S>) -> FbmFields {
   FbmFields {
-    hurst: x.hurst,
-    n: x.n,
-    t: x.t,
+    hurst: x.hurst(),
+    n: x.n(),
+    t: x.t(),
   }
 }
 
@@ -44,11 +37,13 @@ fn finite(out: &Array1<f64>) -> bool {
 
 #[test]
 fn fbm_with_hurst_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.hurst = 0.3;
+  let expected = FbmFields {
+    hurst: 0.3,
+    ..fields(&fbm_base())
+  };
   let got = fbm_base().with_hurst(0.3);
-  assert_eq!(got.hurst, 0.3);
-  assert_eq!(fields(&got), fields(&expected));
+  assert_eq!(got.hurst(), 0.3);
+  assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 
   let want = Fbm::new(0.3, 64, Some(1.0), Deterministic::new(7)).sample();
@@ -59,34 +54,38 @@ fn fbm_with_hurst_rebuilds_fgn_cache() {
 }
 
 #[test]
-fn fbm_with_steps_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.n = 128;
-  let got = fbm_base().with_steps(128);
-  assert_eq!(got.n, 128);
-  assert_eq!(fields(&got), fields(&expected));
+fn fbm_with_points_rebuilds_fgn_cache() {
+  let expected = FbmFields {
+    n: 128,
+    ..fields(&fbm_base())
+  };
+  let got = fbm_base().with_points(128);
+  assert_eq!(got.n(), 128);
+  assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 
   let want = Fbm::new(0.7, 128, Some(1.0), Deterministic::new(9)).sample();
   let got_seeded = fbm_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
-fn fbm_with_steps_rejects_too_few() {
-  let _ = fbm_base().with_steps(1);
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
+fn fbm_with_points_rejects_too_few() {
+  let _ = fbm_base().with_points(1);
 }
 
 #[test]
 fn fbm_with_horizon_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.t = Some(2.0);
+  let expected = FbmFields {
+    t: Some(2.0),
+    ..fields(&fbm_base())
+  };
   let got = fbm_base().with_horizon(Some(2.0));
-  assert_eq!(got.t, Some(2.0));
-  assert_eq!(fields(&got), fields(&expected));
+  assert_eq!(got.t(), Some(2.0));
+  assert_eq!(fields(&got), expected);
 
   let want = Fbm::new(0.7, 64, Some(2.0), Deterministic::new(11)).sample();
   let got_seeded = fbm_base_seeded(Deterministic::new(11))
@@ -104,14 +103,8 @@ fn fbm_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `fbm_base()` helper the bit-exact `fgn`-rebuild tests above need (those
-/// require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `FbmFields` mirror,
-/// not a `Fbm { .., ..Fbm::default() }` struct-update literal: `Fbm` has a
-/// private `fgn` cache field, so that literal wouldn't even compile from
-/// this external test crate.
+/// A `Default`-rooted `with_hurst` round-trip. It compares through the `FbmFields` mirror: `Fbm`
+/// has a private `fgn` cache, so a struct-update literal would not compile here.
 #[test]
 fn fbm_default_with_hurst_round_trip() {
   let base = Fbm::<f64>::default();
@@ -120,7 +113,7 @@ fn fbm_default_with_hurst_round_trip() {
     hurst: 0.3,
     ..fields(&base)
   };
-  assert_eq!(got.hurst, 0.3);
+  assert_eq!(got.hurst(), 0.3);
   assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 }

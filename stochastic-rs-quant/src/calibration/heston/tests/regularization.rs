@@ -1,12 +1,17 @@
-use ndarray::Array1;
-
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::heston::HestonCalibrator;
-use crate::calibration::heston::HestonParams;
+use crate::calibration::heston::lsq::HestonProblem;
+use crate::calibration::heston::transform::to_optimizer_coordinates;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
+use crate::calibration::least_squares::checks::worst_relative_error;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
+use crate::traits::ModelPricer;
 
 const TRUTH: HestonParams = HestonParams {
   v0: 0.04,
@@ -19,40 +24,27 @@ const TRUTH: HestonParams = HestonParams {
 fn calibrator(regularization: Option<Regularization>) -> HestonCalibrator {
   let (s, r, tau) = (100.0, 0.02, 0.5);
   let strikes = [80.0, 90.0, 100.0, 110.0, 120.0];
-  let pricer = HestonPricer::new(
-    TRUTH.v0,
-    TRUTH.rho,
-    TRUTH.kappa,
-    TRUTH.theta,
-    TRUTH.sigma,
-    Some(0.0),
-  );
-  let prices: Vec<f64> = strikes
+  let pricer = HestonPricer::new(TRUTH);
+  let quotes = strikes
     .iter()
-    .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)
+    .map(|&k| {
+      let price = pricer.price_call(s, k, r, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
+    })
     .collect();
-  let mut calibrator = HestonCalibrator::new(
-    Some(HestonParams {
+  let options = CalibrationOptions {
+    regularization,
+    ..CalibrationOptions::default()
+  };
+  HestonCalibrator::new(s, r, 0.0, quotes)
+    .with_start(HestonParams {
       v0: 0.05,
       kappa: 1.0,
       theta: 0.05,
       sigma: 0.6,
       rho: -0.3,
-    }),
-    Array1::from_vec(prices),
-    Array1::from_elem(strikes.len(), s),
-    Array1::from_vec(strikes.to_vec()),
-    r,
-    None,
-    tau,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  calibrator.regularization = regularization;
-  calibrator
+    })
+    .with_options(options)
 }
 
 /// A pull on κ alone, heavy against the price residuals, pins κ at the
@@ -83,24 +75,64 @@ fn zero_weights_match_the_unregularised_calibration() {
   assert_eq!(plain.params.rho, zero.params.rho);
 }
 
-/// The augmented Jacobian carries one extra row per parameter, with a single
-/// positive entry on the regularised coordinate.
+/// Off the Feller cap a pull sees `(v0, κ, θ, σ, ρ)` through the logistic transform's diagonal.
 #[test]
-fn augmented_jacobian_has_the_penalty_rows() {
-  let reg = Regularization::new(vec![0.0; 5], vec![0.0, 4.0, 0.0, 0.0, 0.0]);
-  let problem = calibrator(Some(reg));
-  let jacobian = problem.jacobian().expect("jacobian");
-  let n = problem.c_market.len();
-  assert_eq!(jacobian.nrows(), n + 5);
-  for col in 0..5 {
-    for row in 0..5 {
-      let value = jacobian[(n + row, col)];
-      if row == 1 && col == 1 {
-        assert!(value > 0.0, "kappa row must carry a positive derivative");
-      } else {
-        assert_eq!(value, 0.0);
-      }
-    }
+fn the_pull_reads_the_physical_parameters_through_the_transform() {
+  let calibrator = calibrator(None);
+  let start = calibrator.start.unwrap();
+  let problem = HestonProblem::new(&calibrator, start);
+  let physical = [start.v0, start.kappa, start.theta, start.sigma, start.rho];
+  for (natural, value) in problem.natural_params().iter().zip(physical) {
+    assert!((natural - value).abs() < 1e-12, "{natural} against {value}");
   }
-  assert_eq!(problem.residuals().expect("residuals").len(), n + 5);
+  for ((row, col), value) in problem.natural_jacobian().indexed_iter() {
+    assert_eq!(*value > 0.0, row == col, "({row}, {col}) = {value}");
+  }
+}
+
+/// Where the cap binds, σ = √(2κθ) moves with κ and θ alone, so its row leaves σ's column.
+#[test]
+fn under_the_feller_cap_the_sigma_row_moves_onto_kappa_and_theta() {
+  let calibrator = calibrator(None).with_feller_projection(true);
+  let problem = HestonProblem::new(&calibrator, calibrator.start.unwrap());
+  let jacobian = problem.natural_jacobian();
+  let sigma_row = jacobian.row(3).to_vec();
+  assert!(sigma_row[1] > 0.0 && sigma_row[2] > 0.0, "{sigma_row:?}");
+  assert!(sigma_row[0] == 0.0 && sigma_row[3] == 0.0 && sigma_row[4] == 0.0);
+  let capped = problem.natural_params()[3];
+  assert!(
+    (capped - (2.0 * 1.0 * 0.05_f64).sqrt()).abs() < 1e-9,
+    "{capped}"
+  );
+}
+
+#[test]
+fn the_natural_jacobian_matches_central_differences_with_the_cap_free_and_binding() {
+  let free = HestonParams {
+    v0: 0.05,
+    kappa: 1.5,
+    theta: 0.05,
+    sigma: 0.3,
+    rho: -0.4,
+  };
+  let binding = HestonParams {
+    kappa: 1.0,
+    sigma: 0.6,
+    ..free
+  };
+  for (feller, point) in [
+    (false, free),
+    (true, free),
+    (true, binding),
+    (false, binding),
+  ] {
+    let calibrator = calibrator(None).with_feller_projection(feller);
+    let mut problem = HestonProblem::new(&calibrator, point);
+    let x = to_optimizer_coordinates(&point);
+    problem.set_params(x.view());
+    let analytic = problem.natural_jacobian();
+    let numeric = natural_jacobian_by_differences(&mut problem, x.view(), 1e-6);
+    let worst = worst_relative_error(analytic.view(), numeric.view());
+    assert!(worst < 1e-6, "feller {feller}, {point:?}: {worst:e}");
+  }
 }

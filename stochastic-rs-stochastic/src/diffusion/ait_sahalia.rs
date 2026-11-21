@@ -1,19 +1,19 @@
-//! # AitSahalia
+//! Aït-Sahalia's nonlinear drift and diffusion family by Euler–Maruyama; not its estimator.
 //!
 //! $$
-//! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt+\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
+//! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt
+//! +\sqrt{b_0+b_1 X_t+b_2 X_t^{b_3}}\,dW_t
 //! $$
 //!
-//! Reference: Aït-Sahalia Y. (1996) — *Testing Continuous-Time Models of
-//! the Spot Interest Rate*, Review of Financial Studies 9(2), 385–426,
-//! DOI: 10.1093/rfs/9.2.385. This file's Euler-Maruyama discretisation
-//! is a simulation scheme for the paper's nonlinear drift/CEV-type
-//! diffusion family, not the paper's own (non-simulation) estimator.
+//! Reference: Aït-Sahalia (1996), Rev. Financ. Stud. 9(2), 385–426, DOI 10.1093/rfs/9.2.385
 //!
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -22,7 +22,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse-state drift coefficient a₋₁ in `a₋₁/X_t + a_0 + a_1 X_t + a_2 X_t²`.
   pub am1: T,
@@ -32,10 +32,8 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub a1: T,
   /// Quadratic drift coefficient a₂.
   pub a2: T,
-  /// Constant term b₀ inside the square-rooted diffusion bracket
-  /// `√(b_0 + b_1 X_t + b_2 X_t^{b_3})` (unlike
-  /// [`NonLinearSDE`](super::nonlinear_sde::NonLinearSDE), this bracket
-  /// **is** square-rooted before scaling `dW_t`).
+  /// Constant term b₀ inside `√(b_0 + b_1 X_t + b_2 X_t^{b_3})`; the bracket is square-rooted,
+  /// unlike [`NonlinearSde`](super::nonlinear_sde::NonlinearSde)'s.
   pub b0: T,
   /// Linear term b₁ inside the square-rooted diffusion bracket.
   pub b1: T,
@@ -47,9 +45,9 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub b3: T,
   /// Number of points sampled along the Aït-Sahalia path.
   pub n: usize,
-  /// Initial value X₀ of the Aït-Sahalia path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -59,6 +57,7 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     am1: T,
     a0: T,
@@ -73,6 +72,47 @@ impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      am1.is_finite(),
+      "am1 must satisfy `am1.is_finite()`, got am1 = {am1:?}"
+    );
+    assert!(
+      a0.is_finite(),
+      "a0 must satisfy `a0.is_finite()`, got a0 = {a0:?}"
+    );
+    assert!(
+      a1.is_finite(),
+      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
+    );
+    assert!(
+      a2.is_finite(),
+      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
+    );
+    assert!(
+      b0.is_finite(),
+      "b0 must satisfy `b0.is_finite()`, got b0 = {b0:?}"
+    );
+    assert!(
+      b1.is_finite(),
+      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
+    );
+    assert!(
+      b2.is_finite(),
+      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
+    );
+    assert!(
+      b3.is_finite(),
+      "b3 must satisfy `b3.is_finite()`, got b3 = {b3:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       am1,
@@ -90,8 +130,6 @@ impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> AitSahalia<T, S, B> {}
 
 /// The Euler engine's view of the Aït-Sahalia short-rate model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -135,6 +173,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] AitSahalia<T, S> { am1, a0, a1, a2, b0, b1, b2, b3, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AitSahalia<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AitSahalia<T, S, B>
 {
@@ -159,13 +202,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       b1: self.b1,
       b2: self.b2,
       b3: self.b3,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -197,6 +239,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`AitSahalia`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AitSahaliaSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -209,7 +252,7 @@ pub struct AitSahaliaSampler<T: FloatExt> {
   b1: T,
   b2: T,
   b3: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> AitSahaliaSampler<T> {
@@ -240,6 +283,8 @@ impl<T: FloatExt> AitSahaliaSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for AitSahaliaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for AitSahaliaSampler<T> {
   type Output = Array1<T>;

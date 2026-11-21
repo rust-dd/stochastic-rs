@@ -22,6 +22,9 @@ use rand::seq::SliceRandom;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::dataset::train_test_split_indices;
+use super::init::seed_weights;
+use super::metadata::FORMAT_VERSION;
+use super::metadata::parse_f64_vec_field;
 use super::metadata::parse_metadata;
 use super::metadata::parse_usize_field;
 use super::metadata::parse_vec_field;
@@ -35,6 +38,8 @@ use super::spec::EpochMetrics;
 use super::spec::StochVolModelSpec;
 use super::spec::TrainConfig;
 use super::spec::TrainReport;
+#[cfg(feature = "quant")]
+use super::spec::check_ascending;
 
 const META_FILE: &str = "metadata.txt";
 const WEIGHTS_FILE: &str = "weights.safetensors";
@@ -49,11 +54,13 @@ pub struct StochVolNn {
 }
 
 impl StochVolNn {
-  pub fn new(spec: StochVolModelSpec, device: &Device) -> Result<Self> {
+  /// The initial weights are a function of `(spec, seed)` on every device.
+  pub fn new(spec: StochVolModelSpec, device: &Device, seed: u64) -> Result<Self> {
     let varmap = VarMap::new();
     let vs = VarBuilder::from_varmap(&varmap, DType::F32, device);
-    let model = FeedForwardNet::new(vs, spec.input_dim, spec.hidden_dim, spec.output_dim)?;
+    let model = FeedForwardNet::new(vs, spec.input_dim(), spec.hidden_dim, spec.output_dim())?;
     let param_scaler = BoundedScaler::new(spec.param_lb.clone(), spec.param_ub.clone());
+    seed_weights(&varmap, device, seed)?;
     Ok(Self {
       spec,
       device: device.clone(),
@@ -80,10 +87,10 @@ impl StochVolNn {
     if params.nrows() < 2 {
       bail!("at least two samples are required for train/test split");
     }
-    if params.ncols() != self.spec.input_dim {
+    if params.ncols() != self.spec.input_dim() {
       bail!("params width must equal input_dim");
     }
-    if surfaces.ncols() != self.spec.output_dim {
+    if surfaces.ncols() != self.spec.output_dim() {
       bail!("surfaces width must equal output_dim");
     }
     if config.batch_size == 0 {
@@ -158,91 +165,79 @@ impl StochVolNn {
       .ok_or_else(|| anyhow!("model is not trained or loaded (missing output scaler)"))?;
 
     let scaled_params = self.param_scaler.scale_vector(params)?;
-    let xt = Tensor::from_slice(&scaled_params, (1, self.spec.input_dim), &self.device)?;
+    let xt = Tensor::from_slice(&scaled_params, (1, self.spec.input_dim()), &self.device)?;
     let yt = self.model.forward(&xt)?;
     let y_scaled = yt.to_vec2::<f32>()?;
     let arr = Array2::from_shape_vec(
-      (1, self.spec.output_dim),
+      (1, self.spec.output_dim()),
       y_scaled.into_iter().flatten().collect(),
     )?;
     let arr = scaler.inverse_transform(&arr)?;
     Ok(arr.row(0).to_vec())
   }
 
-  /// Surface prediction together with its Jacobian `∂F̃_k/∂θ_j` (rows = grid
-  /// points, columns = parameters) by reverse-mode differentiation through
-  /// the network — one backward pass per grid point — with the affine
-  /// derivatives of the parameter scaling (`1 / half-range_j`) and of the
-  /// output de-standardisation (`std_k`) applied, so the Jacobian is in
-  /// parameter and implied-volatility units.
+  /// Surface and Jacobian `∂F̃_k/∂θ_j` (rows grid points, columns parameters), one backward pass
+  /// per grid point, in parameter and implied-volatility units.
   pub fn predict_surface_with_jacobian(&self, params: &[f32]) -> Result<(Vec<f32>, Array2<f32>)> {
     let scaler = self
       .output_scaler
       .as_ref()
       .ok_or_else(|| anyhow!("model is not trained or loaded (missing output scaler)"))?;
     let scaled = self.param_scaler.scale_vector(params)?;
-    let x = Var::from_slice(&scaled, (1, self.spec.input_dim), &self.device)?;
+    let x = Var::from_slice(&scaled, (1, self.spec.input_dim()), &self.device)?;
     let y = self.model.forward(x.as_tensor())?;
     let y_scaled = Array2::from_shape_vec(
-      (1, self.spec.output_dim),
+      (1, self.spec.output_dim()),
       y.to_vec2::<f32>()?.into_iter().flatten().collect(),
     )?;
     let surface = scaler.inverse_transform(&y_scaled)?.row(0).to_vec();
-    let mut jacobian = Array2::<f32>::zeros((self.spec.output_dim, self.spec.input_dim));
-    for k in 0..self.spec.output_dim {
+    let mut jacobian = Array2::<f32>::zeros((self.spec.output_dim(), self.spec.input_dim()));
+    for k in 0..self.spec.output_dim() {
       let grads = y.i((0, k))?.backward()?;
       let g = grads
         .get(x.as_tensor())
         .ok_or_else(|| anyhow!("the network output does not depend on its input"))?
         .flatten_all()?
         .to_vec1::<f32>()?;
-      for j in 0..self.spec.input_dim {
+      for j in 0..self.spec.input_dim() {
         jacobian[(k, j)] = g[j] * scaler.std[k] / self.param_scaler.half_range(j);
       }
     }
     Ok((surface, jacobian))
   }
 
-  /// Build an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
-  /// by running the network on `params` and
-  /// reshaping the flat prediction into the standard `(N_T, N_K)` layout.
-  ///
-  /// The network's `output_dim` must equal `maturities.len() × strikes.len()`,
-  /// and the prediction must already be in the IV (sigma) domain — the
-  /// surrogates trained on Romano-Touzi data satisfy both.
-  ///
-  /// `forwards` carries the per-maturity forward used to compute log-moneyness
-  /// and total variance inside the surface struct.
-  ///
-  /// Available with the `quant` cargo feature.
+  /// The prediction on the spec's grid at `spot`, strikes ascending; `Err` unless one forward per
+  /// maturity.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
     params: &[f32],
-    strikes: Vec<f64>,
-    maturities: Vec<f64>,
-    forwards: Vec<f64>,
+    spot: f64,
+    forwards: &[f64],
   ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
-    let n_k = strikes.len();
-    let n_t = maturities.len();
+    let n_k = self.spec.strikes.len();
+    let n_t = self.spec.maturities.len();
     if forwards.len() != n_t {
-      bail!("forwards length must match maturities");
+      bail!("{} forwards for {n_t} maturities", forwards.len());
     }
-    if self.spec.output_dim != n_k * n_t {
-      bail!(
-        "model output_dim {} does not match strikes×maturities = {} × {} = {}",
-        self.spec.output_dim,
-        n_k,
-        n_t,
-        n_k * n_t,
-      );
+    if !(spot.is_finite() && spot > 0.0) {
+      bail!("spot must be finite and positive");
     }
+    if forwards.iter().any(|f| !(f.is_finite() && *f > 0.0)) {
+      bail!("forwards must be finite and positive");
+    }
+    let (strikes, order) = self.spec.ascending_strikes(spot);
+    check_ascending("scaled strikes", &strikes)?;
+    check_ascending("maturities", &self.spec.maturities)?;
     let pred = self.predict_surface(params)?;
     let ivs =
-      Array2::<f64>::from_shape_vec((n_t, n_k), pred.into_iter().map(|v| v as f64).collect())?;
+      Array2::<f64>::from_shape_fn((n_t, n_k), |(t, k)| f64::from(pred[t * n_k + order[k]]));
     Ok(
       stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
-        strikes, maturities, forwards, ivs,
+        strikes,
+        self.spec.maturities.clone(),
+        forwards.to_vec(),
+        ivs,
       ),
     )
   }
@@ -253,7 +248,7 @@ impl StochVolNn {
       .as_ref()
       .ok_or_else(|| anyhow!("model is not trained or loaded (missing output scaler)"))?;
 
-    if params.ncols() != self.spec.input_dim {
+    if params.ncols() != self.spec.input_dim() {
       bail!("params width must equal input_dim");
     }
 
@@ -261,11 +256,11 @@ impl StochVolNn {
     let xt = array2_to_tensor(&x_scaled, &self.device)?;
     let yt = self.model.forward(&xt)?;
     let y_scaled = yt.to_vec2::<f32>()?;
-    let mut flat = Vec::with_capacity(params.nrows() * self.spec.output_dim);
+    let mut flat = Vec::with_capacity(params.nrows() * self.spec.output_dim());
     for row in y_scaled {
       flat.extend_from_slice(&row);
     }
-    let arr = Array2::from_shape_vec((params.nrows(), self.spec.output_dim), flat)?;
+    let arr = Array2::from_shape_vec((params.nrows(), self.spec.output_dim()), flat)?;
     scaler.inverse_transform(&arr)
   }
 
@@ -302,20 +297,29 @@ impl StochVolNn {
       bail!("metadata model_id '{model_id}' does not match expected '{expected_model_id}'");
     }
 
-    let input_dim = parse_usize_field(&parsed, "input_dim")?;
-    let output_dim = parse_usize_field(&parsed, "output_dim")?;
+    let version = parse_usize_field(&parsed, "version")?;
+    if version != FORMAT_VERSION {
+      let note = if version < FORMAT_VERSION {
+        "; it carries no grid, retrain or add it by hand"
+      } else {
+        ""
+      };
+      bail!("metadata is format {version}; this build reads only format {FORMAT_VERSION}{note}");
+    }
     let hidden_dim = parse_usize_field(&parsed, "hidden_dim")?;
     let lb = parse_vec_field(&parsed, "param_lb")?;
     let ub = parse_vec_field(&parsed, "param_ub")?;
+    let strikes = parse_f64_vec_field(&parsed, "strikes")?;
+    let maturities = parse_f64_vec_field(&parsed, "maturities")?;
     let mean = parse_vec_field(&parsed, "surface_mean")?;
     let std = parse_vec_field(&parsed, "surface_std")?;
 
-    let spec = StochVolModelSpec::new(model_id.clone(), input_dim, output_dim, hidden_dim, lb, ub)?;
-    if mean.len() != output_dim || std.len() != output_dim {
-      bail!("surface scaler metadata width does not match output_dim");
+    let spec = StochVolModelSpec::new(model_id.clone(), hidden_dim, lb, ub, strikes, maturities)?;
+    if mean.len() != spec.output_dim() || std.len() != spec.output_dim() {
+      bail!("surface scaler metadata width does not match the grid");
     }
 
-    let mut model = Self::new(spec, device)?;
+    let mut model = Self::new(spec, device, 0)?;
     model.output_scaler = Some(StandardScaler { mean, std });
     model
       .varmap
@@ -324,3 +328,6 @@ impl StochVolNn {
     Ok(model)
   }
 }
+
+#[cfg(all(test, feature = "quant"))]
+mod tests;

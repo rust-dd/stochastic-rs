@@ -1,33 +1,29 @@
-//! Lo-MacKinlay (1988) variance-ratio test for random-walk (unit-root)
-//! behaviour of asset prices.
+//! Lo–MacKinlay (1988) variance-ratio test of the random-walk hypothesis for log prices.
 //!
-//! Under the null $H_0$ that log-prices follow a random walk with drift,
-//! the $q$-period return variance equals $q$ times the one-period variance,
-//! so the variance ratio
 //! $$
-//! VR(q) = \frac{\widehat{\mathrm{Var}}(r_t(q))}{q \cdot \widehat{\mathrm{Var}}(r_t)}
+//! VR(q) = \frac{\widehat{\mathrm{Var}}(r_t(q))}{q \cdot \widehat{\mathrm{Var}}(r_t)} \to 1,\qquad
+//! Z_1(q) = \frac{\sqrt{nq}\,(VR(q)-1)}{\sqrt{\phi(q)}},\quad \phi(q) = \frac{2(2q-1)(q-1)}{3q}
 //! $$
-//! satisfies $VR(q) \to 1$ in probability. Two test statistics are computed
-//! from the same overlapping-window variance estimator:
 //!
-//! - **M1(q)** assumes IID innovations (homoskedasticity):
-//!   $Z_1(q) = \sqrt{nq}\,(VR(q)-1)/\sqrt{\phi(q)}$ with
-//!   $\phi(q) = 2(2q-1)(q-1)/(3q)$.
-//! - **M2(q)** is robust to conditional heteroskedasticity:
-//!   $Z_2(q) = \sqrt{nq}\,(VR(q)-1)/\sqrt{\phi^*(q)}$ with
-//!   $\phi^*(q) = \sum_{j=1}^{q-1} [2(q-j)/q]^2 \delta(j)$ and
-//!   $\delta(j) = \frac{\sum_t (r_t-\bar r)^2 (r_{t-j}-\bar r)^2}{[\sum_t (r_t-\bar r)^2]^2}$.
+//! $$
+//! Z_2(q) = \frac{\sqrt{nq}\,(VR(q)-1)}{\sqrt{\phi^*(q)}},\quad
+//! \phi^*(q) = \sum_{j=1}^{q-1} \Bigl[\frac{2(q-j)}{q}\Bigr]^2 \delta(j),\quad
+//! \delta(j) = \frac{\sum_t (r_t-\bar r)^2 (r_{t-j}-\bar r)^2}{[\sum_t (r_t-\bar r)^2]^2}
+//! $$
 //!
-//! Both statistics are asymptotically $\mathcal{N}(0,1)$ under $H_0$. A
-//! two-sided test rejects when $|Z_k| > z_{1-\alpha/2}$.
+//! `Z₁` assumes IID innovations, `Z₂` allows heteroskedasticity; both are two-sided `N(0, 1)`.
 //!
-//! Reference: Lo, A.W. and MacKinlay, A.C. (1988), "Stock Market Prices Do
-//! Not Follow Random Walks: Evidence from a Simple Specification Test",
-//! *Review of Financial Studies* 1(1), 41-66.
+//! Reference: Lo & MacKinlay (1988), Rev. Financ. Stud. 1(1), 41-66, DOI: 10.1093/rfs/1.1.41
 
 use ndarray::ArrayView1;
 
-use super::common::validate_series;
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::critical_values::two_sided_p_value;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::reject_constant;
+use crate::input::validate;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
@@ -51,85 +47,58 @@ impl Default for LoMacKinlayConfig {
   }
 }
 
-/// Result of the Lo-MacKinlay variance-ratio test.
-#[derive(Debug, Clone, Copy)]
-pub struct LoMacKinlayResult {
+/// Lo–MacKinlay variance-ratio test (null: a random walk), decided by the two-sided normal p-value.
+#[derive(Debug, Clone)]
+pub struct LoMacKinlayTest {
+  /// Lo-MacKinlay M2 statistic — heteroskedasticity-robust; NaN when $\phi^*(q)$ is zero.
+  pub statistic: f64,
+  /// Two-sided p-value $2\Phi(-|M_2|)$.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the random-walk null is rejected at `alpha` by the robust statistic.
+  pub rejects_null: bool,
   /// Aggregation horizon used.
   pub q: usize,
   /// Variance ratio $VR(q)$. Under the random-walk null, $VR(q) \to 1$.
   pub variance_ratio: f64,
   /// Lo-MacKinlay M1 statistic — IID innovations.
   pub z_iid: f64,
-  /// Lo-MacKinlay M2 statistic — heteroskedasticity-robust.
-  pub z_robust: f64,
-  /// Whether the random-walk null is rejected at `alpha` using the
-  /// heteroskedasticity-robust statistic.
-  pub reject_random_walk_robust: bool,
-  /// Whether the random-walk null is rejected at `alpha` using the IID
-  /// statistic.
-  pub reject_random_walk_iid: bool,
+  /// Two-sided p-value $2\Phi(-|M_1|)$.
+  pub p_value_iid: f64,
+  /// Whether the random-walk null is rejected at `alpha` by the IID statistic.
+  pub rejects_null_iid: bool,
 }
 
-impl crate::traits::HypothesisTest for LoMacKinlayResult {
+impl crate::traits::HypothesisTest for LoMacKinlayTest {
   fn statistic(&self) -> f64 {
-    self.z_robust
+    self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_random_walk_robust)
+    Some(self.rejects_null)
   }
 }
 
-/// Two-sided normal critical value $z_{1-\alpha/2}$ for the small set of
-/// significance levels supported by the result struct. Acton (1973) rational
-/// approximation is the natural cross-check; the constants here are exact to
-/// 8 dp.
-fn z_critical(alpha: f64) -> f64 {
-  if alpha <= 0.005 {
-    2.807_033_768
-  } else if alpha <= 0.01 {
-    2.575_829_304
-  } else if alpha <= 0.025 {
-    2.241_402_728
-  } else if alpha <= 0.05 {
-    1.959_963_985
-  } else {
-    1.644_853_627
-  }
-}
-
-/// Lo-MacKinlay (1988) variance-ratio test.
-///
-/// The robust statistic `z_robust` is NaN when the heteroskedasticity-robust
-/// variance $\phi^*(q)$ comes out zero.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, $q < 2$, or
-/// $\alpha \notin (0, 1)$).
-pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoMacKinlayResult {
-  let raw = series
-    .as_slice()
-    .expect("lo_mackinlay_test requires a contiguous ArrayView1");
-  assert!(cfg.q >= 2, "q must be >= 2, got {}", cfg.q);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+/// Lo–MacKinlay (1988) variance-ratio test; `Err` below `4 q` returns, on a non-finite input, a
+/// constant log-price path or zero-variance increments; panics unless `q >= 2` and `0 < alpha < 1`.
+pub fn lo_mackinlay_test(
+  series: ArrayView1<f64>,
+  cfg: LoMacKinlayConfig,
+) -> Result<LoMacKinlayTest, StatsError> {
+  assert!(cfg.q >= 2, "q must satisfy `q >= 2`, got q = {:?}", cfg.q);
+  assert_alpha(cfg.alpha);
+  let raw = as_slice_or_copy(series);
   let returns: Vec<f64> = if cfg.input_is_log_prices {
-    validate_series(raw, cfg.q * 4 + 1);
+    validate(&raw, cfg.q * 4 + 1)?;
+    reject_constant(&raw, "constant series")?;
     (1..raw.len()).map(|i| raw[i] - raw[i - 1]).collect()
   } else {
-    validate_series(raw, cfg.q * 4);
+    validate(&raw, cfg.q * 4)?;
     raw.to_vec()
   };
+  reject_constant(&returns, "zero-variance increments")?;
 
   let nq = returns.len();
-  assert!(
-    nq >= cfg.q + 2,
-    "need at least q+2 = {} returns, got {nq}",
-    cfg.q + 2
-  );
   let nq_f = nq as f64;
   let q = cfg.q;
   let q_f = q as f64;
@@ -144,21 +113,11 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   }
   var1 /= nq_f - 1.0;
   if var1 <= 0.0 {
-    return LoMacKinlayResult {
-      q,
-      variance_ratio: 1.0,
-      z_iid: 0.0,
-      z_robust: 0.0,
-      reject_random_walk_robust: false,
-      reject_random_walk_iid: false,
-    };
+    return Err(StatsError::DegenerateData("zero-variance increments"));
   }
 
-  // q-period overlapping variance (Lo-Mac eq.7) with the small-sample
-  // unbiased denominator m = q (nq - q + 1) (1 - q/nq). The `q` factor in m
-  // already absorbs the per-period rescaling, so σ_c²(q) is on the same
-  // one-period scale as σ_a²(1) — VR = σ_c²(q) / σ_a²(1) directly, with no
-  // additional q-factor.
+  // Overlapping `q`-period variance (Lo-Mac eq.7) with the unbiased denominator `m`, whose `q`
+  // puts it on the one-period scale: `VR = σ_c²(q) / σ_a²(1)` with no further factor.
   let m = q_f * (nq_f - q_f + 1.0) * (1.0 - q_f / nq_f);
   let mut var_q = 0.0_f64;
   for t in q..=nq {
@@ -195,9 +154,8 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
       phi_robust += weight * weight * delta_j;
     }
   }
-  // φ* picks up an extra √(nq) scaling because δ(j) is normalised by the
-  // squared sum of all returns rather than the sample variance (Lo-Mac eq.17
-  // vs eq.18); multiply through by nq to recover the same scale as φ.
+  // `δ(j)` is normalised by the squared sum of all returns, not the sample variance (Lo-Mac eq.17
+  // vs eq.18), so `φ*` takes a factor `nq` to stand on `φ`'s scale.
   phi_robust *= nq_f;
   let z_robust = if phi_robust > 0.0 {
     nq_f.sqrt() * (variance_ratio - 1.0) / phi_robust.sqrt()
@@ -205,43 +163,46 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
     f64::NAN
   };
 
-  let z_crit = z_critical(cfg.alpha);
-  let reject_random_walk_iid = z_iid.abs() > z_crit;
-  let reject_random_walk_robust = z_robust.is_finite() && z_robust.abs() > z_crit;
+  let p_value = two_sided_p_value(z_robust);
+  let p_value_iid = two_sided_p_value(z_iid);
 
-  LoMacKinlayResult {
+  Ok(LoMacKinlayTest {
+    statistic: z_robust,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     q,
     variance_ratio,
     z_iid,
-    z_robust,
-    reject_random_walk_robust,
-    reject_random_walk_iid,
-  }
+    p_value_iid,
+    rejects_null_iid: p_value_iid < cfg.alpha,
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::LoMacKinlayConfig;
   use super::lo_mackinlay_test;
 
   fn simulate_log_prices_random_walk(n: usize, sigma: f64, seed: u64) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0_f64; n];
     for t in 1..n {
-      x[t] = x[t - 1] + dist.sample_fast();
+      x[t] = x[t - 1] + dist.sample();
     }
     x
   }
 
   fn simulate_log_prices_ar1_returns(phi: f64, n: usize, sigma: f64, seed: u64) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0_f64; n];
     let mut r_prev = 0.0_f64;
     for t in 1..n {
-      let r = phi * r_prev + dist.sample_fast();
+      let r = phi * r_prev + dist.sample();
       x[t] = x[t - 1] + r;
       r_prev = r;
     }
@@ -258,9 +219,10 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      !res.reject_random_walk_robust && !res.reject_random_walk_iid,
+      !res.rejects_null && !res.rejects_null_iid,
       "expected no rejection, got {res:?}"
     );
     assert!(
@@ -281,11 +243,9 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
-    assert!(
-      res.reject_random_walk_robust,
-      "expected robust-Z rejection, got {res:?}"
-    );
+    )
+    .unwrap();
+    assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio > 1.05,
       "VR should be > 1 under positive autocorrelation, got {}",
@@ -304,15 +264,41 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
-    assert!(
-      res.reject_random_walk_robust,
-      "expected robust-Z rejection, got {res:?}"
-    );
+    )
+    .unwrap();
+    assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio < 0.95,
       "VR should be < 1 under negative autocorrelation, got {}",
       res.variance_ratio
+    );
+  }
+
+  /// A constant log-price path, or one within its rounding, is a constant series.
+  #[test]
+  fn constant_prices_are_degenerate_data() {
+    let ulp = 0.3 * f64::EPSILON;
+    for prices in [
+      ndarray::Array1::<f64>::from_elem(40, 0.3),
+      ndarray::Array1::from_iter((0..40).map(|j| 0.3 + (j % 3) as f64 * ulp)),
+    ] {
+      assert_eq!(
+        lo_mackinlay_test(prices.view(), LoMacKinlayConfig::default()).unwrap_err(),
+        crate::StatsError::DegenerateData("constant series")
+      );
+    }
+  }
+
+  #[test]
+  fn constant_returns_are_degenerate_data() {
+    let returns = ndarray::Array1::<f64>::from_elem(40, 0.1);
+    let cfg = LoMacKinlayConfig {
+      input_is_log_prices: false,
+      ..LoMacKinlayConfig::default()
+    };
+    assert_eq!(
+      lo_mackinlay_test(returns.view(), cfg).unwrap_err(),
+      crate::StatsError::DegenerateData("zero-variance increments")
     );
   }
 
@@ -329,7 +315,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: false,
       },
-    );
+    )
+    .unwrap();
     let res_prices = lo_mackinlay_test(
       ndarray::ArrayView1::from(&prices),
       LoMacKinlayConfig {
@@ -337,7 +324,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     // Both paths should yield the same variance ratio modulo fp tolerance.
     assert!(
       (res_returns.variance_ratio - res_prices.variance_ratio).abs() < 1e-10,

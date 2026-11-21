@@ -40,19 +40,12 @@ use stochastic_rs_distributions::traits::FloatExt;
 use stochastic_rs_distributions::traits::Fn2D;
 use stochastic_rs_distributions::traits::Grid2D;
 
+use crate::pricing::heston::HestonParams;
+
 /// Heston model parameters augmented with the SLV mixing factor.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonSlvParams {
-  /// Mean-reversion speed.
-  pub kappa: f64,
-  /// Long-run variance.
-  pub theta: f64,
-  /// Vol-of-vol of the base Heston model.
-  pub sigma: f64,
-  /// Spot–variance correlation.
-  pub rho: f64,
-  /// Initial variance.
-  pub v0: f64,
+  pub heston: HestonParams,
   /// Mixing factor in $\left[0,1\right]$. $\eta=0$: pure local vol,
   /// $\eta=1$: full stochastic vol.
   pub eta: f64,
@@ -61,7 +54,7 @@ pub struct HestonSlvParams {
 impl HestonSlvParams {
   /// Effective vol-of-vol after mixing: $\sigma_{\text{mix}} = \eta\,\sigma$.
   pub fn sigma_mixed(&self) -> f64 {
-    self.eta * self.sigma
+    self.eta * self.heston.sigma
   }
 }
 

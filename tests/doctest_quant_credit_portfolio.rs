@@ -13,8 +13,8 @@ use stochastic_rs::quant::curves::InterpolationMethod;
 #[test]
 fn index_upfront_and_tranche_spreads() {
   let discount = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let date = |y: i32, m: u32, d: u32| NaiveDate::from_ymd_opt(y, m, d).unwrap();

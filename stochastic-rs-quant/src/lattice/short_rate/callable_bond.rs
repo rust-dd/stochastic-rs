@@ -188,12 +188,18 @@ fn sweep<T: RealExt, M: OneFactorShortRateModel<T>>(
 mod tests {
   use super::*;
   use crate::bonds::Vasicek;
+  use crate::calibration::HullWhiteParams;
   use crate::lattice::short_rate::HullWhiteTree;
   use crate::lattice::short_rate::HullWhiteTreeModel;
   use crate::traits::ShortRatePricer;
 
   fn model() -> HullWhiteTreeModel<f64> {
-    HullWhiteTreeModel::new(0.04, 0.3, 0.04, 0.01)
+    HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: 0.3,
+      sigma: 0.01,
+      initial_rate: 0.04,
+      theta: 0.04,
+    })
   }
 
   fn annual_bond(years: usize, coupon: f64) -> CallableBondSpec<f64> {
@@ -235,7 +241,7 @@ mod tests {
       .map(|i| 5.0 * vasicek.zero_coupon_price(0.04, i as f64))
       .sum::<f64>()
       + 100.0 * vasicek.zero_coupon_price(0.04, 3.0);
-    assert!((price - want).abs() / want < 3e-3, "{price} vs {want}");
+    assert!((price - want).abs() / want < 1e-6, "{price} vs {want}");
   }
 
   #[test]
@@ -269,13 +275,18 @@ mod tests {
   /// date: the holder receives the coupon plus par at `t = 1`.
   #[test]
   fn deterministic_rates_call_the_premium_bond_at_the_first_date() {
-    let model = HullWhiteTreeModel::new(0.02, 0.3, 0.02, 1e-9);
+    let model = HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: 0.3,
+      sigma: 1e-9,
+      initial_rate: 0.02,
+      theta: 0.02,
+    });
     let tree = HullWhiteTree::new(model.clone(), 3.0, 36);
     let spec = annual_bond(3, 0.05).with_calls(vec![(1.0, 100.0), (2.0, 100.0)]);
     let priced = price_callable_bond(&tree.tree, &model, &spec);
     let want = 105.0 * (-0.02_f64).exp();
     assert!(
-      (priced.price - want).abs() < 1e-6,
+      (priced.price - want).abs() < 1e-12,
       "{} vs {want}",
       priced.price
     );

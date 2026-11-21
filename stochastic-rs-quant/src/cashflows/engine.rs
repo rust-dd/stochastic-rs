@@ -1,7 +1,6 @@
 //! Present-value routines for cashflow legs.
 //!
-//! Reference: Hagan & West, "Interpolation Methods for Curve Construction",
-//! applied here through the library discount-curve abstraction.
+//! Reference: Hagan & West (2006), Applied Mathematical Finance 13(2), 89–129
 
 use chrono::NaiveDate;
 
@@ -25,7 +24,7 @@ pub struct CashflowSummary<T: RealExt> {
 /// Cashflow pricer using the existing curve stack.
 #[derive(Debug, Clone)]
 pub struct CashflowPricer {
-  /// Valuation date.
+  /// Curve time zero; a cash flow paid before it is worth nothing.
   pub valuation_date: NaiveDate,
   /// Day count convention used to convert payment dates to curve times.
   pub discount_day_count: DayCountConvention,

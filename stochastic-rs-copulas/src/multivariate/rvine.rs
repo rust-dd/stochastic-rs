@@ -1,27 +1,7 @@
-//! # Regular vine (R-vine) — D-vine / C-vine wrapper
+//! # Regular vine (R-vine)
 //!
-//! The regular vine is a graph-theoretic generalisation of D-vines and
-//! C-vines (Bedford-Cooke 2002, Joe 2011, Dißmann 2013): an R-vine is a
-//! nested set of trees $T_1, \dots, T_{d-1}$ on $d$ variables satisfying
-//! the **proximity condition** (two edges of $T_{k+1}$ must share a node
-//! of $T_k$).
-//!
-//! Generic free-form R-vine evaluation requires either the Joe-Kurowicka
-//! 2011 lower-triangular **structure matrix** representation or an
-//! explicit edge-list with the proximity-condition recursion that walks
-//! the conditional CDFs up the tree. That, together with the **Dißmann
-//! 2013** sequential structure-selection algorithm, is not yet
-//! implemented.
-//!
-//! [`RVine`] is an enum that wraps either a [`super::dvine::DVine`] or a
-//! [`super::cvine::CVine`] — the two structure-special cases of the
-//! regular vine. All `MultivariateExt` methods delegate to the wrapped
-//! type, giving a unified API; constructor methods exist for the two
-//! supported special cases.
-//!
-//! For general R-vines, pre-route through `DVine` (path-shaped tree) or
-//! `CVine` (star tree per tree-level) — both are special cases of the
-//! R-vine.
+//! A regular vine is trees $T_1,\dots,T_{d-1}$ on $d$ variables, edges of $T_{k+1}$ sharing a node
+//! of $T_k$; [`RVine`] covers the path ([`DVine`]) and star ([`CVine`]) cases only.
 //!
 //! References:
 //! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model for
@@ -33,20 +13,19 @@
 //!   financial returns", *Computational Statistics & Data Analysis* 59,
 //!   52-69.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
+use stochastic_rs_core::simd_rng::SeedExt;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::cvine::CVine;
 use super::dvine::DVine;
+use super::fit::VineStructure;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Regular vine pair-copula construction wrapper over the two
-/// structure-special cases (D-vine and C-vine). The matrix-encoded
-/// generic R-vine variant (Dißmann 2013 sequential selection + density
-/// propagation per Joe-Kurowicka) is not yet implemented.
+/// A D- or C-vine behind one type; every `MultivariateExt` method delegates to the wrapped vine.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum RVine {
@@ -68,10 +47,9 @@ impl RVine {
     RVine::C(cvine)
   }
 
-  /// All-Independence R-vine of the given dimension (D-vine backed; the
-  /// independence copula is structure-invariant so the choice between
-  /// D / C wrapping is purely conventional).
-  pub fn independence(dim: usize) -> Result<Self, Box<dyn Error>> {
+  /// All-independence vine of `dim` marginals, D-backed: independence is structure-invariant, so
+  /// D or C is a convention.
+  pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     DVine::independence(dim).map(RVine::D)
   }
 
@@ -83,65 +61,64 @@ impl RVine {
     }
   }
 
-  /// Tree shape descriptor — useful for downstream consumers needing to
-  /// branch on the underlying structure (e.g. routing to a structure-aware
-  /// likelihood pipeline).
-  pub fn kind(&self) -> &'static str {
+  /// Which of the two tree shapes the vine has.
+  pub fn structure(&self) -> VineStructure {
     match self {
-      RVine::D(_) => "DVine",
-      RVine::C(_) => "CVine",
+      RVine::D(_) => VineStructure::DVine,
+      RVine::C(_) => VineStructure::CVine,
+    }
+  }
+
+  /// Data column of each vine variable.
+  pub fn order(&self) -> &[usize] {
+    match self {
+      RVine::D(d) => d.order(),
+      RVine::C(c) => c.order(),
     }
   }
 }
 
 impl MultivariateExt for RVine {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::RVine
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::RVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     match self {
-      RVine::D(d) => d.sample(n),
-      RVine::C(c) => c.sample(n),
+      RVine::D(d) => d.sample(n, seed),
+      RVine::C(c) => c.sample(n, seed),
     }
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
-    match self {
-      RVine::D(d) => d.sample_with_seed(n, seed),
-      RVine::C(c) => c.sample_with_seed(n, seed),
-    }
-  }
-
-  fn fit(&mut self, x: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.fit(x),
       RVine::C(c) => c.fit(x),
     }
   }
 
-  fn check_fit(&self, x: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.check_fit(x),
       RVine::C(c) => c.check_fit(x),
     }
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.pdf(x),
       RVine::C(c) => c.pdf(x),
     }
   }
 
-  fn log_pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.log_pdf(x),
       RVine::C(c) => c.log_pdf(x),
     }
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.cdf(x),
       RVine::C(c) => c.cdf(x),
@@ -152,6 +129,7 @@ impl MultivariateExt for RVine {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
   use crate::multivariate::dvine::PairCopula;
@@ -170,8 +148,8 @@ mod tests {
     let dv = DVine::new(3, tree).unwrap();
     let rv = RVine::from_dvine(dv.clone());
     let q = array![[0.3, 0.5, 0.7], [0.1, 0.5, 0.9]];
-    let lp_dv = dv.log_pdf(&q).unwrap();
-    let lp_rv = rv.log_pdf(&q).unwrap();
+    let lp_dv = dv.log_pdf(q.view()).unwrap();
+    let lp_rv = rv.log_pdf(q.view()).unwrap();
     for i in 0..lp_dv.len() {
       assert!(
         (lp_dv[i] - lp_rv[i]).abs() < 1e-12,
@@ -180,7 +158,7 @@ mod tests {
         lp_rv[i]
       );
     }
-    assert_eq!(rv.kind(), "DVine");
+    assert_eq!(rv.structure(), VineStructure::DVine);
     assert_eq!(rv.dim(), 3);
   }
 
@@ -197,8 +175,8 @@ mod tests {
     let cv = CVine::new(3, tree).unwrap();
     let rv = RVine::from_cvine(cv.clone());
     let q = array![[0.2, 0.4, 0.6], [0.4, 0.6, 0.8]];
-    let lp_cv = cv.log_pdf(&q).unwrap();
-    let lp_rv = rv.log_pdf(&q).unwrap();
+    let lp_cv = cv.log_pdf(q.view()).unwrap();
+    let lp_rv = rv.log_pdf(q.view()).unwrap();
     for i in 0..lp_cv.len() {
       assert!(
         (lp_cv[i] - lp_rv[i]).abs() < 1e-12,
@@ -207,7 +185,28 @@ mod tests {
         lp_rv[i]
       );
     }
-    assert_eq!(rv.kind(), "CVine");
+    assert_eq!(rv.structure(), VineStructure::CVine);
+  }
+
+  #[test]
+  fn rvine_fit_keeps_its_structure() {
+    let u = DVine::new(
+      3,
+      vec![
+        vec![PairCopula::Gaussian { rho: 0.5 }; 2],
+        vec![PairCopula::Independence],
+      ],
+    )
+    .unwrap()
+    .sample(2000, &Deterministic::new(3))
+    .unwrap();
+    let mut d = RVine::independence(3).unwrap();
+    d.fit(u.view()).unwrap();
+    assert_eq!(d.structure(), VineStructure::DVine);
+    let mut c = RVine::from_cvine(CVine::independence(3).unwrap());
+    c.fit(u.view()).unwrap();
+    assert_eq!(c.structure(), VineStructure::CVine);
+    assert_eq!(c.order().len(), 3);
   }
 
   /// Sampling delegates to the wrapped vine and preserves uniform
@@ -215,7 +214,7 @@ mod tests {
   #[test]
   fn rvine_independence_sampling_uniform_marginals() {
     let rv = RVine::independence(3).unwrap();
-    let s = rv.sample(10_000).unwrap();
+    let s = rv.sample(10_000, &Deterministic::new(7)).unwrap();
     for j in 0..3 {
       let col = s.column(j);
       let m: f64 = col.iter().sum::<f64>() / col.len() as f64;
@@ -224,6 +223,24 @@ mod tests {
         "marginal {j} mean = {m}, expected ~0.5"
       );
     }
-    assert_eq!(rv.kind(), "DVine"); // independence() defaults to DVine backing
+    assert_eq!(rv.structure(), VineStructure::DVine);
+  }
+
+  /// An all-independence vine of fewer than two margins is `InvalidStructure`, at `dim = 0` as at 1.
+  #[test]
+  fn an_independence_vine_needs_two_margins() {
+    for dim in [0, 1] {
+      let verdicts = [
+        RVine::independence(dim).err(),
+        DVine::independence(dim).err(),
+        CVine::independence(dim).err(),
+      ];
+      for verdict in verdicts {
+        assert!(
+          matches!(verdict, Some(CopulaError::InvalidStructure(_))),
+          "dim {dim}: {verdict:?}"
+        );
+      }
+    }
   }
 }

@@ -1,4 +1,4 @@
-//! # Bonds
+//! Zero-coupon bond prices under the CIR, Hull–White and Vasicek short-rate models.
 //!
 //! $$
 //! P(t,T)=\mathbb E_t^{\mathbb Q}\!\left[e^{-\int_t^T r_s ds}\right]

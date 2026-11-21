@@ -2,11 +2,8 @@ use ndarray::Array1;
 
 use super::*;
 
-/// GARCH(1,1) path ($\omega = 0.05$, $\alpha = 0.10$, $\beta = 0.85$,
-/// $\mu = 0.02$) driven by sum-of-twelve-uniform innovations from an integer
-/// LCG, bit-identical to the Python generator behind the `arch` 7.x
-/// reference numbers below (`arch_model(..., rescale=False).fit(backcast=
-/// mean((r - mean(r))**2), tol=1e-12)`).
+/// A GARCH(1,1) path (ω = 0.05, α = 0.10, β = 0.85, μ = 0.02) on twelve-uniform innovations of an
+/// LCG; `arch` 7.x fits it with `rescale=False`, `backcast=mean((r - mean(r))**2)`, `tol=1e-12`.
 fn lcg_garch_returns() -> Array1<f64> {
   let mut x: u64 = 11;
   let mut next = || {
@@ -43,9 +40,8 @@ fn assert_relative(got: f64, want: f64, tol: f64, what: &str) {
   );
 }
 
-/// The likelihood evaluated at `arch`'s optimum must reproduce its
-/// log-likelihood and conditional variances, isolating the recursion from
-/// the optimiser.
+/// The likelihood at `arch`'s optimum reproduces its log-likelihood and conditional variances,
+/// which isolates the recursion from the optimiser.
 fn check_likelihood_at(spec: GarchSpec, natural: &[f64], loglik: f64, sigma2: [f64; 3]) {
   let r = lcg_garch_returns();
   let returns: Vec<f64> = r.to_vec();
@@ -69,7 +65,7 @@ fn check_fit(
   robust: &[f64],
 ) -> GarchFit {
   let r = lcg_garch_returns();
-  let fit = garch_fit(r.view(), spec);
+  let fit = fit_garch(r.view(), spec).unwrap();
   assert_close(fit.backcast, BACKCAST, 1e-12, "backcast");
   assert!(fit.converged, "simplex did not converge");
   assert!(
@@ -382,14 +378,44 @@ fn param_names_follow_the_layout() {
 }
 
 #[test]
-#[should_panic(expected = "p must be at least 1")]
+#[should_panic(expected = "p must satisfy `p >= 1`, got p = 0")]
 fn rejects_zero_arch_order() {
-  let _ = garch_fit(lcg_garch_returns().view(), GarchSpec::garch(0, 1));
+  let _ = fit_garch(lcg_garch_returns().view(), GarchSpec::garch(0, 1));
 }
 
 #[test]
-#[should_panic(expected = "need at least 20 observations")]
 fn rejects_a_short_series() {
   let r = Array1::from(vec![0.01_f64; 10]);
-  let _ = garch_fit(r.view(), GarchSpec::garch(1, 1));
+  assert_eq!(
+    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+    StatsError::InsufficientData {
+      needed: 20,
+      got: 10
+    }
+  );
+}
+
+#[test]
+fn rejects_constant_returns() {
+  let r = Array1::from(vec![0.01_f64; 40]);
+  assert_eq!(
+    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+    StatsError::DegenerateData("zero-variance returns")
+  );
+}
+
+/// Returns of magnitude `1e-170` and `1e155` fit at unit scale, but their variance of `1e-340` and
+/// `1e310` has no double.
+#[test]
+fn a_variance_past_the_double_range_is_a_numerical_error() {
+  for level in [1e-170, 1e155] {
+    let r = Array1::from_iter((0..40).map(|t| if t % 2 == 0 { level } else { -level }));
+    assert_eq!(
+      fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+      StatsError::Numerical {
+        stage: "data scale"
+      },
+      "{level:e}"
+    );
+  }
 }

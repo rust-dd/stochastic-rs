@@ -40,12 +40,15 @@ surfaces, curves, instruments and risk.
 ## Usage
 
 ```rust
+use stochastic_rs_quant::CallPut;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::heston::HestonPricer;
 
 // The struct holds the model; the query travels as arguments, so one
 // instance prices a whole strike/maturity grid.
-let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.3, Some(0.0));
-let (call, put) = model.call_put(100.0, 100.0, 0.03, 0.0, 1.0);
+let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5 };
+let model = HestonPricer::new(params);
+let CallPut { call, put } = model.price_call_put(100.0, 100.0, 0.03, 0.0, 1.0);
 ```
 
 ## Part of stochastic-rs

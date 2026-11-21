@@ -22,9 +22,8 @@ fn uniform_mean_dirichlet_is_the_regular_grid_kernel() {
   assert_eq!(actual, expected);
 }
 
-/// Hand-evaluated regression for the documented irregular-grid heuristic.
-/// The expected values follow directly from the seven listed increments and
-/// durations, before invoking any production helper.
+/// The irregular-grid heuristic against values worked by hand from the seven listed increments
+/// and durations.
 #[test]
 fn irregular_grid_heuristic_matches_fixed_mse_golden() {
   let prices = array![0.0, 0.11, -0.03, 0.18, 0.07, 0.22, 0.16, 0.31];

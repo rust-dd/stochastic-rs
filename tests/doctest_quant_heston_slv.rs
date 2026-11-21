@@ -5,13 +5,14 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs::quant::calibration::heston::HestonParams;
 use stochastic_rs::quant::calibration::heston_slv::HestonSlvCalibrator;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::ParticleMethod;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
 use stochastic_rs::traits::ModelPricer;
+use stochastic_rs::traits::ToModel;
 
 #[test]
 fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
@@ -27,15 +28,7 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
   // in practice: `calls[[j, i]]` is the call at `strikes[i]`, `maturities[j]`.
   let strikes = Array1::linspace(70.0, 140.0, 36).to_vec();
   let maturities = vec![0.25, 0.5, 0.75, 1.0];
-  let model = HestonFourier {
-    v0: heston.v0,
-    kappa: heston.kappa,
-    theta: heston.theta,
-    sigma: heston.sigma,
-    rho: heston.rho,
-    r,
-    q,
-  };
+  let model = HestonFourier::new(heston);
   let calls = Array2::from_shape_fn((maturities.len(), strikes.len()), |(j, i)| {
     model.price_call(s, strikes[i], r, q, maturities[j])
   });
@@ -60,13 +53,10 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
     "in-sample repricing rmse {}",
     result.rmse()
   );
-  assert!(result.leverage().covers(100.0, 0.5));
+  assert!(result.params.leverage.covers(100.0, 0.5));
 
   // The pricer is anchored to the calibration rates and reprices the market.
-  let pricer = result
-    .to_model(r, q)
-    .with_paths(4_000)
-    .with_steps_per_year(50);
+  let pricer = result.to_model().with_paths(4_000).with_steps_per_year(50);
   let call = pricer.price_call(s, 100.0, r, q, 0.5);
   let market = model.price_call(s, 100.0, r, q, 0.5);
   assert!((call - market).abs() < 1.0, "slv {call} vs market {market}");

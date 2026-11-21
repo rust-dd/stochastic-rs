@@ -1,9 +1,5 @@
-//! Relinkable handles to observable market data.
-//!
-//! A handle is a stable shared pointer whose target can be swapped at
-//! runtime. Pricers hold a [`Handle<T>`] once and automatically pick up
-//! updates when the back-pointer is relinked — without touching the
-//! dependency graph.
+//! Relinkable handles to observable market data: a shared pointer whose target can be swapped
+//! at runtime, so a pricer that holds a [`Handle<T>`] sees the new target.
 
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -18,10 +14,8 @@ struct HandleInner<T: ?Sized> {
   observable: ObservableBase,
 }
 
-/// Observable handle to a shared object.
-///
-/// Clones share the same link; relinking via any clone is visible
-/// everywhere.
+/// Observable handle to a shared object; clones share one link, so a relink through any clone
+/// is seen by all.
 pub struct Handle<T: ?Sized> {
   inner: Arc<HandleInner<T>>,
 }
@@ -80,11 +74,8 @@ impl<T: ?Sized> Handle<T> {
   }
 }
 
-/// Handle whose target can be swapped at runtime.
-///
-/// `RelinkableHandle` is the write-facing view of a [`Handle`]; pricers
-/// hold [`Handle`] and the caller owning the `RelinkableHandle` decides
-/// when to swap the target.
+/// The write side of a [`Handle`]: pricers hold the `Handle`, and the owner of the
+/// `RelinkableHandle` decides when to swap the target.
 pub struct RelinkableHandle<T: ?Sized> {
   handle: Handle<T>,
 }

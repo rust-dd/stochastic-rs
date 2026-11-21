@@ -1,0 +1,129 @@
+use std::time::Duration;
+use std::time::Instant;
+
+use ndarray::array;
+use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::traits::BivariateExt;
+
+use super::GRID;
+use super::build;
+use super::matches;
+use super::on_grid;
+
+/// `<family> <cdf|log_pdf> <parameters> ; <values>`, row-major in the first argument, `cdf` on `GRID` and `log_pdf` on its
+/// open part: mpmath of the stable forms, each proved equal to `C` or to sympy's `∂²C/∂u∂v` (`ln` of it) in sympy.
+const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
+
+/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time; a bound is four times a debug
+/// evaluation at least, CI's build.
+const WALL_CLOCK: [(f64, f64, u64); 4] = [
+  (0.5, 1e8, 500),
+  (-0.8, 1e13, 2000),
+  (-0.8, 1e15, 500),
+  (-0.999999, 9.99e21, 500),
+];
+
+/// Within `1e-12 · max(1, |ln c|)`, an infinite truth exactly.
+fn log_agrees(got: f64, want: f64) -> bool {
+  if want.is_infinite() {
+    got == want
+  } else {
+    (got - want).abs() <= 1e-12 * want.abs().max(1.0)
+  }
+}
+
+#[test]
+fn cdf_and_log_density_match_the_mpmath_table() {
+  let mut failures = Vec::new();
+  for line in DENSITIES.lines() {
+    let (head, values) = line.split_once(" ; ").expect("a reference row");
+    let mut fields = head.split(' ');
+    let (family, kind) = (fields.next().unwrap(), fields.next().unwrap());
+    let params = fields.map(|p| p.parse().unwrap()).collect::<Vec<f64>>();
+    let want = values.split(' ').map(|x| x.parse::<f64>().unwrap());
+    let got = on_grid(build(family, &params).as_ref(), kind);
+    for (i, (&got, want)) in got.iter().zip(want).enumerate() {
+      // `C(u, 0) = C(0, v) = 0`, `C(u, 1) = u`, `C(1, v) = v`, exactly.
+      let edge = kind == "cdf"
+        && [GRID[i / 9], GRID[i % 9]]
+          .iter()
+          .any(|&x| x == 0.0 || x == 1.0);
+      let ok = if kind == "cdf" {
+        (0.0..=1.0).contains(&got)
+          && if edge {
+            got == want
+          } else {
+            matches(got, want)
+          }
+      } else {
+        log_agrees(got, want)
+      };
+      if !ok {
+        let side = if kind == "cdf" { 9 } else { 7 };
+        let offset = if kind == "cdf" { 0 } else { 1 };
+        let (a, b) = (GRID[i / side + offset], GRID[i % side + offset]);
+        failures.push(format!(
+          "{family} {params:?} {kind}({a:e}, {b:e}) = {got:e}, want {want:e}"
+        ));
+      }
+    }
+  }
+  assert!(
+    failures.is_empty(),
+    "{} cells:\n{}",
+    failures.len(),
+    failures.join("\n")
+  );
+}
+
+/// At large `ν` each cdf returns within its budget in milliseconds: the `WALL_CLOCK` grids, the median and the far lower
+/// corner, and two cells of the band where `C` is the Fréchet floor.
+#[test]
+fn the_t_cdf_is_time_bounded_at_large_nu() {
+  let mut cells: Vec<(f64, f64, f64, f64, u64)> = vec![
+    (-0.8, 1e8, 0.5, 0.5, 500),
+    (0.99, 1e8, 1e-15, 1e-15, 500),
+    (-0.999999, 9.999999999999998e21, 1e-300, 0.5, 500),
+    (-0.999999, 1e13, 0.5, 0.7, 2000),
+    (-0.999999, 1e13, 0.7, 0.5, 2000),
+  ];
+  for (rho, nu, bound) in WALL_CLOCK {
+    cells.extend(
+      GRID
+        .iter()
+        .flat_map(|&a| GRID.iter().map(move |&b| (rho, nu, a, b, bound))),
+    );
+  }
+  let mut slow = Vec::new();
+  for (rho, nu, a, b, bound) in cells {
+    let copula = TCopula::new(rho, nu);
+    let start = Instant::now();
+    let _ = copula.cdf(array![[a, b]].view()).unwrap();
+    let elapsed = start.elapsed();
+    if elapsed > Duration::from_millis(bound) {
+      slow.push(format!(
+        "({rho}, {nu:e}) cdf({a:e}, {b:e}) took {elapsed:?}"
+      ));
+    }
+  }
+  assert!(slow.is_empty(), "{slow:#?}");
+}
+
+/// The copula is continuous across the switch to the Gaussian at `ν = 1e22`: at `ν = 9.99e21` the t cdf is its value.
+#[test]
+fn the_t_cdf_is_continuous_at_the_gaussian_switch() {
+  for (rho, a, b) in [
+    (0.5, 0.3, 0.7),
+    (-0.8, 1e-15, 0.5),
+    (0.99, 0.5, 0.5),
+    (-0.999999, 0.2, 0.9),
+  ] {
+    let x = array![[a, b]];
+    let below = TCopula::new(rho, 9.99e21).cdf(x.view()).unwrap()[0];
+    let above = TCopula::new(rho, 1e22).cdf(x.view()).unwrap()[0];
+    assert!(
+      matches(below, above),
+      "ρ = {rho}: C({a:e}, {b:e}) = {below:e} below, {above:e} above"
+    );
+  }
+}

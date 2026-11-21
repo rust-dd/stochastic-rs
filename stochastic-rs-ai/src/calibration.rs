@@ -1,25 +1,12 @@
-//! # Surrogate calibration
+//! Levenberg–Marquardt fit of a surrogate $\tilde F$ on its exact Jacobian (Horvath et al., §3.3):
 //!
 //! $$
 //! \hat\theta = \arg\min_{\theta}\ \sum_{k}
 //!   w_k^2\bigl(\tilde F(\theta)_k - \sigma^{\text{mkt}}_k\bigr)^2
 //! $$
 //!
-//! Second step of the two-step deep-learning-volatility approach of Horvath,
-//! Muguruza & Tomas (2021): a trained network $\tilde F$ replaces the pricer
-//! on its fixed strike–maturity grid, and the calibration is a deterministic
-//! least-squares problem on the surrogate, solved with Levenberg–Marquardt on
-//! the network's exact Jacobian — reverse-mode differentiation through the
-//! layers (their §3.2; the reference notebooks pass the analytic network
-//! gradient to `least_squares(method="lm")`). The optimisation runs in the
-//! network's scaled coordinates $x_j = (\theta_j - c_j)/h_j$ (centre and
-//! half-range of the training box), and the result records whether
-//! $\hat\theta$ stayed inside the box: the surrogate is untrained outside it,
-//! so a boundary solution is a warning rather than an answer.
-//!
-//! Reference: Horvath, B., Muguruza, A. & Tomas, M. (2021), *Deep learning
-//! volatility: a deep neural network perspective on pricing and calibration in
-//! (rough) volatility models*, Quantitative Finance 21(1), 11–27.
+//! Works in scaled box coordinates; a solution on the box edge is a warning rather than an answer.
+//! Horvath, Muguruza & Tomas (2021), "Deep learning volatility", Quant. Finance 21(1), 11–27.
 
 use std::cell::RefCell;
 
@@ -27,21 +14,28 @@ use anyhow::Result;
 use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_quant::calibration::heston::HestonParams;
+use ndarray::ArrayView1;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::calibration::least_squares::LmOptions;
 use stochastic_rs_quant::calibration::least_squares::minimize;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiParams;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiXi0;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::rbergomi::RBergomiPricer;
 use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
+use stochastic_rs_quant::traits::RealExt;
 use stochastic_rs_quant::traits::ToModel;
+use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
 
 use crate::volatility::common::StochVolNn;
 use crate::volatility::heston::HestonNn;
 use crate::volatility::rbergomi::RBergomiNn;
+
+/// An f32 network's relative accuracy: its exact fits read `2.1e-7` of the quotes' root mean
+/// square or less, and a stop `1e-5` of the training box short of one reads `8.5e-6` or more.
+const SURROGATE_ACCURACY: f64 = 8.0 * f32::EPSILON as f64;
 
 /// A trained surrogate the calibrator can differentiate: anything that wraps
 /// a [`StochVolNn`].
@@ -97,14 +91,12 @@ impl CalibrationResult for SurrogateCalibrationResult {
     Some(&self.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.max_error)
   }
 }
 
-/// Levenberg–Marquardt calibration of a surrogate to a market surface given
-/// on the surrogate's grid (flat, row-major `maturities × strikes`, in
-/// implied volatility).
+/// Levenberg–Marquardt calibration of a surrogate to market implied vols on its grid.
 pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
   model: &'m M,
   market: Vec<f64>,
@@ -115,9 +107,10 @@ pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
 }
 
 impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
-  /// `market` must have the surrogate's `output_dim` entries and be finite.
+  /// `market` flat in the network's order, maturity-major with columns in the spec's `strikes`
+  /// order (descending for Heston), finite; [`Self::from_surface`] takes the ascending grid.
   pub fn new(model: &'m M, market: Vec<f64>) -> Result<Self> {
-    let dim = model.nn().spec().output_dim;
+    let dim = model.nn().spec().output_dim();
     if market.len() != dim {
       bail!(
         "market surface has {} entries, the surrogate grid has {dim}",
@@ -137,7 +130,19 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
     })
   }
 
-  /// Per-grid-point residual weights `w_k` (one per market entry).
+  /// `surface` as `predict_implied_vol_surface` lays it out at `spot`, strikes ascending; `Err`
+  /// naming the axis, the index and both values unless each axis is the grid's to 1e-12 relative.
+  pub fn from_surface(model: &'m M, surface: &ImpliedVolSurface, spot: f64) -> Result<Self> {
+    let market = model.nn().spec().network_order(
+      &surface.strikes,
+      &surface.maturities,
+      surface.ivs.view(),
+      spot,
+    )?;
+    Self::new(model, market)
+  }
+
+  /// Per-grid-point residual weights `w_k`, one per market entry in the network's order.
   pub fn with_weights(mut self, weights: Vec<f64>) -> Result<Self> {
     if weights.len() != self.market.len() {
       bail!(
@@ -155,11 +160,11 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
 
   /// Starting point in parameter units; the box centre otherwise.
   pub fn with_initial(mut self, initial: Vec<f64>) -> Result<Self> {
-    if initial.len() != self.model.nn().spec().input_dim {
+    if initial.len() != self.model.nn().spec().input_dim() {
       bail!(
         "{} initial values for {} parameters",
         initial.len(),
-        self.model.nn().spec().input_dim
+        self.model.nn().spec().input_dim()
       );
     }
     self.initial = Some(initial);
@@ -216,6 +221,7 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
         tolerance: Some(self.tolerance),
         patience: self.patience,
         pivoted_qr: true,
+        ..LmOptions::default()
       },
     );
     let (surface, _) = problem
@@ -227,8 +233,11 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       .map(|(&f, &m)| f as f64 - m)
       .collect();
     let rmse = (errors.iter().map(|e| e * e).sum::<f64>() / errors.len() as f64).sqrt();
-    let max_error = errors.iter().fold(0.0_f64, |acc, e| acc.max(e.abs()));
+    let max_error = errors
+      .iter()
+      .fold(0.0_f64, |acc, e| acc.max_or_nan(e.abs()));
     let in_bounds = problem.x.iter().all(|x| x.abs() <= 1.0 + 1e-9);
+    let report = report.settled(rmse, &self.market, SURROGATE_ACCURACY);
     Ok(SurrogateCalibrationResult {
       params: problem.theta().iter().map(|&t| t as f64).collect(),
       rmse,
@@ -236,13 +245,12 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       converged: report.converged,
       in_bounds,
       evaluations: report.evaluations,
-      message: format!("{:?}", report.reason),
+      message: report.message().to_owned(),
     })
   }
 }
 
 impl<M: SurrogateModel> Calibrator for SurrogateCalibrator<'_, M> {
-  type InitialGuess = Vec<f64>;
   type Params = Vec<f64>;
   type Output = SurrogateCalibrationResult;
   type Error = anyhow::Error;
@@ -252,9 +260,8 @@ impl<M: SurrogateModel> Calibrator for SurrogateCalibrator<'_, M> {
   }
 }
 
-/// The least-squares problem in scaled coordinates; the network evaluation is
-/// cached per parameter vector because the optimiser asks for residuals and
-/// Jacobian separately.
+/// The least-squares problem in scaled coordinates; it caches the network evaluation per point
+/// because the optimiser asks for residuals and Jacobian separately.
 struct Problem<'m, M: SurrogateModel> {
   model: &'m M,
   market: &'m [f64],
@@ -292,8 +299,8 @@ impl<M: SurrogateModel> Problem<'_, M> {
 }
 
 impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
-  fn set_params(&mut self, x: &Array1<f64>) {
-    self.x = x.clone();
+  fn set_params(&mut self, x: ArrayView1<f64>) {
+    self.x = x.to_owned();
     *self.cache.borrow_mut() = None;
   }
 
@@ -301,7 +308,7 @@ impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
     self.x.clone()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let (surface, _) = self.evaluate()?;
     Some(Array1::from_iter(
       surface
@@ -338,11 +345,8 @@ pub fn heston_params_to_surrogate(p: &HestonParams) -> Vec<f64> {
   vec![p.v0, p.rho, p.sigma, p.theta, p.kappa]
 }
 
-/// The rough Bergomi surrogate's input order `[ξ₀, η, ρ, H]` (read off the
-/// training box the same way as the Heston order: `[0.01, 0.16]` is a
-/// forward variance, `[0.3, 4]` a vol-of-vol, `[−0.95, −0.1]` a correlation
-/// and `[0.025, 0.5]` a Hurst exponent) as quant's [`RBergomiParams`] with a
-/// flat forward-variance curve.
+/// Quant's [`RBergomiParams`] with a flat ξ₀ from the surrogate's input order `[ξ₀, η, ρ, H]`,
+/// which its training box shows: `[0.01, 0.16]`, `[0.3, 4]`, `[−0.95, −0.1]`, `[0.025, 0.5]`.
 pub fn rbergomi_params_from_surrogate(v: &[f64]) -> RBergomiParams {
   RBergomiParams {
     hurst: v[3],
@@ -352,9 +356,8 @@ pub fn rbergomi_params_from_surrogate(v: &[f64]) -> RBergomiParams {
   }
 }
 
-/// Quant's [`RBergomiParams`] in the rough Bergomi surrogate's input order;
-/// a non-constant forward-variance curve is represented by its value at
-/// `t = 0`, the only shape the flat-ξ₀ surrogate knows.
+/// Quant's [`RBergomiParams`] in the rough Bergomi surrogate's input order; a non-constant
+/// forward-variance curve enters by its value at `t = 0`, the flat-ξ₀ surrogate's only shape.
 pub fn rbergomi_params_to_surrogate(p: &RBergomiParams) -> Vec<f64> {
   let xi0 = match &p.xi0 {
     RBergomiXi0::Constant(v) => *v,
@@ -377,9 +380,16 @@ pub struct HestonSurrogateResult {
 }
 
 impl<'m> HestonSurrogateCalibrator<'m> {
+  /// `market` flat in the network's order, whose columns descend in strike.
   pub fn new(model: &'m HestonNn, market: Vec<f64>) -> Result<Self> {
     Ok(Self {
       inner: SurrogateCalibrator::new(model, market)?,
+    })
+  }
+
+  pub fn from_surface(model: &'m HestonNn, surface: &ImpliedVolSurface, spot: f64) -> Result<Self> {
+    Ok(Self {
+      inner: SurrogateCalibrator::from_surface(model, surface, spot)?,
     })
   }
 
@@ -410,7 +420,7 @@ impl CalibrationResult for HestonSurrogateResult {
   }
 
   fn params(&self) -> HestonParams {
-    self.params.clone()
+    self.params
   }
 
   fn iterations(&self) -> Option<usize> {
@@ -421,20 +431,19 @@ impl CalibrationResult for HestonSurrogateResult {
     Some(&self.fit.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.fit.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.fit.max_error)
   }
 }
 
 impl ToModel for HestonSurrogateResult {
   type Model = HestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> HestonFourier {
-    self.params.to_model(r, q)
+  fn to_model(&self) -> HestonFourier {
+    self.params.to_model()
   }
 }
 
 impl Calibrator for HestonSurrogateCalibrator<'_> {
-  type InitialGuess = HestonParams;
   type Params = HestonParams;
   type Output = HestonSurrogateResult;
   type Error = anyhow::Error;
@@ -443,10 +452,18 @@ impl Calibrator for HestonSurrogateCalibrator<'_> {
     let fit = self
       .inner
       .run(initial.as_ref().map(heston_params_to_surrogate))?;
-    Ok(HestonSurrogateResult {
-      params: heston_params_from_surrogate(&fit.params),
-      fit,
-    })
+    let params = fitted_heston_params(&fit)?;
+    Ok(HestonSurrogateResult { params, fit })
+  }
+}
+
+/// The scaled coordinates are unbounded, so a fit can leave the Heston domain that
+/// `to_model` would panic on.
+fn fitted_heston_params(fit: &SurrogateCalibrationResult) -> Result<HestonParams> {
+  let params = heston_params_from_surrogate(&fit.params);
+  match params.violation() {
+    Some(reason) => Err(anyhow::anyhow!("the fit left the Heston domain: {reason}")),
+    None => Ok(params),
   }
 }
 
@@ -467,6 +484,16 @@ impl<'m> RBergomiSurrogateCalibrator<'m> {
   pub fn new(model: &'m RBergomiNn, market: Vec<f64>) -> Result<Self> {
     Ok(Self {
       inner: SurrogateCalibrator::new(model, market)?,
+    })
+  }
+
+  pub fn from_surface(
+    model: &'m RBergomiNn,
+    surface: &ImpliedVolSurface,
+    spot: f64,
+  ) -> Result<Self> {
+    Ok(Self {
+      inner: SurrogateCalibrator::from_surface(model, surface, spot)?,
     })
   }
 
@@ -508,20 +535,19 @@ impl CalibrationResult for RBergomiSurrogateResult {
     Some(&self.fit.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.fit.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.fit.max_error)
   }
 }
 
 impl ToModel for RBergomiSurrogateResult {
   type Model = RBergomiPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> RBergomiPricer {
+  fn to_model(&self) -> RBergomiPricer {
     RBergomiPricer::new(self.params.clone())
   }
 }
 
 impl Calibrator for RBergomiSurrogateCalibrator<'_> {
-  type InitialGuess = RBergomiParams;
   type Params = RBergomiParams;
   type Output = RBergomiSurrogateResult;
   type Error = anyhow::Error;

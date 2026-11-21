@@ -1,4 +1,4 @@
-//! # Cfbms
+//! Two fractional Brownian motions correlated by `rho`, on one Hurst exponent.
 //!
 //! $$
 //! dX_t=L\,dB_t^H,\quad LL^\top=\Sigma
@@ -13,39 +13,46 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+/// Two correlated fBms `dX = L dB^H`. Fields are private, since the fGN driver caches a spectrum
+/// of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::process::cfbms::Cfbms;
+/// let mut p = Cfbms::<f64>::new(0.7, 0.3, 10, None, Unseeded);
+/// p.n = 1000;
+/// ```
+#[derive(Debug, Clone)]
 pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst parameter (`0 < H < 1`) shared by both components.
-  pub hurst: T,
-  /// Instantaneous correlation between the two fractional-noise drivers.
-  pub rho: T,
-  /// Number of discrete time points in each path.
-  pub n: usize,
-  /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
-  /// The increment pipeline both rows draw from. One embedding serves the
-  /// pair because they share a Hurst exponent — on a device that is one
-  /// batched call of `2 · m` paths, not two launches.
-  pub(crate) fgn: Fgn<T, Unseeded, B>,
+  hurst: T,
+  rho: T,
+  n: usize,
+  t: Option<T>,
+  seed: S,
+  /// The increment pipeline of both rows: they share a Hurst exponent, so one embedding serves
+  /// the pair, on a device as one batched call of `2 · m` paths.
+  fgn: Fgn<T, Unseeded, B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+    require!((T::zero()..=T::one()).contains(&hurst), hurst);
+  }
+
+  /// Panics unless `0 <= hurst <= 1`, `-1 <= rho <= 1`, a given `t` is positive and finite,
+  /// `n >= 2`, and every parameter is finite.
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
-    );
-    assert!(n >= 2, "n must be at least 2");
+    Self::check_hurst(hurst);
+    Self::check_rho(rho);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
@@ -53,12 +60,89 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
       n,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Fgn::for_grid(hurst, n, t),
     }
+  }
+
+  /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    Self::check_hurst(hurst);
+    self.hurst = hurst;
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `n`; panics unless `n >= 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
+    self.n = n;
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
+    self.t = t;
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+    require!((-T::one()..=T::one()).contains(&rho), rho);
+  }
+
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    Self::check_rho(rho);
+    self.rho = rho;
+    self
+  }
+
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+
+  /// Hurst parameter (`0 < H < 1`) shared by both components.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Instantaneous correlation between the two fractional-noise drivers.
+  pub fn rho(&self) -> T {
+    self.rho
+  }
+
+  /// Number of discrete time points in each path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
+  pub fn seed(&self) -> &S {
+    &self.seed
   }
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Cfbms<T, S> { hurst, rho, n, t, seed } via fgn euler);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Cfbms<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cfbms<T, S, B>
@@ -69,10 +153,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> CfbmsSampler<'_, T, S, B> {
     CfbmsSampler {
       cfbms: self,
@@ -80,10 +162,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine: on a device both rows are produced in the
-  /// kernel from the increments the fractional pipeline wrote to that same
-  /// device, on the host devices it is this process's own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device builds both rows in its kernel from the fGN increments
+  /// written there, the host runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     crate::euler::EulerBackend::system_sample(&self.fgn.backend, self)
   }
@@ -105,19 +185,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Cfbms`] sampling state: borrows the process for its fractional
-/// pipeline (which owns non-`Copy` FFT scratch) and owns the seed source so a
-/// Monte-Carlo loop reuses both output buffers.
+/// Reusable [`Cfbms`] sampling state: it borrows the process for its fractional pipeline and
+/// owns the seed source, so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfbmsSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfbms: &'a Cfbms<T, S, B>,
   seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfbmsSampler<'_, T, S, B> {
-  /// The two correlated fBm rows, or why the device could not produce the
-  /// increments. The pair comes out of one fractional pass and the second
-  /// row is the Cholesky combination of the two independent streams.
+  /// The two correlated fBm rows from one fractional pass, the second a Cholesky combination of
+  /// the two independent streams; `Err` says why the device could not produce the increments.
   fn try_fill_paths(&mut self, fbm1: &mut [T], fbm2: &mut [T]) -> Result<(), DeviceError> {
     let n = self.cfbms.n;
     if n == 0 {
@@ -140,6 +219,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfbmsSampler<'_, T, S, B> {
       .try_fill_paths(fbm1, fbm2)
       .unwrap_or_else(crate::device::device_panic)
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for CfbmsSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfbmsSampler<'_, T, S, B> {
@@ -176,9 +260,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfbmsSampler<
   }
 }
 
-/// The Euler engine's view of correlated fBm: the two-row fractional family,
-/// whose step is the increment itself, so accumulating a correlated pair of
-/// fGN streams is one kernel rather than a host pass over the batch.
+/// The Euler engine's view: the two-row fractional family, whose step is the increment itself,
+/// so one kernel accumulates a correlated pair of fGN streams.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerSystem<T, 2> for Cfbms<T, S, B>
 {
@@ -206,18 +289,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
     crate::euler::draw_seed(&self.seed)
   }
 
-  /// Both rows come out of one embedding — they share a Hurst exponent — so
-  /// the pipeline draws `2 · m` paths in the one batched call and the step
-  /// reads its second stream from the buffer's next `paths` rows.
+  /// The rows share a Hurst exponent, so one embedding draws `2 · m` paths in one batched call
+  /// and the step reads its second stream `paths` rows further on.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 2,
-    })
+    Some(self.fgn.fgn_spec(2))
   }
 
   fn host_sample(&self) -> [Array1<T>; 2] {

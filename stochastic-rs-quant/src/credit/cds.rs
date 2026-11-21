@@ -1,20 +1,9 @@
-//! Credit Default Swap pricing under the ISDA-style hazard-rate framework.
-//!
-//! Reference: O'Kane & Turnbull, "Valuation of Credit Default Swaps", Lehman
-//! Brothers Quantitative Credit Research Quarterly (2003).
-//!
-//! Reference: ISDA, "The ISDA CDS Standard Model" (2009),
-//! <https://www.cdsmodel.com/>.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006), Chapter 22.
-//!
-//! Given a hazard-driven survival curve $Q(t)$, a risk-free discount curve
-//! $D(t)$, a constant recovery $R\in[0,1)$ and a running contractual spread
-//! $s$, the CDS legs are
+//! CDS legs on a survival curve $Q$, a discount curve $D$ and a recovery $R\in[0,1)$; the premium
+//! integral is the accrual on default, and both integrals run on a daily grid by trapezoid.
 //!
 //! $$
-//! \mathrm{PV}_{\text{prem}} = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)\,+\,\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)\right],
+//! \mathrm{PV}_{\text{prem}} = N\,s\!\left[\sum_i \alpha_i\,Q(t_i)\,D(t_i)\,
+//! +\,\int_0^T D(u)(u-t_{i(u)-1})\bigl(-dQ(u)\bigr)\right],
 //! $$
 //!
 //! $$
@@ -22,16 +11,16 @@
 //! = N(1-R)\int_0^T D(u)\,\bigl(-dQ(u)\bigr).
 //! $$
 //!
-//! The second term in the premium PV is the accrual on default.  The
-//! protection integral and the accrual piece are approximated on a daily
-//! grid (ISDA standard), splitting each coupon period by the trapezoidal rule
-//! on $D(u)Q(u)$ times the finite increment $Q(u_k)-Q(u_{k+1})$.
+//! Reference: O'Kane & Turnbull (2003), "Valuation of Credit Default Swaps", Lehman Brothers QCR
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model", <https://www.cdsmodel.com/>
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Ch. 22
 
 use std::fmt::Display;
 
 use chrono::NaiveDate;
 
 use super::survival_curve::SurvivalCurve;
+use crate::calendar::DateGenerationRule;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::Schedule;
@@ -95,7 +84,7 @@ pub struct CreditDefaultSwap<T: RealExt> {
   pub premium_schedule: Schedule,
   /// Day count convention for the premium accrual.
   pub day_count: DayCountConvention,
-  /// Contract protection effective date (inclusive).
+  /// Protection and premium accrual start here (inclusive).
   pub effective_date: NaiveDate,
   /// Contract maturity (protection end, inclusive).
   pub maturity_date: NaiveDate,
@@ -107,7 +96,10 @@ pub struct CreditDefaultSwap<T: RealExt> {
 }
 
 impl<T: RealExt> CreditDefaultSwap<T> {
-  /// Build a running-spread CDS using the provided premium schedule.
+  /// Build a running-spread CDS using the provided premium schedule; panics unless
+  /// `0 ≤ recovery_rate < 1`, the schedule has two dates and `effective_date < maturity_date`.
+  // One argument per term of the contract.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     direction: CdsPosition,
     notional: T,
@@ -120,15 +112,16 @@ impl<T: RealExt> CreditDefaultSwap<T> {
   ) -> Self {
     assert!(
       recovery_rate >= T::zero() && recovery_rate < T::one(),
-      "recovery_rate must lie in [0, 1)"
+      "recovery_rate must satisfy `recovery_rate >= T::zero() && recovery_rate < T::one()`, got recovery_rate = {recovery_rate:?}"
     );
     assert!(
       premium_schedule.adjusted_dates.len() >= 2,
-      "premium schedule must contain at least two dates"
+      "premium_schedule must satisfy `premium_schedule.adjusted_dates.len() >= 2`, got premium_schedule.adjusted_dates.len() = {}",
+      premium_schedule.adjusted_dates.len()
     );
     assert!(
       effective_date < maturity_date,
-      "effective_date must precede maturity_date"
+      "effective_date must satisfy `effective_date < maturity_date`, got effective_date = {effective_date}, maturity_date = {maturity_date}"
     );
     Self {
       direction,
@@ -144,7 +137,10 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     }
   }
 
-  /// Build a vanilla running CDS with a quarterly schedule (standard post-2009).
+  /// Running CDS on a plain `frequency` schedule from `effective_date` to `maturity_date`, unlike
+  /// [`Self::standard`]; panics as `new`.
+  // One argument per term of the contract.
+  #[allow(clippy::too_many_arguments)]
   pub fn vanilla(
     direction: CdsPosition,
     notional: T,
@@ -157,6 +153,33 @@ impl<T: RealExt> CreditDefaultSwap<T> {
   ) -> Self {
     let schedule = crate::calendar::ScheduleBuilder::new(effective_date, maturity_date)
       .frequency(frequency)
+      .build();
+    Self::new(
+      direction,
+      notional,
+      spread,
+      recovery_rate,
+      schedule,
+      day_count,
+      effective_date,
+      maturity_date,
+    )
+  }
+
+  /// SNAC schedule: quarterly premiums on the unadjusted CDS rolls, the first accruing from the
+  /// step-in date `effective_date`; panics unless `maturity_date` is a roll date, or as `new`.
+  pub fn standard(
+    direction: CdsPosition,
+    notional: T,
+    spread: T,
+    recovery_rate: T,
+    effective_date: NaiveDate,
+    maturity_date: NaiveDate,
+    day_count: DayCountConvention,
+  ) -> Self {
+    let schedule = crate::calendar::ScheduleBuilder::new(effective_date, maturity_date)
+      .frequency(Frequency::Quarterly)
+      .rule(DateGenerationRule::Cds)
       .build();
     Self::new(
       direction,
@@ -201,10 +224,12 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     for window in self.premium_schedule.adjusted_dates.windows(2) {
       let coupon_start = window[0];
       let coupon_end = window[1];
-      if coupon_end <= valuation_date {
+      if coupon_end <= valuation_date || coupon_end <= self.effective_date {
         continue;
       }
-      let alpha: T = self.day_count.year_fraction(coupon_start, coupon_end);
+      let alpha: T = self
+        .day_count
+        .year_fraction(coupon_start.max(self.effective_date), coupon_end);
       let payment_tau: T = tau_year_fraction(discount_day_count, valuation_date, coupon_end);
       let df_end = discount.discount_factor(payment_tau);
       let q_end = survival.survival_probability(tau_year_fraction(

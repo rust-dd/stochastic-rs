@@ -1,18 +1,12 @@
-//! Realized kernels (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008).
-//!
-//! A consistent, noise-robust estimator of integrated variance under
-//! microstructure noise:
+//! Realized kernels (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008), robust to market noise.
 //!
 //! $$
-//! K(X) = \gamma_0(X) + \sum_{h=1}^{H} k\!\left(\tfrac{h-1}{H}\right)\bigl(\gamma_h(X)+\gamma_{-h}(X)\bigr),
+//! K(X) = \gamma_0(X) + \sum_{h=1}^{H} k\!\left(\tfrac{h-1}{H}\right)
+//! \bigl(\gamma_h(X)+\gamma_{-h}(X)\bigr),\qquad
+//! \gamma_h(X) = \sum_{j=|h|+1}^{n} r_j r_{j-|h|},\qquad k:\[0,1\]\to\[0,1\]
 //! $$
 //!
-//! where $\gamma_h(X) = \sum_{j=|h|+1}^{n} r_j r_{j-|h|}$ is the lag-$h$ return
-//! autocovariance and $k:\[0,1\]\to\[0,1\]$ is the chosen kernel weight.
-//!
-//! Reference: Barndorff-Nielsen, Hansen, Lunde, Shephard, "Designing Realised
-//! Kernels to Measure the Ex-Post Variation of Equity Prices in the Presence
-//! of Noise", Econometrica, 76(6), 1481-1536 (2008). DOI: 10.3982/ECTA6495
+//! Reference: Barndorff-Nielsen et al. (2008), Econometrica 76(6), 1481-1536, DOI: 10.3982/ECTA6495
 
 use std::fmt::Display;
 
@@ -36,8 +30,10 @@ pub enum KernelType {
   TukeyHanning2,
   /// Cubic kernel: $k(x) = 1 - 3x^2 + 2x^3$.
   Cubic,
-  /// Quadratic-spectral (Andrews 1991):
-  /// $k(x) = \tfrac{25}{12\pi^2 x^2}\!\left(\tfrac{\sin(6\pi x/5)}{6\pi x/5} - \cos(6\pi x/5)\right)$.
+  /// Quadratic-spectral (Andrews 1991).
+  /// $$
+  /// k(x) = \tfrac{25}{12\pi^2 x^2}\!\left(\tfrac{\sin(6\pi x/5)}{6\pi x/5} - \cos(6\pi x/5)\right)
+  /// $$
   QuadraticSpectral,
 }
 
@@ -114,25 +110,20 @@ impl KernelType {
   }
 }
 
-/// Suggested bandwidth $H^*$ for a flat-top realized kernel
-/// (BNHLS 2008, Table 4 — Parzen "rule of thumb"): $H = c \cdot n^{3/5}$
-/// with $c \approx 3.5134\,\xi^{4/5}$ and the noise-to-signal ratio $\xi^2$
-/// estimated from the data. Falls back to $\xi = 1$ for the default heuristic.
+/// Bandwidth of a flat-top realized kernel by Parzen's rule of thumb (BNHLS 2008, Table 4):
+/// $H = c\,n^{3/5}$, $c \approx 3.5134\,\xi^{4/5}$, $\xi^2$ the noise-to-signal ratio.
 pub fn parzen_default_bandwidth(n: usize, xi: f64) -> usize {
   let nn = n as f64;
   let h = 3.5134_f64 * xi.abs().powf(0.8) * nn.powf(0.6);
   h.round().max(1.0) as usize
 }
 
-/// Realized kernel estimator with the chosen weight family and bandwidth `h`.
-///
-/// `returns` are intraday log-returns. `h` should typically be set via
-/// [`parzen_default_bandwidth`] or the optimal-bandwidth analytical result of
-/// BNHLS (2008).
+/// Realized kernel of intraday log-returns with weight family `kernel` and bandwidth `h` (see
+/// [`parzen_default_bandwidth`]); NaN below two returns.
 pub fn realized_kernel<T: FloatExt>(returns: ArrayView1<T>, kernel: KernelType, h: usize) -> T {
   let n = returns.len();
-  if n == 0 {
-    return T::zero();
+  if n < 2 {
+    return T::nan();
   }
   let gamma_0 = autocovariance(returns, 0);
   let mut acc = gamma_0;
@@ -165,20 +156,23 @@ fn autocovariance<T: FloatExt>(returns: ArrayView1<T>, lag: usize) -> T {
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, std).seeded(&Deterministic::new(seed));
     let mut out = Array1::<f64>::zeros(n);
     dist.fill_slice(out.as_slice_mut().unwrap());
     out
   }
 
   fn noisy_efficient_path(seed: u64, n: usize, sigma: f64, omega: f64) -> Array1<f64> {
-    let dx = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
-    let dn = SimdNormal::<f64>::new(0.0, omega, &Deterministic::new(seed.wrapping_add(1)));
+    let mut dx = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
+    let mut dn =
+      SimdNormal::<f64>::new(0.0, omega).seeded(&Deterministic::new(seed.wrapping_add(1)));
     let mut steps = vec![0.0_f64; n];
     dx.fill_slice(&mut steps);
     let mut noise = vec![0.0_f64; n + 1];

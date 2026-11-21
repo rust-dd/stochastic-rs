@@ -6,6 +6,7 @@
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -19,7 +20,6 @@ use stochastic_rs::quant::instruments::BlackVolatility;
 use stochastic_rs::quant::instruments::EuropeanSwaption;
 use stochastic_rs::quant::instruments::SabrVolatility;
 use stochastic_rs::quant::instruments::ShiftedSabrVolatility;
-use stochastic_rs::quant::instruments::SwapDirection;
 use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 
@@ -30,7 +30,11 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn approx(a: f64, b: f64, tol: f64) {
@@ -52,11 +56,11 @@ fn european_payer_put_call_parity_against_forward_swap_value() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -64,7 +68,7 @@ fn european_payer_put_call_parity_against_forward_swap_value() {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,
@@ -114,11 +118,11 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -129,7 +133,7 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let forward_swap_rate = {
     let swap = VanillaInterestRateSwap::new(
-      SwapDirection::Payer,
+      SwaptionDirection::Payer,
       &fixed_schedule,
       &float_schedule,
       notional,
@@ -146,7 +150,7 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let strike = forward_swap_rate;
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,
@@ -203,11 +207,11 @@ fn sabr_swaption_produces_positive_price() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -215,7 +219,7 @@ fn sabr_swaption_produces_positive_price() {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,
@@ -232,7 +236,7 @@ fn sabr_swaption_produces_positive_price() {
     strike,
     expiry,
     swap,
-    SabrVolatility::new(0.3, 0.5, 0.4, -0.2),
+    SabrVolatility::new(0.3, 0.5, -0.2, 0.4),
   );
   let npv = swpn.npv(
     valuation,
@@ -246,8 +250,8 @@ fn sabr_swaption_produces_positive_price() {
 
 #[test]
 fn shifted_sabr_matches_plain_sabr_at_zero_shift() {
-  let plain = SabrVolatility::new(0.3_f64, 0.5, 0.4, -0.2);
-  let shifted = ShiftedSabrVolatility::new(0.3_f64, 0.5, 0.4, -0.2, 0.0);
+  let plain = SabrVolatility::new(0.3_f64, 0.5, -0.2, 0.4);
+  let shifted = ShiftedSabrVolatility::new(0.3_f64, 0.5, -0.2, 0.4, 0.0);
   use stochastic_rs::quant::instruments::VolatilityModel;
   let v_plain = plain.implied_volatility(0.04, 0.045, 1.5);
   let v_shift = shifted.implied_volatility(0.04, 0.045, 1.5);
@@ -256,7 +260,7 @@ fn shifted_sabr_matches_plain_sabr_at_zero_shift() {
 
 #[test]
 fn shifted_sabr_handles_zero_rate() {
-  let shifted = ShiftedSabrVolatility::new(0.25_f64, 0.5, 0.4, -0.3, 0.03);
+  let shifted = ShiftedSabrVolatility::new(0.25_f64, 0.5, -0.3, 0.4, 0.03);
   use stochastic_rs::quant::instruments::VolatilityModel;
   let v = shifted.implied_volatility(0.001, 0.0, 2.0);
   assert!(

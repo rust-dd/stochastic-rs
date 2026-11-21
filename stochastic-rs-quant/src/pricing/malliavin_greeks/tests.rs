@@ -1,4 +1,5 @@
 use super::*;
+use crate::pricing::heston::HestonParams;
 
 #[test]
 fn gbm_delta_positive_for_call() {
@@ -74,14 +75,16 @@ fn gbm_all_greeks_consistent() {
 fn heston_delta_positive_for_call() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 50_000,
     n_steps: 252,
   };
@@ -96,14 +99,16 @@ fn heston_delta_positive_for_call() {
 fn heston_delta_pathwise_positive() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 50_000,
     n_steps: 252,
   };
@@ -118,14 +123,16 @@ fn heston_delta_pathwise_positive() {
 fn heston_delta_el_khatib_gbm_limit() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.0,
-    rho: -0.7,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.0,
+      rho: -0.7,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 20_000,
     n_steps: 64,
   };
@@ -140,14 +147,16 @@ fn heston_delta_el_khatib_gbm_limit() {
 fn heston_delta_el_khatib_full_kernel_finite() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.15,
-    rho: -0.4,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.15,
+      rho: -0.4,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 2_000,
     n_steps: 32,
   };
@@ -162,14 +171,16 @@ fn heston_delta_el_khatib_full_kernel_finite() {
 fn heston_gamma_positive() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 100_000,
     n_steps: 252,
   };
@@ -184,14 +195,16 @@ fn heston_gamma_positive() {
 fn heston_vega_v0_positive() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.3,
-    rho: -0.7,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 50_000,
     n_steps: 252,
   };
@@ -203,14 +216,17 @@ fn heston_vega_v0_positive() {
 fn heston_malliavin_vs_pathwise_consistent() {
   let greeks = HestonMalliavinGreeks {
     s: 100.0,
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    xi: 0.1, // low vol-of-vol so zeroth-order approx is good
-    rho: -0.3,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      // low vol-of-vol so zeroth-order approx is good
+      sigma: 0.1,
+      rho: -0.3,
+    },
     r: 0.05,
-    tau: 1.0,
     k: 100.0,
+    tau: 1.0,
     n_paths: 200_000,
     n_steps: 252,
   };
@@ -221,4 +237,98 @@ fn heston_malliavin_vs_pathwise_consistent() {
     rel_err < 0.15,
     "Malliavin and pathwise delta should be close for low xi, got mall={mall} path={path} rel_err={rel_err}"
   );
+}
+
+#[test]
+fn gbm_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
+  let base = GbmMalliavinGreeks {
+    s: 100.0,
+    sigma: 0.2,
+    r: 0.05,
+    q: 0.0,
+    tau: 1.0,
+    k: 100.0,
+    n_paths: 64,
+    n_steps: 16,
+  };
+  let degenerate = [
+    GbmMalliavinGreeks {
+      s: 0.0,
+      ..base.clone()
+    },
+    GbmMalliavinGreeks {
+      s: f64::NAN,
+      ..base.clone()
+    },
+    GbmMalliavinGreeks {
+      tau: 0.0,
+      ..base.clone()
+    },
+    GbmMalliavinGreeks {
+      q: f64::NAN,
+      ..base
+    },
+  ];
+  for g in degenerate {
+    let all = g.all_greeks();
+    let estimates = [
+      g.delta(),
+      g.gamma(),
+      g.vega(),
+      g.rho_greek(),
+      all.delta,
+      all.gamma,
+      all.vega,
+      all.rho,
+    ];
+    assert!(estimates.iter().all(|x| x.is_nan()), "{g:?}: {estimates:?}");
+  }
+}
+
+#[test]
+fn heston_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
+  let base = HestonMalliavinGreeks {
+    s: 100.0,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
+    r: 0.05,
+    k: 100.0,
+    tau: 1.0,
+    n_paths: 64,
+    n_steps: 16,
+  };
+  let degenerate = [
+    HestonMalliavinGreeks {
+      s: -1.0,
+      ..base.clone()
+    },
+    HestonMalliavinGreeks {
+      tau: 0.0,
+      ..base.clone()
+    },
+    HestonMalliavinGreeks {
+      r: f64::NAN,
+      ..base
+    },
+  ];
+  for h in degenerate {
+    let all = crate::traits::GreeksExt::greeks(&h);
+    let estimates = [
+      h.delta(),
+      h.delta_pathwise(),
+      h.gamma(),
+      h.vega_v0(),
+      h.delta_el_khatib_with_seed(7),
+      all.delta,
+      all.gamma,
+      all.vega,
+    ];
+    assert!(estimates.iter().all(|x| x.is_nan()), "{h:?}: {estimates:?}");
+    assert!(h.simulate().0.iter().all(|x| x.is_nan()));
+  }
 }

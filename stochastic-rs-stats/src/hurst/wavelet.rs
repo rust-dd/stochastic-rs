@@ -1,28 +1,20 @@
-//! Veitch-Abry (1999) wavelet-based Hurst estimator.
+//! Veitch–Abry (1999) wavelet Hurst estimator: a weighted regression of detail energies on scale.
 //!
-//! 1. Apply the pyramidal discrete wavelet transform with a
-//!    compactly-supported orthonormal wavelet (currently Daubechies-4)
-//!    using periodic boundary extension.
-//! 2. At each dyadic scale `j` compute the sample energy
-//!    `μⱼ = (1/Nⱼ) Σₖ d²_{j,k}` of the detail coefficients.
-//! 3. Subtract the Eq. 21 bias correction
-//!    `gⱼ = (ψ(Nⱼ/2) - ln(Nⱼ/2)) / ln 2` so the residual is unbiased
-//!    in expectation under Gaussianity.
-//! 4. Weighted least-squares regression `log₂ μⱼ - gⱼ ~ slope · j + c`
-//!    with weights `wⱼ = Nⱼ (ln 2)² / 2`.
-//! 5. Slope inversion: FBM input → `H = (slope - 1) / 2`; FGN input →
-//!    `H = (slope + 1) / 2`.
+//! $$
+//! \mu_j = \frac{1}{N_j}\sum_k d_{j,k}^2,\qquad
+//! g_j = \frac{\psi(N_j/2) - \ln(N_j/2)}{\ln 2},\qquad
+//! \log_2\mu_j - g_j \sim \mathrm{slope}\cdot j + c,\quad w_j = \frac{N_j(\ln 2)^2}{2}
+//! $$
 //!
-//! Standard error: `SE(H) = √(2 / (slope-variance · Σ wⱼ))`
-//! (asymptotic Veitch-Abry result, simplified to the unweighted
-//! variance form).
+//! $$
+//! H = \frac{\mathrm{slope} + 1}{2},\qquad
+//! \mathrm{SE}(H) = \frac12\sqrt{\frac{2}{\sum_j w_j}}
+//! $$
 //!
-//! References:
-//! - Veitch D. & Abry P. (1999) — *A wavelet-based joint estimator of
-//!   the parameters of long-range dependence*, IEEE T-IT 45(3),
-//!   878–897, DOI: 10.1109/18.761330.
-//! - Abry P., Flandrin P., Taqqu M. S., Veitch D. (2003) — *Self-
-//!   similarity and long-range dependence through the wavelet lens*.
+//! `d_{j,k}` are periodic Daubechies-4 DWT details; `g_j` is Eq. 21's bias under Gaussianity.
+//!
+//! Reference: Veitch & Abry (1999), IEEE Trans. Inf. Theory 45(3), 878–897, DOI: 10.1109/18.761330
+//! Reference: Abry et al. (2003), Theory and Applications of Long-Range Dependence, 527–556
 
 use std::f64::consts::LN_2;
 
@@ -30,17 +22,16 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::digamma;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
-/// Standard Daubechies-4 scaling (low-pass) filter coefficients,
-/// normalised so that `Σ hₖ = √2` and `Σ h²ₖ = 1`.  Distinct from
-/// [`super::variations::daubechies_coeffs`] (Coeurjolly variant,
-/// different normalisation and sign pattern).
+/// The Daubechies-4 scaling (low-pass) filter, `Σ hₖ = √2` and `Σ h²ₖ = 1`; not Brouste & Iacus's
+/// high-pass [`super::variations::daubechies_coeffs`].
 fn daubechies4_scaling() -> Vec<f64> {
   vec![
     0.482_962_913_144_534_1,
@@ -57,12 +48,8 @@ pub enum WaveletKind {
   Daubechies4,
 }
 
-/// Veitch-Abry wavelet Hurst estimator.
-///
-/// The estimator is defined on stationary FGN-like input.  When
-/// `take_differences = true` (default) the input is first-differenced
-/// internally so FBM-like walks can be passed directly.  Slope-to-`H`
-/// map is always the FGN form `H = (slope + 1) / 2`.
+/// Veitch–Abry wavelet Hurst estimator, defined on FGN-like input: `take_differences` (default
+/// `true`) differences a walk first, and the slope maps as `H = (slope + 1) / 2` either way.
 #[derive(Clone, Debug)]
 pub struct Wavelet {
   pub wavelet: WaveletKind,
@@ -94,31 +81,45 @@ impl Wavelet {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Wavelet {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
-    let n_obs = x.len();
-    if n_obs < 64 {
-      return Err(HurstError::TooFewObservations {
-        got: n_obs,
-        required: 64,
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
+    let nobs = x.len();
+    if self.j_min < 1 {
+      return Err(StatsError::InvalidParameter {
+        name: "j_min",
+        value: self.j_min as f64,
+        constraint: "j_min >= 1",
       });
     }
-    if self.j_min < 1 {
-      return Err(HurstError::InvalidParameter("j_min", self.j_min as f64));
+    if let Some(j_max) = self.j_max
+      && j_max <= self.j_min
+    {
+      return Err(StatsError::InvalidParameter {
+        name: "j_max",
+        value: j_max as f64,
+        constraint: "j_max >= j_min + 1",
+      });
+    }
+    // Scale `j` holds `⌊n / 2^j⌋` coefficients and a regression scale needs four, so scales `j_min`
+    // and `j_min + 1` need `2^(j_min + 3)` points after differencing.
+    let levels_needed = u32::try_from(self.j_min.saturating_add(3))
+      .ok()
+      .and_then(|shift| 1usize.checked_shl(shift))
+      .unwrap_or(usize::MAX);
+    let needed = levels_needed
+      .saturating_add(usize::from(self.take_differences))
+      .max(64);
+    if nobs < needed {
+      return Err(StatsError::InsufficientData { needed, got: nobs });
     }
 
     let signal_raw = to_f64_vec::<T>(x);
+    reject_constant(&signal_raw, "constant series")?;
     let signal: Vec<f64> = if self.take_differences {
       signal_raw.windows(2).map(|w| w[1] - w[0]).collect()
     } else {
       signal_raw
     };
     let n_series = signal.len();
-    if n_series < 32 {
-      return Err(HurstError::TooFewObservations {
-        got: n_series,
-        required: 32,
-      });
-    }
     let (h_filter, g_filter) = match self.wavelet {
       WaveletKind::Daubechies4 => qmf_from_low(&daubechies4_scaling()),
     };
@@ -128,13 +129,10 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       .j_max
       .unwrap_or(max_levels.saturating_sub(2))
       .min(max_levels);
-    if j_cap < self.j_min + 1 {
-      return Err(HurstError::NotEnoughScales);
-    }
 
     let levels = pyramidal_dwt(&signal, &h_filter, &g_filter, j_cap);
     if levels.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let mut log_j = Vec::with_capacity(levels.len());
@@ -165,13 +163,13 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
     }
 
     if log_j.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
-    let (slope, intercept, r_squared) =
-      weighted_linreg(&log_j, &log_mu_corr, Some(&weights)).ok_or(HurstError::RegressionFailed)?;
+    let (slope, intercept, r_squared) = weighted_linreg(&log_j, &log_mu_corr, Some(&weights))
+      .ok_or(StatsError::Singular("log-log regression"))?;
     if !slope.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
 
     // After (optional) differencing the series is FGN-like with
@@ -184,10 +182,10 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       None
     };
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(h),
       std_err: std_err.map(T::from_f64_fast),
-      n_obs,
+      nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
         intercept: T::from_f64_fast(intercept),
@@ -211,9 +209,8 @@ fn qmf_from_low(h: &[f64]) -> (Vec<f64>, Vec<f64>) {
   (h.to_vec(), g)
 }
 
-/// Pyramidal DWT with periodic boundary.  Returns one detail-coefficient
-/// vector per scale `j = 1..=max_levels` (or until the working vector
-/// becomes shorter than the filter).
+/// Pyramidal DWT with periodic boundary: one detail vector per scale `j = 1..=max_levels`, or
+/// until the working vector is shorter than the filter.
 pub(crate) fn pyramidal_dwt(
   signal: &[f64],
   h_filter: &[f64],
@@ -246,6 +243,7 @@ pub(crate) fn pyramidal_dwt(
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::noise::fgn::Fgn;
   use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -301,5 +299,52 @@ mod tests {
     let r = Wavelet::default().estimate(path.view()).expect("wavelet");
     let se = r.std_err.expect("std_err present");
     assert!(se > 0.0 && se < 1.0, "SE={se}");
+  }
+
+  #[test]
+  fn a_scale_range_without_two_levels_is_invalid_parameter() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 256);
+    let narrow = Wavelet {
+      j_max: Some(2),
+      ..Wavelet::default()
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&narrow, x.view()).unwrap_err(),
+      StatsError::InvalidParameter {
+        name: "j_max",
+        value: 2.0,
+        constraint: "j_max >= j_min + 1"
+      }
+    );
+  }
+
+  /// Scales `j_min` and `j_min + 1` need four coefficients each: `2^(j_min + 3)` differences.
+  #[test]
+  fn the_scale_range_folds_into_the_length_check() {
+    let coarse = Wavelet {
+      j_min: 4,
+      ..Wavelet::default()
+    };
+    let x = Array1::from_iter((0..129).map(|t| (t as f64 * 0.7).sin() + 0.01 * t as f64));
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&coarse, x.slice(ndarray::s![..128])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 129,
+        got: 128
+      }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&coarse, x.view()).is_ok());
+    let levels = Wavelet {
+      take_differences: false,
+      ..coarse
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&levels, x.slice(ndarray::s![..127])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 128,
+        got: 127
+      }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&levels, x.slice(ndarray::s![..128])).is_ok());
   }
 }

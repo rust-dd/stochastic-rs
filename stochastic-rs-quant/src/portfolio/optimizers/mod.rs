@@ -25,7 +25,7 @@ pub(super) fn run_nelder_mead<P>(
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
-  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance).0
+  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance, false).best
 }
 
 pub use cvar::empirical_cvar;
@@ -68,12 +68,8 @@ impl Default for OptimizerConfig {
   }
 }
 
-/// Dispatch to selected optimizer with common configuration inputs.
-///
-/// `config` controls annualization (`periods_per_year`, default 252) and the
-/// target-return penalty coefficient (`lambda`, default 10) for mean-variance
-/// / mean-CVaR objectives. Pass `&OptimizerConfig::default()` to keep the
-/// rc.0/rc.1 behaviour, or tune for non-daily frequency portfolios.
+/// Runs the selected optimizer; `config` sets annualization (`periods_per_year`, default 252) and
+/// the mean-variance / mean-CVaR target-return penalty `lambda` (default 10).
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],
@@ -98,7 +94,7 @@ pub fn optimize_with_method(
         optimize_markowitz(mu, cov, target_return, risk_free, config.lambda)
       }
     }
-    OptimizerMethod::MeanCVaR => {
+    OptimizerMethod::MeanCvar => {
       if let Some(rets) = aligned_returns {
         if allow_short {
           optimize_mean_cvar_long_short(mu, rets, target_return, risk_free, cvar_alpha, config)
@@ -113,7 +109,7 @@ pub fn optimize_with_method(
     }
     OptimizerMethod::InverseVol => optimize_inverse_vol(mu, cov, risk_free),
     OptimizerMethod::RiskParity => optimize_risk_parity(mu, cov, risk_free),
-    OptimizerMethod::HRP => {
+    OptimizerMethod::Hrp => {
       let corr_mat: Vec<Vec<f64>> = corr.map(|x| x.to_vec()).unwrap_or_else(|| {
         let n = cov.len();
         let mut m = ndarray::Array2::<f64>::zeros((n, n));

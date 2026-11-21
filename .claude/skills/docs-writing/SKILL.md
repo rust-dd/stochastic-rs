@@ -158,8 +158,8 @@ moment generating function — only if it exists.>
 |-----------|-------------|----------------------------------------------|
 | `<arg>`   | `T`         | <one-line meaning + units / range>           |
 | `n`       | `usize`     | Number of steps                              |
-| `x0`      | `Option<T>` | Initial value (defaults to <doc default>)    |
-| `t`       | `Option<T>` | Horizon (defaults to <doc default>)          |
+| `x0`      | `Option<T>` | Initial value; `None` starts at zero         |
+| `t`       | `Option<T>` | Horizon of the path; `None` is a unit horizon |
 
 ## Examples
 
@@ -235,21 +235,12 @@ $$ \varphi(t) = \dots $$
 |---------------|---------------------------------------------------|
 | Mean          | $\dots$                                           |
 | Variance      | $\dots$                                           |
-| Skewness      | $\dots$ (or "**not implemented** — see notes")    |
+| Skewness      | $\dots$ (or "`None` — no closed form")            |
 | Excess kurtosis | $\dots$                                          |
 
-> **DistributionExt status note**: the coverage figure lives in the root
-> `CLAUDE.md` and the module docs of `stochastic-rs-distributions/src/lib.rs`
-> (33 of the 37 distribution types implement the trait; 6 of those override
-> only `pdf` / `cdf`, 9 carry named no-closed-form `unimplemented!()` on
-> specific methods). **Re-derive it before quoting it** — a single-line
-> `impl ... DistributionExt` grep undercounts, because three impl headers
-> wrap onto a second line (CLAUDE.md gives the `-A1` command). Cite the
-> source, not a number you counted in passing.
+> **DistributionExt status note**: every method returns `Option`; `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` is the authority on which cells are `Some` per type — read it instead of counting impls.
 >
-> If a specific moment has no closed form, mark it explicitly as
-> `unimplemented!` with the anchored message the trait mandates, and say
-> so on the page. Never leave it as a silent zero.
+> A moment with no closed form is `None`, never a silent zero; say so on the page.
 
 ## Examples
 
@@ -392,7 +383,7 @@ analytic Jacobian, etc. — one paragraph on why.>
 | `converged()`  | `bool`               | Convergence flag             |
 | `iterations()` | `Option<usize>`      | Optimiser iterations, if recorded (default `None`) |
 | `message()`    | `Option<&str>`       | Solver message (default `None`) |
-| `max_error()`  | `f64`                | Worst per-quote error (default `f64::NAN`) |
+| `max_error()`  | `Option<f64>`        | Worst per-quote error, if recorded (default `None`) |
 | `loss_score()` | `Option<&CalibrationLossScore>` | Richer loss breakdown (default `None`) |
 
 ## Example
@@ -469,7 +460,7 @@ numerical examples (e.g. Fukasawa intraday Table 1).>
 ## References
 ```
 
-### 3.6 Copula section (one `copulas.mdx`; 13 bivariate + 8 multivariate)
+### 3.6 Copula section (one `copulas.mdx`; 15 bivariate + 6 multivariate)
 
 ```mdx
 ---
@@ -524,13 +515,13 @@ $\theta \in <\text{interval}>$, with limits:
 Per `vol-surrogate-nn` SKILL. Required sections:
 
 ```
-1. Model spec     (StochVolModelSpec — input dims, output dims)
-2. Scaler         (BoundedScaler / StandardScaler — pre/post norm)
+1. Model spec     (StochVolModelSpec — parameter box, strike-maturity grid)
+2. Scaling        (parameter box to [-1, 1], output de-standardisation)
 3. Training set   (gzip-npy file path, generator script, sample count)
 4. Architecture   (layers, activation, hidden width)
 5. Training       (optimiser, loss, epochs, batch size)
-6. Inference      (predict_surface integration with ImpliedVolSurface::from_flat_iv_grid)
-7. Round-trip test (train_save_load_<model>)
+6. Inference      (predict_implied_vol_surface(params, spot, &forwards) on the spec grid -> ImpliedVolSurface)
+7. Round-trip test (train_save_load_roundtrip)
 8. Benchmark      (vs Fourier / closed-form baseline; speed + accuracy)
 9. References
 ```

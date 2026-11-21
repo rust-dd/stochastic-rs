@@ -1,6 +1,8 @@
 //! Integration tests for the `stats::realized` module.
 
 use ndarray::Array1;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::realized::KernelType;
@@ -23,15 +25,15 @@ use stochastic_rs::stats::realized::tripower_quarticity;
 use stochastic_rs::stats::realized::two_scale_rv;
 
 fn iid_returns(seed: u64, n: usize, std: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, std).seeded(&Deterministic::new(seed));
   let mut out = Array1::<f64>::zeros(n);
   dist.fill_slice(out.as_slice_mut().unwrap());
   out
 }
 
 fn noisy_price_path(seed: u64, n: usize, sigma: f64, omega: f64) -> Array1<f64> {
-  let dx = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
-  let dn = SimdNormal::<f64>::new(0.0, omega, &Deterministic::new(seed.wrapping_add(1)));
+  let mut dx = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
+  let mut dn = SimdNormal::<f64>::new(0.0, omega).seeded(&Deterministic::new(seed.wrapping_add(1)));
   let mut steps = vec![0.0_f64; n];
   dx.fill_slice(&mut steps);
   let mut noise = vec![0.0_f64; n + 1];
@@ -97,8 +99,8 @@ fn jump_estimators_close_to_rv_under_no_jumps() {
 #[test]
 fn jump_test_p_value_in_unit_interval() {
   let r = iid_returns(5_001, 10_000, 0.005);
-  let test = bns_jump_test(r.view(), 0.05);
-  assert!(test.p_value >= 0.0 && test.p_value <= 1.0);
+  let test = bns_jump_test(r.view(), 0.05).unwrap();
+  assert!(test.p_value.is_some_and(|p| (0.0..=1.0).contains(&p)));
   assert!(test.statistic.is_finite());
 }
 
@@ -128,7 +130,7 @@ fn noise_robust_estimators_finite_under_microstructure() {
 #[test]
 fn har_round_trip_recovers_intercept_at_steady_state() {
   use stochastic_rs::stats::realized::HarRv;
-  let dist = SimdNormal::<f64>::new(0.0, 0.000_05, &Deterministic::new(42));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.000_05).seeded(&Deterministic::new(42));
   let mut shocks = vec![0.0_f64; 1_000];
   dist.fill_slice(&mut shocks);
   let mut rv = Array1::<f64>::from_elem(1_000, 0.0001);
@@ -138,7 +140,7 @@ fn har_round_trip_recovers_intercept_at_steady_state() {
     let m: f64 = (1..=22).map(|i| rv[t - i]).sum::<f64>() / 22.0;
     rv[t] = (0.0001 + 0.4 * d + 0.3 * w + 0.2 * m + shocks[t]).max(1e-8);
   }
-  let model = HarRv::fit(rv.view());
+  let model = HarRv::fit(rv.view()).unwrap();
   assert!(model.fit.r_squared > 0.0);
   assert!(model.fit.beta_d.is_finite());
   assert!(model.fit.beta_w.is_finite());

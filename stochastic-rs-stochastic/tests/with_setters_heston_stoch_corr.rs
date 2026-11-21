@@ -1,24 +1,16 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `HestonStochCorr`
-//! (correlation module). Split from `Bates1996`'s own tests (now
-//! `with_setters_bates.rs`) to keep the combined file under the project's
-//! 600-line cap, the same way Task 2 of the zero-exception-reproducibility
-//! wave split `src/jump/bates.rs` into
-//! `bates.rs`/`bates_tests.rs`/`bates_python.rs`.
-//!
-//! Same pattern as the other `with_setters_*.rs` files. `HestonStochCorr`
-//! has no private cache at all: all three Gaussian streams are rebuilt
-//! fresh inside `sampler()` from `self.{n,t,seed}` on every call, so every
-//! setter test below is a plain field-level round trip.
+//! The `with_*` setters of `HestonStochCorr`, which keeps no cache, so each is a field round trip.
 
-use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
-fn finite3(out: &[Array1<f64>; 3]) -> bool {
-  out.iter().all(|a| a.iter().all(|v| v.is_finite()))
+fn finite3(out: &HestonStochCorrPaths<f64>) -> bool {
+  [&out.s, &out.v, &out.rho]
+    .iter()
+    .all(|a| a.iter().all(|v| v.is_finite()))
 }
 
 fn hsc_base_seeded<S: SeedExt>(seed: S) -> HestonStochCorr<f64, S> {
@@ -142,8 +134,8 @@ hsc_plain_test!(
 );
 hsc_plain_test!(heston_stoch_corr_with_rho2_round_trip, with_rho2, rho2, 0.5);
 hsc_plain_test!(
-  heston_stoch_corr_with_steps_round_trip,
-  with_steps,
+  heston_stoch_corr_with_points_round_trip,
+  with_points,
   n,
   200usize
 );

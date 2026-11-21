@@ -1,9 +1,11 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "HillEstimator", unsendable)]
 pub struct PyHillEstimator {
-  inner: crate::evt::HillResult,
+  inner: crate::evt::HillFit,
 }
 
 #[pymethods]
@@ -11,9 +13,11 @@ impl PyHillEstimator {
   /// Hill (1975) tail-index estimate from the `k` largest positive entries.
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::hill_estimator(data.as_array(), k),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_hill(data.as_array(), k).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -57,9 +61,11 @@ impl PyGpdFit {
   /// GPD maximum-likelihood fit to non-negative threshold excesses.
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gpd_fit(exceedances.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gpd(exceedances.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Standard errors of `[sigma, xi]`.
@@ -124,17 +130,19 @@ impl PyPotFit {
   /// Peaks-over-threshold tail model of `data` (losses) above `threshold`.
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, threshold: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::pot_fit(data.as_array(), threshold),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_pot(data.as_array(), threshold).map_err(stats_error)?,
+      })
+    })?
   }
 
-  /// Tail quantile (Value-at-Risk) at level `p`.
+  /// Tail quantile (Value-at-Risk) at level `p`; NaN unless `0 < p < 1`.
   fn quantile(&self, p: f64) -> f64 {
     self.inner.quantile(p)
   }
 
-  /// Expected shortfall at level `p`.
+  /// Expected shortfall at level `p`; NaN unless `0 < p < 1`.
   fn expected_shortfall(&self, p: f64) -> f64 {
     self.inner.expected_shortfall(p)
   }
@@ -196,12 +204,14 @@ impl PyGevFit {
   /// GEV maximum-likelihood fit to block maxima.
   #[new]
   fn new<'py>(maxima: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gev_fit(maxima.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gev(maxima.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
-  /// Return level exceeded once every `period` blocks on average.
+  /// Return level exceeded once every `period` blocks on average; NaN unless `period > 1`.
   fn return_level(&self, period: f64) -> f64 {
     self.inner.return_level(period)
   }
@@ -275,8 +285,8 @@ pub fn block_maxima<'py>(
   crate::evt::block_maxima(data.as_array(), block_size).into_pyarray(py)
 }
 
-/// Mean excess over each threshold (the mean-residual-life plot); NaN
-/// where nothing exceeds the threshold.
+/// Mean excess over each threshold (the mean-residual-life plot); NaN where nothing exceeds the
+/// threshold, and at every threshold when `data` holds a NaN.
 #[pyfunction]
 pub fn mean_excess<'py>(
   py: Python<'py>,

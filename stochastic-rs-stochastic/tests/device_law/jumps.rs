@@ -1,17 +1,22 @@
-//! Device laws of the processes whose jump sizes come from a user-supplied
-//! distribution: the engine recognises the normal and exponential laws at
-//! runtime and draws them in the kernel, and keeps anything else on the host.
+//! Device laws of the processes whose jump sizes come from a user-supplied law, which the engine
+//! recognises at runtime and draws in the kernel; any other law keeps the process on the host.
 
 use ndarray::Array1;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::jump::bates::Bates;
+use stochastic_rs_stochastic::jump::bates::LogNormalJump;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::Horizon;
+use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -25,6 +30,10 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
+use super::common::means_agree_values;
+use super::common::slots;
+use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 
@@ -79,7 +88,7 @@ fn merton_agrees_with_the_cpu_law() {
       0.2,
       3.0,
       -0.02,
-      ScalarNormal::<f32>::new(-0.02, 0.1),
+      SimdNormal::<f32>::new(-0.02, 0.1),
       N,
       Some(1.0),
       Some(1.0),
@@ -119,7 +128,7 @@ fn kou_agrees_with_the_cpu_law() {
       0.2,
       3.0,
       0.01,
-      ScalarNormal::<f32>::new(0.01, 0.12),
+      SimdNormal::<f32>::new(0.01, 0.12),
       N,
       Some(1.0),
       Some(1.0),
@@ -144,8 +153,8 @@ fn kou_agrees_with_the_cpu_law() {
   );
 }
 
-/// Exponential sizes travel as the double-exponential law that only jumps
-/// up; the drift and the one-sided jumps both push the terminal mean.
+/// Exponential sizes are the kernels' exponential law, summed over a step's jumps; the drift and
+/// the one-sided jumps both push the terminal mean.
 #[test]
 fn levy_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -153,7 +162,7 @@ fn levy_diffusion_agrees_with_the_cpu_law() {
       0.1,
       0.2,
       2.0,
-      ScalarExp::<f32>::new(8.0),
+      SimdExp::<f32>::new(8.0),
       N,
       Some(1.0),
       Some(1.0),
@@ -183,23 +192,81 @@ fn levy_diffusion_agrees_with_the_cpu_law() {
   );
 }
 
+/// `Bates` under its lognormal law steps the log-price on the `BatesJump` families: a device spot
+/// stays positive and both components keep the host's law under either boundary.
+#[test]
+fn bates_with_its_lognormal_law_agrees_with_the_cpu_law() {
+  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+    let build = || {
+      let law = LogNormalJump::<f32>::new(-0.05, 0.1);
+      Bates::<f32, _, _>::new(
+        Drift::Mu(0.02),
+        3.0,
+        law.mean(),
+        0.08,
+        2.0,
+        0.3,
+        -0.7,
+        law,
+        N,
+        100.0,
+        0.04,
+        Some(1.0),
+        boundary,
+        Deterministic::new(97),
+      )
+    };
+    assert_eq!(
+      build().on::<Device>().device_fallback(),
+      None,
+      "{boundary:?}"
+    );
+    const PATHS: usize = 3 * M;
+    let device = build().on::<Device>().sample_par(PATHS);
+    let host = build().sample_par(PATHS);
+    assert!(
+      device
+        .iter()
+        .all(|[s, v]| s.iter().all(|&x| x > 0.0) && v.iter().all(|&x| x >= 0.0)),
+      "a device spot or variance left its domain ({boundary:?})"
+    );
+    let row =
+      |paths: &[[Array1<f32>; 2]], c: usize| paths.iter().map(|p| p[c].clone()).collect::<Vec<_>>();
+    means_agree(
+      &row(&host, 0),
+      &row(&device, 0),
+      "Bates lognormal terminal spot",
+    );
+    spreads_agree(
+      &row(&host, 0),
+      &row(&device, 0),
+      "Bates lognormal spot spread",
+    );
+    means_agree(
+      &row(&host, 1),
+      &row(&device, 1),
+      "Bates lognormal terminal variance",
+    );
+  }
+}
+
 #[test]
 fn compound_poisson_events_agree_with_the_cpu_law() {
   const EVENTS: usize = 64;
   let build = || {
     CompoundPoisson::<f32, _, _>::new(
-      ScalarNormal::<f32>::new(0.5, 0.2),
-      Poisson::new(4.0, Some(EVENTS), None, Unseeded),
+      SimdNormal::<f32>::new(0.5, 0.2),
+      Poisson::new(4.0, Horizon::Events(EVENTS), Unseeded),
       Deterministic::new(17),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   assert_eq!(device.len(), M);
   assert!(
     device
       .iter()
-      .all(|p| p.iter().all(|row| row.len() == EVENTS))
+      .all(|p| p.iter().all(|row| row.len() == EVENTS + 1))
   );
   nondecreasing(&device, "compound Poisson");
   accumulates(&device, "compound Poisson");
@@ -223,6 +290,51 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   );
 }
 
+/// Exponential sizes, one an arrival: the cumulative jump at the last arrival keeps the host's law.
+#[test]
+fn exponential_jump_sizes_match_the_host_law() {
+  let arrivals = Poisson::<f32>::new(20.0, Horizon::Events(65), Unseeded);
+  let p = CompoundPoisson::<f32, SimdExp<f32>, Deterministic>::new(
+    SimdExp::new(4.0),
+    arrivals,
+    Deterministic::new(3),
+  );
+  let host = p.sample_par(M);
+  let device = p.clone().on::<Device>().sample_par(M);
+  let last = |paths: &[CompoundPaths<f32>]| {
+    paths
+      .iter()
+      .map(|q| q.cumulative[q.cumulative.len() - 1] as f64)
+      .collect::<Vec<_>>()
+  };
+  means_agree_values(
+    &last(&host),
+    &last(&device),
+    "exponential sizes, the cumulative jump at the last arrival",
+  );
+}
+
+/// A zero rate written past `new` is refused on the device as on the host: no arrival ever comes.
+#[test]
+#[should_panic(
+  expected = "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`"
+)]
+fn a_counting_process_refuses_a_zero_rate_written_past_new() {
+  let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
+  p.lambda = 0.0;
+  let _ = p.on::<Device>().sample();
+}
+
+/// An infinite rate written past `new` is refused on the device as on the host, where the kernel
+/// would step a path of zeros.
+#[test]
+#[should_panic(expected = "lambda must satisfy `lambda.is_finite()`")]
+fn a_counting_process_refuses_an_infinite_rate_written_past_new() {
+  let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
+  p.lambda = f32::INFINITY;
+  let _ = p.on::<Device>().sample();
+}
+
 /// Exponential inter-arrivals in count mode are Poisson arrivals, so the
 /// device draws them as such.
 #[test]
@@ -230,15 +342,14 @@ fn custom_jump_times_agree_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CustomJt::<f32, _, _>::new(
-      Some(EVENTS),
-      None,
-      ScalarExp::<f32>::new(2.0),
+      Horizon::Events(EVENTS),
+      SimdExp::<f32>::new(2.0),
       Deterministic::new(23),
     )
   };
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
-  assert!(device.iter().all(|p| p.len() == EVENTS));
+  assert!(device.iter().all(|p| p.len() == EVENTS + 1));
   assert!(
     device
       .iter()
@@ -264,16 +375,13 @@ fn compound_custom_agrees_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CompoundCustom::<f32, _, _, _>::new(
-      Some(EVENTS),
-      None,
-      ScalarNormal::<f32>::new(1.0, 0.3),
-      ScalarExp::<f32>::new(2.0),
-      CustomJt::new(Some(EVENTS), None, ScalarExp::<f32>::new(2.0), Unseeded),
+      SimdNormal::<f32>::new(1.0, 0.3),
+      CustomJt::new(Horizon::Events(EVENTS), SimdExp::<f32>::new(2.0), Unseeded),
       Deterministic::new(29),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   nondecreasing(&device, "compound custom");
   accumulates(&device, "compound custom");
   agrees(
@@ -305,9 +413,8 @@ impl Distribution<f32> for Halves {
   }
 }
 
-/// A device build with a size law the kernels cannot draw samples on the
-/// host, and is then the host build to the bit: the same seed, the same
-/// sampler, the same chunking.
+/// A device build with a size law the kernels cannot draw samples on the host and is the host
+/// build to the bit: the same seed, sampler and chunking.
 #[test]
 fn an_unrecognised_jump_law_keeps_the_process_on_the_host() {
   let build = || {
@@ -348,15 +455,8 @@ fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
     .sqrt()
 }
 
-fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
-  let mut values: Vec<f64> = paths.iter().map(|p| p[at] as f64).collect();
-  values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
-  values[values.len() * 3 / 4] - values[values.len() / 4]
-}
-
-/// Exponential waits make the arrivals in a cell the Poisson count the
-/// kernels draw, and normal sizes the law they aggregate; the mean grows as
-/// `rate · mean · t` and the spread as `√(rate t (mean² + std²))`.
+/// Exponential waits make a cell's arrivals the Poisson count the kernels draw, with normal
+/// sizes aggregated: mean `rate · mean · t`, spread `√(rate t (mean² + std²))`.
 #[test]
 fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
   let build = || {
@@ -391,9 +491,8 @@ fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
   );
 }
 
-/// Rademacher sizes are the one law the kernels sum by coin flips; a wrong
-/// sign convention or a dropped flip would move the spread, `scale √(rate t)`,
-/// while the mean stays at zero either way.
+/// Rademacher sizes are the one law the kernels sum by coin flips: a wrong sign convention or
+/// a dropped flip moves the spread `scale √(rate t)` while the mean stays zero.
 #[test]
 fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
   let build = || {
@@ -430,45 +529,8 @@ fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
   );
 }
 
-/// Symmetric stable sizes have no variance, so the spread is read off the
-/// quartiles; the kernel draws a cell's sum in one Chambers–Mallows–Stuck
-/// step at scale `scale · n^{1/α}`, the host draws each jump.
-#[test]
-fn ctrw_with_stable_jumps_agrees_with_the_cpu_law() {
-  let build = || {
-    Ctrw::<f32, _>::new(
-      CtrwWaitingLaw::Exponential { rate: 20.0 },
-      CtrwJumpLaw::SymmetricStable {
-        alpha: 1.7,
-        scale: 0.2,
-      },
-      N,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(181),
-    )
-  };
-  const PATHS: usize = 3 * M;
-  let device = build().on::<Device>().sample_par(PATHS);
-  let host = build().sample_par(PATHS);
-  all_finite(&device, "CTRW stable");
-  agrees(
-    iqr_at(&host, N - 1),
-    iqr_at(&device, N - 1),
-    0.06,
-    "CTRW stable terminal interquartile range",
-  );
-  agrees(
-    iqr_at(&host, N / 4),
-    iqr_at(&device, N / 4),
-    0.06,
-    "CTRW stable quarter-horizon interquartile range",
-  );
-}
-
-/// A waiting law without the memoryless property has no per-cell Poisson
-/// count, so the device build samples on the host and is the host build to
-/// the bit.
+/// A waiting law without the memoryless property has no per-cell Poisson count, so the device
+/// build samples on the host and is the host build to the bit.
 #[test]
 fn ctrw_with_gamma_waits_keeps_the_process_on_the_host() {
   let build = || {

@@ -1,407 +1,506 @@
-//! # Quasi-Maximum Likelihood Estimation (QMLE) for diffusions
-//!
-//! QMLE fits the drift / diffusion parameters of a one-dimensional
-//! diffusion by maximising a **Gaussian quasi-likelihood**: each
-//! transition $X_{t+\Delta}\mid X_t$ is treated as
-//! $\mathcal{N}\bigl(m(X_t;\psi),\,v(X_t;\psi)\bigr)$, using the model's
-//! **exact** conditional mean and variance, even when the true transition
-//! density is not Gaussian (Kessler 1997). The quasi-log-likelihood is
+//! Gaussian quasi-likelihood of `dX = θ(μ − X) dt + σ X^γ dW`, OU's `γ = 0` and CIR's `γ = ½`.
 //!
 //! $$
 //! \ell(\psi) = -\tfrac{1}{2}\sum_{t}\Bigl[\ln\bigl(2\pi\,v(X_t;\psi)\bigr) +
-//! \frac{\bigl(X_{t+\Delta} - m(X_t;\psi)\bigr)^2}{v(X_t;\psi)}\Bigr].
+//! \frac{\bigl(X_{t+\Delta} - m(X_t;\psi)\bigr)^2}{v(X_t;\psi)}\Bigr]
 //! $$
 //!
-//! For the **Ornstein-Uhlenbeck / Vasicek** process the exact transition
-//! *is* Gaussian, so QMLE coincides with the exact maximum-likelihood
-//! estimator and matches the closed-form Vasicek AR(1) MLE. For the
-//! **CIR** square-root process the transition is non-central $\chi^2$;
-//! QMLE plugs in the exact CIR conditional mean / variance and the
-//! Gaussian quasi-likelihood remains consistent (Bibby-Sørensen 1995,
-//! Kessler 1997).
+//! Each transition is a normal with the model's exact conditional mean and variance: OU's law.
 //!
-//! Supported diffusions (both $dX = \kappa(\theta - X)\,dt + \dots$):
-//! - [`DiffusionKind::OrnsteinUhlenbeck`]: $\sigma\,dW$, exact-Gaussian.
-//! - [`DiffusionKind::Cir`]: $\sigma\sqrt{X}\,dW$, exact moments.
-//!
-//! References:
-//! - Kessler, M. (1997), "Estimation of an ergodic diffusion from
-//!   discrete observations", *Scandinavian Journal of Statistics* 24(2),
-//!   211-229.
-//! - Bibby, B.M., Sørensen, M. (1995), "Martingale estimation functions
-//!   for discretely observed diffusion processes", *Bernoulli* 1(1/2),
-//!   17-39.
-//! - White, H. (1982), "Maximum likelihood estimation of misspecified
-//!   models", *Econometrica* 50(1), 1-25 (quasi-likelihood theory).
+//! Reference: Kessler (1997), Scand. J. Stat. 24(2), 211-229, DOI: 10.1111/1467-9469.00059
+//! Reference: Bibby & Sørensen (1995), Bernoulli 1(1/2), 17-39, DOI: 10.2307/3318679
+//! Reference: White (1982), Econometrica 50(1), 1-25, DOI: 10.2307/1912526
 
 use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::diffusion::ou::Ou;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::input::validate_domain;
 use crate::optim::nelder_mead;
+use crate::stationarity::common::reject_exact_fit;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
-/// Diffusion family whose drift is mean-reverting $\kappa(\theta - X)$ and
-/// whose diffusion coefficient distinguishes the member.
+#[cfg(test)]
+mod scale_tests;
+#[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
+mod tests;
+
+/// A mean-reverting diffusion `dX = θ(μ − X) dt + σ X^γ dW`, named by its `γ`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DiffusionKind {
-  /// Ornstein-Uhlenbeck / Vasicek: $\sigma\,dW$ (constant diffusion,
-  /// exact-Gaussian transition).
+  /// Ornstein–Uhlenbeck / Vasicek, `γ = 0`: the transition is Gaussian.
   OrnsteinUhlenbeck,
-  /// Cox-Ingersoll-Ross: $\sigma\sqrt{X}\,dW$ (square-root diffusion).
+  /// Cox–Ingersoll–Ross, `γ = ½`.
   Cir,
 }
 
-/// QMLE fit of a mean-reverting diffusion.
+/// A fit of `dX = θ(μ − X) dt + …` in the names of [`Ou`] and [`Cir`]: `theta` the speed, `mu` the
+/// level.
 #[derive(Debug, Clone)]
-pub struct QmleResult {
-  /// Mean-reversion speed $\kappa$.
-  pub kappa: f64,
-  /// Long-run level $\theta$.
+pub struct QmleFit {
   pub theta: f64,
-  /// Diffusion scale $\sigma$.
+  pub mu: f64,
   pub sigma: f64,
-  /// Maximised Gaussian quasi-log-likelihood.
+  pub kind: DiffusionKind,
+  /// The Gaussian quasi-log-likelihood at the fit, for OU the exact one.
   pub log_likelihood: f64,
-  /// Nelder-Mead iterations.
+  /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
-  /// Whether the optimiser converged.
+  /// The simplex met a `1e-10` spread of its values, a stall included; `true` for the closed form.
   pub converged: bool,
 }
 
-/// Exact conditional mean and variance of the transition $X_{t+\Delta}
-/// \mid X_t$ for the given diffusion family.
-pub(crate) fn conditional_moments(
-  kind: DiffusionKind,
-  x: f64,
-  kappa: f64,
-  theta: f64,
-  sigma: f64,
-  dt: f64,
-) -> (f64, f64) {
-  let a = (-kappa * dt).exp();
-  let mean = theta + (x - theta) * a;
-  let s2 = sigma * sigma;
-  let var = match kind {
-    // OU: Var = σ²(1 − e^{−2κΔ}) / (2κ).
-    DiffusionKind::OrnsteinUhlenbeck => s2 * (1.0 - a * a) / (2.0 * kappa),
-    // CIR: Var = X σ²/κ (a − a²) + θ σ²/(2κ) (1 − a)².
-    DiffusionKind::Cir => {
-      x * (s2 / kappa) * (a - a * a) + theta * (s2 / (2.0 * kappa)) * (1.0 - a) * (1.0 - a)
-    }
-  };
-  (mean, var.max(1e-300))
+impl QmleFit {
+  /// The fitted [`Ou`]; panics unless `kind` is `OrnsteinUhlenbeck`, and as [`Ou::new`].
+  #[track_caller]
+  pub fn to_ou<S: SeedExt>(
+    &self,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
+    seed: S,
+  ) -> Ou<f64, S> {
+    ou_of(self.kind, [self.theta, self.mu, self.sigma], n, x0, t, seed)
+  }
+
+  /// The fitted [`Cir`]; panics unless `kind` is `Cir`, and as [`Cir::new`].
+  #[track_caller]
+  pub fn to_cir<S: SeedExt>(
+    &self,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
+    boundary: VarianceBoundary,
+    seed: S,
+  ) -> Cir<f64, S> {
+    cir_of(
+      self.kind,
+      [self.theta, self.mu, self.sigma],
+      n,
+      x0,
+      t,
+      boundary,
+      seed,
+    )
+  }
 }
 
-/// Gaussian quasi-log-likelihood of a discretely-observed diffusion path
-/// `x` (interval `dt`) at parameters $(\kappa, \theta, \sigma)$. Shared by
-/// [`qmle`] and the Bayesian sampler in
-/// [`crate::bayesian_diffusion`](crate::bayesian_diffusion).
+/// [`Ou`] at `[theta, mu, sigma]`; panics unless `kind` is `OrnsteinUhlenbeck`, and as [`Ou::new`].
+#[track_caller]
+pub(crate) fn ou_of<S: SeedExt>(
+  kind: DiffusionKind,
+  [theta, mu, sigma]: [f64; 3],
+  n: usize,
+  x0: Option<f64>,
+  t: Option<f64>,
+  seed: S,
+) -> Ou<f64, S> {
+  assert!(
+    kind == DiffusionKind::OrnsteinUhlenbeck,
+    "kind must satisfy `kind == DiffusionKind::OrnsteinUhlenbeck`, got kind = {kind:?}"
+  );
+  Ou::new(theta, mu, sigma, n, x0, t, seed)
+}
+
+/// [`Cir`] at `[theta, mu, sigma]`; panics unless `kind` is `Cir`, and as [`Cir::new`].
+#[track_caller]
+pub(crate) fn cir_of<S: SeedExt>(
+  kind: DiffusionKind,
+  [theta, mu, sigma]: [f64; 3],
+  n: usize,
+  x0: Option<f64>,
+  t: Option<f64>,
+  boundary: VarianceBoundary,
+  seed: S,
+) -> Cir<f64, S> {
+  assert!(
+    kind == DiffusionKind::Cir,
+    "kind must satisfy `kind == DiffusionKind::Cir`, got kind = {kind:?}"
+  );
+  Cir::new(theta, mu, sigma, n, x0, t, boundary, seed)
+}
+
+/// `X_{t+Δ} | X_t = x`: the exact mean `μ + (x − μ) a`, `a = e^{−θΔ}`, and variance
+/// `σ²(1 − a²)/(2θ)` (OU) or `x σ²/θ (a − a²) + μ σ²/(2θ) (1 − a)²` (CIR), linear in `x`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Transition {
+  mu: f64,
+  a: f64,
+  var0: f64,
+  var_x: f64,
+}
+
+impl Transition {
+  /// At `(θ, μ, σ)` every `dt`; `1 − a` and `1 − a²` come from `expm1`, as a subtraction leaves
+  /// them few digits where `θΔ` is small.
+  pub(crate) fn new(kind: DiffusionKind, theta: f64, mu: f64, sigma: f64, dt: f64) -> Self {
+    let a = (-theta * dt).exp();
+    let s2 = sigma * sigma;
+    let (var0, var_x) = match kind {
+      DiffusionKind::OrnsteinUhlenbeck => (s2 * -(-2.0 * theta * dt).exp_m1() / (2.0 * theta), 0.0),
+      DiffusionKind::Cir => {
+        let b = -(-theta * dt).exp_m1();
+        (mu * (s2 / (2.0 * theta)) * b * b, (s2 / theta) * (a * b))
+      }
+    };
+    Self { mu, a, var0, var_x }
+  }
+
+  pub(crate) fn moments(self, x: f64) -> (f64, f64) {
+    (self.mu + (x - self.mu) * self.a, self.var0 + self.var_x * x)
+  }
+}
+
+/// Gaussian quasi-log-likelihood of `x` every `dt` at $(\theta, \mu, \sigma)$; NaN where a
+/// conditional variance is not positive, a point the simplex and the Metropolis sampler reject.
 pub(crate) fn quasi_log_likelihood(
   x: &[f64],
   dt: f64,
   kind: DiffusionKind,
-  kappa: f64,
   theta: f64,
+  mu: f64,
   sigma: f64,
 ) -> f64 {
+  let transition = Transition::new(kind, theta, mu, sigma, dt);
   let mut ll = 0.0;
   for t in 0..x.len() - 1 {
-    let (m, var) = conditional_moments(kind, x[t], kappa, theta, sigma, dt);
+    let (m, var) = transition.moments(x[t]);
     let resid = x[t + 1] - m;
     ll += -0.5 * ((2.0 * std::f64::consts::PI * var).ln() + resid * resid / var);
   }
   ll
 }
 
-/// Fit a mean-reverting diffusion by Gaussian QMLE.
-///
-/// `series` is the discretely-observed path, `dt` the sampling interval.
-/// Requires at least 3 observations.
-pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) -> QmleResult {
-  let n_obs = series.len();
-  assert!(n_obs >= 3, "qmle requires at least 3 observations");
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
-
-  // Negative quasi-log-likelihood (minimised). Parameters carried in
-  // log-space so κ, θ, σ stay strictly positive.
+/// QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant path, an
+/// exact fit, OU slope ∉ `(0, 1)` or start, optimum or fit not finite; panics unless `0 < dt < ∞`.
+pub fn fit_diffusion_qmle<T: FloatExt>(
+  series: ArrayView1<T>,
+  dt: f64,
+  kind: DiffusionKind,
+) -> Result<QmleFit, StatsError> {
+  assert_dt(dt);
+  // Three points are two transitions, which the drift's two coefficients fit exactly. At unit
+  // scale no square or conditional variance leaves the double range, whatever the path's unit.
+  let (x, unit) = unit_scaled(diffusion_path(series, kind, 4)?);
+  // On an exact fit either quasi-likelihood grows without bound as `σ` falls, and OU's, the exact
+  // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
+  Ar1::of(&x, kind)?;
+  let carrier = Carrier::new(&x, kind)?;
   let neg_ll = |p: &[f64; 3]| -> f64 {
-    -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp())
+    let [theta, mu, sigma] = carrier.params(*p);
+    -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
   };
+  let start = ar1_start(&x, dt, kind, carrier)?;
 
-  // Initial guess from the AR(1) regression of X_{t+1} on X_t.
-  let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
-  let theta0 = sample_mean.max(1e-8);
-  let (mut num, mut den) = (0.0, 0.0);
-  for t in 0..n_obs - 1 {
-    num += (x[t] - sample_mean) * (x[t + 1] - sample_mean);
-    den += (x[t] - sample_mean).powi(2);
+  let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
+  let log_likelihood = -neg_ll(&p) + log_density_shift(x.len() - 1, unit);
+  if !log_likelihood.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "quasi-log-likelihood",
+    });
   }
-  let ac1 = if den > 0.0 {
-    (num / den).clamp(1e-4, 0.999)
-  } else {
-    0.5
-  };
-  let kappa0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
-  // Residual variance → σ² via the family's conditional-variance scale.
-  let mut resid_var = 0.0;
-  for t in 0..n_obs - 1 {
-    let a = (-kappa0 * dt).exp();
-    let m = theta0 + (x[t] - theta0) * a;
-    resid_var += (x[t + 1] - m).powi(2);
-  }
-  resid_var /= (n_obs - 1) as f64;
-  let a0 = (-kappa0 * dt).exp();
-  let scale = match kind {
-    DiffusionKind::OrnsteinUhlenbeck => (1.0 - a0 * a0) / (2.0 * kappa0),
-    DiffusionKind::Cir => {
-      sample_mean * (a0 - a0 * a0) / kappa0 + theta0 * (1.0 - a0).powi(2) / (2.0 * kappa0)
-    }
-  };
-  let sigma0 = (resid_var / scale.max(1e-12)).sqrt().clamp(1e-3, 10.0);
+  let [theta, mu, sigma] = in_data_units(kind, carrier.params(p), unit)?;
 
-  let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, neg_ll);
-  let (kappa, theta, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
-
-  QmleResult {
-    kappa,
+  Ok(QmleFit {
     theta,
+    mu,
     sigma,
-    log_likelihood: -neg_ll(&p),
-    iterations: iters,
+    kind,
+    log_likelihood,
+    iterations,
     converged,
+  })
+}
+
+/// The path as `f64`: `min_n` or more finite points, not all equal and, for CIR, whose conditional
+/// variance turns negative below zero, none negative.
+pub(crate) fn diffusion_path<T: FloatExt>(
+  series: ArrayView1<T>,
+  kind: DiffusionKind,
+  min_n: usize,
+) -> Result<Vec<f64>, StatsError> {
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  match kind {
+    DiffusionKind::OrnsteinUhlenbeck => validate(&x, min_n)?,
+    DiffusionKind::Cir => validate_domain(&x, min_n, "finite and >= 0", |v| v >= 0.0)?,
+  }
+  reject_constant(&x, "constant series")?;
+  Ok(x)
+}
+
+/// `[θ, μ, σ]` of the path times `unit` in the path's own units, `x → cx` taking `μ` to `cμ` and
+/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` is not finite there, or `σ` zero.
+pub(crate) fn in_data_units(
+  kind: DiffusionKind,
+  [theta, mu, sigma]: [f64; 3],
+  unit: f64,
+) -> Result<[f64; 3], StatsError> {
+  let sigma_unit = match kind {
+    DiffusionKind::OrnsteinUhlenbeck => unit,
+    DiffusionKind::Cir => unit.sqrt(),
+  };
+  let (mu, sigma) = (mu / unit, sigma / sigma_unit);
+  if !(mu.is_finite() && sigma.is_finite()) || sigma == 0.0 {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  Ok([theta, mu, sigma])
+}
+
+/// What `transitions` log-densities of the path times `unit` lack of the path's own: a density of
+/// `cx` is `1/c` of that of `x`.
+fn log_density_shift(transitions: usize, unit: f64) -> f64 {
+  transitions as f64 * unit.ln()
+}
+
+/// The path's mean, which centres the start and the prior; `Err` when it overflows.
+fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
+  let mean = x.iter().sum::<f64>() / x.len() as f64;
+  if mean.is_finite() {
+    Ok(mean)
+  } else {
+    Err(StatsError::Numerical {
+      stage: "starting point",
+    })
   }
 }
 
-/// Closed-form exact MLE for the Ornstein-Uhlenbeck / Vasicek process, used
-/// both as a fast path and as the reference the QMLE must match (the OU
-/// transition is Gaussian, so QMLE = exact MLE).
-///
-/// AR(1) representation: $X_{t+\Delta} = \theta(1-\beta) + \beta X_t +
-/// \varepsilon_t$ with $\beta = e^{-\kappa\Delta}$ and
-/// $\operatorname{Var}(\varepsilon) = \sigma^2(1-\beta^2)/(2\kappa)$.
-pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleResult {
-  let n_obs = series.len();
-  assert!(
-    n_obs >= 3,
-    "mle_ou_closed_form requires at least 3 observations"
-  );
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
-  let m = n_obs - 1;
-  let mf = m as f64;
+/// The path's standard deviation about `mean`; `Err` unless it is finite and positive. It is zero
+/// only when the deviations' squares underflow: a constant path is refused before.
+pub(crate) fn path_spread(x: &[f64], mean: f64) -> Result<f64, StatsError> {
+  let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+  if !spread.is_finite() || spread == 0.0 {
+    return Err(StatsError::Numerical {
+      stage: "starting point",
+    });
+  }
+  Ok(spread)
+}
 
-  let sx: f64 = (0..m).map(|t| x[t]).sum();
-  let sy: f64 = (0..m).map(|t| x[t + 1]).sum();
-  let sxx: f64 = (0..m).map(|t| x[t] * x[t]).sum();
-  let sxy: f64 = (0..m).map(|t| x[t] * x[t + 1]).sum();
+/// How the simplex and the chain carry `(θ, μ, σ)`: in logs, but OU's level as `x̄ + s p`, `s` the
+/// path's standard deviation, so that it takes either sign and moves with the data's scale.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Carrier {
+  Standardised { mean: f64, spread: f64 },
+  Log { mean: f64 },
+}
 
-  let denom = mf * sxx - sx * sx;
-  let beta = ((mf * sxy - sx * sy) / denom).clamp(1e-6, 0.999_999);
-  let alpha = (sy - beta * sx) / mf;
-  let theta = alpha / (1.0 - beta);
-  let kappa = -beta.ln() / dt;
+impl Carrier {
+  /// `kind`'s carrier on `x`; `Err` unless the mean is finite and, for CIR, positive, and OU's
+  /// standard deviation finite and positive.
+  pub(crate) fn new(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
+    let mean = path_mean(x)?;
+    match kind {
+      DiffusionKind::OrnsteinUhlenbeck => {
+        let spread = path_spread(x, mean)?;
+        Ok(Self::Standardised { mean, spread })
+      }
+      // A non-negative path that is not constant has a positive mean, unless its sum underflows.
+      DiffusionKind::Cir if mean > 0.0 => Ok(Self::Log { mean }),
+      DiffusionKind::Cir => Err(StatsError::Numerical {
+        stage: "starting point",
+      }),
+    }
+  }
 
+  /// `[θ, μ, σ]` at the coordinates `p`.
+  pub(crate) fn params(self, p: [f64; 3]) -> [f64; 3] {
+    let mu = match self {
+      Self::Standardised { mean, spread } => mean + spread * p[1],
+      Self::Log { .. } => p[1].exp(),
+    };
+    [p[0].exp(), mu, p[2].exp()]
+  }
+
+  /// The level at the path's mean and its coordinate.
+  pub(crate) fn centre(self) -> (f64, f64) {
+    match self {
+      Self::Standardised { mean, .. } => (mean, 0.0),
+      Self::Log { mean } => (mean, mean.ln()),
+    }
+  }
+
+  pub(crate) fn mean(self) -> f64 {
+    match self {
+      Self::Standardised { mean, .. } | Self::Log { mean } => mean,
+    }
+  }
+}
+
+/// The simplex's start `[ln θ₀, p₀, ln σ₀]`: the carrier's centre, the speed from the lag-1
+/// autocorrelation and `σ` from the residuals, in the path's units; `Err` unless each is finite.
+pub(crate) fn ar1_start(
+  x: &[f64],
+  dt: f64,
+  kind: DiffusionKind,
+  carrier: Carrier,
+) -> Result<[f64; 3], StatsError> {
+  let nobs = x.len();
+  let mean = carrier.mean();
+  let (mu0, p0) = carrier.centre();
+  let (mut num, mut den) = (0.0, 0.0);
+  for t in 0..nobs - 1 {
+    num += (x[t] - mean) * (x[t + 1] - mean);
+    den += (x[t] - mean).powi(2);
+  }
+  // `den` is zero only when the deviations' squares underflow: a constant path is refused before.
+  let ac1 = num / den;
+  let theta_raw = -ac1.clamp(1e-4, 0.999).ln() / dt;
+  let theta0 = theta_raw.clamp(1e-3, 50.0);
+  let unit = Transition::new(kind, theta0, mu0, 1.0, dt);
   let mut resid_var = 0.0;
-  for t in 0..m {
-    let pred = alpha + beta * x[t];
-    resid_var += (x[t + 1] - pred).powi(2);
+  for t in 0..nobs - 1 {
+    resid_var += (x[t + 1] - unit.moments(x[t]).0).powi(2);
   }
-  resid_var /= mf;
-  let sigma2 = resid_var * 2.0 * kappa / (1.0 - beta * beta);
-  let sigma = sigma2.max(1e-12).sqrt();
+  resid_var /= (nobs - 1) as f64;
+  // The conditional variance at `σ = 1` from the path's mean.
+  let sigma_raw = (resid_var / unit.moments(mean).1).sqrt();
+  if !(ac1.is_finite() && theta_raw.is_finite() && sigma_raw.is_finite()) {
+    return Err(StatsError::Numerical {
+      stage: "starting point",
+    });
+  }
+  // Zero only where the residuals' mean square underflows: then the `σ` whose stationary variance
+  // `v₁ σ²` is the path's, so that the data and not a constant set the start's scale.
+  let sigma0 = if sigma_raw > 0.0 {
+    sigma_raw
+  } else {
+    let v1 = match kind {
+      DiffusionKind::OrnsteinUhlenbeck => 1.0 / (2.0 * theta0),
+      DiffusionKind::Cir => mu0 / (2.0 * theta0),
+    };
+    den.sqrt() / ((nobs - 1) as f64 * v1).sqrt()
+  };
+  Ok([theta0.ln(), p0, sigma0.ln()])
+}
 
-  // Gaussian log-likelihood at the closed-form estimate.
-  let var_eps = sigma * sigma * (1.0 - beta * beta) / (2.0 * kappa);
+/// Closed-form OU MLE; `Err` under 4 points, a non-finite one, a constant `x[..n-1]` or `x[1..]`, a
+/// slope ∉ `(0, 1)`, an exact fit or a `μ` or `σ` outside the doubles; panics unless `0 < dt < ∞`.
+/// $$
+/// X_{t+\Delta} = \mu(1-\beta) + \beta X_t + \varepsilon_t,\qquad \beta = e^{-\theta\Delta}
+/// $$
+pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit, StatsError> {
+  assert_dt(dt);
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  // Two coefficients fit two transitions exactly, leaving the residual variance nothing to read.
+  validate(&x, 4)?;
+  // As the QMLE, so that the two refuse and fit alike at every scale of the path.
+  let (x, unit) = unit_scaled(x);
+  let Ar1 {
+    lagged_mean,
+    next_mean,
+    beta,
+    residuals,
+  } = Ar1::of(&x, DiffusionKind::OrnsteinUhlenbeck)?;
+  let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
+  let theta = -beta.ln() / dt;
+
+  let mf = residuals.len() as f64;
+  let resid_var = residuals.iter().map(|r| r * r).sum::<f64>() / mf;
+  let sigma2 = resid_var * 2.0 * theta / (1.0 - beta * beta);
+  if !sigma2.is_finite() || sigma2 <= 0.0 {
+    return Err(StatsError::Numerical { stage: "sigma" });
+  }
+  let sigma = sigma2.sqrt();
+
+  let var_eps = sigma * sigma * (1.0 - beta * beta) / (2.0 * theta);
   let mut ll = 0.0;
-  for t in 0..m {
-    let pred = theta + (x[t] - theta) * beta;
-    ll +=
-      -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
+  for r in &residuals {
+    ll += -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + r * r / var_eps);
   }
+  let kind = DiffusionKind::OrnsteinUhlenbeck;
+  let [theta, mu, sigma] = in_data_units(kind, [theta, mu, sigma], unit)?;
 
-  QmleResult {
-    kappa,
+  Ok(QmleFit {
     theta,
+    mu,
     sigma,
-    log_likelihood: ll,
+    kind,
+    log_likelihood: ll + log_density_shift(residuals.len(), unit),
     iterations: 0,
     converged: true,
+  })
+}
+
+/// `x[1..]` regressed on `x[..n-1]` about their means, the closed form's slope and residuals.
+pub(crate) struct Ar1 {
+  lagged_mean: f64,
+  next_mean: f64,
+  beta: f64,
+  residuals: Vec<f64>,
+}
+
+impl Ar1 {
+  /// The regression of `x`; `Err` on a constant `x[..n-1]` or `x[1..]`, a slope not finite or, for
+  /// OU, not in `(0, 1)`, as no mean reversion fits it, or an exact fit.
+  pub(crate) fn of(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
+    let m = x.len() - 1;
+    let (lagged, next) = (&x[..m], &x[1..]);
+    // The regressor's spread is the slope's denominator, and a regressand that is a constant, or
+    // its rounding, leaves the slope nothing but rounding.
+    reject_constant(lagged, "constant series")?;
+    reject_constant(next, "constant series")?;
+    let mf = m as f64;
+
+    // About the means, as raw sums cancel where the level dwarfs the spread.
+    let lagged_mean = lagged.iter().sum::<f64>() / mf;
+    let next_mean = next.iter().sum::<f64>() / mf;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for (u, v) in lagged.iter().zip(next) {
+      let d = u - lagged_mean;
+      sxy += d * (v - next_mean);
+      sxx += d * d;
+    }
+    let beta = sxy / sxx;
+    if !beta.is_finite() {
+      return Err(StatsError::Numerical {
+        stage: "ar(1) slope",
+      });
+    }
+    if kind == DiffusionKind::OrnsteinUhlenbeck && beta >= 1.0 {
+      return Err(StatsError::DegenerateData("series without mean reversion"));
+    }
+    if kind == DiffusionKind::OrnsteinUhlenbeck && beta <= 0.0 {
+      return Err(StatsError::DegenerateData(
+        "series without positive autocorrelation",
+      ));
+    }
+    let residuals = lagged
+      .iter()
+      .zip(next)
+      .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
+      .collect::<Vec<f64>>();
+    reject_exact_fit(next, &residuals, 1.0)?;
+    Ok(Self {
+      lagged_mean,
+      next_mean,
+      beta,
+      residuals,
+    })
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use ndarray::Array1;
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_distributions::gamma::SimdGamma;
-  use stochastic_rs_distributions::normal::SimdNormal;
-  use stochastic_rs_distributions::poisson::SimdPoisson;
-
-  use super::*;
-
-  /// Exact OU transition: Gaussian with mean θ+(X−θ)e^{−κΔ} and variance
-  /// σ²(1−e^{−2κΔ})/(2κ).
-  fn simulate_ou(
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    x0: f64,
-    dt: f64,
-    n: usize,
-    seed: u64,
-  ) -> Array1<f64> {
-    let a = (-kappa * dt).exp();
-    let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
-    let mut path = Array1::<f64>::zeros(n);
-    path[0] = x0;
-    for t in 1..n {
-      let z = normal.sample_fast();
-      path[t] = theta + (path[t - 1] - theta) * a + sd * z;
-    }
-    path
-  }
-
-  /// Exact CIR transition via non-central χ² (Poisson mixture of Gamma).
-  fn simulate_cir(
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    x0: f64,
-    dt: f64,
-    n: usize,
-    seed: u64,
-  ) -> Array1<f64> {
-    let a = (-kappa * dt).exp();
-    let s2 = sigma * sigma;
-    let c = s2 * (1.0 - a) / (4.0 * kappa);
-    let d = 4.0 * kappa * theta / s2;
-    let mut path = Array1::<f64>::zeros(n);
-    path[0] = x0;
-    // λ and the χ² shape change every step, so the distribution objects
-    // cannot be hoisted out of the loop. Each step therefore gets its own
-    // stream, derived from `seed` and `t` with a golden-ratio stride so
-    // consecutive steps are not correlated. Reusing one seed here would
-    // restart the same stream on every step and destroy the path.
-    for t in 1..n {
-      let lambda = path[t - 1] * 4.0 * kappa * a / (s2 * (1.0 - a));
-      let pois_seed = seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
-      let gamma_seed = seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-      let n_pois: f64 = f64::from(
-        SimdPoisson::<u32>::new(lambda / 2.0, &Deterministic::new(pois_seed)).sample_fast(),
-      );
-      let shape = d / 2.0 + n_pois;
-      let chi2 = if shape > 0.0 {
-        SimdGamma::<f64>::new(shape, 2.0, &Deterministic::new(gamma_seed)).sample_fast()
-      } else {
-        0.0
-      };
-      path[t] = c * chi2;
-    }
-    path
-  }
-
-  /// For OU the Gaussian QMLE must match the closed-form Vasicek MLE to
-  /// optimiser tolerance — the OU transition is exactly Gaussian, so the
-  /// quasi-likelihood IS the true likelihood.
-  #[test]
-  fn qmle_ou_matches_closed_form_mle() {
-    let path = simulate_ou(1.8, 0.06, 0.12, 0.06, 1.0 / 252.0, 6000, 3);
-    let q = qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
-    let cf = mle_ou_closed_form(path.view(), 1.0 / 252.0);
-    assert!(
-      (q.kappa - cf.kappa).abs() / cf.kappa < 1e-3,
-      "QMLE κ={} vs closed-form κ={}",
-      q.kappa,
-      cf.kappa
-    );
-    assert!(
-      (q.theta - cf.theta).abs() / cf.theta.abs() < 1e-3,
-      "QMLE θ={} vs closed-form θ={}",
-      q.theta,
-      cf.theta
-    );
-    assert!(
-      (q.sigma - cf.sigma).abs() / cf.sigma < 1e-3,
-      "QMLE σ={} vs closed-form σ={}",
-      q.sigma,
-      cf.sigma
-    );
-  }
-
-  /// OU round-trip: recover the true parameters within finite-sample
-  /// noise. σ is the best-identified (it tracks the quadratic variation,
-  /// scaling with the number of observations); κ is moderate; θ (the
-  /// long-run mean) is the noisiest because its information scales with
-  /// the continuous-time span $T_{\text{years}} \approx 32$ here, giving a
-  /// one-sigma band $\sqrt{\sigma^2/(2\kappa T)} \approx 19\%$ of θ.
-  #[test]
-  /// Parameter recovery has a sampling distribution of its own: the tolerance
-  /// on theta here sits around one standard error, so any single path is a
-  /// coin flip. Three pinned seeds and an any() over them is the same
-  /// best-of pattern the normality tests use (see `integration-test-writing`
-  /// SKILL section 1.2) — deterministic per platform, ~1e-6 false failures.
-  fn qmle_ou_recovers_true_params() {
-    let (kt, tt, st) = (1.8, 0.06, 0.12);
-    let fits = [5u64, 11, 23].map(|seed| {
-      let path = simulate_ou(kt, tt, st, 0.06, 1.0 / 252.0, 8000, seed);
-      (
-        seed,
-        qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck),
-      )
-    });
-    let ok = fits.iter().any(|(_, q)| {
-      q.converged
-        && (q.theta - tt).abs() / tt < 0.2
-        && (q.kappa - kt).abs() / kt < 0.35
-        && (q.sigma - st).abs() / st < 0.06
-    });
-    let report = fits
-      .iter()
-      .map(|(s, q)| {
-        format!(
-          "seed {s}: κ={:.4} θ={:.4} σ={:.4}",
-          q.kappa, q.theta, q.sigma
-        )
-      })
-      .collect::<Vec<_>>()
-      .join("; ");
-    assert!(ok, "no seed recovered (κ={kt}, θ={tt}, σ={st}) — {report}");
-  }
-
-  /// CIR round-trip: QMLE with exact CIR conditional moments recovers the
-  /// true parameters from an exactly-distributed CIR path.
-  #[test]
-  fn qmle_cir_recovers_true_params() {
-    let (kt, tt, st) = (2.0, 0.04, 0.25);
-    let fits = [7u64, 13, 29].map(|seed| {
-      let path = simulate_cir(kt, tt, st, 0.04, 1.0 / 252.0, 8000, seed);
-      (seed, qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir))
-    });
-    let ok = fits.iter().any(|(_, q)| {
-      q.converged
-        && (q.theta - tt).abs() / tt < 0.12
-        && (q.kappa - kt).abs() / kt < 0.5
-        && (q.sigma - st).abs() / st < 0.3
-    });
-    let report = fits
-      .iter()
-      .map(|(s, q)| {
-        format!(
-          "seed {s}: κ={:.4} θ={:.4} σ={:.4}",
-          q.kappa, q.theta, q.sigma
-        )
-      })
-      .collect::<Vec<_>>()
-      .join("; ");
-    assert!(ok, "no seed recovered (κ={kt}, θ={tt}, σ={st}) — {report}");
-  }
-
-  #[test]
-  #[should_panic(expected = "at least 3 observations")]
-  fn qmle_panics_on_short_series() {
-    let s = Array1::from(vec![0.05, 0.06]);
-    let _ = qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
-  }
+/// The sampling-interval precondition the diffusion fitters share.
+#[track_caller]
+pub(crate) fn assert_dt(dt: f64) {
+  assert!(
+    dt.is_finite() && dt > 0.0,
+    "dt must satisfy `dt.is_finite() && dt > 0.0`, got dt = {dt:?}"
+  );
 }

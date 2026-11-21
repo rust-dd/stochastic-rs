@@ -1,13 +1,12 @@
-//! Exposure of a payer interest-rate swap under Hull–White, produced with
-//! the crate's own stack: the short rate is simulated as `r_t = x_t + α(t)`
-//! with `x` the zero-mean Ornstein–Uhlenbeck factor (`dx = −a x dt + σ dW`)
-//! and `α(t) = f(0, t) + σ²(1 − e^{−at})² / (2a²)` the deterministic shift
-//! that reproduces the initial curve (Brigo & Mercurio 2006, eq. 3.36), and
-//! the swap is revalued on its own payment dates from the Hull–White
-//! zero-coupon bond formula, `V = N[1 − P(t, T_n) − K Σ_{T_i > t} δ_i P(t, T_i)]`.
+//! Exposure of a payer swap under Hull–White: `r_t = x_t + α(t)` with `dx = −a x dt + σ dW`,
+//! revalued on its payment dates by `V = N[1 − P(t, T_n) − K Σ_{T_i > t} δ_i P(t, T_i)]`.
 //!
-//! Reference: Brigo, D. & Mercurio, F. (2006), *Interest Rate Models —
-//! Theory and Practice*, 2nd ed., Springer, §3.3; Gregory (2015), Ch. 7.
+//! $$
+//! \alpha(t) = f(0, t) + \frac{\sigma^2}{2a^2}\left(1 - e^{-at}\right)^2
+//! $$
+//!
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §3.3, eq. 3.36
+//! Reference: Gregory (2015), "The xVA Challenge", Ch. 7
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -26,11 +25,11 @@ fn zero_drift(_t: f64) -> f64 {
 /// Payer swap exposure under a Hull–White short rate calibrated to `curve`.
 #[derive(Clone, Debug)]
 pub struct HullWhiteSwapExposure {
-  /// Mean reversion `a`.
+  /// Hull–White mean-reversion speed `a`.
   pub mean_reversion: f64,
   /// Short-rate volatility `σ`.
   pub sigma: f64,
-  /// Notional.
+  /// Notional of the payer swap.
   pub notional: f64,
   /// Fixed rate `K`.
   pub fixed_rate: f64,
@@ -91,10 +90,8 @@ impl HullWhiteSwapExposure {
     let Some(&maturity) = remaining.last() else {
       return 0.0;
     };
-    // At inception the bonds are the curve itself; later dates use the
-    // Hull–White reconstruction from the simulated short rate. (The curve is
-    // flat below its first knot, so P(0, ·) must not go through the formula's
-    // P(0, t) normalisation at t = 0.)
+    // At inception the bonds are the curve itself: it is flat below its first knot, so P(0, ·)
+    // must not go through the formula's P(0, t) normalisation at t = 0.
     let bond = |tau: f64| {
       if t <= 0.0 {
         curve.discount_factor(tau)
@@ -166,7 +163,7 @@ impl HullWhiteSwapExposure {
     seed: S,
   ) -> ExposureProfile {
     ExposureProfile::from_mtm(
-      &self.mtm_matrix(curve, paths, seed),
+      self.mtm_matrix(curve, paths, seed).view(),
       self.payment_times.clone(),
       quantile,
     )

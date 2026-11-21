@@ -1,26 +1,11 @@
-//! # Riemann–Liouville kernel quadrature
+//! The Riemann–Liouville kernel as an exponential sum, by one generalised Gauss–Laguerre rule.
 //!
 //! $$
 //! \Gamma(1/2-H)\, t^{H-1/2} = \int_0^\infty s^{-(H+1/2)}\, e^{-ts}\,ds
 //! \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t}
 //! $$
 //!
-//! The singular power-law kernel $t^{H-1/2}$ is approximated by a finite sum
-//! of exponentials using generalised Gauss–Laguerre quadrature with weight
-//! $x^\alpha e^{-x}$ at $\alpha = -(H+1/2)$. The Bilokon–Wong (2026)
-//! substitution $f(s) = e^{s-ts}$ lets a single Laguerre rule integrate the
-//! kernel over $(0,\infty)$ in one piece — no logarithmic binning, no
-//! small/origin/large splits (unlike Ma–Wu 2021 with Gauss–Legendre).
-//!
-//! Nodes and weights are computed by iterative refinement (Gatteschi–Pittaluga
-//! starter + Newton polishing) with weights from the analytic boundary formula
-//! $w_l = \Gamma(n{+}\alpha{+}1) \,/\, [n!\, x_l\, L_n^{(\alpha)\prime}(x_l)^2]$;
-//! this stays numerically stable for $n \gtrsim 40$ and negative $\alpha$,
-//! unlike the Golub–Welsch eigen-solver shipped in some quadrature crates.
-//!
-//! The stored weights absorb both the Laguerre re-weighting $e^{x_l}$ and
-//! the normalising factor $1/\Gamma(1/2-H)$, so runtime code can write
-//! $t^{H-1/2} \approx \sum_l w_l\, e^{-x_l t}$ directly.
+//! Bilokon–Wong's (2026) `f(s) = e^(s-ts)` at `α = -(H+1/2)`; weights absorb `e^(x_l) / Γ(1/2-H)`.
 use std::num::NonZeroUsize;
 
 use gauss_quad::laguerre::GaussLaguerre;
@@ -39,38 +24,17 @@ pub struct RlKernel<T: FloatExt> {
   /// Gauss–Laguerre nodes $(x_l)_{l=1}^{N'}$.
   pub nodes: Array1<T>,
   /// Scaled weights $w_l = w^{\mathrm{GL}}_l\, e^{x_l}/\Gamma(1/2-H)$.
-  pub weights: Array1<T>,
+  pub scaled_weights: Array1<T>,
   /// Cached $\Gamma(H+1/2)$ used by the Markov-lift update formula.
   pub gamma_h_half: T,
-  /// `weights` normalised by $\Gamma(H+1/2)$: $w_l/\Gamma(H+1/2)$. Backs
-  /// the [`VolterraKernel`] impl below, so that its `weights()` and
-  /// `evaluate()` describe the same kernel $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
-  /// used by the SDE in the [`rough`](crate::rough) module docs.
-  ///
-  /// **Do not divide by `gamma_h_half` again when consuming this field (or
-  /// the trait's `weights()`/`evaluate()`/`integral_from_zero()`) — the
-  /// $1/\Gamma(H+1/2)$ factor is already folded in here.** Doing so would
-  /// not panic; it would silently produce a kernel too small by that
-  /// factor. `weights` itself stays un-normalised for a *different*,
-  /// non-trait call path:
-  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift) reads the
-  /// **inherent** (un-normalised) `weights`/`evaluate` directly and
-  /// applies $1/\Gamma(H+1/2)$ itself, once, outside the per-mode sum, as
-  /// an optimisation. A kernel-generic stepper driven through
-  /// [`VolterraKernel`] instead must not carry that split over — see the
-  /// invariant stated on [`VolterraKernel::weights`].
+  /// `scaled_weights / Γ(H+1/2)`, the weights behind the [`VolterraKernel`] impl: its `weights()`,
+  /// `evaluate()` and `integral_from_zero()` describe one kernel, $K(t) = t^{H-1/2}/\Gamma(H+1/2)$.
   pub normalized_weights: Array1<T>,
 }
 
 impl<T: FloatExt> RlKernel<T> {
-  /// Quadrature degrees at or below this are confirmed numerically stable.
-  /// Above it, the underlying `gen_laguerre_nodes_weights` measurably
-  /// starts producing non-finite weights — independently confirmed finite
-  /// through 175, non-finite somewhere in 176–189, for every Hurst tested
-  /// — and it does so silently, with no panic: `weights`/
-  /// `normalized_weights` just turn `NaN`, and every Markov-lift path
-  /// built from them follows. [`RlKernel::new`] enforces this as a hard
-  /// ceiling rather than handing back a NaN-poisoned kernel.
+  /// Highest stable quadrature degree: above it (first failure measured in 176–189 for every Hurst
+  /// tested) the Laguerre weights turn `NaN` silently, so [`RlKernel::new`] panics instead.
   pub const MAX_STABLE_DEGREE: usize = 175;
 
   /// Default quadrature degree for a grid of $N$ points: $\lfloor\log N\rfloor + 20$,
@@ -80,24 +44,27 @@ impl<T: FloatExt> RlKernel<T> {
     ((n.max(2) as f64).ln() as usize) + 20
   }
 
-  /// Construct the kernel approximation for Hurst $H$ using $N'$ Laguerre nodes.
-  ///
-  /// # Panics
-  /// - if $H \notin (0, 1/2)$ (the Laguerre parameter $\alpha = -(H+1/2)$ must satisfy $\alpha > -1$)
-  /// - if `degree == 0`
-  /// - if `degree` exceeds [`Self::MAX_STABLE_DEGREE`]
+  /// The kernel for Hurst $H$ on `degree` Laguerre nodes; panics unless `0 < hurst < 0.5` and
+  /// `1 <= degree <=` [`Self::MAX_STABLE_DEGREE`].
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     let h_f64 = hurst.to_f64().expect("Hurst must be convertible to f64");
     assert!(
       h_f64 > 0.0 && h_f64 < 0.5,
-      "RL kernel requires Hurst in (0, 1/2), got {h_f64}"
+      "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = {hurst:?}"
     );
-    assert!(degree > 0, "quadrature degree must be positive");
-    let max_degree = Self::MAX_STABLE_DEGREE;
     assert!(
-      degree <= max_degree,
-      "quadrature degree must be <= {max_degree} (see RlKernel::MAX_STABLE_DEGREE's docs — the underlying quadrature measurably produces non-finite weights above this), got {degree}"
+      degree > 0,
+      "degree must satisfy `degree > 0`, got degree = {degree:?}"
+    );
+    assert!(
+      degree <= Self::MAX_STABLE_DEGREE,
+      "degree must satisfy `degree <= Self::MAX_STABLE_DEGREE`, got degree = {degree:?}, Self::MAX_STABLE_DEGREE = {:?}",
+      Self::MAX_STABLE_DEGREE
     );
 
     let alpha = -(h_f64 + 0.5);
@@ -118,7 +85,7 @@ impl<T: FloatExt> RlKernel<T> {
     Self {
       hurst,
       nodes,
-      weights,
+      scaled_weights: weights,
       gamma_h_half: T::from_f64_fast(gamma(h_f64 + 0.5)),
       normalized_weights,
     }
@@ -130,11 +97,12 @@ impl<T: FloatExt> RlKernel<T> {
     self.nodes.len()
   }
 
-  /// Evaluate the exp-sum approximation $\sum_l w_l\, e^{-x_l t} \approx t^{H-1/2}$.
+  /// The exponential sum $\sum_l w_l e^{-x_l t} \approx t^{H-1/2}$ (unnormalised); the exact
+  /// kernel is `VolterraKernel::evaluate`.
   #[must_use]
-  pub fn evaluate(&self, t: T) -> T {
+  pub fn exp_sum(&self, t: T) -> T {
     let mut acc = T::zero();
-    for (x, w) in self.nodes.iter().zip(self.weights.iter()) {
+    for (x, w) in self.nodes.iter().zip(self.scaled_weights.iter()) {
       acc += *w * (-*x * t).exp();
     }
     acc
@@ -146,31 +114,17 @@ impl<T: FloatExt> VolterraKernel<T> for RlKernel<T> {
     &self.nodes
   }
 
-  // Deliberately not `&self.weights`: this trait method's contract is the
-  // *normalised* kernel (see `normalized_weights`'s field doc), so returning
-  // the un-normalised `weights` field here would be the actual bug.
-  #[allow(clippy::misnamed_getters)]
   fn weights(&self) -> &Array1<T> {
     &self.normalized_weights
   }
 
-  /// Exact closed form $K(t) = t^{H-1/2}/\Gamma(H+1/2)$ — the kernel that
-  /// the `rough` module's SDE actually uses (see the
-  /// [module docs](crate::rough)) — computed directly, **not** through the
-  /// exponential sum. The inherent [`RlKernel::evaluate`] is itself only an
-  /// approximation of $t^{H-1/2}$ (see its own docs), so routing the exact
-  /// reference value through it would make `evaluate` inherit the fit's
-  /// approximation error instead of supplying the ground truth that
-  /// [`nodes`](VolterraKernel::nodes)/[`weights`](VolterraKernel::weights)
-  /// are fitted against.
+  /// Exact $K(t) = t^{H-1/2}/\Gamma(H+1/2)$, computed directly: the ground truth `exp_sum` is
+  /// judged against, which the approximation's own error must not enter.
   fn evaluate(&self, t: T) -> T {
     t.powf(self.hurst - T::from_f64_fast(0.5)) / self.gamma_h_half
   }
 
-  /// $\int_0^{dt} K(u)\,du = \delta t^{H+1/2}/\Gamma(H+3/2)$, the closed
-  /// form obtained by integrating $u^{H-1/2}/\Gamma(H+1/2)$ term-by-term —
-  /// this is the quantity [`MarkovLift`](crate::rough::markov_lift::MarkovLift)
-  /// hard-codes as `dt_pow_h_plus_half / gamma_h_plus_three_half`.
+  /// $\int_0^{dt} K(u)\,du = \delta t^{H+1/2}/\Gamma(H+3/2)$.
   fn integral_from_zero(&self, dt: T) -> T {
     let h_f64 = self
       .hurst
@@ -180,10 +134,8 @@ impl<T: FloatExt> VolterraKernel<T> for RlKernel<T> {
   }
 }
 
-/// Evaluate the generalised Laguerre polynomial $L_n^{(\alpha)}(x)$ and its
-/// derivative $L_n^{(\alpha)\prime}(x)$ using the three-term recurrence
-/// $(n{+}1)L_{n+1} = (2n{+}1{+}\alpha{-}x)L_n - (n{+}\alpha)L_{n-1}$.
-/// Returns `(L_n, L_n_prime)`.
+/// `(L_n, L_n')`: the generalised Laguerre polynomial $L_n^{(\alpha)}(x)$ and its derivative, by
+/// the recurrence $(n{+}1)L_{n+1} = (2n{+}1{+}\alpha{-}x)L_n - (n{+}\alpha)L_{n-1}$.
 fn laguerre_l_and_dl(n: usize, alpha: f64, x: f64) -> (f64, f64) {
   if n == 0 {
     return (1.0, 0.0);
@@ -201,12 +153,9 @@ fn laguerre_l_and_dl(n: usize, alpha: f64, x: f64) -> (f64, f64) {
   (ln, dln)
 }
 
-/// Generalised Gauss–Laguerre nodes and weights for $\alpha > -1$, robust at
-/// negative $\alpha$ (Hurst near $1/2$). The tridiagonal Jacobi-matrix
-/// eigenvalues give accurate nodes in every regime, but Golub–Welsch weights
-/// (built from eigenvector first components) become unstable for $n \gtrsim 25$
-/// with $\alpha < 0$. We replace them with the analytic boundary formula
-/// $w_l = \Gamma(n{+}\alpha{+}1) / \bigl[n!\, x_l\, L_n^{(\alpha)\prime}(x_l)^2\bigr]$.
+/// Generalised Gauss–Laguerre nodes (Jacobi-matrix eigenvalues) and weights for $\alpha > -1$;
+/// Golub–Welsch weights are unstable for $n \gtrsim 25$ with $\alpha < 0$, so the weights are
+/// $$ w_l = \Gamma(n{+}\alpha{+}1) / \bigl[n!\, x_l\, L_n^{(\alpha)\prime}(x_l)^2\bigr] $$
 fn gen_laguerre_nodes_weights(n: usize, alpha: f64) -> (Vec<f64>, Vec<f64>) {
   assert!(alpha > -1.0, "alpha must be > -1");
   let quad = GaussLaguerre::new(
@@ -235,11 +184,8 @@ mod tests {
   use super::gen_laguerre_nodes_weights;
   use crate::volterra::VolterraKernel;
 
-  /// `VolterraKernel::evaluate` must be the *exact* closed-form kernel
-  /// $t^{H-1/2}/\Gamma(H+1/2)$, computed independently of both the exp-sum
-  /// fit and of `RlKernel`'s own cached `gamma_h_half` — it is the ground
-  /// truth the fit is judged against, not a rescaling of the (approximate)
-  /// inherent `evaluate`.
+  /// Fits the exact kernel independently of the quadrature and of `gamma_h_half`: the ground
+  /// truth, not a rescaled `exp_sum`.
   #[test]
   fn volterra_kernel_evaluate_matches_independent_closed_form() {
     let hurst = 0.3_f64;
@@ -255,20 +201,8 @@ mod tests {
     }
   }
 
-  /// Mirrors `volterra::kernel::tests::integral_from_zero_matches_numerical_quadrature`
-  /// for the RL kernel specifically: `integral_from_zero` must equal the
-  /// midpoint-rule quadrature of the *normalised* `VolterraKernel::evaluate`.
-  /// Getting the normalisation wrong (e.g. forgetting to divide by
-  /// `gamma_h_half`) would miss this by a factor of `Γ(H+1/2)` — comfortably
-  /// outside the 1e-4 tolerance for every Hurst below.
-  ///
-  /// Uses a finer grid than the brief's own `dt=0.01, n=200_000` recipe:
-  /// at `hurst=0.1` the integrand `u^{-0.4}` is singular enough that
-  /// `n=200_000` midpoints alone carry ~1.4e-4 discretisation error even
-  /// against the *exact* power law (independently confirmed with no
-  /// `RlKernel` involved), which would swamp the 1e-4 tolerance before this
-  /// test ever got to check normalisation. `n=2_000_000` brings that down
-  /// to ~3.6e-5, leaving headroom to actually test what this test is for.
+  /// `integral_from_zero` against the midpoint rule on the normalised `evaluate`: a missing
+  /// `gamma_h_half` is off by `Γ(H+1/2)`. At `hurst = 0.1` 200_000 midpoints err by 1.4e-4, so 2e6.
   #[test]
   fn volterra_kernel_integral_from_zero_matches_quadrature() {
     let dt = 0.01_f64;
@@ -290,16 +224,8 @@ mod tests {
     }
   }
 
-  /// `VolterraKernel::weights`/`nodes` must reproduce the *exact*
-  /// `VolterraKernel::evaluate` via the exponential sum, within the same
-  /// 5e-3 tolerance the brief's own kernel tests use. `degree=150` is
-  /// chosen empirically: `degree=40` (the existing `exp_sum_approximates_power_law`
-  /// test's degree, tuned for `t >= 0.2`) misses by ~5x at `t=1e-2`, and
-  /// `degree=200` hits a pre-existing instability in the underlying
-  /// Laguerre quadrature (`normalized_weights` turns non-finite) — a
-  /// latent issue in `gen_laguerre_nodes_weights` at high degree, outside
-  /// this trait's scope, so `degree=150` stays comfortably clear of both
-  /// edges.
+  /// `weights`/`nodes` reproduce the exact `evaluate` within 5e-3. Degree 150: degree 40 misses
+  /// by about 5x at `t = 1e-2`, and degree 200 is past `MAX_STABLE_DEGREE`.
   #[test]
   fn volterra_kernel_exponential_sum_matches_evaluate() {
     let k = RlKernel::<f64>::new(0.3, 150);
@@ -323,7 +249,7 @@ mod tests {
     let k = RlKernel::<f64>::new(hurst, 40);
     let exponent = hurst - 0.5;
     for t in [0.2_f64, 1.0, 5.0] {
-      let approx = k.evaluate(t);
+      let approx = k.exp_sum(t);
       let truth = t.powf(exponent);
       let rel = (approx - truth).abs() / truth;
       assert!(rel < 5e-3, "t={t} approx={approx} truth={truth} rel={rel}");
@@ -372,22 +298,23 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "Hurst in (0, 1/2)")]
+  #[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.5")]
   fn rejects_h_at_half() {
     let _ = RlKernel::<f64>::new(0.5, 20);
   }
 
   #[test]
-  #[should_panic(expected = "Hurst in (0, 1/2)")]
+  #[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.7")]
   fn rejects_h_above_half() {
     let _ = RlKernel::<f64>::new(0.7, 20);
   }
 
-  /// The ceiling exists because degrees above it measure as producing
-  /// non-finite weights (see `MAX_STABLE_DEGREE`'s docs) with no panic of
-  /// their own — this locks in that a caller gets a hard error instead.
+  /// Degrees above the ceiling give non-finite weights with no panic of their own (see
+  /// `MAX_STABLE_DEGREE`), so the caller gets a hard error instead.
   #[test]
-  #[should_panic(expected = "quadrature degree must be <=")]
+  #[should_panic(
+    expected = "degree must satisfy `degree <= Self::MAX_STABLE_DEGREE`, got degree = "
+  )]
   fn rejects_degree_above_stability_ceiling() {
     let _ = RlKernel::<f64>::new(0.3, RlKernel::<f64>::MAX_STABLE_DEGREE + 1);
   }
@@ -396,5 +323,18 @@ mod tests {
   fn degree_default_scales_with_log_n() {
     assert_eq!(RlKernel::<f64>::default_degree(1000), 26);
     assert_eq!(RlKernel::<f64>::default_degree(10_000), 29);
+  }
+
+  /// The exp-sum approximation and the exact kernel are two different numbers, under two names.
+  #[test]
+  fn exp_sum_and_evaluate_are_distinct() {
+    let k = RlKernel::<f64>::new(0.1, 40);
+    let t = 0.7_f64;
+    let exact = VolterraKernel::evaluate(&k, t);
+    let rel = (k.exp_sum(t) / k.gamma_h_half / exact - 1.0).abs();
+    assert!(rel < 5e-3, "rel={rel}");
+    assert_eq!(k.scaled_weights.len(), k.nodes.len());
+    assert_eq!(k.evaluate(t), exact);
+    assert_ne!(k.evaluate(t), k.exp_sum(t));
   }
 }

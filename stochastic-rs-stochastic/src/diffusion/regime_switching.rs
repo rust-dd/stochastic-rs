@@ -1,33 +1,30 @@
-//! # Regime-Switching Diffusion
+//! GBM whose volatility follows a continuous-time Markov chain on `M` regimes with generator `Q`.
 //!
 //! $$
 //! dS_t = (r-q)S_t\,dt + \sigma_{Z_t}\,S_t\,dW_t
 //! $$
 //!
-//! where $Z_t$ is a continuous-time Markov chain with generator matrix $Q$
-//! governing transitions between $M$ regimes, each with its own volatility $\sigma_i$.
-//!
-//! Source:
-//! - Kirkby, J.L. (PROJ_Option_Pricing_Matlab)
-//! - Hamilton, J.D. (1989), "A New Approach to the Economic Analysis
-//!   of Nonstationary Time Series and the Business Cycle"
+//! Source: Kirkby, PROJ_Option_Pricing_Matlab
+//! Reference: Hamilton (1989), Econometrica 57(2), 357–384, DOI 10.2307/1912559
 //!
 
 use ndarray::Array1;
 use ndarray::Array2;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Regime-switching Gbm process.
-///
-/// The stock follows Gbm in each regime with a different volatility.
-/// Regime transitions are governed by a CTMC generator matrix Q.
+/// GBM whose volatility is picked by a regime; the regimes switch by the CTMC generator `Q`.
+#[derive(Debug, Clone)]
 pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (e.g. r - q).
   pub mu: T,
@@ -39,9 +36,9 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu>
   pub initial_state: usize,
   /// Number of points sampled along the regime-switching path.
   pub n: usize,
-  /// Initial stock price.
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -51,20 +48,52 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu>
 }
 
 impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `q_matrix.nrows() == vols.len()`,
+  /// `q_matrix.ncols() == vols.len()`, `initial_state < vols.len()`, and every parameter is finite.
   pub fn new(
     mu: T,
     q_matrix: Array2<T>,
     vols: Array1<T>,
     initial_state: usize,
     n: usize,
-    s0: Option<T>,
+    s0: T,
     t: Option<T>,
     seed: S,
   ) -> Self {
-    let m = vols.len();
-    assert_eq!(q_matrix.nrows(), m, "Q must be M×M");
-    assert_eq!(q_matrix.ncols(), m, "Q must be M×M");
-    assert!(initial_state < m, "initial_state must be < M");
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert_entries("q_matrix", "q_matrix[(i, j)].is_finite()", &q_matrix, |v| {
+      v.is_finite()
+    });
+    assert_entries("vols", "vols[i].is_finite()", &vols, |v| v.is_finite());
+    assert!(
+      q_matrix.nrows() == vols.len(),
+      "q_matrix.nrows() must satisfy `q_matrix.nrows() == vols.len()`, got q_matrix.nrows() = {:?}, vols.len() = {:?}",
+      q_matrix.nrows(),
+      vols.len()
+    );
+    assert!(
+      q_matrix.ncols() == vols.len(),
+      "q_matrix.ncols() must satisfy `q_matrix.ncols() == vols.len()`, got q_matrix.ncols() = {:?}, vols.len() = {:?}",
+      q_matrix.ncols(),
+      vols.len()
+    );
+    assert!(
+      initial_state < vols.len(),
+      "initial_state must satisfy `initial_state < vols.len()`, got initial_state = {initial_state:?}, vols.len() = {:?}",
+      vols.len()
+    );
 
     Self {
       backend: Cpu,
@@ -79,8 +108,6 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {
   /// One-step CTMC transition-probability matrix `exp(Q · dt)` for a step of
@@ -188,16 +215,12 @@ fn mat_mul<T: FloatExt>(a: &Array2<T>, b: &Array2<T>) -> Array2<T> {
   c
 }
 
-/// How many regimes a launch carries: the family holds four volatilities and
-/// four rows of thresholds. A chain with more stays on its host sampler
-/// whatever the backend.
+/// Regimes a launch carries: the family holds four volatilities and four rows of thresholds. A
+/// longer chain stays on its host sampler.
 const DEVICE_REGIMES: usize = 4;
 
-/// The Euler engine's view: the one-step transition matrix `exp(Q dt)` is
-/// computed once on the host — the same matrix the host sampler uses — and
-/// travels as per-row cumulative thresholds, so the kernel's regime draw is
-/// the host's inverse CDF on a uniform of its own. The regime index rides in
-/// the second state slot.
+/// The Euler engine's view: `exp(Q dt)`, the host sampler's own matrix, travels as per-row
+/// cumulative thresholds for the kernel's inverse-CDF draw; the regime rides in the second slot.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for RegimeSwitchingDiffusion<T, S, B>
 {
@@ -225,7 +248,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   fn initial_state(&self) -> [T; 4] {
     [
-      self.s0.unwrap_or(T::one()),
+      self.s0,
       T::from_usize_(self.initial_state),
       T::zero(),
       T::zero(),
@@ -269,6 +292,11 @@ impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] RegimeSwitchingDiffusion<T, S> { mu, q_matrix, vols, initial_state, n, s0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RegimeSwitchingDiffusion<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RegimeSwitchingDiffusion<T, S, B>
 {
@@ -279,10 +307,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> RegimeSwitchingDiffusionSampler<T, S> {
     RegimeSwitchingDiffusionSampler {
       mu: self.mu,
@@ -290,16 +316,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       vols: self.vols.clone(),
       initial_state: self.initial_state,
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       t: self.t,
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine for up to four regimes, which is what the
-  /// family carries: on a device the spot and the chain are stepped in one
-  /// kernel. A chain with more regimes stays on this process's own sampler
-  /// whatever the backend.
+  /// Through the Euler engine for up to four regimes, the spot and the chain stepped in one
+  /// kernel; a longer chain stays on this process's own sampler.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.vols.len() <= DEVICE_REGIMES {
       self.backend.system_sample(self)
@@ -343,12 +367,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RegimeSwitchingDiffusion`] sampling state: owns the generator
-/// matrix, per-regime volatilities and the seed source so a Monte-Carlo loop
-/// reuses both output buffers. Both the diffusion Gaussian stream and the
-/// regime-transition RNG are rebuilt per call from the derived seed, in the same
-/// order as the legacy `sample` body.
+/// Reusable [`RegimeSwitchingDiffusion`] sampling state: the generator, the volatilities and the
+/// seed source. Each call rebuilds the Gaussian stream, then the regime RNG, from the derived seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RegimeSwitchingDiffusionSampler<T: FloatExt, S: SeedExt> {
   mu: T,
   q_matrix: Array2<T>,
@@ -410,7 +432,7 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
 
     let mut dw = Array1::<T>::zeros(n_inc);
     let dw_slice = dw.as_slice_mut().unwrap();
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
     normal.fill_slice(dw_slice);
 
     let mut rng = self.seed.rng();
@@ -428,6 +450,8 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RegimeSwitchingDiffusionSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RegimeSwitchingDiffusionSampler<T, S> {
   type Output = [Array1<T>; 2];
@@ -454,128 +478,4 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RegimeSwitchingDiffusionSampler
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::array;
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn q3() -> Array2<f64> {
-    array![[-1.0, 0.5, 0.5], [0.5, -1.0, 0.5], [0.5, 0.5, -1.0],]
-  }
-
-  #[test]
-  fn price_stays_positive() {
-    let p = RegimeSwitchingDiffusion::new(
-      0.05,
-      q3(),
-      array![0.15, 0.25, 0.35],
-      0,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let [s, _z] = p.sample();
-    assert!(s.iter().all(|x| *x > 0.0));
-  }
-
-  #[test]
-  fn regime_states_valid() {
-    let p = RegimeSwitchingDiffusion::new(
-      0.05,
-      q3(),
-      array![0.15, 0.25, 0.35],
-      0,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let [_s, z] = p.sample();
-    for &state in z.iter() {
-      assert!((0.0..3.0).contains(&state), "invalid state={state}");
-    }
-  }
-
-  #[test]
-  fn single_regime_like_gbm() {
-    let q1 = array![[0.0]];
-    let p = RegimeSwitchingDiffusion::new(
-      0.05,
-      q1,
-      array![0.2],
-      0,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let [s, z] = p.sample();
-    assert!(s.iter().all(|x| *x > 0.0));
-    assert!(z.iter().all(|x| (*x - 0.0_f64).abs() < 1e-10));
-  }
-
-  #[test]
-  fn seeded_is_deterministic() {
-    let p1 = RegimeSwitchingDiffusion::new(
-      0.05,
-      q3(),
-      array![0.15, 0.25, 0.35],
-      0,
-      100,
-      Some(100.0),
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let p2 = RegimeSwitchingDiffusion::new(
-      0.05,
-      q3(),
-      array![0.15, 0.25, 0.35],
-      0,
-      100,
-      Some(100.0),
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let [s1, z1] = p1.sample();
-    let [s2, z2] = p2.sample();
-    assert_eq!(s1, s2);
-    assert_eq!(z1, z2);
-  }
-
-  #[test]
-  fn matrix_exp_identity() {
-    let zero = Array2::<f64>::zeros((3, 3));
-    let result = matrix_exp_real(&zero);
-    for i in 0..3 {
-      for j in 0..3 {
-        let expected = if i == j { 1.0 } else { 0.0 };
-        assert!(
-          (result[[i, j]] - expected).abs() < 1e-10,
-          "exp(0)[{i}][{j}]={}, expected {expected}",
-          result[[i, j]]
-        );
-      }
-    }
-  }
-
-  #[test]
-  fn transition_probs_sum_to_one() {
-    let p = RegimeSwitchingDiffusion::new(
-      0.05,
-      q3(),
-      array![0.15, 0.25, 0.35],
-      0,
-      10,
-      Some(100.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let pm = p.transition_prob_matrix(0.01_f64);
-    for i in 0..3 {
-      let sum: f64 = (0..3).map(|j| pm[[i, j]]).sum();
-      assert!((sum - 1.0).abs() < 1e-10, "row sum={sum}");
-    }
-  }
-}
+mod tests;

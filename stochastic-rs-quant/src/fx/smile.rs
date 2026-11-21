@@ -1,18 +1,14 @@
-//! Vanna–Volga smile construction from FX market quotes.
+//! First-order Vanna–Volga smile: a quadratic in log-strike through the 25Δ put, ATM and 25Δ
+//! call pivots of the market triplet (ATM, risk reversal, butterfly).
 //!
-//! Given the canonical FX vol triplet — ATM volatility plus 25-delta risk
-//! reversal (RR) and butterfly (BF) — the first-order Vanna–Volga method
-//! interpolates a quadratic-in-log-strike smile through three pivot
-//! strikes: 25Δ put, ATM, 25Δ call.
+//! $$
+//! \sigma_{25C} = \sigma_{ATM} + \sigma_{BF} + \tfrac12\,\sigma_{RR},\qquad
+//! \sigma_{25P} = \sigma_{ATM} + \sigma_{BF} - \tfrac12\,\sigma_{RR}
+//! $$
 //!
-//! Reference: Castagna, "FX Options and Smile Risk", Wiley (2010), §3;
-//! Reiswich & Wystup, "FX Volatility Smile Construction", Wilmott (2010);
-//! Perederiy, "Vanna-Volga Method for Normal Volatilities",
-//! arXiv:1810.07457 (2018).
-//!
-//! Standard market triplet decomposition:
-//! - $\sigma_{25C} = \sigma_{ATM} + \sigma_{BF} + \tfrac12\,\sigma_{RR}$
-//! - $\sigma_{25P} = \sigma_{ATM} + \sigma_{BF} - \tfrac12\,\sigma_{RR}$
+//! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley, §3
+//! Reference: Reiswich & Wystup (2010), "FX Volatility Smile Construction", Wilmott Magazine
+//! Reference: Perederiy (2018), "Vanna-Volga Method for Normal Volatilities", arXiv:1810.07457
 
 use super::delta::AtmConvention;
 use super::delta::FxDeltaConvention;
@@ -20,12 +16,8 @@ use super::delta::atm_strike;
 use super::delta::strike_from_delta;
 use crate::OptionType;
 
-/// FX market quote bundle (ATM + 25Δ risk reversal + 25Δ butterfly).
-///
-/// All vols are expressed in absolute units (e.g. `0.10` for 10 % vol).
-/// `rr` and `bf` follow the standard FX market quoting:
-/// `rr = σ(25Δ call) - σ(25Δ put)` and
-/// `bf = ½ (σ(25Δ call) + σ(25Δ put)) - σ(ATM)`.
+/// FX quotes in absolute vol (`0.10` is 10 %): ATM, `rr = σ(25Δ call) − σ(25Δ put)` and
+/// `bf = ½ (σ(25Δ call) + σ(25Δ put)) − σ(ATM)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FxMarketQuotes {
   pub atm: f64,
@@ -93,12 +85,8 @@ impl VannaVolgaSmile {
     }
   }
 
-  /// Implied vol at strike `k` via Lagrange interpolation in log-strike
-  /// space (first-order Vanna–Volga).
-  ///
-  /// Coincides with the market quote at the three pivot strikes; smooth
-  /// extrapolation beyond extremes is well-defined but loses any vol
-  /// guarantee — production use should clamp or fall back to flat-extrap.
+  /// Implied vol at strike `k` by Lagrange interpolation in log-strike: the market quote at the
+  /// three pivots, and an unbounded quadratic extrapolation beyond them.
   pub fn vol_at_strike(&self, k: f64) -> f64 {
     debug_assert!(k > 0.0);
     let lk = k.ln();

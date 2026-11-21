@@ -1,12 +1,13 @@
 use super::HestonInitialVarianceVegaStability;
 use super::HestonMalliavinConfig;
-use super::HestonMalliavinError;
 use super::HestonMalliavinEstimator;
 use super::HestonModel;
 use super::VanillaPortfolio;
 use crate::OptionType;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::QuantError;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 const UNDER_SAMPLED_SEED: u64 = 7;
@@ -19,11 +20,13 @@ const REFERENCE_CF_VEGA: f64 = 20.849_039;
 fn under_sampled_model() -> HestonModel {
   HestonModel {
     s: 490.91,
-    initial_variance: 0.299_494,
-    kappa: 4.0,
-    theta: 0.072_326,
-    vol_of_vol: 2.646_148,
-    rho: 0.390_534,
+    params: HestonParams {
+      v0: 0.299_494,
+      kappa: 4.0,
+      theta: 0.072_326,
+      sigma: 2.646_148,
+      rho: 0.390_534,
+    },
     risk_free_rate: 0.05,
     dividend_yield: 0.0,
     tau: 36.0 / 365.0,
@@ -62,7 +65,7 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
 
   let diagnostics = robust.initial_variance_vega_diagnostics;
   assert_eq!(diagnostics.requested_bump, 1e-4);
-  assert!((diagnostics.effective_bump - 0.03 * model.initial_variance).abs() < 1e-15);
+  assert!((diagnostics.effective_bump - 0.03 * model.params.v0).abs() < 1e-15);
   assert_eq!(
     diagnostics.stability,
     HestonInitialVarianceVegaStability::Stable
@@ -81,12 +84,17 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
     legacy.initial_variance_vega_diagnostics.stability,
     HestonInitialVarianceVegaStability::SamplingUnresolved
   );
-  assert_eq!(
-    HestonMalliavinEstimator::new(model, legacy_config)
-      .unwrap()
-      .estimate_requiring_stable_initial_variance_vega(&payoff)
-      .unwrap_err(),
-    HestonMalliavinError::UnstableInitialVarianceVega
+  let error = HestonMalliavinEstimator::new(model, legacy_config)
+    .unwrap()
+    .estimate_requiring_stable_initial_variance_vega(&payoff)
+    .unwrap_err();
+  assert!(
+    matches!(
+      &error,
+      QuantError::Numerical { what: "the initial-variance vega", reason }
+        if reason.ends_with("SamplingUnresolved")
+    ),
+    "{error}"
   );
   HestonMalliavinEstimator::new(model, robust_config)
     .unwrap()
@@ -134,11 +142,13 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
 fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
   let model = HestonModel {
     s: 100.0,
-    initial_variance: 0.04,
-    kappa: 1.5,
-    theta: 0.04,
-    vol_of_vol: 0.0,
-    rho: 0.35,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 1e-300,
+      rho: 0.35,
+    },
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
     tau: 0.75,
@@ -158,10 +168,10 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
     let bump = estimate.initial_variance_vega_diagnostics.effective_bump;
     assert!((bump - 0.0012).abs() < 1e-15);
     let dt = model.tau / config.steps as f64;
-    let discrete_loading =
-      (1.0 - (1.0 - model.kappa * dt).powi(config.steps as i32)) / (model.kappa * model.tau);
+    let discrete_loading = (1.0 - (1.0 - model.params.kappa * dt).powi(config.steps as i32))
+      / (model.params.kappa * model.tau);
     let price = |variance: f64| {
-      BSMPricer::new(variance.sqrt(), BSMCoc::Merton1973).price_call(
+      BsmPricer::new(variance.sqrt(), BsmCoc::Merton1973).price_call(
         model.s,
         105.0,
         model.risk_free_rate,
@@ -169,8 +179,8 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
         model.tau,
       )
     };
-    let reference = (price(model.initial_variance + bump * discrete_loading)
-      - price(model.initial_variance - bump * discrete_loading))
+    let reference = (price(model.params.v0 + bump * discrete_loading)
+      - price(model.params.v0 - bump * discrete_loading))
       / (2.0 * bump);
     assert!(
       (estimate.initial_variance_vega.value - reference).abs()

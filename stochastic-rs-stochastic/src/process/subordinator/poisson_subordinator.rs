@@ -1,8 +1,9 @@
+//! Poisson subordinator: a unit-jump counting path of independent Poisson increments.
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
@@ -13,17 +14,17 @@ use crate::traits::ProcessExt;
 
 /// Poisson subordinator with unit jumps:
 /// `N_t` with independent increments `Poisson(lambda * dt)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Intensity parameter.
   pub lambda: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -31,8 +32,26 @@ pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `lambda > 0`, and every parameter
+  /// is finite.
   pub fn new(lambda: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(lambda > T::zero(), "lambda must be positive");
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     Self {
       backend: Cpu,
       lambda,
@@ -43,8 +62,6 @@ impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> PoissonSubordinator<T, S, B> {}
 
 /// The Euler engine's view of the Poisson subordinator: the counting family,
 /// whose step is the number of jumps the kernel drew.
@@ -84,6 +101,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] PoissonSubordinator<T, S> { lambda, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for PoissonSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for PoissonSubordinator<T, S, B>
 {
@@ -99,23 +121,32 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(n_increments);
     let lambda_dt = (self.lambda * dt).to_f64().unwrap();
+    let poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(&self.seed);
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
     PoissonSubordinatorSampler {
       n: self.n,
       x0,
-      poisson: SimdPoisson::<u32>::new(lambda_dt, &self.seed),
-      rng: self.seed.rng(),
+      poisson,
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
-    self.backend.euler_sample(self)
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      <Self as crate::euler::EulerCoefficients<T>>::host_sample(self)
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    self.backend.euler_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_map_view<R: Send>(
@@ -123,30 +154,54 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.euler_paths_map_view(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map_view(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    self.backend.euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    self.backend.try_sample(self)
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    self.backend.try_euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// A step expecting more than 25 jumps samples on the host, past the kernels' 64-event count.
+  fn device_fallback(&self) -> Option<&'static str> {
+    crate::euler::count_fallback(
+      <Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self),
+      <Self as crate::euler::EulerCoefficients<T>>::time_step(self),
+    )
   }
 }
 
-/// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson driver
-/// and its RNG. Each step adds a `Poisson(lambda * dt)` unit-jump count.
+/// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson stream.
+/// Each step adds a `Poisson(lambda * dt)` unit-jump count.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct PoissonSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  poisson: SimdPoisson<u32>,
-  rng: SimdRng,
+  poisson: Seeded<SimdPoisson<u32>>,
 }
 
 impl<T: FloatExt> PoissonSubordinatorSampler<T> {
@@ -159,11 +214,13 @@ impl<T: FloatExt> PoissonSubordinatorSampler<T> {
       return;
     }
     for i in 1..out.len() {
-      let k = self.poisson.sample(&mut self.rng) as usize;
+      let k = self.poisson.sample() as usize;
       out[i] = out[i - 1] + T::from_usize_(k);
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for PoissonSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for PoissonSubordinatorSampler<T> {
   type Output = Array1<T>;

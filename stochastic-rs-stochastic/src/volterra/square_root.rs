@@ -1,66 +1,18 @@
-//! # Volterra square-root process
+//! Volterra Heston variance, rough Heston under the Riemann–Liouville kernel, by full truncation.
 //!
 //! $$
 //! V_t = V_0 + \int_0^t K(t-s)\,\kappa(\theta - V_s)\,ds
 //!           + \int_0^t K(t-s)\,\nu\sqrt{V_s}\,dW_s
 //! $$
 //!
-//! The variance leg of the Volterra Heston model (Abi Jaber & El Euch,
-//! *Markovian structure of the Volterra Heston model*, arXiv:1803.00477), and
-//! the rough Heston model when $K$ is the Riemann–Liouville kernel.
+//! Truncated at $V^+ = \max(V, 0)$ with a floored output: nonnegative always, and biased in law.
 //!
-//! ## Why this type exists rather than a plain [`VolterraSde`](super::sve::VolterraSde)
-//!
-//! Two reasons. First, `VolterraSde`'s coefficients are
-//! [`Fn2D`](crate::traits::Fn2D)`::Native`, a bare `fn` pointer, so it cannot
-//! carry $\kappa$, $\theta$ and $\nu$ — a closure over the parameters is
-//! required. Second, and more importantly, $\sqrt{V}$ is not Lipschitz at the
-//! origin and a naive discretisation of the lifted system drives $V$ negative
-//! whenever the Feller condition is violated, at which point the diffusion
-//! coefficient is undefined.
-//!
-//! ## The scheme, and exactly what it guarantees
-//!
-//! This uses **full truncation** — Lord, Koekkoek & van Dijk (2010),
-//! *A comparison of biased simulation schemes for stochastic volatility
-//! models*, Quantitative Finance 10(2) — evaluating both coefficients at
-//! $V^+ = \max(V, 0)$, plus a floor on the reported path.
-//!
-//! What that buys: the output is nonnegative by construction, always, at any
-//! parameters. What it costs: the scheme is **biased**. Full truncation is the
-//! least-biased member of the fix-it-by-truncating family, not an exact-law
-//! method, and this type does not claim otherwise.
-//!
-//! ## The exact-law alternatives, and why they are not here
-//!
-//! Two routes in the literature preserve the law rather than merely the sign,
-//! and both are worth having:
-//!
-//! - **Abi Jaber, Bayer & Breneis (2024)**, *State spaces of multifactor
-//!   approximations of nonnegative Volterra processes*, arXiv:2412.17526 —
-//!   the state space of the multifactor approximation is an explicit linear
-//!   transformation of the nonnegative orthant, so the invariant region can be
-//!   enforced exactly instead of by clipping.
-//! - **Abi Jaber (2024)**, arXiv:2412.11264 — simulate the **integrated**
-//!   square-root process first; nonnegativity then comes for free, and the
-//!   Inverse-Gaussian limit is exact in two regimes with a single time step.
-//!   That exactness result is for the **classical** square-root process.
-//! - **Abi Jaber & Attal (2025)**, *iVi*, arXiv:2504.19885 — the Volterra
-//!   generalisation of the same idea, which proves **weak convergence** with
-//!   few time steps rather than exactness. The distinction matters: citing the
-//!   two together would credit iVi with a stronger result than it claims.
-//!
-//! Both hinge on explicit constructions from those papers, and implementing
-//! either from a paraphrase would produce something that resembles the method
-//! without being it. They are deferred deliberately, not overlooked.
-//!
-//! ## Hitting zero is not necessarily a bug
-//!
-//! Friesen, Gerhold & Wiedermann (2026), *Boundary behaviour of the Volterra
-//! square-root process*, arXiv:2606.07290, give a **time-dependent** Feller
-//! condition, and show that for rough kernels the boundary genuinely **can**
-//! be attained. A path touching zero is therefore a property of the model at
-//! those parameters, not evidence of a broken scheme.
+//! Reference: Abi Jaber & El Euch, arXiv:1803.00477, the Volterra Heston model
+//! Reference: Lord, Koekkoek & van Dijk (2010), Quantitative Finance 10(2), full truncation
+//! Reference: Abi Jaber, Bayer & Breneis (2024), arXiv:2412.17526, the exact state space
+//! Reference: Abi Jaber (2024), arXiv:2412.11264, the integrated classical square-root process
+//! Reference: Abi Jaber & Attal (2025), arXiv:2504.19885, iVi: weak convergence, not exactness
+//! Reference: Friesen, Gerhold & Wiedermann (2026), arXiv:2606.07290, rough kernels reach zero
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -69,7 +21,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
-use crate::rough::markov_lift::RoughSimd;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -77,6 +30,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volterra square-root process with a nonnegativity-preserving scheme.
+#[derive(Clone, Debug)]
 pub struct VolterraSquareRoot<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -91,74 +45,34 @@ where
   pub nu: T,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Initial variance $V_0 \ge 0$ (defaults to $\theta$ when omitted, the
-  /// stationary choice, rather than to zero — starting a square-root process
-  /// exactly at its absorbing-looking boundary is almost never what a caller
-  /// means).
-  pub v0: Option<T>,
-  /// Simulation horizon $[0, t]$ (defaults to $1$ when omitted).
+  /// Initial variance $V_0 \ge 0$.
+  pub v0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
-  /// The Markov lift of `kernel` at the grid spacing: the host sampler steps
-  /// it and a device replays it node by node, so both run one object. The
-  /// grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
+  /// The Markov lift of `kernel` at the grid spacing, which the host steps and a device replays
+  /// node by node. The grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
   pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSquareRoot<T, K, S>
-where
-  K: VolterraKernel<T> + Send + Sync,
-  S: Clone,
-{
-  /// Snapshot semantics, matching every other process in this crate: the
-  /// clone resumes the same stream rather than advancing it, so bumping one
-  /// parameter on a clone isolates that parameter under common random numbers.
-  fn clone(&self) -> Self {
-    Self {
-      backend: Cpu,
-      kernel: self.kernel.clone(),
-      kappa: self.kappa,
-      theta: self.theta,
-      nu: self.nu,
-      n: self.n,
-      v0: self.v0,
-      t: self.t,
-      seed: self.seed.clone(),
-      lift: self.lift.clone(),
-    }
-  }
-}
-
 impl<T: FloatExt, K, S: SeedExt> VolterraSquareRoot<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// # Panics
-  /// - if `n < 2`
-  /// - if `kappa`, `nu` are not strictly positive, or `theta` is negative
-  /// - if `v0` is given and negative
+  /// Panics unless `kappa > 0`, `nu > 0`, `theta >= 0`, `v0 >= 0`, `n >= 2`, a given `t` is
+  /// positive and finite, and every parameter is finite.
   #[must_use]
-  pub fn new(
-    kernel: K,
-    kappa: T,
-    theta: T,
-    nu: T,
-    n: usize,
-    v0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa > T::zero(), "kappa must be strictly positive");
-    assert!(nu > T::zero(), "nu must be strictly positive");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    if let Some(v) = v0 {
-      assert!(v >= T::zero(), "v0 must be non-negative");
-    }
+  pub fn new(kernel: K, kappa: T, theta: T, nu: T, n: usize, v0: T, t: Option<T>, seed: S) -> Self {
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_nu(nu);
+    Self::check_v0(v0);
+    check_t(t);
+    check_n(n);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -184,56 +98,77 @@ impl<T: FloatExt, K, S: SeedExt, B> VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Replace `kappa`, all else unchanged.
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+    require!(kappa > T::zero(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+    require!(theta >= T::zero(), theta);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+    require!(nu > T::zero(), nu);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  /// Replace `kappa`; panics unless `kappa > 0` and `kappa` is finite.
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(kappa > T::zero(), "kappa must be strictly positive");
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta >= 0` and `theta` is finite.
   #[must_use]
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(theta >= T::zero(), "theta must be non-negative");
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu > 0` and `nu` is finite.
   #[must_use]
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu > T::zero(), "nu must be strictly positive");
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   #[must_use]
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
   }
 
-  /// Replace the initial variance $V_0$, all else unchanged.
+  /// Replace the initial variance $V_0$; panics unless `v0 >= 0` and `v0` is finite.
   #[must_use]
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(v0 >= T::zero(), "v0 must be non-negative");
-    self.v0 = Some(v0);
+    Self::check_v0(v0);
+    self.v0 = v0;
     self
   }
 
-  /// Replace the horizon, all else unchanged.
+  /// Replace `t`; panics unless `t`, when given, is positive and finite.
   #[must_use]
-  pub fn with_horizon(mut self, t: T) -> Self {
-    self.t = Some(t);
-    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
+    self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
   }
 
-  /// Replace the seed strategy, all else unchanged.
+  /// Replace the seed strategy.
   #[must_use]
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
@@ -241,7 +176,7 @@ where
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -255,7 +190,7 @@ where
   }
 
   fn initial_value(&self) -> T {
-    self.v0.unwrap_or(self.theta)
+    self.v0
   }
 
   fn grid_points(&self) -> usize {
@@ -275,7 +210,7 @@ where
       drift_scale: self.lift.one_minus_e_over_x.as_slice().expect("contiguous"),
       drift_boundary: self.lift.drift_boundary,
       diffusion_boundary: self.lift.diffusion_boundary,
-      x0: self.v0.unwrap_or(self.theta),
+      x0: self.v0,
     })
   }
 
@@ -290,9 +225,16 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
+backend_switch!([T: FloatExt, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VolterraSquareRoot<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -306,7 +248,7 @@ where
   fn sampler(&self) -> VolterraSquareRootSampler<T, K, S> {
     VolterraSquareRootSampler {
       n: self.n,
-      v0: self.v0.unwrap_or(self.theta),
+      v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,
       nu: self.nu,
@@ -320,9 +262,8 @@ where
     }
   }
 
-  /// Through the Euler engine: on a device the lift is replayed in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device replays the lift in its kernel, the host runs this
+  /// process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -354,7 +295,8 @@ where
 
 /// Reusable [`VolterraSquareRoot`] sampling state.
 #[doc(hidden)]
-pub struct VolterraSquareRootSampler<T: FloatExt + RoughSimd, K, S: SeedExt>
+#[derive(Debug)]
+pub struct VolterraSquareRootSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -367,7 +309,7 @@ where
   gn: Gn<T, S>,
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> VolterraSquareRootSampler<T, K, S>
+impl<T: FloatExt, K, S: SeedExt> VolterraSquareRootSampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -390,14 +332,8 @@ where
   }
 }
 
-/// $x^+ = \max(x, 0)$, written as an explicit comparison rather than
-/// `T::max`.
-///
-/// The difference matters: `f64::max` returns the non-NaN operand, so a NaN
-/// state would be silently rewritten to `0` and the failure that produced it
-/// would vanish. Here a NaN falls through unchanged and surfaces in the
-/// output, where a caller can see it. This crate has twice shipped bugs that
-/// `f64::max` hid in exactly this way.
+/// $x^+ = \max(x, 0)$ as an explicit comparison: `T::max` returns the non-NaN operand and would
+/// rewrite a NaN state to `0`, where here it falls through to the output.
 #[inline]
 fn truncate<T: FloatExt>(x: T) -> T {
   if x > T::zero() {
@@ -409,7 +345,12 @@ fn truncate<T: FloatExt>(x: T) -> T {
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T> for VolterraSquareRootSampler<T, K, S>
+impl<T: FloatExt, K, S: SeedExt> crate::traits::Sealed for VolterraSquareRootSampler<T, K, S> where
+  K: VolterraKernel<T> + Send + Sync
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt> PathSampler<T> for VolterraSquareRootSampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -429,5 +370,4 @@ where
 }
 
 #[cfg(test)]
-#[path = "square_root_tests.rs"]
 mod tests;

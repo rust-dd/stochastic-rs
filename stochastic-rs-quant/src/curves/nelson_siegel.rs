@@ -1,4 +1,3 @@
-#![allow(clippy::doc_lazy_continuation)]
 //! Nelson-Siegel parametric yield curve model.
 //!
 //! Reference: Nelson & Siegel, "Parsimonious Modeling of Yield Curves",
@@ -8,12 +7,12 @@
 //! Journal of Econometrics, 130(2), 337-364 (2006).
 //!
 //! $$
-//! y(\tau) = \beta_0
-//!   + \beta_1 \frac{1 - e^{-\tau/\lambda}}{\tau/\lambda}
-//!   + \beta_2 \left(\frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} - e^{-\tau/\lambda}\right)
+//! y(\tau) = \beta_0 +
+//!   \beta_1 \frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} +
+//!   \beta_2 \left(\frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} - e^{-\tau/\lambda}\right)
 //! $$
 
-use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::types::CurvePoint;
 use crate::traits::RealExt;
@@ -59,7 +58,7 @@ impl<T: RealExt> NelsonSiegel<T> {
     (T::one() - (-x).exp()) / x - (-x).exp()
   }
 
-  /// Compute the zero rate at maturity `tau`.
+  /// Zero rate `y(τ)` of the formula in the module doc.
   pub fn zero_rate(&self, tau: T) -> T {
     self.beta0 + self.beta1 * self.slope_loading(tau) + self.beta2 * self.curvature_loading(tau)
   }
@@ -81,7 +80,7 @@ impl<T: RealExt> NelsonSiegel<T> {
   }
 
   /// Generate curve points at the given maturities.
-  pub fn curve_points(&self, maturities: &Array1<T>) -> Vec<CurvePoint<T>> {
+  pub fn curve_points(&self, maturities: ArrayView1<T>) -> Vec<CurvePoint<T>> {
     maturities
       .iter()
       .map(|&tau| CurvePoint {
@@ -92,7 +91,7 @@ impl<T: RealExt> NelsonSiegel<T> {
   }
 
   /// Fit the model to market zero rates using grid search on lambda + OLS for betas (Diebold-Li).
-  pub fn fit(maturities: &Array1<T>, market_rates: &Array1<T>) -> Self {
+  pub fn fit(maturities: ArrayView1<T>, market_rates: ArrayView1<T>) -> Self {
     let n = maturities.len();
     let mut best_sse = T::from_f64_fast(f64::MAX);
     let mut best = Self::new(T::zero(), T::zero(), T::zero(), T::one());
@@ -125,7 +124,7 @@ impl<T: RealExt> NelsonSiegel<T> {
         }
       }
 
-      if let Some(betas) = super::linalg::solve_linalg::<3>(&xtx_data, &xty_data) {
+      if let Some(betas) = crate::linalg::solve_small::<3>(&xtx_data, &xty_data) {
         let candidate = Self::new(
           T::from_f64_fast(betas[0]),
           T::from_f64_fast(betas[1]),

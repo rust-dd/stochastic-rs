@@ -1,38 +1,20 @@
-//! Kyle (1985) strategic-trading equilibria with asymmetric information.
-//!
-//! Single-period: an insider observes the terminal value $\tilde v$ and submits
-//! a market order $x$ to a competitive risk-neutral market maker who only sees
-//! the aggregate order flow $y = x + \tilde u$ with noise $\tilde u \sim
-//! \mathcal N(0, \sigma_u^2)$. The pricing rule $p = p_0 + \lambda y$ and
-//! insider's strategy $x = \beta(\tilde v - p_0)$ form a Bayesian-Nash
-//! equilibrium with
+//! Kyle's insider equilibrium, $p = p_0 + \lambda y$ and $x = \beta(\tilde v - p_0)$. Multi-period:
+//! $\gamma_n$ backward from $\gamma_N = 0$, then $\Sigma_n = \Sigma_{n-1}/(2(1-\gamma_n))$ forward.
 //!
 //! $$
 //! \beta = \sqrt{\sigma_u^2 / \Sigma_0},\qquad
 //! \lambda = \tfrac{1}{2}\sqrt{\Sigma_0 / \sigma_u^2},\qquad
-//! \mathbb E[\pi] = \tfrac{1}{2}\sqrt{\Sigma_0\,\sigma_u^2}.
+//! \mathbb E[\pi] = \tfrac{1}{2}\sqrt{\Sigma_0\,\sigma_u^2}
 //! $$
 //!
-//! Multi-period: the same structure with $\Sigma_n$, $\beta_n$, $\lambda_n$
-//! determined by the Kyle 1985 / Cetin-Larsen 2023 backward recursion
-//! (Theorem 2.1, eq. 2.4). Letting $\gamma_n := \alpha_n \lambda_n$ with
-//! terminal $\gamma_N = 0$ and $\Delta = 1$, the equilibrium is solved by:
+//! $$
+//! 8\gamma_n^2(1-\gamma_n)(1 - 2\gamma_{n+1}) = 1 - 2\gamma_n,\qquad
+//! \lambda_n^2 = \frac{(1-2\gamma_n)\,\Sigma_{n-1}}{4(1-\gamma_n)^2 \sigma_u^2},\qquad
+//! \beta_n = \frac{1-2\gamma_n}{2\lambda_n(1-\gamma_n)}
+//! $$
 //!
-//! 1. Backward induction in $\gamma_n$: $\gamma_n \in (0, 1/2)$ is the unique
-//!    root of $8\gamma^2(1-\gamma)(1 - 2\gamma_{n+1}) = 1 - 2\gamma$ for the
-//!    given $\gamma_{n+1}$. (Derivation: combine eq. 2.4's λ, β, α formulas
-//!    after substituting $\beta_n^2 \Sigma_{n-1} \Delta + \sigma_u^2 = \beta_n
-//!    \Sigma_{n-1}/\lambda_n$ and eliminating β.)
-//! 2. Forward induction in Σ: $\Sigma_n = \Sigma_{n-1} / (2(1-\gamma_n))$.
-//! 3. Per-period $(\lambda_n, \beta_n)$ from explicit formulas:
-//!    $\lambda_n^2 = (1-2\gamma_n)\Sigma_{n-1}/(4(1-\gamma_n)^2 \sigma_u^2)$,
-//!    $\beta_n = (1-2\gamma_n)/(2\lambda_n(1-\gamma_n))$.
-//!
-//! References:
-//! - Kyle, "Continuous Auctions and Insider Trading", Econometrica, 53(6),
-//!   1315-1335 (1985). DOI: 10.2307/1913210
-//! - Cetin & Larsen, "Is Kyle's equilibrium model stable?", arXiv:2307.09392
-//!   (2023), Theorem 2.1.
+//! Reference: Kyle (1985), Econometrica 53(6), 1315–1335, DOI 10.2307/1913210
+//! Reference: Cetin & Larsen (2023), arXiv:2307.09392, Theorem 2.1, eq. 2.4
 
 use crate::traits::RealExt;
 
@@ -71,16 +53,8 @@ pub fn single_period_kyle<T: RealExt>(prior_variance: T, noise_variance: T) -> K
   }
 }
 
-/// Multi-period Kyle equilibrium with `n_periods` rounds and i.i.d.
-/// per-period noise variance `noise_variance_per_round`.
-///
-/// Returns the per-round equilibrium $(\beta_n, \lambda_n, \Sigma_n,
-/// \mathbb E[\pi_n])$ in chronological order, found by the Cetin-Larsen 2023
-/// Theorem 2.1 backward recursion described in the module-level docs.
-///
-/// At `n_periods = 1` this matches [`single_period_kyle`] exactly (catches
-/// the previous broken `α_{n-1} = (1-√α_n)/2` shortcut which produced
-/// $\beta\lambda = 0.25$ instead of the correct Kyle product $0.5$).
+/// The `n_periods`-round Kyle equilibrium $(\beta_n, \lambda_n, \Sigma_n, \mathbb E[\pi_n])$,
+/// round by round, from Cetin–Larsen (2023), Thm 2.1; one round reproduces [`single_period_kyle`].
 pub fn multi_period_kyle<T: RealExt>(
   prior_variance: T,
   noise_variance_per_round: T,
@@ -132,13 +106,8 @@ pub fn multi_period_kyle<T: RealExt>(
   out
 }
 
-/// Solve $\gamma_n \in (0, 1/2)$ from the cubic
-/// $8\gamma^2(1-\gamma)(1 - 2\gamma_{\text{next}}) = 1 - 2\gamma$.
-///
-/// At $\gamma = 0$ the LHS is 0 and the RHS is $1$, so the residual is negative;
-/// at $\gamma = 1/2$ the LHS is $(1 - 2\gamma_{\text{next}}) \in (0, 1]$ and the
-/// RHS is 0, so the residual is positive. Bisection on this monotone-in-sign
-/// bracket converges to the unique physical root.
+/// The root $\gamma \in (0, 1/2)$ of $8\gamma^2(1-\gamma)(1 - 2\gamma_{\text{next}}) = 1 - 2\gamma$
+/// by bisection: the residual is negative at $0$ and positive at $1/2$.
 fn solve_gamma_cubic<T: RealExt>(g_next: T) -> T {
   let half = T::from_f64_fast(0.5);
   let two = T::from_f64_fast(2.0);
@@ -219,10 +188,7 @@ mod tests {
     }
   }
 
-  /// Decisive analytic-benchmark test: the multi-period recursion at N=1 must
-  /// reproduce the single-period closed form exactly. The previous buggy
-  /// `(1 - √α_n)/2` recursion gave `λ = 1.0, β = 0.25` at N=1 instead of the
-  /// canonical `λ = 0.5, β = 1.0` (off by factor of 2 in λ and 4 in β).
+  /// One round of the multi-period recursion reproduces the single-period `λ = 0.5`, `β = 1.0`.
   #[test]
   fn multi_period_one_round_matches_single_period() {
     let prior = 0.04_f64;
@@ -260,14 +226,8 @@ mod tests {
     );
   }
 
-  /// Two-period analytic benchmark from the Cetin-Larsen 2023 Theorem 2.1
-  /// recursion with $\Sigma_0 = \sigma_u^2 = 1$. The terminal γ_N = 0 leads to
-  /// γ_1 = unique root of $8\gamma^3 - 8\gamma^2 - 2\gamma + 1 = 0$ in
-  /// (0, 1/2), which is γ_1 ≈ 0.27750. The remaining quantities follow:
-  /// λ_1 ≈ 0.4617, β_1 ≈ 0.6669, Σ_1 ≈ 0.6920;
-  /// λ_2 ≈ 0.4159, β_2 ≈ 1.2022, Σ_2 ≈ 0.3460.
-  /// At each round β_n λ_n is below 1/2 (the static second-order condition),
-  /// and at the terminal round β_N λ_N = 1/2 exactly.
+  /// Two rounds at $\Sigma_0 = \sigma_u^2 = 1$: γ₁ ≈ 0.27750 is the root of
+  /// $8\gamma^3 - 8\gamma^2 - 2\gamma + 1 = 0$ in (0, 1/2), and β_N λ_N = 1/2 at the last round.
   #[test]
   fn multi_period_two_round_matches_canonical() {
     let eqs = multi_period_kyle(1.0_f64, 1.0, 2);

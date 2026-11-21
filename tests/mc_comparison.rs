@@ -1,22 +1,18 @@
-//! Comparison tests for the `stochastic::mc` module.
-//!
-//! Validates each Monte Carlo method against analytical or published reference
-//! values. Run with:
-//!
-//! ```bash
-//! cargo test --release mc_comparison -- --nocapture --test-threads=1
-//! ```
+//! The `stochastic::mc` estimators, the QMC sequences and quant's `BermudanLsmPricer` against
+//! analytical or published values.
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::distributions::qmc::HaltonSeq;
+use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::distributions::special::norm_cdf;
+use stochastic_rs::quant::pricing::BermudanLsmPricer;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc;
-use stochastic_rs::stochastic::mc::halton::HaltonSeq;
-use stochastic_rs::stochastic::mc::lsm::Lsm;
 use stochastic_rs::stochastic::mc::mlmc::Mlmc;
-use stochastic_rs::stochastic::mc::sobol::SobolSeq;
 use stochastic_rs::traits::FloatExt;
 
 /// Black-Scholes call price (analytical reference).
@@ -49,22 +45,11 @@ fn plain_mc(
   dim: usize,
   payoff: &dyn Fn(&Array1<f64>) -> f64,
 ) -> mc::McEstimate<f64> {
-  let mut sum = 0.0;
-  let mut sum_sq = 0.0;
+  let mut acc = mc::Welford::default();
   for _ in 0..n_paths {
-    let z = f64::normal_array(dim, 0.0, 1.0);
-    let y = payoff(&z);
-    sum += y;
-    sum_sq += y * y;
+    acc.push(payoff(&f64::normal_array(dim, 0.0, 1.0)));
   }
-  let n = n_paths as f64;
-  let mean = sum / n;
-  let var = sum_sq / n - mean * mean;
-  mc::McEstimate {
-    mean,
-    std_err: (var / n).sqrt(),
-    n_samples: n_paths,
-  }
+  mc::McEstimate::from(&acc)
 }
 
 // 1. Variance reduction vs BS analytical
@@ -82,7 +67,7 @@ fn antithetic_vs_bs_call() {
   let bs = bs_call(S0, K, R, SIGMA, TAU);
   let payoff = gbm_call_payoff(S0, K, R, SIGMA, TAU);
 
-  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff);
+  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff, &Deterministic::new(11));
   let plain = plain_mc(N_PATHS, 1, &payoff);
 
   let err = (av.mean - bs).abs();
@@ -119,7 +104,14 @@ fn control_variate_vs_bs_call() {
   };
   let control_mean = S0; // E[e^{-rT} S_T] = S_0 under risk-neutral measure
 
-  let cv = mc::control_variates::estimate(N_PATHS, 1, payoff, control, control_mean);
+  let cv = mc::control_variates::estimate(
+    N_PATHS,
+    1,
+    payoff,
+    control,
+    control_mean,
+    &Deterministic::new(12),
+  );
   let plain = plain_mc(N_PATHS, 1, &gbm_call_payoff(S0, K, R, SIGMA, TAU));
 
   let err = (cv.mean - bs).abs();
@@ -152,7 +144,7 @@ fn importance_sampling_vs_bs_call() {
 
   // Modest shift towards positive tail for an ATM call
   let shift = Array1::from_vec(vec![0.5]);
-  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift);
+  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift, &Deterministic::new(13));
 
   let err = (is.mean - bs).abs();
   println!(
@@ -184,8 +176,9 @@ fn stratified_vs_bs_call() {
   let mut strat_errors = Vec::new();
   let mut plain_errors = Vec::new();
 
+  let reps_seed = Deterministic::new(14);
   for _ in 0..n_reps {
-    let s = mc::stratified::estimate(n_per_rep, 1, &payoff);
+    let s = mc::stratified::estimate(n_per_rep, 1, &payoff, &reps_seed);
     let p = plain_mc(n_per_rep, 1, &payoff);
     strat_errors.push((s.mean - bs).abs());
     plain_errors.push((p.mean - bs).abs());
@@ -203,7 +196,7 @@ fn stratified_vs_bs_call() {
   );
 
   // Single full run should match BS
-  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff);
+  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff, &Deterministic::new(15));
   let err = (strat.mean - bs).abs();
   println!(
     "Strat full: mean={:.4}, err={:.4}, BS={bs:.4}",
@@ -344,11 +337,8 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   let tau = 1.0;
   let bs = bs_call(s0, k, r, sigma, tau);
 
-  // Fixed-level sampling to measure α and β. The stream is seeded through the
-  // distribution constructor because `fill_slice` discards any `Rng` handed to
-  // it — an unseeded stream made the rate estimates below a fresh coin flip on
-  // every run.
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2718));
+  // Fixed-level sampling to measure α and β, seeded: an unseeded stream made the rate estimates a coin flip.
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(2718));
   let n_per_level = 20_000;
   let max_level = 6;
   let mut level_means = Vec::new();
@@ -431,6 +421,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
 
   // Full MLMC estimate vs BS
   let mlmc = Mlmc::new(0.5, 2, 8, 2000);
+  let normals = std::cell::RefCell::new(normals);
   let sampler = |level: usize, n: usize| -> Array1<f64> {
     let m_fine = 2usize.pow(level as u32 + 1);
     let dt_fine = tau / m_fine as f64;
@@ -440,7 +431,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let mut z = vec![0.0_f64; m_fine];
 
     for i in 0..n {
-      normals.fill_slice(&mut z);
+      normals.borrow_mut().fill_slice(&mut z);
       let mut s_f = s0;
       for &zj in z.iter() {
         s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;
@@ -533,8 +524,10 @@ fn lsm_vs_longstaff_schwartz_table1() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(paths.view(), &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();
@@ -574,8 +567,10 @@ fn lsm_vs_ls2001_high_vol() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(paths.view(), &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();

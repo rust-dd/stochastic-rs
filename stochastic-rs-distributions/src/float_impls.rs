@@ -5,17 +5,30 @@ use std::cell::RefCell;
 
 use ndarray::Array1;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::normal::SimdNormal;
+use crate::seeded::Seeded;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
 
 thread_local! {
-  static STANDARD_NORMAL_F64: RefCell<Option<Box<SimdNormal<f64, 64>>>> = const { RefCell::new(None) };
-  static STANDARD_NORMAL_F32: RefCell<Option<Box<SimdNormal<f32, 64>>>> = const { RefCell::new(None) };
+  static STANDARD_NORMAL_F64: RefCell<Option<Seeded<SimdNormal<f64>>>> = const { RefCell::new(None) };
+  static STANDARD_NORMAL_F32: RefCell<Option<Seeded<SimdNormal<f32>>>> = const { RefCell::new(None) };
   static FGN_SCRATCH_F64: RefCell<Vec<Complex<f64>>> = const { RefCell::new(Vec::new()) };
   static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Frees the calling thread's fGN FFT workspace, skipping one a transform holds; the next transform
+/// grows it to its own length.
+pub fn release_fgn_scratch() {
+  FGN_SCRATCH_F64.with(free_unless_held);
+  FGN_SCRATCH_F32.with(free_unless_held);
+}
+
+fn free_unless_held<T>(scratch: &RefCell<Vec<T>>) {
+  if let Ok(mut scratch) = scratch.try_borrow_mut() {
+    *scratch = Vec::new();
+  }
 }
 
 impl RealExt for f64 {
@@ -76,8 +89,8 @@ impl FloatExt for f64 {
     }
     STANDARD_NORMAL_F64.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
-      dist.fill_standard_fast(out);
+      let stream = slot.get_or_insert_with(Seeded::default);
+      SimdNormal::<f64>::fill_standard(&mut stream.state_mut().rng, out);
     });
   }
 
@@ -91,8 +104,11 @@ impl FloatExt for f64 {
     })
   }
 
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    assert!(std_dev > 0.0, "std_dev must be positive");
+  fn normal_array(n: usize, mu: Self, sigma: Self) -> Array1<Self> {
+    assert!(
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
+    );
     let mut out = Array1::<f64>::zeros(n);
     if n == 0 {
       return out;
@@ -102,7 +118,7 @@ impl FloatExt for f64 {
       .expect("normal_array output must be contiguous");
     Self::fill_standard_normal_slice(out_slice);
     for x in out_slice.iter_mut() {
-      *x = mean + std_dev * *x;
+      *x = mu + sigma * *x;
     }
     out
   }
@@ -115,8 +131,8 @@ impl FloatExt for f32 {
     }
     STANDARD_NORMAL_F32.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
-      dist.fill_standard_fast(out);
+      let stream = slot.get_or_insert_with(Seeded::default);
+      SimdNormal::<f32>::fill_standard(&mut stream.state_mut().rng, out);
     });
   }
 
@@ -130,8 +146,11 @@ impl FloatExt for f32 {
     })
   }
 
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    assert!(std_dev > 0.0, "std_dev must be positive");
+  fn normal_array(n: usize, mu: Self, sigma: Self) -> Array1<Self> {
+    assert!(
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
+    );
     let mut out = Array1::<f32>::zeros(n);
     if n == 0 {
       return out;
@@ -141,8 +160,36 @@ impl FloatExt for f32 {
       .expect("normal_array output must be contiguous");
     Self::fill_standard_normal_slice(out_slice);
     for x in out_slice.iter_mut() {
-      *x = mean + std_dev * *x;
+      *x = mu + sigma * *x;
     }
     out
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A released workspace regrows to what the next transform asks for, not to the largest seen.
+  #[test]
+  fn a_released_fgn_scratch_regrows_only_to_the_next_length() {
+    assert_eq!(f64::with_fgn_complex_scratch(1 << 16, |s| s.len()), 1 << 16);
+    assert_eq!(f32::with_fgn_complex_scratch(1 << 16, |s| s.len()), 1 << 16);
+    release_fgn_scratch();
+    assert_eq!(f64::with_fgn_complex_scratch(8, |s| s.len()), 8);
+    assert_eq!(f32::with_fgn_complex_scratch(8, |s| s.len()), 8);
+    assert!(FGN_SCRATCH_F64.with_borrow(Vec::capacity) < 1 << 16);
+    assert!(FGN_SCRATCH_F32.with_borrow(Vec::capacity) < 1 << 16);
+  }
+
+  /// A release that runs inside a transform skips the workspace that transform holds.
+  #[test]
+  fn a_release_inside_a_transform_keeps_its_workspace() {
+    let len = f64::with_fgn_complex_scratch(64, |s| {
+      release_fgn_scratch();
+      s.len()
+    });
+    assert_eq!(len, 64);
+    assert!(FGN_SCRATCH_F64.with_borrow(Vec::capacity) >= 64);
   }
 }

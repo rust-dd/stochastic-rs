@@ -1,15 +1,10 @@
-//! Geometric Brownian motion, against the moments of the log-normal law.
-//!
-//! `Gbm` steps Euler-Maruyama on the price, `S ← S(1 + μΔt + σΔW)`, so the
-//! chain's own moments are exact products over its `m` steps,
-//! `E[S_T] = S₀(1 + μΔt)ᵐ` and `E[S_T²] = S₀²((1 + μΔt)² + σ²Δt)ᵐ`, and
-//! each case holds the diffusion's closed form widened by exactly the gap to
-//! them. `GbmLog` steps the logarithm exactly, so its law is the diffusion's
-//! own and needs no widening.
+//! Geometric Brownian motion against the log-normal moments. `Gbm` steps Euler-Maruyama, so each
+//! band is widened by the gap to the chain's exact moments; `GbmLog` is exact and needs none.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::holds;
@@ -27,15 +22,8 @@ const STEPS: usize = 256;
 #[test]
 fn gbm_terminal_moments_match_the_lognormal_law() {
   let (mu, sigma, s0, t) = (0.05, 0.2, 100.0, 1.0);
-  let paths = Gbm::<f64, _>::new(
-    mu,
-    sigma,
-    STEPS + 1,
-    Some(s0),
-    Some(t),
-    Deterministic::new(21),
-  )
-  .sample_par(PATHS);
+  let paths =
+    Gbm::<f64, _>::new(mu, sigma, STEPS + 1, s0, Some(t), Deterministic::new(21)).sample_par(PATHS);
   let ends = terminals(&paths);
   let dt = t / STEPS as f64;
   let m = STEPS as i32;
@@ -66,13 +54,10 @@ fn gbm_terminal_moments_match_the_lognormal_law() {
 fn gbm_log_is_exactly_lognormal() {
   let (mu, sigma, s0, t) = (0.03, 0.35, 50.0, 2.0);
   let paths = GbmLog::<f64, _>::new(
-    Some(mu),
-    None,
-    None,
-    None,
+    Drift::Mu(mu),
     sigma,
     STEPS + 1,
-    Some(s0),
+    s0,
     Some(t),
     Deterministic::new(22),
   )

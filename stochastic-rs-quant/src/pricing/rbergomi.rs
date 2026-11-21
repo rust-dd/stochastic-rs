@@ -14,9 +14,10 @@
 //! - Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904
 //! - McCrickerd & Pakkanen (2018), DOI: 10.1080/14697688.2018.1459812, arXiv:1708.02563
 
+use stochastic_rs_stochastic::mc::McEstimate;
+
 use crate::calibration::rbergomi::RBergomiParams;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -194,10 +195,7 @@ mod tests {
     );
   }
 
-  /// Regression: the pricer must thread `q` to `simulate_rbergomi_terminal_samples`.
-  /// Pre-fix the `_q` argument was discarded, so the simulated forward was
-  /// `S_0·e^(r·T)` rather than `S_0·e^((r-q)·T)`. With seeded RNG this gave
-  /// identical prices for q=0 and q>0 — a silent dynamics bug.
+  /// The pricer passes `q` to the simulation, so the forward is `S_0 e^{(r−q)T}`.
   #[test]
   fn rbergomi_pricer_respects_dividend_yield() {
     let params = RBergomiParams {

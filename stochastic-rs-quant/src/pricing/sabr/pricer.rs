@@ -1,105 +1,48 @@
-use implied_vol::DefaultSpecialFn;
-use implied_vol::ImpliedBlackVolatility;
-
 use crate::OptionType;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::sabr::hagan::forward_fx;
 use crate::pricing::sabr::hagan::fx_delta_from_forward;
 use crate::pricing::sabr::hagan::hagan_implied_vol;
+use crate::pricing::sabr::params::SabrParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Sabr (Hagan 2002, general β) model parameters.
-///
-/// The struct holds **model state only** — the four Sabr parameters. Spot,
-/// strike, rate, dividend yield and maturity are the pricing *query* and
-/// travel as arguments to [`ModelPricer::price_call`], so one instance
-/// prices a whole strike/maturity grid. Pricing plugs the Hagan (2002)
-/// general-β implied vol into Black-Scholes at Merton (1973) cost of carry
-/// (`b = r - q`), which under the FX reading is Garman-Kohlhagen with
-/// `(r, q) = (r_d, r_f)`.
-///
-/// This type absorbed the former `SabrModel`, which held these same four
-/// fields and priced the same way: once `SabrPricer` stopped bundling
-/// market data, the two were the same struct twice. See the 5b report.
+/// Hagan (2002) general-β SABR: its implied vol through Black–Scholes at carry `b = r − q`, which
+/// is Garman–Kohlhagen under the FX reading `(r, q) = (r_d, r_f)`.
 ///
 /// ```
+/// use stochastic_rs_quant::pricing::sabr::SabrParams;
 /// use stochastic_rs_quant::pricing::sabr::SabrPricer;
 /// use stochastic_rs_quant::traits::ModelPricer;
 ///
-/// let model = SabrPricer::new(0.2, 1.0, 0.4, -0.3);
+/// let model = SabrPricer::new(SabrParams { alpha: 0.2, beta: 1.0, rho: -0.3, nu: 0.4 });
 /// let atm = model.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
 /// let otm = model.price_call(100.0, 130.0, 0.05, 0.0, 1.0);
 /// assert!(atm > otm);
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct SabrPricer {
-  /// Model shape/loading parameter.
-  pub alpha: f64,
-  /// Cev exponent (0 = normal, 1 = lognormal).
-  pub beta: f64,
-  /// Volatility-of-volatility parameter.
-  pub nu: f64,
-  /// Correlation parameter.
-  pub rho: f64,
+  params: SabrParams,
 }
 
 impl SabrPricer {
-  /// Validating constructor.
-  ///
-  /// Two of these four already had a guard and two did not, and the split
-  /// was not deliberate: [`hagan_implied_vol`] rejects `alpha` and `rho`,
-  /// but one layer down and one call later, while `beta` and `nu` reached
-  /// the expansion unchecked and produced finite prices. At `beta = 5` the
-  /// at-the-money call returns the spot itself — the no-arbitrage ceiling,
-  /// which reads as a legitimate deep-in-the-money value.
-  ///
-  /// The messages here deliberately avoid
-  /// [`hagan_implied_vol`]'s wording, so neither guard's message is a
-  /// substring of the other's and a `should_panic` anchored on one cannot
-  /// be satisfied by the other firing. The accessor keeps its own check:
-  /// the fields are `pub`, so this is a front door and not a wall.
-  ///
-  /// # Panics
-  /// - if `alpha` is not strictly positive, or `NaN` — a volatility level
-  /// - if `beta` is outside `[0, 1]`, or `NaN` — the Cev exponent, `0` for
-  ///   the normal and `1` for the lognormal model
-  /// - if `nu` is negative or `NaN` — a vol-of-vol
-  /// - if `rho` is outside the *open* interval `(-1, 1)`, or `NaN`. The
-  ///   bound matches [`hagan_implied_vol`]'s exactly: its expansion carries
-  ///   a `1 - rho` denominator, so admitting `±1` here would only defer the
-  ///   same panic.
-  ///
-  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s
-  /// projection box — `alpha, nu >= 1e-6`, `beta` in `[0, 1]`, `rho`
-  /// clamped to `±0.9999` — lies strictly inside all four, so no legal
-  /// calibration iterate can trip this.
-  ///
-  /// [`hagan_implied_vol`]: crate::pricing::sabr::hagan_implied_vol
-  pub fn new(alpha: f64, beta: f64, nu: f64, rho: f64) -> Self {
-    assert!(
-      alpha > 0.0,
-      "SabrPricer::new: alpha must be a strictly positive volatility level (got {alpha})"
-    );
-    assert!(
-      (0.0..=1.0).contains(&beta),
-      "SabrPricer::new: beta must be in [0, 1] (got {beta})"
-    );
-    assert!(
-      nu >= 0.0,
-      "SabrPricer::new: nu must be a non-negative vol-of-vol (got {nu})"
-    );
-    assert!(
-      rho > -1.0 && rho < 1.0,
-      "SabrPricer::new: rho must be in the open interval (-1, 1) (got {rho})"
-    );
-    Self {
+  /// Panics unless `params` passes [`SabrParams::new`], whose checks hold everywhere inside
+  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s projection box.
+  pub fn new(params: SabrParams) -> Self {
+    let SabrParams {
       alpha,
       beta,
-      nu,
       rho,
+      nu,
+    } = params;
+    Self {
+      params: SabrParams::new(alpha, beta, rho, nu),
     }
+  }
+
+  pub fn params(&self) -> SabrParams {
+    self.params
   }
 
   /// Forward at one query point, `s·e^{(r-q)τ}`. Under the FX reading
@@ -108,35 +51,10 @@ impl SabrPricer {
     forward_fx(s, tau, r, q)
   }
 
-  /// Implied volatility from the Hagan (2002) general-β expansion,
-  /// evaluated at `k` against [`forward`](Self::forward).
-  ///
-  /// # Panics
-  /// Panics if `k` or the forward is not strictly positive, if
-  /// `self.alpha` is not strictly positive, or if `self.rho` does not lie
-  /// strictly inside $(-1, 1)$ — see
-  /// [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s own
-  /// `# Panics` section, which this inherits unchanged. A non-positive spot
-  /// or strike is invalid input for this equity/FX model, not a market
-  /// state to accommodate, so this panics rather than degrading silently;
-  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator) validates
-  /// `s`/`k` before ever constructing a `SabrPricer` from calibrated data,
-  /// so this only fires when one is built directly from bad input.
-  ///
-  /// Validating the arguments does **not** make the result usable as a
-  /// volatility: the expansion can still evaluate to a non-positive number
-  /// on a legal parameter combination, which is why
-  /// [`call_put`](Self::call_put) screens it rather than pricing off it.
+  /// Hagan vol at `k` against [`forward`](Self::forward); NaN for a query outside the domain, and
+  /// possibly non-positive on legal parameters (see [`price_call`](Self::price_call)).
   pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    hagan_implied_vol(
-      k,
-      self.forward(s, r, q, tau),
-      tau,
-      self.alpha,
-      self.beta,
-      self.nu,
-      self.rho,
-    )
+    hagan_implied_vol(k, self.forward(s, r, q, tau), tau, &self.params)
   }
 
   /// Forward-based (premium-included) FX delta, with the foreign rate read
@@ -152,54 +70,28 @@ impl SabrPricer {
     )
   }
 
-  /// Call and put price at one query point.
-  ///
-  /// Returns [`f64::NAN`] for **both** legs when [`sigma`](Self::sigma)
-  /// comes out non-finite or not strictly positive, rather than letting a
-  /// degenerate volatility propagate into `d1`/`d2`. That is case 2 of the
-  /// crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) — not
-  /// computable here — and not case 1, because every individual argument is
-  /// already legal by the time this branch is reachable: `sigma` panics
-  /// first on a non-positive `k` or forward, a non-positive `alpha`, or a
-  /// `rho` outside $(-1, 1)$.
-  ///
-  /// What is left is a *parameter combination*. Hagan (2002) is a small-τ
-  /// asymptotic expansion whose bracket $1 + (a + b + c)\tau$ turns negative
-  /// once the correction term outgrows it, and the ν² coefficient
-  /// $c = (2 - 3\rho^2)\nu^2 / 24$ is itself negative for
-  /// $|\rho| > \sqrt{2/3}$: at $(\alpha, \beta, \nu, \rho) = (0.2, 1, 3,
-  /// -0.9)$ and $\tau = 10$ the expansion returns $\sigma = -0.3925$. Every
-  /// one of those four values lies inside
-  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s own
-  /// projection box, so this is a calibration-output shape rather than a
-  /// user-input one — panicking would abort a whole calibration over a
-  /// single bad probe point, where `NaN` marks that residual invalid and
-  /// leaves the rest of the grid alone.
-  ///
-  /// This floored both legs to `0.0` before, the contract the former
-  /// `SabrModel` documented. A zero call *and* a zero put is not a price any
-  /// instrument has, and unlike `NaN` a zero does not propagate, so a
-  /// residual computed against it looked merely bad rather than invalid.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let sigma = self.sigma(s, k, r, q, tau);
+  /// The price at the query's forward `f`, for a fit that prices each quote at many parameter
+  /// sets and computes its forward once; NaN as [`price_call`](Self::price_call) is.
+  #[allow(clippy::too_many_arguments)]
+  pub(crate) fn price_at_forward(
+    &self,
+    f: f64,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: OptionType,
+  ) -> f64 {
+    let sigma = hagan_implied_vol(k, f, tau, &self.params);
     if !sigma.is_finite() || sigma <= 0.0 {
-      return (f64::NAN, f64::NAN);
+      return f64::NAN;
     }
-    BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(s, k, r, q, tau)
+    BsmPricer::new(sigma, BsmCoc::Merton1973).price_option(s, k, r, q, tau, option_type)
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on none of the four Sabr parameters — it inverts a price for a
-  /// volatility rather than pricing at one, so any `SabrPricer` returns the
-  /// same answer. Kept as an inherent method on this type (rather than a
-  /// free function) because it is the inverse of
-  /// [`call_put`](Self::call_put) and shares its `b = r - q` carry
-  /// convention.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the SABR
+  /// parameters; NaN for a price outside the no-arbitrage bounds.
   pub fn implied_volatility(
     &self,
     c_price: f64,
@@ -212,52 +104,32 @@ impl SabrPricer {
   ) -> f64 {
     let forward = self.forward(s, r, q, tau);
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for SabrPricer {
-  /// # Panics
-  /// Panics if `k`, or the forward derived from `s`, is not strictly
-  /// positive — see [`sigma`](SabrPricer::sigma)'s `# Panics` section.
-  /// [`ModelPricer`] has no fallible return channel, so a non-positive spot
-  /// or strike in a strike/maturity grid aborts the whole grid rather than
-  /// degrading that one point to `0.0` — deliberately: a non-positive spot
-  /// or strike is invalid input for this equity/FX model, not a value worth
-  /// pricing as if it were merely deep out-of-the-money.
-  ///
-  /// Returns [`f64::NAN`] on a degenerate Hagan volatility — see
-  /// [`call_put`](SabrPricer::call_put).
+  /// NaN unless [`sigma`](SabrPricer::sigma) is finite and > 0, as where Hagan's small-τ bracket
+  /// turns negative (`α 0.2, β 1, ρ −0.9, ν 3` at `τ = 10`).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_at_forward(
+      self.forward(s, r, q, tau),
+      s,
+      k,
+      r,
+      q,
+      tau,
+      OptionType::Call,
+    )
   }
 
-  /// Takes the Black-Scholes closed-form put rather than the trait's
-  /// vanilla-parity default. The two are *mathematically* the same here —
-  /// the carry is `b = r - q`, which is exactly the case where vanilla
-  /// parity holds — but the closed form is what the pre-query
-  /// `calculate_call_put().1` returned, so delegating keeps the number
-  /// bit-identical rather than merely equal to within rounding. See
-  /// `sabr_price_put_matches_parity_but_is_the_closed_form`.
-  ///
-  /// Panics and returns [`f64::NAN`] under exactly the same conditions as
-  /// [`price_call`](SabrPricer::price_call), since both read the same
-  /// [`call_put`](SabrPricer::call_put) pair.
+  /// The Black-Scholes put at the Hagan vol, not the parity default, which rounds differently;
+  /// NaN where [`price_call`](SabrPricer::price_call) is.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_at_forward(self.forward(s, r, q, tau), s, k, r, q, tau, OptionType::Put)
   }
 }
 
-/// European vanilla call: Hagan's expansion produces a Black volatility
-/// that [`call_put`](SabrPricer::call_put) prices as a vanilla against
-/// [`forward`](SabrPricer::forward), which is the default's
-/// $Se^{(r-q)\tau}$ under another name.
+/// European vanilla call: the Black price at Hagan's volatility against
+/// [`forward`](SabrPricer::forward), the default's $Se^{(r-q)\tau}$.
 impl VanillaEuropeanCall for SabrPricer {}

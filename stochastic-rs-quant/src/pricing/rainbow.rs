@@ -7,9 +7,9 @@
 //! C_{\max}(S_1,S_2,K) = C_1 + C_2 - C_{\min}(S_1,S_2,K)
 //! $$
 //! $$
-//! C_{\min}(S_1,S_2,K) = S_1 e^{-q_1T}M(\gamma_1,d;\rho_1)
-//!   + S_2 e^{-q_2T}M(\gamma_2,d-\sigma\sqrt T;\rho_2)
-//!   - K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
+//! C_{\min}(S_1,S_2,K) = S_1 e^{-q_1T}M(\gamma_1,d;\rho_1) +
+//!   S_2 e^{-q_2T}M(\gamma_2,d-\sigma\sqrt T;\rho_2) -
+//!   K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
 //! $$
 //!
 //! Source:
@@ -24,8 +24,11 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use owens_t::biv_norm;
 use rayon::prelude::*;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_stochastic::mc::McEstimate;
 
-use crate::mc::McEstimate;
+use crate::QuantError;
+use crate::error::check_grid_shape;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
@@ -147,35 +150,8 @@ pub struct StulzRainbowPricer {
 }
 
 impl StulzRainbowPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  ///
-  /// The volatilities are the ones that return a wrong *number*: at
-  /// `sigma2 = -0.30` a `CallOnMax` prices at **-11.38**, a negative call
-  /// — case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) — while the
-  /// `CallOnMin` leg of the same model comes back a plausible `14.20`
-  /// against the correct `6.57`.
-  ///
-  /// The correlation is guarded for a different reason, and it is worth
-  /// keeping: an out-of-range `rho` does *not* return a number here, it
-  /// trips an assertion inside the third-party `owens_t::biv_norm`, whose
-  /// message is the bare offending float (`13000000.000000002`) and names
-  /// neither the parameter, the pricer, nor the crate. The same `rho`
-  /// reaches [`MargrabePricer`](crate::pricing::spread::MargrabePricer)
-  /// through [`price`](Self::price)'s `PutOnMin`/`PutOnMax` legs, where it
-  /// *is* a silent wrong number, so leaving it unchecked here would leave
-  /// one payoff of four announcing a bad correlation and three not.
-  ///
-  /// Admissible and still accepted: perfect correlation either way, and a
-  /// zero-volatility leg.
-  ///
-  /// No longer `const fn`. What made that safe was measured rather than
-  /// assumed: **zero** `const` or `static` items of this type exist in the
-  /// workspace, against 25 `StulzRainbowPricer::new` call sites.
+  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: a negative vol prices negative calls,
+  /// and a bad `rho` would trip an anonymous `owens_t::biv_norm` assert or skew the Margrabe legs.
   pub fn new(payoff: RainbowPayoff, sigma1: f64, sigma2: f64, rho: f64) -> Self {
     assert!(
       sigma1 >= 0.0,
@@ -232,14 +208,14 @@ impl StulzRainbowPricer {
   }
 
   fn call_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
-    use crate::pricing::bsm::BSMCoc;
-    use crate::pricing::bsm::BSMPricer;
+    use crate::pricing::bsm::BsmCoc;
+    use crate::pricing::bsm::BsmPricer;
     use crate::traits::ModelPricer;
 
     // Stulz identity: max(max(S1,S2) - K, 0) = call(S1, K) + call(S2, K)
     // - call_on_min(S1, S2, K)
-    let c1 = BSMPricer::new(self.sigma1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
-    let c2 = BSMPricer::new(self.sigma2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
+    let c1 = BsmPricer::new(self.sigma1, BsmCoc::Merton1973).price_call(s1, k, r, q1, tau);
+    let c2 = BsmPricer::new(self.sigma2, BsmCoc::Merton1973).price_call(s2, k, r, q2, tau);
     c1 + c2 - self.call_on_min(s1, s2, k, r, q1, q2, tau)
   }
 
@@ -294,7 +270,7 @@ impl StulzRainbowPricer {
 pub struct McRainbowPricer {
   /// Payoff type — a term of the contract, not a market quote.
   pub payoff: RainbowPayoff,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
@@ -355,23 +331,29 @@ impl McRainbowPricer {
     r: f64,
     q: ArrayView1<'_, f64>,
     tau: f64,
-  ) -> anyhow::Result<McEstimate<f64>> {
+  ) -> Result<McEstimate<f64>, QuantError> {
     let n_assets = s.len();
-    if self.rho.shape() != [n_assets, n_assets] {
-      anyhow::bail!(
-        "rho shape {:?} does not match n_assets={n_assets}",
-        self.rho.shape()
-      );
+    check_grid_shape(
+      ["rho rows, one per asset", "rho columns, one per asset"],
+      (n_assets, n_assets),
+      self.rho.dim(),
+    )?;
+    for (what, got) in [
+      ("sigma, one per asset", self.sigma.len()),
+      ("q, one per asset", q.len()),
+    ] {
+      if got != n_assets {
+        return Err(QuantError::DimensionMismatch {
+          what,
+          expected: n_assets,
+          got,
+        });
+      }
     }
-    if self.sigma.len() != n_assets || q.len() != n_assets {
-      anyhow::bail!(
-        "sigma/q lengths must match n_assets={n_assets} (got {}/{})",
-        self.sigma.len(),
-        q.len()
-      );
-    }
-    if !crate::linalg::is_spd_t(&self.rho) {
-      anyhow::bail!("correlation matrix is not positive definite");
+    if !crate::linalg::is_spd_t(self.rho.view()) {
+      return Err(QuantError::NotPositiveDefinite {
+        what: "the correlation matrix rho",
+      });
     }
     Ok(self.price(s, k, r, q, tau))
   }
@@ -390,7 +372,7 @@ impl McRainbowPricer {
     tau: f64,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
+    let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)

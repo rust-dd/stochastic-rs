@@ -1,15 +1,6 @@
-//! [`HurstEstimator`] implementations for the fractal-dimension
-//! estimators in [`crate::fractal_dim`].
+//! `HurstEstimator` for the fractal-dimension estimators, `H = 2 − D` unclamped.
 //!
-//! Both [`crate::fractal_dim::Higuchi`] and
-//! [`crate::fractal_dim::Variogram`] implement
-//! [`crate::fractal_dim::FractalDimEstimator`] natively (output: `D`).
-//! These adapter `impl` blocks let the same structs be invoked through
-//! the [`HurstEstimator`] trait (output: `H = 2 - D`, clamped to
-//! `(0, 1)`), so callers who only care about Hurst can use a uniform
-//! `HurstEstimator` interface.
-//!
-//! Disambiguate at the call site when both traits are in scope:
+//! Name the trait at the call site when both are in scope:
 //!
 //! ```
 //! use stochastic_rs_core::simd_rng::Deterministic;
@@ -23,8 +14,8 @@
 //! let signal = Fbm::new(hurst, 256, Some(1.0), Deterministic::new(7)).sample();
 //!
 //! let est = Higuchi { kmax: 32 };
-//! let d_result = FractalDimEstimator::estimate(&est, signal.view())?; // → FdResult
-//! let h_result = HurstEstimator::estimate(&est, signal.view())?;      // → HurstResult
+//! let d_result = FractalDimEstimator::estimate(&est, signal.view())?; // → FdFit
+//! let h_result = HurstEstimator::estimate(&est, signal.view())?;      // → HurstFit
 //! assert!((1.0..2.0).contains(&d_result.d));
 //! assert!((0.0..=1.0).contains(&h_result.hurst));
 //! # Ok(())
@@ -34,56 +25,40 @@
 use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
-use super::HurstResult;
-use crate::fractal_dim::FdError;
+use super::HurstFit;
+use crate::StatsError;
 use crate::fractal_dim::FractalDimEstimator;
 use crate::fractal_dim::Higuchi;
 use crate::fractal_dim::Variogram;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> HurstEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
-    let fd_result = FractalDimEstimator::<T>::estimate(self, x).map_err(map_fd_err)?;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
+    let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Variogram {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
-    let fd_result = FractalDimEstimator::<T>::estimate(self, x).map_err(map_fd_err)?;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
+    let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
 }
 
-/// Convert a fractal-dimension result into a Hurst result via
-/// `H = 2 - D`, clamped to `(0, 1)`.
-fn fd_to_hurst<T: FloatExt>(
-  fd: crate::fractal_dim::FdResult<T>,
-) -> Result<HurstResult<T>, HurstError> {
-  let d_f64 = fd.d.to_f64().unwrap_or(f64::NAN);
-  if !d_f64.is_finite() {
-    return Err(HurstError::DegeneratePath);
+/// `H = 2 − D` (the fBm identity), reported unclamped so a fit outside `(0, 1)` stays visible.
+fn fd_to_hurst<T: FloatExt>(fd: crate::fractal_dim::FdFit<T>) -> Result<HurstFit<T>, StatsError> {
+  let d = fd.d.to_f64().unwrap();
+  if !d.is_finite() {
+    return Err(StatsError::DegenerateData("non-finite fractal dimension"));
   }
-  let h = (2.0 - d_f64).clamp(0.0, 1.0);
-  Ok(HurstResult {
-    hurst: T::from_f64_fast(h),
+  Ok(HurstFit {
+    hurst: T::from_f64_fast(2.0 - d),
     std_err: None,
-    n_obs: fd.n_obs,
+    nobs: fd.nobs,
     diagnostic: HurstDiagnostic::FractalDim { d: fd.d },
   })
-}
-
-fn map_fd_err(e: FdError) -> HurstError {
-  match e {
-    FdError::PathTooShort { got, required } => HurstError::TooFewObservations { got, required },
-    FdError::NonPositiveP(p) => HurstError::InvalidParameter("p", p),
-    FdError::KmaxTooSmall(k) => HurstError::InvalidParameter("kmax", k as f64),
-    FdError::DegeneratePath => HurstError::DegeneratePath,
-    FdError::NotEnoughScales => HurstError::NotEnoughScales,
-    FdError::RegressionFailed => HurstError::RegressionFailed,
-  }
 }
 
 #[cfg(test)]
@@ -131,6 +106,18 @@ mod tests {
       (h_est - h).abs() < 0.08,
       "Variogram(Hurst) H={h_est:.3}, expected {h:.3}"
     );
+  }
+
+  /// `H = 2 − D` as computed: a fit outside `(0, 1)` stays visible instead of hitting a boundary.
+  #[test]
+  fn the_adapter_does_not_clamp() {
+    let fd = crate::fractal_dim::FdFit::<f64> {
+      d: 2.3,
+      nobs: 64,
+      diagnostic: crate::fractal_dim::FdDiagnostic::None,
+    };
+    let h = super::fd_to_hurst::<f64>(fd).unwrap();
+    assert_eq!(h.hurst, 2.0 - 2.3);
   }
 
   #[test]

@@ -1,6 +1,9 @@
+//! The α-stable subordinator; an increment is Kanter's Chambers–Mallows–Stuck form, summed in logs.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::sample_positive_stable;
@@ -11,7 +14,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Alpha-stable subordinator with Laplace exponent `phi(lambda) = c * lambda^alpha`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -19,11 +22,11 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> 
   pub c: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon `T`; defaults to `1`.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -31,12 +34,34 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> 
 }
 
 impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `0 < alpha < 1`, `c > 0`, and
+  /// every parameter is finite.
   pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero() && alpha < T::one(),
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
     Self {
       backend: Cpu,
       alpha,
@@ -49,13 +74,8 @@ impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> AlphaStableSubordinator<T, S, B> {}
-
-/// The Euler engine's view of the positive-stable subordinator. Every
-/// exponent the transform needs depends on `α` alone, and the scale on `c`
-/// and `dt`, so all five travel as parameters and the step is one expression.
-/// The scale travels in logs, where the step already sums the transform's
-/// other factors, and where `(c·dt)^{1/α}` cannot underflow to zero first.
+/// The Euler engine's view. Every exponent depends on `α` alone and the scale on `c` and `dt`,
+/// so all five are parameters; the scale travels in logs, where `(c·dt)^{1/α}` cannot underflow.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -97,6 +117,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] AlphaStableSubordinator<T, S> { alpha, c, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AlphaStableSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -119,13 +144,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       x0,
       alpha,
       log_scale,
-      uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
+      uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the transform runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the transform in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -155,17 +179,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`AlphaStableSubordinator`] sampling state: the owned uniform
-/// source driving the positive-stable increments plus precomputed scales. The
-/// scale travels as its logarithm because `(c·dt)^{1/α}` underflows to zero
-/// on its own for `α` below about 0.011 on a fine grid.
+/// Reusable [`AlphaStableSubordinator`] sampling state: the uniform source and the scales. The
+/// scale is a logarithm, since `(c·dt)^{1/α}` underflows for `α` below about 0.011 on a fine grid.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AlphaStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
   alpha: f64,
   log_scale: f64,
-  uniform: SimdUniform<f64>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
@@ -179,11 +202,13 @@ impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      level += sample_positive_stable(self.alpha, self.log_scale, &self.uniform);
+      level += sample_positive_stable(self.alpha, self.log_scale, &mut self.uniform);
       *x = T::from_f64_fast(level);
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for AlphaStableSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for AlphaStableSubordinatorSampler<T> {
   type Output = Array1<T>;

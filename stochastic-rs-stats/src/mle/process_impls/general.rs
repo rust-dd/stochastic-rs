@@ -4,11 +4,18 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
-use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
-use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
+use stochastic_rs_stochastic::diffusion::linear_sde::LinearSde;
+use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
 
+use super::pole_quadratic;
+use super::pole_quadratic_x;
+use super::pole_quadratic_xx;
+use super::power_x;
+use super::power_xx;
+use super::root_x;
+use super::root_xx;
 use crate::mle::DiffusionModel;
 
 impl<S: SeedExt> DiffusionModel for Quadratic<f64, S> {
@@ -41,6 +48,22 @@ impl<S: SeedExt> DiffusionModel for Quadratic<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    self.beta + 2.0 * self.gamma * x
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    2.0 * self.gamma
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.sigma
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 }
 
@@ -83,6 +106,28 @@ impl<S: SeedExt> DiffusionModel for Pearson<f64, S> {
     let inner = 2.0 * self.kappa * (self.a * x * x + self.b * x + self.c);
     inner.abs().sqrt()
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.kappa
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    let g = 2.0 * self.kappa * (self.a * x * x + self.b * x + self.c);
+    root_x(g, 2.0 * self.kappa * (2.0 * self.a * x + self.b))
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    let g = 2.0 * self.kappa * (self.a * x * x + self.b * x + self.c);
+    root_xx(
+      g,
+      2.0 * self.kappa * (2.0 * self.a * x + self.b),
+      4.0 * self.kappa * self.a,
+    )
+  }
 }
 
 impl<S: SeedExt> DiffusionModel for Hyperbolic<f64, S> {
@@ -113,6 +158,14 @@ impl<S: SeedExt> DiffusionModel for Hyperbolic<f64, S> {
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
     self.sigma
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    -self.kappa / (1.0 + x * x).powf(1.5)
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    3.0 * self.kappa * x / (1.0 + x * x).powf(2.5)
   }
 }
 
@@ -149,15 +202,25 @@ impl<S: SeedExt> DiffusionModel for Hyperbolic2<f64, S> {
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
     let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
-    0.5 * self.sigma * self.sigma * (self.beta - self.gamma * x / r)
+    0.5 * self.sigma * self.sigma * (self.beta - self.gamma * (x - self.mu) / r)
   }
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
     self.sigma
   }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
+    -0.5 * self.sigma * self.sigma * self.gamma * self.delta * self.delta / r.powi(3)
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    let r = (self.delta * self.delta + (x - self.mu) * (x - self.mu)).sqrt();
+    1.5 * self.sigma * self.sigma * self.gamma * self.delta * self.delta * (x - self.mu) / r.powi(5)
+  }
 }
 
-impl<S: SeedExt> DiffusionModel for LinearSDE<f64, S> {
+impl<S: SeedExt> DiffusionModel for LinearSde<f64, S> {
   fn num_params(&self) -> usize {
     3
   }
@@ -187,9 +250,25 @@ impl<S: SeedExt> DiffusionModel for LinearSDE<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.c * x
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.b
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.c
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
 }
 
-impl<S: SeedExt> DiffusionModel for NonLinearSDE<f64, S> {
+impl<S: SeedExt> DiffusionModel for NonlinearSde<f64, S> {
   fn num_params(&self) -> usize {
     8
   }
@@ -229,12 +308,27 @@ impl<S: SeedExt> DiffusionModel for NonLinearSDE<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = if x.abs() < 1e-12 { 1e-12 } else { x };
-    self.am1 / safe_x + self.a0 + self.a1 * x + self.a2 * x * x
+    pole_quadratic([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.b0 + self.b1 * x + self.b2 * x.abs().powf(self.b3)
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    pole_quadratic_x([self.am1, self.a0, self.a1, self.a2], x)
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    pole_quadratic_xx([self.am1, self.a0, self.a1, self.a2], x)
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    self.b1 + power_x(self.b2, self.b3, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.b2, self.b3, x)
   }
 }
 
@@ -278,12 +372,31 @@ impl<S: SeedExt> DiffusionModel for AitSahalia<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = if x.abs() < 1e-12 { 1e-12 } else { x };
-    self.am1 / safe_x + self.a0 + self.a1 * x + self.a2 * x * x
+    pole_quadratic([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     let inner = self.b0 + self.b1 * x + self.b2 * x.abs().powf(self.b3);
     inner.abs().sqrt()
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    pole_quadratic_x([self.am1, self.a0, self.a1, self.a2], x)
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    pole_quadratic_xx([self.am1, self.a0, self.a1, self.a2], x)
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    let g = self.b0 + self.b1 * x + self.b2 * x.abs().powf(self.b3);
+    let g1 = self.b1 + power_x(self.b2, self.b3, x);
+    root_x(g, g1)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    let g = self.b0 + self.b1 * x + self.b2 * x.abs().powf(self.b3);
+    let g1 = self.b1 + power_x(self.b2, self.b3, x);
+    root_xx(g, g1, power_xx(self.b2, self.b3, x))
   }
 }

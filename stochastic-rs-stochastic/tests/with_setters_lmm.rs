@@ -1,28 +1,5 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `Lmm`
-//! (`interest/lmm.rs`), the drift-coupled LIBOR Market Model. Split out of
-//! a combined `with_setters_interest.rs` to stay under the project's
-//! 600-line file cap (per-type split, alongside `with_setters_duffie_kan.rs`
-//! and `with_setters_duffie_kan_jump_exp.rs`).
-//!
-//! `Lmm` is the one type in this wave whose pre-existing `with_correlation`
-//! (untouched by this task) is the style reference for every other setter
-//! added. Its cache is the public `chol: Option<Array2<T>>` field, which
-//! `with_l0` invalidates (resets to `None`) only when the new `l0` has a
-//! *different* length than the current one — its numeric content never
-//! depended on `l0`'s values, only its length, so a same-length replacement
-//! leaves it untouched.
-//!
-//! `with_tenor`/`with_l0`/`with_sigma` deliberately validate only each
-//! field's *own* internal invariant (tenor: length ≥ 2 and strictly
-//! increasing; l0: entries positive; sigma: entries non-negative), not the
-//! three arrays' combined shape — eagerly cross-validating would make it
-//! impossible to ever change the Libor count via chained setters (every
-//! ordering of `.with_tenor(..).with_l0(..).with_sigma(..)` has an
-//! intermediate state where exactly one of the three hasn't caught up
-//! yet). `Lmm::sampler()` re-validates the joint shape before doing
-//! anything else, so a leftover mismatch by sample time still panics with
-//! `validate_lmm_inputs`'s own clean `assert_eq!` message, not an opaque
-//! index-out-of-bounds one.
+//! `with_*` setters on `Lmm`. `with_l0` resets the public `chol` cache only on a new length; the
+//! three array setters check their own field, and `Lmm::sampler()` re-validates the joint shape.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -51,9 +28,8 @@ fn lmm_base() -> Lmm<f64> {
   lmm_base_seeded(Unseeded)
 }
 
-// A named struct, not a tuple-of-references: clippy's `type_complexity`
-// flags a 6-element tuple type as hard to read, and a struct doubles as
-// documentation of which field is which.
+// A named struct: clippy's `type_complexity` flags a 6-element tuple, and the struct names the
+// fields.
 #[derive(Debug, PartialEq)]
 struct LmmFields<'a> {
   tenor: &'a Array1<f64>,
@@ -76,10 +52,10 @@ fn lmm_fields<S: SeedExt>(x: &Lmm<f64, S>) -> LmmFields<'_> {
 }
 
 #[test]
-fn lmm_with_steps_round_trip() {
+fn lmm_with_points_round_trip() {
   let mut expected = lmm_base();
   expected.n = 200;
-  let got = lmm_base().with_steps(200);
+  let got = lmm_base().with_points(200);
   assert_eq!(got.n, 200);
   assert_eq!(lmm_fields(&got), lmm_fields(&expected));
   let path = got.sample();
@@ -108,9 +84,8 @@ fn lmm_with_seed_matches_fresh_construction() {
 
 #[test]
 fn lmm_with_tenor_round_trip() {
-  // Same length (m=4) and same final date as the base tenor (2.0), so the
-  // base's horizon `t=Some(2.0)` stays valid (`Lmm` requires
-  // `0 < horizon <= tenor's last date`) — only the intermediate dates move.
+  // The same length (m = 4) and last date (2.0) as the base tenor, so the base's horizon
+  // `t = Some(2.0)` stays within `0 < horizon <= tenor's last date`; only the inner dates move.
   let new_tenor = Array1::from(vec![0.0, 0.4, 0.9, 1.4, 2.0]);
   let mut expected = lmm_base();
   expected.tenor = new_tenor.clone();
@@ -122,20 +97,18 @@ fn lmm_with_tenor_round_trip() {
 }
 
 #[test]
-#[should_panic(expected = "tenor must have at least two dates")]
+#[should_panic(expected = "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = 1")]
 fn lmm_with_tenor_rejects_too_short() {
   let _ = lmm_base().with_tenor(Array1::from(vec![0.0]));
 }
 
 #[test]
-#[should_panic(expected = "tenor must be strictly increasing")]
+#[should_panic(
+  expected = "tenor[2] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[2] = 0.4, tenor[1] = 0.5"
+)]
 fn lmm_with_tenor_rejects_non_increasing_dates() {
-  // `with_tenor` cannot also cross-validate against `l0`/`sigma`'s *current*
-  // length: doing so would make it impossible to ever change the Libor
-  // count via chained setters (every ordering of
-  // `.with_tenor(..).with_l0(..).with_sigma(..)` has an intermediate state
-  // where exactly one of the three hasn't caught up yet). What it can and
-  // does still check is the tenor's own internal invariant.
+  // `with_tenor` checks the tenor's own invariant only: a check against the current `l0` and
+  // `sigma` would stop chained setters from ever changing the Libor count.
   let _ = lmm_base().with_tenor(Array1::from(vec![0.0, 0.5, 0.4, 1.5]));
 }
 
@@ -152,7 +125,7 @@ fn lmm_with_sigma_round_trip() {
 }
 
 #[test]
-#[should_panic(expected = "volatility")]
+#[should_panic(expected = "sigma[1] must satisfy `sigma[i] >= T::zero()`, got sigma[1] = -0.1")]
 fn lmm_with_sigma_rejects_negative_entry() {
   let _ = lmm_base().with_sigma(Array1::from(vec![0.2, -0.1, 0.2, 0.2]));
 }
@@ -174,10 +147,8 @@ fn lmm_with_l0_same_length_preserves_correlation_cache() {
   let new_l0 = Array1::from(vec![0.031, 0.036, 0.041, 0.046]); // same length (m=4)
   let got = base.with_l0(new_l0.clone());
   assert_eq!(got.l0, new_l0);
-  // Not just "some cache or other" — the exact same Cholesky factor,
-  // unchanged: `chol`'s numeric content depends only on the `rho` matrix
-  // originally passed to `with_correlation` and `l0`'s *length*, never its
-  // values, so a same-length replacement must leave it bit-for-bit alone.
+  // The same Cholesky factor, bit for bit: `chol` depends on the `rho` given to
+  // `with_correlation` and on `l0`'s length, never on its values.
   assert_eq!(
     got
       .chol
@@ -191,7 +162,7 @@ fn lmm_with_l0_same_length_preserves_correlation_cache() {
 }
 
 #[test]
-#[should_panic(expected = "positive")]
+#[should_panic(expected = "l0[1] must satisfy `l0[i] > T::zero()`, got l0[1] = 0.0")]
 fn lmm_with_l0_rejects_non_positive_entry() {
   let _ = lmm_base().with_l0(Array1::from(vec![0.03, 0.0, 0.04, 0.045]));
 }
@@ -210,12 +181,8 @@ fn lmm_with_l0_different_length_invalidates_correlation_cache() {
     "test setup: correlation must be attached"
   );
 
-  // Shrinking l0 to 3 Libors also needs a matching tenor/sigma to stay
-  // valid; the cache can no longer be validated against the new shape (the
-  // original rho matrix is not retained, only its Cholesky factor), so it
-  // must be invalidated rather than left silently stale. `dt=0.7` keeps the
-  // new tenor's last date (2.1) at or above the base's horizon `t=Some(2.0)`
-  // (`Lmm` requires `0 < horizon <= tenor's last date`).
+  // Three Libors need a matching tenor and sigma. Only `rho`'s factor is kept, so the cache
+  // cannot be re-checked and is reset; `dt = 0.7` keeps the last date (2.1) above `t = 2.0`.
   let got = base
     .with_tenor(flat_tenor(3, 0.7))
     .with_l0(Array1::from(vec![0.03, 0.035, 0.04]))
@@ -229,13 +196,18 @@ fn lmm_with_l0_different_length_invalidates_correlation_cache() {
 }
 
 #[test]
-#[should_panic(expected = "l0 length must equal tenor.len() - 1")]
+#[should_panic(expected = "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = 4")]
 fn lmm_sample_panics_on_leftover_shape_mismatch() {
-  // If a chain changes `tenor`'s Libor count without also updating `l0`
-  // and `sigma` (or vice versa), the mismatch is not silently tolerated:
-  // `Lmm::sampler()` re-runs `validate_lmm_inputs` before doing anything
-  // else, so this now panics with the same clean `assert_eq!` message
-  // `Lmm::new` itself would give for the equivalent mismatched
-  // construction — not an opaque out-of-bounds index panic.
+  // A chain that changes `tenor`'s Libor count alone is not tolerated: `Lmm::sampler()` re-runs
+  // `validate_lmm_inputs` and panics with `Lmm::new`'s message, not an out-of-bounds index.
   let _ = lmm_base().with_tenor(flat_tenor(3, 0.5)).sample();
+}
+
+/// The sampler re-runs each array's own check, so an entry written into a public field meets it.
+#[test]
+#[should_panic(expected = "sigma[1] must satisfy `sigma[i].is_finite()`, got sigma[1] = inf")]
+fn lmm_sample_refuses_a_non_finite_entry_written_into_a_field() {
+  let mut lmm = lmm_base();
+  lmm.sigma[1] = f64::INFINITY;
+  let _ = lmm.sample();
 }

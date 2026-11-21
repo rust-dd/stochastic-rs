@@ -1,13 +1,19 @@
-//! # Nig
+//! Normal inverse Gaussian process: a drifted Brownian motion on an inverse-Gaussian clock.
 //!
 //! $$
-//! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)
+//! X_t=x_0+\theta I_t+\sigma W_{I_t},\quad \mathbb{E}(I_t)=t,\quad \mathrm{Var}(I_t)=\kappa t
 //! $$
 //!
+//! For `σ > 0`, the NIG Lévy process at `μ = 0`: `β = θ/σ²`, `δ = σ/√κ`, `α = √(β² + 1/(κσ²))`.
+//!
+//! Reference: Barndorff-Nielsen & Shephard (2002), Theory Probab. Math. Statist. 65, 1–20
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -17,26 +23,20 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Skewness-in-subordinated-time β (matches the module header's own β,
-  /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
-  /// process with **no mean reversion** — despite the field's name, this
-  /// is not a target level.
+  /// Drift θ per unit of the clock `I_t`, which skews the law; NIG has no mean reversion.
   pub theta: T,
-  /// Diffusion scale σ multiplying `√(I_t) dW_t`, the Brownian-subordinated
-  /// component riding on top of the IG time-change.
+  /// Diffusion scale σ multiplying `W_{I_t}`, the Brownian motion run on the IG clock.
   pub sigma: T,
-  /// Variance-rate of the inverse-Gaussian subordinator (its shape
-  /// parameter is `dt²/kappa`) — controls the IG time-change's dispersion,
-  /// akin to `nu` in [`Vg`](super::vg::Vg). Despite the letter, this is
-  /// **not** a mean-reversion speed; NIG has no mean reversion.
+  /// Variance rate of the inverse-Gaussian subordinator, whose shape is `dt²/kappa`, akin to
+  /// `nu` in [`Vg`](super::vg::Vg); not a mean-reversion speed, which NIG does not have.
   pub kappa: T,
   /// Number of points sampled along the NIG path.
   pub n: usize,
-  /// Initial value X₀ of the NIG path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -46,8 +46,34 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `kappa > 0`, and every parameter
+  /// is finite.
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     Self {
       backend: Cpu,
       theta,
@@ -61,12 +87,10 @@ impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -118,6 +142,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Nig<T, S> { theta, sigma, kappa, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Nig<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Nig<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -126,10 +155,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> NigSampler<T> {
-    // For Nig: G_dt ~ Ig(mean=dt, shape=dt^2/kappa). The IG subordinator and
-    // the standard-normal source are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // `G_dt ~ IG(mean = dt, shape = dt²/kappa)`. The IG subordinator, then the normal source are
+    // derived from `self.seed`, an order the pinned streams depend on; reuse advances both.
     let dt = self.dt();
     let shape = dt * dt / self.kappa;
     NigSampler {
@@ -137,14 +164,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       theta: self.theta,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      ig_dist: SimdInverseGauss::<T>::new(dt, shape, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      ig_dist: SimdInverseGauss::<T>::new(dt, shape).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -177,13 +203,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Nig`] sampling state: owns the inverse-Gaussian subordinator and
 /// the Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct NigSampler<T: FloatExt> {
   n: usize,
   theta: T,
   sigma: T,
   x0: T,
-  ig_dist: SimdInverseGauss<T>,
-  normal: SimdNormal<T>,
+  ig_dist: Seeded<SimdInverseGauss<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> NigSampler<T> {
@@ -207,6 +234,8 @@ impl<T: FloatExt> NigSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for NigSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for NigSampler<T> {
   type Output = Array1<T>;
 
@@ -217,20 +246,6 @@ impl<T: FloatExt> PathSampler<T> for NigSampler<T> {
   fn sample(&mut self) -> Array1<T> {
     let n = self.n;
     array1_from_fill(n, |out| self.fill_path(out))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn n_eq_1_keeps_initial_value() {
-    let p = Nig::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 4.0);
   }
 }
 

@@ -3,14 +3,14 @@
 use ndarray::Array1;
 
 use super::fixtures::heston_paths;
-use crate::fourier_malliavin::FMVol;
+use crate::fourier_malliavin::FmVol;
 use crate::fourier_malliavin::coefficients::fourier_coefficients_dx_uniform;
 use crate::fourier_malliavin::default_cutting_freq_noisy;
 use crate::fourier_malliavin::optimal_cutting_frequency;
 
-fn uniform_engine(prices: &[f64], n_freq: usize, max_freq: usize) -> FMVol<f64> {
+fn uniform_engine(prices: &[f64], n_freq: usize, max_freq: usize) -> FmVol<f64> {
   let n = prices.len() - 1;
-  FMVol {
+  FmVol {
     dx: fourier_coefficients_dx_uniform(prices, 1.0, max_freq),
     period: 1.0,
     n,
@@ -47,7 +47,7 @@ fn optimal_frequency_filters_deterministic_microstructure_noise() {
     n_heuristic,
     n_heuristic + m_heuristic + 10,
   );
-  let naive = FMVol::new_uniform(noisy.as_slice().unwrap(), 1.0);
+  let naive = FmVol::new_uniform(noisy.as_slice().unwrap(), 1.0);
   let optimal_error = (optimal.integrated_variance() - expected).abs() / expected;
   let _heuristic_error = (heuristic.integrated_variance() - expected).abs() / expected;
   let naive_error = (naive.integrated_variance() - expected).abs() / expected;

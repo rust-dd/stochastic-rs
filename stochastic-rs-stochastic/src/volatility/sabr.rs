@@ -1,18 +1,13 @@
-//! # Sabr
+//! SABR: a CEV forward under a driftless lognormal volatility correlated with it.
 //!
 //! $$
-//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
+//! dF_t=\alpha_t F_t^\beta dW_t^1,\quad
+//! d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-//! $\alpha_t$ is the stochastic-volatility state (initial value: field
-//! `alpha0`); $\nu$ is the vol-of-vol (field `nu`); $\beta$ is the CEV
-//! exponent (field `beta`); $\rho$ is the instantaneous correlation
-//! (field `rho`).
+//! $\alpha_t$ starts at the field `alpha0`; $\nu$, $\beta$ and $\rho$ are `nu`, `beta` and `rho`.
 //!
-//! Reference: Hagan P. S., Kumar D., Lesniewski A. S., Woodward D. E.
-//! (2002) — *Managing Smile Risk*, Wilmott Magazine, September, 84–108.
-//! No DOI is on record for this issue of Wilmott Magazine (it pre-dates
-//! the magazine's DOI registration).
+//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), Wilmott Magazine, Sept., 84–108, no DOI
 //!
 
 use ndarray::Array1;
@@ -20,12 +15,15 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::malliavin::Malliavin;
 use crate::noise::cgns::Cgns;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol $\nu$: diffusion coefficient of the volatility state
   /// $\alpha_t$ (see module docs for the SDE).
@@ -42,9 +40,9 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
   pub alpha0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -55,6 +53,8 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Sabr::default().with_beta(0.5).with_rho(-0.6)`.
 impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
+  /// Panics unless `nu >= 0`, `0 <= beta <= 1`, `-1 <= rho <= 1`, `n >= 2`, a given `alpha0` is
+  /// non-negative, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     nu: T,
     beta: T,
@@ -65,14 +65,13 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for Sabr"
-    );
-    assert!(nu >= T::zero(), "nu must be non-negative");
-    if let Some(alpha0) = alpha0 {
-      assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
-    }
+    Self::check_nu(nu);
+    Self::check_beta(beta);
+    Self::check_rho(rho);
+    check_n(n);
+    Self::check_f0(f0);
+    Self::check_alpha0(alpha0);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -90,74 +89,93 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
-  /// Replace `nu`, all else unchanged.
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+    require!(nu >= T::zero(), nu);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+    require!(beta >= T::zero() && beta <= T::one(), beta);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_f0(f0: Option<T>) {
+    require!(f0.is_none_or(|v| v.is_finite()), f0);
+  }
+
+  fn check_alpha0(alpha0: Option<T>) {
+    require!(alpha0.is_none_or(|v| v.is_finite()), alpha0);
+    require!(alpha0.is_none_or(|a| a >= T::zero()), alpha0);
+  }
+
+  /// Replace `nu`; panics unless `nu >= 0` and `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu >= T::zero(), "nu must be non-negative");
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `0 <= beta <= 1`.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(
-      beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for Sabr"
-    );
+    Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace `f0`, all else unchanged.
+  /// Replace `f0`; panics unless `f0` is finite.
   pub fn with_f0(mut self, f0: Option<T>) -> Self {
+    Self::check_f0(f0);
     self.f0 = f0;
     self
   }
 
-  /// Replace `alpha0`, all else unchanged.
+  /// Replace `alpha0`; panics unless a given `alpha0` is non-negative and finite.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
-    if let Some(a) = alpha0 {
-      assert!(a >= T::zero(), "alpha0 must be non-negative");
-    }
+    Self::check_alpha0(alpha0);
     self.alpha0 = alpha0;
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3 — a textbook Sabr parameterization.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3, a textbook Sabr; t=1, 252 points, a trading year of daily
+/// closes.
 impl<T: FloatExt> Default for Sabr<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -223,6 +241,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Sabr<T, S> { nu, beta, rho, n, f0, alpha0, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Sabr<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Sabr<T, S, B> {
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
@@ -232,14 +255,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. `fill_paths`
-  /// then uses this owned seed directly (no further derive) — exactly one
-  /// derive from `self.seed` per chunk, matching what the legacy per-call
-  /// `derive()` consumed, so the first path reproduces the legacy stream
-  /// bit-for-bit.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk bases. `fill_paths` uses the owned seed directly, one derive from `self.seed` per chunk.
   fn sampler(&self) -> SabrSampler<T, S> {
     SabrSampler {
       n: self.n,
@@ -253,9 +270,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -280,6 +296,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Sabr`] sampling state: owns the correlated-Gaussian generator
 /// and the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct SabrSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   f0: T,
@@ -312,6 +329,8 @@ impl<T: FloatExt, S: SeedExt> SabrSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for SabrSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -338,11 +357,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
-  /// Calculate the Malliavin derivative of the Sabr model
-  ///
-  /// The Malliavin derivative of the volaility process in the Sabr model is given by:
-  /// D_r \sigma_t = \nu \sigma_t 1_{[0, T]}(r)
-  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+  /// The path and `D_{t_i} α_T = ν α_T` at every grid point, since the volatility is lognormal.
+  pub fn malliavin(&self) -> Malliavin<T, [Array1<T>; 2]> {
     let [f, v] = self.sample();
 
     let mut malliavin = Array1::<T>::zeros(self.n);
@@ -351,13 +367,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
       malliavin[i] = self.nu * *v.last().unwrap();
     }
 
-    [f, v, malliavin]
+    Malliavin {
+      paths: [f, v],
+      derivative: malliavin,
+    }
   }
 }
 
-// Python-visible parameter names stay `alpha`/`v0` (pre-existing public
-// API surface); they forward positionally into `Sabr::new`'s renamed
-// `nu`/`alpha0` parameters, so the Python signature is unaffected.
+// The Python parameter names stay `alpha`/`v0`; they forward positionally into `Sabr::new`'s
+// `nu`/`alpha0`.
 py_process_2x1d!(PySabr, Sabr,
   sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>),
@@ -366,8 +384,33 @@ py_process_2x1d!(PySabr, Sabr,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
   use crate::traits::ProcessExt;
+
+  #[test]
+  fn the_volatility_derivative_is_nu_times_the_terminal_volatility() {
+    let make = || {
+      Sabr::<f64, _>::new(
+        0.4,
+        0.7,
+        -0.3,
+        17,
+        Some(1.0),
+        Some(0.3),
+        Some(1.0),
+        Deterministic::new(11),
+      )
+    };
+    let Malliavin {
+      paths: [f, v],
+      derivative,
+      ..
+    } = make().malliavin();
+    assert_eq!([f, v.clone()], make().sample());
+    assert!(derivative.iter().all(|d| *d == 0.4 * v[16]));
+  }
 
   #[test]
   fn volatility_stays_non_negative() {
@@ -385,14 +428,10 @@ mod tests {
     assert!(v.iter().all(|x| *x >= 0.0));
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc's
-  /// `dα = ν α dW₂` means `nu` is vol-of-vol and `alpha0` is the initial
-  /// volatility state. Construction must compile with those names and the
-  /// vol-of-vol must actually drive the volatility path's dispersion.
+  /// The module doc's `dα = ν α dW₂` makes `nu` the vol-of-vol and `alpha0` the initial
+  /// volatility state; the vol-of-vol must drive the volatility path's dispersion.
   #[test]
   fn sabr_nu_drives_volatility_dispersion() {
-    use stochastic_rs_core::simd_rng::Deterministic;
-
     let make = |nu: f64| {
       Sabr::new(
         nu,

@@ -1,16 +1,8 @@
-//! Scenario analysis and stress-testing.
+//! Scenario analysis: a shock perturbs one risk factor, a scenario is a named set of shocks,
+//! and a [`StressTest`] runs scenarios against one valuer for a per-scenario PnL.
 //!
-//! Reference: Board of Governors of the Federal Reserve System, "Dodd-Frank
-//! Act Stress Test (DFAST) Methodology" (2019).
-//!
-//! Reference: EBA, "Final Draft Regulatory Technical Standards on the IMA
-//! under Article 325bh(3) of Regulation (EU) No 575/2013" (2020).
-//!
-//! A *shock* is an elementary perturbation of a risk factor (additive bump,
-//! multiplicative scaling, or absolute-level override).  A *scenario* is a
-//! named collection of shocks plus an arbitrary closure that applies them to
-//! a user-supplied portfolio valuer.  A [`StressTest`] runs a list of
-//! scenarios against the same valuer and returns a per-scenario PnL.
+//! Reference: Federal Reserve Board (2019), "Dodd-Frank Act Stress Test (DFAST) Methodology"
+//! Reference: EBA (2020), Final Draft RTS on the IMA, Article 325bh(3) of Regulation (EU) 575/2013
 
 use std::fmt::Display;
 
@@ -64,9 +56,7 @@ pub enum CurveShift<T: RealExt> {
   /// Key-rate shift — additive bump of the zero rate at the single tenor
   /// `pillar` only (with no contagion to neighbours).
   KeyRate { pillar: T, amount: T },
-  /// Arbitrary user-supplied shift function `r -> r_shocked` as an additive
-  /// delta at every pillar, expressed as an `ndarray::Array1` aligned to the
-  /// curve pillars.
+  /// An additive shift per curve pillar, aligned to the pillars.
   AtPillars(Array1<T>),
 }
 
@@ -77,13 +67,8 @@ impl<T: RealExt> CurveShift<T> {
     let points = base.points();
     let n = points.len();
     let times: Array1<T> = Array1::from_iter(points.iter().map(|p| p.time));
-    let base_rates: Array1<T> = Array1::from_iter(points.iter().map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln() / p.time
-      } else {
-        T::zero()
-      }
-    }));
+    let base_rates: Array1<T> =
+      Array1::from_iter(points.iter().map(|p| -p.discount_factor.ln() / p.time));
 
     let shifted_rates = match self {
       Self::Parallel(amount) => base_rates.mapv(|r| r + *amount),
@@ -119,7 +104,7 @@ impl<T: RealExt> CurveShift<T> {
       }
     };
 
-    DiscountCurve::from_zero_rates(&times, &shifted_rates, base.method())
+    DiscountCurve::from_zero_rates(times.view(), shifted_rates.view(), base.method())
   }
 }
 
@@ -167,8 +152,8 @@ impl<T: RealExt> Scenario<T> {
   }
 
   /// Attach a curve shift keyed by curve name.
-  pub fn with_curve_shift(mut self, curve_key: impl Into<String>, shift: CurveShift<T>) -> Self {
-    self.curve_shifts.push((curve_key.into(), shift));
+  pub fn with_curve_shift(mut self, curve_name: impl Into<String>, shift: CurveShift<T>) -> Self {
+    self.curve_shifts.push((curve_name.into(), shift));
     self
   }
 
@@ -190,10 +175,10 @@ impl<T: RealExt> Scenario<T> {
   }
 
   /// Resolve a curve by applying every matching curve shift in order.
-  pub fn resolve_curve(&self, curve_key: &str, base: &DiscountCurve<T>) -> DiscountCurve<T> {
+  pub fn resolve_curve(&self, curve_name: &str, base: &DiscountCurve<T>) -> DiscountCurve<T> {
     let mut curve = base.clone();
     for (key, shift) in &self.curve_shifts {
-      if key == curve_key {
+      if key == curve_name {
         curve = shift.apply(&curve);
       }
     }
@@ -214,10 +199,8 @@ pub struct ScenarioResult<T: RealExt> {
   pub pnl: T,
 }
 
-/// Stress-test engine — runs a set of scenarios against a `Fn(&Scenario<T>) -> T`
-/// valuer supplied by the caller.  The valuer closure is responsible for
-/// consuming any relevant shocks / curve shifts from the scenario and
-/// returning the portfolio value under the shocked state.
+/// Runs scenarios against the caller's `Fn(&Scenario<T>) -> T` valuer, which applies the
+/// scenario's shocks and curve shifts and returns the portfolio value under them.
 #[derive(Debug, Clone)]
 pub struct StressTest<T: RealExt> {
   scenarios: Vec<Scenario<T>>,

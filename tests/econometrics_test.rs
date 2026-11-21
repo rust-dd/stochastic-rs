@@ -2,17 +2,20 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::econometrics::EngleGrangerConfig;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
-use stochastic_rs::stats::econometrics::granger_causality;
+use stochastic_rs::stats::econometrics::granger_causality_test;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
@@ -25,7 +28,7 @@ fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
 #[test]
 fn cusum_finite_outputs_for_arbitrary_series() {
   let s = random_walk(101, 1_000, 1.0);
-  let res = cusum(s.view(), 0.5, 6.0);
+  let res = cusum(s.view(), 0.5, 6.0).unwrap();
   assert!(res.upper.iter().all(|v| v.is_finite()));
   assert!(res.lower.iter().all(|v| v.is_finite()));
 }
@@ -40,23 +43,23 @@ fn pelt_segment_count_increases_with_lower_penalty() {
       _ => -3.0,
     };
   }
-  let cheap = pelt(s.view(), 1.0, 5);
-  let expensive = pelt(s.view(), 1_000.0, 5);
+  let cheap = pelt(s.view(), 1.0, 5).unwrap();
+  let expensive = pelt(s.view(), 1_000.0, 5).unwrap();
   assert!(cheap.changepoints.len() >= expensive.changepoints.len());
 }
 
 #[test]
 fn engle_granger_full_pipeline() {
   let x = random_walk(31, 400, 1.0);
-  let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(33));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.05).seeded(&Deterministic::new(33));
   let mut eps = vec![0.0_f64; 400];
   dist.fill_slice(&mut eps);
   let y: Array1<f64> = (0..400)
     .map(|i| 1.0 + 1.5 * x[i] + eps[i])
     .collect::<Vec<_>>()
     .into();
-  let res = engle_granger_test(y.view(), x.view());
-  assert!(res.reject_no_cointegration);
+  let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
+  assert!(res.rejects_null);
   assert!((res.beta - 1.5).abs() < 0.1);
 }
 
@@ -73,7 +76,7 @@ fn johansen_eigenvalues_decreasing_in_magnitude() {
     s[[i, 2]] = r3[i];
     s[[i, 3]] = r4[i];
   }
-  let res = johansen_test(s.view(), 1);
+  let res = johansen_test(s.view(), 1).unwrap();
   for w in res.eigenvalues.windows(2).into_iter() {
     assert!(w[0] >= w[1] - 1e-9);
   }
@@ -81,21 +84,21 @@ fn johansen_eigenvalues_decreasing_in_magnitude() {
 
 #[test]
 fn granger_pvalue_in_unit_interval() {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(71));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(71));
   let mut buf_a = vec![0.0_f64; 300];
   let mut buf_b = vec![0.0_f64; 300];
   dist.fill_slice(&mut buf_a);
   dist.fill_slice(&mut buf_b);
   let a = Array1::from(buf_a);
   let b = Array1::from(buf_b);
-  let res = granger_causality(a.view(), b.view(), 4, 0.05);
-  assert!((0.0..=1.0).contains(&res.p_value));
+  let res = granger_causality_test(a.view(), b.view(), 4, 0.05).unwrap();
+  assert!(res.p_value.is_some_and(|p| (0.0..=1.0).contains(&p)));
 }
 
 #[test]
 fn hmm_log_likelihood_finite_after_fit() {
-  let dist0 = SimdNormal::<f64>::new(-2.0, 0.5, &Deterministic::new(1));
-  let dist1 = SimdNormal::<f64>::new(2.0, 0.5, &Deterministic::new(2));
+  let mut dist0 = SimdNormal::<f64>::new(-2.0, 0.5).seeded(&Deterministic::new(1));
+  let mut dist1 = SimdNormal::<f64>::new(2.0, 0.5).seeded(&Deterministic::new(2));
   let mut a = vec![0.0_f64; 200];
   let mut b = vec![0.0_f64; 200];
   dist0.fill_slice(&mut a);
@@ -107,8 +110,8 @@ fn hmm_log_likelihood_finite_after_fit() {
     Array1::from(vec![-1.0, 1.0]),
     Array1::from(vec![1.0, 1.0]),
   );
-  let fit = hmm.baum_welch(obs.view(), 50, 1e-6);
+  let fit = hmm.baum_welch(obs.view(), 50, 1e-6).unwrap();
   assert!(fit.log_likelihood.is_finite());
-  let path = hmm.viterbi(obs.view());
+  let path = hmm.viterbi(obs.view()).unwrap();
   assert_eq!(path.len(), 400);
 }

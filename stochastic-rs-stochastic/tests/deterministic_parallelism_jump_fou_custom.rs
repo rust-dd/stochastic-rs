@@ -1,32 +1,18 @@
-//! Reproducibility tests for `JumpFOUCustom`'s diffusion fix: its private
-//! `fgn: Fgn<T, Unseeded, B>` field's own `.sampler()` used to build the
-//! diffusion's Gaussian source, which reads `fgn`'s own dead `Unseeded`
-//! field rather than the outer `self.seed` — the same bug class as
-//! `Bates1996`/`RoughHeston`'s `cgns` bug (see
-//! `deterministic_parallelism_bates_rough_heston.rs`), on a private field
-//! rather than a `cgns` one. Because the field is private, this was fixable
-//! non-breakingly (unlike `Merton`'s public `cpoisson`, which cannot be
-//! re-typed without breaking callers): `sampler()` now builds the Gaussian
-//! source directly from `self.seed.derive()` and borrows `fgn` only for its
-//! `Arc`-shared FFT plan and eigenvalues.
-//!
-//! `JumpFOUCustom` has no `CompoundPoisson` field (its jump timing/size
-//! draws were already reproducible via `rng: self.seed.rng()`), so fixing
-//! the diffusion makes it **fully** seed-reproducible — it carries no
-//! exception to `ProcessExt`'s reproducibility guarantee at all now.
+//! `JumpFouCustom` draws its fGN from a child of its seed, `fgn` lending only the FFT plan, and its
+//! jumps from the seed too, so identically seeded processes agree at any thread count.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
-fn jump_fou_custom(seed: u64) -> JumpFOUCustom<f64, ScalarExp<f64>, Deterministic> {
-  JumpFOUCustom::new(
+fn jump_fou_custom(seed: u64) -> JumpFouCustom<f64, SimdExp<f64>, SimdExp<f64>, Deterministic> {
+  JumpFouCustom::new(
     0.65,
     1.5,
     0.0,
@@ -34,8 +20,8 @@ fn jump_fou_custom(seed: u64) -> JumpFOUCustom<f64, ScalarExp<f64>, Deterministi
     N,
     Some(0.0),
     Some(1.0),
-    ScalarExp::new(20.0),
-    ScalarExp::new(5.0),
+    SimdExp::new(20.0),
+    SimdExp::new(5.0),
     Deterministic::new(seed),
   )
 }
@@ -62,7 +48,7 @@ fn jump_fou_custom_sample_is_seed_reproducible() {
   assert_eq!(
     bits_1d(&a),
     bits_1d(&b),
-    "two identically-seeded JumpFOUCustom objects diverged"
+    "two identically-seeded JumpFouCustom objects diverged"
   );
 }
 
@@ -79,17 +65,16 @@ fn jump_fou_custom_sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r3,
-    "JumpFOUCustom sample_par diverged between 1 and 3 threads"
+    "JumpFouCustom sample_par diverged between 1 and 3 threads"
   );
   assert_eq!(
     r1, r8,
-    "JumpFOUCustom sample_par diverged between 1 and 8 threads"
+    "JumpFouCustom sample_par diverged between 1 and 8 threads"
   );
 }
 
-/// Same guarantee beyond `MAX_CHUNKS = 64`: `JumpFOUCustom` goes through
-/// `ProcessExt::sample_par`'s default, so at `m = 256` several paths share
-/// one chunk's derived basis — the regime `m = 64` above cannot reach.
+/// The same guarantee beyond `MAX_CHUNKS = 64`: `JumpFouCustom` takes `sample_par`'s default, so
+/// at `m = 256` several paths share one chunk's derived basis, which `m = 64` cannot reach.
 #[test]
 fn jump_fou_custom_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;
@@ -102,7 +87,7 @@ fn jump_fou_custom_sample_par_is_thread_count_independent_beyond_max_chunks() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r8,
-    "JumpFOUCustom sample_par diverged between 1 and 8 threads at m=256"
+    "JumpFouCustom sample_par diverged between 1 and 8 threads at m=256"
   );
 }
 
@@ -118,6 +103,6 @@ fn jump_fou_custom_sample_par_paths_are_distinct() {
   assert_eq!(
     keys.len(),
     m,
-    "JumpFOUCustom sample_par produced duplicate paths"
+    "JumpFouCustom sample_par produced duplicate paths"
   );
 }

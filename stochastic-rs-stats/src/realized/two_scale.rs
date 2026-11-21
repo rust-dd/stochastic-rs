@@ -1,44 +1,34 @@
-//! Two-Scale and Multi-Scale Realized Variance estimators.
-//!
-//! Decomposes the standard realized variance bias under additive noise into a
-//! "slow-scale" component obtained by sub-sampling at a coarser frequency, and
-//! a "fast-scale" RV obtained from all observations. Combining the two cancels
-//! the leading-order noise bias term.
+//! Two-scale and multi-scale realized variance, which cancel the leading noise bias of RV.
 //!
 //! $$
 //! \widehat{TSRV} = \widehat{RV}^{(K)} - \frac{\bar n_K}{n}\widehat{RV}^{(\mathrm{all})},
 //! \qquad \bar n_K = \frac{n-K+1}{K}.
 //! $$
 //!
-//! The multi-scale variant (Zhang 2006) combines $M$ sub-sampling frequencies
-//! using $a_i = \lambda + \mu/i$ where $(\lambda, \mu)$ enforce the two
-//! orthogonality constraints $\sum a_i = 1$ (consistency) and
-//! $\sum a_i/i = 0$ (noise-bias cancellation), yielding the closed form
-//! $\mu = H_M / (H_M^2 - M H_M^{(2)})$, $\lambda = -H_M^{(2)} \mu / H_M$ with
-//! $H_M = \sum_{i=1}^M 1/i$ and $H_M^{(2)} = \sum_{i=1}^M 1/i^2$.
+//! $$
+//! a_i = \lambda + \frac{\mu}{i},\qquad \sum_i a_i = 1,\quad \sum_i \frac{a_i}{i} = 0,\qquad
+//! \mu = \frac{H_M}{H_M^2 - M H_M^{(2)}},\quad \lambda = -\frac{H_M^{(2)}\mu}{H_M},\qquad
+//! H_M = \sum_{i=1}^M \frac1i,\quad H_M^{(2)} = \sum_{i=1}^M \frac1{i^2}
+//! $$
 //!
-//! Reference: Zhang, Mykland, Aït-Sahalia, "A Tale of Two Time Scales:
-//! Determining Integrated Volatility With Noisy High-Frequency Data", Journal
-//! of the American Statistical Association, 100(472), 1394-1411 (2005).
-//! DOI: 10.1198/016214505000000169
+//! The slow scale subsamples at lag `K`; the `a_i` weigh the multi-scale variant's `M` scales.
 //!
-//! Reference: Zhang, "Efficient Estimation of Stochastic Volatility Using Noisy
-//! Observations: A Multi-Scale Approach", Bernoulli, 12(6), 1019-1043 (2006).
-//! DOI: 10.3150/bj/1165269149
+//! Reference: Zhang et al. (2005), JASA 100(472), 1394-1411, DOI: 10.1198/016214505000000169
+//! Reference: Zhang (2006), Bernoulli 12(6), 1019-1043, DOI: 10.3150/bj/1165269149
 
 use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
 
-/// Two-Scale Realized Variance (Zhang, Mykland, Aït-Sahalia 2005).
-///
-/// `prices` is the (length $n+1$) intraday price path. `k` is the
-/// sub-sampling factor — the slow scale uses every $k$-th price. Typical
-/// values are 5, 10, 20, or chosen via $K^{*} = c\,n^{2/3}$.
+/// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
+/// `k` prices, by convention `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
-  assert!(k >= 1, "subsampling factor must be ≥ 1");
-  assert!(len >= k + 2, "price path too short for k = {k}");
+  // At `k = 1` the slow and fast scales coincide and the estimate is identically zero.
+  assert!(k >= 2, "k must satisfy `k >= 2`, got k = {k:?}");
+  if len < k.saturating_add(2) {
+    return T::nan();
+  }
   let n = len - 1;
   let rv_all = price_rv(prices, 1);
   let rv_slow = average_subsample_rv(prices, k);
@@ -53,18 +43,17 @@ pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   }
 }
 
-/// Multi-Scale Realized Variance (Zhang 2006).
-///
-/// Combines RVs at scales $1, 2, \ldots, M$ with weights of the form
-/// $a_i = \lambda + \mu/i$, where $(\lambda, \mu)$ are chosen so that
-/// $\sum_i a_i = 1$ (consistency) and $\sum_i a_i/i = 0$ (cancellation of
-/// the leading-order noise bias). The closed form is
-/// $\mu = H_M / (H_M^2 - M H_M^{(2)})$ and
-/// $\lambda = -H_M^{(2)}\,\mu / H_M$ with $H_M = \sum 1/i$,
-/// $H_M^{(2)} = \sum 1/i^2$.
+/// Multi-scale realized variance (Zhang 2006) over scales `1..=scales` with the weights of the
+/// module doc; NaN below `scales + 2` prices, and panics unless `scales >= 2`.
 pub fn multi_scale_rv<T: FloatExt>(prices: ArrayView1<T>, scales: usize) -> T {
-  let m = scales.max(2);
-  assert!(prices.len() >= m + 2, "price path too short for {m} scales");
+  assert!(
+    scales >= 2,
+    "scales must satisfy `scales >= 2`, got scales = {scales:?}"
+  );
+  let m = scales;
+  if prices.len() < m.saturating_add(2) {
+    return T::nan();
+  }
   let h1: f64 = (1..=m).map(|i| 1.0 / i as f64).sum();
   let h2: f64 = (1..=m).map(|i| 1.0 / (i as f64).powi(2)).sum();
   let mu = h1 / (h1.powi(2) - (m as f64) * h2);
@@ -113,13 +102,16 @@ fn average_subsample_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   fn simulate_noisy_path(seed: u64, n: usize, sigma: f64, omega: f64) -> (Array1<f64>, f64) {
-    let dx = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
-    let dn = SimdNormal::<f64>::new(0.0, omega, &Deterministic::new(seed.wrapping_add(1)));
+    let mut dx = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
+    let mut dn =
+      SimdNormal::<f64>::new(0.0, omega).seeded(&Deterministic::new(seed.wrapping_add(1)));
     let mut steps = vec![0.0_f64; n];
     dx.fill_slice(&mut steps);
     let mut noise = vec![0.0_f64; n + 1];
@@ -153,5 +145,17 @@ mod tests {
     let rv: f64 = dy.iter().map(|v| v * v).sum();
     let msrv = multi_scale_rv(y.view(), 12);
     assert!((msrv - iv).abs() < (rv - iv).abs());
+  }
+
+  #[test]
+  #[should_panic(expected = "k must satisfy `k >= 2`, got k = 1")]
+  fn a_unit_subsampling_step_panics() {
+    let _ = two_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
+  }
+
+  #[test]
+  #[should_panic(expected = "scales must satisfy `scales >= 2`, got scales = 1")]
+  fn a_single_scale_panics() {
+    let _ = multi_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
   }
 }

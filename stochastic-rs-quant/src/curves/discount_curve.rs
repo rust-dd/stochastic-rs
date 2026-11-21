@@ -9,12 +9,15 @@
 //! - Forward rate extraction: $f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}$
 //! - Par rate computation
 
+use crate::calendar::Frequency;
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::interpolation;
 use super::types::Compounding;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// A calibrated discount curve built from (time, discount_factor) pairs.
@@ -27,20 +30,40 @@ pub struct DiscountCurve<T: RealExt> {
 }
 
 impl<T: RealExt> DiscountCurve<T> {
-  /// Build a discount curve from sorted (time, discount_factor) pairs.
+  /// A curve through `points`, sorted by time, without a `t = 0` pillar (it is 1 there); panics
+  /// unless every time is finite and not negative and no two are equal.
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
+    if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
+      panic!(
+        "points must satisfy `p.time.is_finite()` for every p, got p.time = {:?}",
+        p.time
+      );
+    }
+    if let Some(p) = points.iter().find(|p| p.time < T::zero()) {
+      panic!(
+        "points must satisfy `p.time >= T::zero()` for every p, got p.time = {:?}",
+        p.time
+      );
+    }
     let mut pts = points;
-    pts.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+    pts.retain(|p| p.time > T::zero());
+    pts.sort_by(|a, b| ascending(&a.time, &b.time));
+    if let Some(w) = pts.windows(2).find(|w| w[0].time == w[1].time) {
+      panic!(
+        "points must satisfy `a.time != b.time` for every pair, got time = {:?} twice",
+        w[0].time
+      );
+    }
     Self {
       points: pts,
       method,
     }
   }
 
-  /// Build from parallel arrays of times and discount factors.
+  /// Build from parallel arrays of times and discount factors; panics as [`new`](Self::new) does.
   pub fn from_arrays(
-    times: &Array1<T>,
-    discount_factors: &Array1<T>,
+    times: ArrayView1<T>,
+    discount_factors: ArrayView1<T>,
     method: InterpolationMethod,
   ) -> Self {
     let points: Vec<CurvePoint<T>> = times
@@ -54,10 +77,11 @@ impl<T: RealExt> DiscountCurve<T> {
     Self::new(points, method)
   }
 
-  /// Build from parallel arrays of times and zero rates (continuous compounding).
+  /// Build from parallel arrays of times and zero rates (continuous compounding); panics as
+  /// [`new`](Self::new) does.
   pub fn from_zero_rates(
-    times: &Array1<T>,
-    rates: &Array1<T>,
+    times: ArrayView1<T>,
+    rates: ArrayView1<T>,
     method: InterpolationMethod,
   ) -> Self {
     let points: Vec<CurvePoint<T>> = times
@@ -86,12 +110,12 @@ impl<T: RealExt> DiscountCurve<T> {
     &self.points
   }
 
-  /// The interpolation method.
+  /// How the curve interpolates between its pillars.
   pub fn method(&self) -> InterpolationMethod {
     self.method
   }
 
-  /// Interpolated discount factor at time `t`.
+  /// Discount factor at `t`, 1 for `t <= 0`; before the first pillar as the method's function says.
   pub fn discount_factor(&self, t: T) -> T {
     if t <= T::zero() {
       return T::one();
@@ -99,10 +123,10 @@ impl<T: RealExt> DiscountCurve<T> {
     interpolation::interpolate_discount_factor(&self.points, t, self.method)
   }
 
-  /// Continuously compounded zero rate at time `t`.
+  /// Continuously compounded zero rate at `t`; NaN at a non-positive `t`.
   pub fn zero_rate(&self, t: T) -> T {
     if t <= T::zero() {
-      return T::zero();
+      return T::nan();
     }
     -self.discount_factor(t).ln() / t
   }
@@ -112,49 +136,48 @@ impl<T: RealExt> DiscountCurve<T> {
     compounding.zero_rate(self.discount_factor(t), t)
   }
 
-  /// Continuously compounded forward rate between `t1` and `t2`.
+  /// Continuously compounded forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
   ///
   /// $$
   /// f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
   /// $$
   pub fn forward_rate(&self, t1: T, t2: T) -> T {
     if t2 <= t1 {
-      return self.zero_rate(t1);
+      return T::nan();
     }
     let d1 = self.discount_factor(t1);
     let d2 = self.discount_factor(t2);
     -(d2.ln() - d1.ln()) / (t2 - t1)
   }
 
-  /// Simple (money-market) forward rate between `t1` and `t2`.
+  /// Simple (money-market) forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
   ///
   /// $$
   /// F(t_1, t_2) = \frac{1}{t_2 - t_1}\left(\frac{D(t_1)}{D(t_2)} - 1\right)
   /// $$
   pub fn simple_forward_rate(&self, t1: T, t2: T) -> T {
     if t2 <= t1 {
-      return T::zero();
+      return T::nan();
     }
     let d1 = self.discount_factor(t1);
     let d2 = self.discount_factor(t2);
     (d1 / d2 - T::one()) / (t2 - t1)
   }
 
-  /// Par swap rate for maturity `T` with given payment frequency.
+  /// Par swap rate for `maturity` at `frequency`; NaN unless `maturity` is finite and positive.
   ///
   /// $$
   /// S(T) = \frac{1 - D(T)}{\sum_{i=1}^{n} \delta_i\, D(t_i)}
   /// $$
-  pub fn par_rate(&self, maturity: T, frequency: u32) -> T {
-    let n_payments = (maturity * T::from_f64_fast(frequency as f64))
-      .ceil()
-      .to_f64()
-      .unwrap() as usize;
-    if n_payments == 0 {
-      return T::zero();
+  pub fn par_rate(&self, maturity: T, frequency: Frequency) -> T {
+    let per_year = T::from_f64_fast(frequency.periods_per_year() as f64);
+    let periods = (maturity * per_year).ceil();
+    if !(periods.is_finite() && periods >= T::one()) {
+      return T::nan();
     }
+    let n_payments = periods.to_f64().map_or(0, |n| n as usize);
 
-    let delta = T::one() / T::from_f64_fast(frequency as f64);
+    let delta = T::one() / per_year;
     let mut annuity = T::zero();
     for i in 1..=n_payments {
       let t = T::from_f64_fast(i as f64) * delta;
@@ -166,12 +189,12 @@ impl<T: RealExt> DiscountCurve<T> {
   }
 
   /// Extract zero rates at the given maturities.
-  pub fn zero_rates(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn zero_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(maturities.iter().map(|&t| self.zero_rate(t)).collect())
   }
 
   /// Extract discount factors at the given maturities.
-  pub fn discount_factors(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn discount_factors(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(
       maturities
         .iter()
@@ -180,17 +203,15 @@ impl<T: RealExt> DiscountCurve<T> {
     )
   }
 
-  /// Extract forward rates for consecutive intervals defined by `maturities`.
-  pub fn forward_rates(&self, maturities: &Array1<T>) -> Array1<T> {
-    let n = maturities.len();
-    if n < 2 {
-      return Array1::zeros(n);
-    }
-    let mut fwd = Array1::zeros(n - 1);
-    for i in 0..n - 1 {
-      fwd[i] = self.forward_rate(maturities[i], maturities[i + 1]);
-    }
-    fwd
+  /// Forward rates over consecutive `maturities`, as [`forward_rate`](Self::forward_rate) gives
+  /// them; empty for fewer than two.
+  pub fn forward_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
+    Array1::from_iter(
+      maturities
+        .windows(2)
+        .into_iter()
+        .map(|w| self.forward_rate(w[0], w[1])),
+    )
   }
 }
 

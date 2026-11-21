@@ -1,17 +1,16 @@
-//! Schedule generation for coupon and payment dates.
+//! Coupon and payment date schedules with business-day adjustment, stubs and end-of-month
+//! preservation.
 //!
-//! Generates periodic date schedules with business day adjustment,
-//! stub handling, and end-of-month preservation.
-//!
-//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16.
+//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16
 
 use chrono::NaiveDate;
 
+use super::SharedCalendar;
 use super::business_day::BusinessDayConvention;
 use super::date_math::add_months;
+use super::date_math::cds_roll_on_or_before;
 use super::date_math::snap_to_imm;
 use super::day_count::DayCountConvention;
-use super::holiday::Calendar;
 use crate::traits::RealExt;
 
 /// Payment / coupon frequency.
@@ -56,16 +55,33 @@ impl Frequency {
       Self::Monthly => 12,
     }
   }
+
+  /// The frequency of `n` coupons a year, if one pays 1, 2, 4 or 12.
+  pub fn from_periods_per_year(n: u32) -> Option<Self> {
+    match n {
+      1 => Some(Self::Annual),
+      2 => Some(Self::SemiAnnual),
+      4 => Some(Self::Quarterly),
+      12 => Some(Self::Monthly),
+      _ => None,
+    }
+  }
 }
 
-/// Direction of date generation.
+/// How a schedule's dates are generated between its effective and termination dates.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum DateGenerationRule {
   /// Generate dates from the effective date toward the termination date.
   Forward,
   /// Generate dates from the termination date toward the effective date.
   #[default]
   Backward,
+  /// Backward generation, every date snapped to the IMM date (third Wednesday) of its quarter.
+  Imm,
+  /// The 20th of March, June, September and December, backward from the termination date to the
+  /// roll on or before the effective date.
+  Cds,
 }
 
 impl std::fmt::Display for DateGenerationRule {
@@ -73,6 +89,8 @@ impl std::fmt::Display for DateGenerationRule {
     match self {
       Self::Forward => write!(f, "Forward"),
       Self::Backward => write!(f, "Backward"),
+      Self::Imm => write!(f, "IMM"),
+      Self::Cds => write!(f, "CDS"),
     }
   }
 }
@@ -121,17 +139,12 @@ pub struct ScheduleBuilder {
   effective: NaiveDate,
   termination: NaiveDate,
   frequency: Frequency,
-  calendar: Option<Calendar>,
+  calendar: Option<SharedCalendar>,
   convention: BusinessDayConvention,
   rule: DateGenerationRule,
   end_of_month: bool,
-  /// Explicit stub convention. When `None`, defaults to `ShortFirst` for
-  /// backward generation and `ShortLast` for forward generation (the
-  /// implicit pre-rc.2 behaviour).
+  /// Stub convention; `None` is `ShortFirst` for backward and `ShortLast` for forward generation.
   stub: Option<StubConvention>,
-  /// Snap every generated date to the nearest IMM date (3rd Wednesday of
-  /// the same calendar quarter), per CME / LIFFE futures convention.
-  imm: bool,
 }
 
 impl ScheduleBuilder {
@@ -145,36 +158,17 @@ impl ScheduleBuilder {
       rule: DateGenerationRule::Backward,
       end_of_month: false,
       stub: None,
-      imm: false,
     }
   }
 
-  /// Snap every generated date to its quarterly IMM date (3rd Wednesday
-  /// of the enclosing March / June / September / December bucket). Used
-  /// for futures-aligned schedules.
-  pub fn imm(mut self, flag: bool) -> Self {
-    self.imm = flag;
+  /// The generation rule; [`DateGenerationRule::Backward`] unless set.
+  pub fn rule(mut self, rule: DateGenerationRule) -> Self {
+    self.rule = rule;
     self
   }
 
-  /// Set the stub convention.
-  ///
-  /// **Defaults (when this method is not called):**
-  /// - [`DateGenerationRule::Backward`] → [`StubConvention::ShortFirst`]
-  /// - [`DateGenerationRule::Forward`] → [`StubConvention::ShortLast`]
-  ///
-  /// **Edge cases:**
-  /// - `LongFirst` / `LongLast` are **no-ops** when the schedule has no stub
-  ///   (i.e. when the total tenor is an integer multiple of the regular
-  ///   period). Detection is by comparing `months_between(stub_endpoints)`
-  ///   against the regular `period` — equal means no stub to merge.
-  /// - Long-merge applies only when the raw schedule has ≥ 3 dates; a
-  ///   2-date schedule (single period) is left untouched regardless of the
-  ///   chosen convention.
-  /// - Mixing a Long convention with the **opposite** direction (e.g.
-  ///   `Forward` + `LongFirst`) is allowed and merges the start-side stub
-  ///   if any was produced — useful when generating an end-anchored
-  ///   schedule but wanting the *first* irregular period absorbed.
+  /// Stub convention; unset, it is `ShortFirst` for backward and `ShortLast` for forward
+  /// generation. A long stub merges only when a stub exists and the schedule has ≥ 3 dates.
   pub fn stub(mut self, stub: StubConvention) -> Self {
     self.stub = Some(stub);
     self
@@ -185,7 +179,7 @@ impl ScheduleBuilder {
     self
   }
 
-  pub fn calendar(mut self, calendar: Calendar) -> Self {
+  pub fn calendar(mut self, calendar: SharedCalendar) -> Self {
     self.calendar = Some(calendar);
     self
   }
@@ -195,34 +189,43 @@ impl ScheduleBuilder {
     self
   }
 
-  pub fn forward(mut self) -> Self {
-    self.rule = DateGenerationRule::Forward;
-    self
-  }
-
-  pub fn backward(mut self) -> Self {
-    self.rule = DateGenerationRule::Backward;
-    self
-  }
-
   pub fn end_of_month(mut self, flag: bool) -> Self {
     self.end_of_month = flag;
     self
   }
 
-  /// Build the schedule.
+  /// Unadjusted and calendar-adjusted dates by `rule`, with long-stub merging; under `Cds`, panics
+  /// unless `termination` is a CDS roll date and `frequency` a whole number of quarters.
   pub fn build(self) -> Schedule {
     let period = self.frequency.months();
     let mut raw_dates = match self.rule {
-      DateGenerationRule::Backward => {
-        generate_backward(self.effective, self.termination, period, self.end_of_month)
-      }
       DateGenerationRule::Forward => {
         generate_forward(self.effective, self.termination, period, self.end_of_month)
       }
+      DateGenerationRule::Backward | DateGenerationRule::Imm => {
+        generate_backward(self.effective, self.termination, period, self.end_of_month)
+      }
+      DateGenerationRule::Cds => {
+        let termination = self.termination;
+        assert!(
+          termination == cds_roll_on_or_before(termination),
+          "termination must satisfy `termination == cds_roll_on_or_before(termination)`, got termination = {termination:?}"
+        );
+        assert!(
+          period % 3 == 0,
+          "frequency must satisfy `frequency.months() % 3 == 0`, got frequency = {:?}",
+          self.frequency
+        );
+        generate_backward(
+          cds_roll_on_or_before(self.effective),
+          termination,
+          period,
+          false,
+        )
+      }
     };
 
-    if self.imm {
+    if self.rule == DateGenerationRule::Imm {
       for d in raw_dates.iter_mut() {
         *d = snap_to_imm(*d);
       }
@@ -231,12 +234,12 @@ impl ScheduleBuilder {
     raw_dates.sort();
     raw_dates.dedup();
 
-    // Apply long-stub merging when the user has explicitly requested it.
-    // Short-stub conventions (`ShortFirst` / `ShortLast`) match the default
-    // `generate_*` output, so no extra work is needed in those cases.
+    // The short-stub conventions are what generation produces; only a long stub needs a merge.
     let stub = self.stub.unwrap_or(match self.rule {
-      DateGenerationRule::Backward => StubConvention::ShortFirst,
       DateGenerationRule::Forward => StubConvention::ShortLast,
+      DateGenerationRule::Backward | DateGenerationRule::Imm | DateGenerationRule::Cds => {
+        StubConvention::ShortFirst
+      }
     });
     if raw_dates.len() >= 3 {
       match stub {
@@ -263,7 +266,7 @@ impl ScheduleBuilder {
     let adjusted = match &self.calendar {
       Some(cal) => raw_dates
         .iter()
-        .map(|&d| self.convention.adjust(d, cal))
+        .map(|&d| self.convention.adjust(d, cal.as_ref()))
         .collect(),
       None => raw_dates.clone(),
     };
@@ -325,169 +328,4 @@ fn generate_forward(
 }
 
 #[cfg(test)]
-mod tests {
-  use chrono::NaiveDate;
-
-  use super::*;
-
-  #[test]
-  fn semiannual_two_year_schedule() {
-    let s = ScheduleBuilder::new(
-      NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
-      NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-    )
-    .frequency(Frequency::SemiAnnual)
-    .build();
-    // 2 years semi-annual = 5 dates: t=0, +6m, +1y, +18m, +2y
-    assert_eq!(s.dates.len(), 5);
-  }
-
-  #[test]
-  fn frequency_periods_per_year() {
-    assert_eq!(Frequency::Annual.periods_per_year(), 1);
-    assert_eq!(Frequency::SemiAnnual.periods_per_year(), 2);
-    assert_eq!(Frequency::Quarterly.periods_per_year(), 4);
-    assert_eq!(Frequency::Monthly.periods_per_year(), 12);
-  }
-
-  #[test]
-  fn frequency_months() {
-    assert_eq!(Frequency::Annual.months(), 12);
-    assert_eq!(Frequency::SemiAnnual.months(), 6);
-    assert_eq!(Frequency::Quarterly.months(), 3);
-  }
-
-  #[test]
-  fn imm_quarterly_schedule_lands_on_third_wednesdays() {
-    let s = ScheduleBuilder::new(
-      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
-      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
-    )
-    .frequency(Frequency::Quarterly)
-    .imm(true)
-    .build();
-    use chrono::Datelike as _;
-    for d in &s.dates {
-      assert_eq!(d.weekday(), chrono::Weekday::Wed, "{d} not Wednesday");
-      assert!((15..=21).contains(&d.day()), "{d} not in 3rd week");
-      assert!(matches!(d.month(), 3 | 6 | 9 | 12), "{d} not in IMM month");
-    }
-  }
-
-  #[test]
-  fn imm_flag_disabled_keeps_generated_dates() {
-    let s_plain = ScheduleBuilder::new(
-      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
-      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
-    )
-    .frequency(Frequency::Quarterly)
-    .build();
-    let s_imm = ScheduleBuilder::new(
-      NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
-      NaiveDate::from_ymd_opt(2025, 3, 1).unwrap(),
-    )
-    .frequency(Frequency::Quarterly)
-    .imm(true)
-    .build();
-    use chrono::Datelike as _;
-    // Same length and final endpoint should match the IMM bucket of the
-    // termination, but the generic schedule keeps day-of-month 1.
-    assert_eq!(s_plain.dates.len(), s_imm.dates.len());
-    assert_eq!(s_plain.dates[0].day(), 1);
-    assert_ne!(s_imm.dates[0].day(), 1);
-  }
-
-  #[test]
-  fn backward_long_first_merges_short_initial_stub() {
-    // Tenor = 2y + 1m → backward semi-annual yields a 1-month short stub at
-    // the front. `LongFirst` must absorb that stub into the next regular
-    // period, dropping the second date.
-    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
-    let short = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .backward()
-      .stub(StubConvention::ShortFirst)
-      .build();
-    let long = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .backward()
-      .stub(StubConvention::LongFirst)
-      .build();
-    assert_eq!(
-      long.dates.len() + 1,
-      short.dates.len(),
-      "LongFirst should drop exactly one intermediate date"
-    );
-    assert_eq!(long.dates.first(), short.dates.first());
-    assert_eq!(long.dates.last(), short.dates.last());
-  }
-
-  #[test]
-  fn backward_long_first_no_op_on_regular_grid() {
-    // Tenor = exact 2y semi-annual → no stub. `LongFirst` must be a no-op.
-    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let termination = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
-    let short = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .backward()
-      .stub(StubConvention::ShortFirst)
-      .build();
-    let long = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .backward()
-      .stub(StubConvention::LongFirst)
-      .build();
-    assert_eq!(
-      long.dates, short.dates,
-      "LongFirst on a regular tenor must not drop any dates"
-    );
-  }
-
-  #[test]
-  fn forward_long_last_merges_short_trailing_stub() {
-    // Tenor = 2y + 1m forward semi-annual → 1-month short stub at the back.
-    // `LongLast` must absorb the stub into the previous regular period,
-    // dropping `dates[n-2]`.
-    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
-    let short = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .forward()
-      .stub(StubConvention::ShortLast)
-      .build();
-    let long = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::SemiAnnual)
-      .forward()
-      .stub(StubConvention::LongLast)
-      .build();
-    assert_eq!(
-      long.dates.len() + 1,
-      short.dates.len(),
-      "LongLast should drop exactly one intermediate date"
-    );
-    assert_eq!(long.dates.first(), short.dates.first());
-    assert_eq!(long.dates.last(), short.dates.last());
-  }
-
-  #[test]
-  fn forward_long_last_no_op_on_regular_grid() {
-    // Exact 1y quarterly grid → no stub. `LongLast` must be a no-op.
-    let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let termination = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-    let short = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::Quarterly)
-      .forward()
-      .stub(StubConvention::ShortLast)
-      .build();
-    let long = ScheduleBuilder::new(effective, termination)
-      .frequency(Frequency::Quarterly)
-      .forward()
-      .stub(StubConvention::LongLast)
-      .build();
-    assert_eq!(
-      long.dates, short.dates,
-      "LongLast on a regular tenor must not drop any dates"
-    );
-  }
-}
+mod tests;

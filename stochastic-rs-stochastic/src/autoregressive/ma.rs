@@ -1,52 +1,56 @@
-//! # Ma
+//! MA(q): Gaussian noise plus a weighted sum of its last `q` values.
 //!
 //! $$
-//! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
+//! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},
+//! \qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an MA(q) model:
-///
-/// \[
-///   X_t = \epsilon_t + \theta_1 \epsilon_{t-1} + \dots + \theta_q \epsilon_{t-q},
-///   \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2).
-/// \]
-///
-/// # Fields
-/// - `theta`: MA coefficients (\(\theta_1, \ldots, \theta_q\)).
-/// - `sigma`: Standard deviation of noise \(\epsilon_t\).
-/// - `n`: Length of time series.
-/// - `m`: Optional batch size.
+/// MA(q): Gaussian noise of scale `sigma` plus its last `theta.len()` values weighted by `theta`.
 #[derive(Debug, Clone)]
-pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// MA coefficients
   pub theta: Array1<T>,
   /// Noise std dev
   pub sigma: T,
   /// Number of observations
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> MAq<T, S> {
-  /// Create a new MA(q) model with the given parameters.
+impl<T: FloatExt, S: SeedExt> Ma<T, S> {
+  /// MA(q). Panics unless `n >= 1`, `sigma >= 0`, and `sigma` and every entry of `theta` are
+  /// finite.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
-    assert!(sigma > T::zero(), "MAq requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("theta", "theta[i].is_finite()", &theta, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       theta,
@@ -57,21 +61,31 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Ma<T, S, B> {
+  /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 /// The Euler engine's view of a moving average. The lagged innovation is the
 /// second state component; higher orders would need one slot per lag.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for MAq<T, S, B>
+  for Ma<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.theta.len() == 1,
-      "MAq: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
+      "Ma: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
     );
     crate::euler::EulerSpec::MovingAverage {
       theta: self.theta[0],
-      sigma: self.sigma,
+      sigma: self.checked_sigma(),
     }
   }
 
@@ -108,27 +122,32 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MAq<T, S> { theta, sigma, n, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Ma<T, S> { theta, sigma, n, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MAq<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Ma<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ma<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = MAqSampler<T>
+    = MaSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> MAqSampler<T> {
-    MAqSampler {
+  fn sampler(&self) -> MaSampler<T> {
+    let sigma = self.checked_sigma();
+    MaSampler {
       n: self.n,
       theta: self.theta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
-  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  /// What a device runs: order one, since the family carries one lag; a higher order stays on
+  /// the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.theta.len() == 1)).then_some("an order above one: the family carries a single lag")
   }
@@ -190,24 +209,25 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`MAq`] sampling state: owns the Gaussian innovation source and the
+/// Reusable [`Ma`] sampling state: owns the Gaussian innovation source and the
 /// MA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct MAqSampler<T: FloatExt> {
+#[derive(Debug)]
+pub struct MaSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
-  normal: SimdNormal<T>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
-impl<T: FloatExt> MAqSampler<T> {
+impl<T: FloatExt> MaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let q = self.theta.len();
 
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
 
     // MA recursion
@@ -225,11 +245,13 @@ impl<T: FloatExt> MAqSampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
+impl<T: FloatExt> crate::traits::Sealed for MaSampler<T> {}
+
+impl<T: FloatExt> PathSampler<T> for MaSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("MAq output must be contiguous");
+    let slice = out.as_slice_mut().expect("Ma output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -239,7 +261,7 @@ impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
   }
 }
 
-py_process_1d!(PyMAq, MAq,
+py_process_1d!(PyMAq, Ma,
   sig: (theta, sigma, n, seed=None, dtype=None),
   params: (theta: Vec<f64>, sigma: f64, n: usize),
   device

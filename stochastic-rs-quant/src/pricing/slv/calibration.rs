@@ -51,17 +51,19 @@
 
 use std::cmp::Ordering;
 
-use anyhow::Result;
-use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Grid2D;
 
 use super::HestonSlvParams;
 use super::LeverageSurface;
+use crate::QuantError;
+use crate::total_order::ascending;
 
 /// Floor of the conditional-variance estimate before the square root.
 pub(super) const CONDITIONAL_VARIANCE_FLOOR: f64 = 1e-8;
@@ -133,27 +135,33 @@ impl ParticleMethod {
     self
   }
 
-  fn validate(&self) -> Result<()> {
+  fn validate(&self) -> Result<(), QuantError> {
     if self.n_particles < 2 {
-      bail!(
-        "the particle method needs at least two particles, got {}",
-        self.n_particles
-      );
+      return Err(QuantError::invalid(
+        "n_particles",
+        format!("must be at least 2, got {}", self.n_particles),
+      ));
     }
     if self.steps_per_year == 0 {
-      bail!("steps_per_year must be positive");
+      return Err(QuantError::invalid(
+        "steps_per_year",
+        "must be positive, got 0",
+      ));
     }
     if !(self.bandwidth_factor.is_finite() && self.bandwidth_factor > 0.0) {
-      bail!(
-        "bandwidth_factor must be finite and positive, got {}",
-        self.bandwidth_factor
-      );
+      return Err(QuantError::invalid(
+        "bandwidth_factor",
+        format!("must be finite and positive, got {}", self.bandwidth_factor),
+      ));
     }
     if !(self.bandwidth_t_min.is_finite() && self.bandwidth_t_min >= 0.0) {
-      bail!(
-        "bandwidth_t_min must be finite and non-negative, got {}",
-        self.bandwidth_t_min
-      );
+      return Err(QuantError::invalid(
+        "bandwidth_t_min",
+        format!(
+          "must be finite and non-negative, got {}",
+          self.bandwidth_t_min
+        ),
+      ));
     }
     Ok(())
   }
@@ -199,7 +207,7 @@ pub fn calibrate_leverage(
   local_vol: &Grid2D<f64>,
   snapshot_maturities: &[f64],
   method: &ParticleMethod,
-) -> Result<ParticleCalibration> {
+) -> Result<ParticleCalibration, QuantError> {
   validate(params, s0, r, q, local_vol, snapshot_maturities)?;
   method.validate()?;
 
@@ -207,7 +215,12 @@ pub fn calibrate_leverage(
   let spots = local_vol.xs().to_vec();
   let n_eval = spots.len();
   let n = method.n_particles;
-  let (kappa, theta, rho, v0) = (params.kappa, params.theta, params.rho, params.v0.max(0.0));
+  let (kappa, theta, rho, v0) = (
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.rho,
+    params.heston.v0.max(0.0),
+  );
   let sigma_mixed = params.sigma_mixed();
   let rho_bar = (1.0 - rho * rho).sqrt();
   let carry = r - q;
@@ -219,7 +232,7 @@ pub fn calibrate_leverage(
     leverage[[0, i]] = clamp_leverage(local_vol.eval(0.0, node) / sqrt_v0);
   }
 
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(method.seed));
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(method.seed));
   let mut x = vec![s0.ln(); n];
   let mut v = vec![v0; n];
   let mut z_v = vec![0.0; n];
@@ -256,7 +269,7 @@ pub fn calibrate_leverage(
     for (slot, (xp, vp)) in sorted.iter_mut().zip(x.iter().zip(v.iter())) {
       *slot = (xp.exp(), *vp);
     }
-    sorted.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    sorted.sort_unstable_by(|a, b| ascending(&a.0, &b.0));
     let h =
       bandwidth_scale * local_vol.eval(t_next, s0) * t_next.max(method.bandwidth_t_min).sqrt();
     let half_width = window_half_width(h);
@@ -286,53 +299,93 @@ pub(super) fn validate(
   q: f64,
   local_vol: &Grid2D<f64>,
   snapshot_maturities: &[f64],
-) -> Result<()> {
+) -> Result<(), QuantError> {
   if !(s0.is_finite() && s0 > 0.0) {
-    bail!("the spot must be finite and positive, got {s0}");
+    return Err(QuantError::invalid(
+      "spot",
+      format!("must be finite and positive, got {s0}"),
+    ));
   }
   if !(r.is_finite() && q.is_finite()) {
-    bail!("the rates must be finite, got r = {r}, q = {q}");
+    return Err(QuantError::invalid(
+      "rates",
+      format!("must be finite, got r = {r}, q = {q}"),
+    ));
   }
-  if !(params.v0.is_finite() && params.v0 >= 0.0) {
-    bail!(
-      "v0 must be a finite non-negative variance, got {}",
-      params.v0
-    );
+  if !(params.heston.v0.is_finite() && params.heston.v0 >= 0.0) {
+    return Err(QuantError::invalid(
+      "v0",
+      format!(
+        "must be a finite non-negative variance, got {}",
+        params.heston.v0
+      ),
+    ));
   }
   if !(params.eta.is_finite() && params.eta >= 0.0) {
-    bail!(
-      "the mixing fraction eta must be finite and non-negative, got {}",
-      params.eta
-    );
+    return Err(QuantError::invalid(
+      "mixing fraction eta",
+      format!("must be finite and non-negative, got {}", params.eta),
+    ));
   }
-  if !(params.rho.is_finite() && params.rho.abs() <= 1.0) {
-    bail!("rho must be a correlation in [-1, 1], got {}", params.rho);
+  if !(params.heston.rho.is_finite() && params.heston.rho.abs() <= 1.0) {
+    return Err(QuantError::invalid(
+      "rho",
+      format!(
+        "must be a correlation in [-1, 1], got {}",
+        params.heston.rho
+      ),
+    ));
   }
-  for value in [params.kappa, params.theta, params.sigma] {
-    if !value.is_finite() {
-      bail!("the Heston parameters must be finite");
-    }
+  let (kappa, theta, sigma) = (
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.sigma,
+  );
+  if !(kappa.is_finite() && theta.is_finite() && sigma.is_finite()) {
+    return Err(QuantError::invalid(
+      "Heston parameters",
+      format!("must be finite, got kappa = {kappa}, theta = {theta}, sigma = {sigma}"),
+    ));
   }
-  if local_vol
+  if let Some(((i, j), v)) = local_vol
     .values()
-    .iter()
-    .any(|v| !(v.is_finite() && *v >= 0.0))
+    .indexed_iter()
+    .find(|(_, v)| !(v.is_finite() && **v >= 0.0))
   {
-    bail!(
-      "the local volatility must be finite and non-negative everywhere; clean the Dupire surface first"
-    );
+    return Err(QuantError::invalid(
+      "local volatility",
+      format!(
+        "must be finite and non-negative everywhere, got {v} at [{i}, {j}]; clean the Dupire \
+         surface first"
+      ),
+    ));
   }
   if snapshot_maturities.is_empty() {
-    bail!("at least one snapshot maturity is needed: it is the surface's horizon");
+    return Err(QuantError::InsufficientData {
+      what: "maturities in the snapshot list",
+      needed: 1,
+      got: 0,
+    });
   }
-  if snapshot_maturities
+  if let Some((j, t)) = snapshot_maturities
     .iter()
-    .any(|t| !(t.is_finite() && *t > 0.0))
+    .enumerate()
+    .find(|(_, t)| !(t.is_finite() && **t > 0.0))
   {
-    bail!("snapshot maturities must be finite and positive");
+    return Err(QuantError::invalid(
+      "snapshot maturities",
+      format!("maturity {j} must be finite and positive, got {t}"),
+    ));
   }
-  if snapshot_maturities.windows(2).any(|w| w[0] >= w[1]) {
-    bail!("snapshot maturities must be strictly ascending");
+  if let Some(j) = snapshot_maturities.windows(2).position(|w| w[0] >= w[1]) {
+    return Err(QuantError::invalid(
+      "snapshot maturities",
+      format!(
+        "must be strictly ascending, got maturity {j} = {} before {}",
+        snapshot_maturities[j],
+        snapshot_maturities[j + 1]
+      ),
+    ));
   }
   Ok(())
 }

@@ -6,17 +6,20 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
-use super::params::HestonParams;
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
 use super::params::P_THETA;
 use super::params::P_V0;
 use super::params::RHO_BOUND;
+use crate::pricing::heston::HestonParams;
 
 const PARAMETER_COUNT: usize = 5;
 const INVERSE_UNIT_MARGIN: f64 = 1e-6;
-const BOUNDS: [(f64, f64); PARAMETER_COUNT] =
+
+/// Each physical parameter's box, in `(v0, κ, θ, σ, ρ)` order.
+pub(super) const BOUNDS: [(f64, f64); PARAMETER_COUNT] =
   [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-RHO_BOUND, RHO_BOUND)];
 
 pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> Array1<f64> {
@@ -35,7 +38,7 @@ pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> Array1<f64> {
   )
 }
 
-pub(super) fn from_optimizer_coordinates(coordinates: &Array1<f64>) -> HestonParams {
+pub(super) fn from_optimizer_coordinates(coordinates: ArrayView1<f64>) -> HestonParams {
   assert_eq!(
     coordinates.len(),
     PARAMETER_COUNT,
@@ -56,13 +59,36 @@ pub(super) fn from_optimizer_coordinates(coordinates: &Array1<f64>) -> HestonPar
   }
 }
 
+/// Each parameter's place in its box, 0 at the lower bound and 1 at the upper.
+pub(super) fn units(params: &HestonParams) -> [f64; PARAMETER_COUNT] {
+  let physical = [
+    params.v0,
+    params.kappa,
+    params.theta,
+    params.sigma,
+    params.rho,
+  ];
+  std::array::from_fn(|j| (physical[j] - BOUNDS[j].0) / (BOUNDS[j].1 - BOUNDS[j].0))
+}
+
+pub(super) fn at_units(units: [f64; PARAMETER_COUNT]) -> HestonParams {
+  let value = |j: usize| BOUNDS[j].0 + (BOUNDS[j].1 - BOUNDS[j].0) * units[j];
+  HestonParams {
+    v0: value(0),
+    kappa: value(1),
+    theta: value(2),
+    sigma: value(3),
+    rho: value(4),
+  }
+}
+
 pub(super) fn canonicalize(params: &HestonParams) -> HestonParams {
-  from_optimizer_coordinates(&to_optimizer_coordinates(params))
+  from_optimizer_coordinates(to_optimizer_coordinates(params).view())
 }
 
 pub(super) fn apply_chain_rule(
   mut physical_jacobian: Array2<f64>,
-  coordinates: &Array1<f64>,
+  coordinates: ArrayView1<f64>,
 ) -> Array2<f64> {
   assert_eq!(physical_jacobian.ncols(), PARAMETER_COUNT);
   assert_eq!(coordinates.len(), PARAMETER_COUNT);

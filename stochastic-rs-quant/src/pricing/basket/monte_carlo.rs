@@ -7,9 +7,12 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use rayon::prelude::*;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
-use crate::mc::McEstimate;
+use crate::QuantError;
+use crate::error::check_grid_shape;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 
@@ -51,7 +54,7 @@ pub struct McBasketPricer {
   pub weights: Array1<f64>,
   /// Average type — likewise a term of the contract.
   pub avg_type: BasketAverageType,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
@@ -110,24 +113,30 @@ impl McBasketPricer {
     q: ArrayView1<'_, f64>,
     tau: f64,
     option_type: OptionType,
-  ) -> anyhow::Result<McEstimate<f64>> {
+  ) -> Result<McEstimate<f64>, QuantError> {
     let n_assets = s.len();
-    if self.rho.shape() != [n_assets, n_assets] {
-      anyhow::bail!(
-        "rho shape {:?} does not match n_assets={n_assets}",
-        self.rho.shape()
-      );
+    check_grid_shape(
+      ["rho rows, one per asset", "rho columns, one per asset"],
+      (n_assets, n_assets),
+      self.rho.dim(),
+    )?;
+    for (what, got) in [
+      ("weights, one per asset", self.weights.len()),
+      ("sigma, one per asset", self.sigma.len()),
+      ("q, one per asset", q.len()),
+    ] {
+      if got != n_assets {
+        return Err(QuantError::DimensionMismatch {
+          what,
+          expected: n_assets,
+          got,
+        });
+      }
     }
-    if self.weights.len() != n_assets || self.sigma.len() != n_assets || q.len() != n_assets {
-      anyhow::bail!(
-        "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
-        self.weights.len(),
-        self.sigma.len(),
-        q.len()
-      );
-    }
-    if !crate::linalg::is_spd_t(&self.rho) {
-      anyhow::bail!("correlation matrix is not positive definite");
+    if !crate::linalg::is_spd_t(self.rho.view()) {
+      return Err(QuantError::NotPositiveDefinite {
+        what: "the correlation matrix rho",
+      });
     }
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }
@@ -147,7 +156,7 @@ impl McBasketPricer {
     option_type: OptionType,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
+    let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)

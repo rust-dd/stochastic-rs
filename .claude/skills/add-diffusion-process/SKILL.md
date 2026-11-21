@@ -19,7 +19,7 @@ A new process implements `ProcessExt<T>`
 associated items and one method — not `sample()`:**
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed {
     type Output: Send;
 
     /// Reusable sampling state. #[doc(hidden)] — implementation detail.
@@ -45,7 +45,7 @@ The sampler itself implements `PathSampler<T>`
 (`traits/sampler.rs`), which is two methods:
 
 ```rust
-pub trait PathSampler<T: FloatExt>: Send {
+pub trait PathSampler<T: FloatExt>: Send + crate::traits::Sealed {
     type Output: Send;
     fn sample_into(&mut self, out: &mut Self::Output);  // overwrite, no alloc
     fn sample(&mut self) -> Self::Output;               // allocate + fill
@@ -71,7 +71,7 @@ The narrow exception: if your `sampler()` must `clone()` the seed
 (because the clone feeds a persistent engine reused across a whole
 chunk), you must also override `advance_chunk_seed`. `CirPlusPlus`
 (`interest/cir_pp.rs`) is the in-tree example:
-`fn advance_chunk_seed(&self) { self.seed.seed_value(); }`.
+`fn advance_chunk_seed(&self) { self.seed.next_seed(); }`.
 
 ## 2. The struct + constructor
 
@@ -115,7 +115,13 @@ impl<T: FloatExt, S: SeedExt> Foo<T, S> {
         theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>,
         seed: S,                                    // <- LAST parameter
     ) -> Self {
-        assert!(n >= 2, "n must be at least 2");
+        // One `is_finite()` per float parameter, `is_none_or(..)` per `Option<T>` (dev-rules §14).
+        assert!(sigma.is_finite(), "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}");
+        assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+        assert!(
+            t.is_none_or(|t| t > T::zero() && t.is_finite()),
+            "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+        );
         Self { theta, mu, sigma, n, x0, t, seed }
     }
 
@@ -180,6 +186,8 @@ For an Euler-Maruyama discretisation, split the work in two:
 `PathSampler` impl runs the recursion.
 
 ```rust
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for Foo<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
     type Output = Array1<T>;
     type Sampler<'s> = FooSampler<T> where Self: 's;
@@ -195,10 +203,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
             mu: self.mu,
             sigma: self.sigma,
             dt,
-            // The Gaussian source carries dt.sqrt() as its std, so the
-            // recursion multiplies by sigma alone. Seeded from `&self.seed`
-            // — this is the `derive()` the reproducibility rule requires.
-            normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+            // Std dt.sqrt(), so the recursion multiplies by sigma alone; seeding from
+            // `&self.seed` is the derive() the reproducibility rule requires.
+            normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
         }
     }
 }
@@ -220,6 +227,8 @@ impl<T: FloatExt> FooSampler<T> {
     }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for FooSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for FooSampler<T> {
     type Output = Array1<T>;
     fn sample_into(&mut self, out: &mut Array1<T>) {
@@ -237,8 +246,9 @@ Four conventions in there:
   per step. Per `dev-rules` §7a, `rand_distr::StandardNormal` is
   reserved for `benches/` — library code uses the workspace's own
   `Simd*` distributions. `fill_slice(out)` takes no RNG argument at
-  all — the seed goes to the constructor, by reference:
-  `SimdNormal::<T>::new(mean, std, &self.seed)`.
+  all — the seed binds the stream once, by reference:
+  `SimdNormal::<T>::new(mean, std).seeded(&self.seed)`, a
+  `Seeded<SimdNormal<T>>` sampler field.
 - **Fold constants into the noise.** Putting `dt.sqrt()` in the
   distribution's std keeps it out of the inner loop.
 - Use `T::from_f64_fast` / `T::from_usize_` (not `T::from`) at the
@@ -297,21 +307,10 @@ use stochastic_rs_stochastic::diffusion::foo::PyFoo;
 m.add_class::<PyFoo>()?;
 ```
 
-## 6. Backward-compat aliases
+## 6. Renames keep no alias
 
-If you rename an existing process, add an alias in
-`stochastic-rs-stochastic/src/aliases.rs` — the crate root, not a
-per-directory file:
-
-```rust
-#[deprecated(since = "2.0.0", note = "renamed to `Foo` for naming consistency")]
-pub use crate::diffusion::foo::Foo as OLDFOO;
-```
-
-The file is `#![allow(deprecated)]` at the top and currently carries the
-v1.x acronym-style names (`GBM`, `OU`, `CIR`, …) renamed to PascalCase
-in v2.0.0, scheduled for removal in v3.0.0. Keep entries alphabetised by
-module path, as the existing ones are.
+A renamed or removed process leaves no deprecated alias, shim or second path: delete the old name
+outright and record the change in `MIGRATION.md` (there is no `aliases.rs`).
 
 ## 7. Testing requirements
 
@@ -331,9 +330,8 @@ mod tests {
         assert_eq!(a.sample(), b.sample());
     }
 
-    /// 1b. `sample_par(m)` is bit-identical across rayon thread-pool
-    ///     sizes. New processes must also be added to
-    ///     `tests/reproducibility_all_processes.rs`, the crate-wide guard.
+    /// 1b. `sample_par(m)` is bit-identical across rayon pool sizes; register the
+    ///     process in `tests/reproducibility_all_processes.rs` as well.
     #[test]
     fn sample_par_is_reproducible() { }
 
@@ -352,7 +350,7 @@ mod tests {
 
     /// 4. Constructor validates n >= 2.
     #[test]
-    #[should_panic(expected = "n must be at least 2")]
+    #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
     fn rejects_n_below_two() {
         let _ = Foo::<f64, _>::new(0.5, 0.0, 0.1, 1, None, None, Unseeded);
     }
@@ -403,13 +401,15 @@ that line if your new process is material.
   reference.
 - `Vasicek` (`interest/vasicek.rs`) — note the directory: mean-reverting
   short-rate models live under `interest/`, not `diffusion/`.
-- `Cir` (`diffusion/cir.rs`) — CIR; carries an extra `use_sym` option.
+- `Cir` (`diffusion/cir.rs`) — CIR; carries an extra `boundary: VarianceBoundary`
+  option (`params.rs`), floored or reflected at zero.
 - `Fou` (`diffusion/fou.rs`) — fractional OU; adds a third type
   parameter `B` (backend, defaulting to `Cpu`) and composes an `Fgn`
   driver. See `add-fractional-process`.
 - `Heston` (`volatility/heston.rs`) — `Output = [Array1<T>; 2]`, and a
-  third type parameter `Sch: HestonScheme = Euler` selecting the
-  discretisation at compile time.
+  second type parameter `Sch: HestonScheme = Euler`, before the seed, selecting the
+  discretisation at compile time (`HestonScheme` is sealed: a new scheme
+  is added in `heston/scheme.rs`, nowhere else).
 - `CirPlusPlus` (`interest/cir_pp.rs`) — the one process that overrides
   `advance_chunk_seed`; read it before writing a clone-based `sampler()`.
 

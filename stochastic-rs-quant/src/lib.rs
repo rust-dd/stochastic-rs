@@ -11,12 +11,8 @@
 //! - [`pricing`] — Black-Scholes, Heston, Bates, rBergomi, CGMYsv, basket /
 //!   rainbow / Asian / barrier / lookback / cliquet payoffs; Fourier
 //!   (Carr-Madan, Lewis, Gil-Pelaez); Malliavin-Thalmaier Greeks; SLV.
-//! - [`mc`] — variance reduction (antithetic, control variates, stratified,
-//!   importance sampling), quasi-MC (Halton/Sobol), multilevel MC (MLMC),
-//!   and the [`mc::McEstimate`] result type; re-exported from
-//!   `stochastic-rs-stochastic` so pricing code reaches it as
-//!   `stochastic_rs_quant::mc` instead of a 3-hop
-//!   `stochastic_rs_quant::stochastic::mc` path.
+//! - `stochastic_rs_stochastic::mc` — variance reduction, Brownian-bridge QMC, multilevel MC and
+//!   `McEstimate`, the type the Monte Carlo pricers here return.
 //! - [`bonds`] — affine zero-coupon bond pricing (Vasicek, CIR, Hull-White,
 //!   G2++), duration / convexity.
 //! - [`fourier_malliavin`] — non-parametric realised volatility / leverage /
@@ -59,15 +55,13 @@
 //!   parity optimisers, momentum / cross-sectional ranking pipelines.
 //! - [`factors`] — PCA, Ledoit-Wolf shrinkage covariance, Fama-MacBeth,
 //!   cointegrated pairs trading.
-//! - [`strategies`] — strategy primitives (currently `DeltaHedge`); a richer
-//!   `Strategy` trait + back-test engine tracked for 2.x.
+//! - [`strategies`] — strategy primitives (`DeltaHedge`).
 //!
-//! ### Microstructure & live data
+//! ### Microstructure
 //! - [`microstructure`] — Almgren-Chriss optimal execution, Kyle's λ,
 //!   propagator impact, Roll / Corwin-Schultz spread estimators.
 //! - [`order_book`] — limit-order-book data structures (`Side`, `Order`,
 //!   `Trade`, `OrderBook`) with matching and cancel.
-//! - `yahoo` (feature-gated) — Yahoo Finance integration (experimental).
 //!
 //! ### Cross-cutting
 //! - [`traits`] — public trait surface ([`traits::ModelPricer`],
@@ -77,8 +71,8 @@
 //!   characteristic-function bound `FourierModelExt` lives in
 //!   [`pricing::fourier`]; `TimeExt` lives in [`traits::time`];
 //!   `CalendarExt` lives in [`calendar`].
-//! - [`types`] — shared enum types (`Moneyness`, `OptionStyle`, `OptionType`,
-//!   `LossMetric`).
+//! - [`OptionType`], [`OptionStyle`], [`Moneyness`], [`LossMetric`] and
+//!   [`CalibrationLossScore`] — the shared option and loss types, at the crate root.
 
 // Defaults to `warn`, which is how 59 broken doc links accumulated
 // unnoticed; deny so a regression fails the build instead of drifting.
@@ -86,25 +80,15 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
-// Doc comments use KaTeX math blocks ($$ ... $$) that clippy mis-detects as
-// list items. The actual rustdoc rendering (with `docs/katex-header.html`)
-// is correct.
-#![allow(clippy::doc_lazy_continuation)]
-#![allow(clippy::doc_overindented_list_items)]
 #![allow(clippy::needless_range_loop)]
 
-#[macro_use]
+#[cfg(doctest)]
+mod doctest_names;
+mod error;
 mod linalg;
-mod macros;
+mod total_order;
 
 pub mod traits;
-
-pub use stochastic_rs_copulas as copulas;
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_stats as stats;
-pub use stochastic_rs_stochastic as stochastic;
-pub use stochastic_rs_stochastic::mc;
 
 /// Pricing engines — analytic, Fourier (Carr-Madan / Lewis / Gil-Pelaez),
 /// finite-difference, MC, lattice — for European, American, Asian, barrier,
@@ -167,11 +151,8 @@ pub mod market;
 /// covariance estimators. Standalone domain alongside the pricing pipeline.
 pub mod portfolio;
 
-/// Strategy primitives (currently `DeltaHedge`); a richer `Strategy` trait
-/// and back-test engine are tracked for the 2.x patch series.
+/// Strategy primitives (`DeltaHedge`).
 pub mod strategies;
-
-pub use portfolio::momentum;
 
 /// Portfolio-analytics utilities (PCA, Fama-MacBeth, shrinkage covariance,
 /// pairs trading) that live alongside the pricing pipeline but do not feed
@@ -206,18 +187,17 @@ pub mod order_book;
 /// — not currently consumed by the calibration or vol-surface pipelines.
 pub mod fourier_malliavin;
 
-/// Yahoo Finance integration (experimental). Hidden behind the `yahoo`
-/// feature; see `yahoo` module docs for stability caveats.
-#[cfg(feature = "yahoo")]
-pub mod yahoo;
+mod types;
 
-pub mod types;
-
+pub use calibration::quote::OptionQuote;
+pub use error::QuantError;
 pub use types::CalibrationLossScore;
+pub use types::CallPut;
 pub use types::LossMetric;
 pub use types::Moneyness;
 pub use types::OptionStyle;
 pub use types::OptionType;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;

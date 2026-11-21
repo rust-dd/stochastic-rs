@@ -1,7 +1,8 @@
-//! # Core
+//! The `Fgn` struct, its cached circulant spectrum and FFT plan, and the setters that rebuild them.
 //!
 //! $$
-//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
+//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)
+//! =\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
 use std::sync::Arc;
@@ -10,80 +11,88 @@ use ndarray::prelude::*;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
+use crate::euler::FgnSpec;
 use crate::traits::FloatExt;
 
+/// Fractional Gaussian noise: `n` increments over `[0, t]`. Fields are private because the FFT
+/// plan and spectrum are cached from them; read them through getters, change them with `with_*`.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::noise::fgn::Fgn;
+/// let mut p = Fgn::<f64>::new(0.7, 10, None, Unseeded);
+/// p.hurst = 0.3;
+/// ```
 #[derive(Clone)]
 pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
+  hurst: T,
   /// Internal FFT length (power-of-two padded).
-  pub n: usize,
-  /// Simulation horizon [0, t] the requested (unpadded) fGn/fBm sample
-  /// spans (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Padding introduced by rounding the requested length up to the next
-  /// power of two (`n.next_power_of_two() - n`); the first `offset`
-  /// entries of the padded circulant sample are discarded.
-  pub offset: usize,
-  pub(crate) out_len: usize,
-  pub(crate) scale: T,
-  /// Precomputed square roots of the circulant-embedding eigenvalues
-  /// (Davies–Harte), shared via `Arc` across samplers so repeated calls
-  /// reuse the same FFT-derived spectrum.
-  pub sqrt_eigenvalues: Arc<Array1<T>>,
+  pub(super) padded_n: usize,
+  t: Option<T>,
+  /// Padding from rounding the length up to a power of two (`n.next_power_of_two() - n`); the
+  /// first `offset` entries of the padded circulant sample are discarded.
+  pub(super) offset: usize,
+  out_len: usize,
+  pub(super) scale: T,
+  /// Square roots of the circulant-embedding eigenvalues (Davies–Harte), shared across samplers.
+  sqrt_eigenvalues: Arc<Array1<T>>,
   /// Precomputed FFT plan for the padded circulant length, shared via
   /// `Arc` across samplers.
-  pub fft_handler: Arc<FftHandler<T>>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
-  pub seed: S,
+  fft_handler: Arc<FftHandler<T>>,
+  seed: S,
   /// Compile-time sampling backend marker (default [`Cpu`]).
-  pub backend: B,
+  pub(crate) backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Fgn::default().with_hurst(0.3)`.
-///
-/// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
-/// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
-/// function of `hurst` and the *requested* length (`out_len`, not the
-/// padded `n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
-/// FFT setup (and risking it drifting out of sync), the three setters
-/// that feed the cache call `Self::new(..)` again wholesale, reusing
-/// `out_len` (not `n`, which is already power-of-two padded) as the
-/// constructor's own `n` argument. `with_seed` is the one exception:
-/// neither cached array depends on the seed, so it stays a plain field
-/// write.
+impl<T: FloatExt, S: SeedExt + std::fmt::Debug, B: std::fmt::Debug> std::fmt::Debug
+  for Fgn<T, S, B>
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Fgn")
+      .field("hurst", &self.hurst)
+      .field("n", &self.out_len)
+      .field("t", &self.t)
+      .field("seed", &self.seed)
+      .field("backend", &self.backend)
+      .finish_non_exhaustive()
+  }
+}
+
+/// Rebuilds the embedding, so it is defined on the `Cpu` type; move to a device with `on`
+/// afterwards.
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
+  /// Panics unless `n >= 1`, a given `t` is positive and finite, `0 <= hurst <= 1`, and `hurst` is
+  /// finite.
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Fgn: Hurst parameter must be in [0, 1]"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
 
     let offset = n.next_power_of_two() - n;
     let out_len = n;
     let n = n.next_power_of_two();
     let circ_len = 2 * n;
-    // The embedding is built in double precision whatever `T` is, and only
-    // the square roots that come out of it are narrowed.
-    //
-    // The autocovariance is a second difference of `k^{2H}`, and second
-    // differences cancel: at `H = 0.7` and `k = 4000` the three terms are
-    // each about 2.6e5 and their combination about 1e-1, six digits gone. In
-    // `f32` that leaves nothing — the value is 12 % wrong by `k = 1000` and
-    // *exactly zero* past `k ≈ 4000`, so the kernel flattens, every
-    // eigenvalue but the first collapses, and the sampler returns white
-    // noise: lag-one autocorrelation −0.006 against a theoretical 0.3195 at
-    // `n = 16384`. It is a setup cost paid once per parameter set, so there
-    // is nothing to save by narrowing it early.
+    // The embedding is built in `f64` whatever `T` is: the autocovariance is a second difference
+    // of `k^{2H}`, which cancels to exactly zero in `f32` past `k ≈ 4000` and leaves white noise.
     let f2h = 2.0 * hurst.to_f64().unwrap_or(0.5);
 
     let mut buf = Array1::<Complex<f64>>::zeros(circ_len);
@@ -118,7 +127,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
 
     Self {
       hurst,
-      n,
+      padded_n: n,
       offset,
       out_len,
       t,
@@ -130,24 +139,25 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; rebuilds the FFT/eigenvalue cache.
+  /// Replace `hurst` and rebuild the FFT/eigenvalue cache; panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(self, hurst: T) -> Self {
     Self::new(hurst, self.out_len, self.t, self.seed)
   }
 
-  /// Replace the (requested, pre-padding) number of simulation steps;
-  /// rebuilds the FFT/eigenvalue cache.
-  pub fn with_steps(self, n: usize) -> Self {
+  /// Replace `n`, the increments before padding, and rebuild the cache; panics unless `n >= 1`.
+  pub fn with_increments(self, n: usize) -> Self {
     Self::new(self.hurst, n, self.t, self.seed)
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the FFT/eigenvalue cache
-  /// (`scale` depends on `t`).
+  /// Replace the horizon `t` and rebuild the cache, whose `scale` depends on it; panics unless
+  /// `t`, when given, is positive and finite.
   pub fn with_horizon(self, t: Option<T>) -> Self {
     Self::new(self.hurst, self.out_len, t, self.seed)
   }
+}
 
-  /// Replace the seed strategy's value, all else unchanged. Neither cached
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// Replace the seed strategy's value. Neither cached
   /// array depends on the seed, so this is a plain field write.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
@@ -155,9 +165,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   }
 }
 
-/// H=0.7 — this crate's own long-memory-example convention (used
-/// throughout the fractional-process `Default` impls). t=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// H=0.7, the crate's long-memory example; t=1, 252 increments, a trading year of daily returns.
 impl<T: FloatExt> Default for Fgn<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)
@@ -165,24 +173,50 @@ impl<T: FloatExt> Default for Fgn<T, Unseeded, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Increments the sample returns; the embedding pads to the next power of two internally.
+  pub fn n(&self) -> usize {
+    self.out_len
+  }
+
+  /// Simulation horizon `[0, t]` the increments span (defaults to `1` if `None`).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+
+  /// The circulant-embedding spectrum, read-only, for tests and probes.
+  #[doc(hidden)]
+  pub fn sqrt_eigenvalues(&self) -> &[T] {
+    self.sqrt_eigenvalues.as_slice().expect("contiguous")
+  }
+
+  pub(crate) fn fgn_spec(&self, streams: usize) -> FgnSpec<'_, T> {
+    FgnSpec {
+      sqrt_eigenvalues: self.sqrt_eigenvalues(),
+      n: self.padded_n,
+      offset: self.offset,
+      hurst: self.hurst.to_f64().unwrap_or(0.5),
+      t: self.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams,
+    }
+  }
+
   pub fn dt(&self) -> T {
     let step_count = self.out_len.max(1);
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
   }
 
-  /// Sample fGn using a specific deterministic seed.
-  pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_cpu_impl(&Deterministic::new(seed))
-  }
-
-  /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
-  /// `ProcessExt::sample()` does for the `Cpu` backend. `FgnBackend::generate_batch`
-  /// used to call this once per path; it now builds one `SimdNormal` per
-  /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
-  /// this has no production caller left — kept `#[cfg(test)]` for the
-  /// covariance/marginal tests in this module and the CPU-vs-CUDA comparison
-  /// tests in `cuda/tests.rs`, rather than duplicating this one-liner
-  /// in both places.
+  /// `sample_cpu_impl(&self.seed)`, what `ProcessExt::sample()` does on `Cpu`; for this module's
+  /// covariance tests and the CPU-against-CUDA tests in `cuda/tests.rs`.
   #[cfg(test)]
   pub(crate) fn sample_cpu(&self) -> Array1<T> {
     self.sample_cpu_impl(&self.seed)
@@ -191,14 +225,17 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// Core fGn sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
   pub(crate) fn sample_cpu_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    let len = 2 * self.n;
+    let len = 2 * self.padded_n;
     let mut fgn = Array1::<T>::zeros(self.out_len);
 
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      let normal =
-        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
+      let mut normal =
+        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
@@ -216,21 +253,23 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     fgn
   }
 
-  /// Fill `out` (length `out_len`) with one fGn path using a caller-owned
-  /// Gaussian source. Lets a [`FgnSampler`](super::FgnSampler) amortise the
-  /// `SimdNormal` construction across a Monte-Carlo loop; the FFT plan and
-  /// eigenvalues are already `Arc`-shared on the process and the complex
-  /// scratch is thread-local, so this allocates nothing.
+  /// Fill `out` (length `out_len`) with one fGn path from a caller-owned Gaussian source; the
+  /// plan and eigenvalues are shared and the complex scratch is thread-local, so nothing allocates.
   #[inline]
   pub(crate) fn fill_cpu(
     &self,
-    normal: &mut stochastic_rs_distributions::normal::SimdNormal<T>,
+    normal: &mut stochastic_rs_distributions::Seeded<
+      stochastic_rs_distributions::normal::SimdNormal<T>,
+    >,
     out: &mut [T],
   ) {
-    let len = 2 * self.n;
+    let len = 2 * self.padded_n;
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
@@ -246,30 +285,26 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     });
   }
 
-  /// Sample a pair of independent fGn paths using a specific deterministic seed.
-  pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_impl(&Deterministic::new(seed))
-  }
-
   pub(crate) fn sample_pair_cpu(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu_impl(&self.seed)
   }
 
-  /// Two independent fGn paths per FFT call. Re and Im of the circulant
-  /// output are independent zero-mean Gaussians with the same target
-  /// covariance — Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2
-  /// Step 4, MATLAB listing "two independent fields").
+  /// Two independent fGn paths per FFT call, the real and imaginary parts of the circulant output:
+  /// Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2 Step 4, "two independent fields").
   #[inline]
   pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
-    let len = 2 * self.n;
+    let len = 2 * self.padded_n;
     let mut fgn_re = Array1::<T>::zeros(self.out_len);
     let mut fgn_im = Array1::<T>::zeros(self.out_len);
 
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
-      let normal =
-        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
+      let mut normal =
+        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
@@ -289,12 +324,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
+backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, padded_n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
-  /// One fGN increment vector on backend `B`, the device's error instead of
-  /// its panic. The host-side `seed` drives the CPU path and the GPU launch
-  /// seed alike.
+  /// One fGN increment vector on backend `B`, the device's error instead of its panic; `seed`
+  /// drives the CPU path and the GPU launch seed alike.
   pub(crate) fn try_noise<S2: SeedExt>(&self, seed: &S2) -> Result<Array1<T>, DeviceError> {
     self.backend.try_generate(self, seed)
   }
@@ -310,316 +344,4 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_core::simd_rng::Unseeded;
-
-  use super::Fgn;
-  use crate::traits::ProcessExt;
-
-  fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
-    let mut out = Vec::with_capacity(m);
-    for _ in 0..m {
-      out.push(fgn.sample_cpu().to_vec());
-    }
-    out
-  }
-
-  fn unit_lag_covariance(h: f64, k: usize) -> f64 {
-    if k == 0 {
-      1.0
-    } else {
-      0.5
-        * (((k + 1) as f64).powf(2.0 * h) - 2.0 * (k as f64).powf(2.0 * h)
-          + ((k - 1) as f64).powf(2.0 * h))
-    }
-  }
-
-  fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
-    let mut s = 0.0;
-    let mut c = 0usize;
-    for p in paths {
-      for i in 0..(p.len() - lag) {
-        s += (p[i] - mean) * (p[i + lag] - mean);
-        c += 1;
-      }
-    }
-    s / c as f64
-  }
-
-  fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
-    let idx = (((sorted.len() - 1) as f64) * p).round() as usize;
-    sorted[idx]
-  }
-
-  #[test]
-  fn dt_and_scale_use_requested_length_not_fft_padding() {
-    let hs = [0.2_f64, 0.7_f64];
-    let ns = [3_usize, 17, 1000, 4095];
-    let ts = [0.7_f64, 2.0_f64];
-
-    for &h in &hs {
-      for &n in &ns {
-        for &t in &ts {
-          let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
-
-          // Internal FFT length is padded, but dt/scale must follow requested n.
-          assert!(fgn.n >= n && fgn.n.is_power_of_two());
-          assert!((fgn.dt() - (t / n as f64)).abs() < 1e-15);
-
-          let expected_scale = (n as f64).powf(-h) * t.powf(h);
-          assert!((fgn.scale - expected_scale).abs() < 1e-15);
-        }
-      }
-    }
-  }
-
-  #[test]
-  fn fgn_marginal_distribution_and_covariance_match_theory() {
-    let h = 0.72_f64;
-    let n = 2048_usize;
-    let t = 1.0_f64;
-    let m = 1024_usize;
-    let paths = generate_fgn_paths(h, n, t, m);
-
-    let mut values = Vec::with_capacity(m * n);
-    for p in &paths {
-      values.extend_from_slice(p);
-    }
-
-    let count = values.len() as f64;
-    let mean = values.iter().sum::<f64>() / count;
-    let var = values
-      .iter()
-      .map(|x| {
-        let d = *x - mean;
-        d * d
-      })
-      .sum::<f64>()
-      / count;
-    let std = var.sqrt();
-
-    let m3 = values
-      .iter()
-      .map(|x| {
-        let d = *x - mean;
-        d * d * d
-      })
-      .sum::<f64>()
-      / count;
-    let m4 = values
-      .iter()
-      .map(|x| {
-        let d = *x - mean;
-        d * d * d * d
-      })
-      .sum::<f64>()
-      / count;
-    let skew = m3 / std.powi(3);
-    let excess_kurtosis = m4 / std.powi(4) - 3.0;
-
-    let mut sorted = values.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let q025 = (nearest_quantile(&sorted, 0.025) - mean) / std;
-    let q975 = (nearest_quantile(&sorted, 0.975) - mean) / std;
-
-    let dt = t / n as f64;
-    let var_theory = dt.powf(2.0 * h);
-    let cov1_theory = var_theory * unit_lag_covariance(h, 1);
-    let cov4_theory = var_theory * unit_lag_covariance(h, 4);
-
-    let cov1_emp = lag_covariance(&paths, mean, 1);
-    let cov4_emp = lag_covariance(&paths, mean, 4);
-
-    assert!(mean.abs() < 5e-4, "mean too far from zero: {mean}");
-    assert!(
-      ((var / var_theory) - 1.0).abs() < 0.05,
-      "variance mismatch: emp={var}, theory={var_theory}"
-    );
-    assert!(
-      (skew.abs() < 0.05) && (excess_kurtosis.abs() < 0.10),
-      "non-Gaussian marginals: skew={skew}, excess_kurtosis={excess_kurtosis}"
-    );
-    assert!(
-      (q025 + 1.96).abs() < 0.10 && (q975 - 1.96).abs() < 0.10,
-      "quantile mismatch: q025={q025}, q975={q975}"
-    );
-    assert!(
-      ((cov1_emp / cov1_theory) - 1.0).abs() < 0.05,
-      "lag-1 covariance mismatch: emp={cov1_emp}, theory={cov1_theory}"
-    );
-    assert!(
-      ((cov4_emp / cov4_theory) - 1.0).abs() < 0.05,
-      "lag-4 covariance mismatch: emp={cov4_emp}, theory={cov4_theory}"
-    );
-  }
-
-  /// A single-precision sample keeps its long memory on a fine grid.
-  ///
-  /// The circulant kernel is a second difference of `k^{2H}`, which cancels:
-  /// in `f32` the three terms agree to six digits by `k ≈ 4000` and their
-  /// combination is then exactly zero, which flattens the kernel and leaves
-  /// the sampler drawing white noise. At `n = 16384` the pooled lag-one
-  /// autocorrelation read −0.006 against a theoretical 0.3195 before the
-  /// embedding was built in double precision — the sign itself was wrong.
-  #[test]
-  fn single_precision_keeps_its_covariance_on_a_fine_grid() {
-    let theory = 0.5 * (2.0_f64.powf(1.4) - 2.0);
-    for n in [4_096usize, 16_384] {
-      let paths = Fgn::<f32, _>::new(0.7, n, Some(1.0), Deterministic::new(11)).sample_par(40);
-      let (mut num, mut den) = (0.0_f64, 0.0);
-      for p in &paths {
-        for i in 0..p.len() - 1 {
-          num += p[i] as f64 * p[i + 1] as f64;
-        }
-        den += p.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
-      }
-      let rho = num / den;
-      assert!(
-        (rho - theory).abs() < 0.02,
-        "n = {n}: lag-one autocorrelation {rho:.4}, theory {theory:.4}"
-      );
-    }
-  }
-
-  #[test]
-  fn fgn_lag1_correlation_sign_matches_hurst_regime() {
-    let n = 2048_usize;
-    let t = 1.0_f64;
-    let m = 192_usize;
-
-    let low_h = 0.25_f64;
-    let high_h = 0.80_f64;
-
-    let low_paths = generate_fgn_paths(low_h, n, t, m);
-    let high_paths = generate_fgn_paths(high_h, n, t, m);
-
-    let low_vals: Vec<f64> = low_paths.iter().flatten().copied().collect();
-    let high_vals: Vec<f64> = high_paths.iter().flatten().copied().collect();
-
-    let low_mean = low_vals.iter().sum::<f64>() / low_vals.len() as f64;
-    let high_mean = high_vals.iter().sum::<f64>() / high_vals.len() as f64;
-
-    let low_var = low_vals
-      .iter()
-      .map(|x| {
-        let d = *x - low_mean;
-        d * d
-      })
-      .sum::<f64>()
-      / low_vals.len() as f64;
-    let high_var = high_vals
-      .iter()
-      .map(|x| {
-        let d = *x - high_mean;
-        d * d
-      })
-      .sum::<f64>()
-      / high_vals.len() as f64;
-
-    let low_cov1 = lag_covariance(&low_paths, low_mean, 1);
-    let high_cov1 = lag_covariance(&high_paths, high_mean, 1);
-
-    let low_rho1 = low_cov1 / low_var;
-    let high_rho1 = high_cov1 / high_var;
-
-    assert!(
-      low_rho1 < -0.10,
-      "expected negative lag-1 correlation, got {low_rho1}"
-    );
-    assert!(
-      high_rho1 > 0.10,
-      "expected positive lag-1 correlation, got {high_rho1}"
-    );
-  }
-
-  // `fbm_hurst_and_fractal_dimension_from_fgn_increments` lives in
-  // `stochastic-rs-stats/tests/fractal_dim_validation.rs` because it exercises
-  // the `FractalDim` estimator from the stats crate.
-
-  fn cross_covariance(a: &[Vec<f64>], b: &[Vec<f64>], mean_a: f64, mean_b: f64) -> f64 {
-    let mut s = 0.0;
-    let mut c = 0usize;
-    for (pa, pb) in a.iter().zip(b.iter()) {
-      for i in 0..pa.len() {
-        s += (pa[i] - mean_a) * (pb[i] - mean_b);
-        c += 1;
-      }
-    }
-    s / c as f64
-  }
-
-  /// Primary and secondary paths of `sample_pair` must each satisfy the
-  /// target marginal law and be mutually independent. The latter is the
-  /// Dietrich–Newsam (1997) / Kroese–Botev (2013 §2.2) claim — here we
-  /// check the sample cross-correlation vanishes to within Monte-Carlo SE.
-  #[test]
-  fn sample_pair_independent_paths_match_theory() {
-    let h = 0.68_f64;
-    let n = 2048_usize;
-    let t = 1.0_f64;
-    let pairs_count = 1024_usize;
-
-    let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
-    let mut prim = Vec::with_capacity(pairs_count);
-    let mut sec = Vec::with_capacity(pairs_count);
-    for _ in 0..pairs_count {
-      let (a, b) = fgn.sample_pair_cpu();
-      prim.push(a.to_vec());
-      sec.push(b.to_vec());
-    }
-
-    let dt = t / n as f64;
-    let var_theory = dt.powf(2.0 * h);
-    let cov1_theory = var_theory * unit_lag_covariance(h, 1);
-
-    for (label, paths) in [("primary", &prim), ("secondary", &sec)] {
-      let values: Vec<f64> = paths.iter().flatten().copied().collect();
-      let count = values.len() as f64;
-      let mean = values.iter().sum::<f64>() / count;
-      let var = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / count;
-      let cov1 = lag_covariance(paths, mean, 1);
-
-      assert!(mean.abs() < 5e-4, "{label}: mean drift {mean}");
-      assert!(
-        ((var / var_theory) - 1.0).abs() < 0.05,
-        "{label}: variance mismatch emp={var} theory={var_theory}"
-      );
-      assert!(
-        ((cov1 / cov1_theory) - 1.0).abs() < 0.05,
-        "{label}: lag-1 covariance mismatch emp={cov1} theory={cov1_theory}"
-      );
-    }
-
-    let mean_p = prim.iter().flatten().sum::<f64>() / (prim.len() * n) as f64;
-    let mean_s = sec.iter().flatten().sum::<f64>() / (sec.len() * n) as f64;
-    let var_p = prim
-      .iter()
-      .flatten()
-      .map(|x| (*x - mean_p).powi(2))
-      .sum::<f64>()
-      / (prim.len() * n) as f64;
-
-    let xcov = cross_covariance(&prim, &sec, mean_p, mean_s);
-    let correlation = xcov / var_p;
-    assert!(
-      correlation.abs() < 0.02,
-      "primary/secondary correlation {correlation} too large (expected ≈ 0)"
-    );
-  }
-
-  /// `sample_pair` with an explicit seed must be fully deterministic and
-  /// bit-for-bit match two separate `sample_cpu_with_seed` invocations —
-  /// the second one using a seed derived by replaying the same SplitMix64
-  /// step the single-path variant would have produced. Here we check the
-  /// simpler determinism-across-identical-seed property.
-  #[test]
-  fn sample_pair_is_deterministic_with_seed() {
-    let fgn = Fgn::<f64>::new(0.55, 1024, Some(1.0), Unseeded);
-    let (a1, b1) = fgn.sample_pair_cpu_with_seed(7);
-    let (a2, b2) = fgn.sample_pair_cpu_with_seed(7);
-    assert_eq!(a1, a2);
-    assert_eq!(b1, b2);
-  }
-}
+mod tests;

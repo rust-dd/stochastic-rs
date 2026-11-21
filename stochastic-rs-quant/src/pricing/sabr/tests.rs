@@ -9,80 +9,48 @@ fn sabr_pricer_basic() {
   let r = 0.065;
   let q = 0.022;
   let tau = 30.0 / 365.0;
-  let pr = SabrPricer::new(0.11, 1.0, 0.6, 0.5);
-  let (c, p) = pr.call_put(s, k, r, q, tau);
+  let pr = SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6));
+  let (c, p) = (
+    pr.price_call(s, k, r, q, tau),
+    pr.price_put(s, k, r, q, tau),
+  );
   assert!(c >= 0.0 && p >= 0.0);
   let d = pr.sabr_fx_forward_delta(s, k, r, q, tau, 1.0);
   assert!(d.is_finite());
 }
 
-/// `SabrPricer::sigma`'s `# Panics` section documents that a non-positive
-/// spot (hence non-positive forward) panics; this pins that it actually
-/// does, and with the message the section promises.
+/// A non-positive spot (hence forward) or strike is a query outside the domain: NaN, never a panic.
 #[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn sabr_pricer_sigma_panics_on_nonpositive_spot() {
-  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(-3.724, 3.8, 0.065, 0.022, 0.5);
+fn sabr_pricer_sigma_is_nan_for_a_nonpositive_spot_or_strike() {
+  let pricer = SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6));
+  assert!(pricer.sigma(-3.724, 3.8, 0.065, 0.022, 0.5).is_nan());
+  assert!(pricer.sigma(3.724, -3.8, 0.065, 0.022, 0.5).is_nan());
 }
 
-/// Same guarantee, for a non-positive strike.
 #[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn sabr_pricer_sigma_panics_on_nonpositive_strike() {
-  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(3.724, -3.8, 0.065, 0.022, 0.5);
+fn sabr_price_is_nan_for_a_nonpositive_spot_or_strike() {
+  let model = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.3, 0.6));
+  for (s, k) in [(-100.0, 100.0), (100.0, -10.0)] {
+    assert!(model.price_call(s, k, 0.02, 0.0, 1.0).is_nan());
+    assert!(model.price_put(s, k, 0.02, 0.0, 1.0).is_nan());
+  }
 }
 
-/// `SabrPricer::price_call`'s `# Panics` section documents that a
-/// non-positive forward panics rather than degrading to `0.0`; this pins
-/// that it actually does. (Held over from the former `SabrModel`, whose
-/// four fields and pricing path this type absorbed.)
-#[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn sabr_price_call_panics_on_nonpositive_spot() {
-  let model = SabrPricer {
-    alpha: 0.2,
-    beta: 1.0,
-    nu: 0.6,
-    rho: -0.3,
-  };
-  let _ = model.price_call(-100.0, 100.0, 0.02, 0.0, 1.0);
-}
-
-/// Same guarantee, for a non-positive strike.
-#[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn sabr_price_call_panics_on_nonpositive_strike() {
-  let model = SabrPricer {
-    alpha: 0.2,
-    beta: 1.0,
-    nu: 0.6,
-    rho: -0.3,
-  };
-  let _ = model.price_call(100.0, -10.0, 0.02, 0.0, 1.0);
-}
-
-/// The Hagan (2002) expansion is a small-τ asymptotic, and its bracket
-/// `1 + (a + b + c) τ` goes negative once the correction outgrows it. Every
-/// argument below is individually legal — `alpha > 0`, `beta = 1`,
-/// `nu > 0`, `|rho| < 1`, positive spot and strike — so `sigma` does not
-/// panic; it returns `-0.3925`, and `(0.2, 1.0, 3.0, -0.9)` sits inside
-/// `SabrCalibrator`'s own projection box (`|ρ| ≤ 0.9999`, ν unbounded
-/// above), which is what makes this a reachable calibration-output shape
-/// rather than a hypothetical.
-///
-/// Both legs must therefore be `NaN`. Before the fix they were `(0.0, 0.0)`
-/// — a zero call *and* a zero put, which no real option has, and which a
-/// caller's `is_finite()` check cannot tell from a genuine deep-OTM price.
+/// Legal parameters inside `SabrCalibrator`'s box push Hagan's bracket `1 + (a + b + c)τ` negative
+/// (`sigma = -0.3925`); both legs are then NaN, never `(0, 0)`.
 #[test]
 fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
-  let m = SabrPricer::new(0.2, 1.0, 3.0, -0.9);
+  let m = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.9, 3.0));
   let sigma = m.sigma(100.0, 100.0, 0.0, 0.0, 10.0);
   assert!(
     sigma < 0.0,
     "fixture drifted: expansion no longer degenerates, sigma={sigma}"
   );
 
-  let (call, put) = m.call_put(100.0, 100.0, 0.0, 0.0, 10.0);
+  let (call, put) = (
+    m.price_call(100.0, 100.0, 0.0, 0.0, 10.0),
+    m.price_put(100.0, 100.0, 0.0, 0.0, 10.0),
+  );
   assert!(call.is_nan(), "call must be NaN, got {call}");
   assert!(put.is_nan(), "put must be NaN, got {put}");
   assert!(m.price_call(100.0, 100.0, 0.0, 0.0, 10.0).is_nan());
@@ -95,7 +63,7 @@ fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
 /// value the expansion is actually valid at brings every point back finite.
 #[test]
 fn sabr_degeneracy_tracks_tau_not_the_strike_grid() {
-  let m = SabrPricer::new(0.2, 1.0, 3.0, -0.9);
+  let m = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.9, 3.0));
   for &k in &[80.0, 100.0, 125.0] {
     assert!(
       m.price_call(100.0, k, 0.0, 0.0, 10.0).is_nan(),
@@ -121,7 +89,7 @@ const TAU: f64 = 0.75;
 const TOL: f64 = 1e-12;
 
 fn golden_model() -> SabrPricer {
-  SabrPricer::new(0.11, 1.0, 0.6, 0.5)
+  SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6))
 }
 
 /// Captured from `PricerExt::calculate_call_put()` and the four inherent
@@ -130,7 +98,7 @@ fn golden_model() -> SabrPricer {
 #[test]
 fn sabr_model_pricer_matches_pre_refactor_goldens() {
   let m = golden_model();
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let (call, put) = (m.price_call(S, K, R, Q, TAU), m.price_put(S, K, R, Q, TAU));
   assert!((call - 2.8384773477990137).abs() < TOL, "call {call}");
   assert!((put - 5.46269724817904).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
@@ -155,7 +123,7 @@ fn sabr_model_pricer_matches_pre_refactor_goldens() {
 #[test]
 fn sabr_price_put_matches_parity_but_is_the_closed_form() {
   let m = golden_model();
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let (call, put) = (m.price_call(S, K, R, Q, TAU), m.price_put(S, K, R, Q, TAU));
   let parity = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
   assert_eq!(m.price_put(S, K, R, Q, TAU), put);
@@ -168,13 +136,13 @@ fn sabr_price_put_matches_parity_but_is_the_closed_form() {
 /// `SabrPricer`, so it cannot go stale with the type.
 #[test]
 fn sabr_price_call_is_hagan_vol_through_black_scholes() {
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
 
   let m = golden_model();
   let fwd = S * ((R - Q) * TAU).exp();
-  let sigma = hagan_implied_vol(K, fwd, TAU, m.alpha, m.beta, m.nu, m.rho);
-  let want = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(S, K, R, Q, TAU);
+  let sigma = hagan_implied_vol(K, fwd, TAU, &m.params());
+  let want = BsmPricer::new(sigma, BsmCoc::Merton1973).price_call(S, K, R, Q, TAU);
   assert_eq!(m.price_call(S, K, R, Q, TAU), want);
 }
 
@@ -271,7 +239,7 @@ fn hagan_implied_vol_reference() {
   ];
 
   for (i, &(k, f, t, alpha, beta, rho, nu, expected)) in cases.iter().enumerate() {
-    let got = hagan_implied_vol(k, f, t, alpha, beta, nu, rho);
+    let got = hagan_implied_vol(k, f, t, &SabrParams::new(alpha, beta, rho, nu));
     let err = (got - expected).abs();
     assert!(
       err < 1e-12,
@@ -314,7 +282,7 @@ fn alpha_from_atm_vol_reference() {
       expected,
       err
     );
-    let vol_rt = hagan_implied_vol(f, f, t, got, beta, nu, rho);
+    let vol_rt = hagan_implied_vol(f, f, t, &SabrParams::new(got, beta, rho, nu));
     let rt_err = (vol_rt - v_atm).abs();
     assert!(
       rt_err < 1e-10,
@@ -358,12 +326,13 @@ fn alpha_from_atm_vol_close_roots_reference() {
     "solver did not return the economically meaningful root: got {got:.15e}, expected {correct_root:.15e}, rel_err={err:.2e}"
   );
 
-  let vol_at_correct = hagan_implied_vol(f, f, tau, correct_root, beta, nu, rho);
+  let vol_at_correct = hagan_implied_vol(f, f, tau, &SabrParams::new(correct_root, beta, rho, nu));
   assert!(
     (vol_at_correct - v_atm).abs() < 1e-10,
     "correct root should round-trip: got {vol_at_correct:.15e}"
   );
-  let vol_at_spurious = hagan_implied_vol(f, f, tau, spurious_root, beta, nu, rho);
+  let vol_at_spurious =
+    hagan_implied_vol(f, f, tau, &SabrParams::new(spurious_root, beta, rho, nu));
   assert!(
     (vol_at_spurious - v_atm).abs() < 1e-10,
     "spurious root should *also* round-trip, which is exactly the hazard: got {vol_at_spurious:.15e}"
@@ -414,7 +383,7 @@ fn hagan_matches_an_independent_high_precision_implementation() {
     (110.0, 100.0, 0.5, 0.15, 0.5, -0.2, 0.8, 0.03080869461133287),
   ];
   for &(k, f, tau, alpha, beta, rho, nu, expected) in cases {
-    let got = hagan_implied_vol(k, f, tau, alpha, beta, nu, rho);
+    let got = hagan_implied_vol(k, f, tau, &SabrParams::new(alpha, beta, rho, nu));
     let rel = (got - expected).abs() / expected.abs();
     assert!(
       rel < 1e-14,
@@ -434,96 +403,140 @@ fn atm_beta_one_matches_hand_computation() {
   let b = 0.25 * rho * nu * alpha;
   let c = (2.0 - 3.0 * rho * rho) * nu * nu / 24.0;
   let expected = alpha * (1.0 + (b + c) * tau);
-  let got = hagan_implied_vol(100.0, 100.0, tau, alpha, 1.0, nu, rho);
+  let got = hagan_implied_vol(100.0, 100.0, tau, &SabrParams::new(alpha, 1.0, rho, nu));
   assert!((got - expected).abs() < 1e-15, "got {got}, hand {expected}");
 }
 
 #[test]
-#[should_panic(expected = "rho must lie strictly inside (-1, 1)")]
+#[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0")]
 fn rejects_rho_at_one() {
-  let _ = hagan_implied_vol(110.0, 100.0, 1.0, 0.2, 1.0, 0.5, 1.0);
+  let _ = hagan_implied_vol(
+    110.0,
+    100.0,
+    1.0,
+    &SabrParams {
+      alpha: 0.2,
+      beta: 1.0,
+      rho: 1.0,
+      nu: 0.5,
+    },
+  );
 }
 
 #[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn rejects_a_nonpositive_strike() {
-  let _ = hagan_implied_vol(0.0, 100.0, 1.0, 0.2, 1.0, 0.5, -0.3);
+fn a_zero_strike_is_nan() {
+  assert!(hagan_implied_vol(0.0, 100.0, 1.0, &SabrParams::new(0.2, 1.0, -0.3, 0.5)).is_nan());
+}
+
+/// The parameter asserts run first, so an invalid `alpha` panics whatever the query.
+#[test]
+#[should_panic(expected = "alpha must satisfy `alpha.is_finite() && alpha > 0.0`, got alpha = 0.0")]
+fn an_invalid_alpha_panics_even_at_a_query_outside_the_domain() {
+  let _ = hagan_implied_vol(
+    -1.0,
+    100.0,
+    1.0,
+    &SabrParams {
+      alpha: 0.0,
+      beta: 1.0,
+      rho: -0.3,
+      nu: 0.5,
+    },
+  );
 }
 
 #[test]
-#[should_panic(expected = "alpha must be strictly positive")]
+#[should_panic(expected = "alpha must satisfy `alpha.is_finite() && alpha > 0.0`, got alpha = 0.0")]
 fn rejects_a_nonpositive_alpha() {
-  let _ = hagan_implied_vol(110.0, 100.0, 1.0, 0.0, 1.0, 0.5, -0.3);
+  let _ = hagan_implied_vol(
+    110.0,
+    100.0,
+    1.0,
+    &SabrParams {
+      alpha: 0.0,
+      beta: 1.0,
+      rho: -0.3,
+      nu: 0.5,
+    },
+  );
 }
 
 #[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn alpha_from_atm_vol_rejects_a_nonpositive_forward() {
-  let _ = alpha_from_atm_vol(0.2, 0.0, 1.0, 1.0, -0.3, 0.5);
+fn alpha_from_atm_vol_is_nan_at_a_nonpositive_forward() {
+  assert!(alpha_from_atm_vol(0.2, 0.0, 1.0, 1.0, -0.3, 0.5).is_nan());
 }
 
 #[test]
-#[should_panic(expected = "v_atm must be strictly positive")]
-fn alpha_from_atm_vol_rejects_a_nonpositive_v_atm() {
-  let _ = alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5);
+fn alpha_from_atm_vol_is_nan_at_a_nonpositive_v_atm() {
+  assert!(alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5).is_nan());
 }
 
 #[test]
-#[should_panic(expected = "rho must lie strictly inside (-1, 1)")]
+#[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0")]
 fn alpha_from_atm_vol_rejects_rho_at_one() {
   let _ = alpha_from_atm_vol(0.2, 100.0, 1.0, 1.0, 1.0, 0.5);
 }
 
-/// `SabrPricer::new` validates its four parameters where they are supplied,
-/// instead of leaving two of them to `hagan_implied_vol` at pricing time
-/// and the other two to nobody.
-///
-/// The split before this was not deliberate: `alpha` and `rho` already
-/// panicked (from `hagan_implied_vol`, one layer down and one call later),
-/// while `beta` and `nu` — equally invalid, equally out of range — produced
-/// finite prices. At `beta = 5` the ATM call comes back **100.0**, exactly
-/// the spot, which is the no-arbitrage *ceiling* and reads as a legitimate
-/// deep-in-the-money value; at `beta = -1` it is `4.877` and at `nu = -0.4`
-/// it is `10.479`, both against a reference of `10.616`.
-///
-/// The messages deliberately do not reuse `hagan_implied_vol`'s wording:
-/// its `"alpha must be strictly positive"` and
-/// `"rho must lie strictly inside (-1, 1)"` must not be substrings of
-/// these, so a `should_panic` anchored on the accessor cannot be satisfied
-/// by the constructor and vice versa.
+/// `SabrPricer::new` validates all four parameters through `SabrParams::new`; an invalid `beta = 5`
+/// would price at the spot.
 mod construction_validation {
   use super::*;
 
   #[test]
   #[should_panic(
-    expected = "SabrPricer::new: alpha must be a strictly positive volatility level (got -0.2)"
+    expected = "alpha must satisfy `alpha.is_finite() && alpha > 0.0`, got alpha = -0.2"
   )]
   fn new_rejects_non_positive_alpha() {
-    let _ = SabrPricer::new(-0.2, 1.0, 0.4, -0.3);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: -0.2,
+      beta: 1.0,
+      rho: -0.3,
+      nu: 0.4,
+    });
   }
 
   #[test]
-  #[should_panic(expected = "SabrPricer::new: beta must be in [0, 1] (got 5)")]
+  #[should_panic(expected = "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = 5.0")]
   fn new_rejects_cev_exponent_above_one() {
-    let _ = SabrPricer::new(0.2, 5.0, 0.4, -0.3);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: 0.2,
+      beta: 5.0,
+      rho: -0.3,
+      nu: 0.4,
+    });
   }
 
   #[test]
-  #[should_panic(expected = "SabrPricer::new: beta must be in [0, 1] (got -1)")]
+  #[should_panic(expected = "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = -1.0")]
   fn new_rejects_negative_cev_exponent() {
-    let _ = SabrPricer::new(0.2, -1.0, 0.4, -0.3);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: 0.2,
+      beta: -1.0,
+      rho: -0.3,
+      nu: 0.4,
+    });
   }
 
   #[test]
-  #[should_panic(expected = "SabrPricer::new: nu must be a non-negative vol-of-vol (got -0.4)")]
+  #[should_panic(expected = "nu must satisfy `nu.is_finite() && nu >= 0.0`, got nu = -0.4")]
   fn new_rejects_negative_vol_of_vol() {
-    let _ = SabrPricer::new(0.2, 1.0, -0.4, -0.3);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: 0.2,
+      beta: 1.0,
+      rho: -0.3,
+      nu: -0.4,
+    });
   }
 
   #[test]
-  #[should_panic(expected = "SabrPricer::new: rho must be in the open interval (-1, 1) (got 5)")]
+  #[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 5.0")]
   fn new_rejects_out_of_range_rho() {
-    let _ = SabrPricer::new(0.2, 1.0, 0.4, 5.0);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: 0.2,
+      beta: 1.0,
+      rho: 5.0,
+      nu: 0.4,
+    });
   }
 
   /// Hagan's expansion carries a `1 - rho` denominator, so `rho = 1` is
@@ -531,9 +544,14 @@ mod construction_validation {
   /// *open*, matching `hagan_implied_vol` exactly — a constructor that
   /// admitted `±1` would only defer the same panic.
   #[test]
-  #[should_panic(expected = "SabrPricer::new: rho must be in the open interval (-1, 1) (got 1)")]
+  #[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0")]
   fn new_rejects_unit_rho_like_the_expansion_does() {
-    let _ = SabrPricer::new(0.2, 1.0, 0.4, 1.0);
+    let _ = SabrPricer::new(SabrParams {
+      alpha: 0.2,
+      beta: 1.0,
+      rho: 1.0,
+      nu: 0.4,
+    });
   }
 
   /// The whole of `SabrCalibrator`'s projection box must still construct:
@@ -542,13 +560,18 @@ mod construction_validation {
   /// calibration on a legal iterate.
   #[test]
   fn the_calibrators_projection_box_stays_constructible() {
-    for &(alpha, beta, nu, rho) in &[
-      (1e-6, 0.0, 1e-6, -0.9999),
-      (1e-6, 1.0, 1e-6, 0.9999),
+    for &(alpha, beta, rho, nu) in &[
+      (1e-6, 0.0, -0.9999, 1e-6),
+      (1e-6, 1.0, 0.9999, 1e-6),
       (0.2, 0.5, 0.0, 0.0),
     ] {
-      let m = SabrPricer::new(alpha, beta, nu, rho);
-      assert_eq!((m.alpha, m.beta, m.nu, m.rho), (alpha, beta, nu, rho));
+      let p = SabrParams {
+        alpha,
+        beta,
+        rho,
+        nu,
+      };
+      assert_eq!(SabrPricer::new(p).params(), p);
     }
   }
 }

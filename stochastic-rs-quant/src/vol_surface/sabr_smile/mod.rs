@@ -23,4 +23,4 @@ mod tests;
 pub use calibrate::strike_for_delta;
 pub use types::SabrSmileCalibrator;
 pub use types::SabrSmileQuotes;
-pub use types::SabrSmileResult;
+pub use types::SmileStrikes;

@@ -1,9 +1,9 @@
-//! Extended Cholesky factorisation of a positive semidefinite matrix by
-//! outer-product Cholesky with symmetric pivoting (Golub & Van Loan,
-//! *Matrix Computations*, Algorithm 4.2.4): `P q Pᵀ = c cᵀ` with
-//! `c = [[c_r, 0], [k_r, 0]]`, `c_r` an invertible lower-triangular `r × r`
-//! block and `r` the numerical rank. This is the decomposition Lemma 23 of
-//! Ahdida & Alfonsi (2013) builds the exact Wishart sampler on.
+//! Extended Cholesky of a positive semidefinite matrix by symmetric pivoting; `r` is its rank.
+//!
+//! `P q Pᵀ = c cᵀ`, `c = [[c_r, 0], [k_r, 0]]`, `c_r` an invertible lower-triangular `r × r` block.
+//!
+//! Reference: Golub & Van Loan, "Matrix Computations", Algorithm 4.2.4
+//! Reference: Ahdida & Alfonsi (2013), Lemma 23
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -29,14 +29,13 @@ pub(crate) struct ExtendedCholesky<T> {
 
 impl<T: RealExt> ExtendedCholesky<T> {
   /// The invertible lower-triangular `r × r` block `c_r`.
-  pub fn c_r(&self) -> ArrayView2<'_, T> {
+  pub(crate) fn c_r(&self) -> ArrayView2<'_, T> {
     self.factor.slice(ndarray::s![..self.rank, ..])
   }
 }
 
-/// Extended Cholesky factorisation of a symmetric positive semidefinite
-/// matrix; panics when a Schur complement turns significantly negative,
-/// i.e. when the matrix is not positive semidefinite.
+/// Extended Cholesky of a symmetric matrix; panics unless `q` is square and positive semidefinite:
+/// once the pivots fall to the tolerance, no remaining diagonal is under its negative.
 pub(crate) fn extended_cholesky<T: RealExt>(q: &Array2<T>) -> ExtendedCholesky<T> {
   let d = q.nrows();
   assert_eq!(q.ncols(), d, "matrix must be square");

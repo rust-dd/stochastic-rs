@@ -1,60 +1,29 @@
-//! Almgren-Chriss optimal execution under linear permanent and temporary
-//! price impact.
-//!
-//! Liquidate $X$ shares (or accumulate, with `ExecutionDirection::Buy`) over
-//! $N$ equally spaced trading intervals of length $\tau = T/N$. Permanent
-//! impact $g(v) = \gamma v$, linear temporary impact $h(v) = \eta v$ plus a
-//! fixed half-spread $\epsilon\,\mathrm{sign}(v)$.
-//!
-//! Mean-variance objective $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$
-//! admits the closed-form trajectory
+//! Almgren–Chriss execution of $X$ shares over $N$ intervals of $\tau = T/N$ under linear impact,
+//! minimising $E\left[C\right] + \lambda\,\mathrm{Var}\left[C\right]$; $\lambda = 0$ is TWAP.
 //!
 //! $$
 //! x_k = X\,\frac{\sinh\bigl(\kappa(T-t_k)\bigr)}{\sinh(\kappa T)},
 //! \qquad
-//! \kappa = \frac{1}{\tau}\,\mathrm{arccosh}\!\left(1+\tfrac{\lambda\sigma^2\tau^2}{2\tilde\eta}\right),
+//! \kappa = \frac{1}{\tau}\,\mathrm{arccosh}\!\left(
+//!   1+\tfrac{\lambda\sigma^2\tau^2}{2\tilde\eta}\right),
 //! \qquad
 //! \tilde\eta = \eta - \gamma\tau/2.
 //! $$
 //!
-//! Setting $\lambda = 0$ recovers the linear (TWAP) inventory schedule;
-//! letting $\lambda\to\infty$ liquidates immediately.
-//!
-//! Reference: Almgren, Chriss, "Optimal Execution of Portfolio Transactions",
-//! Journal of Risk, 3(2), 5-39 (2001). DOI: 10.21314/JOR.2001.041
-
-use std::fmt::Display;
+//! Reference: Almgren & Chriss (2001), J. Risk 3(2), 5–39, DOI 10.21314/JOR.2001.041
 
 use ndarray::Array1;
 
+use crate::order_book::Side;
 use crate::traits::RealExt;
-
-/// Direction of the parent order.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExecutionDirection {
-  /// Sell `total_shares` over `[0, T]`.
-  #[default]
-  Sell,
-  /// Buy `total_shares` over `[0, T]`.
-  Buy,
-}
-
-impl Display for ExecutionDirection {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Sell => write!(f, "Sell"),
-      Self::Buy => write!(f, "Buy"),
-    }
-  }
-}
 
 /// Almgren-Chriss model inputs.
 #[derive(Debug, Clone)]
 pub struct AlmgrenChrissParams<T: RealExt> {
+  /// Whether the parent order sells or buys `total_shares`.
+  pub side: Side,
   /// Number of shares to execute (always non-negative).
   pub total_shares: T,
-  /// Direction of the parent order.
-  pub direction: ExecutionDirection,
   /// Total trading horizon (e.g. seconds, days, fractions of a day).
   pub horizon: T,
   /// Number of equally spaced trading intervals.
@@ -72,8 +41,11 @@ pub struct AlmgrenChrissParams<T: RealExt> {
 }
 
 impl<T: RealExt> AlmgrenChrissParams<T> {
-  /// Construct with sensible defaults: `epsilon = 0`, `direction = Sell`.
+  /// Inputs with no half-spread cost (`epsilon = 0`).
+  // One argument per parameter of the model.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
+    side: Side,
     total_shares: T,
     horizon: T,
     n_intervals: usize,
@@ -83,8 +55,8 @@ impl<T: RealExt> AlmgrenChrissParams<T> {
     lambda: T,
   ) -> Self {
     Self {
+      side,
       total_shares,
-      direction: ExecutionDirection::Sell,
       horizon,
       n_intervals,
       volatility,
@@ -96,15 +68,8 @@ impl<T: RealExt> AlmgrenChrissParams<T> {
   }
 }
 
-/// Result of an Almgren-Chriss schedule computation.
-///
-/// **Sign convention:** For [`ExecutionDirection::Sell`], inventory starts at
-/// $+X$ and decreases to $0$; trades and rates are positive (shares being
-/// removed from the book). For [`ExecutionDirection::Buy`], all three series
-/// are sign-reversed: inventory starts at $-X$ and increases to $0$; trades
-/// and rates are negative (shares being added to the book). This matches the
-/// signed academic Almgren-Chriss formulation (Almgren-Chriss 2001 §2) where
-/// a buy is the sign-reverse of a sell.
+/// Result of an Almgren-Chriss schedule; a buy's three series are a sell's sign reversed
+/// (Almgren–Chriss 2001, §2), so its inventory runs from $-X$ up to $0$.
 #[derive(Debug, Clone)]
 pub struct AlmgrenChrissPlan<T: RealExt> {
   /// Inventory holdings $x_k$ at the end of each interval. For Sell:
@@ -199,16 +164,7 @@ pub fn optimal_execution<T: RealExt>(params: &AlmgrenChrissParams<T>) -> Almgren
   }
   let variance = params.volatility * params.volatility * tau * variance_acc;
 
-  // For a Buy execution we flip ALL three series (inventory, trades, rates).
-  // Convention is *signed*: inventory[0] = -X (negative = short position to
-  // cover), inventory[N] = 0 (position fully built), trades[k] < 0 (negative
-  // = additions to the book / shares acquired), rates[k] < 0. This mirrors
-  // the academic Almgren-Chriss formulation where a buy is treated as the
-  // sign-reverse of a sell (Almgren-Chriss 2001 §2). The previous rc.0/rc.1
-  // implementation only flipped `rates`, which left `inventory` and `trades`
-  // in sell-frame and produced sign-inconsistent numbers for downstream
-  // consumers; this rc.2 fix flips all three series together.
-  if matches!(params.direction, ExecutionDirection::Buy) {
+  if params.side == Side::Buy {
     for k in 0..=n {
       inventory[k] = -inventory[k];
     }
@@ -244,7 +200,7 @@ mod tests {
 
   #[test]
   fn lambda_zero_recovers_twap() {
-    let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 10, 0.01, 1e-7, 1e-5, 0.0);
+    let p = AlmgrenChrissParams::new(Side::Sell, 1_000.0_f64, 1.0, 10, 0.01, 1e-7, 1e-5, 0.0);
     let plan = optimal_execution(&p);
     for k in 0..=p.n_intervals {
       let expected = 1_000.0 * (1.0 - k as f64 / 10.0);
@@ -264,7 +220,7 @@ mod tests {
   #[test]
   fn larger_lambda_front_loads_execution() {
     let mk = |lam: f64| {
-      let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 10, 0.05, 1e-7, 1e-5, lam);
+      let p = AlmgrenChrissParams::new(Side::Sell, 1_000.0_f64, 1.0, 10, 0.05, 1e-7, 1e-5, lam);
       optimal_execution(&p)
     };
     let cautious = mk(0.01);
@@ -275,7 +231,7 @@ mod tests {
 
   #[test]
   fn risk_adjusted_cost_consistent() {
-    let p = AlmgrenChrissParams::new(1_000.0_f64, 1.0, 20, 0.02, 2e-7, 5e-6, 0.5);
+    let p = AlmgrenChrissParams::new(Side::Sell, 1_000.0_f64, 1.0, 20, 0.02, 2e-7, 5e-6, 0.5);
     let plan = optimal_execution(&p);
     let recomputed = plan.expected_cost + p.lambda * plan.variance;
     assert!(approx(plan.risk_adjusted_cost(p.lambda), recomputed, 1e-12));
@@ -283,9 +239,9 @@ mod tests {
 
   #[test]
   fn buy_direction_negates_rates() {
-    let mut p = AlmgrenChrissParams::new(500.0_f64, 1.0, 5, 0.01, 1e-7, 1e-5, 0.5);
+    let mut p = AlmgrenChrissParams::new(Side::Sell, 500.0_f64, 1.0, 5, 0.01, 1e-7, 1e-5, 0.5);
     let sell = optimal_execution(&p);
-    p.direction = ExecutionDirection::Buy;
+    p.side = Side::Buy;
     let buy = optimal_execution(&p);
     for k in 0..p.n_intervals {
       assert!(approx(buy.rates[k], -sell.rates[k], 1e-12));
@@ -294,9 +250,9 @@ mod tests {
 
   #[test]
   fn buy_direction_negates_all_three_series() {
-    let mut p = AlmgrenChrissParams::new(500.0_f64, 1.0, 5, 0.01, 1e-7, 1e-5, 0.5);
+    let mut p = AlmgrenChrissParams::new(Side::Sell, 500.0_f64, 1.0, 5, 0.01, 1e-7, 1e-5, 0.5);
     let sell = optimal_execution(&p);
-    p.direction = ExecutionDirection::Buy;
+    p.side = Side::Buy;
     let buy = optimal_execution(&p);
     for k in 0..=p.n_intervals {
       assert!(approx(buy.inventory[k], -sell.inventory[k], 1e-12));
@@ -315,7 +271,7 @@ mod tests {
 
   #[test]
   fn full_inventory_ends_at_zero() {
-    let p = AlmgrenChrissParams::new(2_500.0_f64, 2.0, 50, 0.03, 5e-8, 4e-6, 1.0);
+    let p = AlmgrenChrissParams::new(Side::Sell, 2_500.0_f64, 2.0, 50, 0.03, 5e-8, 4e-6, 1.0);
     let plan = optimal_execution(&p);
     assert!(approx(plan.inventory[plan.inventory.len() - 1], 0.0, 1e-9));
     let total: f64 = plan.trades.iter().copied().sum();

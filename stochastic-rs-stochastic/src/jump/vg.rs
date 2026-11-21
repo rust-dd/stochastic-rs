@@ -1,4 +1,4 @@
-//! # Vg
+//! Variance gamma: a Brownian motion on a gamma clock, `mu` its drift per unit of that clock.
 //!
 //! $$
 //! X_t=\theta G_t+\sigma W_{G_t},\quad G_t\sim\Gamma(\nu^{-1}t,\nu)
@@ -8,36 +8,35 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift-in-subordinated-time θ (matches the module header's own θ,
-  /// multiplying the gamma-subordinator increment `G_t`) — a skewness
-  /// parameter, not a mean-reversion level; VG is a pure Lévy process
-  /// with no mean reversion, despite the field's name.
+  /// Drift θ in subordinated time (the module display's θ, multiplying the gamma increment
+  /// `G_t`): a skewness parameter, not a mean-reversion level, which a Lévy process lacks.
   pub mu: T,
-  /// Diffusion scale σ multiplying `√(G_t) W_{G_t}`, the
-  /// Brownian-subordinated component riding on top of the gamma
-  /// time-change.
+  /// Diffusion scale σ of `√(G_t) W_{G_t}`, the Brownian component riding the gamma time change.
   pub sigma: T,
-  /// Variance rate ν of the gamma subordinator `G_t ~ Gamma(t/ν, ν)` —
-  /// controls kurtosis/tail thickness of the VG increments, not a
-  /// vol-of-vol in the Heston sense (there is no separate volatility
-  /// process here).
+  /// Variance rate ν of the gamma subordinator `G_t ~ Gamma(t/ν, ν)`: the kurtosis of the
+  /// increments, not a vol-of-vol, since there is no separate volatility process.
   pub nu: T,
   /// Number of points sampled along the VG path.
   pub n: usize,
-  /// Initial value X₀ of the VG path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -46,13 +45,17 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Vg::default().with_nu(0.25).with_sigma(0.3)`. No persisted cache:
-/// `sampler()` builds its gamma subordinator and Gaussian source fresh
-/// from `self` every call.
+/// No cache: `sampler()` builds its gamma subordinator and Gaussian source from `self` each call.
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
+  /// Panics unless `nu > 0`, `n >= 2`, a given `t` is positive and finite, and every parameter is
+  /// finite.
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_nu(nu);
+    check_n(n);
+    Self::check_x0(x0);
+    check_t(t);
     Self {
       backend: Cpu,
       mu,
@@ -67,44 +70,66 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Vg<T, S, B> {
-  /// Replace `mu`, all else unchanged.
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+    require!(nu > T::zero(), nu);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu > 0` and `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -129,7 +154,7 @@ impl<T: FloatExt> Default for Vg<T, Unseeded> {
 impl<T: FloatExt, S: SeedExt, B> Vg<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -182,6 +207,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Vg<T, S> { mu, sigma, nu, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Vg<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Vg<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -190,23 +220,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> VgSampler<T> {
-    // Gamma subordinator and standard-normal source derived from `self.seed`
-    // in the same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The gamma subordinator, then the normal source are derived from `self.seed`, an order the
+    // pinned streams depend on; reuse advances both for independent paths.
     let dt = self.dt();
     VgSampler {
       n: self.n,
       mu: self.mu,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -239,13 +267,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Vg`] sampling state: owns the gamma subordinator and the
 /// Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VgSampler<T: FloatExt> {
   n: usize,
   mu: T,
   sigma: T,
   x0: T,
-  gamma: SimdGamma<T>,
-  normal: SimdNormal<T>,
+  gamma: Seeded<SimdGamma<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> VgSampler<T> {
@@ -269,6 +298,8 @@ impl<T: FloatExt> VgSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for VgSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for VgSampler<T> {
   type Output = Array1<T>;
 
@@ -279,20 +310,6 @@ impl<T: FloatExt> PathSampler<T> for VgSampler<T> {
   fn sample(&mut self) -> Array1<T> {
     let n = self.n;
     array1_from_fill(n, |out| self.fill_path(out))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn n_eq_1_keeps_initial_value() {
-    let p = Vg::new(0.1_f64, 0.2, 0.3, 1, Some(2.5), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 2.5);
   }
 }
 

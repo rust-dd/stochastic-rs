@@ -1,7 +1,6 @@
 use chrono::NaiveDate;
 
 use super::shared::fixed_leg_bpv_annuity;
-use super::types::SwapDirection;
 use super::types::SwapValuation;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Schedule;
@@ -11,27 +10,30 @@ use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
 use crate::cashflows::OvernightIndex;
+use crate::instruments::SwaptionDirection;
 use crate::traits::RealExt;
 
 /// Vanilla interest-rate swap backed by fixed and floating legs.
 #[derive(Debug, Clone)]
 pub struct VanillaInterestRateSwap<T: RealExt> {
   /// Pay/receive direction.
-  pub direction: SwapDirection,
+  pub direction: SwaptionDirection,
   /// Contract notional.
   pub notional: T,
   /// Fixed coupon rate.
   pub fixed_rate: T,
-  /// Fixed leg.
+  /// Leg paying `fixed_rate` on `notional`; `direction` says which side pays it.
   pub fixed_leg: Leg<T>,
-  /// Floating leg.
+  /// Leg paying the floating-index fixings, opposite the fixed leg.
   pub floating_leg: Leg<T>,
 }
 
 impl<T: RealExt> VanillaInterestRateSwap<T> {
   /// Build a vanilla fixed-versus-floating swap.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
-    direction: SwapDirection,
+    direction: SwaptionDirection,
     fixed_schedule: &Schedule,
     float_schedule: &Schedule,
     notional: T,
@@ -74,8 +76,10 @@ impl<T: RealExt> VanillaInterestRateSwap<T> {
   }
 
   /// Build an overnight-indexed swap using the built-in overnight index type.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn overnight_indexed(
-    direction: SwapDirection,
+    direction: SwaptionDirection,
     fixed_schedule: &Schedule,
     float_schedule: &Schedule,
     notional: T,
@@ -117,12 +121,12 @@ impl<T: RealExt> VanillaInterestRateSwap<T> {
     };
     let bpv = annuity * T::from_f64_fast(1e-4);
     let dv01 = match self.direction {
-      SwapDirection::Payer => -bpv,
-      SwapDirection::Receiver => bpv,
+      SwaptionDirection::Payer => -bpv,
+      SwaptionDirection::Receiver => bpv,
     };
     let net_npv = match self.direction {
-      SwapDirection::Payer => floating_leg_npv - fixed_leg_npv,
-      SwapDirection::Receiver => fixed_leg_npv - floating_leg_npv,
+      SwaptionDirection::Payer => floating_leg_npv - fixed_leg_npv,
+      SwaptionDirection::Receiver => fixed_leg_npv - floating_leg_npv,
     };
 
     SwapValuation {

@@ -1,4 +1,4 @@
-//! # fBM
+//! Fractional Brownian motion: the cumulative sum of fractional Gaussian noise, from zero.
 //!
 //! $$
 //! \mathbb E[B_t^H B_s^H]=\tfrac12\left(t^{2H}+s^{2H}-|t-s|^{2H}\right)
@@ -7,91 +7,129 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
+use crate::malliavin::Malliavin;
 use crate::noise::fgn::Fgn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+/// Fractional Brownian motion. Fields are private, since the fGN driver caches a spectrum of
+/// `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::process::fbm::Fbm;
+/// let mut p = Fbm::<f64>::new(0.7, 10, None, Unseeded);
+/// p.n = 1000;
+/// ```
+#[derive(Debug, Clone)]
 pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
-  pub hurst: T,
-  /// Number of discrete time points in the generated path.
-  pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  n: usize,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Fbm::default().with_hurst(0.3)`.
-///
-/// **Cache note**: the embedded `fgn: Fgn<T, Unseeded, Cpu>` holds the
-/// expensive FFT/eigenvalue cache and is always constructed with the
-/// literal `Unseeded` — never consulted for randomness (`FbmSampler`
-/// draws through a Gaussian source built from the *outer* `self.seed`
-/// and only borrows `fgn` for its cached FFT plan/eigenvalues), so unlike
-/// [`Vasicek`](crate::interest::vasicek::Vasicek)'s embedded `Ou` there is
-/// no seed-derivation subtlety here: every setter that feeds `fgn`
-/// rebuilds it with the exact expression `new()` itself uses.
+/// Every field has a `with_*` setter (`Fbm::default().with_hurst(0.3)`). The embedded `fgn` is
+/// `Unseeded` and lends only its FFT cache; the randomness comes from the outer `self.seed`.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    Self::check_hurst(hurst);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
       n,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Fgn::for_grid(hurst, n, t),
     }
   }
 
-  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
+    Self::check_hurst(hurst);
     self.hurst = hurst;
-    self.fgn = Fgn::new(hurst, self.n - 1, self.t, Unseeded);
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the embedded
-  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+  /// Replace `n`; panics unless `n >= 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
-    self.fgn = Fgn::new(self.hurst, n - 1, self.t, Unseeded);
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
-    self.fgn = Fgn::new(self.hurst, self.n - 1, t, Unseeded);
-    self
-  }
-
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
-  pub fn with_seed(mut self, seed: S) -> Self {
-    self.seed = seed;
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self
   }
 }
 
-/// H=0.7, t=1 — a textbook Fbm parameterization. n=252 — one trading year
-/// of daily steps (this crate's `Default` convention).
+impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+
+  /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Number of discrete time points in the generated path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
+
+/// H=0.7, t=1, a textbook Fbm; 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fbm<T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -103,22 +141,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler: it reuses the inner [`Fgn`]'s `Arc`-shared FFT plan and
-  /// eigenvalues and owns a Gaussian source seeded from `self.seed.derive()`,
-  /// matching the legacy `sample()` stream on the first call. As with
-  /// [`Fgn::sampler`](crate::noise::fgn::Fgn), even GPU backends sample on the
-  /// CPU here — batch through [`sample_par`](Self::sample_par) for the GPU.
+  /// A CPU sampler on the inner [`Fgn`]'s shared FFT plan, with a Gaussian source seeded from
+  /// `self.seed.derive()`; a GPU backend batches through [`sample_par`](Self::sample_par).
   fn sampler(&self) -> FbmSampler<'_, T, S, B> {
     FbmSampler {
       fbm: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed.derive()),
     }
   }
 
-  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
-  /// these two the trait's defaults would send a mapped batch through the
-  /// host sampler while `sample_par` ran on the device — the same law, but
-  /// a different stream and none of the device's speed.
+  /// The same launch as [`sample_par`](Self::sample_par), mapped; the trait's defaults would map
+  /// a batch on the host sampler, a different stream from the device's `sample_par`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
   }
@@ -131,30 +164,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
-  /// The `m` fGN noises are generated in one batched backend call, then each
-  /// path is assembled (cumulative sum) on the host across all cores.
-  ///
-  /// **Reproducibility on `Cpu`/`Accelerate`.** Same guarantee as
-  /// [`Fgn::sample_par`](crate::noise::fgn::Fgn::sample_par) on those two
-  /// backends (`Cpu`: bit-identical; `Accelerate`: thread-count-independent
-  /// seed consumption, but not bit-identical — see
-  /// [`FgnBackend`]'s doc), with one added wrinkle this
-  /// override alone has to get right: the embedded `self.fgn` is always
-  /// [`Unseeded`] (never consulted for randomness — see this type's own
-  /// doc), so the batch is driven by `self.seed` passed in explicitly here,
-  /// not `self.fgn.noise_batch`'s own (dead) seed. Getting that backwards
-  /// was the actual bug this fixes: passing `self.fgn`'s seed silently
-  /// ignored `self.seed` entirely, so a `Deterministic`-seeded
-  /// `Fbm::sample_par` used to draw fresh randomness on every call
-  /// regardless of the pinned seed.
-  ///
-  /// **On the GPU backends the same seed reaches the launch.** The device
-  /// `FgnBackend` impls draw their launch seed from the `seed: &S2` handed
-  /// to `noise_batch` — `self.seed` here, not the embedded `fgn`'s dead
-  /// `Unseeded` one — so two `Deterministic`-seeded `Fbm`s built from the
-  /// same seed value produce the same device paths (and consecutive calls on
-  /// one advance the stream, as on the host), subject to the cross-driver
-  /// caveat in [`FgnBackend`]'s table.
+  /// One batched fGN call, then a cumulative sum per path. `self.seed` drives the batch on
+  /// every backend, not the embedded `fgn`'s `Unseeded`; [`FgnBackend`] states each guarantee.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
@@ -164,14 +175,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Fbm`] sampling state: borrows the process for its inner [`Fgn`]
-/// (FFT plan + eigenvalues) and owns the Gaussian source, so a Monte-Carlo
-/// loop pays the `SimdNormal` setup once. The path is the cumulative sum of an
-/// fGn increment vector, with `B_0^H = 0`.
+/// Reusable [`Fbm`] sampling state: it borrows the process for its inner [`Fgn`] and owns the
+/// Gaussian source. The path is the cumulative sum of an fGn vector, with `B_0^H = 0`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   fbm: &'a Fbm<T, S, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {
@@ -183,7 +193,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {
     if out.len() == 1 {
       return;
     }
-    let mut fgn = Array1::<T>::zeros(self.fbm.fgn.out_len);
+    let mut fgn = Array1::<T>::zeros(self.fbm.fgn.n());
     self
       .fbm
       .fgn
@@ -195,6 +205,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FbmSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
@@ -210,9 +222,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FbmSampler<'_
   }
 }
 
-/// The Euler engine's view of fBm: the additive family, whose step is the
-/// increment itself, so accumulating fGN increments is one kernel rather than
-/// a host pass over the batch.
+/// The Euler engine's view: the additive family, whose step is the increment itself, so one
+/// kernel accumulates the fGN increments.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Fbm<T, S, B>
 {
@@ -245,39 +256,28 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   /// The pipeline that produces this process's increments: the device runs it
   /// and keeps the result in its own buffer.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn euler);
 
-impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
-  /// Calculate the Malliavin derivative
-  ///
-  /// The Malliavin derivative of the fractional Brownian motion is given by:
-  /// D_s B^H_t = 1 / Γ(H + 1/2) (t - s)^{H - 1/2}
-  ///
-  /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
-  /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
-  /// which is a truncated Wiener integral.
-  pub fn malliavin(&self) -> Array1<T> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> Fbm<T, S, B> {
+  /// The path and `D_{t_i} B^H_T = √(Γ(2H+1) sin πH) (T − t_i)^{H−½} / Γ(H+½)` (Mishura 2008, §1.3)
+  /// with respect to the Mandelbrot–Van Ness driver; the last entry is ∞ for H < ½.
+  pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let dt = self.fgn.dt();
-    let mut m = Array1::zeros(self.n);
-    let g = stochastic_rs_distributions::special::gamma(self.hurst.to_f64().unwrap() + 0.5);
-
-    for i in 0..self.n {
-      m[i] = T::one() / T::from_f64_fast(g)
-        * (T::from_usize_(i) * dt).powf(self.hurst - T::from_f64_fast(0.5));
+    let h = self.hurst.to_f64().unwrap();
+    let g = gamma(h + 0.5);
+    let c = (gamma(2.0 * h + 1.0) * (std::f64::consts::PI * h).sin()).sqrt();
+    let scale = T::from_f64_fast(c / g);
+    let derivative = Array1::from_shape_fn(self.n, |i| {
+      scale * (T::from_usize_(self.n - 1 - i) * dt).powf(self.hurst - T::from_f64_fast(0.5))
+    });
+    Malliavin {
+      paths: self.sample(),
+      derivative,
     }
-
-    m
   }
 }
 
@@ -293,6 +293,26 @@ mod tests {
   use stochastic_rs_distributions::special::erf;
 
   use super::*;
+
+  #[test]
+  fn the_malliavin_derivative_is_the_mandelbrot_van_ness_kernel_of_a_standard_fbm() {
+    // √(Γ(2H+1) sin πH) / Γ(H+½), by mpmath at 40 digits.
+    for (h, c_h) in [(0.7, 1.0918091308839126), (0.3, 0.730282934079923)] {
+      let fbm = || Fbm::<f64, _>::new(h, 17, Some(1.0), Deterministic::new(5));
+      let Malliavin {
+        paths, derivative, ..
+      } = fbm().malliavin();
+      assert_eq!(paths, fbm().sample());
+      for (i, d) in derivative.iter().take(16).enumerate() {
+        let expected = c_h * (1.0 - i as f64 / 16.0).powf(h - 0.5);
+        assert!(
+          (d - expected).abs() <= 1e-14 * expected,
+          "H = {h}, t_{i}: {d} against {expected}"
+        );
+      }
+      assert_eq!(derivative[16], if h < 0.5 { f64::INFINITY } else { 0.0 });
+    }
+  }
 
   fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
     let idx = (((sorted.len() - 1) as f64) * p).round() as usize;
@@ -321,9 +341,8 @@ mod tests {
     let t = 1.0_f64;
     let n = 2048_usize;
     let m = 6000_usize;
-    // Seeded `Fbm::sample(&self)` advances the internal atomic seed state
-    // each call, so a single instance yields `m` independent paths
-    // deterministically.
+    // A seeded `Fbm::sample` advances the seed state on each call, so one instance yields `m`
+    // independent paths deterministically.
     let fbm = Fbm::new(h, n, Some(t), Deterministic::new(0xFBC0_FFEE_u64));
 
     let mut endpoints = Vec::with_capacity(m);
@@ -469,7 +488,6 @@ mod tests {
     );
   }
 
-  // `fbm_fractal_dimension_matches_theory` lives in
-  // `stochastic-rs-stats/tests/fractal_dim_validation.rs` because it exercises
-  // the `FractalDim` estimator from the stats crate.
+  // `fbm_fractal_dimension_matches_theory` is in the stats crate's
+  // `tests/fractal_dim_validation.rs`, since it exercises the `FractalDim` estimator.
 }

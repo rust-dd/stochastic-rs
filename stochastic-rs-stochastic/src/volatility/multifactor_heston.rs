@@ -1,4 +1,4 @@
-//! # Multifactor Heston (Christoffersen-Heston-Jacobs 2009)
+//! Multifactor Heston: one CIR factor cannot fit both skews and the ATM term structure (CHJ, 2009).
 //!
 //! $$
 //! \begin{aligned}
@@ -10,43 +10,28 @@
 //! \end{aligned}
 //! $$
 //!
-//! Each variance factor $V_{k,t}$ is an independent CIR process with its
-//! own mean-reversion speed $\kappa_k$, long-run level $\theta_k$,
-//! vol-of-vol $\sigma_k$ and **asset-correlation** $\rho_k$. The asset
-//! diffusion sums the contributions of the $K$ factors.
+//! The asset steps by Euler, each variance factor by full truncation (Lord-Koekkoek-van Dijk 2010).
 //!
-//! **Why multi-factor.** Christoffersen-Heston-Jacobs (CHJ, 2009) show
-//! that a single CIR factor cannot simultaneously fit (a) the short-end
-//! skew, (b) the long-end skew, and (c) the term structure of ATM
-//! variance — separate factors with different $\kappa_k$ and $\rho_k$
-//! disentangle these regimes.
-//!
-//! **Discretisation.** Plain explicit Euler on the asset and a
-//! full-truncation Euler on each variance factor (Lord-Koekkoek-van Dijk
-//! 2010). The asset draws $K$ correlated $(\Delta W^S_k, \Delta W^V_k)$
-//! pairs per time step through the existing
-//! [`Cgns`] generator, independent across $k$.
-//!
-//! Reference: Christoffersen, P., Heston, S., Jacobs, K. (2009),
-//! "The shape and term structure of the index option smirk: why
-//! multifactor stochastic volatility models work so well",
-//! *Management Science* 55(12), 1914-1932.
+//! Reference: Christoffersen, Heston & Jacobs (2009), Management Science 55(12), 1914-1932
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Multifactor Heston model with `K` independent variance factors driving
 /// a single stock. See module docs for the SDE form and reference.
+#[derive(Debug, Clone)]
 pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price.
-  pub s0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
   /// Initial variance per factor.
   pub v0: [T; K],
   /// Mean-reversion rate per factor.
@@ -59,9 +44,9 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
   pub rho: [T; K],
   /// Drift of the stock (risk-neutral $r - q$ when pricing).
   pub mu: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
-  /// Time to maturity.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed source.
   pub seed: S,
@@ -73,9 +58,25 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
   pub backend: B,
 }
 
+/// Spot and the `K` variance factors.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct MultifactorHestonPaths<T, const K: usize> {
+  pub s: Array1<T>,
+  pub v: [Array1<T>; K],
+}
+
+impl<T, const K: usize> From<(Array1<T>, [Array1<T>; K])> for MultifactorHestonPaths<T, K> {
+  fn from((s, v): (Array1<T>, [Array1<T>; K])) -> Self {
+    Self { s, v }
+  }
+}
+
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
+  /// Panics unless every parameter is finite, `K >= 1`, each `v0`, `kappa`, `theta`, `sigma` entry
+  /// is non-negative, each `|rho| < 1`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
-    s0: Option<T>,
+    s0: T,
     v0: [T; K],
     kappa: [T; K],
     theta: [T; K],
@@ -86,16 +87,69 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(K >= 1, "K must be ≥ 1");
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(K >= 1, "K must satisfy `K >= 1`, got K = {K:?}");
+    assert_entries("v0", "v0[k].is_finite()", &ArrayView1::from(&v0), |v| {
+      v.is_finite()
+    });
+    assert_entries(
+      "kappa",
+      "kappa[k].is_finite()",
+      &ArrayView1::from(&kappa),
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "theta",
+      "theta[k].is_finite()",
+      &ArrayView1::from(&theta),
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "sigma",
+      "sigma[k].is_finite()",
+      &ArrayView1::from(&sigma),
+      |v| v.is_finite(),
+    );
+    assert_entries("rho", "rho[k].is_finite()", &ArrayView1::from(&rho), |v| {
+      v.is_finite()
+    });
     for k in 0..K {
-      assert!(kappa[k] >= T::zero(), "κ_k must be non-negative");
-      assert!(theta[k] >= T::zero(), "θ_k must be non-negative");
-      assert!(sigma[k] >= T::zero(), "σ_k must be non-negative");
-      assert!(v0[k] >= T::zero(), "v0_k must be non-negative");
+      assert!(
+        kappa[k] >= T::zero(),
+        "kappa[{k}] must satisfy `kappa[k] >= T::zero()`, got kappa[{k}] = {:?}",
+        kappa[k]
+      );
+      assert!(
+        theta[k] >= T::zero(),
+        "theta[{k}] must satisfy `theta[k] >= T::zero()`, got theta[{k}] = {:?}",
+        theta[k]
+      );
+      assert!(
+        sigma[k] >= T::zero(),
+        "sigma[{k}] must satisfy `sigma[k] >= T::zero()`, got sigma[{k}] = {:?}",
+        sigma[k]
+      );
+      assert!(
+        v0[k] >= T::zero(),
+        "v0[{k}] must satisfy `v0[k] >= T::zero()`, got v0[{k}] = {:?}",
+        v0[k]
+      );
       let r = rho[k].to_f64().unwrap();
       assert!(
         r.abs() < 1.0,
-        "ρ_k must lie strictly in (-1, 1); got {r} at factor {k}"
+        "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
     let cgns = (0..K)
@@ -118,21 +172,22 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   }
 }
 
-/// How many variance factors a launch carries: the double-Heston family has
-/// two, and a one-factor model rides it with the second factor zeroed. A model
-/// with more stays on its host sampler whatever the backend.
+/// How many variance factors a launch carries: the double-Heston family has two, and a
+/// one-factor model rides it with the second zeroed; more factors stay on the host sampler.
 const DEVICE_FACTORS: usize = 2;
 
-/// The model in the double-Heston family's three slots — spot, first variance,
-/// second variance — which is what carries a launch when `K <= 2`: a one-factor
-/// model pads the second variance with zero speed, level, vol-of-vol,
-/// correlation and start, so it stays at zero and contributes nothing to the
-/// spot. It borrows rather than owns, so the seed it advances is the process's
-/// own.
+/// The model in the double-Heston family's three slots (spot and two variances), a launch for
+/// `K <= 2`; one factor pads the second variance with zeros. It borrows the process's own seed.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct MultifactorHestonLaunch<'a, T: FloatExt, const K: usize, S: SeedExt, B>(
   &'a MultifactorHeston<T, K, S, B>,
 );
+
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for MultifactorHestonLaunch<'_, T, K, S, B>
+{
+}
 
 impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorHestonLaunch<'_, T, K, S, B>
@@ -153,8 +208,14 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
 /// [`MultifactorHestonLaunch`]'s sampler: the model's own sampler, its spot
 /// and factors lifted into the three slots.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultifactorHestonLaunchSampler<T: FloatExt, const K: usize, S: SeedExt> {
   inner: MultifactorHestonSampler<T, K, S>,
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt> crate::traits::Sealed
+  for MultifactorHestonLaunchSampler<T, K, S>
+{
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T>
@@ -167,7 +228,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T>
   }
 
   fn sample(&mut self) -> [Array1<T>; 3] {
-    let (s, v) = self.inner.sample();
+    let MultifactorHestonPaths { s, v } = self.inner.sample();
     let n = s.len();
     let factor = |k: usize| v.get(k).cloned().unwrap_or_else(|| Array1::zeros(n));
     [s, factor(0), factor(1)]
@@ -204,7 +265,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
         T::zero()
       }
     };
-    [p.s0.unwrap_or(T::zero()), v0(0), v0(1), T::zero()]
+    [p.s0, v0(0), v0(1), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -230,36 +291,40 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-/// The three slots as the `(spot, [variance; K])` the model reports; a padded
-/// slot is dropped.
+/// The three slots as the spot and `K` variances the model reports; a padded slot is dropped.
 fn slots_to_output<T: FloatExt, const K: usize>(
   slots: [Array1<T>; 3],
-) -> (Array1<T>, [Array1<T>; K]) {
+) -> MultifactorHestonPaths<T, K> {
   let [s, v1, v2] = slots;
   let factors = [v1, v2];
-  (s, std::array::from_fn(|k| factors[k].clone()))
+  MultifactorHestonPaths {
+    s,
+    v: std::array::from_fn(|k| factors[k].clone()),
+  }
 }
 
 backend_switch!([T: FloatExt, const K: usize, S: SeedExt] MultifactorHeston<T, K, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for MultifactorHeston<T, K, S, B>
+{
+}
+
 impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorHeston<T, K, S, B>
 {
-  /// `(stock_path, [variance_path; K])`.
-  type Output = (Array1<T>, [Array1<T>; K]);
+  type Output = MultifactorHestonPaths<T, K>;
   type Sampler<'s>
     = MultifactorHestonSampler<T, K, S>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
     MultifactorHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
+      s0: self.s0,
       v0: std::array::from_fn(|k| self.v0[k].max(T::zero())),
       kappa: self.kappa,
       theta: self.theta,
@@ -271,12 +336,9 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine for one or two factors, which is what the
-  /// double-Heston family carries: on a device the spot and both factors are
-  /// stepped in one kernel. A model with more factors stays on this
-  /// process's own sampler whatever the backend, since a launch has four
-  /// shocks and each factor takes two.
-  fn sample(&self) -> (Array1<T>, [Array1<T>; K]) {
+  /// Through the Euler engine for one or two factors, stepped with the spot in one kernel; more
+  /// factors stay on the host sampler, since a launch has four shocks and each factor takes two.
+  fn sample(&self) -> MultifactorHestonPaths<T, K> {
     if K <= DEVICE_FACTORS {
       slots_to_output(self.backend.system_sample(&MultifactorHestonLaunch(self)))
     } else {
@@ -289,7 +351,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   fn sample_map<R: Send>(
     &self,
     m: usize,
-    f: impl Fn(&(Array1<T>, [Array1<T>; K])) -> R + Sync,
+    f: impl Fn(&MultifactorHestonPaths<T, K>) -> R + Sync,
   ) -> Vec<R> {
     if K <= DEVICE_FACTORS {
       self
@@ -302,7 +364,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<(Array1<T>, [Array1<T>; K])> {
+  fn sample_par(&self, m: usize) -> Vec<MultifactorHestonPaths<T, K>> {
     if K <= DEVICE_FACTORS {
       self
         .backend
@@ -315,7 +377,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
     }
   }
 
-  fn try_sample(&self) -> Result<(Array1<T>, [Array1<T>; K]), crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<MultifactorHestonPaths<T, K>, crate::device::DeviceError> {
     if K <= DEVICE_FACTORS {
       Ok(slots_to_output(
         self
@@ -330,7 +392,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   fn try_sample_par(
     &self,
     m: usize,
-  ) -> Result<Vec<(Array1<T>, [Array1<T>; K])>, crate::device::DeviceError> {
+  ) -> Result<Vec<MultifactorHestonPaths<T, K>>, crate::device::DeviceError> {
     if K <= DEVICE_FACTORS {
       Ok(
         self
@@ -346,12 +408,10 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`MultifactorHeston`] sampling state: owns one correlated-Gaussian
-/// generator per factor plus the seed source so a Monte-Carlo loop reuses the
-/// stock buffer and all `K` variance buffers. Per-factor noise is drawn
-/// directly off the owned `seed` in factor order, so the first call
-/// reproduces the original stream bit-for-bit.
+/// Reusable [`MultifactorHeston`] sampling state: one correlated-Gaussian generator per factor
+/// and the seed source; per-factor noise is drawn off the owned `seed` in factor order.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultifactorHestonSampler<T: FloatExt, const K: usize, S: SeedExt> {
   n: usize,
   s0: T,
@@ -402,11 +462,16 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> 
   }
 }
 
-impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHestonSampler<T, K, S> {
-  type Output = (Array1<T>, [Array1<T>; K]);
+impl<T: FloatExt, const K: usize, S: SeedExt> crate::traits::Sealed
+  for MultifactorHestonSampler<T, K, S>
+{
+}
 
-  fn sample_into(&mut self, out: &mut (Array1<T>, [Array1<T>; K])) {
-    let (s_arr, v_arr) = out;
+impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHestonSampler<T, K, S> {
+  type Output = MultifactorHestonPaths<T, K>;
+
+  fn sample_into(&mut self, out: &mut MultifactorHestonPaths<T, K>) {
+    let MultifactorHestonPaths { s: s_arr, v: v_arr } = out;
     let s = s_arr
       .as_slice_mut()
       .expect("MultifactorHeston stock output must be contiguous");
@@ -418,7 +483,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHest
     self.fill_paths(s, &mut v);
   }
 
-  fn sample(&mut self) -> (Array1<T>, [Array1<T>; K]) {
+  fn sample(&mut self) -> MultifactorHestonPaths<T, K> {
     let mut s_arr = Array1::<T>::zeros(self.n);
     let mut v_arr: [Array1<T>; K] = std::array::from_fn(|_| Array1::<T>::zeros(self.n));
     {
@@ -428,109 +493,9 @@ impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHest
         .map(|arr| arr.as_slice_mut().expect("contiguous"));
       self.fill_paths(s, &mut v);
     }
-    (s_arr, v_arr)
+    MultifactorHestonPaths { s: s_arr, v: v_arr }
   }
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  /// K = 2: 2-factor Heston produces non-negative variances and a
-  /// log-normal-like stock path (no negative S).
-  #[test]
-  fn two_factor_paths_non_negative() {
-    let p = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
-      [0.04, 0.04],
-      [1.5, 0.5],
-      [0.04, 0.04],
-      [0.3, 0.6],
-      [-0.5, -0.2],
-      0.0,
-      256,
-      Some(1.0),
-      Unseeded,
-    );
-    let (s, [v1, v2]) = p.sample();
-    assert!(s.iter().all(|x| *x > 0.0));
-    assert!(v1.iter().all(|x| *x >= 0.0));
-    assert!(v2.iter().all(|x| *x >= 0.0));
-    assert_eq!(s.len(), 256);
-    assert_eq!(v1.len(), 256);
-    assert_eq!(v2.len(), 256);
-  }
-
-  /// Long-run variance E[V_k,∞] = θ_k, so the time-averaged path of each
-  /// factor should approach θ_k on a long horizon.
-  #[test]
-  fn two_factor_long_run_variance_to_theta() {
-    let theta = [0.04, 0.10];
-    let p = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
-      [0.04, 0.10],
-      [3.0, 3.0],
-      theta,
-      [0.2, 0.2],
-      [-0.5, -0.5],
-      0.0,
-      4096,
-      Some(10.0), // long horizon
-      Deterministic::new(42),
-    );
-    let (_s, [v1, v2]) = p.sample();
-    let mean1: f64 = v1.iter().skip(1024).copied().sum::<f64>() / (v1.len() - 1024) as f64;
-    let mean2: f64 = v2.iter().skip(1024).copied().sum::<f64>() / (v2.len() - 1024) as f64;
-    assert!(
-      (mean1 - theta[0]).abs() < 0.02,
-      "V_1 long-run mean = {mean1}, expected ≈ {}",
-      theta[0]
-    );
-    assert!(
-      (mean2 - theta[1]).abs() < 0.05,
-      "V_2 long-run mean = {mean2}, expected ≈ {}",
-      theta[1]
-    );
-  }
-
-  /// K = 3: variant works without changes.
-  #[test]
-  fn three_factor_paths_finite() {
-    let p = MultifactorHeston::<f64, 3, _>::new(
-      Some(100.0),
-      [0.02, 0.04, 0.06],
-      [2.0, 1.0, 0.5],
-      [0.02, 0.04, 0.06],
-      [0.2, 0.3, 0.4],
-      [-0.5, -0.3, -0.1],
-      0.0,
-      128,
-      Some(1.0),
-      Unseeded,
-    );
-    let (s, [v1, v2, v3]) = p.sample();
-    for arr in [&s, &v1, &v2, &v3] {
-      assert!(arr.iter().all(|x| x.is_finite()));
-    }
-  }
-
-  /// Rejecting invalid ρ_k.
-  #[test]
-  #[should_panic(expected = "ρ_k must lie strictly in (-1, 1)")]
-  fn rho_out_of_range_panics() {
-    let _ = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
-      [0.04, 0.04],
-      [1.0, 1.0],
-      [0.04, 0.04],
-      [0.2, 0.2],
-      [-1.5, -0.5], // ρ_1 < -1 → invalid
-      0.0,
-      64,
-      Some(1.0),
-      Unseeded,
-    );
-  }
-}
+mod tests;

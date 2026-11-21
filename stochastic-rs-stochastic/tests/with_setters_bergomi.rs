@@ -1,6 +1,4 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Bergomi`
-//! (`volatility/bergomi.rs`). Cache: private `cgns: Cgns<T>` keyed on
-//! `(rho, n, t)`, same shape as the previous wave's `BatesSvj`/`Hkde`/etc.
+//! The `with_*` setters of `Bergomi`, whose private `cgns` cache is keyed on `(rho, n, t)`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -10,7 +8,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 
 fn bergomi_base_seeded<S: SeedExt>(seed: S) -> Bergomi<f64, S> {
-  Bergomi::new(0.4, Some(0.2), Some(100.0), 0.01, -0.6, 64, Some(1.0), seed)
+  Bergomi::new(0.4, 0.2, 100.0, 0.01, -0.6, 64, Some(1.0), seed)
 }
 
 fn bergomi_base() -> Bergomi<f64> {
@@ -20,8 +18,8 @@ fn bergomi_base() -> Bergomi<f64> {
 #[derive(Debug, PartialEq)]
 struct BergomiFields {
   nu: f64,
-  v0: Option<f64>,
-  s0: Option<f64>,
+  v0: f64,
+  s0: f64,
   r: f64,
   rho: f64,
   n: usize,
@@ -59,8 +57,8 @@ macro_rules! plain_test {
 }
 
 plain_test!(bergomi_with_nu_round_trip, with_nu, nu, 0.6);
-plain_test!(bergomi_with_v0_round_trip, with_v0, v0, Some(0.3));
-plain_test!(bergomi_with_s0_round_trip, with_s0, s0, Some(90.0));
+plain_test!(bergomi_with_v0_round_trip, with_v0, v0, 0.3);
+plain_test!(bergomi_with_s0_round_trip, with_s0, s0, 90.0);
 plain_test!(bergomi_with_r_round_trip, with_r, r, 0.02);
 
 #[test]
@@ -73,8 +71,8 @@ fn bergomi_with_rho_rebuilds_cgns_cache() {
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.2,
     64,
@@ -89,18 +87,18 @@ fn bergomi_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn bergomi_with_steps_rebuilds_cgns_cache() {
+fn bergomi_with_points_rebuilds_cgns_cache() {
   let mut expected = bergomi_base();
   expected.n = 128;
-  let got = bergomi_base().with_steps(128);
+  let got = bergomi_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     128,
@@ -109,7 +107,7 @@ fn bergomi_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = bergomi_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }
@@ -124,8 +122,8 @@ fn bergomi_with_horizon_rebuilds_cgns_cache() {
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     64,
@@ -148,14 +146,8 @@ fn bergomi_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `bergomi_base()` helper the bit-exact `cgns`-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `BergomiFields`
-/// mirror, not a `Bergomi { .., ..Bergomi::default() }` struct-update
-/// literal: `Bergomi` has a private `cgns` cache field, so that literal
-/// wouldn't even compile from this external test crate.
+/// A `Default`-rooted `with_r` round-trip. It compares through the `BergomiFields` mirror:
+/// `Bergomi` has a private `cgns` cache, so a struct-update literal would not compile here.
 #[test]
 fn bergomi_default_with_r_round_trip() {
   let base = Bergomi::<f64>::default();

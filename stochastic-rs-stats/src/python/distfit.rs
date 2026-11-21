@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 macro_rules! fit_class {
   ($py:ident, $name:literal, $inner:path, $fit:path, $doc:literal, [$(($getter:ident, $field:ident)),+]) => {
     #[pyclass(name = $name, unsendable)]
@@ -13,9 +15,11 @@ macro_rules! fit_class {
       #[doc = $doc]
       #[new]
       fn new<'py>(data: PyReadonlyArray1<'py, f64>) -> PyResult<Self> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-          inner: $fit(data.as_array()),
-        })
+        stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+          Ok(Self {
+            inner: $fit(data.as_array()).map_err(stats_error)?,
+          })
+        })?
       }
 
       /// Standard errors in the parameter order of the getters.
@@ -71,7 +75,7 @@ fit_class!(
   PyJohnsonSuFit,
   "JohnsonSuFit",
   crate::distfit::JohnsonSuFit,
-  crate::distfit::johnson_su_fit,
+  crate::distfit::fit_johnson_su,
   "Johnson SU maximum-likelihood fit; parameters `gamma`, `delta`, `xi`, `lambda_`.",
   [(gamma, gamma), (delta, delta), (xi, xi), (lambda_, lambda)]
 );
@@ -80,7 +84,7 @@ fit_class!(
   PySkewTFit,
   "SkewTFit",
   crate::distfit::SkewTFit,
-  crate::distfit::skew_t_fit,
+  crate::distfit::fit_skew_t,
   "Hansen skew-t maximum-likelihood fit with location and scale; parameters `mu`, `sigma`, `eta`, `lambda_`.",
   [(mu, mu), (sigma, sigma), (eta, eta), (lambda_, lambda)]
 );
@@ -89,14 +93,14 @@ fit_class!(
   PyVarianceGammaFit,
   "VarianceGammaFit",
   crate::distfit::VarianceGammaFit,
-  crate::distfit::variance_gamma_fit,
+  crate::distfit::fit_variance_gamma,
   "Variance-gamma maximum-likelihood fit; parameters `sigma`, `nu`, `theta`, `mu`.",
   [(sigma, sigma), (nu, nu), (theta, theta), (mu, mu)]
 );
 
 #[pyclass(name = "GpdPwm", unsendable)]
 pub struct PyGpdPwm {
-  inner: crate::evt::GpdPwm,
+  inner: crate::evt::GpdPwmFit,
 }
 
 #[pymethods]
@@ -104,9 +108,11 @@ impl PyGpdPwm {
   /// Hosking-Wallis probability-weighted-moment GPD estimate on excesses.
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gpd_pwm(exceedances.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gpd_pwm(exceedances.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]

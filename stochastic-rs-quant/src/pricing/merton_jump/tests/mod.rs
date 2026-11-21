@@ -1,6 +1,6 @@
 use super::*;
 use crate::OptionType;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmPricer;
 use crate::traits::Greeks;
 
 mod construction;
@@ -11,19 +11,8 @@ mod option_type;
 mod poison;
 mod volatility;
 
-/// `m` (Poisson-series term count) is capped at 20 in these tests:
-/// the pre-refactor term loop computed `n!` as a `usize` product, which
-/// overflows past `n = 20` — a pre-existing limitation of the price series
-/// itself, unrelated to convergence (at `λτ ≤ 0.25` the series is
-/// converged to double precision well before `n = 20`).
-///
-/// `k = 105` is no longer *forced* to be off the money. It was, while the
-/// `n = 0` term priced at zero volatility: that made the term a
-/// deterministic payoff of `S` with a kink exactly at the forward, which
-/// `bumped_price`'s finite difference would have straddled at `K = S`.
-/// `σ_0 = d > 0` removes the kink, so every strike is now a smooth region;
-/// the value is kept so the goldens below stay comparable across that
-/// change.
+/// The goldens below are pinned at this spot with `K = 105` and `m ≤ 20`; at `λτ ≤ 0.25` the series
+/// has converged to double precision well before 20 terms.
 const S: f64 = 100.0;
 const K: f64 = 105.0;
 const R: f64 = 0.05;
@@ -32,16 +21,16 @@ const TAU: f64 = 0.5;
 const OT: OptionType = OptionType::Call;
 
 fn merton(lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
-  Merton1976Pricer::new(0.2, lambda, gamma, m, BSMCoc::Bsm1973)
+  Merton1976Pricer::new(0.2, lambda, gamma, m, BsmCoc::Bsm1973)
 }
 
 fn merton_at(v: f64, lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
-  Merton1976Pricer::new(v, lambda, gamma, m, BSMCoc::Bsm1973)
+  Merton1976Pricer::new(v, lambda, gamma, m, BsmCoc::Bsm1973)
 }
 
 fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
   let mut p = *m;
-  p.v += dv;
+  p.sigma += dv;
   p.price_option(S + ds, K, R, Q, TAU + dtau, OT)
 }
 
@@ -51,7 +40,7 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BSMPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.sigma, m.b);
 
   let cases = [
     (
@@ -77,33 +66,16 @@ fn merton_greeks_lambda_zero_equals_bs() {
       m.charm(S, K, R, Q, TAU, OT),
       bs.charm(S, K, R, Q, TAU, OT),
     ),
-    ("volga", m.volga(S, K, R, Q, TAU), bs.vomma(S, K, R, Q, TAU)),
-    (
-      "veta",
-      m.veta(S, K, R, Q, TAU),
-      bs.dvega_dtime(S, K, R, Q, TAU),
-    ),
+    ("volga", m.volga(S, K, R, Q, TAU), bs.volga(S, K, R, Q, TAU)),
+    ("veta", m.veta(S, K, R, Q, TAU), bs.veta(S, K, R, Q, TAU)),
   ];
   for (name, got, want) in cases {
     assert!((got - want).abs() < 1e-10, "{name}: got {got}, want {want}");
   }
 }
 
-/// Merton delta/gamma/vega/theta/rho vs. central finite differences of
-/// the price itself, independent of whether a given Greek is internally a
-/// closed-form series or a finite difference.
-///
-/// `gamma` is checked at a looser `1e-3` (not `1e-4`): its BSM closed form
-/// (`norm_pdf(d1)/(S·v·√τ)`) and a central second-difference of
-/// `BSMPricer::call_put` already disagree by several `1e-4`
-/// *at a single, non-Merton `BSMPricer` in isolation* — confirmed by
-/// checking one term on its own — and the gap does not keep shrinking as
-/// the bump size shrinks over several orders of magnitude the way a
-/// normal `O(h²)` truncation error would. Second-derivative finite
-/// differences are inherently more sensitive to a special function's
-/// numerical approximation error than the function value itself, so this
-/// is read as a pre-existing `norm_cdf`/`norm_pdf` precision
-/// characteristic rather than a defect in either `gamma()`.
+/// The Greeks against central differences of the price; `gamma` at `1e-3`, since a second
+/// difference of one Black-Scholes price is already several `1e-4` from its closed form.
 #[test]
 fn merton_greeks_match_finite_difference() {
   let m = merton(0.5, 0.3, 20);
@@ -114,7 +86,7 @@ fn merton_greeks_match_finite_difference() {
     + bumped_price(&m, -h_s, 0.0, 0.0))
     / (h_s * h_s);
 
-  let h_v = m.v * 1e-4;
+  let h_v = m.sigma * 1e-4;
   let vega_fd = (bumped_price(&m, 0.0, h_v, 0.0) - bumped_price(&m, 0.0, -h_v, 0.0)) / (2.0 * h_v);
 
   let h_t = 1e-5;
@@ -155,12 +127,8 @@ fn merton_greeks_all_finite() {
   );
 }
 
-/// All 9 Greeks stay finite at `m = 50` — the crate's Python binding's
-/// documented default, and well past the pre-refactor `usize`-factorial
-/// overflow threshold (`m ≈ 21`; `(1..=21).product::<usize>()` panics in
-/// debug builds, silently wraps in release). Every Greek routes through
-/// [`Merton1976Pricer::series_price`], which has no such ceiling — this
-/// test is the direct regression check for that.
+/// All nine Greeks stay finite at `m = 50`, the Python binding's default and past the ≈ 21 terms an
+/// integer `n!` would survive.
 #[test]
 fn merton_greeks_finite_at_m50() {
   let m = merton(0.5, 0.3, 50);
@@ -168,12 +136,8 @@ fn merton_greeks_finite_at_m50() {
   for (name, v) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
     assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
   }
-  // `call_put` itself (not just the Greeks path) must also survive m=50
-  // now that it is routed through `poisson_weight` instead of an integer
-  // `n!` — regression check for the overflow this refactor fixed
-  // (`(1..=i).product::<usize>()` panics in debug / wraps in release past
-  // `i ≈ 21`).
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  // The pair must survive `m = 50` as well.
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   assert!(call.is_finite(), "call not finite at m=50: {call}");
   assert!(put.is_finite(), "put not finite at m=50: {put}");
 }
@@ -195,7 +159,7 @@ fn merton_greeks_finite_at_m50() {
 #[test]
 fn merton_price_m10_matches_the_reference_value() {
   let m = merton(0.5, 0.3, 10);
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   let want_call = 4.401_577_413_196_381;
   let want_put = 6.809_118_176_170_799_5;
   assert!(
@@ -234,23 +198,28 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   );
 }
 
-/// Under [`BSMCoc::GarmanKohlhagen1983`] a caller wanting to carry at
-/// `r_d - r_f` while discounting at a *separate* rate `r` passes the query
-/// `(r, r - r_d + r_f)`. That is an identity, not an approximation: GK's
-/// `b(r, q) = r - q`, so solving `r - q = r_d - r_f` for `q` gives exactly
-/// that, and it collapses to `r_f` in the ordinary case `r == r_d`.
-///
-/// Before this task the mapping lived inside the pricer as
-/// `Merton1976Pricer::query_rates`, reading `self.r`, `self.r_d` and
-/// `self.r_f`; those three fields are query data, so they moved out with
-/// the rest of the query and the caller now supplies the pair. The
-/// *property* is unchanged and is still pinned here — at `r != r_d`, the
-/// only configuration where carry and discount come apart — against a
-/// **hand-written** closed form rather than against anything routed through
-/// the pricer, so it cannot go stale with the mapping.
-///
-/// Task 5a shipped a silent regression on exactly this property (it
-/// discounted at `r_d` instead of `r`) and it was caught by this test.
+/// An ordinary model off the strike and a frozen one at its forward: expired, each is worth its
+/// payoff and has no Greek.
+#[test]
+fn zero_tau_prices_the_payoff_and_no_greek() {
+  let frozen = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
+  for (m, k) in [(merton(0.5, 0.4, 10), K), (frozen, S)] {
+    assert_eq!(
+      m.price_call_put(S, k, R, Q, 0.0),
+      CallPut {
+        call: (S - k).max(0.0),
+        put: (k - S).max(0.0)
+      }
+    );
+    let greeks = m.greeks(S, k, R, Q, 0.0, OT).as_array();
+    for (greek, v) in Greeks::COMPONENT_NAMES.iter().zip(greeks) {
+      assert!(v.is_nan(), "k = {k}: {greek} must be NaN, got {v}");
+    }
+  }
+}
+
+/// Under [`BsmCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
+/// discounts at `r`, checked at `r ≠ r_d` against a hand-written closed form.
 #[test]
 fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
   use stochastic_rs_distributions::special::norm_cdf;
@@ -259,7 +228,7 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
   let (r, r_d, r_f) = (0.06_f64, 0.05_f64, 0.02_f64);
   // The query that reproduces discount `r` and carry `r_d - r_f`.
   let q = r - r_d + r_f;
-  let m = Merton1976Pricer::new(v, 0.0, 0.4, 20, BSMCoc::GarmanKohlhagen1983);
+  let m = Merton1976Pricer::new(v, 0.0, 0.4, 20, BsmCoc::GarmanKohlhagen1983);
 
   let b = r_d - r_f;
   let sqrt_tau = tau.sqrt();
@@ -287,25 +256,12 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// The reference price and Greeks at
-/// `(s, k, r, q, tau) = (100, 105, 0.05, 0, 0.5)` and
-/// `(v, lambda, gamma, m, coc) = (0.2, 0.5, 0.4, 10, Bsm1973)`.
-///
-/// Every value here moved when `σ_n` was corrected from
-/// `√((d² + z²)·n/τ)` to `√(d² + z²·n/τ)`; each is adjudicated against a
-/// reference sharing no code with the pricer. The call was `1.963018` and
-/// is now `4.276118`, the value Gil-Pelaez inversion of the Merton
-/// characteristic function gives, inside the `4.2717 ± 0.0061` of an
-/// 8M-path Monte Carlo — the old value sat **760 standard errors** below
-/// that interval.
-///
-/// The volatility Greeks use independent 60-digit mpmath derivatives of
-/// the ten-term Poisson price with an erfc-based normal CDF. Veta permits
-/// the truncation error of its centred maturity difference.
+/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(σ, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
+/// is the Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   assert!((call - 4.276118145681529).abs() < TOL, "call {call}");
   assert!((put - 6.68365890865595).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
@@ -349,8 +305,8 @@ fn merton_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(S, K, R, Q, TAU, ot), "rho");
     assert_eq!(g.vanna, m.vanna(S, K, R, Q, TAU), "vanna");
     assert_eq!(g.charm, m.charm(S, K, R, Q, TAU, ot), "charm");
-    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga is vomma");
-    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga");
+    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }
@@ -362,7 +318,7 @@ fn merton_greeks_aggregate_matches_accessors() {
 fn merton_price_put_overrides_vanilla_parity() {
   let m = merton(0.5, 0.4, 10);
   let q = 0.03;
-  let (call, put) = m.call_put(S, K, R, q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, q, TAU);
   let vanilla = call - S * (-q * TAU).exp() + K * (-R * TAU).exp();
   assert!(
     (put - vanilla).abs() > 1e-3,

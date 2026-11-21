@@ -1,0 +1,150 @@
+//! The mean where its double reaches `MAX(1 − 64ε)`, formed again in two parts: from order 50 the
+//! recurrence's exact first term, below it one Bessel ratio against the exact squares.
+
+use super::SimdGig;
+use super::ratio_moment::clock;
+use super::ratio_moment::half_ratio_at;
+use super::ratio_moment::ratio_moment;
+use super::ratio_moment::saddle_route;
+use super::ratio_moment::saddle_scale;
+use crate::SimdFloatExt;
+use crate::special::LARGE_ORDER;
+use crate::special::Scaled;
+use crate::special::two_sum;
+
+/// `2¹⁰²¹`, an eighth of `2¹⁰²⁴`: the sum is formed at `2⁻³`, where no part or pair overflows.
+const EIGHTH_TOP: f64 = 2.247_116_418_577_895e307;
+
+/// `2⁹⁶⁷`, an eighth of MAX's half ulp: `(MAX + ½ ulp)/8`, no double, is `EIGHTH_TOP` less this.
+const HALF_ULP_EIGHTH: f64 = 1.247_400_193_459_2e291;
+
+/// `2⁻¹⁰²`: the least power of two at least four times the closed forms' worst two-part error at
+/// orders `±½`, `3.92e-32`.
+pub(crate) const CLOSED_BAND: f64 = 1.972_152_263_052_529_5e-31;
+
+/// `2⁻¹⁰²`: the least power of two at least four times the two-term sum's own worst in `Scaled`
+/// parts, `0.89·2⁻¹⁰⁴`.
+pub(crate) const PARTS_BAND: f64 = 1.972_152_263_052_529_5e-31;
+
+/// `2⁻⁴⁷`: the least power of two at least four times `E X_{λ−1}`'s worst two-part error from order
+/// 49 on a clock a mean near MAX reaches, 4.1ε; the sum from order 50 carries its second term's.
+pub(crate) const BELOW_BAND: f64 = 7.105_427_357_601_002e-15;
+
+/// `2⁻⁴⁵`: the least power of two at least four times the ratios' route's worst two-part error on a
+/// clock a mean near MAX reaches, 17.2ε at `ω = 1.9`; its 42.6ε at `ω = 1e-160` is on none.
+pub(crate) const ROUTE_BAND: f64 = 2.842_170_943_040_401e-14;
+
+/// [`super::SimdGig::raw_moment`] where its double reaches `MAX(1 − 64ε)`: the mean again in two parts, a higher moment as it is.
+#[cold]
+#[inline(never)]
+pub(super) fn moment<T: SimdFloatExt>(law: &SimdGig<T>, k: u32, value: f64) -> f64 {
+  if k != 1 {
+    return value;
+  }
+  let (lambda, chi, psi) = law.params();
+  mean_beside_max(
+    lambda,
+    (chi.sqrt(), psi.sqrt()),
+    (Scaled::new(chi), Scaled::new(psi)),
+    (1.0, 0.0),
+  )
+}
+
+/// `μ + β·E X` rounded once beside MAX: `±MAX` where the sum passes `MAX + ½ ulp` by less than its
+/// route's band of `β·E X`, `±∞` past it; at `μ = ±MAX` the sum's resolution, `2⁻¹⁰⁶`, decides.
+pub(crate) fn mean_beside_max(
+  lambda: f64,
+  roots: (f64, f64),
+  squares: (Scaled, Scaled),
+  (beta, mu): (f64, f64),
+) -> f64 {
+  let (clock, band) = clock_mean(lambda, roots, squares);
+  round_beside_max(clock.mul(Scaled::new(beta.abs())), beta.signum(), mu, band)
+}
+
+/// `E X` in two parts with its route's band at `MAX + ½ ulp`; under order −50 no mean reaches MAX
+/// (`E X ≤ χ/2(|λ| − 1)`), so the saddle's route there takes none.
+pub(crate) fn clock_mean(
+  lambda: f64,
+  roots: (f64, f64),
+  squares: (Scaled, Scaled),
+) -> (Scaled, f64) {
+  let (chi, psi) = squares;
+  if lambda >= LARGE_ORDER {
+    return mean_parts(lambda, roots, squares);
+  }
+  if lambda == -0.5 {
+    return (chi.div(psi).sqrt(), CLOSED_BAND);
+  }
+  if lambda == 0.5 {
+    return (
+      chi.div(psi).sqrt().add(Scaled::new(1.0).div(psi)),
+      CLOSED_BAND,
+    );
+  }
+  if lambda + 1.0 > -LARGE_ORDER {
+    return (ratio_mean(lambda, roots, squares), ROUTE_BAND);
+  }
+  (moment_parts((lambda, roots.0, roots.1)), 0.0)
+}
+
+/// `E X = 2λ/ψ + (χ/ψ)/E X_{λ−1}` from order 50, the first term exact, with its band: the parts'
+/// floor plus the second term's share of `E X_{λ−1}`'s bound.
+pub(crate) fn mean_parts(
+  lambda: f64,
+  roots: (f64, f64),
+  (chi, psi): (Scaled, Scaled),
+) -> (Scaled, f64) {
+  let below = moment_parts((lambda - 1.0, roots.0, roots.1));
+  let first = Scaled::new(lambda).shift(1).div(psi);
+  let second = chi.div(psi).div(below);
+  let sum = first.add(second);
+  (sum, PARTS_BAND + second.div(sum).value() * BELOW_BAND)
+}
+
+/// `E X` at `(λ, √χ, √ψ)` in two parts, which hold where the double overflows: the saddle's
+/// `w₁e^{rest}` where both orders pass 50, the ratios' `2ᵉm` below, each route as the double's.
+fn moment_parts((lambda, root_chi, root_psi): (f64, f64, f64)) -> Scaled {
+  let roots = (root_chi, root_psi);
+  if let Some((_, rest)) = saddle_route(lambda, 1.0, roots) {
+    let (m, j) = saddle_scale(lambda, 1.0, roots);
+    return Scaled::new(m).shift(j).mul(Scaled::new(rest.exp()));
+  }
+  let (m, e) = ratio_moment(lambda, roots, 1);
+  Scaled::new(m).shift(e)
+}
+
+/// `E X` below order 50 from one ratio, `2g_λ(ω)/ψ` from `λ = −½`, `χ/2g_{−λ−1}(ω)` below, against
+/// the exact squares; the ratio is the plain route's own, its error alone left.
+fn ratio_mean(lambda: f64, roots: (f64, f64), (chi, psi): (Scaled, Scaled)) -> Scaled {
+  let (omega, d) = clock(roots);
+  let (upper, j, g) = half_ratio_at(lambda, omega, d);
+  let twice = Scaled::new(g).shift(j + 1);
+  if upper {
+    twice.div(psi)
+  } else {
+    chi.div(twice)
+  }
+}
+
+/// `sign·t + μ` rounded once at `2⁻³`: `±∞` where it passes `MAX + ½ ulp` by `band` of `t`, else
+/// `±MAX`; at `μ = ±MAX` with a same-sign tilt the sum's resolution, about `2⁻¹⁰⁶` of it, decides.
+fn round_beside_max(t: Scaled, sign: f64, mu: f64, band: f64) -> f64 {
+  // From `2¹⁰²⁶` no `|μ| ≤ MAX` brings the sum within a band of MAX.
+  if t.exponent() >= 1026 {
+    return sign * f64::INFINITY;
+  }
+  let (hi, lo) = t.shift(-3).value_parts();
+  let (s, s_lo) = two_sum(sign * hi, 0.125 * mu);
+  let rest = s_lo + sign * lo;
+  let eighth = s + rest;
+  if eighth.abs() < EIGHTH_TOP {
+    return 8.0 * eighth;
+  }
+  // `(|sum| − (MAX + ½ ulp))/8`, its first two terms exact, the parts' resolution in `rest`.
+  let excess = (s.abs() - EIGHTH_TOP) + HALF_ULP_EIGHTH + eighth.signum() * rest;
+  if excess < band * hi {
+    return eighth.signum() * f64::MAX;
+  }
+  eighth.signum() * f64::INFINITY
+}

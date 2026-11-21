@@ -46,7 +46,7 @@ def test_device_sampling_advances_and_replays(device, dtype, model):
         if model == "hull_white_2f":
             return sr.PyHullWhite2F(lambda t: 0.03, 0.5, 0.01, 0.02, -0.3, 0.4, 64,
                                    x0=0.03, t=1.0, **args)
-        return sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03, t=1.0, **args)
+        return sr.PyHoLee(0.01, 64, forward_curve=lambda t: 0.03, t=1.0, **args)
 
     first, replay = create(), create()
     previous = None

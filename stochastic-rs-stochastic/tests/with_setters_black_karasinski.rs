@@ -1,8 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `BlackKarasinski`
-//! (`interest/black_karasinski.rs`). No persisted cache: `sampler()`
-//! computes its exact-OU decay/std fresh from `self.{a,t,n,seed}` on every
-//! call. `theta: Fn1D<T>` is excluded from the generic field-equality
-//! snapshot (no `PartialEq`) and checked by calling it directly instead.
+//! `with_*` setters on `BlackKarasinski`, which caches nothing. `theta: Fn1D<T>` has no
+//! `PartialEq`, so it is left out of the field snapshot and checked by calling it.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -59,7 +56,7 @@ macro_rules! plain_test {
 plain_test!(bk_with_a_round_trip, with_a, a, 0.6);
 plain_test!(bk_with_sigma_round_trip, with_sigma, sigma, 0.15);
 plain_test!(bk_with_r0_round_trip, with_r0, r0, Some(0.04));
-plain_test!(bk_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(bk_with_points_round_trip, with_points, n, 64usize);
 plain_test!(bk_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

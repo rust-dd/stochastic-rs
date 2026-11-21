@@ -1,41 +1,28 @@
-//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen / Shephard jump test.
+//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen–Shephard jump test.
 //!
-//! Reference: Barndorff-Nielsen, Shephard, "Power and Bipower Variation with
-//! Stochastic Volatility and Jumps", Journal of Financial Econometrics, 2(1),
-//! 1-37 (2004). DOI: 10.1093/jjfinec/nbh001
-//!
-//! Reference: Barndorff-Nielsen, Shephard, "Econometrics of Testing for Jumps
-//! in Financial Economics Using Bipower Variation", Journal of Financial
-//! Econometrics, 4(1), 1-30 (2006). DOI: 10.1093/jjfinec/nbi022
-//!
-//! Reference: Andersen, Dobrev, Schaumburg, "Jump-Robust Volatility Estimation
-//! Using Nearest Neighbor Truncation", Journal of Econometrics, 169(1), 75-93
-//! (2012). DOI: 10.1016/j.jeconom.2012.01.011
-//!
-//! Reference: Huang, Tauchen, "The Relative Contribution of Jumps to Total
-//! Price Variance", Journal of Financial Econometrics, 3(4), 456-499 (2005).
-//! DOI: 10.1093/jjfinec/nbi025
+//! Reference: Barndorff-Nielsen & Shephard (2004), JFEC 2(1), 1-37, DOI: 10.1093/jjfinec/nbh001
+//! Reference: Barndorff-Nielsen & Shephard (2006), JFEC 4(1), 1-30, DOI: 10.1093/jjfinec/nbi022
+//! Reference: Andersen et al. (2012), J. Econom. 169(1), 75-93, DOI: 10.1016/j.jeconom.2012.01.011
+//! Reference: Huang & Tauchen (2005), JFEC 3(4), 456-499, DOI: 10.1093/jjfinec/nbi025
 
 use ndarray::ArrayView1;
-use stochastic_rs_distributions::special::erf;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::critical_values::two_sided_p_value;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::reject_constant;
+use crate::input::validate_view;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
-#[inline]
-fn standard_normal_cdf(z: f64) -> f64 {
-  0.5 * (1.0 + erf(z / std::f64::consts::SQRT_2))
-}
-
-/// Bipower variation: $BV = \mu_1^{-2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$
-/// with $\mu_1 = \mathbb E|Z| = \sqrt{2/\pi}$, so $\mu_1^{-2} = \pi/2$.
-///
-/// Robust to finite-activity jumps; converges to integrated variance under no
-/// jumps (BN-Shephard 2004).
+/// Bipower variation $BV = \frac{\pi}{2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$, robust to finite-activity
+/// jumps (BN-Shephard 2004); NaN below two returns.
 pub fn bipower_variation<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 2 {
-    return T::zero();
+    return T::nan();
   }
   let mu1_inv2 = T::from_f64_fast(std::f64::consts::FRAC_PI_2);
   let mut sum = T::zero();
@@ -45,53 +32,53 @@ pub fn bipower_variation<T: FloatExt>(returns: ArrayView1<T>) -> T {
   mu1_inv2 * sum
 }
 
-/// MinRV (Andersen, Dobrev, Schaumburg 2012): nearest-neighbour-truncation
-/// jump-robust estimator,
-/// $MinRV = \frac{\pi}{\pi - 2}\sum_{i=2}^{n} \min(|r_{i-1}|, |r_i|)^2$.
+/// MinRV $= \frac{\pi}{\pi - 2}\frac{n}{n - 1}\sum_{i=2}^{n} \min(|r_{i-1}|, |r_i|)^2$, the
+/// jump-robust nearest-neighbour truncation of Andersen, Dobrev, Schaumburg (2012); NaN below two.
 pub fn minrv<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 2 {
-    return T::zero();
+    return T::nan();
   }
   let pi = T::from_f64_fast(std::f64::consts::PI);
   let scale = pi / (pi - T::from_f64_fast(2.0));
   let mut sum = T::zero();
   for i in 1..n {
-    let m = returns[i - 1].abs().min(returns[i].abs());
+    let m = returns[i - 1].abs().min_or_nan(returns[i].abs());
     sum += m * m;
   }
   let nn = T::from_usize_(n);
   scale * (nn / (nn - T::one())) * sum
 }
 
-/// MedRV (Andersen, Dobrev, Schaumburg 2012):
-/// $MedRV = \frac{\pi}{6 - 4\sqrt 3 + \pi}\sum_{i=3}^{n} \mathrm{med}(|r_{i-2}|, |r_{i-1}|, |r_i|)^2$.
+/// MedRV $= \frac{\pi}{6 - 4\sqrt 3 + \pi}\frac{n}{n - 2}\sum_{i=3}^{n} \mathrm{med}(|r_{i-2}|,
+/// |r_{i-1}|, |r_i|)^2$ (Andersen, Dobrev, Schaumburg 2012); NaN below three returns.
 pub fn medrv<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 3 {
-    return T::zero();
+    return T::nan();
   }
   let pi = T::from_f64_fast(std::f64::consts::PI);
   let denom = T::from_f64_fast(6.0) - T::from_f64_fast(4.0) * T::from_f64_fast(3.0).sqrt() + pi;
   let scale = pi / denom;
   let mut sum = T::zero();
   for i in 2..n {
-    let mut t = [returns[i - 2].abs(), returns[i - 1].abs(), returns[i].abs()];
-    t.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let m = t[1];
+    let (a, b, c) = (returns[i - 2].abs(), returns[i - 1].abs(), returns[i].abs());
+    let m = a
+      .max_or_nan(b)
+      .min_or_nan(a.max_or_nan(c))
+      .min_or_nan(b.max_or_nan(c));
     sum += m * m;
   }
   let nn = T::from_usize_(n);
   scale * (nn / (nn - T::from_f64_fast(2.0))) * sum
 }
 
-/// Tripower quarticity: $TPQ = n \cdot \mu_{4/3}^{-3}\sum_{i=3}^n
-/// |r_{i-2}|^{4/3}|r_{i-1}|^{4/3}|r_i|^{4/3}$, used as the jump-robust
-/// estimator of integrated quarticity in the BNS jump test.
+/// Tripower quarticity $TPQ = n\,\mu_{4/3}^{-3}\sum_{i=3}^n |r_{i-2} r_{i-1} r_i|^{4/3}$, the
+/// jump-robust integrated quarticity of the BNS test; NaN below three returns.
 pub fn tripower_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 3 {
-    return T::zero();
+    return T::nan();
   }
   let p43 = T::from_f64_fast(4.0 / 3.0);
   let mu_43 = mu_p::<T>(4.0 / 3.0);
@@ -104,59 +91,68 @@ pub fn tripower_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   T::from_usize_(n) * mu_inv3 * sum
 }
 
-/// Result of the BNS (Huang–Tauchen ratio-form) jump test.
-#[derive(Debug, Clone, Copy)]
+/// BNS jump test in Huang–Tauchen's ratio form (null: no jump), decided by its normal p-value.
+#[derive(Debug, Clone)]
 pub struct BnsJumpTest {
+  /// Standardised log-difference $\sqrt n\,(\ln RV - \ln BV) / \sqrt{\theta\,\max(1, TPQ / BV^2)}$,
+  /// $\theta = (\pi/2)^2 + \pi - 5$.
+  pub statistic: f64,
+  /// Two-sided p-value `2 Φ(−|statistic|)` under `N(0, 1)`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-jump null is rejected at the given $\alpha$.
+  pub rejects_null: bool,
   /// Realized variance.
   pub rv: f64,
   /// Bipower variation.
   pub bv: f64,
   /// Tripower quarticity (jump-robust estimate of $\int \sigma^4_t dt$).
   pub tpq: f64,
-  /// Standardised log-difference statistic
-  /// $\sqrt n\,(\ln RV - \ln BV) / \sqrt{(\theta - 2)\,TPQ / BV^2}$
-  /// with $\theta = (\pi/2)^2 + \pi - 5$.
-  pub statistic: f64,
-  /// Two-sided p-value under $\mathcal N(0,1)$.
-  pub p_value: f64,
-  /// Whether the no-jump null is rejected at the given $\alpha$.
-  pub reject_no_jump: bool,
 }
 
-/// Barndorff-Nielsen / Shephard ratio-form jump test
-/// (Huang–Tauchen 2005 finite-sample variant).
-///
-/// Returns `BnsJumpTest::statistic ~ N(0, 1)` under the no-jump null.
-pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJumpTest {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must lie in (0, 1)");
+impl crate::traits::HypothesisTest for BnsJumpTest {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
+}
+
+/// BNS jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns, on a non-finite one, a
+/// constant series or a zero bipower variation, and panics unless `0 < alpha < 1`.
+pub fn bns_jump_test<T: FloatExt>(
+  returns: ArrayView1<T>,
+  alpha: f64,
+) -> Result<BnsJumpTest, StatsError> {
+  assert_alpha(alpha);
+  validate_view(returns, 3)?;
+  reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();
   let tpq = tripower_quarticity(returns).to_f64().unwrap();
   let theta = (std::f64::consts::FRAC_PI_2).powi(2) + std::f64::consts::PI - 5.0;
   let nn = n as f64;
-  // The integrated-quarticity scale must come from TPQ alone. Realized
-  // quarticity is not jump-robust, so substituting it (or taking the larger of
-  // the two) inflates the denominator by exactly the jump the statistic is
-  // meant to detect, and the test loses its power against single jumps.
-  let ratio = tpq.max(1e-30) / bv.max(1e-30).powi(2);
+  if !(bv > 0.0 && rv > 0.0) {
+    return Err(StatsError::DegenerateData("zero bipower variation"));
+  }
+  // TPQ alone scales the quarticity: realized quarticity is not jump-robust and would absorb the
+  // jump under test.
+  let ratio = tpq / (bv * bv);
   let denom = (theta * ratio.max(1.0)).sqrt();
-  let statistic = if bv > 0.0 && rv > 0.0 && denom > 0.0 {
-    nn.sqrt() * (rv.ln() - bv.ln()) / denom
-  } else {
-    0.0
-  };
-  let cdf = standard_normal_cdf(statistic);
-  let p_value = 2.0 * (1.0_f64.min(cdf).min(1.0 - cdf));
-  let reject_no_jump = p_value < alpha;
-  BnsJumpTest {
+  let statistic = nn.sqrt() * (rv.ln() - bv.ln()) / denom;
+  let p_value = two_sided_p_value(statistic);
+  Ok(BnsJumpTest {
+    statistic,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < alpha,
     rv,
     bv,
     tpq,
-    statistic,
-    p_value,
-    reject_no_jump,
-  }
+  })
 }
 
 fn mu_p<T: FloatExt>(p: f64) -> T {
@@ -170,6 +166,8 @@ mod tests {
   use ndarray::Array1;
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -179,7 +177,7 @@ mod tests {
   }
 
   fn iid_normal(seed: u64, n: usize, std: f64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, std).seeded(&Deterministic::new(seed));
     let mut out = Array1::<f64>::zeros(n);
     dist.fill_slice(out.as_slice_mut().unwrap());
     out
@@ -213,8 +211,8 @@ mod tests {
   #[test]
   fn jump_test_does_not_reject_pure_diffusion() {
     let r = iid_normal(11, 5_000, 0.01);
-    let test = bns_jump_test(r.view(), 0.05);
-    assert!(!test.reject_no_jump);
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
+    assert!(!test.rejects_null);
   }
 
   #[test]
@@ -223,20 +221,19 @@ mod tests {
     for &i in &[1_000usize, 2_500, 4_000] {
       r[i] = 0.3;
     }
-    let test = bns_jump_test(r.view(), 0.05);
-    assert!(test.reject_no_jump);
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
+    assert!(test.rejects_null);
   }
 
   #[test]
   fn jump_test_rejects_a_single_moderate_jump() {
-    // One jump of ~15 sigma in a 256-return window: unmistakable to the eye,
-    // but small enough that a denominator built from non-jump-robust realized
-    // quarticity would swamp it and hide the rejection.
+    // One jump of about 15 sigma in 256 returns: plain to the eye, yet a denominator on a
+    // quarticity that is not jump-robust would swamp it and hide the rejection.
     let mut r = iid_normal(17, 256, 0.005);
     r[128] = 0.077;
-    let test = bns_jump_test(r.view(), 0.01);
+    let test = bns_jump_test(r.view(), 0.01).unwrap();
     assert!(
-      test.reject_no_jump,
+      test.rejects_null,
       "single jump must be detected, statistic was {}",
       test.statistic
     );
@@ -253,8 +250,8 @@ mod tests {
     small[128] = 0.02;
     let mut large = base.clone();
     large[128] = 0.10;
-    let z_small = bns_jump_test(small.view(), 0.01).statistic;
-    let z_large = bns_jump_test(large.view(), 0.01).statistic;
+    let z_small = bns_jump_test(small.view(), 0.01).unwrap().statistic;
+    let z_large = bns_jump_test(large.view(), 0.01).unwrap().statistic;
     assert!(
       z_large > z_small,
       "a bigger jump must not weaken the evidence: {z_small} -> {z_large}"
@@ -262,8 +259,56 @@ mod tests {
   }
 
   #[test]
-  fn medrv_zero_when_too_short() {
-    let r = array![0.01_f64];
-    assert_eq!(medrv(r.view()), 0.0);
+  fn medrv_is_nan_when_too_short() {
+    let r = array![0.01_f64, -0.02];
+    assert!(medrv(r.view()).is_nan());
+  }
+
+  #[test]
+  fn medrv_takes_the_middle_of_three_without_a_sort() {
+    let r = array![0.03_f64, -0.01, 0.02, -0.05, 0.04];
+    let pi = std::f64::consts::PI;
+    let medians = [0.02_f64, 0.02, 0.04];
+    let want = pi / (6.0 - 4.0 * 3.0_f64.sqrt() + pi)
+      * (5.0 / 3.0)
+      * medians.iter().map(|m| m * m).sum::<f64>();
+    assert_eq!(medrv(r.view()), want);
+  }
+
+  #[test]
+  fn a_zero_bipower_variation_is_degenerate_data() {
+    let r = Array1::from_iter((0..40).map(|i| if i % 2 == 0 { 0.0 } else { 0.01 }));
+    assert_eq!(
+      bns_jump_test(r.view(), 0.05).unwrap_err(),
+      StatsError::DegenerateData("zero bipower variation")
+    );
+  }
+
+  #[test]
+  fn constant_and_zero_returns_are_a_constant_series() {
+    for r in [Array1::from_elem(200, 0.001), Array1::<f64>::zeros(200)] {
+      assert_eq!(
+        bns_jump_test(r.view(), 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
+  }
+
+  #[test]
+  fn a_zero_tripower_quarticity_keeps_the_statistic_defined() {
+    let r = Array1::from_iter((0..90).map(|i| [0.01, -0.012, 0.0][i % 3]));
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
+    assert_eq!(test.tpq, 0.0);
+    assert!(test.bv > 0.0 && test.statistic.is_finite(), "{test:?}");
+  }
+
+  #[test]
+  fn a_far_tail_statistic_keeps_a_positive_p_value() {
+    let mut r = iid_normal(29, 5_000, 0.01);
+    r[2_500] = 0.5;
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
+    assert!(test.statistic > 8.27, "z = {}", test.statistic);
+    assert!(test.p_value.unwrap() > 0.0, "p = {:?}", test.p_value);
+    assert_eq!(test.p_value, Some(two_sided_p_value(test.statistic)));
   }
 }

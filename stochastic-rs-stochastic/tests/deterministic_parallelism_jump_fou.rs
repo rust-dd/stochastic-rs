@@ -1,56 +1,23 @@
-//! Reproducibility tests for `JumpFou`'s diffusion fix. `JumpFou` was
-//! documented as the crate's one remaining full exception — "no randomness
-//! derives from `self.seed` at all" — on the grounds that *both* its
-//! private `fgn: Fgn<T, Unseeded, B>` diffusion field and its public
-//! `cpoisson: CompoundPoisson<T, D>` jump field were "the type's own
-//! public-field-shaped structural pins." That was wrong about `fgn`:
-//! unlike `cpoisson`, the `fgn` field is **private**, byte-for-byte the
-//! same shape as `JumpFOUCustom`'s field this wave already fixed
-//! non-breakingly (see `deterministic_parallelism_jump_fou_custom.rs`).
-//! `JumpFou::sampler()` builds its Gaussian source from `self.seed.derive()`
-//! directly (rather than `self.fgn.sampler()`, which read `fgn`'s own dead
-//! `Unseeded` field) and borrows `fgn` only for its `Arc`-shared FFT
-//! plan/eigenvalues.
-//!
-//! `cpoisson` genuinely was public and structurally pinned to `Unseeded`
-//! (that half of the original exception was correct) — fixed by the
-//! zero-exception-reproducibility wave's Task 2, the same breaking widening
-//! (`CompoundPoisson<T, D>` -> `CompoundPoisson<T, D, S>`, `new()` absorbing
-//! the jump-size distribution and a new top-level `lambda: T` field) Task 1
-//! applied to `Merton`/`Kou`/`LevyDiffusion` and Task 2 also applied to
-//! `Bates1996`. `JumpFou` is now **fully** seed-reproducible — this was the
-//! crate's last exception of any kind.
-//!
-//! The tests below still separate a zero-intensity diffusion check from a
-//! nonzero-intensity check: `JumpFou`'s single `Array1<T>` output mixes the
-//! fGn diffusion and the jump term additively at every index (`out[i] = ...
-//! + sigma * fgn[i-1] + jump_increments[i]`), so a zero-intensity run proves
-//! the diffusion half is seed-driven in isolation (no jump draw at all —
-//! `CompoundPoisson::sample_grid_increments` short-circuits to an all-zero
-//! array with no RNG draw when `lambda_dt <= 0.0`, confirmed by reading that
-//! function), independent of whether the jump half is also fixed. The
-//! dedicated full-reproducibility battery (bit-identity at nonzero lambda,
-//! thread-count independence at m=64/256, distinctness at m=256) lives in
-//! `reproducibility_bates_jump_fou.rs`, alongside `Bates1996`'s.
+//! `JumpFou`'s fGn diffusion at zero jump intensity reproduces from its seed at any thread count.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
-fn jump_fou_zero_jump(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministic> {
+fn jump_fou_zero_jump(seed: u64) -> JumpFou<f64, SimdNormal<f64>, Deterministic> {
   JumpFou::new(
     0.65,
     1.5,
     0.0,
     0.2,
     0.0,
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     N,
     Some(0.0),
     Some(1.0),

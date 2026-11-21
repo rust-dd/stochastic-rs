@@ -1,39 +1,24 @@
-//! # Brownian-bridge quasi-Monte Carlo paths
-//!
-//! Brownian motion sampled from a Sobol sequence through the Brownian-bridge
-//! construction: the first, best-equidistributed Sobol coordinate sets the
-//! terminal value $W_T$, the next one the midpoint $W_{T/2}$ conditional on
-//! both ends, and so on, filling the path by recursive bisection. Given the
-//! known values at $t_l < t_r$, the bridge point at $t_j$ is
+//! Brownian motion from a Sobol sequence by bridge bisection: the first coordinate sets `W_T`, the
+//! next the midpoint given both ends, so the leading dimensions carry the coarse features (§3.1).
 //!
 //! $$
 //! W_{t_j} = \frac{(t_r - t_j)\,W_{t_l} + (t_j - t_l)\,W_{t_r}}{t_r - t_l} +
 //!   \sqrt{\frac{(t_j - t_l)(t_r - t_j)}{t_r - t_l}}\;\Phi^{-1}(u_k),
 //! $$
 //!
-//! so the coarse, high-variance features of the path absorb the sequence's
-//! leading dimensions and the fine increments its trailing ones — the
-//! effective-dimension reduction that makes QMC pay off for path-dependent
-//! payoffs (Caflisch–Morokoff–Owen 1997; Glasserman 2003, §3.1).
-//!
-//! References:
-//! - Caflisch, R.E., Morokoff, W., Owen, A.B. (1997), "Valuation of
-//!   mortgage-backed securities using Brownian bridges to reduce effective
-//!   dimension", *Journal of Computational Finance* 1(1), 27-46.
-//!   DOI: 10.21314/JCF.1997.005
-//! - Glasserman, P. (2003), *Monte Carlo Methods in Financial Engineering*,
-//!   Springer, §3.1. DOI: 10.1007/978-0-387-21617-1
+//! Reference: Caflisch, Morokoff & Owen (1997), JCF 1(1), 27-46, DOI 10.21314/JCF.1997.005
+//! Reference: Glasserman (2003), Springer, §3.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::qmc::MAX_DIMENSIONS;
+use stochastic_rs_distributions::qmc::SobolSeq;
 use stochastic_rs_distributions::special::ndtri;
 
-use super::sobol::SobolSeq;
 use crate::traits::FloatExt;
 
-/// Bisection order of the bridge: the index list `(target, left, right)`
-/// where `left`/`right` are the already-filled neighbours (`None` for the
-/// origin at time zero); the first entry is the endpoint.
+/// Bisection order of the bridge as `(target, left, right)`, the neighbours already filled
+/// (`None` is the origin at time zero); the first entry is the endpoint.
 fn bridge_schedule(steps: usize) -> Vec<(usize, Option<usize>, usize)> {
   let mut schedule = Vec::with_capacity(steps);
   schedule.push((steps - 1, None, steps - 1));
@@ -56,6 +41,13 @@ fn bridge_schedule(steps: usize) -> Vec<(usize, Option<usize>, usize)> {
   schedule
 }
 
+fn assert_steps(steps: usize) {
+  assert!(
+    steps > 0 && steps <= MAX_DIMENSIONS,
+    "steps must satisfy `0 < steps <= {MAX_DIMENSIONS}`, got steps = {steps}"
+  );
+}
+
 /// Sobol-driven Brownian paths on an equispaced grid $t_i = iT/m$,
 /// $i = 1, \ldots, m$, built by Brownian-bridge bisection.
 #[derive(Debug, Clone)]
@@ -67,26 +59,29 @@ pub struct BrownianBridgeQmc {
 }
 
 impl BrownianBridgeQmc {
-  /// Unscrambled Sobol driver for `steps` time steps up to `horizon`.
+  /// Unscrambled Sobol driver for `steps` time steps up to `horizon`; panics unless
+  /// `0 < steps <= MAX_DIMENSIONS` (one Sobol dimension per step) and `horizon > 0`.
   pub fn new(steps: usize, horizon: f64) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
+    assert_steps(steps);
     Self::with_sequence(steps, horizon, SobolSeq::new(steps))
   }
 
-  /// Owen-scrambled Sobol driver seeded from `seed`, for randomised-QMC
-  /// replications.
+  /// Owen-scrambled Sobol driver seeded from `seed`, for randomised-QMC replications; panics unless
+  /// `0 < steps <= MAX_DIMENSIONS` (one Sobol dimension per step) and `horizon > 0`.
   pub fn scrambled<S: SeedExt>(steps: usize, horizon: f64, seed: &S) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
+    assert_steps(steps);
     Self::with_sequence(steps, horizon, SobolSeq::scrambled(steps, seed))
   }
 
   fn with_sequence(steps: usize, horizon: f64, sequence: SobolSeq) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
-    assert!(horizon > 0.0, "horizon must be positive");
-    assert_eq!(
-      sequence.n_dims(),
-      steps,
-      "the sequence must have one dimension per step"
+    assert!(
+      horizon > 0.0,
+      "horizon must satisfy `horizon > 0.0`, got horizon = {horizon:?}"
+    );
+    assert!(
+      sequence.n_dims() == steps,
+      "sequence.n_dims() must satisfy `sequence.n_dims() == steps`, got sequence.n_dims() = {:?}, steps = {steps:?}",
+      sequence.n_dims()
     );
     Self {
       steps,
@@ -223,13 +218,89 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "steps must be at least 1")]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 0")]
   fn rejects_zero_steps() {
     let _ = BrownianBridgeQmc::new(0, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 21202")]
+  fn rejects_more_steps_than_sobol_dimensions() {
+    let _ = BrownianBridgeQmc::new(MAX_DIMENSIONS + 1, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 0")]
+  fn scrambled_rejects_zero_steps() {
+    let _ = BrownianBridgeQmc::scrambled(0, 1.0, &Deterministic::new(1));
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 21202")]
+  fn scrambled_rejects_more_steps_than_sobol_dimensions() {
+    let _ = BrownianBridgeQmc::scrambled(MAX_DIMENSIONS + 1, 1.0, &Deterministic::new(1));
+  }
+
+  #[test]
+  fn accepts_one_step_per_sobol_dimension() {
+    let plain = BrownianBridgeQmc::new(MAX_DIMENSIONS, 1.0);
+    let scrambled = BrownianBridgeQmc::scrambled(MAX_DIMENSIONS, 1.0, &Deterministic::new(1));
+    assert_eq!(
+      (plain.steps(), scrambled.steps()),
+      (MAX_DIMENSIONS, MAX_DIMENSIONS)
+    );
+  }
+
+  fn bits(path: ndarray::ArrayView1<'_, f64>) -> Vec<String> {
+    path
+      .iter()
+      .map(|x| format!("{:016x}", x.to_bits()))
+      .collect()
+  }
+
+  /// Golden bits of a plain path: the bridge schedule, `ndtri` and the Sobol order together fix
+  /// every QMC estimate.
+  #[test]
+  fn a_plain_path_is_pinned_bit_for_bit() {
+    let w = BrownianBridgeQmc::new(8, 1.0).paths::<f64>(4);
+    assert_eq!(
+      bits(w.row(3)),
+      [
+        "bfba5da976cdfda7",
+        "bfa7e44c6bc5fbdc",
+        "bfde1864b525a47e",
+        "bfd464965bdc7eb0",
+        "bfc8f3eed63c1116",
+        "3fb68bcace3ab3c8",
+        "3fc60e05d8a83912",
+        "bfd464965bdc7eb0",
+      ]
+    );
+  }
+
+  /// Golden bits of a scrambled path: the scramble stream joins the schedule, `ndtri` and the
+  /// Sobol order.
+  #[test]
+  fn a_scrambled_path_is_pinned_bit_for_bit() {
+    let w = BrownianBridgeQmc::scrambled(8, 1.0, &Deterministic::new(11)).paths::<f64>(1);
+    assert_eq!(
+      bits(w.row(0)),
+      [
+        "3fbb0ef2f7909514",
+        "bfc84ca6b6e4b94a",
+        "3fc2f1dac650985e",
+        "3fd3ca3331f4436a",
+        "bf9e9b0ece13c389",
+        "bfd8445419bef1c8",
+        "bfd22861b1761574",
+        "bfb6aaf00e4fd3d4",
+      ]
+    );
   }
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBrownianBridgeQmc {
   inner: BrownianBridgeQmc,
@@ -238,9 +309,8 @@ pub struct PyBrownianBridgeQmc {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBrownianBridgeQmc {
-  /// Sobol-driven Brownian paths on `steps` equispaced steps to `horizon`,
-  /// built by Brownian-bridge bisection; a `seed` switches on the Owen-type
-  /// scramble of the underlying sequence.
+  /// Sobol-driven Brownian paths on `steps` equispaced steps to `horizon`, by Brownian-bridge
+  /// bisection; a `seed` switches on the Owen-type scramble of the sequence.
   #[new]
   #[pyo3(signature = (steps, horizon, seed=None))]
   fn new(steps: usize, horizon: f64, seed: Option<u64>) -> pyo3::PyResult<Self> {

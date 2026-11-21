@@ -1,10 +1,5 @@
-//! Gaussian noise, fractional Gaussian noise, Brownian motion and the Brownian
-//! bridge, against the covariances their definitions state.
-//!
-//! These are the building blocks every other sampler draws its increments
-//! from, and each has an exact law on any grid: nothing here is a
-//! discretisation, so every case is held to five standard errors with no
-//! scheme bias to widen it by.
+//! Gaussian noise, fractional Gaussian noise, Brownian motion and the Brownian bridge against
+//! their covariances: each law is exact on any grid, so no scheme bias widens a band.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::noise::cgns::Cgns;
@@ -23,9 +18,8 @@ use super::common::over_paths;
 use super::common::spread_over_paths;
 use super::common::terminals;
 
-/// Paths for the cases that read one point per path. A point carries far less
-/// information than a whole path's covariance, so these need more paths for a
-/// band of the same width, and a short grid keeps them cheap.
+/// Paths for the cases that read one point per path, which carries less information than a
+/// path's covariance: more paths for the same band, on a short grid to keep them cheap.
 const POINT_PATHS: usize = 4_096;
 
 /// Grid for those cases: 257 points put an index exactly at the midpoint.
@@ -76,10 +70,8 @@ fn correlated_noise_has_the_requested_correlation() {
   );
 }
 
-/// Fractional Gaussian noise at `H`: the increments of fractional Brownian
-/// motion on a grid of `len` steps over `[0, t]`, so the variance is
-/// `(t/len)^{2H}` and the lag-`k` correlation
-/// `½(|k+1|^{2H} − 2|k|^{2H} + |k−1|^{2H})` (the module doc's covariance).
+/// Fractional Gaussian noise at `H` on `len` steps over `[0, t]`: variance `(t/len)^{2H}` and
+/// lag-`k` correlation `½(|k+1|^{2H} − 2|k|^{2H} + |k−1|^{2H})`.
 #[test]
 fn fractional_noise_has_the_fractional_covariance() {
   let (hurst, t) = (0.3, 1.0);
@@ -119,10 +111,8 @@ fn brownian_motion_reaches_the_horizon_variance() {
   holds(spread_over_paths(&ends), t, "Bm terminal variance");
 }
 
-/// The Brownian bridge pinned at `x₀` and `x_T`: at `s = T/2`,
-/// `X_s ~ N((x₀ + x_T)/2, σ²T/4)`, the `s(T − s)/T` variance of the module
-/// doc's closed form. The sampler draws each point from its exact conditional
-/// law, so this holds on any grid, and the last point is `x_T` exactly.
+/// The Brownian bridge pinned at `x₀` and `x_T`: `X_{T/2} ~ N((x₀ + x_T)/2, σ²T/4)`. Each point
+/// is drawn from its exact conditional law, so this holds on any grid and the last point is `x_T`.
 #[test]
 fn brownian_bridge_has_the_pinned_midpoint_law() {
   let (sigma, x0, xt, t) = (0.8, 1.0, -0.5, 3.0);

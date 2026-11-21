@@ -1,36 +1,13 @@
-//! # Accelerate / vDSP
-//!
-//! macOS-optimized Fgn sampling using Apple's Accelerate framework (vDSP FFT).
-//! Split-complex format, in-place FFT, zero external dependencies.
-//!
-//! The vDSP FFT *setup* (twiddle tables) and the split-complex scratch buffers
-//! are cached per thread and reused across calls. Creating a setup or
-//! reallocating the buffers on every `sample()` (as a naive port would) costs
-//! far more than the transform itself — the setup is an `O(N)` twiddle
-//! precompute that Apple documents as create-once / reuse. The setup is
-//! read-only during `vDSP_fft_zip`, so a per-thread cache keyed by `log2n` is
-//! safe and needs no `Send`/`Sync` wrapper.
-//!
-//! Batches are parallelised across cores at the device level (see
-//! [`crate::device`]'s `Backend for Accelerate` impl): one rayon task per
-//! `ProcessExt::chunk_count`-sized chunk (not one per path — changed when
-//! seeding was fixed to derive a basis per chunk, matching `Cpu`'s shape),
-//! each chunk calling `sample_accelerate_impl` once for its whole run of
-//! paths and reusing its worker's cached setup and scratch throughout.
-//!
-//! **Reproducibility caveat:** seed *consumption* here is thread-count
-//! independent (same mechanism as [`Cpu`](crate::device::Cpu)), but
-//! `vDSP_fft_zip`'s own floating-point output is not bit-stable across
-//! otherwise-identical calls — measured (see
-//! [`FgnBackend`](crate::device::FgnBackend)'s doc and
-//! `tests/deterministic_parallelism_accelerate.rs`). Do not rely on this
-//! backend for bit-exact reproducibility.
+//! fGN on Apple's vDSP FFT, with the setup and split-complex scratch cached per thread by `log2n`.
+//! Seed consumption ignores the thread count, but `vDSP_fft_zip` is not bit-stable call to call.
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::ffi::c_void;
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use super::Fgn;
 use crate::device::DeviceError;
@@ -60,7 +37,7 @@ unsafe extern "C" {
   );
 }
 
-/// A vDSP FFT setup owned by the thread that created it; freed on thread exit.
+/// A vDSP FFT setup owned by the thread that created it; freed when it exits or releases it.
 struct FftSetup {
   log2n: u64,
   ptr: *mut c_void,
@@ -81,19 +58,22 @@ struct Scratch {
   eig: Vec<f32>,
 }
 
-thread_local! {
-  static SETUPS: RefCell<Vec<FftSetup>> = const { RefCell::new(Vec::new()) };
-  static SCRATCH: RefCell<Scratch> = const { RefCell::new(Scratch {
+impl Scratch {
+  const EMPTY: Self = Self {
     real: Vec::new(),
     imag: Vec::new(),
     out: Vec::new(),
     eig: Vec::new(),
-  }) };
+  };
 }
 
-/// Returns a vDSP setup for `log2n`, creating it once per thread and reusing it
-/// thereafter. The returned pointer stays valid for the thread's lifetime (the
-/// owning [`FftSetup`] lives in the thread-local cache).
+thread_local! {
+  static SETUPS: RefCell<Vec<FftSetup>> = const { RefCell::new(Vec::new()) };
+  static SCRATCH: RefCell<Scratch> = const { RefCell::new(Scratch::EMPTY) };
+}
+
+/// The vDSP setup for `log2n`, created once per thread; the pointer stays valid while the caller
+/// holds the thread's scratch, because a release skips a held scratch and its setups.
 fn cached_setup(log2n: u64) -> Result<*mut c_void> {
   SETUPS.with(|cell| {
     let mut setups = cell.borrow_mut();
@@ -111,6 +91,17 @@ fn cached_setup(log2n: u64) -> Result<*mut c_void> {
   })
 }
 
+/// Destroys the calling thread's vDSP setups and drops its split-complex scratch, unless a
+/// transform on this thread holds them.
+pub(crate) fn release_accelerate_scratch() {
+  SCRATCH.with(|scratch| {
+    if let Ok(mut scratch) = scratch.try_borrow_mut() {
+      *scratch = Scratch::EMPTY;
+      SETUPS.with_borrow_mut(Vec::clear);
+    }
+  });
+}
+
 fn sample_f32<T: FloatExt, S: SeedExt>(
   eig_t: &[T],
   n: usize,
@@ -125,7 +116,6 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let total = m * traj_size;
   let log2n = traj_size.trailing_zeros() as u64;
-  let setup = cached_setup(log2n)?;
   let is_f32 = TypeId::of::<T>() == TypeId::of::<f32>();
 
   SCRATCH.with(|cell| {
@@ -135,6 +125,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
       out,
       eig,
     } = &mut *cell.borrow_mut();
+    let setup = cached_setup(log2n)?;
 
     // f32 eigenvalues: zero-copy when `T == f32`, else convert once into the
     // cached `eig` buffer (no per-call allocation either way).
@@ -149,7 +140,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
 
     real.resize(total, 0.0);
     imag.resize(total, 0.0);
-    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
+    let mut normal =
+      stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0).seeded(seed);
     normal.fill_slice(real.as_mut_slice());
     normal.fill_slice(imag.as_mut_slice());
 
@@ -203,25 +195,57 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Samples `m` paths in one vDSP batch using an external `seed`, generic
-  /// over the caller's own seed strategy rather than `self.seed` — this is
-  /// what lets [`FgnBackend::generate_batch`](crate::device::FgnBackend::generate_batch)
-  /// drive the CPU-equivalent chunked, thread-count-independent path (see
-  /// `device.rs`'s `Accelerate` impl) instead of racing every chunk on the
-  /// same `self.seed` atomic inside the parallel region.
+  /// `m` paths in one vDSP batch from an external `seed`, not `self.seed`, so that
+  /// `FgnBackend::generate_batch` runs chunks whose stream does not depend on the thread count.
   pub(crate) fn sample_accelerate_impl<S2: SeedExt>(
     &self,
     m: usize,
     seed: &S2,
   ) -> Result<Array2<T>> {
-    let n = self.n;
+    let n = self.padded_n;
     let offset = self.offset;
-    let hurst = self.hurst.to_f64().unwrap();
-    let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let eig_t = self
-      .sqrt_eigenvalues
-      .as_slice()
-      .expect("eigenvalues are contiguous");
+    let hurst = self.hurst().to_f64().unwrap();
+    let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
+    let eig_t = self.sqrt_eigenvalues();
     sample_f32::<T, S2>(eig_t, n, m, offset, hurst, t, seed)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// `f64` converts its eigenvalues into the scratch, so all four buffers fill.
+  #[test]
+  fn a_released_thread_holds_no_setup_or_scratch() {
+    let fgn = Fgn::<f64, _>::new(0.7, 1024, Some(1.0), Deterministic::new(3));
+    let before = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert!(SETUPS.with_borrow(|setups| !setups.is_empty()));
+    assert!(SCRATCH.with_borrow(|s| s.eig.capacity() > 0));
+    release_accelerate_scratch();
+    assert!(SETUPS.with_borrow(Vec::is_empty));
+    assert!(SCRATCH.with_borrow(|s| {
+      s.real.capacity() + s.imag.capacity() + s.out.capacity() + s.eig.capacity() == 0
+    }));
+    let after = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert_eq!(before.dim(), after.dim());
+  }
+
+  /// A release that runs while a transform holds the scratch skips it and the setup it reads.
+  #[test]
+  fn a_release_inside_a_transform_keeps_its_scratch_and_setups() {
+    let fgn = Fgn::<f32, _>::new(0.7, 1024, Some(1.0), Deterministic::new(3));
+    fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    SCRATCH.with_borrow(|_| release_accelerate_scratch());
+    assert!(SETUPS.with_borrow(|setups| !setups.is_empty()));
+    assert!(SCRATCH.with_borrow(|s| s.real.capacity() > 0));
   }
 }

@@ -1,0 +1,481 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+use stochastic_rs_stochastic::diffusion::ou::Ou;
+use stochastic_rs_stochastic::params::VarianceBoundary;
+
+use super::*;
+use crate::traits::ProcessExt;
+
+#[test]
+fn euler_density_positive() {
+  let ou = Ou::new(1.5, 0.5, 0.2, 100, None, Some(1.0), Deterministic::new(0));
+  let d = DensityApprox::Euler.density(&ou, 0.3, 0.35, 0.0, 0.01);
+  assert!(d > 0.0);
+  assert!(d.is_finite());
+}
+
+#[test]
+fn all_densities_positive_for_ou() {
+  let ou = Ou::new(1.5, 0.5, 0.2, 100, None, Some(1.0), Deterministic::new(0));
+  let densities = [
+    DensityApprox::Exact,
+    DensityApprox::Euler,
+    DensityApprox::Ozaki,
+    DensityApprox::ShojiOzaki,
+    DensityApprox::Elerian,
+    DensityApprox::Kessler,
+  ];
+  for dens in &densities {
+    let d = dens.density(&ou, 0.5, 0.55, 0.0, 0.01);
+    assert!(
+      d > 0.0 && d.is_finite(),
+      "{:?} density is not valid: {}",
+      dens,
+      d
+    );
+  }
+}
+
+#[test]
+fn mle_gbm_via_process_ext() {
+  let gbm = Gbm::new(0.05, 0.2, 2501, 100.0, Some(10.0), Deterministic::new(99));
+  let path = gbm.sample();
+  let dt = 10.0 / 2500.0;
+
+  let mut gbm_fit = Gbm::new(0.0, 0.5, 100, 100.0, Some(1.0), Deterministic::new(0));
+  let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
+
+  assert!(
+    (result.params[1] - 0.2).abs() < 0.15,
+    "sigma estimate too far: {} vs 0.2",
+    result.params[1]
+  );
+}
+
+#[test]
+fn mle_ou_euler_via_process_ext() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    2501,
+    Some(1.0),
+    Some(10.0),
+    Deterministic::new(123),
+  );
+  let path = ou.sample();
+  let dt = 10.0 / 2500.0;
+
+  let mut ou_fit = Ou::new(
+    1.0,
+    0.5,
+    0.5,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
+
+  assert!(
+    (result.params[1] - 1.0).abs() < 0.5,
+    "mu estimate too far: {} vs 1.0",
+    result.params[1]
+  );
+  assert!(
+    (result.params[2] - 0.3).abs() < 0.15,
+    "sigma estimate too far: {} vs 0.3",
+    result.params[2]
+  );
+  assert!(result.log_likelihood.is_finite());
+  assert!(result.aic.is_finite());
+  assert!(result.bic.is_finite());
+}
+
+#[test]
+fn mle_ou_exact_via_process_ext() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    2501,
+    Some(1.0),
+    Some(10.0),
+    Deterministic::new(77),
+  );
+  let path = ou.sample();
+  let dt = 10.0 / 2500.0;
+
+  let mut ou_fit = Ou::new(
+    1.0,
+    0.5,
+    0.5,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
+
+  assert!(
+    (result.params[1] - 1.0).abs() < 0.5,
+    "mu estimate too far: {} vs 1.0",
+    result.params[1]
+  );
+  assert!(
+    (result.params[2] - 0.3).abs() < 0.15,
+    "sigma estimate too far: {} vs 0.3",
+    result.params[2]
+  );
+}
+
+#[test]
+fn mle_cir_euler_via_process_ext() {
+  let cir = Cir::new(
+    2.0,
+    0.04,
+    0.1,
+    5001,
+    Some(0.04),
+    Some(20.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(55),
+  );
+  let path = cir.sample();
+  let dt = 20.0 / 5000.0;
+
+  let mut cir_fit = Cir::new(
+    1.0,
+    0.05,
+    0.2,
+    100,
+    Some(0.04),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
+
+  assert!(
+    (result.params[1] - 0.04).abs() < 0.03,
+    "mu estimate too far: {} vs 0.04",
+    result.params[1]
+  );
+  assert!(result.log_likelihood.is_finite());
+}
+
+#[test]
+fn mle_ou_shoji_ozaki_via_process_ext() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    2501,
+    Some(1.0),
+    Some(10.0),
+    Deterministic::new(200),
+  );
+  let path = ou.sample();
+  let dt = 10.0 / 2500.0;
+
+  let mut ou_fit = Ou::new(
+    1.0,
+    0.5,
+    0.5,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let result = fit_mle(
+    &mut ou_fit,
+    path.view(),
+    dt,
+    DensityApprox::ShojiOzaki,
+    None,
+  )
+  .unwrap();
+
+  assert!(
+    (result.params[1] - 1.0).abs() < 0.5,
+    "mu estimate too far: {} vs 1.0",
+    result.params[1]
+  );
+  assert!(
+    (result.params[2] - 0.3).abs() < 0.15,
+    "sigma estimate too far: {} vs 0.3",
+    result.params[2]
+  );
+}
+
+#[test]
+fn mle_ou_kessler_via_process_ext() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    2501,
+    Some(1.0),
+    Some(10.0),
+    Deterministic::new(300),
+  );
+  let path = ou.sample();
+  let dt = 10.0 / 2500.0;
+
+  let mut ou_fit = Ou::new(
+    1.0,
+    0.5,
+    0.5,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();
+
+  assert!(
+    (result.params[2] - 0.3).abs() < 0.15,
+    "sigma estimate too far: {} vs 0.3",
+    result.params[2]
+  );
+}
+
+#[test]
+fn density_cir_euler_reference() {
+  let cir = Cir::new(
+    3.0,
+    0.3,
+    0.2,
+    100,
+    Some(0.4),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(0),
+  );
+  let dt = 1.0 / 250.0;
+  let d = DensityApprox::Euler.density(&cir, 0.4, 0.41, 0.0, dt);
+  // reference value: 18.71593320446833
+  assert!(
+    (d - 18.71593320446833).abs() < 1e-8,
+    "Cir Euler: got {d}, expected 18.71593320446833"
+  );
+}
+
+#[test]
+fn density_cir_kessler_reference() {
+  let cir = Cir::new(
+    3.0,
+    0.3,
+    0.2,
+    100,
+    Some(0.4),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(0),
+  );
+  let dt = 1.0 / 250.0;
+  let d = DensityApprox::Kessler.density(&cir, 0.4, 0.41, 0.0, dt);
+  // reference value: 18.6187883870385
+  assert!(
+    (d - 18.6187883870385).abs() < 1e-6,
+    "Cir Kessler: got {d}, expected 18.6187883870385"
+  );
+}
+
+#[test]
+fn density_ou_exact_reference() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let d = DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01);
+  // reference value: 5.399419276877125
+  assert!(
+    (d - 5.399419276877125).abs() < 1e-8,
+    "Ou Exact: got {d}, expected 5.399419276877125"
+  );
+}
+
+#[test]
+fn density_ou_euler_reference() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let d = DensityApprox::Euler.density(&ou, 0.5, 0.55, 0.0, 0.01);
+  // reference value: 5.467002489199778
+  assert!(
+    (d - 5.467002489199778).abs() < 1e-8,
+    "Ou Euler: got {d}, expected 5.467002489199778"
+  );
+}
+
+#[test]
+fn density_ou_shoji_ozaki_reference() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let d = DensityApprox::ShojiOzaki.density(&ou, 0.5, 0.55, 0.0, 0.01);
+  // reference value: 5.399419278094993
+  assert!(
+    (d - 5.399419278094993).abs() < 1e-6,
+    "Ou ShojiOzaki: got {d}, expected 5.399419278094993"
+  );
+}
+
+#[test]
+fn density_ou_kessler_reference() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    100,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let d = DensityApprox::Kessler.density(&ou, 0.5, 0.55, 0.0, 0.01);
+  // reference value: 5.4036554696777
+  assert!(
+    (d - 5.4036554696777).abs() < 1e-6,
+    "Ou Kessler: got {d}, expected 5.4036554696777"
+  );
+}
+
+#[test]
+fn cir_kessler_mle() {
+  let cir = Cir::new(
+    3.0,
+    0.3,
+    0.2,
+    1251,
+    Some(0.4),
+    Some(5.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(42),
+  );
+  let path = cir.sample();
+  let dt = 5.0 / 1250.0;
+
+  let mut cir_fit = Cir::new(
+    1.0,
+    0.5,
+    0.3,
+    100,
+    Some(0.4),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();
+
+  assert!(
+    (result.params[0] - 3.0).abs() < 3.0,
+    "kappa estimate: {} vs 3.0",
+    result.params[0]
+  );
+  assert!(
+    (result.params[1] - 0.3).abs() < 0.15,
+    "mu estimate: {} vs 0.3",
+    result.params[1]
+  );
+  assert!(
+    (result.params[2] - 0.2).abs() < 0.1,
+    "sigma estimate: {} vs 0.2",
+    result.params[2]
+  );
+  assert!(result.log_likelihood.is_finite());
+  assert!(result.aic.is_finite());
+  assert!(result.bic.is_finite());
+}
+
+#[test]
+fn ou_all_densities_agree() {
+  let ou = Ou::new(
+    2.0,
+    1.0,
+    0.3,
+    5001,
+    Some(1.0),
+    Some(10.0),
+    Deterministic::new(77),
+  );
+  let path = ou.sample();
+  let dt = 10.0 / 5000.0;
+
+  let densities = [
+    ("Exact", DensityApprox::Exact),
+    ("Euler", DensityApprox::Euler),
+    ("Ozaki", DensityApprox::Ozaki),
+    ("ShojiOzaki", DensityApprox::ShojiOzaki),
+    ("Kessler", DensityApprox::Kessler),
+  ];
+
+  let mut results = Vec::new();
+  for (name, dens) in &densities {
+    let mut ou_fit = Ou::new(
+      1.0,
+      0.5,
+      0.5,
+      100,
+      Some(1.0),
+      Some(1.0),
+      Deterministic::new(0),
+    );
+    let result = fit_mle(&mut ou_fit, path.view(), dt, *dens, None).unwrap();
+    results.push((*name, result));
+  }
+
+  for (name, result) in &results {
+    assert!(
+      (result.params[1] - 1.0).abs() < 0.5,
+      "{name}: mu estimate too far: {} vs 1.0",
+      result.params[1]
+    );
+    assert!(
+      (result.params[2] - 0.3).abs() < 0.1,
+      "{name}: sigma estimate too far: {} vs 0.3",
+      result.params[2]
+    );
+  }
+}
+
+#[test]
+fn mle_result_display() {
+  use ndarray::array;
+  let result = MleFit {
+    params: array![1.0, 2.0, 0.3],
+    param_names: vec!["kappa".into(), "mu".into(), "sigma".into()],
+    log_likelihood: -100.0,
+    nobs: 1000,
+    aic: 206.0,
+    bic: 220.0,
+    converged: true,
+    message: "converged".into(),
+    iterations: 42,
+  };
+  let s = format!("{}", result);
+  assert!(s.contains("kappa"));
+  assert!(s.contains("mu"));
+  assert!(s.contains("sigma"));
+  assert!(s.contains("log-lik"));
+  assert!(s.contains("converged"));
+  assert!(s.contains("42"));
+}

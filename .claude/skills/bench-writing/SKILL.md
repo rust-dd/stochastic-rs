@@ -5,13 +5,17 @@ description: Conventions for writing criterion benchmarks in stochastic-rs. Grou
 
 # Bench writing — stochastic-rs
 
-Benchmarks live under `benches/` at the **workspace root only** — no
-sub-crate has a `benches/` directory — and use the
-[`criterion`](https://github.com/bheisler/criterion.rs) harness with
-`harness = false` per `[[bench]]` entry in the root `Cargo.toml`. The
-§6.1 audit trap was a benchmark file with three dead helper functions
-and a `println!("starting...")` that shipped to crates.io as dev-deps
-but was never run; this SKILL prevents that drift.
+Benchmarks live under `benches/` at the workspace root, registered in the
+root `Cargo.toml`, with one exception: `euler_metal` lives in
+`stochastic-rs-stochastic/benches/` and that crate's manifest. The root
+`Cargo.toml` is an input of the committed Metal artifact, so a new root
+`[[bench]]` stales it and every `--features metal` build fails until the
+artifact is regenerated; the sub-crate's manifest is not an input. All
+use the [`criterion`](https://github.com/bheisler/criterion.rs) harness
+with `harness = false` per `[[bench]]` entry. The §6.1 audit trap was a
+benchmark file with three dead helper functions and a
+`println!("starting...")` that shipped to crates.io as dev-deps but was
+never run; this SKILL prevents that drift.
 
 Baselines are criterion's own (`cargo bench -- --save-baseline <name>`,
 then `--baseline <name>` to compare). There is **no tracked baseline
@@ -34,10 +38,8 @@ fn bench_foo(c: &mut Criterion) {
     let mut group = c.benchmark_group("foo");
     for &n in &[1_000usize, 10_000, 100_000] {
         group.throughput(Throughput::Elements(n as u64));
-        // Build the process ONCE, outside b.iter — construction is not
-        // what you are measuring, and re-seeding per iteration hides the
-        // sampler's own per-call cost.
-        let process = Gbm::<f64, _>::new(0.05, 0.2, n, None, None, Deterministic::new(42));
+        // Built once, outside `b.iter`: construction and re-seeding are not what is measured.
+        let process = Gbm::<f64, _>::new(0.05, 0.2, n, 100.0, None, Deterministic::new(42));
         group.bench_with_input(
             BenchmarkId::from_parameter(n),
             &n,
@@ -62,7 +64,7 @@ harness = false
 ```
 
 If the bench requires a feature, gate it. Use the **real** feature
-names from the root `Cargo.toml` — there is no bare `cuda` feature:
+names from the manifest that registers the bench:
 
 ```toml
 [[bench]]
@@ -79,8 +81,9 @@ The gated benches in tree today, with their exact feature sets:
 | `fgn_all_backends` | `["metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
-| `hotpath_profile` | `["hotpath"]` |
-| `dual_stream_compare` | `["dual-stream-rng"]` |
+| `dual_stream_compare` | `["unstable-dual-stream-rng"]` |
+| `ai_surrogate` | `["ai"]` |
+| `euler_metal` (in `stochastic-rs-stochastic`) | `["metal"]` |
 
 Without the gate, cargo tries to compile the bench regardless and you
 get a compilation error rather than a skip.
@@ -175,13 +178,14 @@ Before commit, verify:
 ```bash
 cargo build --benches -p stochastic-rs                              # default features
 cargo build --benches -p stochastic-rs --features cuda       # if applicable
+cargo build --benches -p stochastic-rs-stochastic --features metal  # euler_metal
 ```
 
-Use `-p stochastic-rs`, **not** `--workspace`: every bench lives in the
-umbrella, and `--workspace` drags in `stochastic-rs-py`, which forces
-`pyo3/extension-module` unconditionally and fails to link outside a
-maturin build (same reason `cargo test --workspace` needs
-`--exclude stochastic-rs-py` — see `CLAUDE.md`).
+Use `-p`, **not** `--workspace`: `--workspace` drags in
+`stochastic-rs-py`, with the PyO3 wrapper code and a libpython link (see
+`CLAUDE.md`). The root package is the default member, so a sub-crate bench
+needs its `-p` to run too:
+`cargo bench -p stochastic-rs-stochastic --features metal --bench euler_metal`.
 
 If any leg fails, the bench has drifted from the lib's API. Fix
 before commit; the §6.1 trap was exactly a bench that hadn't compiled
@@ -190,9 +194,10 @@ does this for you.
 
 ## 8. Reference benches
 
-`benches/` holds 32 `.rs` files plus one `distributions/` **directory**,
-matched one-to-one by 33 `[[bench]]` entries. Check whether your target
-is a file or a directory before editing.
+The root `benches/` holds 35 `.rs` files plus one `distributions/`
+**directory**, matched one-to-one by 36 `[[bench]]` entries in the root
+`Cargo.toml`; `stochastic-rs-stochastic/benches/` holds `euler_metal.rs`.
+Check whether your target is a file or a directory before editing.
 
 - `benches/distributions/` — sweep over distribution × sample-count.
 - `benches/fgn_fbm.rs` — ungated CPU fGn / fBm sweep.
@@ -201,16 +206,22 @@ is a file or a directory before editing.
 - `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.
-- `benches/sampler_compare.rs`, `benches/hotpath_profile.rs` — the
-  sampler-v3 refactor's own measurement harnesses.
+- `benches/sampler_compare.rs` — `sample_map` against a parallel fold of
+  one-shot `sample()` calls; the process-ext page's table cites it.
+- `stochastic-rs-stochastic/benches/euler_metal.rs` — the Euler kernels
+  on Metal (`Gbm`, `Heston`, `Merton`, `Kou`); gated on `["metal"]`.
 
 ## 9. Registering a new bench
 
-A new bench needs **two** edits, both in the root `Cargo.toml`: the
-file under `benches/`, and a `[[bench]]` entry with `harness = false`
-(plus `required-features` if gated). Cargo does not auto-discover with
-`harness = false`, so a missing entry means the bench never runs and
-never compiles — which is exactly the §6.1 drift.
+A new bench needs **two** edits: the file under `benches/`, and a
+`[[bench]]` entry with `harness = false` (plus `required-features` if
+gated) in the same package's `Cargo.toml`. A root entry lands with a
+regenerated `stochastic-rs-stochastic/metal/`, since it changes an input
+of that artifact; a bench that cannot wait for one goes in
+`stochastic-rs-stochastic`, as `euler_metal` did.
+Cargo does not auto-discover with `harness = false`, so a missing entry
+means the bench never runs and never compiles — which is exactly the §6.1
+drift.
 
 There is no baseline document to append to and no CI job to update.
 
@@ -222,7 +233,7 @@ There is no baseline document to append to and no CI job to update.
 - **Do not** add a feature-gated bench without `[[bench]]
   required-features`.
 - **Do not** ship a bench that doesn't compile under
-  `cargo build --benches -p stochastic-rs`.
+  `cargo build --benches -p <its package>`.
 
 ## Related SKILLs
 

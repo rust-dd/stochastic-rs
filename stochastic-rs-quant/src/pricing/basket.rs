@@ -125,7 +125,7 @@ pub struct GeometricBasketPricer {
   /// contract, not a market quote. The sum is not enforced; see
   /// [`new`](Self::new).
   pub weights: Array1<f64>,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix $\rho_{ij}$ ($n \times n$, symmetric, ones on
   /// diagonal).
@@ -133,47 +133,8 @@ pub struct GeometricBasketPricer {
 }
 
 impl GeometricBasketPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `weights`, `sigma` and `rho` disagree on the asset count
-  /// - if any `sigma[i]` is negative or `NaN` — not a volatility
-  /// - if any `rho[[i, j]]` is outside `[-1, 1]` or `NaN` — not a
-  ///   correlation. The range test covers the diagonal, so a correlation
-  ///   matrix carrying variances instead of correlations is rejected by
-  ///   the same check.
-  ///
-  /// **Not** checked, deliberately:
-  ///
-  /// - the **weight sum**. $\prod_i S_i^{w_i}$ and $\sum_i w_i S_i$ are
-  ///   both well defined for any weight vector, and a long/short basket
-  ///   (`w = [-1, 2]`, which prices at `29.44` / `22.81`) is a real
-  ///   product rather than an invalid one. Summing to one is the
-  ///   Kemna-Vorst normalisation convention, not a domain constraint.
-  /// - **symmetry** of `rho`. An exact-equality test would reject a
-  ///   correlation matrix a covariance estimator produced symmetric only
-  ///   to round-off, and any tolerance would be invented rather than
-  ///   measured. The residual is recorded rather than hidden: an
-  ///   asymmetric `rho` is silently symmetrised by the geometric basket —
-  ///   `[[1, 0.4], [0.9, 1]]` prices *bit-identically* to
-  ///   `[[1, 0.65], [0.65, 1]]`, because $\sigma_G^2$ sums over both
-  ///   $(i,j)$ and $(j,i)$ — and is **not** symmetrised by the Levy
-  ///   basket, whose second moment exponentiates each entry separately
-  ///   (`11.530486` against the symmetrised `11.525904`).
-  /// - **positive semi-definiteness** of `rho`, which needs a Cholesky
-  ///   which these two pricers do not need.
-  ///
-  /// Measured against a healthy `10.224832`: `sigma = [-0.20, 0.30]`
-  /// prices at `6.946344`, an off-diagonal `rho` of `5` at `23.016764`,
-  /// and a `rho` of `-5` at **`0.0`** — the `sigma_g_sq.max(0.0)` floor
-  /// swallowing a negative basket variance, the same `f64::max` trap
-  /// `pricing::fourier::pricer`'s `floor_price` names. A correlation matrix with `3` on the
-  /// diagonal prices at `16.837128`.
-  ///
-  /// The length check is model-internal only. The three `assert_eq!`s in
-  /// [`price_option`](Self::price_option) compare the *query*'s asset
-  /// count against the model's and **stay**: the fields are `pub`, so this
-  /// constructor is a front door and not a wall.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
+  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
     assert_basket_shape("GeometricBasketPricer", &weights, &sigma, &rho);
     assert_basket_parameters("GeometricBasketPricer", &sigma, &rho);
@@ -309,57 +270,15 @@ pub struct ArithmeticBasketLevyPricer {
   /// Weights (need not sum to one) — a term of the contract, not a market
   /// quote.
   pub weights: Array1<f64>,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
 }
 
 impl ArithmeticBasketLevyPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `weights`, `sigma` and `rho` disagree on the asset count
-  /// - if any `sigma[i]` is negative or `NaN` — not a volatility
-  /// - if any `rho[[i, j]]` is outside `[-1, 1]` or `NaN` — not a
-  ///   correlation. The range test covers the diagonal, so a correlation
-  ///   matrix carrying variances instead of correlations is rejected by
-  ///   the same check.
-  ///
-  /// **Not** checked, deliberately:
-  ///
-  /// - the **weight sum**. $\prod_i S_i^{w_i}$ and $\sum_i w_i S_i$ are
-  ///   both well defined for any weight vector, and a long/short basket
-  ///   (`w = [-1, 2]`, which prices at `29.44` / `22.81`) is a real
-  ///   product rather than an invalid one. Summing to one is the
-  ///   Kemna-Vorst normalisation convention, not a domain constraint.
-  /// - **symmetry** of `rho`. An exact-equality test would reject a
-  ///   correlation matrix a covariance estimator produced symmetric only
-  ///   to round-off, and any tolerance would be invented rather than
-  ///   measured. The residual is recorded rather than hidden: an
-  ///   asymmetric `rho` is silently symmetrised by the geometric basket —
-  ///   `[[1, 0.4], [0.9, 1]]` prices *bit-identically* to
-  ///   `[[1, 0.65], [0.65, 1]]`, because $\sigma_G^2$ sums over both
-  ///   $(i,j)$ and $(j,i)$ — and is **not** symmetrised by the Levy
-  ///   basket, whose second moment exponentiates each entry separately
-  ///   (`11.530486` against the symmetrised `11.525904`).
-  /// - **positive semi-definiteness** of `rho`, which needs a Cholesky
-  ///   which these two pricers do not need.
-  ///
-  /// The length check earns its place here rather than at the accessor:
-  /// unlike its geometric sibling this pricer has **no** dimension
-  /// assertion at all, and its moment loops run over the *query*'s asset
-  /// count while indexing the model's vectors. A `sigma` one entry too
-  /// long returned `10.894912090686852` — bit-identical to the healthy
-  /// price, with the surplus volatility silently ignored; a `weights` one
-  /// entry too long returned `0.483024`, and a 3x3 `rho` against a 2-asset
-  /// model `9.783632`. None of the three announced anything.
-  ///
-  /// Measured against a healthy `10.894912`: `sigma = [-0.20, 0.30]`
-  /// prices at `8.487146`, an off-diagonal `rho` of `5` at `19.358891`,
-  /// a diagonal of `3` at `15.697454`, and a `rho` of `-5` at
-  /// **`4.877058`** — the basket's zero-volatility intrinsic, the same
-  /// number a `NaN` `sigma` produced before the floor was split.
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
+  /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
     assert_basket_shape("ArithmeticBasketLevyPricer", &weights, &sigma, &rho);
     assert_basket_parameters("ArithmeticBasketLevyPricer", &sigma, &rho);

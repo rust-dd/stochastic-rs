@@ -33,15 +33,18 @@ cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
 cargo check --workspace --no-default-features                # baseline build still works
+
+# 1.3 CUDA tests on the GPU runner (billed); wait for green, re-run = remove and re-add the label
+gh pr edit <release-pr> --add-label cuda   # or, once cuda.yml is on main: gh workflow run cuda.yml --ref <branch>
 ```
 
 If any of those fail, **stop**. Do not bump versions on a broken HEAD —
 the rc.1 → rc.2 cycle exists exactly because we caught issues post-bump
 and had to revert.
 
-The `stochastic-rs-py` crate is excluded from `cargo test` because it is
-a `cdylib` requiring a Python extension-module link (handled by maturin,
-not cargo). It is built and tested in stage 7.
+The `stochastic-rs-py` crate is excluded from `cargo test`: it has no Rust
+tests, its pytest suite runs in the `python_smoke` job, and its wheels are
+built and smoke-tested in stage 7.
 
 ## Stage 2 — version bumps (9 crates)
 
@@ -80,6 +83,11 @@ grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
 
 # 2.2 Workspace re-resolves
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
+
+# 2.3 After the bump, `cargo update --workspace` rewrites the 9 workspace versions in the
+#     committed Cargo.lock; commit it with the bump, or the umbrella `cargo publish` aborts
+cargo update --workspace
+git add Cargo.lock
 ```
 
 ## Stage 3 — `MIGRATION.md` and `CITATION.cff`
@@ -203,10 +211,10 @@ Windows and sdist legs and then publishes them itself:
 
 So there is no `twine`, no TestPyPI hop, and nothing to run locally.
 Every leg builds with the default feature set — the linalg stack is the
-pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that the
-`stochastic-rs-py` crate has no `python` feature: it forces
-`pyo3/extension-module` unconditionally, which is exactly why
-`cargo test --workspace` needs `--exclude stochastic-rs-py`.
+pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that
+`stochastic-rs-py` has no `python` feature: it enables the library crates'
+internal `python` features itself, and maturin (>= 1.9.4) sets
+`PYO3_BUILD_EXTENSION_MODULE` for its cargo call.
 
 A local wheel for debugging one platform:
 
@@ -229,6 +237,7 @@ revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 ```bash
 # 8.1 Bump main to next-dev version (open the next rc / patch cycle)
 # (manual edit Cargo.toml workspace.package.version → "X.Y.Z+1-dev" or "X.Y+1.0-dev")
+cargo update --workspace && git add Cargo.lock
 
 # 8.2 Verify docs.rs picked up the build (auto-triggered on crates.io publish)
 open https://docs.rs/stochastic-rs/X.Y.Z/

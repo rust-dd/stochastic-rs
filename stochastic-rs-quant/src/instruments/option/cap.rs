@@ -5,8 +5,7 @@
 //!   \mathrm{BlackCall}(F_i,K,\tau_i,\sigma_i)
 //! $$
 //!
-//! Reference: Hull, "Options, Futures, and Other Derivatives", 11th ed. (2021),
-//! §29.2.
+//! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §29.2
 
 use chrono::NaiveDate;
 
@@ -208,8 +207,8 @@ fn price_cap_floor<T: RealExt, V: VolatilityModel<T> + ?Sized>(
 
     let caplet = if tau <= T::zero() || coupon.observed_rate.is_some() {
       let payoff = match kind {
-        InterestRateOptionKind::Cap => (forward - strike).max(T::zero()),
-        InterestRateOptionKind::Floor => (strike - forward).max(T::zero()),
+        InterestRateOptionKind::Cap => (forward - strike).max_or_nan(T::zero()),
+        InterestRateOptionKind::Floor => (strike - forward).max_or_nan(T::zero()),
       };
       coupon.notional * coupon.period.accrual_factor * discount_factor * payoff
     } else {

@@ -1,61 +1,36 @@
-//! # KoBoL / Cts (general tempered stable family)
+//! The general tempered stable (KoBoL) family; the side weights `p`, `q` need not sum to one.
+//! [`Cgmy`](crate::jump::cgmy::Cgmy) is the case `D = C`, `p = q = 1`, `λ₊ = M`, `λ₋ = G`.
 //!
-//! Lévy measure (one common KoBoL/Cts parametrization):
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
-//! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx
+//! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,\quad
+//! D>0,\ p,q>0,\ \lambda_\pm>0,\ \alpha\in(0,2)
 //! $$
 //!
-//! - D > 0 overall scale
-//! - p, q > 0 side weights (not necessarily normalized)
-//! - λ_+ , λ_- > 0 tempering rates
-//! - α in (0,2) activity
-//!
-//! Differences vs your Cgmy code:
-//! - sign selection: P(+)=p/(p+q) instead of fixed 1/2
-//! - series constant uses D(p+q) instead of 2C
-//! - drift uses D*p and D*q (if α<1; else set 0)
-//!
-//! Cgmy is a special case of this if you set:
-//! - D = C
-//! - p = q = 1
-//! - λ_+ = G, λ_- = M
-//!
-//! then D(p+q)=2C and P(+)=1/2.
-//!
-//! References:
-//! - Koponen I. (1995) — *Analytic Approach to the Problem of
-//!   Convergence of Truncated Lévy Flights Towards the Gaussian
-//!   Stochastic Process*, Physical Review E 52(1), 1197–1199,
-//!   DOI: 10.1103/PhysRevE.52.1197 — introduced this tempered-stable
-//!   Lévy-measure family.
-//! - Boyarchenko S. I., Levendorskiĭ S. Z. (2000) — *Option Pricing for
-//!   Truncated Lévy Processes*, International Journal of Theoretical
-//!   and Applied Finance 3(3), 549–552, DOI: 10.1142/S0219024900000541
-//!   — coined "KoBoL" and applied the family to option pricing.
-//! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
-//!   Processes and their Applications 117(6), 677–707,
-//!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
-//!   representation this file's `fill_path` implements (shared with
-//!   [`Cgmy`](crate::jump::cgmy::Cgmy), of which this family is a
-//!   generalization).
+//! Reference: Koponen (1995), Phys. Rev. E 52(1), 1197–1199, DOI 10.1103/PhysRevE.52.1197
+//! Reference: Boyarchenko & Levendorskiĭ (2000), IJTAF 3(3), 549–552, DOI 10.1142/S0219024900000541
+//! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
 
 use ndarray::Array1;
-use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
-pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone)]
+pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall scale D > 0
   pub d: T,
   /// Positive-side weight p > 0
@@ -72,9 +47,9 @@ pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Truncation terms (J)
   pub j: usize,
-  /// Initial value
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total horizon T
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -83,7 +58,9 @@ pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
+impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
+  /// Panics unless every parameter is finite, `d`, `p`, `q`, `lambda_plus`, `lambda_minus` are
+  /// positive, `0 < alpha < 2`, `n >= 2`, `j >= 2` and a given `t` is positive and finite.
   pub fn new(
     d: T,
     p: T,
@@ -97,17 +74,64 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(d > T::zero(), "d (D) must be positive");
-    assert!(p > T::zero(), "p must be positive");
-    assert!(q > T::zero(), "q must be positive");
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      d.is_finite(),
+      "d must satisfy `d.is_finite()`, got d = {d:?}"
+    );
+    assert!(
+      p.is_finite(),
+      "p must satisfy `p.is_finite()`, got p = {p:?}"
+    );
+    assert!(
+      q.is_finite(),
+      "q must satisfy `q.is_finite()`, got q = {q:?}"
+    );
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      d > T::zero(),
+      "d must satisfy `d > T::zero()`, got d = {d:?}"
+    );
+    assert!(
+      p > T::zero(),
+      "p must satisfy `p > T::zero()`, got p = {p:?}"
+    );
+    assert!(
+      q > T::zero(),
+      "q must satisfy `q > T::zero()`, got q = {q:?}"
+    );
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
+    );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
     );
-    assert!(n >= 2, "n must be >= 2");
-    assert!(j >= 2, "j must be >= 2 (because we index from 1..j)");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(j >= 2, "j must satisfy `j >= 2`, got j = {j:?}");
 
     Self {
       backend: Cpu,
@@ -125,9 +149,8 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
     }
   }
 
-  /// Var(X_1) exists for α<2:
-  /// Var(X_1) = D Γ(2-α) ( p λ_+^{α-2} + q λ_-^{α-2} )
-  /// If you want unit variance at t=1, choose D = 1 / [ Γ(2-α) (...) ].
+  /// The `D` of unit variance at `t = 1`, from `Var(X_1) = D Γ(2-α) (p λ₊^{α-2} + q λ₋^{α-2})`,
+  /// which exists for `α < 2`.
   pub fn d_for_unit_variance(p: T, q: T, lambda_plus: T, lambda_minus: T, alpha: T) -> T {
     let g2 = gamma(2.0 - alpha.to_f64().unwrap());
     (T::from_f64_fast(g2)
@@ -137,9 +160,7 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {}
-
-impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {
     self.t.unwrap_or(T::one())
@@ -160,9 +181,8 @@ impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
     self.d * self.p + self.d * self.q
   }
 
-  /// The mean-compensating drift
-  /// `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, finite — and applied — only
-  /// below `α = 1`.
+  /// The mean-compensating drift `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, finite and applied
+  /// only below `α = 1`.
   fn drift_rate(&self) -> T {
     if self.alpha < T::one() {
       let g1 = gamma(1.0 - self.alpha.to_f64().unwrap());
@@ -176,11 +196,10 @@ impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for KoBoL<T, S, B>
+  for Kobol<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate
-  /// `α / (D (p + q) T)`, the exponential draw entering plainly, and the
-  /// positive side taken with probability `p / (p + q)`.
+  /// The series constants, folded once: the arrival rate `α / (D (p + q) T)`, the exponential
+  /// draw entering plainly, and the positive side taken with probability `p / (p + q)`.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
@@ -226,27 +245,30 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] KoBoL<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Kobol<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for KoBoL<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Kobol<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Kobol<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = KoBoLSampler<T, S>
+    = KobolSampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> KoBoLSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // side probability, total coefficient and drift are precomputed here.
+  fn sampler(&self) -> KobolSampler<T, S> {
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The side probability, total coefficient and drift do not read it.
     let t_max = self.t_max();
     let dt = self.dt();
     let w_plus = self.positive_share();
     let c_total = self.total_coefficient();
     let b_t = self.drift_rate();
 
-    KoBoLSampler {
+    KobolSampler {
       n: self.n,
       j: self.j,
       lambda_plus: self.lambda_plus,
@@ -258,15 +280,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       w_plus,
       c_total,
       b_t,
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      exp: SimdExp::<T>::new(T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -329,15 +350,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`KoBoL`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Kobol`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
-pub struct KoBoLSampler<T: FloatExt, S: SeedExt> {
+#[derive(Debug)]
+pub struct KobolSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
   lambda_plus: T,
@@ -349,12 +366,12 @@ pub struct KoBoLSampler<T: FloatExt, S: SeedExt> {
   w_plus: T,
   c_total: T,
   b_t: T,
-  uniform: SimdUniform<T>,
-  exp: SimdExp<T>,
+  uniform: Seeded<SimdUniform<T>>,
+  exp: Seeded<SimdExp<T>>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -366,13 +383,13 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
     let c_total = self.c_total;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -382,7 +399,7 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
     for j in 1..size {
       // HERE IS THE KoBoL DIFFERENCE:
       // probability of choosing + side is p/(p+q) instead of fixed 0.5
-      let v_j = if self.uniform.sample_fast() < w_plus {
+      let v_j = if self.uniform.sample() < w_plus {
         self.lambda_plus
       } else {
         -self.lambda_minus
@@ -391,10 +408,10 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
       // HERE IS THE KoBoL DIFFERENCE:
       // divisor uses total coefficient D(p+q) instead of 2C
       let divisor = c_total * t_max; // <-- (2*C*t_max)
-      let numerator = self.alpha * P[j];
+      let numerator = self.alpha * arrivals[j];
 
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
@@ -426,11 +443,13 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for KobolSampler<T, S> {}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for KobolSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    self.fill_path(out.as_slice_mut().expect("KoBoL output must be contiguous"));
+    self.fill_path(out.as_slice_mut().expect("Kobol output must be contiguous"));
   }
 
   fn sample(&mut self) -> Array1<T> {
@@ -439,7 +458,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
   }
 }
 
-py_process_1d!(PyKoBoL, KoBoL,
+py_process_1d!(PyKoBoL, Kobol,
   sig: (d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (d: f64, p: f64, q: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>),
   device

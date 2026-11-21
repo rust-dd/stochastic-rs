@@ -1,34 +1,30 @@
-//! # Cheyette
+//! One-factor quasi-Gaussian HJM with separable volatility (Andersen & Piterbarg 2010, Ch. 13).
 //!
 //! $$
-//! dx_t = (y_t - \kappa x_t)\,dt + \sigma(t, x_t)\,dW_t,\qquad dy_t = \left(\sigma^2(t, x_t) - 2\kappa y_t\right)dt,\qquad r_t = f_0(t) + x_t
+//! dx_t = (y_t - \kappa x_t)\,dt + \sigma(t, x_t)\,dW_t,\qquad
+//! dy_t = \left(\sigma^2(t, x_t) - 2\kappa y_t\right)dt,\qquad r_t = f_0(t) + x_t
 //! $$
 //!
-//! One-factor quasi-Gaussian HJM model with separable volatility (Cheyette
-//! 1992; Andersen & Piterbarg 2010, Ch. 13). The whole forward curve is a
-//! function of the two-dimensional Markov state `(x, y)`:
-//! `f_t(T) = f_0(T) + e^{−κ(T−t)} (x_t + G(t, T) y_t)` with
-//! `G(t, T) = (1 − e^{−κ(T−t)}) / κ`, and zero-coupon bonds reconstruct as
-//! `P_t(T) = P_0(T) / P_0(t) · exp(−G(t, T) x_t − ½ G(t, T)² y_t)`. A constant
-//! `σ` recovers Hull–White, where `y_t = σ² (1 − e^{−2κt}) / (2κ)` is the
-//! deterministic variance of `x_t`; a state-dependent `σ(t, x)` (displaced or
-//! CEV) adds the rate skew. The state is Euler–Maruyama-discretised from
-//! `x_0 = y_0 = 0` with `σ` evaluated at the left grid point; the path output
-//! is the pair `[x, y]`, from which [`Cheyette::short_rate`],
-//! [`Cheyette::forward_rate`] and [`Cheyette::zero_bond`] rebuild the curve.
+//! $$
+//! f_t(T) = f_0(T) + e^{-\kappa(T-t)}\bigl(x_t + G(t,T)\,y_t\bigr),\quad
+//! G(t,T) = \frac{1-e^{-\kappa(T-t)}}{\kappa},\quad
+//! P_t(T) = \frac{P_0(T)}{P_0(t)}\exp\bigl(-G(t,T)\,x_t - \tfrac12 G(t,T)^2 y_t\bigr)
+//! $$
 //!
-//! References: Cheyette, O. (1992), *Markov Representation of the
-//! Heath–Jarrow–Morton Model*, BARRA working paper; Andersen, L. B. G. &
-//! Piterbarg, V. V. (2010), *Interest Rate Modeling*, Vol. II, Atlantic
-//! Financial Press, Ch. 13; Gairat, A., Gorovoy, V. & Shcherbakov, V. (2025),
-//! *Explicit local volatility formula for Cheyette-type interest rate models*,
-//! arXiv:2506.23876, §2, eqs. (1)–(3).
+//! Constant `σ` is Hull–White; Euler-stepped from `x_0 = y_0 = 0`, `σ` at the left grid point.
+//!
+//! Reference: Cheyette (1992), "Markov Representation of the Heath–Jarrow–Morton Model", BARRA
+//! Reference: Andersen & Piterbarg (2010), "Interest Rate Modeling", Vol. II, Ch. 13
+//! Reference: Gairat, Gorovoy & Shcherbakov (2025), arXiv:2506.23876, §2, eqs. (1)–(3)
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -43,7 +39,7 @@ use crate::traits::ProcessExt;
 /// [`Cheyette::initial_discount`].
 const FORWARD_INTEGRATION_PANELS: usize = 256;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial instantaneous forward curve `f₀(t)`.
   pub f0: Fn1D<T>,
@@ -53,9 +49,9 @@ pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: Fn2D<T>,
   /// Number of grid points including the initial one.
   pub n: usize,
-  /// Simulation horizon [0, t] (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -63,6 +59,8 @@ pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `kappa` is positive and
+  /// finite.
   pub fn new(
     f0: impl Into<Fn1D<T>>,
     kappa: T,
@@ -71,7 +69,19 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     Self {
       backend: Cpu,
       f0: f0.into(),
@@ -127,13 +137,9 @@ impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
     let g = self.g(t, maturity);
     self.initial_discount(t, maturity) * (-g * x - T::from_f64_fast(0.5) * g * g * y).exp()
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
-  /// The time the step starting at each grid point sees, `(i − 1) Δt` at
-  /// point `i`: the launch's first curve, which is the `t` the local
-  /// volatility is evaluated at, exactly as the host evaluates it at the left
-  /// grid point.
+  /// The time the step from each grid point sees, `(i − 1) Δt` at point `i`: the launch's first
+  /// curve and the `t` the local volatility reads, the host's left grid point.
   fn step_time_curve(&self) -> Vec<T> {
     let dt = self.dt();
     (0..self.n)
@@ -147,9 +153,8 @@ backend_switch!([T: FloatExt, S: SeedExt] Cheyette<T, S> { f0, kappa, sigma, n, 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Cheyette<T, S, B>
 {
-  /// A configuration the family cannot carry — a closure for `σ` — never
-  /// reaches a launch: [`ProcessExt::sample`] keeps it on the host, so asking
-  /// here is a caller bypassing that guard.
+  /// [`ProcessExt::sample`] keeps a configuration the family cannot carry, a closure for `σ`, on
+  /// the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.device_ready(),
@@ -199,6 +204,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cheyette<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cheyette<T, S, B>
 {
@@ -215,13 +225,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       dt,
       kappa: self.kappa,
       sigma: &self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine when the local volatility is an expression;
-  /// a closure keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the Euler engine when the local volatility is an expression; a closure stays on the
+  /// host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     if self.device_ready() {
       self.backend.system_sample(self)
@@ -264,9 +273,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: a local volatility written as an
-  /// [`Expr`](crate::traits::Expr), which the kernel interprets at every
-  /// step. A Rust closure or a Python callable keeps the process on the host.
+  /// What a device runs: a local volatility written as an [`Expr`](crate::traits::Expr), which
+  /// the kernel interprets at every step; a Rust closure or a Python callable stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.sigma.program().is_some()))
       .then_some("a local volatility that is a closure rather than an Expr")
@@ -276,12 +284,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`Cheyette`] sampling state: borrows the local volatility and
 /// owns the Gaussian source, so a Monte Carlo loop pays the setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CheyetteSampler<'a, T: FloatExt> {
   n: usize,
   dt: T,
   kappa: T,
   sigma: &'a Fn2D<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> CheyetteSampler<'_, T> {
@@ -314,6 +323,8 @@ impl<T: FloatExt> CheyetteSampler<'_, T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for CheyetteSampler<'_, T> {}
+
 impl<T: FloatExt> PathSampler<T> for CheyetteSampler<'_, T> {
   type Output = [Array1<T>; 2];
 
@@ -340,6 +351,7 @@ impl<T: FloatExt> PathSampler<T> for CheyetteSampler<'_, T> {
 mod tests;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCheyette {
   inner: Option<Cheyette<f64>>,
@@ -395,7 +407,7 @@ impl PyCheyette {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let [x, y] = inner.sample();
         (
           x.into_pyarray(py).into_py_any(py).unwrap(),
@@ -405,9 +417,8 @@ impl PyCheyette {
     })
   }
 
-  /// `m` paths as a pair of `(m, n)` arrays. Each step calls back into the
-  /// Python `f0` / `sigma` callables under the GIL, so the parallel speed-up
-  /// is bounded by those calls.
+  /// `m` paths as a pair of `(m, n)` arrays. Each step calls the Python `f0` and `sigma` under
+  /// the GIL, which bounds the parallel speed-up.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -416,7 +427,7 @@ impl PyCheyette {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         // The callbacks re-attach to the interpreter from the worker threads, so
         // the GIL must be released here or the parallel sampler deadlocks.
         let samples = py.detach(|| inner.sample_par(m));
@@ -436,11 +447,11 @@ impl PyCheyette {
 
   /// Short rate `f0(t) + x`.
   fn short_rate(&self, t: f64, x: f64) -> f64 {
-    crate::py_dispatch_f64!(self, |inner| inner.short_rate(t, x))
+    py_dispatch_f64!(self, |inner| inner.short_rate(t, x))
   }
 
   /// Zero-coupon bond `P_t(T)` at state `(x, y)`.
   fn zero_bond(&self, t: f64, maturity: f64, x: f64, y: f64) -> f64 {
-    crate::py_dispatch_f64!(self, |inner| inner.zero_bond(t, maturity, x, y))
+    py_dispatch_f64!(self, |inner| inner.zero_bond(t, maturity, x, y))
   }
 }

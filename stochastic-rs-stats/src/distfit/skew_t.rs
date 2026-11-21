@@ -1,17 +1,18 @@
-//! Hansen skew-t maximum likelihood with location and scale,
-//! $x = \mu + \sigma z$, in $(\mu, \log\sigma, \log(\eta - 2), \operatorname{atanh}\lambda)$.
+//! Hansen skew-t maximum likelihood of `x = μ + σ z`, in `(μ, ln σ, ln(η − 2), atanh λ)`.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::traits::DistributionExt;
 
+use super::Sample;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use crate::evt::gpd_fit::information_inverse;
+use crate::StatsError;
+use crate::evt::gpd::fit_in_data_units;
+use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
 /// Hansen skew-t maximum-likelihood fit with location and scale.
@@ -27,7 +28,7 @@ pub struct SkewTFit {
   pub lambda: f64,
   /// Standard errors of `[mu, sigma, eta, lambda]`.
   pub std_errors: Array1<f64>,
-  /// Inverse observed information for `[mu, sigma, eta, lambda]`.
+  /// Inverse observed information for `[mu, sigma, eta, lambda]`, `±∞` past the double range.
   pub covariance: Array2<f64>,
   /// Maximised log-likelihood.
   pub log_likelihood: f64,
@@ -39,7 +40,7 @@ pub struct SkewTFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
 }
 
@@ -47,19 +48,20 @@ fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && eta > 2.0 && eta.is_finite() && lambda.abs() < 1.0) {
     return 1e300;
   }
-  let d = SimdSkewT::<f64>::new(eta, lambda, &Deterministic::new(0));
+  let d = SimdSkewT::<f64>::new(eta, lambda);
   let log_sigma = sigma.ln();
-  negative_log_likelihood(x, |v| d.pdf((v - mu) / sigma).ln() - log_sigma)
+  negative_log_likelihood(x, |v| {
+    d.pdf((v - mu) / sigma)
+      .expect("SimdSkewT has a closed-form pdf")
+      .ln()
+      - log_sigma
+  })
 }
 
-/// Hansen skew-t maximum-likelihood fit of `data`.
-///
-/// # Panics
-///
-/// If there are fewer than 10 observations, any is non-finite, or they are
-/// constant.
-pub fn skew_t_fit<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
-  let (x, mean, sd) = sample(data, 10);
+/// Hansen skew-t maximum likelihood of `data` at unit scale; `Err` below 10 observations, on a
+/// non-finite one, a constant sample or an estimate past the double range.
+pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsError> {
+  let Sample { x, mean, sd, unit } = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), 2.0 + p[2].exp(), p[3].tanh());
   let mut starts = Vec::new();
   for eta0 in [4.0_f64, 8.0, 20.0] {
@@ -77,20 +79,28 @@ pub fn skew_t_fit<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
   let log_likelihood = -log_density(&x, natural[0], natural[1], natural[2], natural[3]);
   let nll = |p: &[f64]| log_density(&x, p[0], p[1], p[2], p[3]);
   let covariance = information_inverse(&nll, &natural, &[sd, natural[1], natural[2], 1.0]);
-  let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
-  let n = x.len() as f64;
-  SkewTFit {
-    mu: natural[0],
-    sigma: natural[1],
-    eta: natural[2],
-    lambda: natural[3],
-    std_errors,
-    covariance,
+  let fit = fit_in_data_units(
+    natural,
+    &covariance,
     log_likelihood,
-    aic: 8.0 - 2.0 * log_likelihood,
-    bic: 4.0 * n.ln() - 2.0 * log_likelihood,
+    x.len(),
+    unit,
+    [1, 1, 0, 0],
+  )?;
+  let [mu, sigma, eta, lambda] = fit.params;
+  let n = x.len() as f64;
+  Ok(SkewTFit {
+    mu,
+    sigma,
+    eta,
+    lambda,
+    std_errors: fit.std_errors,
+    covariance: fit.covariance,
+    log_likelihood: fit.log_likelihood,
+    aic: 8.0 - 2.0 * fit.log_likelihood,
+    bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
     iterations,
     converged,
-  }
+  })
 }

@@ -1,20 +1,10 @@
-//! # Hull-White (1990) extended Vasicek short-rate model — closed-form ZCB.
+//! Hull–White extended Vasicek zero-coupon bond with $\theta(t)$ fitted to an initial market
+//! curve $P^M(0,\cdot)$, where $f^M(0,t) = -\partial_T \ln P^M(0,t)$.
 //!
 //! $$
-//! dr_t = (\theta(t) - a\,r_t)\,dt + \sigma\,dW_t
-//! $$
-//!
-//! Hull-White is an affine short-rate model belonging to the
-//! `P(t,T) = exp(A(t,T) - r(t)·B(t,T))` family with
-//!
-//! $$
+//! dr_t = (\theta(t) - a\,r_t)\,dt + \sigma\,dW_t,\qquad
 //! B(t,T) = \frac{1 - e^{-a(T-t)}}{a}
 //! $$
-//!
-//! When the deterministic mean-reversion target $\theta(t)$ is calibrated to
-//! match an initial market discount curve $P^M(0,\cdot)$ (the standard
-//! no-arbitrage extension; see Brigo & Mercurio 2007 §3.3.2), the closed form
-//! collapses to
 //!
 //! $$
 //! P(t,T) = \frac{P^M(0,T)}{P^M(0,t)}\,
@@ -23,82 +13,39 @@
 //!                     - B(t,T)\,r(t)\Big)
 //! $$
 //!
-//! where $f^M(0,t) := -\partial_T \ln P^M(0,t)$ is the initial instantaneous
-//! forward rate. This form is **deterministic** (no `Utc::now()` poisoning),
-//! reduces to $P(0,T) = P^M(0,T)$ when $t=0$ and $r(0) = f^M(0,0)$, and works
-//! for any positive $a$, $\sigma$.
-//!
-//! References:
-//! - Hull & White (1990), "Pricing Interest Rate Derivative Securities",
-//!   Review of Financial Studies, 3(4), 573-592.
-//! - Brigo & Mercurio (2007), §3.3.2.
-//! - Kisbye & Meier (2017), "Consistency of extended Nelson-Siegel curve
-//!   families with the Ho-Lee and Hull and White short rate models",
-//!   arXiv:1707.02496, §3 (eq. 3.3-3.4 + θ(t) Brigo formula).
+//! Reference: Hull & White (1990), Review of Financial Studies 3(4), 573–592
+//! Reference: Brigo & Mercurio (2007), "Interest Rate Models: Theory and Practice", §3.3.2
+//! Reference: Kisbye & Meier (2017), arXiv:1707.02496, §3, eq. 3.3–3.4
 use crate::curves::DiscountCurve;
 use crate::traits::ShortRatePricer;
 
-/// Hull-White ZCB pricer parameterised by the calibrated initial discount
-/// curve. The struct stores the *projection* of that curve onto the time
-/// points the closed form actually needs ($P^M(0,t)$, $P^M(0,T)$,
-/// $f^M(0,t)$), which keeps the type Python-bindable (no `&'a` lifetime,
-/// no `fn(f64)->f64` field) and decouples pricing from curve interpolation.
-///
-/// Holds only the model — the evaluation-time projection of the curve and
-/// the model parameters `alpha`/`sigma`. The short rate and the maturity
-/// horizon `tau` are the query, passed to
-/// [`ShortRatePricer::zero_coupon_price`]. [`from_curve`](Self::from_curve)
-/// additionally retains the curve itself (`curve`, below) so that call can
-/// honestly reproject $P^M(0, t+\tau)$ for *any* `tau`, not just the one it
-/// was built with — the model is genuinely reusable across a maturity grid.
-/// A `HullWhite` built by setting `p0_at_maturity` directly (no curve — see
-/// `curve`'s own doc) has no such freedom and is pinned to `pinned_tau`.
-///
-/// Use [`HullWhite::from_curve`] to build the struct from a [`DiscountCurve`];
-/// or set the discount/forward fields directly if you already have them.
+/// Hull–White model with the market curve projected onto $P^M(0,t)$, $P^M(0,T)$ and $f^M(0,t)$.
+/// Built by [`Self::from_curve`] it prices any `tau`; built from fields, only `pinned_tau`.
 #[derive(Default, Debug, Clone)]
 pub struct HullWhite {
   /// Mean-reversion speed $a > 0$.
   pub alpha: f64,
   /// Short-rate volatility $\sigma > 0$.
   pub sigma: f64,
-  /// Evaluation time $t$ measured from the curve's inception in years
-  /// (i.e., the curve was calibrated at "time 0", and `t` is how far in
-  /// the future we are pricing). For pricing as-of curve inception, use `t = 0`.
+  /// Evaluation time $t$ in years from the curve's inception; `0` prices as of inception.
   pub t: f64,
   /// Initial market discount factor at evaluation time, $P^M(0, t)$.
   pub p0_at_t: f64,
-  /// Initial market discount factor at maturity, $P^M(0, T) = P^M(0, t+\tau)$,
-  /// cached for `pinned_tau`. Ignored in favor of a fresh lookup on `curve`
-  /// when `curve` is `Some` — see
-  /// [`ShortRatePricer::zero_coupon_price`]'s impl on this type.
+  /// $P^M(0, t+\tau)$ at `pinned_tau`; read only when `curve` is `None`.
   pub p0_at_maturity: f64,
   /// Initial market instantaneous forward rate at evaluation time, $f^M(0, t)$.
   pub f0_at_t: f64,
-  /// The maturity horizon `p0_at_maturity` was projected for. Only
-  /// consulted when `curve` is `None`, to reject a query `tau` the cached
-  /// `p0_at_maturity` was never computed for instead of silently pricing
-  /// against the wrong discount factor.
+  /// The horizon `p0_at_maturity` was projected for; without a `curve`, a query at another `tau`
+  /// panics.
   pub pinned_tau: f64,
-  /// The calibrated curve, retained by [`from_curve`](Self::from_curve) so
-  /// every query can reproject `P^M(0, t+\tau)` fresh instead of trusting a
-  /// single cached `p0_at_maturity`. `None` when built by setting
-  /// `p0_at_maturity` directly (no curve available to requery) — a
-  /// `HullWhite` built this way only prices at `pinned_tau`.
+  /// The curve [`from_curve`](Self::from_curve) keeps, so each query reads $P^M(0, t+\tau)$ from
+  /// it; `None` for a model built from fields, which prices only at `pinned_tau`.
   pub curve: Option<DiscountCurve<f64>>,
 }
 
 impl HullWhite {
-  /// Build a Hull-White pricer by projecting a calibrated [`DiscountCurve`]
-  /// onto the time points the closed form needs, for the maturity horizon
-  /// `tau`. The curve itself is retained (`curve`), so the returned model
-  /// honestly reprices at any `tau`, not just this one — see the struct doc.
-  ///
-  /// The instantaneous forward $f^M(0, t) = -\partial_T \ln P^M(0, t)$ is
-  /// estimated by a centered finite difference on the curve's log-discount
-  /// factor. The bump width is chosen as `max(1e-4, 1e-4·t)` — small enough
-  /// to keep the discretisation error well below the bond's typical scale,
-  /// large enough to avoid catastrophic cancellation.
+  /// Projects `curve` at `t` and `t + tau` and keeps it, so the model prices at any `tau`;
+  /// $f^M(0, t)$ is a centred difference of the log discount factor of width `max(1e-4, 1e-4·t)`.
   pub fn from_curve(curve: &DiscountCurve<f64>, alpha: f64, sigma: f64, t: f64, tau: f64) -> Self {
     let p0_at_t = curve.discount_factor(t);
     let p0_at_maturity = curve.discount_factor(t + tau);
@@ -116,13 +63,8 @@ impl HullWhite {
   }
 }
 
-/// Centered finite-difference estimate of $f^M(0, t) = -\partial_T \ln P^M(0, t)$.
-///
-/// **Curve anchoring:** The estimate uses the curve's `forward_rate(t1, t2)`
-/// helper, which is `-(ln D(t2) - ln D(t1))/(t2-t1)`. For accurate near-spot
-/// pricing the calibrated [`DiscountCurve`] must include `t = 0` (with
-/// `D(0) = 1`); otherwise log-linear interpolation is constant in
-/// `(0, points[0].time]` and the forward extraction blows up there.
+/// Centred finite-difference estimate of $f^M(0, t)$. The curve needs a pillar at `t = 0`:
+/// log-linear interpolation is flat on `(0, points[0].time]` and the forward degenerates there.
 fn instantaneous_forward(curve: &DiscountCurve<f64>, t: f64) -> f64 {
   let h = (1e-4_f64).max(1e-4 * t);
   if t > h {
@@ -134,16 +76,8 @@ fn instantaneous_forward(curve: &DiscountCurve<f64>, t: f64) -> f64 {
 }
 
 impl ShortRatePricer for HullWhite {
-  /// When `curve` is set (built via [`from_curve`](Self::from_curve)), looks
-  /// up `P^M(0, t+tau)` fresh for whatever `tau` is queried — one model
-  /// honestly reprices any maturity. Otherwise falls back to the cached
-  /// `p0_at_maturity`, which is only valid for `pinned_tau`.
-  ///
-  /// # Panics
-  /// - if `tau` is negative (the trait's contract)
-  /// - if `curve` is `None` and `tau` does not equal `pinned_tau` — the
-  ///   cached `p0_at_maturity` was never computed for any other maturity,
-  ///   so pricing against it would silently return a wrong number
+  /// Reads $P^M(0, t+\tau)$ from `curve` when it is set and from `p0_at_maturity` otherwise;
+  /// panics unless `tau ≥ 0` and, without a curve, `tau == pinned_tau`.
   fn zero_coupon_price(&self, r0: f64, tau: f64) -> f64 {
     assert!(tau >= 0.0, "tau must be non-negative (got {tau})");
     let a = self.alpha;
@@ -256,8 +190,7 @@ mod tests {
 
   #[test]
   fn deterministic_no_clock_dependency() {
-    // The fix removes Utc::now()-dependence: prices computed at any wall-clock
-    // moment must be equal for identical inputs.
+    // Identical inputs price identically at any wall-clock moment.
     let curve = flat_curve(0.04);
     let make = || HullWhite::from_curve(&curve, 0.3, 0.015, 1.0, 2.0);
     let p1 = make().zero_coupon_price(0.04, 2.0);
@@ -277,12 +210,8 @@ mod tests {
     h.zero_coupon_price(0.05, -1.0);
   }
 
-  /// Regression: `from_curve` used to bake `p0_at_maturity` for a single
-  /// `tau`, so a later `zero_coupon_price` query at a *different* `tau`
-  /// silently priced against the wrong discount factor — plausible-looking,
-  /// wrong. A model built for `tau=5.0` must now reproject its own curve
-  /// and reproduce exactly what a model built directly for `tau=1.0` gives
-  /// when both are queried at `tau=1.0`, matching to the bit.
+  /// A model built from a curve at `tau = 5` prices `tau = 1` bit-identically to one built at
+  /// `tau = 1`: the curve is reprojected per query, never baked in at construction.
   #[test]
   fn zero_coupon_price_reprices_any_maturity_from_one_model() {
     let curve = flat_curve(0.05);
@@ -298,11 +227,7 @@ mod tests {
     );
   }
 
-  /// Same invariant, restated without `HullWhite`'s own history: two
-  /// *independently* built curve-backed models, queried at two different
-  /// `tau`s each, must agree with each other at every shared query point —
-  /// the price only depends on the query, never on which `tau` the model
-  /// happened to be constructed with.
+  /// Two curve-backed models built at different `tau`s agree at every shared query point.
   #[test]
   fn zero_coupon_price_is_independent_of_construction_tau() {
     let curve = flat_curve(0.05);

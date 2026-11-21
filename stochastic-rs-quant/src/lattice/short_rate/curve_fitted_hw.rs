@@ -9,7 +9,12 @@ use super::OneFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use super::common::require_non_negative;
 use crate::curves::DiscountCurve;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::one_factor_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -30,18 +35,6 @@ pub struct CurveFittedHullWhiteModel<T: RealExt> {
 }
 
 impl<T: RealExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
-  fn initial_state(&self) -> T {
-    T::zero()
-  }
-
-  fn drift(&self, _time: T, state: T) -> T {
-    -self.mean_reversion * state
-  }
-
-  fn diffusion(&self, _time: T, _state: T) -> T {
-    self.sigma
-  }
-
   fn short_rate(&self, time: T, state: T) -> T {
     let raw_level = (time / self.dt).to_f64().unwrap_or(0.0).round();
     let level = raw_level.max(0.0) as usize;
@@ -69,8 +62,8 @@ pub struct CurveFittedHullWhiteTree<T: RealExt> {
 }
 
 impl<T: RealExt> CurveFittedHullWhiteTree<T> {
-  /// Build a Hull-White tree calibrated to `curve` with mean reversion `a`,
-  /// volatility `sigma`, and `steps` tree steps over `horizon`.
+  /// A Hull–White tree fitted to `curve`, NaN-priced where its discount factor underflows; panics
+  /// unless `mean_reversion`, `sigma` are finite `≥ 0`, `horizon` finite `> 0` and `steps > 0`.
   pub fn new(
     mean_reversion: T,
     sigma: T,
@@ -78,8 +71,11 @@ impl<T: RealExt> CurveFittedHullWhiteTree<T> {
     horizon: T,
     steps: usize,
   ) -> Self {
+    require_non_negative("mean_reversion", mean_reversion);
+    require_non_negative("sigma", sigma);
     let factor = OrnsteinUhlenbeckFactor {
       initial_state: T::zero(),
+      long_run_mean: T::zero(),
       mean_reversion,
       sigma,
     };
@@ -130,11 +126,7 @@ fn fit_alpha_schedule<T: RealExt>(
       weighted_sum += arrow_debreu[m][j] * (-x_j * dt).exp();
     }
 
-    let alpha_m = if weighted_sum > T::zero() && p_next > T::zero() {
-      -(p_next / weighted_sum).ln() / dt
-    } else {
-      T::zero()
-    };
+    let alpha_m = -(p_next / weighted_sum).ln() / dt;
     alpha[m] = alpha_m;
 
     let width_next = tree.states[m + 1].len();
@@ -156,4 +148,10 @@ fn fit_alpha_schedule<T: RealExt>(
   }
 
   alpha
+}
+
+impl<T: RealExt> BermudanTree<T> for CurveFittedHullWhiteTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    one_factor_valuation(swaption, &self.tree, &self.model)
+  }
 }

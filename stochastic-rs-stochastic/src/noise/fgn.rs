@@ -1,15 +1,18 @@
-//! # fGN
+//! Fractional Gaussian noise by Davies–Harte circulant embedding, on the host or a device.
 //!
 //! $$
-//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
+//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)
+//! =\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
-#[cfg(feature = "accelerate")]
+#[cfg(accelerate_backend)]
 mod accelerate;
+#[cfg(accelerate_backend)]
+pub(crate) use accelerate::release_accelerate_scratch;
 mod core;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;
-#[cfg(feature = "metal")]
+#[cfg(metal_backend)]
 pub(crate) mod metal;
 #[cfg(feature = "python")]
 mod python;
@@ -18,11 +21,16 @@ pub use core::Fgn;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::traits::FloatExt;
@@ -30,22 +38,21 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// Sample two independent fGn paths in a single FFT / RNG pass (CPU).
-  ///
-  /// Both paths have the same covariance structure as `sample` and are
-  /// statistically independent — Dietrich & Newsam (1997) and Kroese & Botev
-  /// (2013 §2.2) identify the real and imaginary parts of the circulant-
-  /// embedding FFT output as two independent realisations of the target field.
-  /// For Monte-Carlo inner loops this ~halves wall time per path.
+  /// Two independent fGn paths from one FFT and RNG pass (CPU), at about half the cost per path:
+  /// the output's real and imaginary parts, Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2).
   pub fn sample_pair(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu()
   }
+}
 
-  /// As [`sample_pair`](Self::sample_pair) but with an explicit seed.
-  pub fn sample_pair_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_with_seed(seed)
+impl<T: FloatExt> Fgn<T, Unseeded, Cpu> {
+  /// The fGN of a grid of `n` points: its `n − 1` increments.
+  pub(crate) fn for_grid(hurst: T, n: usize, t: Option<T>) -> Self {
+    Self::new(hurst, n - 1, t, Unseeded)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for Fgn<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
@@ -54,46 +61,31 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   where
     Self: 's;
 
-  /// A CPU sampler reusing the process's `Arc`-shared FFT plan and
-  /// eigenvalues plus an owned Gaussian source. Note: even for GPU backends
-  /// this samples on the CPU — GPU users should batch through
-  /// [`sample_par`](Self::sample_par), which dispatches to the backend.
+  /// A CPU sampler on the process's shared FFT plan and eigenvalues, with its own Gaussian source.
+  /// It samples on the CPU for a GPU backend too; batch through [`sample_par`](Self::sample_par).
   fn sampler(&self) -> FgnSampler<'_, T, S, B> {
     FgnSampler {
       fgn: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(self.seed()),
     }
   }
 
   fn sample(&self) -> Self::Output {
-    self.backend.generate(self, &self.seed)
+    self.backend.generate(self, self.seed())
   }
 
-  /// The `m` paths are generated in **one batched backend call**.
-  ///
-  /// **Reproducibility.** On [`Cpu`](crate::device::Cpu): same seed + same
-  /// `m` ⇒ bit-identical output, on any machine and under any rayon
-  /// thread-pool size — `FgnBackend::generate_batch` derives every basis it
-  /// needs sequentially, on the calling thread, before any parallel work
-  /// starts. The `accelerate` feature's `Accelerate` backend gets the
-  /// identical seed-consumption fix but **not** bit-identical output —
-  /// `vDSP_fft_zip`'s own arithmetic is not bit-stable across otherwise-
-  /// identical calls (measured; see [`FgnBackend`](crate::device::FgnBackend)'s
-  /// doc). GPU backends are excluded from this guarantee entirely; see
-  /// [`FgnBackend`](crate::device::FgnBackend)'s doc for the full per-backend
-  /// table.
+  /// `m` paths in one batched backend call. On [`Cpu`](crate::device::Cpu) the same seed and `m`
+  /// give identical bits at any thread count; [`FgnBackend`](crate::device::FgnBackend) has more.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    self.backend.generate_batch(self, m, &self.seed)
+    self.backend.generate_batch(self, m, self.seed())
   }
 
-  /// Through the same batched call [`sample_par`](Self::sample_par) takes.
-  /// Without these three the trait's defaults would sample path by path on
-  /// the host while `sample_par` ran the device's pipeline — the same law,
-  /// a different stream, and none of the device's speed.
+  /// Through the batched call [`sample_par`](Self::sample_par) takes; the trait's defaults would
+  /// sample path by path on the host, a different stream from the device's pipeline.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     self
       .backend
-      .generate_map(self, m, &self.seed, |row| f(&row.to_owned()))
+      .generate_map(self, m, self.seed(), |row| f(&row.to_owned()))
   }
 
   fn sample_map_view<R: Send>(
@@ -101,29 +93,30 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.generate_map(self, m, &self.seed, f)
+    self.backend.generate_map(self, m, self.seed(), f)
   }
 
   fn try_sample(&self) -> Result<Self::Output, DeviceError> {
-    self.backend.try_generate(self, &self.seed)
+    self.backend.try_generate(self, self.seed())
   }
 
-  /// [`sample_par`](Self::sample_par) as one batched backend call, the
-  /// device's error instead of its panic. On the CPU devices this is always
-  /// `Ok` and bit-identical to `sample_par`.
+  /// [`sample_par`](Self::sample_par) with the device's error instead of its panic; on the CPU
+  /// devices always `Ok` and bit-identical to `sample_par`.
   fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
-    self.backend.try_generate_batch(self, m, &self.seed)
+    self.backend.try_generate_batch(self, m, self.seed())
   }
 }
 
-/// Reusable CPU fGn sampler: borrows the process (for its FFT plan and
-/// eigenvalues) and owns the Gaussian source so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable CPU fGn sampler: borrows the process's FFT plan and eigenvalues and owns the Gaussian
+/// source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgn: &'a Fgn<T, S, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgnSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_, T, S, B> {
   type Output = Array1<T>;
@@ -134,7 +127,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_
   }
 
   fn sample(&mut self) -> Array1<T> {
-    let out_len = self.fgn.out_len;
+    let out_len = self.fgn.n();
     array1_from_fill(out_len, |out| self.fgn.fill_cpu(&mut self.normal, out))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::Fgn;
+
+  #[test]
+  fn a_grid_of_n_points_has_n_minus_one_increments() {
+    assert_eq!(Fgn::<f64>::for_grid(0.7, 65, None).n(), 64);
   }
 }

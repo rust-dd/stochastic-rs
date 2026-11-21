@@ -1,8 +1,5 @@
-//! Device laws of the processes whose step reads the whole past — the rough
-//! volatility models' memory integrals, the fractional stable motion's moving
-//! average, the ARIMA recursions — which the engine's history block convolves
-//! exactly as the host does, so the comparisons here are between one scheme
-//! run on two machines.
+//! Device laws of the processes whose step reads the whole past (rough volatility, fractional
+//! stable motion, ARIMA): the history block convolves as the host does, one scheme on two machines.
 
 use ndarray::Array1;
 use ndarray::array;
@@ -11,9 +8,9 @@ use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
-use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
+use stochastic_rs_stochastic::volatility::fheston::Fheston;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 
 use super::common::Device;
 use super::common::M;
@@ -60,9 +57,9 @@ fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
 #[test]
 fn rough_heston_agrees_with_the_cpu_law() {
   let build = || {
-    RoughHeston::<f32, _>::new(
+    Fheston::<f32, _>::new(
       0.3,
-      Some(0.2),
+      0.2,
       0.04,
       2.0,
       0.3,
@@ -108,7 +105,7 @@ fn rough_heston_agrees_with_the_cpu_law() {
 #[test]
 fn fractional_bates_agrees_with_the_cpu_law() {
   let build = || {
-    FBatesSvj::<f32, _>::new(
+    FbatesSvj::<f32, _>::new(
       0.3,
       0.02,
       100.0,
@@ -163,8 +160,8 @@ fn rough_bergomi_agrees_with_the_cpu_law() {
     RoughBergomi::<f32, _>::new(
       0.1,
       1.5,
-      Some(0.2),
-      Some(100.0),
+      0.2,
+      100.0,
       0.02,
       -0.7,
       N,
@@ -207,9 +204,8 @@ fn rough_bergomi_agrees_with_the_cpu_law() {
   );
 }
 
-/// The stable innovations have no variance, so the spread is read off the
-/// quartiles — at the horizon and a quarter of the way in, since the ratio of
-/// the two is what the self-similarity index sets.
+/// The stable innovations have no variance, so the spread is read off the quartiles, at the
+/// horizon and a quarter of the way in: their ratio is what the self-similarity index sets.
 #[test]
 fn lfsm_agrees_with_the_cpu_law() {
   let build = || {

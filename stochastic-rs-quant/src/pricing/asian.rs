@@ -28,67 +28,47 @@ use crate::traits::ModelPricer;
 #[derive(Debug, Clone, Copy)]
 pub struct AsianPricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
 }
 
 impl AsianPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. A negative volatility flips the sign of
-  ///   `1/(sigma*sqrt(tau))` and so of $d_1$, while $d_2 = d_1 -
-  ///   \sigma\sqrt\tau$ moves the other way: the two cross and the call
-  ///   comes back **negative**, which is not the price of anything — case 1
-  ///   of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// `v == 0` is accepted: the averaged underlying is then deterministic and
-  /// the closed form returns its discounted intrinsic forward value, which
-  /// is a degenerate limit rather than an invalid input.
-  pub fn new(v: f64) -> Self {
+  /// Panics unless `sigma` is finite and `>= 0`, as a negative one prices a negative call; at
+  /// `sigma == 0` the average is deterministic and priced at its discounted intrinsic value.
+  pub fn new(sigma: f64) -> Self {
     assert!(
-      v >= 0.0,
-      "AsianPricer::new: v must be a non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    Self { v }
+    Self { sigma }
   }
 
   /// Average-rate volatility $\sigma/\sqrt3$ and the adjusted cost of carry
   /// used by the closed form at the query's rates.
   fn averaged_vol_and_carry(&self, r: f64, q: f64) -> (f64, f64) {
-    let v = self.v / 3.0_f64.sqrt();
+    let v = self.sigma / 3.0_f64.sqrt();
     let b = 0.5 * (r - q - 0.5 * v.powi(2) / 6.0);
     (v, b)
   }
 
-  /// Call and put price at one query point.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// The adjusted carry `b` with the closed form's `d1`, `d2` at one query point.
+  fn carry_d1_d2(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64, f64) {
     let (v, b) = self.averaged_vol_and_carry(r, q);
     let d1 = ((s / k).ln() + (b + 0.5 * v.powi(2) * tau)) / (v * tau.sqrt());
-    let d2 = d1 - v * tau.sqrt();
-
-    let call = s * ((b - r) * tau).exp() * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2);
-    let put = -s * ((b - r) * tau).exp() * norm_cdf(-d1) + k * (-r * tau).exp() * norm_cdf(-d2);
-
-    (call, put)
+    (b, d1, d1 - v * tau.sqrt())
   }
 }
 
 impl ModelPricer for AsianPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    let (b, d1, d2) = self.carry_d1_d2(s, k, r, q, tau);
+    s * ((b - r) * tau).exp() * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2)
   }
 
-  /// Overrides the trait's vanilla-parity default, which assumes the carry
-  /// factor is $e^{-q\tau}$. The averaged underlying's is
-  /// $e^{(b-r)\tau}$ with $b=\tfrac12(r-q-\tfrac{\sigma_A^2}{12})$, so
-  /// parity reads $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$. The two coincide only
-  /// where $b=r-q$, i.e. on the single line $r-q=-\sigma_A^2/12$ — a
-  /// measure-zero coincidence, not a convention, so the default is a
-  /// silent mispricing everywhere else. See
-  /// `asian_price_put_overrides_vanilla_parity`.
+  /// Not the parity default: the averaged underlying carries at $e^{(b-r)\tau}$ with
+  /// $b=\tfrac12(r-q-\tfrac{\sigma_A^2}{12})$, so parity reads $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    let (b, d1, d2) = self.carry_d1_d2(s, k, r, q, tau);
+    -s * ((b - r) * tau).exp() * norm_cdf(-d1) + k * (-r * tau).exp() * norm_cdf(-d2)
   }
 }
 
@@ -115,7 +95,10 @@ mod tests {
   #[test]
   fn asian_model_pricer_matches_pre_refactor_goldens() {
     let model = AsianPricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     assert!((call - 3.2776906533992545).abs() < TOL, "call {call}");
     assert!((put - 7.067347664422634).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
@@ -127,7 +110,10 @@ mod tests {
   #[test]
   fn asian_price_put_overrides_vanilla_parity() {
     let model = AsianPricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
 
     let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
     assert!(
@@ -168,15 +154,27 @@ mod tests {
   /// underlying becomes deterministic and the closed form returns its
   /// discounted intrinsic forward value.
   #[test]
-  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got -0.25)")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"
+  )]
   fn new_rejects_negative_volatility() {
     let _ = AsianPricer::new(-0.25);
   }
 
   #[test]
-  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got NaN)")]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+  )]
   fn new_rejects_nan_volatility() {
     let _ = AsianPricer::new(f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = AsianPricer::new(f64::INFINITY);
   }
 
   #[test]

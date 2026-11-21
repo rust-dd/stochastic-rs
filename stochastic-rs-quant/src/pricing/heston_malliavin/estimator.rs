@@ -1,37 +1,32 @@
 //! Seeded Monte Carlo estimation under correlated Heston dynamics.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-use super::HestonMalliavinError;
 use super::TerminalPayoff;
+use super::non_finite_payoff;
+use super::simulation::assert_model;
 use super::simulation::simulate_path;
 use super::simulation::validate_config;
-use super::simulation::validate_model;
 use super::statistics::OnlineCovariance;
 use super::statistics::OnlineScalar;
 use super::variance_vega::DEFAULT_MINIMUM_RELATIVE_BUMP;
 use super::variance_vega::HestonInitialVarianceVegaDiagnostics;
 use super::variance_vega::classify_initial_variance_vega;
 use super::variance_vega::effective_initial_variance_bump;
+use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 pub(super) const OBSERVABLES: usize = 4;
 
-/// Risk-neutral Heston parameters.
+/// Risk-neutral Heston model at spot `s` to horizon `tau`; estimators panic unless all are finite,
+/// `s, tau, v0 > 0`, `κ ≥ 0`, `|ρ| < 1` and `params` passes [`HestonParams::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonModel {
   /// Initial underlying price.
   pub s: f64,
-  /// Initial instantaneous variance.
-  pub initial_variance: f64,
-  /// Variance mean-reversion speed.
-  pub kappa: f64,
-  /// Long-run variance.
-  pub theta: f64,
-  /// Volatility of variance.
-  pub vol_of_vol: f64,
-  /// Spot/variance Brownian correlation.
-  pub rho: f64,
+  pub params: HestonParams,
   /// Continuously compounded risk-free rate.
   pub risk_free_rate: f64,
   /// Continuous dividend yield.
@@ -161,12 +156,10 @@ pub struct HestonMalliavinEstimator {
 }
 
 impl HestonMalliavinEstimator {
-  /// Creates an estimator after validating model and simulation inputs.
-  pub fn new(
-    model: HestonModel,
-    config: HestonMalliavinConfig,
-  ) -> Result<Self, HestonMalliavinError> {
-    validate_model(model)?;
+  /// Panics on a `model` outside [`HestonModel`]'s domain; `InvalidInput` for a bad `config`, or
+  /// one that leaves `rho` too little orthogonal variance.
+  pub fn new(model: HestonModel, config: HestonMalliavinConfig) -> Result<Self, QuantError> {
+    assert_model(model);
     validate_config(model, config)?;
     Ok(Self { model, config })
   }
@@ -175,7 +168,7 @@ impl HestonMalliavinEstimator {
   pub fn estimate<P: TerminalPayoff + ?Sized>(
     &self,
     payoff: &P,
-  ) -> Result<HestonMalliavinEstimate, HestonMalliavinError> {
+  ) -> Result<HestonMalliavinEstimate, QuantError> {
     self.run(payoff, false).map(|(estimate, _)| estimate)
   }
 
@@ -185,7 +178,7 @@ impl HestonMalliavinEstimator {
   pub fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
     &self,
     payoff: &P,
-  ) -> Result<super::HestonMalliavinSpotEstimate, HestonMalliavinError> {
+  ) -> Result<super::HestonMalliavinSpotEstimate, QuantError> {
     super::spot_estimator::estimate_spot_greeks(self.model, self.config, payoff)
   }
 
@@ -193,7 +186,7 @@ impl HestonMalliavinEstimator {
   pub fn estimate_requiring_stable_initial_variance_vega<P: TerminalPayoff + ?Sized>(
     &self,
     payoff: &P,
-  ) -> Result<HestonMalliavinEstimate, HestonMalliavinError> {
+  ) -> Result<HestonMalliavinEstimate, QuantError> {
     let estimate = self.estimate(payoff)?;
     if estimate
       .initial_variance_vega_diagnostics
@@ -202,7 +195,13 @@ impl HestonMalliavinEstimator {
     {
       Ok(estimate)
     } else {
-      Err(HestonMalliavinError::UnstableInitialVarianceVega)
+      Err(QuantError::Numerical {
+        what: "the initial-variance vega",
+        reason: format!(
+          "it is not bump-stable and sampling-resolved: {:?}",
+          estimate.initial_variance_vega_diagnostics.stability
+        ),
+      })
     }
   }
 
@@ -215,7 +214,7 @@ impl HestonMalliavinEstimator {
       HestonMalliavinEstimate,
       Vec<HestonMalliavinPathContribution>,
     ),
-    HestonMalliavinError,
+    QuantError,
   > {
     self.run(payoff, true)
   }
@@ -229,10 +228,10 @@ impl HestonMalliavinEstimator {
       HestonMalliavinEstimate,
       Vec<HestonMalliavinPathContribution>,
     ),
-    HestonMalliavinError,
+    QuantError,
   > {
     let pairs = self.config.paths / 2;
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.config.seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.config.seed));
     let mut statistics = OnlineCovariance::<OBSERVABLES>::default();
     let mut comparison_statistics = OnlineScalar::default();
     let mut bump_difference_statistics = OnlineScalar::default();
@@ -246,10 +245,10 @@ impl HestonMalliavinEstimator {
 
     for pair in 0..pairs {
       for draw in &mut variance_normals {
-        *draw = normal.sample_fast();
+        *draw = normal.sample();
       }
       for draw in &mut orthogonal_normals {
-        *draw = normal.sample_fast();
+        *draw = normal.sample();
       }
 
       let positive =
@@ -285,7 +284,7 @@ impl HestonMalliavinEstimator {
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
       effective_initial_variance_bump(
-        self.model.initial_variance,
+        self.model.params.v0,
         self.config.initial_variance_bump,
         self.config.minimum_relative_initial_variance_bump,
       )?,
@@ -317,17 +316,17 @@ impl HestonMalliavinEstimator {
     sign: i8,
     variance_normals: &[f64],
     orthogonal_normals: &[f64],
-  ) -> Result<HestonMalliavinPathContribution, HestonMalliavinError> {
+  ) -> Result<HestonMalliavinPathContribution, QuantError> {
     let sign_value = f64::from(sign);
     let effective_bump = effective_initial_variance_bump(
-      self.model.initial_variance,
+      self.model.params.v0,
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
     )?;
     let comparison_bump = 0.5 * effective_bump;
     let base = simulate_path(
       self.model,
-      self.model.initial_variance,
+      self.model.params.v0,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -336,7 +335,7 @@ impl HestonMalliavinEstimator {
     )?;
     let up = simulate_path(
       self.model,
-      self.model.initial_variance + effective_bump,
+      self.model.params.v0 + effective_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -345,7 +344,7 @@ impl HestonMalliavinEstimator {
     )?;
     let down = simulate_path(
       self.model,
-      self.model.initial_variance - effective_bump,
+      self.model.params.v0 - effective_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -354,7 +353,7 @@ impl HestonMalliavinEstimator {
     )?;
     let comparison_up = simulate_path(
       self.model,
-      self.model.initial_variance + comparison_bump,
+      self.model.params.v0 + comparison_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -363,7 +362,7 @@ impl HestonMalliavinEstimator {
     )?;
     let comparison_down = simulate_path(
       self.model,
-      self.model.initial_variance - comparison_bump,
+      self.model.params.v0 - comparison_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -402,11 +401,11 @@ impl HestonMalliavinEstimator {
 fn finite_payoff<P: TerminalPayoff + ?Sized>(
   payoff: &P,
   terminal_spot: f64,
-) -> Result<f64, HestonMalliavinError> {
+) -> Result<f64, QuantError> {
   let value = payoff.value(terminal_spot);
   if value.is_finite() {
     Ok(value)
   } else {
-    Err(HestonMalliavinError::NonFinitePayoff)
+    Err(non_finite_payoff(value, terminal_spot))
   }
 }

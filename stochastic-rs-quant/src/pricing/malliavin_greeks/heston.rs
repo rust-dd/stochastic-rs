@@ -1,33 +1,29 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
+use crate::pricing::heston::HestonParams;
 use crate::traits::ProcessExt;
 
-/// Malliavin-weighted Greeks computation for a European call under Heston dynamics.
+/// Malliavin-weighted Greeks of a European call under Heston dynamics; every estimator is NaN for a
+/// spot or horizon that is not finite and positive or a non-finite rate.
 #[derive(Debug, Clone)]
 pub struct HestonMalliavinGreeks {
   /// Spot price.
   pub s: f64,
-  /// Initial variance
-  pub v0: f64,
-  /// Mean reversion speed
-  pub kappa: f64,
-  /// Long-run variance
-  pub theta: f64,
-  /// Vol of vol
-  pub xi: f64,
-  /// Correlation between price and variance Brownians
-  pub rho: f64,
+  pub params: HestonParams,
   /// Risk-free rate.
   pub r: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
   /// Strike price
   pub k: f64,
+  /// Time to maturity in years.
+  pub tau: f64,
   /// Number of Monte Carlo paths
   pub n_paths: usize,
   /// Number of time steps
@@ -39,27 +35,48 @@ impl HestonMalliavinGreeks {
   pub(super) const EL_KHATIB_DU_EPS: f64 = 1e-3;
   pub(super) const EL_KHATIB_VAR_FLOOR: f64 = 1e-12;
 
+  pub(super) fn degenerate_query(&self) -> bool {
+    let query = self.s > 0.0 && self.s.is_finite() && self.tau > 0.0 && self.tau.is_finite();
+    !(query && self.r.is_finite())
+  }
+
+  fn process<S: SeedExt>(&self, v0: f64, seed: S) -> Heston<f64, Euler, S> {
+    let HestonParams {
+      kappa,
+      theta,
+      sigma,
+      rho,
+      ..
+    } = self.params;
+    Heston::new(
+      self.s,
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+      self.r,
+      self.n_steps,
+      Some(self.tau),
+      HestonPow::Sqrt,
+      VarianceBoundary::Floor,
+      seed,
+    )
+  }
+
   /// Simulate Heston paths and return terminal prices, payoffs, full variance paths,
   /// and full W1 (price-driving Brownian) paths.
   ///
   /// Returns `(S_T, payoff, V_paths, W1_paths)`.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>, Array2<f64>, Array2<f64>) {
+    if self.degenerate_query() {
+      let nan = Array1::from_elem(self.n_paths, f64::NAN);
+      let paths = Array2::from_elem((self.n_paths, self.n_steps), f64::NAN);
+      return (nan.clone(), nan, paths.clone(), paths);
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
 
-    let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      Unseeded,
-    );
+    let heston = self.process(self.params.v0, Unseeded);
 
     let mut s_terminal = Array1::<f64>::zeros(self.n_paths);
     let mut payoffs = Array1::<f64>::zeros(self.n_paths);
@@ -109,23 +126,13 @@ impl HestonMalliavinGreeks {
   /// Malliavin weights. For non-smooth payoffs (digitals, barriers), use
   /// [`delta`](Self::delta).
   pub fn delta_pathwise(&self) -> f64 {
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      Unseeded,
-    );
+    let heston = self.process(self.params.v0, Unseeded);
 
     let mut sum = 0.0;
 
@@ -162,24 +169,14 @@ impl HestonMalliavinGreeks {
   ///
   /// For vanilla calls, prefer [`delta_pathwise`](Self::delta_pathwise) which is exact.
   pub fn delta(&self) -> f64 {
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      Unseeded,
-    );
+    let heston = self.process(self.params.v0, Unseeded);
 
     let mut sum = 0.0;
 
@@ -218,24 +215,14 @@ impl HestonMalliavinGreeks {
   /// π_Γ = π_Δ² − T / (S₀² · ∫₀ᵀ V_t dt)
   /// ```
   pub fn gamma(&self) -> f64 {
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      Unseeded,
-    );
+    let heston = self.process(self.params.v0, Unseeded);
 
     let mut sum = 0.0;
 
@@ -274,7 +261,10 @@ impl HestonMalliavinGreeks {
   /// Uses finite-difference bump on v₀ with common random numbers (CRN).
   /// Each path pair (up/down) shares the same seed for noise cancellation.
   pub fn vega_v0(&self) -> f64 {
-    let dv = 0.002_f64.min(self.v0 * 0.1);
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
+    let dv = 0.002_f64.min(self.params.v0 * 0.1);
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
@@ -284,34 +274,8 @@ impl HestonMalliavinGreeks {
     for i in 0..self.n_paths {
       let seed = 0xCAFE_u64.wrapping_add(i as u64);
 
-      let heston_up = Heston::new(
-        Some(self.s),
-        Some(self.v0 + dv),
-        self.kappa,
-        self.theta,
-        self.xi,
-        self.rho,
-        self.r,
-        self.n_steps,
-        Some(self.tau),
-        HestonPow::Sqrt,
-        Some(false),
-        Deterministic::new(seed),
-      );
-      let heston_dn = Heston::new(
-        Some(self.s),
-        Some((self.v0 - dv).max(1e-6)),
-        self.kappa,
-        self.theta,
-        self.xi,
-        self.rho,
-        self.r,
-        self.n_steps,
-        Some(self.tau),
-        HestonPow::Sqrt,
-        Some(false),
-        Deterministic::new(seed),
-      );
+      let heston_up = self.process(self.params.v0 + dv, Deterministic::new(seed));
+      let heston_dn = self.process((self.params.v0 - dv).max(1e-6), Deterministic::new(seed));
 
       let [s_up, _] = heston_up.sample();
       let [s_dn, _] = heston_dn.sample();
@@ -329,24 +293,14 @@ impl HestonMalliavinGreeks {
   /// finite-difference bump with common-random-numbers and cannot share
   /// paths with the Malliavin estimator.
   fn delta_gamma_single_pass(&self) -> (f64, f64) {
+    if self.degenerate_query() {
+      return (f64::NAN, f64::NAN);
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
     let m = self.n_paths as f64;
 
-    let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
-      self.kappa,
-      self.theta,
-      self.xi,
-      self.rho,
-      self.r,
-      self.n_steps,
-      Some(self.tau),
-      HestonPow::Sqrt,
-      Some(false),
-      Unseeded,
-    );
+    let heston = self.process(self.params.v0, Unseeded);
 
     let mut sum_delta = 0.0;
     let mut sum_gamma = 0.0;
@@ -385,16 +339,16 @@ impl HestonMalliavinGreeks {
 }
 
 impl crate::traits::GreeksExt for HestonMalliavinGreeks {
-  fn delta(&self) -> f64 {
-    HestonMalliavinGreeks::delta(self)
+  fn delta(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::delta(self))
   }
 
-  fn gamma(&self) -> f64 {
-    HestonMalliavinGreeks::gamma(self)
+  fn gamma(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::gamma(self))
   }
 
-  fn vega(&self) -> f64 {
-    HestonMalliavinGreeks::vega_v0(self)
+  fn vega(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::vega_v0(self))
   }
 
   /// Override the trait default — calling `delta()` and `gamma()`

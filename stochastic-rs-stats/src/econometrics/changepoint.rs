@@ -1,22 +1,18 @@
-//! Changepoint detection — CUSUM (Page 1954) and PELT (Killick et al. 2012).
+//! Changepoint detection: Page's two-sided CUSUM for a mean shift, and PELT.
 //!
-//! - **CUSUM** detects mean shifts via cumulative sums of standardised
-//!   deviations and signals when one of two recursive sums exceeds a
-//!   threshold.
-//! - **PELT** finds the global optimum of a penalised likelihood
-//!   objective with at most linear cost in the sample size.
+//! PELT finds the global optimum at a cost at most linear in the sample; a constant has no change.
 //!
-//! Reference: Page, "Continuous Inspection Schemes", Biometrika, 41(1/2),
-//! 100-115 (1954). DOI: 10.2307/2333009
-//!
-//! Reference: Killick, Fearnhead, Eckley, "Optimal Detection of Changepoints
-//! with a Linear Computational Cost", Journal of the American Statistical
-//! Association, 107(500), 1590-1598 (2012).
-//! DOI: 10.1080/01621459.2012.737745
+//! Reference: Page (1954), Biometrika 41(1/2), 100-115, DOI: 10.2307/2333009
+//! Reference: Killick et al. (2012), JASA 107(500), 1590-1598, DOI: 10.1080/01621459.2012.737745
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
@@ -30,27 +26,32 @@ pub struct ChangepointCusumResult {
   pub alarms: Vec<usize>,
 }
 
-/// One-sided / two-sided CUSUM with reference value `k` (half the smallest
-/// shift to detect, in standard-deviation units) and threshold `h`.
-///
-/// `series` is standardised in-place: pass already-standardised residuals or a
-/// raw series whose mean and standard deviation will be subtracted.
-pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> ChangepointCusumResult {
+/// Two-sided CUSUM chart, reference `k` (half the smallest shift, in sds) and threshold `h`; `Err`
+/// below 2 points, on a non-finite or constant series; panics unless `k` and `h` are finite, ≥ 0.
+pub fn cusum<T: FloatExt>(
+  series: ArrayView1<T>,
+  k: f64,
+  h: f64,
+) -> Result<ChangepointCusumResult, StatsError> {
+  assert!(
+    k.is_finite() && k >= 0.0,
+    "k must satisfy `k.is_finite() && k >= 0.0`, got k = {k:?}"
+  );
+  assert!(
+    h.is_finite() && h >= 0.0,
+    "h must satisfy `h.is_finite() && h >= 0.0`, got h = {h:?}"
+  );
+  let y = as_slice_or_copy(series);
+  validate(&y, 2)?;
+  reject_constant(&y, "constant series")?;
   let n = series.len();
-  if n == 0 {
-    return ChangepointCusumResult {
-      upper: Array1::zeros(0),
-      lower: Array1::zeros(0),
-      alarms: Vec::new(),
-    };
-  }
   let mut x = Array1::<f64>::zeros(n);
   for i in 0..n {
     x[i] = series[i].to_f64().unwrap();
   }
   let mean = x.iter().sum::<f64>() / n as f64;
-  let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0).max(1.0);
-  let sd = var.sqrt().max(1e-12);
+  let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0);
+  let sd = var.sqrt();
   let mut upper = Array1::<f64>::zeros(n);
   let mut lower = Array1::<f64>::zeros(n);
   let mut alarms = Vec::new();
@@ -66,11 +67,11 @@ pub fn cusum<T: FloatExt>(series: ArrayView1<T>, k: f64, h: f64) -> ChangepointC
       alarms.push(i);
     }
   }
-  ChangepointCusumResult {
+  Ok(ChangepointCusumResult {
     upper,
     lower,
     alarms,
-  }
+  })
 }
 
 /// Result of a PELT pass.
@@ -83,19 +84,23 @@ pub struct PeltResult {
   pub cost: f64,
 }
 
-/// PELT (Pruned Exact Linear Time) changepoint detection on a univariate
-/// series with the squared-error mean-shift cost
-/// $\mathcal C(y_{a:b}) = \sum_{t=a}^{b-1}(y_t - \bar y_{a:b})^2$
-/// and per-changepoint penalty `penalty`.
-pub fn pelt<T: FloatExt>(series: ArrayView1<T>, penalty: f64, min_size: usize) -> PeltResult {
+/// PELT with the mean-shift cost $\sum_{t=a}^{b-1}(y_t - \bar y_{a:b})^2$ and `penalty` per change;
+/// `Err` on no or a non-finite point, panics unless `penalty` is finite and `min_size >= 1`.
+pub fn pelt<T: FloatExt>(
+  series: ArrayView1<T>,
+  penalty: f64,
+  min_size: usize,
+) -> Result<PeltResult, StatsError> {
+  assert!(
+    penalty.is_finite(),
+    "penalty must satisfy `penalty.is_finite()`, got penalty = {penalty:?}"
+  );
+  assert!(
+    min_size >= 1,
+    "min_size must satisfy `min_size >= 1`, got min_size = {min_size:?}"
+  );
+  validate_view(series, 1)?;
   let n = series.len();
-  if n == 0 {
-    return PeltResult {
-      changepoints: Vec::new(),
-      cost: 0.0,
-    };
-  }
-  let min_size = min_size.max(1);
   let mut prefix = vec![0.0_f64; n + 1];
   let mut prefix_sq = vec![0.0_f64; n + 1];
   for i in 0..n {
@@ -157,47 +162,49 @@ pub fn pelt<T: FloatExt>(series: ArrayView1<T>, penalty: f64, min_size: usize) -
     current = p;
   }
   cps.reverse();
-  PeltResult {
+  Ok(PeltResult {
     changepoints: cps,
     cost: f[n],
-  }
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   #[test]
   fn cusum_few_alarms_under_pure_noise() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(5));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(5));
     let mut buf = vec![0.0_f64; 1_000];
     dist.fill_slice(&mut buf);
     let s = Array1::from(buf);
-    let res = cusum(s.view(), 0.5, 8.0);
+    let res = cusum(s.view(), 0.5, 8.0).unwrap();
     assert!(res.alarms.is_empty());
   }
 
   #[test]
   fn cusum_detects_mean_shift() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
     let mut buf = vec![0.0_f64; 500];
     dist.fill_slice(&mut buf);
     for v in buf.iter_mut().take(500).skip(250) {
       *v += 5.0;
     }
     let s = Array1::from(buf);
-    let res = cusum(s.view(), 0.5, 4.0);
+    let res = cusum(s.view(), 0.5, 4.0).unwrap();
     assert!(!res.alarms.is_empty());
   }
 
   #[test]
   fn pelt_no_changepoints_for_constant_series() {
     let s = Array1::<f64>::from_elem(100, 1.5);
-    let res = pelt(s.view(), 5.0, 5);
+    let res = pelt(s.view(), 5.0, 5).unwrap();
     assert!(res.changepoints.is_empty());
   }
 
@@ -207,13 +214,21 @@ mod tests {
     for i in 0..200 {
       buf[i] = if i < 100 { 0.0 } else { 5.0 };
     }
-    let res = pelt(buf.view(), 1.0, 5);
+    let res = pelt(buf.view(), 1.0, 5).unwrap();
     assert!(!res.changepoints.is_empty());
     assert!(
       res
         .changepoints
         .iter()
         .any(|&cp| (cp as i64 - 100).abs() <= 5)
+    );
+  }
+
+  #[test]
+  fn cusum_rejects_a_constant_series() {
+    assert_eq!(
+      cusum(Array1::<f64>::from_elem(50, 1.5).view(), 0.5, 4.0).unwrap_err(),
+      StatsError::DegenerateData("constant series")
     );
   }
 }

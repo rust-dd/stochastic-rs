@@ -1,10 +1,10 @@
-//! # Portfolio Types
+//! Shared enums and result containers for portfolio optimization.
 //!
 //! $$
 //! \mathbf{w}^\*=\arg\max_{\mathbf{w}} \frac{\mathbb E\left[R_p\right]-r_f}{\sigma_p}
 //! $$
-//!
-//! Shared enums and result containers for portfolio optimization.
+
+use crate::error::QuantError;
 
 /// Supported portfolio optimization methods.
 #[derive(Clone, Copy, Debug)]
@@ -13,46 +13,34 @@ pub enum OptimizerMethod {
   /// Mean-variance optimization in long-only simplex.
   Markowitz,
   /// Mean-CVaR optimization using empirical tail loss.
-  MeanCVaR,
+  MeanCvar,
   /// Weights proportional to inverse asset volatility.
   InverseVol,
   /// Equalized marginal risk contributions.
   RiskParity,
   /// Hierarchical Risk Parity (Lopez de Prado).
-  HRP,
+  Hrp,
   /// Black-Litterman posterior expected returns with Markowitz solve.
   BlackLitterman,
 }
 
-/// Error returned by [`OptimizerMethod::from_str`](OptimizerMethod) for unrecognized inputs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownOptimizerMethod(pub String);
-
-impl std::fmt::Display for UnknownOptimizerMethod {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(
-      f,
-      "unknown optimizer method '{}'. Valid: markowitz, mean-cvar, inverse-vol, \
-       risk-parity, hrp, black-litterman",
-      self.0
-    )
-  }
-}
-
-impl std::error::Error for UnknownOptimizerMethod {}
-
 impl std::str::FromStr for OptimizerMethod {
-  type Err = UnknownOptimizerMethod;
+  type Err = QuantError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s.to_lowercase().as_str() {
       "markowitz" | "mv" | "mean-variance" | "meanvariance" => Ok(Self::Markowitz),
-      "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCVaR),
+      "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCvar),
       "inv-vol" | "inverse-vol" | "invvol" => Ok(Self::InverseVol),
       "risk-parity" | "riskparity" => Ok(Self::RiskParity),
-      "hrp" => Ok(Self::HRP),
+      "hrp" => Ok(Self::Hrp),
       "bl" | "black-litterman" | "blacklitterman" => Ok(Self::BlackLitterman),
-      _ => Err(UnknownOptimizerMethod(s.to_string())),
+      _ => Err(QuantError::invalid(
+        "optimizer method",
+        format!(
+          "'{s}', expected one of markowitz, mean-cvar, inverse-vol, risk-parity, hrp, black-litterman"
+        ),
+      )),
     }
   }
 }

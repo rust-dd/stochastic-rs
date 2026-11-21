@@ -6,10 +6,13 @@
 //! Par rate verified against manual derivation.
 
 use ndarray::array;
+use stochastic_rs::quant::calendar::Frequency;
+use stochastic_rs::quant::cashflows::RateTenor;
+use stochastic_rs::quant::curves::BootstrapInstrument;
+use stochastic_rs::quant::curves::BootstrapSpec;
 use stochastic_rs::quant::curves::Compounding;
 use stochastic_rs::quant::curves::CurvePoint;
 use stochastic_rs::quant::curves::DiscountCurve;
-use stochastic_rs::quant::curves::Instrument;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::MultiCurve;
 use stochastic_rs::quant::curves::NelsonSiegel;
@@ -211,24 +214,28 @@ fn nelson_siegel_discount_factor_consistency() {
 fn bootstrap_deposits_simple_compounding() {
   // D(T) = 1 / (1 + r * T) for deposits
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.0 / 12.0,
       rate: 0.05,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.052,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.50,
       rate: 0.054,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.00,
       rate: 0.056,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates);
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   approx(
     curve.discount_factor(1.0 / 12.0),
@@ -246,17 +253,21 @@ fn bootstrap_deposit_plus_swap() {
   // D(1) = 1/(1+0.056) = 0.946970
   // D(2) = (1 - 0.058 * D(1)) / (1 + 0.058) = (1 - 0.054924) / 1.058
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.0,
       rate: 0.056,
     },
-    Instrument::Swap {
+    BootstrapInstrument::Swap {
       maturity: 2.0,
       rate: 0.058,
-      frequency: 1,
+      frequency: Frequency::Annual,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates);
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d1 = 1.0 / (1.0 + 0.056);
   let d2 = (1.0 - 0.058 * d1) / (1.0 + 0.058);
@@ -271,17 +282,21 @@ fn bootstrap_fra() {
   // D(0.25) = 1/(1 + 0.05 * 0.25)
   // D(0.50) = D(0.25) / (1 + fra_rate * 0.25)
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.05,
     },
-    Instrument::Fra {
+    BootstrapInstrument::Fra {
       start: 0.25,
       end: 0.50,
       rate: 0.055,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates);
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d_3m = 1.0 / (1.0 + 0.05 * 0.25);
   let d_6m = d_3m / (1.0 + 0.055 * 0.25);
@@ -297,18 +312,22 @@ fn bootstrap_futures_with_convexity_adjustment() {
   // Convexity adj = 0.5 * 0.01^2 * 0.25 * 0.50 = 0.00000625
   // FRA rate = 0.055 - 0.00000625
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.05,
     },
-    Instrument::Future {
+    BootstrapInstrument::Future {
       start: 0.25,
       end: 0.50,
       price: 94.5,
       sigma: 0.01,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates);
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d_3m = 1.0 / (1.0 + 0.05 * 0.25);
   let fra_rate = 0.055 - 0.5 * 0.0001 * 0.25 * 0.50;
@@ -340,7 +359,7 @@ fn par_rate_semiannual() {
     ],
     InterpolationMethod::LinearOnZeroRates,
   );
-  let par = curve.par_rate(1.0, 2);
+  let par = curve.par_rate(1.0, Frequency::SemiAnnual);
   approx(par, 2.0 * (1.0 - 0.950) / (0.975 + 0.950), 1e-4);
 }
 
@@ -365,7 +384,7 @@ fn par_rate_annual() {
     ],
     InterpolationMethod::LinearOnZeroRates,
   );
-  let par = curve.par_rate(2.0, 1);
+  let par = curve.par_rate(2.0, Frequency::Annual);
   approx(par, (1.0 - 0.90) / (0.95 + 0.90), 1e-4);
 }
 
@@ -426,8 +445,11 @@ fn linear_on_zero_rates_interpolates_correctly() {
 fn from_zero_rates_consistency() {
   let times = array![0.5, 1.0, 2.0, 5.0];
   let rates = array![0.03, 0.04, 0.05, 0.06];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
 
   for i in 0..times.len() {
     let df = (-(rates[i] as f64) * (times[i] as f64)).exp();
@@ -458,11 +480,13 @@ fn multi_curve_fair_swap_rate_single_curve() {
   let forecast = DiscountCurve::new(pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(curve);
-  mc.add_forecast("6M", forecast);
+  mc.add_forecast(RateTenor::SixMonths, forecast);
 
   let schedule = array![0.0, 0.5, 1.0];
-  let fair_rate = mc.fair_swap_rate("6M", &schedule).unwrap();
-  let par_rate = mc.discount.par_rate(1.0, 2);
+  let fair_rate = mc
+    .fair_swap_rate(RateTenor::SixMonths, schedule.view())
+    .unwrap();
+  let par_rate = mc.discount.par_rate(1.0, Frequency::SemiAnnual);
 
   approx(fair_rate, par_rate, 1e-4);
 }
@@ -494,13 +518,15 @@ fn multi_curve_basis_spread() {
   let forecast = DiscountCurve::new(forecast_pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(ois);
-  mc.add_forecast("3M", forecast);
+  mc.add_forecast(RateTenor::ThreeMonths, forecast);
 
-  let spread = mc.basis_spread("3M", 0.0, 1.0).unwrap();
+  let spread = mc.basis_spread(RateTenor::ThreeMonths, 0.0, 1.0).unwrap();
   // Forecast forward > OIS forward, so spread > 0
   assert!(spread > 0.0);
 
-  let fwd_forecast = mc.projected_forward("3M", 0.0, 1.0).unwrap();
+  let fwd_forecast = mc
+    .projected_forward(RateTenor::ThreeMonths, 0.0, 1.0)
+    .unwrap();
   let fwd_ois = mc.discount.simple_forward_rate(0.0, 1.0);
   approx(spread, fwd_forecast - fwd_ois, 1e-12);
 }
@@ -540,11 +566,13 @@ fn multi_curve_pv_floating_leg() {
   let forecast = DiscountCurve::new(forecast_pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(ois);
-  mc.add_forecast("6M", forecast);
+  mc.add_forecast(RateTenor::SixMonths, forecast);
 
   let schedule = array![0.0, 0.5, 1.0];
   let notional = 1_000_000.0;
-  let pv = mc.pv_floating_leg("6M", &schedule, notional).unwrap();
+  let pv = mc
+    .pv_floating_leg(RateTenor::SixMonths, schedule.view(), notional)
+    .unwrap();
 
   // Manual: PV = D_ois(0.5) * 0.5 * F_fc(0,0.5) * N + D_ois(1) * 0.5 * F_fc(0.5,1) * N
   let f1 = (1.0 / 0.979 - 1.0) / 0.5;

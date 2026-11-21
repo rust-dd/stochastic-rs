@@ -68,11 +68,8 @@ pub fn g_digital_put_2d<T: FloatExt>(y: [T; 2], k: [T; 2]) -> [[T; 2]; 2] {
     "digital-put strikes must be finite and positive"
   );
   let a2_inv = T::one() / (T::from_f64_fast(2.0) * T::from_f64_fast(std::f64::consts::PI));
-  let scale = y
-    .into_iter()
-    .chain(k)
-    .map(<T as num_traits::Float>::abs)
-    .fold(T::zero(), |current, value| current.max(value));
+  let scale = T::max_or_nan_fold(y.into_iter().chain(k).map(<T as num_traits::Float>::abs))
+    .max_or_nan(T::zero());
   let y1 = y[0] / scale;
   let y2 = y[1] / scale;
   let k1 = k[0] / scale;

@@ -1,4 +1,4 @@
-//! # fGBM
+//! Geometric Brownian motion on fractional Brownian motion, by an Euler scheme from `x0`.
 //!
 //! $$
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dB_t^H
@@ -13,33 +13,48 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+/// Fractional GBM `dS = μS dt + σS dB^H`. Fields are private, since the fGN driver caches a
+/// spectrum of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
+/// let mut p = Fgbm::<f64>::new(0.7, 0.05, 0.2, 10, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
+#[derive(Debug, Clone)]
 pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
-  /// Constant proportional drift rate μ — fGBM has no mean reversion.
-  pub mu: T,
-  /// Diffusion scale σ multiplying `S_t dB_t^H`.
-  pub sigma: T,
-  /// Number of points sampled along the fGBM path.
-  pub n: usize,
-  /// Initial value S₀ of the fGBM path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  mu: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  /// Panics unless `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    Self::check_hurst(hurst);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_x0(x0);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
@@ -49,9 +64,117 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
       x0,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Fgn::for_grid(hurst, n, t),
     }
   }
+
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    Self::check_hurst(hurst);
+    self.hurst = hurst;
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `n`; panics unless `n >= 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
+    self.n = n;
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
+    self.t = t;
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `mu`; panics unless `mu` is finite.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`; panics unless `sigma` is finite.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `x0`; panics unless `x0` is finite.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Constant proportional drift rate μ — fGBM has no mean reversion.
+  pub fn mu(&self) -> T {
+    self.mu
+  }
+
+  /// Diffusion scale σ multiplying `S_t dB_t^H`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// Number of points sampled along the fGBM path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value S₀ of the fGBM path.
+  pub fn x0(&self) -> Option<T> {
+    self.x0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fgbm<T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -63,17 +186,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. `fill_path` then uses this
-  /// owned seed *directly* (no further derive) — exactly one derive from
-  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
-  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
-  /// Repeat calls on one sampler advance the same owned seed further, for
-  /// an independent path each time.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once:
+  /// one derive from `self.seed` per chunk, and each call advances the owned seed to a new path.
   fn sampler(&self) -> FgbmSampler<'_, T, S, B> {
     FgbmSampler {
       fgbm: self,
@@ -81,10 +195,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
-  /// these two the trait's defaults would send a mapped batch through the
-  /// host sampler while `sample_par` ran on the device — the same law, but
-  /// a different stream and none of the device's speed.
+  /// The same launch as [`sample_par`](Self::sample_par), mapped; the trait's defaults would map
+  /// a batch on the host sampler, a different stream from the device's `sample_par`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
   }
@@ -97,9 +209,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
-  /// `m` paths through the Euler engine: on a device the whole recursion runs
-  /// in the kernel from fGN increments, on the host devices it is this
-  /// process's own sampler chunked exactly as `ProcessExt` chunks.
+  /// `m` paths through the Euler engine: a device runs the recursion in its kernel from fGN
+  /// increments, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
@@ -109,10 +220,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Fgbm`] sampling state: borrows the process for its inner [`Fgn`]
-/// and owns a seed derived once at construction. The path is an Euler
-/// discretisation of `dS = mu S dt + sigma S dB^H` started at `x0`.
+/// Reusable [`Fgbm`] sampling state on the process's [`Fgn`] and a seed derived once: an Euler
+/// discretisation of `dS = mu S dt + sigma S dB^H` from `x0`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FgbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgbm: &'a Fgbm<T, S, B>,
   seed: S,
@@ -143,6 +254,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FgbmSampler<'_, T, S, B> {
       .unwrap_or_else(crate::device::device_panic)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgbmSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
@@ -201,14 +314,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   /// The pipeline that produces this process's increments: the device runs it
   /// and keeps the result in its own buffer.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 }
 

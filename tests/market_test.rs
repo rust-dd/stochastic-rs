@@ -13,13 +13,15 @@ use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::cashflows::IborIndex;
 use stochastic_rs::quant::cashflows::RateTenor;
+use stochastic_rs::quant::curves::BootstrapInstrument;
+use stochastic_rs::quant::curves::BootstrapSpec;
 use stochastic_rs::quant::curves::DiscountCurve;
-use stochastic_rs::quant::curves::Instrument;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::bootstrap;
-use stochastic_rs::quant::market::Deposit;
+use stochastic_rs::quant::instruments::Deposit;
+use stochastic_rs::quant::instruments::ForwardRateAgreement;
+use stochastic_rs::quant::instruments::FraPosition;
 use stochastic_rs::quant::market::DepositRateHelper;
-use stochastic_rs::quant::market::ForwardRateAgreement;
 use stochastic_rs::quant::market::FraRateHelper;
 use stochastic_rs::quant::market::Handle;
 use stochastic_rs::quant::market::Quote;
@@ -40,8 +42,8 @@ fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.25_f64, 1.0, 2.0, 5.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
   DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -89,7 +91,7 @@ fn fra_npv_matches_payoff_formula() {
   );
 
   let fra = ForwardRateAgreement::new(
-    stochastic_rs::quant::market::fra::FraPosition::Long,
+    FraPosition::Long,
     1_000_000.0,
     0.025,
     start,
@@ -115,14 +117,15 @@ fn deposit_npv_equals_bootstrapped_instrument_value() {
   let rate = 0.04;
   let alpha = day_count.year_fraction::<f64>(val_date, maturity);
 
-  let instruments = vec![Instrument::<f64>::Deposit {
+  let instruments = vec![BootstrapInstrument::<f64>::Deposit {
     maturity: alpha,
     rate,
   }];
-  let curve = bootstrap(
+  let curve = bootstrap(BootstrapSpec::new(
     &instruments,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  ))
+  .unwrap();
 
   let deposit = Deposit::new(1.0, rate, val_date, maturity, day_count);
   let v = deposit.valuation(val_date, day_count, &curve);
@@ -165,9 +168,10 @@ fn helper_driven_curve_roundtrips_par_swap() {
     &helpers,
     val_date,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
 
-  let implied_5y_par = curve.par_rate(5.0, 2);
+  let implied_5y_par = curve.par_rate(5.0, Frequency::SemiAnnual);
   assert!(
     (implied_5y_par - 0.04).abs() < 5e-3,
     "5Y par rate mismatch: got {implied_5y_par}"
@@ -178,7 +182,8 @@ fn helper_driven_curve_roundtrips_par_swap() {
     &helpers,
     val_date,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
   assert!(
     curve2.discount_factor(5.0) < curve.discount_factor(5.0),
     "higher swap rate must lower the 5Y discount factor"

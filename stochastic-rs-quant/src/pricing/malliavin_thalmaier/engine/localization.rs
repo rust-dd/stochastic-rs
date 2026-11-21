@@ -97,13 +97,15 @@ impl<T: FloatExt> MtGreeks<T> {
   pub(super) fn localization(&self, payoff: &MtPayoff<T>) -> Option<MtLocalization<T>> {
     match payoff {
       MtPayoff::Call { strike, .. } | MtPayoff::Put { strike, .. } => {
-        let base = self
-          .params
-          .assets
-          .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
-          .max(T::one());
+        let base = T::max_or_nan_fold(
+          self
+            .params
+            .assets
+            .iter()
+            .map(|a| <T as num_traits::Float>::abs(a.s)),
+        )
+        .max_or_nan(<T as num_traits::Float>::abs(*strike))
+        .max(T::one());
         let box_hi = self
           .params
           .assets
@@ -118,13 +120,15 @@ impl<T: FloatExt> MtGreeks<T> {
         })
       }
       MtPayoff::BasketCall { strike, .. } => {
-        let base = self
-          .params
-          .assets
-          .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
-          .max(T::one());
+        let base = T::max_or_nan_fold(
+          self
+            .params
+            .assets
+            .iter()
+            .map(|a| <T as num_traits::Float>::abs(a.s)),
+        )
+        .max_or_nan(<T as num_traits::Float>::abs(*strike))
+        .max(T::one());
         let box_hi = self
           .params
           .assets
@@ -280,17 +284,16 @@ impl<T: FloatExt> MtGreeks<T> {
   /// orthant box `[0, hi]^d`. This is a practical localization, not an exact
   /// treatment of the infinite domain.
   fn quadrature_bounds(&self, payoff: &MtPayoff<T>, st: &[T]) -> (Vec<T>, Vec<T>) {
-    let spot_scale = self
-      .params
-      .assets
-      .iter()
-      .map(|a| <T as num_traits::Float>::abs(a.s))
-      .fold(T::zero(), |a, b| a.max(b));
-    let terminal_scale = st
-      .iter()
-      .copied()
-      .map(<T as num_traits::Float>::abs)
-      .fold(T::zero(), |a, b| a.max(b));
+    let spot_scale = T::max_or_nan_fold(
+      self
+        .params
+        .assets
+        .iter()
+        .map(|a| <T as num_traits::Float>::abs(a.s)),
+    )
+    .max_or_nan(T::zero());
+    let terminal_scale = T::max_or_nan_fold(st.iter().copied().map(<T as num_traits::Float>::abs))
+      .max_or_nan(T::zero());
     let payoff_scale = match payoff {
       MtPayoff::Call { strike, .. } => <T as num_traits::Float>::abs(*strike),
       MtPayoff::Put { strike, .. } => <T as num_traits::Float>::abs(*strike),

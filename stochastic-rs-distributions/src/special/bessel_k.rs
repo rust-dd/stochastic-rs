@@ -1,39 +1,52 @@
-//! Modified Bessel function of the second kind `K_ν(x)` for real order.
-//!
-//! Numerical Recipes' `bessik` scheme (3rd ed., §6.6): Temme's series for
-//! `x ≤ 2` and Steed's continued fraction CF2 for `x > 2` give
-//! `K_μ`, `K_{μ+1}` at the fractional part `|μ| ≤ 1/2` of the order, then
-//! the stable upward recurrence `K_{ν+1} = K_{ν-1} + (2ν/x) K_ν` climbs to
-//! `ν`. The reciprocal-gamma pieces of Temme's method,
+//! `K_ν(x)` for real order: `bessik` (Temme below `x = 2`, Steed's CF2 above), Debye past order 50,
+//! DLMF 10.30 near 0; Temme's `γ₁`, `γ₂` from `ln Γ`'s series, which does not cancel at small `μ`:
 //!
 //! $$
-//! \gamma_1 = \frac{1/\Gamma(1-\mu) - 1/\Gamma(1+\mu)}{2\mu},\qquad
-//! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2},
+//! \ln\Gamma(1+\mu)^{-1} = \gamma_E\mu - \sum_{k\ge2}(-1)^k\zeta(k)\mu^k/k = S_e + S_o,
+//! $$
+//! $$
+//! \gamma_1 = \frac{1/\Gamma(1-\mu) - 1/\Gamma(1+\mu)}{2\mu} = -\frac{e^{S_e}\sinh S_o}{\mu},\qquad
+//! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2} = e^{S_e}\cosh S_o.
 //! $$
 //!
-//! come from $\log 1/\Gamma(1+x) = \gamma_E x - \sum_{k\ge2}(-1)^k\zeta(k)x^k/k$,
-//! so $\gamma_1 = -e^{S_e}\sinh(S_o)/\mu$ and $\gamma_2 = e^{S_e}\cosh(S_o)$
-//! with the odd and even partial sums $S_o$, $S_e$ — no Chebyshev fit and
-//! no cancellation at small $\mu$.
-//!
-//! References:
-//! - Temme, N.M. (1975), "On the numerical evaluation of the modified
-//!   Bessel function of the third kind", *Journal of Computational
-//!   Physics* 19(3), 324-337. DOI: 10.1016/0021-9991(75)90082-0
-//! - Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions
-//!   I_ν(z) and K_ν(z) of real order and complex argument, to selected
-//!   accuracy", *Computer Physics Communications* 47(2-3), 245-257.
-//!   DOI: 10.1016/0010-4655(87)90107-8
-//! - Press, Teukolsky, Vetterling, Flannery (2007), *Numerical Recipes*,
-//!   3rd ed., §6.6.
+//! Reference: Temme, N.M. (1975), "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
+//! Reference: Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions I_ν(z) and K_ν(z) of real order and complex argument, to selected accuracy", *Computer Physics Communications* 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
+//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.6 (`bessik`).
+//! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2–10.30.3 (`K_ν` as `x → 0`, below `x = 1e-307`), <https://dlmf.nist.gov/10.30>.
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (the recurrence whose ratio form sums `ln K` where `K` overflows), <https://dlmf.nist.gov/10.29.1>.
 
+use std::f64::consts::LN_2;
+use std::f64::consts::PI;
+use std::f64::consts::TAU;
 use std::sync::OnceLock;
+
+use super::bessel_i::Debye;
+use super::bessel_i::UNIFORM_MIN_ORDER;
+use super::bessel_i::debye;
+use super::bessel_i::debye_sum;
+use super::bessel_i::exp_times;
+use super::ln_parts;
+
+mod parts;
+
+pub(crate) use parts::ln_bessel_ke_parts;
+pub(crate) use parts::ln_half_gamma_parts;
 
 const EPS: f64 = 1e-16;
 const MAX_ITER: usize = 10_000;
 const X_MIN: f64 = 2.0;
+const X_TINY: f64 = 1e-307;
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 const ZETA_TERMS: usize = 64;
+
+/// `2¹⁰²³`: from here Steed's `2(1 + x)` overflows, and to order 50 Hankel's first correction
+/// `(4ν² − 1)/8x` is under `2⁻¹⁰¹⁰`, so `e^x K_ν(x)` is `√(π/2x)` to the last bit.
+const HANKEL_FROM: f64 = 8.988_465_674_311_58e307;
+
+const SQRT_HALF_PI: f64 = 1.253_314_137_315_500_3;
+
+const HALF_LN_HALF_PI: f64 = 0.225_791_352_644_727_44;
 
 /// ζ(k) for k = 2..=65 by direct summation (smallest terms first) plus an
 /// Euler–Maclaurin tail, computed once.
@@ -83,14 +96,57 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
   (gam1, scale * odd.cosh())
 }
 
-/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu` and `x > 0`.
-///
-/// # Panics
-///
-/// If `x` is not positive.
+/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
-  assert!(x > 0.0, "bessel_ke needs x > 0, got {x}");
+  if !nu.is_finite() || x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
+  if x == f64::INFINITY {
+    return 0.0;
+  }
   let nu = nu.abs();
+  if x < X_TINY {
+    return tiny_argument(nu, x, false);
+  }
+  if nu > UNIFORM_MIN_ORDER {
+    return debye_k(nu, x, true);
+  }
+  if x >= HANKEL_FROM {
+    return SQRT_HALF_PI / x.sqrt();
+  }
+  ke_pair(nu, x).0
+}
+
+/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever the logarithm is representable; NaN unless
+/// `x > 0` and `nu` is finite, `−∞` at `x = ∞`.
+pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
+  if !nu.is_finite() || x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
+  if x == f64::INFINITY {
+    return f64::NEG_INFINITY;
+  }
+  let nu = nu.abs();
+  if x < X_TINY {
+    return tiny_argument(nu, x, true);
+  }
+  if nu > UNIFORM_MIN_ORDER {
+    return ln_debye_k(nu, x);
+  }
+  if x >= HANKEL_FROM {
+    return HALF_LN_HALF_PI - 0.5 * x.ln();
+  }
+  let ke = ke_pair(nu, x).0;
+  if ke.is_finite() {
+    ke.ln()
+  } else {
+    ln_recurrence(nu, x)
+  }
+}
+
+/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`; both infinite once the
+/// upward recurrence overflows, since `K` grows with the order.
+pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;
   let mu2 = mu * mu;
@@ -102,34 +158,129 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
     steed_pair(x, mu, mu2, xi)
   };
   for i in 1..=nl {
+    if !rk1.is_finite() {
+      return (rk1, rk1);
+    }
     let rktemp = (mu + i as f64) * xi2 * rk1 + rkmu;
     rkmu = rk1;
     rk1 = rktemp;
   }
-  rkmu
+  (rkmu, rk1)
 }
 
-/// $K_\nu(x)$ for real `nu` and `x > 0`.
+/// $K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
 pub fn bessel_k(nu: f64, x: f64) -> f64 {
+  let nu = nu.abs();
+  if nu > UNIFORM_MIN_ORDER && nu.is_finite() && x.is_finite() && x >= X_TINY {
+    return debye_k(nu, x, false);
+  }
   bessel_ke(nu, x) * (-x).exp()
 }
 
-/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`.
-fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
-  let x2 = 0.5 * x;
-  let pimu = std::f64::consts::PI * mu;
+/// DLMF 10.41.4, `K_ν(νz) ~ √(π/2ν) e^{−νη} (1+z²)^{−1/4} Σ(−1)^k U_k(p)/ν^k`, out of line so the
+/// small-order path keeps its size.
+#[inline(never)]
+fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
+  let (m, d) = debye_k_terms(nu, x);
+  exp_times(if scaled { -d.eta_minus_z } else { -d.eta }, m)
+}
+
+/// `ln K_ν(x) + νη(x/ν) + ½ ln ν` by Debye, `½ ln(πp/2) + ln Σ(−1)^k U_k(p)/ν^k`, finite at
+/// `x = 0`; `½ ln ν` stays apart so two orders' Stirling remainders meet exactly.
+pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
+  debye_factor(nu, x).ln()
+}
+
+/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding of its own.
+pub(crate) fn debye_shape_parts(nu: f64, x: f64) -> (f64, f64) {
+  ln_parts(debye_factor(nu, x), 0.0, 0)
+}
+
+fn debye_factor(nu: f64, x: f64) -> f64 {
+  let p = debye(nu, x).p;
+  PI * (p / TAU).sqrt() * debye_sum(p, nu, true)
+}
+
+/// The logarithm of [`debye_k`]'s scaled value, out of line like it.
+#[inline(never)]
+fn ln_debye_k(nu: f64, x: f64) -> f64 {
+  let (m, d) = debye_k_terms(nu, x);
+  m.ln() - d.eta_minus_z
+}
+
+/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow at a finite order.
+fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
+  let d = debye(nu, x);
+  (
+    PI * ((d.p / TAU).sqrt() / nu.sqrt()) * debye_sum(d.p, nu, true),
+    d,
+  )
+}
+
+/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where `K` overflows: the recurrence on
+/// `g = (x/2)K_{n+1}/K_n` keeps `g` near `n`, its logarithms summed apart from the large terms.
+#[cold]
+#[inline(never)]
+fn ln_recurrence(nu: f64, x: f64) -> f64 {
+  let nl = (nu + 0.5).floor() as usize;
+  let mu = nu - nl as f64;
+  let (sum, sum1) = temme_sums(x, mu, mu * mu);
+  let mut g = sum1 / sum;
+  let mut small = 0.0;
+  for i in 1..=nl {
+    small += g.ln();
+    g = (mu + i as f64) + 0.25 * x * x / g;
+  }
+  small + (sum.ln() + x + nl as f64 * (LN_2 - x.ln()))
+}
+
+/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in logs from `ν = ½` (error `O(x^{2ν})` below `ν = 1`, `O(x²)`
+/// above), Temme's `f₀` below, as that term is not uniform in `ν → 0`; scaled is plain here.
+#[cold]
+#[inline(never)]
+fn tiny_argument(nu: f64, x: f64, log: bool) -> f64 {
+  let d = LN_2 - x.ln();
+  if nu < 0.5 {
+    let f0 = temme_head(nu, d).0;
+    if log { f0.ln() } else { f0 }
+  } else {
+    let ln = super::ln_gamma(nu) - LN_2 + nu * d;
+    if log { ln } else { ln.exp() }
+  }
+}
+
+/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on with, from `d = ln(2/x)`.
+fn temme_head(mu: f64, d: f64) -> (f64, f64, f64, f64) {
+  let pimu = PI * mu;
   let fact = if pimu.abs() < EPS {
     1.0
   } else {
     pimu / pimu.sin()
   };
-  let d = -x2.ln();
   let e = mu * d;
   let fact2 = if e.abs() < EPS { 1.0 } else { e.sinh() / e };
   let (gam1, gam2) = temme_gammas(mu);
+  (fact * (gam1 * e.cosh() + gam2 * fact2 * d), e, gam1, gam2)
+}
+
+/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
+fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
+  let (sum, sum1) = temme_sums(x, mu, mu2);
+  let scale = x.exp();
+  (sum * scale, sum1 * xi2 * scale)
+}
+
+/// Temme's series: $(K_\mu, (x/2) K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
+pub(super) fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
+  temme_sums_at(x, mu, mu2, -(0.5 * x).ln())
+}
+
+/// [`temme_sums`] with its `ln(2/x)` given.
+pub(super) fn temme_sums_at(x: f64, mu: f64, mu2: f64, ln_2_x: f64) -> (f64, f64) {
+  let x2 = 0.5 * x;
+  let (mut ff, e, gam1, gam2) = temme_head(mu, ln_2_x);
   let gampl = gam2 - mu * gam1;
   let gammi = gam2 + mu * gam1;
-  let mut ff = fact * (gam1 * e.cosh() + gam2 * fact2 * d);
   let mut sum = ff;
   let e = e.exp();
   let mut p = 0.5 * e / gampl;
@@ -137,7 +288,6 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
   let mut c = 1.0;
   let d = x2 * x2;
   let mut sum1 = p;
-  let mut converged = false;
   for i in 1..=MAX_ITER {
     let fi = i as f64;
     ff = (fi * ff + p + q) / (fi * fi - mu2);
@@ -149,17 +299,14 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
     let del1 = c * (p - fi * ff);
     sum1 += del1;
     if del.abs() < sum.abs() * EPS {
-      converged = true;
-      break;
+      return (sum, sum1);
     }
   }
-  assert!(converged, "Temme series for K_nu did not converge");
-  let scale = x.exp();
-  (sum * scale, sum1 * xi2 * scale)
+  (f64::NAN, f64::NAN)
 }
 
-/// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`.
-fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
+/// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`, NaN where it does not converge.
+pub(super) fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
   let mut b = 2.0 * (1.0 + x);
   let mut d = 1.0 / b;
   let mut h = d;
@@ -191,10 +338,9 @@ fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
       break;
     }
   }
-  assert!(
-    converged,
-    "Steed continued fraction for K_nu did not converge"
-  );
+  if !converged {
+    return (f64::NAN, f64::NAN);
+  }
   h *= a1;
   let rkmu = (std::f64::consts::PI / (2.0 * x)).sqrt() / s;
   let rk1 = rkmu * (mu + x + 0.5 - h) * xi;
@@ -202,100 +348,4 @@ fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn close(a: f64, b: f64, rel: f64) -> bool {
-    (a - b).abs() <= rel * b.abs()
-  }
-
-  /// `scipy.special.kv` / `kve` on a grid spanning both branches, integer
-  /// and fractional orders, and the upward recurrence.
-  #[test]
-  fn matches_scipy_kv() {
-    let cases = [
-      (0.0, 0.01, 4.721_244_730_161_095, 4.768_694_028_544_461),
-      (0.0, 1.0, 0.421_024_438_240_708_34, 1.144_463_079_806_894_9),
-      (0.5, 0.3, 1.695_161_056_339_283_4, 2.288_228_082_159_423),
-      (
-        0.5,
-        5.0,
-        0.003_776_613_374_642_881_7,
-        0.560_499_121_639_792_8,
-      ),
-      (1.0, 2.0, 0.139_865_881_816_522_46, 1.033_476_847_068_688_8),
-      (1.5, 0.001, 39_633.253_172_629_775, 39_672.906_249_036_18),
-      (2.3, 0.5, 13.509_653_881_303_644, 22.273_653_713_901_86),
-      (2.3, 3.0, 0.073_627_459_986_590_29, 1.478_847_066_121_181_9),
-      (
-        3.7,
-        10.0,
-        3.397_938_590_173_589_4e-5,
-        0.748_445_781_293_123_3,
-      ),
-      (0.25, 1.9, 0.130_600_563_447_076_52, 0.873_181_581_309_349_9),
-      (7.5, 0.7, 2_412_246.300_819_027_2, 4_857_667.519_359_958),
-      (
-        7.5,
-        25.0,
-        1.036_599_319_047_804_4e-11,
-        0.746_402_296_212_398_8,
-      ),
-      (
-        12.0,
-        60.0,
-        4.630_938_063_529_372e-27,
-        0.528_856_549_032_927_8,
-      ),
-      (4.0, 1e-4, 4.799_999_996e17, 4.800_480_020_000_401e17),
-      (0.99, 2.01, 0.137_484_978_072_787_1, 1.026_094_021_846_430_7),
-      (1.0, 1.9999, 0.139_884_265_831_690_97, 1.033_509_331_487_225),
-      (0.5, 2.0, 0.119_937_771_968_061_45, 0.886_226_925_452_757_9),
-    ];
-    for (nu, x, kv, kve) in cases {
-      assert!(
-        close(bessel_k(nu, x), kv, 1e-13),
-        "K_{nu}({x}) = {}",
-        bessel_k(nu, x)
-      );
-      assert!(
-        close(bessel_ke(nu, x), kve, 1e-13),
-        "Ke_{nu}({x}) = {}",
-        bessel_ke(nu, x)
-      );
-    }
-    // The scaled form stays O(1) where the plain one is deep in the
-    // subnormal range.
-    assert!(close(
-      bessel_ke(0.1, 700.0),
-      0.047_362_707_517_186_83,
-      1e-13
-    ));
-    assert!(bessel_k(0.1, 700.0) < 1e-300);
-  }
-
-  /// Integer orders agree with the Cephes `K₀` / `K₁` already in the crate.
-  #[test]
-  fn integer_orders_match_cephes() {
-    for x in [0.05, 0.5, 1.5, 2.5, 7.0, 30.0] {
-      assert!(close(bessel_k(0.0, x), super::super::bessel_k0(x), 1e-13));
-      assert!(close(bessel_k(1.0, x), super::super::bessel_k1(x), 1e-13));
-    }
-  }
-
-  /// $K_{1/2}(x) = \sqrt{\pi/(2x)}\,e^{-x}$ exactly, and the order symmetry.
-  #[test]
-  fn half_order_closed_form_and_symmetry() {
-    for x in [0.1, 1.0, 3.0, 12.0] {
-      let want = (std::f64::consts::PI / (2.0 * x)).sqrt() * (-x).exp();
-      assert!(close(bessel_k(0.5, x), want, 1e-14));
-      assert_eq!(bessel_k(-2.3, x), bessel_k(2.3, x));
-    }
-  }
-
-  #[test]
-  #[should_panic(expected = "bessel_ke needs x > 0")]
-  fn rejects_non_positive_argument() {
-    let _ = bessel_k(1.0, 0.0);
-  }
-}
+mod tests;
