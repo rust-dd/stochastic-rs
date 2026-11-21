@@ -1,5 +1,5 @@
-//! SIMD-sampled laws with closed forms through [`DistributionExt`], and the scalar [`traits`].
-//! Choosing a law: <https://stochastic.rust-dd.com/docs/distributions#choosing-a-distribution>
+//! SIMD-sampled [laws](https://stochastic.rust-dd.com/docs/distributions#choosing-a-distribution)
+//! with closed forms through [`DistributionExt`], and the scalar [`traits`].
 
 // A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
