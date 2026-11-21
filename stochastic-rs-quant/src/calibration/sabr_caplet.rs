@@ -263,7 +263,7 @@ impl SabrCapletCost {
     }
   }
 
-  /// NaN for parameters `SabrParams::new` refuses, which `hagan_implied_vol` would panic on.
+  /// NaN for parameters `SabrParams::new` refuses; `hagan_implied_vol` panics on a bad `α` or `ρ`.
   fn model_vols(&self, params: &SabrParams) -> Vec<f64> {
     if params.violation().is_some() {
       return vec![f64::NAN; self.strikes.len()];

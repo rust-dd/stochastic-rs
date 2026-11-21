@@ -76,7 +76,7 @@ print(round(fit.implied_vol(0.0, 1.0), 4))                    # 0.2064, at the m
 </Tab>
 </Tabs>
 
-`fit_svi(None)` starts from the library's own initial guess; pass `Some(params)` to start from a previous fit. `is_admissible()` checks the parameter constraints of raw SVI ($b \ge 0$, $\lvert\rho\rvert < 1$, $\sigma > 0$ and a non-negative minimum variance).
+`fit_svi(None)` starts from the library's own initial guess and returns a `Calibrated`: the slice's parameters in `params`, and in `converged` and `message` the stop of its Levenberg–Marquardt fit; pass `Some(fit.params)` to start from a previous fit. `is_admissible()` checks the parameter constraints of raw SVI ($b \ge 0$, $\lvert\rho\rvert < 1$, $\sigma > 0$ and a non-negative minimum variance).
 
 ## Step 2 — check the slice for butterfly arbitrage
 
