@@ -33,6 +33,13 @@ const MJD_REF: [f64; 9] = [
   24.537096, 20.322713, 16.420092, 12.915553, 9.877019, 7.340385, 5.303578, 3.729825, 2.557790,
 ];
 
+/// The fit's start from `values`: clamped, its coupled parameters read in their own coordinates.
+fn project(model: LevyModelType, values: &[f64]) -> Vec<f64> {
+  use super::coordinates::to_coordinates;
+  use super::coordinates::to_values;
+  to_values(model, &to_coordinates(model, values))
+}
+
 fn calls(strikes: &[f64], prices: &[f64], tau: f64) -> Vec<OptionQuote> {
   strikes
     .iter()
@@ -433,5 +440,157 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
     let problem = LevyProblem::new(&calibrator, default_params(model));
     let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
     assert!(error < 1e-4, "{model:?}: {error:e}");
+  }
+}
+
+/// `(model, a point of its box without E[e^X], the model's own condition)`: Madan, Carr & Chang's
+/// `1 − θν − σ²ν/2`, Barndorff-Nielsen's `α − |β + 1|`, `M − 1` and `η₁ − 1`, each to be positive.
+fn points_without_a_martingale() -> Vec<(LevyModelType, Vec<f64>, fn(&[f64]) -> f64)> {
+  let vg = |p: &[f64]| 1.0 - p[1] * p[2] - 0.5 * p[0] * p[0] * p[2];
+  let nig = |p: &[f64]| p[0] - (p[1] + 1.0).abs().max(p[1].abs());
+  vec![
+    (LevyModelType::VarianceGamma, vec![1.2, 0.6, 3.0], vg),
+    (LevyModelType::VarianceGamma, vec![2.0, -1.0, 5.0], vg),
+    (LevyModelType::Nig, vec![3.0, 2.5, 0.5], nig),
+    (LevyModelType::Nig, vec![50.0, 49.5, 0.5], nig),
+    (LevyModelType::Nig, vec![3.0, -3.0, 0.5], nig),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 0.5, 0.5], |p| {
+      p[2] - 1.0
+    }),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 1.0, -0.5], |p| {
+      p[2] - 1.0
+    }),
+    (LevyModelType::Kou, vec![0.15, 3.0, 0.5, 1.0, 10.0], |p| {
+      p[3] - 1.0
+    }),
+  ]
+}
+
+/// The fit's projection moves each such point 0.01 inside its model's condition, where the price
+/// is finite; the point itself prices NaN or without a finite compensator.
+#[test]
+fn a_projected_point_has_a_martingale_in_every_model() {
+  for (model, point, condition) in points_without_a_martingale() {
+    let price =
+      |p: &[f64]| fourier_call_price(model, p, 100.0, 100.0, 0.05, 0.0, 1.0, &mut Walk::Adaptive);
+    assert!(condition(&point) <= 0.0, "{model:?} {point:?}");
+    let projected = project(model, &point);
+    let margin = condition(&projected);
+    assert!(margin >= 0.01 - 1e-12, "{model:?} {projected:?}: {margin}");
+    let (inside, outside) = (price(&projected), price(&point));
+    assert!(
+      inside.is_finite() && inside > 0.0 && inside < 100.0 + 1e-9,
+      "{model:?} {projected:?}: {inside}, the point itself {outside}"
+    );
+    let again = project(model, &projected);
+    assert_eq!(again, projected);
+    let boxed = projected.iter().zip(super::loss::param_bounds(model));
+    assert!(
+      boxed.clone().all(|(p, (lo, hi))| lo <= *p && *p <= hi),
+      "{model:?} {projected:?}"
+    );
+  }
+}
+
+/// A point inside its condition and its box by more than the margin, NIG's `α` over 50 included,
+/// is left as it is, to the map's rounding.
+#[test]
+fn a_point_with_a_martingale_is_its_own_projection() {
+  use super::loss::default_params;
+  let inside = [
+    (LevyModelType::VarianceGamma, vec![1.2, -0.6, 4.95]),
+    (LevyModelType::Nig, vec![6.02, 5.0, 0.5]),
+    (LevyModelType::Nig, vec![60.0, 20.0, 0.5]),
+    (LevyModelType::Nig, vec![54.0, -45.0, 0.5]),
+    (LevyModelType::Cgmy, vec![1.0, 5.0, 1.02, 0.5]),
+    (LevyModelType::Kou, vec![0.15, 3.0, 0.5, 1.02, 10.0]),
+  ];
+  let defaults = [
+    LevyModelType::VarianceGamma,
+    LevyModelType::Nig,
+    LevyModelType::Cgmy,
+    LevyModelType::MertonJd,
+    LevyModelType::Kou,
+  ]
+  .map(|model| (model, default_params(model)));
+  for (model, point) in inside.into_iter().chain(defaults) {
+    let moved = project(model, &point).into_iter().zip(&point);
+    let moved = moved.map(|(to, from)| (to - from).abs() / from.abs());
+    let moved = moved.fold(0.0, f64::max);
+    assert!(moved < 4.0 * f64::EPSILON, "{model:?}: {moved:e}");
+  }
+}
+
+/// A start without `E[e^X]` has no price to fit from, and its projection is another model's start.
+#[test]
+fn a_start_without_a_martingale_is_an_error_naming_its_condition() {
+  let conditions = [
+    (
+      LevyModelType::VarianceGamma,
+      "`1.0 - theta * nu - 0.5 * sigma * sigma * nu > 0.0`",
+    ),
+    (
+      LevyModelType::Nig,
+      "`alpha > beta.abs() && alpha >= (beta + 1.0).abs()`",
+    ),
+    (LevyModelType::Cgmy, "`m > 1.0`"),
+    (LevyModelType::Kou, "`eta1 > 1.0`"),
+  ];
+  for (model, point, _) in points_without_a_martingale() {
+    let start = LevyParams {
+      values: point.clone(),
+      model_type: model,
+    };
+    let fit = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0))
+      .calibrate(Some(start));
+    let condition = conditions
+      .iter()
+      .find(|(named, _)| *named == model)
+      .unwrap()
+      .1;
+    match fit {
+      Err(QuantError::InvalidInput {
+        what: "start",
+        reason,
+      }) => assert!(reason.contains(condition), "{model:?} {point:?}: {reason}"),
+      other => panic!("{model:?} {point:?}: {other:?}"),
+    }
+  }
+}
+
+#[test]
+#[should_panic(expected = "start.values[3] must satisfy `eta1 > 1.0`, got start.values[3] = 1.0")]
+fn with_start_panics_on_a_start_without_a_martingale() {
+  let _ =
+    LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.02, 0.0, Vec::new()).with_start(LevyParams {
+      values: vec![0.15, 3.0, 0.5, 1.0, 10.0],
+      model_type: LevyModelType::Kou,
+    });
+}
+
+/// From the domain's edge, the projection of each such point, every accepted step stays inside.
+#[test]
+fn a_fit_started_on_the_domains_edge_runs_inside_it() {
+  for (model, mut point, condition) in points_without_a_martingale() {
+    point = project(model, &point);
+    let options = CalibrationOptions::default()
+      .with_max_iterations(12)
+      .with_record_history(true);
+    let fit = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0))
+      .with_start(LevyParams {
+        values: point.clone(),
+        model_type: model,
+      })
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_or_else(|error| panic!("{model:?} {point:?}: {error}"));
+    assert!(fit.rmse().is_finite(), "{model:?} {point:?}: {fit:?}");
+    for entry in &fit.history {
+      let margin = condition(&entry.params.values);
+      assert!(margin >= 0.01 - 1e-12, "{model:?} {:?}", entry.params);
+    }
+    let first = fit.history[0].residuals.dot(&fit.history[0].residuals);
+    let last = fit.history.last().unwrap();
+    assert!(last.residuals.dot(&last.residuals) <= first);
   }
 }

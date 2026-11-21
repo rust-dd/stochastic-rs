@@ -275,6 +275,18 @@ fn heston_greeks_nan_at_degenerate_inputs() {
   );
 }
 
+/// The NaN edges the docs give, at `τ = 1`: `E_j[∫v]` is `2.6e147` at `λ = −350` and `5.5e151` at
+/// `−360` for the price, `1.8e145` at `−345` and `1.9e148` at `−352` for the vega.
+#[test]
+fn a_far_negative_mean_reversion_turns_nan_where_the_docs_say() {
+  let at = |lambda: f64| HestonPricer::new(P).with_vol_risk_premium(lambda);
+  let price = |lambda: f64| at(lambda).price_call_put(100.0, 100.0, 0.05, 0.0, 1.0);
+  let vega = |lambda: f64| at(lambda).initial_variance_vega(100.0, 100.0, 0.05, 0.0, 1.0);
+  assert!((price(-350.0).call - 100.0).abs() < 1e-10 && price(-350.0).put.is_finite());
+  assert!(price(-360.0).call.is_nan() && price(-360.0).put.is_nan());
+  assert!(vega(-345.0).is_finite() && vega(-352.0).is_nan());
+}
+
 /// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
 /// and a violated Feller condition.
 mod construction_validation;

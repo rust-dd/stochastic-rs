@@ -249,7 +249,7 @@ const STALLED: [f64; 8] = [
 
 /// A step of `2e-3·|θ|` in each natural parameter reads every column within 2e-2.
 #[test]
-fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
+fn the_jacobian_is_the_slope_of_the_residuals_at_both_ends_of_each_coordinate() {
   use crate::calibration::least_squares::checks::jacobian_error;
   let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
   let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));
@@ -317,7 +317,7 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
 /// On the rule each price's own walk took, a difference integrates one fixed rule: at `STALLED`,
 /// `J(h)` is `J(2h)`.
 #[test]
-fn the_jacobian_at_twice_its_step_is_the_same_where_a_walk_jumps() {
+fn the_jacobian_at_twice_its_step_is_the_same_at_the_stalled_point() {
   use crate::calibration::least_squares::checks::step_doubling_error;
   let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
   let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));

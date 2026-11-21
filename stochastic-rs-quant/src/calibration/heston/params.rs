@@ -96,7 +96,7 @@ impl HestonParams {
 
 /// The largest σ with `σ * σ <= 2.0 * kappa * theta` in `f64`; `√(2κθ)` itself can square one ulp
 /// past the bound.
-pub(super) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
+pub(crate) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
   let bound = 2.0 * kappa * theta;
   let mut cap = bound.sqrt();
   while cap * cap > bound {
