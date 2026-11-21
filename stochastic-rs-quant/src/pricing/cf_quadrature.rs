@@ -52,10 +52,12 @@ impl<P> Walk<'_, P> {
         rules.push(rule);
         value
       }
-      Walk::Replay(rules) => match rules.next() {
-        Some(rule) => replay(rule),
-        None => adaptive(None),
-      },
+      Walk::Replay(rules) => {
+        let rule = rules.next();
+        // A record shorter than its replay is a caller's slip; a release build walks instead.
+        debug_assert!(rule.is_some(), "a replay outran its recorded rules");
+        rule.map_or_else(|| adaptive(None), replay)
+      }
     }
   }
 }
@@ -256,6 +258,13 @@ mod tests {
       (v - expected).abs() < 1e-9 * expected,
       "expected {expected}, got {v}"
     );
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  #[should_panic(expected = "a replay outran its recorded rules")]
+  fn a_replay_past_its_record_panics_where_debug_assertions_run() {
+    integrate_walk(|u: f64| (-u).exp(), 0.0, 1e-8, &mut Walk::Replay([].iter()));
   }
 
   /// Recorded on one integrand, the rule integrates a shifted one as a fixed rule: the same value
