@@ -38,6 +38,8 @@ pub(crate) struct TailRule {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Rule {
   head: Panels,
+  /// The body's panels are in `y = u/scale`, so a replay scales by this, not by its own.
+  scale: f64,
   body: Panels,
   tails: [Option<TailRule>; 2],
 }
@@ -109,7 +111,10 @@ where
       None => (0.0, 0.0),
     };
     let scaled = |y: f64| self.scale * watched(self.scale * y);
-    let leaves = rule.as_deref_mut().map(|r| &mut r.body);
+    let leaves = rule.as_deref_mut().map(|r| {
+      r.scale = self.scale;
+      &mut r.body
+    });
     let (body, end) = walk(
       scaled,
       start / self.scale,
@@ -146,7 +151,7 @@ where
       v
     };
     let head = integrate_on(&|x: f64| watched(x.exp()) * x.exp(), &rule.head);
-    let body = integrate_on(&|y: f64| self.scale * watched(self.scale * y), &rule.body);
+    let body = integrate_on(&|y: f64| rule.scale * watched(rule.scale * y), &rule.body);
     let mut total = head + body;
     for (slot, tail) in rule.tails.iter().enumerate() {
       let Some(tail) = tail else { continue };
