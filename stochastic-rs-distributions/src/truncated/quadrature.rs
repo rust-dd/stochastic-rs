@@ -40,13 +40,15 @@ pub(super) mod two;
 mod walked;
 mod zone;
 
-/// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
+/// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference
+/// point `c`.
 pub(super) trait Kernel: Clone {
   /// The law maps a quantile walked from a bound or clip back from the double the point is held
   /// beside, reported as `Point::From`; a law reading every point by value pays nothing.
   const FROM_POINT: bool = false;
 
-  /// `ln k` is exactly its quadratic about any point (`d1`, `d2` there), so a flat kernel's odd part is `sinh` of its slope.
+  /// `ln k` is exactly its quadratic about any point (`d1`, `d2` there), so a flat kernel's odd
+  /// part is `sinh` of its slope.
   const QUADRATIC: bool = false;
 
   /// `ln k(x)`: `-∞` outside the support, `+∞` at a singular end.
@@ -65,19 +67,22 @@ pub(super) trait Kernel: Clone {
   /// `d² ln k / dx²` at a regular point `x = c + y`.
   fn d2(&self, x: f64, y: f64) -> f64;
 
-  /// The kernel's maximiser over its support (an end when it is monotone), held beside the end it would round onto.
+  /// The kernel's maximiser over its support (an end when it is monotone), held beside the end it
+  /// would round onto.
   fn mode(&self) -> Cut;
 
   /// `(s, e)`: `k ~ |x − s|^{e−1}` next to `s`, `e > 0` exact where `e − 1` would round; the points
   /// ascend and lie more than a width apart.
   fn branch_points(&self) -> [Option<(f64, f64)>; 2];
 
-  /// `ln_rel` less `p·ln|x − s|` at the branch point `s`: the smooth factor, read where `x − s` may round to 0.
+  /// `ln_rel` less `p·ln|x − s|` at the branch point `s`: the smooth factor, read where `x − s` may
+  /// round to 0.
   fn ln_rel_regular(&self, x: f64, y: f64, _s: f64) -> f64 {
     self.ln_rel(x, y, None)
   }
 
-  /// `ln_rel` at the exact point `x` in two parts, for a subnormal cdf; a kernel that keeps no second part reads one.
+  /// `ln_rel` at the exact point `x` in two parts, for a subnormal cdf; a kernel that keeps no
+  /// second part reads one.
   fn ln_rel_two(&self, x: Cut, y: f64) -> Two {
     (self.ln_rel(x.x, y, x.branch()), 0.0)
   }
@@ -86,7 +91,8 @@ pub(super) trait Kernel: Clone {
   /// its plain form trades digits for speed; most kernels already do.
   fn sharpen(&mut self) {}
 
-  /// The kernel's own e-fold length: the clip probe's first step and the reference point's distance from a singular end.
+  /// The kernel's own e-fold length: the clip probe's first step and the reference point's distance
+  /// from a singular end.
   fn length_scale(&self) -> f64;
 
   /// The support's ends, which a bound at or past removes nothing.
@@ -99,7 +105,8 @@ pub(super) trait Kernel: Clone {
 /// `½ − ln 2` correctly rounded (mpmath at 60 and 120 digits).
 const HALF_LESS_LN_2: f64 = -0.19314718055994531;
 
-/// `1/(2j + 3)`, `j < 17`: past `(1/9)^17/37` the series `Σ w^{2j}/(2j + 3)` below adds nothing at `|w| ≤ 1/3`.
+/// `1/(2j + 3)`, `j < 17`: past `(1/9)^17/37` the series `Σ w^{2j}/(2j + 3)` below adds nothing at
+/// `|w| ≤ 1/3`.
 const ODD: [f64; 17] = [
   1.0 / 3.0,
   1.0 / 5.0,
@@ -146,7 +153,8 @@ pub(super) fn ln_1p_mx(z: f64) -> f64 {
   2.0 * w * x * sum - w * z
 }
 
-/// `ln(n/d)` from the quotient while it is normal, else `ln n − ln d`, whose `u·|ln n|` a large exponent multiplies.
+/// `ln(n/d)` from the quotient while it is normal, else `ln n − ln d`, whose `u·|ln n|` a large
+/// exponent multiplies.
 #[inline]
 pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
   let q = n / d;
@@ -164,7 +172,8 @@ pub(super) enum Point {
   /// The point held beside the double the walk's origin is held beside, so a law mapping it back
   /// from that double keeps its digits.
   From(Cut),
-  /// `centre + width·t` from a flat kernel's midpoint, `t` apart, so a point near 0 between far bounds keeps its digits.
+  /// `centre + width·t` from a flat kernel's midpoint, `t` apart, so a point near 0 between far
+  /// bounds keeps its digits.
   Mid {
     centre: Cut,
     width: f64,
@@ -188,7 +197,8 @@ impl Point {
   }
 }
 
-/// An interval's reference point, clipped ends and normalising sums, cached so a pdf costs one `exp`.
+/// An interval's reference point, clipped ends and normalising sums, cached so a pdf costs one
+/// `exp`.
 #[derive(Clone, Debug)]
 pub(super) struct Truncation<K> {
   kernel: K,
@@ -200,7 +210,8 @@ pub(super) struct Truncation<K> {
   /// The point the moments are summed about: the singular branch point the centre steps off, where
   /// the mass may sit closer than any offset from the centre resolves, else the centre.
   frame: Cut,
-  /// The centre's double and the rest of its exact value, so a point's offset from it is two subtractions.
+  /// The centre's double and the rest of its exact value, so a point's offset from it is two
+  /// subtractions.
   near: (f64, f64),
   /// The ends moved in to where the kernel is `e^{−CLIP}` below `k(centre)`, each an exact offset
   /// from the point it was found from, however far below an ulp; a singular end stays.
@@ -219,7 +230,8 @@ pub(super) struct Truncation<K> {
   /// No normal width: no panel places its nodes, the law answers in its own scale (`local`, the
   /// beta's gamma route); the point it then reads is for a law neither holds.
   narrow: bool,
-  /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
+  /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the
+  /// quantile both.
   tail_lo: f64,
   tail_up: f64,
   /// Those tails summed, from where the kernel is `e^{−2·CLIP}` below `centre`: the moments sum to
@@ -228,7 +240,8 @@ pub(super) struct Truncation<K> {
   /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, its kernel
   /// below `k(x)`, needs each node to an ε, which a log near −700 rounds to 1e-13.
   sharp: bool,
-  /// `M₀`'s walk from `a`, so the cdf and the lower walk find their panel by search and keep its running sum.
+  /// `M₀`'s walk from `a`, so the cdf and the lower walk find their panel by search and keep its
+  /// running sum.
   lower: Walked,
 }
 
@@ -258,7 +271,8 @@ impl<K: Kernel> Truncation<K> {
     self.width * self.m0
   }
 
-  /// The reference point of a law with no normal width, which the law answers through its local model.
+  /// The reference point of a law with no normal width, which the law answers through its local
+  /// model.
   pub(super) fn narrow(&self) -> Option<f64> {
     self.narrow.then_some(self.centre.x)
   }
@@ -299,7 +313,8 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
+  /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end,
+  /// then Newton in it.
   fn quantile(&self, p: f64, upper: &OnceLock<Box<Walked>>) -> Point {
     if p.is_nan() {
       return Point::At(f64::NAN);
@@ -372,7 +387,8 @@ impl<K: Kernel> Truncation<K> {
     mass
   }
 
-  /// Half the panel's share of `width`; a subnormal panel's half rounds off its last unit, its quotient's half does not.
+  /// Half the panel's share of `width`; a subnormal panel's half rounds off its last unit, its
+  /// quotient's half does not.
   #[inline]
   fn share(&self, panel: &Panel, half: f64) -> f64 {
     if self.sharp {

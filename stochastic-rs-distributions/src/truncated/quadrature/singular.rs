@@ -12,7 +12,8 @@ use super::panels::Cut;
 use super::panels::SLOPE_BUDGET;
 use super::panels::span;
 
-/// `2⁻¹⁰⁰⁰`: below it `e·ln(far/near)` times the rule's smallest node offset leaves the normal doubles.
+/// `2⁻¹⁰⁰⁰`: below it `e·ln(far/near)` times the rule's smallest node offset leaves the normal
+/// doubles.
 const LOG_FORM: f64 = 9.332636185032189e-302;
 
 impl<K: Kernel> Truncation<K> {
@@ -173,7 +174,8 @@ pub(super) struct Frame {
   /// 2⁻¹⁰⁰⁰: `u`'s range would hold no node's digits, and `t^e` is 1 to the last bit.
   pub(super) log: bool,
   pub(super) q_near: f64,
-  /// The ends' distances from the branch point and `u` at the near one, which a point beside an end is formed from.
+  /// The ends' distances from the branch point and `u` at the near one, which a point beside an end
+  /// is formed from.
   ends: (f64, f64),
   u_near: f64,
 }
@@ -186,7 +188,8 @@ impl Frame {
       (-panel.r, -panel.l, -1.0)
     };
     let ln_far = far.ln();
-    // From the exact `near − far` where the ends lie within a factor 2, so a narrow panel's `q` keeps its digits.
+    // From the exact `near − far` where the ends lie within a factor 2, so a narrow panel's `q`
+    // keeps its digits.
     let ln_ratio = if near > 0.5 * far {
       ((near - far) / far).ln_1p()
     } else {
@@ -242,7 +245,8 @@ impl Frame {
       }
       (false, false) => (self.ends.1, (-w.abs()).ln_1p() / self.e),
     };
-    // Within a factor 2 of the end its offset from it, `base·(e^r − 1)`, carries the digits; past that `e^r` alone.
+    // Within a factor 2 of the end its offset from it, `base·(e^r − 1)`, carries the digits; past
+    // that `e^r` alone.
     let t = if rate.abs() < std::f64::consts::LN_2 {
       base + base * rate.exp_m1()
     } else {
@@ -258,7 +262,8 @@ impl Frame {
     }
   }
 
-  /// `q` at the offset `t` from the branch point, its `ln(|t|/far)` formed as `of` forms the near end's.
+  /// `q` at the offset `t` from the branch point, its `ln(|t|/far)` formed as `of` forms the near
+  /// end's.
   pub(super) fn q_at(&self, t: f64) -> f64 {
     let (n, far) = (t.abs(), self.ends.1);
     let ln_r = if n > 0.5 * far {
@@ -291,7 +296,8 @@ impl Frame {
     }
   }
 
-  /// `ln(dt^e/(e·dq))`'s constant: `far^e/e` in `u`; in `ln t` the density `|t|^e` alone, its `e·q` below 2⁻¹⁰⁰⁰.
+  /// `ln(dt^e/(e·dq))`'s constant: `far^e/e` in `u`; in `ln t` the density `|t|^e` alone, its `e·q`
+  /// below 2⁻¹⁰⁰⁰.
   pub(super) fn ln_jacobian(&self) -> f64 {
     if self.log {
       self.e * self.ln_far

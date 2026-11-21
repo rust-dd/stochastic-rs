@@ -21,7 +21,8 @@ use crate::special::saddle_parts;
 /// curvature `r`, nears `ε` within the law's width.
 const EXACT_FROM: f64 = 1.267_650_600_228_229_4e30;
 
-/// `ln f = D_λ(x/w − 1) − ln x − ln 2 − T`, `e^{−T} = √(2r/π)/S`: the `O(r)` terms meet in the divergence.
+/// `ln f = D_λ(x/w − 1) − ln x − ln 2 − T`, `e^{−T} = √(2r/π)/S`: the `O(r)` terms meet in the
+/// divergence.
 pub(super) fn density(
   lambda: f64,
   (chi, psi): (f64, f64),
@@ -49,7 +50,8 @@ fn rescaled(lambda: f64, (chi, psi): (f64, f64), (root_chi, root_psi): (f64, f64
   let k = w.exponent();
   let (m, m_lo) = w.shift(-k).value_parts();
   let at = ldexp(x, -k);
-  // `x/w` under `2⁻¹⁰⁷⁴` puts the divergence past `−10⁴` (its `χ/2x` or `λ ln(x/w)`), the prefactor under `e^{1100}`.
+  // `x/w` under `2⁻¹⁰⁷⁴` puts the divergence past `−10⁴` (its `χ/2x` or `λ ln(x/w)`), the prefactor
+  // under `e^{1100}`.
   if at == 0.0 {
     return 0.0;
   }
@@ -68,7 +70,8 @@ fn rescaled(lambda: f64, (chi, psi): (f64, f64), (root_chi, root_psi): (f64, f64
   exp_times_over_pow2(a, (2.0 * (2.0 * r / PI).sqrt(), at), -k)
 }
 
-/// [`exact_saddle`], or where `χ` or `ψ` is 0 the gamma or inverse-gamma clock's `2λ/ψ` or `χ/2|λ|`.
+/// [`exact_saddle`], or where `χ` or `ψ` is 0 the gamma or inverse-gamma clock's `2λ/ψ` or
+/// `χ/2|λ|`.
 fn exact_saddle_of(lambda: f64, chi: f64, psi: f64) -> Scaled {
   if chi == 0.0 || psi == 0.0 {
     let two_nu = Scaled::new(lambda.abs()).shift(1);

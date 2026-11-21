@@ -53,7 +53,8 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32
     let (s, s_lo) = two_sum_far(d.0, theta);
     two_sum_far(s, s_lo + d.1)
   };
-  // `g = (χ − c − 1)/D` itself, `χ − c = (d − θ)(d + θ)/σ²`, so a small `g` keeps its relative digits, which `1/ν` multiplies.
+  // `g = (χ − c − 1)/D` itself, `χ − c = (d − θ)(d + θ)/σ²`, so a small `g` keeps its relative
+  // digits, which `1/ν` multiplies.
   let g = over(
     add_parts(
       mul_parts(over(near, (sigma, 0.0)), over(far, (sigma, 0.0))),
@@ -66,7 +67,8 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32
     let ln_w = ln_parts(w.0, w.1, 0);
     (sub_parts(ln_w, g), ln_w)
   } else {
-    // `ln_1p_mx(g) = −½g²Σ 2(−g)ᵏ/(k + 2)`, its first term in two parts and the rest under `2⁻¹⁰` of it.
+    // `ln_1p_mx(g) = −½g²Σ 2(−g)ᵏ/(k + 2)`, its first term in two parts and the rest under `2⁻¹⁰`
+    // of it.
     let (mut tail, mut power) = (0.0, 1.0);
     for k in 1..8 {
       power *= -g.0;
@@ -83,7 +85,8 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32
   };
   let (theta_s, d_s) = (signed(ratio, theta.signum()), signed(root, d.0.signum()));
   let q = (theta / sigma) * ((d.0 + theta) / sigma) / den.0;
-  // Past `q = θ(d + θ)/σ²D = ½` the gap `(d − θ) − θg` cancels; `((d − θ)(o + 1 + Δ) + θ)/D`, `Δ = R − θd/σ²`, does not.
+  // Past `q = θ(d + θ)/σ²D = ½` the gap `(d − θ) − θg` cancels; `((d − θ)(o + 1 + Δ) + θ)/D`,
+  // `Δ = R − θd/σ²`, does not.
   let gap = if q < 0.5 {
     sub_parts(over(near, (sigma, 0.0)), mul_parts(theta_s, g))
   } else {

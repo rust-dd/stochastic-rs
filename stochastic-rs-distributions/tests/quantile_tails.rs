@@ -1,4 +1,5 @@
-//! Quantiles at the far ends of their levels and parameters against mpmath (50 and 90 digits agreeing).
+//! Quantiles at the far ends of their levels and parameters against mpmath (50 and 90 digits
+//! agreeing).
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::cauchy::SimdCauchy;
@@ -12,7 +13,8 @@ fn rel(a: f64, b: f64) -> f64 {
   (a - b).abs() / b.abs()
 }
 
-/// Where the gamma root underflows, in either branch, its `1/β` power is `level·Γ(1 + 1/β)`; β = 20 takes the root.
+/// Where the gamma root underflows, in either branch, its `1/β` power is `level·Γ(1 + 1/β)`; β = 20
+/// takes the root.
 #[test]
 fn ged_quantile_at_large_beta_keeps_its_offset() {
   for (beta, p, want) in [
@@ -43,7 +45,8 @@ fn ged_quantile_at_large_beta_keeps_its_offset() {
   }
 }
 
-/// Above ½ `1 − p·m` as `(1 − p) + p·e^{−λL}` keeps what the map cancels, next to level 1 and far below `upper`.
+/// Above ½ `1 − p·m` as `(1 − p) + p·e^{−λL}` keeps what the map cancels, next to level 1 and far
+/// below `upper`.
 #[test]
 fn truncated_exponential_quantile_keeps_its_upper_tail() {
   let levels = [1.0 - 2f64.powi(-53), 1.0 - 1e-15, 1.0 - 1e-10];
@@ -136,7 +139,8 @@ fn truncated_exponential_quantile_never_passes_upper() {
   }
 }
 
-/// The map below ½ and the two-term form above meet without a step down, over 10⁴ floats on each side.
+/// The map below ½ and the two-term form above meet without a step down, over 10⁴ floats on each
+/// side.
 #[test]
 fn truncated_exponential_quantile_is_monotone_through_one_half() {
   for (lam, lo, up) in [(25.0, 0.0, 1.0), (7.0, 0.0, 101.39), (0.5, 0.0, 3.0)] {
@@ -233,7 +237,8 @@ fn cauchy_quantile_at_a_subnormal_level() {
   }
 }
 
-/// One form at every level keeps the quantile monotone through ½; a form switched at ½ can step down an ulp there.
+/// One form at every level keeps the quantile monotone through ½; a form switched at ½ can step
+/// down an ulp there.
 #[test]
 fn pareto_quantile_is_monotone_through_one_half() {
   let law = SimdPareto::<f64>::new(1.0, 7.244359600749906);

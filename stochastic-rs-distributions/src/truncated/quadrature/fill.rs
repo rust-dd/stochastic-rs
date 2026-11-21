@@ -1,4 +1,5 @@
-//! The fill: the reference point and the clipped ends, then `M₀` with its walk and the tails beyond the clips.
+//! The fill: the reference point and the clipped ends, then `M₀` with its walk and the tails beyond
+//! the clips.
 
 use std::ops::ControlFlow;
 
@@ -34,7 +35,8 @@ impl<K: Kernel> Truncation<K> {
     );
   }
 
-  /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular one graded.
+  /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular
+  /// one graded.
   pub(in crate::truncated) fn mass_only(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
     let mut t = Self::placed(kernel, lo.into(), up.into());
     if !t.narrow {
@@ -76,7 +78,8 @@ impl<K: Kernel> Truncation<K> {
   /// The setup before any sum: the reference point, the clipped ends and their width.
   pub(super) fn placed(mut kernel: K, lo: Cut, up: Cut) -> Self {
     let step = span(lo, up).min(kernel.length_scale()) / 10.0;
-    // `(s, e)` of a singular branch point at a point or within `step` of it, where the power law rules the kernel's mass.
+    // `(s, e)` of a singular branch point at a point or within `step` of it, where the power law
+    // rules the kernel's mass.
     let singular = |x: Cut| {
       let mut points = kernel.branch_points().into_iter().flatten();
       points.find(|&(s, e)| e < 1.0 && x.offset(s).abs() <= step)

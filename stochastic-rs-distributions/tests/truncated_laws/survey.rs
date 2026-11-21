@@ -89,7 +89,8 @@ impl Law {
     }
   }
 
-  /// The pinned table's key: the family's letter and the parameters, each the shortest decimal that reads back exactly.
+  /// The pinned table's key: the family's letter and the parameters, each the shortest decimal that
+  /// reads back exactly.
   pub fn key(&self) -> String {
     match *self {
       Law::N { mu, sigma, lo, up } => format!("N {mu:e} {sigma:e} {lo:e} {up:e}"),
@@ -318,7 +319,8 @@ fn exp(g: &mut Gen) -> Option<Law> {
   Some(Law::E { lam, lo, up })
 }
 
-/// `per_kind` laws of each of the four kinds from `seed`, every parameter log-uniform, in the order they are drawn.
+/// `per_kind` laws of each of the four kinds from `seed`, every parameter log-uniform, in the order
+/// they are drawn.
 pub fn cases(seed: u64, per_kind: usize) -> Vec<Case> {
   let mut g = Gen(seed);
   let mut made = [0usize; 4];
@@ -346,7 +348,8 @@ pub fn cases(seed: u64, per_kind: usize) -> Vec<Case> {
   out
 }
 
-/// `per_stratum` laws of each stratum but the log-uniform draw, each stratum from its own stream of `seed`.
+/// `per_stratum` laws of each stratum but the log-uniform draw, each stratum from its own stream of
+/// `seed`.
 pub fn strata(seed: u64, per_stratum: usize) -> Vec<Case> {
   Stratum::ALL[1..]
     .iter()
@@ -354,7 +357,8 @@ pub fn strata(seed: u64, per_stratum: usize) -> Vec<Case> {
     .collect()
 }
 
-/// Runs every case against the committed table, prints each stratum's counts and returns every failure.
+/// Runs every case against the committed table, prints each stratum's counts and returns every
+/// failure.
 pub fn run_all(cases: &[Case], pinned: &Pinned) -> Vec<String> {
   let mut tallies: Vec<(Stratum, Tally)> = Vec::new();
   for case in cases {
@@ -437,7 +441,8 @@ pub fn build_exp(law: Law) -> SimdTruncatedExp<f64> {
   }
 }
 
-/// The table's laws, `cases(0x5eed_2026, 50)` then `strata(0x5eed_2026, 24)` as the evidence survey drew them.
+/// The table's laws, `cases(0x5eed_2026, 50)` then `strata(0x5eed_2026, 24)` as the evidence survey
+/// drew them.
 fn committed(draw: bool) -> Vec<Case> {
   crate::pinned::committed_cases()
     .into_iter()

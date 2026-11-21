@@ -116,7 +116,8 @@ fn half_negative_lambda_is_the_nig() {
   ));
 }
 
-/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary and inside it, and the density.
+/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary and inside it, and
+/// the density.
 #[test]
 fn mgf_and_pdf_hold_where_k_overflows() {
   let gh = SimdGeneralizedHyperbolic::<f64>::new(-172.0, 2.0, 0.5, 0.5, 0.0);
@@ -204,7 +205,8 @@ fn rejects_beta_outside_alpha() {
   let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0);
 }
 
-/// The density is 0 at ±∞ for every order, `λ = ½` (where `order · ln(root)` reads `0 · ∞`) included.
+/// The density is 0 at ±∞ for every order, `λ = ½` (where `order · ln(root)` reads `0 · ∞`)
+/// included.
 #[test]
 fn pdf_vanishes_at_infinity() {
   for lambda in [0.5, 1.0, -1.5] {
@@ -223,7 +225,8 @@ fn moments_hold_where_k_overflows() {
   assert!(close(var, 0.000_730_989_044_336_110_9, 1e-12), "{var}");
 }
 
-/// mpmath at 60 and 120 digits: the central moments from the clock's cumulants within `1e-12`, `|λ|` from 1 to `10⁴`.
+/// mpmath at 60 and 120 digits: the central moments from the clock's cumulants within `1e-12`,
+/// `|λ|` from 1 to `10⁴`.
 #[test]
 fn central_moments_hold_at_every_order() {
   for ((lambda, alpha, beta, delta, mu), want) in [
@@ -575,7 +578,8 @@ fn far_tails_answer_the_exact_zero_or_infinity() {
   assert_eq!(shifted.moment_generating_function(1.0), Some(f64::INFINITY));
 }
 
-/// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence steps.
+/// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence
+/// steps.
 #[test]
 fn a_huge_index_returns() {
   let d = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 1.0, 0.0);

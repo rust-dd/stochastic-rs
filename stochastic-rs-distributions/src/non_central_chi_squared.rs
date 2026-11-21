@@ -1,10 +1,9 @@
-//! # Non Central Chi Squared
+//! Non-central chi-squared law, sampled as `χ²_{ν−1} + (Z + √λ)²` at `ν ≥ 1`, else as
+//! `Gamma(ν/2 + J, 2)` with `J ~ Poisson(λ/2)`, whose `J = 0` term at `ν = 0` is the atom at 0.
 //!
 //! $$
 //! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
 //! $$
-//!
-//! Sampling: $\chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$, else $\mathrm{Gamma}(\nu/2 + J, 2)$, $J \sim \mathrm{Poisson}(\lambda/2)$, whose $J = 0$ term at $\nu = 0$ is the atom at 0.
 //!
 //! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 29.
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), *Handbook of Mathematical Functions*, NBS AMS 55, eq. 26.4.25 (the Poisson mixture).
@@ -30,7 +29,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// The Poisson count and the gamma one Poisson-mixture draw consumes, from a seed or from the caller's rng.
+/// The Poisson count and the gamma one Poisson-mixture draw consumes, from a seed or from the
+/// caller's rng.
 trait MixtureSource<T: SimdFloatExt> {
   fn poisson(&mut self, lambda: f64) -> f64;
 
@@ -38,7 +38,8 @@ trait MixtureSource<T: SimdFloatExt> {
 }
 
 impl<T: SimdFloatExt, S: SeedExt> MixtureSource<T> for &S {
-  /// The first draw of a `SimdPoisson` stream on this seed, without the table and the buffer that stream would fill.
+  /// The first draw of a `SimdPoisson` stream on this seed, without the table and the buffer that
+  /// stream would fill.
   fn poisson(&mut self, lambda: f64) -> f64 {
     count_once(lambda, &mut SimdRng::from_seed(self.next_seed()))
   }
@@ -58,7 +59,8 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
   }
 }
 
-/// Panics unless `0 ≤ ncp < ∞`, so a negative, infinite or `NaN` noncentrality fails on both decompositions alike.
+/// Panics unless `0 ≤ ncp < ∞`, so a negative, infinite or `NaN` noncentrality fails on both
+/// decompositions alike.
 #[inline]
 fn check_ncp<T: SimdFloatExt>(ncp: T) {
   assert!(
@@ -67,7 +69,8 @@ fn check_ncp<T: SimdFloatExt>(ncp: T) {
   );
 }
 
-/// The Poisson mixture `Gamma(df/2 + J, 2)`, `J ~ Poisson(ncp/2)`, exact for `0 ≤ df < 1`; `df = 0` with `J = 0` is Siegel's atom at 0.
+/// The Poisson mixture `Gamma(df/2 + J, 2)`, `J ~ Poisson(ncp/2)`, exact for `0 ≤ df < 1`; `df = 0`
+/// with `J = 0` is Siegel's atom at 0.
 fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T>) -> T {
   let two = T::from_f64_fast(2.0);
   let half_lambda = (ncp / two).to_f64().unwrap_or(f64::NAN);
@@ -102,7 +105,8 @@ pub struct NcxState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
-  /// The law of `χ²_df(·)`, whose central `χ²_{df−1}` term is dropped when `df ≈ 1`; panics unless `0 ≤ df < ∞`.
+  /// The law of `χ²_df(·)`, whose central `χ²_{df−1}` term is dropped when `df ≈ 1`; panics unless
+  /// `0 ≤ df < ∞`.
   pub fn new(df: T) -> Self {
     assert!(
       df.is_finite(),
@@ -197,7 +201,8 @@ mod tests {
 
   const SEEDS: [u64; 3] = [2718, 999, 42];
 
-  /// A negative, infinite or `NaN` noncentrality panics naming `ncp`, on both decompositions and every entry point.
+  /// A negative, infinite or `NaN` noncentrality panics naming `ncp`, on both decompositions and
+  /// every entry point.
   #[test]
   fn negative_or_non_finite_ncp_is_rejected() {
     let names_ncp = |r: std::thread::Result<f64>| {
@@ -223,7 +228,8 @@ mod tests {
     }
   }
 
-  /// Siegel (1979): `χ²₀(λ)` is `Gamma(J, 2)` for `J ~ Poisson(λ/2)`, with the atom `P(X = 0) = e^{−λ/2}`.
+  /// Siegel (1979): `χ²₀(λ)` is `Gamma(J, 2)` for `J ~ Poisson(λ/2)`, with the atom
+  /// `P(X = 0) = e^{−λ/2}`.
   #[test]
   fn zero_degrees_of_freedom_is_siegels_law() {
     let mut s = SimdNonCentralChiSquared::<f64>::new(0.0).seeded(&Deterministic::new(11));
@@ -258,7 +264,8 @@ mod tests {
     assert_eq!(SimdNonCentralChiSquared::<f64>::new(0.0).df(), 0.0);
   }
 
-  /// A noncentrality of `1e300` below `df = 1` draws its count from a few constants and as an `f64`, on every entry point.
+  /// A noncentrality of `1e300` below `df = 1` draws its count from a few constants and as an
+  /// `f64`, on every entry point.
   #[test]
   fn huge_noncentrality_terminates() {
     let law = SimdNonCentralChiSquared::<f64>::new(0.3);
@@ -318,7 +325,8 @@ mod tests {
     assert_cumulant_moments(&samples, 0.3, 2.0);
   }
 
-  /// The honest draw on the caller's rng has the same cumulant moments on both the shift and the mixture path.
+  /// The honest draw on the caller's rng has the same cumulant moments on both the shift and the
+  /// mixture path.
   #[test]
   fn sample_ncp_with_matches_closed_form_moments() {
     for (df, lambda) in [(3.0, 2.5), (0.3, 2.0), (0.0, 2.0)] {

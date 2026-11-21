@@ -1,4 +1,5 @@
-//! Truncated beta: rejection from the base law while the interval holds 1e-3 of its mass, else the inverse cdf.
+//! Truncated beta: rejection from the base law while the interval holds 1e-3 of its mass, else the
+//! inverse cdf.
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 25, ISBN 0-471-58494-0 (beta moments; the truncated ones renormalise the incomplete beta ratio).
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).

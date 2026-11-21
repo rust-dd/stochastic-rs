@@ -100,7 +100,8 @@ mod tests {
     assert_eq!(pts[[0, 39]], 1.0 / 173.0);
   }
 
-  /// Golden bits of the last column: the prime table and the radical inverse are part of the replayable stream.
+  /// Golden bits of the last column: the prime table and the radical inverse are part of the
+  /// replayable stream.
   #[test]
   fn the_base_173_column_is_pinned_bit_for_bit() {
     let pts = HaltonSeq::new(40).sample::<f64>(3);

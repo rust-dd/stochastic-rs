@@ -289,7 +289,8 @@ fn every_rejected_argument_is_named_with_its_value() {
   assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-/// One constructor driven through its float parameters: their names in order, a valid point, the call.
+/// One constructor driven through its float parameters: their names in order, a valid point, the
+/// call.
 struct Ctor {
   names: &'static [&'static str],
   base: &'static [f64],

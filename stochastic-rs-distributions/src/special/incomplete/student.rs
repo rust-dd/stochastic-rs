@@ -15,12 +15,14 @@ use super::large_shape::ln_ratio;
 use super::large_shape::two_sum;
 use crate::special::mills_ratio;
 
-/// Up to this `|ln_scale|` a tail branch's plain `c·ξ` rounds by a few `ε` at most; past it `refined` re-forms it.
+/// Up to this `|ln_scale|` a tail branch's plain `c·ξ` rounds by a few `ε` at most; past it
+/// `refined` re-forms it.
 const REFINE: f64 = 1.0;
 
 const TWO_THIRDS: (f64, f64) = (0.6666666666666666, 3.700743415417188e-17);
 
-/// `e^{64·LN2_LO}` and `2⁻⁶⁴`, the frame `e^{ln_scale + 64 ln 2}` a value below `e^{−700}` is formed in.
+/// `e^{64·LN2_LO}` and `2⁻⁶⁴`, the frame `e^{ln_scale + 64 ln 2}` a value below `e^{−700}` is
+/// formed in.
 const FRAME: (f64, f64) = (1.0000000122125756, 1.0 / 18_446_744_073_709_551_616.0);
 
 /// Below this `ν/2` the expansion is taken at `ν/2 + n ≥ LIFT`, the `n` steps between by the upward
@@ -51,13 +53,15 @@ const D: [f64; 15] = [
   9.597634062586047e-24,
 ];
 
-/// `P(T ≤ −|x|)`: `½ − ½·factor·e^{ln_scale}` near zero (`center`), else `½·factor·e^{ln_scale}`; `xi = ln(1 + x²/ν)`.
+/// `P(T ≤ −|x|)`: `½ − ½·factor·e^{ln_scale}` near zero (`center`), else `½·factor·e^{ln_scale}`;
+/// `xi = ln(1 + x²/ν)`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StudentTail {
   center: bool,
   factor: f64,
   ln_scale: f64,
-  /// `c` of a tail branch's `ln_scale = −c·ξ`, as an exact sum of two doubles; `(0, 0)` where `ξ` stays bounded.
+  /// `c` of a tail branch's `ln_scale = −c·ξ`, as an exact sum of two doubles; `(0, 0)` where `ξ`
+  /// stays bounded.
   rate: (f64, f64),
   pub(crate) xi: f64,
 }
@@ -293,7 +297,8 @@ pub(crate) fn student_tail(nu: f64, ratio: f64, x: f64) -> StudentTail {
     };
   }
   if w <= (a + 1.0) / (a + 2.5) {
-    // `I_w(a, ½) = √z R(a)/√(πa) w^a h`, `h` Lentz's fraction, which converges in under 20 steps below NR's switch `w*`.
+    // `I_w(a, ½) = √z R(a)/√(πa) w^a h`, `h` Lentz's fraction, which converges in under 20 steps
+    // below NR's switch `w*`.
     return StudentTail {
       center: false,
       factor: z.sqrt() * scaled / std::f64::consts::PI.sqrt() * betacf(a, 0.5, w),
@@ -326,7 +331,8 @@ pub(crate) fn student_tail(nu: f64, ratio: f64, x: f64) -> StudentTail {
   }
 }
 
-/// `Σ t_n`, `t_0 = 1`, `t_{n+1} = t_n·ratio(n)`, positive terms until one is below `1e-17` of the sum.
+/// `Σ t_n`, `t_0 = 1`, `t_{n+1} = t_n·ratio(n)`, positive terms until one is below `1e-17` of the
+/// sum.
 fn series(ratio: impl Fn(f64) -> f64) -> f64 {
   let (mut term, mut sum, mut n) = (1.0, 1.0, 0.0);
   while n < 200.0 {

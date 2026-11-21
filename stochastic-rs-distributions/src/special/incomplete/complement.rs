@@ -58,7 +58,8 @@ pub(super) fn gamma_limit_arg(a: f64, b: f64, x: f64) -> Option<(f64, f64)> {
   (next / 24.0 <= TAIL_HELD).then_some((n, s))
 }
 
-/// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB) + ln(1 + pΣ)`, `Σ = Σ (1 − q)_n xⁿ/(n!(p + n))` (`p ≤ 1`, `x ≤ ½`, `qx ≤ 2`): `E` is `p` times a sum of order one, rounding a subnormal tail once.
+/// `1 − I_x(p, q) = −expm1(p ln x − ln(pB) + ln(1 + pΣ))`, `Σ = Σ (1 − q)_n xⁿ/(n!(p + n))`, for
+/// `p ≤ 1`, `x ≤ ½`, `qx ≤ 2`: an exponent `p` times an order-one sum rounds a subnormal tail once.
 pub(super) fn upper_series(p: f64, q: f64, x: f64) -> f64 {
   let (bracket, t) = upper_series_exponent(p, q, x, x.ln());
   -p.mul_add(bracket, -t).exp_m1()
@@ -92,7 +93,8 @@ fn upper_series_exponent(p: f64, q: f64, x: f64, ln_x: f64) -> (f64, f64) {
   }
   let (s, z, t) = shape_beta_parts(p, q);
   let xz = x * z;
-  // `x` and `z` meet at `qx ≈ 1` with logarithms of either sign, which their product cancels exactly.
+  // `x` and `z` meet at `qx ≈ 1` with logarithms of either sign, which their product cancels
+  // exactly.
   let ln_xz = if xz >= 1e-290 { xz.ln() } else { ln_x + z.ln() };
   (ln_xz + s + ln_1p_over(p * sum) * sum, t)
 }
@@ -110,7 +112,8 @@ pub(super) fn ln_shape_beta(p: f64, q: f64) -> f64 {
   }
 }
 
-/// `−ln(pB(p, q)) = p(ln z + s) − t`, `p ≤ 1`: `−ln Γ(1 + p)` by A&S 6.1.34, `ln Γ(z + p) − ln Γ(z)` by Stirling's difference at `z ≥ 16`, unit shifts in `s`, `t` the first where `1/q` overflows.
+/// `−ln(pB(p, q)) = p(ln z + s) − t`, `p ≤ 1`: A&S 6.1.34 for `−ln Γ(1 + p)`, Stirling at `z ≥ 16`
+/// for `ln Γ(z + p) − ln Γ(z)`, unit shifts in `s`, `t` the first if `1/q` overflows.
 fn shape_beta_parts(p: f64, q: f64) -> (f64, f64, f64) {
   let g_over = recip_gamma_1p_m1_over(p);
   let mut s = ln_1p_over(p * g_over) * g_over;
@@ -128,7 +131,8 @@ fn shape_beta_parts(p: f64, q: f64) -> (f64, f64, f64) {
       z += 1.0;
     }
   }
-  // `[(z + p − ½)ln(1 + u) − p]/p` with `u = p/z`, then `Σ c_k((z + p)^{1−2k} − z^{1−2k})/p` through `expm1`.
+  // `[(z + p − ½)ln(1 + u) − p]/p` with `u = p/z`, then `Σ c_k((z + p)^{1−2k} − z^{1−2k})/p`
+  // through `expm1`.
   let (u, z2) = (p / z, (z * z).recip());
   let l1u = ln_1p_over(u);
   let (mut power, mut phi) = (z.recip(), 0.0);

@@ -1,4 +1,5 @@
-//! Double-double values `hi + lo`, for a kernel's log at one point where a subnormal cdf needs it to an ε of 1.
+//! Double-double values `hi + lo`, for a kernel's log at one point where a subnormal cdf needs it
+//! to an ε of 1.
 //!
 //! Reference: Dekker, T. J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083.
 
@@ -41,7 +42,8 @@ pub(in crate::truncated) fn div(a: Two, b: Two) -> Two {
   renorm(q, r.0 / b.0)
 }
 
-/// `ln a` for `a > 0`: `a = m·2^e` with `m` in `(√½, √2]`, so `e·ln 2` is exact and `m − 1` loses nothing.
+/// `ln a` for `a > 0`: `a = m·2^e` with `m` in `(√½, √2]`, so `e·ln 2` is exact and `m − 1` loses
+/// nothing.
 pub(in crate::truncated) fn ln(a: Two) -> Two {
   let (e, m) = split_pow2(a.0);
   let (m, e) = if m > std::f64::consts::SQRT_2 {
@@ -53,7 +55,8 @@ pub(in crate::truncated) fn ln(a: Two) -> Two {
   add(mul_parts((f64::from(e), 0.0), LN2), ln_1p_near(u))
 }
 
-/// `ln(1 + u)`, `u > −1`; a small `u` keeps its own relative digits, which `1 + u` would round away.
+/// `ln(1 + u)`, `u > −1`; a small `u` keeps its own relative digits, which `1 + u` would round
+/// away.
 pub(in crate::truncated) fn ln_1p(u: Two) -> Two {
   if u.0.abs() <= 0.29 {
     ln_1p_near(u)

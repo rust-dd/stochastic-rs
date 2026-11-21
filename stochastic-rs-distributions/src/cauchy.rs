@@ -1,10 +1,10 @@
-//! # Cauchy
+//! Cauchy law, sampled by inversion of its cdf.
 //!
 //! $$
 //! f(x)=\frac{1}{\pi\gamma\left[1+\left(\frac{x-x_0}{\gamma}\right)^2\right]}
 //! $$
 //!
-//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 
@@ -22,7 +22,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_CAUCHY_THRESHOLD: usize = 16;
 
-/// Cauchy law with location `x0` and scale `gamma`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Cauchy law with location `x0` and scale `gamma`: parameters only; a [`Seeded`](crate::Seeded)
+/// stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdCauchy<T> {
   x0: T,
@@ -125,7 +126,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdCauchy<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
-  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for `f32`).
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for
+  /// `f32`).
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }
@@ -160,7 +162,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     if tail >= 0.25 {
       return Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan());
     }
-    // Below ¼ `p − ½` drops the level's digits and above ¾ `π(p − ½)` rounds against its distance to the pole.
+    // Below ¼ `p − ½` drops the level's digits and above ¾ `π(p − ½)` rounds against its distance
+    // to the pole.
     let pi = std::f64::consts::PI;
     let offset = if tail < 4e-9 {
       // There `cot(πp) = 1/(πp)` to half an ulp, divided to keep each step normal: `γ/π` where

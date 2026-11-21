@@ -21,12 +21,14 @@ use crate::traits::distribution::SimdKernel;
 /// Values per `sample_matrix` worker: a fork plus a rayon task cost a few hundred nanoseconds.
 const MIN_PAR_CHUNK: usize = 16 * 1024;
 
-/// `sample_matrix`'s worker count, a function of `total` alone: the fork sequence must not see the pool size.
+/// `sample_matrix`'s worker count, a function of `total` alone: the fork sequence must not see the
+/// pool size.
 pub(crate) fn worker_count(total: usize) -> usize {
   total.div_ceil(MIN_PAR_CHUNK).max(1).min(total)
 }
 
-/// A stateless law bound to one seeded SIMD stream; draws take `&mut self` and a clone is a snapshot.
+/// A stateless law bound to one seeded SIMD stream; draws take `&mut self` and a clone is a
+/// snapshot.
 #[derive(Clone, Debug)]
 pub struct Seeded<D: SimdDistribution, R: SimdRngExt = SimdRng> {
   dist: D,
@@ -56,7 +58,8 @@ impl<D: SimdDistribution, R: SimdRngExt> Seeded<D, R> {
     &mut self.state
   }
 
-  /// The law and the stream state at once, for the bespoke streams of the laws without a scalar kernel.
+  /// The law and the stream state at once, for the bespoke streams of the laws without a scalar
+  /// kernel.
   pub(crate) fn parts_mut(&mut self) -> (&D, &mut D::State<R>) {
     (&self.dist, &mut self.state)
   }

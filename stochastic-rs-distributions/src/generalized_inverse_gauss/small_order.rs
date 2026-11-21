@@ -42,7 +42,8 @@ pub(super) fn density(lambda: f64, chi: f64, psi: f64, x: f64) -> f64 {
   if !(q + p).is_finite() {
     return 0.0;
   }
-  // At a subnormal `x` the residual of `χ/x` would round on the subnormal grid; `2¹²⁸x` and `2¹²⁸χ` keep it normal.
+  // At a subnormal `x` the residual of `χ/x` would round on the subnormal grid; `2¹²⁸x` and `2¹²⁸χ`
+  // keep it normal.
   let (xs, cs) = if x.is_normal() {
     (x, chi)
   } else {

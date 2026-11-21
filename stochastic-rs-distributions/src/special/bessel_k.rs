@@ -96,7 +96,8 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
   (gam1, scale * odd.cosh())
 }
 
-/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
+/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at
+/// `x = ∞`.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   if !nu.is_finite() || x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -191,7 +192,8 @@ pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
   debye_factor(nu, x).ln()
 }
 
-/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding of its own.
+/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding
+/// of its own.
 pub(crate) fn debye_shape_parts(nu: f64, x: f64) -> (f64, f64) {
   ln_parts(debye_factor(nu, x), 0.0, 0)
 }
@@ -208,7 +210,8 @@ fn ln_debye_k(nu: f64, x: f64) -> f64 {
   m.ln() - d.eta_minus_z
 }
 
-/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow at a finite order.
+/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow
+/// at a finite order.
 fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
   let d = debye(nu, x);
   (
@@ -249,7 +252,8 @@ fn tiny_argument(nu: f64, x: f64, log: bool) -> f64 {
   }
 }
 
-/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on with, from `d = ln(2/x)`.
+/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on
+/// with, from `d = ln(2/x)`.
 fn temme_head(mu: f64, d: f64) -> (f64, f64, f64, f64) {
   let pimu = PI * mu;
   let fact = if pimu.abs() < EPS {

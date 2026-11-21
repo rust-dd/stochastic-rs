@@ -96,7 +96,8 @@ fn evaluation_bound(a: f64, b: f64, t: f64) -> usize {
   if ratio <= 1.0 {
     return 2;
   }
-  // ⌈log₂ ratio⌉ read off the binary exponent, exact where `log2().ceil()` can round across a power of two.
+  // ⌈log₂ ratio⌉ read off the binary exponent, exact where `log2().ceil()` can round across a power
+  // of two.
   let bits = ratio.to_bits();
   let k = (bits >> 52) as usize - 1023 + usize::from(bits & ((1 << 52) - 1) != 0);
   (k + 1).pow(2) - 2

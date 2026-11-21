@@ -1,4 +1,4 @@
-//! # Generalized Error Distribution (GED), the Subbotin family
+//! Generalized error distribution (GED), the Subbotin family: `β = 1` is Laplace, `β = 2` normal.
 //!
 //! $$
 //! f(x; \mu, \alpha, \beta) = \frac{\beta}{2\alpha\,\Gamma(1/\beta)}\,
@@ -6,8 +6,7 @@
 //! \qquad \alpha > 0,\ \beta > 0.
 //! $$
 //!
-//! `β = 1` is the Laplace law and `β = 2` the normal; in standard form `|X|^β ~ Gamma(1/β, 1)`, so
-//! a draw is
+//! In standard form `|X|^β ~ Gamma(1/β, 1)`, so a draw is
 //!
 //! $$
 //! X = \alpha \cdot Y^{1/\beta} \cdot S + \mu,
@@ -47,7 +46,8 @@ pub struct SimdGed<T> {
   gamma: SimdGamma<T>,
 }
 
-/// A GED stream: the gamma magnitude sub-stream, the engine of the signs and the single-draw buffer.
+/// A GED stream: the gamma magnitude sub-stream, the engine of the signs and the single-draw
+/// buffer.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct GedState<T: SimdFloatExt, R: SimdRngExt> {
@@ -233,7 +233,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
       return Some(f64::NAN);
     }
     let (mu, a, b) = (self.mu.to_f64()?, self.alpha.to_f64()?, self.beta.to_f64()?);
-    // `2p − 1` is exact from ¼ up; below ¼ the lower tail's level `2p` is, and the root is solved from it.
+    // `2p − 1` is exact from ¼ up; below ¼ the lower tail's level `2p` is, and the root is solved
+    // from it.
     let tail = 2.0 * p.min(1.0 - p);
     let level = (2.0 * p - 1.0).abs();
     let g = if tail >= 0.5 {

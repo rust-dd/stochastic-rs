@@ -1,10 +1,10 @@
-//! # Weibull
+//! Weibull law, sampled by the inversion `λ·E^{1/k}` with `E ~ Exp(1)`.
 //!
 //! $$
 //! f(x)=\frac{k}{\lambda}\left(\frac{x}{\lambda}\right)^{k-1}e^{-(x/\lambda)^k},\ x\ge0
 //! $$
 //!
-//! Sampling: `λ·E^{1/k}` with `E ~ Exp(1)`, inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 
@@ -22,7 +22,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Weibull law with scale `lambda` and shape `k`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Weibull law with scale `lambda` and shape `k`: parameters only; a [`Seeded`](crate::Seeded)
+/// stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdWeibull<T> {
   lambda: T,

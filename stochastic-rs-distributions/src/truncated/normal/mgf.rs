@@ -146,7 +146,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (exponent, masses) = match clamp {
       Some(a) if a.r.abs() >= STEEP => {
         let rate = a.r.abs();
-        // `rW` from `q = r/16`, finite where `r` overflows: past the doubles `e^{−rW}` can still count.
+        // `rW` from `q = r/16`, finite where `r` overflows: past the doubles `e^{−rW}` can still
+        // count.
         let reach = -(-a.q.0.abs() * (16.0 * width)).exp_m1();
         let tilted = reach / rate;
         let masses = if tilted >= f64::MIN_POSITIVE {
@@ -161,7 +162,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
           (Some(l), Some(u)) => Some(if l.r.abs() < u.r.abs() { l } else { u }),
           (l, u) => l.or(u),
         };
-        // At the tilted mode `μt + s²/2 + c²/2`, from the plain reference point's bound where it is one.
+        // At the tilted mode `μt + s²/2 + c²/2`, from the plain reference point's bound where it is
+        // one.
         let at_mode = |a: Option<Anchor>| match (at_lo, at_up, a) {
           (Some(b), ..) if centre == held_lo => Exponent::Mode(Some((b, c(&b)))),
           (_, Some(b), _) if centre == held_up => Exponent::Mode(Some((b, c(&b)))),
@@ -186,7 +188,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
           }
           // With both ends open the tilted law is the whole normal, as the plain one is.
           None => (Exponent::Mode(None), 0.0),
-          // No bound within the doubles' reach of the mode: the tilted law is the whole normal about it.
+          // No bound within the doubles' reach of the mode: the tilted law is the whole normal
+          // about it.
           Some(a) => {
             let whole = Truncation::mass_only(
               TiltedKernel { s: 0.0, c: 0.0 },
@@ -285,7 +288,8 @@ impl Anchor {
   }
 }
 
-/// Where an exponent's terms go: exact into the scaled frame, or rounded and summed in plain doubles.
+/// Where an exponent's terms go: exact into the scaled frame, or rounded and summed in plain
+/// doubles.
 trait Sink {
   /// `f·g·2^p`.
   fn product(&mut self, f: f64, g: f64, p: i32);
@@ -355,7 +359,8 @@ fn emit(sink: &mut impl Sink, exponent: Exponent, t: f64, (mu, sigma): (f64, f64
 /// `t·x + ½(c² − z²) + d(r − d/2)` from the anchor, `r = 16q`.
 fn from_bound(sink: &mut impl Sink, t: f64, a: Anchor, c: Centre, d: f64) {
   sink.product(t, a.x, 0);
-  // `½(c² − z²)` as `δz + δ²/2` beside the anchor, where `c` and `z` round apart but their offset does not.
+  // `½(c² − z²)` as `δz + δ²/2` beside the anchor, where `c` and `z` round apart but their offset
+  // does not.
   match c {
     Centre::Beside(dl) => {
       sink.product(dl, a.z, 0);
@@ -381,7 +386,8 @@ fn from_bound(sink: &mut impl Sink, t: f64, a: Anchor, c: Centre, d: f64) {
 }
 
 impl Centre {
-  /// The reference point's size, against an anchor whose `r` a form at the tilted mode trades it for.
+  /// The reference point's size, against an anchor whose `r` a form at the tilted mode trades it
+  /// for.
   fn size(&self, a: &Anchor) -> f64 {
     match *self {
       Centre::Beside(dl) => (a.z + dl).abs(),

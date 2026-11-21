@@ -32,13 +32,16 @@ use super::gamma;
 use super::ln_gamma;
 use super::ndtri;
 
-/// From this shape on the series and the fraction need `O(√a)` terms near `x = a`, the switch Numerical Recipes takes.
+/// From this shape on the series and the fraction need `O(√a)` terms near `x = a`, the switch
+/// Numerical Recipes takes.
 const LARGE_SHAPE: f64 = 100.0;
 
-/// From this shape on `ln Γ(a)`'s last place and `a ln x − x`'s rounding outgrow `ε` in the prefactor: it is Stirling-scaled.
+/// From this shape on `ln Γ(a)`'s last place and `a ln x − x`'s rounding outgrow `ε` in the
+/// prefactor: it is Stirling-scaled.
 const STIRLING_PREFACTOR: f64 = 10.0;
 
-/// Below this shape `(pΓ(a + 1))^{1/a}` can fall under `e^{−700}`, which needs `700a < −ln p − ln Γ(a + 1) ≤ 745`.
+/// Below this shape `(pΓ(a + 1))^{1/a}` can fall under `e^{−700}`, which needs
+/// `700a < −ln p − ln Γ(a + 1) ≤ 745`.
 const FLOOR_BINDS: f64 = 1.07;
 
 /// One gamma tail as `factor · e^{ln_scale}`, `Q` if `upper`, else `P`, the other one minus it;
@@ -146,7 +149,8 @@ fn continued_fraction(a: f64, x: f64) -> f64 {
   h
 }
 
-/// Regularised lower incomplete gamma `P(a, x) = γ(a, x)/Γ(a)`; NaN for a negative `x` or a non-positive `a`.
+/// Regularised lower incomplete gamma `P(a, x) = γ(a, x)/Γ(a)`; NaN for a negative `x` or a
+/// non-positive `a`.
 pub fn gamma_p(a: f64, x: f64) -> f64 {
   if !domain(a, x) {
     return f64::NAN;
@@ -161,7 +165,8 @@ pub fn gamma_p(a: f64, x: f64) -> f64 {
   if t.upper { 1.0 - t.value() } else { t.value() }
 }
 
-/// Regularised upper incomplete gamma `Q(a, x) = Γ(a, x)/Γ(a)`, computed directly so the upper tail keeps its digits.
+/// Regularised upper incomplete gamma `Q(a, x) = Γ(a, x)/Γ(a)`, computed directly so the upper tail
+/// keeps its digits.
 pub fn gamma_q(a: f64, x: f64) -> f64 {
   if !domain(a, x) {
     return f64::NAN;
@@ -204,7 +209,8 @@ pub(crate) fn recip_gamma_1p_m1(a: f64) -> f64 {
   recip_gamma_1p_m1_over(a) * a
 }
 
-/// `(1/Γ(1 + a) − 1)/a`, the series of [`recip_gamma_1p_m1`] before its last factor, so a subnormal `a` loses nothing.
+/// `(1/Γ(1 + a) − 1)/a`, the series of [`recip_gamma_1p_m1`] before its last factor, so a subnormal
+/// `a` loses nothing.
 fn recip_gamma_1p_m1_over(a: f64) -> f64 {
   const C: [f64; 28] = [
     0.5772156649015329,
@@ -300,12 +306,14 @@ pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   invert(a, p, 1.0 - p, false, scale)
 }
 
-/// The same root from the upper level `q = Q(a, x)`, `0 < q < 1`, which `p = 1 − q` would round below ½.
+/// The same root from the upper level `q = Q(a, x)`, `0 < q < 1`, which `p = 1 − q` would round
+/// below ½.
 pub(crate) fn gamma_q_inv(a: f64, q: f64, scale: f64) -> f64 {
   invert(a, 1.0 - q, q, true, scale)
 }
 
-/// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact one.
+/// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact
+/// one.
 fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   let upper = p > 0.5;
   // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root, the root itself below
@@ -403,7 +411,8 @@ pub(crate) fn split_pow2(s: f64) -> (i32, f64) {
   (((bits >> 52) & 0x7ff) as i32 - 1023 + shift, m)
 }
 
-/// `(k, m)` with `s = 2ᵏm`, `m ∈ [1/√2, √2)`, the range in which `ln m = 2 atanh((m − 1)/(m + 1))` converges fastest.
+/// `(k, m)` with `s = 2ᵏm`, `m ∈ [1/√2, √2)`, the range in which `ln m = 2 atanh((m − 1)/(m + 1))`
+/// converges fastest.
 pub(super) fn split_sqrt2(s: f64) -> (i32, f64) {
   let (k, m) = split_pow2(s);
   if m > std::f64::consts::SQRT_2 {
@@ -421,7 +430,8 @@ pub(crate) fn ldexp(x: f64, p: i32) -> f64 {
   ldexp_steps(x, p)
 }
 
-/// A `2⁻⁹⁶⁹` step that rounds a subnormal leaves a last factor under `2⁻⁵³`, which rounds to 0 as the exact value does; cold, since inline the compiler selected among the steps' products branch-free.
+/// A `2⁻⁹⁶⁹` step that rounds a subnormal leaves a last factor under `2⁻⁵³`, which rounds to 0 as
+/// the exact value does; cold, as inlined the compiler selects among the products branch-free.
 #[cold]
 #[inline(never)]
 fn ldexp_steps(mut x: f64, mut p: i32) -> f64 {
@@ -469,7 +479,8 @@ fn solved_tail(a: f64, x: f64, upper: bool) -> (f64, f64) {
   (value, if upper { -slope } else { slope })
 }
 
-/// Unregularised lower incomplete gamma `γ(a, x) = P(a, x)·Γ(a)`; in log space once `Γ(a)` overflows.
+/// Unregularised lower incomplete gamma `γ(a, x) = P(a, x)·Γ(a)`; in log space once `Γ(a)`
+/// overflows.
 pub fn gamma_li(a: f64, x: f64) -> f64 {
   let g = gamma(a);
   if g.is_finite() {
@@ -479,7 +490,8 @@ pub fn gamma_li(a: f64, x: f64) -> f64 {
   }
 }
 
-/// Unregularised upper incomplete gamma `Γ(a, x) = Q(a, x)·Γ(a)`; in log space once `Γ(a)` overflows.
+/// Unregularised upper incomplete gamma `Γ(a, x) = Q(a, x)·Γ(a)`; in log space once `Γ(a)`
+/// overflows.
 pub fn gamma_ui(a: f64, x: f64) -> f64 {
   let g = gamma(a);
   if g.is_finite() {

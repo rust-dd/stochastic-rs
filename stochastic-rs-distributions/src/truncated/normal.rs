@@ -1,4 +1,5 @@
-//! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the inverse cdf.
+//! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the
+//! inverse cdf.
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
 //! Reference: Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942 (the tail proposals).
@@ -42,18 +43,22 @@ pub struct SimdTruncatedNormal<T> {
   base: SimdNormal<T>,
   lower: T,
   upper: T,
-  /// `F(lower)`, `F(upper)` and their difference: the sampler's regime switch and its inverse-cdf map (the analytics integrate the kernel).
+  /// `F(lower)`, `F(upper)` and their difference: the sampler's regime switch and its inverse-cdf
+  /// map (the analytics integrate the kernel).
   f_lo: f64,
   f_up: f64,
   norm_mass: f64,
-  /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits first.
+  /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits
+  /// first.
   tail: Option<TailSetup>,
-  /// The standardised bounds and, off `μ`, the width `(up − lo)/σ` (NaN about `μ` or past the doubles).
+  /// The standardised bounds and, off `μ`, the width `(up − lo)/σ` (NaN about `μ` or past the
+  /// doubles).
   bounds: [f64; 3],
   /// The point a density's offset is read from and its standardised double: on one side of `μ` the
   /// near bound, which the engine's reference point is held beside, else `μ`.
   origin: (f64, f64),
-  /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
+  /// The standardised interval's kernel integral, built by the first analytic call; construction
+  /// and draws skip it.
   analytics: OnceLock<Model<NormalKernel>>,
   /// `ln σ`, so a density costs no logarithm of its own.
   ln_sigma: f64,
@@ -76,7 +81,8 @@ impl<T: PartialEq> PartialEq for SimdTruncatedNormal<T> {
   }
 }
 
-/// A truncated-normal stream: the base normal's sub-stream and the engine of the tail and inverse-cdf uniforms.
+/// A truncated-normal stream: the base normal's sub-stream and the engine of the tail and
+/// inverse-cdf uniforms.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct TruncatedNormalState<T: SimdFloatExt, R: SimdRngExt> {
@@ -84,7 +90,8 @@ pub struct TruncatedNormalState<T: SimdFloatExt, R: SimdRngExt> {
   rng: R,
 }
 
-/// The base normal draw and the `[0, 1)` uniform a truncated-normal draw consumes, from a stream or the caller's rng.
+/// The base normal draw and the `[0, 1)` uniform a truncated-normal draw consumes, from a stream or
+/// the caller's rng.
 trait TruncatedNormalSource<T: SimdFloatExt> {
   fn base(&mut self, law: &SimdNormal<T>) -> T;
 
@@ -116,7 +123,8 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> TruncatedNormalSource<T> for AnyRng<'_, G
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// The parent [`SimdNormal`] `N(mu, sigma²)`, `sigma > 0`, renormalised on `[lower, upper]`, `lower < upper`.
+  /// The parent [`SimdNormal`] `N(mu, sigma²)`, `sigma > 0`, renormalised on `[lower, upper]`,
+  /// `lower < upper`.
   pub fn new(mu: T, sigma: T, lower: T, upper: T) -> Self {
     assert!(
       mu.is_finite(),
@@ -152,7 +160,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let f_lo = norm_cdf_scalar(a_std);
     let f_up = norm_cdf_scalar(b_std);
     let w = width(a_std, b_std, lo, up, sigma_f64);
-    // A left-tail interval is reflected into the right tail, so the tail sampler only sees `a >= 0`.
+    // A left-tail interval is reflected into the right tail, so the tail sampler only sees
+    // `a >= 0`.
     let tail = if a_std >= 0.0 {
       Some(TailSetup::new(a_std, b_std, w, false))
     } else if b_std <= 0.0 {
@@ -193,7 +202,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   fn fill(&self) -> Option<&Model<NormalKernel>> {
     let (lo, up) = self.held();
     Some(self.analytics.get_or_init(|| {
-      // Past `μ ± σ·f64::MAX` the standardised near bound is infinite: the law is its local model at that bound.
+      // Past `μ ± σ·f64::MAX` the standardised near bound is infinite: the law is its local model
+      // at that bound.
       if self.beyond().is_some()
         && let Some(l) = self.local()
       {
@@ -294,14 +304,16 @@ impl<T: SimdFloatExt> SimdKernel for SimdTruncatedNormal<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedNormal<T> {
-  /// The same rejection, tail or inverse-cdf draw, on scalar normals and uniforms from the caller's rng.
+  /// The same rejection, tail or inverse-cdf draw, on scalar normals and uniforms from the caller's
+  /// rng.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw(&mut AnyRng(rng))
   }
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
-  /// In logs with `σ`, so a subnormal `σ` meets the density's 0 at an open end before `1/σ` overflows.
+  /// In logs with `σ`, so a subnormal `σ` meets the density's 0 at an open end before `1/σ`
+  /// overflows.
   #[inline]
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
@@ -348,7 +360,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     let x = match self.analytics()? {
       Model::Full(t) => {
         let x = self.located(t.quantile(p))?;
-        // A point whose standardised offset the doubles hold only as a coarse subnormal: the engine's zone, in logs.
+        // A point whose standardised offset the doubles hold only as a coarse subnormal: the
+        // engine's zone, in logs.
         match t.zone_quantile(p).filter(|_| self.zone_offset(x).is_some()) {
           Some(point) => self.located(point)?,
           None => x,

@@ -297,7 +297,8 @@ impl SimdFloatExt for f64 {
 mod tests {
   use super::*;
 
-  /// Lanes against the scalar `exp_m1` at both ends of the range, where a plain `e^v − 1` cancels or overflows.
+  /// Lanes against the scalar `exp_m1` at both ends of the range, where a plain `e^v − 1` cancels
+  /// or overflows.
   #[test]
   fn simd_exp_m1_matches_the_scalar_form() {
     for z in [

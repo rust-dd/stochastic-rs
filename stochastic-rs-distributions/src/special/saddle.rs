@@ -47,7 +47,8 @@ pub(crate) fn quarter(lambda: f64, (root_chi, root_psi): (f64, f64)) -> (f64, f6
   (lambda, lambda.hypot((0.5 * root_chi) * (0.5 * root_psi)))
 }
 
-/// `(|λ| + r)/2ˢ` and `s`: `s = 0` where the sum is finite, else 2, from [`quarter`], since `|λ| + r` reaches `(1 + √2)MAX`.
+/// `(|λ| + r)/2ˢ` and `s`: `s = 0` where the sum is finite, else 2, from [`quarter`], since
+/// `|λ| + r` reaches `(1 + √2)MAX`.
 fn reach(lambda: f64, root: f64, roots: (f64, f64)) -> (f64, i32) {
   let sum = root + lambda.abs();
   if sum.is_finite() {
@@ -57,7 +58,8 @@ fn reach(lambda: f64, root: f64, roots: (f64, f64)) -> (f64, i32) {
   (root + lambda.abs(), 2)
 }
 
-/// [`saddle_at`] as `(m, k)`, `w = 2ᵏm`, which may leave the doubles; where it does not, `m` holds `saddle_at`'s bits.
+/// [`saddle_at`] as `(m, k)`, `w = 2ᵏm`, which may leave the doubles; where it does not, `m` holds
+/// `saddle_at`'s bits.
 pub(crate) fn scaled_saddle(
   lambda: f64,
   root: f64,
@@ -94,7 +96,8 @@ pub(crate) fn exact_saddle(lambda: f64, chi: Scaled, psi: Scaled) -> (Scaled, Sc
   (w, r)
 }
 
-/// `ln` of [`saddle`] from its factors' logarithms, finite where the maximiser leaves the range of doubles.
+/// `ln` of [`saddle`] from its factors' logarithms, finite where the maximiser leaves the range of
+/// doubles.
 pub(crate) fn ln_saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
   let (reach, shift) = reach(
     lambda,
@@ -162,7 +165,8 @@ pub(crate) fn debye_log_sum_quarter(nu: f64, r: f64) -> f64 {
   debye_sum_at(nu / r, -0.25 / r).ln()
 }
 
-/// `e^a·m/x`, the factor apart where it is normal and `e^a` too, so a large `|ln x|` does not round into the exponent.
+/// `e^a·m/x`, the factor apart where it is normal and `e^a` too, so a large `|ln x|` does not round
+/// into the exponent.
 pub(crate) fn exp_times_over(a: f64, m: f64, x: f64) -> f64 {
   let factor = m / x;
   if factor.is_normal() && a > -700.0 {
@@ -204,7 +208,8 @@ pub(crate) fn divergence(
   if e < NEAR_MINUS_ONE {
     return near_minus_one(lambda, coefficient, (e, e_lo), ratio);
   }
-  // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²` at `λ < 0`.
+  // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²`
+  // at `λ < 0`.
   let slope = if lambda >= 0.0 {
     -e * (lambda + coefficient * (2.0 + e) / ratio.0) / ratio.0
   } else {
@@ -277,7 +282,8 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
     e * (e / ratio)
   };
   if s.abs() <= 0.5 {
-    // `ln1pmx(e) = 2s³Σ − e²/(2 + e)` and `ℓ(e) = 2s³Σ + e²/((1 + e)(2 + e))`, where the two forms below would cancel.
+    // `ln1pmx(e) = 2s³Σ − e²/(2 + e)` and `ℓ(e) = 2s³Σ + e²/((1 + e)(2 + e))`, where the two forms
+    // below would cancel.
     let s2 = s * s;
     let tail = 2.0
       * s
@@ -306,7 +312,8 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
   }
 }
 
-/// `1/(2j + 3)` to `j = 26`: at `s² ≤ ¼` the next term of `Σ s^{2j}/(2j + 3)` is under `4e-18` of the sum.
+/// `1/(2j + 3)` to `j = 26`: at `s² ≤ ¼` the next term of `Σ s^{2j}/(2j + 3)` is under `4e-18` of
+/// the sum.
 const WIDE: [f64; 27] = {
   let mut c = [0.0; 27];
   let mut j = 0;
@@ -317,7 +324,8 @@ const WIDE: [f64; 27] = {
   c
 };
 
-/// `ln(1 + x) − x` for `x > −1`: `−x²/(2 + x) + 2s³ Σ s^{2j}/(2j + 3)`, `s = x/(2 + x)`, where `|s| ≤ 0.2`, else directly.
+/// `ln(1 + x) − x` for `x > −1`: `−x²/(2 + x) + 2s³ Σ s^{2j}/(2j + 3)`, `s = x/(2 + x)`, where
+/// `|s| ≤ 0.2`, else directly.
 pub(crate) fn ln_1p_mx(x: f64) -> f64 {
   let s = x / (2.0 + x);
   if s.abs() > 0.2 {
@@ -345,7 +353,8 @@ pub(crate) fn ln_1p_mx(x: f64) -> f64 {
   -x * x / (2.0 + x) + 2.0 * s * s2 * sum
 }
 
-/// Debye's remainder at order `to` less that at `from`, the `½ ln ν` parts by `ln_1p` so two near orders keep their gap.
+/// Debye's remainder at order `to` less that at `from`, the `½ ln ν` parts by `ln_1p` so two near
+/// orders keep their gap.
 fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
   debye_shape(to, x_to) - debye_shape(from, x_from) - 0.5 * ((to - from) / from).ln_1p()
 }
@@ -358,20 +367,23 @@ pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64
   let (r, r_k) = (lambda.hypot(omega), to.hypot(omega));
   let wk = saddle_at(to, r_k, (rc, rp));
   let rest = rest_step(lambda.abs(), to.abs(), (omega, omega));
-  // The orders, roots and step in quarter units where `|λ| + r + r_k` passes MAX; every sum below is under it.
+  // The orders, roots and step in quarter units where `|λ| + r + r_k` passes MAX; every sum below
+  // is under it.
   let (l, t, r, r_k, unit, o) = if (lambda.abs() + r + r_k).is_finite() {
     (lambda, to, r, r_k, 1.0, omega)
   } else {
     let ((l, r), (t, r_k)) = (quarter(lambda, (rc, rp)), quarter(to, (rc, rp)));
     (l, t, r, r_k, 4.0, (0.5 * rc) * (0.5 * rp))
   };
-  // `w_k/w − 1` from the orders and roots alone, so a saddle past the range of doubles leaves it finite.
+  // `w_k/w − 1` from the orders and roots alone, so a saddle past the range of doubles leaves it
+  // finite.
   let e = if lambda >= 0.0 {
     k / unit * (1.0 + (l + t) / (r + r_k)) / (l + r)
   } else if to < 0.0 {
     k / unit * (1.0 + (l.abs() + t.abs()) / (r + r_k)) / (t.abs() + r_k)
   } else {
-    // `λ < 0 ≤ λ + k`: the divergence `λ(ln ρ − 1) − (λ_k + r_k)/2 + ψw + (λ − ψw/2)/ρ`, `ρ = w_k/w`, from `ψw_k = λ_k + r_k`.
+    // `λ < 0 ≤ λ + k`: the divergence `λ(ln ρ − 1) − (λ_k + r_k)/2 + ψw + (λ − ψw/2)/ρ`,
+    // `ρ = w_k/w`, from `ψw_k = λ_k + r_k`.
     let psi_w = omega * (o / (r - l));
     let ln_ratio = ln_saddle(to, rc, rp) - ln_saddle(lambda, rc, rp);
     let divergence = lambda * (ln_ratio - 1.0) - 0.5 * (t + r_k) * unit
@@ -379,7 +391,8 @@ pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64
       + (lambda - 0.5 * psi_w) * (-ln_ratio).exp();
     return (wk, divergence + rest);
   };
-  // `χ/2w` at `λ ≥ 0` and `ψw/2` below are both `ω²/2(|λ| + r)`, which no saddle past the doubles moves.
+  // `χ/2w` at `λ ≥ 0` and `ψw/2` below are both `ω²/2(|λ| + r)`, which no saddle past the doubles
+  // moves.
   let coefficient = 0.5 * omega * (o / (l.abs() + r));
   (
     wk,
@@ -416,13 +429,15 @@ pub(crate) fn ln_shift(lambda: f64, s: f64, (chi, psi, shifted): (f64, f64, f64)
     - debye_shape(nu, omega)
 }
 
-/// `ln(Q_s/Q)` for `Q_s = Q + dq`: `ln_1p(dq/Q)` unless the step takes `Q` below half, where `Q_s` itself is the closer value.
+/// `ln(Q_s/Q)` for `Q_s = Q + dq`: `ln_1p(dq/Q)` unless the step takes `Q` below half, where `Q_s`
+/// itself is the closer value.
 fn ln_step(q: f64, q_s: f64, dq: f64) -> f64 {
   let x = dq / q;
   if x > -0.5 { x.ln_1p() } else { (q_s / q).ln() }
 }
 
-/// Up to this order no term of [`ln_shift`]'s sum passes MAX: `|ln(ψ/ψ_s)|` and `ln(Q_s/Q)` are under 1 500.
+/// Up to this order no term of [`ln_shift`]'s sum passes MAX: `|ln(ψ/ψ_s)|` and `ln(Q_s/Q)` are
+/// under 1 500.
 const TERM_SAFE_BELOW: f64 = 1.0e305;
 
 /// [`ln_shift`] where `ψ − 2s`, `2sχ`, `2s/ψ`, `r + r_s` or a term leaves the doubles: the roots
@@ -434,7 +449,8 @@ fn ln_shift_far(lambda: f64, s: f64, parts: (f64, f64, f64)) -> f64 {
   lambda.abs() * rate + rest
 }
 
-/// [`ln_shift_far`] as `(B, S)`, `|λ|B + S`, so a caller can meet `|λ|B` with a term of its own where both pass MAX.
+/// [`ln_shift_far`] as `(B, S)`, `|λ|B + S`, so a caller can meet `|λ|B` with a term of its own
+/// where both pass MAX.
 pub(crate) fn ln_shift_per_order(
   lambda: f64,
   s: f64,

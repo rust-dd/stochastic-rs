@@ -18,7 +18,8 @@ use crate::special::split_pow2;
 /// order they converge like `(4/|λ|)ᵏ`, still `1e-12` short at `r = 50`.
 const DEBYE_FROM: f64 = 100.0;
 
-/// From this `r` the rule's step `STEP/√r` holds `3e-15`; below it the Bessel ratios, their cancellation under 200, hold `3e-13`.
+/// From this `r` the rule's step `STEP/√r` holds `3e-15`; below it the Bessel ratios, their
+/// cancellation under 200, hold `3e-13`.
 const QUADRATURE_FROM: f64 = 3.0;
 
 const STEP: f64 = 0.2;
@@ -127,7 +128,8 @@ fn trapezoid(lambda: f64, omega: f64, r: f64) -> Option<[f64; 4]> {
   Some([1.0 + d, mu2, moments[1] / total, moments[2] / total])
 }
 
-/// `eˣ − 1 − x`, its Taylor series to `x¹⁷/17!` below `|x| = ½`, where the next term is under `1e-20` of the sum.
+/// `eˣ − 1 − x`, its Taylor series to `x¹⁷/17!` below `|x| = ½`, where the next term is under
+/// `1e-20` of the sum.
 fn exp_m1_mx(x: f64) -> f64 {
   const C: [f64; 16] = [
     1.0 / 2.0,
@@ -236,7 +238,8 @@ fn shape(b1: f64, k2: f64, (l1, l3, l4): (f64, f64, f64)) -> ([f64; 4], i32) {
   if l4 > EXCESS_FROM {
     return heavy(b1, k2, (l1, l3, l4));
   }
-  // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads `+∞`, not `∞ − ∞`.
+  // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads
+  // `+∞`, not `∞ − ∞`.
   let mu4 = l4.exp() * (1.0 - 4.0 * (l1 + l3 - l4).exp()) + 6.0 * b1 * b1 - 3.0 * b1.powi(4);
   (
     [
@@ -270,7 +273,8 @@ fn split_ratios(
       ((i - j, q), 1.0)
     }
   });
-  // `ln g` of the double where it is normal, so a law on this route keeps the plain logarithm's bits.
+  // `ln g` of the double where it is normal, so a law on this route keeps the plain logarithm's
+  // bits.
   let ln = |(j, g): (i32, f64)| {
     let v = ldexp(g, j);
     if v.is_normal() {

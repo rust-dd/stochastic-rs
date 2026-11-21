@@ -1,4 +1,5 @@
-//! # Dirichlet distribution
+//! Dirichlet law, drawn as `X_k = Y_k/Σ_j Y_j` with `Y_k ~ Gamma(α_k, 1)`; a vector law, its
+//! density is the law's own `pdf` and `log_pdf` on a slice, not `DistributionExt`.
 //!
 //! $$
 //! f(x_1, \dots, x_K; \alpha_1, \dots, \alpha_K) = \frac{1}{\mathrm{B}(\alpha)}
@@ -6,9 +7,6 @@
 //! \qquad x_k \ge 0,\ \sum_k x_k = 1,\qquad
 //! \mathrm{B}(\alpha) = \frac{\prod_k \Gamma(\alpha_k)}{\Gamma(\sum_k \alpha_k)}.
 //! $$
-//!
-//! Drawn as `X_k = Y_k/Σ_j Y_j`, `Y_k ~ Gamma(α_k, 1)`; a vector law, so its density is the law's
-//! own `pdf` and `log_pdf` on a slice rather than `DistributionExt`.
 //!
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §XI.4, Theorem 4.1, DOI 10.1007/978-1-4613-8643-8.
 
@@ -26,7 +24,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Dirichlet law with concentrations `alpha`: parameters only; a [`Seeded`] stream draws its simplex points.
+/// Dirichlet law with concentrations `alpha`: parameters only; a [`Seeded`] stream draws its
+/// simplex points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimdDirichlet<T> {
   alpha: Vec<T>,
@@ -68,7 +67,8 @@ impl<T: SimdFloatExt> SimdDirichlet<T> {
     self.alpha.len()
   }
 
-  /// Divides `out` by its sum; `false`, leaving `out` as it is, when every coordinate underflowed to zero.
+  /// Divides `out` by its sum; `false`, leaving `out` as it is, when every coordinate underflowed
+  /// to zero.
   #[inline]
   fn normalize(out: &mut [T]) -> bool {
     let mut sum = T::zero();
@@ -182,7 +182,8 @@ impl<T: SimdFloatExt> SimdDistribution for SimdDirichlet<T> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdDirichlet<T>, R> {
-  /// Writes one simplex point into `out`, whose length must be the law's `dim()`; nothing is allocated.
+  /// Writes one simplex point into `out`, whose length must be the law's `dim()`; nothing is
+  /// allocated.
   pub fn sample_into(&mut self, out: &mut [T]) {
     let (law, states) = self.parts_mut();
     assert_eq!(

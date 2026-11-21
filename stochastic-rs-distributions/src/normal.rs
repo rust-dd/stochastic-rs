@@ -1,10 +1,10 @@
-//! # Normal
+//! Normal law, sampled by Marsaglia and Tsang's ziggurat.
 //!
 //! $$
 //! f(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
 //! $$
 //!
-//! Sampling: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
 
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;
@@ -298,7 +298,8 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   }
 }
 
-/// Normal law `N(mu, sigma²)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Normal law `N(mu, sigma²)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in
+/// bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdNormal<T> {
   mu: T,

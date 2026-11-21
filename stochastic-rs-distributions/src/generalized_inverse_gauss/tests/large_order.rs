@@ -1,6 +1,7 @@
 use super::*;
 
-/// mpmath at 60 and 120 digits, where the order's logarithms meet in the saddle form: within `1e-12`.
+/// mpmath at 60 and 120 digits, where the order's logarithms meet in the saddle form: within
+/// `1e-12`.
 #[test]
 fn large_orders_take_their_values() {
   let far = SimdGig::<f64>::new(-1e15, 1.0, 1.0);

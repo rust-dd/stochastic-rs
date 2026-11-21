@@ -30,10 +30,12 @@ mod fractions;
 mod mgf;
 mod turns;
 
-/// 2⁶⁴: a subnormal times it is a normal double, and every value the frame scales stays below `MAX` unless past `2⁹⁶⁰`.
+/// 2⁶⁴: a subnormal times it is a normal double, and every value the frame scales stays below `MAX`
+/// unless past `2⁹⁶⁰`.
 const SCALE: f64 = 18_446_744_073_709_551_616.0;
 
-/// `2⁻⁹⁶⁰`: from here up `t` and its mass per rate, at least `0.63t`, are normal doubles of full precision.
+/// `2⁻⁹⁶⁰`: from here up `t` and its mass per rate, at least `0.63t`, are normal doubles of full
+/// precision.
 const TINY: f64 = f64::from_bits(63 << 52);
 
 /// `e^{−λx}` on `[0, ∞)`, whose integral gives the third and fourth moments.
@@ -93,7 +95,8 @@ pub struct SimdTruncatedExp<T> {
   lambda: T,
   lower: T,
   upper: T,
-  /// $1 − e^{-\lambda(\text{upper} − \text{lower})}$ through `exp_m1`, the interval's mass relative to `lower`; exactly 1 for an open tail.
+  /// $1 − e^{-\lambda(\text{upper} − \text{lower})}$ through `exp_m1`, the interval's mass relative
+  /// to `lower`; exactly 1 for an open tail.
   tail_mass: f64,
 }
 
@@ -105,7 +108,8 @@ pub struct TruncatedExpState<R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// The base `Exp(lambda)`, `lambda > 0`, renormalised on `[lower, upper]`, `0 ≤ lower < upper` (`upper` may be infinite).
+  /// The base `Exp(lambda)`, `lambda > 0`, renormalised on `[lower, upper]`, `0 ≤ lower < upper`
+  /// (`upper` may be infinite).
   pub fn new(lambda: T, lower: T, upper: T) -> Self {
     assert!(
       lambda.is_finite(),
@@ -169,7 +173,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     }
   }
 
-  /// `v·m/λ`; where `m/λ` alone passes the doubles (a subnormal `λ`) from factors scaled by 2⁶⁴, its value of order `v/λ`.
+  /// `v·m/λ`; where `m/λ` alone passes the doubles (a subnormal `λ`) from factors scaled by 2⁶⁴,
+  /// its value of order `v/λ`.
   fn over_rate(&self, v: f64) -> f64 {
     let per_rate = self.mass_per_rate();
     if per_rate.is_finite() {
@@ -208,7 +213,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     self.lower.to_f64().unwrap() - (-y).ln_1p() / self.lambda.to_f64().unwrap()
   }
 
-  /// A draw's uniform is 0 or at least `2⁻⁵³`, so its `u·m` is normal unless the mass is below `2⁵³·MIN_POSITIVE`.
+  /// A draw's uniform is 0 or at least `2⁻⁵³`, so its `u·m` is normal unless the mass is below
+  /// `2⁵³·MIN_POSITIVE`.
   #[inline]
   fn invert(&self, u: f64) -> T {
     T::from_f64_fast(if self.tail_mass >= f64::MIN_POSITIVE * 2f64.powi(53) {
@@ -369,10 +375,12 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     let x = if lam_len <= 1.0 {
       self.inverse_cdf(p)
     } else {
-      // `1 − p·m` as `(1 − p) + p·e^{−λL}`: above ½ `1 − p` is exact and both terms positive, where the map cancels.
+      // `1 − p·m` as `(1 − p) + p·e^{−λL}`: above ½ `1 − p` is exact and both terms positive, where
+      // the map cancels.
       lo - ((1.0 - p) + p * (-lam_len).exp()).ln() / lam
     };
-    // Next to level 1 the roundings of `lower + y` and of `λL` can pass `upper`, which bounds the support exactly.
+    // Next to level 1 the roundings of `lower + y` and of `λL` can pass `upper`, which bounds the
+    // support exactly.
     Some(x.min(self.upper.to_f64()?))
   }
 
@@ -393,7 +401,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     self.lower.to_f64()
   }
 
-  /// Past `λL = 50` the cut's share is below ε: `(1/λ)²` and `L·(L·f)`, neither `λ²` nor `L²` formed alone.
+  /// Past `λL = 50` the cut's share is below ε: `(1/λ)²` and `L·(L·f)`, neither `λ²` nor `L²`
+  /// formed alone.
   fn variance(&self) -> Option<f64> {
     let (lam, len) = (self.lambda.to_f64()?, self.length()?);
     if self.open_tail()? || lam * len > 50.0 {

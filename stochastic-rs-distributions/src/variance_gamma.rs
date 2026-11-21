@@ -1,4 +1,5 @@
-//! # Variance Gamma
+//! Variance gamma at unit time: mean `μ + θ`, variance `σ² + νθ²` (eqs. 23 and 2), the rest from
+//! the clock's cumulants; finite at `x = μ` only for `ν < 2`; no closed cdf.
 //!
 //! $$
 //! X = \mu + \theta G + \sigma\sqrt{G}\,Z,\qquad
@@ -12,9 +13,6 @@
 //! \qquad
 //! \varphi(u) = e^{iu\mu}\bigl(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2\bigr)^{-1/\nu}
 //! $$
-//!
-//! Madan, Carr and Chang's unit-time law (eqs. 23 and 2): mean `μ + θ`, variance `σ² + νθ²`, higher
-//! moments from the clock's cumulants; finite at `x = μ` only for `ν < 2`; no closed-form cdf.
 //!
 //! Reference: Madan, D.B., Carr, P.P., Chang, E.C. (1998), "The Variance Gamma Process and Option Pricing", *European Finance Review* 2(1), 79-105, DOI 10.1023/A:1009703431535.
 
@@ -226,7 +224,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let r = order.hypot(root_chi * psi.sqrt());
     let den = r + order + 1.0 + c;
     let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / den;
-    // Below `g = −⅓` `ln_1p_mx(g)` leaves its series and `1 + g` carries `g`'s rounding, which `1/ν` multiplies.
+    // Below `g = −⅓` `ln_1p_mx(g)` leaves its series and `1 + g` carries `g`'s rounding, which
+    // `1/ν` multiplies.
     if gm1 < -1.0 / 3.0 {
       return large_order::density((sigma, nu, theta), (d, d_lo), p);
     }
@@ -340,7 +339,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
   fn ln_base(sigma: f64, nu: f64, theta: f64, t: f64) -> Option<f64> {
     let plain_nt = nu * t;
     let (drift, spread) = (theta * plain_nt, 0.5 * sigma * sigma * t * plain_nt);
-    // A product of nonzero factors that leaves the normal range rounds away its digits, which `1 − X` may still carry.
+    // A product of nonzero factors that leaves the normal range rounds away its digits, which
+    // `1 − X` may still carry.
     let normal = (sigma * sigma).is_normal() && plain_nt.is_normal() && spread.is_normal();
     if t != 0.0 && !t.is_nan() && !(normal && (theta == 0.0 || drift.is_normal())) {
       return small_order::ln_base_far((sigma, nu, theta), t);
@@ -375,20 +375,24 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
   }
 }
 
-/// Past this `|d|/σ`, with `νθ²/σ²` under `2¹⁰⁰` and `ν` over `2⁻¹⁶⁰`, the point lies `2⁴⁰⁰` of the law's scale out.
+/// Past this `|d|/σ`, with `νθ²/σ²` under `2¹⁰⁰` and `ν` over `2⁻¹⁶⁰`, the point lies `2⁴⁰⁰` of the
+/// law's scale out.
 const FAR: f64 = 3.273_390_607_896_142e150;
 
 /// Past this `|ln f| + |ln σ|` the large-order density sums its exponent in two parts, where the
 /// plain sum's rounding, a few `ε` of its largest terms, would near `1e-12`.
 const PARTS_FROM: f64 = 512.0;
 
-/// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under `2.5·PLAIN·ε`.
+/// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under
+/// `2.5·PLAIN·ε`.
 const PLAIN: f64 = 64.0;
 
-/// Past this fraction of `X`'s terms the two-part base, within about `6ε²` of their size, errs by under `2⁻⁶³` of itself.
+/// Past this fraction of `X`'s terms the two-part base, within about `6ε²` of their size, errs by
+/// under `2⁻⁶³` of itself.
 const TIGHT: f64 = 1.0 / (1u64 << 40) as f64;
 
-/// `e^a·2ᵖ`, at `p ≠ 0` rounded once, so a subnormal density of the law of `X/2ᵏ` does not round twice.
+/// `e^a·2ᵖ`, at `p ≠ 0` rounded once, so a subnormal density of the law of `X/2ᵏ` does not round
+/// twice.
 fn exp_pow2(a: f64, p: i32) -> f64 {
   if p == 0 {
     a.exp()
@@ -498,7 +502,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   fn variance(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let variance = sigma * sigma + nu * theta * theta;
-    // Two subnormal terms round twice; at `2⁶⁰⁰` the sum rounds once, `νθ² < 2⁻¹⁰²²` holding `θ` under 3.
+    // Two subnormal terms round twice; at `2⁶⁰⁰` the sum rounds once, `νθ² < 2⁻¹⁰²²` holding `θ`
+    // under 3.
     if variance < f64::MIN_POSITIVE {
       let (s, t) = (ldexp(sigma, 300), ldexp(theta, 300));
       return Some(ldexp(s * s + nu * t * t, -600));
@@ -527,7 +532,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     })
   }
 
-  /// Excess kurtosis `κ₄/κ₂²` from the gamma clock's cumulants, `κ₄ = 3νσ⁴(2ρ² + 4ρ + 1)`, `ρ = νθ²/σ²`: $3\nu(2 - (1 + \rho)^{-2})$.
+  /// Excess kurtosis `κ₄/κ₂²` from the gamma clock's cumulants, `κ₄ = 3νσ⁴(2ρ² + 4ρ + 1)`,
+  /// `ρ = νθ²/σ²`: $3\nu(2 - (1 + \rho)^{-2})$.
   fn kurtosis(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let rho = nu * (theta / sigma) * (theta / sigma);
@@ -541,7 +547,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     let Some(ln_base) = Self::ln_base(sigma, nu, theta, t) else {
       return Some(f64::INFINITY);
     };
-    // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor alone.
+    // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor
+    // alone.
     let (p, p_lo) = two_prod(mu, t);
     let clock = ln_base / nu;
     if p.is_infinite() && clock == p {

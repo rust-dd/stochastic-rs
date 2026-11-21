@@ -24,7 +24,8 @@ const HANKEL_FROM: i32 = 60;
 /// Below `2⁻⁶⁰` the terms in `x²` and, from `ν = ½`, `x^{2ν}` are under `2⁻⁵⁹` of `K`.
 const TINY_BELOW: i32 = -60;
 
-/// `2⁻²⁰`: over this step in `ln(2/x)` a forward difference reads the slope of Temme's sums to about `2⁻²⁰`, well above their rounding.
+/// `2⁻²⁰`: over this step in `ln(2/x)` a forward difference reads the slope of Temme's sums to
+/// about `2⁻²⁰`, well above their rounding.
 const LN_STEP: f64 = 9.536_743_164_062_5e-7;
 
 /// `ln(e^x K_ν(x))` in two parts at `|ν| < 60`: Hankel from `2⁶⁰`, Steed from 2, Temme's series
@@ -69,12 +70,14 @@ fn ln_ke_at(nu: f64, x: Scaled) -> (f64, f64) {
       }
       (product, g)
     };
-    // The sums read `ln(2/v)` of the double `v` they sum at, its high part, the low part through their slope in it.
+    // The sums read `ln(2/v)` of the double `v` they sum at, its high part, the low part through
+    // their slope in it.
     let d_v = add_parts(d, (rel_lo, 0.0));
     let (product, g) = carried(d_v.0);
     let ahead = carried(d_v.0 + LN_STEP).0;
     let slope = ((ahead - product) / product).ln_1p() / LN_STEP;
-    // `K_μΠgᵢ` moves with `ln x` at `ν + n − 2gₙ`, `K_ν`'s own `xK′/K = ν − 2gₙ` less the `(2/x)ⁿ` kept apart.
+    // `K_μΠgᵢ` moves with `ln x` at `ν + n − 2gₙ`, `K_ν`'s own `xK′/K = ν − 2gₙ` less the `(2/x)ⁿ`
+    // kept apart.
     let (h, h_lo) = ln_parts(product, 0.0, 0);
     let low = h_lo + slope * d_v.1 + (nu + n - 2.0 * g) * rel_lo + value * rel_lo;
     return add_parts(add_parts((h, low), mul_parts((n, 0.0), d)), (value, 0.0));
@@ -83,7 +86,8 @@ fn ln_ke_at(nu: f64, x: Scaled) -> (f64, f64) {
   if n == 0.0 && mu * d.0 < 21.0 {
     let (f0, e, gam1, gam2) = temme_head(mu, d.0);
     let (h, h_lo) = ln_parts(f0, 0.0, 0);
-    // `f₀ = fact·(γ₁ cosh e + γ₂ sinh(e)/μ)`, `e = μd`: its logarithm's slope in `e`, or in `d` where `e` vanishes.
+    // `f₀ = fact·(γ₁ cosh e + γ₂ sinh(e)/μ)`, `e = μd`: its logarithm's slope in `e`, or in `d`
+    // where `e` vanishes.
     let shift = if e.abs() < EPS {
       gam2 / (gam1 * e.cosh() + gam2 * d.0) * d.1
     } else {

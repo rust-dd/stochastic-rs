@@ -3,7 +3,7 @@
 //! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
 //! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (`rcomp`: `x^a e^{−x}/Γ(a)` from `ln Γ` below shape 20, Stirling-scaled from it).
-//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
+//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
 
 use std::f64::consts::TAU;
 
@@ -16,12 +16,14 @@ use crate::special::mul_parts;
 use crate::special::sub_parts;
 pub(super) use crate::special::twofold::two_sum;
 
-/// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers are exact.
+/// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers
+/// are exact.
 pub(crate) const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
 
 pub(crate) const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
 
-/// `x/a` where Temme's expansion is summed, `|η| ≤ 1.004`; outside it the series or the fraction converge within 30 terms.
+/// `x/a` where Temme's expansion is summed, `|η| ≤ 1.004`; outside it the series or the fraction
+/// converge within 30 terms.
 const TEMME_BAND: (f64, f64) = (0.3, 2.35);
 
 /// `d_{k,n}` of DLMF 8.12.12, exact rationals rounded, `c_k(η) = Σ_n d_{k,n} ηⁿ`, each cut where
@@ -323,7 +325,8 @@ pub(super) fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
   ln_parts(lambda, (-lambda).mul_add(a, x) / a, 0)
 }
 
-/// `(hi, lo)` with a low part past 1 folded into `hi`, where it is within a few of `hi`'s ulps: only a small `lo` is exponentiated.
+/// `(hi, lo)` with a low part past 1 folded into `hi`, where it is within a few of `hi`'s ulps:
+/// only a small `lo` is exponentiated.
 pub(crate) fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   if lo.abs() > 1.0 {
     (hi + lo, 0.0)

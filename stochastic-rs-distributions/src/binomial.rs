@@ -1,18 +1,12 @@
-//! # Binomial
+//! Binomial law, sampled by BTRS transformed rejection at `n·min(p, 1 − p) ≥ 10` and by geometric
+//! waiting-time inversion below it.
 //!
 //! $$
 //! \mathbb{P}(X=k)=\binom{n}{k}p^k(1-p)^{n-k}
 //! $$
 //!
-//! Sampling: BTRS transformed rejection for $n\,\min(p, 1-p) \ge 10$,
-//! geometric waiting-time inversion below that threshold.
-//!
-//! References:
-//! - Hörmann, W. (1993), "The generation of binomial random variates",
-//!   *Journal of Statistical Computation and Simulation* 46, 101-110,
-//!   DOI: 10.1080/00949659308811496 (Algorithm BTRS).
-//! - Devroye, L. (1986), *Non-Uniform Random Variate Generation*,
-//!   Springer, §X.4 (waiting-time method).
+//! Reference: Hörmann, W. (1993), "The generation of binomial random variates", *Journal of Statistical Computation and Simulation* 46, 101-110, DOI 10.1080/00949659308811496 (Algorithm BTRS).
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.4 (waiting-time method), DOI 10.1007/978-1-4613-8643-8.
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
@@ -102,7 +96,8 @@ impl BtrsConstants {
   }
 }
 
-/// Binomial law of `n` trials with success probability `p`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Binomial law of `n` trials with success probability `p`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdBinomial<T: PrimInt> {
   n: u32,
@@ -140,7 +135,8 @@ impl<T: PrimInt> SimdBinomial<T> {
     self.p
   }
 
-  /// `k` as `T`; an overflow saturates to `T::max_value()` (and asserts in debug) rather than reporting `0`.
+  /// `k` as `T`; an overflow saturates to `T::max_value()` (and asserts in debug) rather than
+  /// reporting `0`.
   #[inline]
   fn cast(k: u32) -> T {
     let cast = num_traits::cast(k);
@@ -493,7 +489,8 @@ mod tests {
     }
   }
 
-  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf on both sampling branches.
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf on both sampling
+  /// branches.
   #[test]
   fn scalar_sample_matches_cdf() {
     for (n, p, window) in [(60, 0.4, (0, 54)), (15, 0.3, (0, 15))] {

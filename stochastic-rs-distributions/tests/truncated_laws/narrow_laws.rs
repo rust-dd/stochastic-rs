@@ -41,7 +41,8 @@ fn shape(
   close(name, "entropy", law.entropy().unwrap(), entropy, 1e-12, 0.0);
 }
 
-/// A truncated exponential from the bound its kernel rises to, or a uniform where the interval is the shorter scale.
+/// A truncated exponential from the bound its kernel rises to, or a uniform where the interval is
+/// the shorter scale.
 #[test]
 fn narrow_laws_answer_in_their_own_scale() {
   shape(
@@ -102,7 +103,8 @@ fn narrow_laws_answer_in_their_own_scale() {
   );
 }
 
-/// A reference point the mode holds exactly: offsets beside a mean of 6.9e-148 resolve an sd of 6.2e-177.
+/// A reference point the mode holds exactly: offsets beside a mean of 6.9e-148 resolve an sd of
+/// 6.2e-177.
 #[test]
 fn a_mode_held_to_a_double_double() {
   shape(
@@ -116,7 +118,8 @@ fn a_mode_held_to_a_double_double() {
   );
 }
 
-/// A minority mass of 3e-162 against a majority beside 1 whose entropy's `g·ln g` passes 1e328 unscaled.
+/// A minority mass of 3e-162 against a majority beside 1 whose entropy's `g·ln g` passes 1e328
+/// unscaled.
 #[test]
 fn near_two_point_betas() {
   let a = 3.637648539358857e-25;
@@ -208,7 +211,8 @@ fn modes_within_a_subnormal_of_a_kernel_zero() {
   }
 }
 
-/// Mean, median, the cdf at the double midpoint, skewness, kurtosis and entropy of a law on `[lo, up]`.
+/// Mean, median, the cdf at the double midpoint, skewness, kurtosis and entropy of a law on
+/// `[lo, up]`.
 fn subnormal_row(name: &str, law: &impl DistributionExt, (lo, up): (f64, f64), want: [f64; 6]) {
   let [mean, median, cdf, skewness, kurtosis, entropy] = want;
   close(name, "mean", law.mean().unwrap(), mean, 1e-12, 0.0);
@@ -303,7 +307,8 @@ fn quantiles_within_a_few_ulps_round_once() {
       "TB(6.8e32, 8.2e32): quantile({p})"
     );
   }
-  // Narrower than an ulp, 1.7e9 and 4e81 sd from a rounding midpoint: every level is the mean's double.
+  // Narrower than an ulp, 1.7e9 and 4e81 sd from a rounding midpoint: every level is the mean's
+  // double.
   let gamma = SimdTruncatedGamma::<f64>::new(
     1.7868349740186634e51,
     6.936192027821196e-170,

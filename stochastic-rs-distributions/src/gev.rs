@@ -1,4 +1,5 @@
-//! # Generalized Extreme Value (GEV) distribution
+//! Generalized extreme value (GEV) law, Jenkinson's union of Fréchet (`ξ > 0`, unbounded above),
+//! Gumbel (`ξ = 0`) and reverse Weibull (`ξ < 0`, bounded at `μ − σ/ξ`), drawn by the inverse cdf.
 //!
 //! $$
 //! F(x;\mu,\sigma,\xi) =
@@ -10,9 +11,6 @@
 //! \end{cases}
 //! $$
 //!
-//! Jenkinson's union of the three extreme-value types: `ξ > 0` Fréchet, unbounded above, `ξ = 0`
-//! Gumbel, `ξ < 0` reverse Weibull bounded at `μ − σ/ξ`; drawn by the inverse cdf
-//!
 //! $$
 //! X = \begin{cases}
 //!   \mu + \dfrac{\sigma}{\xi}\,\mathrm{expm1}\bigl(-\xi\ln(-\ln U)\bigr), & \xi \neq 0 \\\\\[4pt\]
@@ -22,7 +20,7 @@
 //! $$
 //!
 //! Reference: Jenkinson, A.F. (1955), "The frequency distribution of the annual maximum (or minimum) values of meteorological elements", *Quarterly Journal of the Royal Meteorological Society* 81, 158-171, DOI 10.1002/qj.49708134804.
-//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer.
+//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer, DOI 10.1007/978-1-4471-3675-0.
 //! Reference: McNeil, A.J., Frey, R., Embrechts, P. (2015), *Quantitative Risk Management*, Princeton UP, §7.2.
 
 use std::mem::MaybeUninit;
@@ -271,7 +269,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
     })
   }
 
-  /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for $\xi < 1/2$; `+∞` for $\xi \ge 1/2$.
+  /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for $\xi < 1/2$; `+∞` for
+  /// $\xi \ge 1/2$.
   fn variance(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
     if xi < 0.5 {

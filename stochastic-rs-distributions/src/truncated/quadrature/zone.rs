@@ -9,7 +9,8 @@ use super::two_prod;
 use crate::special::ldexp;
 use crate::special::split_pow2;
 
-/// `ln(1e-270)`: within that share of the width the kernel's slope and curvature move `ln k` by under 1e-250.
+/// `ln(1e-270)`: within that share of the width the kernel's slope and curvature move `ln k` by
+/// under 1e-250.
 const LN_ZONE: f64 = -621.70;
 
 /// The cheap gate before the zone's own test, in widths.
@@ -90,7 +91,8 @@ fn phi(z: f64) -> f64 {
 }
 
 impl<K: Kernel> Truncation<K> {
-  /// From the end itself, which the clip may have moved in past a kernel of 0 there: the zone integrates from it.
+  /// From the end itself, which the clip may have moved in past a kernel of 0 there: the zone
+  /// integrates from it.
   fn lo_end(&self) -> Option<End> {
     let (x, rest, t) = self.lo.parts();
     let to_lo = span(self.centre, self.lo);
@@ -167,7 +169,8 @@ impl<K: Kernel> Truncation<K> {
         slope,
         curvature,
       } => {
-        // `v·(e^{ψt} − 1)/ψ = p·M₀`: `t = ln(1 + ψw)/ψ`, `w` its value where `ψw` is past every digit.
+        // `v·(e^{ψt} − 1)/ψ = p·M₀`: `t = ln(1 + ψw)/ψ`, `w` its value where `ψw` is past every
+        // digit.
         let ln_w = p.ln() + self.ln_norm - ln_v;
         let z = slope * ln_w.exp();
         let ln_t = if z.abs() < 1e-300 {

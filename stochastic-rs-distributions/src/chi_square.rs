@@ -1,10 +1,10 @@
-//! # Chi Square
+//! Chi-squared law, sampled as `Gamma(k/2, 2)` by Marsaglia and Tsang's method.
 //!
 //! $$
 //! X\sim\chi^2_\nu,\quad f(x)=\frac{1}{2^{\nu/2}\Gamma(\nu/2)}x^{\nu/2-1}e^{-x/2}
 //! $$
 //!
-//! Sampling: `Gamma(k/2, 2)` by Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
 
 use std::mem::MaybeUninit;
 
@@ -20,7 +20,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Chi-squared law with `k` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Chi-squared law with `k` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream
+/// draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdChiSquared<T> {
   df: T,

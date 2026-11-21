@@ -1,4 +1,5 @@
-//! # Skellam distribution
+//! Skellam law of the difference of two Poisson draws; the pmf and cdf go through the scaled Bessel
+//! `I`, [`crate::special::ln_bessel_ie`].
 //!
 //! $$
 //! X \sim \mathrm{Skellam}(\mu_1, \mu_2) \;:=\; N_1 - N_2,
@@ -7,9 +8,6 @@
 //! $$
 //! P(X = k) = e^{-(\mu_1 + \mu_2)} (\mu_1/\mu_2)^{k/2} I_{|k|}(2\sqrt{\mu_1 \mu_2}).
 //! $$
-//!
-//! Drawn as the difference of two Poisson draws; the pmf and cdf go through the scaled Bessel `I`,
-//! [`crate::special::ln_bessel_ie`].
 //!
 //! Reference: Skellam, J. G. (1946), "The Frequency Distribution of the Difference Between Two Poisson Variates Belonging to Different Populations", *Journal of the Royal Statistical Society* 109(3), 296, DOI 10.2307/2981372 (cf and mgf are the products of the two Poisson transforms).
 
@@ -142,7 +140,8 @@ impl DistributionExt for SimdSkellam {
     Some(s.clamp(0.0, 1.0))
   }
 
-  /// Kept as the two Poisson factors `μ(e^{±it} − 1)`: the expanded `−(μ₁ + μ₂) + …` misses 1 at `t = 0` by rounding.
+  /// Kept as the two Poisson factors `μ(e^{±it} − 1)`: the expanded `−(μ₁ + μ₂) + …` misses 1 at
+  /// `t = 0` by rounding.
   fn characteristic_function(&self, t: f64) -> Option<Complex64> {
     let one = Complex64::new(1.0, 0.0);
     let e = Complex64::new(0.0, t).exp();

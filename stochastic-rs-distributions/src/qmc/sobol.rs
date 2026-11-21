@@ -1,12 +1,10 @@
-//! # Sobol Sequence
+//! Sobol points by Gray code on Joe and Kuo's `new-joe-kuo-6.21201` table (21201 dimensions);
+//! Matoušek's scramble and shift in [`SobolSeq::scrambled`] give randomised-QMC error bars.
 //!
 //! $$
 //! x_n = \bigoplus_{k:\,b_k(n)=1} v_k,\quad
 //! n = \sum_k b_k(n)\,2^k
 //! $$
-//!
-//! Gray-code points on Joe and Kuo's `new-joe-kuo-6.21201` table, to 21201 dimensions; Matoušek's
-//! net-preserving scramble and shift in [`SobolSeq::scrambled`] give randomised-QMC error bars.
 //!
 //! Reference: Joe, S., Kuo, F.Y. (2008), "Constructing Sobol Sequences with Better Two-Dimensional Projections", *SIAM Journal on Scientific Computing* 30(5), 2635-2654, DOI 10.1137/070709359 (the direction numbers, `new-joe-kuo-6.21201`, from <https://web.maths.unsw.edu.au/~fkuo/sobol/>, BSD-3-Clause, notice in `qmc/JOE_KUO_LICENSE`).
 //! Reference: Antonov, I.A., Saleev, V.M. (1979), "An economic method of computing LPτ-sequences", *USSR Computational Mathematics and Mathematical Physics* 19(1), 252-256, DOI 10.1016/0041-5553(79)90085-5 (the Gray-code update).
@@ -416,7 +414,8 @@ mod tests {
     }
   }
 
-  /// Golden bits: a seeded design must replay across releases; table, order or scramble drift fails here.
+  /// Golden bits: a seeded design must replay across releases; table, order or scramble drift fails
+  /// here.
   #[test]
   fn a_scrambled_column_is_pinned_bit_for_bit() {
     let pts = SobolSeq::scrambled(8, &Deterministic::new(7)).sample::<f64>(3);

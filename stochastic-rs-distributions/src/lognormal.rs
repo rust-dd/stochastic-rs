@@ -21,7 +21,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Log-normal law: `ln X ~ N(mu, sigma)`; parameters only, a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Log-normal law: `ln X ~ N(mu, sigma)`; parameters only, a [`Seeded`](crate::Seeded) stream draws
+/// it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdLogNormal<T> {
   mu: T,

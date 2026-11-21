@@ -1,4 +1,4 @@
-//! # Generalized Hyperbolic (GH)
+//! Generalized hyperbolic law, a normal mixture over a GIG clock (`α > |β|`, `δ > 0`).
 //!
 //! $$
 //! X = \mu + \beta W + \sqrt{W}\,Z,\qquad
@@ -22,13 +22,12 @@
 //! \mu_4 = \beta^4\mu_4(W) + 6\beta^2(\mu_3(W) + \mathbb E W\,\mathrm{Var}\,W) + 3\,\mathbb E W^2.
 //! $$
 //!
-//! Barndorff-Nielsen's normal mixture over a GIG clock, `α > |β|`, `δ > 0`: the NIG at `λ = −½`,
-//! the hyperbolic at `λ = 1`, the VG as `δ → 0` for `λ > 0`; no closed-form cdf or quantile.
+//! The NIG at `λ = −½`, the hyperbolic at `λ = 1`, the VG as `δ → 0` for `λ > 0`; no closed cdf.
 //!
 //! Reference: Barndorff-Nielsen, O. (1977), "Exponentially decreasing distributions for the logarithm of particle size", *Proceedings of the Royal Society A* 353(1674), 401-419, DOI 10.1098/rspa.1977.0041.
 //! Reference: Eberlein, E., Keller, U. (1995), "Hyperbolic Distributions in Finance", *Bernoulli* 1(3), 281-299, DOI 10.2307/3318481.
 //! Reference: Prause, K. (1999), *The Generalized Hyperbolic Model: Estimation, Financial Derivatives, and Risk Measures*, PhD thesis, University of Freiburg, ch. 1.
-//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
+//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary), <https://dlmf.nist.gov/10.30.E2>.
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -213,7 +212,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     )
   }
 
-  /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the doubles only where it does.
+  /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the
+  /// doubles only where it does.
   fn density(&self, x: f64, p: i32) -> f64 {
     let (lambda, alpha, beta, delta, mu) = self.params();
     if let Some(c) = &self.concentrated {
@@ -225,7 +225,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     Self::density_at((lambda, alpha, beta, delta, mu), x, p)
   }
 
-  /// [`Self::density`] at `(λ, α, β, δ, μ)`; where `x − μ` passes MAX, on the law of `X/2`, every scaling exact.
+  /// [`Self::density`] at `(λ, α, β, δ, μ)`; where `x − μ` passes MAX, on the law of `X/2`, every
+  /// scaling exact.
   fn density_at(
     (lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64),
     x: f64,
@@ -251,7 +252,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       order * root.ln(),
       ln_bessel_ke(order, alpha * root),
     );
-    // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave two large terms to cancel.
+    // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave
+    // two large terms to cancel.
     let tilt = -(alpha - beta * d.signum()) * d.abs() - alpha * delta * (delta / (root + d.abs()));
     let size =
       power.abs() + mixing.abs() + scale.abs() + clock.abs() + dg + spread.abs() + kernel.abs()
@@ -395,7 +397,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     })
   }
 
-  /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
+  /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like
+  /// the skewness.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (lambda, roots, squares) = self.clock();
@@ -417,11 +420,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     {
       return Some(v);
     }
-    // Where `B` is 0 the clock's `κ₃` and `κ₄` do not enter, and an infinite one must not read `0·∞`.
+    // Where `B` is 0 the clock's `κ₃` and `κ₄` do not enter, and an infinite one must not read
+    // `0·∞`.
     if big == 0.0 {
       return Some(rho * (3.0 * k2 / (k1 * k1)));
     }
-    // `k₃ = 2ᵗk̃₃` and `k₄ = 2²ᵗk̃₄` meet `B` as `2ᵗB`, so a heavy clock tail times a small tilt does not read `∞·0`.
+    // `k₃ = 2ᵗk̃₃` and `k₄ = 2²ᵗk̃₄` meet `B` as `2ᵗB`, so a heavy clock tail times a small tilt
+    // does not read `∞·0`.
     Some(if big <= 1.0 {
       let tilt = ldexp(big, t);
       rho * (3.0 * k2 + tilt * (6.0 * k3 + tilt * k4)) / den
@@ -455,7 +460,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
 }
 
 impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
-  /// The mgf on this law itself: a balanced law balanced again can ping-pong between `±1` where `log₂(δ/γ)` is odd.
+  /// The mgf on this law itself: a balanced law balanced again can ping-pong between `±1` where
+  /// `log₂(δ/γ)` is odd.
   fn unbalanced_mgf(&self, t: f64) -> f64 {
     let (lambda, alpha, beta, delta, mu) = self.params();
     let (below, above) = self.shifted_factors(t);
@@ -490,7 +496,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   }
 }
 
-/// `k` with `2⁻ᵏδ ≈ 2ᵏγ ≈ √(δγ)` where `δ²`, `γ² = (α − β)(α + β)` or the clock's saddle leaves the normal range, else 0.
+/// `k` with `2⁻ᵏδ ≈ 2ᵏγ ≈ √(δγ)` where `δ²`, `γ² = (α − β)(α + β)` or the clock's saddle leaves the
+/// normal range, else 0.
 fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
   let (diff, sum) = (alpha - beta, alpha + beta);
   let (chi, psi) = (delta * delta, diff * sum);
@@ -505,10 +512,12 @@ fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
   (0.5 * (delta.log2() - gamma.log2())).round() as i32
 }
 
-/// `2^{±250}`: with `|λ|`, `χ` and `ψ` inside, the saddle lies within `2^{±502}`, normal without a hypot.
+/// `2^{±250}`: with `|λ|`, `χ` and `ψ` inside, the saddle lies within `2^{±502}`, normal without a
+/// hypot.
 const PLAIN_RANGE: (f64, f64) = (5.527_147_875_260_445e-76, 1.809_251_394_333_065_6e75);
 
-/// `γ = √((α − β)(α + β))`, which keeps its digits at `|β| ≈ α`, as `√(α − β)·√(α + β)` where the product is not normal.
+/// `γ = √((α − β)(α + β))`, which keeps its digits at `|β| ≈ α`, as `√(α − β)·√(α + β)` where the
+/// product is not normal.
 fn gamma_of(alpha: f64, beta: f64) -> f64 {
   let psi = (alpha - beta) * (alpha + beta);
   if psi.is_normal() {

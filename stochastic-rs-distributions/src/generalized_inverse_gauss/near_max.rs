@@ -34,7 +34,8 @@ pub(crate) const BELOW_BAND: f64 = 7.105_427_357_601_002e-15;
 /// clock a mean near MAX reaches, 17.2ε at `ω = 1.9`; its 42.6ε at `ω = 1e-160` is on none.
 pub(crate) const ROUTE_BAND: f64 = 2.842_170_943_040_401e-14;
 
-/// [`super::SimdGig::raw_moment`] where its double reaches `MAX(1 − 64ε)`: the mean again in two parts, a higher moment as it is.
+/// [`super::SimdGig::raw_moment`] where its double reaches `MAX(1 − 64ε)`: the mean again in two
+/// parts, a higher moment as it is.
 #[cold]
 #[inline(never)]
 pub(super) fn moment<T: SimdFloatExt>(law: &SimdGig<T>, k: u32, value: f64) -> f64 {

@@ -1,12 +1,12 @@
-//! # Alpha Stable
+//! Alpha-stable law, drawn by Chambers–Mallows–Stuck with Weron's scale, location and `α = 1` case.
 //!
 //! $$
 //! \varphi_X(u)=\exp\!\left(i\delta u-\gamma^\alpha |u|^\alpha\left[1-i\beta\operatorname{sgn}(u)\omega(u,\alpha)\right]\right)
 //! $$
 //!
-//! Sampling: Chambers, J.M., Mallows, C.L., Stuck, B.W. (1976), "A Method for Simulating Stable Random Variables", *Journal of the American Statistical Association* 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
-//! Scale, location and the `α = 1` case: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1.
-//! Laplace transform at β = ±1: Samorodnitsky, G., Taqqu, M.S. (1994), *Stable Non-Gaussian Random Processes*, Chapman & Hall, Prop. 1.2.12.
+//! Reference: Chambers, J.M., Mallows, C.L., Stuck, B.W. (1976), "A Method for Simulating Stable Random Variables", *Journal of the American Statistical Association* 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
+//! Reference: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1 (scale, location and `α = 1`).
+//! Reference: Samorodnitsky, G., Taqqu, M.S. (1994), *Stable Non-Gaussian Random Processes*, Chapman & Hall, Prop. 1.2.12 (the Laplace transform at β = ±1), DOI 10.1201/9780203738818.
 
 use std::mem::MaybeUninit;
 
@@ -129,7 +129,8 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     }
   }
 
-  /// `σX + (2/π)βσ ln σ + μ` turns Weron's `X ~ S₁(1, β, 0)` into `S₁(σ, β, μ)`; this is its constant part.
+  /// `σX + (2/π)βσ ln σ + μ` turns Weron's `X ~ S₁(1, β, 0)` into `S₁(σ, β, μ)`; this is its
+  /// constant part.
   fn unit_index_location(&self) -> T {
     let two_over_pi = T::from(2.0).unwrap() / T::from_f64_fast(std::f64::consts::PI);
     self.location + two_over_pi * self.beta * self.scale * self.scale.ln()

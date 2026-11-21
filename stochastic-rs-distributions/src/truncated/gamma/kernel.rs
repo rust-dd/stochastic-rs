@@ -1,4 +1,5 @@
-//! The truncated gamma's kernel in units of `2^p`, the least power of two at or above the shorter of θ and `upper`.
+//! The truncated gamma's kernel in units of `2^p`, the least power of two at or above the shorter
+//! of θ and `upper`.
 
 use crate::special::mul_parts;
 use crate::truncated::quadrature::Cut;
@@ -24,7 +25,8 @@ pub(in crate::truncated) struct GammaKernel {
   ln_c: f64,
   /// `(k − 1)/c − 1/s`, the slope at `c`, `None` where it overflows.
   slope: Option<f64>,
-  /// `k − 1 ≤ 3e3`: the plain form's measured error, 1.6e-14·√(k − 1) out to the farthest normal pdf, stays in 1e-12.
+  /// `k − 1 ≤ 3e3`: the plain form's measured error, 1.6e-14·√(k − 1) out to the farthest normal
+  /// pdf, stays in 1e-12.
   plain: bool,
 }
 
@@ -44,14 +46,16 @@ impl GammaKernel {
 }
 
 impl GammaKernel {
-  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` down to `x = c/4`, the quotient's log below.
+  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` down to `x = c/4`, the
+  /// quotient's log below.
   #[inline(never)]
   fn ln_rel_exact(&self, x: f64, y: f64, slope: f64) -> f64 {
     let z = y / self.c;
     if z < -0.75 {
       (self.k - 1.0) * (ln_ratio(x, self.c, self.ln_c) - z) + slope * y
     } else {
-      // `y/(c + c_lo)` past its rounding, which the left tail's `1/(1 + z)` amplifies; far out it would only overflow.
+      // `y/(c + c_lo)` past its rounding, which the left tail's `1/(1 + z)` amplifies; far out it
+      // would only overflow.
       let z_lo = if z.abs() <= 1.0 {
         ((-z).mul_add(self.c, y) - z * self.c_lo) / self.c
       } else {
@@ -130,7 +134,8 @@ impl Kernel for GammaKernel {
     -(self.k - 1.0) * self.ln_c - y / self.s
   }
 
-  /// `(k − 1)·ln(x/c) − (x − c)/s` from the exact `x` and `c`, the log from `x − c` within half of `c`.
+  /// `(k − 1)·ln(x/c) − (x − c)/s` from the exact `x` and `c`, the log from `x − c` within half of
+  /// `c`.
   fn ln_rel_two(&self, x: Cut, _y: f64) -> Two {
     let (x, c) = (two::of(x), (self.c, self.c_lo));
     let y = two::sub(x, c);
@@ -169,7 +174,8 @@ impl Kernel for GammaKernel {
     }
   }
 
-  /// `(k − 1)s` to a double-double: `k − 1` is exact below 2⁵³ and past it carries its own rounding.
+  /// `(k − 1)s` to a double-double: `k − 1` is exact below 2⁵³ and past it carries its own
+  /// rounding.
   #[inline]
   fn mode(&self) -> Cut {
     if self.k <= 1.0 {

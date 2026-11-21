@@ -34,7 +34,8 @@ fn want(
   }
 }
 
-/// The bulk, a far upper tail where `P(k, b) − P(k, a)` keeps no digit, one where it rounds to 0, and a shape of 1e4.
+/// The bulk, a far upper tail where `P(k, b) − P(k, a)` keeps no digit, one where it rounds to 0,
+/// and a shape of 1e4.
 #[test]
 fn bulk_and_far_tails() {
   check(
@@ -435,7 +436,8 @@ fn unit_shape_has_no_log_term() {
   );
 }
 
-/// The whole support is the base law: exact values that need no quadrature pin the singular-end rule.
+/// The whole support is the base law: exact values that need no quadrature pin the singular-end
+/// rule.
 #[test]
 fn whole_support_is_the_base_law() {
   check(

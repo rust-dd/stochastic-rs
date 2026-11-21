@@ -1,6 +1,7 @@
 use super::*;
 
-/// mpmath at 60 and 120 digits on both sides of the series' edge `|s| = 0.2` (`x = −1/3`, `½`) and at small `x`.
+/// mpmath at 60 and 120 digits on both sides of the series' edge `|s| = 0.2` (`x = −1/3`, `½`) and
+/// at small `x`.
 #[test]
 fn ln_1p_mx_holds_both_forms() {
   for (x, want) in [
@@ -39,7 +40,8 @@ fn the_saddle_forms_meet_the_scaled_ks() {
   assert!((shift - (ln_ns - ln_n(lambda))).abs() <= 1e-13, "{shift}");
 }
 
-/// mpmath at 80 digits: the maximiser in two parts within `4ε²` of `w`, where `w`'s own rounding exceeds the law's width.
+/// mpmath at 80 digits: the maximiser in two parts within `4ε²` of `w`, where `w`'s own rounding
+/// exceeds the law's width.
 #[test]
 fn saddle_parts_hold_to_twice_the_precision() {
   for ((lambda, chi, psi), (hi, lo)) in [

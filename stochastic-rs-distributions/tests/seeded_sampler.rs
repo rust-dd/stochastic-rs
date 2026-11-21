@@ -1,4 +1,5 @@
-//! The bulk `DistributionSampler` paths of a seeded stream: shape, replay, thread-count independence.
+//! The bulk `DistributionSampler` paths of a seeded stream: shape, replay, thread-count
+//! independence.
 
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -33,7 +34,8 @@ fn sample_matrix_int_has_expected_shape() {
   assert_eq!(out.shape(), &[16, 8]);
 }
 
-/// A Dirichlet matrix holds `m` simplex points of the law's dimension, the stream's next `m` draws in order.
+/// A Dirichlet matrix holds `m` simplex points of the law's dimension, the stream's next `m` draws
+/// in order.
 #[test]
 fn dirichlet_sample_matrix_rows_are_consecutive_draws() {
   let law = SimdDirichlet::<f64>::new(vec![1.0, 2.0, 3.0]);
@@ -57,7 +59,8 @@ fn sample_n_deterministic_all_paths() {
   assert_eq!(normal_a.sample_n(64), normal_b.sample_n(64));
 }
 
-/// The parallel fan-out stays bit-identical across two identically seeded samplers on a 4-thread pool.
+/// The parallel fan-out stays bit-identical across two identically seeded samplers on a 4-thread
+/// pool.
 #[test]
 fn sample_matrix_parallel_deterministic() {
   let pool = rayon::ThreadPoolBuilder::new()
@@ -101,7 +104,8 @@ fn sample_matrix_repeat_calls_advance() {
   });
 }
 
-/// Identically seeded streams agree call for call, and a serial call in between leaves the fork basis alone.
+/// Identically seeded streams agree call for call, and a serial call in between leaves the fork
+/// basis alone.
 #[test]
 fn sample_matrix_call_sequence_deterministic() {
   let pool = rayon::ThreadPoolBuilder::new()
@@ -162,7 +166,8 @@ fn distribution_sample_draws_from_the_caller_rng() {
   assert_ne!(draws(1), draws(999_999));
 }
 
-/// `fill_with` takes one word from the caller's rng and fills like a stream seeded by that word, table laws included.
+/// `fill_with` takes one word from the caller's rng and fills like a stream seeded by that word,
+/// table laws included.
 #[test]
 fn fill_with_is_the_fill_of_a_stream_seeded_by_one_rng_word() {
   use rand::Rng;
@@ -197,7 +202,8 @@ fn fill_with_is_the_fill_of_a_stream_seeded_by_one_rng_word() {
   }
 }
 
-/// Three 64-wide bulk chunks equal 192 pops: each part refills its 64-buffer with the same kernel call.
+/// Three 64-wide bulk chunks equal 192 pops: each part refills its 64-buffer with the same kernel
+/// call.
 #[test]
 fn complex_fill_matches_pops_over_three_chunks() {
   let law = ComplexDistribution::new(
@@ -216,7 +222,8 @@ fn complex_fill_matches_pops_over_three_chunks() {
   assert_ne!(fill(9), fill(10));
 }
 
-/// A 100-value fill (a second chunk and a tail) equals twin part streams filled directly, seeded in the same order.
+/// A 100-value fill (a second chunk and a tail) equals twin part streams filled directly, seeded in
+/// the same order.
 #[test]
 fn complex_fill_matches_its_part_streams_past_one_chunk() {
   let (re_law, im_law) = (

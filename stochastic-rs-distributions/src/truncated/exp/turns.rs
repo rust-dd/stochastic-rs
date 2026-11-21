@@ -107,7 +107,8 @@ const TAU_PARTS: [f64; 4] = [
   3.39137106414756e-31,
 ];
 
-/// `hi + lo` reduced to about `[−π, π]` by Cody and Waite's subtraction of `k` parts of 2π, for `|hi| < 2²⁰`.
+/// `hi + lo` reduced to about `[−π, π]` by Cody and Waite's subtraction of `k` parts of 2π, for
+/// `|hi| < 2²⁰`.
 pub(super) fn reduce(hi: f64, lo: f64) -> f64 {
   let k = (hi / TAU).round();
   let [c1, c2, c3, c3t] = TAU_PARTS;
@@ -123,7 +124,8 @@ pub(super) fn radians(r: u128) -> f64 {
 mod tests {
   use super::*;
 
-  /// Products past the doubles, to the table's deep end at `f64::MAX²`, against mpmath at 2600 and 2800 digits.
+  /// Products past the doubles, to the table's deep end at `f64::MAX²`, against mpmath at 2600 and
+  /// 2800 digits.
   #[test]
   fn turns_reduce_products_past_the_doubles() {
     for (t, x, want) in [

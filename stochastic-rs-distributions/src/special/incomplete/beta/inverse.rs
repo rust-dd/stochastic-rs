@@ -210,7 +210,8 @@ fn narrow_root(a: f64, b: f64, p: f64) -> Option<f64> {
   })
 }
 
-/// `x` from the held side's two-part logarithm: the held side rounded once, `1 − y` once more above ½.
+/// `x` from the held side's two-part logarithm: the held side rounded once, `1 − y` once more above
+/// ½.
 fn finish(w: (f64, f64), x_small: bool) -> f64 {
   let held = exp_parts(w, 1.0, 0);
   if x_small { held } else { 1.0 - held }

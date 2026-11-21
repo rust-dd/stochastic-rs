@@ -60,7 +60,8 @@ pub(super) fn skewness_far(
   Some(beta.signum() * value.value())
 }
 
-/// The excess kurtosis where `p ≠ 0` or `B` or `(k₁ + Bk₂)²` leaves the doubles, as [`skewness_far`].
+/// The excess kurtosis where `p ≠ 0` or `B` or `(k₁ + Bk₂)²` leaves the doubles, as
+/// [`skewness_far`].
 #[cold]
 #[inline(never)]
 pub(super) fn kurtosis_far(

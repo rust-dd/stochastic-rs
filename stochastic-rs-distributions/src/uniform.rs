@@ -1,10 +1,10 @@
-//! # Uniform
+//! Continuous uniform law on an interval, sampled by inversion.
 //!
 //! $$
 //! f(x)=\frac{1}{b-a}\mathbf{1}_{a\le x\le b}
 //! $$
 //!
-//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 
@@ -22,7 +22,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_UNIFORM_THRESHOLD: usize = 16;
 
-/// Uniform law on `[low, high)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Uniform law on `[low, high)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in
+/// bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdUniform<T> {
   low: T,
@@ -154,7 +155,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdUniform<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
-  /// `low + scale·u` with one `[0, 1)` uniform `u` from the caller's rng (53 bits for `f64`, 24 for `f32`).
+  /// `low + scale·u` with one `[0, 1)` uniform `u` from the caller's rng (53 bits for `f64`, 24 for
+  /// `f32`).
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }
@@ -271,7 +273,8 @@ mod tests {
     assert!(best > 0.01, "best p = {best}");
   }
 
-  /// At the rng's largest output the honest `f32` draw stays below `high`, where a 53-bit uniform rounds up to one.
+  /// At the rng's largest output the honest `f32` draw stays below `high`, where a 53-bit uniform
+  /// rounds up to one.
   #[test]
   fn honest_f32_draw_stays_below_high() {
     struct Top;

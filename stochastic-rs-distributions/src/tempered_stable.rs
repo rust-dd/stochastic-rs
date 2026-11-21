@@ -1,4 +1,5 @@
-//! # Tempered stable (positive, exponentially tilted stable)
+//! Exponentially tilted positive stable law, CGMY's positive half (`Y = α`, `M = λ`) at unit time;
+//! no closed density. Devroye's double rejection averages under 8.12 loops, Kanter's at `λ = 0`.
 //!
 //! $$
 //! \mathbb E\,e^{-uX} = \exp\!\bigl(\theta\,(\lambda^\alpha - (u + \lambda)^\alpha)\bigr),\qquad
@@ -8,9 +9,6 @@
 //! $$
 //! \kappa_n = \theta\,(-1)^{n+1}\alpha(\alpha-1)\cdots(\alpha-n+1)\,\lambda^{\alpha-n}.
 //! $$
-//!
-//! The tempered stable subordinator's unit-time law (CGMY's positive half, `Y = α`, `M = λ`), no
-//! closed density; Devroye's double rejection averages under 8.12 loops, Kanter's at `λ = 0`.
 //!
 //! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Article 18, DOI 10.1145/1596519.1596523.
 
@@ -142,7 +140,8 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     let tilt = lambda_f * scale;
     let lambda_alpha = lambda_f.powf(alpha_f) * theta_f;
     let root_gamma = (lambda_alpha * alpha_f * (1.0 - alpha_f)).sqrt();
-    // ζ at the largest angle a draw reaches, `U = pred(π)`, the smallest the hat's `(√γ + αζ)^{1/α}` meets.
+    // ζ at the largest angle a draw reaches, `U = pred(π)`, the smallest the hat's
+    // `(√γ + αζ)^{1/α}` meets.
     let zeta_min = zolotarev_ratio(alpha_f, std::f64::consts::PI.next_down()).sqrt();
     // The relative spread is `√((1 − α)/(α λ'^α))`, zero where `λ'^α` overflows; `αθ · λ^α/λ`
     // overflows only with κ₁, and keeps the exponent `α` exact where `α − 1` would round.
@@ -278,7 +277,8 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       let v_prime = uniform(src);
       let mut n_prime = 0.0;
       let mut e_prime = 0.0;
-      // The paper's appendix prints `V' < a2/s` for the middle piece; the mixture needs `(a1 + a2)/s`.
+      // The paper's appendix prints `V' < a2/s` for the middle piece; the mixture needs
+      // `(a1 + a2)/s`.
       let x = if v_prime < a1 / s {
         n_prime = normal(src);
         m - delta * n_prime.abs()
@@ -410,7 +410,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdTemperedStable<T> {
     Some(self.cumulant(4) / self.cumulant(2).powi(2))
   }
 
-  /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - t)^\alpha)\bigr)$ for $t \le \lambda$, `+∞` beyond.
+  /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - t)^\alpha)\bigr)$ for $t \le \lambda$, `+∞`
+  /// beyond.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (alpha, lambda, theta) = self.params();
     if t > lambda {
