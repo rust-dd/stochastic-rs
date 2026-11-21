@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::traits::Grid2D;
 
 use super::*;
@@ -31,11 +32,11 @@ fn local_vol_grid() -> Grid2D<f64> {
   Grid2D::new(ts, ks, values)
 }
 
-fn method(n: usize) -> ParticleMethod {
+fn method(n: usize) -> ParticleMethod<Deterministic> {
   ParticleMethod::default()
     .with_particles(n)
     .with_steps_per_year(20)
-    .with_seed(11)
+    .with_seed(Deterministic::new(11))
 }
 
 /// With `eta = 0` the variance has no noise, and started at its long-run
@@ -126,7 +127,7 @@ fn the_seed_pins_the_surface() {
       0.0,
       &grid,
       &[0.5],
-      &method(1_000).with_seed(seed),
+      &method(1_000).with_seed(Deterministic::new(seed)),
     )
     .unwrap()
     .leverage
@@ -148,7 +149,7 @@ fn every_maturity_is_a_grid_point_and_intervals_are_split_evenly() {
 #[test]
 fn bad_inputs_are_errors_not_panics() {
   let grid = local_vol_grid();
-  let ok = |p: &HestonSlvParams, s0: f64, mats: &[f64], m: &ParticleMethod| {
+  let ok = |p: &HestonSlvParams, s0: f64, mats: &[f64], m: &ParticleMethod<Deterministic>| {
     calibrate_leverage(p, s0, 0.02, 0.0, &grid, mats, m).map(|_| ())
   };
   assert!(ok(&params(1.0), 100.0, &[0.5], &method(2)).is_ok());

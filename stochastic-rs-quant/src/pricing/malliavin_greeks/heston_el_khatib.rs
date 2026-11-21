@@ -1,11 +1,13 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::HestonMalliavinGreeks;
+use super::estimate;
+use super::undefined;
 
 pub(super) struct HestonElKhatibPath {
   pub(super) s: Array1<f64>,
@@ -14,7 +16,7 @@ pub(super) struct HestonElKhatibPath {
   pub(super) dw_v: Array1<f64>,
 }
 
-impl HestonMalliavinGreeks {
+impl<S: SeedExt> HestonMalliavinGreeks<S> {
   fn sample_el_khatib_path(
     &self,
     normal_s: &mut Seeded<SimdNormal<f64>>,
@@ -158,51 +160,21 @@ impl HestonMalliavinGreeks {
     }
   }
 
-  /// Full El-Khatib Heston Malliavin Delta with the Skorohod correction.
+  /// El-Khatib's (2009, arXiv:0904.3247, Prop. 5) delta with the Skorohod correction `D_u A`, a
+  /// central Cameron–Martin shift of the increments, in O(n_steps²).
   ///
-  /// This uses the non-adapted kernel
-  /// `G(t,T) = sqrt(V_t) + ∫_t^T d sqrt(V_s)/dV_s · D_t V_s (dW_s − sqrt(V_s) ds)`
-  /// and the deterministic direction `u_t = 1`.
-  ///
-  /// Reference: Y. El-Khatib, "Computations of Greeks in stochastic volatility
-  /// models via the Malliavin calculus", arXiv:0904.3247 (2009), Proposition 5
-  /// for `G(t,T)` and the Delta section for the Skorohod correction.
-  /// <https://arxiv.org/abs/0904.3247>
-  ///
-  /// The resulting discrete weight is:
-  ///
-  /// ```text
-  /// pi_delta = (1/S0) * (W_T / A + D_u A / A^2),  A = integral_0^T G(t,T) dt
-  /// ```
-  ///
-  /// `D_u A` is computed by a central Cameron-Martin perturbation of the
-  /// stored Brownian increments. This is intentionally separate from
-  /// [`delta`](Self::delta):
-  /// it is O(n_steps^2), more variance-sensitive, and mainly useful when the
-  /// paper's full estimator is required explicitly.
-  pub fn delta_el_khatib(&self) -> f64 {
+  /// $$
+  /// \pi_\Delta=\frac{1}{S_0}\Big(\frac{W_T}{A}+\frac{D_uA}{A^2}\Big),\ A=\int_0^T G(t,T)\,dt
+  /// $$
+  pub fn delta_el_khatib(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
-      return f64::NAN;
+      return undefined();
     }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
-    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Unseeded);
-    let mut normal_perp = SimdNormal::new(0.0, sqrt_dt).seeded(&Unseeded);
-
-    self.delta_el_khatib_from_normals(&mut normal_s, &mut normal_perp)
-  }
-
-  /// Seeded variant of [`delta_el_khatib`](Self::delta_el_khatib) for reproducible
-  /// tests and benchmarks.
-  pub fn delta_el_khatib_with_seed(&self, seed: u64) -> f64 {
-    if self.degenerate_query() {
-      return f64::NAN;
-    }
-    let dt = self.tau / (self.n_steps - 1) as f64;
-    let sqrt_dt = dt.sqrt();
-    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Deterministic::new(seed));
-    let mut normal_perp =
-      SimdNormal::new(0.0, sqrt_dt).seeded(&Deterministic::new(seed ^ 0x9E37_79B9_7F4A_7C15));
+    let seed = self.seed.clone();
+    let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&seed.derive());
+    let mut normal_perp = SimdNormal::new(0.0, sqrt_dt).seeded(&seed.derive());
 
     self.delta_el_khatib_from_normals(&mut normal_s, &mut normal_perp)
   }
@@ -211,10 +183,9 @@ impl HestonMalliavinGreeks {
     &self,
     normal_s: &mut Seeded<SimdNormal<f64>>,
     normal_perp: &mut Seeded<SimdNormal<f64>>,
-  ) -> f64 {
+  ) -> McEstimate<f64> {
     let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
-    let mut sum = 0.0;
+    let (mut sum, mut sum_sq) = (0.0, 0.0);
 
     for _ in 0..self.n_paths {
       let path = self.sample_el_khatib_path(normal_s, normal_perp);
@@ -225,10 +196,12 @@ impl HestonMalliavinGreeks {
       let weight = (w_t / a + du_a / (a * a)) / self.s;
 
       if weight.is_finite() {
-        sum += discount * payoff * weight;
+        let contribution = discount * payoff * weight;
+        sum += contribution;
+        sum_sq += contribution * contribution;
       }
     }
 
-    sum / m
+    estimate(sum, sum_sq, self.n_paths)
   }
 }

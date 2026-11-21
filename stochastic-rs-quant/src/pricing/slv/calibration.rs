@@ -54,7 +54,8 @@ use std::cmp::Ordering;
 use ndarray::Array1;
 use ndarray::Array2;
 use rayon::prelude::*;
-use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -79,16 +80,16 @@ const WINDOW_MASS: f64 = 1e-5;
 /// The particle method's tuning: everything besides the model and the
 /// target surface. The defaults are Guyon–Henry-Labordère's bandwidth
 /// constants and a cloud large enough for a production surface.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ParticleMethod {
+#[derive(Clone, Debug)]
+pub struct ParticleMethod<S: SeedExt = Unseeded> {
   /// Particles in the cloud, $N$.
   pub n_particles: usize,
   /// Euler steps per year; every snapshot maturity is a grid point, so an
   /// interval between two maturities takes `ceil(Δt · steps_per_year)` of
   /// them.
   pub steps_per_year: usize,
-  /// Seed of the cloud's Gaussian stream.
-  pub seed: u64,
+  /// The cloud's Gaussian stream draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
   /// $\kappa$ in the bandwidth, `1.5` in the reference.
   pub bandwidth_factor: f64,
   /// $t_{\min}$ in the bandwidth, `0.25` in the reference: below it the
@@ -102,14 +103,14 @@ impl Default for ParticleMethod {
     Self {
       n_particles: 100_000,
       steps_per_year: 200,
-      seed: 42,
+      seed: Unseeded,
       bandwidth_factor: 1.5,
       bandwidth_t_min: 0.25,
     }
   }
 }
 
-impl ParticleMethod {
+impl<S: SeedExt> ParticleMethod<S> {
   pub fn with_particles(mut self, n_particles: usize) -> Self {
     self.n_particles = n_particles;
     self
@@ -120,9 +121,14 @@ impl ParticleMethod {
     self
   }
 
-  pub fn with_seed(mut self, seed: u64) -> Self {
-    self.seed = seed;
-    self
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> ParticleMethod<S2> {
+    ParticleMethod {
+      n_particles: self.n_particles,
+      steps_per_year: self.steps_per_year,
+      seed,
+      bandwidth_factor: self.bandwidth_factor,
+      bandwidth_t_min: self.bandwidth_t_min,
+    }
   }
 
   pub fn with_bandwidth_factor(mut self, factor: f64) -> Self {
@@ -206,7 +212,7 @@ pub fn calibrate_leverage(
   q: f64,
   local_vol: &Grid2D<f64>,
   snapshot_maturities: &[f64],
-  method: &ParticleMethod,
+  method: &ParticleMethod<impl SeedExt>,
 ) -> Result<ParticleCalibration, QuantError> {
   validate(params, s0, r, q, local_vol, snapshot_maturities)?;
   method.validate()?;
@@ -232,7 +238,7 @@ pub fn calibrate_leverage(
     leverage[[0, i]] = clamp_leverage(local_vol.eval(0.0, node) / sqrt_v0);
   }
 
-  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(method.seed));
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&method.seed.clone());
   let mut x = vec![s0.ln(); n];
   let mut v = vec![v0; n];
   let mut z_v = vec![0.0; n];

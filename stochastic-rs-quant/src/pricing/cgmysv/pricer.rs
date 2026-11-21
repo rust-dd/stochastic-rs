@@ -9,7 +9,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Monte Carlo pricer for the CGMYSV model.
 #[derive(Debug, Clone)]
-pub struct CgmysvPricer {
+pub struct CgmysvPricer<S: SeedExt = Unseeded> {
   /// CGMYSV model parameters.
   pub params: CgmysvParams,
   /// Spot price.
@@ -36,9 +36,24 @@ pub struct CgmysvPricer {
   pub n_steps: usize,
   /// Truncation terms for the jump series ($J$).
   pub n_jumps: usize,
+  /// Each call samples from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
-impl CgmysvPricer {
+impl<S: SeedExt> CgmysvPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> CgmysvPricer<S2> {
+    CgmysvPricer {
+      params: self.params,
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      n_jumps: self.n_jumps,
+      seed,
+    }
+  }
+
   /// Generate risk-neutral price paths $S_{n,m}$ and variance paths $v_{n,m}$.
   ///
   /// $S_{n,m} = S_0\exp\!\bigl((r-q)\,t_m + L_{n,m} - \omega(t_m)\bigr)$
@@ -59,13 +74,10 @@ impl CgmysvPricer {
       Some(p.rho * p.v0),
       p.v0,
       Some(tau),
-      Unseeded,
+      self.seed.clone(),
     );
 
-    let results: Vec<[ndarray::Array1<f64>; 2]> = (0..self.n_paths)
-      .into_par_iter()
-      .map(|_| process.sample())
-      .collect();
+    let results = process.sample_par(self.n_paths);
 
     let dt = tau / self.n_steps as f64;
     let mut omega = vec![0.0_f64; n];
@@ -331,6 +343,7 @@ mod tests {
       n_paths,
       n_steps: 100,
       n_jumps: 1024,
+      seed: Unseeded,
     }
   }
 

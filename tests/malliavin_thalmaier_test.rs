@@ -6,6 +6,7 @@ use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::g_digital_put_2d;
+use stochastic_rs::simd_rng::Deterministic;
 
 fn paper_params() -> MultiHestonParams<f64> {
   let first = AssetParams {
@@ -82,7 +83,8 @@ fn paper_digital_put_deltas_match_exact_values() {
     strikes: [100.0, 100.0],
   };
   let deltas = MtGreeks::new(paper_params(), 0.01, 25_000)
-    .try_all_deltas_with_seed(&payoff, 0x1580_0011)
+    .with_seed(Deterministic::new(0x1580_0011))
+    .try_all_deltas(&payoff)
     .unwrap();
   let expected = [-0.008399800188218226, -0.010770732373919333];
 
@@ -105,10 +107,10 @@ fn public_vega_uses_volatility_units() {
     asset: 0,
     strike: 100.0,
   };
-  let engine = MtGreeks::new(vega_params(), 0.01, 30_000);
-  let seed = 0x5e6a_0001;
-  let sigma_vega = engine.vega_with_seed(&payoff, 0, seed);
-  let variance_vega = engine.vega_v0_with_seed(&payoff, 0, seed);
+  let engine =
+    MtGreeks::new(vega_params(), 0.01, 30_000).with_seed(Deterministic::new(0x5e6a_0001));
+  let sigma_vega = engine.vega(&payoff, 0);
+  let variance_vega = engine.vega_v0(&payoff, 0);
   let expected = black_scholes_vega(100.0, 100.0, 0.25, 0.0, 1.0);
 
   assert!(
@@ -133,14 +135,15 @@ fn public_cross_gamma_is_seeded_and_matches_black_scholes() {
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-  let seed = 0xc205_5a11;
+  let seed = || Deterministic::new(0xc205_5a11);
   let expected =
     black_scholes_digital_cross_gamma([100.0, 100.0], [100.0, 100.0], [0.25, 0.20], 0.2, 0.0, 1.0);
-  let estimate =
-    MtGreeks::new(paper_params(), 0.01, 30_000).cross_gamma_with_seed(&payoff, 0, 1, seed);
-  let reproducibility_engine = MtGreeks::new(paper_params(), 0.01, 128);
-  let first = reproducibility_engine.cross_gamma_with_seed(&payoff, 0, 1, seed);
-  let second = reproducibility_engine.cross_gamma_with_seed(&payoff, 0, 1, seed);
+  let estimate = MtGreeks::new(paper_params(), 0.01, 30_000)
+    .with_seed(seed())
+    .cross_gamma(&payoff, 0, 1);
+  let reproducibility_engine = MtGreeks::new(paper_params(), 0.01, 128).with_seed(seed());
+  let first = reproducibility_engine.cross_gamma(&payoff, 0, 1);
+  let second = reproducibility_engine.cross_gamma(&payoff, 0, 1);
 
   assert_eq!(first.to_bits(), second.to_bits());
   assert!(
@@ -159,7 +162,8 @@ fn stochastic_leverage_is_reported_as_unsupported() {
     strikes: [100.0, 100.0],
   };
   let error = engine
-    .try_delta_with_seed(&payoff, 0, 0xc077_e1a7)
+    .with_seed(Deterministic::new(0xc077_e1a7))
+    .try_delta(&payoff, 0)
     .unwrap_err();
 
   assert!(

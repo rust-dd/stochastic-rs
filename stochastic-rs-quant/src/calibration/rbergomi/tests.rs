@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 use crate::LossMetric;
 use crate::QuantError;
@@ -31,7 +33,7 @@ fn slices(maturities: &[f64]) -> Vec<RBergomiMarketSlice> {
       512,
       96,
       12,
-      7_777 + i as u64,
+      &Deterministic::new(7_777 + i as u64),
     ),
   };
   maturities.iter().enumerate().map(slice).collect()
@@ -56,7 +58,6 @@ fn config() -> RBergomiCalibrationConfig {
     adam_beta1: 0.9,
     adam_beta2: 0.99,
     adam_eps: 1e-8,
-    random_seed: 123_456,
     stop_loss: None,
     improvement_tol: 1e-5,
   }
@@ -75,6 +76,7 @@ fn test_rbergomi_calibration_reduces_loss_on_synthetic_data() {
     slices(&[0.25, 0.5, 1.0]),
     config(),
   )
+  .with_seed(Deterministic::new(123_456))
   .with_options(options);
   let fit = calibrator.calibrate(None).unwrap();
   let first = &fit.history[0];

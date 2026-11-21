@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 
@@ -26,7 +27,7 @@ fn two_asset_params() -> MultiHestonParams<f64> {
 #[test]
 fn simulation_positive_prices() {
   let terminal = two_asset_params()
-    .sample_with_seed(0x51_00_01)
+    .sample(&Deterministic::new(0x51_00_01))
     .terminal_prices_array();
   assert!(terminal[0] > 0.0, "S1_T = {}", terminal[0]);
   assert!(terminal[1] > 0.0, "S2_T = {}", terminal[1]);
@@ -35,7 +36,7 @@ fn simulation_positive_prices() {
 #[test]
 fn malliavin_cov_positive_definite() {
   let params = two_asset_params();
-  let paths = params.sample_with_seed(0xc0_aa_01);
+  let paths = params.sample(&Deterministic::new(0xc0_aa_01));
   let gamma = paths.malliavin_cov(params.cross_corr.view(), params.tau);
   let determinant = gamma[[0, 0]] * gamma[[1, 1]] - gamma[[0, 1]] * gamma[[1, 0]];
   assert!(determinant > 0.0, "det(gamma) = {determinant}");

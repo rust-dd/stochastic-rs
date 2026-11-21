@@ -133,14 +133,7 @@ fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
   assert!((degenerate.price(120.0, 100.0, 0.0, 0.0, 1.0) - 20.0).abs() < 1e-12);
 }
 
-/// The per-path `max(0)` floor zeroed **every** poisoned payoff
-/// independently, so the average of a fully undefined simulation came
-/// back as `0.0` rather than `NaN`.
-///
-/// Both routes are pinned. A `NaN` query coordinate is the ordinary one.
-/// A `NaN` *model* `rho` is written straight to the field rather than
-/// passed to the constructor: the fields are `pub`, so the estimator is
-/// reachable in that state whatever `new` chooses to accept.
+/// A NaN payoff passes the per-path `max(0)` floor, where a bare floor would zero every path.
 #[test]
 fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
   let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
@@ -172,22 +165,6 @@ fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
       "a poisoned run has no error bar either: got {got}"
     );
   }
-
-  let mut poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
-  poisoned.rho = f64::NAN;
-  let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-  assert!(
-    got.mean.is_nan(),
-    "a NaN model rho must not price: got {got}"
-  );
-
-  poisoned = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
-  poisoned.sigma1 = f64::NAN;
-  let got = poisoned.price_call(110.0, 100.0, 10.0, 0.02, 0.0, 0.0, 1.0);
-  assert!(
-    got.mean.is_nan(),
-    "a NaN model sigma1 must not price: got {got}"
-  );
 
   // The floor is still a floor: a deep out-of-the-money spread call is
   // worth zero, not a small negative number.

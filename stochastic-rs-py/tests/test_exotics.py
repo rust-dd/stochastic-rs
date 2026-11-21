@@ -217,3 +217,21 @@ def test_the_exotics_answer_at_their_edges():
     compound = dict(s=0.0, k1=5.0, k2=100.0, t1=0.0, r=0.05, q=0.02, sigma=0.25, compound_type="poc")
     assert sr.CompoundPricer(t2=0.0, **compound).price() == 5.0
     assert math.isnan(sr.CompoundPricer(t2=1.0, **compound).price())
+
+
+def test_the_mc_barrier_pricer_sees_q_and_replays_its_seed():
+    seeded = sr.MCBarrierPricer(n_paths=4_000, n_steps=64, seed=11)
+    args = (100.0, 100.0, 130.0, 0.03, 0.2, 1.0, "up_out")
+    first, second = seeded.price(*args), seeded.price(*args)
+    assert (first.mean, first.std_err, first.n_samples) == (second.mean, second.std_err, 4_000)
+    assert first.mean == sr.MCBarrierPricer(n_paths=4_000, n_steps=64, seed=11).price(*args).mean
+    assert first.mean != sr.MCBarrierPricer(n_paths=4_000, n_steps=64, seed=12).price(*args).mean
+    shifted = 130.0 * math.exp(0.5826 * 0.2 * math.sqrt(1.0 / 64))  # Broadie, Glasserman & Kou (1997)
+    for q in (0.0, 0.04):
+        estimate = seeded.price(*args, q=q)
+        closed = sr.BarrierPricer(s=100.0, k=100.0, h=shifted, r=0.03, q=q, sigma=0.2, t=1.0, barrier_type="up_out").price()
+        assert abs(estimate.mean - closed) < 4.0 * estimate.std_err + 0.1
+    assert seeded.price(*args, q=0.04).mean < first.mean
+    assert sr.MCBarrierPricer(n_paths=500, n_steps=16).price(*args).n_samples == 500
+    with pytest.raises(ValueError, match="n_paths must satisfy `n_paths >= 1`"):
+        sr.MCBarrierPricer(n_paths=0)

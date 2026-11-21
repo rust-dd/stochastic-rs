@@ -170,13 +170,13 @@ impl PyHullWhiteSwapExposure {
         &curve.inner,
         paths,
         quantile,
-        stochastic_rs_core::simd_rng::Deterministic::new(s),
+        &stochastic_rs_core::simd_rng::Deterministic::new(s),
       ),
       None => swap.profile(
         &curve.inner,
         paths,
         quantile,
-        stochastic_rs_core::simd_rng::Unseeded,
+        &stochastic_rs_core::simd_rng::Unseeded,
       ),
     };
     PyExposureProfile { inner }

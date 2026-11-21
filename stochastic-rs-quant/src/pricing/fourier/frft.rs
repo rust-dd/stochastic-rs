@@ -23,12 +23,9 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::traits::RealExt;
 
-/// Fractional Fourier transform $G_k = \sum_j x_j e^{-2\pi i \gamma jk}$.
-///
-/// `x.len()` must be a power of two. Recovers the standard forward DFT
-/// when `gamma == 1.0 / x.len() as f64`. Computed via the
-/// Bailey-Swarztrauber three-FFT convolution of length `2 * x.len()`.
-pub fn frft(x: ArrayView1<Complex64>, gamma: f64) -> Array1<Complex64> {
+/// $G_k = \sum_j x_j e^{-2\pi i \gamma jk}$ by Bailey–Swarztrauber's three FFTs of length `2n`, the
+/// DFT at `gamma = 1 / n`; panics unless `x.len()` is a power of two.
+pub(crate) fn frft(x: ArrayView1<Complex64>, gamma: f64) -> Array1<Complex64> {
   let n = x.len();
   assert!(n.is_power_of_two(), "FRFT length must be a power of two");
   // n power of two ⟹ m = 2n power of two, so the inner FFTs stay fast.

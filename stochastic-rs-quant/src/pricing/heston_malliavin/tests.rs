@@ -1,10 +1,11 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::HestonMalliavinConfig;
 use super::HestonMalliavinEstimator;
 use super::HestonModel;
 use super::TerminalPayoff;
 use super::VanillaPortfolio;
 use crate::OptionType;
-use crate::QuantError;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::heston::HestonParams;
@@ -27,11 +28,11 @@ fn bsm_limit_model(rho: f64) -> HestonModel {
   }
 }
 
-fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig {
+fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig<Deterministic> {
   HestonMalliavinConfig {
     paths,
     steps,
-    seed,
+    seed: Deterministic::new(seed),
     initial_variance_bump: 1e-4,
     minimum_relative_initial_variance_bump: 0.0,
     minimum_integrated_variance: 1e-14,
@@ -74,32 +75,32 @@ fn assert_close(left: f64, right: f64, tolerance: f64) {
 fn correlated_vanishing_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
   let model = bsm_limit_model(-0.6);
   let strike = 105.0;
-  let estimator = HestonMalliavinEstimator::new(model, config(300_000, 8, 71)).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, config(300_000, 8, 71));
   let result = estimator.estimate(&VanillaPortfolio::call(strike)).unwrap();
   let (reference, (s, k, r, q, tau)) = bsm(model, strike);
   let ot = OptionType::Call;
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference.price_option(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference.delta(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference.gamma(s, k, r, q, tau),
     8e-4,
   );
   assert_mc_close(
-    result.initial_variance_vega.value,
-    result.initial_variance_vega.standard_error,
+    result.initial_variance_vega.mean,
+    result.initial_variance_vega.std_err,
     reference.vega(s, k, r, q, tau) / (2.0 * model.params.v0.sqrt()),
     3e-2,
   );
@@ -110,26 +111,26 @@ fn small_vol_of_vol_converges_to_the_bsm_limit() {
   let mut model = bsm_limit_model(-0.7);
   model.params.kappa = 1.8;
   model.params.sigma = 1e-7;
-  let estimator = HestonMalliavinEstimator::new(model, config(180_000, 32, 117)).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, config(180_000, 32, 117));
   let result = estimator.estimate(&VanillaPortfolio::put(95.0)).unwrap();
   let (reference, (s, k, r, q, tau)) = bsm(model, 95.0);
   let ot = OptionType::Put;
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference.price_option(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference.delta(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference.gamma(s, k, r, q, tau),
     1e-3,
   );
@@ -151,7 +152,7 @@ fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
     tau: 0.5,
   };
   let simulation = config(80_000, 48, 991);
-  let estimator = HestonMalliavinEstimator::new(model, simulation).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, simulation);
   let lower = estimator.estimate(&VanillaPortfolio::call(95.0)).unwrap();
   let upper = estimator.estimate(&VanillaPortfolio::call(110.0)).unwrap();
   let vertical = estimator
@@ -159,23 +160,23 @@ fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
     .unwrap();
 
   assert_close(
-    vertical.price.value,
-    lower.price.value - upper.price.value,
+    vertical.price.mean,
+    lower.price.mean - upper.price.mean,
     2e-12,
   );
   assert_close(
-    vertical.spot_delta.value,
-    lower.spot_delta.value - upper.spot_delta.value,
+    vertical.spot_delta.mean,
+    lower.spot_delta.mean - upper.spot_delta.mean,
     2e-12,
   );
   assert_close(
-    vertical.spot_gamma.value,
-    lower.spot_gamma.value - upper.spot_gamma.value,
+    vertical.spot_gamma.mean,
+    lower.spot_gamma.mean - upper.spot_gamma.mean,
     2e-12,
   );
   assert_close(
-    vertical.initial_variance_vega.value,
-    lower.initial_variance_vega.value - upper.initial_variance_vega.value,
+    vertical.initial_variance_vega.mean,
+    lower.initial_variance_vega.mean - upper.initial_variance_vega.mean,
     2e-10,
   );
 }
@@ -183,7 +184,7 @@ fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
 #[test]
 fn seeded_estimation_and_contribution_batch_are_reproducible() {
   let model = bsm_limit_model(0.25);
-  let estimator = HestonMalliavinEstimator::new(model, config(2_000, 12, 44)).unwrap();
+  let estimator = HestonMalliavinEstimator::new(model, config(2_000, 12, 44));
   let first = estimator
     .estimate_with_contributions(&VanillaPortfolio::put(100.0))
     .unwrap();
@@ -203,10 +204,10 @@ fn seeded_estimation_and_contribution_batch_are_reproducible() {
     assert_close(
       first.0.estimator_covariance[index][index],
       match index {
-        0 => first.0.price.standard_error.powi(2),
-        1 => first.0.spot_delta.standard_error.powi(2),
-        2 => first.0.spot_gamma.standard_error.powi(2),
-        _ => first.0.initial_variance_vega.standard_error.powi(2),
+        0 => first.0.price.std_err.powi(2),
+        1 => first.0.spot_delta.std_err.powi(2),
+        2 => first.0.spot_gamma.std_err.powi(2),
+        _ => first.0.initial_variance_vega.std_err.powi(2),
       },
       1e-14,
     );
@@ -236,21 +237,68 @@ fn vanilla_payoffs_cover_calls_puts_and_signed_verticals() {
 }
 
 #[test]
+#[should_panic(expected = "rho must satisfy `1.0 - rho.powi(2) >= \
+                           minimum_orthogonal_variance_fraction`, got rho = 0.999999")]
 fn near_unit_correlation_is_rejected_before_simulation() {
-  let model = bsm_limit_model(0.999_999);
-  let error = HestonMalliavinEstimator::new(model, config(2_000, 8, 9)).unwrap_err();
-
-  assert!(
-    matches!(
-      &error,
-      QuantError::InvalidInput { what: "Heston Malliavin input", reason }
-        if reason.starts_with("rho leaves too little orthogonal variance")
-    ),
-    "{error}"
-  );
+  let _ = HestonMalliavinEstimator::new(bsm_limit_model(0.999_999), config(2_000, 8, 9));
 }
 
-/// Each broken model parameter panics in `new`, naming it; `config` problems stay `Err`.
+/// Each broken control panics in `new`, naming it.
+#[test]
+fn a_broken_config_panics_in_new() {
+  let cases: [(fn(&mut HestonMalliavinConfig<Deterministic>), &str); 9] = [
+    (
+      |c| c.paths = 5,
+      "paths must satisfy `paths >= 4 && paths.is_multiple_of(2)`, got paths = 5",
+    ),
+    (
+      |c| c.steps = 0,
+      "steps must satisfy `steps >= 1`, got steps = 0",
+    ),
+    (
+      |c| c.initial_variance_bump = 0.0,
+      "got initial_variance_bump = 0.0",
+    ),
+    (
+      |c| c.minimum_relative_initial_variance_bump = 1.0,
+      "got minimum_relative_initial_variance_bump = 1.0",
+    ),
+    (
+      |c| c.initial_variance_bump = 0.05,
+      "got 0.05 against v0 = 0.04",
+    ),
+    (
+      |c| c.minimum_integrated_variance = f64::NAN,
+      "got minimum_integrated_variance = NaN",
+    ),
+    (
+      |c| c.minimum_conditional_variance = -1.0,
+      "got minimum_conditional_variance = -1.0",
+    ),
+    (
+      |c| c.minimum_orthogonal_variance_fraction = 1.0,
+      "got minimum_orthogonal_variance_fraction = 1.0",
+    ),
+    (
+      |c| c.minimum_orthogonal_variance_fraction = 0.9,
+      "got rho = -0.6 against minimum_orthogonal_variance_fraction = 0.9",
+    ),
+  ];
+  for (breaks, expected) in cases {
+    let mut config = config(2_000, 8, 9);
+    breaks(&mut config);
+    let payload =
+      std::panic::catch_unwind(|| HestonMalliavinEstimator::new(bsm_limit_model(-0.6), config))
+        .expect_err(expected);
+    let message = payload
+      .downcast_ref::<String>()
+      .map(String::as_str)
+      .unwrap_or_default();
+    assert!(message.ends_with(expected), "{message}");
+  }
+}
+
+/// Each broken model parameter panics in `new`, naming it.
 #[test]
 fn a_broken_model_parameter_panics_in_new() {
   let good = HestonModel {

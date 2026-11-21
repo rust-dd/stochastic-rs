@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
@@ -501,7 +502,7 @@ fn hscm_rbergomi_and_slv_share_the_shape() {
       ParticleMethod::default()
         .with_particles(5_000)
         .with_steps_per_year(50)
-        .with_seed(7),
+        .with_seed(Deterministic::new(7)),
     )
     .calibrate(None)
     .unwrap();

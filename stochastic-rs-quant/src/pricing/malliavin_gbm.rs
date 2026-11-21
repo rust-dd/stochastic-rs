@@ -97,14 +97,14 @@ impl Degenerate {
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
-  pub sigma: f64,
+  sigma: f64,
   /// Number of Monte Carlo paths (M)
-  pub n_paths: usize,
+  n_paths: usize,
   /// Number of time steps (N)
-  pub n_steps: usize,
+  n_steps: usize,
   /// Intermediate time t where the Malliavin conditional price C(t, S_t) is estimated
   /// (0 < t_eval < tau)
-  pub t_eval: f64,
+  t_eval: f64,
   /// Seed strategy handed to the underlying [`Gbm`].
   pub seed: S,
 }
@@ -121,17 +121,14 @@ impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
   }
 }
 
-/// European vanilla call: the Malliavin conditional estimator targets the
-/// vanilla call under Gbm, whose carry is $b=r-q$. A surface built from it
-/// carries the estimator's Monte Carlo error into every implied vol, and
-/// [`t_eval`](GbmMalliavinPricer::t_eval) still bounds which maturities the
-/// grid may contain.
+/// European vanilla call under Gbm's carry `b = r − q`; a surface inherits the Monte Carlo error,
+/// and each maturity of its grid must exceed [`t_eval`](GbmMalliavinPricer::t_eval()).
 impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
-impl<S: SeedExt> GbmMalliavinPricer<S> {
+impl GbmMalliavinPricer {
   /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
   /// `n_paths >= 1`, `n_steps >= 2` and `t_eval` is finite and `> 0`; `t_eval < tau` is per query.
-  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
+  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
     assert!(
       sigma.is_finite() && sigma >= 0.0,
       "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
@@ -153,8 +150,29 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       n_paths,
       n_steps,
       t_eval,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> GbmMalliavinPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> GbmMalliavinPricer<S2> {
+    GbmMalliavinPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      t_eval: self.t_eval,
       seed,
     }
+  }
+
+  pub fn sigma(&self) -> f64 {
+    self.sigma
+  }
+
+  /// The time `t` of `C(t, S_t)`, which each queried `tau` must exceed.
+  pub fn t_eval(&self) -> f64 {
+    self.t_eval
   }
 
   /// Call and put from one simulation of the plain Malliavin estimator; a zero spot or horizon
