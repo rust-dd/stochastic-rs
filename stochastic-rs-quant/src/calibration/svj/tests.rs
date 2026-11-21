@@ -271,10 +271,10 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
   }
 }
 
-/// From `START` the cost falls across `σ_J`'s lower bound: within its stencil step of the bound
-/// the raw coordinate comes to rest on the fold, and never steps across it and back.
+/// From `START` the cost falls across `σ_J`'s lower bound. A held coordinate does not move, so a
+/// raw value two successive Jacobians see within the stencil step of the fold is the fold itself.
 #[test]
-fn a_jump_volatility_driven_to_its_bound_rests_on_it_and_does_not_zigzag_across() {
+fn a_jump_volatility_held_at_its_bound_is_on_it_not_beside_it() {
   use std::cell::RefCell;
   use std::rc::Rc;
 
@@ -292,14 +292,13 @@ fn a_jump_volatility_driven_to_its_bound_rests_on_it_and_does_not_zigzag_across(
   };
   let lm = calibrator.options.lm(true, 8).unwrap();
   minimize_in_box(SvjProblem::new(&calibrator, START), lm, rooms);
-  let mut path = seen.take();
-  let on = path.iter().filter(|gap| **gap == 0.0).count();
-  path.dedup();
-  let beside = |steps: &&[f64]| steps.iter().all(|gap| gap.abs() <= 1e-5);
-  let across = |steps: &&[f64]| steps[0] * steps[1] < 0.0 && steps[1] * steps[2] < 0.0;
-  let zigzags = path.windows(3).filter(beside).filter(across).count();
+  let path = seen.take();
+  let held = path
+    .windows(2)
+    .filter(|at| at[0] == at[1] && at[0].abs() <= 1e-5);
+  let beside = held.clone().filter(|at| at[0] != 0.0).count();
   assert!(
-    on > 0 && zigzags == 0,
-    "{on} on the fold, {zigzags} zigzags"
+    held.count() > 0 && beside == 0,
+    "held beside the fold at {beside} Jacobians"
   );
 }
