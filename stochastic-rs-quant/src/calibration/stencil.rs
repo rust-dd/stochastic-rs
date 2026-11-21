@@ -8,7 +8,7 @@ pub(crate) fn step(x: f64) -> f64 {
 }
 
 /// `∂r/∂x` by differences of step `h` inside `[lo, hi]`: central where the stencil fits, else the
-/// second-order one-sided one on the inside, never a stencil cut short at a bound.
+/// second-order one-sided one inside it, first order cut to a box too narrow for either.
 pub(crate) fn derivative(
   x: f64,
   h: f64,
@@ -26,7 +26,7 @@ pub(crate) fn derivative(
     let (at, near, far) = (residuals(x), residuals(x - h), residuals(x - 2.0 * h));
     return (3.0 * at - 4.0 * near + far) / (2.0 * h);
   }
-  let (below, above) = (lo.max(x - h), hi.min(x + h));
+  let (below, above) = (lo.max_or_nan(x - h), hi.min_or_nan(x + h));
   (residuals(above) - residuals(below)) / (above - below)
 }
 
@@ -41,21 +41,19 @@ mod tests {
     for x in [0.0_f64, 2e-4, 0.5, 1.0 - 2e-4, 1.0] {
       let want = ndarray::array![3.0 * x * x, x.exp()];
       let got = derivative(x, 1e-3, (0.0, 1.0), r);
-      let gap = (&got - &want)
-        .mapv(f64::abs)
-        .fold(0.0_f64, |a, &b| a.max(b));
+      let gap = f64::max_or_nan_fold((&got - &want).iter().map(|d| d.abs()));
       assert!(gap < 4e-6, "{x}: {got} vs {want}");
     }
   }
 
+  /// A NaN step reaches the box-narrow stencil too, whose ends `max`/`min` would clamp to the box.
   #[test]
   fn a_nan_point_or_step_differences_to_nan() {
     let r = |x: f64| ndarray::array![x, 2.0 * x];
-    assert!(
-      derivative(f64::NAN, 1e-3, (0.0, 1.0), r)
-        .iter()
-        .all(|d| d.is_nan())
-    );
+    for (x, h) in [(f64::NAN, 1e-3), (0.5, f64::NAN)] {
+      let all_nan = derivative(x, h, (0.0, 1.0), r).iter().all(|d| d.is_nan());
+      assert!(all_nan, "x = {x}, h = {h}");
+    }
     assert!(step(f64::NAN).is_nan());
     assert_eq!((step(0.0), step(-2.0)), (1e-5, 2e-3));
   }
