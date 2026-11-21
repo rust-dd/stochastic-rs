@@ -258,6 +258,10 @@ fn the_multi_asset_closed_forms_are_nan_for_a_spot_that_is_not_positive() {
       let stulz = StulzRainbowPricer::new(payoff, 0.25, 0.2, 0.4);
       let price = stulz.price(s1, s2, K, R, Q, 0.01, TAU);
       cells.push((format!("Stulz {payoff:?} {at}"), price));
+      for k in [0.0, -5.0] {
+        let price = stulz.price(110.0, 95.0, k, R, Q, 0.01, TAU);
+        cells.push((format!("Stulz {payoff:?} at k = {k}"), price));
+      }
     }
   }
   for (s, k) in OFF {
