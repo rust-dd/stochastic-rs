@@ -12,6 +12,7 @@ readme = "stochastic-rs-py/README.md"
 license = {text = "MIT"}
 license-files = [
   "LICENSE",
+  "stochastic-rs-distributions/LICENSE-THIRD-PARTY",
   "stochastic-rs-distributions/src/qmc/JOE_KUO_LICENSE",
   "stochastic-rs-quant/LICENSE-THIRD-PARTY",
 ]
