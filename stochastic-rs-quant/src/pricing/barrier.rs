@@ -61,8 +61,8 @@ impl BarrierPricer {
     Self { sigma }
   }
 
-  /// Reiner–Rubinstein price; a spot on or past the barrier has knocked out to the rebate or in to
-  /// the vanilla, `tau = 0` pays out, and NaN for a negative or NaN `tau` or a NaN barrier or spot.
+  /// Reiner–Rubinstein; on or past the barrier, its rebate or the knocked-in vanilla; at `tau = 0`
+  /// its payoff; NaN for a NaN query or barrier, `tau < 0` or a spot not positive before expiry.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let BarrierOption {
       strike: k,
