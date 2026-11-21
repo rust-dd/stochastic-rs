@@ -97,7 +97,8 @@ pub struct HestonMalliavinGreeksIsSetThroughNew;
 ///
 /// let asset = AssetParams { s: 100.0, v0: 0.04, kappa: 1.0, theta: 0.04, xi: 0.0, rho: 0.0 };
 /// let cross_corr = Array2::<f64>::eye(1);
-/// let params = MultiHestonParams { assets: vec![asset], cross_corr, r: 0.0, tau: 1.0, n_steps: 9 };
+/// let assets = vec![asset];
+/// let params = MultiHestonParams { assets, cross_corr, r: 0.0, tau: 1.0, n_steps: 9 };
 /// let mut engine = MtGreeks::new(params, 0.01, 16);
 /// engine.params.tau = -1.0;
 /// engine.h = 0.0;
@@ -111,7 +112,8 @@ pub struct MtGreeksIsSetThroughNew;
 /// use stochastic_rs_quant::calibration::rbergomi::RBergomiParams;
 /// use stochastic_rs_quant::calibration::rbergomi::RBergomiXi0;
 ///
-/// let start = RBergomiParams { hurst: 0.1, rho: -0.7, eta: 2.0, xi0: RBergomiXi0::Constant(0.04) };
+/// let xi0 = RBergomiXi0::Constant(0.04);
+/// let start = RBergomiParams { hurst: 0.1, rho: -0.7, eta: 2.0, xi0 };
 /// let config = RBergomiCalibrationConfig::default();
 /// let mut calibrator = RBergomiCalibrator::new(100.0, 0.01, 0.0, start, Vec::new(), config);
 /// calibrator.config.paths = 0;
