@@ -111,8 +111,8 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   y_branch: TrinomialBranch<T>,
   rho: T,
 ) -> [[T; 3]; 3] {
-  let px = non_negative(x_branch.probabilities());
-  let py = non_negative(y_branch.probabilities());
+  let px = x_branch.probabilities();
+  let py = y_branch.probabilities();
   let mut joint = [[T::zero(); 3]; 3];
   for i in 0..3 {
     for j in 0..3 {
@@ -153,17 +153,6 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
     }
   }
   joint
-}
-
-/// A branch whose spacing exceeds 2σ√Δt, or whose mean leaves the grid, has a negative probability;
-/// its non-negative part, renormalised, is contained here until the builder is fixed.
-fn non_negative<T: RealExt>(p: [T; 3]) -> [T; 3] {
-  if p.iter().all(|&q| q >= T::zero()) {
-    return p;
-  }
-  let clipped = p.map(|q| q.max_or_nan(T::zero()));
-  let total = clipped[0] + clipped[1] + clipped[2];
-  clipped.map(|q| q / total)
 }
 
 #[cfg(test)]
@@ -249,30 +238,5 @@ mod tests {
       (realised + 7.0 * 177.0_f64.sqrt() / 118.0).abs() < 1e-14,
       "{realised}"
     );
-  }
-
-  #[test]
-  fn a_branch_with_a_negative_probability_enters_by_its_non_negative_part() {
-    // An off-centre node of a factor whose vol is under the grid floor: (3/8, 3/4, −1/8).
-    let off_grid = TrinomialBranch {
-      center_index: 1,
-      down_probability: 0.375,
-      middle_probability: 0.75,
-      up_probability: -0.125,
-    };
-    for rho in [0.0, -0.9, 0.9] {
-      let joint = correlated_joint_probabilities(symmetric(), off_grid, rho);
-      let cells = joint.iter().flatten().copied();
-      assert!(
-        f64::min_or_nan_fold(cells.clone()) >= 0.0,
-        "rho {rho}: {joint:?}"
-      );
-      assert!(
-        (cells.sum::<f64>() - 1.0).abs() < 1e-15,
-        "rho {rho}: {joint:?}"
-      );
-      let up = joint[0][2] + joint[1][2] + joint[2][2];
-      assert!(up.abs() < 1e-15, "rho {rho}: the clipped move keeps {up}");
-    }
   }
 }
