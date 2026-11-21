@@ -1,20 +1,12 @@
-//! Multi-curve framework for post-crisis interest rate modeling.
-//!
-//! Reference: Bianchetti, "Two Curves, One Price", arXiv:0905.2770 (2009).
-//!
-//! Reference: Pallavicini & Tarenghi, "Interest-Rate Modeling with Multiple Yield Curves",
-//! arXiv:1006.4767 (2010).
-//!
-//! Reference: Cuchiero, Fontana & Gnoatto, "Affine multiple yield curve models",
-//! arXiv:1603.00527 (2016).
-//!
-//! Post-crisis, a single yield curve is insufficient. The framework uses:
-//! - **Discount curve**: built from OIS/SOFR rates, used for present value computation.
-//! - **Forecast curves**: one per floating rate tenor, used for projecting future fixings.
-//!
+//! Multi-curve framework: an OIS discount curve for present values and one forecast curve per
+//! floating tenor for projected fixings:
 //! $$
 //! \text{PV}_{\text{float}} = \sum_j D_{\text{OIS}}(t_j)\,\delta_j\,L_{\text{forecast}}(t_{j-1}, t_j)\,N
 //! $$
+//!
+//! Reference: Bianchetti (2009), arXiv:0905.2770
+//! Reference: Pallavicini & Tarenghi (2010), arXiv:1006.4767
+//! Reference: Cuchiero et al. (2016), arXiv:1603.00527
 
 use ndarray::ArrayView1;
 

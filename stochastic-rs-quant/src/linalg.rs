@@ -34,10 +34,8 @@ pub(crate) fn svd_thin(a: ArrayView2<f64>) -> Option<(Array2<f64>, Array1<f64>, 
   Some((u, sigma, vt))
 }
 
-/// Least-squares solution of `a x = y` through a truncated pseudo-inverse:
-/// singular values at or below `eps` are dropped, so a rank-deficient design
-/// gets the minimum-norm solution instead of an exploding one. `None` when the
-/// factorisation fails or the solution is not finite.
+/// Least squares `a x = y` by a truncated pseudo-inverse, dropping singular values `≤ eps` for the
+/// minimum-norm solution of a rank-deficient design; `None` if it fails or is not finite.
 pub(crate) fn lstsq_svd(a: ArrayView2<f64>, y: ArrayView1<f64>, eps: f64) -> Option<Array1<f64>> {
   let (u, s, vt) = svd_thin(a)?;
   let mut projected = u.t().dot(&y);

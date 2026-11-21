@@ -1,21 +1,11 @@
-//! Bermudan swaption pricing on a short-rate trinomial lattice.
-//!
-//! Early exercise is evaluated at a user-specified subset of tree levels. The
-//! underlying swap cashflows are reduced to zero-coupon bond prices via the
-//! identity
+//! Bermudan swaption on a short-rate trinomial lattice, the swap reduced to zero-coupon bonds:
 //! $$
 //! V_{\mathrm{float}}(t)=N\,\bigl[1-P(t,T_N)\bigr],\qquad
 //! V_{\mathrm{fixed}}(t)=N\,K\,\sum_{T_i>t}\delta_i\,P(t,T_i)
 //! $$
-//! so that $V_{\mathrm{swap}}(t)=V_{\mathrm{float}}(t)\pm V_{\mathrm{fixed}}(t)$
-//! can be computed at every node by backward induction once $P$ and the
-//! discounted coupon strip are accumulated on the lattice.
-//!
-//! Reference: Hull & White, "Numerical Procedures for Implementing Term
-//! Structure Models I: Single-Factor Models", Journal of Derivatives 2(1), 1994.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §13.
+//! so `V_swap = V_float ± V_fixed` at every node by backward induction, exercise at chosen levels.
+//! Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, DOI 10.3905/jod.1994.407902
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §13, DOI 10.1007/978-3-540-34604-3
 
 use chrono::NaiveDate;
 use ndarray::Array1;

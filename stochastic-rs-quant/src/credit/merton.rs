@@ -120,8 +120,10 @@ impl MertonStructural {
   /// Real-world default probability under the asset drift $\mu$; the risk-neutral one's value at
   /// `tau = 0`.
   ///
-  /// $$\mathbb{P}(\tau_d\le T)=\Phi(-\mathrm{DD}_{\mathbb{P}}),\qquad
-  /// \mathrm{DD}_{\mathbb{P}}=\frac{\ln(V_0/D)+(\mu-q-\tfrac12\sigma_V^2)T}{\sigma_V\sqrt T}.$$
+  /// $$
+  /// \mathbb{P}(\tau_d\le T)=\Phi(-\mathrm{DD}_{\mathbb{P}}),\qquad
+  /// \mathrm{DD}_{\mathbb{P}}=\frac{\ln(V_0/D)+(\mu-q-\tfrac12\sigma_V^2)T}{\sigma_V\sqrt T}.
+  /// $$
   pub fn real_world_default_probability(&self, tau: f64, asset_drift: f64) -> f64 {
     match self.horizon(tau) {
       Horizon::Live => {

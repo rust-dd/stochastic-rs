@@ -68,9 +68,12 @@ impl<T: RealExt> Svensson<T> {
       + self.beta3 * self.curvature_loading(tau, self.lambda2)
   }
 
-  /// Compute the instantaneous forward rate at maturity `tau`.
+  /// Instantaneous forward rate at maturity `tau`:
   ///
-  /// $f(\tau) = \beta_0 + \beta_1 e^{-\tau/\lambda_1} + \beta_2 \frac{\tau}{\lambda_1} e^{-\tau/\lambda_1} + \beta_3 \frac{\tau}{\lambda_2} e^{-\tau/\lambda_2}$
+  /// $$
+  /// f(\tau) = \beta_0 + \beta_1 e^{-\tau/\lambda_1} + \beta_2 \frac{\tau}{\lambda_1} e^{-\tau/\lambda_1}
+  ///   + \beta_3 \frac{\tau}{\lambda_2} e^{-\tau/\lambda_2}
+  /// $$
   pub fn forward_rate(&self, tau: T) -> T {
     let x1 = tau / self.lambda1;
     let x2 = tau / self.lambda2;
