@@ -397,6 +397,12 @@ pub(crate) fn not_positive(values: &[f64]) -> bool {
   !values.iter().all(|&x| x > 0.0)
 }
 
+/// Whether a spot, strike or rate is infinite or NaN: with [`not_positive`], where a formula that
+/// reads `ln s`, `ln k` and `e^{−rτ}` has no value.
+pub(crate) fn not_finite(values: &[f64]) -> bool {
+  !values.iter().all(|x| x.is_finite())
+}
+
 /// `+1` for a call and `−1` for a put: the put's `N(−d)` differentiates to `−φ(d)`.
 const fn call_put_sign(option_type: OptionType) -> f64 {
   match option_type {

@@ -10,6 +10,7 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_finite;
 use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 
@@ -21,10 +22,10 @@ pub(super) fn floor_price(x: f64) -> f64 {
 }
 
 /// A call that needs no transform: the payoff at `t = 0`, NaN past expiry and, before it, for a
-/// spot or strike that is not positive.
+/// spot or strike that is not finite and positive or a rate that is not finite, as in COS.
 pub(super) fn settled_call(s: f64, k: f64, r: f64, q: f64, t: f64) -> Option<f64> {
   expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k))
-    .or_else(|| not_positive(&[s, k]).then_some(f64::NAN))
+    .or_else(|| (not_positive(&[s, k]) || not_finite(&[s, k, r, q])).then_some(f64::NAN))
 }
 
 /// The put by parity on `call`, and the payoff or NaN from expiry on, where parity on a payoff
@@ -42,7 +43,7 @@ pub(super) fn parity_put(
 }
 
 /// A surface that needs no transform, on the grid `b + λu`: each node's payoff at `t = 0`, NaN
-/// past expiry and, before it, for a spot that is not positive.
+/// past expiry and, before it, for a spot that is not finite and positive or a rate not finite.
 pub(super) fn settled_surface(
   (n, b, lambda): (usize, f64, f64),
   s: f64,
@@ -55,7 +56,7 @@ pub(super) fn settled_surface(
       vanilla_payoff(OptionType::Call, s, k_u.exp())
     })
   };
-  if payoff(b).is_none() && !not_positive(&[s]) {
+  if payoff(b).is_none() && !(not_positive(&[s]) || not_finite(&[s, r, q])) {
     return None;
   }
   let log_strikes = Array1::from_shape_fn(n, |u| b + lambda * u as f64);
@@ -140,8 +141,8 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Call prices on the FFT strike grid `(log_strikes, call_prices)`, `k_u = b + λu` with
-  /// `b = −Nλ/2`; floored at zero, NaN kept; payoffs at `t = 0`, NaN past expiry and for `s ≤ 0`.
+  /// `(log_strikes, call_prices)` on `k_u = b + λu`, `b = −Nλ/2`, floored at zero, NaN kept; the
+  /// payoffs at `t = 0`; NaN past expiry, for an `s` not finite and positive or a rate not finite.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -211,7 +212,7 @@ impl CarrMadanPricer {
   }
 
   /// The call at `k`, node `N/2` of a grid centred on `ln k`: the payoff at `t = 0`; NaN past
-  /// expiry and, before it, for an `s` that is not positive or a `k` outside the default grid.
+  /// expiry and, before it, off [`Self::price_call_surface`]'s domain or outside the default grid.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
