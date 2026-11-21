@@ -2987,6 +2987,28 @@
         "requires": []
       },
       {
+        "name": "euler_121_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_122_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
         "name": "fft_columns_1",
         "signature": 6,
         "required_block": null,
@@ -3122,14 +3144,14 @@
   },
   "checks": [],
   "files": {
-    "msl": "c6e2fbdaf3734426a8758bf3624ed40d04453646f72c68d0ebc51be414d28cb6",
-    "oxide_ir": "5588a586217783d0a0a24e4a720450d73ae7166b0951eaef3ca3b7e2efa3ed84",
-    "rustc_args": "6a1b7b078a1a34a467510fb5c42600a8efbd96ca239d7cddc292b93416484326",
-    "ir": "badfb00c7582bfe52398a95e3cc3f9aef18b206993ab74e5fd96e953ee59d1f0",
-    "metallib": "4776a86b28de2680600a523317e49b90f4d7c497e5e8925b6f0ce8eaf2c7c338"
+    "msl": "cba781e6a89005cb21ffa6f8f715299456d7da5fffb0dc99365bf565f28d0b6e",
+    "oxide_ir": "707cea368491c6a84561056f3c9b7876e1c51721743a0a937343b4dd9a463630",
+    "rustc_args": "cef607e8f2b1687bfd08951af62707e7dc5a5fd0df43ba265de613d295c2ef5c",
+    "ir": "4a3c22d7548f47f8f37c25bfaba1839a6fc8e64fffe6f2f14c52a7743d0e8b49",
+    "metallib": "a99b770ab495f95ebb40433ff020c111b3536c75c12e863ea7769497bb12c88c"
   },
   "build": {
-    "fingerprint": "404a60ab474304e9d0b91a3ae9a34f3290f0e1d3a150f0e6b964ea95357395df",
+    "fingerprint": "67b3e12e14ba0d1c65d9b85d04738921630e2dc277a356960d5c7e0a2ccbb65c",
     "compiler": "4348fd85b672f6cc5b45c86eeb28c80f52d83bbdd7f1e64fddd34ef6a808762d",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.922 (metalfe-32023.922.4)",
