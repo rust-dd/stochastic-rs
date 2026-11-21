@@ -19,6 +19,7 @@ use crate::OptionType;
 use crate::pricing::barrier::BarrierType;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::off_domain;
 use crate::pricing::mc_stats::pathless;
 use crate::traits::ProcessExt;
 
@@ -102,15 +103,18 @@ impl<S: SeedExt> CgmysvPricer<S> {
     (s_paths, v_paths)
   }
 
-  /// The estimate off the simulation: `payoff` at `tau = 0`, NaN past expiry or for an infinite
-  /// `tau`, `None` before it.
-  fn at_expiry(&self, tau: f64, payoff: impl FnOnce() -> f64) -> Option<McEstimate<f64>> {
-    expired(tau, &[self.r, self.q], payoff).map(pathless)
+  /// The estimate off the simulation: `payoff` at `tau = 0`; NaN past expiry, for an infinite `tau`
+  /// or a NaN query, and before expiry for a spot or strike that is not positive.
+  fn off_paths(&self, k: f64, tau: f64, payoff: impl FnOnce() -> f64) -> Option<McEstimate<f64>> {
+    let off = || off_domain(&[self.s, k], &[self.r, self.q], tau);
+    let value = expired(tau, &[self.r, self.q], payoff).or_else(|| off().then_some(f64::NAN));
+    value.map(pathless)
   }
 
-  /// Price a European option via Monte Carlo (Section 4.1); its payoff at `tau = 0`.
+  /// Price a European option via Monte Carlo (Section 4.1); its payoff at `tau = 0`, NaN for a
+  /// NaN query or, before expiry, a spot or strike that is not positive, as the three below.
   pub fn price_european(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
-    if let Some(expired) = self.at_expiry(tau, || vanilla_payoff(option_type, self.s, k)) {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
       return expired;
     }
     let (s_paths, _) = self.generate_price_paths(tau);
@@ -128,10 +132,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
     let payoffs: Vec<f64> = (0..self.n_paths)
       .map(|i| {
         let s_t = s_paths[[i, self.n_steps]];
-        match option_type {
-          OptionType::Call => (s_t - k).max(0.0),
-          OptionType::Put => (k - s_t).max(0.0),
-        }
+        vanilla_payoff(option_type, s_t, k)
       })
       .collect();
 
@@ -143,7 +144,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
   /// Uses the regression basis $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$
   /// following Rachev et al. (2011), Chapter 15.
   pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
-    if let Some(expired) = self.at_expiry(tau, || vanilla_payoff(option_type, self.s, k)) {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
       return expired;
     }
     let (s_paths, v_paths) = self.generate_price_paths(tau);
@@ -160,10 +161,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
   ) -> McEstimate<f64> {
     let dt = tau / self.n_steps as f64;
 
-    let payoff = |s: f64| match option_type {
-      OptionType::Call => (s - k).max(0.0),
-      OptionType::Put => (k - s).max(0.0),
-    };
+    let payoff = |s: f64| vanilla_payoff(option_type, s, k);
 
     let n = self.n_paths;
     let mut cf = vec![0.0_f64; n];
@@ -246,7 +244,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
   /// Price an Asian option (arithmetic average) via Monte Carlo (Section 4.3); at `tau = 0` the
   /// payoff on the spot.
   pub fn price_asian(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
-    if let Some(expired) = self.at_expiry(tau, || vanilla_payoff(option_type, self.s, k)) {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
       return expired;
     }
     let (s_paths, _) = self.generate_price_paths(tau);
@@ -256,10 +254,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
       .map(|i| {
         let avg: f64 =
           (1..=self.n_steps).map(|m| s_paths[[i, m]]).sum::<f64>() / self.n_steps as f64;
-        match option_type {
-          OptionType::Call => (avg - k).max(0.0),
-          OptionType::Put => (k - avg).max(0.0),
-        }
+        vanilla_payoff(option_type, avg, k)
       })
       .collect();
 
@@ -288,8 +283,11 @@ impl<S: SeedExt> CgmysvPricer<S> {
       let payoff = vanilla_payoff(option_type, self.s, k);
       if knocked == knock_in { payoff } else { 0.0 }
     };
-    if let Some(expired) = self.at_expiry(tau, at_expiry) {
+    if let Some(expired) = self.off_paths(k, tau, at_expiry) {
       return expired;
+    }
+    if barrier.is_nan() {
+      return pathless(f64::NAN);
     }
     let (s_paths, _) = self.generate_price_paths(tau);
     let discount = (-self.r * tau).exp();
@@ -322,10 +320,7 @@ impl<S: SeedExt> CgmysvPricer<S> {
 
         if alive {
           let s_t = s_paths[[i, self.n_steps]];
-          match option_type {
-            OptionType::Call => (s_t - k).max(0.0),
-            OptionType::Put => (k - s_t).max(0.0),
-          }
+          vanilla_payoff(option_type, s_t, k)
         } else {
           0.0
         }

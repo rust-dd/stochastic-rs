@@ -38,6 +38,7 @@ use stochastic_rs_quant::traits::ModelPricer;
 
 mod barrier_zero_vol;
 mod bsm_spot;
+mod cgmysv_queries;
 mod credit_and_rates;
 mod crr;
 mod exotic_edges;
