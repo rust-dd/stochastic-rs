@@ -23,15 +23,15 @@ pub(super) const BOXED: [(f64, f64); 10] = [
   FACTOR[3], FACTOR[4],
 ];
 
+/// The box each raw coordinate is reflected into: `BOXED` with `ρ`'s range the reflection's own.
+pub(super) const FOLD: [(f64, f64); 10] = [
+  P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO, P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO,
+];
+
 /// Each raw coordinate's room before its boxed value meets a bound of `BOXED`.
 pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
   let boxed = Array1::from(DoubleHestonParams::from(x.to_owned()).boxed());
-  let fold = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
-  room(
-    &boxed,
-    &BOXED,
-    periodic_slopes(x, &[fold, fold].concat()).view(),
-  )
+  room(&boxed, &BOXED, periodic_slopes(x, &FOLD).view())
 }
 
 /// Double Heston model parameters: two independent Heston factors.
