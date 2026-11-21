@@ -16,8 +16,7 @@ pub(super) struct OrnsteinUhlenbeckFactor<T: RealExt> {
   pub(super) sigma: T,
 }
 
-/// Hull & White's tree for the state less its exact mean, each level displaced by that mean, and
-/// each branch on the node nearest its exact conditional mean, so no probability falls below 1/24.
+/// Each level on the state's exact mean, each branch on the nearest node: no branch below 1/24.
 ///
 /// $$
 /// M = x\,e^{-a\Delta t},\quad V = \sigma^2\,\frac{1-e^{-2a\Delta t}}{2a},\quad
@@ -30,7 +29,8 @@ pub(super) struct OrnsteinUhlenbeckFactor<T: RealExt> {
 /// $$
 ///
 /// Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, §II, note 5, DOI 10.3905/jod.1994.407902
-/// Reference: Brigo & Mercurio (2006), 2nd ed., §3.3.3, p. 78, ISBN 978-3-540-22149-4
+/// Reference: Brigo & Mercurio (2006), §3.3.3, p. 78, read in Baldvinsdóttir & Palmborg (2011)
+/// Reference: Hull & White (1996), J. Deriv. 3(3), 26–36, §I: each level on the analytic mean
 pub(super) fn build_one_factor_trinomial_tree<T: RealExt>(
   factor: &OrnsteinUhlenbeckFactor<T>,
   horizon: T,
