@@ -215,7 +215,9 @@ pub(super) fn basin_hopping_opt(
   let mut rng = SimdRng::from_seed(3);
 
   let mut current_x = problem.clamp_params(&x0);
-  let mut current_f = problem.cost(&current_x.to_vec()).unwrap_or(f64::INFINITY);
+  // A start Hagan's formula refuses costs NaN; ranked `+∞`, any hop that prices replaces it.
+  let start = problem.cost(&current_x.to_vec()).ok();
+  let mut current_f = start.filter(|f| !f.is_nan()).unwrap_or(f64::INFINITY);
 
   let mut best_x = current_x;
   let mut best_f = current_f;

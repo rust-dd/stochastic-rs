@@ -53,6 +53,17 @@ fn a_nan_coordinate_costs_nan_and_has_a_nan_gradient() {
   }
 }
 
+/// From a start Hagan's formula refuses, whose cost is NaN, a hop that prices replaces it: the
+/// start ranks as `+∞`, where a NaN loses every comparison.
+#[test]
+fn a_hop_replaces_a_start_whose_cost_is_nan() {
+  let problem = bounded_problem();
+  let corner = [1.0, 1.0, 1.0, 1.0, 10.0, -0.99];
+  assert!(problem.cost(&corner.to_vec()).unwrap().is_nan());
+  let (_, best) = objective::basin_hopping_opt(corner, 20, 1.0, &problem);
+  assert!(best.is_finite(), "{best}");
+}
+
 #[test]
 fn bounded_sabr_gradient_retains_the_derivative_at_the_upper_bound() {
   let problem = bounded_problem();
