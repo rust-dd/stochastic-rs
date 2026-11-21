@@ -307,13 +307,10 @@ fn hscm_model_pricer_goldens() {
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
-  // Inverts a given price for a vol and reads none of the model's own
-  // parameters, so the discount fix leaves it where it was.
+  // Inverts a given price for a vol, reading none of the model's own parameters.
   let iv = m.implied_volatility(4.0, s, k, r, q, tau, OptionType::Call);
   assert!((iv - 0.15110131862455398).abs() < TOL, "iv {iv}");
 
-  // The former `price_call_at_strike(110.0)`, which cloned the pricer with
-  // a new strike; a strike is now just a different argument.
   let at_110 = m.price_call_carr_madan(s, 110.0, r, q, tau);
   assert!((at_110 - 2.365470328642592).abs() < TOL, "K=110 {at_110}");
 }
