@@ -38,7 +38,8 @@ pub struct TrainReport {
   pub epochs: Vec<EpochMetrics>,
 }
 
-/// The contract of a surrogate: the parameter box and the strike-maturity grid its output is laid out on.
+/// The contract of a surrogate: the parameter box and the strike-maturity grid its output is laid
+/// out on.
 #[derive(Clone, Debug)]
 pub struct StochVolModelSpec {
   pub model_id: String,

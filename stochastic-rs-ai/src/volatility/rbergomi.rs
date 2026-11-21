@@ -1,6 +1,6 @@
 //! Surrogate of the rough Bergomi surface with flat forward variance (`NNRoughBergomi.ipynb`);
 //! inputs `[xi0, nu, rho, H]`: forward variance, vol-of-vol, correlation, Hurst exponent.
-//! <https://github.com/amuguruza/NN-StochVol-Calibrations> (`RoughBergomi/Flat Forward Variance`)
+//! Source: <https://github.com/amuguruza/NN-StochVol-Calibrations>, `RoughBergomi/Flat Forward Variance`
 
 use std::path::Path;
 
