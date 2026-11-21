@@ -389,7 +389,7 @@ fn price_strikes_reproduces_the_gbm_strike_vector_of_fang_oosterlee() {
 }
 
 /// Table 6's strikes 50, 55, …, 150, Heston set (53), `T = 1`: Lewis's integral of the same `chf`
-/// from `python3 mp_refs.py` (mpmath, 40 digits, `heston_call_lewis`).
+/// by `mpmath.quad` at 40 digits.
 const TABLE_6: [f64; 21] = [
   50.07053913971511,
   45.12410854150659,
