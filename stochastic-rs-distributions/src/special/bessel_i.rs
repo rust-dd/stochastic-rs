@@ -2,7 +2,7 @@
 //! `x < 2`, Hankel's expansion for `x ≥ max(50, ν²/2)`, Temme/Steed with the Wronskian between.
 //!
 //! Reference: Temme (1975), J. Comput. Phys. 19(3), DOI 10.1016/0021-9991(75)90082-0
-//! Reference: Thompson, Barnett (1987), 47(2-3), DOI 10.1016/0010-4655(87)90111-1
+//! Reference: Thompson, Barnett (1987), Comput. Phys. Commun. 47, DOI 10.1016/0010-4655(87)90111-1
 //! Reference: Thompson, Barnett (1986), J. Comput. Phys. 64(2), DOI 10.1016/0021-9991(86)90046-X
 //! Reference: Olver (1954), Philos. Trans. R. Soc. A 247, DOI 10.1098/rsta.1954.0021
 //! Reference: NIST DLMF 10.25.2, 10.27.1–2, 10.28.2, 10.40.1, 10.41.3, 10.41.9.

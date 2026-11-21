@@ -1,8 +1,8 @@
 //! Temme's uniform expansion of `I_x(a, b)` at large `a`, `b` (DLMF 8.18.9): DiDonato and Morris's
 //! coefficient recursion, the scaled `erfc` from Mills' ratio, a two-part exponent.
-//! Reference: DiDonato, Morris (1992), 18(3), 360-373, DOI 10.1145/131766.131776 (`basym`).
+//! Reference: DiDonato, Morris (1992), ACM TOMS 18, 360-373, DOI 10.1145/131766.131776 (`basym`).
 //! Reference: NIST DLMF, eq. 8.18.8–8.18.12, <https://dlmf.nist.gov/8.18.ii>.
-//! Reference: Temme (1992), 41(1-2), 145-157, DOI 10.1016/0377-0427(92)90244-R.
+//! Reference: Temme (1992), J. Comput. Appl. Math. 41, 145-157, DOI 10.1016/0377-0427(92)90244-R.
 
 use std::f64::consts::TAU;
 
