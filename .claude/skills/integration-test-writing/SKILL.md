@@ -97,6 +97,16 @@ For processes that take a seed source as the last constructor argument:
 let fou = Fou::new(0.3, 0.001, -3.2, 1.0, 500, None, None, Deterministic::new(42));
 ```
 
+A Monte Carlo pricer or estimator in quant takes its seed through
+`with_seed` and defaults to `Unseeded`, so a test that leaves it out
+draws fresh entropy:
+
+```rust
+let est = McBarrierPricer::new(0.2, 4_000, 32)
+  .with_seed(Deterministic::new(42))
+  .price(&up_and_out, 100.0, 0.03, 0.0, 1.0);
+```
+
 Pin the seed at a value where the test passes with margin > 5σ — the
 roll-spread test in `microstructure/spread.rs` documents seed = 11
 because that's where the empirical mean lands well within tolerance.
