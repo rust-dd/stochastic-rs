@@ -1,6 +1,6 @@
 import { FACTS } from '@/lib/facts';
 
-/** The canonical URLs and copy every surface outside the MDX reads, so the host cannot drift. */
+/** The canonical URLs and copy; surfaces outside the MDX should read them here, so none drifts. */
 export const SITE = {
   name: 'stochastic-rs',
   url: 'https://stochastic.rust-dd.com',
