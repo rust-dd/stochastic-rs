@@ -102,12 +102,20 @@ When adding a new dependency, always use the latest version available on crates.
 
 ## 9. Comments
 
+The rule, verbatim:
+
+> Max 1-2 lines, anywhere, in any repo — including `///` doc comments and new public API.
+> Write one only when it carries something the code does not: a non-obvious constraint, a
+> why. Never restate the code, never narrate edit history.
+
 A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
-code, public API, tests, benches and examples. Write one only for what the code cannot
-say: a non-obvious constraint, a reason, a unit or a convention. A literature citation
-may take one more line of its own, in addition to those two. Doc-test code does not count.
-A `$$ … $$` math display in a doc comment is exempt from the cap; the prose around it is not.
-Longer explanations belong in the PR body.
+code, public API, tests, benches and examples. A line past 100 columns counts as its
+wrapped length. Write one only for what the code cannot say: a non-obvious constraint, a
+reason, a unit or a convention. A literature citation takes one `Reference:` line per
+source, with its locator and its DOI or ISBN, beside those two. Doc-test code does not count.
+A `$$ … $$` math display in a doc comment is exempt from the cap, for mathematics only; the
+prose around it is not. A module doc opens on a summary line without TeX, since rustdoc
+shows that line as the module-list row. Longer explanations belong in the PR body.
 
 Never:
 
@@ -140,8 +148,8 @@ let z = normal.sample();
 /// Annualised Black volatility of the underlying.
 pub sigma: f64,
 
-/// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848.
 /// COS price of a European payoff from the log-price characteristic function.
+/// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848, DOI 10.1137/080718061
 pub fn price(/* … */) -> f64 { /* … */ }
 ```
 
