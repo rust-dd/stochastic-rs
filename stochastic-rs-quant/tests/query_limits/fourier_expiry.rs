@@ -158,3 +158,39 @@ fn an_expired_fourier_price_is_nan_for_a_nan_rate_spot_or_strike() {
     );
   }
 }
+
+/// Before expiry a lognormal price has no value at a spot or strike that is zero, negative or
+/// infinite; at expiry the payoff is still defined.
+#[test]
+fn a_fourier_price_is_nan_before_expiry_for_a_spot_or_strike_that_is_not_positive() {
+  let carr_madan = CarrMadanPricer::new(4096, 1.5);
+  let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
+  for (s, k) in [
+    (0.0, K),
+    (-5.0, K),
+    (f64::INFINITY, K),
+    (110.0, 0.0),
+    (110.0, -5.0),
+    (110.0, f64::INFINITY),
+  ] {
+    let prices = [
+      BSM.price_call(s, k, R, Q, 1.0),
+      BSM.price_put(s, k, R, Q, 1.0),
+      LewisPricer::price_call(&BSM, s, k, R, Q, 1.0),
+      GilPelaezPricer::price_call(&BSM, s, k, R, Q, 1.0),
+      carr_madan.price_call(&BSM, s, k, R, Q, 1.0),
+      carr_madan.price_put(&BSM, s, k, R, Q, 1.0),
+      fractional.price_call(&BSM, s, k, R, Q, 1.0),
+      fractional.price_put(&BSM, s, k, R, Q, 1.0),
+    ];
+    assert!(prices.iter().all(|p| p.is_nan()), "({s}, {k}): {prices:?}");
+  }
+  for s in [0.0, -5.0] {
+    let (_, prices) = carr_madan.price_call_surface(&BSM, s, R, Q, 1.0);
+    assert!(prices.iter().all(|p| p.is_nan()), "Carr-Madan at s = {s}");
+    let (_, prices) = fractional.price_call_surface(&BSM, s, R, Q, 1.0);
+    assert!(prices.iter().all(|p| p.is_nan()), "FRFT at s = {s}");
+  }
+  assert_eq!(BSM.price_call(110.0, -5.0, R, Q, 0.0), 115.0);
+  assert_eq!(BSM.price_put(-5.0, K, R, Q, 0.0), 105.0);
+}

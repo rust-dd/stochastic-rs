@@ -21,11 +21,9 @@ use ndrustfft::ndifft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
-use super::pricer::expired_surface;
 use super::pricer::parity_put;
-use crate::OptionType;
-use crate::pricing::digital::expired;
-use crate::pricing::digital::vanilla_payoff;
+use super::pricer::settled_call;
+use super::pricer::settled_surface;
 use crate::traits::RealExt;
 
 /// $G_k = \sum_j x_j e^{-2\pi i \gamma jk}$ by Bailey–Swarztrauber's three FFTs of length `2n`, the
@@ -142,7 +140,7 @@ impl FrftCarrMadanPricer {
   }
 
   /// `(log_strikes, call_prices)` on the grid centred on `ln F_T + c₁`; a NaN `chf` leaves its
-  /// prices NaN; from expiry on the centre is `ln F_T`, with payoffs at `t = 0` and NaN past it.
+  /// prices NaN; from expiry on, and for a spot that is not positive, the centre is `ln F_T`.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -159,7 +157,7 @@ impl FrftCarrMadanPricer {
 
     let ln_f = s.ln() + (r - q) * t;
     let at_forward = ln_f - 0.5 * n as f64 * lambda;
-    if let Some(surface) = expired_surface((n, at_forward, lambda), s, r, q, t) {
+    if let Some(surface) = settled_surface((n, at_forward, lambda), s, r, q, t) {
       return surface;
     }
     let cumulants = model.cumulants(t);
@@ -195,7 +193,7 @@ impl FrftCarrMadanPricer {
   }
 
   /// The call interpolated on [`Self::price_call_surface`]: the payoff at `t = 0`; NaN past
-  /// expiry and, before it, for a strike outside the grid.
+  /// expiry and, before it, for an `s` that is not positive or a strike outside the grid.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
@@ -205,7 +203,7 @@ impl FrftCarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+    if let Some(value) = settled_call(s, k, r, q, t) {
       return value;
     }
     let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);

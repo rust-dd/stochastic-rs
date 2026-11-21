@@ -365,6 +365,8 @@ def test_the_fourier_models_and_carr_madan_pay_out_at_expiry_and_are_nan_past_it
             assert call(s, 100.0, 0.05, 0.02, 0.0) == max(s - 100.0, 0.0)
             for tau in (-1.0, math.nan, math.inf):
                 assert math.isnan(call(s, 100.0, 0.05, 0.02, tau))
+        for s, k in ((0.0, 100.0), (-5.0, 100.0), (110.0, 0.0), (110.0, -5.0)):
+            assert math.isnan(call(s, k, 0.05, 0.02, 1.0))
 
 
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
