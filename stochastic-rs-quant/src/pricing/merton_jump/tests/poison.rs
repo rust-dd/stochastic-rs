@@ -107,3 +107,13 @@ fn a_poisoned_query_poisons_a_degenerate_models_greeks_too() {
   // simply poison every degenerate configuration.
   assert!(m.delta(S, S, R, Q, TAU, OT).is_finite());
 }
+
+/// At `τ = 1e-320` a jump term's `σ_n = √(d² + z²n/τ)` is `+∞`, which `BsmPricer::new` refuses; a
+/// query never panics, so the price and the Greeks answer.
+#[test]
+fn a_vanishing_maturity_answers_where_a_term_volatility_overflows() {
+  let m = ordinary();
+  let call = m.price_call(S, K, R, Q, 1e-320);
+  assert!(call.is_nan() || call >= 0.0, "{call}");
+  assert_eq!(m.greeks(S, K, R, Q, 1e-320, OT).as_array().len(), 9);
+}

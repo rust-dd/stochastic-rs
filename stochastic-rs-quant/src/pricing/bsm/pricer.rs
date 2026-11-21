@@ -2,6 +2,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::assert_handle_sigma;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -48,7 +49,10 @@ pub struct BsmPricer {
 }
 
 impl BsmPricer {
-  pub const fn new(sigma: f64, b: BsmCoc) -> Self {
+  /// Panics for a negative or infinite `sigma`, a negative one flipping `d₁` into a wrong price; a
+  /// NaN is kept, as `AnalyticBsEngine` reads one off an unlinked handle and must price NaN.
+  pub fn new(sigma: f64, b: BsmCoc) -> Self {
+    assert_handle_sigma(sigma);
     Self { sigma, b }
   }
 

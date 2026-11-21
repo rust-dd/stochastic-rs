@@ -46,7 +46,7 @@ impl CashOrNothingPricer {
   /// Panics for a negative or infinite `sigma` (a negative one flips `d1` into a finite wrong
   /// price) and an infinite `cash`; a NaN is kept, as an unlinked engine handle must price NaN.
   pub fn new(cash: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       !cash.is_infinite(),
       "cash must satisfy `!cash.is_infinite()`, got cash = {cash:?}"
@@ -165,7 +165,7 @@ pub struct AssetOrNothingPricer {
 impl AssetOrNothingPricer {
   /// Panics for a negative or infinite `sigma`; a NaN is kept, as on [`CashOrNothingPricer::new`].
   pub fn new(sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     Self { sigma }
   }
 
@@ -263,7 +263,7 @@ impl GapPricer {
   /// Panics for a negative or infinite `sigma` and an infinite `k2`; a NaN is kept, as on
   /// [`CashOrNothingPricer::new`]. The payoff strike `k2` is a contract term of either sign.
   pub fn new(k2: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       !k2.is_infinite(),
       "k2 must satisfy `!k2.is_infinite()`, got k2 = {k2:?}"
@@ -331,7 +331,7 @@ impl SuperSharePricer {
   /// Panics for a negative or infinite `sigma` (NaN stays, as on [`CashOrNothingPricer::new`]) and
   /// unless `x_high` is finite and `> 0`; a band inverted against the query's `k` prices negative.
   pub fn new(x_high: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       x_high.is_finite() && x_high > 0.0,
       "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = {x_high:?}"
@@ -411,9 +411,10 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
   }
 }
 
-/// A digital's volatility: not negative and not infinite; NaN is the unlinked handle's reading.
+/// A volatility an engine may read off a market handle: not negative and not infinite; NaN is an
+/// unlinked handle's reading, which prices NaN.
 #[track_caller]
-fn assert_digital_sigma(sigma: f64) {
+pub(crate) fn assert_handle_sigma(sigma: f64) {
   assert!(
     sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0),
     "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`, got sigma = {sigma:?}"
