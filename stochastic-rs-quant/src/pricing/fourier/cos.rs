@@ -7,9 +7,6 @@ use std::f64::consts::PI;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
-use ndarray::ArrayViewMut1;
-use ndarray::aview_mut1;
-use ndarray::aview1;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
@@ -77,24 +74,12 @@ impl CosEngine {
     if !(priceable(s0) && priceable(k) && r.is_finite() && q.is_finite()) {
       return f64::NAN;
     }
-    let cumulants = model.cumulants(t);
-    let half_width = cumulants.truncation_half_width(self.l);
-    if !half_width.is_finite() {
+    let Some((lower, bma)) = self.range(model, t) else {
       return f64::NAN;
-    }
-
-    let x = (s0 / k).ln() + (r - q) * t;
-    let mut put = [0.0];
-    self.put_sums(
-      model,
-      t,
-      cumulants.c1 - half_width,
-      2.0 * half_width,
-      aview1(&[x]),
-      aview1(&[k]),
-      aview_mut1(&mut put),
-    );
-    discounted(put[0], s0, k, r, q, t, option_type)
+    };
+    let mut put = [PutSeries::new((s0 / k).ln() + (r - q) * t + lower, bma, k)];
+    self.put_sums(model, t, lower, bma, &mut put);
+    discounted(put[0].sum, s0, k, r, q, t, option_type)
   }
 
   /// [`CosEngine::price`] at each strike, bit for bit, on one pass over the `chf`: the range is as
@@ -114,29 +99,22 @@ impl CosEngine {
     if !(summed && priceable(s0) && r.is_finite() && q.is_finite()) {
       return strikes.mapv(|k| self.price(model, s0, k, r, q, t, option_type));
     }
-    let cumulants = model.cumulants(t);
-    let half_width = cumulants.truncation_half_width(self.l);
-    if !half_width.is_finite() {
+    let live = strikes.iter().any(|&k| priceable(k));
+    let Some((lower, bma)) = self.range(model, t).filter(|_| live) else {
       return Array1::from_elem(strikes.len(), f64::NAN);
-    }
-
-    let xs = strikes.mapv(|k| (s0 / k).ln() + (r - q) * t);
-    let mut puts = Array1::<f64>::zeros(strikes.len());
-    self.put_sums(
-      model,
-      t,
-      cumulants.c1 - half_width,
-      2.0 * half_width,
-      xs.view(),
-      strikes,
-      puts.view_mut(),
-    );
-    puts
+    };
+    let carry = (r - q) * t;
+    let mut puts = strikes
       .iter()
-      .zip(strikes)
-      .map(|(&put, &k)| {
-        if priceable(k) {
-          discounted(put, s0, k, r, q, t, option_type)
+      .map(|&k| PutSeries::new((s0 / k).ln() + carry + lower, bma, k))
+      .collect::<Vec<_>>();
+    self.put_sums(model, t, lower, bma, &mut puts);
+    strikes
+      .iter()
+      .zip(&puts)
+      .map(|(&k, put)| {
+        if put.live {
+          discounted(put.sum, s0, k, r, q, t, option_type)
         } else {
           f64::NAN
         }
@@ -144,34 +122,80 @@ impl CosEngine {
       .collect()
   }
 
-  /// Adds each strike's undiscounted put series to `puts`, on `[a, a + bma]` with `a = x + lower`;
-  /// `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at every strike, so each term calls `chf` once.
+  /// Eq. (49)'s range less each strike's `x`, as `(lower, width)`; `None` where it has no width.
+  fn range<M: FourierModelExt>(&self, model: &M, t: f64) -> Option<(f64, f64)> {
+    let cumulants = model.cumulants(t);
+    let half_width = cumulants.truncation_half_width(self.l);
+    half_width
+      .is_finite()
+      .then(|| (cumulants.c1 - half_width, 2.0 * half_width))
+  }
+
+  /// Adds Eq. (19)'s terms to each live strike's put: `e^{iux}·e^{−iua}` is `e^{−iu·lower}` at
+  /// every strike, so each term calls `chf` once.
   fn put_sums<M: FourierModelExt>(
     &self,
     model: &M,
     t: f64,
     lower: f64,
     bma: f64,
-    xs: ArrayView1<f64>,
-    strikes: ArrayView1<f64>,
-    mut puts: ArrayViewMut1<f64>,
+    puts: &mut [PutSeries],
   ) {
     for k_idx in 0..self.n.unwrap_or(MAX_TERMS) {
-      let kf = k_idx as f64;
-      let u = kf * PI / bma;
-
+      let u = k_idx as f64 * PI / bma;
       let phi = model.chf(t, Complex64::new(u, 0.0));
       if self.n.is_none() && k_idx >= MIN_TERMS && phi.norm_sqr() < CHF_FLOOR * CHF_FLOOR {
         break;
       }
       let f_k = (phi * Complex64::new(0.0, -u * lower).exp()).re;
-
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
-      for ((put, &x), &strike) in puts.iter_mut().zip(xs).zip(strikes) {
-        let a = x + lower;
-        *put += weight * f_k * put_coefficient(kf, a, a + bma, bma, strike);
+      let (weighted, denom) = (weight * f_k, 1.0 + u * u);
+      for put in puts.iter_mut().filter(|put| put.live) {
+        put.sum += weighted * put.coefficient(k_idx == 0, u, denom);
       }
     }
+  }
+}
+
+/// One strike's put series: Eq. (25) on `[a, min(b, 0)]`, its exponentials taken once, so a term
+/// costs one `sin_cos`; `χ_k` and `ψ_k` of Eqs. (22)–(23) at `c = a`.
+struct PutSeries {
+  live: bool,
+  inside: bool,
+  exp_a: f64,
+  exp_d: f64,
+  d_minus_a: f64,
+  scale: f64,
+  sum: f64,
+}
+
+impl PutSeries {
+  fn new(a: f64, bma: f64, strike: f64) -> Self {
+    let d = (a + bma).min(0.0);
+    Self {
+      live: priceable(strike),
+      inside: !(a >= 0.0),
+      exp_a: a.exp(),
+      exp_d: d.exp(),
+      d_minus_a: d - a,
+      scale: (2.0 / bma) * strike,
+      sum: 0.0,
+    }
+  }
+
+  /// `V_k` at `w = kπ/(b − a)` and `denom = 1 + w²`; zero where `a ≥ 0`, the put paying nothing.
+  fn coefficient(&self, first: bool, w: f64, denom: f64) -> f64 {
+    if !self.inside {
+      return 0.0;
+    }
+    let (chi, psi) = if first {
+      (self.exp_d - self.exp_a, self.d_minus_a)
+    } else {
+      let (sin_d, cos_d) = (w * self.d_minus_a).sin_cos();
+      let chi = (cos_d * self.exp_d - self.exp_a + w * (sin_d * self.exp_d)) / denom;
+      (chi, sin_d / w)
+    };
+    self.scale * (psi - chi)
   }
 }
 
@@ -200,34 +224,6 @@ fn discounted(
     return f64::NAN;
   }
   price.max(0.0)
-}
-
-/// Put payoff coefficient $V_k$ on $[a,b]\cap(-\infty,0]$, Fang-Oosterlee (2008) Eq. (30)
-/// for $a<0<b$.
-fn put_coefficient(kf: f64, a: f64, b: f64, bma: f64, strike: f64) -> f64 {
-  if a >= 0.0 {
-    return 0.0;
-  }
-  let (chi, psi) = chi_psi(kf, a, bma, a, b.min(0.0));
-  (2.0 / bma) * strike * (psi - chi)
-}
-
-/// Fang-Oosterlee (2008) Eq. (22)-(23): cosine-series coefficients of $e^y$
-/// (`chi`) and of the constant function `1` (`psi`) on `[c, d] ⊆ [a, b]`.
-fn chi_psi(kf: f64, a: f64, bma: f64, c: f64, d: f64) -> (f64, f64) {
-  if kf.abs() < 1e-14 {
-    return (d.exp() - c.exp(), d - c);
-  }
-
-  let w = kf * PI / bma;
-  let (sin_d, cos_d) = (w * (d - a)).sin_cos();
-  let (sin_c, cos_c) = (w * (c - a)).sin_cos();
-
-  let chi =
-    (cos_d * d.exp() - cos_c * c.exp() + w * (sin_d * d.exp() - sin_c * c.exp())) / (1.0 + w * w);
-  let psi = (sin_d - sin_c) / w;
-
-  (chi, psi)
 }
 
 #[cfg(test)]
