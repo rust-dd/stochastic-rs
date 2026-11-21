@@ -294,11 +294,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FcirSampler<'_, T, S, B> {
     let dt = p.fgn.dt();
     let fgn = p.fgn.try_noise(&self.seed)?;
 
-    out[0] = p.x0.unwrap_or(T::zero());
-    let mut prev = out[0];
+    let x0 = p.x0.unwrap_or(T::zero());
+    out[0] = p.boundary.observed(x0);
+    let mut prev = p.boundary.carried(x0);
     for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
-      let (drift_at, root_of) = p.boundary.reads(prev);
-      let dfcir = p.theta * (p.mu - drift_at) * dt + p.sigma * root_of.sqrt() * *inc;
+      let x = p.boundary.observed(prev);
+      let dfcir = p.theta * (p.mu - x) * dt + p.sigma * x.sqrt() * *inc;
       prev = p.boundary.carried(prev + dfcir);
       *dst = p.boundary.observed(prev);
     }
@@ -359,7 +360,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.carried(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {

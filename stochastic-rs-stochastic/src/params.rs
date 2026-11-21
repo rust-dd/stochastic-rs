@@ -30,17 +30,8 @@ impl VarianceBoundary {
     }
   }
 
-  /// What the drift and the root read of a state that may start negative: the truncated state
-  /// under full truncation, else the state and its modulus, as the square-root recursions here do.
-  #[inline]
-  pub(crate) fn reads<T: FloatExt>(self, carried: T) -> (T, T) {
-    match self {
-      VarianceBoundary::FullTruncation => (carried.max(T::zero()), carried.max(T::zero())),
-      VarianceBoundary::Absorption | VarianceBoundary::Reflect => (carried, carried.abs()),
-    }
-  }
-
-  /// The state carried out of a step: `f₁` is applied here, so only full truncation keeps a sign.
+  /// The state carried out of a step or in from a start: `f₁` is applied here, so only full
+  /// truncation keeps a sign.
   #[inline]
   pub(crate) fn carried<T: FloatExt>(self, stepped: T) -> T {
     match self {
@@ -231,6 +222,28 @@ mod tests {
       EulerSystem::<f64, 3>::grid_points(&cpoisson),
     ];
     (rows, grids)
+  }
+
+  /// So reading `observed` where a recursion read the state and its modulus moves no path that
+  /// starts at or above zero.
+  #[test]
+  fn a_state_at_or_above_zero_is_observed_and_carried_bit_for_bit() {
+    use super::VarianceBoundary::*;
+    let states = [
+      0.0,
+      5e-324,
+      f64::MIN_POSITIVE,
+      0.04,
+      1.0,
+      f64::MAX,
+      f64::INFINITY,
+    ];
+    for boundary in [FullTruncation, Absorption, Reflect] {
+      for x in states {
+        let read = [boundary.observed(x), boundary.carried(x), x.abs()].map(f64::to_bits);
+        assert_eq!(read, [x.to_bits(); 3], "{boundary:?} at {x:e}");
+      }
+    }
   }
 
   #[test]

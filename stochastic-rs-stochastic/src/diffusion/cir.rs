@@ -296,17 +296,16 @@ impl<T: FloatExt> CirSampler<T> {
     if out.is_empty() {
       return;
     }
-    out[0] = self.x0;
+    out[0] = self.boundary.observed(self.x0);
     if out.len() == 1 {
       return;
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    let mut prev = self.x0;
+    let mut prev = self.boundary.carried(self.x0);
     for z in tail.iter_mut() {
-      let (drift_at, root_of) = self.boundary.reads(prev);
-      let dcir =
-        self.theta * (self.mu - drift_at) * self.dt + self.diff_scale * root_of.sqrt() * *z;
+      let x = self.boundary.observed(prev);
+      let dcir = self.theta * (self.mu - x) * self.dt + self.diff_scale * x.sqrt() * *z;
       prev = self.boundary.carried(prev + dcir);
       *z = self.boundary.observed(prev);
     }

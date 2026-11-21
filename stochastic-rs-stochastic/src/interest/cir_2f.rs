@@ -184,16 +184,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x.x0.unwrap_or(T::zero())
+    self.initial_state()[0]
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.x.x0.unwrap_or(T::zero()),
-      self.y.x0.unwrap_or(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    let entered = |factor: &Cir<T, S>| factor.boundary.carried(factor.x0.unwrap_or(T::zero()));
+    [entered(&self.x), entered(&self.y), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {

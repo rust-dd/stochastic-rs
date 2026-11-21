@@ -284,7 +284,7 @@ impl<T: FloatExt> BesselSampler<T> {
     if out.is_empty() {
       return;
     }
-    out[0] = self.x0;
+    out[0] = self.x0.abs();
     if out.len() == 1 {
       return;
     }
@@ -294,7 +294,7 @@ impl<T: FloatExt> BesselSampler<T> {
     // recursion; the path reports its square root.
     let mut prev_sq = self.x0 * self.x0;
     for z in tail.iter_mut() {
-      let (_, root_of) = self.boundary.reads(prev_sq);
+      let root_of = self.boundary.observed(prev_sq);
       let dbesq = self.delta * self.dt + self.diff_scale * root_of.sqrt() * *z;
       prev_sq = self.boundary.carried(prev_sq + dbesq);
       *z = self.boundary.observed(prev_sq).sqrt();

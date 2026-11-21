@@ -456,7 +456,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     }
 
     s_path[0] = self.s0;
-    v_path[0] = self.v0;
+    v_path[0] = self.v0.max(T::zero());
 
     // Correlation: work in X-space, X₀ = atanh(ρ₀)
     let mut x_corr = self
@@ -466,7 +466,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     rho_path[0] = x_corr.tanh();
 
     let boundary = VarianceBoundary::FullTruncation;
-    let mut carried = v_path[0];
+    let mut carried = self.v0;
     for i in 1..self.n {
       // Correlation dynamics (modified Ou in X-space)
       let corr_drift = self.kappa_r * (self.mu_r - x_corr.tanh());

@@ -116,7 +116,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.observed(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {
@@ -219,13 +219,13 @@ impl<T: FloatExt> FellerLogisticSampler<T> {
     if out.is_empty() {
       return;
     }
-    out[0] = self.x0;
+    let mut prev = self.boundary.observed(self.x0);
+    out[0] = prev;
     if out.len() == 1 {
       return;
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    let mut prev = self.x0;
     for z in tail.iter_mut() {
       let xi = prev.max(T::zero());
       let drift = self.kappa * (self.theta - xi) * xi * self.dt;
