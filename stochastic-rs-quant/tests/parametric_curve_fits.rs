@@ -147,4 +147,10 @@ fn nelson_siegel_fit_refuses_quotes_that_cannot_identify_its_curve() {
     matches!(refused, QuantError::InvalidQuote { index: 0, .. }),
     "{refused}"
   );
+  let at_origin = Array1::<f64>::zeros(4);
+  let unsolvable = NelsonSiegel::fit(at_origin.view(), rates.slice(s![..4])).unwrap_err();
+  assert!(
+    matches!(unsolvable, QuantError::Numerical { .. }),
+    "{unsolvable}"
+  );
 }
