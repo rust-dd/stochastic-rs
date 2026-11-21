@@ -191,30 +191,27 @@ impl PyBlackKarasinskiSwaptionCalibrator {
   }
 }
 
-/// G2++ `(a, b, σ, η, ρ)` against a swaption grid repriced on the
-/// two-factor trinomial tree.
+/// G2++ `(a, b, σ, η, ρ)` against a swaption grid priced by Brigo & Mercurio's exact European.
 #[pyclass(name = "G2ppSwaptionCalibrator", unsendable)]
 pub struct PyG2ppSwaptionCalibrator {
   quotes: Vec<SwaptionQuote>,
   curve: DiscountCurve<f64>,
   notional: f64,
-  steps_per_year: usize,
   start: G2ppParams,
   options: CalibrationOptions,
 }
 
 #[pymethods]
 impl PyG2ppSwaptionCalibrator {
-  /// `quotes` are `(tau, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ; the
-  /// tree has `(2L + 1)²` nodes on level `L`; `max_iters=None` is the fit's own cap, 1000.
+  /// `quotes` are `(tau, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ;
+  /// `max_iters=None` is the fit's own cap, 1000.
   #[new]
-  #[pyo3(signature = (quotes, curve, initial_rate, notional=1.0, steps_per_year=4, max_iters=None))]
+  #[pyo3(signature = (quotes, curve, initial_rate, notional=1.0, max_iters=None))]
   fn new(
     quotes: Vec<(f64, f64, f64, f64, String)>,
     curve: &PyDiscountCurve,
     initial_rate: f64,
     notional: f64,
-    steps_per_year: usize,
     max_iters: Option<usize>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
@@ -222,7 +219,6 @@ impl PyG2ppSwaptionCalibrator {
         quotes: parse_quotes(quotes)?,
         curve: curve.inner.clone(),
         notional,
-        steps_per_year,
         start: G2ppParams {
           mean_reversion_x: 0.5,
           mean_reversion_y: 0.05,
@@ -272,13 +268,7 @@ impl PyG2ppSwaptionCalibrator {
 
 impl PyG2ppSwaptionCalibrator {
   fn calibrator(&self) -> G2ppSwaptionCalibrator<'_> {
-    G2ppSwaptionCalibrator::new(
-      &self.quotes,
-      &self.curve,
-      self.notional,
-      self.steps_per_year,
-      self.start,
-    )
-    .with_options(self.options.clone())
+    G2ppSwaptionCalibrator::new(&self.quotes, &self.curve, self.notional, self.start)
+      .with_options(self.options.clone())
   }
 }

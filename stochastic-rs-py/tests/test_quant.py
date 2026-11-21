@@ -171,7 +171,7 @@ def test_tree_swaption_calibrators_fit_a_small_grid():
     assert a > 0.0 and sigma > 0.0 and math.isfinite(rmse)
     hw = sr.HullWhiteSwaptionCalibrator(quotes, curve, initial_rate=0.03, theta=0.03).calibrate()
     assert hw[1] > 0.0 and math.isfinite(hw[2])
-    g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=60).calibrate()
+    g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, max_iters=60).calibrate()
     assert len(g2) == 7 and abs(g2[4]) < 1.0 and math.isfinite(g2[5])
     assert "max_iters=None" in sr.G2ppSwaptionCalibrator.__text_signature__
     sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, max_iters=None)

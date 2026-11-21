@@ -1,17 +1,7 @@
 //! # Swaption calibration of tree short-rate models
 //!
-//! Black–Karasinski and G2++ have no closed-form European swaption price, so
-//! both calibrators reprice the quote grid on the crate's trinomial trees:
-//! every quote becomes a one-exercise [`BermudanSwaption`] whose exercise
-//! level and fixed-leg coupon levels are snapped to the grid, priced on a
-//! [`BlackKarasinskiTree`] or [`G2ppTree`] rebuilt for each parameter trial.
-//! The market side is the Black-76 at-the-money-forward price the Hull–White
-//! calibrator uses, `A · black_forward_caplet(F, F, T, σ_B)`, and the
-//! optimiser is the same Nelder–Mead on squared price residuals.
-//!
-//! The tree resolution (`steps_per_year`) trades accuracy for the cost of a
-//! tree rebuild per quote and iteration — the G2++ lattice has
-//! `(2L + 1)²` nodes on level `L`, so keep the grid modest there.
+//! Black–Karasinski reprices each quote on a [`BlackKarasinskiTree`] snapped to its levels, G2++ by
+//! Brigo & Mercurio's exact European; both fit Black-76 at-the-money-forward prices by Nelder–Mead.
 //!
 //! References: Brigo, D. & Mercurio, F. (2006), *Interest Rate Models — Theory
 //! and Practice*, 2nd ed., Springer, §3.5 (Black–Karasinski), §4.2 (G2++),
@@ -43,9 +33,12 @@ use crate::instruments::option::types::ExerciseSchedule;
 use crate::instruments::option::types::TreeCouponSchedule;
 use crate::lattice::short_rate::BlackKarasinskiTree;
 use crate::lattice::short_rate::BlackKarasinskiTreeModel;
-use crate::lattice::short_rate::G2ppTree;
 use crate::lattice::short_rate::G2ppTreeModel;
 use crate::traits::ToShortRateModel;
+
+mod g2pp_european;
+
+use g2pp_european::g2pp_european_swaption;
 
 /// Tree horizon, step count and the one-exercise swaption snapped to it.
 fn tree_swaption(
@@ -76,11 +69,15 @@ fn tree_swaption(
   )
 }
 
-fn assert_tree_inputs(notional: f64, steps_per_year: usize) {
+fn assert_notional(notional: f64) {
   assert!(
     notional.is_finite() && notional > 0.0,
     "notional must satisfy `notional.is_finite() && notional > 0.0`, got notional = {notional:?}"
   );
+}
+
+fn assert_tree_inputs(notional: f64, steps_per_year: usize) {
+  assert_notional(notional);
   assert!(
     steps_per_year > 0,
     "steps_per_year must satisfy `steps_per_year > 0`, got steps_per_year = {steps_per_year:?}"
@@ -298,15 +295,12 @@ impl ToShortRateModel for Calibrated<G2ppParams> {
   }
 }
 
-/// G2++ calibrator: `(a, b, σ, η, ρ)` of the two-factor Gaussian model against
-/// a swaption grid on the two-dimensional trinomial tree.
+/// G2++ `(a, b, σ, η, ρ)` against a swaption grid priced by Brigo & Mercurio's exact European.
 #[derive(Debug, Clone)]
 pub struct G2ppSwaptionCalibrator<'a> {
   pub quotes: &'a [SwaptionQuote],
   pub curve: &'a DiscountCurve<f64>,
   pub notional: f64,
-  /// Tree levels per year.
-  pub steps_per_year: usize,
   pub start: G2ppParams,
   /// Nelder–Mead: `max_iterations` (default 1000), `tolerance` its relative spread; pull
   /// `(a, b, σ, η, ρ)`, and `patience` is `Unsupported`.
@@ -314,21 +308,19 @@ pub struct G2ppSwaptionCalibrator<'a> {
 }
 
 impl<'a> G2ppSwaptionCalibrator<'a> {
-  /// Panics unless `notional > 0`, `steps_per_year > 0` and the start is finite.
+  /// Panics unless `notional > 0` and the start is finite.
   pub fn new(
     quotes: &'a [SwaptionQuote],
     curve: &'a DiscountCurve<f64>,
     notional: f64,
-    steps_per_year: usize,
     start: G2ppParams,
   ) -> Self {
-    assert_tree_inputs(notional, steps_per_year);
+    assert_notional(notional);
     check_finite_start(&start.fields()).unwrap_or_else(|e| panic!("{e}"));
     Self {
       quotes,
       curve,
       notional,
-      steps_per_year,
       start,
       options: CalibrationOptions::default(),
     }
@@ -345,7 +337,6 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       curve_points: serialize_curve(self.curve),
       notional: self.notional,
       phi,
-      steps_per_year: self.steps_per_year,
       regularization,
     }
   }
@@ -394,7 +385,6 @@ struct G2ppCost {
   curve_points: CurveSnapshot,
   notional: f64,
   phi: f64,
-  steps_per_year: usize,
   regularization: Option<Regularization>,
 }
 
@@ -414,15 +404,19 @@ impl G2ppCost {
 
   fn price_series(&self, p: &G2ppParams) -> (Vec<f64>, Vec<f64>) {
     let curve = self.curve_points.rebuild();
-    let model = G2ppTreeModel::new(0.0, 0.0, *p);
     let mut model_prices = Vec::with_capacity(self.quotes.len());
     let mut market_prices = Vec::with_capacity(self.quotes.len());
     for quote in &self.quotes {
       let market = market_swaption(quote, &curve, self.notional);
-      let (horizon, steps, swaption) =
-        tree_swaption(quote, &market, self.notional, self.steps_per_year);
-      let tree = G2ppTree::new(model.clone(), horizon, steps);
-      model_prices.push(swaption.npv(&tree));
+      let model = g2pp_european_swaption(
+        p,
+        quote.direction,
+        market.fair_rate,
+        quote.tau,
+        &market.coupon_times,
+        market.accrual,
+      );
+      model_prices.push(self.notional * model);
       market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
