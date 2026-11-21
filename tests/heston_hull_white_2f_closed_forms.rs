@@ -380,3 +380,88 @@ fn frozen_variance_prices_black_on_the_forward_under_two_factor_rates() {
   let qe = SEEDS.map(|seed| frozen_variance_z(&model(0.01, seed).qe(), theta));
   assert_frozen_variance("QE", qe);
 }
+
+/// Terminal variances at table 4's `κ = 0.4`, `θ = v₀ = 0.2`, `σ = 0.6`, where Feller fails
+/// (`2κθ = 0.16 < σ²`), over five years on a monthly grid.
+const FELLER_PATHS: usize = 40_000;
+
+fn feller_violated(seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
+  HestonHullWhite2F::new(
+    1.0,
+    0.2,
+    0.4,
+    0.2,
+    0.6,
+    flat_mean_theta as fn(f64) -> f64,
+    A,
+    0.0,
+    0.0,
+    B,
+    rho(-0.3, RHO_XR, RHO_XU, RHO_RU),
+    Some(FLAT_RATE),
+    61,
+    Some(5.0),
+    Deterministic::new(seed),
+  )
+}
+
+/// The Euler step floors the variance it stores, as `Heston`'s `Floor` step does: absorption
+/// in Lord et al.'s terms, which lifts `E[v_T]` above `θ` here; QE keeps the exact mean.
+/// Reference: Lord et al. (2010), Quant. Finance 10(2), 177-194, DOI 10.1080/14697680802392496
+#[test]
+fn the_euler_floor_is_hestons_and_biased_where_feller_fails() {
+  use stochastic_rs::stochastic::params::VarianceBoundary;
+  use stochastic_rs::stochastic::volatility::HestonPow;
+  use stochastic_rs::stochastic::volatility::heston::Heston;
+  let theta = 0.2;
+  let z_from_theta = |v: &[f64]| {
+    let (mean, se) = mean_and_se(v.iter().copied());
+    (mean - theta) / se
+  };
+  let runs = SEEDS.map(|seed| {
+    let euler = feller_violated(seed).sample_map(FELLER_PATHS, |path| path.v[60]);
+    let qe = feller_violated(seed)
+      .qe()
+      .sample_map(FELLER_PATHS, |path| path.v[60]);
+    let heston = Heston::<f64, Euler, _>::new(
+      1.0,
+      theta,
+      0.4,
+      theta,
+      0.6,
+      -0.3,
+      0.0,
+      61,
+      Some(5.0),
+      HestonPow::Sqrt,
+      VarianceBoundary::Floor,
+      Deterministic::new(seed + 1),
+    )
+    .sample_map(FELLER_PATHS, |[_, v]| v[60]);
+    let ((hybrid_mean, hybrid_se), (heston_mean, heston_se)) = (
+      mean_and_se(euler.iter().copied()),
+      mean_and_se(heston.iter().copied()),
+    );
+    let against_heston =
+      (hybrid_mean - heston_mean) / (hybrid_se * hybrid_se + heston_se * heston_se).sqrt();
+    (
+      against_heston.abs(),
+      z_from_theta(&euler),
+      z_from_theta(&qe).abs(),
+    )
+  });
+  println!("(|z| against Heston's Floor, Euler z from θ, QE |z| from θ): {runs:.2?}");
+  let heston = best(runs.map(|(z, _, _)| z));
+  assert!(
+    heston < Z_MAX,
+    "every seed is {heston:.2} SE or more from Heston's Floor step"
+  );
+  let qe = best(runs.map(|(_, _, z)| z));
+  assert!(qe < Z_MAX, "QE: every seed is {qe:.2} SE or more from θ");
+  for (_, euler, _) in runs {
+    assert!(
+      euler > Z_POWER,
+      "the floored Euler mean is only {euler:.2} SE above θ"
+    );
+  }
+}
