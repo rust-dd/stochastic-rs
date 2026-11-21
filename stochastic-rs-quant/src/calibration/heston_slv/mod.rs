@@ -11,7 +11,7 @@
 //! The mixing `η ∈ [0, 1]` is an input: it moves forward-start and barrier prices, never vanillas.
 //! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
 //! Reference: Lipton (2002), Risk 15(2), 61–65
-//! Reference: van der Stoep et al. (2014), 17(7), DOI 10.1142/S0219024914500459
+//! Reference: van der Stoep et al. (2014), IJTAF 17(7), 1450045, DOI 10.1142/S0219024914500459
 
 mod calibrator;
 
