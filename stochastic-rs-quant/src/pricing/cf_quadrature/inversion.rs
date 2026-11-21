@@ -290,17 +290,35 @@ where
 mod tests {
   use super::*;
 
-  /// `e^{−u/50}` is negligible from the power of two 2048, and `κ = −0.25` alone turns 20 radians
-  /// by 80; a chf turning 0.75 a unit brings that to 20, and one turning with `κ` leaves none.
+  /// The reach of `e^{−u/50 + i·phase(u)}`, negligible from the power of two 2048.
+  fn reach(phase: impl Fn(f64) -> f64, kappa: f64) -> f64 {
+    reach_and_scale(|u| Complex64::new(-0.02 * u, phase(u)).exp(), kappa).0
+  }
+
+  /// `κ = −0.25` alone turns 20 radians by 80; a chf turning 0.75 a unit brings that to 20, and
+  /// one turning with `κ` leaves none.
   #[test]
   fn the_reach_counts_the_phase_the_chf_turns_itself() {
-    let reach = |rate: f64, kappa: f64| {
-      reach_and_scale(|u| Complex64::new(-0.02 * u, rate * u).exp(), kappa).0
-    };
-    assert_eq!(reach(0.0, -0.25), 80.0);
-    assert!((reach(0.75, -0.25) - 20.0).abs() < 1e-6);
-    assert_eq!(reach(-0.25, -0.25), 2048.0);
-    assert_eq!(reach(0.0, 0.0), 2048.0);
-    assert_eq!(reach(0.0, 100.0), 0.2);
+    assert_eq!(reach(|_| 0.0, -0.25), 80.0);
+    assert!((reach(|u| 0.75 * u, -0.25) - 20.0).abs() < 1e-6);
+    assert_eq!(reach(|u| -0.25 * u, -0.25), 2048.0);
+    assert_eq!(reach(|_| 0.0, 0.0), 2048.0);
+    assert_eq!(reach(|_| 0.0, 100.0), 0.2);
+  }
+
+  /// A rate of `0.25 − u/100` is zero at 25 and `−0.39` at the probe 64, which it stops: `|rate|`
+  /// is what counts, and the probes at 16 and 32, either side of the zero, go on.
+  #[test]
+  fn the_reach_holds_where_the_phase_rate_changes_sign() {
+    let got = reach(|u| -u * u / 200.0, -0.25);
+    assert!((got - 20.0 / 0.39).abs() < 1e-3, "{got}");
+  }
+
+  /// A rate that starts at 100 is 28 at the probe 128, a budget of 0.71: the reach stays at 64,
+  /// where the probe before read no rate at all.
+  #[test]
+  fn the_reach_is_not_read_back_past_the_probe_before() {
+    let got = reach(|u| 0.5 * (u - 100.0).max(0.0).powi(2), 0.0);
+    assert_eq!(got, 64.0);
   }
 }
