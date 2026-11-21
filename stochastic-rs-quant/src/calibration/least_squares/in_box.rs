@@ -160,7 +160,8 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
       total.reason,
       TerminationReason::SolverConverged | TerminationReason::NumericalNoProgress
     );
-    if own && bounds.change.borrow().is_none() {
+    let spent = || objective.evaluations.get();
+    if own && bounds.change.borrow().is_none() && spent() < budget {
       // The solver stops on a step, before the Jacobian that tells the set where it stopped.
       let _ = Residual::residual(&objective, &total.best)
         .and_then(|_| Jacobian::jacobian(&objective, &total.best));
@@ -168,17 +169,23 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
     let Some((set, cost)) = bounds.change.borrow_mut().take() else {
       return total;
     };
-    let spent = objective.evaluations.get();
-    if spent >= budget || total.iterations >= cap {
-      total.reason = match spent >= budget {
+    let out = |best: Array1<f64>| Run {
+      best,
+      reason: match spent() >= budget {
         true => TerminationReason::MaxCostEvals,
         false => TerminationReason::MaxIter,
-      };
-      total.started = true;
-      return total;
+      },
+      iterations: total.iterations,
+      started: true,
+    };
+    if spent() >= budget || total.iterations >= cap {
+      return out(total.best);
     }
-    let from = bounds.seat(objective, total.best, &set, cost);
-    let next = solve(from, budget - spent, cap - total.iterations, false);
+    let from = bounds.seat(objective, total.best.clone(), &set, cost);
+    if spent() >= budget {
+      return out(from);
+    }
+    let next = solve(from, budget - spent(), cap - total.iterations, false);
     total = Run {
       iterations: total.iterations + next.iterations,
       started: true,
@@ -413,6 +420,17 @@ mod tests {
       let (fitted, _) = fit(start, [0.8, FREE], rows, slopes, 100);
       let opens = fitted.trail.first().map(|first| first.to_vec());
       assert_eq!(opens, Some(start.to_vec()), "{:?}", fitted.trail);
+    }
+  }
+
+  /// Rosenbrock under `θ₁ ≤ 0.8` on 21 and 12 evaluations, each fit with a seat near its end.
+  #[test]
+  fn a_seat_is_evaluated_out_of_the_budget() {
+    let rows = |v: &[f64]| ndarray::array![10.0 * (v[1] - v[0] * v[0]), 1.0 - v[0]];
+    let slopes = |v: &[f64]| ndarray::array![[-20.0 * v[0], 10.0], [-1.0, 0.0]];
+    for (start, patience) in [([-1.2, 1.0], 7), ([0.8, 0.3], 4)] {
+      let (_, report) = fit(start, [0.8, FREE], rows, slopes, patience);
+      assert_eq!(report.evaluations, 3 * patience, "{start:?}: {report:?}");
     }
   }
 
