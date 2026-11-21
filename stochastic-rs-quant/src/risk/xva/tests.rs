@@ -182,3 +182,44 @@ fn rejects_mismatched_dates() {
     0.95,
   );
 }
+
+#[test]
+#[should_panic(
+  expected = "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion > 0.0`, got mean_reversion = 0.0"
+)]
+fn a_swap_exposure_without_mean_reversion_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.0, 0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.01"
+)]
+fn a_swap_exposure_with_a_negative_volatility_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, -0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[0] > 0.0`, got payment_times[0] = None"
+)]
+fn a_swap_exposure_without_a_payment_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[i] < payment_times[i + 1]` for every i, got payment_times[1] = 2.0 and payment_times[2] = 2.0"
+)]
+fn a_swap_exposure_with_a_repeated_payment_time_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "steps_per_year must satisfy `steps_per_year >= 1`, got steps_per_year = 0"
+)]
+fn a_swap_exposure_without_a_step_is_a_precondition() {
+  let _ =
+    HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0).with_steps_per_year(0);
+}

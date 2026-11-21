@@ -40,7 +40,7 @@ pub struct RBergomiCalibrator<S: SeedExt = Unseeded> {
   /// Projected onto the parameter box when a fit starts.
   pub start: RBergomiParams,
   /// Sorted by maturity in `new`; `calibrate` reports a slice by its index in this order.
-  pub market_slices: Vec<RBergomiMarketSlice>,
+  pub(super) market_slices: Vec<RBergomiMarketSlice>,
   config: RBergomiCalibrationConfig,
   /// Adam reads `max_iterations` (default 60) and `record_history`; its stop is `config`'s, so
   /// `tolerance`, `patience`, `loss_metrics` and `regularization` are `Unsupported`.
@@ -124,6 +124,11 @@ impl<S: SeedExt> RBergomiCalibrator<S> {
 
   pub fn q(&self) -> f64 {
     self.q
+  }
+
+  /// The slices in the maturity order `new` sorted them into.
+  pub fn market_slices(&self) -> &[RBergomiMarketSlice] {
+    &self.market_slices
   }
 
   pub fn with_options(mut self, options: CalibrationOptions) -> Self {

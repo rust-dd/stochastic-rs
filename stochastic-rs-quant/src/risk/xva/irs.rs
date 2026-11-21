@@ -42,6 +42,8 @@ pub struct HullWhiteSwapExposure {
 }
 
 impl HullWhiteSwapExposure {
+  /// Panics unless `mean_reversion` is finite and `> 0`, `sigma` finite and `>= 0`, and
+  /// `payment_times` positive and strictly increasing.
   pub fn new(
     mean_reversion: f64,
     sigma: f64,
@@ -51,15 +53,29 @@ impl HullWhiteSwapExposure {
     accrual: f64,
   ) -> Self {
     assert!(
-      mean_reversion > 0.0 && sigma >= 0.0,
-      "Hull-White needs a > 0 and σ ≥ 0"
+      mean_reversion.is_finite() && mean_reversion > 0.0,
+      "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion > 0.0`, got \
+       mean_reversion = {mean_reversion:?}"
     );
     assert!(
-      !payment_times.is_empty()
-        && payment_times.windows(2).all(|w| w[0] < w[1])
-        && payment_times[0] > 0.0,
-      "payment times must be positive and increasing"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
+    let first = payment_times.first().copied();
+    assert!(
+      first.is_some_and(|t| t > 0.0),
+      "payment_times must satisfy `payment_times[0] > 0.0`, got payment_times[0] = {first:?}"
+    );
+    for (i, w) in payment_times.windows(2).enumerate() {
+      assert!(
+        w[0] < w[1] && w[1].is_finite(),
+        "payment_times must satisfy `payment_times[i] < payment_times[i + 1]` for every i, got \
+         payment_times[{i}] = {:?} and payment_times[{}] = {:?}",
+        w[0],
+        i + 1,
+        w[1]
+      );
+    }
     Self {
       mean_reversion,
       sigma,
@@ -71,9 +87,12 @@ impl HullWhiteSwapExposure {
     }
   }
 
-  /// Simulation resolution of the short rate.
+  /// Simulation resolution of the short rate; panics unless `steps_per_year >= 1`.
   pub fn with_steps_per_year(mut self, steps_per_year: usize) -> Self {
-    assert!(steps_per_year >= 1, "at least one step per year");
+    assert!(
+      steps_per_year >= 1,
+      "steps_per_year must satisfy `steps_per_year >= 1`, got steps_per_year = {steps_per_year:?}"
+    );
     self.steps_per_year = steps_per_year;
     self
   }

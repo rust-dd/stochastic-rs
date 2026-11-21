@@ -250,3 +250,21 @@ fn wasserstein_1_is_nan_for_a_sample_that_is_not_finite_or_is_missing() {
     assert!(empirical_wasserstein_1(&finite, &bad).is_nan(), "{bad:?}");
   }
 }
+
+#[test]
+fn the_calibrator_holds_its_slices_in_maturity_order() {
+  let calibrator = RBergomiCalibrator::new(
+    100.0,
+    0.01,
+    0.0,
+    start(),
+    slices(&[0.5, 0.25, 1.0]),
+    config(),
+  );
+  let taus = calibrator
+    .market_slices()
+    .iter()
+    .map(|slice| slice.tau)
+    .collect::<Vec<f64>>();
+  assert_eq!(taus, [0.25, 0.5, 1.0]);
+}

@@ -24,11 +24,47 @@ pub struct GbmMalliavinGreeks<S: SeedExt = Unseeded> {
   /// Strike price
   pub k: f64,
   /// Number of Monte Carlo paths
-  pub n_paths: usize,
+  pub(super) n_paths: usize,
   /// Number of time steps
-  pub n_steps: usize,
+  pub(super) n_steps: usize,
   /// Each estimator simulates from a clone, so a `Deterministic` seed replays its paths.
   pub seed: S,
+}
+
+impl GbmMalliavinGreeks {
+  /// Panics unless `n_paths >= 1` and `n_steps >= 2`, the grid of one step; the estimators answer
+  /// NaN for an `s`, `r`, `q` or `tau` off their domain.
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    sigma: f64,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    n_paths: usize,
+    n_steps: usize,
+  ) -> Self {
+    assert!(
+      n_paths >= 1,
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
+    );
+    assert!(
+      n_steps >= 2,
+      "n_steps must satisfy `n_steps >= 2`, got n_steps = {n_steps:?}"
+    );
+    Self {
+      s,
+      sigma,
+      r,
+      q,
+      tau,
+      k,
+      n_paths,
+      n_steps,
+      seed: Unseeded,
+    }
+  }
 }
 
 impl<S: SeedExt> GbmMalliavinGreeks<S> {
