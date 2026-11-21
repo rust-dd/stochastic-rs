@@ -85,16 +85,14 @@ fn every_pricer_holds_a_price_whose_share_measure_explodes() {
   let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
   assert_within("lewis", lewis, want, 1e-11);
   let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
-  assert_within("gil-pelaez", gil_pelaez, want, 2e-8);
+  assert_within("gil-pelaez", gil_pelaez, want, 1e-11);
   let closed = HestonPricer::new(EXPLODING).price_call(s, k, r, q, tau);
   assert_within("heston", closed, want, 1e-11);
 }
 
-/// HKDE at `ρσ ≥ κ` and `τ = 15`: the jumps' compensator turns the integrand's phase 0.83 radians
-/// per unit `u` beside `κ`'s 0.3, and the walk hands over to the tail rule on the sum.
-#[test]
-fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
-  let model = HkdeFourier::new(HkdeParams {
+/// `ρσ ≥ κ` at `τ = 15`, where the share measure's chf has its structure near `u = 1e-8`.
+fn hkde_past_its_share_measure() -> HkdeFourier {
+  HkdeFourier::new(HkdeParams {
     v0: 0.09,
     kappa: 0.2,
     theta: 0.01,
@@ -104,18 +102,42 @@ fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-  });
+  })
+}
+
+/// Calls at `(s, r, q, τ) = (100, 0.03, 0.01, 15)` by Lewis quadrature at 40 digits (mpmath); the
+/// third strike is the forward, where `κ = 0`.
+const HKDE_CALLS: [(f64, f64); 5] = [
+  (100.0, 40.091_698_837_618_03),
+  (80.0, 46.355_092_420_111_84),
+  (134.985_880_757_600_3, 31.704_182_907_960_47),
+  (60.0, 53.946_237_851_884_24),
+  (250.0, 17.921_940_384_218_78),
+];
+
+/// The jumps' compensator turns the integrand's phase 0.83 radians per unit `u` beside `κ`'s 0.3,
+/// and the walk hands over to the tail rule on the sum.
+#[test]
+fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
+  let model = hkde_past_its_share_measure();
   let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
-  // The last strike is the forward, where `κ = 0`.
-  for (k, want) in [
-    (100.0, 40.091_698_837_618_03),
-    (80.0, 46.355_092_420_111_84),
-    (134.985_880_757_600_3, 31.704_182_907_960_47),
-  ] {
+  for (k, want) in HKDE_CALLS {
     let name = format!("k = {k}");
     assert_within(&name, model.price_call(s, k, r, q, tau), want, 1e-11);
     let lewis = LewisPricer::price_call(&model, s, k, r, q, tau);
     assert_within(&name, lewis, want, 1e-11);
+  }
+}
+
+/// `P₁`'s head reads `φ(u − i)` down to `u = 1e-16`: a chf `2.6e-11` off near `1e-8` moved every
+/// strike's price by the same `3.4e-10`.
+#[test]
+fn gil_pelaez_holds_a_share_measure_with_structure_near_1e_8() {
+  let model = hkde_past_its_share_measure();
+  let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
+  for (k, want) in HKDE_CALLS {
+    let gil_pelaez = GilPelaezPricer::price_call(&model, s, k, r, q, tau);
+    assert_within(&format!("k = {k}"), gil_pelaez, want, 2e-12);
   }
 }
 

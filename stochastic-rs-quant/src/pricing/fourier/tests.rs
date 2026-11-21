@@ -9,6 +9,28 @@ use crate::traits::ModelPricer;
 const TOL_FOURIER: f64 = 0.15;
 const TOL_TIGHT: f64 = 0.05;
 
+/// The share measure's chf, `φ(u − i)`, where `ρσ > κ` puts its structure near `u = 1e-8`: the
+/// moment `u² − iu` keeps its `u²`, which `iξ + ξ²` rounds away against 1 (mpmath, 50 digits).
+#[test]
+fn the_heston_factor_holds_the_share_measure_at_frequencies_near_1e_8() {
+  let model = HestonFourier::new(HestonParams {
+    v0: 0.09,
+    kappa: 0.2,
+    theta: 0.01,
+    sigma: 1.5,
+    rho: 0.95,
+  });
+  for (u, re, im) in [
+    (1e-9, 0.999_866_988_182_671, 0.003_568_119_416_588_625),
+    (1e-8, 0.988_319_404_481_572_4, 0.031_356_803_420_857_88),
+    (1e-7, 0.910_620_545_181_030_5, 0.025_226_076_817_464_857),
+  ] {
+    let got = model.chf(15.0, Complex64::new(u, -1.0));
+    let off = (got - Complex64::new(re, im)).norm();
+    assert!(off < 1e-14, "u = {u}: {got} is {off:e} off");
+  }
+}
+
 /// Short-dated Heston (τ = 0.005 ATM, τ = 0.01 at K = 105), where a fixed `φ_max = 100` truncates
 /// the tail: Gil-Pelaez and Lewis match the converged inversion and each other.
 #[test]
