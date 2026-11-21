@@ -172,8 +172,8 @@ impl<S: SeedExt> McCliquetPricer<S> {
     let payoff_of = |p: usize| -> f64 {
       let returns = all_z[p * m..(p + 1) * m]
         .iter()
-        .map(|&z| (drift + vol * z).exp_m1().max(f_l).min(c_l));
-      returns.sum::<f64>().min(c_g).max(f_g)
+        .map(|&z| (drift + vol * z).exp_m1().max_or_nan(f_l).min_or_nan(c_l));
+      returns.sum::<f64>().min_or_nan(c_g).max_or_nan(f_g)
     };
     par_estimate(self.n_paths, notional * (-r * tau).exp(), payoff_of)
   }
@@ -181,6 +181,8 @@ impl<S: SeedExt> McCliquetPricer<S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   fn cliquet(
@@ -278,5 +280,34 @@ mod tests {
     assert!(pricer.price(&local, 0.04, 0.0, 1.0).is_finite());
     assert!(pricer.price(&floored, 0.04, 0.0, 1.0).is_nan());
     assert!(pricer.price(&capped, 0.04, 0.0, 1.0).is_nan());
+  }
+
+  #[test]
+  fn a_nan_bound_prices_nan_in_both_pricers() {
+    let mc = McCliquetPricer::new(0.2, 2_000).with_seed(Deterministic::new(1));
+    let bounded = cliquet(1.0, 4, Some(0.0), Some(0.05));
+    for option in [
+      cliquet(1.0, 4, Some(f64::NAN), Some(0.05)),
+      cliquet(1.0, 4, Some(0.0), Some(f64::NAN)),
+      CliquetOption {
+        global_floor: Some(f64::NAN),
+        ..bounded
+      },
+      CliquetOption {
+        global_cap: Some(f64::NAN),
+        ..bounded
+      },
+    ] {
+      assert!(
+        CliquetPricer::new(0.2)
+          .price(&option, 0.03, 0.0, 1.0)
+          .is_nan()
+      );
+      let est = mc.price(&option, 0.03, 0.0, 1.0);
+      assert!(
+        est.mean.is_nan() && est.std_err.is_nan(),
+        "{option:?}: {est}"
+      );
+    }
   }
 }
