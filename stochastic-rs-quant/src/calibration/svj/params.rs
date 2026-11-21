@@ -1,8 +1,11 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::THETA_MIN;
+use crate::calibration::periodic_slopes;
+use crate::calibration::stencil::sides;
 use crate::pricing::fourier::SvjParams;
 
 pub(super) const EPS: f64 = 1e-8;
@@ -31,6 +34,12 @@ pub(super) const BOXED: [(f64, f64); 8] = [
   P_MU_J,
   P_SIGMA_J,
 ];
+
+/// Per raw coordinate, the sign of the step out of the box where its boxed value rests on a bound.
+pub(super) fn outward(x: ArrayView1<f64>) -> Array1<f64> {
+  let boxed = Array1::from(SvjParams::from(x.to_owned()).boxed());
+  sides(&boxed, &BOXED) * periodic_slopes(x, &BOX)
+}
 
 impl SvjParams {
   /// Project parameters to satisfy admissibility constraints (box + Feller condition).

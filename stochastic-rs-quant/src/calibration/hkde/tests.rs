@@ -444,3 +444,16 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
     assert!(error < 1e-4, "{point:?}: {error:e}");
   }
 }
+
+/// The first step sends `ρ` to its lower bound, which the cost falls across for some 60
+/// iterations: held there, the fit follows the bound and leaves it for the Heston surface.
+#[test]
+fn the_default_start_leaves_the_rho_bound_for_the_heston_reference() {
+  let fit = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let rmse = fit.loss.get(LossMetric::Rmse);
+  assert!(rmse < 1e-5 && fit.params.rho > -0.75, "{rmse:e}: {fit:?}");
+  assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
+}

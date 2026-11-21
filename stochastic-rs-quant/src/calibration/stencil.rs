@@ -30,6 +30,18 @@ pub(crate) fn derivative(
   (residuals(above) - residuals(below)) / (above - below)
 }
 
+/// Per coordinate −1 within its step of `lo`, 1 within it of `hi`, 0 where the central stencil
+/// fits: the bound a point rests on.
+pub(crate) fn sides(point: &Array1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
+  let places = point.iter().zip(bounds);
+  let side = |(&x, &(lo, hi)): (&f64, &(f64, f64))| match step(x) {
+    h if x - h < lo => -1.0,
+    h if x + h > hi => 1.0,
+    _ => 0.0,
+  };
+  places.map(side).collect()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

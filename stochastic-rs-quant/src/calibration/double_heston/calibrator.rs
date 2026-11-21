@@ -1,10 +1,11 @@
 use super::loss::DoubleHestonProblem;
 use super::params::DoubleHestonParams;
+use super::params::outward;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
-use crate::calibration::least_squares::minimize;
+use crate::calibration::least_squares::minimize_in_box;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
 use crate::pricing::heston::HestonParams;
@@ -114,7 +115,7 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
       return Err(QuantError::invalid("start", reason));
     }
     let lm = self.options.lm(true, 10)?;
-    let (fitted, report) = minimize(DoubleHestonProblem::new(self, start), lm);
+    let (fitted, report) = minimize_in_box(DoubleHestonProblem::new(self, start), lm, outward);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
     report.calibrated(

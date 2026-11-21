@@ -279,3 +279,16 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     }
   }
 }
+
+/// The first factor's `ρ` reaches its lower bound within six steps, and the cost falls across it:
+/// held there, the other nine parameters are fitted along the bound.
+#[test]
+fn the_default_start_fits_the_heston_reference_along_the_rho_bound() {
+  let fit = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let rmse = fit.loss.get(LossMetric::Rmse);
+  assert!(rmse < 1e-3, "{rmse:e}: {fit:?}");
+  assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
+}

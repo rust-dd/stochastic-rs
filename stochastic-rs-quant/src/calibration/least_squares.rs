@@ -322,13 +322,14 @@ struct Objective<P> {
   model: RefCell<P>,
   coordinates: RefCell<Option<Array1<f64>>>,
   evaluations: Cell<usize>,
-  /// `‖r‖` of the last residual call, which precedes each Jacobian basin asks for at its point.
-  norm: Cell<f64>,
+  /// The rows of the last residual call at `coordinates`; basin asks for each Jacobian after them.
+  rows: RefCell<Option<Array1<f64>>>,
   /// The largest `|xⱼ|` a Jacobian was asked at, the size the flat rule gives each column.
   sizes: RefCell<Array1<f64>>,
   flat: Cell<bool>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
+  outward: Option<Outward>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
@@ -338,6 +339,7 @@ impl<P: LeastSquaresProblem> Objective<P> {
     if coordinates.as_ref() != Some(x) {
       model.set_params(x.view());
       *coordinates = Some(x.clone());
+      *self.rows.borrow_mut() = None;
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
     model
@@ -391,7 +393,7 @@ impl<P: LeastSquaresProblem> Residual for &Objective<P> {
     if self.evaluations.get() == 1 && residuals.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
-    self.norm.set(residuals.dot(&residuals).sqrt());
+    *self.rows.borrow_mut() = Some(residuals.clone());
     Ok(residuals)
   }
 }
@@ -400,11 +402,17 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
   type Jacobian = Array2<f64>;
 
   fn jacobian(&self, x: &Self::Param) -> Result<Self::Jacobian, Self::Error> {
-    let model = self.at(x);
-    let jacobian = pulled_jacobian(&*model, self.regularization.as_ref()).ok_or(())?;
+    let mut model = self.at(x);
+    let pull = self.regularization.as_ref();
+    let mut jacobian = pulled_jacobian(&*model, pull).ok_or(())?;
     if jacobian.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
+    let mut rows = self.rows.borrow_mut();
+    let residuals = match rows.take() {
+      Some(residuals) => residuals,
+      None => pulled_residuals(&mut *model, pull).ok_or(())?,
+    };
     // Moré's ‖Dx‖ of (8.3), D the column norms, x at its largest so far: a minimum near the
     // origin is not flat. A fit that never left the origin is sized by ‖D‖ alone.
     let mut sizes = self.sizes.borrow_mut();
@@ -418,27 +426,50 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
         let size = if origin { 1.0 } else { *x };
         column.dot(&column) * size * size
       });
-    let norm = self.norm.get();
+    let norm = residuals.dot(&residuals).sqrt();
     if norm > 0.0 && scaled.sum::<f64>().sqrt() <= f64::EPSILON * norm {
       self.flat.set(true);
       return Err(());
     }
+    if let Some(outward) = &self.outward {
+      rest_on_bounds(&mut jacobian, &residuals, &outward(x.view()));
+    }
+    *rows = Some(residuals);
     Ok(jacobian)
   }
 }
 
 /// Runs basin with the calibrators' existing relative tolerances and residual budget.
 pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, LmReport) {
+  drive(problem, options, None)
+}
+
+/// [`minimize`] for a problem whose map folds or clamps at a box: `outward` names the bound each
+/// coordinate rests on, and one the cost falls across is held there.
+pub(crate) fn minimize_in_box<P: LeastSquaresProblem>(
+  problem: P,
+  options: LmOptions,
+  outward: impl Fn(ArrayView1<f64>) -> Array1<f64> + 'static,
+) -> (P, LmReport) {
+  drive(problem, options, Some(Box::new(outward)))
+}
+
+fn drive<P: LeastSquaresProblem>(
+  problem: P,
+  options: LmOptions,
+  outward: Option<Outward>,
+) -> (P, LmReport) {
   let initial = problem.params();
   let max_iter = options.iteration_cap(initial.len());
   let objective = Objective {
     model: RefCell::new(problem),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
-    norm: Cell::new(0.0),
+    rows: RefCell::new(None),
     sizes: RefCell::new(Array1::zeros(initial.len())),
     flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
+    outward,
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
   let gradient_tolerance = if options.tolerance.is_some() {
@@ -553,6 +584,11 @@ where
   };
   (best, reason, iterations, started)
 }
+
+mod in_box;
+
+use in_box::Outward;
+use in_box::rest_on_bounds;
 
 #[cfg(test)]
 pub(crate) mod checks;
