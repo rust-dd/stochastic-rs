@@ -371,15 +371,16 @@ impl FourierModelExt for DynFourierModel {
 
 fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<DynFourierModel> {
   macro_rules! model_of {
-    ($($wrapper:ty),+ $(,)?) => {
+    ($($wrapper:ty),+ $(,)?) => {{
       $(
         if let Ok(wrapper) = model.extract::<PyRef<'_, $wrapper>>() {
           return Ok(DynFourierModel(Box::new(wrapper.inner.clone())));
         }
       )+
-    };
+      [$(<$wrapper as pyo3::PyClass>::NAME),+]
+    }};
   }
-  model_of!(
+  let names = model_of!(
     PyBsmFourier,
     PyHestonFourier,
     PyDoubleHestonFourier,
@@ -392,9 +393,8 @@ fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<DynFourierModel> {
     PyNigFourier,
   );
   Err(PyTypeError::new_err(format!(
-    "model must be one of the Fourier models (BSMFourier, HestonFourier, DoubleHestonFourier, \
-     BatesFourier, HKDEFourier, VarianceGammaFourier, CGMYFourier, MertonJDFourier, KouFourier, \
-     NigFourier), got {}",
+    "model must be one of the Fourier models ({}), got {}",
+    names.join(", "),
     model.get_type().name()?
   )))
 }

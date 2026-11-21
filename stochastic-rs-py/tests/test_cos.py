@@ -64,7 +64,8 @@ def test_cos_engine_refuses_a_bad_grid_a_bad_option_type_and_a_model_it_cannot_p
     assert sr.CosEngine(l=10.0).price(model, 100.0, 90.0, 0.05, 0.02, 1.0) == engine.price(model, 100.0, 90.0, 0.05, 0.02, 1.0)
     with pytest.raises(ValueError, match="option_type must be 'call' or 'put', got 'x'"):
         engine.price(model, 100.0, 100.0, 0.05, 0.02, 1.0, option_type="x")
-    with pytest.raises(TypeError, match="model must be one of the Fourier models .*, got CarrMadanPricer"):
+    models = "BSMFourier, HestonFourier, DoubleHestonFourier, BatesFourier, HKDEFourier, VarianceGammaFourier, CGMYFourier, MertonJDFourier, KouFourier, NigFourier"
+    with pytest.raises(TypeError, match=re.escape(f"model must be one of the Fourier models ({models}), got CarrMadanPricer")):
         engine.price(sr.CarrMadanPricer(), 100.0, 100.0, 0.05, 0.02, 1.0)
 
 
