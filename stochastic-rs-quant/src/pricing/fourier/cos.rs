@@ -14,6 +14,8 @@ use num_complex::Complex64;
 
 use super::FourierModelExt;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 
 /// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1)
 /// cumulant standard deviations, so understated `cumulants()` misprice silently.
@@ -57,8 +59,8 @@ impl CosEngine {
     Self { n: None, l }
   }
 
-  /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is
-  /// the put plus `S e^{−qt} − K e^{−rt}`; NaN where `truncation_half_width` or `chf` is.
+  /// A call is the put plus parity: the payoff at `t = 0`; NaN past expiry and, before it, for a
+  /// rate not finite, an `s0` or `k` not finite and positive, or a NaN `chf` or truncation range.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
@@ -69,6 +71,12 @@ impl CosEngine {
     t: f64,
     option_type: OptionType,
   ) -> f64 {
+    if let Some(value) = expired(t, &[r, q], || vanilla_payoff(option_type, s0, k)) {
+      return value;
+    }
+    if !(priceable(s0) && priceable(k) && r.is_finite() && q.is_finite()) {
+      return f64::NAN;
+    }
     let cumulants = model.cumulants(t);
     let half_width = cumulants.truncation_half_width(self.l);
     if !half_width.is_finite() {
@@ -102,6 +110,10 @@ impl CosEngine {
     t: f64,
     option_type: OptionType,
   ) -> Array1<f64> {
+    let summed = expired(t, &[r, q], || f64::NAN).is_none();
+    if !(summed && priceable(s0) && r.is_finite() && q.is_finite()) {
+      return strikes.mapv(|k| self.price(model, s0, k, r, q, t, option_type));
+    }
     let cumulants = model.cumulants(t);
     let half_width = cumulants.truncation_half_width(self.l);
     if !half_width.is_finite() {
@@ -122,7 +134,13 @@ impl CosEngine {
     puts
       .iter()
       .zip(strikes)
-      .map(|(&put, &k)| discounted(put, s0, k, r, q, t, option_type))
+      .map(|(&put, &k)| {
+        if priceable(k) {
+          discounted(put, s0, k, r, q, t, option_type)
+        } else {
+          f64::NAN
+        }
+      })
       .collect()
   }
 
@@ -155,6 +173,11 @@ impl CosEngine {
       }
     }
   }
+}
+
+/// A spot or strike whose `ln` is finite, the only kind COS prices before expiry.
+fn priceable(x: f64) -> bool {
+  x.is_finite() && x > 0.0
 }
 
 /// The call's coefficients grow like `e^b`, the put's stay below `K`, so a call is the put and

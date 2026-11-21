@@ -419,8 +419,8 @@ impl PyCosEngine {
     })
   }
 
-  /// European call or put price; `nan` where the model's cumulants or characteristic function
-  /// are.
+  /// European call or put: the payoff at `tau = 0`; `nan` past expiry and, before it, for a rate
+  /// not finite or an `s` or `k` that is not finite and positive.
   #[pyo3(signature = (model, s, k, r, q, tau, option_type="call"))]
   fn price(
     &self,

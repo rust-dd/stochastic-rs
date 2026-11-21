@@ -137,18 +137,65 @@ fn cos_converges_in_n() {
   );
 }
 
-/// Degenerate maturity `t=0` collapses `c2` (and `c4`) to zero, so the
-/// truncation half-width is zero — the crate convention is `NaN`, never a
-/// silently-wrong `0.0` (see `carr_madan_out_of_grid_returns_nan_not_zero`
-/// in `super::super::tests` for the same convention elsewhere in this module).
+/// A zero volatility collapses `c2` and `c4` to zero and the truncation half-width with them:
+/// NaN, never a silently wrong `0.0`.
 #[test]
 fn cos_invalid_cumulants_gives_nan() {
-  let model = BsmFourier { sigma: 0.25 };
-  let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 0.0, OptionType::Call);
+  let model = BsmFourier { sigma: 0.0 };
+  let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
   assert!(
     price.is_nan(),
-    "degenerate t=0 cumulants must give NaN, got {price}"
+    "degenerate cumulants must give NaN, got {price}"
   );
+}
+
+/// The payoff at `t = 0`; NaN past expiry, and before it for a rate that is not finite or a spot
+/// or strike that is not finite and positive.
+#[test]
+fn a_query_off_the_domain_is_nan_and_an_expired_one_its_payoff() {
+  let model = BsmFourier { sigma: 0.2 };
+  let price = |s, k, r, q, t, ty| CosEngine::default().price(&model, s, k, r, q, t, ty);
+  for (s, call, put) in [(90.0, 0.0, 10.0), (100.0, 0.0, 0.0), (110.0, 10.0, 0.0)] {
+    assert_eq!(
+      price(s, 100.0, 0.05, 0.02, 0.0, OptionType::Call),
+      call,
+      "s = {s}"
+    );
+    assert_eq!(
+      price(s, 100.0, 0.05, 0.02, 0.0, OptionType::Put),
+      put,
+      "s = {s}"
+    );
+  }
+  let (inf, nan) = (f64::INFINITY, f64::NAN);
+  let off = [
+    (100.0, 100.0, 0.05, 0.02, -1.0),
+    (100.0, 100.0, 0.05, 0.02, nan),
+    (100.0, 100.0, 0.05, 0.02, inf),
+    (100.0, 100.0, nan, 0.02, 0.0),
+    (100.0, 0.0, 0.05, 0.02, 1.0),
+    (100.0, -5.0, 0.05, 0.02, 1.0),
+    (100.0, inf, 0.05, 0.02, 1.0),
+    (100.0, nan, 0.05, 0.02, 1.0),
+    (0.0, 100.0, 0.05, 0.02, 1.0),
+    (-5.0, 100.0, 0.05, 0.02, 1.0),
+    (inf, 100.0, 0.05, 0.02, 1.0),
+    (nan, 100.0, 0.05, 0.02, 1.0),
+    (100.0, 100.0, inf, 0.02, 1.0),
+    (100.0, 100.0, -inf, 0.02, 1.0),
+    (100.0, 100.0, nan, 0.02, 1.0),
+    (100.0, 100.0, 0.05, inf, 1.0),
+    (100.0, 100.0, 0.05, nan, 1.0),
+  ];
+  for (s, k, r, q, t) in off {
+    for ty in [OptionType::Call, OptionType::Put] {
+      let value = price(s, k, r, q, t, ty);
+      assert!(
+        value.is_nan(),
+        "{ty:?} at s {s}, k {k}, r {r}, q {q}, t {t}: {value}"
+      );
+    }
+  }
 }
 
 #[test]
@@ -348,13 +395,39 @@ fn price_strikes_holds_the_heston_references_of_fang_oosterlee() {
   }
 }
 
-/// One strike outside the domain is NaN alone; a range with no width is NaN at every strike.
+/// A strike off the domain is NaN alone and a spot, rate or maturity off it every strike; each
+/// value is `price`'s own, the payoff at expiry included.
 #[test]
 fn price_strikes_keeps_nan_to_the_strikes_it_belongs_to() {
   let model = BsmFourier { sigma: 0.25 };
   let engine = CosEngine::default();
-  let strikes = ndarray::array![90.0, -1.0, 110.0];
-  let prices = engine.price_strikes(
+  let (inf, nan) = (f64::INFINITY, f64::NAN);
+  let strikes = ndarray::array![90.0, -1.0, 0.0, inf, nan, 110.0];
+  let queries = [
+    (100.0, 0.05, 0.0, 1.0),
+    (100.0, 0.05, 0.0, 0.0),
+    (100.0, 0.05, 0.0, -1.0),
+    (100.0, 0.05, 0.0, nan),
+    (100.0, 0.05, 0.0, inf),
+    (0.0, 0.05, 0.0, 1.0),
+    (inf, 0.05, 0.0, 1.0),
+    (100.0, inf, 0.0, 1.0),
+    (100.0, 0.05, nan, 1.0),
+  ];
+  for (s, r, q, t) in queries {
+    for ty in [OptionType::Call, OptionType::Put] {
+      let prices = engine.price_strikes(&model, s, strikes.view(), r, q, t, ty);
+      for (&got, &k) in prices.iter().zip(&strikes) {
+        let want = engine.price(&model, s, k, r, q, t, ty);
+        let same = got == want || (got.is_nan() && want.is_nan());
+        assert!(
+          same,
+          "{ty:?} at s {s}, k {k}, r {r}, q {q}, t {t}: {got} vs {want}"
+        );
+      }
+    }
+  }
+  let live = engine.price_strikes(
     &model,
     100.0,
     strikes.view(),
@@ -363,26 +436,26 @@ fn price_strikes_keeps_nan_to_the_strikes_it_belongs_to() {
     1.0,
     OptionType::Put,
   );
-  assert!(prices[1].is_nan());
-  assert_eq!(
-    prices[0],
-    engine.price(&model, 100.0, 90.0, 0.05, 0.0, 1.0, OptionType::Put)
+  assert!(
+    live[0] > 0.0 && live[5] > 0.0 && live.slice(ndarray::s![1..5]).iter().all(|p| p.is_nan())
   );
-  assert_eq!(
-    prices[2],
-    engine.price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Put)
-  );
-
-  let degenerate = engine.price_strikes(
+  let expired = engine.price_strikes(
     &model,
     100.0,
     strikes.view(),
     0.05,
     0.0,
     0.0,
-    OptionType::Put,
+    OptionType::Call,
   );
-  assert!(degenerate.iter().all(|price| price.is_nan()));
+  assert_eq!(
+    expired.slice(ndarray::s![..3]).to_vec(),
+    [10.0, 101.0, 100.0]
+  );
+  for (s, r, q) in [(inf, 0.05, 0.0), (100.0, inf, 0.0), (100.0, 0.05, nan)] {
+    let off = engine.price_strikes(&model, s, strikes.view(), r, q, 1.0, OptionType::Put);
+    assert!(off.iter().all(|p| p.is_nan()), "s {s}, r {r}, q {q}: {off}");
+  }
   let none = engine.price_strikes(
     &model,
     100.0,

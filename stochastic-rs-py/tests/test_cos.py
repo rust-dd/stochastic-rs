@@ -67,3 +67,17 @@ def test_cos_engine_refuses_a_bad_grid_a_bad_option_type_and_a_model_it_cannot_p
     with pytest.raises(TypeError, match="model must be one of the Fourier models .*, got CarrMadanPricer"):
         engine.price(sr.CarrMadanPricer(), 100.0, 100.0, 0.05, 0.02, 1.0)
 
+
+def test_cos_engine_answers_the_payoff_at_expiry_and_nan_off_its_query_domain():
+    engine, model = sr.CosEngine(), sr.BSMFourier(0.25)
+    strikes = np.array([90.0, 0.0, 110.0])
+    prices = engine.price_strikes(model, 100.0, strikes, 0.05, 0.0, 1.0)
+    assert math.isnan(prices[1]) and math.isnan(engine.price(model, 100.0, 0.0, 0.05, 0.0, 1.0))
+    assert prices[0] == engine.price(model, 100.0, 90.0, 0.05, 0.0, 1.0) > 0.0
+    for s, r in ((math.inf, 0.05), (100.0, math.inf)):
+        assert np.isnan(engine.price_strikes(model, s, strikes, r, 0.0, 1.0)).all()
+        assert math.isnan(engine.price(model, s, 100.0, r, 0.0, 1.0))
+    assert list(engine.price_strikes(model, 100.0, strikes, 0.05, 0.0, 0.0)) == [10.0, 100.0, 0.0]
+    assert engine.price(model, 100.0, 110.0, 0.05, 0.0, 0.0, "put") == 10.0
+    for tau in (-1.0, math.nan, math.inf):
+        assert np.isnan(engine.price_strikes(model, 100.0, strikes, 0.05, 0.0, tau)).all()
