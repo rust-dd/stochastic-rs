@@ -138,15 +138,8 @@ impl<S: SeedExt> GbmMalliavinGreeks<S> {
     estimate(sum, sum_sq, self.n_paths)
   }
 
-  /// Compute all four Malliavin Greeks in a single MC pass.
-  ///
-  /// Sharing simulated paths between the four estimators ensures the
-  /// returned [`crate::traits::Greeks`] are mutually consistent — calling
-  /// `delta()`, `gamma()`, `vega()`, `rho()` individually each runs a
-  /// fresh simulation and would mix four different sample paths.
-  /// First-order Greeks not produced by this Malliavin formula
-  /// (`theta`, second-order `vanna`/`charm`/`volga`/`veta`) are returned
-  /// as NaN.
+  /// Delta, gamma, vega and rho from one simulation for the set, which `Unseeded` accessors do
+  /// not share; theta and the second-order Greeks are NaN.
   pub fn all_greeks(&self) -> crate::traits::Greeks {
     let (s_t, w_t) = self.simulate();
     let discount = (-self.r * self.tau).exp();
@@ -215,10 +208,7 @@ impl<S: SeedExt> crate::traits::GreeksExt for GbmMalliavinGreeks<S> {
     Some(GbmMalliavinGreeks::rho_greek(self))
   }
 
-  /// Override the trait default — calling `delta()`/`gamma()`/`vega()`/`rho()`
-  /// individually each runs an independent MC simulation, so the resulting
-  /// Greeks would mix four different sample paths. [`Self::all_greeks`] uses
-  /// a single shared simulation and returns mutually consistent estimators.
+  /// One simulation for the set, which `Unseeded` accessors do not share.
   fn greeks(&self) -> crate::traits::Greeks {
     self.all_greeks()
   }

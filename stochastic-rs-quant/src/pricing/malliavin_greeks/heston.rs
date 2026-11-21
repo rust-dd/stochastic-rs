@@ -381,11 +381,8 @@ impl<S: SeedExt> crate::traits::GreeksExt for HestonMalliavinGreeks<S> {
     Some(HestonMalliavinGreeks::vega_v0(self))
   }
 
-  /// Override the trait default — calling `delta()` and `gamma()`
-  /// individually each runs an independent Heston simulation, mixing two
-  /// disjoint sets of paths. This impl shares one MC pass between delta
-  /// and gamma. Vega still runs its own bumped-CRN simulation (it cannot
-  /// share paths with the Malliavin estimator).
+  /// Delta and gamma from one simulation for the set, which `Unseeded` accessors do not share;
+  /// vega from its own common-random-numbers bump.
   fn greeks(&self) -> crate::traits::Greeks {
     let (delta, gamma) = self.delta_gamma_single_pass();
     let vega = self.vega_v0().mean;
