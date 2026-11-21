@@ -133,8 +133,8 @@ fn a_maturity_of_minutes_matches_the_converged_integral() {
   }
 }
 
-/// 53 standard deviations from the money, where `P₁` and `P₂` cancel to nothing: Lewis quadrature
-/// at 30 digits (mpmath) puts the call at `1e-29`.
+/// 53 standard deviations out of the money: Lewis quadrature at 30 digits (mpmath) puts the call
+/// at `1e-29`.
 #[test]
 fn a_maturity_of_seconds_holds_its_price_far_from_the_money() {
   let pricer = HestonPricer::new(HestonParams { v0: 0.0025, ..P });
