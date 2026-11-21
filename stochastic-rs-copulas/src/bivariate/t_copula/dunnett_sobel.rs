@@ -25,8 +25,8 @@ fn beta_argument(d: f64, e: f64) -> (f64, f64, f64, f64) {
   (d.abs() / r, e / r, if d < 0.0 { -1.0 } else { 1.0 }, r)
 }
 
-/// `T_n(h, k; ρ)` where the forward bound `u[(28m + 20)S + 1.13√(m + 1) Σ (20D/r + π)G]` is in
-/// budget: `S` the terms' absolute sum, `G` each sum's `|g|`, `D/r` its angle's conditioning.
+/// `T_n(h, k; ρ)` where the bound `u[(28m + 20)S + 1.13√(m + 1) Σ (20D/r + π)G]` holds: `S` the
+/// absolute sum, `G` each `|g|`, `D/r` its angle's conditioning, `1.13√(m + 1)` the betas' slope.
 pub(crate) fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> Option<f64> {
   let rn = f64::from(n).sqrt();
   let (rh, rk) = (rn.hypot(h), rn.hypot(k));

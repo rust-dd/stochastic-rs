@@ -8,7 +8,7 @@
 //! C(u,v) = \frac{1 + (\theta-1)(u+v) - \sqrt{[1 + (\theta-1)(u+v)]^2 - 4 u v \theta (\theta-1)}}{2(\theta-1)}.
 //! $$
 //!
-//! Reference: Plackett (1965), 60(310), 516-522, DOI 10.1080/01621459.1965.10480807.
+//! Reference: Plackett (1965), J. Am. Stat. Assoc. 60, 516-522, DOI 10.1080/01621459.1965.10480807.
 //! Reference: Nelsen (2006), Example 3.11, Theorem 5.1.3, DOI 10.1007/0-387-28678-0.
 //! Reference: Johnson, M.E. (1987), Wiley, the Plackett generator, DOI 10.1002/9781118150740.
 
@@ -175,7 +175,7 @@ impl Plackett {
   }
 
   /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C` in `d = u − v` is `∫ (2L/a)(αF − θL²G) dL`,
-  /// `L = 2 − u − v`; Gauss–Legendre in `√L`, halved at `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
+  /// `L = 2 − u − v` on `u + v ≥ 1`; Gauss–Legendre in `√L`, halved at `θ^{−1/2}`, nil past `2⁻²²`.
   fn tau_complement(theta: f64) -> f64 {
     if theta == 1.0 {
       return 1.0;

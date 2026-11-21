@@ -20,8 +20,8 @@ pub(super) struct Frailty {
   pub(super) w: f64,
 }
 
-/// `α ln S` of the positive stable `S`, Laplace transform `e^{−t^α}`: Kanter's
-/// `S = (A(Θ)/W)^{(1−α)/α}` (Devroye 2009, eq. (2)) in logarithms, finite at every `0 < α < 1`.
+/// `α ln S` of the stable `S` of Laplace transform `e^{−t^α}`: Kanter's `S = (A(Θ)/W)^{(1−α)/α}`
+/// (Devroye 2009, eq. (2)) in logarithms, since the powers underflow to `0/0` below `α ≈ 0.01`.
 pub(super) fn stable_power<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
   let theta = std::f64::consts::PI * rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
   let ln_w = (-rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15).ln()).ln();

@@ -272,7 +272,7 @@ pub(crate) fn conditional_quantiles(
     .map_collect(|&y, &v| confine(quantile(y, v)))
 }
 
-/// Quantiles of a family given by `ln h(u | v)`: Brent's `zero` in `u` of `h − y` to `y = 1/2`, of
+/// Quantiles of `ln h(u | v)`: Brent's `zero` in `u ∈ [0, 1]` of `h − y` to `y = 1/2`, of
 /// `(1 − y) − (1 − h)` above, where `h` rounds away the tail, in `ln u` at a subnormal `y`.
 pub(crate) fn numerical_quantiles(
   y: ArrayView1<f64>,

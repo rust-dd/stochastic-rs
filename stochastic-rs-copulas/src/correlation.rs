@@ -9,7 +9,7 @@
 //! \rho = \sin\!\left(\frac{\pi\tau}{2}\right)
 //! $$
 //!
-//! Reference: Knight (1966), 61(314), 436–439, DOI 10.1080/01621459.1966.10480879.
+//! Reference: Knight (1966), J. Am. Stat. Assoc. 61, 436–439, DOI 10.1080/01621459.1966.10480879.
 //! Reference: Kendall, M. G. (1945), Biometrika 33(3), 239–251, DOI 10.1093/biomet/33.3.239.
 
 use std::borrow::Cow;

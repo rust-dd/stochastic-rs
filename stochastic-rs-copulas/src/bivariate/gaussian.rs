@@ -149,7 +149,7 @@ impl GaussianCopula {
   }
 
   /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`,
-  /// `d = x ∓ y` by `ρ`'s sign, from the exact gap where its plain rounding would pass `150ε`.
+  /// `d = x ∓ y` by `ρ`'s sign, within `1e-12·max(1, |ln c|)`; the exact gap past `150ε`.
   pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
     let (x, y) = (ndtri(u), ndtri(v));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);

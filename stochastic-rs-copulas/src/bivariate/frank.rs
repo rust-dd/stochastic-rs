@@ -6,7 +6,7 @@
 //!
 //! Domino's eq. (4.54) prints its fraction bar over the leading 1, which belongs outside it.
 //! Reference: Domino, K. (2018), arXiv:1811.10486, Example 4.3.2, eq. (4.54).
-//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Hofert et al. (2012), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 

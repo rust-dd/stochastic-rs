@@ -8,7 +8,7 @@
 //!
 //! Reference: Joe, H. (1997), Chapman & Hall, §5.1, DOI 10.1201/b13150.
 //! Reference: Nelsen, R.B. (2006), Table 4.1, family (4.2.6), DOI 10.1007/0-387-28678-0.
-//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Hofert et al. (2012), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 

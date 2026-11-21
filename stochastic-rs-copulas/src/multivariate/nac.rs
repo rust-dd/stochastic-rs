@@ -16,7 +16,7 @@
 //! Reference: Hofert, Mächler (2011), J. Stat. Softw. 39(9), 1-20, DOI 10.18637/jss.v039.i09.
 //! Reference: Hofert et al. (2012), 110, 133-150, DOI 10.1016/j.jmva.2012.02.019.
 //! Reference: Hofert, Pham (2013), J. Multivar. Anal. 118, 37-52, DOI 10.1016/j.jmva.2013.03.006.
-//! Reference: Gnedin, Pitman (2006), 138(3), 5674-5685, DOI 10.1007/s10958-006-0335-z.
+//! Reference: Gnedin, Pitman (2006), J. Math. Sci. 138, 5674-5685, DOI 10.1007/s10958-006-0335-z.
 //! Reference: McNeil (2008), J. Stat. Comput. Simul. 78(6), 567-581, DOI 10.1080/00949650701255834.
 //! Reference: Górecki et al. (2016), 46(1), 21-59, DOI 10.1007/s10844-014-0350-3.
 //! Reference: Górecki et al. (2017), 87(17), 3261-3324, DOI 10.1080/00949655.2017.1365148.

@@ -11,7 +11,7 @@ use crate::student_t::Law;
 const PANELS: usize = 16;
 
 impl Law {
-  /// `T⁻¹(u) − T⁻¹(u − g)` less `x̂ ≈ T⁻¹(u)`'s error: Newton on
+  /// `d = T⁻¹(u) − T⁻¹(u − g)` (`g = u + v − 1` or `u − v`), `x̂ ≈ T⁻¹(u)`: Newton on
   /// `(T(x̂) − T(x̂ − d))/f(x̂) = (g + r)/f(x̂)`, `r = T(x̂) − u`, from `start`, less `r/f(x̂)`.
   pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64, in_panels: bool) -> f64 {
     if g == 0.0 {

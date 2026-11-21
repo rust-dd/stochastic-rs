@@ -6,10 +6,10 @@
 //! \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Reference: Ali et al. (1978), 8(3), 405-412, DOI 10.1016/0047-259X(78)90063-5.
+//! Reference: Ali et al. (1978), J. Multivar. Anal. 8, 405-412, DOI 10.1016/0047-259X(78)90063-5.
 //! Reference: Nelsen, R.B. (2006), Example 4.23 / Table 4.1, DOI 10.1007/0-387-28678-0.
 //! Reference: Johnson, M.E. (1987), Wiley, DOI 10.1002/9781118150740.
-//! Reference: Hofert et al. (2011), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
+//! Reference: Hofert et al. (2012), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

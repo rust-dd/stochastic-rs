@@ -187,7 +187,7 @@ impl Clayton {
     Ok(u)
   }
 
-  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, exact as `θ → 0`;
+  /// `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t` (`−ln t` at `θ = 0`);
   /// `expm1(x)/θ` past `x = 1`, `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1` overflows.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
