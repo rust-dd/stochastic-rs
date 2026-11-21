@@ -42,6 +42,7 @@ mod bsm_spot;
 mod cgmysv_queries;
 mod credit_and_rates;
 mod crr;
+mod digital_domain;
 mod exotic_edges;
 mod exotics;
 mod expiry_census;

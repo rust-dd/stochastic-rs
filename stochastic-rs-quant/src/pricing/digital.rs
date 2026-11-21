@@ -444,8 +444,11 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
 }
 
 /// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$, the module's only copy: every price and
-/// Greek above goes through it or through [`bsm_d1_d2`].
+/// Greek above goes through it or [`bsm_d1_d2`]; NaN for a spot or strike that is not positive.
 fn bsm_d1(s: f64, k: f64, b: f64, sigma: f64, t: f64) -> f64 {
+  if not_positive(&[s, k]) {
+    return f64::NAN;
+  }
   ((s / k).ln() + (b + 0.5 * sigma * sigma) * t) / (sigma * t.sqrt())
 }
 
