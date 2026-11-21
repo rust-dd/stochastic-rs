@@ -26,39 +26,31 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::OptionType;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::rainbow::assert_volatilities;
 
 mod monte_carlo;
 
 pub use monte_carlo::BasketAverageType;
 pub use monte_carlo::McBasketPricer;
 
-/// Model-internal shape agreement for a basket pricer's three parameters.
-///
-/// The `who` prefix keeps the two callers' panic messages distinct, so a
-/// `should_panic` anchored on one cannot be satisfied by the other firing.
-fn assert_basket_shape(who: &str, weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
-  let n = sigma.len();
+/// One weight and one volatility per asset, a square `rho`, and each entry in its range.
+#[track_caller]
+fn assert_basket_model(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<f64>) {
+  let (n, shape) = (sigma.len(), rho.dim());
   assert!(
-    weights.len() == n && rho.shape() == [n, n],
-    "{who}::new: weights, sigma and rho must agree on the asset count \
-     (got weights {}, sigma {n}, rho {:?})",
-    weights.len(),
-    rho.shape()
+    weights.len() == n,
+    "weights must satisfy `weights.len() == sigma.len()`, got weights.len() = {:?}",
+    weights.len()
   );
-}
-
-/// Range checks for a basket pricer's volatilities and correlation matrix.
-fn assert_basket_parameters(who: &str, sigma: &Array1<f64>, rho: &Array2<f64>) {
-  for (i, &v) in sigma.iter().enumerate() {
-    assert!(
-      v >= 0.0,
-      "{who}::new: sigma[{i}] must be a non-negative volatility (got {v})"
-    );
-  }
+  assert!(
+    shape == (n, n),
+    "rho must satisfy `rho.dim() == (sigma.len(), sigma.len())`, got rho.dim() = {shape:?}"
+  );
+  assert_volatilities(sigma);
   for ((i, j), &v) in rho.indexed_iter() {
     assert!(
       (-1.0..=1.0).contains(&v),
-      "{who}::new: rho[{i}][{j}] must be in [-1, 1] (got {v})"
+      "rho[{i}][{j}] must satisfy `(-1.0..=1.0).contains(&rho[{i}][{j}])`, got rho[{i}][{j}] = {v:?}"
     );
   }
 }
@@ -135,11 +127,10 @@ pub struct GeometricBasketPricer {
 }
 
 impl GeometricBasketPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and `≥ 0` and every
   /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
-    assert_basket_shape("GeometricBasketPricer", &weights, &sigma, &rho);
-    assert_basket_parameters("GeometricBasketPricer", &sigma, &rho);
+    assert_basket_model(&weights, &sigma, &rho);
     Self {
       weights,
       sigma,
@@ -281,11 +272,10 @@ pub struct ArithmeticBasketLevyPricer {
 }
 
 impl ArithmeticBasketLevyPricer {
-  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma ≥ 0` and every
+  /// Panics unless `weights`, `sigma` and `rho` agree on the asset count, `sigma` is finite and `≥ 0` and every
   /// `rho` entry is in `[-1, 1]`; weight sum, symmetry and PSD-ness are deliberately unchecked.
   pub fn new(weights: Array1<f64>, sigma: Array1<f64>, rho: Array2<f64>) -> Self {
-    assert_basket_shape("ArithmeticBasketLevyPricer", &weights, &sigma, &rho);
-    assert_basket_parameters("ArithmeticBasketLevyPricer", &sigma, &rho);
+    assert_basket_model(&weights, &sigma, &rho);
     Self {
       weights,
       sigma,

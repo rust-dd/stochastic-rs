@@ -44,6 +44,7 @@ mod exotics;
 mod expiry_census;
 mod expiry_greeks;
 mod kemna_vorst;
+mod mc_queries;
 
 const R: f64 = 0.05;
 const Q: f64 = 0.01;

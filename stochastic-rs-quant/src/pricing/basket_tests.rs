@@ -229,7 +229,7 @@ mod construction_validation {
   /// with the third volatility silently ignored.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: weights, sigma and rho must agree on the asset count"
+    expected = "weights must satisfy `weights.len() == sigma.len()`, got weights.len() = 2"
   )]
   fn levy_rejects_a_surplus_volatility() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -243,7 +243,7 @@ mod construction_validation {
   /// the top-left block and nothing else.
   #[test]
   #[should_panic(
-    expected = "GeometricBasketPricer::new: weights, sigma and rho must agree on the asset count"
+    expected = "rho must satisfy `rho.dim() == (sigma.len(), sigma.len())`, got rho.dim() = (3, 3)"
   )]
   fn geometric_rejects_a_correlation_of_the_wrong_size() {
     let _ = GeometricBasketPricer::new(array![0.5, 0.5], array![0.20, 0.30], Array2::<f64>::eye(3));
@@ -252,7 +252,7 @@ mod construction_validation {
   /// `8.487146` against `10.894912`.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+    expected = "sigma[0] must satisfy `sigma[0].is_finite() && sigma[0] >= 0.0`, got sigma[0] = -0.2"
   )]
   fn levy_rejects_a_negative_volatility() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -265,7 +265,7 @@ mod construction_validation {
   /// `6.946344` against `10.224832`.
   #[test]
   #[should_panic(
-    expected = "GeometricBasketPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+    expected = "sigma[0] must satisfy `sigma[0].is_finite() && sigma[0] >= 0.0`, got sigma[0] = -0.2"
   )]
   fn geometric_rejects_a_negative_volatility() {
     let _ = GeometricBasketPricer::new(
@@ -279,7 +279,9 @@ mod construction_validation {
   /// and the geometric call comes back **`0.0`** — the `f64::max` trap
   /// again, this time on a model parameter rather than a price.
   #[test]
-  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][1] must be in [-1, 1] (got -5)")]
+  #[should_panic(
+    expected = "rho[0][1] must satisfy `(-1.0..=1.0).contains(&rho[0][1])`, got rho[0][1] = -5.0"
+  )]
   fn geometric_rejects_a_correlation_below_minus_one() {
     let _ = GeometricBasketPricer::new(
       array![0.5, 0.5],
@@ -291,7 +293,7 @@ mod construction_validation {
   /// A `rho` of −5 would price at `4.877058`, the basket's zero-volatility intrinsic.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: rho[0][1] must be in [-1, 1] (got -5)"
+    expected = "rho[0][1] must satisfy `(-1.0..=1.0).contains(&rho[0][1])`, got rho[0][1] = -5.0"
   )]
   fn levy_rejects_a_correlation_below_minus_one() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -305,7 +307,9 @@ mod construction_validation {
   /// instead of correlations is caught by the same check: `16.837128`
   /// against `10.224832`.
   #[test]
-  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][0] must be in [-1, 1] (got 3)")]
+  #[should_panic(
+    expected = "rho[0][0] must satisfy `(-1.0..=1.0).contains(&rho[0][0])`, got rho[0][0] = 3.0"
+  )]
   fn geometric_rejects_a_correlation_diagonal_that_is_not_one() {
     let _ = GeometricBasketPricer::new(
       array![0.5, 0.5],
@@ -316,7 +320,7 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "McBasketPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
+    expected = "sigma[1] must satisfy `sigma[1].is_finite() && sigma[1] >= 0.0`, got sigma[1] = -0.3"
   )]
   fn mc_basket_rejects_a_negative_volatility() {
     let _ = McBasketPricer::new(
@@ -329,7 +333,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "McBasketPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn mc_basket_rejects_a_zero_path_count() {
     let _ = McBasketPricer::new(
       array![0.5, 0.5],

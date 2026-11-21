@@ -21,20 +21,26 @@ use stochastic_rs_stochastic::mc::McEstimate;
 use crate::OptionType;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::off_domain;
 use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
+use crate::traits::RealExt;
 
-/// Floor a payoff at zero without letting the floor swallow a `NaN`.
-///
-/// `f64::max` returns the non-`NaN` operand, so `f64::NAN.max(0.0)` is
-/// `0.0` — a floor and a poison check run together into one plausible
-/// wrong answer. The floor itself is right: an exchange option and a
-/// spread option both pay `max(·, 0)`, and a value a few ulp below zero
-/// is round-off around a worthless contract. An undefined value has no
-/// payoff to floor, so it travels on. Same split as
-/// `pricing::fourier::pricer`'s `floor_price`.
-#[inline]
-fn floor_payoff(x: f64) -> f64 {
-  if x.is_nan() { x } else { x.max(0.0) }
+/// The two volatilities and the correlation every two-asset pricer takes.
+#[track_caller]
+pub(crate) fn assert_two_asset_model(sigma1: f64, sigma2: f64, rho: f64) {
+  assert!(
+    sigma1.is_finite() && sigma1 >= 0.0,
+    "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= 0.0`, got sigma1 = {sigma1:?}"
+  );
+  assert!(
+    sigma2.is_finite() && sigma2 >= 0.0,
+    "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = {sigma2:?}"
+  );
+  assert!(
+    (-1.0..=1.0).contains(&rho),
+    "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
+  );
 }
 
 /// Margrabe (1978) exchange option: pays $\max(S_1 - S_2, 0)$.
@@ -86,21 +92,10 @@ pub struct MargrabePricer {
 }
 
 impl MargrabePricer {
-  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: at `rho = 5` the variance goes
-  /// negative and the degenerate branch would return the discounted intrinsic.
+  /// Panics unless `sigma1`, `sigma2` are finite and `≥ 0` and `rho ∈ [-1, 1]`: at `rho = 5` the
+  /// variance goes negative and the degenerate branch would return the discounted intrinsic.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64) -> Self {
-    assert!(
-      sigma1 >= 0.0,
-      "MargrabePricer::new: sigma1 must be a non-negative volatility (got {sigma1})"
-    );
-    assert!(
-      sigma2 >= 0.0,
-      "MargrabePricer::new: sigma2 must be a non-negative volatility (got {sigma2})"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "MargrabePricer::new: rho must be in [-1, 1] (got {rho})"
-    );
+    assert_two_asset_model(sigma1, sigma2, rho);
     Self {
       sigma1,
       sigma2,
@@ -131,7 +126,7 @@ impl MargrabePricer {
     }
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
-      return floor_payoff(s1 * (-q1 * tau).exp() - s2 * (-q2 * tau).exp());
+      return (s1 * (-q1 * tau).exp() - s2 * (-q2 * tau).exp()).max_or_nan(0.0);
     }
     let (d1, d2) = Self::d1_d2(v_sq, s1, s2, q1, q2, tau);
     s1 * (-q1 * tau).exp() * norm_cdf(d1) - s2 * (-q2 * tau).exp() * norm_cdf(d2)
@@ -211,24 +206,13 @@ pub struct McSpreadPricer<S: SeedExt = Unseeded> {
 }
 
 impl McSpreadPricer {
-  /// Panics unless `sigma1, sigma2 ≥ 0`, `rho ∈ [-1, 1]` (the factor `√(1 − ρ²)` would absorb it)
-  /// and `n_paths > 0`.
+  /// Panics unless `sigma1`, `sigma2` are finite and `≥ 0`, `rho ∈ [-1, 1]` (the factor
+  /// `√(1 − ρ²)` would absorb it) and `n_paths >= 1`.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
-    assert!(
-      sigma1 >= 0.0,
-      "McSpreadPricer::new: sigma1 must be a non-negative volatility (got {sigma1})"
-    );
-    assert!(
-      sigma2 >= 0.0,
-      "McSpreadPricer::new: sigma2 must be a non-negative volatility (got {sigma2})"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "McSpreadPricer::new: rho must be in [-1, 1] (got {rho})"
-    );
+    assert_two_asset_model(sigma1, sigma2, rho);
     assert!(
       n_paths >= 1,
-      "McSpreadPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     Self {
       sigma1,
@@ -251,8 +235,8 @@ impl<S: SeedExt> McSpreadPricer<S> {
     }
   }
 
-  /// Either leg at one query point from one simulation; a NaN query coordinate prices NaN, where a
-  /// bare `max(0.0)` would floor every path to a worthless option.
+  /// Either leg at one query point from one simulation; NaN for a NaN query, `tau < 0` or a spot
+  /// that is not positive before expiry.
   pub fn price_option(
     &self,
     s1: f64,
@@ -264,6 +248,9 @@ impl<S: SeedExt> McSpreadPricer<S> {
     tau: f64,
     option_type: OptionType,
   ) -> McEstimate<f64> {
+    if off_domain(&[s1, s2], &[k, r, q1, q2], tau) {
+      return pathless(f64::NAN);
+    }
     let phi = match option_type {
       OptionType::Call => 1.0,
       OptionType::Put => -1.0,
@@ -287,7 +274,7 @@ impl<S: SeedExt> McSpreadPricer<S> {
       let z2 = rho * z1 + sqrt_one_minus_rho2 * z2_indep;
       let s1_t = s1 * (drift1 + vol1 * z1).exp();
       let s2_t = s2 * (drift2 + vol2 * z2).exp();
-      floor_payoff(phi * (s1_t - s2_t - k))
+      (phi * (s1_t - s2_t - k)).max_or_nan(0.0)
     };
     par_estimate(self.n_paths, (-r * tau).exp(), payoff_of)
   }
