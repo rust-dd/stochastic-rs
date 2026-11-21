@@ -1,4 +1,5 @@
 use super::*;
+use crate::calibration::CalibrationOptions;
 
 struct Rosenbrock {
   x: Array1<f64>,
@@ -258,7 +259,9 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     model: RefCell::new(Rosenbrock::new()),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
-    norm: Cell::new(0.0),
+    rows: RefCell::new(None),
+    bounds: None,
+    slopes: RefCell::new(None),
     sizes: RefCell::new(Array1::zeros(2)),
     flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),

@@ -1,10 +1,15 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::calibration::heston::params::EPS;
 use crate::calibration::heston::params::P_KAPPA;
+use crate::calibration::heston::params::P_RHO;
 use crate::calibration::heston::params::P_THETA;
 use crate::calibration::heston::params::RHO_BOUND;
 use crate::calibration::heston::params::THETA_MIN;
+use crate::calibration::least_squares::Room;
+use crate::calibration::periodic_slopes;
+use crate::calibration::stencil::room;
 use crate::pricing::heston::HestonParams;
 
 pub(super) const P_V0: (f64, f64) = (0.001, 0.25);
@@ -17,6 +22,17 @@ pub(super) const BOXED: [(f64, f64); 10] = [
   FACTOR[0], FACTOR[1], FACTOR[2], FACTOR[3], FACTOR[4], FACTOR[0], FACTOR[1], FACTOR[2],
   FACTOR[3], FACTOR[4],
 ];
+
+/// The box each raw coordinate is reflected into: `BOXED` with `ρ`'s range the reflection's own.
+pub(super) const FOLD: [(f64, f64); 10] = [
+  P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO, P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO,
+];
+
+/// Each raw coordinate's room before its boxed value meets a bound of `BOXED`.
+pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
+  let boxed = Array1::from(DoubleHestonParams::from(x.to_owned()).boxed());
+  room(&boxed, &BOXED, periodic_slopes(x, &FOLD).view())
+}
 
 /// Double Heston model parameters: two independent Heston factors.
 #[derive(Clone, Copy, Debug, PartialEq)]

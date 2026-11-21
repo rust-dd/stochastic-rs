@@ -1,5 +1,8 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
+
+use crate::calibration::least_squares::Room;
 
 /// `1e-3·|x|`, at least `1e-5`, every numeric Jacobian's step: `ε^{1/3}` for the Fourier walks'
 /// `ε ≈ 1e-8` (Nocedal & Wright 2006, ch. 8), shared by `HestonPricer` at a `1e-6` truncation.
@@ -28,6 +31,22 @@ pub(crate) fn derivative(
   }
   let (below, above) = (lo.max_or_nan(x - h), hi.min_or_nan(x + h));
   (residuals(above) - residuals(below)) / (above - below)
+}
+
+/// `point`'s `Room` in `bounds`: a coordinate whose map's slope is −1 falls as its value rises.
+pub(crate) fn room(point: &Array1<f64>, bounds: &[(f64, f64)], slopes: ArrayView1<f64>) -> Room {
+  let places = point.iter().zip(bounds).zip(slopes);
+  let (lower, upper) = places
+    .map(|((&x, &(lo, hi)), &slope)| match slope < 0.0 {
+      true => ((hi - x).max(0.0), (x - lo).max(0.0)),
+      false => ((x - lo).max(0.0), (hi - x).max(0.0)),
+    })
+    .unzip::<_, _, Vec<_>, Vec<_>>();
+  Room {
+    down: Array1::from_vec(lower),
+    up: Array1::from_vec(upper),
+    strip: point.mapv(step),
+  }
 }
 
 #[cfg(test)]

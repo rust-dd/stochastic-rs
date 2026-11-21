@@ -23,12 +23,10 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
-use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
-use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
@@ -262,73 +260,20 @@ impl LmReport {
   }
 }
 
-/// One fit's trail: `residuals` stages the point it evaluated, and `accept` keeps it.
-pub(crate) struct Trail<P> {
-  entries: Vec<CalibrationHistory<P>>,
-  pending: Option<CalibrationHistory<P>>,
-  negated: bool,
-}
-
-impl<P: Clone> Trail<P> {
-  /// The trail of a fit whose rows are market − model.
-  pub(crate) fn new() -> Self {
-    Self {
-      entries: Vec::new(),
-      pending: None,
-      negated: false,
-    }
-  }
-
-  /// The trail of a fit whose rows are model − market, which an entry stores negated.
-  pub(crate) fn negated() -> Self {
-    Self {
-      negated: true,
-      ..Self::new()
-    }
-  }
-
-  /// `residuals` are the fit's rows at `params`; a no-op unless `options.record_history`.
-  pub(crate) fn stage(
-    &mut self,
-    options: &CalibrationOptions,
-    market: &[f64],
-    model: &[f64],
-    params: &P,
-    residuals: ArrayView1<f64>,
-  ) {
-    if !options.record_history {
-      return;
-    }
-    let residuals = if self.negated {
-      -&residuals
-    } else {
-      residuals.to_owned()
-    };
-    let loss = CalibrationLossScore::compute_selected(market, model, options.loss_metrics);
-    let entry = CalibrationHistory::new(self.entries.len(), params.clone(), residuals, loss);
-    self.pending = Some(entry);
-  }
-
-  pub(crate) fn accept(&mut self) {
-    self.entries.extend(self.pending.take());
-  }
-
-  pub(crate) fn into_entries(self) -> Vec<CalibrationHistory<P>> {
-    self.entries
-  }
-}
-
 struct Objective<P> {
   model: RefCell<P>,
   coordinates: RefCell<Option<Array1<f64>>>,
   evaluations: Cell<usize>,
-  /// `‖r‖` of the last residual call, which precedes each Jacobian basin asks for at its point.
-  norm: Cell<f64>,
+  /// The rows of the last residual call at `coordinates`; basin asks for each Jacobian after them.
+  rows: RefCell<Option<Array1<f64>>>,
   /// The largest `|xⱼ|` a Jacobian was asked at, the size the flat rule gives each column.
   sizes: RefCell<Array1<f64>>,
   flat: Cell<bool>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
+  bounds: Option<Bounds>,
+  /// The Jacobian at `coordinates` before a column is held, for a restart from the same point.
+  slopes: RefCell<Option<Array2<f64>>>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
@@ -338,6 +283,8 @@ impl<P: LeastSquaresProblem> Objective<P> {
     if coordinates.as_ref() != Some(x) {
       model.set_params(x.view());
       *coordinates = Some(x.clone());
+      *self.rows.borrow_mut() = None;
+      *self.slopes.borrow_mut() = None;
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
     model
@@ -391,7 +338,7 @@ impl<P: LeastSquaresProblem> Residual for &Objective<P> {
     if self.evaluations.get() == 1 && residuals.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
-    self.norm.set(residuals.dot(&residuals).sqrt());
+    *self.rows.borrow_mut() = Some(residuals.clone());
     Ok(residuals)
   }
 }
@@ -400,11 +347,20 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
   type Jacobian = Array2<f64>;
 
   fn jacobian(&self, x: &Self::Param) -> Result<Self::Jacobian, Self::Error> {
-    let model = self.at(x);
-    let jacobian = pulled_jacobian(&*model, self.regularization.as_ref()).ok_or(())?;
+    let mut model = self.at(x);
+    let pull = self.regularization.as_ref();
+    let mut jacobian = match self.slopes.borrow_mut().take() {
+      Some(jacobian) => jacobian,
+      None => pulled_jacobian(&*model, pull).ok_or(())?,
+    };
     if jacobian.iter().any(|v| !v.is_finite()) {
       return Err(());
     }
+    let mut rows = self.rows.borrow_mut();
+    let residuals = match rows.take() {
+      Some(residuals) => residuals,
+      None => pulled_residuals(&mut *model, pull).ok_or(())?,
+    };
     // Moré's ‖Dx‖ of (8.3), D the column norms, x at its largest so far: a minimum near the
     // origin is not flat. A fit that never left the origin is sized by ‖D‖ alone.
     let mut sizes = self.sizes.borrow_mut();
@@ -418,27 +374,55 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
         let size = if origin { 1.0 } else { *x };
         column.dot(&column) * size * size
       });
-    let norm = self.norm.get();
+    let norm = residuals.dot(&residuals).sqrt();
     if norm > 0.0 && scaled.sum::<f64>().sqrt() <= f64::EPSILON * norm {
       self.flat.set(true);
       return Err(());
     }
-    Ok(jacobian)
+    let held = match &self.bounds {
+      Some(bounds) => {
+        *self.slopes.borrow_mut() = Some(jacobian.clone());
+        bounds.hold(x, &mut jacobian, &residuals)
+      }
+      None => Ok(()),
+    };
+    *rows = Some(residuals);
+    held.map(|()| jacobian)
   }
 }
 
 /// Runs basin with the calibrators' existing relative tolerances and residual budget.
 pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, LmReport) {
+  drive(problem, options, None)
+}
+
+/// [`minimize`] for a problem whose map folds or clamps at a box: a coordinate whose step reaches
+/// a bound the cost falls across, as `rooms` and `in_box::cut` tell, is set on it and held there.
+pub(crate) fn minimize_in_box<P: LeastSquaresProblem>(
+  problem: P,
+  options: LmOptions,
+  rooms: impl Fn(ArrayView1<f64>) -> Room + 'static,
+) -> (P, LmReport) {
+  drive(problem, options, Some(Box::new(rooms)))
+}
+
+fn drive<P: LeastSquaresProblem>(
+  problem: P,
+  options: LmOptions,
+  rooms: Option<Rooms>,
+) -> (P, LmReport) {
   let initial = problem.params();
   let max_iter = options.iteration_cap(initial.len());
   let objective = Objective {
     model: RefCell::new(problem),
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
-    norm: Cell::new(0.0),
+    rows: RefCell::new(None),
     sizes: RefCell::new(Array1::zeros(initial.len())),
     flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
+    bounds: rooms.map(|rooms| Bounds::new(rooms, initial.len())),
+    slopes: RefCell::new(None),
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
   let gradient_tolerance = if options.tolerance.is_some() {
@@ -463,23 +447,34 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
       },
     );
   }
-  let solver = LevenbergMarquardt::<Array1<f64>, Array2<f64>>::new()
-    .with_damping(LmDamping::TrustRegion)
-    .with_absolute_gradient_tolerance(None)
-    .with_gradient_orthogonality_tolerance(gradient_tolerance)
-    .with_relative_model_reduction_tolerance(tolerance)
-    .with_relative_trust_radius_tolerance(tolerance);
-  let (best, reason, iterations, started) = if options.pivoted_qr {
-    run(
+  let solver = || {
+    LevenbergMarquardt::<Array1<f64>, Array2<f64>>::new()
+      .with_damping(LmDamping::TrustRegion)
+      .with_absolute_gradient_tolerance(None)
+      .with_gradient_orthogonality_tolerance(gradient_tolerance)
+      .with_relative_model_reduction_tolerance(tolerance)
+      .with_relative_trust_radius_tolerance(tolerance)
+  };
+  let solve = |from, budget, max_iter, opens| match options.pivoted_qr {
+    true => run(
       &objective,
-      solver.with_pivoted_qr(),
-      initial,
+      solver().with_pivoted_qr(),
+      from,
       budget,
       max_iter,
-    )
-  } else {
-    run(&objective, solver, initial, budget, max_iter)
+      opens,
+    ),
+    false => run(&objective, solver(), from, budget, max_iter, opens),
   };
+  let Run {
+    best,
+    reason,
+    iterations,
+    started,
+  } = restarted(&objective, initial, (budget, max_iter), solve);
+  if let Some(bounds) = &objective.bounds {
+    bounds.watch.set(false);
+  }
   let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
     false => 0.0,
@@ -508,13 +503,23 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   )
 }
 
+/// One solve: the last point it accepted, why it stopped, and its stepper iterations.
+struct Run {
+  best: Array1<f64>,
+  reason: TerminationReason,
+  iterations: usize,
+  started: bool,
+}
+
+/// `opens`: the start is a point the trail does not hold yet.
 fn run<'a, P, So>(
   objective: &'a Objective<P>,
   solver: So,
   initial: Array1<f64>,
   budget: usize,
   max_iter: usize,
-) -> (Array1<f64>, TerminationReason, usize, bool)
+  opens: bool,
+) -> Run
 where
   P: LeastSquaresProblem,
   So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
@@ -531,7 +536,9 @@ where
     Ok(mut stepper) => {
       started = true;
       // `into_stepper` evaluated the start last, so the trail opens with it.
-      objective.model.borrow_mut().accept();
+      if opens {
+        objective.model.borrow_mut().accept();
+      }
       loop {
         let cost = stepper.state().best_cost();
         match stepper.step() {
@@ -551,8 +558,22 @@ where
       }
     }
   };
-  (best, reason, iterations, started)
+  Run {
+    best,
+    reason,
+    iterations,
+    started,
+  }
 }
+
+mod in_box;
+mod trail;
+
+use in_box::Bounds;
+pub(crate) use in_box::Room;
+use in_box::Rooms;
+use in_box::restarted;
+pub(crate) use trail::Trail;
 
 #[cfg(test)]
 pub(crate) mod checks;

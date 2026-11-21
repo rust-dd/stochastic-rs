@@ -240,3 +240,65 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     }
   }
 }
+
+/// `λ` beside 0 and reflected below it, `μ_J` at the top of its range, `ρ` on its clamp.
+#[test]
+fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
+  use super::params::room_in_box;
+  let base = ndarray::array![0.04, 1.5, 0.04, 0.3, -0.5, 0.5, -0.05, 0.1];
+  let rooms = |j: usize, value: f64| {
+    let mut x = base.clone();
+    x[j] = value;
+    let room = room_in_box(x.view());
+    (room.down[j], room.up[j])
+  };
+  let near = |(down, up): (f64, f64), want: (f64, f64)| {
+    (down - want.0).abs() < 1e-12 && (up - want.1).abs() < 1e-12
+  };
+  for (j, value, want) in [
+    (5, 5e-6, (5e-6, 10.0 - 5e-6)),
+    (5, -5e-6, (10.0 - 5e-6, 5e-6)),
+    (6, 0.4999, (0.9999, 1e-4)),
+    (6, 0.5001, (1e-4, 0.9999)),
+    (4, -0.99995, (0.0, 1.9998)),
+    (4, 0.9995, (1.9994, 4e-4)),
+  ] {
+    assert!(
+      near(rooms(j, value), want),
+      "{j} at {value}: {:?}",
+      rooms(j, value)
+    );
+  }
+}
+
+/// From `START` the cost falls across `σ_J`'s lower bound. A held coordinate does not move, so a
+/// raw value two successive Jacobians see within the stencil step of the fold is the fold itself.
+#[test]
+fn a_jump_volatility_held_at_its_bound_is_on_it_not_beside_it() {
+  use std::cell::RefCell;
+  use std::rc::Rc;
+
+  use super::loss::SvjProblem;
+  use super::params::P_SIGMA_J;
+  use super::params::room_in_box;
+  use crate::calibration::least_squares::minimize_in_box;
+  let options = CalibrationOptions::default().with_max_iterations(150);
+  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes()).with_options(options);
+  let seen = Rc::new(RefCell::new(Vec::new()));
+  let log = seen.clone();
+  let rooms = move |x: ndarray::ArrayView1<f64>| {
+    log.borrow_mut().push(x[7] - P_SIGMA_J.0);
+    room_in_box(x)
+  };
+  let lm = calibrator.options.lm(true, 8).unwrap();
+  minimize_in_box(SvjProblem::new(&calibrator, START), lm, rooms);
+  let path = seen.take();
+  let held = path
+    .windows(2)
+    .filter(|at| at[0] == at[1] && at[0].abs() <= 1e-5);
+  let beside = held.clone().filter(|at| at[0] != 0.0).count();
+  assert!(
+    held.count() > 0 && beside == 0,
+    "held beside the fold at {beside} Jacobians"
+  );
+}
