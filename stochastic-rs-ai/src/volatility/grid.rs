@@ -1,7 +1,7 @@
 //! Strike-maturity grid of the shipped training sets (zero rates, `S0 = 1`), from
 //! <https://github.com/amuguruza/NN-StochVol-Calibrations>; a surface is flat and maturity-major.
 //!
-//! Reference: Horvath, Muguruza & Tomas, "Deep Learning Volatility", arXiv:1901.09647, §4.1.1 (this grid)
+//! Reference: Horvath et al. (2019), arXiv:1901.09647, §4.1.1.
 
 /// The notebooks' strike axis, ascending: `K / S0` for the Bergomi sets, `S0 / K` for Heston
 /// (see [`heston::STRIKES`](super::heston::STRIKES)).
