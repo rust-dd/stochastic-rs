@@ -134,7 +134,7 @@ fn sabr_price_call_is_hagan_vol_through_black_scholes() {
   assert_eq!(m.price_call(S, K, R, Q, TAU), want);
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike/maturity grid.
 #[test]
 fn sabr_one_model_prices_a_grid() {
   let m = golden_model();

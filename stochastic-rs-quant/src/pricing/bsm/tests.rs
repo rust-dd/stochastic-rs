@@ -188,8 +188,7 @@ fn bsm_dates_match_tau_pricing() {
   assert!((iv - 0.2).abs() < 1e-6, "IV from date-derived tau: {iv}");
 }
 
-/// The full Greek set stays finite at the money and keeps the signs the
-/// pre-query methods produced.
+/// The full Greek set stays finite at the money, each Greek with its pinned sign.
 #[test]
 fn bsm_greeks_second_order_are_finite() {
   let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
@@ -209,7 +208,7 @@ fn bsm_greeks_second_order_are_finite() {
   assert!(model.vega(s, k, r, 0.0, tau) > 0.0);
 }
 
-/// Greeks pinned to the values the pre-query methods produced at [`Q`].
+/// Greeks pinned at [`Q`].
 #[test]
 fn bsm_greeks_match_pre_refactor_goldens() {
   let (s, k, r, q, tau) = Q;

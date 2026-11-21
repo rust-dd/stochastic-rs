@@ -296,7 +296,7 @@ fn hscm_model_pricer_goldens() {
   let m = paper_model();
   let (s, k, r, q, tau) = GOLDEN_QUERY;
 
-  // q = 0, the shape the pre-query struct defaulted to.
+  // The dividend-free query, `q = 0`.
   let CallPut { call: c0, put: p0 } = m.price_call_put(s, k, r, 0.0, tau);
   assert!((c0 - 4.82832421223066).abs() < TOL, "q=0 call {c0}");
   assert!((p0 - 5.963738072916939).abs() < TOL, "q=0 put {p0}");
@@ -384,7 +384,7 @@ fn hscm_preserves_nan_market_inputs() {
   }
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike/maturity grid.
 #[test]
 fn hscm_one_model_prices_a_grid() {
   let m = paper_model();

@@ -258,7 +258,7 @@ fn fd_price_put_overrides_vanilla_parity() {
   );
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike/maturity grid.
 #[test]
 fn fd_one_model_prices_a_grid() {
   let model = FiniteDifferencePricer::new(

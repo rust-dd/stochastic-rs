@@ -312,7 +312,7 @@ fn merton_price_put_overrides_vanilla_parity() {
   );
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike/maturity grid.
 #[test]
 fn merton_one_model_prices_a_grid() {
   let m = merton(0.5, 0.4, 10);
