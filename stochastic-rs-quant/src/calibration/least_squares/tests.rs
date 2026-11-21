@@ -264,6 +264,7 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     slopes: RefCell::new(None),
     sizes: RefCell::new(Array1::zeros(2)),
     flat: Cell::new(false),
+    reach: Cell::new(0.0),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),
   };
   let x = Array1::from_vec(vec![-1.2, 1.0]);
