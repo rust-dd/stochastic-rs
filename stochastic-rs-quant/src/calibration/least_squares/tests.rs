@@ -1,4 +1,5 @@
 use super::*;
+use crate::calibration::CalibrationOptions;
 
 struct Rosenbrock {
   x: Array1<f64>,
