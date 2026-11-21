@@ -87,10 +87,49 @@ fn the_euler_variance_is_hestons_full_truncation_path_bit_for_bit() {
   assert!(worst < 1e-12, "{worst:e} from `Heston`'s path");
 }
 
-/// A carried variance below zero steps as on the host, and the family reports its positive part.
+fn family_report(state: [f64; 4], params: &[f64]) -> [f64; 4] {
+  let mut out = [0.0; 4];
+  host_report(
+    Family::HestonHullWhite2F,
+    &state,
+    params,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    &mut out,
+  );
+  out
+}
+
+/// A carried variance below zero steps as on the host, and the family reports its positive part
+/// and `S₀ exp(·)`, which is `S₀` itself at the start.
 #[test]
 fn the_euler_device_family_carries_a_signed_variance_and_reports_its_positive_part() {
-  let model = paper(33, 1).with_rho(rho_full());
+  let model = paper(33, 1).with_rho(rho_full()).with_s0(97.3);
   let (state, dz) = ([0.2, -0.013, 0.02, 0.01], [0.21, -0.4, 0.1, -0.05]);
   let (host, _) = model.euler_step(0.033, model.dt(), state, dz);
   let spec = Euler::euler_spec(&model);
@@ -98,39 +137,7 @@ fn the_euler_device_family_carries_a_signed_variance_and_reports_its_positive_pa
   assert_eq!(device, host);
   assert!(host[1] > state[1], "a truncated variance drifts up by κθΔ");
   let (_, params) = Euler::euler_spec(&model).encode();
-  let mut reported = [0.0; 4];
-  host_report(
-    Family::HestonHullWhite2F,
-    &state,
-    &params,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    &mut reported,
-  );
-  assert_eq!(reported, [state[0].exp(), 0.0, state[2], state[3]]);
+  let reported = family_report(state, &params);
+  assert_eq!(reported, [97.3 * state[0].exp(), 0.0, state[2], state[3]]);
+  assert_eq!(family_report([0.0, 0.2, 0.03, 0.0], &params)[0], 97.3);
 }

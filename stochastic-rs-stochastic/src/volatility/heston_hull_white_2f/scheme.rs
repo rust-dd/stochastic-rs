@@ -107,6 +107,7 @@ impl HybridScheme for Euler {
         l[(3, 2)],
         l[(3, 3)],
       ],
+      s0: model.s0,
     }
   }
 
@@ -222,6 +223,7 @@ impl HybridScheme for AndersenQe {
         lq[(3, 2)],
         lq[(3, 3)],
       ],
+      s0: model.s0,
     }
   }
 

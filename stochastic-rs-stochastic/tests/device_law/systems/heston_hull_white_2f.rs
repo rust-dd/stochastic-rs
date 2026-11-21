@@ -110,6 +110,29 @@ fn heston_hull_white_2f_agrees_with_the_cpu_law() {
   );
 }
 
+/// The kernel steps `ln(S/S₀)` from zero and reports `S₀ exp(·)`, so the first spot is `S₀` itself
+/// under both families, where `exp(ln S₀)` is an ulp off.
+#[test]
+fn heston_hull_white_2f_starts_at_the_spot_itself_on_the_device() {
+  for s0 in [97.3_f32, 0.37, 1234.5] {
+    let euler = hybrid(41).with_s0(s0).on::<Device>().sample();
+    assert_eq!(euler.s[0], s0, "Euler");
+    let mut rho = hybrid(41).rho().clone();
+    for (i, j) in [(1, 2), (2, 1), (1, 3), (3, 1)] {
+      rho[(i, j)] = 0.0;
+    }
+    let qe = hybrid(41).with_s0(s0).with_rho(rho).qe();
+    assert_eq!(qe.on::<Device>().sample().s[0], s0, "QE");
+    let (host, device) = (hybrid(41).with_s0(s0).sample_par(M), euler);
+    let mean = host.iter().map(|p| p.s[64] as f64).sum::<f64>() / M as f64;
+    assert!(
+      (device.s[64] as f64 / mean - 1.0).abs() < 0.6,
+      "the device's spot {} is not on the host's scale {mean}",
+      device.s[64]
+    );
+  }
+}
+
 /// Outside Feller's condition the kernel carries a signed variance and reports its positive part:
 /// at zero somewhere, at the exact CIR mean where absorption sits 10 % above it.
 #[test]

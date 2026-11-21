@@ -695,6 +695,7 @@ pub enum EulerSpec<T: FloatExt> {
     sigma1: T,
     sigma2: T,
     l: [T; 10],
+    s0: T,
   },
   /// [`HestonHullWhite2F`](Self::HestonHullWhite2F) under the quadratic-exponential variance, its
   /// constants as [`AndersenQe`](Self::AndersenQe)'s; `l` is the `(v, r, u, x)` factor past `v`.
@@ -711,6 +712,7 @@ pub enum EulerSpec<T: FloatExt> {
     sigma1: T,
     sigma2: T,
     l: [T; 6],
+    s0: T,
   },
 }
 

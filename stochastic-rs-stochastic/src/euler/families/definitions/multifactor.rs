@@ -112,7 +112,8 @@ macro_rules! euler_multifactor {
   /// Heston's log-spot on two-factor Hull-White rates by Euler under full truncation; `l` is the
   /// lower factor of the `(x, v, r, u)` correlation, and the spot reads the rate's trapezoid.
   132 => HestonHullWhite2F {
-    kappa, theta, sigma, a, b, sigma1, sigma2, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33
+    kappa, theta, sigma, a, b, sigma1, sigma2, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33,
+    s0
   }
     state (y, v, r, w)
     noise (dz0, dz1, dz2, dz3)
@@ -129,12 +130,12 @@ macro_rules! euler_multifactor {
       rn,
       w - b * w * $dt + sigma2 * ew
     }
-    report { exp(y), positive(v), r, w },
+    report { s0 * exp(y), positive(v), r, w },
 
   /// [`HestonHullWhite2F`](Family::HestonHullWhite2F) under Andersen's quadratic-exponential
   /// variance: `l` factors `(v, r, u, x)` with the rate-variance correlations zero.
   133 => HestonHullWhite2FQe {
-    theta, e_kd, c1, c2, k0, k1, k2, a, b, sigma1, sigma2, l11, l21, l22, l31, l32, l33
+    theta, e_kd, c1, c2, k0, k1, k2, a, b, sigma1, sigma2, l11, l21, l22, l31, l32, l33, s0
   }
     state (y, v, r, w)
     noise (dzv, dzr, dz3, dz4)
@@ -159,7 +160,7 @@ macro_rules! euler_multifactor {
       rn,
       w - b * w * $dt + sigma2 * (l21 * dzr + l22 * dz3)
     }
-    report { exp(y), v, r, w },
+    report { s0 * exp(y), v, r, w },
     }
   };
 }
