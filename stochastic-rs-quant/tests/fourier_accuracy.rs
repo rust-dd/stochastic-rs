@@ -108,9 +108,9 @@ fn lewis_holds_a_price_whose_compensator_turns_its_phase() {
   let (s, r, q, tau) = (100.0, 0.03, 0.01, 15.0);
   // The last strike is the forward, where `κ = 0`.
   for (k, want) in [
-    (100.0, 40.091_698_837_618_036),
+    (100.0, 40.091_698_837_618_03),
     (80.0, 46.355_092_420_111_84),
-    (134.985_880_757_600_32, 31.704_182_907_960_47),
+    (134.985_880_757_600_3, 31.704_182_907_960_47),
   ] {
     let name = format!("k = {k}");
     assert_within(&name, model.price_call(s, k, r, q, tau), want, 1e-11);
