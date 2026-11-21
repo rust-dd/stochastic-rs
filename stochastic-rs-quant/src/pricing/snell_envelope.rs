@@ -1,12 +1,9 @@
-//! # Snell Envelope (American Options)
-//!
-//! Discrete-time Snell envelope recursion on a CRR binomial tree:
+//! Snell envelope (American options) on a CRR binomial tree, one two-state step at a time:
 //! $$
 //! Y_N = g(S_N),\qquad
 //! Y_i = \max\left(g(S_i), e^{-r\Delta t}\mathbb{E}^{\mathbb{Q}}[Y_{i+1}\mid\mathcal{F}_i]\right).
 //! $$
 //!
-//! With two-state transition each step:
 //! $$
 //! \mathbb{E}^{\mathbb{Q}}[Y_{i+1}\mid\mathcal{F}_i]
 //! = pY_{i+1}^{u} + (1-p)Y_{i+1}^{d},
@@ -17,9 +14,7 @@
 //! p=\frac{e^{(r-q)\Delta t}-d}{u-d}.
 //! $$
 //!
-//! Source:
-//! - Snell envelope / optimal stopping foundation
-//! - Cox-Ross-Rubinstein binomial tree discretization
+//! Reference: Cox, Ross & Rubinstein (1979), J. Financ. Econ. 7(3), 229–263
 
 use super::digital::vanilla_payoff;
 use crate::OptionType;
@@ -171,9 +166,8 @@ impl SnellEnvelopePricer {
 
     for i in (0..self.steps).rev() {
       let mut s_i0 = s * d.powi(i as i32);
-      // NaN means "no node at this time step was worth exercising"; the
-      // `is_finite` check below then omits the step from the boundary rather
-      // than recording a spot of 0. Never escapes this function.
+      // `NaN` marks a step with no node worth exercising, which the `is_finite` check below omits
+      // from the boundary instead of recording a spot of 0.
       let mut boundary_s = f64::NAN;
 
       for j in 0..=i {
@@ -223,12 +217,8 @@ impl ModelPricer for SnellEnvelopePricer {
     self.price_american(s, k, r, q, tau, OptionType::Call)
   }
 
-  /// Overrides the trait's vanilla-parity default. European put-call parity
-  /// does not hold for an American option: the put carries an
-  /// early-exercise premium the call does not, so the default would
-  /// understate it. This re-runs the same Snell recursion with the put
-  /// payoff, which is what the pre-query `calculate_call_put().1` did — see
-  /// `snell_price_put_overrides_vanilla_parity`.
+  /// Not the parity default: an American put carries an early-exercise premium the call does not,
+  /// so the put re-runs the Snell recursion on its own payoff.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_american(s, k, r, q, tau, OptionType::Put)
   }
@@ -298,9 +288,7 @@ mod tests {
   /// bit that differs between aarch64-darwin and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
-  /// Captured from `PricerExt::calculate_call_put()` and
-  /// `price_detailed(Put)` **before** the `ModelPricer` reshape. The
-  /// reshape is an API change only.
+  /// Goldens of the call, the put and `price_detailed(Put)`.
   #[test]
   fn snell_model_pricer_matches_pre_refactor_goldens() {
     let model = SnellEnvelopePricer::new(V, STEPS);
@@ -321,14 +309,8 @@ mod tests {
       "{}",
       d.early_exercise_premium
     );
-    // A range, not the exact 184 this returns on the dev machine. The
-    // count comes from a strict `exercise > am_cont + 1e-12` comparison
-    // over 200 tree slices, so a node sitting within one ULP of the
-    // threshold can flip on a target with different FMA contraction —
-    // and the three price assertions above already pin the numerics to
-    // 1e-12. What this assertion is actually for is that the boundary is
-    // populated and spans a plausible fraction of the tree, which a range
-    // captures without hostage-taking a machine-specific integer.
+    // A range, not this machine's exact 184: the strict `exercise > am_cont + 1e-12` over 200
+    // slices can flip a node within an ulp under another FMA contraction; the prices pin `1e-12`.
     assert!(
       (150..=220).contains(&d.exercise_boundary.len()),
       "exercise boundary length {} outside the expected range",

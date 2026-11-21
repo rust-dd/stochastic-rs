@@ -14,10 +14,7 @@ use stochastic_rs_distributions::special::gamma;
 use crate::pricing::fourier::Cumulants;
 use crate::pricing::fourier::FourierModelExt;
 
-/// Parameters for the CGMYSV process (Eq. 4).
-///
-/// Combines a standard Cgmy jump process $Z_t$ with a Cir stochastic
-/// time change $\mathcal{V}_t = \int_0^t v_s\,ds$.
+/// CGMYSV parameters (Eq. 4): a CGMY jump process `Z_t` run on the CIR clock `𝒱_t = ∫₀ᵗ v_s ds`.
 #[derive(Debug, Clone)]
 pub struct CgmysvParams {
   /// Activity parameter $\alpha \in (0,2)$ (Y in Cgmy notation).
@@ -80,7 +77,7 @@ impl CgmysvParams {
 
   /// CIR joint chf $E[e^{ia\mathcal V_t + ib v_t} \mid v_0 = x]$ (Eq. 2) as one exponential over
   /// `e^{−γt}`, which neither overflows at a small `ζ` nor leaves the principal log branch.
-  /// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+  /// Reference: Albrecher et al. (2007), Wilmott Mag., 83–92
   pub fn cir_joint_chf(&self, t: f64, a: Complex64, b: Complex64, x: f64) -> Complex64 {
     let kappa = self.kappa;
     let zeta2 = self.zeta * self.zeta;
@@ -129,7 +126,7 @@ impl CgmysvParams {
 
   /// The `t` from which `omega` is NaN, `psi` being `ψ(−i)`: 0 at `λ₊ ≤ 1`, else where the Riccati
   /// `B' = ½ζ²B² − κB + psi`, `B(0) = ρ` blows up and `E[e^{L_t}]` with it, `∞` if it never does.
-  /// Andersen & Piterbarg (2007), Finance Stoch. 11(1), 29–50.
+  /// Reference: Andersen & Piterbarg (2007), Finance Stoch. 11(1), 29–50
   fn explosion_time(&self, psi: f64) -> f64 {
     if self.lambda_plus <= 1.0 {
       return 0.0;
