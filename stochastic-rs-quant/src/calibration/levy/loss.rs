@@ -113,7 +113,10 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
     }
     // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
     LevyModelType::Nig => {
-      let beta = params[1];
+      // `β` leaves `α` room under its own ceiling.
+      let top = param_bounds(model_type)[0].1 - DOMAIN_MARGIN;
+      let beta = params[1].clamp(-top, top - 1.0);
+      params[1] = beta;
       params[0] = params[0].max(beta.abs().max((beta + 1.0).abs()) + DOMAIN_MARGIN);
     }
     _ => {}

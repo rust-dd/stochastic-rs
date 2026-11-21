@@ -480,6 +480,11 @@ fn a_projected_point_has_a_martingale_in_every_model() {
     let mut again = projected.clone();
     project_params(model, &mut again);
     assert_eq!(again, projected);
+    let boxed = projected.iter().zip(super::loss::param_bounds(model));
+    assert!(
+      boxed.clone().all(|(p, (lo, hi))| lo <= *p && *p <= hi),
+      "{model:?} {projected:?}"
+    );
   }
 }
 
