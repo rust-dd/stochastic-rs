@@ -29,6 +29,18 @@ pub(super) const P_ETA2: (f64, f64) = (0.1, 50.0);
 pub(super) const BOX: [(f64, f64); 9] = [
   P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_P_UP, P_ETA1, P_ETA2,
 ];
+/// Where a boxed value lies: `BOX`, with `ρ` clamped inside its reflection's range.
+pub(super) const BOXED: [(f64, f64); 9] = [
+  P_V0,
+  P_KAPPA,
+  P_THETA,
+  P_SIGMA_V,
+  (-RHO_BOUND, RHO_BOUND),
+  P_LAMBDA,
+  P_P_UP,
+  P_ETA1,
+  P_ETA2,
+];
 
 impl HkdeParams {
   /// Project the parameter vector onto the admissible set.
@@ -37,6 +49,23 @@ impl HkdeParams {
   /// $2\kappa\theta\ge\sigma^2$ and the Kou finiteness requirement
   /// $\eta_1>1$.
   pub fn project_in_place(&mut self) {
+    self.project_box();
+    self.project_feller();
+  }
+
+  /// Return a copy with the admissibility projection applied.
+  pub fn projected(mut self) -> Self {
+    self.project_in_place();
+    self
+  }
+
+  /// The box alone: Feller's condition, which couples three values, stays for `project_feller`.
+  pub(super) fn boxed(mut self) -> Self {
+    self.project_box();
+    self
+  }
+
+  fn project_box(&mut self) {
     self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
     self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
     self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
@@ -48,7 +77,9 @@ impl HkdeParams {
     self.p_up = periodic_map(self.p_up, P_P_UP.0, P_P_UP.1).clamp(P_P_UP.0, P_P_UP.1);
     self.eta1 = periodic_map(self.eta1, P_ETA1.0, P_ETA1.1).max(ETA1_MIN);
     self.eta2 = periodic_map(self.eta2, P_ETA2.0, P_ETA2.1).max(ETA2_MIN);
+  }
 
+  fn project_feller(&mut self) {
     if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
       let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
       if sigma_star >= P_SIGMA_V.0 {
@@ -58,12 +89,6 @@ impl HkdeParams {
         self.theta = theta_star.min(P_THETA.1);
       }
     }
-  }
-
-  /// Return a copy with the admissibility projection applied.
-  pub fn projected(mut self) -> Self {
-    self.project_in_place();
-    self
   }
 }
 

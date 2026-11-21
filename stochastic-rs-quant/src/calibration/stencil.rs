@@ -1,0 +1,62 @@
+use ndarray::Array1;
+use stochastic_rs_distributions::RealExt;
+
+/// `1e-3·|x|`, at least `1e-5`: a central difference of a price accurate to a relative `ε` is best
+/// near `ε^{1/3}` (Nocedal & Wright 2006, ch. 8), and the pricers' `ε` is about `1e-8`.
+pub(crate) fn step(x: f64) -> f64 {
+  1e-5_f64.max_or_nan(1e-3 * x.abs())
+}
+
+/// `∂r/∂x` by differences of step `h` inside `[lo, hi]`: central where the stencil fits, else the
+/// second-order one-sided one on the inside, never a stencil cut short at a bound.
+pub(crate) fn derivative(
+  x: f64,
+  h: f64,
+  (lo, hi): (f64, f64),
+  mut residuals: impl FnMut(f64) -> Array1<f64>,
+) -> Array1<f64> {
+  if x.is_nan() || (x - h >= lo && x + h <= hi) {
+    return (residuals(x + h) - residuals(x - h)) / (2.0 * h);
+  }
+  if x + 2.0 * h <= hi {
+    let (at, near, far) = (residuals(x), residuals(x + h), residuals(x + 2.0 * h));
+    return (4.0 * near - 3.0 * at - far) / (2.0 * h);
+  }
+  if x - 2.0 * h >= lo {
+    let (at, near, far) = (residuals(x), residuals(x - h), residuals(x - 2.0 * h));
+    return (3.0 * at - 4.0 * near + far) / (2.0 * h);
+  }
+  let (below, above) = (lo.max(x - h), hi.min(x + h));
+  (residuals(above) - residuals(below)) / (above - below)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// `r(x) = (x³, eˣ)` on `[0, 1]`: second order everywhere, the bounds included.
+  #[test]
+  fn the_stencil_is_second_order_at_and_beside_each_bound() {
+    let r = |x: f64| ndarray::array![x.powi(3), x.exp()];
+    for x in [0.0_f64, 2e-4, 0.5, 1.0 - 2e-4, 1.0] {
+      let want = ndarray::array![3.0 * x * x, x.exp()];
+      let got = derivative(x, 1e-3, (0.0, 1.0), r);
+      let gap = (&got - &want)
+        .mapv(f64::abs)
+        .fold(0.0_f64, |a, &b| a.max(b));
+      assert!(gap < 4e-6, "{x}: {got} vs {want}");
+    }
+  }
+
+  #[test]
+  fn a_nan_point_or_step_differences_to_nan() {
+    let r = |x: f64| ndarray::array![x, 2.0 * x];
+    assert!(
+      derivative(f64::NAN, 1e-3, (0.0, 1.0), r)
+        .iter()
+        .all(|d| d.is_nan())
+    );
+    assert!(step(f64::NAN).is_nan());
+    assert_eq!((step(0.0), step(-2.0)), (1e-5, 2e-3));
+  }
+}

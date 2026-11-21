@@ -6,7 +6,9 @@ use super::EPS;
 use super::types::LevyModelType;
 use crate::OptionType;
 use crate::calibration::clip_negative;
-use crate::pricing::cf_quadrature::integrate_to_convergence;
+use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::cf_quadrature::integrate_walk;
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
 /// $\phi_T(\xi) = \exp\bigl(i\xi (r-q)T + T\,\psi(\xi) - T\,\psi(-i)\bigr)$.
@@ -109,6 +111,7 @@ pub(super) fn fourier_call_price(
   r: f64,
   q: f64,
   t: f64,
+  walk: &mut Walk<'_, Panels>,
 ) -> f64 {
   let ln_ks = (k / s).ln();
   let rq = r - q;
@@ -117,7 +120,7 @@ pub(super) fn fourier_call_price(
   let psi_neg_i = levy_char_exponent(model_type, params, Complex64::new(0.0, -1.0));
   let omega = -psi_neg_i;
 
-  let integral = integrate_to_convergence(
+  let integral = integrate_walk(
     |u| {
       let xi = Complex64::new(u, -0.5);
       let psi = levy_char_exponent(model_type, params, xi);
@@ -128,6 +131,7 @@ pub(super) fn fourier_call_price(
     },
     0.0,
     1e-9,
+    walk,
   );
 
   let disc_r = (-r * t).exp();
@@ -147,8 +151,9 @@ pub(super) fn fourier_option_price(
   q: f64,
   t: f64,
   option_type: OptionType,
+  walk: &mut Walk<'_, Panels>,
 ) -> f64 {
-  let call = fourier_call_price(model_type, params, s, k, r, q, t);
+  let call = fourier_call_price(model_type, params, s, k, r, q, t, walk);
   match option_type {
     OptionType::Call => call,
     OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
@@ -203,10 +208,7 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
 
 /// Project parameters into their admissible bounds.
 pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
-  let bounds = param_bounds(model_type);
-  for (p, (lo, hi)) in params.iter_mut().zip(bounds.iter()) {
-    *p = p.clamp(*lo, *hi);
-  }
+  clamp_params(model_type, params);
   // The NIG exponent is defined only when alpha > |beta|.
   if model_type == LevyModelType::Nig {
     let alpha = params[0];
@@ -214,5 +216,12 @@ pub(super) fn project_params(model_type: LevyModelType, params: &mut [f64]) {
     if alpha <= beta.abs() {
       params[0] = beta.abs() + 0.01;
     }
+  }
+}
+
+/// Each parameter clamped into its bounds, NIG's `α > |β|` aside.
+pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
+  for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
+    *p = p.clamp(lo, hi);
   }
 }

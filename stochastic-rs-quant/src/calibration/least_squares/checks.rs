@@ -92,3 +92,37 @@ pub(crate) fn box_points(
   }
   points
 }
+
+/// Per coordinate, a point 0.3 of the step `max(1e-5, 1e-3·|x|)` inside each bound of `base`'s
+/// box, where a central stencil would cross the bound.
+pub(crate) fn beside_points(
+  base: ArrayView1<f64>,
+  bounds: &[(f64, f64)],
+) -> Vec<(String, Array1<f64>)> {
+  let step = |x: f64| 1e-5_f64.max(1e-3 * x.abs());
+  let mut points = Vec::new();
+  for (j, &(lower, upper)) in bounds.iter().enumerate() {
+    let sides = [
+      ("lower", lower + 0.3 * step(lower)),
+      ("upper", upper - 0.3 * step(upper)),
+    ];
+    for (side, value) in sides.into_iter().filter(|(_, value)| value.is_finite()) {
+      let mut point = base.to_owned();
+      point[j] = value;
+      points.push((format!("beside {side} {j}"), point));
+    }
+  }
+  points
+}
+
+/// The worst column's `‖J(h) − J(2h)‖ / ‖J(2h)‖`, `jacobian(s)` at `s` times the step.
+pub(crate) fn step_doubling_error(jacobian: impl Fn(f64) -> Array2<f64>) -> f64 {
+  let (single, double) = (jacobian(1.0), jacobian(2.0));
+  let norm = |v: ArrayView1<f64>| v.dot(&v).sqrt();
+  let columns = single.columns().into_iter().zip(double.columns());
+  f64::max_or_nan_fold(columns.map(|(a, b)| {
+    let scale = norm(b);
+    let gap = norm((&a - &b).view());
+    if scale == 0.0 { gap } else { gap / scale }
+  }))
+}

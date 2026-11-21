@@ -12,6 +12,7 @@ use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
+use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::fourier::VarianceGammaFourier;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
@@ -53,6 +54,7 @@ fn vg_pricer_matches_reference() {
       0.05,
       0.0,
       1.0,
+      &mut Walk::Adaptive,
     );
     assert!(
       (price - VG_REF[i]).abs() < 0.05,
@@ -67,7 +69,16 @@ fn mjd_pricer_matches_reference() {
   // Verify our internal Fourier pricer reproduces reference MJD prices
   let params = [0.15, 1.0, -0.05, 0.1]; // sigma, lambda, mu_j, sigma_j
   for (i, &k) in STRIKES.iter().enumerate() {
-    let price = fourier_call_price(LevyModelType::MertonJd, &params, 100.0, k, 0.05, 0.0, 1.0);
+    let price = fourier_call_price(
+      LevyModelType::MertonJd,
+      &params,
+      100.0,
+      k,
+      0.05,
+      0.0,
+      1.0,
+      &mut Walk::Adaptive,
+    );
     assert!(
       (price - MJD_REF[i]).abs() < 0.05,
       "MJD K={k}: got {price:.6}, expected {:.6}",
@@ -145,7 +156,16 @@ fn nig_to_model_matches_calibrator_pricer() {
   let model = result.to_model();
 
   for &k in &STRIKES {
-    let from_calibrator = fourier_call_price(LevyModelType::Nig, &params, s, k, r, q, t);
+    let from_calibrator = fourier_call_price(
+      LevyModelType::Nig,
+      &params,
+      s,
+      k,
+      r,
+      q,
+      t,
+      &mut Walk::Adaptive,
+    );
     let from_model = <LevyModel as ModelPricer>::price_call(&model, s, k, r, q, t);
     assert!(
       (from_model - from_calibrator).abs() < 1e-6,
@@ -212,6 +232,7 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
         0.0,
         tau,
         side,
+        &mut Walk::Adaptive,
       );
       assert_eq!(*residual, quote.price - model);
     }
@@ -333,5 +354,25 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
       let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
       assert!(error < 2e-2, "{label} of {base}: {error:e}");
     }
+  }
+}
+
+/// On the rule each price's own walk took, `J(h)` is `J(2h)` at every model's default start.
+#[test]
+fn the_jacobian_at_twice_its_step_is_the_same() {
+  use super::calibrator::LevyProblem;
+  use super::loss::default_params;
+  use crate::calibration::least_squares::checks::step_doubling_error;
+  for model in [
+    LevyModelType::VarianceGamma,
+    LevyModelType::Nig,
+    LevyModelType::Cgmy,
+    LevyModelType::MertonJd,
+    LevyModelType::Kou,
+  ] {
+    let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, calls(&STRIKES, &VG_REF, 1.0));
+    let problem = LevyProblem::new(&calibrator, default_params(model));
+    let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
+    assert!(error < 1e-4, "{model:?}: {error:e}");
   }
 }

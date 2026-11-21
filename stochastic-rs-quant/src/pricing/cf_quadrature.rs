@@ -28,7 +28,6 @@ const MAX_DEPTH: u32 = 6;
 pub(crate) struct Panels(Vec<(f64, f64, usize)>);
 
 /// How an integral runs: adaptively, recording each walk's rule, or on recorded rules in order.
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) enum Walk<'a, P> {
   Adaptive,
   Record(&'a mut Vec<P>),

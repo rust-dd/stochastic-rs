@@ -212,6 +212,12 @@ fn the_jacobian_is_the_slope_of_the_residuals_at_reflected_coordinates() {
     ndarray::array![0.2, 0.6, -0.98],
     ndarray::array![0.2, 0.6, 0.98],
   ];
+  let beside = [0.9999 - 0.3e-3 * 0.9999, -(0.9999 - 0.3e-3 * 0.9999)];
+  for rho in beside {
+    let point = ndarray::array![0.2, 0.6, rho];
+    let error = jacobian_error(&mut problem, point.view(), |_, x| 1e-4 * x.abs().max(0.1));
+    assert!(error < 1e-2, "{point}: {error:e}");
+  }
   for point in points {
     let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(0.1));
     assert!(error < 2e-2, "{point}: {error:e}");

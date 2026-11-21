@@ -6,24 +6,22 @@ use ndarray::ArrayView1;
 use num_complex::Complex64;
 
 use super::super::integrate_gl_to_convergence;
-use super::super::periodic_map;
 use super::calibrator::DoubleHestonCalibrator;
+use super::params::BOXED;
 use super::params::DoubleHestonParams;
 use super::params::P_SIGMA;
 use super::params::P_V0;
 use crate::OptionType;
 use crate::calibration::clip_negative;
-use crate::calibration::heston::params::KAPPA_MIN;
 use crate::calibration::heston::params::P_KAPPA;
 use crate::calibration::heston::params::P_RHO;
 use crate::calibration::heston::params::P_THETA;
-use crate::calibration::heston::params::RHO_BOUND;
-use crate::calibration::heston::params::SIGMA_MIN;
-use crate::calibration::heston::params::THETA_MIN;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::periodic_slopes;
 use crate::calibration::scale_columns;
+use crate::calibration::stencil::derivative;
+use crate::calibration::stencil::step;
 use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
@@ -141,76 +139,20 @@ impl<'a> DoubleHestonProblem<'a> {
     )
   }
 
-  /// Central finite-difference Jacobian over the 10 parameters.
-  pub(super) fn numeric_jacobian(&self, params: &DoubleHestonParams) -> Array2<f64> {
-    let n = self.calibrator.quotes.len();
-    let p_dim = 10usize;
-
-    let base_params_vec: Array1<f64> = (*params).into();
-    let mut j_mat = Array2::zeros((n, p_dim));
-
-    for col in 0..p_dim {
-      let x = base_params_vec[col];
-      let mut h = 1e-5_f64.max(1e-3 * x.abs());
-
-      let mut params_plus = *params;
-      let mut params_minus = *params;
-      let (plus, minus) = if col < 5 {
-        (&mut params_plus.first, &mut params_minus.first)
-      } else {
-        (&mut params_plus.second, &mut params_minus.second)
-      };
-
-      let field_plus_minus = |x: f64, h: f64, lo: f64, hi: f64| -> (f64, f64) {
-        (periodic_map(x + h, lo, hi), periodic_map(x - h, lo, hi))
-      };
-
-      match col % 5 {
-        0 => {
-          let (a, b) = field_plus_minus(x, h, P_V0.0, P_V0.1);
-          plus.v0 = a.max(0.0);
-          minus.v0 = b.max(0.0);
-        }
-        1 => {
-          let (a, b) = field_plus_minus(x, h, P_KAPPA.0, P_KAPPA.1);
-          plus.kappa = a.max(KAPPA_MIN);
-          minus.kappa = b.max(KAPPA_MIN);
-        }
-        2 => {
-          let (a, b) = field_plus_minus(x, h, P_THETA.0, P_THETA.1);
-          plus.theta = a.max(THETA_MIN);
-          minus.theta = b.max(THETA_MIN);
-        }
-        3 => {
-          let (a, b) = field_plus_minus(x, h, P_SIGMA.0, P_SIGMA.1);
-          plus.sigma = a.abs().max(SIGMA_MIN);
-          minus.sigma = b.abs().max(SIGMA_MIN);
-        }
-        _ => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          plus.rho = clamp(x + h);
-          minus.rho = clamp(x - h);
-          if (plus.rho - minus.rho).abs() < 0.5 * h {
-            h = 1e-4;
-            plus.rho = clamp(x + h);
-            minus.rho = clamp(x - h);
-          }
-        }
-      }
-
-      params_plus.project_in_place();
-      params_minus.project_in_place();
-
-      let r_plus = self.residuals_for(&params_plus);
-      let r_minus = self.residuals_for(&params_minus);
-
-      let diff = (r_plus - r_minus) / (2.0 * h);
-      for row in 0..n {
-        j_mat[(row, col)] = diff[row];
-      }
+  /// `∂r/∂θ` at the boxed point, Feller's projection inside each stencil; `scale` times the shared
+  /// step.
+  pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
+    let point = Array1::from(self.params.boxed());
+    let mut jacobian = Array2::zeros((self.market.len(), point.len()));
+    for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
+      let x = point[j];
+      column.assign(&derivative(x, scale * step(x), BOXED[j], |value| {
+        let mut moved = point.clone();
+        moved[j] = value;
+        self.residuals_for(&DoubleHestonParams::from(moved).projected())
+      }));
     }
-
-    j_mat
+    jacobian
   }
 }
 
@@ -218,7 +160,7 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
     let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
     self.reflections = periodic_slopes(params, &[factor, factor].concat());
-    self.params = DoubleHestonParams::from(params.to_owned()).projected();
+    self.params = DoubleHestonParams::from(params.to_owned()).boxed();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -237,7 +179,7 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.effective_params());
+    let jacobian = self.difference_jacobian(1.0);
     Some(scale_columns(jacobian, self.reflections.view()))
   }
 

@@ -3,6 +3,7 @@ use crate::LossMetric;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
 use crate::calibration::least_squares::checks::worst_relative_error;
+use crate::pricing::cf_quadrature::Walk;
 use crate::traits::Calibrator;
 
 fn known_params() -> CgmysvParams {
@@ -27,7 +28,7 @@ fn synthetic(s: f64, r: f64, q: f64, tau: f64) -> Vec<OptionQuote> {
     .step_by(25)
     .map(|k| {
       let k = k as f64;
-      let price = fourier_call_price(&known_params(), s, k, r, q, tau);
+      let price = fourier_call_price(&known_params(), s, k, r, q, tau, &mut Walk::Adaptive);
       OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect()
@@ -58,9 +59,9 @@ fn fourier_call_monotone() {
   let q = 0.01884;
   let tau = 28.0 / 365.0;
 
-  let c1 = fourier_call_price(&p, s, 2400.0, r, q, tau);
-  let c2 = fourier_call_price(&p, s, 2500.0, r, q, tau);
-  let c3 = fourier_call_price(&p, s, 2600.0, r, q, tau);
+  let c1 = fourier_call_price(&p, s, 2400.0, r, q, tau, &mut Walk::Adaptive);
+  let c2 = fourier_call_price(&p, s, 2500.0, r, q, tau, &mut Walk::Adaptive);
+  let c3 = fourier_call_price(&p, s, 2600.0, r, q, tau, &mut Walk::Adaptive);
 
   assert!(c1 > c2 && c2 > c3, "calls must decrease in K");
   assert!(c1 > 0.0 && c3 > 0.0, "calls must be positive");
@@ -168,7 +169,15 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
   );
   for entry in [&fit.history[0], last] {
     for (quote, residual) in quotes.iter().zip(&entry.residuals) {
-      let model = fourier_call_price(&entry.params, s, quote.strike, r, q, tau);
+      let model = fourier_call_price(
+        &entry.params,
+        s,
+        quote.strike,
+        r,
+        q,
+        tau,
+        &mut Walk::Adaptive,
+      );
       assert_eq!(*residual, quote.price - model);
     }
   }
@@ -194,10 +203,22 @@ fn a_start_with_a_nan_is_an_error_and_with_start_panics() {
 fn a_put_is_priced_by_parity_and_keeps_a_nan() {
   let p = known_params();
   let (s, k, r, q, t) = (100.0, 95.0, 0.03, 0.01, 0.5);
-  let call = fourier_call_price(&p, s, k, r, q, t);
-  let put = fourier_option_price(&p, s, k, r, q, t, OptionType::Put);
+  let call = fourier_call_price(&p, s, k, r, q, t, &mut Walk::Adaptive);
+  let put = fourier_option_price(&p, s, k, r, q, t, OptionType::Put, &mut Walk::Adaptive);
   assert_eq!(put, call - s * (-q * t).exp() + k * (-r * t).exp());
-  assert!(fourier_option_price(&p, f64::NAN, k, r, q, t, OptionType::Put).is_nan());
+  assert!(
+    fourier_option_price(
+      &p,
+      f64::NAN,
+      k,
+      r,
+      q,
+      t,
+      OptionType::Put,
+      &mut Walk::Adaptive
+    )
+    .is_nan()
+  );
 }
 
 #[test]
@@ -267,4 +288,17 @@ fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
       assert!(error < 2e-2, "coordinate {coordinate} at {end}: {error:e}");
     }
   }
+}
+
+/// On the rule each price's own walk took, a difference never straddles a stop of Lewis's walk:
+/// at `STALLED`, where a walk's price jumps by 3.3e-5 inside the η stencil, `J(h)` is `J(2h)`.
+#[test]
+fn the_jacobian_at_twice_its_step_is_the_same_where_a_walk_jumps() {
+  use crate::calibration::least_squares::checks::step_doubling_error;
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));
+  let mut problem = problem(&calibrator);
+  problem.params = STALLED.to_vec();
+  let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
+  assert!(error < 1e-4, "{error:e}");
 }
