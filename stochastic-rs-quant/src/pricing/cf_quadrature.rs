@@ -30,6 +30,9 @@ const MAX_WIDTH: f64 = 64.0;
 const MAX_PANELS: usize = 128;
 /// Backstop on bisection depth, i.e. at most 64 sub-panels per panel.
 const MAX_DEPTH: u32 = 6;
+/// The share of a panel's `∫|f|` that the rounding of its ~350 samples leaves in a level
+/// difference: bisecting cannot lower it, so it is the tightest target a panel is held to.
+const ROUNDING: f64 = 256.0 * f64::EPSILON;
 
 /// The pieces `(lo, hi, levels)` one walk integrated: a fixed rule, so integrands that share it
 /// differ smoothly where a walk of each could stop at different panels.
@@ -84,8 +87,8 @@ fn refine<F>(
 where
   F: Fn(f64) -> f64,
 {
-  let (integral, difference, levels) = tanh_sinh::integrate(f, lo, hi, target);
-  if difference <= target || depth == 0 {
+  let (integral, difference, levels, size) = tanh_sinh::integrate(f, lo, hi, target);
+  if difference <= target.max(ROUNDING * size) || depth == 0 {
     if let Some(leaves) = leaves {
       leaves.0.push((lo, hi, levels));
     }
