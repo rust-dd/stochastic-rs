@@ -80,7 +80,8 @@ fn hull_white_tree_matches_vasicek_zero_coupon_formula() {
     .exp();
   let reference = a_term * (-b * r0).exp();
 
-  approx(lattice_price, reference, 6e-3);
+  // The tree discounts at each step's start, a first-order error: `+8.3e-5` at 400 steps.
+  approx(lattice_price, reference, 1e-4);
 }
 
 #[test]
@@ -105,17 +106,19 @@ fn black_karasinski_tree_matches_low_vol_deterministic_limit() {
 
   let theta_log = long_run_rate.ln();
   let x0 = r0.ln();
+  let log_rate = |t: f64| theta_log + (x0 - theta_log) * (-mean_reversion * t).exp();
   let n = 20_000;
   let dt = maturity / n as f64;
-  let mut integral = 0.0;
-  for i in 0..n {
-    let t = (i as f64 + 0.5) * dt;
-    let x_t = theta_log + (x0 - theta_log) * (-mean_reversion * t).exp();
-    integral += x_t.exp() * dt;
-  }
-  let reference = (-integral).exp();
-
-  approx(lattice_price, reference, 3e-3);
+  let integral = (0..n)
+    .map(|i| log_rate((i as f64 + 0.5) * dt).exp() * dt)
+    .sum::<f64>();
+  approx(lattice_price, (-integral).exp(), 1e-4);
+  // Each level sits on the log-rate's exact mean, so at σ → 0 the tree is that mean's left sum.
+  let step = maturity / 240.0;
+  let left = (0..240)
+    .map(|i| log_rate(i as f64 * step).exp() * step)
+    .sum::<f64>();
+  approx(lattice_price, (-left).exp(), 1e-12);
 }
 
 #[test]
@@ -152,7 +155,7 @@ fn g2pp_tree_matches_independent_factor_reference_when_rho_zero() {
   );
   let reference = (-model.phi * maturity).exp() * ref_x * ref_y;
 
-  approx(lattice_price, reference, 8e-3);
+  approx(lattice_price, reference, 2.5e-4);
 }
 
 fn vasicek_bond_price(r0: f64, theta: f64, a: f64, sigma: f64, maturity: f64) -> f64 {

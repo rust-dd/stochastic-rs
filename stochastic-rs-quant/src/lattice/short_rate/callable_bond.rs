@@ -241,7 +241,7 @@ mod tests {
       .map(|i| 5.0 * vasicek.zero_coupon_price(0.04, i as f64))
       .sum::<f64>()
       + 100.0 * vasicek.zero_coupon_price(0.04, 3.0);
-    assert!((price - want).abs() / want < 3e-3, "{price} vs {want}");
+    assert!((price - want).abs() / want < 1e-6, "{price} vs {want}");
   }
 
   #[test]
@@ -286,7 +286,7 @@ mod tests {
     let priced = price_callable_bond(&tree.tree, &model, &spec);
     let want = 105.0 * (-0.02_f64).exp();
     assert!(
-      (priced.price - want).abs() < 1e-6,
+      (priced.price - want).abs() < 1e-12,
       "{} vs {want}",
       priced.price
     );

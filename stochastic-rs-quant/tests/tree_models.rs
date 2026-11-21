@@ -87,20 +87,20 @@ fn a_tree_model_reads_each_field_of_its_params() {
   assert_eq!((single.initial_rate, single.sigma), (0.03_f32, 0.012_f32));
 }
 
-/// rc.4's values, to the last bits libm may change between platforms.
+/// The trees' own values, to the last bits libm may change between platforms.
 fn assert_pinned(got: f64, pinned: f64) {
   let close = (got - pinned).abs() <= 1e-13 * pinned.abs().max(1.0);
   assert!(close, "{got} against {pinned}");
 }
 
 #[test]
-fn the_trees_price_a_zero_coupon_bond_as_before() {
+fn the_trees_price_a_zero_coupon_bond_as_pinned() {
   assert_pinned(hw_tree().zero_coupon_bond_price(), HW_ZCB);
   assert_pinned(bk_tree().zero_coupon_bond_price(), BK_ZCB);
   assert_pinned(g2_tree().zero_coupon_bond_price(), G2_ZCB);
 }
 
-/// Every tree answers one `valuation`, at rc.4's prices.
+/// Every tree answers one `valuation`, at its pinned price.
 #[test]
 fn a_bermudan_swaption_prices_on_any_bermudan_tree() {
   let pins = [
@@ -137,7 +137,7 @@ fn a_curve_fitted_tree_and_a_generic_caller_price_through_the_trait() {
     stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
   );
   let fitted = CurveFittedHullWhiteTree::new(0.1, 0.012, &curve, 5.0, 20);
-  assert_pinned(payer.npv(&fitted), 0.1040235044511398);
+  assert_pinned(payer.npv(&fitted), 0.097_845_745_443_896_8);
 }
 
 struct OwnTree(HullWhiteTree<f64>);
@@ -172,12 +172,12 @@ fn a_bermudan_swaption_snaps_its_dates_to_tree_levels() {
   assert_pinned(swaption.npv(&hw_tree()), HW_PAYER);
 }
 
-const HW_ZCB: f64 = 0.844_900_258_875_831_1;
-const BK_ZCB: f64 = 0.805_747_726_783_313_6;
-const G2_ZCB: f64 = 0.814_796_346_157_607;
-const HW_PAYER: f64 = 0.063_431_582_574_042_65;
-const HW_RECEIVER: f64 = 8.160_819_002_420_86;
-const BK_PAYER: f64 = 5.792_960_501_350_106_4e-5;
-const BK_RECEIVER: f64 = 3.971_411_064_801_325;
-const G2_PAYER: f64 = 0.061_143_868_557_397_83;
-const G2_RECEIVER: f64 = 5.949_552_713_380_301;
+const HW_ZCB: f64 = 0.845_050_365_283_299_2;
+const BK_ZCB: f64 = 0.807_717_097_467_35;
+const G2_ZCB: f64 = 0.814_831_268_530_417_7;
+const HW_PAYER: f64 = 0.064_073_271_966_676_55;
+const HW_RECEIVER: f64 = 8.187_272_396_507_296;
+const BK_PAYER: f64 = 0.0;
+const BK_RECEIVER: f64 = 4.130_389_556_069_25;
+const G2_PAYER: f64 = 0.057_901_985_908_091_126;
+const G2_RECEIVER: f64 = 5.941_117_977_275_592;

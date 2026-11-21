@@ -93,7 +93,7 @@ fn curve_fitted_hw_tree_reprices_zero_coupon_bond() {
   let tree = CurveFittedHullWhiteTree::new(0.08_f64, 0.012, &curve, horizon, 200);
   let tree_price = tree.zero_coupon_bond_price();
   let curve_price = curve.discount_factor(horizon);
-  approx(tree_price, curve_price, 1e-3);
+  approx(tree_price, curve_price, 1e-14);
 }
 
 #[test]
@@ -203,7 +203,7 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
   let g2pp_price = swpn.npv(&g2pp_tree);
   let rel = (hw_price - g2pp_price).abs() / hw_price.max(1e-10);
   assert!(
-    rel < 0.05,
+    rel < 1e-13,
     "G2++ with vanishing 2nd factor should match 1F HW: hw={hw_price:.8}, g2pp={g2pp_price:.8}, rel={rel:.2e}"
   );
 }
@@ -243,7 +243,7 @@ fn bench_g2pp_bermudan(rho: f64) -> f64 {
 #[test]
 fn the_bench_g2pp_bermudan_is_pinned_and_keeps_falling_with_rho_past_a_third() {
   let price = bench_g2pp_bermudan(-0.3);
-  let pinned = 6_640.288_119_153_042;
+  let pinned = 6_536.368_077_323_594;
   assert!((price - pinned).abs() < 1e-12 * pinned, "{price}");
   let (lower, lowest) = (bench_g2pp_bermudan(-0.7), bench_g2pp_bermudan(-0.95));
   assert!(lowest < lower && lower < price, "{lowest} {lower} {price}");

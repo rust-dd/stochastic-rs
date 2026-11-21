@@ -156,8 +156,8 @@ fn g2pp_reprices_synthetic_quotes() {
     mean_reversion_x: 0.4,
     mean_reversion_y: 0.08,
     sigma_x: 0.012,
-    sigma_y: 0.005,
-    rho: -0.5,
+    sigma_y: 0.0072,
+    rho: -0.9,
     phi: 0.03,
   };
   let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)

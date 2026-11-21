@@ -84,6 +84,7 @@ impl<T: RealExt> CurveFittedHullWhiteTree<T> {
   ) -> Self {
     let factor = OrnsteinUhlenbeckFactor {
       initial_state: T::zero(),
+      long_run_mean: T::zero(),
       mean_reversion,
       sigma,
     };

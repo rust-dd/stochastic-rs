@@ -1,6 +1,7 @@
 //! Black-Karasinski log-short-rate trinomial-tree engine.
 
 use super::OneFactorShortRateModel;
+use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
 use crate::calibration::tree_swaption::BlackKarasinskiParams;
@@ -68,7 +69,13 @@ pub struct BlackKarasinskiTree<T: RealExt> {
 impl<T: RealExt> BlackKarasinskiTree<T> {
   /// Build a Black-Karasinski tree with `steps` time steps up to `horizon`.
   pub fn new(model: BlackKarasinskiTreeModel<T>, horizon: T, steps: usize) -> Self {
-    let tree = build_one_factor_trinomial_tree(&model, horizon, steps);
+    let factor = OrnsteinUhlenbeckFactor {
+      initial_state: model.initial_rate.ln(),
+      long_run_mean: model.theta_log,
+      mean_reversion: model.mean_reversion,
+      sigma: model.sigma,
+    };
+    let tree = build_one_factor_trinomial_tree(&factor, horizon, steps);
     Self {
       model,
       tree,

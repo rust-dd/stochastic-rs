@@ -105,18 +105,20 @@ pub struct G2ppTree<T: RealExt> {
 impl<T: RealExt> G2ppTree<T> {
   /// Build a G2++ tree with `steps` time steps up to `horizon`.
   pub fn new(model: G2ppTreeModel<T>, horizon: T, steps: usize) -> Self {
-    let x_model = OrnsteinUhlenbeckFactor {
+    let x_factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_x,
+      long_run_mean: T::zero(),
       mean_reversion: model.mean_reversion_x,
       sigma: model.sigma_x,
     };
-    let y_model = OrnsteinUhlenbeckFactor {
+    let y_factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_y,
+      long_run_mean: T::zero(),
       mean_reversion: model.mean_reversion_y,
       sigma: model.sigma_y,
     };
-    let x_tree = build_one_factor_trinomial_tree(&x_model, horizon, steps);
-    let y_tree = build_one_factor_trinomial_tree(&y_model, horizon, steps);
+    let x_tree = build_one_factor_trinomial_tree(&x_factor, horizon, steps);
+    let y_tree = build_one_factor_trinomial_tree(&y_factor, horizon, steps);
     Self {
       model,
       dt: horizon / T::from_usize_(steps),

@@ -143,11 +143,11 @@ def test_callable_bond_on_the_hull_white_tree():
 
 def test_callable_bond_tree_reads_each_of_its_arguments():
     tree = sr.HullWhiteCallableBond(initial_rate=0.04, mean_reversion=0.3, theta=0.05, sigma=0.012, horizon=3.0, steps=36)
-    assert tree.zero_coupon_bond_price() == pytest.approx(0.8783392453205547, rel=1e-12)
+    assert tree.zero_coupon_bond_price() == pytest.approx(0.8784165416032598, rel=1e-12)
     priced = tree.price(100.0, 0.05, [0.5, 1.0, 1.5, 2.0, 2.5, 3.0], calls=[(2.0, 101.0)], puts=[(1.0, 99.0)])
-    assert priced == pytest.approx((101.63286707384307, 101.76964775896076, 0.20929394231848164, 0.07118099152962998), rel=1e-9)
+    assert priced == pytest.approx((101.64174381552358, 101.77794153378728, 0.2028463240456233, 0.06617004095160439), rel=1e-9)
     positional = sr.HullWhiteCallableBond(0.02, 0.1, 0.03, 0.008, 2.0, 24)
-    assert positional.zero_coupon_bond_price() == pytest.approx(0.9591242666357012, rel=1e-12)
+    assert positional.zero_coupon_bond_price() == pytest.approx(0.9591305136608149, rel=1e-12)
 
 def test_bachelier_pricer_round_trips_the_normal_volatility():
     pricer = sr.BachelierPricer(s=100.0, v=20.0, k=95.0, r=0.05, tau=0.75, q=0.02)
