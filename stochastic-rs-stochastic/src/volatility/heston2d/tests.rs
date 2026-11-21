@@ -52,7 +52,7 @@ impl ValidInputs {
       self.rho,
       16,
       self.t,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(17),
     )
   }
@@ -70,7 +70,7 @@ fn the_output_names_its_slots() {
     rho_default(),
     512,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   );
   let Heston2DPaths { x1, v1, x2, v2, .. } = h.sample();
@@ -95,7 +95,7 @@ fn seeded_is_deterministic() {
       rho_default(),
       128,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(42),
     )
   };
@@ -122,7 +122,7 @@ fn cross_correlation_matches_rho() {
     rho,
     20_000,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(7),
   );
   let Heston2DPaths { x1, x2, .. } = h.sample();
@@ -160,7 +160,7 @@ fn rejects_non_psd_correlation() {
     bad,
     16,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(3),
   );
 }
@@ -330,7 +330,7 @@ fn accepts_matlab_feller_violation_under_the_floor() {
     rho_default(),
     16,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(5),
   );
   let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
@@ -354,7 +354,7 @@ fn rejects_zero_initial_variance_like_matlab() {
     rho_default(),
     16,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(11),
   );
 }

@@ -28,7 +28,7 @@ fn hkde_base_seeded<S: SeedExt>(seed: S) -> Hkde<f64, S> {
     256,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed,
   )
 }
@@ -145,7 +145,7 @@ fn hkde_with_rho_rebuilds_cgns_cache() {
     256,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(7),
   )
   .sample();
@@ -184,7 +184,7 @@ fn hkde_with_points_rebuilds_cgns_cache() {
     64,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(9),
   )
   .sample();
@@ -222,7 +222,7 @@ fn hkde_with_horizon_rebuilds_cgns_cache() {
     256,
     100.0,
     Some(2.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(11),
   )
   .sample();

@@ -13,7 +13,7 @@ pub(super) fn boxed(model: impl DiffusionModel + 'static) -> Box<dyn DiffusionMo
 /// `σ|x|^γ` with `(σ, γ)`: CIR's root, a CEV and a CKLS above one, and CKLS at CIR's own root.
 pub(super) fn power_diffusions() -> Vec<(&'static str, Box<dyn DiffusionModel>, f64, f64)> {
   let seed = || Deterministic::new(0);
-  let floor = VarianceBoundary::Floor;
+  let floor = VarianceBoundary::Absorption;
   vec![
     (
       "Cir",

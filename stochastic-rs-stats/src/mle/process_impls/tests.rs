@@ -73,7 +73,7 @@ fn cir_process_ext_with_mle() {
     5001,
     Some(0.04),
     Some(20.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(55),
   );
   let path = cir.sample();
@@ -87,7 +87,7 @@ fn cir_process_ext_with_mle() {
     100,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
@@ -189,7 +189,7 @@ fn cir_exact_density_matches_mpmath_at_a_daily_step() {
     100,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let density = DensityApprox::Exact.density(&cir, 0.04, 0.0405, 0.0, 0.004);
@@ -209,7 +209,7 @@ fn cir_exact_mle_recovers_daily_parameters() {
     5001,
     Some(0.04),
     Some(20.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(55),
   );
   let path = cir.sample();
@@ -221,7 +221,7 @@ fn cir_exact_mle_recovers_daily_parameters() {
     100,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
@@ -247,7 +247,7 @@ fn the_exact_cir_density_is_the_law() {
     2,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let dt = 1.0 / 252.0;
@@ -304,7 +304,7 @@ fn a_density_is_zero_outside_its_support_and_nan_where_it_has_none() {
     100,
     Some(0.05),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   // The Milstein step from 0.05 lands above `−1.7e-4`, and its density underflows far above it.
@@ -360,7 +360,7 @@ fn the_log_density_is_the_log_of_the_density() {
       100,
       Some(0.05),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(0),
     ),
     0.05,
@@ -414,7 +414,7 @@ fn the_log_density_keeps_the_tails_the_density_loses() {
     100,
     Some(0.05),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   // Elerian's density written out, where its `cosh` is in range.

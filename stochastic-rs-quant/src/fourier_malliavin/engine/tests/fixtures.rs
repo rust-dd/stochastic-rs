@@ -28,7 +28,7 @@ pub(super) fn heston_paths() -> (Array1<f64>, Array1<f64>, Array1<f64>) {
     n,
     Some(horizon),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [prices, variance] = heston.sample();
@@ -65,7 +65,7 @@ pub(super) fn heston2d_paths() -> [Array1<f64>; 5] {
     [0.5, -0.5, 0.0, 0.0, -0.5, 0.5],
     n,
     Some(horizon),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let Heston2DPaths { x1, v1, x2, v2, .. } = heston.sample();

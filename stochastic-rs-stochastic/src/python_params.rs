@@ -9,7 +9,7 @@ use crate::params::Horizon;
 use crate::params::VarianceBoundary;
 use crate::traits::Fn1D;
 
-/// `"floor"` or `"reflect"`; any other value is a `ValueError`.
+/// `"full_truncation"`, `"absorption"` or `"reflect"`; any other value is a `ValueError`.
 pub struct PyVarianceBoundary(pub VarianceBoundary);
 
 impl<'a, 'py> FromPyObject<'a, 'py> for PyVarianceBoundary {
@@ -17,19 +17,20 @@ impl<'a, 'py> FromPyObject<'a, 'py> for PyVarianceBoundary {
 
   fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
     match ob.extract::<String>().as_deref() {
-      Ok("floor") => Ok(Self(VarianceBoundary::Floor)),
+      Ok("full_truncation") => Ok(Self(VarianceBoundary::FullTruncation)),
+      Ok("absorption") => Ok(Self(VarianceBoundary::Absorption)),
       Ok("reflect") => Ok(Self(VarianceBoundary::Reflect)),
       _ => Err(PyValueError::new_err(format!(
-        "boundary must be \"floor\" or \"reflect\", got {}",
+        "boundary must be \"full_truncation\", \"absorption\" or \"reflect\", got {}",
         ob.repr()?
       ))),
     }
   }
 }
 
-/// `boundary=None` is the floor.
+/// `boundary=None` is full truncation.
 pub fn boundary(boundary: Option<PyVarianceBoundary>) -> VarianceBoundary {
-  boundary.map_or(VarianceBoundary::Floor, |b| b.0)
+  boundary.map_or(VarianceBoundary::default(), |b| b.0)
 }
 
 /// `clamp=None` clamps.

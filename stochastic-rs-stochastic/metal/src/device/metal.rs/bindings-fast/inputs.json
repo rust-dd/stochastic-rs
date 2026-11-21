@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "404a60ab474304e9d0b91a3ae9a34f3290f0e1d3a150f0e6b964ea95357395df",
+  "artifact": "ec91a307067bfb40d8376e286c3d9854a7ca294889a4e899d4c8acb527cd5ded",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -26,10 +26,11 @@
     "../stochastic-rs-metal-kernels/src/euler/args.rs": "cb9f5c1cf531151fe3fd102c97f846af8face76aee8cabacde116267c8b6db40",
     "../stochastic-rs-metal-kernels/src/euler/draws.rs": "4d5165dcac16ddfdd1628d33bbd0e2dd7c5b42f14f703064ce20125dd779d6ba",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_0_31.rs": "0ec5f4d4164fa8bea1775159e24d3279e5c4b615bbfb10ed71870d9f3e84f557",
+    "../stochastic-rs-metal-kernels/src/euler/entries/families_128_131.rs": "d8e2c14217bde4c2a757dcea8e2494c4be3ab1430a0d5bfe376e64a625ea4013",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_32_63.rs": "db8ab8378c12e11bac2597c21501114dbc09f7b2b4c33f6b9963df60272b9df0",
     "../stochastic-rs-metal-kernels/src/euler/entries/families_64_95.rs": "34581e6c2287b181e678ac79f5d72ac63f36bb7d876bb39b50180765dd8202de",
-    "../stochastic-rs-metal-kernels/src/euler/entries/families_96_120.rs": "12ecacdf64214f736bba5f979b9f212393e33e2d4a8d73642fceb65f7530f330",
-    "../stochastic-rs-metal-kernels/src/euler/entries/mod.rs": "7a15fe0ab98ce566e3947bfd6840a6283b312914e131d0358d71b0abc3d03b4a",
+    "../stochastic-rs-metal-kernels/src/euler/entries/families_96_127.rs": "e12edcc751b5545b7dcd78d089127e727ec43c2edcb877ef9a01a5aa0603130f",
+    "../stochastic-rs-metal-kernels/src/euler/entries/mod.rs": "00ee8317bba3e15f993afd5810368465acd8fd456a10892351d235a1b2c0dcc2",
     "../stochastic-rs-metal-kernels/src/euler/entrypoint.rs": "b0440f232e2a3a459666a82e47d3a22a176a58ff98d082f282c210807bf00993",
     "../stochastic-rs-metal-kernels/src/euler/families.rs": "a3426dcc70045becbb7985f13c1855c3f34a36edcaa3c30e937fe597ad449c0f",
     "../stochastic-rs-metal-kernels/src/euler/families/codegen.rs": "258e859f26d23038157fb0e26d863877a2ad42ce43133cf7ad775a54d2f3ea9a",
@@ -46,13 +47,14 @@
     "../stochastic-rs-metal-kernels/src/sheet.rs": "241f236ddb91af1c20bf1be8c24fcb2204e3947bed3519d505475f78ceb199f4",
     "../stochastic-rs-metal-kernels/src/tile.rs": "3a5923926b67cc647bdd9bf8b52713e25cd81e07a982d1dcc51f4f586a4d19c4",
     "src/euler/families/definitions/diffusions.rs": "92b037b596ef9d29a62ba241a48603bbf35c4b484193d0a89d9fa974789163d1",
-    "src/euler/families/definitions/jump_schemes.rs": "81c0f5dd8c09f2ed34c16400c8a1f5f712cb6f260097c57cf28d35efa7eacbab",
-    "src/euler/families/definitions/lifts.rs": "411ab89924ef88f302444fff5d19e8aab581181d22abb6e76d8d77b828552909",
+    "src/euler/families/definitions/jump_schemes.rs": "e692823dd0d1ce16cd8f1abb62dde40e75c1731d200e88ad6f9581e62f56b4d1",
+    "src/euler/families/definitions/lifts.rs": "af2317c9a7b710a2b6eb759470525dc5a3e1b565a09c2f60825861cd0c28a973",
     "src/euler/families/definitions/memory.rs": "f33d44ffd762dc9928e9306d4706bb5260bf869b4db72797c5c9901163ac107a",
-    "src/euler/families/definitions/mod.rs": "c1bd9295a5f67047a9e2e8e95e61065bdb69f513022b5a3ff2d116426fb8af79",
-    "src/euler/families/definitions/multifactor.rs": "f746daf71e0c2b7e43680d969c3482af875ef71828aa96638774a042a4a0946c",
-    "src/euler/families/definitions/systems.rs": "67b9e4693b2579cce4ea78de47adbeb0b5209c4338fdbcc091143bc0d75e11c6",
-    "src/euler/families/definitions/transformations.rs": "2b8d773886cae4d38c4db4a9f8e112ce938ceca42cdf497305dec9973554864d",
+    "src/euler/families/definitions/mod.rs": "8b09cf2f4dd0485d1fd4ac7689d3c5e61b9f227bfe925fd9834ffc105234010e",
+    "src/euler/families/definitions/multifactor.rs": "cc32e5d343a03dfe36bf38cc7e4140bdedd64f57c64e78a3ed880c726bdf73a7",
+    "src/euler/families/definitions/systems.rs": "8b056d72dae2ba38a09b1f4bca30ffc9cf1c275e84bdb355cea6614b2c18868d",
+    "src/euler/families/definitions/transformations.rs": "b6eb57a90bb9747dbd1dbdada8a79f944be9de13b5103a994f020c45cc0a3df8",
+    "src/euler/families/definitions/truncations.rs": "e515650e28a2c6fabbad92e80b3b0ea721c4d10aadbebbf9280c405d94cb50e7",
     "src/euler/philox.rs": "7b1bf9374093c0ecaa4515c61c452fb1041fafff63e95698524c71a2a10fec9b"
   }
 }

@@ -34,7 +34,7 @@ fn bench_density_eval(c: &mut Criterion) {
     100,
     Some(0.4),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let ou = Ou::new(
@@ -180,7 +180,7 @@ fn bench_mle_fit(c: &mut Criterion) {
       n + 1,
       Some(0.4),
       Some(10.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(42),
     );
     let cir_path = cir.sample();
@@ -195,7 +195,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           100,
           Some(0.4),
           Some(1.0),
-          VarianceBoundary::Floor,
+          VarianceBoundary::Absorption,
           Deterministic::new(0),
         );
         black_box(

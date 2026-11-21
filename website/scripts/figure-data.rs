@@ -42,7 +42,7 @@ fn main() {
     512,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(21),
   );
   // A quantile band from four thousand paths, and a few sample paths over

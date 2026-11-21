@@ -21,4 +21,5 @@ mod device_law {
   pub(crate) mod sheet;
   pub(crate) mod stable;
   pub(crate) mod systems;
+  pub(crate) mod truncation;
 }

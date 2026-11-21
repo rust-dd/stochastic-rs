@@ -43,7 +43,7 @@ fn fcir() -> Fcir<f64> {
     16,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Default::default(),
   )
 }

@@ -21,7 +21,7 @@ fn make_bates(drift: Drift<f64>) -> Bates<f64> {
     1.0,
     0.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
 }
@@ -85,7 +85,7 @@ fn compensated_by_its_mean_the_lognormal_jump_leaves_the_price_a_martingale() {
     100.0,
     0.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(5),
   );
   let terminal = bates
@@ -116,7 +116,7 @@ fn the_lognormal_law_keeps_the_price_positive_where_a_price_step_crosses_zero() 
     100.0,
     0.25,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(11),
   );
   let crossed = quarterly
@@ -133,7 +133,7 @@ fn the_lognormal_law_keeps_the_price_positive_where_a_price_step_crosses_zero() 
 #[test]
 fn the_lognormal_law_launches_the_log_price_families_with_the_process_compensator() {
   let law = LogNormalJump::new(-0.1_f64, 0.2);
-  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+  for boundary in [VarianceBoundary::Absorption, VarianceBoundary::Reflect] {
     let bates = Bates::new(
       Drift::Mu(0.05),
       5.0,
@@ -151,7 +151,7 @@ fn the_lognormal_law_launches_the_log_price_families_with_the_process_compensato
       Unseeded,
     );
     let drift_c = match (EulerSystem::<f64, 2>::euler_spec(&bates), boundary) {
-      (EulerSpec::BatesJump { drift_c, .. }, VarianceBoundary::Floor)
+      (EulerSpec::BatesJump { drift_c, .. }, VarianceBoundary::Absorption)
       | (EulerSpec::BatesJumpReflected { drift_c, .. }, VarianceBoundary::Reflect) => drift_c,
       (spec, _) => panic!("{boundary:?} launched {spec:?}"),
     };

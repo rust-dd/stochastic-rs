@@ -1,4 +1,4 @@
-//! Cox–Ingersoll–Ross square-root diffusion, floored or reflected at zero by its boundary policy.
+//! Cox–Ingersoll–Ross square-root diffusion; its `VarianceBoundary` treats a step below zero.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
@@ -58,7 +58,7 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`Cir::default().with_theta(3.0).with_sigma(0.3)`); nothing
 /// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
-  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns under [`VarianceBoundary::Floor`].
+  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns unless reflected.
   /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta: T,
@@ -79,9 +79,8 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         under VarianceBoundary::Floor; the path floors at zero on every \
-         boundary hit instead of reflecting — pass VarianceBoundary::Reflect \
-         for the standard sub-Feller mitigation"
+         under VarianceBoundary::{boundary:?}; the path sits at zero on every \
+         boundary hit instead of reflecting"
       );
     }
 
@@ -206,7 +205,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
   }
 }
 
-/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04 under the floor, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
+/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04, fully truncated, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
 /// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
   fn default() -> Self {
@@ -217,7 +216,7 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
       252,
       Some(T::from_f64_fast(0.04)),
       Some(T::one()),
-      VarianceBoundary::Floor,
+      VarianceBoundary::default(),
       Unseeded,
     )
   }
@@ -305,13 +304,11 @@ impl<T: FloatExt> CirSampler<T> {
     self.normal.fill_slice(tail);
     let mut prev = self.x0;
     for z in tail.iter_mut() {
-      let dcir = self.theta * (self.mu - prev) * self.dt + self.diff_scale * prev.abs().sqrt() * *z;
-      let next = match self.boundary {
-        VarianceBoundary::Floor => (prev + dcir).max(T::zero()),
-        VarianceBoundary::Reflect => (prev + dcir).abs(),
-      };
-      *z = next;
-      prev = next;
+      let (drift_at, root_of) = self.boundary.reads(prev);
+      let dcir =
+        self.theta * (self.mu - drift_at) * self.dt + self.diff_scale * root_of.sqrt() * *z;
+      prev = self.boundary.carried(prev + dcir);
+      *z = self.boundary.observed(prev);
     }
   }
 }

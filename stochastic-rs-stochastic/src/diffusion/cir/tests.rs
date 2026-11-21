@@ -10,7 +10,7 @@ fn law(theta: f64, mu: f64, sigma: f64) -> Cir<f64> {
     2,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
 }
@@ -55,7 +55,7 @@ fn cir_accepts_sub_feller_under_the_floor() {
     256,
     Some(0.1),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(7),
   );
   let path = cir.sample();
@@ -351,7 +351,7 @@ fn the_f32_law_is_the_f64_law_rounded_once() {
     2,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
   let wide = law(2.0, mu as f64, sigma as f64);

@@ -18,7 +18,7 @@ fn negative_initial_variance_panics() {
     8,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
 }
@@ -36,7 +36,7 @@ fn variance_path_stays_non_negative() {
     128,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
   let [_s, v] = p.sample();
@@ -60,7 +60,7 @@ fn qe_variance_mean_and_asset_martingale() {
     n,
     Some(t),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(20_240_601),
   )
   .qe();
@@ -111,7 +111,7 @@ fn qe_rejects_three_halves() {
     16,
     Some(1.0),
     HestonPow::ThreeHalves,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
   .qe()
@@ -130,7 +130,7 @@ fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, AndersenQe> {
     16,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
   .qe()
@@ -179,7 +179,7 @@ fn the_boundary_selects_the_step() {
     )
     .sample()
   };
-  let [_, floor] = make(VarianceBoundary::Floor);
+  let [_, floor] = make(VarianceBoundary::Absorption);
   let [_, reflect] = make(VarianceBoundary::Reflect);
   assert!(floor.iter().all(|v| *v >= 0.0) && reflect.iter().all(|v| *v >= 0.0));
   let split = floor.iter().zip(reflect.iter()).position(|(f, r)| f != r);
@@ -201,7 +201,7 @@ fn the_initial_values_are_the_first_points() {
     65,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   );
   let [s, v] = h.sample();
@@ -229,7 +229,7 @@ fn the_variance_derivative_sums_its_rate_backward_along_the_sampled_variance() {
         17,
         Some(1.0),
         pow,
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(9),
       )
     };

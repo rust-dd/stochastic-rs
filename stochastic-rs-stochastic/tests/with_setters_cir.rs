@@ -72,7 +72,7 @@ fn cir_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(13),
   )
   .sample();
@@ -83,7 +83,7 @@ fn cir_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   )
   .with_seed(Deterministic::new(13))

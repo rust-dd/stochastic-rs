@@ -9,7 +9,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 /// A CIR law for the density and fit tests; its path fields are unused.
 pub(crate) fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
-  let floor = VarianceBoundary::Floor;
+  let floor = VarianceBoundary::Absorption;
   let seed = Deterministic::new(0);
   Cir::new(theta, mu, sigma, 2, None, None, floor, seed)
 }

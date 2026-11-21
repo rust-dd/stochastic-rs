@@ -31,6 +31,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::params::VarianceBoundary;
 use crate::precondition::check_n;
 use crate::precondition::check_t;
 use crate::traits::Expr;
@@ -474,17 +475,20 @@ impl<T: FloatExt> HestonSlvSampler<'_, T> {
 
     let dt = self.dt;
     let half = T::from_f64_fast(0.5);
+    let boundary = VarianceBoundary::FullTruncation;
+    let mut carried = v[0];
     for i in 1..self.n {
       let t_prev = T::from_usize_(i - 1) * dt;
-      let v_prev = v[i - 1].max(T::zero());
+      let v_prev = boundary.observed(carried);
       let sqrt_v = v_prev.sqrt();
       let l = self.leverage.call(t_prev, s[i - 1]);
 
       let log_inc = (self.mu - half * l * l * v_prev) * dt + l * sqrt_v * dws[i - 1];
       s[i] = s[i - 1] * log_inc.exp();
 
-      let dv = self.kappa * (self.theta - v_prev) * dt + self.sigma_mixed * sqrt_v * dwv[i - 1];
-      v[i] = (v_prev + dv).max(T::zero());
+      let (kappa, theta, sigma) = (self.kappa, self.theta, self.sigma_mixed);
+      carried = boundary.square_root_step(carried, kappa, theta, sigma, dt, dwv[i - 1]);
+      v[i] = boundary.observed(carried);
     }
   }
 }

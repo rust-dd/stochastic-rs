@@ -20,7 +20,7 @@ fn negative_initial_variance_panics() {
     0.0,
     8,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
 }
@@ -42,7 +42,7 @@ fn the_output_names_its_slots() {
     0.05,
     64,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   )
   .sample();

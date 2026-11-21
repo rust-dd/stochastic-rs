@@ -54,7 +54,7 @@ fn fcir_cache_setters_match_fresh_construction() {
       n,
       Some(0.04),
       t,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       seed(7),
     )
   };

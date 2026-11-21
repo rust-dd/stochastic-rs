@@ -332,7 +332,18 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::DoubleHeston {
+      VarianceBoundary::FullTruncation => crate::euler::EulerSpec::DoubleHestonFullTruncation([
+        self.mu,
+        self.kappa1,
+        self.theta1,
+        self.sigma1,
+        self.rho1,
+        self.kappa2,
+        self.theta2,
+        self.sigma2,
+        self.rho2,
+      ]),
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::DoubleHeston {
         mu: self.mu,
         kappa1: self.kappa1,
         theta1: self.theta1,
@@ -492,9 +503,10 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
     v1[0] = self.v1_0;
     v2[0] = self.v2_0;
 
+    let (mut carried1, mut carried2) = (v1[0], v2[0]);
     for i in 1..self.n {
-      let v1_prev = v1[i - 1].max(T::zero());
-      let v2_prev = v2[i - 1].max(T::zero());
+      let v1_prev = self.boundary.observed(carried1);
+      let v2_prev = self.boundary.observed(carried2);
 
       // Stock increment receives two independent (across factors) variance shocks.
       let ds = self.mu * s[i - 1] * dt
@@ -502,18 +514,25 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
         + s[i - 1] * v2_prev.sqrt() * ds2[i - 1];
       s[i] = s[i - 1] + ds;
 
-      let dv1 =
-        self.kappa1 * (self.theta1 - v1_prev) * dt + self.sigma1 * v1_prev.sqrt() * dv1n[i - 1];
-      let dv2 =
-        self.kappa2 * (self.theta2 - v2_prev) * dt + self.sigma2 * v2_prev.sqrt() * dv2n[i - 1];
-
-      let new_v1 = v1[i - 1] + dv1;
-      let new_v2 = v2[i - 1] + dv2;
-
-      (v1[i], v2[i]) = match self.boundary {
-        VarianceBoundary::Floor => (new_v1.max(T::zero()), new_v2.max(T::zero())),
-        VarianceBoundary::Reflect => (new_v1.abs(), new_v2.abs()),
-      };
+      let b = self.boundary;
+      carried1 = b.square_root_step(
+        carried1,
+        self.kappa1,
+        self.theta1,
+        self.sigma1,
+        dt,
+        dv1n[i - 1],
+      );
+      carried2 = b.square_root_step(
+        carried2,
+        self.kappa2,
+        self.theta2,
+        self.sigma2,
+        dt,
+        dv2n[i - 1],
+      );
+      v1[i] = b.observed(carried1);
+      v2[i] = b.observed(carried2);
     }
   }
 }

@@ -483,5 +483,12 @@ pub(super) fn every_family() -> Vec<Probe> {
       lift: Some(probe_lift(1.0 / (N - 1) as f32)),
       program: Some(ProbePrograms::pair()),
     },
+    // Sub-Feller, so the signed state of the full-truncation families goes below zero.
+    p(
+      EulerSpec::ShiftedSquareRootFullTruncation([0.5, 0.04, 1.0]),
+      0.04,
+    ),
+    p(EulerSpec::SquaredBesselStateFullTruncation([0.5, 2.0]), 0.1),
+    p(EulerSpec::BesselFromSquaredFullTruncation([0.5, 2.0]), 0.1),
   ]
 }

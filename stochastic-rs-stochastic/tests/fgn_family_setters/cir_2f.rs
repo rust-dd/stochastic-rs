@@ -14,7 +14,7 @@ pub(super) fn cir(n: usize, horizon: f64) -> Cir<f64, Deterministic> {
     n,
     Some(0.03),
     Some(horizon),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed(0),
   )
 }
@@ -27,7 +27,7 @@ fn other_cir() -> Cir<f64, Deterministic> {
     32,
     Some(0.05),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed(99),
   )
 }

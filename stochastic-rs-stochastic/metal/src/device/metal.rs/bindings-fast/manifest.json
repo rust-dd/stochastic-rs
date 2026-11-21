@@ -2987,6 +2987,160 @@
         "requires": []
       },
       {
+        "name": "euler_121_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_122_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_123_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_124_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_125_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_125_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_126_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_126_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_127_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_127_1_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_128_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_129_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_130_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_131_0_0",
+        "signature": 5,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
         "name": "fft_columns_1",
         "signature": 6,
         "required_block": null,
@@ -3122,14 +3276,14 @@
   },
   "checks": [],
   "files": {
-    "msl": "c6e2fbdaf3734426a8758bf3624ed40d04453646f72c68d0ebc51be414d28cb6",
-    "oxide_ir": "5588a586217783d0a0a24e4a720450d73ae7166b0951eaef3ca3b7e2efa3ed84",
-    "rustc_args": "6a1b7b078a1a34a467510fb5c42600a8efbd96ca239d7cddc292b93416484326",
-    "ir": "badfb00c7582bfe52398a95e3cc3f9aef18b206993ab74e5fd96e953ee59d1f0",
-    "metallib": "4776a86b28de2680600a523317e49b90f4d7c497e5e8925b6f0ce8eaf2c7c338"
+    "msl": "25cc2499d0a9e144b35ba511b46dd4af27102853aa194d511982821f7b5d0ff3",
+    "oxide_ir": "64ae1c48536cd3bc3524be2a8c633dc2b4bc8254ecf145bcc237a98202d3f92f",
+    "rustc_args": "c2df12082da159cd15b931f7b67f6cc9a01182176ff525566e1f9b84493a9f94",
+    "ir": "a54dceeb7b0d5080560c817184533e64350f0685c69be4d49b3f74b31375d1bc",
+    "metallib": "0516489018895548c3f5dc42eb88d1c4a26160f75cce7dffc6c06ada3c2d5937"
   },
   "build": {
-    "fingerprint": "404a60ab474304e9d0b91a3ae9a34f3290f0e1d3a150f0e6b964ea95357395df",
+    "fingerprint": "ec91a307067bfb40d8376e286c3d9854a7ca294889a4e899d4c8acb527cd5ded",
     "compiler": "4348fd85b672f6cc5b45c86eeb28c80f52d83bbdd7f1e64fddd34ef6a808762d",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.922 (metalfe-32023.922.4)",

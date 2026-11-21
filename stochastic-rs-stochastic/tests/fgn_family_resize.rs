@@ -64,7 +64,7 @@ fn fcir_resizes_through_with_points() {
     10,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     seed(),
   )
   .with_points(1000);

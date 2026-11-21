@@ -40,7 +40,7 @@ guard!(bates, "Bates", |s| Bates::new(
   100.0,
   0.04,
   Some(1.0),
-  VarianceBoundary::Floor,
+  VarianceBoundary::FullTruncation,
   s
 ));
 

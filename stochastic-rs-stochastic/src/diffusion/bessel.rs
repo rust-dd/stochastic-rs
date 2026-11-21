@@ -60,7 +60,7 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`Bessel::default().with_delta(4.0)`); nothing is cached,
 /// since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
-  /// Logs [`SquaredBessel::new`]'s δ < 2 warning under [`VarianceBoundary::Floor`]; panics unless
+  /// Logs [`SquaredBessel::new`]'s δ < 2 warning unless reflected; panics unless
   /// `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     delta: T,
@@ -77,9 +77,8 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Bessel::new: dimension below the strict-positivity \
-         threshold (delta < 2) under VarianceBoundary::Floor; the path floors \
-         at zero on every boundary hit instead of reflecting — pass \
-         VarianceBoundary::Reflect for the standard sub-boundary mitigation"
+         threshold (delta < 2) under VarianceBoundary::{boundary:?}; the path sits \
+         at zero on every boundary hit instead of reflecting"
       );
     }
 
@@ -154,7 +153,7 @@ impl<T: FloatExt> Default for Bessel<T, Unseeded> {
       252,
       Some(T::one()),
       Some(T::one()),
-      VarianceBoundary::Floor,
+      VarianceBoundary::default(),
       Unseeded,
     )
   }
@@ -168,7 +167,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::BesselFromSquared {
+      VarianceBoundary::FullTruncation => {
+        crate::euler::EulerSpec::BesselFromSquaredFullTruncation([self.delta, two])
+      }
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::BesselFromSquared {
         delta: self.delta,
         two,
       },
@@ -292,13 +294,10 @@ impl<T: FloatExt> BesselSampler<T> {
     // recursion; the path reports its square root.
     let mut prev_sq = self.x0 * self.x0;
     for z in tail.iter_mut() {
-      let dbesq = self.delta * self.dt + self.diff_scale * prev_sq.abs().sqrt() * *z;
-      let next_sq = match self.boundary {
-        VarianceBoundary::Floor => (prev_sq + dbesq).max(T::zero()),
-        VarianceBoundary::Reflect => (prev_sq + dbesq).abs(),
-      };
-      *z = next_sq.sqrt();
-      prev_sq = next_sq;
+      let (_, root_of) = self.boundary.reads(prev_sq);
+      let dbesq = self.delta * self.dt + self.diff_scale * root_of.sqrt() * *z;
+      prev_sq = self.boundary.carried(prev_sq + dbesq);
+      *z = self.boundary.observed(prev_sq).sqrt();
     }
   }
 }

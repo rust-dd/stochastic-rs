@@ -87,11 +87,11 @@ pub enum EulerSpec<T: FloatExt> {
   Verhulst { r: T, k: T, sigma: T },
   /// [`Verhulst`](EulerSpec::Verhulst) confined to `[0, K]`.
   VerhulstClamped { r: T, k: T, sigma: T },
-  /// `dX = κ(θ − X)X dt + σ√X dW`, truncated at zero.
+  /// `dX = κ(θ − X)X dt + σ√X dW`, absorbed at zero.
   FellerLogistic { kappa: T, theta: T, sigma: T },
   /// [`FellerLogistic`](EulerSpec::FellerLogistic) reflected at zero.
   FellerLogisticReflected { kappa: T, theta: T, sigma: T },
-  /// `dX = δ dt + 2√|X| dW`, truncated at zero.
+  /// `dX = δ dt + 2√|X| dW`, absorbed at zero.
   SquaredBesselState { delta: T, two: T },
   /// [`SquaredBesselState`](EulerSpec::SquaredBesselState) reflected at zero.
   SquaredBesselStateReflected { delta: T, two: T },
@@ -125,7 +125,7 @@ pub enum EulerSpec<T: FloatExt> {
   TanhOrnsteinUhlenbeck { kappa: T, mu: T, sigma: T },
   /// `dρ = κ(μ − ρ) dt + σ√(1 − ρ²) dW` confined to `[−0.9999, 0.9999]`.
   BoundedCorrelation { kappa: T, mu: T, sigma: T },
-  /// The Heston model's Euler scheme, variance truncated at zero.
+  /// The Heston model's Euler scheme, variance absorbed at zero.
   Heston {
     mu: T,
     kappa: T,
@@ -168,7 +168,7 @@ pub enum EulerSpec<T: FloatExt> {
     eps_inv: T,
     sqrt_eps_inv: T,
   },
-  /// The Heston model stepped in log-price, variance truncated.
+  /// The Heston model stepped in log-price, variance absorbed.
   LogHeston {
     drift: T,
     kappa: T,
@@ -184,7 +184,7 @@ pub enum EulerSpec<T: FloatExt> {
     xi: T,
     rho: T,
   },
-  /// Two variance factors driving one spot, both truncated.
+  /// Two variance factors driving one spot, both absorbed.
   DoubleHeston {
     mu: T,
     kappa1: T,
@@ -269,7 +269,7 @@ pub enum EulerSpec<T: FloatExt> {
     gamma: T,
     rho: T,
   },
-  /// Two Heston assets under one 4x4 Cholesky factor, variances truncated.
+  /// Two Heston assets under one 4x4 Cholesky factor, variances absorbed.
   TwoAssetHeston {
     mu1: T,
     mu2: T,
@@ -313,7 +313,7 @@ pub enum EulerSpec<T: FloatExt> {
   },
   /// Merton's jump diffusion in log-price.
   MertonJumpLog { drift_ln: T, sigma: T },
-  /// The Bates stochastic-volatility jump model, variance truncated.
+  /// The Bates stochastic-volatility jump model, variance absorbed.
   BatesJump {
     drift_c: T,
     alpha: T,
@@ -367,7 +367,7 @@ pub enum EulerSpec<T: FloatExt> {
     log_scale: T,
     pi: T,
   },
-  /// A Heston variance under a Kou-jumping log-price, variance truncated.
+  /// A Heston variance under a Kou-jumping log-price, variance absorbed.
   KouJumpHeston {
     drift_c: T,
     kappa: T,
@@ -513,7 +513,7 @@ pub enum EulerSpec<T: FloatExt> {
   /// already compensated and multiplied by `dt`.
   AdditiveJumpDiffusion { drift_dt: T, sigma: T },
   /// Bates (1996) stepped by Euler in the spot, the jump multiplicative under
-  /// a product size law, the variance truncated at zero.
+  /// a product size law, the variance absorbed at zero.
   Bates1996 {
     drift_c: T,
     alpha: T,
@@ -626,7 +626,7 @@ pub enum EulerSpec<T: FloatExt> {
     pi: T,
   },
   /// The Heston stochastic-local volatility model `(s, v)` under the leverage the launch's first
-  /// program computes from `(t, s)`, the vol-of-vol already mixed by `η`.
+  /// program computes from `(t, s)`, the vol-of-vol already mixed by `η`; full truncation.
   HestonSlv {
     mu: T,
     kappa: T,
@@ -661,6 +661,29 @@ pub enum EulerSpec<T: FloatExt> {
     delta: [T; 4],
     l: [T; 10],
   },
+  /// `Heston` under full truncation, its parameters in the same order.
+  HestonFullTruncation([T; 6]),
+  /// `LogHeston` under full truncation, its parameters in the same order.
+  LogHestonFullTruncation([T; 5]),
+  /// `DoubleHeston` under full truncation, its parameters in the same order.
+  DoubleHestonFullTruncation([T; 9]),
+  /// `TwoAssetHeston` under full truncation, its parameters in the same order.
+  TwoAssetHestonFullTruncation([T; 18]),
+  /// `BatesJump` under full truncation, its parameters in the same order.
+  BatesJumpFullTruncation([T; 5]),
+  /// `Bates1996` under full truncation, its parameters in the same order.
+  Bates1996FullTruncation([T; 5]),
+  /// `KouJumpHeston` under full truncation, its parameters in the same order.
+  KouJumpHestonFullTruncation([T; 5]),
+  /// `ShiftedSquareRoot` under full truncation, its parameters in the same order.
+  ShiftedSquareRootFullTruncation([T; 3]),
+  /// `TwoFactorSquareRoot`'s six parameters, then a scheme per factor: `0` full truncation, `1`
+  /// absorption, `2` reflection.
+  TwoFactorSquareRootSchemes([T; 8]),
+  /// `SquaredBesselState` under full truncation, its parameters in the same order.
+  SquaredBesselStateFullTruncation([T; 2]),
+  /// `BesselFromSquared` under full truncation, its parameters in the same order.
+  BesselFromSquaredFullTruncation([T; 2]),
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.

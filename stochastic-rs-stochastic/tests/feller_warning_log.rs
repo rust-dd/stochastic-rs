@@ -83,10 +83,17 @@ fn boundary_violations_warn_through_log_unless_reflected() {
   build(VarianceBoundary::Reflect);
   assert!(drain().is_empty());
 
-  build(VarianceBoundary::Floor);
-  let records = drain();
-  assert_eq!(records.len(), 7, "{records:?}");
-  assert!(records.iter().all(|(level, _)| *level == Level::Warn));
+  for boundary in [
+    VarianceBoundary::FullTruncation,
+    VarianceBoundary::Absorption,
+  ] {
+    build(boundary);
+    let records = drain();
+    assert_eq!(records.len(), 7, "{records:?}");
+    assert!(records.iter().all(|(level, _)| *level == Level::Warn));
+    let named = format!("under VarianceBoundary::{boundary:?};");
+    assert!(records.iter().all(|(_, text)| text.contains(&named)));
+  }
 
   let black_karasinski = |a: f64| {
     black_box(BlackKarasinski::<f64>::new(
@@ -114,7 +121,7 @@ fn boundary_violations_warn_through_log_unless_reflected() {
     16,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   ));
   assert!(drain().is_empty());

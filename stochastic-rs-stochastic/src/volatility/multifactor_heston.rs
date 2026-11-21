@@ -21,6 +21,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -241,17 +242,17 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     let at = |arr: &[T; K], k: usize| if k < K { arr[k] } else { T::zero() };
-    crate::euler::EulerSpec::DoubleHeston {
-      mu: p.mu,
-      kappa1: at(&p.kappa, 0),
-      theta1: at(&p.theta, 0),
-      sigma1: at(&p.sigma, 0),
-      rho1: at(&p.rho, 0),
-      kappa2: at(&p.kappa, 1),
-      theta2: at(&p.theta, 1),
-      sigma2: at(&p.sigma, 1),
-      rho2: at(&p.rho, 1),
-    }
+    crate::euler::EulerSpec::DoubleHestonFullTruncation([
+      p.mu,
+      at(&p.kappa, 0),
+      at(&p.theta, 0),
+      at(&p.sigma, 0),
+      at(&p.rho, 0),
+      at(&p.kappa, 1),
+      at(&p.theta, 1),
+      at(&p.sigma, 1),
+      at(&p.rho, 1),
+    ])
   }
 
   /// The spot and the factors, the latter floored at zero exactly as the
@@ -442,6 +443,8 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> 
       .map(|k| self.cgns[k].sample_impl(&self.seed))
       .collect::<Vec<_>>();
 
+    let boundary = VarianceBoundary::FullTruncation;
+    let mut carried = self.v0;
     for i in 1..self.n {
       // 1) Compute the total asset increment from all factor draws.
       let mut sum_sqrt_v_dw = T::zero();
@@ -453,10 +456,10 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> 
 
       // 2) Full-truncation Euler step for each variance factor independently.
       for k in 0..K {
-        let v_prev = v[k][i - 1].max(T::zero());
-        let dv = self.kappa[k] * (self.theta[k] - v_prev) * dt
-          + self.sigma[k] * v_prev.sqrt() * factor_noises[k][1][i - 1];
-        v[k][i] = (v[k][i - 1] + dv).max(T::zero());
+        let (kappa, theta, sigma) = (self.kappa[k], self.theta[k], self.sigma[k]);
+        let dw = factor_noises[k][1][i - 1];
+        carried[k] = boundary.square_root_step(carried[k], kappa, theta, sigma, dt, dw);
+        v[k][i] = boundary.observed(carried[k]);
       }
     }
   }

@@ -18,6 +18,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::precondition::check_n;
 use crate::precondition::check_t;
 use crate::traits::FloatExt;
@@ -464,6 +465,8 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
       .atanh();
     rho_path[0] = x_corr.tanh();
 
+    let boundary = VarianceBoundary::FullTruncation;
+    let mut carried = v_path[0];
     for i in 1..self.n {
       // Correlation dynamics (modified Ou in X-space)
       let corr_drift = self.kappa_r * (self.mu_r - x_corr.tanh());
@@ -472,11 +475,11 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
       rho_path[i] = rho_t;
 
       // Variance dynamics (Cir)
-      let v_prev = v_path[i - 1].max(zero);
-      v_path[i] = (v_prev
+      let v_prev = boundary.observed(carried);
+      carried = carried
         + self.kappa_v * (self.mu_v - v_prev) * dt
-        + self.sigma_v * v_prev.sqrt() * dw_v[i - 1])
-        .max(zero);
+        + self.sigma_v * v_prev.sqrt() * dw_v[i - 1];
+      v_path[i] = boundary.observed(carried);
 
       // Log-price dynamics (Cholesky, Eq. 2.7 with ρ₁=0)
       // dx = (r − ½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x

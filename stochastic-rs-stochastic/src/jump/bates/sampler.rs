@@ -137,16 +137,18 @@ where
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
     s[0] = self.s0;
     v[0] = self.v0;
+    let mut carried = v[0];
     match self.log_jumps {
       Some(law) => {
         let mut jumps = law.jump_sums(self.lambda, &self.jump_seed, self.n, dt);
         for i in 1..self.n {
-          let v_prev = v[i - 1].max(T::zero());
+          let v_prev = self.boundary.observed(carried);
           let half_v = T::from_f64_fast(0.5) * v_prev;
           let log_step =
             (self.drift_c - half_v) * dt + v_prev.sqrt() * cgn1[i - 1] + jumps.next_sum();
           s[i] = s[i - 1] * log_step.exp();
-          v[i] = self.variance_step(v[i - 1], v_prev, cgn2[i - 1]);
+          carried = self.variance_step(carried, v_prev, cgn2[i - 1]);
+          v[i] = self.boundary.observed(carried);
         }
       }
       None => {
@@ -158,25 +160,23 @@ where
           dt,
         );
         for i in 1..self.n {
-          let v_prev = v[i - 1].max(T::zero());
+          let v_prev = self.boundary.observed(carried);
           s[i] = s[i - 1]
             + self.drift_c * s[i - 1] * dt
             + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
             + s[i - 1] * jumps[i];
-          v[i] = self.variance_step(v[i - 1], v_prev, cgn2[i - 1]);
+          carried = self.variance_step(carried, v_prev, cgn2[i - 1]);
+          v[i] = self.boundary.observed(carried);
         }
       }
     }
   }
 
-  /// The variance one step on from `v`, whose floored value is `v_prev`, under the noise `z`.
+  /// The carried variance one step on from `carried`, observed as `v_prev`, under the noise `z`.
   #[inline]
-  fn variance_step(&self, v: T, v_prev: T, z: T) -> T {
+  fn variance_step(&self, carried: T, v_prev: T, z: T) -> T {
     let dv = (self.alpha - self.beta * v_prev) * self.dt + self.sigma * v_prev.sqrt() * z;
-    match self.boundary {
-      VarianceBoundary::Floor => (v + dv).max(T::zero()),
-      VarianceBoundary::Reflect => (v + dv).abs(),
-    }
+    self.boundary.carried(carried + dv)
   }
 }
 

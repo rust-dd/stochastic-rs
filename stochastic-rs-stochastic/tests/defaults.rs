@@ -127,7 +127,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -189,7 +189,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -236,7 +236,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -247,7 +247,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -269,7 +269,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();

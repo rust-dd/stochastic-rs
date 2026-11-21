@@ -21,7 +21,7 @@ fn besq_mean_matches_closed_form() {
         n,
         Some(x0),
         Some(t),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed),
       );
       let mean = besq
@@ -43,7 +43,7 @@ fn besq_mean_matches_closed_form() {
 /// δ = 1 < 2 is sub-boundary: the path must stay non-negative and finite under either boundary.
 #[test]
 fn besq_stays_nonnegative() {
-  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+  for boundary in [VarianceBoundary::Absorption, VarianceBoundary::Reflect] {
     let besq = SquaredBessel::<f64, _>::new(
       1.0,
       500,
@@ -77,7 +77,7 @@ fn bessel_squared_matches_besq_mean() {
         n,
         Some(x0),
         Some(t),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed),
       );
       let besq_mean = besq
@@ -92,7 +92,7 @@ fn bessel_squared_matches_besq_mean() {
         n,
         Some(x0.sqrt()),
         Some(t),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed),
       );
       let bes_squared_mean = bes
@@ -130,7 +130,7 @@ fn bessel_mean_matches_chi_distribution_identity() {
         n,
         Some(0.0),
         Some(t),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(seed),
       );
       let mean = bes
@@ -157,7 +157,7 @@ fn besq_is_deterministic() {
     50,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   )
   .sample();
@@ -166,7 +166,7 @@ fn besq_is_deterministic() {
     50,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   )
   .sample();
@@ -181,7 +181,7 @@ fn bessel_is_deterministic() {
     50,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   )
   .sample();
@@ -190,7 +190,7 @@ fn bessel_is_deterministic() {
     50,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   )
   .sample();
