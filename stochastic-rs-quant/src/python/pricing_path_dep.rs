@@ -4,9 +4,7 @@ use pyo3::prelude::*;
 use super::parse_option_type;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `sigma` only, so the wrapper carries the
-/// `(s, k, r, q, tau)` query the Python-visible no-argument methods are
-/// defined at. Python's constructor signature is unchanged.
+/// Asian option prices at the stored `(s, k, r, q, tau)`, which the Rust model takes per query.
 #[pyclass(name = "AsianPricer", unsendable)]
 pub struct PyAsianPricer {
   inner: crate::pricing::asian::AsianPricer,
@@ -50,10 +48,7 @@ impl PyAsianPricer {
   }
 }
 
-/// The Rust model holds `sigma` only, so the wrapper carries the
-/// `(s, k, r, q, tau)` query and the option type the Python-visible
-/// no-argument methods are defined at. Python's constructor signature is
-/// unchanged.
+/// Bjerksund-Stensland (2002) American prices at the stored `(s, k, r, q, tau)` and option type.
 #[pyclass(name = "BjerksundStensland2002Pricer", unsendable)]
 pub struct PyBjerksundStensland2002Pricer {
   inner: crate::pricing::bjerksund_stensland::BjerksundStensland2002Pricer,

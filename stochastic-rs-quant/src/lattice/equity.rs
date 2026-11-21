@@ -26,19 +26,27 @@ pub struct CrrModel<T: RealExt> {
 }
 
 impl<T: RealExt> CrrModel<T> {
-  /// Construct a CRR model.
+  /// Panics unless `sigma` is finite and `>= 0` and `steps >= 1`.
   pub fn new(sigma: T, steps: usize) -> Self {
-    assert!(steps >= 1, "steps must be positive");
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps:?}"
+    );
     Self { sigma, steps }
   }
 
-  /// Backward-induction rollback shared by the European and American paths.
+  /// The rollback of both styles: the payoff at `tau = 0`; NaN past expiry, for a NaN query, a
+  /// spot or strike that is not positive, and where `p` leaves `[0, 1]`, as it does at `sigma = 0`.
   ///
-  /// European nodes hold the discounted continuation value
-  /// $V_{\text{node}} = e^{-r\Delta t}(p\,V_{\text{up}} + (1-p)\,V_{\text{down}})$.
-  /// American nodes additionally clamp against immediate exercise:
-  /// $V_{\text{node}} = \max\!\big(e^{-r\Delta t}(p\,V_{\text{up}}+(1-p)V_{\text{down}}),\ \text{intrinsic}(S_{\text{node}})\big)$,
-  /// where intrinsic is $(S-K)^+$ for calls and $(K-S)^+$ for puts.
+  /// $$
+  /// V=e^{-r\Delta t}\bigl(pV_u+(1-p)V_d\bigr),\qquad
+  /// V^{\mathrm{Am}}=\max\bigl(V,\ \text{intrinsic}\bigr),\qquad
+  /// p=\frac{e^{(r-q)\Delta t}-d}{u-d}
+  /// $$
   fn price_rollback(
     &self,
     s: T,
@@ -49,18 +57,25 @@ impl<T: RealExt> CrrModel<T> {
     option_type: OptionType,
     option_style: OptionStyle,
   ) -> T {
+    let intrinsic = |state: T| match option_type {
+      OptionType::Call => (state - k).max_or_nan(T::zero()),
+      OptionType::Put => (k - state).max_or_nan(T::zero()),
+    };
+    if tau == T::zero() && !(r.is_nan() || q.is_nan()) {
+      return intrinsic(s);
+    }
     let dt = tau / T::from_usize_(self.steps);
     let sqrt_dt = dt.sqrt();
     let up = (self.sigma * sqrt_dt).exp();
     let down = T::one() / up;
     let drift = ((r - q) * dt).exp();
     let p = (drift - down) / (up - down);
+    let positive = s > T::zero() && k > T::zero();
+    if !(tau > T::zero() && positive && p >= T::zero() && p <= T::one()) {
+      return T::nan();
+    }
     let tree = BinomialTree::from_crr(s, up, down, p, self.steps, dt);
     let discount = (-r * dt).exp();
-    let intrinsic = |state: T| match option_type {
-      OptionType::Call => (state - k).max(T::zero()),
-      OptionType::Put => (k - state).max(T::zero()),
-    };
 
     let terminal_states = tree.states.last().expect("tree has at least one level");
     let mut values = Array1::from_iter(terminal_states.iter().map(|&state| intrinsic(state)));
@@ -74,7 +89,7 @@ impl<T: RealExt> CrrModel<T> {
         let continuation =
           discount * (p_node * values[node + 1] + (T::one() - p_node) * values[node]);
         step_values[node] = match option_style {
-          OptionStyle::American => continuation.max(intrinsic(states[node])),
+          OptionStyle::American => continuation.max_or_nan(intrinsic(states[node])),
           OptionStyle::European => continuation,
         };
       }
@@ -87,12 +102,9 @@ impl<T: RealExt> CrrModel<T> {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::European)
   }
 
-  /// Price an American option via backward induction with early exercise.
+  /// American price by comparing continuation with exercise at every node.
   ///
-  /// Reference: Cox, Ross & Rubinstein, "Option Pricing: A Simplified
-  /// Approach", Journal of Financial Economics 7(3) (1979), §4 (extension to
-  /// American puts by comparing continuation value against intrinsic value
-  /// at every node during the backward pass).
+  /// Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
   pub fn price_american(&self, s: T, k: T, r: T, q: T, tau: T, option_type: OptionType) -> T {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::American)
   }

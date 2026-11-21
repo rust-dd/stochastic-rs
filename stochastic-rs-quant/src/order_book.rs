@@ -1,4 +1,4 @@
-//! # Order Book
+//! Limit-order book (`Side`, `Order`, `Trade`, `OrderBook`) with price-time matching and cancels.
 //!
 //! $$
 //! \text{mid}_t=\frac{best\_bid_t+best\_ask_t}{2},\quad \Delta q_t=\text{arrivals}-\text{cancellations}
@@ -12,10 +12,8 @@ use std::time::UNIX_EPOCH;
 
 use ordered_float::OrderedFloat;
 
-/// Sub-share size threshold below which a maker order is considered fully
-/// consumed and removed from the book. Sequential partial fills with
-/// rounding-error residue (e.g. 1e-17) would otherwise leave makers
-/// permanently stuck in the queue.
+/// Size below which a maker order counts as filled and leaves the book, so the rounding residue of
+/// partial fills (`1e-17`, say) cannot leave a maker stuck in the queue.
 const EPSILON: f64 = 1e-9;
 
 /// A total‑ordered price key (wraps `f64` so it can live in a `BTreeMap`).
@@ -107,9 +105,8 @@ impl OrderBook {
     Self::default()
   }
 
-  /// Execute a market order – consume liquidity until either the desired
-  /// `size` is filled or the book runs out of contra‑side orders. The order
-  /// never rests in the book.
+  /// A market order consuming liquidity until `size` fills or the contra side runs out; it never
+  /// rests in the book.
   pub fn execute_order(&mut self, side: Side, mut size: f64) -> Execution {
     assert!(size > 0.0, "size must be positive");
     self.next_id += 1;

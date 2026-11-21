@@ -1,4 +1,4 @@
-//! Forward rate agreement: the forward comes from a forecast curve $D_f$ and the discount
+//! Forward rate agreement: the forward comes from a forecast curve `D_f` and the discount
 //! factor from the OIS curve.
 //!
 //! $$

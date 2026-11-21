@@ -10,12 +10,13 @@ use crate::calibration::CalibrationHistory;
 pub trait ToModel {
   /// Concrete pricer type produced by this calibration result.
   type Model: ModelPricer;
-  /// The pricer a calibration result determines; rates travel with the pricing query, not the model.
+  /// The pricer a calibration result determines; rates travel with the pricing query, not the
+  /// model.
   fn to_model(&self) -> Self::Model;
 }
 
-/// Bridge from a short-rate calibration result to the lattice model it determines. The result carries
-/// every input the model needs (the calibrated parameters and the curve-side rates it was given).
+/// Bridge from a short-rate calibration result to its lattice model, built from the result alone:
+/// the calibrated parameters and the curve-side rates it was given.
 pub trait ToShortRateModel {
   /// Concrete short-rate model produced by this calibration result.
   type Model;

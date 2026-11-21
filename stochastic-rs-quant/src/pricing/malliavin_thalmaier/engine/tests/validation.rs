@@ -65,9 +65,8 @@ fn stochastic_volatility_is_supported_when_price_noise_is_independent() {
   );
 }
 
-/// Conditional on variance paths with `rho=0` and independent asset-price
-/// shocks, each terminal log-price is Gaussian with integrated variance
-/// `I_i`. Differentiating `Phi(a_1) Phi(a_2)` gives this independent benchmark.
+/// At `rho = 0` with independent shocks each terminal log-price is Gaussian given `I_i`, so the
+/// derivative of `Φ(a₁)Φ(a₂)` is an independent benchmark.
 #[test]
 fn independent_stochastic_vol_delta_matches_conditional_benchmark() {
   let mut params = constant_volatility_params();

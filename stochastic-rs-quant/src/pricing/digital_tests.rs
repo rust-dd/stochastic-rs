@@ -1,11 +1,7 @@
 use super::*;
 
-/// Cash-or-nothing call: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-/// T=0.75 → 7.3444 (verified analytically against Q*e^{-rT}*N(d2)).
-///
-/// `b = 0.06` is expressed as the query's `q = r - b = 0`, which is how
-/// every scenario in this file names its cost of carry now that the model
-/// derives $b$ from the query instead of storing it.
+/// Cash-or-nothing call (S=100, K=80, Q=10, r=b=0.06, σ=0.35, T=0.75) prices 7.3444,
+/// `Qe^{−rT}N(d₂)`; the carry `b` enters as the query's `q = r − b = 0`.
 #[test]
 fn cash_or_nothing_call_closed_form() {
   let p = CashOrNothingPricer::new(10.0, 0.35);
@@ -13,9 +9,7 @@ fn cash_or_nothing_call_closed_form() {
   assert!((price - 7.3444).abs() < 0.005, "price={price}");
 }
 
-/// Cash-or-nothing put: S=100, K=80, Q=10, r=0.06, b=0.06, sigma=0.35,
-/// T=0.75 → ~ Q*e^{-rT}*N(-d2) = 10 * 0.95599 * (1 - 0.97264/Q*e^{rT})
-/// ≈ 0.0303
+/// Cash-or-nothing put on the same scenario: `Qe^{−rT}N(−d₂) ≈ 0.0303`.
 #[test]
 fn cash_call_put_parity() {
   // CoN call + CoN put = Q * e^{-rT}
@@ -82,9 +76,8 @@ fn supershare_positive() {
   assert!(price < 100.0, "supershare must be < S");
 }
 
-/// Cash-or-nothing delta uses finite difference vs analytic, on both option
-/// types — the put's delta is the call's negated, and checking only the call
-/// would leave the `option_type` wiring of every digital Greek unpinned.
+/// Cash-or-nothing delta against a finite difference for the call and the put, which pins the
+/// `option_type` wiring of every digital Greek.
 #[test]
 fn cash_delta_matches_fd() {
   let h = 0.01;
@@ -103,12 +96,8 @@ fn cash_delta_matches_fd() {
   }
 }
 
-/// The aggregate is the only place the exposed Greeks are mapped into
-/// [`Greeks`]'s nine members, so it gets the same guard `BsmPricer`'s does:
-/// every member either equals its accessor or is `NaN`, and the `NaN`s are
-/// the ones the pricer genuinely does not expose (which is what the removed
-/// `GreeksExt` defaults produced). A hand-written struct literal at a call
-/// site is what loses this pin.
+/// The aggregate maps each exposed Greek to its [`Greeks`] member and leaves `NaN` only where the
+/// pricer exposes none.
 #[test]
 fn digital_greeks_aggregates_match_their_accessors() {
   let (s, k, r, q, tau, ot) = (100.0, 100.0, 0.05, 0.03, 0.5, OptionType::Put);
@@ -139,12 +128,8 @@ fn digital_greeks_aggregates_match_their_accessors() {
   }
 }
 
-/// The gap put has its own parity identity, $C - P = Se^{-qT} - K_2e^{-rT}$
-/// (derived from the closed forms; holds regardless of $K_1$), which is not
-/// the trait's vanilla parity against the query strike — the two differ
-/// exactly because $K_1 \ne K_2$ here. Same scenario as
-/// `gap_haug_negative_payoff`, so this doubles as proof that the query
-/// strike binds to $K_1$ and `self.k2` to the payoff strike.
+/// The gap parity `C − P = Se^{−qT} − K₂e^{−rT}` (any `K₁`), not the vanilla one: the query strike
+/// binds to `K₁` and `self.k2` to the payoff strike.
 #[test]
 fn gap_put_matches_its_own_parity() {
   let p = GapPricer::new(57.0, 0.20);
@@ -163,9 +148,7 @@ fn gap_put_matches_its_own_parity() {
   );
 }
 
-/// The documented no-put contract: Haug (2007) defines only the supershare
-/// payoff, so `price_put` returns `NaN` rather than the trait's
-/// vanilla-parity default.
+/// Haug (2007) defines only the supershare payoff, so `price_put` is `NaN`, not the parity default.
 #[test]
 fn supershare_has_no_put_analogue() {
   let p = SuperSharePricer::new(110.0, 0.2);
@@ -175,9 +158,7 @@ fn supershare_has_no_put_analogue() {
   );
 }
 
-/// One model instance prices a whole strike/maturity grid — the capability
-/// [`ModelPricer`] exists for and the pre-query struct could not offer
-/// without rebuilding itself per point.
+/// One model instance prices a whole strike/maturity grid.
 #[test]
 fn digital_one_model_prices_a_grid() {
   let con = CashOrNothingPricer::new(10.0, 0.25);
@@ -195,11 +176,8 @@ fn digital_one_model_prices_a_grid() {
   }
 }
 
-/// Every argument the trait hands a digital must reach its price. A
-/// parameter that is accepted and then ignored — or precomputed at
-/// construction from an earlier query — returns a plausible in-range number
-/// with nothing to distinguish it, so each of the five is perturbed on its
-/// own and required to move the price.
+/// Each of the five query arguments, perturbed alone, moves the price: none is ignored or fixed at
+/// construction.
 #[test]
 fn every_query_argument_drives_the_price() {
   let base = (100.0, 100.0, 0.05, 0.01, 0.5);
@@ -229,74 +207,84 @@ fn every_query_argument_drives_the_price() {
   }
 }
 
-/// Every digital rejects `σ < 0`, which flips the shared `d₁` into finite, wrong (even negative)
-/// prices; `σ = 0` and a negative `cash` payout stay admissible.
+/// Every digital refuses `σ < 0` and `±∞`, as a negative `σ` flips the shared `d₁` into a finite
+/// wrong price; `σ = 0`, a NaN `σ` and a negative `cash` payout stay admissible.
 mod construction_validation {
   use super::*;
 
-  #[test]
-  #[should_panic(
-    expected = "CashOrNothingPricer::new: sigma must be a non-negative volatility (got -0.35)"
-  )]
-  fn cash_or_nothing_rejects_negative_sigma() {
-    let _ = CashOrNothingPricer::new(10.0, -0.35);
+  const SIGMA: &str = "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`";
+
+  fn panic_text(build: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let err = std::panic::catch_unwind(build).expect_err("must refuse");
+    err.downcast_ref::<String>().cloned().unwrap_or_default()
   }
 
   #[test]
-  #[should_panic(
-    expected = "AssetOrNothingPricer::new: sigma must be a non-negative volatility (got -0.25)"
-  )]
-  fn asset_or_nothing_rejects_negative_sigma() {
-    let _ = AssetOrNothingPricer::new(-0.25);
+  fn every_digital_refuses_a_negative_or_infinite_sigma() {
+    for (bad, shown) in [
+      (-0.35, "-0.35"),
+      (f64::INFINITY, "inf"),
+      (f64::NEG_INFINITY, "-inf"),
+    ] {
+      let want = format!("{SIGMA}, got sigma = {shown}");
+      let texts = [
+        panic_text(move || {
+          let _ = CashOrNothingPricer::new(10.0, bad);
+        }),
+        panic_text(move || {
+          let _ = AssetOrNothingPricer::new(bad);
+        }),
+        panic_text(move || {
+          let _ = GapPricer::new(100.0, bad);
+        }),
+        panic_text(move || {
+          let _ = SuperSharePricer::new(110.0, bad);
+        }),
+      ];
+      assert!(texts.iter().all(|text| *text == want), "{texts:?}");
+    }
   }
 
   #[test]
-  #[should_panic(expected = "GapPricer::new: sigma must be a non-negative volatility (got -0.2)")]
-  fn gap_rejects_negative_sigma() {
-    let _ = GapPricer::new(100.0, -0.2);
+  #[should_panic(expected = "cash must satisfy `!cash.is_infinite()`, got cash = inf")]
+  fn cash_or_nothing_refuses_an_infinite_cash() {
+    let _ = CashOrNothingPricer::new(f64::INFINITY, 0.2);
   }
 
   #[test]
-  #[should_panic(
-    expected = "SuperSharePricer::new: sigma must be a non-negative volatility (got -0.2)"
-  )]
-  fn supershare_rejects_negative_sigma() {
-    let _ = SuperSharePricer::new(110.0, -0.2);
+  #[should_panic(expected = "k2 must satisfy `!k2.is_infinite()`, got k2 = -inf")]
+  fn gap_refuses_an_infinite_payoff_strike() {
+    let _ = GapPricer::new(f64::NEG_INFINITY, 0.2);
   }
 
-  /// The inverse of the rule above, and the reason the guard spells out
-  /// `sigma.is_nan() || sigma >= 0.0`. `AnalyticBsEngine` builds
-  /// these two pricers from the volatility it reads off a market handle,
-  /// and an unlinked handle reads as `NaN` by design — missing data, case 2
-  /// of the convention, which has to reach the caller as a `NaN` NPV
-  /// instead of aborting the engine. Rejecting it here would have turned
-  /// `every_unlinked_handle_poisons_npv_and_greeks` red, which is how this
-  /// was caught.
+  /// `AnalyticBsEngine` builds these from a market handle, and an unlinked handle reads NaN,
+  /// which has to reach the caller as a NaN NPV and not as a panic.
   #[test]
-  fn a_nan_sigma_propagates_as_missing_data_rather_than_panicking() {
+  fn a_nan_sigma_cash_or_payoff_strike_prices_nan() {
     let aon = AssetOrNothingPricer::new(f64::NAN);
     assert!(aon.price_call(100.0, 90.0, 0.05, 0.02, 1.0).is_nan());
     let con = CashOrNothingPricer::new(10.0, f64::NAN);
     assert!(con.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
+    let con = CashOrNothingPricer::new(f64::NAN, 0.2);
+    assert!(con.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
+    let gap = GapPricer::new(f64::NAN, 0.2);
+    assert!(gap.price_call(100.0, 80.0, 0.06, 0.0, 0.75).is_nan());
   }
 
-  /// `x_high` has no handle behind it, so it keeps the stricter test.
+  /// `x_high` has no handle behind it, and a band edge is a price level: finite and positive.
   #[test]
-  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got NaN)")]
-  fn a_nan_upper_band_is_still_rejected() {
-    let _ = SuperSharePricer::new(f64::NAN, 0.2);
-  }
-
-  /// The supershare's upper band edge is a price level, so a non-positive
-  /// one is not a band. The *lower* edge arrives as the query strike, which
-  /// is why `x_high < k` — an inverted band, and the only combination that
-  /// produces the negative `-0.1357` measured at `x_high = 80, k = 90` — is
-  /// deliberately **not** checked here: no single argument to this
-  /// constructor is invalid in that case.
-  #[test]
-  #[should_panic(expected = "SuperSharePricer::new: x_high must be strictly positive (got -110)")]
-  fn supershare_rejects_non_positive_upper_band() {
-    let _ = SuperSharePricer::new(-110.0, 0.2);
+  fn supershare_refuses_an_upper_band_that_is_not_finite_and_positive() {
+    for (bad, shown) in [
+      (f64::NAN, "NaN"),
+      (-110.0, "-110.0"),
+      (f64::INFINITY, "inf"),
+    ] {
+      let text = panic_text(move || {
+        let _ = SuperSharePricer::new(bad, 0.2);
+      });
+      let want = "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = ";
+      assert_eq!(text, format!("{want}{shown}"));
+    }
   }
 
   #[test]

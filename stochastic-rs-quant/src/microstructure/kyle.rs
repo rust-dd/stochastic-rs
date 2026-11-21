@@ -1,5 +1,5 @@
-//! Kyle's insider equilibrium, $p = p_0 + \lambda y$ and $x = \beta(\tilde v - p_0)$. Multi-period:
-//! $\gamma_n$ backward from $\gamma_N = 0$, then $\Sigma_n = \Sigma_{n-1}/(2(1-\gamma_n))$ forward.
+//! Kyle's insider equilibrium, `p = p₀ + λy` and `x = β(ṽ − p₀)`. Multi-period: `γ_n` backward
+//! from `γ_N = 0`, then `Σ_n = Σ_{n−1}/(2(1 − γ_n))` forward.
 //!
 //! $$
 //! \beta = \sqrt{\sigma_u^2 / \Sigma_0},\qquad

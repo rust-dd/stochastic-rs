@@ -155,13 +155,22 @@ fn malliavin_put_is_never_negative() {
   }
 }
 
-/// `t_eval` is an absolute time, so a maturity shorter than it is not a
-/// query this instance can price — and it says so rather than returning
-/// a number.
+/// `t_eval` is an absolute time, so a maturity at or inside it has no `C(t, S_t)` to average.
 #[test]
-#[should_panic(expected = "t_eval must be in (0, T)")]
-fn malliavin_rejects_a_maturity_shorter_than_t_eval() {
-  let _ = pricer(SEEDS[0]).price_call(S, K, R, 0.0, 0.25);
+fn a_maturity_at_or_inside_t_eval_is_nan() {
+  let p = pricer(SEEDS[0]);
+  for tau in [0.25, 0.5, 1e-300] {
+    let CallPut { call, put } = p.price_call_put(S, K, R, 0.0, tau);
+    assert!(call.is_nan() && put.is_nan(), "{tau}: ({call}, {put})");
+    let localized = p.price_call_put_localized(S, K, R, 0.0, tau);
+    assert!(localized.call.is_nan() && localized.put.is_nan(), "{tau}");
+    for (s_t, c_t) in [
+      p.conditional_call_malliavin(S, K, R, 0.0, tau),
+      p.conditional_call_malliavin_localized(S, K, R, 0.0, tau),
+    ] {
+      assert!(s_t.iter().chain(&c_t).all(|x| x.is_nan()), "{tau}");
+    }
+  }
 }
 
 /// Read back, never written: a write would skip `new`'s checks.
@@ -341,7 +350,7 @@ fn the_default_seed_strategy_is_unseeded() {
 }
 
 /// `n_paths = 0` and `n_steps = 1` would price a fabricated `0.0`, so `new` rejects them; `t_eval`
-/// keeps a query-time guard too, with a different message, since `tau` arrives per call.
+/// is also read against each query's `tau`, which answers NaN.
 mod construction_validation {
   use super::*;
 
@@ -398,12 +407,11 @@ mod construction_validation {
     let _ = GbmMalliavinPricer::new(0.2, 200, 100, f64::INFINITY);
   }
 
-  /// The `t_eval < tau` half is unreachable from the constructor and stays
-  /// where it was, with its own wording.
+  /// `t_eval < tau` depends on the query, and a query never panics.
   #[test]
-  #[should_panic(expected = "t_eval must be in (0, T)")]
-  fn the_query_dependent_half_stays_at_the_accessor() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0).price_call(S, K, R, 0.0, TAU);
+  fn the_query_dependent_half_is_nan_at_the_accessor() {
+    let model = GbmMalliavinPricer::new(0.2, 200, 64, 2.0);
+    assert!(model.price_call(S, K, R, 0.0, TAU).is_nan());
   }
 
   #[test]
@@ -423,7 +431,7 @@ mod construction_validation {
   }
 }
 
-/// A query no path is simulated for answers its exact limit or NaN on all four accessors.
+/// A query no path is simulated for answers its payoff or NaN on all four accessors.
 mod degenerate_queries {
   use super::*;
 
@@ -432,17 +440,26 @@ mod degenerate_queries {
   }
 
   #[test]
-  fn a_zero_spot_prices_at_its_limit() {
+  fn a_spot_or_strike_that_is_not_positive_is_nan() {
     let p = model();
-    let put = K * (-R * TAU).exp();
-    assert_eq!(p.price_call(0.0, K, R, 0.0, TAU), 0.0);
-    assert_eq!(p.price_put(0.0, K, R, 0.0, TAU), put);
-    assert_eq!(
-      p.price_call_put_localized(0.0, K, R, 0.0, TAU),
-      CallPut { call: 0.0, put }
-    );
-    let (s_t, c_t) = p.conditional_call_malliavin(0.0, K, R, 0.0, TAU);
-    assert!(s_t.iter().chain(&c_t).all(|x| *x == 0.0));
+    for (s, k) in [
+      (0.0, K),
+      (S, 0.0),
+      (S, -5.0),
+      (S, f64::NAN),
+      (S, f64::INFINITY),
+    ] {
+      let CallPut { call, put } = p.price_call_put(s, k, R, 0.0, TAU);
+      assert!(call.is_nan() && put.is_nan(), "({s}, {k}): ({call}, {put})");
+      let localized = p.price_call_put_localized(s, k, R, 0.0, TAU);
+      assert!(
+        localized.call.is_nan() && localized.put.is_nan(),
+        "({s}, {k})"
+      );
+      let (s_t, c_t) = p.conditional_call_malliavin(s, k, R, 0.0, TAU);
+      assert!(s_t.iter().chain(&c_t).all(|x| x.is_nan()), "({s}, {k})");
+    }
+    assert_eq!(p.price_put(0.0, K, R, 0.0, 0.0), K);
   }
 
   #[test]

@@ -1,5 +1,5 @@
-//! ISO 4217 currencies, FX quoting conventions, cross rates and forwards by covered interest
-//! parity.
+//! ISO 4217 currencies, quoting conventions and cross rates, covered-interest-parity forwards, the
+//! delta and ATM conventions, and the Vanna–Volga smile from ATM, risk reversal and butterfly.
 //!
 //! $$
 //! F = S \cdot e^{(r_d - r_f)\,\tau}

@@ -5,6 +5,8 @@
 use super::pricer::floor_price;
 use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -99,33 +101,30 @@ impl HestonStochCorrPricer {
     sigma_r: f64,
     rho2: f64,
   ) -> Self {
-    assert!(
-      v0 >= 0.0,
-      "HestonStochCorrPricer::new: v0 must be a non-negative variance (got {v0})"
-    );
+    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
     assert!(
       theta_v >= 0.0,
-      "HestonStochCorrPricer::new: theta_v must be a non-negative variance (got {theta_v})"
+      "theta_v must satisfy `theta_v >= 0.0`, got theta_v = {theta_v:?}"
     );
     assert!(
       sigma_v >= 0.0,
-      "HestonStochCorrPricer::new: sigma_v must be a non-negative volatility (got {sigma_v})"
+      "sigma_v must satisfy `sigma_v >= 0.0`, got sigma_v = {sigma_v:?}"
     );
     assert!(
       sigma_r >= 0.0,
-      "HestonStochCorrPricer::new: sigma_r must be a non-negative volatility (got {sigma_r})"
+      "sigma_r must satisfy `sigma_r >= 0.0`, got sigma_r = {sigma_r:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho0),
-      "HestonStochCorrPricer::new: rho0 must be in [-1, 1] (got {rho0})"
+      "rho0 must satisfy `(-1.0..=1.0).contains(&rho0)`, got rho0 = {rho0:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&mu_r),
-      "HestonStochCorrPricer::new: mu_r must be in [-1, 1] (got {mu_r})"
+      "mu_r must satisfy `(-1.0..=1.0).contains(&mu_r)`, got mu_r = {mu_r:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho2),
-      "HestonStochCorrPricer::new: rho2 must be in [-1, 1] (got {rho2})"
+      "rho2 must satisfy `(-1.0..=1.0).contains(&rho2)`, got rho2 = {rho2:?}"
     );
     Self {
       v0,
@@ -140,9 +139,13 @@ impl HestonStochCorrPricer {
     }
   }
 
-  /// Call and put from one Carr-Madan inversion, each floored at zero, as the quadrature can turn
-  /// slightly negative deep out of the money; NaN for a non-finite `s`, `k`, `r`, `q` or `tau`.
+  /// Call and put from one Carr-Madan inversion, each floored at zero; the payoffs at `tau = 0`;
+  /// NaN past expiry and for a non-finite `s`, `k`, `r`, `q` or `tau`.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    let payoff = |leg| expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
+    if let (Some(call), Some(put)) = (payoff(OptionType::Call), payoff(OptionType::Put)) {
+      return CallPut { call, put };
+    }
     let call = self.price_call_carr_madan(s, k, r, q, tau);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 

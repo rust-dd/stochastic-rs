@@ -13,7 +13,7 @@ macro_rules! euler_jump_schemes {
     report { x },
 
   /// Bates: a Heston variance under a log-price that jumps, the compensated drift folded on the
-  /// host and the sizes one normal draw. The truncated variance is what the next step starts from.
+  /// host and the sizes one normal draw. The absorbed variance is what the next step starts from.
   59 => BatesJump { drift_c, alpha, beta, sigma, rho }
     state (s, v)
     noise (dw, dq)
@@ -114,7 +114,7 @@ macro_rules! euler_jump_schemes {
     report { x },
 
   /// A Heston variance under a log-price with Kou's double-exponential jumps: the sum has no
-  /// closed form, so the kernel sums the sizes in a bounded loop. The variance is truncated.
+  /// closed form, so the kernel sums the sizes in a bounded loop. The variance is absorbed.
   66 => KouJumpHeston { drift_c, kappa, theta, sigma_v, rho }
     state (s, v)
     noise (dw, dq)

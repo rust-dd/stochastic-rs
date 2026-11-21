@@ -1,5 +1,5 @@
-"""`STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES` are parsed strictly; no GPU is needed, the
-name reads the environment before the build is checked, and each case runs in a fresh interpreter."""
+"""`STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES` parse strictly, no GPU needed: the
+name is read before the build is checked, and each case runs in a fresh interpreter."""
 
 import os
 import re

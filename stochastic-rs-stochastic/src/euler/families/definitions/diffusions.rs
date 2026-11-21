@@ -34,15 +34,15 @@ macro_rules! euler_diffusions {
     step { x + dz }
     report { x },
 
-  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step: the fractional CIR
-  /// recursion, which truncates the result, not the state it steps on.
+  /// `dX = θ(μ − X) dt + σ√|X| dW`, absorbed at zero after the step: a process enters its start
+  /// as `x₀⁺`, so the state the step reads is never negative.
   4 => ReflectedSquareRoot { theta, mu, sigma }
     state (x)
     noise (dz)
     step { positive(x + theta * (mu - x) * $dt + sigma * sqrt(abs(x)) * dz) }
     report { x },
 
-  /// The same with the symmetric reflection: the step's absolute value.
+  /// The same with the symmetric reflection: the step's absolute value, from a start of `|x₀|`.
   5 => MirroredSquareRoot { theta, mu, sigma }
     state (x)
     noise (dz)
@@ -218,7 +218,7 @@ macro_rules! euler_diffusions {
     step { min(max(x + r * x * ((k - x) / k) * $dt + sigma * x * dz, lit(0.0)), k) }
     report { x },
 
-  /// `dX = κ(θ − X)X dt + σ√X dW`: Feller's logistic diffusion, truncated at
+  /// `dX = κ(θ − X)X dt + σ√X dW`: Feller's logistic diffusion, absorbed at
   /// zero.
   24 => FellerLogistic { kappa, theta, sigma }
     state (x)
@@ -230,7 +230,7 @@ macro_rules! euler_diffusions {
     report { x },
 
   /// [`FellerLogistic`](Family::FellerLogistic) reflected at zero instead of
-  /// truncated.
+  /// absorbed.
   25 => FellerLogisticReflected { kappa, theta, sigma }
     state (x)
     noise (dz)
@@ -240,7 +240,7 @@ macro_rules! euler_diffusions {
     }
     report { x },
 
-  /// `dX = δ dt + 2√|X| dW`: the squared-Bessel recursion, truncated at zero.
+  /// `dX = δ dt + 2√|X| dW`: the squared-Bessel recursion, absorbed at zero.
   26 => SquaredBesselState { delta, two }
     state (x)
     noise (dz)

@@ -18,31 +18,21 @@ pub(crate) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-/// Jacobian strategy used by the Heston least-squares calibration.
-///
-/// Source:
-/// - Cui et al. (2017), analytic Heston calibration Jacobian
-///   <https://doi.org/10.1016/j.ejor.2017.05.018>
+/// Jacobian strategy of the Heston least-squares calibration.
+/// Reference: Cui et al. (2017), Eur. J. Oper. Res. 263(2), 625–638, DOI 10.1016/j.ejor.2017.05.018
 #[non_exhaustive]
 pub enum HestonJacobianMethod {
   /// Central finite-difference Jacobian.
   NumericFiniteDiff,
-  /// Closed-form analytic Jacobian for Heston calibration integrals.
-  ///
-  /// Source:
-  /// - Cui et al. (2017)
-  ///   <https://doi.org/10.1016/j.ejor.2017.05.018>
+  /// Closed-form analytic Jacobian of the calibration integrals, after Cui et al. (2017).
   #[default]
   CuiAnalytic,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-/// Seed estimators for Heston calibration from historical time series.
-///
-/// Source:
-/// - Wang et al. (2018), NMLE/PMLE/NMLE-CEKF
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
+/// Seed estimators for Heston calibration from historical time series (NMLE, PMLE, NMLE-CEKF).
+/// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61, 042202, DOI 10.1007/s11432-017-9215-8
+/// Source: <http://scis.scichina.com/en/2018/042202.pdf>
 #[non_exhaustive]
 pub enum HestonMleSeedMethod {
   #[default]
@@ -85,8 +75,8 @@ impl HestonParams {
     2.0 * self.kappa * self.theta >= self.sigma * self.sigma
   }
 
-  /// Box-project, then lower σ alone to the largest value [`satisfies_feller_condition`](Self::satisfies_feller_condition)
-  /// accepts; idempotent, and the box keeps √(2κθ) ≥ √(2·0.1·0.001) above σ's floor of 0.01.
+  /// Box-projects, then lowers σ alone to the largest [`Self::satisfies_feller_condition`] accepts;
+  /// idempotent, and the box keeps √(2κθ) ≥ √(2·0.1·0.001) above σ's floor of 0.01.
   pub fn project_feller_in_place(&mut self) {
     self.project_in_place();
     self.sigma = self.sigma.min(feller_sigma_cap(self.kappa, self.theta));
@@ -104,7 +94,8 @@ impl HestonParams {
   }
 }
 
-/// The largest σ with `σ * σ <= 2.0 * kappa * theta` in `f64`; `√(2κθ)` itself can square one ulp past the bound.
+/// The largest σ with `σ * σ <= 2.0 * kappa * theta` in `f64`; `√(2κθ)` itself can square one ulp
+/// past the bound.
 pub(crate) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
   let bound = 2.0 * kappa * theta;
   let mut cap = bound.sqrt();

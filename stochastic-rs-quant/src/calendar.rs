@@ -1,11 +1,8 @@
-//! # Calendar & Day Count
+//! Day counts, business-day adjustment, holiday calendars and coupon schedule generation.
 //!
 //! $$
 //! \tau(d_1,d_2)=\frac{\text{DayCount}(d_1,d_2)}{\text{Basis}}
 //! $$
-//!
-//! Day count conventions, business day adjustment, holiday calendars,
-//! and coupon schedule generation.
 
 use std::sync::Arc;
 

@@ -1,14 +1,8 @@
-//! Guyon–Henry-Labordère particle calibration of the leverage function
-//! $L(S,t)$.
-//!
-//! The calibration condition is Gyöngy's theorem applied to the SLV model:
+//! Guyon–Henry-Labordère particle calibration of the leverage `L(S, t)` by Gyöngy's theorem:
 //!
 //! $$
 //! L^2(t,K) = \frac{\sigma_{\text{LV}}^2(t,K)}{\mathbb{E}[V_t \mid S_t = K]}
 //! $$
-//!
-//! The conditional expectation is estimated from an interacting particle
-//! system by Nadaraya–Watson regression with a Gaussian kernel in spot,
 //!
 //! $$
 //! \hat{\mathbb{E}}[V_t \mid S_t = K]
@@ -17,37 +11,18 @@
 //! \delta_N(x) = \frac{e^{-\frac12 (x / h_N(t))^2}}{h_N(t)\sqrt{2\pi}},
 //! $$
 //!
-//! under the Silverman-type bandwidth
-//!
 //! $$
 //! h_N(t) = \kappa\, S_0\, \sigma_{\text{LV}}(t, S_0)\,
 //!   \sqrt{\max(t, t_{\min})}\; N^{-1/5},
 //! \qquad \kappa = 1.5,\ t_{\min} = 0.25,
 //! $$
 //!
-//! and, for speed, only the particles inside $[K - \Delta K, K + \Delta K]$
-//! with $\Delta K = \sqrt{-2 h_N^2 \ln(\varepsilon \sqrt{2\pi}\, h_N)}$,
-//! $\varepsilon = 10^{-5}$, contribute to a node's sums — the mass a
-//! particle outside carries is below $\varepsilon$. The cloud starts at
-//! $(S_0, v_0)$, so the $t = 0$ slice is exact: $L(0, s) =
-//! \sigma_{\text{LV}}(0, s) / \sqrt{v_0}$. Each step evolves the cloud from
-//! $t_k$ to $t_{k+1}$ under $L(t_k, \cdot)$ and regresses at $t_{k+1}$, the
-//! log-spot by Euler–Maruyama and the variance by the crate's Euler scheme
-//! with absorption at zero, the same recursion
-//! [`HestonSlvPricer`](super::HestonSlvPricer) and the `HestonSlv` process
-//! run.
-//!
-//! References: Guyon, J. & Henry-Labordère, P. (2012), *Being particular
-//! about calibration*, Risk 25(1), 88–93; Guyon, J. & Henry-Labordère, P.
-//! (2013), *Nonlinear Option Pricing*, Chapman & Hall, ch. 11; Cozma, A.,
-//! Mariapragassam, M. & Reisinger, C. (2017), *Calibration of a hybrid
-//! local-stochastic volatility stochastic rates model with a control variate
-//! particle method*, arXiv:1701.06001, §3.4 and Algorithm 1 (the kernel, the
-//! bandwidth constants and the window above); Reisinger, C. & Tsianni, M. O.
-//! (2025), *Numerical analysis of a particle system for the calibrated
-//! Heston-type local stochastic volatility model*, arXiv:2504.14343
-//! (well-posedness of the kernel-regularised system and strong convergence of
-//! its Euler scheme).
+//! The cloud steps from `(S₀, v₀)` as [`super::HestonSlvPricer`] does, `v` by full truncation.
+//! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
+//! Reference: Guyon & Henry-Labordère (2013), Nonlinear Option Pricing, Chapman & Hall, ch. 11
+//! Reference: Cozma et al. (2017), arXiv:1701.06001, §3.4, Algorithm 1
+//! Reference: Reisinger & Tsianni (2025), arXiv:2504.14343
+//! Reference: Lord et al. (2010), Quant. Finance 10(2), 177–194, DOI 10.1080/14697680802392496
 
 use std::cmp::Ordering;
 
@@ -77,24 +52,21 @@ const LEVERAGE_BAND: (f64, f64) = (0.01, 10.0);
 /// Cozma et al.'s $\varepsilon$.
 const WINDOW_MASS: f64 = 1e-5;
 
-/// The particle method's tuning: everything besides the model and the
-/// target surface. The defaults are Guyon–Henry-Labordère's bandwidth
-/// constants and a cloud large enough for a production surface.
+/// The particle method's tuning; the defaults are Guyon–Henry-Labordère's bandwidth constants and a
+/// cloud large enough for a production surface.
 #[derive(Clone, Debug)]
 pub struct ParticleMethod<S: SeedExt = Unseeded> {
   /// Particles in the cloud, $N$.
   pub n_particles: usize,
-  /// Euler steps per year; every snapshot maturity is a grid point, so an
-  /// interval between two maturities takes `ceil(Δt · steps_per_year)` of
-  /// them.
+  /// Euler steps per year; each snapshot maturity is a grid point, so an interval `Δt` between two
+  /// takes `ceil(Δt · steps_per_year)` steps.
   pub steps_per_year: usize,
   /// The cloud's Gaussian stream draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
   /// $\kappa$ in the bandwidth, `1.5` in the reference.
   pub bandwidth_factor: f64,
-  /// $t_{\min}$ in the bandwidth, `0.25` in the reference: below it the
-  /// bandwidth stops shrinking with the cloud, which is still concentrated
-  /// at the spot.
+  /// `t_min` of the bandwidth, `0.25` in the reference: below it the bandwidth stops shrinking with
+  /// the cloud, which is still concentrated at the spot.
   pub bandwidth_t_min: f64,
 }
 
@@ -173,38 +145,16 @@ impl<S: SeedExt> ParticleMethod<S> {
   }
 }
 
-/// What one particle run produces: the leverage surface, and the cloud's
-/// spots at every requested maturity, in the order the maturities were
-/// given — the same particles the surface was read off, so a caller can
-/// price the vanilla grid the calibration targeted without a second
-/// simulation.
+/// The leverage surface and the cloud's spots at each requested maturity, in the given order: the
+/// particles the surface was read off, so the target grid prices without a second simulation.
 #[derive(Clone, Debug)]
 pub struct ParticleCalibration {
   pub leverage: LeverageSurface,
   pub snapshots: Vec<Array1<f64>>,
 }
 
-/// Calibrate the leverage surface $L(S,t)$ by the Guyon–Henry-Labordère
-/// particle method — the module doc has the formulas.
-///
-/// `local_vol` is the Dupire local volatility $\sigma_{\text{LV}}(t, S)$ on
-/// a `(t, S)` grid; its spot nodes are the nodes the leverage is calibrated
-/// on, and it is read by bilinear interpolation, held flat outside its own
-/// extent, at every step time. `snapshot_maturities`, strictly ascending
-/// and positive, are the times the cloud is recorded at; the last one is
-/// the surface's horizon.
-///
-/// **The returned surface is anchored to `(r, q)`.** The cloud that supplies
-/// $\mathbb{E}[V_t \mid S_t = K]$ is evolved under the risk-neutral drift
-/// $r - q$, so a different rate produces a different conditional expectation
-/// and hence a different $L$. Feed the same `(r, q)` to
-/// [`HestonSlvPricer::new`](super::HestonSlvPricer::new) so the pricer can
-/// reject queries the surface cannot honour.
-///
-/// Errors on an invalid input — a non-positive spot, a negative variance or
-/// mixing fraction, a correlation outside `[-1, 1]`, a local volatility
-/// with a non-finite or negative value, an empty or non-ascending maturity
-/// list, or a [`ParticleMethod`] with fewer than two particles.
+/// `L` on `local_vol`'s nodes up to the last maturity, at `(r, q)`; `InsufficientData` with no
+/// maturity, `InvalidInput` for any input off its domain (`s0 ≤ 0`, `|ρ| > 1`, `< 2` particles, …).
 pub fn calibrate_leverage(
   params: &HestonSlvParams,
   s0: f64,
@@ -259,12 +209,13 @@ pub fn calibrate_leverage(
     let row = row.as_slice().expect("a leverage row is contiguous");
     for p in 0..n {
       let l = interpolate_row(&spots, row, x[p].exp());
-      let vp = v[p];
+      // Full truncation, as `HestonSlv` steps: `v[p]` keeps its sign and every read is `v[p]⁺`.
+      let vp = v[p].max(0.0);
       let sqrt_v = vp.sqrt();
       let dw_v = z_v[p] * sqrt_dt;
       let dw_s = rho * dw_v + rho_bar * z_perp[p] * sqrt_dt;
       x[p] += (carry - 0.5 * l * l * vp) * dt + l * sqrt_v * dw_s;
-      v[p] = (vp + kappa * (theta - vp) * dt + sigma_mixed * sqrt_v * dw_v).max(0.0);
+      v[p] = v[p] + kappa * (theta - vp) * dt + sigma_mixed * sqrt_v * dw_v;
     }
 
     if next_snapshot < snapshot_maturities.len() && t_next == snapshot_maturities[next_snapshot] {
@@ -273,7 +224,7 @@ pub fn calibrate_leverage(
     }
 
     for (slot, (xp, vp)) in sorted.iter_mut().zip(x.iter().zip(v.iter())) {
-      *slot = (xp.exp(), *vp);
+      *slot = (xp.exp(), vp.max(0.0));
     }
     sorted.sort_unstable_by(|a, b| ascending(&a.0, &b.0));
     let h =
@@ -283,7 +234,7 @@ pub fn calibrate_leverage(
       .par_iter_mut()
       .zip(spots.par_iter())
       .for_each(|(slot, &node)| *slot = conditional_variance(&sorted, node, h, half_width));
-    let cloud_mean = v.iter().sum::<f64>() / n as f64;
+    let cloud_mean = v.iter().map(|vp| vp.max(0.0)).sum::<f64>() / n as f64;
     fill_gaps(&mut conditional, cloud_mean);
 
     for (i, &node) in spots.iter().enumerate() {
@@ -431,9 +382,8 @@ fn interpolate_row(spots: &[f64], row: &[f64], s: f64) -> f64 {
   row[i0] + w * (row[i1] - row[i0])
 }
 
-/// $\Delta K = \sqrt{-2 h^2 \ln(\varepsilon\sqrt{2\pi}\,h)}$; unbounded once
-/// the kernel is so wide that no particle's mass falls below
-/// $\varepsilon$.
+/// `ΔK = √(−2h² ln(ε√(2π) h))`; unbounded once the kernel is so wide that no particle's mass falls
+/// below `ε`.
 fn window_half_width(h: f64) -> f64 {
   let scaled = WINDOW_MASS * (2.0 * std::f64::consts::PI).sqrt() * h;
   if scaled >= 1.0 {

@@ -48,10 +48,8 @@ pub struct HestonMalliavinConfig<S: SeedExt = Unseeded> {
   pub seed: S,
   /// Symmetric bump of initial variance used by the CRN variance vega.
   pub initial_variance_bump: f64,
-  /// Minimum effective bump as a fraction of initial variance.
-  ///
-  /// The effective bump is the maximum of this relative floor and
-  /// `initial_variance_bump`. It is returned with every estimate.
+  /// Floor of the effective bump as a fraction of `v0`; the bump is the larger of it and
+  /// `initial_variance_bump`, reported with every estimate.
   pub minimum_relative_initial_variance_bump: f64,
   /// Smallest accepted integrated variance for the Malliavin covariance.
   pub minimum_integrated_variance: f64,
@@ -144,18 +142,8 @@ pub struct HestonMalliavinPathContribution {
   pub comparison_initial_variance_vega_contribution: f64,
 }
 
-/// Seeded estimator using the Brownian direction orthogonal to Heston variance.
-///
-/// Writing the spot Brownian as `rho dW_v + sqrt(1-rho^2) dW_perp`, the
-/// variance path is independent of `W_perp`. For `A = integral V dt`, the exact
-/// integration-by-parts weight of the discretized terminal spot is
-/// `integral sqrt(V) dW_perp / (S0 sqrt(1-rho^2) A)`. It remains exact for
-/// correlated Heston and non-smooth terminal payoffs, but becomes ill-conditioned
-/// as `abs(rho)` approaches one.
-///
-/// Full truncation permits non-Feller parameter sets. If a path supplies too
-/// little integrated or orthogonal conditional variance to invert safely, the
-/// complete estimate fails closed instead of clipping the Malliavin weight.
+/// Seeded estimator on `W_⊥ ⟂ W_v`, whose weight `∫√V dW_⊥ / (S₀√(1−ρ²)∫V dt)` is exact but
+/// ill-conditioned as `|ρ| → 1`; too little variance on a path fails the whole estimate.
 #[derive(Debug, Clone, Copy)]
 pub struct HestonMalliavinEstimator<S: SeedExt = Unseeded> {
   model: HestonModel,

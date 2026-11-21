@@ -35,7 +35,7 @@ fn cir_stays_nonnegative_and_agrees() {
       253,
       Some(0.04),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(3),
     )
   };
@@ -145,7 +145,7 @@ fn feller_logistic_stays_nonnegative() {
       253,
       Some(0.5),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(3),
     )
   };
@@ -190,7 +190,7 @@ fn squared_bessel_stays_nonnegative() {
       253,
       Some(1.0),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(3),
     )
   };
@@ -214,7 +214,7 @@ fn bessel_stays_nonnegative() {
       253,
       Some(1.0),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(3),
     )
   };

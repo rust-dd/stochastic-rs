@@ -19,22 +19,19 @@ use crate::calibration::scale_columns;
 use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
 
-/// Bates/SVJ characteristic function $\phi_T(\xi)$.
-///
+/// Bates/SVJ chf `φ_T(ξ)`, `C` and `D` being Heston's terms plus the jump compensator:
 /// $$
 /// \phi_T(\xi) = \exp\!\bigl[C(\xi,T)+D(\xi,T)\,v_0+i\xi\ln S\bigr]
 /// $$
 ///
-/// where $C$ and $D$ are the Heston terms augmented by the jump compensator:
 /// $$
 /// C_{\mathrm{Bates}} = C_{\mathrm{Heston}} +
 ///   T\,\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr) -
 ///   i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
 /// $$
 ///
-/// The Heston diffusion part uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
-/// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·τ)`) so the
-/// log-argument stays on the principal branch at long τ / high `|ρ|`.
+/// Heston's part in Little-Trap form (`g̃ = 1/g`, `e^{−dτ}`), on the principal branch at long `τ`.
+/// Reference: Albrecher et al. (2007), Wilmott Mag., 83–92
 pub(super) fn bates_cf(p: &SvjParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
   let i = Complex64::i();
   let iu = i * u;

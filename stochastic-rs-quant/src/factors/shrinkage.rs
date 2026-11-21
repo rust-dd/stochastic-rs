@@ -1,5 +1,5 @@
 //! Sample covariance and Ledoit–Wolf shrinkage to the scaled identity, with intensity
-//! $\alpha = b^2 / d^2$.
+//! `α = b²/d²`.
 //!
 //! $$
 //! \hat\Sigma_{LW} = \alpha\,\mu I + (1-\alpha)\,S,\qquad

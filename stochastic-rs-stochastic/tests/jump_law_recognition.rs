@@ -142,7 +142,7 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     )
     .device_fallback(),
@@ -266,7 +266,7 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     )
     .device_fallback(),
@@ -342,7 +342,7 @@ fn exponential_sizes_reach_the_kernels_as_the_exponential_law() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Unseeded,
   );
   let sizes = EulerSystem::<f64, 2>::jump_sizes(&bates).expect("a law the kernels draw");

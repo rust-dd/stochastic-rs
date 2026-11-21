@@ -229,7 +229,7 @@ impl<T: RealExt> NamedOvernightIndex<T> {
   }
 }
 
-/// Named IBOR-style index factories.
+/// Factories for named IBOR-style indices (Euribor and the like) with their conventions.
 pub mod ibor {
   use super::*;
 
@@ -257,7 +257,7 @@ pub mod ibor {
   }
 }
 
-/// Named overnight-index factories.
+/// Factories for named overnight indices (SOFR, ESTR, SONIA, TONAR, Fed Funds).
 pub mod overnight {
   use super::*;
 

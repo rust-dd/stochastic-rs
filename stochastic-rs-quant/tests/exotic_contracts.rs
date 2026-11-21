@@ -471,11 +471,11 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     110.0 * (-Q).exp() - 105.0 * (-R).exp()
   );
   let up_out = barrier(BarrierType::UpAndOut, OptionType::Call, 0.0);
+  assert_pinned!(
+    BarrierPricer::new(0.0).price(&up_out, S, R, Q, 1.0),
+    S * (-Q).exp() - 100.0 * (-R).exp()
+  );
   for (what, price) in [
-    (
-      "barrier",
-      BarrierPricer::new(0.0).price(&up_out, S, R, Q, 1.0),
-    ),
     (
       "drifting lookback",
       lookbacks.price(&off_the_low, S, R, Q, 1.0),

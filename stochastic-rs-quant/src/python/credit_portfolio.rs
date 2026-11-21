@@ -163,7 +163,8 @@ impl PyCdoTranche {
     self.inner.loss_distribution(&self.pool, t)
   }
 
-  /// `(protection_leg, risky_annuity, premium_leg, fair_spread, upfront)` per unit of pool notional.
+  /// `(protection_leg, risky_annuity, premium_leg, fair_spread, upfront)` per unit of pool
+  /// notional.
   fn valuation(&self, discount: &PyDiscountCurve) -> (f64, f64, f64, f64, f64) {
     let v = self.inner.valuation(&self.pool, &discount.inner);
     (

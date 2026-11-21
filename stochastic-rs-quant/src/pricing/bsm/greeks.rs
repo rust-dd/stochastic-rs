@@ -185,11 +185,15 @@ impl BsmPricer {
       * (r - b + b * d1 / (self.sigma * tau.sqrt()) + (1.0 - d1 * d2) / (2.0 * tau))
   }
 
-  /// Ultima — $\partial^3 V/\partial \sigma^3$.
+  /// Ultima — $\partial^3 V/\partial \sigma^3$,
+  /// $$\mathrm{Vega}\,(d_1^2 d_2^2 - d_1^2 - d_2^2 - d_1 d_2)/\sigma^2.$$
+  ///
+  /// Reference: Haug (2007), *The Complete Guide to Option Pricing Formulas*, 2nd ed., DvommaDvol.
   pub fn ultima(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
-    -self.volga(s, k, r, q, tau) / self.sigma * (d1 * d2 - (d1 / d2) + (d2 / d1) - 1.0)
+    self.vega(s, k, r, q, tau) / self.sigma.powi(2)
+      * (d1 * d1 * d2 * d2 - d1 * d1 - d2 * d2 - d1 * d2)
   }
 
   /// Veta / DvegaDtime — $\partial^2 V/\partial \sigma \partial t$.

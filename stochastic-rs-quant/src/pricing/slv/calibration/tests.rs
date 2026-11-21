@@ -39,11 +39,8 @@ fn method(n: usize) -> ParticleMethod<Deterministic> {
     .with_seed(Deterministic::new(11))
 }
 
-/// With `eta = 0` the variance has no noise, and started at its long-run
-/// level it never moves, so `E[V | S] = v0` exactly and the calibration
-/// condition has the closed form `L = sigma_LV / sqrt(v0)` at every node
-/// and every step — the whole estimator, kernel, window and bandwidth
-/// included, has to return it.
+/// At `eta = 0` from the long-run level `E[V | S] = v0`, so the whole estimator must return the
+/// closed form `L = sigma_LV / sqrt(v0)` at every node and step.
 #[test]
 fn eta_zero_at_the_long_run_variance_gives_the_local_vol_over_sqrt_v0() {
   let grid = local_vol_grid();
@@ -84,10 +81,8 @@ fn the_first_row_is_the_local_vol_over_sqrt_v0() {
   }
 }
 
-/// Given the step's start, the log-spot increment is Gaussian with mean
-/// `-½L²V dt` and variance `L²V dt`, so the discounted spot is a martingale
-/// step by step, whatever leverage the cloud moves under: every snapshot's
-/// mean is the forward, within its own standard error.
+/// Each step's log-spot increment has mean `−½L²V dt` and variance `L²V dt`, so every snapshot's
+/// mean is the forward within its standard error, whatever the leverage.
 #[test]
 fn snapshots_land_on_the_maturities_and_average_to_the_forward() {
   let grid = local_vol_grid();

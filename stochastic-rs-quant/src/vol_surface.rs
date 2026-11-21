@@ -1,9 +1,4 @@
-//! # Volatility Surface
-//!
-//! Implied volatility surface construction, parametric fitting (SVI / SSVI),
-//! arbitrage-free interpolation, and smile analytics.
-//!
-//! ## Module interaction: calibration → pricing → vol_surface
+//! Implied-volatility surfaces: construction, SVI and SSVI fits, arbitrage checks, smile analytics.
 //!
 //! ```text
 //!   calibration                     pricing                        vol_surface
@@ -31,19 +26,7 @@
 //!                        (ATM/RR/BF quotes → Sabr smile)      .is_arbitrage_free()
 //! ```
 //!
-//! All calibration results expose `.to_model()` (or implement [`ToModel`]) returning
-//! a [`ModelPricer`]. Every model that also asserts
-//! [`VanillaEuropeanCall`](crate::traits::VanillaEuropeanCall) automatically gets
-//! [`ModelSurface`](crate::vol_surface::model_surface::ModelSurface) via blanket impl,
-//! enabling [`build_surface_from_model()`](crate::vol_surface::pipeline::build_surface_from_model)
-//! and [`build_surface_from_calibration()`](crate::vol_surface::pipeline::build_surface_from_calibration)
-//! to work with any calibrated model. The extra assertion is what keeps a
-//! digital or American pricer — equally a [`ModelPricer`] — out of a Black
-//! inversion that has no volatility to offer for it.
-//!
-//! ## Examples
-//!
-//! ### Heston (multi-maturity joint calibration)
+//! Examples, in order: Heston, SVJ, Lévy, HSCM, rough Bergomi, SABR with SSVI, BSM, raw prices.
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
@@ -74,8 +57,6 @@
 //! let surface = build_surface_from_calibration(&params, s0, r, q, &strikes, &maturities);
 //! assert_eq!(surface.is_arbitrage_free(), Some(true));
 //! ```
-//!
-//! ### SVJ / Bates (multi-maturity joint calibration)
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
@@ -111,8 +92,6 @@
 //! assert_eq!(surface.iv_surface.ivs.dim(), (maturities.len(), strikes.len()));
 //! ```
 //!
-//! ### Lévy models (Vg, Nig, Cgmy, Merton, Kou)
-//!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
 //! use stochastic_rs_quant::calibration::{LevyCalibrator, LevyModelType};
@@ -127,8 +106,6 @@
 //!     &[90., 95., 100., 105., 110.], &[0.5]);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (1, 5));
 //! ```
-//!
-//! ### HSCM (Heston with stochastic correlation)
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
@@ -149,11 +126,6 @@
 //! assert!(surface.iv_surface.ivs.iter().any(|v| v.is_finite()));
 //! ```
 //!
-//! ### Rough Bergomi (Monte Carlo pricing)
-//!
-//! [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator) fits terminal-price
-//! samples into a `Calibrated` for `build_surface_from_calibration`. Known parameters price as:
-//!
 //! ```
 //! use stochastic_rs_core::simd_rng::Deterministic;
 //! use stochastic_rs_quant::calibration::rbergomi::{RBergomiParams, RBergomiXi0};
@@ -168,8 +140,6 @@
 //! let surface = build_surface_from_model(&pricer, 100.0, 0.05, 0.0, &[95., 100., 105.], &[0.5]);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (1, 3));
 //! ```
-//!
-//! ### Sabr (per-slice, stitched with SSVI)
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
@@ -200,8 +170,6 @@
 //! assert_eq!(surface.iv_surface.ivs.dim(), (taus.len(), strikes.len()));
 //! ```
 //!
-//! ### BSM (implied vol extraction)
-//!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
 //! use stochastic_rs_quant::calibration::BsmCalibrator;
@@ -223,8 +191,6 @@
 //! assert_eq!(surface.iv_surface.ivs.dim(), (1, 5));
 //! ```
 //!
-//! ### From raw market prices (no model calibration)
-//!
 //! ```
 //! use ndarray::Array2;
 //! use stochastic_rs_quant::OptionType;
@@ -240,9 +206,6 @@
 //! let surface = build_surface(strikes, maturities, forwards, prices.view(), OptionType::Call);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (3, 5));
 //! ```
-//!
-//! [`ModelPricer`]: crate::traits::ModelPricer
-//! [`ToModel`]: crate::traits::ToModel
 //!
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 

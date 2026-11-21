@@ -1,4 +1,4 @@
-//! # Pnl
+//! Profit and loss of a delta-hedged position, attributed to its Greeks:
 //!
 //! $$
 //! \mathrm{PnL}_t=V_t-V_0-\int_0^t \Delta_u\,dS_u

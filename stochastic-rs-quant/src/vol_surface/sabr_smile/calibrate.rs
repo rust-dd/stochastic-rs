@@ -272,8 +272,8 @@ impl SabrSmileCalibrator {
   }
 }
 
-/// Solve for strike K such that the FX delta equals the desired value under Sabr (general β); NaN where the delta is not
-/// computable (a negative or infinite `tau`, a non-positive spot), not a strike at the edge of the bracket.
+/// The strike whose SABR (general β) FX delta is the target; `NaN` where the delta is not
+/// computable (a negative or infinite `tau`, a non-positive spot), never a bracket-edge strike.
 pub fn strike_for_delta(
   s: f64,
   r_d: f64,

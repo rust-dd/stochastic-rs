@@ -1,33 +1,5 @@
-//! A zero-volatility term is a removable singularity at the forward, and
-//! the price there is the limit — not `NaN`.
-//!
-//! A term priced at `term_vol(n, τ) = 0` is a zero-volatility Black-Scholes
-//! call. Its `d₁` is `±∞` wherever `Se^{bτ} ≠ K` and `0/0` **at** the
-//! forward, which poisons the whole Poisson sum. The limit is not
-//! undefined: both normal CDFs converge to `½` as `σ → 0⁺` along
-//! `Se^{bτ} = K`, so the term tends to `½(Se^{(b-r)τ} - Ke^{-rτ}) = 0`.
-//!
-//! `σ_n = √(d² + z²·n/τ)` is zero only where the *diffusive* volatility `d`
-//! is, so what reaches this branch is a zero total volatility — `sigma = 0`,
-//! which `new` accepts on purpose — and the pure-jump corner `gamma = 1`,
-//! at the `n = 0` term alone, for every intensity, since `λz²` is taken as `σ²γ` directly.
-//!
-//! An ordinary configuration has `σ_0 = d > 0` and never touches the
-//! branch; `an_ordinary_configuration_never_reaches_the_branch` is the pin
-//! that keeps that claim from rotting.
-//!
-//! The **Greeks** need the same treatment nine times over, and the limit is
-//! not the same one twice. Away from the forward the `1/σ`-shaped closed
-//! forms tend to `0` while the rest are already saturated; at the forward
-//! `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, and only
-//! the price — which is what the six bump-based Greeks difference — tends
-//! to `0` there.
-//!
-//! Which strike is singular is set by the cost of carry, not by the
-//! volatility: `Black1976` and `Asay1982` have `b = 0`, so the hole lands on
-//! the at-the-money strike — the most-quoted point on a futures-option
-//! surface. The three carrying conventions put it at `Se^{bτ}`, a strike
-//! nobody asks for exactly.
+//! A `σ_n = 0` term (at `sigma = 0`, or `n = 0` at `gamma = 1`) is `0/0` at the forward, a
+//! removable singularity: both CDFs tend to `½`, so its limit there is `0`, not `NaN`.
 
 use super::*;
 
@@ -39,12 +11,8 @@ fn frozen(coc: BsmCoc) -> Merton1976Pricer {
   Merton1976Pricer::new(0.0, 0.5, 0.4, 20, coc)
 }
 
-/// The headline: an at-the-money futures option priced `NaN`.
-///
-/// The second assertion is what makes this a test of the interception
-/// rather than of arithmetic — the `BsmPricer` the term is built from does
-/// return `NaN` at exactly this query, so without the branch the sum is
-/// `NaN` too.
+/// An at-the-money futures option on a frozen underlying prices the limit where its bare
+/// `BsmPricer` term is `NaN`.
 #[test]
 fn zero_total_volatility_at_the_forward_is_the_limit() {
   for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
@@ -65,14 +33,8 @@ fn zero_total_volatility_at_the_forward_is_the_limit() {
   }
 }
 
-/// `0` is the value the *neighbourhood* tends to, not merely a constant
-/// that happens to be finite: the surrounding price is `e^{-rτ}(F-K)⁺`, so
-/// a strike `1e-6` either side of the forward is worth `9.75e-7` on the
-/// in-the-money leg and exactly nothing on the other. Both one-sided limits
-/// are `0`; only the slope jumps.
-///
-/// The pin that a wrong constant would survive `assert_eq!(call, 0.0)` in
-/// isolation but not this.
+/// The filled-in `0` is the limit of its neighbours: strikes `1e-6` either side of the forward are
+/// worth `9.75e-7` in the money and nothing out of it.
 #[test]
 fn the_filled_in_value_is_what_its_neighbours_tend_to() {
   let m = frozen(BsmCoc::Black1976);
@@ -95,10 +57,8 @@ fn the_filled_in_value_is_what_its_neighbours_tend_to() {
   );
 }
 
-/// Away from the forward there is no `0/0`: `d₁` saturates to `±∞`, both
-/// CDFs saturate with it, and every term collapses to discounted intrinsic
-/// value on the forward. That is the right answer for a frozen underlying,
-/// and it is not the branch's doing.
+/// Off the forward `d₁` saturates to `±∞`, so every term is discounted intrinsic value on the
+/// forward without the branch.
 #[test]
 fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
   let m = frozen(BsmCoc::Black1976);
@@ -131,9 +91,8 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
   );
 }
 
-/// Generalised put-call parity still holds at the filled-in point:
-/// `b = 0` under `Black1976`, so `C - P = (S - K)e^{-rτ}`, which is `0` at
-/// the money. A limit taken on only one leg would break this.
+/// Generalised parity holds at the filled-in point: `C − P = (S − K)e^{−rτ} = 0` at the money
+/// under `Black1976`, which a limit on one leg would break.
 #[test]
 fn parity_holds_at_the_filled_in_point() {
   let m = frozen(BsmCoc::Black1976);
@@ -212,15 +171,8 @@ fn an_inadmissible_gamma_still_announces_itself() {
   }
 }
 
-/// The half of the degenerate term's Greeks that was always exact, and the
-/// reason `greek_series` needed a per-Greek limit rather than a wider floor.
-///
-/// Away from the forward a degenerate term's `d₁` saturates to `±∞`, so the
-/// `1/v`-shaped closed forms are `0/0` and their `σ → 0⁺` limits really are
-/// `0`: `norm_pdf(d₁)` decays like `e^{-c²/2σ²}` and beats the linear
-/// `1/v`. The Greeks that do not vanish there — `delta → e^{(b−r)τ}`, `rho`
-/// — never went `NaN` in the first place, so they keep their closed forms
-/// and are asserted against those rather than against `0`.
+/// Off the forward a `σ_n = 0` term's `1/σ`-shaped Greeks tend to `0`, and `delta` and `rho` keep
+/// their saturated closed forms (`delta → e^{(b−r)τ}`).
 #[test]
 fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
   let m = frozen(BsmCoc::Black1976);
@@ -312,10 +264,8 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
       (rho - want_rho).abs() < 10.0 * v,
       "v={v}: rho {rho} must close on {want_rho} linearly in v"
     );
-    // A `1/sigma` pole has a constant residue; a large finite number does
-    // not. `sigma_n = sigma*sqrt(0.6 + 1.6n)` here, so `sigma` is the scale of the
-    // whole series rather than of one term, and the product is constant to
-    // the precision the pole is resolved at.
+    // A `1/σ` pole has a constant residue and a large finite number does not; `v`, the model's
+    // `sigma`, scales the whole series, so `gamma · v` is constant to the pole's resolution.
     let pole = gamma * v;
     if i > 2 {
       assert!(
@@ -328,21 +278,8 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   }
 }
 
-/// One degenerate term at the forward is enough to move a model that is
-/// **otherwise ordinary**, which is what makes this a live defect rather
-/// than a curiosity of a frozen underlying.
-///
-/// The pure-jump corner `gamma == 1` puts the whole variance in the jumps,
-/// so `d = 0` and the `n = 0` term alone is degenerate; the other nineteen
-/// have `σ_n = z√(n/τ) > 0` and price normally. Under `Black1976` the
-/// forward is `S`, so the at-the-money strike is the singular one and the
-/// option is one a desk actually quotes. The price there was already right;
-/// `delta`, `gamma` and `rho` were each short one `w₀`-weighted term.
-///
-/// Adjudicated by letting `gamma → 1⁻`, which shrinks `σ_0 = σ√(1-γ)`
-/// towards zero through models with **no** degenerate term at all: every
-/// value below is the limit of that family, and `gamma` diverges along it
-/// with a constant `σ_0·Γ` residue.
+/// At `gamma = 1` only the `n = 0` term is degenerate, yet at the money under `Black1976` its limit
+/// moves `delta`, `gamma` and `rho`; the values are the limits of `gamma → 1⁻`.
 #[test]
 fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
   let m = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
@@ -409,12 +346,8 @@ fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
   }
 }
 
-/// The Greeks' idea of the price and the price are the same function.
-///
-/// Every bump-based Greek differences `series_price`, which prices each
-/// term through `term_call_put` — the same call `call_put` makes — rather
-/// than through a second copy of the degenerate term's forward limit. Two
-/// copies of that expression could drift; this is what stops them being two.
+/// The bump-based Greeks difference `series_price`, which prices each term through
+/// `term_call_put` as the price does, so the degenerate limit has one copy.
 #[test]
 fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
   let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
@@ -435,20 +368,8 @@ fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
   }
 }
 
-/// The one place the per-Greek limits stop, and why they stop there.
-///
-/// At `λ == 0` `greek_series` hands the single surviving term to
-/// `BsmPricer` directly, and the six bump-based Greeks skip the series
-/// altogether for the same reason. A model that is *both* frozen and
-/// jump-free therefore splits: `delta`, `gamma`, `rho` and the price go
-/// through this crate's own code and get their limits, while the other six
-/// get `BsmPricer`'s undefended `NaN`.
-///
-/// That asymmetry belongs to `BsmPricer`, not to this pricer — the same
-/// query prices `NaN` on a bare one, which
-/// `zero_total_volatility_at_the_forward_is_the_limit` already asserts.
-/// Pinned rather than fixed: fixing it means giving `BsmPricer` a forward
-/// limit of its own, which would move every model built on it.
+/// At `λ = 0` a frozen model's `delta`, `gamma`, `rho` and price get their limits while the other
+/// six Greeks keep `BsmPricer`'s `NaN`, pinned: a `BsmPricer` limit would move every model on it.
 #[test]
 fn a_frozen_no_jump_model_inherits_black_scholess_own_gaps() {
   let m = Merton1976Pricer::new(0.0, 0.0, 0.4, 20, BsmCoc::Black1976);

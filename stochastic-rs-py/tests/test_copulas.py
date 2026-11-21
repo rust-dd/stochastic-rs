@@ -1,9 +1,5 @@
-"""Copula-surface pytest coverage.
-
-Exercises the bivariate Clayton copula binding: theta-from-tau,
-seed-deterministic sampling, sample shape, and that the samples are valid
-uniforms on the unit square.
-"""
+"""Bivariate Clayton copula binding: theta-from-tau, seed-deterministic sampling, sample shape,
+and samples that are valid uniforms on the unit square."""
 
 from __future__ import annotations
 
@@ -104,7 +100,8 @@ def test_fit_vine_recovers_a_clayton_edge():
 
 
 def test_kendall_tau_b_matrix_and_empirical_copula_ranks():
-    # (1,1,2,3) x (1,2,2,3): four concordant pairs and one tie per margin, so tau-b = 4 / sqrt(5 * 5) = 0.8 (tau-a is 2/3).
+    # (1,1,2,3) x (1,2,2,3): four concordant pairs, one tie per margin, so tau-b = 4 / sqrt(5 * 5)
+    # = 0.8 (tau-a is 2/3).
     tied = np.array([[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]])
     tau = sr.kendall_tau_matrix(tied)
     assert abs(tau[0, 1] - 0.8) < 1e-15 and tau[0, 1] == tau[1, 0] and tau[0, 0] == tau[1, 1] == 1.0
@@ -113,8 +110,10 @@ def test_kendall_tau_b_matrix_and_empirical_copula_ranks():
 
     ec = sr.EmpiricalCopula2D(np.array([3.0, 1.0, 2.0, 4.0]), np.array([10.0, 30.0, 20.0, 40.0]))
     ranks = ec.rank_data()
-    assert np.array_equal(ranks, np.array([[0.6, 0.2], [0.2, 0.6], [0.4, 0.4], [0.8, 0.8]]))  # rank / (n + 1)
-    # C_n(0.5, 0.5): of the rank pairs (3,1), (1,3), (2,2), (4,4) only (2,2) lies at or below (2.5, 2.5) of n + 1 = 5.
+    # rank / (n + 1)
+    assert np.array_equal(ranks, np.array([[0.6, 0.2], [0.2, 0.6], [0.4, 0.4], [0.8, 0.8]]))
+    # C_n(0.5, 0.5): of the rank pairs (3,1), (1,3), (2,2), (4,4) only (2,2) lies at or below
+    # (2.5, 2.5) of n + 1 = 5.
     assert np.mean((ranks[:, 0] <= 0.5) & (ranks[:, 1] <= 0.5)) == 0.25
     assert {tuple(row) for row in ec.sample(50, seed=3)} <= {tuple(row) for row in ranks}
     with pytest.raises(ValueError):
@@ -122,7 +121,8 @@ def test_kendall_tau_b_matrix_and_empirical_copula_ranks():
 
 
 def test_pseudo_observations_share_mean_ranks_and_propagate_nan():
-    # Tied values take the mean of their ranks (R's `rank`, scipy's `rankdata`), so a row order cannot change the result.
+    # Tied values take the mean of their ranks (R's `rank`, scipy's `rankdata`), so row order cannot
+    # change the result.
     a = np.array([[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]])
     ua, ub = sr.pseudo_observations(a), sr.pseudo_observations(a[[1, 0, 2, 3]])
     assert np.array_equal(ua, np.array([[0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [0.8, 0.8]]))

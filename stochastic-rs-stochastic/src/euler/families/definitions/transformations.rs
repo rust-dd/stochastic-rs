@@ -208,17 +208,17 @@ macro_rules! euler_transformations {
     step { x + ($ct - $ct1 * x) * $dt + sigma * dz }
     report { $ct2 + $ct3 * x + $ct4 * x * x },
 
-  /// One Wu-Zhang pair: a square-root variance reverting to `alpha` at speed `beta`, and a rate
-  /// whose diffusion is `lambda` times the root of the variance just stepped, so it is bound first.
+  /// One Wu-Zhang pair: a variance reverting to `alpha` at speed `beta` under full truncation, and
+  /// a rate whose diffusion is `lambda` times the root of the variance just stepped, bound first.
   90 => WuZhang { alpha, beta, nu, lambda }
     state (f, v)
     noise (df, dv)
     step {
-      bind vn = positive(positive(v) + beta * (alpha - positive(v)) * $dt + nu * sqrt(positive(v)) * dv);
-      positive(f) + positive(f) * lambda * sqrt(vn) * df,
+      bind vn = v + beta * (alpha - positive(v)) * $dt + nu * sqrt(positive(v)) * dv;
+      positive(f) + positive(f) * lambda * sqrt(positive(vn)) * df,
       vn
     }
-    report { f, v },
+    report { f, positive(v) },
 
   /// Up to four correlated geometric Brownian motions under one lower Cholesky factor, each by
   /// the exact log-normal step. A missing asset has zero drift and volatility and a unit diagonal.

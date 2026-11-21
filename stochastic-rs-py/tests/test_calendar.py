@@ -1,10 +1,5 @@
-"""Calendar-layer pytest coverage.
-
-Exercises the PyO3 calendar bindings (DayCount, Calendar factories +
-joint mode, ScheduleBuilder, BusinessDayConvention) mirroring the
-verified `python_smoke.py::check_calendar_layer` and extending with
-factory + convention edge cases.
-"""
+"""Calendar bindings (DayCount, Calendar factories and joint mode, ScheduleBuilder, conventions):
+`python_smoke.py::check_calendar_layer` plus factory and convention edge cases."""
 
 from __future__ import annotations
 

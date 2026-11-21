@@ -135,7 +135,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     );
     group.bench_with_input(BenchmarkId::new("bates_svj", n), &n, |b, _| {

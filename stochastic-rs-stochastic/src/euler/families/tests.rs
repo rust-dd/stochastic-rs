@@ -93,6 +93,17 @@ fn the_family_codes_are_pinned() {
   assert_eq!(Family::SquareRoot.code(), 2);
 }
 
+/// rustfmt wraps a call whose arguments pass 60 columns and `build.rs` reads a wrapped entry as
+/// stale under locked artifacts: a three-digit family's name has 31 characters at most.
+#[test]
+fn every_kernel_entry_stays_on_the_one_line_rustfmt_keeps() {
+  for family in Family::ALL {
+    let arguments = format!("euler_{}_0_0, {family:?}, false, false", family.code());
+    let columns = arguments.len();
+    assert!(columns <= 60, "{family:?}: {columns} columns");
+  }
+}
+
 /// The generated step over the full state and noise, for the families whose
 /// state has more than one slot.
 fn step_full(

@@ -1,4 +1,4 @@
-//! # Calibration
+//! Calibrators fitting model parameters to market quotes by weighted least squares.
 //!
 //! $$
 //! \hat\theta=\arg\min_\theta\sum_i w_i\left(P_i^{model}(\theta)-P_i^{mkt}\right)^2
@@ -87,13 +87,8 @@ fn compensated_add<T: RealExt>(sum: &mut T, correction: &mut T, value: T) {
   *sum = next;
 }
 
-/// Integrate coupled characteristic-function terms over `[0, ∞)`.
-///
-/// Every fixed-width panel receives a fresh 64-point Gauss-Legendre rule, so
-/// extending the effective upper bound also increases the node count without
-/// reducing node density. Two consecutive panels must be negligible in every
-/// component; this keeps price and gradient integrals on the same converged
-/// domain and avoids stopping on a single oscillatory cancellation.
+/// Coupled chf terms over `[0, ∞)` by 64-point Gauss–Legendre panels until two in a row are
+/// negligible in every component: price and gradient share a domain, no cancellation stops it.
 pub(crate) fn integrate_gl_to_convergence<T: RealExt, const N: usize, F>(
   integrand: F,
   tol: T,

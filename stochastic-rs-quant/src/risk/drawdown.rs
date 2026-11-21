@@ -1,4 +1,4 @@
-//! Drawdown of an equity series $V_t$, reported as a negative fraction (`-0.25` is a 25 %
+//! Drawdown of an equity series `V_t`, reported as a negative fraction (`-0.25` is a 25 %
 //! drawdown).
 //!
 //! $$

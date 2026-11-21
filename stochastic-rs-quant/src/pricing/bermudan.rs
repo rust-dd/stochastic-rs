@@ -1,19 +1,13 @@
-//! # Bermudan
-//!
-//! Bermudan option pricer via Longstaff-Schwartz Monte Carlo. The holder
-//! may exercise on a finite set of pre-specified exercise dates inside
-//! $[0, T]$.
+//! Bermudan options by Longstaff–Schwartz Monte Carlo, exercisable on a finite set of dates in
+//! `[0, T]`:
 //!
 //! $$
 //! V_0 = \sup_{\tau \in \mathcal T} E^{\mathbb Q}\!\big[e^{-r\tau} h(S_\tau)\big],
 //! \qquad \mathcal T = \{t_{e_1}, \ldots, t_{e_K}\}
 //! $$
 //!
-//! Source:
-//! - Longstaff, F. & Schwartz, E. (2001), "Valuing American Options by Simulation:
-//!   A Simple Least-Squares Approach", DOI: 10.1093/rfs/14.1.113
-//! - Glasserman, P. (2004), "Monte Carlo Methods in Financial Engineering", §8
-//!
+//! Reference: Longstaff & Schwartz (2001), Rev. Financ. Stud. 14, 113–147, DOI 10.1093/rfs/14.1.113
+//! Reference: Glasserman (2004), Monte Carlo Methods in Financial Engineering, §8
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -26,12 +20,8 @@ use stochastic_rs_stochastic::params::Drift;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 
-/// Bermudan pricer driven by a path matrix and a set of exercise indices.
-///
-/// `paths` has shape `(n_paths, n_steps + 1)` with column 0 the initial
-/// price. `exercise_steps` are the column indices at which the holder may
-/// exercise; they must be strictly increasing and the last one is typically
-/// `n_steps` (maturity).
+/// Bermudan pricer on a `(n_paths, n_steps + 1)` path matrix (column 0 the initial price),
+/// exercised at the strictly increasing columns `exercise_steps`, typically ending at `n_steps`.
 #[derive(Debug, Clone)]
 pub struct BermudanLsmPricer {
   /// Risk-free rate (constant).

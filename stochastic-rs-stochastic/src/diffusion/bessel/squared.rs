@@ -26,7 +26,7 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a `with_*` setter (`SquaredBessel::default().with_delta(4.0)`); nothing is
 /// cached, since `sampler()` builds its Gaussian source from `self` on every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
-  /// δ < 2 is accepted and, under [`VarianceBoundary::Floor`], logged with `log::warn!`. Panics
+  /// δ < 2 is accepted and, unless fully truncated, logged with `log::warn!`. Panics
   /// unless `n >= 2`, a given `t` is positive and finite, and `delta` and `x0` are finite.
   pub fn new(
     delta: T,
@@ -40,12 +40,11 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     check_n(n);
     Self::check_x0(x0);
     check_t(t);
-    if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
+    if delta < T::from_usize_(2) && boundary != VarianceBoundary::FullTruncation {
       log::warn!(
         "SquaredBessel::new: dimension below the strict-positivity \
-         threshold (delta < 2) under VarianceBoundary::Floor; the path floors \
-         at zero on every boundary hit instead of reflecting — pass \
-         VarianceBoundary::Reflect for the standard sub-boundary mitigation"
+         threshold (delta < 2) under VarianceBoundary::{boundary:?}; the Euler path \
+         reaches zero and this boundary biases it there, full truncation least"
       );
     }
 
@@ -120,7 +119,7 @@ impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
       252,
       Some(T::one()),
       Some(T::one()),
-      VarianceBoundary::Floor,
+      VarianceBoundary::default(),
       Unseeded,
     )
   }
@@ -134,7 +133,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::SquaredBesselState {
+      VarianceBoundary::FullTruncation => {
+        crate::euler::EulerSpec::SquaredBesselFullTruncation([self.delta, two])
+      }
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::SquaredBesselState {
         delta: self.delta,
         two,
       },
@@ -146,7 +148,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    self.boundary.carried(self.x0.unwrap_or(T::zero()))
   }
 
   fn grid_points(&self) -> usize {
@@ -248,21 +250,18 @@ impl<T: FloatExt> SquaredBesselSampler<T> {
     if out.is_empty() {
       return;
     }
-    out[0] = self.x0;
+    out[0] = self.boundary.observed(self.x0);
     if out.len() == 1 {
       return;
     }
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
-    let mut prev = self.x0;
+    let mut prev = self.boundary.carried(self.x0);
     for z in tail.iter_mut() {
-      let dbesq = self.delta * self.dt + self.diff_scale * prev.abs().sqrt() * *z;
-      let next = match self.boundary {
-        VarianceBoundary::Floor => (prev + dbesq).max(T::zero()),
-        VarianceBoundary::Reflect => (prev + dbesq).abs(),
-      };
-      *z = next;
-      prev = next;
+      let root_of = self.boundary.observed(prev);
+      let dbesq = self.delta * self.dt + self.diff_scale * root_of.sqrt() * *z;
+      prev = self.boundary.carried(prev + dbesq);
+      *z = self.boundary.observed(prev);
     }
   }
 }

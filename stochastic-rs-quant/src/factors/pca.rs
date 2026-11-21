@@ -1,5 +1,5 @@
-//! Principal-component factors from the SVD $X = U\Sigma V^\top$ of a centred $T\times N$ returns
-//! matrix: explained-variance ratios, loadings $V$ and factor scores $U\Sigma$.
+//! Principal-component factors from the SVD `X = UΣVᵀ` of a centred `T × N` returns matrix:
+//! explained-variance ratios, loadings `V` and factor scores `UΣ`.
 //!
 //! Reference: Jolliffe (2002), "Principal Component Analysis", 2nd ed., DOI 10.1007/b98835
 

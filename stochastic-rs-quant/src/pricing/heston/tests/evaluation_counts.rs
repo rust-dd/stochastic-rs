@@ -12,11 +12,10 @@ fn evaluations(run: impl Fn(&HestonPricer, f64) -> f64) -> usize {
   EVALUATIONS.with(|n| n.get())
 }
 
-/// The head in `ln φ` and the two tails cost 1.95 and 1.34 times a walk from `1e-8` on these
-/// strikes (7,098 and 9,744); 3 % allows a panel that another libm splits.
+/// A count is a function of the inputs and the libm: 3 % allows a panel that another libm splits.
 #[test]
 fn a_price_keeps_its_evaluation_count() {
-  for (tau, pinned) in [(1.0, 13_848), (0.02, 13_048)] {
+  for (tau, pinned) in [(1.0, 13_910), (0.02, 13_102)] {
     let count = evaluations(|pricer, k| pricer.price_call(100.0, k, 0.05, 0.02, tau));
     assert!(
       count.abs_diff(pinned) * 100 <= 3 * pinned,
@@ -27,7 +26,7 @@ fn a_price_keeps_its_evaluation_count() {
 
 #[test]
 fn a_vega_keeps_its_evaluation_count() {
-  for (tau, pinned) in [(1.0, 14_520), (0.02, 15_256)] {
+  for (tau, pinned) in [(1.0, 14_510), (0.02, 14_638)] {
     let count = evaluations(|pricer, k| pricer.initial_variance_vega(100.0, k, 0.05, 0.02, tau));
     assert!(
       count.abs_diff(pinned) * 100 <= 3 * pinned,

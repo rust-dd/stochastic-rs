@@ -60,18 +60,17 @@ fn heston_prices_where_rho_sigma_exceeds_kappa() {
     let model = HestonFourier::new(p);
     is_one(&model, "heston");
     let lewis = LewisPricer::price_call(&model, 100.0, 100.0, 0.03, 0.01, 0.1);
-    // Lewis's relative 1e-8 on the integral is 7e-7 in price at `σ = 2`.
     for (name, got, tol) in [
       (
         "blanket",
         model.price_call(100.0, 100.0, 0.03, 0.01, 0.1),
-        1e-7,
+        1e-12,
       ),
       ("lewis", lewis, 1e-12),
       (
         "closed",
         HestonPricer::new(p).price_call(100.0, 100.0, 0.03, 0.01, 0.1),
-        1e-7,
+        1e-12,
       ),
     ] {
       assert!(

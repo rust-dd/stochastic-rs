@@ -13,7 +13,8 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::traits::DistributionExt;
 
-/// The truncated laws' rows of `DistributionExt`: the per-point cost of a density, cdf, quantile, mgf or cf.
+/// The truncated laws' rows of `DistributionExt`: the per-point cost of a density, cdf, quantile,
+/// mgf or cf.
 pub fn bench_distribution_ext(c: &mut Criterion) {
   let mut group = c.benchmark_group("DistributionExt");
   group.measurement_time(Duration::from_secs(3));
@@ -118,7 +119,8 @@ pub fn bench_truncated_exp(c: &mut Criterion) {
   group.finish();
 }
 
-/// The rejection regime: `[1, 5]` holds 0.70 of the Gamma(2, 1) mass; `[45, 60]` holds 9e-15 of Gamma(2.5, 1.2)'s.
+/// The rejection regime: `[1, 5]` holds 0.70 of the Gamma(2, 1) mass; `[45, 60]` holds 9e-15 of
+/// Gamma(2.5, 1.2)'s.
 pub fn bench_truncated_gamma(c: &mut Criterion) {
   let mut group = c.benchmark_group("TruncatedGamma");
   let law = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);

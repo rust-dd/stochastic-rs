@@ -56,10 +56,8 @@ fn fx_vega(s: f64, k: f64, f: f64, r_f: f64, tau: f64, sigma: f64) -> f64 {
   s * (-r_f * tau).exp() * (-0.5 * d1 * d1).exp() / std::f64::consts::TAU.sqrt() * root
 }
 
-/// Optimization variables: `[k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]`.
-///
-/// α is derived from σ_ATM via [`alpha_from_atm_vol`] so the ATM vol is
-/// matched by construction.
+/// Optimisation variables `[k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]`; `α` comes from `σ_ATM` via
+/// [`alpha_from_atm_vol`], so the ATM vol is matched by construction.
 pub(super) const NVARS: usize = 6;
 
 /// Problem definition for Basin optimization.
@@ -201,11 +199,8 @@ impl BoxConstraints for SabrSmileProblem {
   }
 }
 
-/// Basin-hopping with Basin L-BFGS-B.
-///
-/// Keep the existing SimdRng stream and skip every failed local solve. Basin's
-/// BasinHopping owns a ChaCha RNG, optimizes the initial point before hopping,
-/// and can accept failed candidates when the incumbent also failed.
+/// Basin-hopping over basin's L-BFGS-B on this crate's `SimdRng` stream, skipping failed local
+/// solves; basin's own `BasinHopping` owns a ChaCha RNG and can accept a failed candidate.
 pub(super) fn basin_hopping_opt(
   x0: [f64; NVARS],
   niter: usize,

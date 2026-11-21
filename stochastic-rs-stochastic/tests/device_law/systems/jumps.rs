@@ -30,7 +30,7 @@ fn kou_jump_heston_agrees_with_the_cpu_law() {
       253,
       100.0,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(131),
     )
   };
@@ -146,7 +146,7 @@ fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
 /// compounded across a step's jumps, which the kernels draw as a product law, not a sum.
 #[test]
 fn bates_1996_agrees_with_the_cpu_law() {
-  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+  for boundary in [VarianceBoundary::Absorption, VarianceBoundary::Reflect] {
     let build = || {
       Bates::<f32, _, _>::new(
         Drift::Mu(0.02),
@@ -211,7 +211,7 @@ fn bates_1996_reflection_moves_the_boundary() {
     paths.iter().filter(|p| p[1][252] < 1e-4).count() as f64 / paths.len() as f64
   };
   let mut shares = [0.0f64; 2];
-  for (k, boundary) in [VarianceBoundary::Floor, VarianceBoundary::Reflect]
+  for (k, boundary) in [VarianceBoundary::Absorption, VarianceBoundary::Reflect]
     .into_iter()
     .enumerate()
   {
@@ -267,7 +267,7 @@ fn bates_1996_compounds_several_jumps_a_step() {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(103),
     )
   };

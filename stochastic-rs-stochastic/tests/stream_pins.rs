@@ -146,7 +146,7 @@ fn bates_with_its_lognormal_law_is_pinned() {
     100.0,
     0.04,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(SEED),
   )
   .sample();
@@ -217,7 +217,7 @@ fn hkde_is_pinned() {
     N,
     100.0,
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(SEED),
   )
   .sample();

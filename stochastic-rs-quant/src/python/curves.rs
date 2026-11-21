@@ -66,9 +66,8 @@ impl PyDiscountCurve {
       .into_pyarray(py)
   }
 
-  /// Bootstraps an OIS discount curve from par OIS quotes: one fixed-leg
-  /// payment schedule (year fractions, last entry = maturity) per quote, the
-  /// swap equation `1 = S Σ δ_i D(t_i) + D(t_n)` solved pillar by pillar.
+  /// OIS discount curve bootstrapped from par quotes, one fixed-leg schedule of year fractions per
+  /// quote (last entry the maturity), solving `1 = S Σ δ_i D(t_i) + D(t_n)` pillar by pillar.
   #[staticmethod]
   #[pyo3(signature = (payment_schedules, rates, interp="log_df"))]
   fn bootstrap_ois(
@@ -220,18 +219,19 @@ impl PyNelsonSiegel {
     })
   }
 
-  /// Fit Nelson-Siegel parameters to market zero rates.
+  /// Least squares on the betas at each decay of the grid 0.1, 0.11, …, 5.0, so a decay off it is
+  /// not recovered; four quotes at least, one per parameter.
   #[staticmethod]
   fn fit_curve<'py>(
     maturities: numpy::PyReadonlyArray1<'py, f64>,
     market_rates: numpy::PyReadonlyArray1<'py, f64>,
-  ) -> Self {
-    Self {
-      inner: <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(
-        maturities.as_array(),
-        market_rates.as_array(),
-      ),
-    }
+  ) -> PyResult<Self> {
+    <crate::curves::nelson_siegel::NelsonSiegel<f64>>::fit(
+      maturities.as_array(),
+      market_rates.as_array(),
+    )
+    .map(|inner| Self { inner })
+    .map_err(|e| PyValueError::new_err(e.to_string()))
   }
 
   fn zero_rate(&self, tau: f64) -> f64 {
@@ -244,6 +244,96 @@ impl PyNelsonSiegel {
 
   fn discount_factor(&self, tau: f64) -> f64 {
     self.inner.discount_factor(tau)
+  }
+}
+
+/// Nelson-Siegel-Svensson curve (Svensson 1994): the zero rate, instantaneous forward and discount
+/// factor at one maturity or on an array; NaN at a negative or non-finite maturity.
+#[pyclass(name = "Svensson", unsendable)]
+pub struct PySvensson {
+  inner: crate::curves::svensson::Svensson<f64>,
+}
+
+#[pymethods]
+impl PySvensson {
+  #[new]
+  fn new(
+    beta0: f64,
+    beta1: f64,
+    beta2: f64,
+    beta3: f64,
+    lambda1: f64,
+    lambda2: f64,
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: crate::curves::svensson::Svensson::new(beta0, beta1, beta2, beta3, lambda1, lambda2),
+    })
+  }
+
+  /// Least squares on the betas at each decay pair of the grid 0.1, 0.15, …, 5.0, so a decay off
+  /// it is not recovered; six quotes at least, one per parameter.
+  #[staticmethod]
+  fn fit_curve<'py>(
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+    market_rates: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> PyResult<Self> {
+    <crate::curves::svensson::Svensson<f64>>::fit(maturities.as_array(), market_rates.as_array())
+      .map(|inner| Self { inner })
+      .map_err(|e| PyValueError::new_err(e.to_string()))
+  }
+
+  /// Returns `(beta0, beta1, beta2, beta3, lambda1, lambda2)`.
+  fn params(&self) -> (f64, f64, f64, f64, f64, f64) {
+    let c = &self.inner;
+    (c.beta0, c.beta1, c.beta2, c.beta3, c.lambda1, c.lambda2)
+  }
+
+  fn zero_rate(&self, tau: f64) -> f64 {
+    self.inner.zero_rate(tau)
+  }
+
+  fn forward_rate(&self, tau: f64) -> f64 {
+    self.inner.forward_rate(tau)
+  }
+
+  fn discount_factor(&self, tau: f64) -> f64 {
+    self.inner.discount_factor(tau)
+  }
+
+  fn zero_rates<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.zero_rate(tau))
+      .into_pyarray(py)
+  }
+
+  fn forward_rates<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.forward_rate(tau))
+      .into_pyarray(py)
+  }
+
+  fn discount_factors<'py>(
+    &self,
+    py: Python<'py>,
+    maturities: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
+    use numpy::IntoPyArray;
+    maturities
+      .as_array()
+      .mapv(|tau| self.inner.discount_factor(tau))
+      .into_pyarray(py)
   }
 }
 

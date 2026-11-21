@@ -93,7 +93,7 @@ fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
     3,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let problem = MleProblem::new(
@@ -123,7 +123,7 @@ fn bounded_mle_gradient_uses_the_feasible_boundary() {
     3,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   let problem = MleProblem::new(
@@ -155,7 +155,7 @@ fn a_path_without_a_density_is_penalised_and_its_fit_an_err() {
     3,
     None,
     None,
-    VarianceBoundary::Floor,
+    VarianceBoundary::Absorption,
     Deterministic::new(0),
   );
   for (sample, penalised) in [
@@ -202,7 +202,7 @@ fn a_cir_path_from_zero_fits_by_the_law_and_not_by_euler() {
       3,
       None,
       None,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(0),
     );
     fit_mle(&mut model, sample.view(), 0.01, density, None).map(|f| f.log_likelihood.is_finite())

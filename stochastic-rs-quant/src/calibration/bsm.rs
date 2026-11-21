@@ -1,10 +1,10 @@
-//! # Bsm
+//! Black-Scholes-Merton implied-volatility calibration under the generalised carry `b`.
 //!
 //! $$
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
-//! Merton (1973), Bell J. Econ. Manag. Sci. 4(1), 141–183, DOI 10.2307/3003143.
+//! Reference: Merton (1973), Bell J. Econ. Manag. Sci. 4(1), 141–183, DOI 10.2307/3003143
 
 use ndarray::Array1;
 use ndarray::Array2;

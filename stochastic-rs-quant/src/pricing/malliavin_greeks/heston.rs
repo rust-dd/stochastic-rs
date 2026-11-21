@@ -111,7 +111,8 @@ impl<S: SeedExt> HestonMalliavinGreeks<S> {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      VarianceBoundary::Floor,
+      // Absorption: the El Khatib tangent in `heston_el_khatib.rs` is that of the absorbed step.
+      VarianceBoundary::Absorption,
       seed,
     )
   }

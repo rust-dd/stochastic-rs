@@ -1,4 +1,4 @@
-//! Market dates and instrument shapes: the schedules the market uses, the enums that name conventions.
+//! Market dates and instrument shapes: the market's schedules and the enums that name conventions.
 
 use std::sync::Arc;
 

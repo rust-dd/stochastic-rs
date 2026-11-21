@@ -41,6 +41,7 @@ pub use params::RBergomiCalibrationConfig;
 pub use params::RBergomiMarketSlice;
 pub use params::RBergomiParams;
 pub use params::RBergomiXi0;
+pub(crate) use simulation::simulate_rbergomi_antithetic_pairs;
 pub use simulation::simulate_rbergomi_terminal_samples;
 
 #[cfg(test)]

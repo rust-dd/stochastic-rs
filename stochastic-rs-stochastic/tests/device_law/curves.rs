@@ -144,7 +144,7 @@ fn cir_plus_plus_agrees_with_the_cpu_law() {
       N,
       Some(0.04),
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(53),
     )
   };
@@ -200,7 +200,7 @@ fn two_factor_cir_agrees_with_the_cpu_law() {
         N,
         Some(0.03),
         Some(1.0),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(2),
       ),
       Cir::new(
@@ -210,7 +210,7 @@ fn two_factor_cir_agrees_with_the_cpu_law() {
         N,
         Some(0.01),
         Some(1.0),
-        VarianceBoundary::Floor,
+        VarianceBoundary::Absorption,
         Deterministic::new(3),
       ),
       rising(),

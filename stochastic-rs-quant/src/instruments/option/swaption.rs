@@ -1,5 +1,5 @@
-//! European swaptions under Black-76 and Bachelier on the forward swap rate $s$; $s$ and the
-//! annuity $A = \sum_j D(t_j)\,\delta_j\,N_j$ come from the underlying swap's valuation.
+//! European swaptions under Black-76 and Bachelier on the forward swap rate `s`; `s` and the
+//! annuity `A = Σ_j D(t_j) δ_j N_j` come from the underlying swap's valuation.
 //!
 //! $$
 //! V_{\mathrm{payer}} = A\,\bigl[s\,\Phi(d_1) - K\,\Phi(d_2)\bigr],\qquad

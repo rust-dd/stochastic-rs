@@ -217,8 +217,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for HestonLog<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let (drift, kappa, theta, xi, rho) =
+      (self.drift.rate(), self.kappa, self.theta, self.xi, self.rho);
     match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::LogHeston {
+      VarianceBoundary::FullTruncation => {
+        crate::euler::EulerSpec::LogHestonFullTruncation([drift, kappa, theta, xi, rho])
+      }
+      VarianceBoundary::Absorption => crate::euler::EulerSpec::LogHeston {
         drift: self.drift.rate(),
         kappa: self.kappa,
         theta: self.theta,
@@ -369,22 +374,19 @@ impl<T: FloatExt> HestonLogSampler<T> {
     let drift = self.drift;
     let half = T::from_f64_fast(0.5);
 
+    let boundary = self.boundary;
+    let (kappa, theta, xi) = (self.kappa, self.theta, self.xi);
+    let mut carried = v[0];
     for i in 1..self.n {
-      let v_prev = match self.boundary {
-        VarianceBoundary::Floor => v[i - 1].max(T::zero()),
-        VarianceBoundary::Reflect => v[i - 1].abs(),
-      };
+      let v_prev = boundary.observed(carried);
 
       let sqrt_v = v_prev.sqrt();
 
       let log_inc = (drift - half * v_prev) * dt + sqrt_v * dws[i - 1];
       s[i] = s[i - 1] * log_inc.exp();
 
-      let dv = self.kappa * (self.theta - v_prev) * dt + self.xi * sqrt_v * dwv[i - 1];
-      v[i] = match self.boundary {
-        VarianceBoundary::Floor => (v_prev + dv).max(T::zero()),
-        VarianceBoundary::Reflect => (v_prev + dv).abs(),
-      };
+      carried = boundary.square_root_step(carried, kappa, theta, xi, dt, dwv[i - 1]);
+      v[i] = boundary.observed(carried);
     }
   }
 }
@@ -431,7 +433,7 @@ mod tests {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     );
     let [s, _v] = p.sample();
@@ -450,7 +452,7 @@ mod tests {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Unseeded,
     );
     let [_s, v] = p.sample();

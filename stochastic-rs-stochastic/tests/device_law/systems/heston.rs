@@ -29,7 +29,7 @@ fn heston_agrees_with_the_cpu_law() {
       253,
       Some(1.0),
       HestonPow::Sqrt,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(17),
     )
   };
@@ -108,7 +108,7 @@ fn log_heston_agrees_with_the_cpu_law() {
       100.0,
       0.04,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(29),
     )
   };
@@ -152,7 +152,7 @@ fn double_heston_agrees_with_the_cpu_law() {
       0.0,
       253,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(31),
     )
   };
@@ -237,7 +237,7 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       [-0.6, 0.2, 0.1, -0.2, 0.3, 0.15],
       253,
       Some(1.0),
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(83),
     )
   };
@@ -280,7 +280,7 @@ fn andersen_qe_heston_agrees_with_the_cpu_law() {
       253,
       Some(1.0),
       HestonPow::Sqrt,
-      VarianceBoundary::Floor,
+      VarianceBoundary::Absorption,
       Deterministic::new(101),
     )
     .qe()

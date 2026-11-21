@@ -7,19 +7,14 @@ use num_complex::Complex64;
 use super::model::HestonStochCorrPricer;
 
 impl HestonStochCorrPricer {
-  /// Evaluate the characteristic function φ(u) via RK4 integration
-  /// of the ODE system for (A, C, D).
+  /// `φ(u) = E[e^{iu ln S_τ}]` by RK4 on the `(A, C, D)` system of Lemma 3.1:
   ///
-  /// ODE system (Lemma 3.1):
   /// ```text
   /// dD/dτ = −½u² + ½σ_v²·D² − ½iu − κ_v·D
   /// dC/dτ = σ_v·v₀·iu·D − κ_r·C
   /// dA/dτ = iu·(r−q) + κ_v·θ_v·D + κ_r·μ_r·C + ½σ_r²·C² + σ_r·ρ₂·m·iu·C
   /// ```
-  /// where m = √(θ_v − σ_v²/(8κ_v)). The paper writes the `dA` drift as
-  /// `iu·r` because it carries no dividend yield; here it is the full
-  /// risk-neutral log-drift `iu·(r−q)`, which is what makes the returned
-  /// exponential the characteristic function of `ln S_τ` and nothing else.
+  /// with `m = √(θ_v − σ_v²/(8κ_v))`; `dA` has `iu(r − q)` for the paper's dividend-free `iu·r`.
   pub fn char_func(&self, u: f64, s: f64, r: f64, q: f64, tau: f64) -> Complex64 {
     self.char_func_complex(Complex64::new(u, 0.0), s, r, q, tau)
   }
@@ -71,10 +66,8 @@ impl HestonStochCorrPricer {
       d += dt / 6.0 * (k1d + 2.0 * k2d + 2.0 * k3d + k4d);
     }
 
-    // No discount factor here: `da` already carries the full risk-neutral
-    // drift `iu(r - q)`, so this exponential is φ(u) = E[exp(iu·ln S_τ)]
-    // itself. Discounting is the caller's job — `price_call_carr_madan`
-    // applies the transform's single `e^{-rτ}`.
+    // `da` carries the drift `iu(r − q)`, so this is `φ(u)` itself; the caller discounts once
+    // (`price_call_carr_madan`'s `e^{−rτ}`).
     (a + iu * x0 + c * self.rho0 + d * v0).exp()
   }
 }

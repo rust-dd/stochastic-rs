@@ -1,3 +1,5 @@
+//! Floating-rate notes: a floating coupon leg plus redemption.
+
 use chrono::NaiveDate;
 
 use super::types::BondPrice;

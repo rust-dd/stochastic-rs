@@ -1,6 +1,4 @@
-//! # Arbitrage-free conditions for implied volatility surfaces
-//!
-//! Butterfly arbitrage density function (Gatheral & Jacquier, 2012, §2):
+//! Arbitrage-free conditions for implied-volatility surfaces; the butterfly density (§2):
 //!
 //! $$
 //! g(k)=\Bigl(1-\frac{k\,w'(k)}{2\,w(k)}\Bigr)^2
@@ -8,15 +6,9 @@
 //!     +\frac{w''(k)}{2}
 //! $$
 //!
-//! A slice is free of butterfly arbitrage iff $g(k)\geq0$ for all $k$.
-//!
-//! Calendar-spread arbitrage is absent iff $\partial_t w(k,t)\geq0$ for all $k$.
-//!
-//! Roger Lee's moment formula (Lee, 2004) gives the asymptotic bound:
-//! $\limsup_{k\to\pm\infty} w(k)/|k| \leq 2$.
-//!
+//! Butterfly-free iff `g(k) ≥ 0`, calendar-free iff `∂_t w ≥ 0`; Lee: `limsup w(k)/|k| ≤ 2`.
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
-//! Reference: Lee (2004), "The Moment Formula for Implied Volatility at Extreme Strikes"
+//! Reference: Lee (2004), Math. Finance 14(3), 469–480
 
 use super::ssvi::SsviParams;
 use super::svi::SviRawParams;
@@ -81,10 +73,7 @@ pub fn check_butterfly_ssvi<T: RealExt>(params: &SsviParams<T>, theta: T, ks: &[
   (min_g >= T::zero(), min_g)
 }
 
-/// Check calendar-spread arbitrage: $\partial_t w(k,t) \geq 0$ for all
-/// grid points.
-///
-/// Returns `(is_free, worst_violation)`.
+/// Calendar-spread check `∂_t w(k, t) ≥ 0` over the grid; returns `(is_free, worst_violation)`.
 pub fn check_calendar_spread(
   total_variance: ndarray::ArrayView2<f64>,
   maturities: &[f64],

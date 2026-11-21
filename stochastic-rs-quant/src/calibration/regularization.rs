@@ -1,16 +1,12 @@
-//! # Regularisation
+//! Tikhonov pull toward `θ⁰`: rows appended to a Levenberg–Marquardt fit, a cost in Nelder–Mead.
 //!
 //! $$
 //! \hat\theta = \arg\min_\theta \sum_i w_i\left(P_i^{model}(\theta) - P_i^{mkt}\right)^2 + \sum_j \lambda_j\left(\theta_j - \theta_j^0\right)^2
 //! $$
 //!
-//! Tikhonov pull toward `θ⁰`: rows appended to a Levenberg–Marquardt fit, a cost in Nelder–Mead.
 //! Weights are in the fit's residual unit squared per parameter squared; `None` leaves a fit as is.
-//!
-//! References: Tikhonov, A. N. (1963), *Solution of incorrectly formulated
-//! problems and the regularization method*, Soviet Mathematics Doklady 4,
-//! 1035–1038; Engl, H. W., Hanke, M. & Neubauer, A. (1996), *Regularization
-//! of Inverse Problems*, Kluwer, Ch. 5.
+//! Reference: Tikhonov (1963), Sov. Math. Dokl. 4, 1035–1038
+//! Reference: Engl et al. (1996), Regularization of Inverse Problems, Kluwer, Ch. 5
 
 use ndarray::Array1;
 use ndarray::Array2;

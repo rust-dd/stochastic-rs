@@ -1,4 +1,4 @@
-//! CDS legs on a survival curve $Q$, a discount curve $D$ and a recovery $R\in[0,1)$; the premium
+//! CDS legs on a survival curve `Q`, a discount curve `D` and a recovery `R ∈ [0, 1)`; the premium
 //! integral is the accrual on default, and both integrals run on a daily grid by trapezoid.
 //!
 //! $$

@@ -1,7 +1,6 @@
 // docs: concepts/traits#greeksext-and-the-greeks-aggregator
-//! Backs the `Greeks` field list on the traits-overview concept page.
-//! `Greeks` is a plain `f64` struct (not generic over `T`), verified here
-//! by constructing the real type with exactly the 9 named fields shown.
+//! Backs the `Greeks` field list on the traits-overview concept page; `Greeks` is a plain `f64`
+//! struct (not generic over `T`), verified by constructing it with exactly the 9 named fields.
 
 use stochastic_rs::traits::Greeks;
 

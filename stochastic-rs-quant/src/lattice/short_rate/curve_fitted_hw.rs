@@ -18,10 +18,8 @@ use crate::instruments::option::bermudan::one_factor_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
-/// Hull-White model with time-dependent $\theta(t)$ calibrated to an initial
-/// yield curve. The short rate is decomposed as $r(t) = x(t) + \alpha(t)$ where
-/// $x(t)$ is a zero-mean Ornstein-Uhlenbeck process and $\alpha(t)$ is the
-/// deterministic shift that reproduces market zero-coupon bond prices.
+/// Hull-White with `θ(t)` fitted to an initial curve: `r(t) = x(t) + α(t)`, `x` a zero-mean OU
+/// process and `α` the shift that reprices the market's zero-coupon bonds.
 #[derive(Debug, Clone)]
 pub struct CurveFittedHullWhiteModel<T: RealExt> {
   /// Mean reversion speed $a$.

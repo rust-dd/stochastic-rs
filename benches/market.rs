@@ -1,7 +1,5 @@
-//! Benchmarks for the reactive market-data framework.
-//!
-//! Measures the end-to-end hot path: updating a quote → helpers reflect
-//! the new market data → bootstrap produces a refreshed discount curve.
+//! Benchmarks for the reactive market-data framework: a quote update, the helpers reflecting it and
+//! the bootstrap producing a refreshed discount curve.
 
 use std::sync::Arc;
 

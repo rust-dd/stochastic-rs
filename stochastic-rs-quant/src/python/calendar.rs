@@ -1,9 +1,5 @@
-//! Python bindings for the calendar layer: day-count conventions, business-day
-//! conventions, holiday calendars, and schedule builders.
-//!
-//! All native Rust enum variants are mapped to Python via string-based
-//! constructors so the user-facing API stays free of foreign-typed
-//! enum imports.
+//! Python bindings for day counts, business-day conventions, holiday calendars and schedules; every
+//! Rust enum is chosen by a string, so Python imports no foreign enum type.
 
 use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;

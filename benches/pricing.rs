@@ -9,6 +9,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::aview1;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::instruments::option::caplet::black_forward_caplet;
 use stochastic_rs::quant::pricing::AutocallablePricer;
@@ -150,6 +151,11 @@ fn fourier(c: &mut Criterion) {
         .map(|&k| cos.price(&heston, S, k, R, Q, 1.0, OptionType::Call))
         .sum::<f64>()
     })
+  });
+  group.bench_function("cos_strikes_9", |b| {
+    let cos = CosEngine::default();
+    let strikes = aview1(&STRIKES);
+    b.iter(|| black_box(cos.price_strikes(&heston, S, strikes, R, Q, 1.0, OptionType::Call)))
   });
   group.bench_function("cumulants", |b| {
     b.iter(|| black_box(&heston).cumulants(black_box(1.0)))

@@ -1,5 +1,5 @@
 //! Fama–MacBeth two-pass regression: time-series betas per asset, a cross-sectional regression
-//! per date, then the mean premium $\bar\gamma$ with error $\sqrt{\mathrm{Var}(\gamma_t)/T}$.
+//! per date, then the mean premium `γ̄` with error `√(Var(γ_t)/T)`.
 //!
 //! $$
 //! R_{i,t} = a_i + \beta_i^\top F_t + \varepsilon_{i,t},\qquad

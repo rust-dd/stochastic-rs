@@ -1,4 +1,4 @@
-//! Coupon and cash-flow primitives.
+//! Coupon and cash-flow primitives: fixed and floating coupons with their accrual periods.
 //!
 //! Reference: Fabozzi, "Fixed Income Mathematics", 4th ed. (2015).
 

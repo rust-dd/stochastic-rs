@@ -1,3 +1,5 @@
+//! Fixed-rate amortizing bonds on an explicit outstanding-notional schedule.
+
 use chrono::NaiveDate;
 
 use super::shared::accrued_interest_for_deterministic_leg;

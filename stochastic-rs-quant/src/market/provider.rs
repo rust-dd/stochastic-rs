@@ -109,10 +109,8 @@ pub struct OptionChain {
 }
 
 impl OptionChain {
-  /// Convert the chain into [`OptionQuote`]s and per-maturity forwards for
-  /// [`crate::vol_surface::implied::ImpliedVolSurface::try_from_quotes`].
-  /// The forward for maturity $\tau$ is $F = S\,e^{(r-q)\tau}$; mid prices
-  /// are used, and quotes with a non-positive mid are dropped.
+  /// The chain as [`OptionQuote`]s at mid prices, a non-positive mid dropped, with per-maturity
+  /// forwards `F = Se^{(r−q)τ}`, the inputs of `ImpliedVolSurface::try_from_quotes`.
   pub fn to_surface_inputs(&self, r: f64, q: f64) -> (Vec<OptionQuote>, Vec<(f64, f64)>) {
     let mut quotes = Vec::with_capacity(self.quotes.len());
     let mut taus: Vec<f64> = Vec::new();

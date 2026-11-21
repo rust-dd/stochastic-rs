@@ -1,8 +1,5 @@
-"""Quant-surface pytest coverage.
-
-Exercises the analytic Black-Scholes-Merton pricer binding: ATM price
-range, monotonicity in strike, and the no-arbitrage call price bounds.
-"""
+"""Analytic Black-Scholes-Merton pricer binding: ATM price range, monotonicity in strike and the
+no-arbitrage call price bounds."""
 
 from __future__ import annotations
 
@@ -351,6 +348,24 @@ def test_carr_madan_pricer_takes_the_carry_from_the_query():
         assert abs(fft - model.price_call(100.0, k, 0.05, 0.02, 1.0)) < 5e-3
 
 
+def test_the_fourier_models_and_carr_madan_pay_out_at_expiry_and_are_nan_past_it():
+    heston = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
+    bates = sr.BatesFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, -0.05, 0.1)
+    kou = sr.KouFourier(0.2, 1.0, 0.4, 10.0, 5.0)
+    pricer = sr.CarrMadanPricer()
+    calls = [model.price_call for model in (sr.BSMFourier(0.2), heston, bates, kou)]
+    calls.append(lambda *query: pricer.price_heston_call(heston, *query))
+    calls.append(lambda *query: pricer.price_bates_call(bates, *query))
+    calls.append(lambda *query: pricer.price_kou_call(kou, *query))
+    for call in calls:
+        for s in (90.0, 100.0, 110.0):
+            assert call(s, 100.0, 0.05, 0.02, 0.0) == max(s - 100.0, 0.0)
+            for tau in (-1.0, math.nan, math.inf):
+                assert math.isnan(call(s, 100.0, 0.05, 0.02, tau))
+        for s, k in ((0.0, 100.0), (-5.0, 100.0), (110.0, 0.0), (110.0, -5.0)):
+            assert math.isnan(call(s, k, 0.05, 0.02, 1.0))
+
+
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
     import numpy as np
 
@@ -506,7 +521,7 @@ HESTON_MODEL = dict(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
     [
         (lambda: sr.BSMPricer(v=0.25, **CALL_PUT_QUERY), (7.356284457997674, 9.980504358377694)),
         (lambda: sr.BachelierPricer(v=20.0, **CALL_PUT_QUERY), (5.425620481356887, 8.049840381736892)),
-        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.2776906533992545, 7.067347664422634)),
+        (lambda: sr.AsianPricer(v=0.25, **CALL_PUT_QUERY), (3.153366046571449, 7.259388579304414)),
         (lambda: sr.BjerksundStensland2002Pricer(v=0.25, **CALL_PUT_QUERY), (7.35628449811837, 10.292928328280922)),
         (
             lambda: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, **CALL_PUT_QUERY),

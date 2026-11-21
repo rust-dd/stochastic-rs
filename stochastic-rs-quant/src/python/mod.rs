@@ -1,8 +1,5 @@
-//! PyO3 wrappers for `stochastic-rs-quant`.
-//!
-//! Pricing engines (analytic + Fourier), calibrators, vol-surface parameterisations,
-//! and bond-pricing closed forms exposed as `#[pyclass]` types. Registered by the
-//! `stochastic-rs-py` cdylib.
+//! PyO3 classes for `stochastic-rs-quant`'s pricers, calibrators, vol-surface parameterisations and
+//! bond closed forms, registered by the `stochastic-rs-py` cdylib.
 
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]
@@ -64,6 +61,7 @@ pub use credit_portfolio::PyCdsIndex;
 pub use curves::PyDiscountCurve;
 pub use curves::PyMultiCurve;
 pub use curves::PyNelsonSiegel;
+pub use curves::PySvensson;
 pub use curves::PyZeroCouponInflationCurve;
 pub use factors::PyFamaMacBeth;
 pub use factors::PyPairsStrategy;
@@ -106,6 +104,7 @@ pub use pricing_fourier::PyBatesFourier;
 pub use pricing_fourier::PyBsmFourier;
 pub use pricing_fourier::PyCarrMadanPricer;
 pub use pricing_fourier::PyCgmyFourier;
+pub use pricing_fourier::PyCosEngine;
 pub use pricing_fourier::PyDoubleHestonFourier;
 pub use pricing_fourier::PyHestonFourier;
 pub use pricing_fourier::PyHkdeFourier;

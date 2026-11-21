@@ -76,8 +76,8 @@ fn defaults_sample_finite() {
   assert!(ok(&s) && ok(&v2));
 }
 
-/// `CirPlusPlus::default()` clears the Feller guard in `f64` arithmetic, not by reflecting, which
-/// would only silence the warning; at κ = 0.5, `0.2 * 0.2` sits one ulp above `2κθ = 0.04`.
+/// `CirPlusPlus::default()` meets Feller's condition in `f64` arithmetic, not by its boundary: at
+/// κ = 0.5, `0.2 * 0.2` sits one ulp above `2κθ = 0.04`.
 #[test]
 fn cir_pp_default_clears_feller_guard() {
   let d = CirPlusPlus::<f64>::default();
@@ -127,7 +127,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -189,7 +189,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(0.04),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -236,7 +236,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -247,7 +247,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     Some(1.0),
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();
@@ -269,7 +269,7 @@ fn clone_preserves_deterministic_path() {
     N,
     Some(1.0),
     HestonPow::Sqrt,
-    VarianceBoundary::Floor,
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   );
   let b = a.clone();

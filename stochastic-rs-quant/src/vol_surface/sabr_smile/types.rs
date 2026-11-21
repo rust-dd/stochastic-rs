@@ -69,9 +69,8 @@ pub struct SabrSmileCalibrator {
   pub beta: f64,
   /// Quotes for one tenor
   pub quotes: SabrSmileQuotes,
-  /// Tau threshold below which the calibrator uses extra basin-hopping
-  /// iterations. The Hagan expansion is steeper near zero-tau, so short
-  /// tenors need a longer search. Default: `7/365` (~1 trading week).
+  /// `tau` below which the calibrator runs extra basin-hopping iterations, as Hagan's expansion
+  /// steepens near `tau = 0`; `7/365` by default.
   pub short_tenor_threshold: f64,
   /// Basin-hopping iterations when `tau < short_tenor_threshold`.
   /// Default: 1000.
@@ -79,11 +78,8 @@ pub struct SabrSmileCalibrator {
   /// Basin-hopping iterations when `tau >= short_tenor_threshold`.
   /// Default: 100.
   pub long_tenor_iters: usize,
-  /// Minimum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
-  /// `s * 0.5`. Override via [`Self::with_strike_bounds`] for low-spot
-  /// underlyings (penny FX) where `s * 0.5` is too tight, or for non-FX
-  /// underlyings (equity / commodity) where the FX-style multiplicative
-  /// bounds are wrong.
+  /// Lower bound of `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`, `s · 0.5` by default; see
+  /// [`Self::with_strike_bounds`] for penny FX or a non-FX underlying.
   pub strike_lo: f64,
   /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
   /// `s * 2.0`.
@@ -151,10 +147,8 @@ impl SabrSmileCalibrator {
     self
   }
 
-  /// Override the per-strike bounds for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`.
-  /// The defaults `(s * 0.5, s * 2.0)` work for typical equity / FX with a
-  /// well-defined spot. For penny FX, deep-OTM commodities, or any
-  /// non-multiplicative regime, supply explicit bounds.
+  /// Bounds for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]` in place of `(s · 0.5, s · 2.0)`, for penny FX,
+  /// deep out-of-the-money commodities or any non-multiplicative regime.
   pub fn with_strike_bounds(mut self, lo: f64, hi: f64) -> Self {
     assert!(
       lo > 0.0 && hi > lo,

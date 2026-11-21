@@ -22,8 +22,8 @@ use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
 
-/// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their optimum from 0.01 to 0.3
-/// and lose it from 1 up, where the row stiffens the kink at the cap.
+/// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their
+/// optimum from 0.01 to 0.3 and lose it from 1 up, where the row stiffens the kink at the cap.
 const FELLER_ROW_SCALE: f64 = 0.1;
 
 impl HestonCalibrator {

@@ -68,13 +68,8 @@ impl<T: RealExt> SsviSurface<T> {
     self.thetas[idx - 1] * (one - alpha) + self.thetas[idx] * alpha
   }
 
-  /// Check calendar-spread arbitrage on a log-moneyness grid (Gatheral &
-  /// Jacquier 2014, Theorem 4.2).
-  ///
-  /// The full condition is $\partial_T w(k, T) \geq 0$ for **every** $k$, not
-  /// just $k = 0$. Verifies (a) the necessary ATM condition $\theta_t$
-  /// non-decreasing, and (b) the full smile-wide condition $w(k, \theta_{n+1})
-  /// \geq w(k, \theta_n)$ for each adjacent slice and each $k$ in the grid.
+  /// Calendar check on a log-moneyness grid (Gatheral & Jacquier 2014, Thm 4.2): `θ_t`
+  /// non-decreasing and `w(k, θ_{n+1}) ≥ w(k, θ_n)` for each adjacent pair at each grid `k`.
   pub fn is_calendar_spread_free(&self, ks: &[T]) -> bool {
     if !self.thetas.windows(2).all(|w| w[1] >= w[0]) {
       return false;
@@ -92,24 +87,19 @@ impl<T: RealExt> SsviSurface<T> {
     true
   }
 
-  /// Check the ATM-only calendar-spread condition (necessary but not
-  /// sufficient): $\theta_t$ must be non-decreasing. Use
-  /// [`Self::is_calendar_spread_free`] with a representative log-moneyness
-  /// grid for the full GJ 2014 Theorem 4.2 check.
+  /// The ATM-only calendar condition, `θ_t` non-decreasing: necessary, not sufficient (see
+  /// [`Self::is_calendar_spread_free`]).
   pub fn is_atm_calendar_spread_free(&self) -> bool {
     self.thetas.windows(2).all(|w| w[1] >= w[0])
   }
 
-  /// Dupire local variance $\sigma^2_{\mathrm{loc}}(k, T)$ from SSVI analytic
-  /// derivatives.
-  ///
-  /// Uses the total-variance form of Dupire's formula:
+  /// Dupire local variance `σ²_loc(k, T)` from SSVI's analytic derivatives, in total-variance form:
   ///
   /// $$
   /// \sigma^2_{\mathrm{loc}}(k, T) = \frac{\partial_T w(k, T)}{g(k)}
   /// $$
   ///
-  /// where $g(k)$ is the butterfly density and $\partial_T w = \theta'(T) \cdot \partial_\theta w$.
+  /// with `g(k)` the butterfly density and `∂_T w = θ'(T) ∂_θ w`.
   pub fn local_var(&self, k: T, t: T) -> T {
     let zero = T::zero();
     let theta = self.interpolate_theta(t);

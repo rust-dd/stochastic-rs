@@ -36,9 +36,22 @@ use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
 
+mod barrier_zero_vol;
+mod basket_shape;
+mod bsm_spot;
+mod cgmysv_queries;
 mod credit_and_rates;
+mod crr;
+mod digital_domain;
 mod exotic_edges;
 mod exotics;
+mod expiry_census;
+mod expiry_greeks;
+mod fourier_expiry;
+mod kemna_vorst;
+mod mc_queries;
+mod positive_domain;
+mod rbergomi_antithetic;
 
 const R: f64 = 0.05;
 const Q: f64 = 0.01;

@@ -18,10 +18,16 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::mc::McEstimate;
 
+use crate::OptionType;
 use crate::calibration::rbergomi::RBergomiParams;
+use crate::calibration::rbergomi::simulate_rbergomi_antithetic_pairs;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::pathless;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 /// Monte Carlo pricer for the rough Bergomi model.
@@ -38,9 +44,9 @@ pub struct RBergomiPricer<S: SeedExt = Unseeded> {
   pub steps_per_year: usize,
   /// Number of mSOE exponential terms for the fBM approximation.
   pub msoe_terms: usize,
-  /// Each call draws its two runs from a clone, so a `Deterministic` seed replays.
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
   pub seed: S,
-  /// If true, use antithetic sampling for variance reduction.
+  /// Runs each path a second time on its normals negated, `2 n_paths` paths in all; the default.
   pub antithetic: bool,
 }
 
@@ -89,70 +95,43 @@ impl<S: SeedExt> RBergomiPricer<S> {
     self
   }
 
-  /// Call-price estimate with its Monte Carlo error bar. The mean is the
-  /// value [`ModelPricer::price_call`] reports; under antithetic sampling
-  /// the error bar is computed over the per-path antithetic-pair means,
-  /// the unit that actually averages to the estimate.
+  /// Call estimate, its error bar over the pair means under antithetic sampling; the payoff on no
+  /// path at `tau = 0`, NaN past expiry, for a NaN query or a spot or strike not positive.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
-    let seed = self.seed.clone();
-    let samples = simulate_rbergomi_terminal_samples(
-      &self.params,
-      s,
-      r,
-      q,
-      tau,
-      self.n_paths,
-      self.steps_per_year,
-      self.msoe_terms,
-      &seed,
-    );
-
-    let payoff_sum: f64 = samples.iter().map(|&st| (st - k).max(0.0)).sum();
-    let mut price = payoff_sum / samples.len() as f64;
-    let discount = (-r * tau).exp();
-
-    if self.antithetic {
-      let samples_anti = simulate_rbergomi_terminal_samples(
-        &self.params,
-        s,
-        r,
-        q,
-        tau,
-        self.n_paths,
-        self.steps_per_year,
-        self.msoe_terms,
-        &seed,
-      );
-      let payoff_sum_anti: f64 = samples_anti.iter().map(|&st| (st - k).max(0.0)).sum();
-      let price_anti = payoff_sum_anti / samples_anti.len() as f64;
-      price = 0.5 * (price + price_anti);
-
-      let n = samples.len().min(samples_anti.len());
-      let mut pair_sum = 0.0_f64;
-      let mut pair_sum_sq = 0.0_f64;
-      for i in 0..n {
-        let y = 0.5 * ((samples[i] - k).max(0.0) + (samples_anti[i] - k).max(0.0));
-        pair_sum += y;
-        pair_sum_sq += y * y;
-      }
-      return McEstimate {
-        mean: discount * price,
-        std_err: discount * std_err_from_sums(pair_sum, pair_sum_sq, n),
-        n_samples: n,
-      };
+    if s.is_nan() || k.is_nan() {
+      return pathless(f64::NAN);
     }
-
-    let payoff_sq_sum: f64 = samples
-      .iter()
-      .map(|&st| {
-        let y = (st - k).max(0.0);
-        y * y
-      })
-      .sum();
+    if let Some(payoff) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return pathless(payoff);
+    }
+    if !(s > 0.0 && k > 0.0 && (r - q).is_finite() && tau.is_finite()) {
+      return pathless(f64::NAN);
+    }
+    let seed = self.seed.clone();
+    let discount = (-r * tau).exp();
+    let call = |st: f64| (st - k).max_or_nan(0.0);
+    let (mut sum, mut sum_sq) = (0.0_f64, 0.0_f64);
+    let mut add = |y: f64| {
+      sum += y;
+      sum_sq += y * y;
+    };
+    let (paths, steps, terms) = (self.n_paths, self.steps_per_year, self.msoe_terms);
+    if self.antithetic {
+      let query = (s, r, q, tau);
+      let pairs =
+        simulate_rbergomi_antithetic_pairs(&self.params, query, paths, steps, terms, &seed);
+      pairs
+        .iter()
+        .for_each(|&[up, down]| add(0.5 * (call(up) + call(down))));
+    } else {
+      let samples =
+        simulate_rbergomi_terminal_samples(&self.params, s, r, q, tau, paths, steps, terms, &seed);
+      samples.iter().for_each(|&st| add(call(st)));
+    }
     McEstimate {
-      mean: discount * price,
-      std_err: discount * std_err_from_sums(payoff_sum, payoff_sq_sum, samples.len()),
-      n_samples: samples.len(),
+      mean: discount * (sum / paths as f64),
+      std_err: discount * std_err_from_sums(sum, sum_sq, paths),
+      n_samples: paths,
     }
   }
 }

@@ -10,12 +10,10 @@ use num_complex::Complex;
 
 use crate::traits::RealExt;
 
-/// Compute discrete Fourier coefficients of price increments (general irregular grid).
+/// Discrete Fourier coefficients of the price increments on an irregular grid, frequency `k` at
+/// index `k + max_freq` of the `2·max_freq + 1` returned:
 ///
 /// $$c_k(dx_n) = \frac{1}{T}\sum_{l=0}^{n-1} e^{-i\frac{2\pi}{T}k\,t_l}\,\delta_l(x)$$
-///
-/// Returns an `Array1` of length `2*max_freq+1`.
-/// Index mapping: frequency `k` → index `k + max_freq`.
 pub fn fourier_coefficients_dx<T: RealExt>(
   prices: &[T],
   times: &[T],
@@ -98,15 +96,10 @@ pub fn fourier_coefficients_dx_uniform<T: RealExt>(
   coeffs
 }
 
-/// Compute volatility / covariance Fourier coefficients via convolution.
+/// Volatility or covariance coefficients for `k = −m_freq..=m_freq` by convolution (the same array
+/// twice for a variance); `dx_a` needs `max_freq ≥ n_freq`, `dx_b` `max_freq ≥ n_freq + m_freq`:
 ///
 /// $$c_k(\Sigma^{ij}_{n,N})=\frac{T}{2N+1}\sum_{|s|\le N}c_s(dx^i)\,c_{k-s}(dx^j)$$
-///
-/// For *variance*, pass the same array for both `dx_a` and `dx_b`.
-///
-/// `dx_a` must satisfy `max_freq ≥ n_freq`; `dx_b` must satisfy
-/// `max_freq ≥ n_freq + m_freq`.
-/// Returns coefficients for `k = −m_freq, …, m_freq` (length `2*m_freq+1`).
 pub fn convolution_coefficients<T: RealExt>(
   dx_a: ArrayView1<Complex<T>>,
   dx_b: ArrayView1<Complex<T>>,

@@ -1,19 +1,13 @@
-//! Short-rate zero-coupon bond pricing — `ShortRatePricer`.
+//! Short-rate zero-coupon bond pricing through [`ShortRatePricer`], one model per maturity grid.
 
 /// Zero-coupon bond pricing from a short-rate model: the model holds its parameters, and the short
 /// rate and maturity are the query, so one model prices a whole maturity grid.
 pub trait ShortRatePricer {
-  /// Price of a zero-coupon bond paying 1 at `tau`, given short rate `r0`.
-  ///
-  /// # Panics
-  /// - if `tau` is negative
+  /// Zero-coupon bond paying 1 at `tau` from short rate `r0`; panics if `tau < 0`.
   fn zero_coupon_price(&self, r0: f64, tau: f64) -> f64;
 
-  /// Continuously-compounded zero yield implied by
-  /// [`zero_coupon_price`](Self::zero_coupon_price).
-  ///
-  /// Returns `NaN` at `tau == 0`, where the yield is undefined — the price
-  /// is 1 and the log-ratio is 0/0.
+  /// Continuously compounded zero yield of [`zero_coupon_price`](Self::zero_coupon_price); `NaN` at
+  /// `tau == 0`, where it is `0/0`.
   fn zero_yield(&self, r0: f64, tau: f64) -> f64 {
     if tau == 0.0 {
       return f64::NAN;

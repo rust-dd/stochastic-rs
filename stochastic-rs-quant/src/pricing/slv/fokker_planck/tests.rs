@@ -36,9 +36,8 @@ fn unit_leverage() -> Fn2D<f64> {
   Expr::lit(1.0).compile().unwrap().into()
 }
 
-/// Under a unit leverage the model is Heston, whose calls have a closed
-/// form: the scheme's marginal has to reprice them within two cents on a
-/// spot of 100, on a 121×60 mesh with 100 time steps per year.
+/// Under unit leverage the marginal reprices Heston's closed-form calls within two cents at spot
+/// 100, on a 121×60 mesh with 100 steps a year.
 #[test]
 fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   let p = params(1.0);
@@ -57,9 +56,8 @@ fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   }
 }
 
-/// Every boundary flux is zero, so the mass never moves; the log-spot
-/// marginal's mean is the forward and the variance's mean the CIR mean, the
-/// two first moments the exact density carries.
+/// Mass is conserved, the log-spot marginal's mean is the forward and the variance's mean the CIR
+/// mean.
 #[test]
 fn the_density_keeps_its_mass_and_its_first_moments() {
   let p = params(0.7);
@@ -85,9 +83,8 @@ fn the_density_keeps_its_mass_and_its_first_moments() {
   }
 }
 
-/// A leverage that varies with the spot enters the scheme through the
-/// advection, the diffusion and the mixed flux: the call prices move away
-/// from the unit-leverage ones in the direction a lower volatility implies.
+/// A spot-dependent leverage moves the call prices off the unit-leverage ones in the direction its
+/// lower volatility implies.
 #[test]
 fn a_smaller_leverage_lowers_the_option_value() {
   let p = params(1.0);
@@ -114,10 +111,8 @@ fn smiling_local_vol() -> Grid2D<f64> {
   Grid2D::new(ts, ks, values)
 }
 
-/// The calibrated surface is laid on the log-spot mesh with the spot a node,
-/// starts at `t = 0` with the first full time step's row as the reference
-/// prescribes, stays finite and positive, and the calibration's own
-/// marginal reprices the local-volatility model's forward.
+/// The calibrated surface sits on the log-spot mesh with the spot a node, starts with the first
+/// full step's row, stays finite and positive, and its marginal reprices the local-vol forward.
 #[test]
 fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   let p = params(0.6);
@@ -150,10 +145,8 @@ fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   }
 }
 
-/// Under `eta = 0` the variance is deterministic and the calibration
-/// condition is the closed form `L = sigma_LV / sqrt(V_t)`, which the route
-/// takes directly at every node and every level, `t = 0` included; the
-/// density still marches under it and keeps its mass.
+/// At `eta = 0` the route uses `L = sigma_LV / sqrt(V_t)` at every node and level, `t = 0`
+/// included, and the density still marches under it and keeps its mass.
 #[test]
 fn eta_zero_takes_the_closed_form_exactly() {
   let base = params(0.0);
@@ -198,12 +191,8 @@ fn bad_settings_are_errors() {
   assert!(calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[], &method()).is_err());
 }
 
-/// The reference's Heston sets C (Feller satisfied, a vol-of-vol of 0.9)
-/// and D (Feller violated, the density piles up at `v = 0`), under a unit
-/// leverage against the closed-form calls at the default mesh: the worst
-/// errors must stay below 0.015 and 0.022 on a spot of 100, and mass must be
-/// conserved in both. The Feller-violating set
-/// converges at a lower order, as the reference reports, but converges.
+/// The reference's sets C (Feller holds) and D (Feller fails) at unit leverage: worst call errors
+/// under 0.015 and 0.022 at spot 100, mass conserved in both.
 #[test]
 fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {
   let sets = [

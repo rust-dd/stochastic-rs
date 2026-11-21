@@ -7,24 +7,16 @@ use crate::QuantError;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
-  /// Delta for one asset using exact conditional Malliavin weights.
-  ///
-  /// This compatibility wrapper panics when the model is outside the supported
-  /// conditional-weight scope. Use [`Self::try_delta`] for user-supplied model
-  /// parameters.
+  /// Delta for one asset from exact conditional Malliavin weights; panics outside their scope,
+  /// where [`Self::try_delta`] returns `InvalidInput`.
   pub fn delta(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
     self
       .try_delta(payoff, asset)
       .unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Fallible Delta estimator for the conditional Malliavin-weight scope.
-  ///
-  /// Stochastic Heston variance is supported when `rho == 0`. Deterministic
-  /// variance (`xi == 0`) is supported for any otherwise valid `rho`. A model
-  /// with both `xi != 0` and `rho != 0` returns an error because its variance
-  /// shock is correlated with the price noise and needs the full Skorohod
-  /// derivative of the variance path.
+  /// Delta at `rho == 0` or deterministic variance (`xi == 0`); `InvalidInput` for `xi ≠ 0` with
+  /// `rho ≠ 0`, whose correlated variance shock needs the variance path's full Skorohod derivative.
   pub fn try_delta(&self, payoff: &MtPayoff<T>, asset: usize) -> Result<T, QuantError> {
     self.try_delta_at(payoff, asset, &self.path_seeds())
   }
@@ -88,11 +80,8 @@ impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
     Ok(sum / T::from_usize_(self.n_paths))
   }
 
-  /// All Deltas in a single simulation pass.
-  ///
-  /// This compatibility wrapper panics outside the exact conditional-weight
-  /// scope. Use [`Self::try_all_deltas`] for a fallible result backed by an
-  /// [`Array1`].
+  /// All Deltas in one simulation pass; panics outside the exact conditional-weight scope, where
+  /// [`Self::try_all_deltas`] returns `InvalidInput`.
   pub fn all_deltas(&self, payoff: &MtPayoff<T>) -> Vec<T> {
     self
       .try_all_deltas(payoff)

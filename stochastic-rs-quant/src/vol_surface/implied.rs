@@ -1,10 +1,4 @@
-//! # Implied Volatility Surface
-//!
-//! Constructs an implied volatility surface from market option prices.
-//!
-//! Given a grid of call (or put) prices $C(K_i, T_j)$ over strikes $K$ and
-//! maturities $T$, inverts the Black-Scholes formula to obtain
-//! $\sigma_{\mathrm{imp}}(K_i, T_j)$.
+//! Implied-volatility surface from market option prices, inverting Black-Scholes over `(K, T)`.
 //!
 //! Uses the [`implied_vol`] crate's `Hybrid` solver: Jäckel's rational approximation with FlashIV.
 //!
@@ -118,8 +112,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// A surface from an implied-vol grid `ivs` of shape `(N_T, N_K)` over `strikes` and `maturities`, one forward per maturity; a
-  /// `total_variance` cell is NaN where the vol is not finite and positive; panics unless both axes ascend strictly and shapes agree.
+  /// From `ivs` of shape `(N_T, N_K)`, one forward per maturity; total variance is `NaN` where a
+  /// vol is not finite and positive; panics unless both axes ascend strictly and the shapes agree.
   #[must_use]
   pub fn from_iv_grid(
     strikes: Vec<f64>,
@@ -158,10 +152,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// A surface from a surrogate's flat row-major `(maturity, strike)` output; panics unless the lengths agree (`N_T * N_K` vols, one
-  /// forward per maturity) and both axes ascend strictly — a Heston surrogate's `STRIKES` descend: `predict_implied_vol_surface` sorts.
-  ///
-  /// # Example
+  /// From `N_T·N_K` flat row-major `(maturity, strike)` vols of a surrogate, a forward per maturity
+  /// and strictly ascending axes, or panics (`predict_implied_vol_surface` sorts `STRIKES`).
   ///
   /// ```
   /// use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
@@ -289,11 +281,8 @@ impl ImpliedVolSurface {
     })
   }
 
-  /// Build an implied-vol surface directly from a market-data provider's
-  /// option chain. Fetches the chain for `symbol`, converts the quotes to
-  /// the `(OptionQuote, forwards)` inputs via
-  /// [`OptionChain::to_surface_inputs`](crate::market::provider::OptionChain::to_surface_inputs)
-  /// with carry $(r, q)$, then runs [`Self::try_from_quotes`].
+  /// From the provider's option chain for `symbol`, converted at carry `(r, q)` by
+  /// `OptionChain::to_surface_inputs`, then [`Self::try_from_quotes`].
   pub fn from_provider<P: crate::market::provider::MarketDataProvider>(
     provider: &P,
     symbol: &str,
@@ -441,10 +430,8 @@ impl ImpliedVolSurface {
     (0..nt).map(|j| self.smile_slice(j).fit_svi(None)).collect()
   }
 
-  /// Fit SSVI surface to all maturity slices simultaneously.
-  ///
-  /// First extracts ATM total variance $\theta_t$ per slice, then
-  /// calibrates global SSVI parameters $(\rho, \eta, \gamma)$.
+  /// SSVI over all maturity slices at once: the ATM total variance `θ_t` per slice, then the global
+  /// `(ρ, η, γ)`.
   pub fn fit_ssvi(
     &self,
     initial: Option<super::ssvi::SsviParams<f64>>,

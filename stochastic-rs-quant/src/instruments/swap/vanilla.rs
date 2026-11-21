@@ -1,3 +1,5 @@
+//! Vanilla interest-rate swaps on a fixed and a floating leg.
+
 use chrono::NaiveDate;
 
 use super::shared::fixed_leg_bpv_annuity;

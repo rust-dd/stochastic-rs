@@ -75,11 +75,8 @@ fn bsm_model_pricer_matches_pre_refactor_goldens() {
   }
 }
 
-/// `Asay1982` and `Black1976` are the same model in this crate — both carry
-/// at `b = 0` and discount at `exp(-r * tau)`. Asay (1982)'s margined
-/// futures convention (no discounting at all) is *not* implemented; this
-/// pins the equality so a future Asay implementation is a deliberate,
-/// visible change rather than a silent one.
+/// `Asay1982` is `Black1976` here (`b = 0`, discounted at `e^{−rτ}`): Asay's (1982) undiscounted
+/// margined-futures convention is not implemented, and this pins it.
 #[test]
 fn bsm_asay_currently_equals_black76() {
   let (s, k, r, q, tau) = Q;
@@ -93,11 +90,8 @@ fn bsm_asay_currently_equals_black76() {
   }
 }
 
-/// [`ModelPricer::price_put`]'s default is vanilla parity
-/// (`C - S e^{-q tau} + K e^{-r tau}`), which assumes `b = r - q`. It is
-/// therefore correct for `Merton1973` / `GarmanKohlhagen1983` and wrong for
-/// the other three — the reason `BsmPricer` overrides it. This test is the
-/// evidence for that override.
+/// The parity default assumes `b = r − q`, right for `Merton1973` and `GarmanKohlhagen1983`, wrong
+/// for the other three, so `BsmPricer` overrides `price_put`.
 #[test]
 fn bsm_price_put_overrides_vanilla_parity() {
   let (s, k, r, q, tau) = Q;
@@ -194,8 +188,7 @@ fn bsm_dates_match_tau_pricing() {
   assert!((iv - 0.2).abs() < 1e-6, "IV from date-derived tau: {iv}");
 }
 
-/// The full Greek set stays finite at the money and keeps the signs the
-/// pre-query methods produced.
+/// The full Greek set stays finite at the money, each Greek with its pinned sign.
 #[test]
 fn bsm_greeks_second_order_are_finite() {
   let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
@@ -215,7 +208,7 @@ fn bsm_greeks_second_order_are_finite() {
   assert!(model.vega(s, k, r, 0.0, tau) > 0.0);
 }
 
-/// Greeks pinned to the values the pre-query methods produced at [`Q`].
+/// Greeks pinned at [`Q`].
 #[test]
 fn bsm_greeks_match_pre_refactor_goldens() {
   let (s, k, r, q, tau) = Q;
@@ -340,9 +333,7 @@ fn bsm_dcc_pricing_diverges_from_default() {
   );
 }
 
-/// One model instance prices a whole strike/maturity grid — the capability
-/// [`ModelPricer`] exists for and the pre-query struct could not offer
-/// without rebuilding itself per point.
+/// One model instance prices a whole strike/maturity grid.
 #[test]
 fn bsm_one_model_prices_a_grid() {
   let model = BsmPricer::new(0.2, BsmCoc::Merton1973);
@@ -429,4 +420,49 @@ fn merton_at_a_zero_yield_is_bsm_1973_bit_for_bit() {
       }
     }
   }
+}
+
+/// Ultima against a central difference of `volga` in sigma, `h = 1e-5 sigma`, over moneyness,
+/// maturity and carry.
+#[test]
+fn ultima_matches_finite_difference_of_volga() {
+  let cells = [
+    (100.0, 105.0, 0.05, 0.02, 0.75, 0.25),
+    (100.0, 100.0, 0.03, 0.0, 1.0, 0.2),
+    (100.0, 150.0, 0.02, 0.01, 0.25, 0.3),
+    (100.0, 70.0, 0.01, 0.03, 2.0, 0.35),
+    (100.0, 95.0, 0.04, 0.0, 0.05, 0.4),
+    (80.0, 100.0, 0.0, 0.05, 5.0, 0.15),
+  ];
+  for (s, k, r, q, tau, v) in cells {
+    let h = 1e-5 * v;
+    let volga = |sigma: f64| BsmPricer::new(sigma, BsmCoc::Merton1973).volga(s, k, r, q, tau);
+    let fd = (volga(v + h) - volga(v - h)) / (2.0 * h);
+    let ultima = BsmPricer::new(v, BsmCoc::Merton1973).ultima(s, k, r, q, tau);
+    assert!(
+      ((ultima - fd) / fd).abs() < 1e-6,
+      "{s} {k} {r} {q} {tau} {v}: {ultima} vs {fd}"
+    );
+  }
+}
+
+/// Ultima at the pinned query against `d^3 V/d sigma^3` of the Merton (1973) call from mpmath's
+/// numerical third derivative at 60 digits, quoted to 30.
+#[test]
+fn ultima_matches_mpmath_third_derivative() {
+  let (s, k, r, q, tau) = Q;
+  let ultima = BsmPricer::new(V, BsmCoc::Merton1973).ultima(s, k, r, q, tau);
+  let reference = "-30.4626092468568644460922716058".parse::<f64>().unwrap();
+  assert!(((ultima - reference) / reference).abs() < 1e-13, "{ultima}");
+}
+
+/// At `d2 = 0` the Volga form of ultima is `0 * inf`; the Vega form stays finite.
+#[test]
+fn ultima_is_finite_where_d2_vanishes() {
+  let (s, r, q, tau, v) = (100.0_f64, 0.05, 0.02, 0.75, 0.25_f64);
+  let k = s * ((r - q - 0.5 * v * v) * tau).exp();
+  let model = BsmPricer::new(v, BsmCoc::Merton1973);
+  let (_, d2) = model.d1_d2(s, k, r, q, tau);
+  assert!(d2.abs() < 1e-14, "{d2}");
+  assert!(model.ultima(s, k, r, q, tau).is_finite());
 }

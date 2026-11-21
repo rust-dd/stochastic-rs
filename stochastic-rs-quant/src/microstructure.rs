@@ -1,5 +1,5 @@
 //! Optimal execution under price impact, Kyle's adverse-selection equilibria, propagator
-//! impact and spread estimators. The $\kappa$ below is discrete-time Almgren–Chriss.
+//! impact and spread estimators. The `κ` below is discrete-time Almgren–Chriss.
 //!
 //! $$
 //! x_k = X\,\frac{\sinh(\kappa(T-t_k))}{\sinh(\kappa T)},\qquad

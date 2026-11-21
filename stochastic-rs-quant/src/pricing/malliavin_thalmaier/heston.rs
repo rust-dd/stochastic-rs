@@ -277,15 +277,8 @@ impl<T: FloatExt> MultiHestonParams<T> {
 }
 
 impl<T: FloatExt> MultiHestonPaths<T> {
-  /// Build from existing single-asset `Heston` instances.
-  ///
-  /// Each `Heston` is sampled independently — use this when cross-asset
-  /// correlation is zero. For correlated assets use
-  /// [`MultiHestonParams::sample`] instead.
-  ///
-  /// The upstream `Heston` Euler sampler uses an arithmetic price update, so
-  /// paths built by this adapter are not eligible for the exact conditional
-  /// weights in [`Self::try_malliavin_weights`].
+  /// From independent single-asset `Heston`s, so uncorrelated (else [`MultiHestonParams::sample`]);
+  /// their arithmetic Euler update keeps the paths out of [`Self::try_malliavin_weights`].
   pub fn from_hestons<S: SeedExt>(hestons: &[Heston<T, Euler, S>]) -> Self {
     let d = hestons.len();
     assert!(d > 0, "need at least one Heston instance");

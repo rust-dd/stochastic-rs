@@ -1,25 +1,13 @@
-//! # XVA
+//! Valuation adjustments (CVA, DVA, FVA) on a simulated or analytic exposure profile:
 //!
 //! $$
 //! \mathrm{CVA} = \mathrm{LGD}\sum_i D(t_i)\,\mathrm{EPE}(t_i)\,\bigl[S(t_{i-1}) - S(t_i)\bigr],\qquad
 //! \mathrm{FVA} = \sum_i D(t_i)\,\bigl[\mathrm{EPE}(t_i) - \mathrm{ENE}(t_i)\bigr]\,s_f\,\Delta t_i
 //! $$
 //!
-//! Valuation adjustments built on a simulated exposure profile. The core is
-//! model-agnostic: [`ExposureProfile`] reduces a matrix of mark-to-market
-//! values (scenario paths × exposure dates) to expected positive and
-//! negative exposure and a potential-future-exposure quantile, and the
-//! adjustments integrate those profiles against survival, discount and
-//! funding curves on the exposure grid (rectangle rule with the exposure at
-//! the interval end). Bilateral CVA/DVA weight each period by the other
-//! party's survival to the start of the period. The Hull–White swap
-//! exposure engine in [`irs`] shows the profile being produced by the
-//! crate's own simulation stack.
-//!
-//! References: Gregory, J. (2015), *The xVA Challenge: Counterparty Credit
-//! Risk, Funding, Collateral and Capital*, 3rd ed., Wiley, Ch. 7, 14, 15;
-//! Green, A. (2016), *XVA: Credit, Funding and Capital Valuation
-//! Adjustments*, Wiley, Ch. 3, 9.
+//! EPE, ENE and PFE of an [`ExposureProfile`] against the curves by the end-point rectangle rule.
+//! Reference: Gregory (2015), The xVA Challenge, 3rd ed., Wiley, Ch. 7, 14, 15
+//! Reference: Green (2016), XVA: Credit, Funding and Capital Valuation Adjustments, Wiley, Ch. 3, 9
 
 pub mod irs;
 
@@ -47,11 +35,8 @@ pub struct ExposureProfile {
 }
 
 impl ExposureProfile {
-  /// Reduces `mtm` (rows = scenario paths, columns = `times`) to the
-  /// profile; `quantile` is the PFE level (e.g. 0.95).
-  ///
-  /// Panics on invalid dimensions, dates, quantiles or non-finite MtM values.
-  /// Use [`Self::try_from_mtm`] to handle invalid input without panicking.
+  /// The profile of `mtm` (paths × `times`), PFE at `quantile` (0.95, say); panics on invalid
+  /// dimensions, dates, quantile or non-finite MtM (see [`Self::try_from_mtm`]).
   pub fn from_mtm(mtm: ArrayView2<f64>, times: Vec<f64>, quantile: f64) -> Self {
     Self::try_from_mtm(mtm, times, quantile).unwrap_or_else(|e| panic!("{e}"))
   }
@@ -136,10 +121,8 @@ impl ExposureProfile {
     })
   }
 
-  /// Profile from precomputed expected exposures (e.g. analytic ones).
-  ///
-  /// The `quantile` field is NaN: expectations carry no PFE level, so `pfe`
-  /// is a copy of `epe` rather than a quantile of the exposure distribution.
+  /// Profile from precomputed (analytic, say) expected exposures; `quantile` is `NaN` and `pfe`
+  /// copies `epe`, as an expectation has no PFE level.
   pub fn from_expected(times: Vec<f64>, epe: Vec<f64>, ene: Vec<f64>) -> Self {
     assert!(
       times.len() == epe.len() && times.len() == ene.len(),

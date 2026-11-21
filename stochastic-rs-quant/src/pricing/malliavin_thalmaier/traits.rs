@@ -1,8 +1,5 @@
-//! Generic multi-asset path access for Malliavin–Thalmaier utilities.
-//!
-//! Implementing [`MultiSvPaths`] supplies path data only. Exact conditional
-//! Malliavin weights additionally require volatility paths independent of the
-//! price Brownian motions and an exponential log-price update.
+//! Generic multi-asset path access for Malliavin–Thalmaier; [`MultiSvPaths`] supplies paths only,
+//! and exact weights also need variance independent of the price noise and a log-price update.
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -40,10 +37,8 @@ impl<T: FloatExt> MultiSvPaths<T> for super::heston::MultiHestonPaths<T> {
   }
 }
 
-/// Conditional Malliavin covariance matrix from generic paths.
-///
-/// This is exact when the variance paths are independent of the price noise.
-/// `impl Trait` lets the call site inline the per-step accessors.
+/// Conditional Malliavin covariance from generic paths, exact when the variance paths are
+/// independent of the price noise; `impl Trait` lets the call site inline the step accessors.
 pub fn malliavin_cov_generic<T: FloatExt>(
   paths: &(impl MultiSvPaths<T> + ?Sized),
   cross_corr: ArrayView2<T>,
@@ -69,10 +64,7 @@ pub fn malliavin_cov_generic<T: FloatExt>(
   gamma
 }
 
-/// Reconstruct `integral sqrt(V_j) dW_j^S` from generic log-Euler paths.
-///
-/// The reconstruction is exact for the exponential update
-/// `S_{k+1}/S_k = exp((r - V_k/2) dt + sqrt(V_k) dW_k)`.
+/// `∫√V_j dW_j^S` from generic paths, exact for `S_{k+1}/S_k = exp((r − V_k/2)dt + √V_k dW_k)`.
 pub fn ito_integral_generic<T: FloatExt>(
   paths: &(impl MultiSvPaths<T> + ?Sized),
   asset: usize,
