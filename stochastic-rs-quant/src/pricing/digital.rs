@@ -59,12 +59,13 @@ pub struct CashOrNothingPricer {
 }
 
 impl CashOrNothingPricer {
-  /// Panics for a negative `sigma`, which flips `d1` into a finite wrong price; a NaN `sigma` is
-  /// kept, since an unlinked engine handle reads NaN and must price NaN. `cash` is unchecked.
+  /// Panics for a negative or infinite `sigma` (a negative one flips `d1` into a finite wrong
+  /// price) and an infinite `cash`; a NaN is kept, as an unlinked engine handle must price NaN.
   pub fn new(cash: f64, sigma: f64) -> Self {
+    assert_digital_sigma(sigma);
     assert!(
-      sigma.is_nan() || sigma >= 0.0,
-      "CashOrNothingPricer::new: sigma must be a non-negative volatility (got {sigma})"
+      !cash.is_infinite(),
+      "cash must satisfy `!cash.is_infinite()`, got cash = {cash:?}"
     );
     Self { cash, sigma }
   }
@@ -180,12 +181,9 @@ pub struct AssetOrNothingPricer {
 }
 
 impl AssetOrNothingPricer {
-  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
+  /// Panics for a negative or infinite `sigma`; a NaN is kept, as on [`CashOrNothingPricer::new`].
   pub fn new(sigma: f64) -> Self {
-    assert!(
-      sigma.is_nan() || sigma >= 0.0,
-      "AssetOrNothingPricer::new: sigma must be a non-negative volatility (got {sigma})"
-    );
+    assert_digital_sigma(sigma);
     Self { sigma }
   }
 
@@ -286,12 +284,13 @@ pub struct GapPricer {
 }
 
 impl GapPricer {
-  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
-  /// The payoff strike `k2` is a contract term and unchecked.
+  /// Panics for a negative or infinite `sigma` and an infinite `k2`; a NaN is kept, as on
+  /// [`CashOrNothingPricer::new`]. The payoff strike `k2` is a contract term of either sign.
   pub fn new(k2: f64, sigma: f64) -> Self {
+    assert_digital_sigma(sigma);
     assert!(
-      sigma.is_nan() || sigma >= 0.0,
-      "GapPricer::new: sigma must be a non-negative volatility (got {sigma})"
+      !k2.is_infinite(),
+      "k2 must satisfy `!k2.is_infinite()`, got k2 = {k2:?}"
     );
     Self { k2, sigma }
   }
@@ -357,16 +356,13 @@ pub struct SuperSharePricer {
 }
 
 impl SuperSharePricer {
-  /// Panics for a negative `sigma` (NaN is kept, as on [`CashOrNothingPricer::new`]) and unless
-  /// `x_high > 0`; a band inverted against the query's `k` prices negative and is not refused.
+  /// Panics for a negative or infinite `sigma` (NaN is kept, as on [`CashOrNothingPricer::new`]) and
+  /// unless `x_high` is finite and `> 0`; a band inverted against the query's `k` prices negative.
   pub fn new(x_high: f64, sigma: f64) -> Self {
+    assert_digital_sigma(sigma);
     assert!(
-      sigma.is_nan() || sigma >= 0.0,
-      "SuperSharePricer::new: sigma must be a non-negative volatility (got {sigma})"
-    );
-    assert!(
-      x_high > 0.0,
-      "SuperSharePricer::new: x_high must be strictly positive (got {x_high})"
+      x_high.is_finite() && x_high > 0.0,
+      "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = {x_high:?}"
     );
     Self { x_high, sigma }
   }
@@ -441,6 +437,15 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
     OptionType::Call => 1.0,
     OptionType::Put => -1.0,
   }
+}
+
+/// A digital's volatility: not negative and not infinite; NaN is the unlinked handle's reading.
+#[track_caller]
+fn assert_digital_sigma(sigma: f64) {
+  assert!(
+    sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0),
+    "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`, got sigma = {sigma:?}"
+  );
 }
 
 /// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$, the module's only copy: every price and
