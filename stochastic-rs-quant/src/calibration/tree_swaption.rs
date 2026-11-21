@@ -1,5 +1,3 @@
-//! # Swaption calibration of tree short-rate models
-//!
 //! Black–Karasinski reprices each quote on a [`BlackKarasinskiTree`] snapped to its levels, G2++ by
 //! Brigo & Mercurio's exact European; both fit Black-76 at-the-money-forward prices by Nelder–Mead.
 //!

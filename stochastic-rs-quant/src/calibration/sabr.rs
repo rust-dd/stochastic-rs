@@ -5,7 +5,7 @@
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-//! Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine, 84–108.
+//! Reference: Hagan et al. (2002), Wilmott Mag., Sept., 84–108
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -90,9 +90,8 @@ impl From<Array1<f64>> for SabrParams {
 }
 
 impl SabrParams {
-  /// 3-vec [α, ν, ρ] used by the LM optimiser. β is excluded because the
-  /// calibrator does not optimise it — β is a user-set CEV exponent. Use the
-  /// 4-vec [`From`] / [`Into`] for lossless round-trip.
+  /// `[α, ν, ρ]` for the LM optimiser, without the user-set CEV exponent `β`; the 4-vector
+  /// [`From`]/[`Into`] round-trips losslessly.
   pub(crate) fn as_lm_vec(self) -> Array1<f64> {
     Array1::from_vec(vec![self.alpha, self.nu, self.rho])
   }

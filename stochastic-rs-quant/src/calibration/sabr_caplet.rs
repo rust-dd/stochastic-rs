@@ -7,8 +7,8 @@
 //!   -\sigma_i^{mkt}\bigr)^2
 //! $$
 //!
-//! Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine, 84–108.
-//! Oblój (2008), "Fine-tune your smile: Correction to Hagan et al.", Wilmott Magazine.
+//! Reference: Hagan et al. (2002), Wilmott Mag., Sept., 84–108
+//! Reference: Obłój (2008), Wilmott Mag.
 
 use std::convert::Infallible;
 
