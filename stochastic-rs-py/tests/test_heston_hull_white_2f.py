@@ -84,9 +84,10 @@ def test_device_queries_and_the_device_keyword():
         _hybrid(device="tpu")
     for device in ("cuda", "metal"):
         try:
-            rows = _hybrid(seed=1, dtype="f32", device=device, scheme="qe").sample_par(8)
+            sr.probe_device(device)
         except (ValueError, RuntimeError):
             continue
+        rows = _hybrid(seed=1, dtype="f32", device=device, scheme="qe").sample_par(8)
         assert all(row.shape == (8, 65) and np.all(np.isfinite(row)) for row in rows)
         assert np.all(rows[0][:, 0] == 1.0) and np.all(rows[4][:, 0] == 0.0)
 
