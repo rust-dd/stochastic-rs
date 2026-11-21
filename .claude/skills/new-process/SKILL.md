@@ -141,7 +141,7 @@ Traps, each learned from a real failure:
   `RoughHestonMemory` has four states, two reports.
 
 **2b. The `EulerSpec` variant.** `src/euler/spec.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) and
+`pub enum EulerSpec<T: FloatExt>` variant per family (132 today, one-to-one) and
 `src/euler/spec/encode.rs` its `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump
