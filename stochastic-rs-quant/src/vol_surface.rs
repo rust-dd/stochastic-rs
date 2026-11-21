@@ -21,8 +21,8 @@
 //!                      build_surface_from_model()                    ▼
 //!                      ══════════════════════════════════════► VolSurfaceResult
 //!                                                              ├─ iv_surface
-//!                      build_surface(prices)                   ├─ svi_params
-//!                      ─────────────────────────────────────►  ├─ ssvi_surface
+//!                      build_surface(prices)                   ├─ svi_fits
+//!                      ─────────────────────────────────────►  ├─ ssvi_fit
 //!                                                              ├─ analytics
 //!                      build_surface_from_iv(iv)               ├─ butterfly_checks
 //!                      ─────────────────────────────────────►  └─ calendar_spread_free

@@ -14,6 +14,7 @@ use super::model_surface::ModelSurface;
 use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
 use crate::OptionType;
+use crate::calibration::Calibrated;
 use crate::total_order::ascending;
 use crate::traits::ToModel;
 
@@ -22,10 +23,10 @@ use crate::traits::ToModel;
 pub struct VolSurfaceResult {
   /// Implied volatility surface from market data
   pub iv_surface: ImpliedVolSurface,
-  /// SVI fit per maturity slice
-  pub svi_params: Vec<SviRawParams<f64>>,
-  /// SSVI global surface fit
-  pub ssvi_surface: SsviSurface<f64>,
+  /// SVI fit per maturity slice, its Levenberg–Marquardt stop with the parameters
+  pub svi_fits: Vec<Calibrated<SviRawParams<f64>>>,
+  /// SSVI global surface fit, its stop with the surface
+  pub ssvi_fit: Calibrated<SsviSurface<f64>>,
   /// Smile analytics per maturity
   pub analytics: Vec<SmileAnalytics<f64>>,
   /// Butterfly arbitrage check per slice: `(is_free, min_g)`
@@ -78,7 +79,7 @@ impl VolSurfaceResult {
 
   /// Compute local volatility surface on a grid from the SSVI fit.
   pub fn local_vol_surface(&self, ks: &[f64], ts: &[f64]) -> Array2<f64> {
-    self.ssvi_surface.local_vol_surface(ks, ts)
+    self.ssvi_fit.params.local_vol_surface(ks, ts)
   }
 }
 
@@ -164,18 +165,14 @@ where
 pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult {
   let nt = iv_surface.maturities.len();
 
-  let svi_params: Vec<_> = iv_surface
-    .fit_svi_slices()
-    .into_iter()
-    .map(|fit| fit.params)
-    .collect();
+  let svi_fits = iv_surface.fit_svi_slices();
+  let ssvi_fit = iv_surface.fit_ssvi(None);
+  let ssvi_surface = &ssvi_fit.params;
 
-  let ssvi_surface = iv_surface.fit_ssvi(None).params;
-
-  let analytics: Vec<SmileAnalytics<f64>> = svi_params
+  let analytics: Vec<SmileAnalytics<f64>> = svi_fits
     .iter()
     .zip(iv_surface.maturities.iter())
-    .map(|(svi, &tau)| super::analytics::svi_analytics(svi, tau))
+    .map(|(svi, &tau)| super::analytics::svi_analytics(&svi.params, tau))
     .collect();
 
   // Union of log-moneyness grids across all maturity slices — used both for
@@ -201,8 +198,8 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
 
   VolSurfaceResult {
     iv_surface: iv_surface.clone(),
-    svi_params,
-    ssvi_surface,
+    svi_fits,
+    ssvi_fit,
     analytics,
     butterfly_checks,
     calendar_spread_free,

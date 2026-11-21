@@ -559,3 +559,20 @@ def test_the_jump_fourier_models_keep_their_keywords_and_prices():
         sr.HKDEFourier(**{**hkde, "lam": -0.5})
     with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`, got sigma = -0\.3"):
         sr.HKDEFourier(**{**hkde, "sigma_v": -0.3})
+
+
+def test_the_svi_and_ssvi_calibrators_carry_their_fits_stop():
+    truth = sr.SviRawParams(0.02, 0.1, -0.4, 0.05, 0.2)
+    ks = [-0.5 + 0.05 * i for i in range(21)]
+    fit = sr.SviCalibrator(ks, [truth.total_variance(k) for k in ks])
+    assert fit.converged() and fit.message() == "converged" and fit.rmse() < 1e-9
+    # eta = 2.5 breaks the calendar bound over these thetas, so the projection caps it.
+    capped = sr.SsviParams(-0.3, 2.5, 0.5)
+    grid = [-0.3 + 0.05 * i for i in range(13)]
+    slices = [
+        (grid, [capped.total_variance(k, theta) for k in grid], theta)
+        for theta in (0.02, 0.04, 0.08)
+    ]
+    projected = sr.SsviCalibrator(slices)
+    assert not projected.converged() and projected.rmse() > 1e-3
+    assert projected.message() == "stopped at the bound of eta"

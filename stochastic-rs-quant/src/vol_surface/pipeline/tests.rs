@@ -43,7 +43,7 @@ fn full_pipeline() {
     OptionType::Call,
   );
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   assert_eq!(result.analytics.len(), 3);
   assert_eq!(result.butterfly_checks.len(), 3);
 
@@ -55,8 +55,8 @@ fn full_pipeline() {
     assert!(a.atm_skew.is_finite(), "ATM skew should be finite");
   }
 
-  for svi in &result.svi_params {
-    assert!(svi.is_admissible(), "SVI should be admissible");
+  for fit in &result.svi_fits {
+    assert!(fit.params.is_admissible(), "SVI should be admissible");
   }
 
   assert!(
@@ -106,7 +106,7 @@ fn build_surface_from_model_heston() {
 
   let result = build_surface_from_model(&model, 100.0, 0.05, 0.0, &strikes, &maturities);
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   assert_eq!(result.analytics.len(), 3);
   for a in &result.analytics {
     assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite());
@@ -157,7 +157,7 @@ fn build_surface_from_calibration_heston_multi_maturity() {
     &[0.25, 0.5, 1.0],
   );
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   for a in &result.analytics {
     assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite());
     assert!(
@@ -307,7 +307,7 @@ fn to_model_trait_works_with_pipeline() {
   let maturities = vec![0.25, 0.5, 1.0];
 
   let result = build_surface_from_model(&pricer, 100.0, 0.05, 0.0, &strikes, &maturities);
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
 
   // Verify prices match direct model
   use crate::traits::ModelPricer;
@@ -403,4 +403,32 @@ fn checkable_surface_still_answers() {
     assert!(min_g.is_finite(), "every slice must have been evaluated");
   }
   assert_eq!(result.is_arbitrage_free(), Some(true));
+}
+
+/// The pipeline keeps each slice's and the surface's whole fit, the stop's verdict and words with
+/// the parameters, as the fits themselves return it.
+#[test]
+fn the_pipeline_carries_each_fits_stop() {
+  use crate::traits::CalibrationResult;
+  let (strikes, maturities, forwards, prices) = make_test_prices();
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
+  let surface = &result.iv_surface;
+  assert_eq!(result.svi_fits.len(), 3);
+  for (j, fit) in result.svi_fits.iter().enumerate() {
+    let own = surface.smile_slice(j).fit_svi(None);
+    assert_eq!((fit.converged, &fit.message), (own.converged, &own.message));
+    assert!(
+      fit.message.is_some() && fit.rmse() == own.rmse(),
+      "slice {j}: {fit:?}"
+    );
+  }
+  let (fit, own) = (&result.ssvi_fit, surface.fit_ssvi(None));
+  assert_eq!((fit.converged, &fit.message), (own.converged, &own.message));
+  assert!(fit.message.is_some() && fit.rmse() == own.rmse(), "{fit:?}");
 }
