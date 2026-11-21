@@ -221,9 +221,8 @@ impl PyCarrMadanPricer {
     self.inner.price_call(&model.inner, s, k, r, q, tau)
   }
 
-  /// Returns true iff strike `k` is within the FFT log-strike grid for the
-  /// supplied Heston model and market state. Use to detect / widen the grid
-  /// before calling `price_heston_call` rather than handling NaN downstream.
+  /// Whether `k` lies in the FFT log-strike grid for this Heston model and market, to widen the
+  /// grid before `price_heston_call` instead of meeting `NaN`.
   fn strike_in_grid_heston(
     &self,
     model: &PyHestonFourier,

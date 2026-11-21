@@ -217,7 +217,8 @@ impl PyOrderBook {
     })
   }
 
-  /// Add a limit order. Returns `(order_id, [(price, size, taker_id, maker_id)] of immediate fills)`.
+  /// Add a limit order. Returns
+  /// `(order_id, [(price, size, taker_id, maker_id)] of immediate fills)`.
   fn add_order(
     &mut self,
     side: &str,

@@ -80,7 +80,8 @@ impl PyDoubleHestonCalibrator {
     })?
   }
 
-  /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2, converged, loss_rmse)`.
+  /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2)`, then
+  /// `converged` and `loss_rmse`, as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     use crate::traits::CalibrationResult;
@@ -300,7 +301,8 @@ impl PyCgmysvCalibrator {
     })
   }
 
-  /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.
+  /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0)`, then `converged`,
+  /// `loss_rmse` and `iterations`, as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
     use crate::traits::CalibrationResult;

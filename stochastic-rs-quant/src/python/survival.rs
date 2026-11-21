@@ -38,13 +38,8 @@ fn checked(times: &[f64], values: &[f64], what: &str) -> PyResult<()> {
   Ok(())
 }
 
-/// Term structure of survival probabilities: piecewise-constant hazard or
-/// linear survival interpolation between the pillars, flat hazard
-/// extrapolation beyond the last one. A `(0, 1)` anchor is always present,
-/// so `len`, `times()` and `pillars()` count one more entry than the
-/// constructor received unless a `t = 0` pillar was given. Accepted
-/// anywhere a flat hazard rate is — `ExposureProfile.cva`, `CdsIndex`,
-/// `CdoTranche`.
+/// Survival curve, piecewise-constant hazard or linear survival between pillars, flat hazard past
+/// the last; a `(0, 1)` anchor adds one entry unless a `t = 0` pillar was given.
 #[pyclass(module = "stochastic_rs", name = "SurvivalCurve", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PySurvivalCurve {

@@ -70,7 +70,8 @@ pub struct PyImpliedVolSurface {
 
 #[pymethods]
 impl PyImpliedVolSurface {
-  /// Build from a Heston Fourier model + grid via Carr-Madan FFT; raises `ValueError` unless both axes ascend strictly.
+  /// Heston Fourier model and grid by Carr-Madan FFT; `ValueError` unless both axes strictly
+  /// ascend.
   #[staticmethod]
   fn from_heston(
     model: &PyHestonFourier,
@@ -92,7 +93,7 @@ impl PyImpliedVolSurface {
     })
   }
 
-  /// Build from a Bates Fourier model + grid via Carr-Madan FFT; raises `ValueError` unless both axes ascend strictly.
+  /// Bates Fourier model and grid by Carr-Madan FFT; `ValueError` unless both axes strictly ascend.
   #[staticmethod]
   fn from_bates(
     model: &PyBatesFourier,
@@ -227,9 +228,8 @@ impl PySsviCalibrator {
   }
 }
 
-/// Extended SSVI surface: per-maturity `(θ, ρ, ψ)` slices calibrated going
-/// forward within the butterfly and calendar-spread bounds, interpolated
-/// linearly in `(θ, ψ, ρψ)` between maturities.
+/// Extended SSVI: `(θ, ρ, ψ)` slices calibrated forward within the butterfly and calendar bounds,
+/// linear in `(θ, ψ, ρψ)` between maturities.
 #[pyclass(name = "EssviSurface", unsendable)]
 pub struct PyEssviSurface {
   inner: crate::vol_surface::essvi::EssviSurface<f64>,

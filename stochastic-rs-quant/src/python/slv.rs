@@ -123,10 +123,8 @@ pub struct PyHestonSlvPricer {
 
 #[pymethods]
 impl PyHestonSlvPricer {
-  /// Monte Carlo pricer of the Heston SLV model under `leverage`. Pass the
-  /// `r` and `q` the surface was calibrated at to anchor the pricer — any
-  /// other query rate then raises — or neither for a hand-built surface with
-  /// no rate provenance.
+  /// Monte Carlo Heston SLV pricer under `leverage`; with the calibration's `r` and `q` any other
+  /// query rate raises, and without them (a hand-built surface) none does.
   #[new]
   #[pyo3(signature = (kappa, theta, sigma, rho, v0, eta, leverage, r=None, q=None, n_paths=100_000, steps_per_year=200, seed=42))]
   fn new(
@@ -271,9 +269,8 @@ impl PyHestonSlvCalibrationResult {
     }
   }
 
-  /// The Heston fit behind the parameters as
-  /// `(v0, kappa, theta, sigma, rho, converged, rmse)`, `None` when they
-  /// were pinned.
+  /// The Heston fit behind the parameters, `(v0, kappa, theta, sigma, rho, converged, rmse)`, or
+  /// `None` when they were pinned.
   fn heston(&self) -> Option<(f64, f64, f64, f64, f64, bool, f64)> {
     self.inner.diagnostics.as_ref().map(|fit| {
       let p = &fit.params;
@@ -348,16 +345,8 @@ impl PyHestonSlvCalibrator {
 
 #[pymethods]
 impl PyHestonSlvCalibrator {
-  /// `calls[j, i]` is the present call price at `strikes[i]`, `maturities[j]`.
-  /// `heston` pins `(v0, kappa, theta, sigma, rho)` — the order
-  /// `HestonCalibrator.calibrate` returns — and `heston_initial_guess` seeds
-  /// the fit instead; `local_vol` supplies the local volatility on the same
-  /// grid instead of a Dupire read of the calls. `method` is `"particle"`
-  /// (the Guyon–Henry-Labordère cloud, tuned by `n_particles`, `seed` and
-  /// the bandwidth constants) or `"fokker_planck"` (the finite-volume
-  /// forward Kolmogorov equation after Wyns & Du Toit, tuned by
-  /// `log_spot_nodes`, `variance_nodes` and `inner_iterations`);
-  /// `steps_per_year` serves both.
+  /// `calls[j, i]` is at `maturities[j]`, `strikes[i]`; `heston` pins, `heston_initial_guess` seeds
+  /// the Heston fit; `local_vol` overrides Dupire's; `method` is `"particle"` or `"fokker_planck"`.
   #[new]
   #[pyo3(signature = (s, r, q, strikes, maturities, calls, eta=1.0, heston=None, heston_initial_guess=None, local_vol=None, dupire_eps=1e-6, method="particle", n_particles=100_000, steps_per_year=200, seed=42, bandwidth_factor=1.5, bandwidth_t_min=0.25, log_spot_nodes=201, variance_nodes=100, inner_iterations=2))]
   fn new(
