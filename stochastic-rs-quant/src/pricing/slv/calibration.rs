@@ -259,12 +259,13 @@ pub fn calibrate_leverage(
     let row = row.as_slice().expect("a leverage row is contiguous");
     for p in 0..n {
       let l = interpolate_row(&spots, row, x[p].exp());
-      let vp = v[p];
+      // Full truncation, as `HestonSlv` steps: `v[p]` keeps its sign and every read is `v[p]⁺`.
+      let vp = v[p].max(0.0);
       let sqrt_v = vp.sqrt();
       let dw_v = z_v[p] * sqrt_dt;
       let dw_s = rho * dw_v + rho_bar * z_perp[p] * sqrt_dt;
       x[p] += (carry - 0.5 * l * l * vp) * dt + l * sqrt_v * dw_s;
-      v[p] = (vp + kappa * (theta - vp) * dt + sigma_mixed * sqrt_v * dw_v).max(0.0);
+      v[p] = v[p] + kappa * (theta - vp) * dt + sigma_mixed * sqrt_v * dw_v;
     }
 
     if next_snapshot < snapshot_maturities.len() && t_next == snapshot_maturities[next_snapshot] {
@@ -273,7 +274,7 @@ pub fn calibrate_leverage(
     }
 
     for (slot, (xp, vp)) in sorted.iter_mut().zip(x.iter().zip(v.iter())) {
-      *slot = (xp.exp(), *vp);
+      *slot = (xp.exp(), vp.max(0.0));
     }
     sorted.sort_unstable_by(|a, b| ascending(&a.0, &b.0));
     let h =
@@ -283,7 +284,7 @@ pub fn calibrate_leverage(
       .par_iter_mut()
       .zip(spots.par_iter())
       .for_each(|(slot, &node)| *slot = conditional_variance(&sorted, node, h, half_width));
-    let cloud_mean = v.iter().sum::<f64>() / n as f64;
+    let cloud_mean = v.iter().map(|vp| vp.max(0.0)).sum::<f64>() / n as f64;
     fill_gaps(&mut conditional, cloud_mean);
 
     for (i, &node) in spots.iter().enumerate() {
