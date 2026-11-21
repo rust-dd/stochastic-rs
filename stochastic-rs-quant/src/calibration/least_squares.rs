@@ -189,7 +189,8 @@ pub(crate) fn natural_cosines<P: LeastSquaresProblem>(
 }
 
 impl LmReport {
-  /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
+  /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's
+  /// renames do not reach.
   pub fn message(&self) -> &'static str {
     match self.reason {
       _ if self.flat => "flat objective",
