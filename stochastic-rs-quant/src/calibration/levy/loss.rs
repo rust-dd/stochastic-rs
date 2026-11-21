@@ -1,7 +1,14 @@
+use ndarray::Array1;
+use ndarray::ArrayView1;
+
 use super::types::LevyModel;
 use super::types::LevyModelType;
 use crate::OptionType;
 use crate::calibration::clip_negative;
+use crate::calibration::least_squares::Room;
+use crate::calibration::periodic_map;
+use crate::calibration::periodic_slopes;
+use crate::calibration::stencil::room;
 use crate::pricing::cf_quadrature::Rule;
 use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::fourier::LewisPricer;
@@ -151,8 +158,30 @@ pub(super) fn domain_violation(model_type: LevyModelType, p: &[f64]) -> Option<S
 }
 
 /// Each parameter clamped into its bounds, the domain's coupled conditions aside.
-pub(super) fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
+fn clamp_params(model_type: LevyModelType, params: &mut [f64]) {
   for (p, (lo, hi)) in params.iter_mut().zip(param_bounds(model_type)) {
     *p = p.clamp(lo, hi);
   }
+}
+
+/// Each raw coordinate reflected into its bounds, so that no step leaves it unmoved, and the
+/// reflections' slopes.
+pub(super) fn fold_params(
+  model_type: LevyModelType,
+  x: ArrayView1<f64>,
+) -> (Vec<f64>, Array1<f64>) {
+  let bounds = param_bounds(model_type);
+  let folded = x.iter().zip(&bounds);
+  let folded = folded.map(|(&x, &(lo, hi))| periodic_map(x, lo, hi));
+  (folded.collect(), periodic_slopes(x, &bounds))
+}
+
+/// Each raw coordinate's room before its folded value meets a bound of its model's box.
+pub(super) fn room_in_box(model_type: LevyModelType, x: ArrayView1<f64>) -> Room {
+  let (folded, slopes) = fold_params(model_type, x);
+  room(
+    &Array1::from_vec(folded),
+    &param_bounds(model_type),
+    slopes.view(),
+  )
 }

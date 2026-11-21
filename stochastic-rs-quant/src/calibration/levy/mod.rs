@@ -31,6 +31,9 @@ pub use types::LevyModelType;
 pub use types::LevyParams;
 
 #[cfg(test)]
+mod in_box_tests;
+
+#[cfg(test)]
 mod quadrature_tests;
 
 #[cfg(test)]

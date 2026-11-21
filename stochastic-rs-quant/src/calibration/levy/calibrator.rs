@@ -2,13 +2,14 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
-use super::loss::clamp_params;
 use super::loss::default_params;
 use super::loss::domain_violation;
+use super::loss::fold_params;
 use super::loss::fourier_option_price;
 use super::loss::param_bounds;
 use super::loss::param_count;
 use super::loss::project_params;
+use super::loss::room_in_box;
 use super::types::LevyModelType;
 use super::types::LevyParams;
 use crate::OptionQuote;
@@ -17,9 +18,10 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
-use crate::calibration::least_squares::minimize;
+use crate::calibration::least_squares::minimize_in_box;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
+use crate::calibration::scale_columns;
 use crate::calibration::stencil::derivative;
 use crate::calibration::stencil::step;
 use crate::pricing::cf_quadrature::Rule;
@@ -141,8 +143,10 @@ impl crate::traits::Calibrator for LevyCalibrator {
     }
     let mut values = start.map_or_else(|| default_params(self.model_type), |start| start.values);
     project_params(self.model_type, &mut values);
-    let lm = self.options.lm(false, param_count(self.model_type))?;
-    let (fitted, report) = minimize(LevyProblem::new(self, values), lm);
+    let model_type = self.model_type;
+    let lm = self.options.lm(false, param_count(model_type))?;
+    let rooms = move |x: ArrayView1<f64>| room_in_box(model_type, x);
+    let (fitted, report) = minimize_in_box(LevyProblem::new(self, values), lm, rooms);
     let model = fitted.compute_model_prices();
     report.calibrated(
       fitted.params,
@@ -156,9 +160,11 @@ impl crate::traits::Calibrator for LevyCalibrator {
 
 pub(super) struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
-  params: LevyParams,
-  /// The coordinates clamped to their bounds, before the model's domain moves one.
-  clamped: Vec<f64>,
+  pub(super) params: LevyParams,
+  /// The coordinates folded into their bounds, before the model's domain moves one.
+  folded: Vec<f64>,
+  /// `dθⱼ/dxⱼ` of the bounds' reflection at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
   market: Vec<f64>,
   trail: Trail<LevyParams>,
 }
@@ -167,7 +173,8 @@ impl<'a> LevyProblem<'a> {
   pub(super) fn new(calibrator: &'a LevyCalibrator, values: Vec<f64>) -> Self {
     Self {
       calibrator,
-      clamped: values.clone(),
+      folded: values.clone(),
+      reflections: Array1::ones(values.len()),
       params: LevyParams {
         values,
         model_type: calibrator.model_type,
@@ -196,7 +203,7 @@ impl<'a> LevyProblem<'a> {
       .collect()
   }
 
-  /// `∂r/∂θ` at the clamped point, the domain's projection inside each stencil and every price on
+  /// `∂r/∂θ` at the folded point, the domain's projection inside each stencil and every price on
   /// the rule the point's own price walked; `scale` times the shared step.
   pub(super) fn difference_jacobian(&self, scale: f64) -> Array2<f64> {
     let model_type = self.calibrator.model_type;
@@ -207,15 +214,15 @@ impl<'a> LevyProblem<'a> {
       rules
     });
     let rules = rules.collect::<Vec<_>>();
-    let mut jacobian = Array2::zeros((quotes.len(), self.clamped.len()));
+    let mut jacobian = Array2::zeros((quotes.len(), self.folded.len()));
     let columns = jacobian
       .columns_mut()
       .into_iter()
       .zip(param_bounds(model_type));
     for (j, (mut column, bounds)) in columns.enumerate() {
-      let x = self.clamped[j];
+      let x = self.folded[j];
       column.assign(&derivative(x, scale * step(x), bounds, |value| {
-        let mut moved = self.clamped.clone();
+        let mut moved = self.folded.clone();
         moved[j] = value;
         project_params(model_type, &mut moved);
         let replay = self.market.iter().zip(quotes).zip(&rules);
@@ -231,15 +238,14 @@ impl<'a> LevyProblem<'a> {
 impl LeastSquaresProblem for LevyProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
     let model_type = self.calibrator.model_type;
-    self.clamped = params.to_vec();
-    clamp_params(model_type, &mut self.clamped);
-    let mut p = self.clamped.clone();
+    (self.folded, self.reflections) = fold_params(model_type, params);
+    let mut p = self.folded.clone();
     project_params(model_type, &mut p);
     self.params.values = p;
   }
 
   fn params(&self) -> Array1<f64> {
-    Array1::from_vec(self.params.values.clone())
+    Array1::from_vec(self.folded.clone())
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
@@ -258,10 +264,19 @@ impl LeastSquaresProblem for LevyProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.difference_jacobian(1.0))
+    let jacobian = self.difference_jacobian(1.0);
+    Some(scale_columns(jacobian, self.reflections.view()))
   }
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    self.params.values.clone()
+  }
+
+  fn natural_jacobian(&self) -> Array2<f64> {
+    Array2::from_diag(&self.reflections)
   }
 }
