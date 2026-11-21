@@ -96,7 +96,7 @@ impl<S: SeedExt> RBergomiPricer<S> {
   }
 
   /// Call estimate, its error bar over the pair means under antithetic sampling; the payoff on no
-  /// path at `tau = 0`, NaN past expiry, for a NaN query or a spot not positive.
+  /// path at `tau = 0`, NaN past expiry, for a NaN query or a spot or strike not positive.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
     if s.is_nan() || k.is_nan() {
       return pathless(f64::NAN);
@@ -104,7 +104,7 @@ impl<S: SeedExt> RBergomiPricer<S> {
     if let Some(payoff) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
       return pathless(payoff);
     }
-    if !(s > 0.0 && (r - q).is_finite() && tau.is_finite()) {
+    if !(s > 0.0 && k > 0.0 && (r - q).is_finite() && tau.is_finite()) {
       return pathless(f64::NAN);
     }
     let seed = self.seed.clone();

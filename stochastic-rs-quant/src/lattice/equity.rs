@@ -35,8 +35,8 @@ impl<T: RealExt> CrrModel<T> {
     Self { sigma, steps }
   }
 
-  /// The rollback of both styles: the payoff at `tau = 0`; NaN past expiry, for a NaN query and
-  /// where `p` leaves `[0, 1]`, as it does at `sigma = 0`.
+  /// The rollback of both styles: the payoff at `tau = 0`; NaN past expiry, for a NaN query, a
+  /// spot or strike that is not positive, and where `p` leaves `[0, 1]`, as it does at `sigma = 0`.
   ///
   /// $$
   /// V=e^{-r\Delta t}\bigl(pV_u+(1-p)V_d\bigr),\qquad
@@ -66,7 +66,8 @@ impl<T: RealExt> CrrModel<T> {
     let down = T::one() / up;
     let drift = ((r - q) * dt).exp();
     let p = (drift - down) / (up - down);
-    if !(tau > T::zero() && p >= T::zero() && p <= T::one()) {
+    let positive = s > T::zero() && k > T::zero();
+    if !(tau > T::zero() && positive && p >= T::zero() && p <= T::one()) {
       return T::nan();
     }
     let tree = BinomialTree::from_crr(s, up, down, p, self.steps, dt);

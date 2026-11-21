@@ -11,6 +11,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 
@@ -55,7 +56,8 @@ impl AsianPricer {
     (v, b)
   }
 
-  /// At `tau = 0` the payoff on the spot, the average with no averaging left; NaN past expiry.
+  /// At `tau = 0` the payoff on the spot, the average with no averaging left; NaN past expiry and,
+  /// before it, for a spot or strike that is not positive.
   ///
   /// $$
   /// C=Se^{(b_A-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
@@ -65,6 +67,9 @@ impl AsianPricer {
   fn price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(option_type, s, k)) {
       return value;
+    }
+    if not_positive(&[s, k]) {
+      return f64::NAN;
     }
     let (v, b) = self.averaged_vol_and_carry(r, q);
     let (carried, strike) = (s * ((b - r) * tau).exp(), k * (-r * tau).exp());

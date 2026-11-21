@@ -20,6 +20,7 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::mc_stats::off_domain;
 use crate::pricing::mc_stats::par_estimate;
@@ -119,10 +120,13 @@ impl MargrabePricer {
   }
 
   /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side): the payoff at
-  /// `tau = 0`, NaN past expiry.
+  /// `tau = 0`, NaN past expiry or for a spot that is not positive before it.
   pub fn price(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     if let Some(value) = expired(tau, &[q1, q2], || vanilla_payoff(OptionType::Call, s1, s2)) {
       return value;
+    }
+    if not_positive(&[s1, s2]) {
+      return f64::NAN;
     }
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
@@ -132,9 +136,9 @@ impl MargrabePricer {
     s1 * (-q1 * tau).exp() * norm_cdf(d1) - s2 * (-q2 * tau).exp() * norm_cdf(d2)
   }
 
-  /// Delta with respect to $S_1$; NaN at and past expiry.
+  /// Delta with respect to $S_1$; NaN at and past expiry and for a spot that is not positive.
   pub fn delta1(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
-    if tau.is_nan() || tau <= 0.0 {
+    if tau.is_nan() || tau <= 0.0 || not_positive(&[s1, s2]) {
       return f64::NAN;
     }
     let v_sq = self.combined_variance();
@@ -145,9 +149,9 @@ impl MargrabePricer {
     (-q1 * tau).exp() * norm_cdf(d1)
   }
 
-  /// Delta with respect to $S_2$; NaN at and past expiry.
+  /// Delta with respect to $S_2$; NaN at and past expiry and for a spot that is not positive.
   pub fn delta2(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
-    if tau.is_nan() || tau <= 0.0 {
+    if tau.is_nan() || tau <= 0.0 || not_positive(&[s1, s2]) {
       return f64::NAN;
     }
     let v_sq = self.combined_variance();

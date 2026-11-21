@@ -23,6 +23,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::CallPut;
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 
 /// Kirk's approximation for European spread options, payoff `max(F1 − F2 − X, 0)`; a two-forward
@@ -77,11 +78,18 @@ impl KirkSpreadPricer {
   }
 
   /// Spread call and put of forwards `f1`, `f2` at spread strike `x`, Kirk's volatility weighting
-  /// $\sigma_2$ by $F_2/(F_2+X)$; the payoffs at `tau = 0`, NaN past expiry.
+  /// $\sigma_2$ by $F_2/(F_2+X)$; the payoffs at `tau = 0`, NaN past expiry or for a forward that
+  /// is not positive before it.
   pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> CallPut {
     let payoff = |leg| expired(tau, &[r], || vanilla_payoff(leg, f1 - f2, x));
     if let (Some(call), Some(put)) = (payoff(OptionType::Call), payoff(OptionType::Put)) {
       return CallPut { call, put };
+    }
+    if not_positive(&[f1, f2]) {
+      return CallPut {
+        call: f64::NAN,
+        put: f64::NAN,
+      };
     }
     // Ratio transformation: F = F1 / (F2 + X)
     let denom = f2 + x;

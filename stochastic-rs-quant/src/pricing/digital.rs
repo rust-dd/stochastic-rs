@@ -428,6 +428,11 @@ pub(crate) fn expired(tau: f64, rates: &[f64], payoff: impl FnOnce() -> f64) -> 
   Some(if defined { payoff() } else { f64::NAN })
 }
 
+/// Whether a spot or strike is zero, negative or NaN, where a lognormal formula has no value.
+pub(crate) fn not_positive(values: &[f64]) -> bool {
+  !values.iter().all(|&x| x > 0.0)
+}
+
 /// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up
 /// because the put's $N(-d)$ differentiates to $-\phi(d)$ where the call's
 /// $N(d)$ gives $+\phi(d)$.

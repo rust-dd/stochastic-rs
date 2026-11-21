@@ -25,6 +25,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::rainbow::assert_volatilities;
 
@@ -138,8 +139,8 @@ impl GeometricBasketPricer {
     }
   }
 
-  /// Either leg: the payoff at `tau = 0`; NaN past expiry or at zero basket volatility with the
-  /// forward at the strike; panics unless `s` and `q` have one entry per asset.
+  /// Either leg: the payoff at `tau = 0`; NaN past expiry, for a spot or strike not positive before
+  /// it, or at zero volatility with the forward at the strike; panics on a mis-sized `s` or `q`.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -162,6 +163,9 @@ impl GeometricBasketPricer {
     };
     if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
       return value;
+    }
+    if not_positive(&[k]) || !s.iter().all(|&spot| spot > 0.0) {
+      return f64::NAN;
     }
 
     // Geometric basket vol: sigma_G^2 = sum_i sum_j w_i w_j rho_{ij} sigma_i sigma_j
@@ -283,8 +287,8 @@ impl ArithmeticBasketLevyPricer {
     }
   }
 
-  /// Either leg by Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry or
-  /// where the matched moments define no lognormal (a non-positive `m2 / m1²`).
+  /// Either leg by Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry,
+  /// for a spot or strike not positive before it, or where the moments define no lognormal.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -297,6 +301,9 @@ impl ArithmeticBasketLevyPricer {
     let spot = || (0..s.len()).map(|i| self.weights[i] * s[i]).sum::<f64>();
     if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
       return value;
+    }
+    if not_positive(&[k]) || !s.iter().all(|&spot| spot > 0.0) {
+      return f64::NAN;
     }
     let m1 = first_moment(s, self.weights.view(), q, r, tau);
     let m2 = second_moment(

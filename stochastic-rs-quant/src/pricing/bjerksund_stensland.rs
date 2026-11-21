@@ -24,6 +24,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::RealExt;
@@ -190,13 +191,13 @@ impl BjerksundStensland2002Pricer {
 }
 
 /// The payoff, which is the exercise value, at `tau = 0`; NaN past expiry, for an infinite `tau`
-/// or for a NaN query.
+/// or a NaN query and, before expiry, for a spot or strike that is not positive.
 fn off_the_formula(s: f64, k: f64, r: f64, q: f64, tau: f64, leg: OptionType) -> Option<f64> {
   if s.is_nan() || k.is_nan() {
     return Some(f64::NAN);
   }
   let past = expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
-  past.or_else(|| (r.is_nan() || q.is_nan()).then_some(f64::NAN))
+  past.or_else(|| (r.is_nan() || q.is_nan() || not_positive(&[s, k])).then_some(f64::NAN))
 }
 
 impl ModelPricer for BjerksundStensland2002Pricer {

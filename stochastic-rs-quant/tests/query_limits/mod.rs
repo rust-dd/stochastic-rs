@@ -47,6 +47,7 @@ mod expiry_census;
 mod expiry_greeks;
 mod kemna_vorst;
 mod mc_queries;
+mod positive_domain;
 mod rbergomi_antithetic;
 
 const R: f64 = 0.05;
