@@ -32,6 +32,9 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
   /// Lower Cholesky factor of the `(x, v, r, u)` correlation matrix in the driver order this scheme steps.
   fn factor<T: FloatExt>(rho: &Array2<T>) -> Array2<T>;
 
+  /// Panics unless the variance parameters and `rho` meet this scheme's own preconditions.
+  fn check_parameters<T: FloatExt>(kappa: T, theta: T, sigma: T, rho: &Array2<T>);
+
   /// One path into `out`, from `seed`, the sampler's basis; `curve[i]` is `theta_r` at grid point `i`.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Self, S, B>,
@@ -68,6 +71,8 @@ impl HybridScheme for Euler {
   fn factor<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
     cholesky_lower(rho)
   }
+
+  fn check_parameters<T: FloatExt>(_kappa: T, _theta: T, _sigma: T, _rho: &Array2<T>) {}
 
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
     model: &HestonHullWhite2F<T, Euler, S, B>,
@@ -125,6 +130,21 @@ impl HybridScheme for AndersenQe {
     cholesky_lower(&permuted)
   }
 
+  /// The moments need `kappa`, `theta`, `sigma > 0`; eq. 33's shock is independent of the variance
+  /// only with the rate-variance correlations zero.
+  fn check_parameters<T: FloatExt>(kappa: T, theta: T, sigma: T, rho: &Array2<T>) {
+    require!(kappa > T::zero(), kappa);
+    require!(theta > T::zero(), theta);
+    require!(sigma > T::zero(), sigma);
+    for (what, index) in [("rho[(1, 2)]", (1, 2)), ("rho[(1, 3)]", (1, 3))] {
+      let value = rho[index];
+      assert!(
+        value == T::zero(),
+        "{what} must satisfy `{what} == T::zero()`, got {what} = {value:?}"
+      );
+    }
+  }
+
   /// Andersen (2008) QE variance step, then eq. 33 for the log spot with the rate's trapezoidal
   /// sum in place of the constant drift and the orthogonal shock correlated with the rate shocks.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
@@ -133,7 +153,7 @@ impl HybridScheme for AndersenQe {
     seed: &S,
     out: &mut HestonHullWhite2FPaths<T>,
   ) {
-    model.assert_qe_parameters();
+    Self::check_parameters(model.kappa, model.theta, model.sigma, &model.rho);
     let n = model.n;
     out.assert_points(n);
     let dt = model.dt();

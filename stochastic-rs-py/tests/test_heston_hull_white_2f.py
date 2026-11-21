@@ -80,7 +80,7 @@ def test_qe_rejects_a_rate_variance_correlation():
     rho = RHO.copy()
     rho[1, 2] = rho[2, 1] = 0.2
     _hybrid(rho=rho)  # Euler takes any positive-definite matrix
-    with pytest.raises(ValueError, match="rate-variance"):
+    with pytest.raises(ValueError, match=r"rho\[\(1, 2\)\] must satisfy"):
         _hybrid(rho=rho, scheme="qe")
 
 

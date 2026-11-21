@@ -181,6 +181,7 @@ fn bench_process_generation(c: &mut Criterion) {
 /// The paper's experiment 4.2 parameters (the type's `Default`) under a pinned seed.
 fn seeded_heston_hull_white_2f() -> HestonHullWhite2F<f64, Euler, Deterministic> {
   let d = HestonHullWhite2F::<f64>::default();
+  let rho = d.rho().clone();
   HestonHullWhite2F::new(
     d.s0,
     d.v0,
@@ -192,7 +193,7 @@ fn seeded_heston_hull_white_2f() -> HestonHullWhite2F<f64, Euler, Deterministic>
     d.sigma1,
     d.sigma2,
     d.b,
-    d.rho,
+    rho,
     d.r0,
     d.n,
     d.t,

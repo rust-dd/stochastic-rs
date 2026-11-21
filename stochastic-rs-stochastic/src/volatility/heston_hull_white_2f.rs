@@ -102,9 +102,9 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   pub sigma2: T,
   /// Mean-reversion speed of `u`.
   pub b: T,
-  /// Correlation matrix of the drivers in the order `(x, v, r, u)`: `4 × 4`, unit diagonal,
-  /// symmetric and positive definite.
-  pub rho: Array2<T>,
+  /// Correlation of the drivers in the order `(x, v, r, u)`; [`with_rho`](Self::with_rho) replaces
+  /// it together with its factor.
+  rho: Array2<T>,
   /// Initial short rate (defaults to 0); `u` starts at 0.
   pub r0: Option<T>,
   /// Grid points including `t = 0`, at least 2.
@@ -118,17 +118,6 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   _scheme: PhantomData<Sch>,
   /// The sampling backend: [`Cpu`] by default, a host handle after [`on`](Self::on).
   pub backend: B,
-}
-
-/// `rho` must be a `4 × 4` correlation matrix; the Cholesky factorisation rejects an indefinite one.
-fn checked_factor<T: FloatExt, Sch: HybridScheme>(rho: &Array2<T>) -> Array2<T> {
-  let dim = rho.dim();
-  assert!(
-    dim == (4, 4),
-    "rho must satisfy `rho.dim() == (4, 4)`, got rho.dim() = {dim:?}"
-  );
-  validate_correlation(rho);
-  Sch::factor(rho)
 }
 
 impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
@@ -163,7 +152,7 @@ impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
     Self::check_r0(r0);
     check_n(n);
     check_t(t);
-    let chol = checked_factor::<T, Euler>(&rho);
+    let chol = Self::check_rho(&rho);
     Self {
       s0,
       v0,
@@ -223,7 +212,7 @@ impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
   }
 }
 
-/// Every field has a matching `with_*` setter, checked as `new` checks it, chaining after [`qe`](Self::qe) too.
+/// The setters chain after [`qe`](Self::qe) too, where they hold QE's preconditions as well.
 impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
   fn check_s0(s0: T) {
     require!(s0.is_finite(), s0);
@@ -268,94 +257,129 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
     require!(b.is_finite(), b);
   }
 
+  /// The factor of `rho` in this scheme's driver order; the Cholesky pivots reject an indefinite one.
+  fn check_rho(rho: &Array2<T>) -> Array2<T> {
+    let dim = rho.dim();
+    assert!(
+      dim == (4, 4),
+      "rho must satisfy `rho.dim() == (4, 4)`, got rho.dim() = {dim:?}"
+    );
+    validate_correlation(rho);
+    Sch::factor(rho)
+  }
+
   fn check_r0(r0: Option<T>) {
     require!(r0.is_none_or(|r0| r0.is_finite()), r0);
   }
 
+  /// Replace `s0`; panics unless `s0 > 0` and `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
+  /// Replace `v0`; panics unless `v0 >= 0` and `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
+  /// Replace `kappa`; panics unless `kappa >= 0` (`> 0` under QE) and `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
     self.kappa = kappa;
+    Sch::check_parameters(self.kappa, self.theta, self.sigma, &self.rho);
     self
   }
 
+  /// Replace `theta`; panics unless `theta >= 0` (`> 0` under QE) and `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
     self.theta = theta;
+    Sch::check_parameters(self.kappa, self.theta, self.sigma, &self.rho);
     self
   }
 
+  /// Replace `sigma`; panics unless `sigma >= 0` (`> 0` under QE) and `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
+    Sch::check_parameters(self.kappa, self.theta, self.sigma, &self.rho);
     self
   }
 
+  /// Replace `theta_r`.
   pub fn with_theta_r(mut self, theta_r: impl Into<Fn1D<T>>) -> Self {
     self.theta_r = theta_r.into();
     self
   }
 
+  /// Replace `a`; panics unless `a` is finite.
   pub fn with_a(mut self, a: T) -> Self {
     Self::check_a(a);
     self.a = a;
     self
   }
 
+  /// Replace `sigma1`; panics unless `sigma1 >= 0` and `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
     Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
+  /// Replace `sigma2`; panics unless `sigma2 >= 0` and `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
     Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
+  /// Replace `b`; panics unless `b` is finite.
   pub fn with_b(mut self, b: T) -> Self {
     Self::check_b(b);
     self.b = b;
     self
   }
 
-  /// Replaces the correlation matrix and refactors it in this scheme's driver order.
+  /// Replace `rho` and its factor; panics unless `rho` is a `4 × 4` positive-definite correlation
+  /// matrix, with `rho[(1, 2)]` and `rho[(1, 3)]` zero under QE.
   pub fn with_rho(mut self, rho: Array2<T>) -> Self {
-    self.chol = checked_factor::<T, Sch>(&rho);
+    self.chol = Self::check_rho(&rho);
     self.rho = rho;
+    Sch::check_parameters(self.kappa, self.theta, self.sigma, &self.rho);
     self
   }
 
+  /// The correlation matrix of the drivers, in the order `(x, v, r, u)`.
+  pub fn rho(&self) -> &Array2<T> {
+    &self.rho
+  }
+
+  /// Replace `r0`; panics unless `r0`, when given, is finite.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
     Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
+  /// Replace `n`; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
+  /// Replace the horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
     self
   }
 
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -372,21 +396,6 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
   /// Time step `t / (n - 1)`.
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
-  }
-
-  /// QE's preconditions, checked at the switch and again where the scheme runs, since the fields stay public.
-  fn assert_qe_parameters(&self) {
-    let (kappa, theta, sigma) = (self.kappa, self.theta, self.sigma);
-    require!(kappa > T::zero(), kappa);
-    require!(theta > T::zero(), theta);
-    require!(sigma > T::zero(), sigma);
-    for (what, index) in [("rho[(1, 2)]", (1, 2)), ("rho[(1, 3)]", (1, 3))] {
-      let value = self.rho[index];
-      assert!(
-        value == T::zero(),
-        "the rate-variance correlation {what} must satisfy `{what} == T::zero()` under QE, got {what} = {value:?}"
-      );
-    }
   }
 }
 
@@ -405,7 +414,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
       sigma1: self.sigma1,
       sigma2: self.sigma2,
       b: self.b,
-      chol: checked_factor::<T, AndersenQe>(&self.rho),
+      chol: HestonHullWhite2F::<T, AndersenQe, S, B>::check_rho(&self.rho),
       rho: self.rho,
       r0: self.r0,
       n: self.n,
@@ -414,7 +423,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
       _scheme: PhantomData,
       backend: self.backend,
     };
-    model.assert_qe_parameters();
+    AndersenQe::check_parameters(model.kappa, model.theta, model.sigma, &model.rho);
     model
   }
 }

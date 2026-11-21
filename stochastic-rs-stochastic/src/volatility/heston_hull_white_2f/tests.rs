@@ -280,11 +280,75 @@ fn rejects_a_covariance_matrix() {
 
 #[test]
 #[should_panic(
-  expected = "the rate-variance correlation rho[(1, 2)] must satisfy `rho[(1, 2)] == T::zero()` under QE, got rho[(1, 2)] = 0.2"
+  expected = "rho[(1, 2)] must satisfy `rho[(1, 2)] == T::zero()`, got rho[(1, 2)] = 0.2"
 )]
 fn qe_rejects_a_rate_variance_correlation() {
   let mut rho = rho_paper();
   rho[(1, 2)] = 0.2;
   rho[(2, 1)] = 0.2;
   let _ = paper(8, 0).with_rho(rho).qe();
+}
+
+#[test]
+#[should_panic(
+  expected = "rho[(1, 3)] must satisfy `rho[(1, 3)] == T::zero()`, got rho[(1, 3)] = 0.1"
+)]
+fn with_rho_after_qe_rejects_a_rate_variance_correlation() {
+  let mut rho = rho_paper();
+  rho[(1, 3)] = 0.1;
+  rho[(3, 1)] = 0.1;
+  let _ = paper(8, 0).qe().with_rho(rho);
+}
+
+#[test]
+#[should_panic(expected = "kappa must satisfy `kappa > T::zero()`, got kappa = 0.0")]
+fn with_kappa_after_qe_rejects_zero() {
+  let _ = paper(8, 0).qe().with_kappa(0.0);
+}
+
+#[test]
+#[should_panic(expected = "theta must satisfy `theta > T::zero()`, got theta = 0.0")]
+fn with_theta_after_qe_rejects_zero() {
+  let _ = paper(8, 0).qe().with_theta(0.0);
+}
+
+#[test]
+#[should_panic(expected = "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0")]
+fn with_sigma_after_qe_rejects_zero() {
+  let _ = paper(8, 0).qe().with_sigma(0.0);
+}
+
+#[test]
+fn with_rho_refactors_in_the_scheme_order() {
+  let mut rho = rho_paper();
+  rho[(0, 2)] = -0.2;
+  rho[(2, 0)] = -0.2;
+  let fresh = || {
+    HestonHullWhite2F::new(
+      1.0,
+      0.2,
+      0.8,
+      0.2,
+      0.2,
+      flat_theta as fn(f64) -> f64,
+      1.1,
+      0.01,
+      0.015,
+      0.8,
+      rho.clone(),
+      Some(0.03),
+      16,
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
+  assert_eq!(paper(16, 9).with_rho(rho.clone()).rho(), &rho);
+  assert_eq!(
+    paper(16, 9).with_rho(rho.clone()).sample(),
+    fresh().sample()
+  );
+  assert_eq!(
+    paper(16, 9).qe().with_rho(rho.clone()).sample(),
+    fresh().qe().sample()
+  );
 }
