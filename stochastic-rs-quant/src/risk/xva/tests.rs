@@ -201,7 +201,7 @@ fn a_swap_exposure_with_a_negative_volatility_is_a_precondition() {
 
 #[test]
 #[should_panic(
-  expected = "payment_times must satisfy `payment_times[0] > 0.0`, got payment_times[0] = None"
+  expected = "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got payment_times[0] = None"
 )]
 fn a_swap_exposure_without_a_payment_is_a_precondition() {
   HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![], 1.0);
@@ -222,4 +222,30 @@ fn a_swap_exposure_with_a_repeated_payment_time_is_a_precondition() {
 fn a_swap_exposure_without_a_step_is_a_precondition() {
   let _ =
     HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0).with_steps_per_year(0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got payment_times[0] = Some(inf)"
+)]
+fn a_swap_exposure_paying_at_infinity_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![f64::INFINITY], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "notional must satisfy `notional.is_finite()`, got notional = NaN")]
+fn a_swap_exposure_with_a_nan_notional_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, f64::NAN, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "fixed_rate must satisfy `fixed_rate.is_finite()`, got fixed_rate = inf")]
+fn a_swap_exposure_with_an_infinite_fixed_rate_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, f64::INFINITY, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "accrual must satisfy `accrual.is_finite()`, got accrual = NaN")]
+fn a_swap_exposure_with_a_nan_accrual_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0], f64::NAN);
 }

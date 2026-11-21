@@ -42,8 +42,8 @@ pub struct HullWhiteSwapExposure {
 }
 
 impl HullWhiteSwapExposure {
-  /// Panics unless `mean_reversion` is finite and `> 0`, `sigma` finite and `>= 0`, and
-  /// `payment_times` positive and strictly increasing.
+  /// Panics unless every float is finite, `mean_reversion > 0`, `sigma >= 0` and `payment_times`
+  /// is positive and strictly increasing.
   pub fn new(
     mean_reversion: f64,
     sigma: f64,
@@ -61,10 +61,23 @@ impl HullWhiteSwapExposure {
       sigma.is_finite() && sigma >= 0.0,
       "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
+    assert!(
+      notional.is_finite(),
+      "notional must satisfy `notional.is_finite()`, got notional = {notional:?}"
+    );
+    assert!(
+      fixed_rate.is_finite(),
+      "fixed_rate must satisfy `fixed_rate.is_finite()`, got fixed_rate = {fixed_rate:?}"
+    );
+    assert!(
+      accrual.is_finite(),
+      "accrual must satisfy `accrual.is_finite()`, got accrual = {accrual:?}"
+    );
     let first = payment_times.first().copied();
     assert!(
-      first.is_some_and(|t| t > 0.0),
-      "payment_times must satisfy `payment_times[0] > 0.0`, got payment_times[0] = {first:?}"
+      first.is_some_and(|t| t.is_finite() && t > 0.0),
+      "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got \
+       payment_times[0] = {first:?}"
     );
     for (i, w) in payment_times.windows(2).enumerate() {
       assert!(
