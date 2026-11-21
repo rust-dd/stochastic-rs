@@ -83,8 +83,8 @@ impl HestonPricer {
     self.lambda
   }
 
-  /// Call and put from one pair `P_1`, `P_2`: NaN for a negative or NaN `tau` or a non-finite
-  /// `E_j[∫₀^τ v]`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
+  /// Call and put from one pair `P_1`, `P_2`; the payoff at `tau = 0`. NaN for a negative or NaN
+  /// `tau` and from an `E_j[∫₀^τ v]` near `1e149` on (`b_jτ = −353` at `λ = −355`), finite or not.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -147,8 +147,8 @@ impl ModelPricer for HestonPricer {
 impl VanillaEuropeanCall for HestonPricer {}
 
 impl HestonPricer {
-  /// `∂C/∂v₀ = ∂P/∂v₀`, the price's own split differentiated in `v₀`, no finite difference; NaN for
-  /// `tau ≤ 0` or a NaN `tau`, as an expired option has a value and no sensitivity.
+  /// `∂C/∂v₀ = ∂P/∂v₀`, the price's own split differentiated in `v₀`, no finite difference. NaN for
+  /// `tau ≤ 0` or a NaN `tau`, and from an `E_j[∫₀^τ v]` near `1e147` on (`b_jτ = −348`).
   pub fn initial_variance_vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if tau.is_nan() || tau <= 0.0 {
       return f64::NAN;
