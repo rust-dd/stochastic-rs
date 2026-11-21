@@ -7,7 +7,8 @@
 //! \frac{K_{\lambda+k}(\sqrt{\chi\psi})}{K_\lambda(\sqrt{\chi\psi})},
 //! $$
 //!
-//! Drawn by `GIGrvg` as `Y/√(ψ/χ)` at `χ, ψ > 0`, an edge gamma or inverse gamma, `1/Y` at `λ < 0`.
+//! Drawn by `GIGrvg`'s three regimes as `Y/√(ψ/χ)` at `χ, ψ > 0` (an edge is gamma or inverse
+//! gamma), `1/Y` at `λ < 0`.
 //!
 //! Reference: Hörmann, Leydold (2014), Stat. Comput. 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
 //! Reference: Dagpunar (1989), 18(2), 703-710, DOI 10.1080/03610918908812785.

@@ -1,4 +1,4 @@
-//! Generalized Pareto (GPD) law of the excesses over a high threshold, on `x ≥ μ` (and
+//! Generalized Pareto (GPD) limit law of the excesses over a high threshold, on `x ≥ μ` (and
 //! `x ≤ μ − σ/ξ` at `ξ < 0`), its order-`k` moment needing `ξ < 1/k`; drawn by the inverse cdf.
 //!
 //! $$
