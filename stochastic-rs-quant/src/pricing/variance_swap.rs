@@ -13,11 +13,11 @@
 //! K_{\text{var}}^{\text{Heston}}=\theta+(V_0-\theta)\,\frac{1-e^{-\kappa T}}{\kappa T}
 //! $$
 //!
-//! Reference: Demeterfi et al. (1999), "More Than You Ever Wanted to Know About Volatility Swaps"
+//! Reference: Demeterfi et al. (1999), "More Than You Ever Wanted to Know…", Goldman Sachs
 //! Reference: Brockhaus & Long (2000), Risk 13
 //! Reference: Swishchuk & Wang (2017), arXiv:1712.02735, eqs. 10–13
 //! Reference: Bernard & Cui (2013), arXiv:1305.7092
-//! Reference: Carr & Madan (1998), "Towards a Theory of Volatility Trading"
+//! Reference: Carr & Madan (1998), in Volatility: New Estimation Techniques for Pricing Derivatives
 
 use crate::pricing::exotic::VarianceSwapTerms;
 use crate::pricing::heston::HestonParams;

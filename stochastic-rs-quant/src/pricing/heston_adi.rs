@@ -24,12 +24,12 @@ use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Upper `v` boundary of the computational domain (`V = 5` in the paper).
+/// Upper `v` boundary, the paper's `V = 5`; the mesh reaches at least twice the initial variance.
 const VARIANCE_CAP: f64 = 5.0;
-/// Upper `s` boundary as a multiple of the strike (`S = 8K`).
+/// Upper `s` boundary as a multiple of the strike, the paper's `S = 8K`; at least twice the spot.
 const SPOT_CAP_STRIKES: f64 = 8.0;
 
-/// Heston ADI finite-difference pricer.
+/// Heston ADI finite-difference pricer; the query's `r` and `q` are the paper's `r_d` and `r_f`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonAdiPricer {
   /// `theta` is the paper's long-run variance `η`.

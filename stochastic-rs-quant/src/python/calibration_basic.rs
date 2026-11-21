@@ -103,7 +103,7 @@ pub struct PyHestonCalibrator {
 
 #[pymethods]
 impl PyHestonCalibrator {
-  /// `regularization`: an optional `(anchor, weights)` Tikhonov pull on the five parameters;
+  /// `regularization`: `(anchor, weights)`, a Tikhonov pull on `(v0, kappa, theta, sigma, rho)`;
   /// `jacobian_method` is `"cui"` or `"fd"`; `residual_weights`: one positive weight per quote.
   #[new]
   #[pyo3(signature = (slices, s, r, option_type="call", q=None, regularization=None, jacobian_method="cui", residual_weights=None, feller_projection=false))]

@@ -145,8 +145,8 @@ impl ModelPricer for BsmPricer {
 /// European vanilla call — but **not** always on $Se^{(r-q)\tau}$, which is
 /// why this overrides the default forward.
 impl VanillaEuropeanCall for BsmPricer {
-  /// `Se^{bτ}` at [`BsmPricer::b`]; the default `Se^{(r−q)τ}` would invert a Black 1976 or
-  /// `Bsm1973` surface into a smile (`futures_carry_surface_recovers_the_models_flat_vol`).
+  /// `Se^{bτ}` at [`BsmPricer::b`]; the default `Se^{(r−q)τ}` would invert a `Bsm1973` surface at
+  /// `q ≠ 0`, or a Black 1976 or Asay one at `q ≠ r`, into a smile (the `carry_surface` tests).
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     s * (self.b(r, q) * tau).exp()
   }

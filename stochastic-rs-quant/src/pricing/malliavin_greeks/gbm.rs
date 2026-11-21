@@ -208,7 +208,7 @@ impl<S: SeedExt> GbmMalliavinGreeks<S> {
       sum_rho += disc_payoff * w_rho;
     }
 
-    // Theta and the second-order Greeks have no Malliavin weight here, so they stay NaN.
+    // Theta, vanna, charm, volga and veta have no Malliavin weight here, so they stay NaN.
     crate::traits::Greeks {
       delta: sum_delta / m,
       gamma: sum_gamma / m,
