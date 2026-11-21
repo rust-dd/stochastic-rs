@@ -36,6 +36,7 @@ use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
 
+mod bsm_spot;
 mod credit_and_rates;
 mod crr;
 mod exotic_edges;
