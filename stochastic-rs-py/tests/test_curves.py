@@ -178,7 +178,6 @@ def test_svensson_reads_its_closed_forms_at_a_point_and_on_an_array():
     h = 1e-5
     slope = ((taus + h) * curve.zero_rates(taus + h) - (taus - h) * curve.zero_rates(taus - h)) / (2 * h)
     assert np.abs(slope - forwards).max() < 1e-9
-    # At the origin the zero rate and the forward are beta0 + beta1 and nothing is discounted.
     assert curve.zero_rate(0.0) == curve.forward_rate(0.0) == SVENSSON[0] + SVENSSON[1]
     assert curve.discount_factor(0.0) == 1.0
 

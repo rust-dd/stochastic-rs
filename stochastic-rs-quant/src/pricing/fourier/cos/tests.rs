@@ -249,10 +249,8 @@ fn adaptive_adds_terms_at_its_own_width_as_the_default_does() {
   }
 }
 
-/// A characteristic function that returns `NaN` (standing in for a
-/// user-supplied model overflowing its own `chf`) must exit `price` as
-/// `NaN`, not the `0.0` `f64::max` would silently produce by picking its
-/// non-`NaN` operand — see [`CosEngine::price`]'s doc.
+/// A NaN `chf`, as from a model overflowing its own, prices NaN, not the `0.0` that `f64::max`
+/// would pick over it.
 #[test]
 fn cos_price_preserves_nan_from_chf_blowup() {
   struct NanModel;

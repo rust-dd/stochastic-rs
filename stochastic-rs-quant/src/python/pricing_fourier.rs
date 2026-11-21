@@ -437,8 +437,7 @@ impl PyCosEngine {
     Ok(self.inner.price(&model, s, k, r, q, tau, option_type))
   }
 
-  /// [`price`](Self::price) at each strike of an array, on one pass over the characteristic
-  /// function.
+  /// `price` at each strike of an array, bit for bit, on one pass over the characteristic function.
   #[pyo3(signature = (model, s, strikes, r, q, tau, option_type="call"))]
   fn price_strikes<'py>(
     &self,

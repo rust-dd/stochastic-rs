@@ -301,7 +301,6 @@ impl PySvensson {
     self.inner.discount_factor(tau)
   }
 
-  /// Vectorised zero rates on a maturity array.
   fn zero_rates<'py>(
     &self,
     py: Python<'py>,
@@ -314,7 +313,6 @@ impl PySvensson {
       .into_pyarray(py)
   }
 
-  /// Vectorised instantaneous forward rates on a maturity array.
   fn forward_rates<'py>(
     &self,
     py: Python<'py>,
@@ -327,7 +325,6 @@ impl PySvensson {
       .into_pyarray(py)
   }
 
-  /// Vectorised discount factors on a maturity array.
   fn discount_factors<'py>(
     &self,
     py: Python<'py>,
