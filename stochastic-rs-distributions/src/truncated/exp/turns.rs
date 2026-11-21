@@ -1,8 +1,8 @@
 //! `t·x` modulo 2π of doubles, exact however far the product passes the doubles: mantissas multiply
 //! exactly and only the bits of 1/(2π) reaching the fraction enter (Payne–Hanek).
 //!
-//! Reference: Payne, M. H. & Hanek, R. N. (1983), "Radian reduction for trigonometric functions", *ACM SIGNUM Newsletter* 18(1), 19-24, DOI 10.1145/1057600.1057602.
-//! Reference: Cody, W. J. & Waite, W. (1980), *Software Manual for the Elementary Functions*, Prentice-Hall, ch. 8, ISBN 0-13-822064-6 (the reduction of a moderate argument by a split constant).
+//! Reference: Payne & Hanek (1983), 18(1), 19-24, DOI 10.1145/1057600.1057602.
+//! Reference: Cody, W. J. & Waite, W. (1980), Prentice-Hall, ch. 8, ISBN 0-13-822064-6.
 
 use std::f64::consts::TAU;
 

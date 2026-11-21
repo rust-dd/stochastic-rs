@@ -5,7 +5,7 @@
 //! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;

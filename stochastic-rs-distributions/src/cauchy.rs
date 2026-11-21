@@ -4,7 +4,7 @@
 //! f(x)=\frac{1}{\pi\gamma\left[1+\left(\frac{x-x_0}{\gamma}\right)^2\right]}
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 

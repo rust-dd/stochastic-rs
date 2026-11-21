@@ -1,8 +1,8 @@
 //! Regularised incomplete gamma and beta (NR 3e §6.2, §6.4: series below `a + 1`, Lentz's fraction
 //! above); from shape 100 Temme's uniform expansion near `x = a`, else Stirling's scaling.
-//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.2.1 (`invgammp`'s starts: `(p/t)^{1/a}`, `t = 1 − a(0.253 + 0.12a)`, at `a ≤ 1`, Wilson–Hilferty above).
-//! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (the small-shape form `Q = (x^a J − (x^a − 1))g − (g − 1)`).
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
+//! Reference: Press, W.H. et al. (2007), Numerical Recipes 3rd ed., Cambridge UP, §6.2.1.
+//! Reference: DiDonato, Morris (1986), ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 6.1.34.
 
 mod beta;
 mod complement;

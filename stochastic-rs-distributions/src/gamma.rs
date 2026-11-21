@@ -5,7 +5,7 @@
 //! f(x)=\frac{1}{\theta^\alpha\Gamma(\alpha)}x^{\alpha-1}e^{-x/\theta},\ x>0
 //! $$
 //!
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
+//! Reference: Marsaglia, Tsang (2000), ACM TOMS 26(3), 363-372, DOI 10.1145/358407.358414.
 use std::mem::MaybeUninit;
 
 use rand::Rng;

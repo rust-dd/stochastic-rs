@@ -6,10 +6,10 @@
 //! n = \sum_k b_k(n)\,2^k
 //! $$
 //!
-//! Reference: Joe, S., Kuo, F.Y. (2008), "Constructing Sobol Sequences with Better Two-Dimensional Projections", *SIAM Journal on Scientific Computing* 30(5), 2635-2654, DOI 10.1137/070709359 (the direction numbers, `new-joe-kuo-6.21201`, from <https://web.maths.unsw.edu.au/~fkuo/sobol/>, BSD-3-Clause, notice in `qmc/JOE_KUO_LICENSE`).
-//! Reference: Antonov, I.A., Saleev, V.M. (1979), "An economic method of computing LPτ-sequences", *USSR Computational Mathematics and Mathematical Physics* 19(1), 252-256, DOI 10.1016/0041-5553(79)90085-5 (the Gray-code update).
-//! Reference: Owen, A.B. (1998), "Scrambling Sobol' and Niederreiter–Xing points", *Journal of Complexity* 14(4), 466-489, DOI 10.1006/jcom.1998.0487.
-//! Reference: Matoušek, J. (1998), "On the L2-discrepancy for anchored boxes", *Journal of Complexity* 14(4), 527-556, DOI 10.1006/jcom.1998.0489 (the random linear scrambling implemented here).
+//! Reference: Joe, Kuo (2008), SIAM J. Sci. Comput. 30(5), 2635-2654, DOI 10.1137/070709359.
+//! Reference: Antonov, Saleev (1979), 19(1), 252-256, DOI 10.1016/0041-5553(79)90085-5.
+//! Reference: Owen, A.B. (1998), J. Complex. 14(4), 466-489, DOI 10.1006/jcom.1998.0487.
+//! Reference: Matoušek, J. (1998), J. Complex. 14(4), 527-556, DOI 10.1006/jcom.1998.0489.
 
 use std::sync::OnceLock;
 

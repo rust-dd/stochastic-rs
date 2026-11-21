@@ -13,9 +13,9 @@
 //! \qquad Y \sim \mathrm{Gamma}(1/\beta, 1),\ S \sim \mathrm{Uniform}\{-1, +1\}.
 //! $$
 //!
-//! Reference: Subbotin, M.T. (1923), "On the law of frequency of error", *Matematicheskii Sbornik* 31, 296-301.
-//! Reference: Nelson, D. B. (1991), "Conditional Heteroskedasticity in Asset Returns: A New Approach", *Econometrica* 59(2), 347-370, DOI 10.2307/2938260 (the density and its variance).
-//! Reference: Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464 (variance, kurtosis, Shannon entropy).
+//! Reference: Subbotin, M.T. (1923), Matematicheskii Sbornik 31, 296-301.
+//! Reference: Nelson, D. B. (1991), Econometrica 59(2), 347-370, DOI 10.2307/2938260.
+//! Reference: Nadarajah, S. (2005), J. Appl. Stat. 32(7), 685-694, DOI 10.1080/02664760500079464.
 
 use std::mem::MaybeUninit;
 

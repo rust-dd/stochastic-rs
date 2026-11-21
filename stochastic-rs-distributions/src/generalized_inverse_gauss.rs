@@ -9,10 +9,10 @@
 //!
 //! Drawn by `GIGrvg` as `Y/√(ψ/χ)` at `χ, ψ > 0`, an edge gamma or inverse gamma, `1/Y` at `λ < 0`.
 //!
-//! Reference: Hörmann, W., Leydold, J. (2014), "Generating generalized inverse Gaussian random variates", *Statistics and Computing* 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
-//! Reference: Dagpunar, J.S. (1989), "An easily implemented generalised inverse Gaussian generator", *Communications in Statistics — Simulation and Computation* 18(2), 703-710, DOI 10.1080/03610918908812785.
-//! Reference: Jørgensen, B. (1982), *Statistical Properties of the Generalized Inverse Gaussian Distribution*, Lecture Notes in Statistics 9, Springer, DOI 10.1007/978-1-4612-5698-4.
-//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary), <https://dlmf.nist.gov/10.30.E2>.
+//! Reference: Hörmann, Leydold (2014), Stat. Comput. 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
+//! Reference: Dagpunar (1989), 18(2), 703-710, DOI 10.1080/03610918908812785.
+//! Reference: Jørgensen, B. (1982), Lecture Notes in Statistics 9, DOI 10.1007/978-1-4612-5698-4.
+//! Reference: Olver, F.W.J. et al., *NIST DLMF*, eq. 10.30.2, <https://dlmf.nist.gov/10.30.E2>.
 
 use std::mem::MaybeUninit;
 

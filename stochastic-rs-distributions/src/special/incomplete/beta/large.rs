@@ -1,7 +1,7 @@
 //! `I_x(a, b)` from a shape of 100: the prefactor `x^a y^b/B(a, b)` with a two-part exponent, TOMS
 //! 708's fraction on the switch's side, and `asym` beside the mean past both shapes 100.
-//! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`brcomp`: `√(ab/(2π(a + b))) e^{−a·g(−λ/a) − b·g(λ/b) − Δ}`, `g(t) = t − ln(1 + t)`, `λ = a − (a + b)x`; `bfrac`'s recurrence; `bratio`'s band `λ ≤ 0.03 min(a, b)` for `basym` past 100).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.22 (the continued fraction), <https://dlmf.nist.gov/8.17.22>.
+//! Reference: DiDonato, Morris (1992), DOI 10.1145/131766.131776 (`brcomp`, `bfrac`, `bratio`).
+//! Reference: NIST DLMF, eq. 8.17.22, <https://dlmf.nist.gov/8.17.22>.
 
 use std::f64::consts::TAU;
 

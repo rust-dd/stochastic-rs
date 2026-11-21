@@ -1,7 +1,7 @@
 //! Regularised incomplete beta `I_x(a, b)`: the fraction (DLMF 8.17.22) on the switch's side, the
 //! complement in `1 − x` where `1 − I` cancels, from a shape of 100 `large`'s routes.
-//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.4 (`betacf`, the switch, `invbetai`).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.22 (the continued fraction), <https://dlmf.nist.gov/8.17.22>.
+//! Reference: Press, W.H. et al. (2007), Numerical Recipes 3rd ed., Cambridge UP, §6.4.
+//! Reference: NIST DLMF, eq. 8.17.22, <https://dlmf.nist.gov/8.17.22>.
 
 mod asym;
 mod inverse;

@@ -8,7 +8,7 @@
 //! \mathrm{B}(\alpha) = \frac{\prod_k \Gamma(\alpha_k)}{\Gamma(\sum_k \alpha_k)}.
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §XI.4, Theorem 4.1, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §XI.4, Theorem 4.1, DOI 10.1007/978-1-4613-8643-8.
 
 use ndarray::Array2;
 use rand::Rng;

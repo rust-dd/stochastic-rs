@@ -17,7 +17,7 @@
 //! s = 1 + \lambda \text{ w.p. } \tfrac{1 + \lambda}{2},\ \text{else } s = -(1 - \lambda).
 //! $$
 //!
-//! Reference: Hansen, B.E. (1994), "Autoregressive Conditional Density Estimation", *International Economic Review* 35(3), 705-730, DOI 10.2307/2527081.
+//! Reference: Hansen, B.E. (1994), Int. Econ. Rev. 35(3), 705-730, DOI 10.2307/2527081.
 
 use std::mem::MaybeUninit;
 

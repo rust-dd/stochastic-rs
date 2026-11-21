@@ -1,6 +1,6 @@
 //! `erfc` as `libm` transcribes fdlibm's `s_erf.c`, operation for operation, so it inlines into
 //! `norm_cdf`'s callers where `libm`'s out-of-line copy cannot; every value keeps its bits.
-//! Reference: Sun Microsystems (1993), fdlibm `s_erf.c` (the rational approximations of `erfc` on `[0, 0.84375]`, `[0.84375, 1.25]`, `[1.25, 1/0.35]` and `[1/0.35, 28]`).
+//! Reference: Sun Microsystems (1993), fdlibm `s_erf.c`.
 //!
 //! ```text
 //! Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.

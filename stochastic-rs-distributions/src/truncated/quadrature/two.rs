@@ -1,7 +1,7 @@
 //! Double-double values `hi + lo`, for a kernel's log at one point where a subnormal cdf needs it
 //! to an ε of 1.
 //!
-//! Reference: Dekker, T. J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083.
+//! Reference: Dekker, T. J. (1971), Numer. Math. 18(3), 224-242, DOI 10.1007/BF01397083.
 
 use super::panels::Cut;
 use super::sum::two_sum;

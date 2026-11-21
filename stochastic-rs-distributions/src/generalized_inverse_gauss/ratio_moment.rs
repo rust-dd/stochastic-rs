@@ -1,6 +1,6 @@
 //! GIG's `E Xᵏ` with an end of its orders under 50: Bessel ratios over the orders under 50, a run
 //! past it as one saddle step, so no `K` or its log is formed, at a cost bounded in `k`.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (`K`'s recurrence, carried as a ratio), <https://dlmf.nist.gov/10.29.1>.
+//! Reference: NIST DLMF, eq. 10.29.1, <https://dlmf.nist.gov/10.29.1>.
 
 use std::f64::consts::LN_2;
 

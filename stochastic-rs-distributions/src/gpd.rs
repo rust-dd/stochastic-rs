@@ -17,10 +17,10 @@
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
 //! $$
 //!
-//! Reference: Pickands, J. (1975), "Statistical Inference Using Extreme Order Statistics", *Annals of Statistics* 3(1), 119-131, DOI 10.1214/aos/1176343003.
-//! Reference: Balkema, A.A., de Haan, L. (1974), "Residual Life Time at Great Age", *Annals of Probability* 2(5), 792-804, DOI 10.1214/aop/1176996548.
-//! Reference: Hosking, J.R.M., Wallis, J.R. (1987), "Parameter and Quantile Estimation for the Generalized Pareto Distribution", *Technometrics* 29(3), 339-349, DOI 10.1080/00401706.1987.10488243 (moments).
-//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer, ch. 4, DOI 10.1007/978-1-4471-3675-0.
+//! Reference: Pickands, J. (1975), Ann. Stat. 3(1), 119-131, DOI 10.1214/aos/1176343003.
+//! Reference: Balkema, de Haan (1974), Ann. Probab. 2(5), 792-804, DOI 10.1214/aop/1176996548.
+//! Reference: Hosking, Wallis (1987), 29(3), 339-349, DOI 10.1080/00401706.1987.10488243.
+//! Reference: Coles, S. (2001), Springer, ch. 4, DOI 10.1007/978-1-4471-3675-0.
 
 use std::mem::MaybeUninit;
 

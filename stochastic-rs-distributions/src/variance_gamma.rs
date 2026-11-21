@@ -14,7 +14,7 @@
 //! \varphi(u) = e^{iu\mu}\bigl(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2\bigr)^{-1/\nu}
 //! $$
 //!
-//! Reference: Madan, D.B., Carr, P.P., Chang, E.C. (1998), "The Variance Gamma Process and Option Pricing", *European Finance Review* 2(1), 79-105, DOI 10.1023/A:1009703431535.
+//! Reference: Madan et al. (1998), Eur. Financ. Rev. 2(1), 79-105, DOI 10.1023/A:1009703431535.
 
 use std::mem::MaybeUninit;
 

@@ -1,7 +1,7 @@
 //! `1 − I_x(a, b)` from `x` itself where a rounded `1 − x` or a cancelling `1 − I` loses digits,
 //! and `ln(a·B(a, b))` free of cancellation at a shape at most 1.
-//! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`bpser`'s series, `algdiv`'s Stirling difference, `bgrat`'s leading term).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.7 (`B_x(a, b) = x^a/a·F(a, 1 − b; a + 1; x)`), <https://dlmf.nist.gov/8.17.7>; eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
+//! Reference: DiDonato, Morris (1992), ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776.
+//! Reference: NIST DLMF, eqs. 8.17.7 and 5.11.1, <https://dlmf.nist.gov/8.17.7>.
 
 use super::TAIL_HELD;
 use super::beta_i_xy;

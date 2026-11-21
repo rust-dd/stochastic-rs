@@ -4,10 +4,10 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
-//! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
-//! Reference: Loader, C. (2000), "Fast and Accurate Computation of Binomial Probabilities", technical report, <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf> (the saddle-point `ln pₖ`).
-//! Reference: Choi, K.P. (1994), "On the medians of gamma distributions and an equation of Ramanujan", *Proceedings of the American Mathematical Society* 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8 (the median bracket `λ − ln 2 ≤ m < λ + 1/3`).
+//! Reference: Devroye, L. (1986), Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Hörmann (1993), Insur. Math. Econ. 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
+//! Reference: Loader (2000), <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf>.
+//! Reference: Choi (1994), 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8.
 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;

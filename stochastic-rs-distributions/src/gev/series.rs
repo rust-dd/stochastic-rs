@@ -1,6 +1,6 @@
 //! The standardised GEV(0, 1, ξ) moments: Taylor in ξ on |ξ| ≤ 1/8, where the Γ forms cancel as ε/ξ
 //! (mean) to ε/ξ⁴ (kurtosis), Γ forms above; mpmath coefficients, cut at |cₙ 8⁻ⁿ| < 1e-17.
-//! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions* vol. 2, 2nd ed., Wiley, ch. 22, ISBN 0-471-58494-0 (the moments' Γ forms).
+//! Reference: Johnson, N.L. et al. (1995), vol. 2, 2nd ed., Wiley, ch. 22, ISBN 0-471-58494-0.
 
 use crate::special::ln_gamma;
 

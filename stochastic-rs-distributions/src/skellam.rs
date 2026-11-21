@@ -9,7 +9,7 @@
 //! P(X = k) = e^{-(\mu_1 + \mu_2)} (\mu_1/\mu_2)^{k/2} I_{|k|}(2\sqrt{\mu_1 \mu_2}).
 //! $$
 //!
-//! Reference: Skellam, J. G. (1946), "The Frequency Distribution of the Difference Between Two Poisson Variates Belonging to Different Populations", *Journal of the Royal Statistical Society* 109(3), 296, DOI 10.2307/2981372 (cf and mgf are the products of the two Poisson transforms).
+//! Reference: Skellam, J. G. (1946), J. R. Stat. Soc. 109(3), 296, DOI 10.2307/2981372.
 
 use std::mem::MaybeUninit;
 

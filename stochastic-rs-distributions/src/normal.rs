@@ -4,7 +4,7 @@
 //! f(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
 //! $$
 //!
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), J. Stat. Softw. 5(8), DOI 10.18637/jss.v005.i08.
 
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;

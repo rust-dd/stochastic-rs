@@ -6,7 +6,7 @@
 //! = 2(\chi/\psi)^{\lambda/2}K_\lambda(\sqrt{\chi\psi}).
 //! $$
 //!
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion of `K_ν(νz)`, whose `−νη` with the power is `H_λ(w*)`), <https://dlmf.nist.gov/10.41.4>.
+//! Reference: NIST DLMF, eq. 10.41.4, <https://dlmf.nist.gov/10.41.4>.
 
 use super::Scaled;
 use super::bessel_i::debye_sum_at;

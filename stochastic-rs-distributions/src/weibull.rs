@@ -4,7 +4,7 @@
 //! f(x)=\frac{k}{\lambda}\left(\frac{x}{\lambda}\right)^{k-1}e^{-(x/\lambda)^k},\ x\ge0
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 

@@ -5,8 +5,8 @@
 //! \mathbb{P}(X=k)=\frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
 //! $$
 //!
-//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
-//! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
+//! Reference: Kachitvichyanukul, Schmeiser (1985), 22, 127-145, DOI 10.1080/00949658508810839.
+//! Reference: Johnson, N. L. et al. (2005), 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816.
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 

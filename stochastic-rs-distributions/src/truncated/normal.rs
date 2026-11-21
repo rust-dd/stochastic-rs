@@ -1,9 +1,9 @@
 //! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the
 //! inverse cdf.
 //!
-//! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
-//! Reference: Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942 (the tail proposals).
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8 (rejection).
+//! Reference: Johnson, N. L. et al. (1994), vol. 1, ch. 13 §10.1, ISBN 0-471-58495-9.
+//! Reference: Robert, C.P. (1995), Stat. Comput. 5(2), 121-125, DOI 10.1007/BF00143942.
+//! Reference: Devroye, L. (1986), Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 
 use std::fmt;
 use std::mem::MaybeUninit;

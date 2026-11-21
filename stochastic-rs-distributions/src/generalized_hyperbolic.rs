@@ -24,10 +24,10 @@
 //!
 //! The NIG at `λ = −½`, the hyperbolic at `λ = 1`, the VG as `δ → 0` for `λ > 0`; no closed cdf.
 //!
-//! Reference: Barndorff-Nielsen, O. (1977), "Exponentially decreasing distributions for the logarithm of particle size", *Proceedings of the Royal Society A* 353(1674), 401-419, DOI 10.1098/rspa.1977.0041.
-//! Reference: Eberlein, E., Keller, U. (1995), "Hyperbolic Distributions in Finance", *Bernoulli* 1(3), 281-299, DOI 10.2307/3318481.
-//! Reference: Prause, K. (1999), *The Generalized Hyperbolic Model: Estimation, Financial Derivatives, and Risk Measures*, PhD thesis, University of Freiburg, ch. 1.
-//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary), <https://dlmf.nist.gov/10.30.E2>.
+//! Reference: Barndorff-Nielsen (1977), 353(1674), 401-419, DOI 10.1098/rspa.1977.0041.
+//! Reference: Eberlein, E., Keller, U. (1995), Bernoulli 1(3), 281-299, DOI 10.2307/3318481.
+//! Reference: Prause, K. (1999), PhD thesis, University of Freiburg, ch. 1.
+//! Reference: Olver, F.W.J. et al., *NIST DLMF*, eq. 10.30.2, <https://dlmf.nist.gov/10.30.E2>.
 
 use rand::Rng;
 use rand::distr::Distribution;

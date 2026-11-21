@@ -1,9 +1,10 @@
 //! The gamma prefactor `x^a e^{−x}/Γ(a)` by Stirling's `Γ*` from shape 10, its exponent
 //! `a(λ − 1 − ln λ)` past double precision, from shape 100 Temme's expansion on `0.3 ≤ x/a ≤ 2.35`.
-//! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
-//! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (`rcomp`: `x^a e^{−x}/Γ(a)` from `ln Γ` below shape 20, Stirling-scaled from it).
-//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
+//! Reference: Temme (1979), SIAM J. Math. Anal. 10(4), 757-766, DOI 10.1137/0510071.
+//! Reference: NIST DLMF, eqs. 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14, <https://dlmf.nist.gov/8.12>.
+//! Reference: NIST DLMF, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
+//! Reference: DiDonato, Morris (1986), ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109.
+//! Reference: Shewchuk (1997), 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
 
 use std::f64::consts::TAU;
 
@@ -336,7 +337,7 @@ pub(crate) fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
 }
 
 /// Stirling's series' `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
-/// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
+/// Reference: NIST DLMF, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 const STIRLING: [f64; 9] = [
   1.0 / 12.0,
   -1.0 / 360.0,

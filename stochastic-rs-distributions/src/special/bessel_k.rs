@@ -9,12 +9,12 @@
 //! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2} = e^{S_e}\cosh S_o.
 //! $$
 //!
-//! Reference: Temme, N.M. (1975), "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
-//! Reference: Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions I_ν(z) and K_ν(z) of real order and complex argument, to selected accuracy", *Computer Physics Communications* 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
-//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.6 (`bessik`).
-//! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2–10.30.3 (`K_ν` as `x → 0`, below `x = 1e-307`), <https://dlmf.nist.gov/10.30>.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (the recurrence whose ratio form sums `ln K` where `K` overflows), <https://dlmf.nist.gov/10.29.1>.
+//! Reference: Temme (1975), J. Comput. Phys. 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
+//! Reference: Thompson, Barnett (1987), 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
+//! Reference: Press, W.H. et al. (2007), Numerical Recipes 3rd ed., Cambridge UP, §6.6 (`bessik`).
+//! Reference: Olver (1954), Philos. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021.
+//! Reference: NIST DLMF, eq. 10.30.2–10.30.3, <https://dlmf.nist.gov/10.30>.
+//! Reference: NIST DLMF, eq. 10.29.1, <https://dlmf.nist.gov/10.29.1>.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::PI;

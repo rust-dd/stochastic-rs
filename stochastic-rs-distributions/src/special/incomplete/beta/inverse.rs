@@ -1,7 +1,7 @@
 //! The root of `I_x(a, b) = p`: Newton in the log of the smaller of `x`, `1 − x` on `ln I` (`p ≤
 //! ½`) or `ln(1 − I)`, bisecting a bracket where it stalls, from `invbetai`'s or a gamma start.
-//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.4 (`invbetai`'s starts), §9.4 (`rtsafe`, Newton inside a bracket).
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.5.22 (`x_p ≈ a/(a + b e^{2w})`).
+//! Reference: Press, W.H. et al. (2007), Numerical Recipes 3rd ed., Cambridge UP, §6.4, §9.4.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 26.5.22.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::LN_10;

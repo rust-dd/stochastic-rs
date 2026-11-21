@@ -1,6 +1,6 @@
 //! `ln(e^x K_ν(x))` in two parts below order 60, the argument a [`Scaled`] value, so where `K`
 //! overflows or `x` is subnormal the logarithm carries neither its own rounding nor the argument's.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2 (`½Γ(ν)(2/x)^ν` as `x → 0`) and eq. 10.40.2 (Hankel's expansion), <https://dlmf.nist.gov/10.30>.
+//! Reference: NIST DLMF, eqs. 10.30.2 and 10.40.2, <https://dlmf.nist.gov/10.30>.
 
 use super::EPS;
 use super::HALF_LN_HALF_PI;

@@ -4,7 +4,7 @@
 //! f(x)=\frac{1}{b-a}\mathbf{1}_{a\le x\le b}
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Devroye, L. (1986), Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 

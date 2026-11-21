@@ -1,7 +1,7 @@
 //! GIG's first four cumulants as `sⁿρⁿ⁻¹k̂ₙ`, none from cancelling raw moments: Debye's expansion
 //! differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule from 3, Bessel ratios below.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion, a function of `r` alone at a fixed order), <https://dlmf.nist.gov/10.41.4>.
-//! Reference: Trefethen, L.N., Weideman, J.A.C. (2014), "The exponentially convergent trapezoidal rule", *SIAM Review* 56(3), 385-458, DOI 10.1137/130932132.
+//! Reference: NIST DLMF, eq. 10.41.4 (Debye's expansion), <https://dlmf.nist.gov/10.41.4>.
+//! Reference: Trefethen, Weideman (2014), SIAM Review 56(3), 385-458, DOI 10.1137/130932132.
 
 use std::f64::consts::LN_2;
 

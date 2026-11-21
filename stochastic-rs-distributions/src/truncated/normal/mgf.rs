@@ -1,7 +1,7 @@
 //! The mgf `e^{t·x_c − ½(c_s − c)(c_s + c)}` times the tilted and plain masses' ratio, `x_c` the
 //! tilted reference point in the law's coordinate, `c_s`, `c` both in standard units.
 //!
-//! Reference: Ogita, T., Rump, S. M. & Oishi, S. (2005), "Accurate Sum and Dot Product", *SIAM Journal on Scientific Computing* 26(6), 1955-1988, DOI 10.1137/030601818 (SumK over two-products).
+//! Reference: Ogita et al. (2005), SIAM J. Sci. Comput. 26(6), 1955-1988, DOI 10.1137/030601818.
 
 use std::f64::consts::LN_2;
 

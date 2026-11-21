@@ -4,8 +4,8 @@
 //! f(x)=\frac{\Gamma((\nu+1)/2)}{\sqrt{\nu\pi}\,\Gamma(\nu/2)}\left(1+\frac{x^2}{\nu}\right)^{-(\nu+1)/2}
 //! $$
 //!
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the quantile, `g₁` to `g₄`).
+//! Reference: Devroye, L. (1986), Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 26.7.5.
 
 use std::mem::MaybeUninit;
 

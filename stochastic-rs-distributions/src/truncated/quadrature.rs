@@ -1,7 +1,7 @@
 //! 64-node Gauss–Legendre panels on a truncated law's normalised kernel, behind its analytics; a
 //! singular end's innermost panel integrates in `u = (t/h)^e`, where `t^{e−1} dt = (h^e/e) du`.
-//! Reference: Trefethen, L. N. (2008), "Is Gauss Quadrature Better than Clenshaw–Curtis?", *SIAM Review* 50(1), 67-87, DOI 10.1137/060659831 (the Bernstein-ellipse rate that sizes the panels).
-//! Reference: Press, W. H., Teukolsky, S. A., Vetterling, W. T. & Flannery, B. P. (1992), *Numerical Recipes in C*, 2nd ed., Cambridge University Press, §4.4, ISBN 0-521-43108-5 (the change of variable at an integrable power-law end).
+//! Reference: Trefethen, L. N. (2008), SIAM Review 50(1), 67-87, DOI 10.1137/060659831.
+//! Reference: Press, W. H. et al. (1992), §4.4, ISBN 0-521-43108-5.
 
 use std::ops::ControlFlow;
 use std::sync::OnceLock;

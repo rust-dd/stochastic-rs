@@ -10,7 +10,7 @@
 //! \kappa_n = \theta\,(-1)^{n+1}\alpha(\alpha-1)\cdots(\alpha-n+1)\,\lambda^{\alpha-n}.
 //! $$
 //!
-//! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Article 18, DOI 10.1145/1596519.1596523.
+//! Reference: Devroye, L. (2009), ACM TOMACS 19(4), Article 18, DOI 10.1145/1596519.1596523.
 
 use std::mem::MaybeUninit;
 

@@ -5,8 +5,8 @@
 //! \mathbb{P}(X=k)=\binom{n}{k}p^k(1-p)^{n-k}
 //! $$
 //!
-//! Reference: Hörmann, W. (1993), "The generation of binomial random variates", *Journal of Statistical Computation and Simulation* 46, 101-110, DOI 10.1080/00949659308811496 (Algorithm BTRS).
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.4 (waiting-time method), DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Hörmann (1993), 46, 101-110, DOI 10.1080/00949659308811496 (Algorithm BTRS).
+//! Reference: Devroye, L. (1986), Springer, §X.4, DOI 10.1007/978-1-4613-8643-8.
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 

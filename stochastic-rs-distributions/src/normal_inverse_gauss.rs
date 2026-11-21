@@ -4,7 +4,7 @@
 //! X\sim\mathrm{Nig}(\alpha,\beta,\delta,\mu),\ \psi(u)=\mu u+\delta\left(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+iu)^2}\right)
 //! $$
 //!
-//! Reference: Barndorff-Nielsen, O.E. (1997), "Normal Inverse Gaussian Distributions and Stochastic Volatility Modelling", *Scandinavian Journal of Statistics* 24(1), 1-13, DOI 10.1111/1467-9469.00045.
+//! Reference: Barndorff-Nielsen (1997), Scand. J. Stat. 24(1), 1-13, DOI 10.1111/1467-9469.00045.
 
 use std::mem::MaybeUninit;
 

@@ -4,7 +4,7 @@
 //! f(x)=\lambda e^{-\lambda x},\ x\ge 0
 //! $$
 //!
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), J. Stat. Softw. 5(8), DOI 10.18637/jss.v005.i08.
 
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;

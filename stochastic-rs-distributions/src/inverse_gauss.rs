@@ -4,7 +4,7 @@
 //! f(x)=\sqrt{\frac{\lambda}{2\pi x^3}}\exp\!\left(-\frac{\lambda(x-\mu)^2}{2\mu^2 x}\right),\ x>0
 //! $$
 //!
-//! Reference: Michael, J.R., Schucany, W.R., Haas, R.W. (1976), "Generating Random Variates Using Transformations with Multiple Roots", *The American Statistician* 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
+//! Reference: Michael et al. (1976), Am. Stat. 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
 
 use std::mem::MaybeUninit;
 

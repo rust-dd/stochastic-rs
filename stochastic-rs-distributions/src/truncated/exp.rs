@@ -1,7 +1,7 @@
 //! Truncated exponential: inversion of the survival function referred to the lower bound.
 //!
-//! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 19, ISBN 0-471-58495-9 (the doubly truncated exponential's moments are its renormalised integrals).
-//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8 (inversion).
+//! Reference: Johnson, N. L. et al. (1994), vol. 1, 2nd ed., Wiley, ch. 19, ISBN 0-471-58495-9.
+//! Reference: Devroye, L. (1986), Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;

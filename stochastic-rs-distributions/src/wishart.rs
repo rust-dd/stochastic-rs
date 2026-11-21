@@ -18,8 +18,8 @@
 //! \quad A_{jj} \sim \chi_{\nu - j + 1},\ A_{i>j} \sim \mathcal N(0, 1).
 //! $$
 //!
-//! Reference: Bartlett, M.S. (1933), "On the theory of statistical regression", *Proceedings of the Royal Society of Edinburgh* 53, 260-283, DOI 10.1017/S0370164600015637.
-//! Reference: Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart variate generator", *Applied Statistics* 21(3), 341-345, DOI 10.2307/2346290.
+//! Reference: Bartlett (1933), Proc. R. Soc. Edinb. 53, 260-283, DOI 10.1017/S0370164600015637.
+//! Reference: Smith, W.B., Hocking, R.R. (1972), Appl. Stat. 21(3), 341-345, DOI 10.2307/2346290.
 
 use ndarray::Array2;
 use rand::Rng;

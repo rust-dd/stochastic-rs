@@ -1,6 +1,6 @@
 //! Brent's procedure `zero`, the root solver of the sibling crates; outside the stability promise.
 //!
-//! Reference: Brent, R.P. (1973), "Algorithms for Minimization without Derivatives", Prentice-Hall, ch. 4: eqs. (2.9), (3.2)–(3.4) and procedure `zero`, §6, pp. 58–59.
+//! Reference: Brent (1973), ch. 4: eqs. (2.9), (3.2)–(3.4) and procedure `zero`, §6, pp. 58–59.
 
 /// Brent's `macheps` for rounded binary64, half of `f64::EPSILON`, so his `2 × macheps` is
 /// `f64::EPSILON`.

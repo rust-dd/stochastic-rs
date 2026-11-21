@@ -5,9 +5,9 @@
 //! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
 //! $$
 //!
-//! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 29.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), *Handbook of Mathematical Functions*, NBS AMS 55, eq. 26.4.25 (the Poisson mixture).
-//! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", *Biometrika* 66(2), 381-386, DOI 10.1093/biomet/66.2.381.
+//! Reference: Johnson, N.L. et al. (1995), vol. 2, 2nd ed., Wiley, ch. 29.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, eq. 26.4.25.
+//! Reference: Siegel, A. F. (1979), Biometrika 66(2), 381-386, DOI 10.1093/biomet/66.2.381.
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;

@@ -1,10 +1,10 @@
 //! The Student-t incomplete beta `I_w(ν/2, ½)`, `w = ν/(ν + x²)`, and its reflection in
 //! `z = 1 − w`: `z`'s series near 0, `w`'s far out, Lentz's fraction or a gamma expansion between.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.1 (`A(t|ν) = 1 − I_w(ν/2, ½)`).
-//! Reference: NIST Digital Library of Mathematical Functions, eqs. 8.17.4 (the reflection), 8.17.8 (the series of positive terms) and 8.17.20 (the step `a → a + 1`), <https://dlmf.nist.gov/8.17>.
-//! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776, eqs. (9.1)–(9.2) (the expansion in `Γ(b + 2n, Tξ)`, `T = a + (b − 1)/2`).
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 4.6.4 (`ln z = 2 Σ ((z − 1)/(z + 1))^{2k+1}/(2k + 1)`), <https://dlmf.nist.gov/4.6.4>.
-//! Reference: Dekker, T.J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083 (exact products and quotient remainders).
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 26.7.1.
+//! Reference: NIST DLMF, eqs. 8.17.4, 8.17.8 and 8.17.20, <https://dlmf.nist.gov/8.17>.
+//! Reference: DiDonato, Morris (1992), 18(3), 360-373, DOI 10.1145/131766.131776, eqs. (9.1)–(9.2).
+//! Reference: NIST DLMF, eq. 4.6.4, <https://dlmf.nist.gov/4.6.4>.
+//! Reference: Dekker, T.J. (1971), Numer. Math. 18(3), 224-242, DOI 10.1007/BF01397083.
 
 use std::f64::consts::SQRT_2;
 

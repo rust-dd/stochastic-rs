@@ -4,9 +4,9 @@
 //! \varphi_X(u)=\exp\!\left(i\delta u-\gamma^\alpha |u|^\alpha\left[1-i\beta\operatorname{sgn}(u)\omega(u,\alpha)\right]\right)
 //! $$
 //!
-//! Reference: Chambers, J.M., Mallows, C.L., Stuck, B.W. (1976), "A Method for Simulating Stable Random Variables", *Journal of the American Statistical Association* 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
-//! Reference: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1 (scale, location and `α = 1`).
-//! Reference: Samorodnitsky, G., Taqqu, M.S. (1994), *Stable Non-Gaussian Random Processes*, Chapman & Hall, Prop. 1.2.12 (the Laplace transform at β = ±1), DOI 10.1201/9780203738818.
+//! Reference: Chambers et al. (1976), 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
+//! Reference: Weron (1996), Stat. Probab. Lett. 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1.
+//! Reference: Samorodnitsky, G., Taqqu, M.S. (1994), Prop. 1.2.12, DOI 10.1201/9780203738818.
 
 use std::mem::MaybeUninit;
 

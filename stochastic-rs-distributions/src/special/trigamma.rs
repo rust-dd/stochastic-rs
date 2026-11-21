@@ -1,4 +1,4 @@
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.4.6 (the recurrence), 6.4.7 (the reflection), 6.4.12 (the asymptotic series).
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 6.4.6, 6.4.7, 6.4.12.
 
 use std::f64::consts::PI;
 

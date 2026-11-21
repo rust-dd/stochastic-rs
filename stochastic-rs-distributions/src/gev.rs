@@ -19,9 +19,9 @@
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
 //! $$
 //!
-//! Reference: Jenkinson, A.F. (1955), "The frequency distribution of the annual maximum (or minimum) values of meteorological elements", *Quarterly Journal of the Royal Meteorological Society* 81, 158-171, DOI 10.1002/qj.49708134804.
-//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer, DOI 10.1007/978-1-4471-3675-0.
-//! Reference: McNeil, A.J., Frey, R., Embrechts, P. (2015), *Quantitative Risk Management*, Princeton UP, §7.2.
+//! Reference: Jenkinson (1955), Q. J. R. Meteorol. Soc. 81, 158-171, DOI 10.1002/qj.49708134804.
+//! Reference: Coles, S. (2001), Springer, DOI 10.1007/978-1-4471-3675-0.
+//! Reference: McNeil, A.J. et al. (2015), *Quantitative Risk Management*, Princeton UP, §7.2.
 
 use std::mem::MaybeUninit;
 
