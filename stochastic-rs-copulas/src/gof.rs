@@ -103,8 +103,8 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of `copula` on `x` (Genest, Rémillard & Beaudoin
-/// 2009, §4); errs on bad data, panics unless `0 < alpha < 1` and `replications > 0`.
+/// Bootstrap Cramér–von Mises test of `copula` on pseudo-observations `x`: `MarginalOnBoundary` at
+/// a 0 or 1, `Numerical` on a non-finite statistic; asserts `0 < alpha < 1`, `replications > 0`.
 pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
   x: ArrayView2<f64>,

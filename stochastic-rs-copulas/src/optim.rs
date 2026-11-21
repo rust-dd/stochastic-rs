@@ -10,8 +10,8 @@ use stochastic_rs_distributions::RealExt;
 /// relative precision only.
 pub(crate) const SQRT_MACHEPS: f64 = 1.053_671_212_772_350_9e-8;
 
-/// Brent's `localmin` with the author's errata: `(x, f(x))` at a minimum of `f` on `(a, b)`, never
-/// evaluated at `a` or `b`, within `3 tol`, `tol = eps |x| + t`, for a δ-unimodal `f`, `δ < tol`.
+/// Brent's `localmin`: `(x, f(x))` at a minimum of `f` on `(a, b)`, never at `a` or `b`, within
+/// `3 tol`, `tol = eps |x| + t`, for a δ-unimodal `f`, `δ < tol`, `eps ≥ 2 macheps`, `t > 0`.
 pub(crate) fn localmin(
   a: f64,
   b: f64,

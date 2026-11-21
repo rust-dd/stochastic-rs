@@ -110,8 +110,8 @@ pub trait BivariateExt {
     None
   }
 
-  /// `n` pairs from `seed` by conditional inversion, inside `(0, 1)`; a fresh `Deterministic`
-  /// replays them, a shared one advances; generic, so not on `dyn`.
+  /// `n` pairs from `seed` by conditional inversion, inside `(0, 1)` (one rounded to 0 or 1 moves
+  /// one ulp inside); a fresh `Deterministic` replays them, a shared one advances; not on `dyn`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where
     Self: Sized,
@@ -144,8 +144,8 @@ pub trait BivariateExt {
     Ok(stack![Axis(1), u, v])
   }
 
-  /// Kendall's τ-b of two pseudo-observation columns inverted through `theta_from_tau`, storing
-  /// nothing when the family cannot represent it (`InvalidParameter`) or `validate_theta` fails.
+  /// Kendall's τ-b of the columns inverted through `theta_from_tau`, storing nothing when the
+  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or `validate_theta` fails.
   fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
     check_open(x)?;

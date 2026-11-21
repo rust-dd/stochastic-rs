@@ -67,7 +67,7 @@ impl MarshallOlkin {
   }
 
   /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`,
-  /// `w = v^{β(1-α)/α}`, else closed form; the `α = 1`, `β = 1` branches never run.
+  /// `w = v^{β(1-α)/α}`, else closed form inside `[0, 1]`; the `α = 1`, `β = 1` branches never run.
   pub(crate) fn inverse(alpha: f64, beta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
       let w = v.powf(beta * (1.0 - alpha) / alpha);

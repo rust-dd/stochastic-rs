@@ -244,7 +244,7 @@ impl Bb7 {
   }
 
   /// `ln h = −((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q)`, `Q = F(α)/(1 + F(β))`, `F = expm1(δw)`,
-  /// `α, β = ū^θ, v̄^θ`, `R = ln((1 − T)/β)` as a softplus from `T = b(1 + Q)^{−1/δ}`.
+  /// `w = −ln(1 − x)`, `α, β = ū^θ, v̄^θ`, `R = ln((1 − T)/β)` from `T = b(1 + Q)^{−1/δ}`.
   fn ln_h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let ln_delta = delta.ln();
     let (ln_u_bar, ln_v_bar) = ((-u).ln_1p(), (-v).ln_1p());

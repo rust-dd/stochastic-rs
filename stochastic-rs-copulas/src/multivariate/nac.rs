@@ -11,7 +11,7 @@
 //! Reference: Joe, H. (1997), Chapman & Hall, ch. 4, DOI 10.1201/b13150.
 //! Reference: Hofert (2008), 52(12), 5163-5174, DOI 10.1016/j.csda.2008.05.019.
 //! Reference: Devroye, L. (2009), ACM TOMACS 19(4), Art. 18, DOI 10.1145/1596519.1596523.
-//! Reference: Marsaglia, Tsang (2000), ACM TOMS 26(3), 363-372, DOI 10.1145/358407.358414.
+//! Reference: Marsaglia, Tsang (2000), ACM TOMS 26(3), note on `α < 1`, DOI 10.1145/358407.358414.
 //! Reference: Hofert (2011), Comput. Stat. Data Anal. 55(1), 57-70, DOI 10.1016/j.csda.2010.04.025.
 //! Reference: Hofert, Mächler (2011), J. Stat. Softw. 39(9), 1-20, DOI 10.18637/jss.v039.i09.
 //! Reference: Hofert et al. (2012), 110, 133-150, DOI 10.1016/j.jmva.2012.02.019.
@@ -288,8 +288,8 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
 
-  /// The binary tree from Kendall's τ-b of `x` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean
-  /// τ̂ outside the generator's range is `InvalidParameter { name: "tau", .. }`, storing nothing.
+  /// Binary tree from Kendall's τ-b of `x`; a mean τ̂ outside the generator's range (`0 < τ < 1`
+  /// Clayton, `0 ≤ τ < 1` Gumbel) is `InvalidParameter { name: "tau", .. }`, storing nothing.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let root = fit::estimate(self.generator, x)?;
     *self = Self::new(self.generator.family(), root, x.ncols())?;

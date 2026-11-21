@@ -469,8 +469,8 @@ pub fn fit_vine<'py>(
   Ok(out)
 }
 
-/// Bootstrap Cramér–von Mises test of `family` (`clayton`, `gumbel`, `frank`, `gaussian`, `bb1`,
-/// `bb7`) fitted to `u`, giving `(statistic, p_value)`; `alpha` sets the Rust-side rejection.
+/// Parametric-bootstrap Cramér–von Mises test of `family` (`clayton`, `gumbel`, `frank`,
+/// `gaussian`, `bb1`, `bb7`) fitted to pseudo-observations `u`, giving `(statistic, p_value)`.
 #[pyfunction]
 #[pyo3(signature = (family, u, replications=200, seed=42, alpha=0.05))]
 pub fn copula_gof<'py>(

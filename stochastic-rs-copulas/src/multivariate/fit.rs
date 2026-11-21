@@ -401,8 +401,8 @@ fn check_vine_data(
   Ok(tau)
 }
 
-/// Fits `structure` to `u`'s rows: the marginal errors, `Unsupported` outside `VINE_CANDIDATES` or
-/// for an edge none fits, `InvalidStructure` for a constant column.
+/// Fits `structure` to `u`: `MarginalOutOfRange` off `[0, 1]`/NaN, `MarginalOnBoundary` at 0/1,
+/// `Unsupported` off `VINE_CANDIDATES` or an unfit edge, `InvalidStructure` on a constant column.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,

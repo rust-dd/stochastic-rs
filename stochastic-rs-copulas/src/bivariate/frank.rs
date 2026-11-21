@@ -139,8 +139,8 @@ impl Frank {
     }
   }
 
-  /// `(M − m, B)`, `B = 1 − e^{−cM} + e^{−c(M − m)}(1 − e^{−c(1 − M)})` at `(u, v)` or, when
-  /// `reflect`, `(u, 1 − v)`: `1 + g(u)g(v)/g(1) = e^{−cm}B/(1 − e^{−c})`.
+  /// `(M − m, B)`, `B = 1 − e^{−cM} + e^{−c(M − m)}(1 − e^{−c(1 − M)})`, `M ≥ m` the coordinates,
+  /// at `(u, v)`, `(u, 1 − v)` if `reflect`: `1 + g(u)g(v)/g(1) = e^{−cm}B/(1 − e^{−c})`.
   fn spread(c: f64, u: f64, v: f64, reflect: bool) -> (f64, f64) {
     let (gap, big, rest) = if !reflect {
       ((u - v).abs(), u.max(v), 1.0 - u.max(v))

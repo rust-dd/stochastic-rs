@@ -50,8 +50,8 @@ pub(crate) fn log_score_parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64
   )
 }
 
-/// `ln(x/y)` for `x, y = −ln a, −ln b`: near a ratio of 1, `ln_1p` of `x − y = ln(b/a)` from
-/// `ln_ratio`, so `θ ln(x/y)` stays exact where `(x/y)^θ` is not negligible.
+/// `ln(x/y)` for `x, y = −ln a, −ln b`: near ratio 1, `ln_1p` of `x − y = ln(b/a)` from `ln_ratio`,
+/// held to rounding, so `θ ln(x/y)` stays exact where `(x/y)^θ` is not negligible.
 pub(crate) fn ln_log_ratio(a: f64, b: f64, x: f64, y: f64) -> f64 {
   let ratio = x / y;
   if (0.5..=2.0).contains(&ratio) {

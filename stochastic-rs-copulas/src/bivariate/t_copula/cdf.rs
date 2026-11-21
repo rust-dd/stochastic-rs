@@ -293,7 +293,7 @@ impl BivariateT {
   }
 
   /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_gap`)
-  /// where two bits of opposite scores cancel, so no error moves the crossing.
+  /// where at least two bits of opposite scores cancel, so no error moves the crossing.
   fn countermonotone(&self, u: f64, v: f64, su: Score, sv: Score) -> Option<(Feature, f64)> {
     let (x, y) = (su.value, sv.value);
     let plain = x + y;

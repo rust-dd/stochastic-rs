@@ -118,8 +118,8 @@ impl Bb1 {
     theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v)
   }
 
-  /// `(W, P, ln r, ℓ)` at `θ max(x, y) ≤ 700`: `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`,
-  /// `r = X_min/X_max`, `ℓ = ln(1 + r^δ)`, `W = w/θ = Pe^{ℓ/δ}`, so a small `θ` keeps its digits.
+  /// `(W, P, ln r, ℓ)` at `θ max(x, y) ≤ 700`, `x, y = −ln u, −ln v`: `r = X_min/X_max`,
+  /// `ℓ = ln(1 + r^δ)`, `W = Pe^{ℓ/δ}`, `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`.
   fn scaled(u: f64, v: f64, ln_u: f64, ln_v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
     let ln_xy = Self::ln_generator_ratio(u, v, ln_u, ln_v, theta);
     let big = -(if ln_xy >= 0.0 { ln_u } else { ln_v });

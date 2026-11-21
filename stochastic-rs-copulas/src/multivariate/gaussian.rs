@@ -136,7 +136,7 @@ impl MultivariateExt for GaussianMultivariate {
   }
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d} (`InvalidStructure` for a constant column), an
-  /// indefinite estimate shrunk toward the identity to eigenvalues `≥ 1e-3`.
+  /// indefinite or near-singular estimate shrunk toward the identity to eigenvalues `≥ 1e-3`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(

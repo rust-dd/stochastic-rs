@@ -192,7 +192,7 @@ impl TCopula {
   }
 
   /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where
-  /// that rounding is at most the plain `r_x + |ρ|r_y`, carried past `150ε`.
+  /// that rounding is at most the plain `r_x + |ρ|r_y` (`r` the `rounding`), carried past `150ε`.
   fn shifted_gap(
     law: &Law,
     (rho, nu, scale): (f64, f64, f64),
@@ -287,8 +287,8 @@ impl TCopula {
     }
   }
 
-  /// `ln c` on the open square: Gaussian past `NORMAL_ABOVE`, else `TDensity::moderate` at the
-  /// scores, else `student_t::ln_density` at their features, exact past `f64::MAX`.
+  /// `ln c` on the open square: Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at
+  /// the scores, else `student_t::ln_density` at their features, exact past `f64::MAX`.
   fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
     Self::ln_density_at(self.theta.unwrap(), self.nu)
   }
@@ -357,7 +357,7 @@ impl BivariateExt for TCopula {
   }
 
   /// To a relative `1e-12` but where `C ≪ u` off the countermonotone solve (the t quantiles' last
-  /// bits, up to `2.3e-12`); Gaussian from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
+  /// bits, up to `2.3e-12` measured); Gaussian from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);

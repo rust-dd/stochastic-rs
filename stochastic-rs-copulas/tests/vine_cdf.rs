@@ -1,5 +1,5 @@
 //! The vine cdfs, Genz's separation of variables through the samplers' Rosenblatt map:
-//! deterministic, within ten times their error of the closed forms and Joe's integrals.
+//! deterministic, about ten times their measured error from the closed forms and Joe's integrals.
 //! Reference: Joe (1996), 28, 120–141, DOI 10.1214/lnms/1215452614
 
 use ndarray::Array1;

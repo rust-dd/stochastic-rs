@@ -142,8 +142,8 @@ impl HuslerReiss {
     (ln_one_minus_t, ln_t, alpha, beta, a)
   }
 
-  /// `(ln τ, ln(1 − τ))`, the smaller integrated over the logit of `t ∈ [1/2, 1]`:
-  /// `τ = λ∫ (1 − t)φ(α)/A`, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²` by parts, as `A' = Φ(β) − Φ(α)`.
+  /// `(ln τ, ln(1 − τ))`, the smaller integrated over the logit `ℓ` of `t ∈ [1/2, 1]`,
+  /// `α, β = 1/λ ∓ λℓ/2`: `τ = λ∫ (1 − t)φ(α)/A`, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²` by parts.
   fn ln_tau_parts(lambda: f64) -> (f64, f64) {
     // `(ln(1 − t), ln t, α, β, ln A)` at `ℓ`.
     let at = |l: f64| {

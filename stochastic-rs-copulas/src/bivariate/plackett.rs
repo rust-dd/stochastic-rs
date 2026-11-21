@@ -174,8 +174,8 @@ impl Plackett {
     theta.ln() + (p + theta * q).ln() - 3.0 * sigma.ln() - 1.5 * d.ln()
   }
 
-  /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C`, closed in `d = u − v`, is `∫ (2L/a)(αF − θL²G) dL`,
-  /// `L = 1 − s`; Gauss–Legendre in `√L`, halved to the corner `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
+  /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C` in `d = u − v` is `∫ (2L/a)(αF − θL²G) dL`,
+  /// `L = 2 − u − v`; Gauss–Legendre in `√L`, halved at `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
   fn tau_complement(theta: f64) -> f64 {
     if theta == 1.0 {
       return 1.0;

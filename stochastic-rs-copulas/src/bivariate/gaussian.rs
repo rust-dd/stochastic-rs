@@ -58,7 +58,7 @@ impl GaussianCopula {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` as `(x − y) + (1 − ρ)y` from the exact gap below its
+  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` as `(x − y) + (1 − ρ)y` from the exact gap past its
   /// rounding bound (`(x + y) − (1 + ρ)y` at `ρ < 0`); a point mass at `v ∈ {0, 1}`.
   pub(crate) fn h(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
@@ -126,8 +126,8 @@ pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
 }
 
 impl GaussianCopula {
-  /// `x + y` by `quantile_gap` from the exact gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`, and
-  /// below `reach` for opposite halves or a `g` whose rounding over `φ` beats `ε(|x| + |y|)`.
+  /// `x + y` (`x, y = Φ⁻¹(u), Φ⁻¹(v)`) from the gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`,
+  /// and below `reach` for opposite halves or a `g` whose rounding over `φ` beats `ε(|x| + |y|)`.
   fn sum(u: f64, v: f64, x: f64, y: f64, reach: f64) -> f64 {
     let admit = |plain: f64, gap: f64, _, other: f64| {
       plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0)
