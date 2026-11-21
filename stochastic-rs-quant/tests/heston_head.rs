@@ -133,6 +133,23 @@ fn a_maturity_of_minutes_matches_the_converged_integral() {
   }
 }
 
+/// The cell where a walk rescaled by `1e-2/√w` stopped `1.28e-6` low, 53 standard deviations from
+/// the money: Lewis quadrature at 30 digits (mpmath) puts the call at `1e-29`.
+#[test]
+fn a_maturity_of_seconds_holds_its_price_far_from_the_money() {
+  let pricer = HestonPricer::new(HestonParams { v0: 0.0025, ..P });
+  let got = pricer.price_call(99.92267566708517, 100.0, 0.05, 0.0, 8.440805698964626e-8);
+  assert!(got.abs() < 1e-12, "{got:e}");
+}
+
+/// `∂C/∂v₀` at `τ = 1e-6` by a central difference of Lewis's price at 30 digits (mpmath); the
+/// integral of `D_j f_j` from `φ = 1e-8`, unsplit, answered `0.124`.
+#[test]
+fn the_initial_variance_vega_holds_at_a_maturity_of_seconds() {
+  let got = HestonPricer::new(P).initial_variance_vega(100.0, 100.0, 0.05, 0.0, 1e-6);
+  assert!((got - 0.099_735_488_231_518_72).abs() < 1e-12, "{got}");
+}
+
 /// `v0 ≪ σ²τ` leaves a chf decaying like `e^{−v0φ√(1−ρ²)/σ}`, far slower than a Gaussian of
 /// variance `E[∫v]`: heavy tails, `2.2e-6` over the forward's intrinsic (Lewis by Gauss–Legendre).
 #[test]

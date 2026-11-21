@@ -281,7 +281,7 @@ mod tests {
     let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 7.94871378854164;
     assert!(
-      (price - expected).abs() < 1e-4,
+      (price - expected).abs() < 5e-5,
       "FRFT Carr-Madan BSM: got={price}, expected={expected}"
     );
   }
@@ -306,7 +306,7 @@ mod tests {
       let frft_price = pricer.price_call(&model, s, k, r, 0.0, t);
       let gp_price = GilPelaezPricer::price_call(&model, s, k, r, 0.0, t);
       assert!(
-        (frft_price - gp_price).abs() < 5e-2,
+        (frft_price - gp_price).abs() < 2e-4,
         "Heston K={k}: FRFT={frft_price} vs Gil-Pelaez={gp_price}"
       );
     }

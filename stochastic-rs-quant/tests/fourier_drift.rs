@@ -70,11 +70,11 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let want = closed.price_call(100.0, k, r, q, 1.0);
       // Gil–Pelaez's band is its quadrature error.
       for (name, got, tol) in [
-        ("gil-pelaez", gp, 2e-6),
+        ("gil-pelaez", gp, 1e-12),
         ("lewis", lw, 1e-9),
         ("cos", cs, 1e-8),
-        ("carr-madan", cm, 5e-3),
-        ("frft", frft, 5e-3),
+        ("carr-madan", cm, 1e-6),
+        ("frft", frft, 5e-5),
       ] {
         assert!(
           (got - want).abs() < tol,
@@ -86,7 +86,7 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let parity = 100.0 * (-q * 1.0_f64).exp() - k * (-r * 1.0_f64).exp();
       // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the rest, ≤ 4e-8, is Gil–Pelaez's.
       assert!(
-        (call - put - parity).abs() < 1e-7,
+        (call - put - parity).abs() < 1e-9,
         "parity at ({r}, {q}), k = {k}: {call} - {put} vs {parity}"
       );
     }

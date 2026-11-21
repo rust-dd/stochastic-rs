@@ -266,6 +266,31 @@ fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
   }
 }
 
+/// `(K, half-width in η)` about `STALLED`: where a walk that stops on its envelope jumps by 3.3e-5
+/// and 9.9e-5.
+const WINDOWS: [(f64, f64); 2] = [(2525.0, 1.5e-6), (2550.0, 8e-5)];
+
+/// Across each window a step of the price differs from its neighbours' mean by rounding alone.
+#[test]
+fn the_price_is_continuous_in_eta_where_an_envelope_stop_would_move() {
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  for (k, half) in WINDOWS {
+    let price = |i: i32| {
+      let mut natural = STALLED;
+      natural[4] += half * (f64::from(i) / 30.0 - 1.0);
+      let params = to_cgmysv_params(&natural);
+      fourier_call_price(&params, s, k, r, q, tau, &mut Walk::Adaptive)
+    };
+    let prices = (0..=60).map(price).collect::<Vec<_>>();
+    let steps = prices.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>();
+    let jump = steps
+      .windows(3)
+      .map(|w| (w[1] - 0.5 * (w[0] + w[2])).abs())
+      .fold(0.0, f64::max);
+    assert!(jump < 1e-10, "K = {k}: a jump of {jump:e}");
+  }
+}
+
 /// Each coordinate saturated to within 1e-3 of an end of its logistic map.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
