@@ -48,6 +48,9 @@ pub(super) fn fourier_option_price(
 /// How far inside its model's `E[e^X] < ∞` domain a fit's point stays.
 pub(super) const DOMAIN_MARGIN: f64 = 0.01;
 
+/// How far over its floor NIG's `α` may rise: the box of its height is `[0, NIG_HEIGHT]`.
+pub(super) const NIG_HEIGHT: f64 = 50.0;
+
 pub(super) fn param_count(model_type: LevyModelType) -> usize {
   match model_type {
     LevyModelType::VarianceGamma => 3,
@@ -58,16 +61,18 @@ pub(super) fn param_count(model_type: LevyModelType) -> usize {
   }
 }
 
-/// Each parameter's box; the fit's own is `coordinates::coordinate_bounds`.
+/// Each parameter's box; the fit's own is `coordinates::coordinate_bounds`. NIG's `α` runs from
+/// its floor `max(|β|, |β + 1|) + 0.01` to `NIG_HEIGHT` above it: its box is that range's hull.
 pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
   match model_type {
     LevyModelType::VarianceGamma => {
       vec![(0.01, 2.0), (-1.0, 1.0), (0.01, 5.0)]
     }
     LevyModelType::Nig => {
-      // `β`'s box is where `α ≥ max(|β|, |β + 1|) + DOMAIN_MARGIN` has room under `α`'s ceiling.
+      // `β`'s box keeps `α`'s floor at most 50, which it reaches at either end.
       let top = 50.0 - DOMAIN_MARGIN;
-      vec![(0.01, 50.0), (-top, top - 1.0), (0.001, 5.0)]
+      let alpha = (0.5 + DOMAIN_MARGIN, 50.0 + NIG_HEIGHT);
+      vec![alpha, (-top, top - 1.0), (0.001, 5.0)]
     }
     LevyModelType::Cgmy => {
       // `E[e^X]` is finite for `M > 1`, the compensator's `(M − 1)^Y`.

@@ -170,12 +170,44 @@ fn a_fit_on_its_domains_edge_is_not_converged_where_the_cost_falls_inside() {
   }
 }
 
-/// Where its coupled condition binds, `α`'s floor at `β = 20` and `ν`'s cap at `θ + σ²/2 = 1`:
-/// each step of a coordinate across its box moves the model, so its column is never zero there.
+/// NIG `(40, −39.9895, 0.1)` lies `5e-4` over its floor, its valley along the floor to the end of
+/// `β`'s box: a fit from there is improved tenfold neither from itself nor a unit inward along it.
+#[test]
+fn a_nig_fit_beside_the_end_of_its_floor_is_not_converged_where_the_valley_falls_inward() {
+  let model = LevyModelType::Nig;
+  let quotes = calls(model, &[40.0, -39.9895, 0.1], true);
+  let from = |values: Vec<f64>| {
+    let start = LevyParams {
+      values,
+      model_type: model,
+    };
+    let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes.clone());
+    calibrator.calibrate(Some(start)).unwrap()
+  };
+  let fit = from(vec![
+    49.942677155297595,
+    -49.773767480116355,
+    0.09426521622714584,
+  ]);
+  let p = fit.params.values.clone();
+  let toward = if p[1] < -0.5 { 1.0 } else { -1.0 };
+  let inward = from(vec![p[0] - 1.0, p[1] + toward, p[2]]);
+  let lowest = from(p.clone()).rmse().min(inward.rmse());
+  assert!(
+    !fit.converged || 10.0 * lowest >= fit.rmse(),
+    "{:e} converged at {p:?}, {lowest:e} from it",
+    fit.rmse()
+  );
+}
+
+/// Where its coupled condition binds, `α`'s floor at `β = 20` and at both ends of `β`'s box, and
+/// `ν`'s cap at `θ + σ²/2 = 1`: each step of a coordinate across its box moves the model.
 #[test]
 fn no_step_across_its_box_leaves_a_coupled_parameter_where_it_was() {
   for (model, at, j) in [
     (LevyModelType::Nig, [0.0, 20.0, 0.5], 0),
+    (LevyModelType::Nig, [0.0, -49.99, 0.5], 0),
+    (LevyModelType::Nig, [0.0, 48.99, 0.5], 0),
     (LevyModelType::VarianceGamma, [1.0, 0.5, 0.0], 2),
   ] {
     let calibrator = LevyCalibrator::new(model, 100.0, 0.05, 0.0, quotes());
@@ -195,8 +227,8 @@ fn no_step_across_its_box_leaves_a_coupled_parameter_where_it_was() {
   }
 }
 
-/// A pull acts on the parameters: the tied one's row runs through its share and the edge that
-/// `σ` and `θ`, or `β` on either side of −½, move; a reflected coordinate's slope is −1.
+/// A pull acts on the parameters: the tied one's row runs through its own coordinate and the edge
+/// that `σ` and `θ`, or `β` on either side of −½, move; a reflected coordinate's slope is −1.
 #[test]
 fn the_natural_jacobian_matches_central_differences() {
   use crate::calibration::least_squares::checks::natural_jacobian_by_differences;
@@ -209,7 +241,8 @@ fn the_natural_jacobian_matches_central_differences() {
     ),
     (LevyModelType::VarianceGamma, ndarray::array![2.4, 0.5, 0.7]),
     (LevyModelType::Nig, ndarray::array![0.3, 20.0, 0.5]),
-    (LevyModelType::Nig, ndarray::array![1.3, -7.0, 0.5]),
+    (LevyModelType::Nig, ndarray::array![-1.3, -7.0, 0.5]),
+    (LevyModelType::Nig, ndarray::array![45.0, 20.0, 0.5]),
     (
       LevyModelType::Kou,
       ndarray::array![0.15, 3.0, 1.2, 10.0, 10.0],

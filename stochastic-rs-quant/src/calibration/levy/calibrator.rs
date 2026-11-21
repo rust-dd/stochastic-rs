@@ -162,7 +162,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
 pub(super) struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
   pub(super) params: LevyParams,
-  /// The coordinates folded into their box: the tied parameter's slot holds its share.
+  /// The coordinates folded into their box: the tied parameter's slot holds its own coordinate.
   folded: Vec<f64>,
   /// `dθⱼ/dxⱼ` of the bounds' reflection at the optimiser's raw coordinates.
   reflections: Array1<f64>,

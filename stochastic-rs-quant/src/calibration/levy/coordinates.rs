@@ -1,11 +1,12 @@
 //! A Lévy fit's coordinates: each parameter itself, but the one its model's `E[e^X] < ∞` ties to
-//! the others, which is its share `w ∈ [0, 1]` between its two edges: the edge is a bound of `w`.
+//! the others, Variance Gamma's `ν` as its share of the way to its cap, NIG's `α` as its height.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
 use super::loss::DOMAIN_MARGIN;
+use super::loss::NIG_HEIGHT;
 use super::loss::param_bounds;
 use super::types::LevyModelType;
 use crate::calibration::least_squares::Room;
@@ -14,7 +15,7 @@ use crate::calibration::periodic_slopes;
 use crate::calibration::stencil::room;
 
 /// The tied parameter's index and the edges it lies between at `c`, `DOMAIN_MARGIN` inside the
-/// condition: Variance Gamma's `ν` under its cap, NIG's `α` over its floor.
+/// condition: Variance Gamma's `ν` under its cap, NIG's `α` from its floor to `NIG_HEIGHT` above.
 fn edges(model_type: LevyModelType, c: &[f64]) -> Option<(usize, f64, f64)> {
   let bounds = param_bounds(model_type);
   match model_type {
@@ -32,44 +33,56 @@ fn edges(model_type: LevyModelType, c: &[f64]) -> Option<(usize, f64, f64)> {
     // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
     LevyModelType::Nig => {
       let floor = c[1].abs().max((c[1] + 1.0).abs()) + DOMAIN_MARGIN;
-      Some((0, floor, bounds[0].1))
+      Some((0, floor, floor + NIG_HEIGHT))
     }
     _ => None,
   }
 }
 
-/// The box of each coordinate: its parameter's, and `[0, 1]` for the tied one's share.
+/// `∂θ/∂c` of the tied parameter in its own coordinate: the share's width, the height's 1.
+fn rise(model_type: LevyModelType, lower: f64, upper: f64) -> f64 {
+  match model_type {
+    LevyModelType::Nig => 1.0,
+    _ => upper - lower,
+  }
+}
+
+/// The box of each coordinate: its parameter's, but `[0, 1]` for Variance Gamma's share and
+/// `[0, NIG_HEIGHT]` for NIG's height.
 pub(super) fn coordinate_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
   let mut bounds = param_bounds(model_type);
-  if let Some((tied, _, _)) = edges(model_type, &vec![0.0; bounds.len()]) {
-    bounds[tied] = (0.0, 1.0);
+  match model_type {
+    LevyModelType::VarianceGamma => bounds[2] = (0.0, 1.0),
+    LevyModelType::Nig => bounds[0] = (0.0, NIG_HEIGHT),
+    _ => {}
   }
   bounds
 }
 
-/// The model's parameters at the folded coordinates `c`, inside its `E[e^X] < ∞` at every share.
+/// The model's parameters at the folded coordinates `c`, inside its `E[e^X] < ∞` at every one.
 pub(super) fn to_values(model_type: LevyModelType, c: &[f64]) -> Vec<f64> {
   let mut values = c.to_vec();
   if let Some((tied, lower, upper)) = edges(model_type, c) {
-    // At `w = 1` the sum can round an ulp past the upper edge.
-    values[tied] = (lower + c[tied] * (upper - lower)).min(upper);
+    // At a share of 1 the sum can round an ulp past the upper edge.
+    values[tied] = (lower + c[tied] * rise(model_type, lower, upper)).min(upper);
   }
   values
 }
 
-/// [`to_values`]'s inverse at `values` clamped into their bounds: a tied parameter past its
-/// edge starts on it.
+/// [`to_values`]'s inverse at `values` clamped into their bounds: a tied parameter past an edge
+/// starts on it.
 pub(super) fn to_coordinates(model_type: LevyModelType, values: &[f64]) -> Vec<f64> {
-  let clamped = values.iter().zip(param_bounds(model_type));
+  let bounds = coordinate_bounds(model_type);
+  let clamped = values.iter().zip(&bounds);
   let mut c = clamped
-    .map(|(v, (lo, hi))| v.clamp(lo, hi))
+    .map(|(v, &(lo, hi))| v.clamp(lo, hi))
     .collect::<Vec<_>>();
   if let Some((tied, lower, upper)) = edges(model_type, &c) {
-    let share = (c[tied] - lower) / (upper - lower);
-    c[tied] = if upper > lower {
-      share.clamp(0.0, 1.0)
+    let ((lo, hi), slope) = (bounds[tied], rise(model_type, lower, upper));
+    c[tied] = if slope > 0.0 {
+      ((values[tied] - lower) / slope).clamp(lo, hi)
     } else {
-      0.0
+      lo
     };
   }
   c
@@ -92,7 +105,7 @@ pub(super) fn room_in_box(model_type: LevyModelType, x: ArrayView1<f64>) -> Room
 }
 
 /// `∂θ/∂x` of the parameters at the folded `c`: the folds' slopes, and the tied parameter's row
-/// through its share and the edge the others move.
+/// through its own coordinate and the edge the others move.
 pub(super) fn natural_jacobian(
   model_type: LevyModelType,
   c: &[f64],
@@ -102,17 +115,16 @@ pub(super) fn natural_jacobian(
   let Some((tied, lower, upper)) = edges(model_type, c) else {
     return jacobian;
   };
-  let share = c[tied];
-  jacobian[(tied, tied)] = (upper - lower) * folds[tied];
+  jacobian[(tied, tied)] = rise(model_type, lower, upper) * folds[tied];
   match model_type {
     LevyModelType::VarianceGamma if upper < param_bounds(model_type)[tied].1 => {
-      let rate = c[1] + 0.5 * c[0] * c[0];
+      let (share, rate) = (c[tied], c[1] + 0.5 * c[0] * c[0]);
       jacobian[(tied, 0)] = -share * upper * c[0] / rate * folds[0];
       jacobian[(tied, 1)] = -share * upper / rate * folds[1];
     }
     LevyModelType::Nig => {
       let rising = if c[1] >= -0.5 { 1.0 } else { -1.0 };
-      jacobian[(tied, 1)] = (1.0 - share) * rising * folds[1];
+      jacobian[(tied, 1)] = rising * folds[1];
     }
     _ => {}
   }
