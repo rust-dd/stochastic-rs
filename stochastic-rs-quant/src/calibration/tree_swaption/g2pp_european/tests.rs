@@ -226,3 +226,49 @@ fn the_variance_kernel_is_its_integral_on_every_branch() {
     );
   }
 }
+
+/// `μ_x, μ_y` at `σ = 0.01`, `η = 0.006`, `ρ = −0.7` against B&M's closed form in 50-digit mpmath,
+/// from the calibrator's `1e-6` reversion floor, where that form cancels to `1e-7`.
+#[test]
+fn the_forward_means_hold_at_small_reversion() {
+  for (reversion, expiry, mu_x, mu_y) in [
+    (1e-6, 0.01, -2.8999999710000005e-9, 2.999999969999999e-10),
+    (1e-6, 1.0, -2.8999971000016918e-5, 2.999997000001749e-6),
+    (1e-6, 5.0, -0.0007249963750105729, 7.499962500109372e-5),
+    (1e-6, 30.0, -0.026099217013702325, 0.0026999190014174806),
+    (1e-4, 0.01, -2.8999971000016922e-9, 2.999997000001749e-10),
+    (1e-4, 1.0, -2.899710016915942e-5, 2.9997000174992486e-6),
+    (1e-4, 5.0, -0.0007246376057065143, 7.496251093515663e-5),
+    (1e-4, 30.0, -0.026021836849006892, 0.002691914156793815),
+  ] {
+    let m = ForwardMoments::new(&params(reversion, reversion, 0.01, 0.006, -0.7), expiry);
+    for (got, want) in [(m.mu_x, mu_x), (m.mu_y, mu_y)] {
+      assert!(
+        (got / want - 1.0).abs() <= 1e-14,
+        "a = b = {reversion}, T = {expiry}: {got} against {want}"
+      );
+    }
+  }
+}
+
+/// Against `(f(u) − f(u + v))/v` in 50-digit mpmath, on the series and on the closed form.
+#[test]
+fn the_mean_kernel_is_its_divided_difference_on_both_branches() {
+  for (u, v, want) in [
+    (1e-6, 1e-6, 0.49999950000029164),
+    (1e-5, 3e-3, 0.499497045201266),
+    (0.3, 1.2, 0.2883550315221336),
+    (1.2, 0.3, 0.2147497672403938),
+    (1.0, 1.0, 0.19978820044686402),
+    (2.5, 0.7, 0.09629169899097133),
+    (1e-3, 40.0, 0.024362519790234592),
+    (40.0, 1e-3, 0.0006249843753906152),
+    (90.0, 30.0, 9.259259259259259e-5),
+  ] {
+    let got = mean_kernel(u, v);
+    assert!(
+      (got / want - 1.0).abs() <= 4.0 * f64::EPSILON,
+      "({u}, {v}): {got} against {want}"
+    );
+  }
+}

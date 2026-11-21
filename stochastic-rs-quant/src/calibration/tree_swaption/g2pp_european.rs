@@ -85,6 +85,30 @@ fn variance_kernel(u: f64, v: f64) -> f64 {
   (v * omega - difference) / (u * v)
 }
 
+/// `(f(u) − f(u + v))/v = ∫₀¹ e^{−us} s f(vs) ds`, `f(x) = (1 − e^{−x})/x`: the `ρ` term of the
+/// forward means, whose closed form cancels to `O(u + v)`, so `u + v ≤ 2` takes its series.
+fn mean_kernel(u: f64, v: f64) -> f64 {
+  let s = u + v;
+  if s <= 2.0 {
+    // Σ_{k≥1} (−1)^{k+1} Q_k/(k + 1)!, Q_k = ((u + v)^k − u^k)/v.
+    let (mut q, mut u_power) = (1.0, u);
+    let (mut factorial, mut sign, mut sum) = (2.0, 1.0, 0.0_f64);
+    for k in 1..60 {
+      let term = sign * q / factorial;
+      sum += term;
+      if term.abs() < 0.01 * f64::EPSILON * sum.abs() {
+        break;
+      }
+      q = s * q + u_power;
+      u_power *= u;
+      factorial *= (k + 2) as f64;
+      sign = -sign;
+    }
+    return sum;
+  }
+  (u * (-u).exp() * (-v).exp_m1() - v * (-u).exp_m1()) / (u * v * s)
+}
+
 /// `V(t, t + τ)`, the variance of `∫(x + y)` over `τ`.
 fn integrated_variance(p: &G2ppParams, tau: f64) -> f64 {
   let (u, v) = (p.mean_reversion_x * tau, p.mean_reversion_y * tau);
@@ -115,13 +139,12 @@ impl ForwardMoments {
     let sigma_x = sigma * (decay(2.0 * a) / (2.0 * a)).sqrt();
     let sigma_y = eta * (decay(2.0 * b) / (2.0 * b)).sqrt();
     let cross = rho * sigma * eta;
+    let (b_x, b_y) = (loading(a, t), loading(b, t));
+    let (u, v) = (a * t, b * t);
+    // B&M's `−M^T(0, T)` with `(1 − e^{−aT}) − (1 − e^{−2aT})/2 = (1 − e^{−aT})²/2`.
     Self {
-      mu_x: -((sigma * sigma / (a * a) + cross / (a * b)) * decay(a)
-        - 0.5 * sigma * sigma / (a * a) * decay(2.0 * a)
-        - cross / (b * (a + b)) * decay(a + b)),
-      mu_y: -((eta * eta / (b * b) + cross / (a * b)) * decay(b)
-        - 0.5 * eta * eta / (b * b) * decay(2.0 * b)
-        - cross / (a * (a + b)) * decay(a + b)),
+      mu_x: -(0.5 * sigma * sigma * b_x * b_x + cross * t * t * mean_kernel(u, v)),
+      mu_y: -(0.5 * eta * eta * b_y * b_y + cross * t * t * mean_kernel(v, u)),
       sigma_x,
       sigma_y,
       rho_xy: cross * decay(a + b) / ((a + b) * sigma_x * sigma_y),
