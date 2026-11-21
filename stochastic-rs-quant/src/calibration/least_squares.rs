@@ -171,6 +171,25 @@ pub(crate) fn cosines<P: LeastSquaresProblem>(
   Some(column_cosines(&residuals, &pulled_jacobian(problem, pull)?))
 }
 
+/// [`cosines`] from `jacobian`, `∂r/∂θ` in the natural parameters: a coordinate whose map has
+/// rounded onto its bound keeps a column there, where the optimiser's coordinates zero it.
+pub(crate) fn natural_cosines<P: LeastSquaresProblem>(
+  problem: &mut P,
+  jacobian: Array2<f64>,
+  pull: Option<&Regularization>,
+) -> Option<Vec<f64>> {
+  let pull = pull.filter(|reg| reg.is_active());
+  let residuals = pulled_residuals(problem, pull)?;
+  let jacobian = match pull {
+    Some(reg) => {
+      let rows = reg.jacobian_rows(Array2::eye(jacobian.ncols()));
+      reg.augment_jacobian(jacobian, rows)
+    }
+    None => jacobian,
+  };
+  Some(column_cosines(&residuals, &jacobian))
+}
+
 impl LmReport {
   /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
   pub fn message(&self) -> &'static str {

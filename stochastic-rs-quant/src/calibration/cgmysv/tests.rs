@@ -329,3 +329,24 @@ fn a_stop_on_a_bound_the_cost_pulls_away_from_is_reseated() {
       .is_none()
   );
 }
+
+/// From `ρ₀ = 5` the steps throw `ρ` onto `−5`, where its logistic slope rounds to 0 while the
+/// quotes pull it inward: unseated, the fit ends there `converged` inside the 150 iterations.
+#[test]
+fn a_coordinate_rounded_onto_its_bound_is_still_reseated() {
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau))
+    .with_options(CalibrationOptions::default().with_max_iterations(150));
+  let mut start = default_params();
+  start[6] = 5.0;
+  let fit = calibrator
+    .calibrate(Some(to_cgmysv_params(&start)))
+    .unwrap();
+  let on_bound = fit.params.rho + 5.0 < 1e-3 * 10.0;
+  assert!(
+    !(fit.converged && on_bound),
+    "{:?}: {:?}",
+    fit.message,
+    fit.params
+  );
+}

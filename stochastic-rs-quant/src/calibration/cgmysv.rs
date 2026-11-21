@@ -23,7 +23,7 @@ use crate::calibration::Regularization;
 use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
-use crate::calibration::least_squares::cosines;
+use crate::calibration::least_squares::natural_cosines;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
 use crate::calibration::quote::validate_quotes;
@@ -308,10 +308,11 @@ impl<'a> CgmysvProblem<'a> {
     jacobian
   }
 
-  /// The stop with each saturated coordinate the cost pulls inward re-seated inside its bounds,
-  /// and the first such parameter; `None` when none is.
+  /// The stop with each saturated coordinate the cost pulls inward, read in the natural parameters,
+  /// re-seated inside its bounds, and the first such parameter; `None` when none is.
   fn reseated(&mut self, pull: Option<&Regularization>) -> Option<(Vec<f64>, usize)> {
-    let cosines = cosines(self, pull)?;
+    let jacobian = self.difference_jacobian(1.0);
+    let cosines = natural_cosines(self, jacobian, pull)?;
     let bounds = param_bounds();
     let place = self.params.iter().zip(bounds);
     let mut units = place
