@@ -294,7 +294,7 @@ impl<S: SeedExt> HestonMalliavinEstimator<S> {
         self.model.params.v0,
         self.config.initial_variance_bump,
         self.config.minimum_relative_initial_variance_bump,
-      )?,
+      ),
       initial_variance_vega,
       comparison_statistics.finish()?,
       bump_difference_statistics.finish()?,
@@ -328,7 +328,7 @@ impl<S: SeedExt> HestonMalliavinEstimator<S> {
       self.model.params.v0,
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
-    )?;
+    );
     let comparison_bump = 0.5 * effective_bump;
     let base = simulate_path(
       self.model,

@@ -4,6 +4,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::HestonMalliavinConfig;
 use super::HestonModel;
+use super::variance_vega::effective_initial_variance_bump;
 use crate::QuantError;
 use crate::pricing::heston::HestonParams;
 
@@ -159,7 +160,7 @@ pub(super) fn assert_config<S: SeedExt>(model: HestonModel, config: &HestonMalli
      `(0.0..1.0).contains(&minimum_relative_initial_variance_bump)`, got \
      minimum_relative_initial_variance_bump = {relative:?}"
   );
-  let effective = bump.max(relative * model.params.v0);
+  let effective = effective_initial_variance_bump(model.params.v0, bump, relative);
   assert!(
     effective < model.params.v0,
     "the effective initial-variance bump must satisfy `max(initial_variance_bump, \

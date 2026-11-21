@@ -50,7 +50,16 @@ pub struct HestonInitialVarianceVegaDiagnostics {
   pub stability: HestonInitialVarianceVegaStability,
 }
 
+/// The bump the CRN vega takes, `max(requested, relative · v0)`, on inputs its caller has checked.
 pub(super) fn effective_initial_variance_bump(
+  initial_variance: f64,
+  requested_bump: f64,
+  minimum_relative_bump: f64,
+) -> f64 {
+  requested_bump.max(minimum_relative_bump * initial_variance)
+}
+
+pub(super) fn checked_initial_variance_bump(
   initial_variance: f64,
   requested_bump: f64,
   minimum_relative_bump: f64,
@@ -65,7 +74,8 @@ pub(super) fn effective_initial_variance_bump(
       "minimum_relative_initial_variance_bump must lie in [0, 1), got {minimum_relative_bump}"
     )));
   }
-  let effective = requested_bump.max(minimum_relative_bump * initial_variance);
+  let effective =
+    effective_initial_variance_bump(initial_variance, requested_bump, minimum_relative_bump);
   if effective >= initial_variance {
     return Err(invalid_input(format!(
       "effective initial-variance bump must be smaller than initial_variance = \
