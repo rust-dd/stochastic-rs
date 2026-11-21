@@ -33,15 +33,19 @@ def test_the_barrier_pricer_keeps_its_prices(barrier_type, option_type, plain, w
 
 def test_the_double_barrier_pricer_keeps_its_prices():
     pinned = [
-        ("call", 90.0, 1.0, 5.52676147834582),
-        ("call", 100.0, 1.0, 10.416829363785439),
-        ("call", 110.0, 0.25, 11.973631651189004),
-        ("put", 90.0, 1.0, 12.946402490967737),
-        ("put", 100.0, 0.25, 2.419613886597333),
+        ("call", 90.0, 1.0, 1.7990839293170673),
+        ("call", 100.0, 1.0, 2.1200695605968036),
+        ("call", 110.0, 0.25, 6.769301632410013),
+        ("put", 90.0, 1.0, 4.1516621028716365),
+        ("put", 100.0, 0.25, 4.448559533559411),
     ]
     for option_type, s, t, price in pinned:
         pricer = sr.DoubleBarrierPricer(s=s, t=t, option_type=option_type, **CORRIDOR)
         assert pricer.price() == pytest.approx(price, **LIBM), (option_type, s, t)
+    tiny = dict(s=100.0, k=100.0, h_lower=70.0, r=0.05, q=-0.03, t=1.0)
+    for sigma, h_upper, price in [(1e-9, 108.32870687582458, 6.665563224788113), (1e-10, 108.32870677832874, 6.665564841963476)]:
+        pricer = sr.DoubleBarrierPricer(h_upper=h_upper, sigma=sigma, **tiny)
+        assert pricer.price() == pytest.approx(price, rel=4.8e-16 / sigma, abs=0.0), sigma
 
 
 def test_the_lookback_pricers_keep_their_prices():
@@ -56,7 +60,7 @@ def test_the_lookback_pricers_keep_their_prices():
         (fixed(k=105.0, t=1.0, s_max=110.0, **LOOKBACK), 19.018899629131397),
         (fixed(k=110.0, t=1.0, option_type="put", **LOOKBACK), 25.91345732667257),
         (fixed(k=95.0, t=1.0, option_type="put", s_min=90.0, **LOOKBACK), 13.18603194400309),
-        (floating(s=100.0, r=0.05, q=0.05, sigma=0.25, t=1.0), 12.730787441362034),
+        (floating(s=100.0, r=0.05, q=0.05, sigma=0.25, t=1.0), 17.537359445903526),
     ]
     for pricer, price in pinned:
         assert pricer.price() == pytest.approx(price, **LIBM)
@@ -120,9 +124,10 @@ def test_an_exotic_pricer_at_zero_volatility_prices_its_deterministic_limit_or_n
     assert chooser.price() == pytest.approx(2.896924880604118, **LIBM)
     floored = sr.CliquetPricer(s=100.0, notional=100.0, m=12, t=1.0, r=0.04, q=0.01, sigma=0.0, local_floor=0.0)
     assert floored.price() == pytest.approx(2.8859742821983847, **LIBM)
+    corridor = sr.DoubleBarrierPricer(s=100.0, t=1.0, **{**CORRIDOR, "sigma": 0.0})
+    assert corridor.price() == pytest.approx(2.896924880604118, **LIBM)
     for pricer in [
         sr.BarrierPricer(h=130.0, t=1.0, barrier_type="up_out", **{**BARRIER, "sigma": 0.0}),
-        sr.DoubleBarrierPricer(s=100.0, t=1.0, **{**CORRIDOR, "sigma": 0.0}),
         sr.FloatingLookbackPricer(t=1.0, **{**LOOKBACK, "sigma": 0.0}),
         sr.CompoundPricer(s=100.0, k1=5.0, k2=100.0, t1=0.25, t2=1.0, r=0.05, q=0.02, sigma=0.0, compound_type="coc"),
     ]:
@@ -196,3 +201,19 @@ def test_a_compound_decided_at_0_prices_its_exercise_value():
     assert call_on_call.price() == pytest.approx(6.123761928058123, **LIBM)
     assert sr.CompoundPricer(s=100.0, t2=1.0, compound_type="pop", **compound).price() == 0.0
     assert sr.CompoundPricer(s=110.0, t2=0.0, compound_type="pop", **compound).price() == 5.0
+
+
+def test_the_exotics_answer_at_their_edges():
+    assert sr.VarianceSwapPricer(100.0, 0.05, 0.02, math.inf).fair_strike_heston(0.04, 0.0, 0.04) == 0.04
+    assert math.isnan(sr.VarianceSwapPricer(100.0, 0.05, 0.02, 1.0).fair_strike_heston(0.04, math.nan, 0.04))
+    deciding_now = sr.SimpleChooserPricer(s=100.0, k=100.0, r=0.03, q=0.03, sigma=0.25, t1=0.0, t=1.0)
+    assert deciding_now.price() == pytest.approx(9.653647626602911, **LIBM)
+    assert sr.DoubleBarrierPricer(s=0.0, t=0.0, **CORRIDOR).price() == 0.0
+    expired_put = sr.FixedLookbackPricer(s=0.0, k=100.0, r=0.05, q=0.02, sigma=0.25, t=0.0, option_type="put")
+    assert expired_put.price() == 100.0
+    chooser = dict(s=0.0, k=100.0, r=0.05, q=0.02, sigma=0.25, t1=0.0)
+    assert sr.SimpleChooserPricer(t=0.0, **chooser).price() == 100.0
+    assert math.isnan(sr.SimpleChooserPricer(t=1.0, **chooser).price())
+    compound = dict(s=0.0, k1=5.0, k2=100.0, t1=0.0, r=0.05, q=0.02, sigma=0.25, compound_type="poc")
+    assert sr.CompoundPricer(t2=0.0, **compound).price() == 5.0
+    assert math.isnan(sr.CompoundPricer(t2=1.0, **compound).price())

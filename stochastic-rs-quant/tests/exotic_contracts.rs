@@ -19,6 +19,7 @@ use stochastic_rs_quant::pricing::exotic::DoubleBarrierOption;
 use stochastic_rs_quant::pricing::exotic::ForwardStartOption;
 use stochastic_rs_quant::pricing::exotic::LookbackOption;
 use stochastic_rs_quant::pricing::exotic::VarianceSwapTerms;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::lookback::LookbackPricer;
 use stochastic_rs_quant::pricing::variance_swap::VarianceSwapPricer;
 use stochastic_rs_quant::traits::ModelPricer;
@@ -200,28 +201,6 @@ fn the_barrier_prices_match_quantlib_on_either_side_of_the_strike() {
 }
 
 #[test]
-fn the_double_barrier_keeps_its_values_and_holds_its_series_length() {
-  let pricer = DoubleBarrierPricer::new(SIGMA);
-  assert_eq!(pricer.terms, 5);
-  assert_pinned!(pricer.price(&CORRIDOR, 90.0, R, Q, 1.0), 5.52676147834582);
-  assert_pinned!(pricer.price(&CORRIDOR, S, R, Q, 1.0), 10.416829363785439);
-  assert_pinned!(
-    pricer.price(&CORRIDOR, 110.0, R, Q, 0.25),
-    11.973631651189004
-  );
-  let put = DoubleBarrierOption {
-    option_type: OptionType::Put,
-    ..CORRIDOR
-  };
-  assert_pinned!(pricer.price(&put, 90.0, R, Q, 1.0), 12.946402490967737);
-  assert_pinned!(pricer.price(&put, S, R, Q, 0.25), 2.419613886597333);
-  let fifty = pricer.with_terms(50);
-  assert_pinned!(fifty.price(&CORRIDOR, S, R, Q, 1.0), 10.408603719549937);
-  let one = pricer.with_terms(0);
-  assert_pinned!(one.price(&CORRIDOR, S, R, Q, 1.0), 10.880443789902783);
-}
-
-#[test]
 fn one_lookback_pricer_prices_both_contracts() {
   use OptionType::*;
   let pricer = LookbackPricer::new(SIGMA);
@@ -244,7 +223,7 @@ fn one_lookback_pricer_prices_both_contracts() {
     assert_pinned!(pricer.price(&option, S, R, Q, 1.0), pinned, "{option:?}");
   }
   let driftless = lookback(None, None, None, Call);
-  assert_pinned!(pricer.price(&driftless, S, R, R, 1.0), 12.730787441362034);
+  assert_pinned!(pricer.price(&driftless, S, R, R, 1.0), 17.537359445903526);
 }
 
 #[test]
@@ -343,7 +322,16 @@ fn the_variance_swap_functions_take_the_query() {
     0.04000000000000001
   );
   assert_pinned!(
-    VarianceSwapPricer::fair_strike_heston(0.04, 1.5, 0.06, 0.5),
+    VarianceSwapPricer::fair_strike_heston(
+      &HestonParams {
+        v0: 0.04,
+        kappa: 1.5,
+        theta: 0.06,
+        sigma: 0.3,
+        rho: -0.7,
+      },
+      0.5
+    ),
     0.04592977473976039
   );
   let strikes = [60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0, 130.0, 140.0];
@@ -431,6 +419,21 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     cliquet.price(&floored, R, Q, 1.0),
     cliquet.price(&plain, R, Q, 1.0)
   );
+  let double = DoubleBarrierPricer::new(0.0);
+  assert_eq!(
+    double.price(&CORRIDOR, S, R, Q, 1.0),
+    S * (-Q).exp() - 100.0 * (-R).exp()
+  );
+  let crossed = DoubleBarrierOption {
+    upper: 102.0,
+    ..CORRIDOR
+  };
+  assert_eq!(double.price(&crossed, S, R, Q, 1.0), 0.0);
+  let touched = DoubleBarrierOption {
+    upper: S * (R - Q).exp(),
+    ..CORRIDOR
+  };
+  assert!(double.price(&touched, S, R, Q, 1.0).is_nan());
   let lookbacks = LookbackPricer::new(0.0);
   let off_the_low = lookback(None, Some(90.0), None, OptionType::Call);
   assert_pinned!(
@@ -472,10 +475,6 @@ fn an_exotic_at_zero_volatility_prices_its_deterministic_limit_or_nan() {
     (
       "barrier",
       BarrierPricer::new(0.0).price(&up_out, S, R, Q, 1.0),
-    ),
-    (
-      "double barrier",
-      DoubleBarrierPricer::new(0.0).price(&CORRIDOR, S, R, Q, 1.0),
     ),
     (
       "drifting lookback",

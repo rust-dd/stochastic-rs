@@ -15,6 +15,7 @@
 //!
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
 use crate::pricing::exotic::LookbackOption;
@@ -29,21 +30,24 @@ pub struct LookbackPricer {
 }
 
 impl LookbackPricer {
-  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but a carry within `1e-10` of 0 prices
-  /// its deterministic limit while the spot is off the extreme the payoff compares it with.
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but a zero carry prices its
+  /// deterministic limit while the spot is off the extreme the payoff compares it with.
   pub fn new(sigma: f64) -> Self {
     assert_sigma(sigma);
     Self { sigma }
   }
 
-  /// Price of `option` at the query `(s, r, q, tau)`; at `tau = 0` its payoff on the running
-  /// extremes, and NaN for a negative or NaN `tau` or a NaN running extreme.
+  /// Price of `option` at `(s, r, q, tau)`: the payoff on its running extremes at `tau = 0`, NaN
+  /// for a negative or NaN `tau`, a NaN running extreme or a spot that is not positive before then.
   pub fn price(&self, option: &LookbackOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
-    if !(s > 0.0 && tau >= 0.0) || r.is_nan() || q.is_nan() {
+    if s.is_nan() || tau.is_nan() || tau < 0.0 || r.is_nan() || q.is_nan() {
       return f64::NAN;
     }
     if tau == 0.0 {
       return Self::payoff(option, s);
+    }
+    if s <= 0.0 {
+      return f64::NAN;
     }
     match option.strike {
       None => self.floating(option, s, r, q, tau),
@@ -77,8 +81,12 @@ impl LookbackPricer {
         let term1 = s * (-q * tau).exp() * norm_cdf(a1);
         let term2 = s_min * (-r * tau).exp() * norm_cdf(a1 - sigma * sqrt_t);
 
-        let premium = if b.abs() < 1e-10 {
-          s * (-r * tau).exp() * sigma * sqrt_t * norm_cdf(a1).max(0.0) * sigma
+        let premium = if let Some((lambda, delta)) = near_driftless(b, sigma, sqrt_t) {
+          let ln_ratio = (s / s_min).ln();
+          let slope = normal_slope(-a1 + 0.5 * delta, sigma * sqrt_t, delta);
+          let carry = expm1_over(lambda, ln_ratio + 0.5 * sigma2 * tau);
+          s * (-r * tau).exp()
+            * ((-lambda * ln_ratio).exp() * slope + norm_cdf(-a1) * (b * tau).exp() * carry)
         } else {
           let coeff = s * (-r * tau).exp() * sigma2 / (2.0 * b);
           let bracket = (s / s_min).powf(-2.0 * b / sigma2)
@@ -96,8 +104,12 @@ impl LookbackPricer {
         let term1 = s_max * (-r * tau).exp() * norm_cdf(-b1 + sigma * sqrt_t);
         let term2 = s * (-q * tau).exp() * norm_cdf(-b1);
 
-        let premium = if b.abs() < 1e-10 {
-          s * (-r * tau).exp() * sigma * sqrt_t * norm_cdf(-b1).max(0.0) * sigma
+        let premium = if let Some((lambda, delta)) = near_driftless(b, sigma, sqrt_t) {
+          let ln_ratio = (s / s_max).ln();
+          let slope = normal_slope(b1 - 0.5 * delta, sigma * sqrt_t, delta);
+          let carry = expm1_over(lambda, ln_ratio + 0.5 * sigma2 * tau);
+          s * (-r * tau).exp()
+            * ((-lambda * ln_ratio).exp() * slope - norm_cdf(b1) * (b * tau).exp() * carry)
         } else {
           let coeff = s * (-r * tau).exp() * sigma2 / (2.0 * b);
           let bracket = (b * tau).exp() * norm_cdf(b1)
@@ -137,6 +149,38 @@ impl LookbackPricer {
         self.floating(&floating_call, s, r, q, tau) + k * (-r * tau).exp() - s * (-q * tau).exp()
       }
     }
+  }
+}
+
+/// `λ = 2b/σ²` and `δ = λσ√τ` where `|δ| < 0.01`: there the bracket of the formula above cancels
+/// to `O(λ)`, so its two parts are divided by `λ` apart, which at `b = 0` is the formula's limit.
+fn near_driftless(b: f64, sigma: f64, sqrt_t: f64) -> Option<(f64, f64)> {
+  let lambda = if b == 0.0 {
+    0.0
+  } else {
+    2.0 * b / (sigma * sigma)
+  };
+  let delta = lambda * sigma * sqrt_t;
+  (b == 0.0 || delta.abs() < 1e-2).then_some((lambda, delta))
+}
+
+/// `(N(m + δ/2) − N(m − δ/2))/λ` by the midpoint rule's series, whose next term is `O(δ⁶)`.
+fn normal_slope(m: f64, sigma_sqrt_t: f64, delta: f64) -> f64 {
+  if delta == 0.0 {
+    return sigma_sqrt_t * norm_pdf(m);
+  }
+  let (d2, m2) = (delta * delta, m * m);
+  sigma_sqrt_t
+    * norm_pdf(m)
+    * (1.0 + d2 * (m2 - 1.0) / 24.0 + d2 * d2 * (m2 * m2 - 6.0 * m2 + 3.0) / 1920.0)
+}
+
+/// `(e^{-λc} − 1)/λ`, `−c` at `λ = 0`.
+fn expm1_over(lambda: f64, c: f64) -> f64 {
+  if lambda == 0.0 {
+    -c
+  } else {
+    (-lambda * c).exp_m1() / lambda
   }
 }
 

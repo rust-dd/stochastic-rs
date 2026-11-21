@@ -26,6 +26,8 @@
 //! - Demeterfi, K., Derman, E., Kamal, M. & Zou, J. (1999),
 //!   "More Than You Ever Wanted to Know About Volatility Swaps", Goldman Sachs.
 //! - Brockhaus, O. & Long, D. (2000), "Volatility Swaps Made Simple", Risk 13.
+//! - Swishchuk, A. & Wang, Z. (2017), "Variance and Volatility Swaps and Futures Pricing for
+//!   Stochastic Volatility Models", arXiv:1712.02735, eqs. 10–13: Brockhaus–Long for Heston.
 //! - Bernard, C. & Cui, Z. (2013), "Prices and Asymptotics for Discrete
 //!   Variance Swaps", arXiv:1305.7092.
 //! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",
@@ -107,17 +109,20 @@ impl VarianceSwapPricer {
     if fair.is_nan() { fair } else { fair.max(0.0) }
   }
 
-  /// Brockhaus–Long continuous-monitoring fair strike, which reads only `v0`, `kappa` and `theta`;
-  /// `v0` at `tau = 0`, the genuine limit, and NaN for a negative or NaN `tau`.
-  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, tau: f64) -> f64 {
+  /// Brockhaus–Long continuous-monitoring fair strike, reading `v0`, `kappa` and `theta`: `v0` at
+  /// `tau = 0`, at `kappa = 0` and at `v0 = theta`, and NaN for a negative or NaN `tau`.
+  pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
+    let HestonParams {
+      v0, kappa, theta, ..
+    } = *params;
     if tau.is_nan() || tau < 0.0 {
       return f64::NAN;
     }
-    if tau == 0.0 {
+    let x = if kappa == 0.0 { 0.0 } else { kappa * tau };
+    if tau == 0.0 || (v0 == theta && !x.is_nan()) {
       return v0;
     }
-    let factor = discrete::mean_reversion_factor(kappa * tau);
-    theta + (v0 - theta) * factor
+    theta + (v0 - theta) * discrete::mean_reversion_factor(x)
   }
 
   /// [`fair_strike_heston`](Self::fair_strike_heston) plus Bernard–Cui's first-order correction
@@ -136,7 +141,7 @@ impl VarianceSwapPricer {
       sigma,
       rho,
     } = *params;
-    let cont = Self::fair_strike_heston(v0, kappa, theta, tau);
+    let cont = Self::fair_strike_heston(params, tau);
     if n_obs == 0 {
       return cont;
     }
@@ -222,28 +227,19 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston vol strike: the variance strike's root less a convexity correction (none at `tau = 0`,
-  /// a zero strike or kappa ≈ 0); NaN where either is NaN, panics on a negative variance strike.
-  pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
-    let k_var = VarianceSwapPricer::fair_strike_heston(v0, kappa, theta, tau);
-    if k_var.is_nan() {
+  /// Brockhaus–Long's `√K − Var(V)/(8K^{3/2})`, within 0.5 % of `E√V` while `Var(V) ≤ K²/4`; NaN
+  /// past `Var(V) = 8K²`, where it turns negative, and for a negative variance strike `K`.
+  pub fn fair_strike_heston(params: &HestonParams, tau: f64) -> f64 {
+    let k_var = VarianceSwapPricer::fair_strike_heston(params, tau);
+    if k_var.is_nan() || k_var < 0.0 {
       return f64::NAN;
     }
-    assert!(
-      k_var >= 0.0,
-      "k_var must satisfy `k_var >= 0.0`, got k_var = {k_var:?}"
-    );
-    if tau == 0.0 || k_var == 0.0 || kappa.abs() < 1e-10 {
+    if tau == 0.0 || k_var == 0.0 {
       return k_var.sqrt();
     }
-    let dispersion = (sigma * sigma * (v0 - theta).powi(2) * (1.0 - (-2.0 * kappa * tau).exp()))
-      / (2.0 * kappa.powi(3) * tau * tau);
-    let floored = if dispersion.is_nan() {
-      dispersion
-    } else {
-      dispersion.max(0.0)
-    };
-    Self::fair_strike_from_var(k_var, floored)
+    let k_vol =
+      Self::fair_strike_from_var(k_var, discrete::realized_variance_variance(params, tau));
+    if k_vol < 0.0 { f64::NAN } else { k_vol }
   }
 }
 
