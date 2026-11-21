@@ -71,6 +71,7 @@ impl HkdeParams {
         "theta.is_finite() && theta >= 0.0",
         theta.is_finite() && theta >= 0.0,
       ),
+      ("kappa", kappa, "kappa * theta >= 0.0", kappa * theta >= 0.0),
       (
         "sigma",
         sigma,
@@ -241,6 +242,7 @@ impl SvjParams {
         "theta.is_finite() && theta >= 0.0",
         theta.is_finite() && theta >= 0.0,
       ),
+      ("kappa", kappa, "kappa * theta >= 0.0", kappa * theta >= 0.0),
       (
         "sigma",
         sigma,
