@@ -184,7 +184,7 @@ Every new `pub struct` and `pub enum` must have:
 
 | Rule | Detail |
 |---|---|
-| Generic float | All numerical structs/functions use `T: FloatExt`. Never hardcode `f64`. Use `T::from_f64_fast()` for constants. |
+| Generic float | In `stochastic-rs-distributions` and `stochastic-rs-stochastic`, numerical structs and functions use `T: FloatExt`, never a hardcoded `f64`, and `T::from_f64_fast()` for constants. In quant, what implements a pricer or calibrator trait is `f64`, and `T: RealExt` stays where it is (dev-rules §2). |
 | Arrays | Use `ndarray::Array1<T>`, `Array2<T>`. Never `Vec<T>` for numerical data. |
 | Day fractions | Use `DayCountConvention::year_fraction()` or `TimeExt::tau_with_dcc()`. Never hardcode `/365.0` or `/360.0`. |
 | Annualisation | Accept the factor as a parameter. Never hardcode `252.0` or `365.0`. |
@@ -273,7 +273,7 @@ Before marking a new module as done:
 - [ ] Placed in the correct **sub-crate** (`stochastic-rs-stochastic`, `-quant`, `-stats`, `-distributions`, `-copulas`, `-core`, `-ai`) — see §1; the umbrella `src/` is not where code goes
 - [ ] Module root has LaTeX doc header and re-exports
 - [ ] Registered in the parent module's `.rs` file (alphabetical order)
-- [ ] All numerical code generic over `FloatExt`, arrays use `ndarray`
+- [ ] Numerical code in distributions and stochastic generic over `FloatExt` (quant's pricer and calibrator layer is `f64`), arrays use `ndarray`
 - [ ] Correct domain traits implemented (see §2 trait integration map)
 - [ ] Extensibility points use traits, not concrete types (see §3)
 - [ ] `Debug`, `Clone`, `Display`, `Default` derives on public types
