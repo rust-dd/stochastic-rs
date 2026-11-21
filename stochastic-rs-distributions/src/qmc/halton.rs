@@ -1,11 +1,9 @@
-//! # Halton Sequence
+//! Halton sequence: van der Corput sequences in successive prime bases.
 //!
 //! $$
 //! x_n^{(j)} = \sum_{k=0}^{\infty} d_k(n)\,p_j^{-(k+1)},\quad
 //! n = \sum_{k=0}^{\infty} d_k(n)\,p_j^k
 //! $$
-//!
-//! Van der Corput sequences in successive prime bases.
 //!
 //! Reference: Halton (1964), DOI: 10.1007/BF01386213
 

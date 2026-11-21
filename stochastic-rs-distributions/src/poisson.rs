@@ -1,10 +1,8 @@
-//! # Poisson
+//! Poisson law, sampled by table inversion below `λ = 1000` and by Hörmann's PTRS from it on.
 //!
 //! $$
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
-//!
-//! Sampling: table inversion below λ = 1000, Hörmann's PTRS from it on.
 //!
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
 //! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.

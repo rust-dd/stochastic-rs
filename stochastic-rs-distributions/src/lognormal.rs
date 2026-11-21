@@ -1,4 +1,4 @@
-//! # Lognormal
+//! Lognormal law of `e^Y` for a normal `Y` with mean `μ` and standard deviation `σ`.
 //!
 //! $$
 //! f(x)=\frac{1}{x\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(\ln x-\mu)^2}{2\sigma^2}\right),\ x>0
