@@ -125,9 +125,8 @@ fn calls(model: LevyModelType, truth: &[f64], rounded: bool) -> Vec<OptionQuote>
     .collect()
 }
 
-/// Each start's fit runs onto its domain's edge. A `converged` fit above the pricer's noise,
-/// which is where a fit to its own model's unrounded prices ends, is improved tenfold neither
-/// from its own point nor from one a tenth further inside.
+/// Each start's fit runs onto its domain's edge: a `converged` fit above the pricer's noise is
+/// improved tenfold neither from its own point nor from one a tenth further inside.
 #[test]
 fn a_fit_on_its_domains_edge_is_not_converged_where_the_cost_falls_inside() {
   let nig_start = vec![47.68619895060727, 5.121723141418705, 2.8522282392243885];
