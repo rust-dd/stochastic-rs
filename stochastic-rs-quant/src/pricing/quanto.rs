@@ -14,6 +14,7 @@ use crate::OptionType;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::exotic::assert_sigma;
 use crate::traits::ModelPricer;
 
 /// Quanto option pricer holding both volatilities, their correlation, the foreign rate and the
@@ -34,7 +35,26 @@ pub struct QuantoPricer {
 }
 
 impl QuantoPricer {
-  pub const fn new(sigma: f64, sigma_fx: f64, rho: f64, r_f: f64, fixed_rate: f64) -> Self {
+  /// Panics unless both volatilities are finite and `>= 0`, `rho ∈ [−1, 1]`, `r_f` is finite and
+  /// `fixed_rate` finite and positive.
+  pub fn new(sigma: f64, sigma_fx: f64, rho: f64, r_f: f64, fixed_rate: f64) -> Self {
+    assert_sigma(sigma);
+    assert!(
+      sigma_fx.is_finite() && sigma_fx >= 0.0,
+      "sigma_fx must satisfy `sigma_fx.is_finite() && sigma_fx >= 0.0`, got sigma_fx = {sigma_fx:?}"
+    );
+    assert!(
+      (-1.0..=1.0).contains(&rho),
+      "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
+    );
+    assert!(
+      r_f.is_finite(),
+      "r_f must satisfy `r_f.is_finite()`, got r_f = {r_f:?}"
+    );
+    assert!(
+      fixed_rate.is_finite() && fixed_rate > 0.0,
+      "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate > 0.0`, got fixed_rate = {fixed_rate:?}"
+    );
     Self {
       sigma,
       sigma_fx,
@@ -103,7 +123,10 @@ mod tests {
 
   /// Haug (2007) §2.13.4 example inputs: `S = 100, K = 105, E_p = 1.5,
   /// τ = 0.5, r = 0.08, r_f = 0.05, q = 0.04, σ_S = 0.2, σ_E = 0.12, ρ = 0.3`.
-  const MODEL: QuantoPricer = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 1.5);
+  fn model() -> QuantoPricer {
+    QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 1.5)
+  }
+
   const Q: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.08, 0.04, 0.5);
 
   /// Reiner's formula by scipy 1.x at `b = 0.05 − 0.04 − 0.3·0.2·0.12`: call `5.2936847941`, put
@@ -112,31 +135,31 @@ mod tests {
   fn matches_the_reiner_formula_on_the_haug_example() {
     let (s, k, r, q, tau) = Q;
     let (call, put) = (
-      MODEL.price_call(s, k, r, q, tau),
-      MODEL.price_put(s, k, r, q, tau),
+      model().price_call(s, k, r, q, tau),
+      model().price_put(s, k, r, q, tau),
     );
     assert!((call - 5.2936847941).abs() < 1e-9, "call {call}");
     assert!((put - 12.2976985036).abs() < 1e-9, "put {put}");
-    assert!((MODEL.forward(s, q, tau) - 150.2101470686).abs() < 1e-9);
+    assert!((model().forward(s, q, tau) - 150.2101470686).abs() < 1e-9);
   }
 
   #[test]
   fn parity_carries_the_quanto_drift_and_the_fixed_rate() {
     let (s, k, r, q, tau) = Q;
     let (call, put) = (
-      MODEL.price_call(s, k, r, q, tau),
-      MODEL.price_put(s, k, r, q, tau),
+      model().price_call(s, k, r, q, tau),
+      model().price_put(s, k, r, q, tau),
     );
-    let b = MODEL.carry(q);
+    let b = model().carry(q);
     let want = 1.5 * (s * ((b - r) * tau).exp() - k * (-r * tau).exp());
     assert!(
       (call - put - want).abs() < 1e-9,
       "parity residual {}",
       call - put - want
     );
-    assert_eq!(MODEL.price_call(s, k, r, q, tau), call);
-    assert_eq!(MODEL.price_put(s, k, r, q, tau), put);
-    assert_eq!(MODEL.price_option(s, k, r, q, tau, OptionType::Put), put);
+    assert_eq!(model().price_call(s, k, r, q, tau), call);
+    assert_eq!(model().price_put(s, k, r, q, tau), put);
+    assert_eq!(model().price_option(s, k, r, q, tau, OptionType::Put), put);
   }
 
   /// With `ρ = 0` and `r_f = r` the quanto drift is the Merton carry
@@ -174,5 +197,53 @@ mod tests {
     let (c_pos, p_pos) = legs(0.3);
     assert!(c_neg > c_zero && c_zero > c_pos);
     assert!(p_neg < p_zero && p_zero < p_pos);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.2"
+  )]
+  fn new_rejects_a_negative_asset_volatility() {
+    let _ = QuantoPricer::new(-0.2, 0.12, 0.3, 0.05, 1.5);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma_fx must satisfy `sigma_fx.is_finite() && sigma_fx >= 0.0`, got sigma_fx = inf"
+  )]
+  fn new_rejects_an_infinite_exchange_rate_volatility() {
+    let _ = QuantoPricer::new(0.2, f64::INFINITY, 0.3, 0.05, 1.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 1.5")]
+  fn new_rejects_a_correlation_past_one() {
+    let _ = QuantoPricer::new(0.2, 0.12, 1.5, 0.05, 1.5);
+  }
+
+  #[test]
+  #[should_panic(expected = "r_f must satisfy `r_f.is_finite()`, got r_f = NaN")]
+  fn new_rejects_a_foreign_rate_that_is_not_finite() {
+    let _ = QuantoPricer::new(0.2, 0.12, 0.3, f64::NAN, 1.5);
+  }
+
+  /// `E_p` converts the payoff at a price of domestic per foreign currency, which is positive.
+  #[test]
+  #[should_panic(
+    expected = "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate > 0.0`, got fixed_rate = 0.0"
+  )]
+  fn new_rejects_a_fixed_rate_that_is_not_positive() {
+    let _ = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 0.0);
+  }
+
+  #[test]
+  fn the_admissible_edges_stay_constructible() {
+    for (sigma, sigma_fx, rho, r_f) in [(0.0, 0.0, -1.0, -0.01), (0.2, 0.12, 1.0, 0.0)] {
+      let model = QuantoPricer::new(sigma, sigma_fx, rho, r_f, 1.5);
+      assert_eq!(
+        (model.sigma, model.sigma_fx, model.rho),
+        (sigma, sigma_fx, rho)
+      );
+    }
   }
 }
