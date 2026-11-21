@@ -1,6 +1,7 @@
 //! Initial-variance finite-difference controls and reliability diagnostics.
 
-use super::EstimateWithError;
+use stochastic_rs_stochastic::mc::McEstimate;
+
 use super::invalid_input;
 use crate::QuantError;
 
@@ -40,9 +41,9 @@ pub struct HestonInitialVarianceVegaDiagnostics {
   /// Half-sized bump evaluated with the same random draws.
   pub comparison_bump: f64,
   /// CRN estimate obtained from the half-sized comparison bump.
-  pub comparison_estimate: EstimateWithError,
+  pub comparison_estimate: McEstimate<f64>,
   /// Main estimate minus comparison estimate, with a paired standard error.
-  pub bump_difference: EstimateWithError,
+  pub bump_difference: McEstimate<f64>,
   /// Absolute bump difference relative to the larger Greek magnitude.
   pub relative_bump_difference: f64,
   /// Reliability classification used by the strict estimator entry point.
@@ -78,21 +79,21 @@ pub(super) fn classify_initial_variance_vega(
   requested_bump: f64,
   minimum_relative_bump: f64,
   effective_bump: f64,
-  estimate: EstimateWithError,
-  comparison_estimate: EstimateWithError,
-  bump_difference: EstimateWithError,
+  estimate: McEstimate<f64>,
+  comparison_estimate: McEstimate<f64>,
+  bump_difference: McEstimate<f64>,
 ) -> HestonInitialVarianceVegaDiagnostics {
   let scale = estimate
-    .value
+    .mean
     .abs()
-    .max(comparison_estimate.value.abs())
+    .max(comparison_estimate.mean.abs())
     .max(f64::MIN_POSITIVE);
-  let relative_bump_difference = bump_difference.value.abs() / scale;
-  let allowed_difference = STABILITY_STANDARD_ERRORS * bump_difference.standard_error
-    + STABILITY_RELATIVE_TOLERANCE * scale;
-  let stability = if bump_difference.value.abs() > allowed_difference {
+  let relative_bump_difference = bump_difference.mean.abs() / scale;
+  let allowed_difference =
+    STABILITY_STANDARD_ERRORS * bump_difference.std_err + STABILITY_RELATIVE_TOLERANCE * scale;
+  let stability = if bump_difference.mean.abs() > allowed_difference {
     HestonInitialVarianceVegaStability::BumpSensitive
-  } else if estimate.value.abs() <= RESOLUTION_STANDARD_ERRORS * estimate.standard_error {
+  } else if estimate.mean.abs() <= RESOLUTION_STANDARD_ERRORS * estimate.std_err {
     HestonInitialVarianceVegaStability::SamplingUnresolved
   } else {
     HestonInitialVarianceVegaStability::Stable

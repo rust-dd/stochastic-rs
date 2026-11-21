@@ -3,6 +3,7 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::TerminalPayoff;
 use super::non_finite_payoff;
@@ -74,26 +75,18 @@ impl Default for HestonMalliavinConfig {
   }
 }
 
-/// One Monte Carlo estimate and its sampling standard error.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct EstimateWithError {
-  /// Monte Carlo mean.
-  pub value: f64,
-  /// Standard error of the mean, accounting for antithetic pairing.
-  pub standard_error: f64,
-}
-
-/// Joint price and state-Greek estimate.
+/// Joint price and state-Greek estimate; each standard error is over the antithetic pairs, which
+/// its `n_samples` counts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HestonMalliavinEstimate {
   /// Discounted option value.
-  pub price: EstimateWithError,
+  pub price: McEstimate<f64>,
   /// Spot derivative estimated with an exact Malliavin integration-by-parts weight.
-  pub spot_delta: EstimateWithError,
+  pub spot_delta: McEstimate<f64>,
   /// Second spot derivative from the exact conditional-lognormal Malliavin weight.
-  pub spot_gamma: EstimateWithError,
+  pub spot_gamma: McEstimate<f64>,
   /// Initial-variance derivative estimated by centered common random numbers.
-  pub initial_variance_vega: EstimateWithError,
+  pub initial_variance_vega: McEstimate<f64>,
   /// Effective bump and paired half-bump reliability evidence for the CRN vega.
   pub initial_variance_vega_diagnostics: HestonInitialVarianceVegaDiagnostics,
   /// Covariance of antithetic-pair observations in price, delta, gamma, vega order.

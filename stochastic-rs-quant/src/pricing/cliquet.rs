@@ -98,63 +98,60 @@ impl CliquetPricer {
   }
 }
 
-/// Monte-Carlo cliquet pricer with optional global cap/floor on the sum of
-/// local-capped returns.
-#[derive(Debug, Clone)]
+/// Monte Carlo price of a [`CliquetOption`], global floor and cap included, which the closed form
+/// answers with NaN.
+#[derive(Debug, Clone, Copy)]
 pub struct McCliquetPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Notional the summed period payoffs are paid on.
-  pub notional: f64,
-  /// Number of sub-periods.
-  pub m: usize,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Constant volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Local floor on per-period return.
-  pub local_floor: Option<f64>,
-  /// Local cap on per-period return.
-  pub local_cap: Option<f64>,
-  /// Floor on the sum of the locally capped and floored period returns.
-  pub global_floor: Option<f64>,
-  /// Cap on that sum.
-  pub global_cap: Option<f64>,
-  /// Number of MC paths.
   pub n_paths: usize,
 }
 
 impl McCliquetPricer {
-  pub fn price(&self) -> McEstimate<f64> {
-    let period_tau = self.tau / self.m as f64;
-    let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * period_tau;
-    let vol = self.sigma * period_tau.sqrt();
-    let m = self.m;
-    let f_l = self.local_floor.unwrap_or(f64::NEG_INFINITY);
-    let c_l = self.local_cap.unwrap_or(f64::INFINITY);
-    let f_g = self.global_floor.unwrap_or(f64::NEG_INFINITY);
-    let c_g = self.global_cap.unwrap_or(f64::INFINITY);
+  /// Panics unless `sigma` is finite and `>= 0` and `n_paths >= 1`.
+  pub fn new(sigma: f64, n_paths: usize) -> Self {
+    assert_sigma(sigma);
+    assert!(
+      n_paths >= 1,
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
+    );
+    Self { sigma, n_paths }
+  }
 
-    // Pre-generate all standard normals using the project's SIMD ziggurat.
+  /// Discounted estimate at [`CliquetPricer::price`]'s query, which reads no spot; NaN for a
+  /// negative or NaN `tau` or a NaN rate.
+  pub fn price(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
+    if tau.is_nan() || tau < 0.0 || r.is_nan() || q.is_nan() {
+      return McEstimate {
+        mean: f64::NAN,
+        std_err: f64::NAN,
+        n_samples: 0,
+      };
+    }
+    let CliquetOption {
+      notional,
+      periods: m,
+      local_floor,
+      local_cap,
+      global_floor,
+      global_cap,
+    } = *option;
+    let period_tau = tau / m as f64;
+    let drift = (r - q - 0.5 * self.sigma * self.sigma) * period_tau;
+    let vol = self.sigma * period_tau.sqrt();
+    let f_l = local_floor.unwrap_or(f64::NEG_INFINITY);
+    let c_l = local_cap.unwrap_or(f64::INFINITY);
+    let f_g = global_floor.unwrap_or(f64::NEG_INFINITY);
+    let c_g = global_cap.unwrap_or(f64::INFINITY);
+
     let mut all_z = vec![0.0_f64; self.n_paths * m];
     <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
-      let z = &all_z[p * m..(p + 1) * m];
-      let mut s_curr = self.s;
-      let mut sum_returns = 0.0;
-      for k in 0..m {
-        let s_next = s_curr * (drift + vol * z[k]).exp();
-        let r_i = s_next / s_curr - 1.0;
-        let r_capped = r_i.max(f_l).min(c_l);
-        sum_returns += r_capped;
-        s_curr = s_next;
-      }
-      sum_returns.min(c_g).max(f_g)
+      let returns = all_z[p * m..(p + 1) * m]
+        .iter()
+        .map(|&z| (drift + vol * z).exp_m1().max(f_l).min(c_l));
+      returns.sum::<f64>().min(c_g).max(f_g)
     };
     let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
     let sum_sq: f64 = (0..self.n_paths)
@@ -165,7 +162,7 @@ impl McCliquetPricer {
       })
       .sum();
 
-    let scale = self.notional * (-self.r * self.tau).exp();
+    let scale = notional * (-r * tau).exp();
     McEstimate {
       mean: scale * sum / self.n_paths as f64,
       std_err: scale.abs() * std_err_from_sums(sum, sum_sq, self.n_paths),
@@ -229,22 +226,9 @@ mod tests {
   fn closed_form_matches_mc() {
     let option = cliquet(100.0, 12, Some(-0.01), Some(0.04));
     let cf = CliquetPricer::new(0.25).price(&option, 0.04, 0.0, 1.0);
-    let mc = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(-0.01),
-      local_cap: Some(0.04),
-      global_floor: None,
-      global_cap: None,
-      n_paths: 100_000,
-    }
-    .price()
-    .mean;
+    let mc = McCliquetPricer::new(0.25, 100_000)
+      .price(&option, 0.04, 0.0, 1.0)
+      .mean;
     let rel = (cf - mc).abs() / cf.abs().max(1e-10);
     assert!(rel < 0.04, "cf={cf}, mc={mc}, rel={rel}");
   }
@@ -252,38 +236,14 @@ mod tests {
   /// Adding a global cap reduces the MC price.
   #[test]
   fn global_cap_reduces_price() {
-    let no_cap = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(0.0),
-      local_cap: Some(0.05),
-      global_floor: None,
-      global_cap: None,
-      n_paths: 50_000,
-    }
-    .price()
-    .mean;
-    let capped = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(0.0),
-      local_cap: Some(0.05),
-      global_floor: None,
+    let mc = McCliquetPricer::new(0.25, 50_000);
+    let no_cap = cliquet(100.0, 12, Some(0.0), Some(0.05));
+    let capped = CliquetOption {
       global_cap: Some(0.20),
-      n_paths: 50_000,
-    }
-    .price()
-    .mean;
+      ..no_cap
+    };
+    let no_cap = mc.price(&no_cap, 0.04, 0.0, 1.0).mean;
+    let capped = mc.price(&capped, 0.04, 0.0, 1.0).mean;
     assert!(capped < no_cap, "capped={capped}, no_cap={no_cap}");
   }
 

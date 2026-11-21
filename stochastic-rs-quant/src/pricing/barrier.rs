@@ -12,17 +12,9 @@
 //! Reference: Vector Risk (2017), "Double Barrier Option", v8.0.7970, p. 2: Haug (1998), p. 72
 //! Reference: QuantLib 1.43, `analyticdoublebarrierengine.cpp`; its header: Haug (2007), p. 156
 //!
-use rayon::prelude::*;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::mills_ratio;
 use stochastic_rs_distributions::special::norm_cdf;
-use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
 use crate::pricing::bsm::BsmCoc;
@@ -31,8 +23,11 @@ use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::DoubleBarrierOption;
 use crate::pricing::exotic::assert_sigma;
-use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
+
+mod monte_carlo;
+
+pub use monte_carlo::McBarrierPricer;
 
 /// Barrier type for single-barrier options.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -450,134 +445,6 @@ impl Leg {
 
 fn ln_norm_pdf(x: f64) -> f64 {
   -0.5 * x * x - 0.5 * std::f64::consts::TAU.ln()
-}
-
-/// Monte Carlo barrier option pricer using Gbm path simulation.
-#[derive(Debug, Clone)]
-pub struct McBarrierPricer {
-  /// Number of Monte Carlo paths.
-  pub n_paths: usize,
-  /// Number of time steps per path.
-  pub n_steps: usize,
-}
-
-impl McBarrierPricer {
-  /// Price a barrier option via Monte Carlo with parallel path generation.
-  ///
-  /// The base seed comes from a fresh [`Unseeded`] draw, so repeated calls
-  /// give independent estimates. Use [`Self::price_seeded`] when the estimate
-  /// has to be reproducible.
-  #[allow(clippy::too_many_arguments)]
-  pub fn price(
-    &self,
-    s: f64,
-    k: f64,
-    h: f64,
-    r: f64,
-    sigma: f64,
-    t: f64,
-    barrier_type: BarrierType,
-    option_type: OptionType,
-  ) -> McEstimate<f64> {
-    let base = Unseeded.next_seed();
-    self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
-  }
-
-  /// Reproducible counterpart of [`Self::price`]: the same `seed` always
-  /// yields the same estimate, independently of how rayon schedules the
-  /// paths, because each path derives its own stream from `seed` and its
-  /// index.
-  #[allow(clippy::too_many_arguments)]
-  pub fn price_seeded(
-    &self,
-    s: f64,
-    k: f64,
-    h: f64,
-    r: f64,
-    sigma: f64,
-    t: f64,
-    barrier_type: BarrierType,
-    option_type: OptionType,
-    seed: u64,
-  ) -> McEstimate<f64> {
-    self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, seed)
-  }
-
-  #[allow(clippy::too_many_arguments)]
-  fn price_from(
-    &self,
-    s: f64,
-    k: f64,
-    h: f64,
-    r: f64,
-    sigma: f64,
-    t: f64,
-    barrier_type: BarrierType,
-    option_type: OptionType,
-    base_seed: u64,
-  ) -> McEstimate<f64> {
-    let dt = t / self.n_steps as f64;
-    let drift = (r - 0.5 * sigma * sigma) * dt;
-    let vol = sigma * dt.sqrt();
-    let discount = (-r * t).exp();
-
-    let payoff_of = |path: usize| -> f64 {
-      {
-        // Golden-ratio stride keeps consecutive path seeds far apart in the
-        // splitmix state space, so neighbouring paths do not share a stream.
-        let seed = base_seed.wrapping_add((path as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
-        let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
-        let mut z_buf = vec![0.0_f64; self.n_steps];
-        normals.fill_slice(&mut z_buf);
-
-        let mut s_curr = s;
-        let mut barrier_hit = false;
-
-        for &z in z_buf.iter() {
-          s_curr *= (drift + vol * z).exp();
-
-          match barrier_type {
-            BarrierType::UpAndIn | BarrierType::UpAndOut => {
-              if s_curr >= h {
-                barrier_hit = true;
-              }
-            }
-            BarrierType::DownAndIn | BarrierType::DownAndOut => {
-              if s_curr <= h {
-                barrier_hit = true;
-              }
-            }
-          }
-        }
-
-        let payoff = match option_type {
-          OptionType::Call => (s_curr - k).max(0.0),
-          OptionType::Put => (k - s_curr).max(0.0),
-        };
-
-        let alive = match barrier_type {
-          BarrierType::UpAndIn | BarrierType::DownAndIn => barrier_hit,
-          BarrierType::UpAndOut | BarrierType::DownAndOut => !barrier_hit,
-        };
-
-        if alive { payoff } else { 0.0 }
-      }
-    };
-    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|path| {
-        let y = payoff_of(path);
-        y * y
-      })
-      .sum();
-
-    McEstimate {
-      mean: discount * sum / self.n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, self.n_paths),
-      n_samples: self.n_paths,
-    }
-  }
 }
 
 #[cfg(test)]

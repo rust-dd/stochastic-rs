@@ -1,7 +1,10 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+use stochastic_rs_stochastic::mc::McEstimate;
 
+use super::estimate;
+use super::undefined;
 use crate::traits::ProcessExt;
 
 /// Malliavin-weighted Greeks computation for a European call under Gbm dynamics.
@@ -29,8 +32,7 @@ impl GbmMalliavinGreeks {
   /// Terminal prices and Brownian values `(S_T, W_T)` of `n_paths` Gbm paths; both are NaN, and so
   /// every Greek, for a spot or horizon that is not finite and positive or a non-finite rate.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
-    let query = self.s > 0.0 && self.s.is_finite() && self.tau > 0.0 && self.tau.is_finite();
-    if !(query && self.r.is_finite() && self.q.is_finite()) {
+    if self.degenerate_query() {
       let nan = Array1::from_elem(self.n_paths, f64::NAN);
       return (nan.clone(), nan);
     }
@@ -75,94 +77,48 @@ impl GbmMalliavinGreeks {
     (s_terminal, w_terminal)
   }
 
-  /// Malliavin Delta for a European call.
-  ///
-  /// ```text
-  /// Delta = (1/M) * sum_i [ e^{-rT} * payoff(S_T^i) * W_T^i / (S_0 * sigma * T) ]
-  /// ```
-  pub fn delta(&self) -> f64 {
-    let (s_t, w_t) = self.simulate();
-    let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
-
-    let mut sum = 0.0;
-    for i in 0..self.n_paths {
-      let payoff = (s_t[i] - self.k).max(0.0);
-      let weight = w_t[i] / (self.s * self.sigma * self.tau);
-      sum += discount * payoff * weight;
-    }
-
-    sum / m
+  fn degenerate_query(&self) -> bool {
+    let query = self.s > 0.0 && self.s.is_finite() && self.tau > 0.0 && self.tau.is_finite();
+    !(query && self.r.is_finite() && self.q.is_finite())
   }
 
-  /// Malliavin Gamma for a European call.
-  ///
-  /// ```text
-  /// Gamma = (1/M) * sum_i [ e^{-rT} * payoff(S_T^i)
-  ///         * (W_T^i^2 - sigma*T*W_T^i - T) / (S_0^2 * sigma^2 * T^2) ]
-  /// ```
-  pub fn gamma(&self) -> f64 {
-    let (s_t, w_t) = self.simulate();
-    let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
-    let t = self.tau;
-
-    let mut sum = 0.0;
-    for i in 0..self.n_paths {
-      let payoff = (s_t[i] - self.k).max(0.0);
-      let w = w_t[i];
-      let weight =
-        (w * w - self.sigma * t * w - t) / (self.s * self.s * self.sigma * self.sigma * t * t);
-      sum += discount * payoff * weight;
-    }
-
-    sum / m
+  /// Malliavin delta of the call, `E[e^{-rT} (S_T − K)^+ W_T / (S_0 σ T)]`.
+  pub fn delta(&self) -> McEstimate<f64> {
+    self.weighted(|w, t| w / (self.s * self.sigma * t))
   }
 
-  /// Malliavin Vega for a European call.
-  ///
-  /// ```text
-  /// Vega = (1/M) * sum_i [ e^{-rT} * payoff(S_T^i)
-  ///        * ((W_T^i^2 - T) / (sigma*T) - W_T^i) ]
-  /// ```
-  pub fn vega(&self) -> f64 {
-    let (s_t, w_t) = self.simulate();
-    let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
-    let t = self.tau;
-
-    let mut sum = 0.0;
-    for i in 0..self.n_paths {
-      let payoff = (s_t[i] - self.k).max(0.0);
-      let w = w_t[i];
-      let weight = (w * w - t) / (self.sigma * t) - w;
-      sum += discount * payoff * weight;
-    }
-
-    sum / m
+  /// Malliavin gamma, `E[e^{-rT} (S_T − K)^+ (W_T² − σT W_T − T) / (S_0² σ² T²)]`.
+  pub fn gamma(&self) -> McEstimate<f64> {
+    self.weighted(|w, t| {
+      (w * w - self.sigma * t * w - t) / (self.s * self.s * self.sigma * self.sigma * t * t)
+    })
   }
 
-  /// Malliavin Rho for a European call (named `rho_greek` to avoid conflict with the
-  /// correlation parameter `rho` used elsewhere).
-  ///
-  /// ```text
-  /// Rho = (1/M) * sum_i [ e^{-rT} * payoff(S_T^i) * (W_T^i / sigma - T) ]
-  /// ```
-  pub fn rho_greek(&self) -> f64 {
+  /// Malliavin vega, `E[e^{-rT} (S_T − K)^+ ((W_T² − T) / (σT) − W_T)]`.
+  pub fn vega(&self) -> McEstimate<f64> {
+    self.weighted(|w, t| (w * w - t) / (self.sigma * t) - w)
+  }
+
+  /// Malliavin rho, `E[e^{-rT} (S_T − K)^+ (W_T / σ − T)]`; `rho_greek`, as `rho` names a
+  /// correlation elsewhere.
+  pub fn rho_greek(&self) -> McEstimate<f64> {
+    self.weighted(|w, t| w / self.sigma - t)
+  }
+
+  fn weighted(&self, weight: impl Fn(f64, f64) -> f64) -> McEstimate<f64> {
+    if self.degenerate_query() {
+      return undefined();
+    }
     let (s_t, w_t) = self.simulate();
     let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
-    let t = self.tau;
-
-    let mut sum = 0.0;
+    let (mut sum, mut sum_sq) = (0.0, 0.0);
     for i in 0..self.n_paths {
       let payoff = (s_t[i] - self.k).max(0.0);
-      let w = w_t[i];
-      let weight = w / self.sigma - t;
-      sum += discount * payoff * weight;
+      let contribution = discount * payoff * weight(w_t[i], self.tau);
+      sum += contribution;
+      sum_sq += contribution * contribution;
     }
-
-    sum / m
+    estimate(sum, sum_sq, self.n_paths)
   }
 
   /// Compute all four Malliavin Greeks in a single MC pass.
@@ -226,19 +182,19 @@ impl GbmMalliavinGreeks {
 }
 
 impl crate::traits::GreeksExt for GbmMalliavinGreeks {
-  fn delta(&self) -> Option<f64> {
+  fn delta(&self) -> Option<McEstimate<f64>> {
     Some(GbmMalliavinGreeks::delta(self))
   }
 
-  fn gamma(&self) -> Option<f64> {
+  fn gamma(&self) -> Option<McEstimate<f64>> {
     Some(GbmMalliavinGreeks::gamma(self))
   }
 
-  fn vega(&self) -> Option<f64> {
+  fn vega(&self) -> Option<McEstimate<f64>> {
     Some(GbmMalliavinGreeks::vega(self))
   }
 
-  fn rho(&self) -> Option<f64> {
+  fn rho(&self) -> Option<McEstimate<f64>> {
     Some(GbmMalliavinGreeks::rho_greek(self))
   }
 

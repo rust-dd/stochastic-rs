@@ -13,7 +13,7 @@ fn gbm_delta_positive_for_call() {
     n_paths: 50_000,
     n_steps: 252,
   };
-  let delta = greeks.delta();
+  let delta = greeks.delta().mean;
   assert!(
     delta > 0.0 && delta < 1.0,
     "Call delta should be in (0,1), got {delta}"
@@ -32,7 +32,7 @@ fn gbm_gamma_positive() {
     n_paths: 50_000,
     n_steps: 252,
   };
-  let gamma = greeks.gamma();
+  let gamma = greeks.gamma().mean;
   assert!(gamma > 0.0, "Call gamma should be > 0, got {gamma}");
 }
 
@@ -48,7 +48,7 @@ fn gbm_vega_positive() {
     n_paths: 50_000,
     n_steps: 252,
   };
-  let vega = greeks.vega();
+  let vega = greeks.vega().mean;
   assert!(vega > 0.0, "Call vega should be > 0, got {vega}");
 }
 
@@ -73,22 +73,22 @@ fn gbm_all_greeks_consistent() {
 
 #[test]
 fn heston_delta_positive_for_call() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 50_000,
-    n_steps: 252,
-  };
-  let delta = greeks.delta();
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    50_000,
+    252,
+  );
+  let delta = greeks.delta().mean;
   assert!(
     delta > 0.0 && delta < 1.0,
     "Heston Malliavin delta should be in (0,1), got {delta}"
@@ -97,22 +97,22 @@ fn heston_delta_positive_for_call() {
 
 #[test]
 fn heston_delta_pathwise_positive() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 50_000,
-    n_steps: 252,
-  };
-  let delta = greeks.delta_pathwise();
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    50_000,
+    252,
+  );
+  let delta = greeks.delta_pathwise().mean;
   assert!(
     delta > 0.3 && delta < 0.9,
     "Heston pathwise delta should be ~0.6 for ATM, got {delta}"
@@ -121,22 +121,22 @@ fn heston_delta_pathwise_positive() {
 
 #[test]
 fn heston_delta_el_khatib_gbm_limit() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
-      sigma: 0.0,
+      sigma: 1e-300,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 20_000,
-    n_steps: 64,
-  };
-  let delta = greeks.delta_el_khatib_with_seed(0x5EED);
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    20_000,
+    64,
+  );
+  let delta = greeks.delta_el_khatib_with_seed(0x5EED).mean;
   assert!(
     delta > 0.3 && delta < 0.9,
     "El-Khatib delta should reduce to the Gbm Malliavin range, got {delta}"
@@ -145,22 +145,22 @@ fn heston_delta_el_khatib_gbm_limit() {
 
 #[test]
 fn heston_delta_el_khatib_full_kernel_finite() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.15,
       rho: -0.4,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 2_000,
-    n_steps: 32,
-  };
-  let delta = greeks.delta_el_khatib_with_seed(0xDEC0DE);
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    2_000,
+    32,
+  );
+  let delta = greeks.delta_el_khatib_with_seed(0xDEC0DE).mean;
   assert!(
     delta.is_finite() && delta.abs() < 5.0,
     "El-Khatib delta should stay finite under the full kernel, got {delta}"
@@ -169,22 +169,22 @@ fn heston_delta_el_khatib_full_kernel_finite() {
 
 #[test]
 fn heston_gamma_positive() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 100_000,
-    n_steps: 252,
-  };
-  let gamma = greeks.gamma();
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    100_000,
+    252,
+  );
+  let gamma = greeks.gamma().mean;
   assert!(
     gamma > 0.0 && gamma < 0.1,
     "Heston gamma should be positive and reasonable, got {gamma}"
@@ -193,30 +193,29 @@ fn heston_gamma_positive() {
 
 #[test]
 fn heston_vega_v0_positive() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 50_000,
-    n_steps: 252,
-  };
-  let vega = greeks.vega_v0();
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    50_000,
+    252,
+  );
+  let vega = greeks.vega_v0().mean;
   assert!(vega > 0.0, "Heston vega_v0 should be > 0, got {vega}");
 }
 
 #[test]
 fn heston_malliavin_vs_pathwise_consistent() {
-  let greeks = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let greeks = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -224,14 +223,15 @@ fn heston_malliavin_vs_pathwise_consistent() {
       sigma: 0.1,
       rho: -0.3,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 200_000,
-    n_steps: 252,
-  };
-  let mall = greeks.delta();
-  let path = greeks.delta_pathwise();
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    200_000,
+    252,
+  );
+  let mall = greeks.delta().mean;
+  let path = greeks.delta_pathwise().mean;
   let rel_err = ((mall - path) / path).abs();
   assert!(
     rel_err < 0.15,
@@ -272,10 +272,10 @@ fn gbm_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
   for g in degenerate {
     let all = g.all_greeks();
     let estimates = [
-      g.delta(),
-      g.gamma(),
-      g.vega(),
-      g.rho_greek(),
+      g.delta().mean,
+      g.gamma().mean,
+      g.vega().mean,
+      g.rho_greek().mean,
       all.delta,
       all.gamma,
       all.vega,
@@ -287,21 +287,21 @@ fn gbm_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
 
 #[test]
 fn heston_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
-  let base = HestonMalliavinGreeks {
-    s: 100.0,
-    params: HestonParams {
+  let base = HestonMalliavinGreeks::new(
+    HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
     },
-    r: 0.05,
-    k: 100.0,
-    tau: 1.0,
-    n_paths: 64,
-    n_steps: 16,
-  };
+    100.0,
+    100.0,
+    0.05,
+    1.0,
+    64,
+    16,
+  );
   let degenerate = [
     HestonMalliavinGreeks {
       s: -1.0,
@@ -319,16 +319,72 @@ fn heston_greeks_are_nan_for_a_degenerate_spot_or_horizon() {
   for h in degenerate {
     let all = crate::traits::GreeksExt::greeks(&h);
     let estimates = [
-      h.delta(),
-      h.delta_pathwise(),
-      h.gamma(),
-      h.vega_v0(),
-      h.delta_el_khatib_with_seed(7),
+      h.delta().mean,
+      h.delta_pathwise().mean,
+      h.gamma().mean,
+      h.vega_v0().mean,
+      h.delta_el_khatib_with_seed(7).mean,
       all.delta,
       all.gamma,
       all.vega,
     ];
     assert!(estimates.iter().all(|x| x.is_nan()), "{h:?}: {estimates:?}");
     assert!(h.simulate().0.iter().all(|x| x.is_nan()));
+  }
+}
+
+#[test]
+#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
+fn the_heston_greeks_refuse_a_model_outside_heston_params() {
+  let params = HestonParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.04,
+    sigma: 0.0,
+    rho: -0.7,
+  };
+  let _ = HestonMalliavinGreeks::new(params, 100.0, 100.0, 0.05, 1.0, 64, 16);
+}
+
+#[test]
+fn every_malliavin_greek_carries_its_standard_error() {
+  let gbm = GbmMalliavinGreeks {
+    s: 100.0,
+    sigma: 0.2,
+    r: 0.05,
+    q: 0.0,
+    tau: 1.0,
+    k: 100.0,
+    n_paths: 2_000,
+    n_steps: 32,
+  };
+  let params = HestonParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
+  let heston = HestonMalliavinGreeks::new(params, 100.0, 100.0, 0.05, 1.0, 1_000, 16);
+  let estimates = [
+    gbm.delta(),
+    gbm.gamma(),
+    gbm.vega(),
+    gbm.rho_greek(),
+    heston.delta(),
+    heston.delta_pathwise(),
+    heston.gamma(),
+    heston.vega_v0(),
+    heston.delta_el_khatib_with_seed(5),
+  ];
+  for estimate in estimates {
+    assert!(
+      estimate.std_err > 0.0 && estimate.std_err.is_finite(),
+      "{estimate:?}"
+    );
+    assert!(
+      estimate.n_samples == 2_000 || estimate.n_samples == 1_000,
+      "{estimate:?}"
+    );
   }
 }

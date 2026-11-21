@@ -70,16 +70,13 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
     diagnostics.stability,
     HestonInitialVarianceVegaStability::Stable
   );
-  assert!(robust.initial_variance_vega.value > 0.0);
+  assert!(robust.initial_variance_vega.mean > 0.0);
+  assert!(robust.initial_variance_vega.std_err < 0.15 * legacy.initial_variance_vega.std_err);
   assert!(
-    robust.initial_variance_vega.standard_error
-      < 0.15 * legacy.initial_variance_vega.standard_error
+    (robust.initial_variance_vega.mean - REFERENCE_CF_VEGA).abs()
+      <= 4.0 * robust.initial_variance_vega.std_err + 1.0
   );
-  assert!(
-    (robust.initial_variance_vega.value - REFERENCE_CF_VEGA).abs()
-      <= 4.0 * robust.initial_variance_vega.standard_error + 1.0
-  );
-  assert!(legacy.initial_variance_vega.value < 0.0);
+  assert!(legacy.initial_variance_vega.mean < 0.0);
   assert_eq!(
     legacy.initial_variance_vega_diagnostics.stability,
     HestonInitialVarianceVegaStability::SamplingUnresolved
@@ -111,9 +108,9 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
       .unwrap()
       .estimate(&payoff)
       .unwrap();
-    assert!(estimate.initial_variance_vega.value > 0.0, "seed={seed}");
+    assert!(estimate.initial_variance_vega.mean > 0.0, "seed={seed}");
     assert!(
-      estimate.initial_variance_vega.standard_error < 2.5,
+      estimate.initial_variance_vega.std_err < 2.5,
       "seed={seed}, estimate={estimate:?}"
     );
     assert_ne!(
@@ -131,10 +128,10 @@ fn under_sampled_default_is_positive_across_seeds_and_converges_with_paths() {
     .unwrap()
     .estimate(&payoff)
     .unwrap();
-  assert!(high.initial_variance_vega.standard_error < low.initial_variance_vega.standard_error);
+  assert!(high.initial_variance_vega.std_err < low.initial_variance_vega.std_err);
   assert!(
-    (high.initial_variance_vega.value - REFERENCE_CF_VEGA).abs()
-      <= 4.0 * high.initial_variance_vega.standard_error + 0.5
+    (high.initial_variance_vega.mean - REFERENCE_CF_VEGA).abs()
+      <= 4.0 * high.initial_variance_vega.std_err + 0.5
   );
 }
 
@@ -183,8 +180,8 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
       - price(model.params.v0 - bump * discrete_loading))
       / (2.0 * bump);
     assert!(
-      (estimate.initial_variance_vega.value - reference).abs()
-        <= 5.0 * estimate.initial_variance_vega.standard_error + 0.5,
+      (estimate.initial_variance_vega.mean - reference).abs()
+        <= 5.0 * estimate.initial_variance_vega.std_err + 0.5,
       "seed={seed}, reference={reference}, estimate={estimate:?}"
     );
     assert_ne!(

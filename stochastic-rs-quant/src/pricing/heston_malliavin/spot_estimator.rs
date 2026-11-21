@@ -3,9 +3,9 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::TerminalPayoff;
-use super::estimator::EstimateWithError;
 use super::estimator::HestonMalliavinConfig;
 use super::estimator::HestonModel;
 use super::non_finite_payoff;
@@ -27,11 +27,11 @@ pub enum HestonMalliavinSpotProvenance {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HestonMalliavinSpotEstimate {
   /// Discounted option value.
-  pub price: EstimateWithError,
+  pub price: McEstimate<f64>,
   /// Spot derivative from the orthogonal Malliavin weight.
-  pub spot_delta: EstimateWithError,
+  pub spot_delta: McEstimate<f64>,
   /// Second spot derivative from the conditional-lognormal Malliavin weight.
-  pub spot_gamma: EstimateWithError,
+  pub spot_gamma: McEstimate<f64>,
   /// Covariance of antithetic-pair observations in price, delta, gamma order.
   pub sample_covariance:
     [[f64; HESTON_MALLIAVIN_SPOT_OBSERVABLES]; HESTON_MALLIAVIN_SPOT_OBSERVABLES],

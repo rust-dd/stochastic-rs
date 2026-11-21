@@ -155,9 +155,11 @@ impl PyMcEstimate {
   }
 }
 
+/// The Rust model holds `sigma`, which Python passes to `price`, so the wrapper keeps the counts.
 #[pyclass(name = "MCBarrierPricer", unsendable)]
 pub struct PyMcBarrierPricer {
-  inner: crate::pricing::barrier::McBarrierPricer,
+  n_paths: usize,
+  n_steps: usize,
 }
 
 #[pymethods]
@@ -165,13 +167,14 @@ impl PyMcBarrierPricer {
   #[new]
   #[pyo3(signature = (n_paths=10000, n_steps=252))]
   fn new(n_paths: usize, n_steps: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::barrier::McBarrierPricer { n_paths, n_steps },
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      crate::pricing::barrier::McBarrierPricer::new(0.0, n_paths, n_steps);
+      Self { n_paths, n_steps }
     })
   }
 
   /// `barrier_type`: one of "up_in" / "up_out" / "down_in" / "down_out".
-  #[pyo3(signature = (s, k, h, r, sigma, t, barrier_type, option_type="call"))]
+  #[pyo3(signature = (s, k, h, r, sigma, t, barrier_type, option_type="call", q=0.0))]
   fn price(
     &self,
     s: f64,
@@ -182,9 +185,10 @@ impl PyMcBarrierPricer {
     t: f64,
     barrier_type: &str,
     option_type: &str,
+    q: f64,
   ) -> PyResult<PyMcEstimate> {
     use crate::pricing::barrier::BarrierType;
-    let bt = match barrier_type.to_ascii_lowercase().as_str() {
+    let barrier_type = match barrier_type.to_ascii_lowercase().as_str() {
       "up_in" | "ui" => BarrierType::UpAndIn,
       "up_out" | "uo" => BarrierType::UpAndOut,
       "down_in" | "di" => BarrierType::DownAndIn,
@@ -195,8 +199,18 @@ impl PyMcBarrierPricer {
         )));
       }
     };
-    let ot = parse_option_type(option_type)?;
-    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot).into())
+    let option = crate::pricing::exotic::BarrierOption {
+      strike: k,
+      barrier: h,
+      rebate: 0.0,
+      barrier_type,
+      option_type: parse_option_type(option_type)?,
+    };
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      crate::pricing::barrier::McBarrierPricer::new(sigma, self.n_paths, self.n_steps)
+        .price(&option, s, r, q, t)
+        .into()
+    })
   }
 }
 

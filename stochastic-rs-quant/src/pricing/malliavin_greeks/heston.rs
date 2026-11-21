@@ -3,12 +3,16 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
+use super::estimate;
+use super::undefined;
 use crate::pricing::heston::HestonParams;
+use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 
 /// Malliavin-weighted Greeks of a European call under Heston dynamics; every estimator is NaN for a
@@ -31,6 +35,36 @@ pub struct HestonMalliavinGreeks {
 }
 
 impl HestonMalliavinGreeks {
+  /// Panics unless `params` passes [`HestonParams::new`], `n_paths >= 1` and `n_steps >= 2`; the
+  /// estimators answer NaN for an `s`, `r` or `tau` off their domain.
+  pub fn new(
+    params: HestonParams,
+    s: f64,
+    k: f64,
+    r: f64,
+    tau: f64,
+    n_paths: usize,
+    n_steps: usize,
+  ) -> Self {
+    assert!(
+      n_paths >= 1,
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
+    );
+    assert!(
+      n_steps >= 2,
+      "n_steps must satisfy `n_steps >= 2`, got n_steps = {n_steps:?}"
+    );
+    Self {
+      s,
+      params: params.checked(),
+      r,
+      k,
+      tau,
+      n_paths,
+      n_steps,
+    }
+  }
+
   pub(super) const EL_KHATIB_A_FLOOR: f64 = 1e-10;
   pub(super) const EL_KHATIB_DU_EPS: f64 = 1e-3;
   pub(super) const EL_KHATIB_VAR_FLOOR: f64 = 1e-12;
@@ -114,71 +148,43 @@ impl HestonMalliavinGreeks {
     (s_terminal, payoffs, v_paths, w1_paths)
   }
 
-  /// Pathwise Delta for a European call under Heston dynamics.
-  ///
-  /// Since the variance process does not depend on S₀, we have ∂S_T/∂S₀ = S_T/S₀,
-  /// giving the exact pathwise estimator:
-  /// ```text
-  /// Delta = E[ e^{-rT} · 1{S_T > K} · S_T / S_0 ]
-  /// ```
-  ///
-  /// This is exact for smooth payoffs (vanilla calls/puts) and does not require
-  /// Malliavin weights. For non-smooth payoffs (digitals, barriers), use
-  /// [`delta`](Self::delta).
-  pub fn delta_pathwise(&self) -> f64 {
+  /// Pathwise delta `E[e^{-rT} 1{S_T > K} S_T / S_0]`, exact for a vanilla since `∂S_T/∂S_0 =
+  /// S_T/S_0`; a non-smooth payoff needs [`delta`](Self::delta).
+  pub fn delta_pathwise(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
-      return f64::NAN;
+      return undefined();
     }
     let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
 
     let heston = self.process(self.params.v0, Unseeded);
 
-    let mut sum = 0.0;
+    let (mut sum, mut sum_sq) = (0.0, 0.0);
 
     for _ in 0..self.n_paths {
       let [s_path, _] = heston.sample();
       let s_t = s_path[self.n_steps - 1];
       if s_t > self.k {
-        sum += discount * s_t / self.s;
+        let contribution = discount * s_t / self.s;
+        sum += contribution;
+        sum_sq += contribution * contribution;
       }
     }
 
-    sum / m
+    estimate(sum, sum_sq, self.n_paths)
   }
 
-  /// Malliavin Delta for a European call under Heston dynamics.
-  ///
-  /// Uses the adapted covariance weight obtained from the leading Heston
-  /// Malliavin derivative `D_t S_T ≈ S_T √V_t`:
-  ///
-  /// ```text
-  /// γ ≈ S_T² ∫₀ᵀ V_t dt
-  /// π_Δ = (1/S₀) · ∫₀ᵀ √V_t dW_t^S / ∫₀ᵀ V_t dt
-  /// ```
-  ///
-  /// This is the same O(n) covariance approximation used by the
-  /// Malliavin-Thalmaier engine. The exact El-Khatib `G(t,T)` kernel is
-  /// non-adapted and requires Skorohod correction terms; using only its Ito
-  /// integral part gives a biased and very slow estimator.
-  ///
-  /// Reference for the full non-adapted Heston kernel: Y. El-Khatib,
-  /// "Computations of Greeks in stochastic volatility models via the Malliavin
-  /// calculus", arXiv:0904.3247 (2009), Proposition 5 and the Delta section.
-  /// <https://arxiv.org/abs/0904.3247>
-  ///
-  /// For vanilla calls, prefer [`delta_pathwise`](Self::delta_pathwise) which is exact.
-  pub fn delta(&self) -> f64 {
+  /// Malliavin delta from the adapted covariance weight `∫√V dW^S / (S_0 ∫V dt)` of `D_t S_T ≈ S_T
+  /// √V_t`, the Malliavin–Thalmaier engine's; El-Khatib's exact kernel is `delta_el_khatib`.
+  pub fn delta(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
-      return f64::NAN;
+      return undefined();
     }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
 
     let heston = self.process(self.params.v0, Unseeded);
 
-    let mut sum = 0.0;
+    let (mut sum, mut sum_sq) = (0.0, 0.0);
 
     for _ in 0..self.n_paths {
       let [s_path, v_path] = heston.sample();
@@ -202,29 +208,25 @@ impl HestonMalliavinGreeks {
       }
 
       let pi_delta = numerator / (self.s * int_v.max(1e-12));
-      sum += discount * payoff * pi_delta;
+      let contribution = discount * payoff * pi_delta;
+      sum += contribution;
+      sum_sq += contribution * contribution;
     }
 
-    sum / m
+    estimate(sum, sum_sq, self.n_paths)
   }
 
-  /// Malliavin Gamma for a European call under Heston dynamics.
-  ///
-  /// Uses the second-order covariance weight:
-  /// ```text
-  /// π_Γ = π_Δ² − T / (S₀² · ∫₀ᵀ V_t dt)
-  /// ```
-  pub fn gamma(&self) -> f64 {
+  /// Malliavin gamma from the second-order covariance weight `π_Δ² − T / (S_0² ∫V dt)`.
+  pub fn gamma(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
-      return f64::NAN;
+      return undefined();
     }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let discount = (-self.r * self.tau).exp();
-    let m = self.n_paths as f64;
 
     let heston = self.process(self.params.v0, Unseeded);
 
-    let mut sum = 0.0;
+    let (mut sum, mut sum_sq) = (0.0, 0.0);
 
     for _ in 0..self.n_paths {
       let [s_path, v_path] = heston.sample();
@@ -250,19 +252,19 @@ impl HestonMalliavinGreeks {
       let int_v_safe = int_v.max(1e-12);
       let pi_delta = numerator / (self.s * int_v_safe);
       let pi_gamma = pi_delta * pi_delta - self.tau / (self.s * self.s * int_v_safe);
-      sum += discount * payoff * pi_gamma;
+      let contribution = discount * payoff * pi_gamma;
+      sum += contribution;
+      sum_sq += contribution * contribution;
     }
 
-    sum / m
+    estimate(sum, sum_sq, self.n_paths)
   }
 
-  /// Vega with respect to initial variance v₀.
-  ///
-  /// Uses finite-difference bump on v₀ with common random numbers (CRN).
-  /// Each path pair (up/down) shares the same seed for noise cancellation.
-  pub fn vega_v0(&self) -> f64 {
+  /// `∂V/∂v0` by a central bump of `v0` on common random numbers: each up path shares its
+  /// down path's stream.
+  pub fn vega_v0(&self) -> McEstimate<f64> {
     if self.degenerate_query() {
-      return f64::NAN;
+      return undefined();
     }
     let dv = 0.002_f64.min(self.params.v0 * 0.1);
     let discount = (-self.r * self.tau).exp();
@@ -270,6 +272,7 @@ impl HestonMalliavinGreeks {
 
     let mut sum_up = 0.0;
     let mut sum_dn = 0.0;
+    let (mut sum_diff, mut sum_diff_sq) = (0.0, 0.0);
 
     for i in 0..self.n_paths {
       let seed = 0xCAFE_u64.wrapping_add(i as u64);
@@ -279,11 +282,19 @@ impl HestonMalliavinGreeks {
 
       let [s_up, _] = heston_up.sample();
       let [s_dn, _] = heston_dn.sample();
-      sum_up += (s_up[self.n_steps - 1] - self.k).max(0.0);
-      sum_dn += (s_dn[self.n_steps - 1] - self.k).max(0.0);
+      let up = (s_up[self.n_steps - 1] - self.k).max(0.0);
+      let dn = (s_dn[self.n_steps - 1] - self.k).max(0.0);
+      sum_up += up;
+      sum_dn += dn;
+      sum_diff += up - dn;
+      sum_diff_sq += (up - dn) * (up - dn);
     }
 
-    discount * (sum_up - sum_dn) / (m * 2.0 * dv)
+    McEstimate {
+      mean: discount * (sum_up - sum_dn) / (m * 2.0 * dv),
+      std_err: discount / (2.0 * dv) * std_err_from_sums(sum_diff, sum_diff_sq, self.n_paths),
+      n_samples: self.n_paths,
+    }
   }
 }
 
@@ -339,15 +350,15 @@ impl HestonMalliavinGreeks {
 }
 
 impl crate::traits::GreeksExt for HestonMalliavinGreeks {
-  fn delta(&self) -> Option<f64> {
+  fn delta(&self) -> Option<McEstimate<f64>> {
     Some(HestonMalliavinGreeks::delta(self))
   }
 
-  fn gamma(&self) -> Option<f64> {
+  fn gamma(&self) -> Option<McEstimate<f64>> {
     Some(HestonMalliavinGreeks::gamma(self))
   }
 
-  fn vega(&self) -> Option<f64> {
+  fn vega(&self) -> Option<McEstimate<f64>> {
     Some(HestonMalliavinGreeks::vega_v0(self))
   }
 
@@ -358,7 +369,7 @@ impl crate::traits::GreeksExt for HestonMalliavinGreeks {
   /// share paths with the Malliavin estimator).
   fn greeks(&self) -> crate::traits::Greeks {
     let (delta, gamma) = self.delta_gamma_single_pass();
-    let vega = self.vega_v0();
+    let vega = self.vega_v0().mean;
     crate::traits::Greeks {
       delta,
       gamma,

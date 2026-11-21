@@ -1,5 +1,7 @@
 //! Pricing traits — `ModelPricer`, `GreeksExt`.
 
+use stochastic_rs_stochastic::mc::McEstimate;
+
 use crate::OptionType;
 
 /// Returned by the pricers' `greeks(…)` and [`GreeksExt::greeks`]: NaN for a Greek a pricer does
@@ -235,67 +237,73 @@ pub trait VanillaEuropeanCall: ModelPricer {
 /// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
 pub trait GreeksExt {
   /// Delta — $\partial V / \partial S$.
-  fn delta(&self) -> Option<f64>;
+  fn delta(&self) -> Option<McEstimate<f64>>;
 
   /// Gamma — $\partial^2 V / \partial S^2$; `None` when the estimator does not expose it.
-  fn gamma(&self) -> Option<f64> {
+  fn gamma(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Vega — $\partial V / \partial \sigma$; `None` when not exposed.
-  fn vega(&self) -> Option<f64> {
+  fn vega(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Theta — $\partial V / \partial t$; `None` when not exposed.
-  fn theta(&self) -> Option<f64> {
+  fn theta(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Rho — $\partial V / \partial r$; `None` when not exposed.
-  fn rho(&self) -> Option<f64> {
+  fn rho(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Vanna — $\partial^2 V / \partial S \partial \sigma$; `None` when not exposed.
-  fn vanna(&self) -> Option<f64> {
+  fn vanna(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Charm — $\partial^2 V / \partial S \partial t$; `None` when not exposed.
-  fn charm(&self) -> Option<f64> {
+  fn charm(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Volga — $\partial^2 V / \partial \sigma^2$; `None` when not exposed.
-  fn volga(&self) -> Option<f64> {
+  fn volga(&self) -> Option<McEstimate<f64>> {
     None
   }
 
   /// Veta — $\partial^2 V / \partial \sigma \partial t$; `None` when not exposed.
-  fn veta(&self) -> Option<f64> {
+  fn veta(&self) -> Option<McEstimate<f64>> {
     None
   }
 
-  /// Every Greek in one [`Greeks`], NaN where an accessor is `None`. A Monte Carlo estimator
+  /// Every Greek's mean in one [`Greeks`], NaN where an accessor is `None`. A Monte Carlo estimator
   /// overrides this to draw all of them from one simulation instead of one per accessor.
   fn greeks(&self) -> Greeks {
     Greeks {
-      delta: self.delta().unwrap_or(f64::NAN),
-      gamma: self.gamma().unwrap_or(f64::NAN),
-      vega: self.vega().unwrap_or(f64::NAN),
-      theta: self.theta().unwrap_or(f64::NAN),
-      rho: self.rho().unwrap_or(f64::NAN),
-      vanna: self.vanna().unwrap_or(f64::NAN),
-      charm: self.charm().unwrap_or(f64::NAN),
-      volga: self.volga().unwrap_or(f64::NAN),
-      veta: self.veta().unwrap_or(f64::NAN),
+      delta: mean_or_nan(self.delta()),
+      gamma: mean_or_nan(self.gamma()),
+      vega: mean_or_nan(self.vega()),
+      theta: mean_or_nan(self.theta()),
+      rho: mean_or_nan(self.rho()),
+      vanna: mean_or_nan(self.vanna()),
+      charm: mean_or_nan(self.charm()),
+      volga: mean_or_nan(self.volga()),
+      veta: mean_or_nan(self.veta()),
     }
   }
 }
 
+fn mean_or_nan(estimate: Option<McEstimate<f64>>) -> f64 {
+  estimate.map_or(f64::NAN, |e| e.mean)
+}
+
 #[cfg(test)]
 mod greeks_array_tests {
+  use stochastic_rs_stochastic::mc::McEstimate;
+
   use super::Greeks;
   use super::GreeksExt;
 
@@ -321,15 +329,19 @@ mod greeks_array_tests {
   struct DeltaOnly;
 
   impl GreeksExt for DeltaOnly {
-    fn delta(&self) -> Option<f64> {
-      Some(0.5)
+    fn delta(&self) -> Option<McEstimate<f64>> {
+      Some(McEstimate {
+        mean: 0.5,
+        std_err: 0.01,
+        n_samples: 100,
+      })
     }
   }
 
   #[test]
   fn an_unexposed_greek_is_none_and_nan_in_the_aggregate() {
     let g = DeltaOnly;
-    assert_eq!(g.delta(), Some(0.5));
+    assert_eq!(g.delta().map(|e| e.mean), Some(0.5));
     assert_eq!(g.vega(), None);
     let all = g.greeks();
     assert_eq!(all.delta, 0.5);

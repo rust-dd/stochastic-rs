@@ -71,26 +71,26 @@ fn stochastic_volatility_greeks_match_analytic_heston_finite_differences() {
   let reference_variance_vega = (variance_up - variance_down) / (2.0 * variance_bump);
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference_price,
     1.5e-2,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference_delta,
     5e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference_gamma,
     1.5e-3,
   );
   assert_mc_close(
-    result.initial_variance_vega.value,
-    result.initial_variance_vega.standard_error,
+    result.initial_variance_vega.mean,
+    result.initial_variance_vega.std_err,
     reference_variance_vega,
     4e-1,
   );

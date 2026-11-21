@@ -80,26 +80,26 @@ fn correlated_vanishing_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
   let ot = OptionType::Call;
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference.price_option(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference.delta(s, k, r, q, tau, ot),
     2e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference.gamma(s, k, r, q, tau),
     8e-4,
   );
   assert_mc_close(
-    result.initial_variance_vega.value,
-    result.initial_variance_vega.standard_error,
+    result.initial_variance_vega.mean,
+    result.initial_variance_vega.std_err,
     reference.vega(s, k, r, q, tau) / (2.0 * model.params.v0.sqrt()),
     3e-2,
   );
@@ -116,20 +116,20 @@ fn small_vol_of_vol_converges_to_the_bsm_limit() {
   let ot = OptionType::Put;
 
   assert_mc_close(
-    result.price.value,
-    result.price.standard_error,
+    result.price.mean,
+    result.price.std_err,
     reference.price_option(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
-    result.spot_delta.value,
-    result.spot_delta.standard_error,
+    result.spot_delta.mean,
+    result.spot_delta.std_err,
     reference.delta(s, k, r, q, tau, ot),
     3e-3,
   );
   assert_mc_close(
-    result.spot_gamma.value,
-    result.spot_gamma.standard_error,
+    result.spot_gamma.mean,
+    result.spot_gamma.std_err,
     reference.gamma(s, k, r, q, tau),
     1e-3,
   );
@@ -159,23 +159,23 @@ fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
     .unwrap();
 
   assert_close(
-    vertical.price.value,
-    lower.price.value - upper.price.value,
+    vertical.price.mean,
+    lower.price.mean - upper.price.mean,
     2e-12,
   );
   assert_close(
-    vertical.spot_delta.value,
-    lower.spot_delta.value - upper.spot_delta.value,
+    vertical.spot_delta.mean,
+    lower.spot_delta.mean - upper.spot_delta.mean,
     2e-12,
   );
   assert_close(
-    vertical.spot_gamma.value,
-    lower.spot_gamma.value - upper.spot_gamma.value,
+    vertical.spot_gamma.mean,
+    lower.spot_gamma.mean - upper.spot_gamma.mean,
     2e-12,
   );
   assert_close(
-    vertical.initial_variance_vega.value,
-    lower.initial_variance_vega.value - upper.initial_variance_vega.value,
+    vertical.initial_variance_vega.mean,
+    lower.initial_variance_vega.mean - upper.initial_variance_vega.mean,
     2e-10,
   );
 }
@@ -203,10 +203,10 @@ fn seeded_estimation_and_contribution_batch_are_reproducible() {
     assert_close(
       first.0.estimator_covariance[index][index],
       match index {
-        0 => first.0.price.standard_error.powi(2),
-        1 => first.0.spot_delta.standard_error.powi(2),
-        2 => first.0.spot_gamma.standard_error.powi(2),
-        _ => first.0.initial_variance_vega.standard_error.powi(2),
+        0 => first.0.price.std_err.powi(2),
+        1 => first.0.spot_delta.std_err.powi(2),
+        2 => first.0.spot_gamma.std_err.powi(2),
+        _ => first.0.initial_variance_vega.std_err.powi(2),
       },
       1e-14,
     );

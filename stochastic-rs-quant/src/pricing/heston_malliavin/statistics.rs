@@ -1,6 +1,7 @@
 //! Online joint covariance for Heston Monte Carlo observables.
 
-use super::EstimateWithError;
+use stochastic_rs_stochastic::mc::McEstimate;
+
 use crate::QuantError;
 
 #[derive(Debug, Default)]
@@ -25,7 +26,7 @@ impl OnlineScalar {
     Ok(())
   }
 
-  pub(super) fn finish(self) -> Result<EstimateWithError, QuantError> {
+  pub(super) fn finish(self) -> Result<McEstimate<f64>, QuantError> {
     if self.count < 2 {
       return Err(QuantError::InsufficientData {
         what: "samples for a Monte Carlo standard error",
@@ -34,9 +35,10 @@ impl OnlineScalar {
       });
     }
     let sample_variance = self.second_moment / (self.count - 1) as f64;
-    Ok(EstimateWithError {
-      value: self.mean,
-      standard_error: (sample_variance.max(0.0) / self.count as f64).sqrt(),
+    Ok(McEstimate {
+      mean: self.mean,
+      std_err: (sample_variance.max(0.0) / self.count as f64).sqrt(),
+      n_samples: self.count,
     })
   }
 }
@@ -69,10 +71,11 @@ pub(super) struct CovarianceSummary<const N: usize> {
 }
 
 impl<const N: usize> CovarianceSummary<N> {
-  pub(super) fn estimate(&self, index: usize) -> EstimateWithError {
-    EstimateWithError {
-      value: self.mean[index],
-      standard_error: self.estimator_covariance[index][index].max(0.0).sqrt(),
+  pub(super) fn estimate(&self, index: usize) -> McEstimate<f64> {
+    McEstimate {
+      mean: self.mean[index],
+      std_err: self.estimator_covariance[index][index].max(0.0).sqrt(),
+      n_samples: self.independent_samples,
     }
   }
 }
