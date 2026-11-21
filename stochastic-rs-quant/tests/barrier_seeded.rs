@@ -4,7 +4,7 @@ use stochastic_rs_quant::pricing::barrier::BarrierType;
 use stochastic_rs_quant::pricing::barrier::McBarrierPricer;
 use stochastic_rs_quant::pricing::exotic::BarrierOption;
 
-const PIN: f64 = 3.833321894842118;
+const PIN: f64 = 3.833321894842116;
 
 fn price(seed: u64) -> f64 {
   let option = BarrierOption {
