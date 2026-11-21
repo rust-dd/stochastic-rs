@@ -289,6 +289,22 @@ fn the_restarts_from_a_bound_draw_on_one_iteration_budget() {
   assert_eq!(capped.message(), Some("evaluation budget exhausted"));
 }
 
+/// Capped at the 53 iterations its first pass takes, the fit stops on the cap inside that pass,
+/// before it converges and so before a re-seat is asked, and says its budget ran out.
+#[test]
+fn a_fit_capped_inside_its_first_pass_reports_its_budget() {
+  let start = HestonParams {
+    rho: 1.0,
+    ..NEAR_START
+  };
+  let capped = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic)
+    .with_options(CalibrationOptions::default().with_max_iterations(53))
+    .calibrate(Some(start))
+    .unwrap();
+  assert_eq!((capped.converged, capped.iterations), (false, Some(53)));
+  assert_eq!(capped.message(), Some("evaluation budget exhausted"));
+}
+
 /// The pull holds ρ at its anchor against the quotes, so the price rows alone fall inward there.
 #[test]
 fn a_fit_held_beside_a_bound_by_its_pull_is_converged() {

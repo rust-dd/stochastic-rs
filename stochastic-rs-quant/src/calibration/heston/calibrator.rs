@@ -237,10 +237,7 @@ impl crate::traits::Calibrator for HestonCalibrator {
     )?;
     let fit = fit.with_iterations(iterations);
     Ok(match stop {
-      Some(stop) => Calibrated {
-        converged: false,
-        ..fit.with_message(stop.message(&NAMES))
-      },
+      Some(j) => fit.at_bound(NAMES[j]),
       None => fit,
     })
   }

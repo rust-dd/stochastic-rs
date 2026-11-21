@@ -30,30 +30,14 @@ pub(crate) fn reseat(units: &mut [f64], cosines: &[f64]) -> Option<usize> {
   first
 }
 
-/// Why a re-seated fit stopped short: still on the bound of a coordinate, or out of iterations.
-pub(crate) enum Unseated {
-  Bound(usize),
-  Budget,
-}
-
-impl Unseated {
-  /// The fit's message, in the words of [`LmReport::message`] for an exhausted budget.
-  pub(crate) fn message(&self, names: &[&str]) -> String {
-    match self {
-      Unseated::Bound(j) => format!("stopped at the bound of {}", names[*j]),
-      Unseated::Budget => "evaluation budget exhausted".to_string(),
-    }
-  }
-}
-
 /// `minimize`, restarted from `reseated`'s start up to `MAX_RESEATS` times on one iteration budget;
-/// the last pass, its report, every pass's iterations and why it stopped short, if it did.
+/// the last pass, its report, every pass's iterations and the coordinate it still stops on, if any.
 pub(crate) fn minimize_reseated<P: LeastSquaresProblem, S>(
   problem: P,
   lm: &LmOptions,
   mut reseated: impl FnMut(&mut P) -> Option<(S, usize)>,
   mut restart: impl FnMut(P, S) -> P,
-) -> (P, LmReport, usize, Option<Unseated>) {
+) -> (P, LmReport, usize, Option<usize>) {
   let cap = lm.iteration_cap(problem.params().len());
   let (mut fitted, mut report) = minimize(problem, lm.clone());
   let (mut iterations, mut restarts) = (report.iterations, 0);
@@ -65,18 +49,15 @@ pub(crate) fn minimize_reseated<P: LeastSquaresProblem, S>(
     let Some((start, coordinate)) = bound else {
       return (fitted, report, iterations, None);
     };
-    let left = cap.saturating_sub(iterations);
-    if left == 0 {
-      return (fitted, report, iterations, Some(Unseated::Budget));
-    }
     if restarts == MAX_RESEATS {
-      return (
-        fitted,
-        report,
-        iterations,
-        Some(Unseated::Bound(coordinate)),
-      );
+      return (fitted, report, iterations, Some(coordinate));
     }
+    let left = cap.saturating_sub(iterations);
+    // basin stops a pass on its cap before its own convergence, so a converged pass leaves one.
+    debug_assert!(
+      left > 0,
+      "a converged pass spent the whole iteration budget"
+    );
     let rest = LmOptions {
       max_iterations: Some(left),
       ..lm.clone()
