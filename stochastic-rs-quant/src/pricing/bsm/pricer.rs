@@ -78,9 +78,9 @@ impl BsmPricer {
     }
   }
 
-  /// $d_1$, $d_2$ at one query point; NaN for a spot that is not positive.
+  /// $d_1$, $d_2$ at one query point; NaN for a spot or strike that is not positive.
   pub fn d1_d2(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    if s.is_nan() || s <= 0.0 {
+    if s.is_nan() || s <= 0.0 || k.is_nan() || k <= 0.0 {
       return (f64::NAN, f64::NAN);
     }
     let d1 = (1.0 / (self.sigma * tau.sqrt()))
