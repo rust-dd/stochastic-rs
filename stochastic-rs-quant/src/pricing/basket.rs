@@ -56,6 +56,19 @@ fn assert_basket_model(weights: &Array1<f64>, sigma: &Array1<f64>, rho: &Array2<
   }
 }
 
+/// A query's spot and yield vectors hold one entry per asset.
+fn assert_basket_query(n: usize, s: ArrayView1<'_, f64>, q: ArrayView1<'_, f64>) {
+  let (spots, yields) = (s.len(), q.len());
+  assert!(
+    spots == n,
+    "s must satisfy `s.len() == sigma.len()`, got s.len() = {spots:?}"
+  );
+  assert!(
+    yields == n,
+    "q must satisfy `q.len() == sigma.len()`, got q.len() = {yields:?}"
+  );
+}
+
 /// Geometric basket call/put on $n$ correlated Gbm assets. Uses the fact
 /// that the weighted geometric mean is log-normal under Gbm.
 ///
@@ -150,11 +163,8 @@ impl GeometricBasketPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    let n_assets = s.len();
-    assert_eq!(self.weights.len(), n_assets);
-    assert_eq!(self.sigma.len(), n_assets);
-    assert_eq!(q.len(), n_assets);
-    assert_eq!(self.rho.shape(), [n_assets, n_assets]);
+    let n_assets = self.sigma.len();
+    assert_basket_query(n_assets, s, q);
     let spot = || {
       (0..n_assets)
         .map(|i| self.weights[i] * s[i].ln())
@@ -287,8 +297,8 @@ impl ArithmeticBasketLevyPricer {
     }
   }
 
-  /// Either leg by Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry,
-  /// for a spot or strike not positive before it, or where the moments define no lognormal.
+  /// Levy's (1992) two-moment lognormal: the payoff at `tau = 0`; NaN past expiry, for a spot or
+  /// strike not positive, or where the moments define no lognormal; panics on a mis-sized `s`, `q`.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -298,6 +308,7 @@ impl ArithmeticBasketLevyPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
+    assert_basket_query(self.sigma.len(), s, q);
     let spot = || (0..s.len()).map(|i| self.weights[i] * s[i]).sum::<f64>();
     if let Some(value) = expired_basket(tau, r, q, || vanilla_payoff(option_type, spot(), k)) {
       return value;
