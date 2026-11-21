@@ -57,10 +57,14 @@ fn g2_tree() -> G2ppTree<f64> {
 }
 
 fn swaption(direction: SwaptionDirection) -> BermudanSwaption<f64> {
+  struck(direction, 0.045)
+}
+
+fn struck(direction: SwaptionDirection, strike: f64) -> BermudanSwaption<f64> {
   let levels: Vec<usize> = (4..=20).step_by(4).collect();
   BermudanSwaption::new(
     direction,
-    0.045,
+    strike,
     100.0,
     ExerciseSchedule::new(levels[..4].to_vec()),
     TreeCouponSchedule::new(levels, vec![1.0; 5]),
@@ -115,7 +119,12 @@ fn a_bermudan_swaption_prices_on_any_bermudan_tree() {
   for (direction, hw, bk, g2) in pins {
     let swaption = swaption(direction);
     assert_pinned(swaption.npv(&hw_tree()), hw);
-    assert_pinned(swaption.npv(&bk_tree()), bk);
+    // No node of the 20-step Black–Karasinski tree has a 4.5 % payer in the money.
+    let bk_strike = match direction {
+      SwaptionDirection::Payer => 0.04,
+      SwaptionDirection::Receiver => 0.045,
+    };
+    assert_pinned(struck(direction, bk_strike).npv(&bk_tree()), bk);
     let on_g2 = swaption.npv(&g2_tree());
     assert_pinned(on_g2, g2);
     let valuation = swaption.valuation(&g2_tree());
@@ -333,7 +342,7 @@ const BK_ZCB: f64 = 0.807_717_097_467_35;
 const G2_ZCB: f64 = 0.814_831_268_530_417_7;
 const HW_PAYER: f64 = 0.064_073_271_966_676_55;
 const HW_RECEIVER: f64 = 8.187_272_396_507_296;
-const BK_PAYER: f64 = 0.0;
+const BK_PAYER: f64 = 0.008_026_751_004_676_364;
 const BK_RECEIVER: f64 = 4.130_389_556_069_25;
 const G2_PAYER: f64 = 0.057_901_985_908_091_126;
 const G2_RECEIVER: f64 = 5.941_117_977_275_592;
