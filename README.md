@@ -32,7 +32,7 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 |---|---|
 | `stochastic-rs-core` | the SIMD RNG and seed sources (`Deterministic`, `Unseeded`) |
 | `stochastic-rs-distributions` | SIMD samplers with closed-form pdf / cdf / characteristic function / moments, special functions |
-| `stochastic-rs-stochastic` | 133 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
+| `stochastic-rs-stochastic` | 130 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
 | `stochastic-rs-copulas` | 15 bivariate and 6 multivariate copulas, vine fitting, goodness of fit |
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
@@ -60,7 +60,7 @@ The wheels (Linux, macOS, Windows) are CPU-only and carry everything except the 
 
 ### Public dependencies
 
-The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. `anyhow` (calibration and SLV errors) also appears in public signatures. A semver-incompatible release of any of these six crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`. The `wide` vectors behind the SIMD kernels are an implementation detail: the trait items that name them are hidden and outside the stability promise.
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. A semver-incompatible release of any of these five crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`. The `wide` vectors behind the SIMD kernels are an implementation detail: the trait items that name them are hidden and outside the stability promise.
 
 ```rust
 use stochastic_rs::ndarray::Array1;
@@ -82,6 +82,7 @@ assert!(total(&path).is_finite());
 use stochastic_rs::prelude::*;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 
 fn main() {
@@ -93,8 +94,8 @@ fn main() {
     // Heston (1993) European option, closed form. The model holds only its own
     // parameters; the pricing query is passed to the call, so one model can
     // price a whole strike/maturity grid.
-    // HestonPricer::new args: v0, rho, kappa, theta, sigma, lambda
-    let pricer = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.3, Some(0.0));
+    let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5 };
+    let pricer = HestonPricer::new(params);
     // price_call/price_put args: s, k, r, q, tau
     let call = pricer.price_call(100.0, 100.0, 0.03, 0.0, 1.0);
     let put = pricer.price_put(100.0, 100.0, 0.03, 0.0, 1.0);

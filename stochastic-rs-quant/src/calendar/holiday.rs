@@ -1,11 +1,6 @@
-//! Holiday calendars with algorithmic holiday computation.
+//! Holiday calendars computed by rule, and their combinations through [`Calendar::joint`].
 //!
-//! Supported built-in calendars: US (Settlement), UK (Exchange), TARGET2
-//! (ECB), Tokyo (TSE). Arbitrary combinations are supported via
-//! [`Calendar::joint`].
-//!
-//! Reference: ECB TARGET2 closing days; JPX business-day calendar;
-//! exchange-published market-holiday tables.
+//! Reference: ECB TARGET2 closing days; JPX business-day calendar; exchange holiday tables
 
 use std::collections::BTreeSet;
 
@@ -38,8 +33,10 @@ pub enum HolidayCalendar {
   /// Singapore Exchange (SGX) calendar. Rule-based holidays cover every year; lunar, Islamic and
   /// Hindu ones cover [`LUNAR_TABLE_YEARS`] (from 2028: lunar computed, Islamic/Hindu estimated).
   Sgx,
-  /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
-  /// holiday from 2024 onwards only.
+  /// Brazil's settlement calendar, the national holidays ANBIMA publishes, which Business/252
+  /// counts. Black Awareness Day is a holiday from 2024.
+  Brazil,
+  /// B3 / BoVespa (São Paulo), the exchange: [`Self::Brazil`] plus 24 and 31 December.
   B3,
 }
 
@@ -53,6 +50,7 @@ impl std::fmt::Display for HolidayCalendar {
       Self::Hkex => write!(f, "HKEX"),
       Self::Asx => write!(f, "ASX"),
       Self::Sgx => write!(f, "SGX"),
+      Self::Brazil => write!(f, "Brazil"),
       Self::B3 => write!(f, "B3"),
     }
   }
@@ -68,6 +66,7 @@ impl HolidayCalendar {
       Self::Hkex => lunar::is_hkex_holiday(date),
       Self::Asx => is_asx_holiday(date),
       Self::Sgx => lunar::is_sgx_holiday(date),
+      Self::Brazil => is_brazil_holiday(date),
       Self::B3 => is_b3_holiday(date),
     }
   }
@@ -77,25 +76,17 @@ impl HolidayCalendar {
 /// construction.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JointMode {
-  /// Union: a date is a holiday when **any** constituent calendar marks it
-  /// as such. Default and the convention used by QuantLib's `JointCalendar`
-  /// in `JoinHolidays` mode — appropriate when a settlement obligation
-  /// spans multiple markets and a holiday in *either* prevents settlement.
+  /// Union: a holiday on any constituent calendar. For a settlement that spans markets, where a
+  /// holiday in either one blocks it.
   #[default]
   AnyHoliday,
-  /// Intersection: a date is a holiday only when **every** constituent
-  /// calendar marks it as such. QuantLib `JoinBusinessDays`-equivalent —
-  /// appropriate for back-office reconciliation where work proceeds if
-  /// any market is open.
+  /// Intersection: a holiday only when every constituent calendar marks it, so work proceeds
+  /// while any market is open.
   AllHolidays,
 }
 
-/// A calendar combining one or more algorithmic holiday schedules with
-/// optional user-defined extra holidays.
-///
-/// Combine mode is controlled by [`JointMode`] (default
-/// [`JointMode::AnyHoliday`]); extra holidays are always taken as the
-/// union with the algorithmic set.
+/// Rule-based holiday schedules combined under a [`JointMode`], plus user-defined extra holidays,
+/// which are always added as a union.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Calendar {
   calendars: Vec<HolidayCalendar>,
@@ -113,9 +104,7 @@ impl Calendar {
     }
   }
 
-  /// Create a joint calendar from multiple schedules in union mode (a date
-  /// is a holiday if *any* constituent considers it one). Convenience
-  /// wrapper over [`Calendar::joint_with_mode`].
+  /// A joint calendar in union mode: a holiday on any constituent calendar.
   pub fn joint(calendars: impl IntoIterator<Item = HolidayCalendar>) -> Self {
     Self::joint_with_mode(calendars, JointMode::AnyHoliday)
   }
@@ -217,11 +206,8 @@ impl Calendar {
   }
 }
 
-// Easter computation via the Anonymous Gregorian (Meeus/Jones/Butcher) algorithm.
-/// Western Easter Sunday for the given Gregorian year (Anonymous Gregorian
-/// / Meeus-Jones-Butcher algorithm). Many other holidays are derived as
-/// offsets: Good Friday = Easter − 2 days, Easter Monday = Easter + 1 day,
-/// Corpus Christi = Easter + 60 days, Carnival Tuesday = Easter − 47 days.
+/// Western Easter Sunday of a Gregorian year (the Meeus–Jones–Butcher algorithm); Good Friday,
+/// Easter Monday and the other movable feasts are offsets from it.
 pub fn easter_sunday(year: i32) -> NaiveDate {
   let a = year % 19;
   let b = year / 100;
@@ -568,9 +554,7 @@ fn is_observed_jp(date: NaiveDate, m: u32, d: u32, hol_month: u32, hol_day: u32)
   false
 }
 
-/// ASX (Australian Securities Exchange) — uniform national market holidays.
-/// State-specific public holidays (e.g. King's Birthday in WA/QLD) are not
-/// observed at the ASX trading level.
+/// ASX: the national market holidays; state public holidays are not observed at the exchange.
 fn is_asx_holiday(date: NaiveDate) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
   let w = date.weekday();
@@ -627,10 +611,9 @@ fn is_asx_holiday(date: NaiveDate) -> bool {
   false
 }
 
-/// B3 (São Paulo / BoVespa) calendar. Brazilian holidays do **not**
-/// observe weekend-rollover — a fixed-date holiday on Saturday or Sunday
-/// stays on that day (no substitute).
-fn is_b3_holiday(date: NaiveDate) -> bool {
+/// Brazil's national holidays. A fixed-date holiday on a weekend stays on that day: Brazil has no
+/// substitute days.
+fn is_brazil_holiday(date: NaiveDate) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
 
   // New Year's Day.
@@ -690,22 +673,12 @@ fn is_b3_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Christmas Eve (B3 closed full day, by exchange convention).
-  if m == 12 && d == 24 {
-    return true;
-  }
-
   // Christmas Day.
-  if m == 12 && d == 25 {
-    return true;
-  }
+  m == 12 && d == 25
+}
 
-  // New Year's Eve (B3 closed full day).
-  if m == 12 && d == 31 {
-    return true;
-  }
-
-  false
+fn is_b3_holiday(date: NaiveDate) -> bool {
+  is_brazil_holiday(date) || (date.month() == 12 && matches!(date.day(), 24 | 31))
 }
 
 #[cfg(test)]
@@ -805,10 +778,8 @@ mod tests {
   #[test]
   fn asx_anzac_day_weekend_rollover() {
     let cal = Calendar::new(HolidayCalendar::Asx);
-    // 2026-04-25 = Sat → observed Mon Apr-27. Convention (matching the
-    // existing US calendar): the weekend date itself is NOT flagged as a
-    // holiday — it is excluded as a weekend via `is_weekend`; only the
-    // Monday substitute is reported as a market holiday.
+    // Saturday 25 April 2026 is observed on Monday 27: only the substitute is a holiday, the
+    // weekend date itself is excluded by `is_weekend`.
     let sat = NaiveDate::from_ymd_opt(2026, 4, 25).unwrap();
     let mon = NaiveDate::from_ymd_opt(2026, 4, 27).unwrap();
     assert!(

@@ -7,6 +7,9 @@
 use ndarray::Array2;
 use ndarray::Axis;
 
+use crate::QuantError;
+use crate::error::check_grid_shape;
+
 #[derive(Clone, Debug)]
 pub struct Dupire {
   /// Strikes (ascending), length N_K
@@ -240,7 +243,7 @@ impl Dupire {
   pub fn local_vol_surface_from_custom_derivatives(&self) -> Array2<f64> {
     self
       .try_local_vol_surface_from_custom_derivatives()
-      .expect("local_vol_surface_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::local_vol_surface_from_custom_derivatives`].
@@ -250,41 +253,10 @@ impl Dupire {
   /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
   /// `NaN` contract, minus the stencil-boundary cases — supplying the
   /// derivatives directly means every column is computable in principle.
-  pub fn try_local_vol_surface_from_custom_derivatives(&self) -> anyhow::Result<Array2<f64>> {
-    let dc_dk = self
-      .dc_dk
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("dc_dk must be provided for custom derivatives"))?;
-    let d2c_dk2 = self
-      .d2c_dk2
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
-    let dc_dt = self
-      .dc_dt
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("dc_dt must be provided for custom derivatives"))?;
-
+  pub fn try_local_vol_surface_from_custom_derivatives(&self) -> Result<Array2<f64>, QuantError> {
+    let (dc_dk, d2c_dk2, dc_dt) = self.custom_derivatives()?;
     let nt = self.ts.len();
     let nk = self.ks.len();
-
-    if dc_dk.dim() != (nt, nk) {
-      anyhow::bail!(
-        "dc_dk shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
-        dc_dk.dim()
-      );
-    }
-    if d2c_dk2.dim() != (nt, nk) {
-      anyhow::bail!(
-        "d2c_dk2 shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
-        d2c_dk2.dim()
-      );
-    }
-    if dc_dt.dim() != (nt, nk) {
-      anyhow::bail!(
-        "dc_dt shape {:?} must equal (N_T, N_K) = ({nt}, {nk})",
-        dc_dt.dim()
-      );
-    }
 
     let mut sigma = Array2::<f64>::from_elem((nt, nk), f64::NAN);
 
@@ -397,7 +369,7 @@ impl Dupire {
   pub fn local_vol_slice_from_custom_derivatives(&self, j: usize) -> Vec<f64> {
     self
       .try_local_vol_slice_from_custom_derivatives(j)
-      .expect("local_vol_slice_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::local_vol_slice_from_custom_derivatives`].
@@ -406,33 +378,17 @@ impl Dupire {
   ///
   /// Individual cells follow [`local_vol_surface`](Self::local_vol_surface)'s
   /// `NaN` contract.
-  pub fn try_local_vol_slice_from_custom_derivatives(&self, j: usize) -> anyhow::Result<Vec<f64>> {
+  pub fn try_local_vol_slice_from_custom_derivatives(
+    &self,
+    j: usize,
+  ) -> Result<Vec<f64>, QuantError> {
     if j >= self.ts.len() {
-      anyhow::bail!("j={j} out of range for ts.len()={}", self.ts.len());
+      return Err(QuantError::invalid(
+        "j",
+        format!("must be below ts.len() = {}, got {j}", self.ts.len()),
+      ));
     }
-    let dc_dk = self
-      .dc_dk
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("dc_dk must be provided for custom derivatives"))?;
-    let d2c_dk2 = self
-      .d2c_dk2
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
-    let dc_dt = self
-      .dc_dt
-      .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("dc_dt must be provided for custom derivatives"))?;
-
-    let nt = self.ts.len();
-    let nk = self.ks.len();
-    if dc_dk.dim() != (nt, nk) || d2c_dk2.dim() != (nt, nk) || dc_dt.dim() != (nt, nk) {
-      anyhow::bail!(
-        "all custom-derivative arrays must have shape ({nt}, {nk}); got dc_dk={:?}, d2c_dk2={:?}, dc_dt={:?}",
-        dc_dk.dim(),
-        d2c_dk2.dim(),
-        dc_dt.dim()
-      );
-    }
+    let (dc_dk, d2c_dk2, dc_dt) = self.custom_derivatives()?;
 
     let row = self.calls.index_axis(Axis(0), j);
     let mut out = vec![f64::NAN; self.ks.len()];
@@ -457,5 +413,41 @@ impl Dupire {
     }
 
     Ok(out)
+  }
+
+  fn custom_derivatives(&self) -> Result<(&Array2<f64>, &Array2<f64>, &Array2<f64>), QuantError> {
+    let missing = |what| QuantError::MissingInput {
+      what,
+      detail: "the custom-derivative local volatility reads it".to_string(),
+    };
+    let dc_dk = self.dc_dk.as_ref().ok_or_else(|| missing("dc_dk"))?;
+    let d2c_dk2 = self.d2c_dk2.as_ref().ok_or_else(|| missing("d2c_dk2"))?;
+    let dc_dt = self.dc_dt.as_ref().ok_or_else(|| missing("dc_dt"))?;
+    let shape = (self.ts.len(), self.ks.len());
+    check_grid_shape(
+      [
+        "dc_dk rows, one per maturity",
+        "dc_dk columns, one per strike",
+      ],
+      shape,
+      dc_dk.dim(),
+    )?;
+    check_grid_shape(
+      [
+        "d2c_dk2 rows, one per maturity",
+        "d2c_dk2 columns, one per strike",
+      ],
+      shape,
+      d2c_dk2.dim(),
+    )?;
+    check_grid_shape(
+      [
+        "dc_dt rows, one per maturity",
+        "dc_dt columns, one per strike",
+      ],
+      shape,
+      dc_dt.dim(),
+    )?;
+    Ok((dc_dk, d2c_dk2, dc_dt))
   }
 }

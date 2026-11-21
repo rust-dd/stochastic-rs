@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::super::kernel;
 use super::greeks::MtGreeks;
@@ -13,7 +14,7 @@ pub(super) struct MtLocalization<T: FloatExt> {
   pub(super) box_width: Vec<T>,
 }
 
-impl<T: FloatExt> MtGreeks<T> {
+impl<T: FloatExt, S: SeedExt> MtGreeks<T, S> {
   pub(super) fn compute_g(&self, payoff: &MtPayoff<T>, st: &[T]) -> Array2<T> {
     let d = self.params.n_assets();
     match payoff {
@@ -97,15 +98,15 @@ impl<T: FloatExt> MtGreeks<T> {
   pub(super) fn localization(&self, payoff: &MtPayoff<T>) -> Option<MtLocalization<T>> {
     match payoff {
       MtPayoff::Call { strike, .. } | MtPayoff::Put { strike, .. } => {
-        let base = self
-          .params
-          .assets
-          .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| {
-            a.max_or_nan(b)
-          })
-          .max(T::one());
+        let base = T::max_or_nan_fold(
+          self
+            .params
+            .assets
+            .iter()
+            .map(|a| <T as num_traits::Float>::abs(a.s)),
+        )
+        .max_or_nan(<T as num_traits::Float>::abs(*strike))
+        .max(T::one());
         let box_hi = self
           .params
           .assets
@@ -120,15 +121,15 @@ impl<T: FloatExt> MtGreeks<T> {
         })
       }
       MtPayoff::BasketCall { strike, .. } => {
-        let base = self
-          .params
-          .assets
-          .iter()
-          .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| {
-            a.max_or_nan(b)
-          })
-          .max(T::one());
+        let base = T::max_or_nan_fold(
+          self
+            .params
+            .assets
+            .iter()
+            .map(|a| <T as num_traits::Float>::abs(a.s)),
+        )
+        .max_or_nan(<T as num_traits::Float>::abs(*strike))
+        .max(T::one());
         let box_hi = self
           .params
           .assets
@@ -284,17 +285,16 @@ impl<T: FloatExt> MtGreeks<T> {
   /// orthant box `[0, hi]^d`. This is a practical localization, not an exact
   /// treatment of the infinite domain.
   fn quadrature_bounds(&self, payoff: &MtPayoff<T>, st: &[T]) -> (Vec<T>, Vec<T>) {
-    let spot_scale = self
-      .params
-      .assets
-      .iter()
-      .map(|a| <T as num_traits::Float>::abs(a.s))
-      .fold(T::zero(), |a, b| a.max_or_nan(b));
-    let terminal_scale = st
-      .iter()
-      .copied()
-      .map(<T as num_traits::Float>::abs)
-      .fold(T::zero(), |a, b| a.max_or_nan(b));
+    let spot_scale = T::max_or_nan_fold(
+      self
+        .params
+        .assets
+        .iter()
+        .map(|a| <T as num_traits::Float>::abs(a.s)),
+    )
+    .max_or_nan(T::zero());
+    let terminal_scale = T::max_or_nan_fold(st.iter().copied().map(<T as num_traits::Float>::abs))
+      .max_or_nan(T::zero());
     let payoff_scale = match payoff {
       MtPayoff::Call { strike, .. } => <T as num_traits::Float>::abs(*strike),
       MtPayoff::Put { strike, .. } => <T as num_traits::Float>::abs(*strike),

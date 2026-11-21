@@ -2,8 +2,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use super::calibrator::HestonCalibrator;
+use super::lsq::HestonProblem;
 use super::params::HestonJacobianMethod;
-use super::params::HestonParams;
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
 use super::params::P_THETA;
@@ -13,8 +13,10 @@ use super::transform::apply_chain_rule;
 use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
+use crate::OptionQuote;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
 
 fn non_feller_params() -> HestonParams {
@@ -32,33 +34,23 @@ fn synthetic_calibrator(
   initial: HestonParams,
   method: HestonJacobianMethod,
 ) -> HestonCalibrator {
-  let strikes_per_maturity = [80.0, 90.0, 100.0, 110.0, 120.0];
-  let maturities = [0.25, 0.75, 1.25];
-  let mut strikes = Vec::new();
-  let mut flat_t = Vec::new();
-  for maturity in maturities {
-    strikes.extend(strikes_per_maturity);
-    flat_t.extend(vec![maturity; strikes_per_maturity.len()]);
+  let mut quotes = [0.25, 0.75, 1.25]
+    .into_iter()
+    .flat_map(|tau| [80.0, 90.0, 100.0, 110.0, 120.0].map(|k| (k, tau)))
+    .map(|(k, tau)| OptionQuote::new(k, tau, 0.0, OptionType::Call))
+    .collect::<Vec<_>>();
+  let market = HestonCalibrator::new(100.0, 0.02, 0.01, quotes.clone())
+    .compute_model_prices_for_numeric(truth);
+  for (quote, price) in quotes.iter_mut().zip(market) {
+    quote.price = price;
   }
-  let observations = strikes.len();
-  let mut calibrator = HestonCalibrator::new(
-    Some(initial),
-    Array1::zeros(observations),
-    Array1::from_elem(observations, 100.0),
-    Array1::from_vec(strikes),
-    0.02,
-    Some(0.01),
-    maturities[0],
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  calibrator.flat_t = flat_t;
-  calibrator.c_market = calibrator.compute_model_prices_for_numeric(truth);
-  calibrator.set_jacobian_method(method);
-  calibrator
+  HestonCalibrator::new(100.0, 0.02, 0.01, quotes)
+    .with_start(initial)
+    .with_jacobian_method(method)
+}
+
+fn problem(calibrator: &HestonCalibrator) -> HestonProblem<'_> {
+  HestonProblem::new(calibrator, calibrator.start.unwrap())
 }
 
 fn assert_jacobians_close(left: &Array2<f64>, right: &Array2<f64>) {
@@ -81,16 +73,16 @@ fn assert_jacobians_close(left: &Array2<f64>, right: &Array2<f64>) {
 fn bounded_transform_is_finite_monotone_and_round_trips() {
   let params = non_feller_params();
   let coordinates = to_optimizer_coordinates(&params);
-  let round_trip = from_optimizer_coordinates(&coordinates);
+  let round_trip = from_optimizer_coordinates(coordinates.view());
   assert!((round_trip.v0 - params.v0).abs() < 1e-12);
   assert!((round_trip.kappa - params.kappa).abs() < 1e-12);
   assert!((round_trip.theta - params.theta).abs() < 1e-12);
   assert!((round_trip.sigma - params.sigma).abs() < 1e-12);
   assert!((round_trip.rho - params.rho).abs() < 1e-12);
 
-  let mut previous = from_optimizer_coordinates(&Array1::from_elem(5, -4.0));
+  let mut previous = from_optimizer_coordinates(Array1::from_elem(5, -4.0).view());
   for coordinate in [-2.0, 0.0, 2.0, 4.0] {
-    let current = from_optimizer_coordinates(&Array1::from_elem(5, coordinate));
+    let current = from_optimizer_coordinates(Array1::from_elem(5, coordinate).view());
     assert!(current.v0 > previous.v0);
     assert!(current.kappa > previous.kappa);
     assert!(current.theta > previous.theta);
@@ -122,15 +114,12 @@ fn exact_box_boundaries_are_moved_to_a_finite_interior_point() {
 #[test]
 fn least_squares_set_params_is_monotone_without_periodic_reflection() {
   let truth = non_feller_params();
-  let mut calibrator = synthetic_calibrator(
-    &truth,
-    truth.clone(),
-    HestonJacobianMethod::NumericFiniteDiff,
-  );
-  calibrator.set_params(&Array1::from_elem(5, -3.0));
-  let lower = calibrator.effective_params();
-  calibrator.set_params(&Array1::from_elem(5, 3.0));
-  let upper = calibrator.effective_params();
+  let calibrator = synthetic_calibrator(&truth, truth, HestonJacobianMethod::NumericFiniteDiff);
+  let mut problem = problem(&calibrator);
+  problem.set_params(Array1::from_elem(5, -3.0).view());
+  let lower = problem.effective_params();
+  problem.set_params(Array1::from_elem(5, 3.0).view());
+  let upper = problem.effective_params();
 
   assert!(upper.v0 > lower.v0);
   assert!(upper.kappa > lower.kappa);
@@ -142,12 +131,12 @@ fn least_squares_set_params_is_monotone_without_periodic_reflection() {
 #[test]
 fn analytic_jacobian_includes_the_optimizer_chain_rule() {
   let params = non_feller_params();
-  let calibrator = synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   let coordinates = to_optimizer_coordinates(&params);
   let (_, physical_jacobian) = calibrator
     .compute_model_prices_and_residual_jacobian_cui(&params)
     .unwrap();
-  let analytic_optimizer = apply_chain_rule(physical_jacobian, &coordinates);
+  let analytic_optimizer = apply_chain_rule(physical_jacobian, coordinates.view());
   let numeric_optimizer = calibrator.numeric_optimizer_jacobian(&params);
   assert_jacobians_close(&analytic_optimizer, &numeric_optimizer);
 }
@@ -155,12 +144,12 @@ fn analytic_jacobian_includes_the_optimizer_chain_rule() {
 #[test]
 fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
   let params = non_feller_params();
-  let mut calibrator =
-    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
-  calibrator.set_params(&to_optimizer_coordinates(&params));
-  let analytic = calibrator.jacobian().unwrap();
-  let numeric = calibrator.numeric_optimizer_jacobian(&calibrator.free_params());
+  let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
+  calibrator.feller_projection = true;
+  let mut problem = problem(&calibrator);
+  problem.set_params(to_optimizer_coordinates(&params).view());
+  let analytic = problem.jacobian().unwrap();
+  let numeric = calibrator.numeric_optimizer_jacobian(&problem.free_params());
   assert!(analytic.column(3).iter().all(|value| *value == 0.0));
   assert_jacobians_close(&analytic, &numeric);
 }
@@ -168,19 +157,18 @@ fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
 #[test]
 fn feller_overshoot_row_differentiates_like_its_finite_difference() {
   let params = non_feller_params();
-  let mut calibrator =
-    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
-  calibrator.feller_row_weight = Some(2.0);
-  let coordinates = to_optimizer_coordinates(&params);
-  calibrator.set_params(&coordinates);
-  let analytic = calibrator.jacobian().unwrap();
-  let row = analytic.nrows() - 1;
-  let overshoot_at = |coordinates: &Array1<f64>| {
-    let mut moved = calibrator.clone();
-    moved.set_params(coordinates);
-    moved.residuals().unwrap()[row]
+  let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
+  calibrator.feller_projection = true;
+  let at = |coordinates: &Array1<f64>| {
+    let mut problem = problem(&calibrator);
+    problem.feller_row_weight = Some(2.0);
+    problem.set_params(coordinates.view());
+    problem
   };
+  let coordinates = to_optimizer_coordinates(&params);
+  let analytic = at(&coordinates).jacobian().unwrap();
+  let row = analytic.nrows() - 1;
+  let overshoot_at = |coordinates: &Array1<f64>| at(coordinates).residuals().unwrap()[row];
   for column in 0..5 {
     let step = 1e-6 * (1.0 + coordinates[column].abs());
     let mut plus = coordinates.clone();
@@ -199,13 +187,9 @@ fn feller_overshoot_row_differentiates_like_its_finite_difference() {
 #[test]
 fn least_squares_numeric_path_differentiates_optimizer_coordinates() {
   let params = non_feller_params();
-  let calibrator = synthetic_calibrator(
-    &params,
-    params.clone(),
-    HestonJacobianMethod::NumericFiniteDiff,
-  );
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::NumericFiniteDiff);
   let expected = calibrator.numeric_optimizer_jacobian(&params);
-  let actual = calibrator.jacobian().unwrap();
+  let actual = problem(&calibrator).jacobian().unwrap();
   assert_jacobians_close(&actual, &expected);
 }
 
@@ -219,9 +203,10 @@ fn boundary_adjacent_non_feller_jacobian_remains_finite_and_consistent() {
     rho: -0.98,
   };
   assert!(!params.satisfies_feller_condition());
-  let calibrator = synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
-  let analytic = calibrator.jacobian().unwrap();
-  let numeric = calibrator.numeric_optimizer_jacobian(&calibrator.effective_params());
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
+  let problem = problem(&calibrator);
+  let analytic = problem.jacobian().unwrap();
+  let numeric = calibrator.numeric_optimizer_jacobian(&problem.effective_params());
   assert!(analytic.iter().all(|value| value.is_finite()));
   assert!(numeric.iter().all(|value| value.is_finite()));
   assert_jacobians_close(&analytic, &numeric);

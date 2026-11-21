@@ -1,13 +1,13 @@
 ---
 title: stochastic-rs
 seo_title: "stochastic-rs docs: quant finance in Rust and Python"
-description: Simulate 133 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
+description: Simulate 130 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
 category: concept
 status: stable
 since: 2.0.0
 ---
 
-stochastic-rs is an open-source quantitative-finance library for Rust and Python. Simulate **133 stochastic processes**, price and calibrate against them, and move any of it to a GPU by naming one. The model and its law stay the same on the device; a configuration the kernels cannot carry samples on the host, and `device_fallback()` says why.
+stochastic-rs is an open-source quantitative-finance library for Rust and Python. Simulate **130 stochastic processes**, price and calibrate against them, and move any of it to a GPU by naming one. The model and its law stay the same on the device; a configuration the kernels cannot carry samples on the host, and `device_fallback()` says why.
 
 ## One thread, end to end
 
@@ -23,7 +23,7 @@ use stochastic_rs::prelude::*;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
-let gbm = Gbm::<f32, _>::new(0.05, 0.2, 1_024, Some(100.0), Some(1.0), Deterministic::new(7));
+let gbm = Gbm::<f32, _>::new(0.05, 0.2, 1_024, 100.0, Some(1.0), Deterministic::new(7));
 let paths = gbm.sample_par(1_000);   // 1 000 paths of 1 024 points
 ```
 
@@ -69,9 +69,9 @@ The host and the device draw different random streams, so no path is shared, but
 **Price the same model in closed form.** A pricer holds model parameters and takes the query as arguments, so one instance prices a whole strike-maturity grid.
 
 ```rust
-use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::pricing::heston::{HestonParams, HestonPricer};
 
-let model = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+let model = HestonPricer::new(HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.7 });
 let call = model.price_call(100.0, 100.0, 0.05, 0.02, 0.75);   // 7.7311
 ```
 
@@ -87,15 +87,15 @@ let h = RescaledRange::default().estimate(fbm.view())?;         // 0.61 for a tr
 
 ## What are you here for?
 
-**To simulate.** 133 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series: Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
+**To simulate.** 130 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series: Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
 
-**To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks; fifteen calibrators behind one `Calibrator` trait; SVI and SSVI surfaces; curves, bonds, credit and risk. → [Quant](/docs/quant)
+**To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks; sixteen calibrators behind one `Calibrator` trait; SVI and SSVI surfaces; curves, bonds, credit and risk. → [Quant](/docs/quant)
 
 **To estimate.** Eight Hurst estimators, realised measures, jump tests, cointegration, changepoints, extreme value, GARCH fitting — each with the paper it came from. → [Stats](/docs/stats)
 
 **To draw.** 35 SIMD distribution samplers, most with closed-form characteristic function, pdf, cdf and moments, and 21 copulas with fitting and goodness-of-fit. → [Distributions](/docs/distributions) · [Copulas](/docs/copulas)
 
-**To do it from Python.** 307 classes and functions, NumPy in and NumPy out, and the same `device=` argument. → [Python](/docs/python)
+**To do it from Python.** 305 classes and functions, NumPy in and NumPy out, and the same `device=` argument. → [Python](/docs/python)
 
 ## Where to start
 

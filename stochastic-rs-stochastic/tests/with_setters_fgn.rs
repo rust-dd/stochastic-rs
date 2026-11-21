@@ -1,25 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Fgn`
-//! (`noise/fgn/core.rs`). Cache: `sqrt_eigenvalues`/`fft_handler` (Davies-
-//! Harte circulant-embedding FFT plan and eigenvalues), expensive to
-//! compute and a pure function of `hurst`/the *requested* `n`/`t`.
-//! `with_hurst`/`with_steps`/`with_horizon` rebuild it by calling
-//! `Self::new(..)` again wholesale (cheaper to reuse the real constructor
-//! than to hand-duplicate ~60 lines of FFT setup, and impossible to drift
-//! out of sync with it).
-//! `with_seed` is a plain field write: neither cached array depends on the
-//! seed.
-//!
-//! **Sample through `ProcessExt::sample()`, not `sample_cpu_with_seed(k)`.**
-//! `sample_cpu_with_seed(seed: u64)` is `self.sample_cpu_impl(&Deterministic
-//! ::new(seed))` — it builds a *fresh* seed from its own argument and never
-//! reads `self.seed` at all. Using it here would make every comparison
-//! below pass or fail purely on whether the two calls pass the same literal
-//! `u64`, regardless of what `with_seed`/`Self::new(..)` actually did to
-//! `self.seed` — in particular `fgn_with_seed_matches_fresh_construction`
-//! would still pass even if `with_seed` were a no-op. `Fgn`'s
-//! `ProcessExt::sample(&self)` (`noise/fgn.rs`) is `B::generate(self,
-//! &self.seed)`, which does read the field, so it is used throughout below
-//! instead.
+//! `Fgn`'s setters: `with_hurst`, `with_increments` and `with_horizon` rebuild the FFT cache
+//! through `new`; samples go through `ProcessExt::sample`, which reads `self.seed`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -56,15 +36,15 @@ fn fgn_with_hurst_rebuilds_fft_cache() {
 }
 
 #[test]
-fn fgn_with_steps_rebuilds_fft_cache() {
-  let got = fgn_base().with_steps(128);
+fn fgn_with_increments_rebuilds_fft_cache() {
+  let got = fgn_base().with_increments(128);
   assert_eq!(got.n(), 128);
   assert_eq!(got.hurst(), fgn_base().hurst());
   assert_eq!(got.t(), fgn_base().t());
 
   let want = Fgn::new(0.7, 128, Some(1.0), Deterministic::new(9)).sample();
   let got_seeded = fgn_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_increments(128)
     .sample();
   assert_eq!(want, got_seeded);
   assert!(finite(&want));
@@ -93,11 +73,8 @@ fn fgn_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `fgn_base()` helper the bit-exact FFT-cache-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly).
+/// A `Default`-rooted `with_hurst` round-trip; the FFT-cache tests above need the literal
+/// fixtures of `fgn_base()`.
 #[test]
 fn fgn_default_with_hurst_round_trip() {
   let base = Fgn::<f64>::default();

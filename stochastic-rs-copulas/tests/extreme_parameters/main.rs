@@ -1,5 +1,5 @@
-//! h-functions, quantiles, cdfs, densities, Kendall's τ, Archimedean generators and nested Archimedean copulas at the
-//! ends of every admitted parameter range: finite and in range, and within `1e-12` of mpmath values wherever those are normal.
+//! h-functions, quantiles, cdfs, densities, Kendall's τ, generators and NACs at every parameter
+//! range's ends: finite, in range, within `1e-12` of mpmath where that is normal.
 
 mod archimedean;
 mod conditional;
@@ -26,7 +26,8 @@ use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
 
-/// The edges, the extreme normal and subnormal values, and the extreme uniform draws `2⁻⁵³` and `1 − 2⁻⁵³`.
+/// The edges, the extreme normal and subnormal values, and the extreme uniform draws `2⁻⁵³` and
+/// `1 − 2⁻⁵³`.
 const GRID: [f64; 9] = [
   0.0,
   5e-324,
@@ -65,8 +66,8 @@ fn build(family: &str, p: &[f64]) -> Box<dyn BivariateExt> {
   }
 }
 
-/// `kind` over the whole grid in one call, `a` the row and `b` the column: `h(a | b)`, `h⁻¹(a | b)`, `C(a, b)`, or
-/// `ln c(a, b)` on the open grid, without its edges.
+/// `kind` over the whole grid in one call, `a` the row and `b` the column: `h(a | b)`,
+/// `h⁻¹(a | b)`, `C(a, b)`, or `ln c(a, b)` on the open grid, without its edges.
 fn on_grid(copula: &dyn BivariateExt, kind: &str) -> Array1<f64> {
   let grid: &[f64] = if kind == "log_pdf" {
     &GRID[1..8]

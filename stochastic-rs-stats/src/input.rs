@@ -21,6 +21,26 @@ pub(crate) fn validate<T: FloatExt>(y: &[T], min_n: usize) -> Result<(), StatsEr
   validate_domain(y, min_n, "finite", |_| true)
 }
 
+/// [`validate`] on a view, out of line so the pass does not take registers from the caller's loops.
+#[inline(never)]
+pub(crate) fn validate_view<T: FloatExt>(
+  x: ArrayView1<'_, T>,
+  min_n: usize,
+) -> Result<(), StatsError> {
+  validate(&as_slice_or_copy(x), min_n)
+}
+
+/// [`validate_domain`] on a view, out of line as [`validate_view`].
+#[inline(never)]
+pub(crate) fn validate_view_domain<T: FloatExt>(
+  x: ArrayView1<'_, T>,
+  min_n: usize,
+  constraint: &'static str,
+  domain: impl Fn(T) -> bool,
+) -> Result<(), StatsError> {
+  validate_domain(&as_slice_or_copy(x), min_n, constraint, domain)
+}
+
 /// As [`validate`], each observation also inside `domain`; `constraint` names both conditions.
 pub(crate) fn validate_domain<T: FloatExt>(
   y: &[T],
@@ -49,6 +69,12 @@ pub(crate) fn validate_domain<T: FloatExt>(
   }
 }
 
+/// The mean summed in index order: ndarray's `mean()` regroups contiguous memory, so a strided or
+/// reversed view would round apart from its copy.
+pub(crate) fn mean_in_order(x: ArrayView1<'_, f64>) -> f64 {
+  x.iter().fold(0.0, |acc, &v| acc + v) / x.len() as f64
+}
+
 /// Every entry of `x` finite, else `InvalidObservation` at the row (the observation `t`) of the
 /// first that is not.
 pub(crate) fn validate_rows<T: FloatExt>(x: ArrayView2<'_, T>) -> Result<(), StatsError> {
@@ -64,10 +90,18 @@ pub(crate) fn validate_rows<T: FloatExt>(x: ArrayView2<'_, T>) -> Result<(), Sta
   Ok(())
 }
 
-/// `Err(DegenerateData(what))` when every value equals the first; exact, as a rounded mean lets a
-/// constant series through a variance check.
-pub(crate) fn reject_constant<T: PartialEq>(y: &[T], what: &'static str) -> Result<(), StatsError> {
-  if y.windows(2).all(|w| w[0] == w[1]) {
+/// A series whose range is within this many `ε` of its largest magnitude is a constant's rounding:
+/// neighbouring doubles, as a constant through two or three rounded operations leaves.
+const ROUNDING_RANGE: f64 = 4.0;
+
+/// `Err(DegenerateData(what))` below 2 points or when `max − min <= ROUNDING_RANGE ε max|y|`: the
+/// variance of such a series is rounding, which no relative rule can tell from a signal.
+pub(crate) fn reject_constant<T: FloatExt>(y: &[T], what: &'static str) -> Result<(), StatsError> {
+  let low = T::min_or_nan_fold(y.iter().copied());
+  let high = T::max_or_nan_fold(y.iter().copied());
+  let bound = T::from_f64_fast(ROUNDING_RANGE) * T::epsilon() * low.abs().max(high.abs());
+  // A non-finite end is no constant's rounding: `validate` answers for it.
+  if y.len() < 2 || (low.is_finite() && high.is_finite() && high - low <= bound) {
     return Err(StatsError::DegenerateData(what));
   }
   Ok(())

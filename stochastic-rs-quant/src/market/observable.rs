@@ -1,17 +1,12 @@
-//! Observable / Observer pattern for reactive market data.
-//!
-//! Market quotes, fixing histories, and handles notify registered observers
-//! when their underlying value changes. Observers drive lazy recomputation
-//! in downstream pricers via a classic Observer / Observable pattern.
+//! Observer pattern for market data: quotes, fixing histories and handles notify registered
+//! observers, which mark downstream pricers for lazy recomputation.
 
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 
-/// A callback receiver notified when an observable mutates.
-///
-/// Implementations must be cheap to call — consumers typically flip an
-/// "is stale" flag rather than recomputing inside `update`.
+/// Receiver notified when an observable changes. `update` must be cheap: flip a stale flag,
+/// do not recompute inside it.
 pub trait Observer: Send + Sync {
   /// Called when a watched observable changes.
   fn update(&self);
@@ -60,14 +55,8 @@ impl ObservableBase {
     }
   }
 
-  /// Number of registered observers still alive.
-  ///
-  /// **Poisoning policy:** if a previous observer panicked while holding
-  /// the registry lock, recover by reading the inner state (a `log::warn!`
-  /// for observability) rather than crashing the process. The cleared set
-  /// of registrations may be slightly lossy in that scenario, which is
-  /// the better outcome than a process-wide crash for a long-running
-  /// market-data feed.
+  /// Number of registered observers still alive. A registry lock poisoned by a panicking
+  /// observer is recovered with a warning, not propagated: a feed outlives one bad observer.
   pub fn observer_count(&self) -> usize {
     let mut obs = match self.observers.lock() {
       Ok(g) => g,

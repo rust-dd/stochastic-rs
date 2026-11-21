@@ -1,19 +1,11 @@
-//! # Fourier-Malliavin Volatility Estimation
+//! Non-parametric Fourier–Malliavin estimators of volatility, covariance, leverage, vol of vol and
+//! quarticity; [`FmVol`](crate::fourier_malliavin::FmVol) computes the Fourier coefficients once.
 //!
 //! $$
-//! \widehat\sigma^2_{n,N,M}(\tau)=\sum_{|k|\le M}\!\Bigl(1-\frac{|k|}{M+1}\Bigr)c_k(\sigma_{n,N})\,e^{i\frac{2\pi}{T}k\tau}
+//! \widehat\sigma^2_{n,N,M}(\tau)=\sum_{|k|\le M}\!\Bigl(1-\frac{|k|}{M+1}\Bigr)
+//! c_k(\sigma_{n,N})\,e^{i\frac{2\pi}{T}k\tau}
 //! $$
 //!
-//! Non-parametric estimation of volatility, covariance, leverage,
-//! volatility-of-volatility and quarticity from observed price paths
-//! using the Fourier-Malliavin method of Malliavin & Mancino.
-//!
-//! The primary API is the [`FmVol`](crate::fourier_malliavin::engine::FmVol) engine
-//! struct which pre-computes
-//! the Fourier coefficients of price increments once and exposes all
-//! estimators as cheap method calls.
-//!
-//! # Example
 //! ```
 //! use ndarray::Array1;
 //! use stochastic_rs_quant::fourier_malliavin::FmVol;
@@ -35,18 +27,14 @@
 //! assert_eq!(spot_var.len(), 21);
 //! ```
 //!
-//! # References
-//!
-//! - Sanfelici, S. & Toscano, G. (2024). *The Fourier-Malliavin Volatility
-//!   (FmVol) MATLAB® library*. arXiv preprint [arXiv:2402.00172](https://arxiv.org/abs/2402.00172).
-//! - Malliavin, P. & Mancino, M. E. (2002). Fourier series method for
-//!   measurement of multivariate volatilities. *Finance and Stochastics*, 6(1), 49–61.
-//! - Malliavin, P. & Mancino, M. E. (2009). A Fourier transform method for
-//!   nonparametric estimation of multivariate volatility. *The Annals of Statistics*, 37(4), 1983–2010.
-//! - Mancino, M. E., Recchioni, M. C. & Sanfelici, S. (2017). *Fourier-Malliavin
-//!   Volatility Estimation: Theory and Practice*. Springer Briefs in Quantitative Finance.
+//! Reference: Sanfelici & Toscano (2024), the FMVol MATLAB library, arXiv:2402.00172
+//! Reference: Malliavin & Mancino (2002), Finance and Stochastics 6(1), 49–61
+//! Reference: Malliavin & Mancino (2009), The Annals of Statistics 37(4), 1983–2010
+//! Reference: Mancino, Recchioni & Sanfelici (2017), "Fourier-Malliavin Volatility Estimation"
 
 use ndarray::Array1;
+
+use crate::QuantError;
 
 pub mod coefficients;
 pub mod engine;
@@ -89,77 +77,70 @@ pub fn default_cutting_freq_noisy(n: usize) -> (usize, usize, usize) {
   (big_n, big_m, big_l)
 }
 
-/// Default cutting frequencies for the Dirichlet/Cesàro **FE** spot-volatility
-/// estimator (MATLAB FSDA `FE_spot_vol` / `FE_spot_vol_FFT` convention):
-/// `N = floor((n − 1) / 2)`, `M = floor(√n · log(n))`.
-///
-/// The FE convention uses a wider Fejér window than the FM convention
-/// (`M ≈ √N`) — pair this with [`FmVol::spot_variance_fe`] for parity with
-/// the MATLAB output.
+/// The FE spot-volatility defaults of MATLAB FSDA's `FE_spot_vol`: `N = floor((n − 1) / 2)`,
+/// `M = floor(√n · log(n))`, a wider Fejér window than FM's `M ≈ √N`.
 pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
   let big_n = (n - 1) / 2;
   let big_m = ((n as f64).sqrt() * (n as f64).ln()).floor() as usize;
   (big_n, big_m)
 }
 
-/// Compute the MSE-optimal cutting frequency *N* for the Fourier estimator
-/// of integrated variance in the presence of microstructure noise.
-///
-/// Implements the algorithm from:
-/// - Mancino, M. E., Recchioni, M. C. & Sanfelici, S. (2017), §3.4.
-///
-/// # Algorithm
-///
-/// 1. **Sparse sampling**: skip observations until lag-1 autocorrelation
-///    of increments falls below the 95 % Bartlett bound (±1.96/√n).
-///    This removes noise-induced serial dependence.
-/// 2. Estimate integrated variance (RV) and quarticity (Q) from sparse data.
-/// 3. Estimate noise moments from the *original* (non-sparse) increments.
-/// 4. Evaluate the MSE of the Fourier estimator for each candidate *N*
-///    and return the minimiser.
-///
-/// The cited source derives the rule for regular sampling. For irregular
-/// timestamps this implementation applies a project-specific heuristic:
-/// quarticity uses the duration-adjusted fourth-power sum, the regular-grid
-/// spacing is replaced by `sum(Δt_i²) / T`, and the noise-bias kernel is
-/// the arithmetic mean of `D_N(Δt_i)` over the observed durations. These
-/// substitutions recover the cited formula exactly on a uniform grid, but
-/// they are not claimed as a theorem or MATLAB-library feature.
-///
-/// # Returns
-///
-/// `OptimalCuttingResult { n_opt, noise_variance, mse_curve }`.
+/// MSE-optimal cutting frequency `N` of the integrated-variance estimator under microstructure
+/// noise (Mancino, Recchioni & Sanfelici 2017, §3.4); irregular grids use a heuristic extension.
 pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttingResult {
-  try_optimal_cutting_frequency(prices, times)
-    .expect("invalid input for optimal cutting-frequency estimation")
+  try_optimal_cutting_frequency(prices, times).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// Fallible variant of [`optimal_cutting_frequency`].
 pub fn try_optimal_cutting_frequency(
   prices: &[f64],
   times: &[f64],
-) -> anyhow::Result<OptimalCuttingResult> {
+) -> Result<OptimalCuttingResult, QuantError> {
   if prices.len() != times.len() {
-    anyhow::bail!("prices and times must have the same length");
+    return Err(QuantError::DimensionMismatch {
+      what: "times, one per price",
+      expected: prices.len(),
+      got: times.len(),
+    });
   }
   let n_obs = prices.len();
   if n_obs < 8 {
-    anyhow::bail!("at least 8 observations are required");
+    return Err(QuantError::InsufficientData {
+      what: "prices for the optimal cutting frequency",
+      needed: 8,
+      got: n_obs,
+    });
   }
-  if prices.iter().any(|price| !price.is_finite()) {
-    anyhow::bail!("all prices must be finite");
+  if let Some((i, price)) = prices.iter().enumerate().find(|(_, p)| !p.is_finite()) {
+    return Err(QuantError::invalid(
+      "prices",
+      format!("price {i} must be finite, got {price}"),
+    ));
   }
-  if times.iter().any(|time| !time.is_finite()) {
-    anyhow::bail!("all times must be finite");
+  if let Some((i, time)) = times.iter().enumerate().find(|(_, t)| !t.is_finite()) {
+    return Err(QuantError::invalid(
+      "times",
+      format!("time {i} must be finite, got {time}"),
+    ));
   }
-  if times.windows(2).any(|pair| pair[1] <= pair[0]) {
-    anyhow::bail!("times must be strictly increasing");
+  if let Some(i) = times.windows(2).position(|pair| pair[1] <= pair[0]) {
+    return Err(QuantError::invalid(
+      "times",
+      format!(
+        "must be strictly increasing, got time {i} = {} before {}",
+        times[i],
+        times[i + 1]
+      ),
+    ));
   }
   let n = n_obs - 1;
 
   let period = times[n_obs - 1] - times[0];
   if !period.is_finite() || period <= 0.0 {
-    anyhow::bail!("time period must be positive and finite");
+    return Err(QuantError::invalid(
+      "times",
+      format!("must span a positive, finite period, got {period}"),
+    ));
   }
 
   let increments = Array1::from_vec((0..n).map(|i| prices[i + 1] - prices[i]).collect());
@@ -328,10 +309,8 @@ fn mean_rescaled_dirichlet_kernel(big_n: usize, durations: &Array1<f64>, period:
     / durations.len() as f64
 }
 
-/// Rescaled Dirichlet kernel: D_N(t) = (1/(2N+1)) Σ_{s=-N}^{N} e^{i s 2π t / T}.
-///
-/// For real evaluation this simplifies to (1 + 2 Σ_{s=1}^{N} cos(s·2π·h/T)) / (2N+1)
-/// where h is the grid spacing.
+/// Rescaled Dirichlet kernel `D_N(h) = (1 + 2 Σ_{s=1}^{N} cos(s·2π·h/T)) / (2N+1)` at the grid
+/// spacing `h`.
 fn rescaled_dirichlet_kernel(big_n: usize, h: f64, period: f64) -> f64 {
   let half_phase = std::f64::consts::PI * h / period;
   let denominator = (2 * big_n + 1) as f64 * half_phase.sin();

@@ -228,7 +228,8 @@ fn narrow_laws_hold_at_their_double_inputs() {
   }
 }
 
-/// mpmath at 60 and 120 digits: the excess kurtosis `κ₄/κ₂²` keeps its digits where it nears 0 with `ν`.
+/// mpmath at 60 and 120 digits: the excess kurtosis `κ₄/κ₂²` keeps its digits where it nears 0 with
+/// `ν`.
 #[test]
 fn kurtosis_holds_at_small_rates() {
   for ((sigma, nu, theta), want) in [
@@ -307,7 +308,8 @@ fn pdf_vanishes_at_infinity() {
   assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
 }
 
-/// mpmath at `ν = 0.005` next to the centre, where the order `1/ν − ½ = 199.5` makes `K` overflow at the argument.
+/// mpmath at `ν = 0.005` next to the centre, where the order `1/ν − ½ = 199.5` makes `K` overflow
+/// at the argument.
 #[test]
 fn pdf_holds_where_k_overflows() {
   let d = SimdVarianceGamma::<f64>::new(0.2, 0.005, 0.1, 0.0);

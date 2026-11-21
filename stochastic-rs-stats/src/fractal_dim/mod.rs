@@ -1,5 +1,6 @@
-//! Fractal-dimension estimators behind [`FractalDimEstimator`]: [`Higuchi`] curve length and the
-//! [`Variogram`] ratio, both also `H = 2 − D` through [`crate::hurst::HurstEstimator`].
+//! Fractal-dimension estimators behind `FractalDimEstimator`: Higuchi curve length and variogram.
+//!
+//! [`Higuchi`] and [`Variogram`] also answer `H = 2 − D` through [`crate::hurst::HurstEstimator`].
 
 use ndarray::ArrayView1;
 
@@ -12,16 +13,10 @@ pub mod variogram;
 pub use higuchi::Higuchi;
 pub use variogram::Variogram;
 
-/// Unified fractal-dimension estimator interface.
-///
-/// Each estimator owns its configuration (kmax, p-norm, …) and exposes
-/// a single [`estimate`] entry point that consumes a contiguous time
-/// series and produces a [`FdFit`].
-///
-/// Concrete impls in this crate: [`Higuchi`], [`Variogram`].
-///
-/// [`estimate`]: FractalDimEstimator::estimate
+/// A fractal-dimension estimator: it owns its configuration and reads one series into an [`FdFit`];
+/// implemented by [`Higuchi`] and [`Variogram`].
 pub trait FractalDimEstimator<T: FloatExt> {
+  /// `D` of `x`; `Err` on a constant series, a configuration out of range or too few points.
   fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError>;
 }
 

@@ -1,6 +1,4 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Sabr`
-//! (`volatility/sabr.rs`). Cache: private `cgns: Cgns<T>` keyed on
-//! `(rho, n, t)`, same shape as the previous wave's `BatesSvj`/`Hkde`/etc.
+//! The `with_*` setters of `Sabr`, whose private `cgns` cache is keyed on `(rho, n, t)`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -111,10 +109,10 @@ fn sabr_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn sabr_with_steps_rebuilds_cgns_cache() {
+fn sabr_with_points_rebuilds_cgns_cache() {
   let mut expected = sabr_base();
   expected.n = 128;
-  let got = sabr_base().with_steps(128);
+  let got = sabr_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
@@ -131,7 +129,7 @@ fn sabr_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = sabr_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }
@@ -170,14 +168,8 @@ fn sabr_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `sabr_base()` helper the bit-exact `cgns`-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `SabrFields` mirror,
-/// not a `Sabr { .., ..Sabr::default() }` struct-update literal: `Sabr` has
-/// a private `cgns` cache field, so that literal wouldn't even compile from
-/// this external test crate.
+/// A `Default`-rooted `with_beta` round-trip. It compares through the `SabrFields` mirror:
+/// `Sabr` has a private `cgns` cache, so a struct-update literal would not compile here.
 #[test]
 fn sabr_default_with_beta_round_trip() {
   let base = Sabr::<f64>::default();

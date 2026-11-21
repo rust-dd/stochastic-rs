@@ -41,6 +41,11 @@ thread_local! {
   static CONTEXT: RefCell<Option<(usize, Context)>> = const { RefCell::new(None) };
 }
 
+/// Drops the calling thread's fGN pipelines and sized buffers on `ordinal`.
+pub(super) fn release(ordinal: usize) {
+  metal::release_slot(&CONTEXT, ordinal);
+}
+
 pub(super) fn with<R>(
   ordinal: usize,
   use_context: impl FnOnce(&mut Context) -> Result<R>,
@@ -92,7 +97,7 @@ impl Context {
       offset,
       hurst,
       t,
-      seed,
+      key: [seed_lo, seed_hi],
       first_cell,
       ..
     } = launch;
@@ -164,7 +169,7 @@ impl Context {
       ..
     } = buffers;
     // SAFETY: tiles and column groups partition complete transforms; every tile thread reaches
-    // each barrier and shuffle. The planner bounds every buffer and the readout guards partial rows.
+    // each barrier and shuffle. The planner bounds each buffer; the readout guards partial rows.
     unsafe {
       sequence(|batch| {
         let Some(Scratch {
@@ -180,7 +185,7 @@ impl Context {
               (
                 &*eigs,
                 &*tile_twiddles,
-                (log_n, seed, base_cell),
+                (log_n, seed_lo, seed_hi, base_cell),
                 &mut *output,
                 (size, scale, rows, parity),
                 shared,
@@ -188,7 +193,7 @@ impl Context {
               |(
                 eigs,
                 tile_twiddles,
-                (log_n, seed, base_cell),
+                (log_n, seed_lo, seed_hi, base_cell),
                 output,
                 (size, scale, rows, parity),
                 shared,
@@ -197,7 +202,8 @@ impl Context {
                   Argument::read(eigs),
                   Argument::read(tile_twiddles),
                   Argument::value(*log_n)?,
-                  Argument::value(*seed)?,
+                  Argument::value(*seed_lo)?,
+                  Argument::value(*seed_hi)?,
                   Argument::value(*base_cell)?,
                   Argument::write(output),
                   Argument::value(*size)?,
@@ -219,10 +225,17 @@ impl Context {
             &mut *imag,
             &*eigs,
             &*tile_twiddles,
-            (log_n, tile_log as u32, seed, base_cell),
+            (log_n, tile_log as u32, seed_lo, seed_hi, base_cell),
             shared,
           ),
-          |(real, imag, eigs, tile_twiddles, (log_n, tile_log, seed, base_cell), shared)| {
+          |(
+            real,
+            imag,
+            eigs,
+            tile_twiddles,
+            (log_n, tile_log, seed_lo, seed_hi, base_cell),
+            shared,
+          )| {
             Ok([
               Argument::write(real),
               Argument::write(imag),
@@ -230,7 +243,8 @@ impl Context {
               Argument::read(tile_twiddles),
               Argument::value(*log_n)?,
               Argument::value(*tile_log)?,
-              Argument::value(*seed)?,
+              Argument::value(*seed_lo)?,
+              Argument::value(*seed_hi)?,
               Argument::value(*base_cell)?,
               Argument::threadgroup::<f32>(*shared)?,
               Argument::threadgroup::<f32>(*shared)?,

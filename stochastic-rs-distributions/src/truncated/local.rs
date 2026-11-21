@@ -138,7 +138,8 @@ impl Kernel for QuadKernel {
   }
 }
 
-/// A law's integral: the engine in the kernel's own coordinate, or the local model of a law narrower than it resolves.
+/// A law's integral: the engine in the kernel's own coordinate, or the local model of a law
+/// narrower than it resolves.
 #[derive(Clone, Debug)]
 pub(super) enum Model<K> {
   Full(Filled<K>),
@@ -171,7 +172,8 @@ pub(super) struct Local {
   r: f64,
   p: i32,
   t: Filled<QuadKernel>,
-  /// The interval as offsets from `r`, and the log-kernel's slope and curvature there: a tilt's own model reads them.
+  /// The interval as offsets from `r`, and the log-kernel's slope and curvature there: a tilt's own
+  /// model reads them.
   offsets: (f64, f64),
   slope: Signed,
   curvature: Signed,
@@ -200,7 +202,8 @@ impl Local {
     let p = (ln_len / LN_2).floor() as i32;
     let ln_unit = f64::from(p) * LN_2;
     let (a, b) = (slope.at(ln_unit), curvature.at(2.0 * ln_unit));
-    // A kernel that rises toward an open end with no curvature the unit resolves has no finite mass.
+    // A kernel that rises toward an open end with no curvature the unit resolves has no finite
+    // mass.
     if b == 0.0 && ((a >= 0.0 && up == f64::INFINITY) || (a <= 0.0 && lo == f64::NEG_INFINITY)) {
       return None;
     }

@@ -1,36 +1,32 @@
-//! # CirPlusPlus (Cir++)
+//! CIR++: a CIR factor plus a deterministic shift `phi`; `phi ≡ 0` is [`Cir`]'s path bit for bit.
 //!
 //! $$
 //! r_t=x_t+\varphi(t),\qquad dx_t=\kappa(\theta-x_t)\,dt+\sigma\sqrt{x_t}\,dW_t
 //! $$
 //!
 //! `kappa` is the speed and `theta` the level, where [`Cir`] names them `theta` and `mu`.
-//! At `phi ≡ 0` it samples [`Cir`]'s paths bit for bit.
 //!
-//! Brigo, Mercurio (2006), Interest Rate Models, 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3.
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::diffusion::cir::Cir;
 use crate::diffusion::cir::CirSampler;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Cox-Ingersoll-Ross process with a deterministic shift (Cir++).
-///
-/// `r_t = x_t + phi(t)`, where `x_t` follows
-/// `dx_t = kappa * (theta - x_t) * dt + sigma * sqrt(x_t) * dW_t`.
-///
-/// See the module doc for the `kappa`/`theta` naming note and the
-/// composition with [`Cir`].
-#[derive(Clone)]
+/// CIR with a deterministic shift: `r_t = x_t + phi(t)` on a [`Cir`] factor `x_t`, whose speed
+/// and level are named `kappa` and `theta` here.
+#[derive(Debug, Clone)]
 pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the underlying CIR factor `x_t` (see the
   /// module doc: unlike [`Cir::theta`], the speed here is named `kappa`).
@@ -45,10 +41,10 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub phi: Fn1D<T>,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Initial value `x_0` of the CIR factor — not `r_0` directly; the
-  /// observed short rate at `t=0` is `x_0 + phi(0)`.
+  /// Initial value; `None` starts at zero.
+  /// Of the CIR factor, so the short rate starts at `x0 + phi(0)`.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -60,22 +56,17 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Constant shift φ(t) ≡ 0 used by [`CirPlusPlus`]'s `Default` impl —
-/// matches this file's own `zero_phi` test fixture. `φ ≡ 0` degenerates
-/// `CirPlusPlus` to plain [`Cir`] exactly (see
-/// `cir_pp_zero_shift_equals_cir` below), the most rigorously-tested
-/// instance to default to.
+/// The shift φ ≡ 0 of [`CirPlusPlus`]'s `Default`, at which the process is plain [`Cir`] bit
+/// for bit (`cir_pp_zero_shift_equals_cir`).
 fn default_phi<T: FloatExt>(_t: T) -> T {
   T::zero()
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `CirPlusPlus::default().with_kappa(3.0)`. No persisted cache:
-/// `sampler()` builds a transient `Cir` (and its sampler) fresh from
-/// `self`'s own fields every call.
+/// Every field has a `with_*` setter (`CirPlusPlus::default().with_kappa(3.0)`); nothing is
+/// cached, since `sampler()` builds a transient `Cir` from `self` on every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// [`Cir::new`]'s Feller contract on the factor `x_t`: a violation under
-  /// [`VarianceBoundary::Floor`] emits a `log::warn!`, never a panic.
+  /// [`Cir::new`]'s Feller contract on `x_t`: a violation warns under [`VarianceBoundary::Floor`].
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
     theta: T,
@@ -87,27 +78,12 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_sigma(sigma);
+    check_n(n);
+    Self::check_x0(x0);
+    check_t(t);
     if T::from_usize_(2) * kappa * theta < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
@@ -133,76 +109,85 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
-  /// Replace `kappa`, all else unchanged.
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `kappa`; panics unless `kappa` is finite.
   pub fn with_kappa(mut self, kappa: T) -> Self {
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace the deterministic shift `phi`, all else unchanged.
+  /// Replace the deterministic shift `phi`.
   pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
     self.phi = phi.into();
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// κ=2.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.04 — reuses
-/// [`Cir`]'s own `Default` parameterization
-/// verbatim, since φ≡0 degenerates `CirPlusPlus` to `Cir` exactly (this
-/// file's own `cir_pp_zero_shift_equals_cir` test proves it bit-for-bit).
-/// Feller condition `2κθ = 0.2 ≥ σ² = 0.04` holds with a comfortable
-/// margin. This deliberately does **not** reuse this file's own
-/// `cir_pp_is_deterministic` test values (κ=0.5, θ=0.04, σ=0.2, x₀=0.03):
-/// those sit exactly *on* the Feller boundary in real arithmetic
-/// (`2·0.5·0.04 = 0.04 = 0.2²`), but `0.2 * 0.2 == 0.040000000000000001`
-/// in `f64` — one ulp above `0.04` — so `CirPlusPlus::new`'s sub-Feller
-/// guard fires and prints a warning on every construction. A `Default`
-/// that warns on construction defeats the point of a zero-friction entry
-/// point, so this picks a parameterization with real headroom instead.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// [`Cir`]'s `Default` (κ=2.5, θ=0.04, σ=0.2, x₀=0.04) at φ≡0, clear of the Feller boundary,
+/// where `f64` rounding fires the warning; t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -219,9 +204,8 @@ impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of CIR++: the square-root recursion the wrapped
-/// process runs, with the deterministic shift added in the report rather
-/// than to the state, exactly as the host adds it.
+/// The Euler engine's view: the wrapped square-root recursion, with the deterministic shift
+/// added in the report, not to the state, as the host adds it.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for CirPlusPlus<T, S, B>
 {
@@ -289,24 +273,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// `sampler()` clones `self.seed` into a transient `Cir` (a non-advancing
-  /// snapshot), so each chunk's clone must see a distinct state.
-  ///
-  /// `CirPlusPlus` is the crate's one remaining user of this override (every
-  /// other type that needed it before was rewritten to derive its own basis
-  /// instead — see [`ProcessExt`]'s trait-level reproducibility section),
-  /// which surfaces one known, undocumented-until-now asymmetry: this method
-  /// runs *before* `sampler()` when called from
-  /// [`chunked_samplers`](ProcessExt::chunked_samplers) (so `sample_par(m)`'s
-  /// chunks each see a freshly-ticked state), but *after* sampling when
-  /// called from [`sample`](ProcessExt::sample)'s default (so a fresh
-  /// object's very first `.sample()` sees `self.seed`'s *un*-ticked starting
-  /// state). A brand-new `CirPlusPlus`'s first `.sample()` and its first
-  /// `sample_par(m)` chunk therefore consume different bases one tick apart.
-  /// Not fixed here: the after-sampling placement in `sample`'s default was
-  /// deliberately chosen so repeated `.sample()` calls advance instead of
-  /// replaying (see this file's own git history), and
-  /// reordering it would trade this asymmetry for that regression.
+  /// `sampler()` clones `self.seed` into a transient `Cir`, so each chunk must see a new state.
+  /// `chunked_samplers` ticks before sampling and `sample` after, so the two start one tick apart.
   fn advance_chunk_seed(&self) {
     self.seed.next_seed();
   }
@@ -314,12 +282,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   fn sampler(&self) -> CirPlusPlusSampler<'_, T> {
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    // A transient `Cir` built from this process's own fields, so the
-    // shift extension reuses `Cir`'s actual sampler/discretization rather
-    // than a hand-copied formula. Cloning `seed` is free of side effects
-    // (`Deterministic::clone` snapshots the current state without
-    // advancing it), so under the same seed this produces the identical
-    // Gaussian stream a standalone `Cir` with the same parameters would.
+    // A transient `Cir` of this process's fields, so the shift reuses `Cir`'s own sampler. A
+    // cloned seed does not advance, so the stream is a standalone `Cir`'s under the same seed.
     let cir: Cir<T, S> = Cir {
       theta: self.kappa,
       mu: self.theta,
@@ -340,9 +304,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel
-  /// with its time-varying coefficient bound per step, on the host devices it
-  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device binds the time-varying coefficient per step in its
+  /// kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -372,10 +335,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`CirPlusPlus`] sampling state: the real [`CirSampler`] for the
-/// underlying factor `x_t`, a scratch buffer to receive it, and the
-/// borrowed shift function `phi` added on top.
+/// Reusable [`CirPlusPlus`] sampling state: the [`CirSampler`] of the factor `x_t`, a scratch
+/// buffer for it, and the borrowed shift `phi`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CirPlusPlusSampler<'a, T: FloatExt> {
   n: usize,
   dt: T,

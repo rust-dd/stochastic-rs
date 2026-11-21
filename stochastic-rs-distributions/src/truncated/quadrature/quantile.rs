@@ -1,4 +1,5 @@
-//! The quantile: the panels walked from the end nearer the level, then Newton inside the one that holds it.
+//! The quantile: the panels walked from the end nearer the level, then Newton inside the one that
+//! holds it.
 
 use std::ops::ControlFlow;
 use std::sync::OnceLock;
@@ -108,7 +109,8 @@ impl<K: Kernel> Truncation<K> {
     let shift = shift + self.scale;
     let frame = Frame::of(panel, e);
     let ln_jacobian = frame.ln_jacobian() - self.width.ln();
-    // Walked into from the branch point's side the panel's mass grows from its near end, from the other side from far.
+    // Walked into from the branch point's side the panel's mass grows from its near end, from the
+    // other side from far.
     let from_near = from_lo == (frame.sign > 0.0);
     let (qa, qb) = if from_near {
       (frame.q_near, frame.q_far())
@@ -170,7 +172,8 @@ impl<K: Kernel> Truncation<K> {
         .kernel
         .ln_rel(panel.origin.plus(t), t - to_centre, branch)
     };
-    // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
+    // The start inverts the panel's exponential model, its decay read from the kernel at the two
+    // ends.
     let decay = at(panel.l) - at(panel.r);
     let span = if from_lo { decay } else { -decay };
     let v = if span.is_finite() && span.abs() > 1e-8 {
@@ -205,7 +208,8 @@ impl<K: Kernel> Truncation<K> {
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
       }
-      // Its digits are relative to the end it is measured from, and no finer than a quarter ulp of the point.
+      // Its digits are relative to the end it is measured from, and no finer than a quarter ulp of
+      // the point.
       let near = if from_lo {
         next - panel.l
       } else {
@@ -225,7 +229,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// `panel`'s mass from its near end to the offset `t`, one rule on the sub-panel the panel's budgets already cover.
+  /// `panel`'s mass from its near end to the offset `t`, one rule on the sub-panel the panel's
+  /// budgets already cover.
   fn partial(&self, panel: &Panel, t: f64, from_lo: bool, shift: f64) -> f64 {
     let sub = if from_lo {
       Panel { r: t, ..*panel }

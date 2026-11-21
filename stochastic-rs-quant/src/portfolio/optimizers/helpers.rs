@@ -41,7 +41,7 @@ pub(super) fn softmax(x: &[f64]) -> Vec<f64> {
     return Vec::new();
   }
 
-  let max_x = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max_or_nan);
+  let max_x = f64::max_or_nan_fold(x.iter().copied());
   let exps: Vec<f64> = x.iter().map(|&v| (v - max_x).exp()).collect();
   let sum: f64 = exps.iter().sum();
 
@@ -125,6 +125,6 @@ pub(super) fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
       .copied()
       .unwrap_or(0.0)
   });
-  let inv = crate::linalg::inverse_t(&m)?;
+  let inv = crate::linalg::inverse_t(m.view())?;
   Some((0..n).map(|i| inv.row(i).to_vec()).collect())
 }

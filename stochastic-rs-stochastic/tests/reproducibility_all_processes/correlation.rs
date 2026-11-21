@@ -1,11 +1,9 @@
-//! `correlation/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! The `correlation/` slice of the reproducibility guard, `../reproducibility_all_processes.rs`.
 
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
-use stochastic_rs_stochastic::correlation::teng::TengSCP;
+use stochastic_rs_stochastic::correlation::teng::TengScp;
 use stochastic_rs_stochastic::correlation::transformed_ou::Transformation;
-use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOU;
+use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOu;
 use stochastic_rs_stochastic::correlation::van_emmerich::VanEmmerich;
 
 use crate::common::N;
@@ -30,7 +28,7 @@ guard!(heston_stoch_corr, "HestonStochCorr", |s| {
   )
 });
 
-guard!(teng_scp, "TengSCP", |s| TengSCP::new(
+guard!(teng_scp, "TengScp", |s| TengScp::new(
   1.0,
   0.0,
   0.3,
@@ -40,7 +38,7 @@ guard!(teng_scp, "TengSCP", |s| TengSCP::new(
   s
 ));
 
-guard!(transformed_ou, "TransformedOU", |s| TransformedOU::new(
+guard!(transformed_ou, "TransformedOu", |s| TransformedOu::new(
   1.0,
   0.0,
   0.3,

@@ -27,8 +27,8 @@ use crate::traits::process::chunk_lens;
 /// assert!((left.sample_variance() - 63.7).abs() < 1e-12);
 /// ```
 ///
-/// Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
-/// Chan, Golub, LeVeque (1983), "Algorithms for Computing the Sample Variance: Analysis and Recommendations", DOI: 10.1080/00031305.1983.10483115.
+/// Reference: Welford (1962), DOI 10.1080/00401706.1962.10490022
+/// Reference: Chan, Golub & LeVeque (1983), DOI 10.1080/00031305.1983.10483115
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Welford {
   n: usize,

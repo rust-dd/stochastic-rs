@@ -25,7 +25,7 @@ fn main() {
   let mut plot = Plot::new();
 
   for seed in 1..=n_paths {
-    let gbm = Gbm::<f64, _>::new(mu, sigma, n, Some(x0), Some(1.0), Deterministic::new(seed));
+    let gbm = Gbm::<f64, _>::new(mu, sigma, n, x0, Some(1.0), Deterministic::new(seed));
     let path = gbm.sample();
     plot.add_trace(
       Scatter::new(xs.clone(), path.to_vec())

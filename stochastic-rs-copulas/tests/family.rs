@@ -1,4 +1,5 @@
-//! One family enum per trait, read through `family()`; the vine fitter's candidates are a subset of it.
+//! One family enum per trait, read through `family()`; the vine fitter's candidates are a subset of
+//! it.
 
 use ndarray::Array2;
 use stochastic_rs_copulas::CopulaError;

@@ -1,7 +1,7 @@
 //! `ln B(a, b)` in two parts and the beta entropy free of the `ln Γ` cancellation: Stirling's
 //! difference `ln Γ(z + p) − ln Γ(z)` from 16, `ln Γ` below 32 by `1/Γ(1 + f)`'s series.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>; eq. 5.11.2 (`ψ`'s series), <https://dlmf.nist.gov/5.11.2>.
-//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
+//! Reference: NIST DLMF, eqs. 5.11.1 and 5.11.2, <https://dlmf.nist.gov/5.11>.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), NBS AMS 55, 6.1.34.
 
 use super::HALF_LN_TAU;
 use super::STIRLING_FROM;

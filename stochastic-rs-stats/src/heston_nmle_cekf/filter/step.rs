@@ -119,7 +119,10 @@ fn constrain_updated_variance(
   floor_policy: FloorPolicy,
 ) -> Result<(f64, Option<HestonCekfVarianceProjection>), StatsError> {
   if matches!(floor_policy, FloorPolicy::Clamp) {
-    return Ok((raw_variance.max(EPS), None));
+    return Ok((
+      apply_floor(raw_variance, "updated variance", floor_policy)?,
+      None,
+    ));
   }
   match config.positive_state_policy {
     HestonCekfPositiveStatePolicy::Strict => Ok((
@@ -155,7 +158,7 @@ fn apply_floor(
     return Ok(value);
   }
   match floor_policy {
-    FloorPolicy::Error => Err(StatsError::Numerical { stage: quantity }),
-    FloorPolicy::Clamp => Ok(value.max(EPS)),
+    FloorPolicy::Clamp if value.is_finite() => Ok(EPS),
+    _ => Err(StatsError::Numerical { stage: quantity }),
   }
 }

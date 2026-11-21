@@ -1,47 +1,46 @@
-//! Variations-ratio Hurst estimators (Daubechies filter, central
-//! finite-difference, `k`-th order `p`-power variation).
+//! Variations-ratio Hurst estimators: a filter's variation at its dilation over that at lag 1.
 //!
-//! These all share the same scaling argument: for a self-similar
-//! process with index `H`, the chosen variation measured at strides
-//! `1` and `2` satisfies `V(2) / V(1) ≈ 2^{pH}` (up to the order-
-//! specific factor), so `H` follows from a single log-ratio.
+//! $$
+//! \hat H=\tfrac12\log_2\frac{V_{\mathbf a^2}}{V_{\mathbf a}},\qquad
+//! \hat H=\frac1p\log_2\frac{V_{k,p}(2)/(n-2k)}{V_{k,p}(1)/(n-k)},\qquad
+//! \frac{V_{\mathbf a^2}}{V_{\mathbf a}}\to 2^{2H},\qquad \frac{V_{k,p}(2)}{V_{k,p}(1)}\to 2^{pH}
+//! $$
 //!
-//! References:
-//! - Coeurjolly (2001) — *Estimating the parameters of a fractional
-//!   Brownian motion by discrete variations of its sample paths*,
-//!   Statistical Inference for Stochastic Processes 4(2), 199–227.
-//! - Brouste & Iacus (2013) — *Parameter estimation for the discretely
-//!   observed fractional Ornstein-Uhlenbeck process*, arXiv:1703.09372.
+//! The filters take Brouste & Iacus's sums (arXiv:1112.3777), the power variation `dvfBm`'s means.
+//!
+//! Reference: Achard & Coeurjolly (2010), Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2
+//! Reference: Brouste & Iacus (2013), Comput. Stat. 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6
+//! Reference: Istas & Lang (1997), Ann. IHP (B) 33(4), 407–436, DOI 10.1016/S0246-0203(97)80099-4
 
 use std::f64::consts::SQRT_2;
 
-use ndarray::Array1;
 use ndarray::ArrayView1;
-use ndarray::array;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
 use super::HurstFit;
+use super::to_f64_vec;
 use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
+
+const PATH: &str = "constant or zero-variance path";
 
 /// Selector for the underlying variation kernel used by [`Variations`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum VariationKind {
-  /// Daubechies-4 low-pass / dilated kernel (Coeurjolly variant).
+  /// Brouste & Iacus's order-2 Daubechies filter and its dilation, plain sums over full windows.
   Daubechies,
-  /// Second / fourth-order central difference moments ratio.
+  /// The second difference at lags 1 and 2, Brouste & Iacus's plain sums with `a = (1, −2, 1)`.
   CentralDiff,
-  /// `k`-th order `p`-power variation at strides 1 and 2
-  /// (arXiv:1703.09372).
+  /// The `k`-th difference's `p`-power variations at lags 1 and 2 at every position, each over its
+  /// count (Achard & Coeurjolly 2010), as [`crate::fou::fit_fou_power_variation`] reads `H`.
   PowerVariation { k: usize, p: f64 },
 }
 
-/// Variations-ratio Hurst estimator.
-///
-/// Three flavours selectable via [`VariationKind`].  None of them
-/// allocate beyond the auxiliary filter buffer.
+/// Variations-ratio Hurst estimator, in the three flavours of [`VariationKind`]; it allocates
+/// nothing beyond the filter buffer.
 #[derive(Clone, Copy, Debug)]
 pub struct Variations {
   pub kind: VariationKind,
@@ -67,9 +66,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
     let n = x.len();
     match self.kind {
       VariationKind::Daubechies => {
-        if n < 8 {
-          return Err(StatsError::InsufficientData { needed: 8, got: n });
+        if n < 7 {
+          return Err(StatsError::InsufficientData { needed: 7, got: n });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -85,6 +85,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
         if n < 5 {
           return Err(StatsError::InsufficientData { needed: 5, got: n });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -111,13 +112,14 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
             constraint: "p > 0",
           });
         }
-        let required = k + 2 + 1;
+        let required = k.saturating_mul(2).saturating_add(1);
         if n < required {
           return Err(StatsError::InsufficientData {
             needed: required,
             got: n,
           });
         }
+        reject_constant(&to_f64_vec(x), PATH)?;
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
         Ok(HurstFit {
           hurst: T::from_f64_fast(h),
@@ -133,82 +135,58 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
   }
 }
 
-/// Daubechies-4 wavelet coefficients used by both the Hurst variations
-/// estimator and the multi-scale [`super::wavelet::Wavelet`] estimator.
-#[inline]
-pub(crate) fn daubechies_coeffs() -> Array1<f64> {
-  array![
-    0.482962913144534 / SQRT_2,
-    -0.836516303737808 / SQRT_2,
-    0.224143868042013 / SQRT_2,
-    0.12940952255126 / SQRT_2,
+/// Brouste & Iacus's order-2 Daubechies filter, their Remark 1's digits.
+pub(crate) fn daubechies_coeffs() -> [f64; 4] {
+  [
+    0.4829629131445341 / SQRT_2,
+    -0.8365163037378077 / SQRT_2,
+    0.2241438680420134 / SQRT_2,
+    0.1294095225512603 / SQRT_2,
   ]
 }
 
-/// Insert a zero between every coefficient (filter dilation `a_2`).
-#[inline]
-pub(crate) fn a2_coefficients(a: &Array1<f64>) -> Array1<f64> {
-  let mut a_2 = Array1::<f64>::zeros(a.len() * 2);
-  for (i, &val) in a.iter().enumerate() {
-    a_2[i * 2 + 1] = val;
-  }
-  a_2
-}
-
-/// Direct-form-II IIR filter `lfilter` (subset of
-/// `scipy.signal.lfilter`): `y[i] = Σⱼ b[j] x[i-j] - Σⱼ≥1 a[j] y[i-j]`
-/// with zero initial conditions.  `x` is read as `f64`.
-pub(crate) fn lfilter_f64<T: FloatExt>(
-  b: &Array1<f64>,
-  a: &Array1<f64>,
-  x: ArrayView1<T>,
-) -> Array1<f64> {
+/// Brouste & Iacus's `V_{N,a} = Σᵢ (Σₖ aₖ X_{i+k})²` over full windows, with the filter dilated
+/// `dilation` times (`a²` at 2); a plain sum.
+pub(crate) fn filtered_variation<T: FloatExt>(x: ArrayView1<T>, a: &[f64], dilation: usize) -> f64 {
+  let span = (a.len() - 1) * dilation;
   let n = x.len();
-  let mut y = Array1::<f64>::zeros(n);
-  for i in 0..n {
-    let mut acc = 0.0;
-    for j in 0..b.len() {
-      if i >= j {
-        acc += b[j] * x[i - j].to_f64().unwrap_or(0.0);
-      }
-    }
-    for j in 1..a.len() {
-      if i >= j {
-        acc -= a[j] * y[i - j];
-      }
-    }
-    y[i] = acc;
+  if n <= span {
+    return 0.0;
   }
-  y
+  let mut v = 0.0;
+  for i in 0..(n - span) {
+    let mut d = 0.0;
+    for (k, &ak) in a.iter().enumerate() {
+      d += ak * x[i + k * dilation].to_f64().unwrap();
+    }
+    v += d * d;
+  }
+  v
 }
 
-/// Daubechies-filter based H estimator returning `(H, V_short, V_long)`.
+/// Brouste & Iacus's `H` with their Daubechies filter, plain sums; returns `(H, V_short, V_long)`.
 pub(crate) fn daubechies_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
 ) -> Result<(f64, f64, f64), StatsError> {
   let a = daubechies_coeffs();
-  let a_2 = a2_coefficients(&a);
-  let v1 = lfilter_f64::<T>(&a, &array![1.0], x).mapv(|y| y * y).sum();
-  let v2 = lfilter_f64::<T>(&a_2, &array![1.0], x)
-    .mapv(|y| y * y)
-    .sum();
+  let v1 = filtered_variation(x, &a, 1);
+  let v2 = filtered_variation(x, &a, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   let h = 0.5 * (v2 / v1).log2();
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, v1, v2))
 }
 
-/// Central finite-difference based H estimator (2nd vs 4th order
-/// squared-difference ratio).  Returns `(H, V_short, V_long)`.
+/// Brouste & Iacus's `H` with the second difference, plain sums; returns `(H, V_short, V_long)`.
 pub(crate) fn central_diff_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
 ) -> Result<(f64, f64, f64), StatsError> {
   let n = x.len();
-  let to = |i: usize| x[i].to_f64().unwrap_or(0.0);
+  let to = |i: usize| x[i].to_f64().unwrap();
   let sum1: f64 = (0..(n - 4))
     .map(|i| {
       let d = to(i + 4) - 2.0 * to(i + 2) + to(i);
@@ -222,46 +200,35 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
     })
     .sum();
   if !(sum1 > 0.0 && sum2 > 0.0 && sum1.is_finite() && sum2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   let h = 0.5 * (sum1 / sum2).log2();
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, sum2, sum1))
 }
 
-/// `k`-th order `p`-power variation Hurst estimator
-/// (arXiv:1703.09372).  Returns `(H, V_short, V_long)`.
-///
-/// Uses the non-overlapping (subsample-by-stride) variant so that
-/// `V_{stride=2} / V_{stride=1} → 2^{pH - 1}` (Coeurjolly scaling),
-/// matching the closed-form `H = (1 + log₂(V₂/V₁)) / p`.  The
-/// overlapping [`power_variation`] (used by
-/// [`crate::fou::fit_fou_power_variation`]) does not satisfy this
-/// relation and produces biased Hurst estimates.
+/// [`power_variation_hurst`] off the variations at lags 1 and 2; returns `(H, V_short, V_long)`.
 pub(crate) fn power_variation_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
   p: f64,
 ) -> Result<(f64, f64, f64), StatsError> {
-  let v1 = power_variation_nonoverlap::<T>(x, k, p, 1);
-  let v2 = power_variation_nonoverlap::<T>(x, k, p, 2);
+  let v1 = power_variation::<T>(x, k, p, 1);
+  let v2 = power_variation::<T>(x, k, p, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
-  let h = (1.0 + (v2 / v1).log2()) / p;
+  let h = power_variation_hurst(v1, v2, x.len(), k, p);
   if !h.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+    return Err(StatsError::DegenerateData(PATH));
   }
   Ok((h, v1, v2))
 }
 
-/// `k`-th order `p`-power variation at the given stride, **overlapping**
-/// windows (step 1).  Used by
-/// [`crate::fou::fit_fou_power_variation`] (its bit-exact regression
-/// test pins this exact formula).  Caller checks length / parameter
-/// validity.
+/// `k`-th order `p`-power variation at lag `stride`, summed over every position; the caller checks
+/// that a window fits.
 pub(crate) fn power_variation<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
@@ -278,40 +245,17 @@ pub(crate) fn power_variation<T: FloatExt>(
     let mut d = 0.0;
     for j in 0..=k {
       let coeff = diff_coeff(k, j);
-      d += coeff * x[i + j * stride].to_f64().unwrap_or(0.0);
+      d += coeff * x[i + j * stride].to_f64().unwrap();
     }
     v += d.abs().powf(p);
   }
   v
 }
 
-/// `k`-th order `p`-power variation at the given stride,
-/// **non-overlapping** (windows step by `stride`).  This is the
-/// Coeurjolly / Brouste-Iacus variant and gives the unbiased
-/// Hurst estimate via the `(1 + log₂(V₂/V₁)) / p` formula.
-fn power_variation_nonoverlap<T: FloatExt>(
-  x: ArrayView1<T>,
-  k: usize,
-  p: f64,
-  stride: usize,
-) -> f64 {
-  let n = x.len();
-  let span = k * stride;
-  if n <= span {
-    return 0.0;
-  }
-  let mut v = 0.0;
-  let mut i = 0;
-  while i + span < n {
-    let mut d = 0.0;
-    for j in 0..=k {
-      let coeff = diff_coeff(k, j);
-      d += coeff * x[i + j * stride].to_f64().unwrap_or(0.0);
-    }
-    v += d.abs().powf(p);
-    i += stride;
-  }
-  v
+/// Coeurjolly's `log₂(V̄(2)/V̄(1))/p` on `n` points, the lag-`s` variation divided by its `n − ks`
+/// windows; the caller checks `n ≥ 2k + 1`.
+pub(crate) fn power_variation_hurst(v1: f64, v2: f64, n: usize, k: usize, p: f64) -> f64 {
+  ((v2 / (n - 2 * k) as f64) / (v1 / (n - k) as f64)).log2() / p
 }
 
 #[inline]
@@ -338,6 +282,7 @@ pub(crate) fn binomial(n: usize, k: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -363,6 +308,55 @@ mod tests {
     assert!(
       (h_est - h).abs() < 0.05,
       "central diff H={h_est:.3}, expected {h:.3}"
+    );
+  }
+
+  #[test]
+  fn power_variation_reads_the_fou_fit_hurst() {
+    let path = Fbm::new(0.7, 512, Some(1.0), Deterministic::new(5)).sample();
+    for (k, p) in [(1, 2.0), (2, 2.0), (3, 1.5)] {
+      let kind = Variations::new(VariationKind::PowerVariation { k, p });
+      let fit = HurstEstimator::<f64>::estimate(&kind, path.view()).unwrap();
+      let fou = crate::fou::fit_fou_power_variation(path.view(), None, k, p, None, Some(1.0));
+      assert_eq!(
+        fit.hurst.to_bits(),
+        fou.unwrap().hurst.to_bits(),
+        "k = {k}, p = {p}"
+      );
+    }
+  }
+
+  #[test]
+  fn daubechies_needs_seven_points() {
+    let path = |n: usize| ndarray::Array1::from_iter((0..n).map(|i| (2.0 * i as f64).sin()));
+    let kind = Variations::new(VariationKind::Daubechies);
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&kind, path(6).view()).unwrap_err(),
+      StatsError::InsufficientData { needed: 7, got: 6 }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&kind, path(7).view()).is_ok());
+  }
+
+  #[test]
+  fn power_variation_needs_2k_plus_1_points() {
+    let path = |n: usize| ndarray::Array1::from_iter((0..n).map(|i| (2.0 * i as f64).sin()));
+    let kind = |k| Variations::new(VariationKind::PowerVariation { k, p: 2.0 });
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&kind(3), path(6).view()).unwrap_err(),
+      StatsError::InsufficientData { needed: 7, got: 6 }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&kind(1), path(3).view()).is_ok());
+  }
+
+  #[test]
+  fn a_level_shift_leaves_the_daubechies_estimate_alone() {
+    let path = Fbm::new(0.3, 1024, Some(1.0), Deterministic::new(3)).sample();
+    let daubechies = Variations::new(VariationKind::Daubechies);
+    let level = HurstEstimator::<f64>::estimate(&daubechies, path.view()).unwrap();
+    let shifted = HurstEstimator::<f64>::estimate(&daubechies, (&path + 5.0).view()).unwrap();
+    assert!(
+      (shifted.hurst - level.hurst).abs() < 1e-9,
+      "{level:?} {shifted:?}"
     );
   }
 

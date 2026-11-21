@@ -1,28 +1,31 @@
-//! # Swap
+//! Inflation-linked swaps: the zero-coupon swap pays once at $T$, with fair rate
+//! $K^* = (I(0,T)/I(0))^{1/T} - 1$, and the year-on-year swap pays annually.
 //!
-//! Inflation-linked swaps.
-//!
-//! **Zero-coupon (ZCIIS).** A single cashflow at maturity $T$:
 //! $$
-//! \text{Inflation leg pays:}\quad N\left[\frac{I(T)}{I(0)} - 1\right],
+//! \text{ZCIIS:}\quad N\left[\frac{I(T)}{I(0)} - 1\right]
+//! \ \text{against}\ N\left[(1 + K)^T - 1\right],
 //! \qquad
-//! \text{Fixed leg pays:}\quad N\left[(1 + K)^T - 1\right]
-//! $$
-//! Fair fixed rate: $K^* = (I(0,T)/I(0))^{1/T} - 1$, the breakeven on the
-//! inflation curve.
-//!
-//! **Year-on-year (YYIIS).** Annual cashflows
-//! $$
-//! \text{Inflation leg:}\quad N\left[\frac{I(T_i)}{I(T_{i-1})} - 1\right]
-//! \tau_i,
-//! \qquad
-//! \text{Fixed leg:}\quad N \cdot K \cdot \tau_i.
+//! \text{YYIIS:}\quad N\left[\frac{I(T_i)}{I(T_{i-1})} - 1\right]\tau_i
+//! \ \text{against}\ N \cdot K \cdot \tau_i
 //! $$
 //!
+//! Reference: Mercurio (2005), Quant. Finance 5, §6 (YoY convexity), DOI 10.1080/14697680500148851
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §16.5 (YoY convexity)
 use ndarray::Array1;
 
 use super::InflationCurve;
 use crate::traits::RealExt;
+
+/// Leg values, net value and fair fixed rate of an inflation swap.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InflationSwapValuation<T: RealExt> {
+  pub inflation_leg: T,
+  pub fixed_leg: T,
+  /// Inflation leg minus fixed leg.
+  pub npv: T,
+  /// Fixed rate at which `npv` is zero.
+  pub fair_fixed_rate: T,
+}
 
 /// Zero-coupon inflation-indexed swap.
 #[derive(Debug, Clone)]
@@ -36,13 +39,32 @@ pub struct ZeroCouponInflationSwap<T: RealExt> {
 }
 
 impl<T: RealExt> ZeroCouponInflationSwap<T> {
-  /// Net present value of the swap (inflation leg minus fixed leg, paid at
-  /// $T$, discounted by $P_n(0,T)$). The discount factor is supplied by
-  /// the caller — typically the nominal discount curve.
+  /// Net present value, inflation leg minus fixed leg, paid at $T$ and discounted by the
+  /// caller's `nominal_df`, $P_n(0,T)$.
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized), nominal_df: T) -> T {
+    let (inflation_leg, fixed_leg) = self.undiscounted_legs(curve);
+    nominal_df * (inflation_leg - fixed_leg)
+  }
+
+  /// Both legs discounted by `nominal_df`, with [`npv`](Self::npv) and the fair fixed rate.
+  pub fn valuation(
+    &self,
+    curve: &(impl InflationCurve<T> + ?Sized),
+    nominal_df: T,
+  ) -> InflationSwapValuation<T> {
+    let (inflation_leg, fixed_leg) = self.undiscounted_legs(curve);
+    InflationSwapValuation {
+      inflation_leg: nominal_df * inflation_leg,
+      fixed_leg: nominal_df * fixed_leg,
+      npv: nominal_df * (inflation_leg - fixed_leg),
+      fair_fixed_rate: self.fair_fixed_rate(curve),
+    }
+  }
+
+  fn undiscounted_legs(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> (T, T) {
     let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
     let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
-    nominal_df * (inflation_leg - fixed_leg)
+    (inflation_leg, fixed_leg)
   }
 
   /// Par rate that makes the swap NPV zero.
@@ -92,26 +114,8 @@ impl<T: RealExt> YearOnYearInflationSwap<T> {
     }
   }
 
-  /// Inflation-leg PV: discounted sum of expected $I(t_i)/I(t_{i-1}) - 1$
-  /// times accrual factors.
-  ///
-  /// **Deterministic-curve assumption.** This implementation uses
-  /// $E^{T_i}[I(t_i)/I(t_{i-1})] = I^{ZC}(t_i)/I^{ZC}(t_{i-1})$ — i.e. the
-  /// ratio of zero-coupon forward index levels under the deterministic
-  /// inflation curve. The exact YoY price under stochastic inflation requires
-  /// a **convexity adjustment** depending on the joint nominal/real volatility
-  /// structure (Mercurio 2005 §6, Brigo-Mercurio §16.5):
-  ///
-  /// $$
-  /// E^{T_i}\!\left[\frac{I(t_i)}{I(t_{i-1})}\right] = \frac{I^{ZC}(t_i)}{I^{ZC}(t_{i-1})}
-  ///   \cdot \exp\!\bigl(\text{cvx}(\sigma_n, \sigma_r, \rho, t_{i-1}, t_i, T_i)\bigr).
-  /// $$
-  ///
-  /// The deterministic form is exact only when nominal and real curves are
-  /// deterministic (or when the convexity correction is computed externally
-  /// and embedded in the input forwards). For Jarrow-Yildirim or HJM-type
-  /// stochastic-inflation calibrations, augment the input curve with the
-  /// convexity-corrected forward ratios before constructing the swap.
+  /// Inflation-leg PV with $E^{T_i}[I(t_i)/I(t_{i-1})] = I^{ZC}(t_i)/I^{ZC}(t_{i-1})$: exact for
+  /// deterministic curves, without the convexity adjustment of stochastic inflation.
   pub fn inflation_leg_pv(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
     let mut pv = T::zero();
     let mut prev_t = T::zero();
@@ -145,6 +149,16 @@ impl<T: RealExt> YearOnYearInflationSwap<T> {
   /// Net PV (inflation leg minus fixed leg).
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
     self.inflation_leg_pv(curve) - self.fixed_leg_pv()
+  }
+
+  /// Both legs, with [`npv`](Self::npv) and the fair fixed rate.
+  pub fn valuation(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> InflationSwapValuation<T> {
+    InflationSwapValuation {
+      inflation_leg: self.inflation_leg_pv(curve),
+      fixed_leg: self.fixed_leg_pv(),
+      npv: self.npv(curve),
+      fair_fixed_rate: self.fair_fixed_rate(curve),
+    }
   }
 
   /// Par fixed rate that makes NPV zero.

@@ -147,6 +147,8 @@ fn model(
     [0.08, 0.0, RHO_RU, 1.0],
   ];
   HestonHullWhite2F::new(
+    1.0,
+    theta,
     kappa,
     theta,
     sigma,
@@ -156,10 +158,8 @@ fn model(
     SIGMA2,
     B,
     rho,
-    20 * STEPS_PER_YEAR + 1,
-    Some(1.0),
-    Some(theta),
     Some(FLAT_RATE),
+    20 * STEPS_PER_YEAR + 1,
     Some(20.0),
     Deterministic::new(SEED),
   )

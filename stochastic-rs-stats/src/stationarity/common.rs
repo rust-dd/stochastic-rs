@@ -1,11 +1,21 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::solve;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::validate;
-use crate::linalg::inverse;
-use crate::linalg::solve;
+use crate::traits::RealExt;
+
+mod scale;
+
+pub(crate) use scale::centred;
+pub(crate) use scale::per_unit;
+pub(crate) use scale::prepared;
+pub(crate) use scale::prepared_with_unit;
+pub(crate) use scale::reject_exact_fit;
+pub(crate) use scale::unit_scaled;
 
 /// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +25,9 @@ pub enum Trend {
   ConstantTrend,
 }
 
+/// The lag of the ADF and DF-GLS regressions: fixed, or by AIC, BIC or the largest lag whose
+/// `|t| ≥ 1.645`, every candidate up to `max_lags` fitted on the rows of `max_lags`.
+/// Reference: Ng & Perron (2005), DOI: 10.1111/j.1468-0084.2005.00113.x
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LagSelection {
@@ -25,7 +38,7 @@ pub enum LagSelection {
 }
 
 #[derive(Debug, Clone)]
-pub struct OlsResult {
+pub(crate) struct OlsResult {
   pub beta: Vec<f64>,
   pub std_err: Vec<f64>,
   pub residuals: Vec<f64>,
@@ -33,10 +46,11 @@ pub struct OlsResult {
   pub sigma2: f64,
   pub nobs: usize,
   pub k: usize,
+  pub condition: f64,
 }
 
 #[derive(Debug, Clone)]
-pub struct AdfFit {
+pub(crate) struct AdfFit {
   pub statistic: f64,
   pub gamma: f64,
   pub std_err_gamma: f64,
@@ -45,13 +59,13 @@ pub struct AdfFit {
   pub sigma2: f64,
 }
 
-pub fn difference(y: &[f64]) -> Vec<f64> {
+pub(crate) fn difference(y: &[f64]) -> Vec<f64> {
   y.windows(2).map(|w| w[1] - w[0]).collect()
 }
 
 /// Shortest series for a levels autoregression of order `lags` plus `trend`'s terms: it keeps
 /// `n − lags` rows, which must outnumber its `lags + terms` regressors; saturates at `usize::MAX`.
-pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
+pub(crate) fn min_sample_size(lags: usize, trend: Trend) -> usize {
   let terms = match trend {
     Trend::None => 0,
     Trend::Constant => 1,
@@ -60,14 +74,16 @@ pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
   lags.saturating_mul(2).saturating_add(terms + 1)
 }
 
-pub fn schwert_max_lags(n: usize) -> usize {
+/// Schwert's rule `⌊12 (n / 100)^{1/4}⌋` for the largest lag.
+/// Reference: Schwert (1989), J. Bus. Econ. Stat. 7(2), 147-159, 10.1080/07350015.1989.10509723
+pub(crate) fn schwert_max_lags(n: usize) -> usize {
   if n <= 1 {
     return 0;
   }
   (12.0 * (n as f64 / 100.0).powf(0.25)).floor() as usize
 }
 
-pub fn adf_critical_values(trend: Trend) -> CriticalValues {
+pub(crate) fn adf_critical_values(trend: Trend) -> CriticalValues {
   match trend {
     Trend::None => CriticalValues::new([(0.01, -2.58), (0.05, -1.95), (0.10, -1.62)]),
     Trend::Constant => CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]),
@@ -75,7 +91,7 @@ pub fn adf_critical_values(trend: Trend) -> CriticalValues {
   }
 }
 
-pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
+pub(crate) fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   if include_trend {
     CriticalValues::new([(0.01, -3.77), (0.05, -3.19), (0.10, -2.89)])
   } else {
@@ -83,8 +99,38 @@ pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design.
-pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
+/// OLS of `y` on the rows of `x`; `Err(Singular)` on a design singular or past `MAX_CONDITION`, and
+/// a NaN standard error where an overflow or rounding leaves its variance NaN or negative.
+pub(crate) fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
+  ols_absorbing(y, x, 0)
+}
+
+/// Past this condition number of the equilibrated normal equations the design is numerically
+/// singular: a coefficient errs by up to `κ ε`, and RESET's raw-power `F` by `2e-6` just below it.
+const MAX_CONDITION: f64 = 1e13;
+
+/// How far past `κ ε`, the solve's rounding of a coefficient, residuals must stay to be resolved.
+const ROUNDING_MARGIN: f64 = 10.0;
+
+/// `‖A‖₁ ‖A⁻¹‖₁` of `A = D X'X D` with `D = diag((X'X)_jj^{-1/2})`, which no column's scale moves.
+fn equilibrated_condition(xtx: &Array2<f64>, xtx_inv: &Array2<f64>) -> f64 {
+  let k = xtx.nrows();
+  let s = xtx.diag().mapv(f64::sqrt);
+  let a = Array2::from_shape_fn((k, k), |(i, j)| xtx[[i, j]] / (s[i] * s[j]));
+  let a_inv = Array2::from_shape_fn((k, k), |(i, j)| xtx_inv[[i, j]] * (s[i] * s[j]));
+  let norm = |m: &Array2<f64>| {
+    f64::max_or_nan_fold(
+      m.columns()
+        .into_iter()
+        .map(|c| c.iter().map(|v| v.abs()).sum::<f64>()),
+    )
+  };
+  norm(&a) * norm(&a_inv)
+}
+
+/// [`ols`] of `y` and `x` that `absorbed` terms were partialled out of: its fit is the full
+/// regression's, whose degrees of freedom and `k` count them.
+fn ols_absorbing(y: &[f64], x: &[Vec<f64>], absorbed: usize) -> Result<OlsResult, StatsError> {
   assert!(!y.is_empty(), "OLS requires non-empty response");
   assert_eq!(y.len(), x.len(), "OLS y/x row mismatch");
   let n = y.len();
@@ -94,7 +140,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
     x.iter().all(|row| row.len() == k),
     "OLS design matrix must be rectangular"
   );
-  assert!(n > k, "OLS requires nobs > number of regressors");
+  assert!(n > k + absorbed, "OLS requires nobs > number of regressors");
 
   let x_mat = Array2::from_shape_fn((n, k), |(i, j)| x[i][j]);
   let y_vec = Array1::from_vec(y.to_vec());
@@ -102,18 +148,22 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   let xtx = x_mat.t().dot(&x_mat);
   let xty = x_mat.t().dot(&y_vec);
 
-  let beta_arr = solve(&xtx, &xty).ok_or(StatsError::Singular("OLS design"))?;
+  let beta_arr = solve(xtx.view(), xty.view()).ok_or(StatsError::Singular("OLS design"))?;
   let fitted = x_mat.dot(&beta_arr);
   let residuals_arr = &y_vec - &fitted;
 
   let residuals: Vec<f64> = residuals_arr.to_vec();
   let sse = residuals.iter().map(|u| u * u).sum::<f64>();
-  let dof = (n - k) as f64;
-  let sigma2 = (sse / dof).max(0.0);
+  let dof = (n - k - absorbed) as f64;
+  let sigma2 = sse / dof;
 
-  let xtx_inv = inverse(&xtx).ok_or(StatsError::Singular("OLS design"))?;
+  let xtx_inv = inverse(xtx.view()).ok_or(StatsError::Singular("OLS design"))?;
+  let condition = equilibrated_condition(&xtx, &xtx_inv);
+  if condition.is_nan() || condition > MAX_CONDITION {
+    return Err(StatsError::Singular("OLS design"));
+  }
   let cov = &xtx_inv * sigma2;
-  let std_err = (0..k).map(|i| cov[[i, i]].max(0.0).sqrt()).collect();
+  let std_err = (0..k).map(|i| cov[[i, i]].sqrt()).collect();
 
   Ok(OlsResult {
     beta: beta_arr.to_vec(),
@@ -122,68 +172,98 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
     sse,
     sigma2,
     nobs: n,
-    k,
+    k: k + absorbed,
+    condition,
   })
 }
 
-fn build_adf_design(
-  y: &[f64],
-  lags: usize,
-  trend: Trend,
-) -> Result<(Vec<f64>, Vec<Vec<f64>>, usize), StatsError> {
+/// The regressand, the rows (the lagged level first) and how many terms are partialled out of both.
+type AdfDesign = (Vec<f64>, Vec<Vec<f64>>, usize);
+
+/// `v` less its fit on a constant and `centred_trend`, twice: the second pass takes off rounding of
+/// the first, which a level far above the variation makes as large as the variation itself.
+fn partial_out_terms(v: &mut [f64], centred_trend: &[f64]) {
+  let tt = centred_trend.iter().map(|t| t * t).sum::<f64>();
+  for _ in 0..2 {
+    let mean = v.iter().sum::<f64>() / v.len() as f64;
+    v.iter_mut().for_each(|x| *x -= mean);
+    if !centred_trend.is_empty() {
+      let slope = v.iter().zip(centred_trend).map(|(x, t)| x * t).sum::<f64>() / tt;
+      v.iter_mut()
+        .zip(centred_trend)
+        .for_each(|(x, t)| *x -= slope * t);
+    }
+  }
+}
+
+/// Frisch–Waugh–Lovell (Lovell 1963, DOI: 10.1080/01621459.1963.10480682): partialling the terms
+/// out keeps the fit, and keeps a level they nearly fit out of normal equations that square κ.
+fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, StatsError> {
   validate(y, 3 + lags)?;
   let dy = difference(y);
   let n_dy = dy.len();
-
-  let mut lhs = Vec::with_capacity(n_dy - lags);
-  let mut rhs = Vec::with_capacity(n_dy - lags);
-
-  for t in lags..n_dy {
-    lhs.push(dy[t]);
-
-    let mut row = Vec::with_capacity(match trend {
-      Trend::None => 1 + lags,
-      Trend::Constant => 2 + lags,
-      Trend::ConstantTrend => 3 + lags,
-    });
-
-    match trend {
-      Trend::None => {}
-      Trend::Constant => row.push(1.0),
-      Trend::ConstantTrend => {
-        row.push(1.0);
-        row.push((t + 1) as f64);
-      }
-    }
-
-    // y_{t-1} term in ADF regression, with dy-index t corresponding to original time t+1.
-    row.push(y[t]);
-
-    for i in 1..=lags {
-      row.push(dy[t - i]);
-    }
-
-    rhs.push(row);
-  }
-
-  let gamma_index = match trend {
+  let terms = match trend {
     Trend::None => 0,
     Trend::Constant => 1,
     Trend::ConstantTrend => 2,
   };
+  // Row t carries the trend value t + 1, whose mean over the rows is exactly a multiple of ½.
+  let centred_trend = match trend {
+    Trend::ConstantTrend => {
+      let centre = (lags + 1 + n_dy) as f64 / 2.0;
+      (lags..n_dy).map(|t| (t + 1) as f64 - centre).collect()
+    }
+    _ => Vec::new(),
+  };
+  let partialled = |column: &[f64]| {
+    let mut column = column.to_vec();
+    if trend != Trend::None {
+      partial_out_terms(&mut column, &centred_trend);
+    }
+    column
+  };
 
-  Ok((lhs, rhs, gamma_index))
+  let lhs = partialled(&dy[lags..]);
+  let level = partialled(&y[lags..n_dy]);
+  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
+  if trend != Trend::None {
+    reject_exact_fit(y, &level, 1.0)?;
+  }
+  let differences = (1..=lags)
+    .map(|i| partialled(&dy[lags - i..n_dy - i]))
+    .collect::<Vec<_>>();
+  let rhs = (0..n_dy - lags)
+    .map(|r| {
+      let mut row = Vec::with_capacity(1 + lags);
+      row.push(level[r]);
+      row.extend(differences.iter().map(|column| column[r]));
+      row
+    })
+    .collect();
+
+  Ok((lhs, rhs, terms))
 }
 
-/// The ADF regression at a fixed lag order and the lagged level's t-statistic, NaN for an exactly
-/// fitting regression; `Err` on too short a series or a singular design.
-pub fn fit_adf(y: &[f64], lags: usize, trend: Trend) -> Result<AdfFit, StatsError> {
-  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, trend)?;
-  let ols_fit = ols(&lhs, &rhs)?;
+/// The ADF regression at a fixed lag order and the lagged level's t-statistic; `Err` on too short a
+/// series, a singular design or a standard error of no use, or as `reject_exact_fit` of `source`.
+pub(crate) fn fit_adf(
+  y: &[f64],
+  lags: usize,
+  trend: Trend,
+  source: &[f64],
+) -> Result<AdfFit, StatsError> {
+  let (lhs, rhs, terms) = build_adf_design(y, lags, trend)?;
+  let ols_fit = ols_absorbing(&lhs, &rhs, terms)?;
+  reject_exact_fit(source, &ols_fit.residuals, ols_fit.condition)?;
 
-  let gamma = ols_fit.beta[gamma_index];
-  let se = ols_fit.std_err[gamma_index];
-  let statistic = if se > 0.0 { gamma / se } else { f64::NAN };
+  let gamma = ols_fit.beta[0];
+  let se = ols_fit.std_err[0];
+  if !(se.is_finite() && se > 0.0) {
+    return Err(StatsError::Numerical {
+      stage: "standard error",
+    });
+  }
+  let statistic = gamma / se;
 
   Ok(AdfFit {
     statistic,
@@ -195,17 +275,19 @@ pub fn fit_adf(y: &[f64], lags: usize, trend: Trend) -> Result<AdfFit, StatsErro
   })
 }
 
-pub fn aic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
+pub(crate) fn aic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
   let n = nobs as f64;
   n * (sse / n).ln() + 2.0 * k as f64
 }
 
-pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
+pub(crate) fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
   let n = nobs as f64;
   n * (sse / n).ln() + (k as f64) * n.ln()
 }
 
-pub fn choose_lag_for_adf(
+/// The lag `lag_selection` takes from `0..=max_lags`, every candidate fitted on the rows of
+/// `max_lags`; `Err` on a singular fit, a NaN criterion or `t`, or a `t` an exact fit leaves.
+pub(crate) fn choose_lag_for_adf(
   y: &[f64],
   trend: Trend,
   lag_selection: LagSelection,
@@ -214,58 +296,67 @@ pub fn choose_lag_for_adf(
   if let LagSelection::Fixed(p) = lag_selection {
     return Ok(p);
   }
-
-  let mut best_lag = 0usize;
-  let mut best_score = f64::INFINITY;
-
-  let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
-
+  let (lhs, rhs, terms) = build_adf_design(y, max_lags, trend)?;
+  let mut criteria = Vec::with_capacity(max_lags + 1);
+  let mut significant = 0;
   for lag in 0..=max_lags {
-    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, trend)?;
-    if rhs.is_empty() {
-      continue;
+    let columns = 1 + lag;
+    let rows = rhs
+      .iter()
+      .map(|row| row[..columns].to_vec())
+      .collect::<Vec<_>>();
+    let fit = ols_absorbing(&lhs, &rows, terms)?;
+    match lag_selection {
+      LagSelection::Aic => criteria.push(aic_from_sse(fit.sse, fit.nobs, fit.k)),
+      LagSelection::Bic => criteria.push(bic_from_sse(fit.sse, fit.nobs, fit.k)),
+      _ => {
+        if lag > 0 && t_is_significant(fit.beta[columns - 1], fit.std_err[columns - 1])? {
+          significant = lag;
+        }
+      }
     }
-    let fit = ols(&lhs, &rhs)?;
-
-    let ic = match lag_selection {
-      LagSelection::Aic => aic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Bic => bic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Fixed(_) | LagSelection::TStat => 0.0,
-    };
-
-    let t_last = if lag > 0 {
-      let idx = fit.k - 1;
-      let se = fit.std_err[idx];
-      if se > 0.0 { fit.beta[idx] / se } else { 0.0 }
-    } else {
-      0.0
-    };
-
-    if matches!(lag_selection, LagSelection::Aic | LagSelection::Bic) && ic < best_score {
-      best_score = ic;
-      best_lag = lag;
-    }
-
-    candidates.push((lag, ic, t_last));
   }
-
-  Ok(match lag_selection {
-    LagSelection::Aic | LagSelection::Bic => best_lag,
-    LagSelection::TStat => {
-      let mut ordered = candidates;
-      ordered.sort_by_key(|(lag, _, _)| *lag);
-      ordered
-        .into_iter()
-        .rev()
-        .find(|&(lag, _, t_last)| lag == 0 || t_last.abs() >= 1.644_853_626_951_472_2)
-        .map_or(0, |(lag, _, _)| lag)
-    }
-    LagSelection::Fixed(_) => unreachable!(),
-  })
+  if lag_selection == LagSelection::TStat {
+    return Ok(significant);
+  }
+  least_criterion(&criteria)
 }
 
-/// Bartlett-weighted long-run variance of `u`; `Err` on an empty series.
-pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, StatsError> {
+/// Whether `|beta / se|` reaches the 10 % two-sided normal point; `Err` on a NaN `t`, and on a zero
+/// `se`, which only a candidate that fits exactly leaves.
+fn t_is_significant(beta: f64, se: f64) -> Result<bool, StatsError> {
+  if se == 0.0 {
+    return Err(StatsError::DegenerateData("zero residual variance"));
+  }
+  let t = (beta / se).abs();
+  if t.is_nan() {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  Ok(t >= 1.644_853_626_951_472_2)
+}
+
+/// The index of the smallest criterion, ties to the smaller lag; a NaN leaves the candidates with
+/// no order.
+fn least_criterion(criteria: &[f64]) -> Result<usize, StatsError> {
+  if criteria.iter().any(|c| c.is_nan()) {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  let mut best = 0;
+  for (lag, &criterion) in criteria.iter().enumerate() {
+    if criterion < criteria[best] {
+      best = lag;
+    }
+  }
+  Ok(best)
+}
+
+/// Bartlett-weighted long-run variance of `u`, `>= 0` in exact arithmetic; `Err` on an empty
+/// series, `DegenerateData` when it is not positive and `Numerical` when it is not finite.
+pub(crate) fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, StatsError> {
   if u.is_empty() {
     return Err(StatsError::InsufficientData { needed: 1, got: 0 });
   }
@@ -288,14 +379,39 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
     lr_var += 2.0 * weight * cov;
   }
 
-  Ok(if lr_var <= 0.0 || !lr_var.is_finite() {
-    gamma0.max(1e-12)
-  } else {
-    lr_var
-  })
+  if !lr_var.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "long-run variance",
+    });
+  }
+  if lr_var <= 0.0 {
+    return Err(StatsError::DegenerateData("zero long-run variance"));
+  }
+  Ok(lr_var)
 }
 
-pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {
+/// `F` of a fit nested in one with `q` more regressors and `dof` residual degrees of freedom, from
+/// both residual sums of squares; `Numerical { stage: "F statistic" }` when it is not finite.
+pub(crate) fn nested_f(
+  rss_nested: f64,
+  rss_full: f64,
+  q: f64,
+  dof: f64,
+) -> Result<f64, StatsError> {
+  let f = ((rss_nested - rss_full) / q) / (rss_full / dof);
+  if !f.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "F statistic",
+    });
+  }
+  // The nested fit cannot fit better, so a negative `F` is the subtraction's rounding.
+  Ok(f.max(0.0))
+}
+
+pub(crate) fn regress_on_deterministics(
+  y: &[f64],
+  include_trend: bool,
+) -> Result<OlsResult, StatsError> {
   validate(y, if include_trend { 3 } else { 2 })?;
   let n = y.len();
   let mut x = Vec::with_capacity(n);
@@ -309,7 +425,7 @@ pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsRe
   ols(y, &x)
 }
 
-pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), StatsError> {
+pub(crate) fn fit_ar(y: &[f64], lags: usize) -> Result<OlsResult, StatsError> {
   assert!(lags > 0, "AR lag order must be at least 1");
   validate(y, lags + 3)?;
 
@@ -327,7 +443,92 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
     rhs.push(row);
   }
 
-  let fit = ols(&lhs, &rhs)?;
-  let sigma = fit.sigma2.max(0.0).sqrt();
-  Ok((fit.beta, fit.residuals, sigma))
+  ols(&lhs, &rhs)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::least_criterion;
+  use super::newey_west_long_run_variance;
+  use super::reject_exact_fit;
+  use super::t_is_significant;
+  use crate::StatsError;
+
+  /// Ties go to the smaller lag, an exact fit's `−∞` wins, and a NaN leaves no order to choose by.
+  #[test]
+  fn the_least_criterion_takes_the_smaller_lag_and_refuses_nan() {
+    assert_eq!(least_criterion(&[3.0, 1.0, 1.0, 2.0]), Ok(1));
+    assert_eq!(
+      least_criterion(&[f64::INFINITY, 2.0, f64::NEG_INFINITY, f64::NEG_INFINITY]),
+      Ok(2)
+    );
+    assert_eq!(least_criterion(&[f64::INFINITY, f64::INFINITY]), Ok(0));
+    assert_eq!(
+      least_criterion(&[1.0, f64::NAN, 0.5]),
+      Err(StatsError::Numerical {
+        stage: "lag selection"
+      })
+    );
+  }
+
+  /// A NaN `t` has no side of the threshold, so the chooser refuses it as it does a NaN criterion.
+  #[test]
+  fn a_nan_t_statistic_is_refused_where_a_finite_one_is_compared() {
+    let refused = Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+    assert_eq!(t_is_significant(2.0, 1.0), Ok(true));
+    assert_eq!(t_is_significant(-1.0, 1.0), Ok(false));
+    assert_eq!(t_is_significant(1.0, f64::NAN), refused);
+    assert_eq!(t_is_significant(f64::NAN, 1.0), refused);
+  }
+
+  /// A zero standard error is an exactly fitting candidate, whatever its coefficient.
+  #[test]
+  fn a_zero_standard_error_is_an_exact_fit() {
+    let exact = Err(StatsError::DegenerateData("zero residual variance"));
+    assert_eq!(t_is_significant(1.0, 0.0), exact);
+    assert_eq!(t_is_significant(0.0, 0.0), exact);
+  }
+
+  /// Residuals at `1e-20` of the variance pass after a solve of condition `1e4`, not `1e5`, whose
+  /// rounding `(10 κ ε)²` is `4.9e-20`.
+  #[test]
+  fn the_exact_fit_threshold_rises_with_the_solve_s_rounding() {
+    let y = (0..10).map(f64::from).collect::<Vec<_>>();
+    let r = 8.25e-20f64.sqrt();
+    let residuals = (0..10)
+      .map(|i| if i % 2 == 0 { r } else { -r })
+      .collect::<Vec<_>>();
+    let exact = Err(StatsError::DegenerateData("zero residual variance"));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1.0), Ok(()));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1e4), Ok(()));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1e5), exact);
+  }
+
+  /// Neighbouring doubles about `0.7` are a constant's rounding whatever the residuals; the same
+  /// steps four ulps apart are a series.
+  #[test]
+  fn a_series_of_neighbouring_doubles_is_a_constant_series() {
+    let ulp = f64::EPSILON / 2.0;
+    let steps = [0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, -1.0, 0.0, 1.0];
+    let residuals = steps.map(|j| 0.4 * j * ulp + 0.1 * ulp);
+    assert_eq!(
+      reject_exact_fit(&steps.map(|j| 0.7 + j * ulp), &residuals, 1.0),
+      Err(StatsError::DegenerateData("constant series"))
+    );
+    assert_eq!(
+      reject_exact_fit(&steps.map(|j| 0.7 + 4.0 * j * ulp), &residuals, 1.0),
+      Ok(())
+    );
+  }
+
+  /// The residuals of an exact fit are all zero, so they carry no long-run variance.
+  #[test]
+  fn zero_residuals_have_no_long_run_variance() {
+    assert_eq!(
+      newey_west_long_run_variance(&[0.0; 30], 4).unwrap_err(),
+      StatsError::DegenerateData("zero long-run variance")
+    );
+  }
 }

@@ -1,14 +1,11 @@
-//! # Fouque
+//! Fouque–Papanicolaou–Sircar slow–fast OU: `X` on the ordinary time scale, `Y` on the fast `1/ε`.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\varepsilon\,dW_t,\quad
 //! dY_t=\tfrac{1}{\varepsilon}(\alpha-Y_t)dt+\tfrac{1}{\sqrt{\varepsilon}}\,dZ_t
 //! $$
 //!
-//! Fouque–Papanicolaou–Sircar slow–fast Ou system: `X` mean-reverts on the
-//! ordinary (slow) time scale, `Y` mean-reverts on the fast `1/ε` time
-//! scale. As `ε → 0`, `Y` homogenizes and its effect on derived quantities
-//! reduces to its own long-run statistics.
+//! As `ε → 0`, `Y` homogenizes to its long-run statistics.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -22,39 +19,37 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Fouque slow–fast Ou system
-///
-/// dX_t = kappa (theta - X_t) dt + epsilon dW_t
-/// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-#[derive(Clone)]
-pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+/// The slow–fast OU pair `dX = κ(θ − X) dt + ε dW`, `dY = (α − Y)/ε dt + dZ/√ε`.
+#[derive(Debug, Clone)]
+pub struct FouqueOu2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed of the slow factor `X_t`.
   pub kappa: T,
   /// Long-run mean level of the slow factor `X_t`.
   pub theta: T,
-  /// Time-scale separation parameter ε. `X_t` evolves on the ordinary time
-  /// scale; `Y_t`'s own mean-reversion speed and diffusion scale are fixed
-  /// at `1/ε` and `1/√ε` respectively (not separate fields).
+  /// Time-scale separation ε: `Y_t`'s reversion speed `1/ε` and diffusion scale `1/√ε` derive
+  /// from it and are not fields.
   pub epsilon: T,
   /// Long-run mean level of the fast factor `Y_t`.
   pub alpha: T,
   /// Number of points sampled along each of the `X`/`Y` paths.
   pub n: usize,
-  /// Initial value X₀ of the slow factor.
+  /// Initial value; `None` starts at zero.
+  /// Of the slow factor; the fast one starts at `y0`.
   pub x0: Option<T>,
   /// Initial value Y₀ of the fast factor.
   pub y0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
+impl<T: FloatExt, S: SeedExt> FouqueOu2D<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `epsilon > 0`, and every parameter
+  /// is finite.
   pub fn new(
     kappa: T,
     theta: T,
@@ -115,13 +110,10 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FouqueOU2D<T, S, B> {}
-
-/// The Euler engine's view of the two-scale Ornstein-Uhlenbeck driver. The
-/// fast factor's reciprocal scales depend on no state, so they are folded
-/// here rather than recomputed on every step.
+/// The Euler engine's view. The fast factor's reciprocal scales depend on no state, so they are
+/// folded here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for FouqueOU2D<T, S, B>
+  for FouqueOu2D<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TwoScaleOrnsteinUhlenbeck {
@@ -162,28 +154,26 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] FouqueOU2D<T, S> { kappa, theta, epsilon, alpha, n, x0, y0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] FouqueOu2D<T, S> { kappa, theta, epsilon, alpha, n, x0, y0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for FouqueOU2D<T, S, B>
+  for FouqueOu2D<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for FouqueOU2D<T, S, B>
+  for FouqueOu2D<T, S, B>
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = FouqueOU2DSampler<T, S>
+    = FouqueOu2DSampler<T, S>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
-  fn sampler(&self) -> FouqueOU2DSampler<T, S> {
-    FouqueOU2DSampler {
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
+  fn sampler(&self) -> FouqueOu2DSampler<T, S> {
+    FouqueOu2DSampler {
       kappa: self.kappa,
       theta: self.theta,
       epsilon: self.epsilon,
@@ -196,9 +186,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -220,11 +209,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`FouqueOU2D`] sampling state: owns the seed source so a Monte-Carlo
-/// loop reuses both output buffers. The two Gaussian streams are rebuilt per
-/// call from the derived seed, exactly as the legacy `sample` body did.
+/// Reusable [`FouqueOu2D`] sampling state: it owns the seed source and rebuilds the two Gaussian
+/// streams from the derived seed on every call.
 #[doc(hidden)]
-pub struct FouqueOU2DSampler<T: FloatExt, S: SeedExt> {
+#[derive(Debug)]
+pub struct FouqueOu2DSampler<T: FloatExt, S: SeedExt> {
   kappa: T,
   theta: T,
   epsilon: T,
@@ -236,7 +225,7 @@ pub struct FouqueOU2DSampler<T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> FouqueOu2DSampler<T, S> {
   fn fill_paths(&mut self, x: &mut [T], y: &mut [T]) {
     if self.n == 0 {
       return;
@@ -271,9 +260,9 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FouqueOU2DSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FouqueOu2DSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOU2DSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOu2DSampler<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
@@ -295,7 +284,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOU2DSampler<T, S> {
   }
 }
 
-py_process_2x1d!(PyFouqueOU2D, FouqueOU2D,
+py_process_2x1d!(PyFouqueOU2D, FouqueOu2D,
   sig: (kappa, theta, epsilon, alpha, n, x0=None, y0=None, t=None, seed=None, dtype=None),
   params: (kappa: f64, theta: f64, epsilon: f64, alpha: f64, n: usize, x0: Option<f64>, y0: Option<f64>, t: Option<f64>),
   device

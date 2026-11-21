@@ -1,9 +1,5 @@
-//! # Coupling stochastic processes via copulas
-//!
-//! Maps copula draws back through each series' empirical quantile, so the coupled sample keeps both
-//! marginals; free helpers over `ArrayView1<f64>` keep this crate off `stochastic-rs-stochastic`.
-//!
-//! ## Example
+//! Copula coupling of stochastic processes: draws mapped through each series' empirical quantile
+//! keep both marginals; plain `ArrayView1<f64>` helpers avoid depending on stochastic.
 //!
 //! ```
 //! use ndarray::Array1;
@@ -26,8 +22,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-/// Two marginal samples coupled through a copula drawn from `seed`, in an `(n, 2)` sample that keeps both marginals:
-/// `DimensionMismatch` for unequal lengths, `InsufficientData` below two values, `MarginalOutOfRange` for a NaN.
+/// Two marginal samples coupled into `(n, 2)` by a copula drawn from `seed`: `DimensionMismatch` on
+/// unequal lengths, `InsufficientData` below two values, `MarginalOutOfRange` at NaN.
 pub fn couple_marginals<C: BivariateExt, S: SeedExt>(
   s1: ArrayView1<f64>,
   s2: ArrayView1<f64>,
@@ -75,7 +71,8 @@ mod tests {
   use super::*;
   use crate::bivariate::clayton::Clayton;
 
-  /// Data errors are answered, not panicked on: unequal lengths, a single value, a NaN in either series.
+  /// Data errors are answered, not panicked on: unequal lengths, a single value, a NaN in either
+  /// series.
   #[test]
   fn data_errors_are_answered() {
     let (c, seed) = (Clayton::new(2.0), Deterministic::new(1));

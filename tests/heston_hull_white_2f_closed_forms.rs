@@ -30,10 +30,12 @@ use stochastic_rs::ndarray::Array2;
 use stochastic_rs::ndarray::array;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HybridScheme;
+use stochastic_rs::traits::ModelPricer;
 use stochastic_rs::traits::ProcessExt;
 
 const PATHS: usize = 100_000;
@@ -141,12 +143,12 @@ fn pure_heston<Sch: HybridScheme>(
   let terminal = model.sample_map(PATHS, |path| (path[(0, n - 1)], path[(4, n - 1)]));
   let prices = put_prices(&terminal, &STRIKES);
   let z_against = |rho_ref: f64| {
-    let closed = HestonPricer::new(0.04, rho_ref, 1.5, 0.04, 0.3, None);
+    let closed = HestonPricer::new(HestonParams::new(0.04, 1.5, 0.04, 0.3, rho_ref));
     STRIKES
       .iter()
       .zip(&prices)
       .map(|(&k, &(price, se))| {
-        let reference = closed.call_put(1.0, k, FLAT_RATE, 0.0, tau).1;
+        let reference = closed.price_put(1.0, k, FLAT_RATE, 0.0, tau);
         let z = (price - reference) / se;
         println!(
           "{what}, rho_xv = {rho_ref:+.1}, K = {k}: {price:.6} ± {se:.6} against {reference:.6} (z = {z:+.2})"
@@ -171,6 +173,8 @@ fn pure_heston<Sch: HybridScheme>(
 fn zero_rate_volatility_prices_the_heston_closed_form() {
   let rho_xv = -0.7;
   let model = HestonHullWhite2F::new(
+    1.0,
+    0.04,
     1.5,
     0.04,
     0.3,
@@ -180,10 +184,8 @@ fn zero_rate_volatility_prices_the_heston_closed_form() {
     0.0,
     B,
     rho(rho_xv, RHO_XR, RHO_XU, RHO_RU),
-    201,
-    Some(1.0),
-    Some(0.04),
     Some(FLAT_RATE),
+    201,
     Some(2.0),
     Deterministic::new(1993),
   );
@@ -239,6 +241,8 @@ fn rate_leg<Sch: HybridScheme>(model: HestonHullWhite2F<f64, Sch, Deterministic>
 #[test]
 fn integrated_rate_has_the_closed_form_moments_and_bond_price() {
   let model = HestonHullWhite2F::new(
+    1.0,
+    0.2,
     0.8,
     0.2,
     0.2,
@@ -248,10 +252,8 @@ fn integrated_rate_has_the_closed_form_moments_and_bond_price() {
     SIGMA2,
     B,
     rho(-0.3, RHO_XR, RHO_XU, RHO_RU),
-    1001,
-    Some(1.0),
-    Some(0.2),
     Some(FLAT_RATE),
+    1001,
     Some(10.0),
     Deterministic::new(2006),
   );
@@ -298,7 +300,7 @@ fn frozen_variance<Sch: HybridScheme>(
       .iter()
       .zip(&prices)
       .map(|(&k, &(price, se))| {
-        let reference = black.call_put(1.0, k, bond_rate, 0.0, tau).1;
+        let reference = black.price_put(1.0, k, bond_rate, 0.0, tau);
         let z = (price - reference) / se;
         println!(
           "{what}, rho_xr = {rho_xr}, rho_xu = {rho_xu}, K = {k}: {price:.6} ± {se:.6} against {reference:.6} (z = {z:+.2})"
@@ -349,6 +351,8 @@ fn frozen_variance<Sch: HybridScheme>(
 fn frozen_variance_prices_black_on_the_forward_under_two_factor_rates() {
   let theta = 0.04;
   let model = HestonHullWhite2F::new(
+    1.0,
+    theta,
     0.8,
     theta,
     0.0,
@@ -358,10 +362,8 @@ fn frozen_variance_prices_black_on_the_forward_under_two_factor_rates() {
     SIGMA2,
     B,
     rho(0.0, RHO_XR, RHO_XU, RHO_RU),
-    501,
-    Some(1.0),
-    Some(theta),
     Some(FLAT_RATE),
+    501,
     Some(5.0),
     Deterministic::new(1973),
   );

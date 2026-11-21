@@ -1,31 +1,14 @@
-//! # Wishart
+//! The Wishart process on the PSD cone (Bru 1991), `α ≥ d − 1`, exact on the grid by identity (14).
 //!
 //! $$
-//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a + a^\top dW_t^\top \sqrt{X_t}
+//! dX_t = (\alpha\, a^\top a + b X_t + X_t b^\top)\,dt + \sqrt{X_t}\,dW_t\,a +
+//! a^\top dW_t^\top \sqrt{X_t}
 //! $$
 //!
-//! Wishart process on the cone of positive semidefinite `d × d` matrices
-//! (Bru 1991): the matrix analogue of CIR and the stochastic covariance of
-//! the Gouriéroux–Sufana and Da Fonseca–Grasselli–Tebaldi models. `W` is a
-//! `d × d` matrix of independent Brownian motions, `a, b ∈ M_d(ℝ)`, and the
-//! degree `α ≥ d − 1` keeps the SDE well posed on the cone.
+//! Prop. 6 (Alg. 3), Thm. 7 (Alg. 2), Thm. 9 (Alg. 1); Siegel: the zero-degree χ² at `α = d − 1`.
 //!
-//! Sampled **exactly** on the grid by the Ahdida–Alfonsi splitting. The law
-//! identity (14) maps one step to `WIS_d(y, α, 0, I_dⁿ; Δt)` with
-//! `y = θ⁻¹ m x mᵀ θ⁻ᵀ`, `m = exp(Δt b)`, `θ` the extended Cholesky factor of
-//! `q_Δt / Δt` and `n = Rk(aᵀa)` (Proposition 6, Algorithm 3). That law is
-//! the composition of `n` commuting one-coordinate generators (Theorem 7,
-//! Algorithm 2), each solved in closed form by one noncentral χ² variable
-//! of degree `α − r` and `r` Gaussians after an extended Cholesky of the
-//! remaining `(d − 1) × (d − 1)` block of rank `r` (Theorem 9, Algorithm 1).
-//! There is no discretisation error for any admissible `α`, and the paths
-//! stay in the cone by construction.
-//!
-//! Reference: Ahdida, A. & Alfonsi, A. (2013), *Exact and high-order
-//! discretization schemes for Wishart processes and their affine extensions*,
-//! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
-//!
-//! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", Biometrika 66(2) 381–386, DOI 10.1093/biomet/66.2.381.
+//! Reference: Ahdida & Alfonsi (2013), Ann. Appl. Probab. 23(3), 1025–1073, DOI 10.1214/12-AAP863
+//! Reference: Siegel (1979), Biometrika 66(2), 381–386, DOI 10.1093/biomet/66.2.381
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -50,7 +33,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Degree α ≥ d − 1.
   pub alpha: T,
@@ -62,9 +45,9 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Array2<T>,
   /// Number of grid points including the initial one.
   pub n: usize,
-  /// Simulation horizon [0, t] (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   step: StepMaps<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -73,7 +56,7 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 /// The maps of Proposition 6 for one grid step, computed once.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct StepMaps<T> {
   /// `m = exp(Δt b)`.
   m: Array2<T>,
@@ -110,9 +93,10 @@ impl<T: FloatExt> StepMaps<T> {
   }
 }
 
-/// `(m_t, q_t)` of Proposition 4 from one block exponential (Van Loan 1978):
-/// `exp(t [[b, aᵀa], [0, −bᵀ]]) = [[m_t, q_t m_t⁻ᵀ], [0, m_t⁻ᵀ]]`, so
-/// `q_t = ∫₀ᵗ exp(sb) aᵀa exp(sbᵀ) ds` is the top-right block times `m_tᵀ`.
+/// `(m_t, q_t)` of Proposition 4 from one block exponential (Van Loan 1978): `exp(t [[b, aᵀa],
+/// [0, −bᵀ]]) = [[m_t, q_t m_t⁻ᵀ], [0, m_t⁻ᵀ]]`, so `q_t` is the top-right block times `m_tᵀ`.
+///
+/// $$ q_t = \int_0^t e^{sb}\,a^\top a\,e^{sb^\top}\,ds $$
 fn drift_maps<T: FloatExt>(a: &Array2<T>, b: &Array2<T>, t: T) -> (Array2<T>, Array2<T>) {
   let d = a.nrows();
   let ata = a.t().dot(a);
@@ -193,9 +177,8 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
   }
 }
 
-/// Algorithm 1 in place on coordinate 0 of the symmetric PSD matrix `z`:
-/// samples `WIS_d(z, α, 0, e¹_d; Δt)`, which changes only the first row and
-/// column.
+/// Algorithm 1 in place on coordinate 0 of the symmetric PSD `z`: samples
+/// `WIS_d(z, α, 0, e¹_d; Δt)`, which changes only the first row and column.
 fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mut StepDraws<T, S>) {
   let d = z.nrows();
   let sub = z.slice(s![1.., 1..]).to_owned();
@@ -233,8 +216,8 @@ fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mu
 }
 
 impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
-  /// `a`, `b`, `x0` are `d × d`; `x0` must be symmetric positive semidefinite
-  /// and `alpha ≥ d − 1`; `n` counts grid points including the initial one.
+  /// Panics unless `n >= 2`, `a`, `b` and a symmetric `x0` are finite `d × d` with `d >= 1`,
+  /// `alpha >= d − 1` is finite, and a given `t` is positive and finite.
   pub fn new(
     alpha: T,
     b: Array2<T>,
@@ -323,10 +306,12 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
     out
   }
 
-  /// Laplace transform `E[exp(Tr(v X_t))]` of Proposition 4, eq. (10):
-  /// `exp(Tr[v (I − 2 q_t v)⁻¹ m_t x₀ m_tᵀ]) / det(I − 2 q_t v)^{α/2}`, valid
-  /// for symmetric `v` in the convergence domain, in particular for every
-  /// negative semidefinite `v`.
+  /// Laplace transform `E[exp(Tr(v X_t))]` of Proposition 4, eq. (10), for symmetric `v` in the
+  /// convergence domain, which holds every negative semidefinite `v`:
+  /// $$
+  /// \exp\bigl(\operatorname{Tr}[v (I - 2 q_t v)^{-1} m_t x_0 m_t^\top]\bigr)
+  ///   \big/ \det(I - 2 q_t v)^{\alpha/2}
+  /// $$
   pub fn laplace_transform(&self, v: &Array2<T>, t: T) -> T {
     let d = self.dim();
     let two = T::from_f64_fast(2.0);
@@ -378,6 +363,7 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
 /// The Euler engine's view of the matrix path: the three entries of the
 /// symmetric matrix as one launch's slots, the exact step's maps folded once.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct WishartLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Wishart<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -402,6 +388,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WishartLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: WishartSampler<T, S>,
 }
@@ -428,9 +415,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for WishartLaunch<'_, T, S, B>
 {
-  /// The step's maps row-major. A configuration the family cannot carry
-  /// never reaches a launch — [`ProcessExt::sample`] keeps it on the host —
-  /// so asking here is a caller bypassing that guard.
+  /// The step's maps row-major. [`ProcessExt::sample`] keeps a configuration the family cannot
+  /// carry on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     assert!(
@@ -468,9 +454,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.0.dt()
   }
 
-  /// The central χ²(α − 2) each coordinate's squared Bessel draw adds to its
-  /// shifted normal's square: a gamma of shape `(α − 2) / 2` and scale two,
-  /// one per coordinate.
+  /// The central χ²(α − 2) each coordinate's squared Bessel draw adds to its shifted normal's
+  /// square: a gamma of shape `(α − 2) / 2` and scale two, one per coordinate.
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let two = T::from_usize_(2);
     let draw = ((self.0.alpha - two) / two, two, T::zero());
@@ -506,237 +491,17 @@ fn slots_to_matrices<T: FloatExt>(slots: [Array1<T>; 3]) -> Array3<T> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for Wishart<T, S, B>
-{
-}
+mod sampler;
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wishart<T, S, B> {
-  type Output = Array3<T>;
-  type Sampler<'s>
-    = WishartSampler<T, S>
-  where
-    Self: 's;
-
-  fn sampler(&self) -> WishartSampler<T, S> {
-    WishartSampler {
-      process: Wishart {
-        backend: Cpu,
-        alpha: self.alpha,
-        b: self.b.clone(),
-        a: self.a.clone(),
-        x0: self.x0.clone(),
-        n: self.n,
-        t: self.t,
-        seed: self.seed.derive(),
-        step: self.step.clone(),
-      },
-    }
-  }
-
-  /// Through the Euler engine in two dimensions at a degree of at least
-  /// three; anything else keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
-  fn sample(&self) -> Array3<T> {
-    if self.device_ready() {
-      slots_to_matrices(self.backend.system_sample(&WishartLaunch(self)))
-    } else {
-      let out = self.sampler().sample();
-      self.advance_chunk_seed();
-      out
-    }
-  }
-
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array3<T>) -> R + Sync) -> Vec<R> {
-    if self.device_ready() {
-      self
-        .backend
-        .system_paths_map(&WishartLaunch(self), m, |slots| {
-          f(&slots_to_matrices(slots.clone()))
-        })
-    } else {
-      crate::traits::process::sample_map_chunked(self, m, f)
-    }
-  }
-
-  fn sample_par(&self, m: usize) -> Vec<Array3<T>> {
-    if self.device_ready() {
-      self
-        .backend
-        .system_paths(&WishartLaunch(self), m)
-        .into_iter()
-        .map(slots_to_matrices)
-        .collect()
-    } else {
-      crate::traits::process::sample_par_chunked(self, m)
-    }
-  }
-
-  fn try_sample(&self) -> Result<Array3<T>, crate::device::DeviceError> {
-    if self.device_ready() {
-      Ok(slots_to_matrices(
-        self.backend.try_system_sample(&WishartLaunch(self))?,
-      ))
-    } else {
-      Ok(<Self as ProcessExt<T>>::sample(self))
-    }
-  }
-
-  fn try_sample_par(&self, m: usize) -> Result<Vec<Array3<T>>, crate::device::DeviceError> {
-    if self.device_ready() {
-      Ok(
-        self
-          .backend
-          .try_system_paths(&WishartLaunch(self), m)?
-          .into_iter()
-          .map(slots_to_matrices)
-          .collect(),
-      )
-    } else {
-      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
-    }
-  }
-
-  /// What a device runs here: two dimensions — the family
-  /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
-  /// rank one or two, and a degree of at least three, which keeps the path
-  /// inside the cone so the rank-adaptive branch of the host's step is never
-  /// taken and the squared Bessel draw has the degree the kernels' central
-  /// χ² supplies. Anything else samples on the host.
-  fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)))
-      .then_some("a Wishart outside the two-dimensional cone the kernel steps")
-  }
-}
-
-/// Reusable [`Wishart`] sampling state with a derived seed, so parallel
-/// chunks draw independent paths.
 #[doc(hidden)]
-pub struct WishartSampler<T: FloatExt, S: SeedExt> {
-  process: Wishart<T, S>,
-}
+pub use sampler::WishartSampler;
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WishartSampler<T, S> {}
+#[cfg(feature = "python")]
+mod python;
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartSampler<T, S> {
-  type Output = Array3<T>;
-
-  fn sample_into(&mut self, out: &mut Array3<T>) {
-    // The derived seed travels by reference: every constructor call advances
-    // it, so consecutive paths of one chunk are independent.
-    self.process.fill_path(&self.process.seed, out);
-  }
-
-  fn sample(&mut self) -> Array3<T> {
-    let d = self.process.dim();
-    let mut out = Array3::<T>::zeros((self.process.n, d, d));
-    self.sample_into(&mut out);
-    out
-  }
-}
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyWishart;
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(feature = "python")]
-#[doc(hidden)]
-#[pyo3::prelude::pyclass]
-pub struct PyWishart {
-  inner: Option<Wishart<f64>>,
-  seeded: Option<Wishart<f64, stochastic_rs_core::simd_rng::Deterministic>>,
-}
-
-#[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyWishart {
-  /// Wishart process with degree `alpha`, drift `b`, volatility `a` and
-  /// initial matrix `x0` (all `d × d` arrays), `n` grid points over `[0, t]`.
-  #[new]
-  #[pyo3(signature = (alpha, b, a, x0, n, t=None, seed=None))]
-  fn new(
-    alpha: f64,
-    b: numpy::PyReadonlyArray2<'_, f64>,
-    a: numpy::PyReadonlyArray2<'_, f64>,
-    x0: numpy::PyReadonlyArray2<'_, f64>,
-    n: usize,
-    t: Option<f64>,
-    seed: Option<u64>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let (b, a, x0) = (
-        b.as_array().to_owned(),
-        a.as_array().to_owned(),
-        x0.as_array().to_owned(),
-      );
-      match seed {
-        Some(s) => Self {
-          inner: None,
-          seeded: Some(Wishart::new(
-            alpha,
-            b,
-            a,
-            x0,
-            n,
-            t,
-            stochastic_rs_core::simd_rng::Deterministic::new(s),
-          )),
-        },
-        None => Self {
-          inner: Some(Wishart::new(alpha, b, a, x0, n, t, Unseeded)),
-          seeded: None,
-        },
-      }
-    })
-  }
-
-  /// One `(n, d, d)` array of matrices along the grid.
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| inner
-        .sample()
-        .into_pyarray(py)
-        .into_py_any(py)
-        .unwrap())
-    })
-  }
-
-  /// `m` independent paths as a list of `(n, d, d)` arrays.
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
-        let paths: Vec<pyo3::Py<pyo3::PyAny>> = inner
-          .sample_par(m)
-          .into_iter()
-          .map(|p| p.into_pyarray(py).into_py_any(py).unwrap())
-          .collect();
-        paths.into_py_any(py).unwrap()
-      })
-    })
-  }
-
-  /// Closed-form mean `E[X_t]` as a `(d, d)` array.
-  fn mean<'py>(&self, py: pyo3::Python<'py>, t: f64) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| inner
-      .mean(t)
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap())
-  }
-
-  /// Laplace transform `E[exp(Tr(v X_t))]` for a symmetric `v` in the
-  /// convergence domain (every negative semidefinite `v` qualifies).
-  fn laplace_transform(&self, v: numpy::PyReadonlyArray2<'_, f64>, t: f64) -> f64 {
-    let v = v.as_array().to_owned();
-    crate::py_dispatch_f64!(self, |inner| inner.laplace_transform(&v, t))
-  }
-}

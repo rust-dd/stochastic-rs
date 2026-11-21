@@ -1,11 +1,12 @@
-//! # Frank
+//! Frank copula, Archimedean and radially symmetric, with no tail dependence.
 //!
 //! $$
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
-//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
+//! Domino's eq. (4.54) prints its fraction bar over the leading 1, which belongs outside it.
+//! Reference: Domino, K. (2018), arXiv:1811.10486, Example 4.3.2, eq. (4.54).
+//! Reference: Hofert et al. (2012), arXiv:1108.6032v1, Table 2, DOI 10.1016/j.jmva.2012.02.019.
 
 use std::sync::OnceLock;
 
@@ -33,8 +34,8 @@ use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// `4B₂ₖ/((2k + 1)(2k)!)`, the coefficients of Frank's τ in odd powers of θ (convergent for `|θ| < 2π`); 18 of them
-/// reach `1e-20` at `|θ| = 2`.
+/// `4B₂ₖ/((2k + 1)(2k)!)`, the coefficients of Frank's τ in odd powers of θ (convergent for
+/// `|θ| < 2π`); 18 of them reach `1e-20` at `|θ| = 2`.
 const TAU_SERIES: [f64; 18] = [
   0.1111111111111111,
   -0.0011111111111111111,
@@ -56,8 +57,8 @@ const TAU_SERIES: [f64; 18] = [
   -3.984859395313849e-30,
 ];
 
-/// Below this `|θ|`, `h(u | v) = u(1 + (θ/2)(1 − u)(1 − 2v) + O(θ²))`, its inverse and the generator `−ln t − (θ/2)(1 − t)`
-/// are their `θ = 0` forms to rounding, where the closed forms' products `θu` underflow.
+/// Below this `|θ|`, `h(u | v) = u(1 + (θ/2)(1 − u)(1 − 2v) + O(θ²))`, its inverse and the
+/// generator `−ln t − (θ/2)(1 − t)` round to their `θ = 0` forms, where `θu` underflows.
 const INDEPENDENT_BELOW: f64 = f64::EPSILON;
 
 #[derive(Debug, Clone, Default)]
@@ -83,8 +84,8 @@ impl Frank {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `h⁻¹(y | v)` at `θ > 0` given `v̄ = 1 − v`, before the domain rule: `−ln(1 + x)/θ`,
-  /// `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, `1 + x` as a ratio once `x ≤ −½`, its logarithm term by term past `θ ≈ 708`.
+  /// `h⁻¹(y | v) = −ln(1 + x)/θ` at `θ > 0`, `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, `v̄ = 1 − v`
+  /// given, before the domain rule; `1 + x` a ratio at `x ≤ −½`, logs summed past `θ ≈ 708`.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64, f64) -> f64 {
     let (expm1_theta, exp_theta) = ((-theta).exp_m1(), (-theta).exp());
     let ratio_is_normal = exp_theta >= f64::MIN_POSITIVE;
@@ -105,8 +106,8 @@ impl Frank {
     }
   }
 
-  /// `h⁻¹(y | v)` for any `θ`: the identity at `θ = 0`, else `Frank::inverse(|θ|)` with `v` and `1 − v` swapped below 0;
-  /// `percent_point` keeps its once-per-call dispatch, which holds the sign test out of its per-pair loop.
+  /// `h⁻¹(y | v)` for any `θ`: the identity at `θ = 0`, else `Frank::inverse(|θ|)` with `v` and
+  /// `1 − v` swapped below 0; `percent_point` dispatches once per call, outside its loop.
   pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
     if theta.abs() < INDEPENDENT_BELOW {
       y
@@ -117,15 +118,16 @@ impl Frank {
     }
   }
 
-  /// `∂_v C = g(u)/(e^{θ(v − u)}g(v) + g(1 − v))`, `g(z) = expm1(−θz)`: same-signed terms, free of the `0/0` an
-  /// underflowing `e^{−θv}` leaves in the unfactored form; `θ < 0` through the same reflection.
+  /// `∂_v C = g(u)/(e^{θ(v − u)}g(v) + g(1 − v))`, `g(z) = expm1(−θz)`: same-signed terms, free of
+  /// the `0/0` an underflowing `e^{−θv}` leaves unfactored; `θ < 0` by the same reflection.
   pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let magnitude = theta.abs();
     move |u, v| {
       if theta.abs() < INDEPENDENT_BELOW {
         return u;
       }
-      // The reflection's `(1 − v) − u` is `1 − u − v` in one rounding: `1 − v` rounds, and `|θ|` amplifies it.
+      // The reflection's `(1 − v) − u` is `1 − u − v` in one rounding: `1 − v` rounds, and `|θ|`
+      // amplifies it.
       let (gap, v, v_bar) = if theta > 0.0 {
         (v - u, v, 1.0 - v)
       } else {
@@ -137,8 +139,8 @@ impl Frank {
     }
   }
 
-  /// `(M − m, B)` of the `θ = c > 0` copula at `(u, v)`, `B = 1 − e^{−cM} + e^{−c(M − m)}(1 − e^{−c(1 − M)})`, `M ≥ m` the
-  /// two coordinates, so `1 + g(u)g(v)/g(1) = e^{−cm}B/(1 − e^{−c})`; at `(u, 1 − v)` when `reflect`, `M − m` in one rounding.
+  /// `(M − m, B)`, `B = 1 − e^{−cM} + e^{−c(M − m)}(1 − e^{−c(1 − M)})`, `M ≥ m` the coordinates,
+  /// at `(u, v)`, `(u, 1 − v)` if `reflect`: `1 + g(u)g(v)/g(1) = e^{−cm}B/(1 − e^{−c})`.
   fn spread(c: f64, u: f64, v: f64, reflect: bool) -> (f64, f64) {
     let (gap, big, rest) = if !reflect {
       ((u - v).abs(), u.max(v), 1.0 - u.max(v))
@@ -153,8 +155,8 @@ impl Frank {
     )
   }
 
-  /// `ln c = ln(c(1 − e^{−c})e^{−c(M − m)}/B²)`, `c = |θ|`, with `B` of `Frank::spread` at `(u, v)`, at `(u, 1 − v)` for
-  /// `θ < 0` (`c_θ(u, v) = c_{−θ}(u, 1 − v)`); 0 below `INDEPENDENT_BELOW`.
+  /// `ln c = ln(c(1 − e^{−c})e^{−c(M − m)}/B²)`, `c = |θ|`, `B` of `Frank::spread` at `(u, v)`, or
+  /// `(u, 1 − v)` for `θ < 0` (`c_θ(u, v) = c_{−θ}(u, 1 − v)`); 0 below `INDEPENDENT_BELOW`.
   pub(crate) fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     let c = theta.abs();
     if c < INDEPENDENT_BELOW {
@@ -164,8 +166,8 @@ impl Frank {
     (c / b).ln() + (-(-c).exp_m1() / b).ln() - c * gap
   }
 
-  /// `C` for `θ > 0` from `x = g(u)g(v)/g(1)`: `−(x/θ) ln_1p(x)/x` while `x > −1/2`, where `ln(1 + x)` is well conditioned,
-  /// else `m − ln(B/(1 − e^{−θ}))/θ`, there `C ≥ ln 2/θ` and `m − C ≤ 2C`; `x/θ` from `expm1(t)/t`, free of a subnormal `θu`.
+  /// `C` for `θ > 0` from `x = g(u)g(v)/g(1)`: `−(x/θ) ln_1p(x)/x` at `x > −1/2`, where `ln(1 + x)`
+  /// is well conditioned, else `m − ln(B/(1 − e^{−θ}))/θ` (`C ≥ ln 2/θ`, `m − C ≤ 2C`).
   fn cdf_positive(theta: f64, u: f64, v: f64) -> f64 {
     let ratio_v = if theta < 1.0 {
       v * expm1_over(-theta * v) / expm1_over(-theta)
@@ -181,22 +183,23 @@ impl Frank {
     u.min(v) - (b.ln() - (-(-theta).exp_m1()).ln()) / theta
   }
 
-  /// `C = (x/c) ln_1p(x)/x`, `x = G(u)G(v)/G(1)`, `G(z) = expm1(cz)`, `c = −θ ≤ 700`, every factor from `expm1(t)/t`.
+  /// `C = (x/c) ln_1p(x)/x`, `x = G(u)G(v)/G(1)`, `G(z) = expm1(cz)`, `c = −θ ≤ 700`, every factor
+  /// from `expm1(t)/t`.
   fn cdf_negative(c: f64, u: f64, v: f64) -> f64 {
     let x_over_c = u * expm1_over(c * u) * (v * expm1_over(c * v) / expm1_over(c));
     x_over_c * ln_1p_over(c * x_over_c)
   }
 
-  /// `C = softplus(ln x)/c` past `c = 700`, where `G` overflows: `ln x = c(u + v − 1) + Σ ln(1 − e^{−cz}) − ln(1 − e^{−c})`,
-  /// `u + v − 1` in one rounding.
+  /// `C = softplus(ln x)/c` past `c = 700`, where `G` overflows:
+  /// `ln x = c(u + v − 1) + Σ ln(1 − e^{−cz}) − ln(1 − e^{−c})`, `u + v − 1` in one rounding.
   fn cdf_negative_log(c: f64, u: f64, v: f64) -> f64 {
     let ln_x = c * sum_minus_one(u, v) + ln_one_minus_pow(c, -u) + ln_one_minus_pow(c, -v)
       - ln_one_minus_exp(-c);
     softplus(ln_x) / c
   }
 
-  /// `ln(N/D) = ln((1 − e^{−ct})/(1 − e^{−c}))`, `c > 0`: `ln N − ln D` below `t = 1/2`, where `ct` may be subnormal, and
-  /// `ln_1p((N − D)/D)` above it, `N − D = e^{−ct} expm1(−c(1 − t))` free of cancellation as `1 − t` is exact there.
+  /// `ln((1 − e^{−ct})/(1 − e^{−c}))`, `c > 0`: `ln N − ln D` below `t = 1/2`, where `ct` may be
+  /// subnormal, else `ln_1p((N − D)/D)`, `N − D = e^{−ct} expm1(−c(1 − t))`, `1 − t` exact.
   fn ln_survival_ratio(c: f64, t: f64) -> f64 {
     if t < 0.5 {
       ln_one_minus_pow(c, -t) - ln_one_minus_exp(-c)
@@ -205,8 +208,8 @@ impl Frank {
     }
   }
 
-  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
-  /// below `INDEPENDENT_BELOW`.
+  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and
+  /// `1 − v`; the identity below `INDEPENDENT_BELOW`.
   fn unchecked_inverse(
     &self,
     y: ArrayView1<f64>,
@@ -229,8 +232,8 @@ impl Frank {
     }
   }
 
-  /// Nelsen's `φ(t) = −ln((e^{−θt} − 1)/(e^{−θ} − 1))` as `−P` for `θ > 0` and `c(1 − t) − P` for `θ < 0`, `c = |θ|`,
-  /// `P = ln((1 − e^{−ct})/(1 − e^{−c}))`, so no exponential overflows; its limit `−ln t` below `INDEPENDENT_BELOW`.
+  /// Nelsen's `φ(t) = −ln((e^{−θt} − 1)/(e^{−θ} − 1))` as `−P` at `θ > 0`, `c(1 − t) − P` at
+  /// `θ < 0`, `P = ln((1 − e^{−ct})/(1 − e^{−c}))`, free of overflow; `−ln t` near `θ = 0`.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -285,8 +288,8 @@ impl BivariateExt for Frank {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = −ln(1 + g(u)g(v)/g(1))/θ`, `g(z) = expm1(−θz)`, by `Frank::cdf_positive` for `θ > 0` and `Frank::cdf_negative`
-  /// below; `uv` below `INDEPENDENT_BELOW`.
+  /// `C = −ln(1 + g(u)g(v)/g(1))/θ`, `g(z) = expm1(−θz)`, by `Frank::cdf_positive` for `θ > 0` and
+  /// `Frank::cdf_negative` below; `uv` below `INDEPENDENT_BELOW`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -323,8 +326,8 @@ impl BivariateExt for Frank {
     conditional_cdf(x, Self::h(self.theta.unwrap()))
   }
 
-  /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), odd in θ:
-  /// its Taylor series below `|θ| = 2`, above it `∫₀^θ = π²/6 − Σ_k e^{−kθ}(θ/k + 1/k²)`; constant cost at every θ.
+  /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011,
+  /// Table 2), odd: Taylor below `|θ| = 2`, else `∫₀^θ = π²/6 − Σ_k e^{−kθ}(θ/k + 1/k²)`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
     let x = theta.abs();
     let tau = if x < 2.0 {
@@ -364,8 +367,7 @@ impl BivariateExt for Frank {
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-  /// Springer, Table 5.1.
+  /// Reference: Nelsen, R.B. (2006), 2nd ed., Springer, Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     Ok(TailDependence {
@@ -424,8 +426,8 @@ mod tests {
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
   }
 
-  /// `τ(θ)` against mpmath at 50 digits on both sides of the switch at `|θ| = 2`, near 0 and far out; constant cost at
-  /// `θ = ±1e300` and `±∞`, where a quadrature over `[0, θ]` would not return.
+  /// `τ(θ)` against mpmath at 50 digits on both sides of the switch at `|θ| = 2`, near 0 and far
+  /// out; constant cost at `θ = ±1e300` and `±∞`, where quadrature on `[0, θ]` would hang.
   #[test]
   fn frank_tau_matches_mpmath() {
     let f = Frank::default();

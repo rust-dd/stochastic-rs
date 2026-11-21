@@ -21,15 +21,12 @@ python = [
     "stochastic-rs-distributions/python",
     "stochastic-rs-stochastic/python",
     "stochastic-rs-stats/python",
-    "stochastic-rs-copulas/python",
 ]
-# Gates the SABR-smile HTML plotter (`SabrSmileCalibrator::plot`,
-# `calibrate_and_plot_many`'s chart output). Plotly is optional so a caller
-# that only calibrates doesn't compile a plotting stack.
+# Gates the SABR-smile HTML plotters (`SabrSmileCalibrator::plot`, `plot_many`); plotly is
+# optional so a caller that only calibrates compiles no plotting stack.
 viz = ["dep:plotly"]
 
 [dependencies]
-anyhow = { workspace = true }
 basin = { workspace = true, features = ["ndarray_v0_17"] }
 chrono = { workspace = true }
 faer = { workspace = true }
@@ -46,11 +43,8 @@ ordered-float = { workspace = true }
 owens-t = { workspace = true }
 plotly = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
-quadrature = { workspace = true }
 rayon = { workspace = true }
-roots = { workspace = true }
 slsqp = { workspace = true }
-stochastic-rs-copulas = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stats = { workspace = true }

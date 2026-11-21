@@ -26,9 +26,8 @@ mod statistics;
 mod vanilla_cf_vega;
 mod variance_vega;
 
-use std::fmt::Display;
+use crate::QuantError;
 
-pub use estimator::EstimateWithError;
 pub use estimator::HestonMalliavinConfig;
 pub use estimator::HestonMalliavinEstimate;
 pub use estimator::HestonMalliavinEstimator;
@@ -47,52 +46,16 @@ pub use vanilla_cf_vega::heston_vanilla_portfolio_cf_initial_variance_vega;
 pub use variance_vega::HestonInitialVarianceVegaDiagnostics;
 pub use variance_vega::HestonInitialVarianceVegaStability;
 
-/// Input or numerical failure from the Heston Malliavin engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum HestonMalliavinError {
-  /// A named precondition was not satisfied.
-  InvalidInput(&'static str),
-  /// The integrated variance was too small to invert the Malliavin covariance.
-  DegenerateMalliavinCovariance,
-  /// A simulated terminal value overflowed or became undefined.
-  NonFiniteSimulation,
-  /// The supplied payoff returned a non-finite value.
-  NonFinitePayoff,
-  /// Too few independent samples were available for a covariance estimate.
-  InsufficientSamples,
-  /// The CRN initial-variance derivative failed its reliability gate.
-  UnstableInitialVarianceVega,
+fn invalid_input(reason: impl Into<String>) -> QuantError {
+  QuantError::invalid("Heston Malliavin input", reason)
 }
 
-impl Display for HestonMalliavinError {
-  fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::InvalidInput(message) => write!(formatter, "invalid Heston Malliavin input: {message}"),
-      Self::DegenerateMalliavinCovariance => {
-        write!(
-          formatter,
-          "integrated variance is too small for the Malliavin score"
-        )
-      }
-      Self::NonFiniteSimulation => {
-        write!(formatter, "Heston simulation produced a non-finite value")
-      }
-      Self::NonFinitePayoff => write!(formatter, "terminal payoff produced a non-finite value"),
-      Self::InsufficientSamples => {
-        write!(formatter, "at least two independent samples are required")
-      }
-      Self::UnstableInitialVarianceVega => {
-        write!(
-          formatter,
-          "initial-variance vega is not bump-stable and sampling-resolved"
-        )
-      }
-    }
+fn non_finite_payoff(value: f64, terminal_spot: f64) -> QuantError {
+  QuantError::Numerical {
+    what: "the terminal payoff",
+    reason: format!("it returned {value} at terminal spot {terminal_spot}"),
   }
 }
-
-impl std::error::Error for HestonMalliavinError {}
 
 #[cfg(test)]
 mod actual_heston_tests;

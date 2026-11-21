@@ -1,26 +1,27 @@
-//! Heterogeneous Autoregressive model of Realized Volatility (HAR-RV).
+//! Heterogeneous autoregressive model of realized volatility (HAR-RV).
 //!
 //! $$
-//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} + \omega_{t+1},
+//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} +
+//! \omega_{t+1},
 //! $$
-//! with $RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)}$ and
-//! $RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}$.
 //!
-//! Reference: Corsi, "A Simple Approximate Long-Memory Model of Realized
-//! Volatility", Journal of Financial Econometrics, 7(2), 174-196 (2009).
-//! DOI: 10.1093/jjfinec/nbp001
+//! $$
+//! RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)},\qquad
+//! RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}
+//! $$
 //!
-//! The OLS least-squares fit runs on the pure-Rust `faer`.
+//! Reference: Corsi (2009), JFEC 7(2), 174-196, DOI: 10.1093/jjfinec/nbp001
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::linalg::lstsq;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Daily horizon for the HAR weekly component.
@@ -90,7 +91,7 @@ impl HarRv {
   /// One-step-ahead forecast from the latest daily RVs; `Err` below [`MONTHLY_LAGS`] observations
   /// or on a non-finite one.
   pub fn forecast<T: FloatExt>(&self, recent_daily_rv: ArrayView1<T>) -> Result<f64, StatsError> {
-    validate(&as_slice_or_copy(recent_daily_rv), MONTHLY_LAGS)?;
+    validate_view(recent_daily_rv, MONTHLY_LAGS)?;
     let n = recent_daily_rv.len();
     let last = recent_daily_rv[n - 1].to_f64().unwrap();
     let weekly = avg_last(recent_daily_rv, WEEKLY_LAGS);
@@ -143,7 +144,7 @@ fn avg_last<T: FloatExt>(v: ArrayView1<T>, window: usize) -> f64 {
 }
 
 fn ols(x: &Array2<f64>, y: &Array1<f64>) -> Array1<f64> {
-  lstsq(x, y)
+  lstsq(x.view(), y.view())
 }
 
 fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64> {

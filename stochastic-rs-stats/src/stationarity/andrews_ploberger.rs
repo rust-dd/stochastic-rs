@@ -1,44 +1,29 @@
-//! Andrews (1993) and Andrews-Ploberger (1994) tests for parameter
-//! constancy in a linear regression with unknown breakpoint.
+//! Andrews (1993) and Andrews–Ploberger (1994) tests of parameter constancy at an unknown break.
 //!
-//! Given $y_t = x_t^\top \beta + \varepsilon_t$, $t = 1, \dots, T$, and a
-//! candidate split at fraction $\tau$ with breakpoint $t_\tau = \lfloor \tau
-//! T \rfloor$, fit OLS separately on the two subsamples and compute the
-//! Wald statistic for the joint restriction $\beta_1 = \beta_2$:
 //! $$
 //! W(\tau) = (\hat\beta_1 - \hat\beta_2)^\top
 //!           [\hat V(\hat\beta_1) + \hat V(\hat\beta_2)]^{-1}
-//!           (\hat\beta_1 - \hat\beta_2).
+//!           (\hat\beta_1 - \hat\beta_2),\qquad t_\tau = \lfloor \tau T \rfloor,\quad
+//!           \tau \in [\pi_0, 1-\pi_0]
 //! $$
-//! Three aggregation statistics over $\tau \in [\pi_0, 1-\pi_0]$ are
-//! supported:
 //!
-//! - **Sup-Wald** $\;\sup_\tau W(\tau)$ — Quandt (1960) / Andrews (1993).
-//! - **Exp-Wald** $\;\ln\!\big(\tfrac{1}{N}\sum_\tau e^{W(\tau)/2}\big)$ —
-//!   Andrews-Ploberger (1994), optimal under a Pitman-drift alternative
-//!   with large $\xi$.
-//! - **Avg-Wald** $\;\tfrac{1}{N}\sum_\tau W(\tau)$ — Andrews-Ploberger
-//!   (1994), optimal under small $\xi$.
+//! $$
+//! \sup_\tau W(\tau),\qquad \ln\Bigl(\tfrac{1}{N}\sum_\tau e^{W(\tau)/2}\Bigr),\qquad
+//! \tfrac{1}{N}\sum_\tau W(\tau)
+//! $$
 //!
-//! Asymptotic critical values are taken from the canonical tables for
-//! $\pi_0 = 0.15$ (Andrews 1993 Table 1 for Sup-Wald; Andrews-Ploberger
-//! 1994 Tables II and III for Exp-Wald and Avg-Wald). For any other `pi0` or `k > 5` the
-//! statistic is computed, but its p-value bracket, critical values and decision are `None`.
+//! Tables: `π₀ = 0.15`, `k ≤ 5` (Andrews 1993 Table 1; Andrews–Ploberger 1994 Tables II and III).
 //!
-//! References:
-//! - Andrews, D.W.K. (1993), "Tests for Parameter Instability and
-//!   Structural Change with Unknown Change Point", *Econometrica* 61(4),
-//!   821-856.
-//! - Andrews, D.W.K., Ploberger, W. (1994), "Optimal Tests when a
-//!   Nuisance Parameter is Present Only under the Alternative",
-//!   *Econometrica* 62(6), 1383-1414.
-//! - Hansen, B.E. (1997), "Approximate Asymptotic P Values for
-//!   Structural-Change Tests", *J. Bus. Econ. Stat.* 15(1), 60-67.
+//! Reference: Andrews (1993), Econometrica 61(4), 821-856, DOI: 10.2307/2951764
+//! Reference: Andrews & Ploberger (1994), Econometrica 62(6), 1383-1414, DOI: 10.2307/2951753
+//! Reference: Hansen (1997), J. Bus. Econ. Stat. 15(1), 60-67, DOI: 10.1080/07350015.1997.10524687
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::solve;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -47,23 +32,23 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
-use crate::linalg::inverse;
-use crate::linalg::solve;
 use crate::traits::RealExt;
 
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AndrewsPlobergerStatistic {
-  /// $\sup_\tau W(\tau)$ — Andrews (1993) Sup-Wald.
+  /// $\sup_\tau W(\tau)$, the Sup-Wald of Quandt (1960) and Andrews (1993).
   Sup,
-  /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$ — Andrews-Ploberger Exp-Wald.
+  /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$, Andrews–Ploberger's Exp-Wald, optimal against a
+  /// Pitman drift with large $\xi$.
   Exp,
-  /// $(1/N) \sum_\tau W(\tau)$ — Andrews-Ploberger Avg-Wald.
+  /// $(1/N) \sum_\tau W(\tau)$, Andrews–Ploberger's Avg-Wald, optimal under small $\xi$.
   Avg,
 }
 
-/// Configuration for the Andrews / Andrews-Ploberger test.
+/// Configuration of the Andrews / Andrews–Ploberger test, which panics unless `0 < pi0 < 0.5`,
+/// `0 < alpha < 1` (`alpha >= 0.01` on its table) and `x` has a column.
 #[derive(Debug, Clone, Copy)]
 pub struct AndrewsPlobergerConfig {
   /// Aggregation choice.
@@ -91,8 +76,8 @@ impl Default for AndrewsPlobergerConfig {
 pub struct AndrewsPlobergerTest {
   /// Test statistic.
   pub statistic: f64,
-  /// Upper bound on the p-value: `0.01`, `0.05`, `0.10` or `1.0`, the smallest tabulated level
-  /// whose critical value the statistic reaches.
+  /// Upper bound on the p-value, the smallest of `0.01`, `0.05`, `0.10` whose critical value the
+  /// statistic reaches, else `1.0`: a rejection at a tabulated `alpha` reads `p_value == alpha`.
   pub p_value: Option<f64>,
   pub critical_values: Option<CriticalValues>,
   /// Whether the parameter-constancy null is rejected at `alpha`; `None` off the table.
@@ -116,7 +101,7 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
 }
 
 /// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite or
-/// constant `y`, a non-finite `x`, mismatched rows or a NaN Wald path; bad config panics.
+/// constant `y`, a non-finite `x`, mismatched rows, a NaN Wald path; panics as `cfg`'s type says.
 pub fn andrews_ploberger_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -176,7 +161,7 @@ pub fn andrews_ploberger_test(
     statistic,
     p_value: row.map(|row| p_value_bracket(statistic, row)),
     critical_values,
-    rejects_null: critical.map(|c| statistic >= c),
+    rejects_null: rejects(statistic, critical),
     statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
@@ -208,7 +193,7 @@ fn local_wald(y: ArrayView1<f64>, x: ArrayView2<f64>, t1: usize, k: usize) -> f6
 
   let diff = &b1 - &b2;
   let vsum = &v1 + &v2;
-  match solve(&vsum, &diff) {
+  match solve(vsum.view(), diff.view()) {
     Some(z) => diff.dot(&z).max(0.0),
     None => f64::NAN,
   }
@@ -231,11 +216,11 @@ fn segment_fit(
   let ys = y.slice(ndarray::s![lo..hi]).to_owned();
   let xtx = xs.t().dot(&xs);
   let xty = xs.t().dot(&ys);
-  let beta = solve(&xtx, &xty)?;
+  let beta = solve(xtx.view(), xty.view())?;
   let resid = &ys - &xs.dot(&beta);
   let sse: f64 = resid.iter().map(|r| r * r).sum();
   let sigma2 = sse / (n as f64 - k as f64).max(1.0);
-  let xtx_inv = inverse(&xtx)?;
+  let xtx_inv = inverse(xtx.view())?;
   Some((beta, &xtx_inv * sigma2))
 }
 
@@ -324,6 +309,11 @@ fn critical_row(kind: AndrewsPlobergerStatistic, k: usize, pi0: f64) -> Option<(
     AndrewsPlobergerStatistic::Exp => exp_wald_critical(k),
     AndrewsPlobergerStatistic::Avg => avg_wald_critical(k),
   }
+}
+
+/// Past the critical value strictly, as every other test of the crate decides.
+fn rejects(statistic: f64, critical: Option<f64>) -> Option<bool> {
+  critical.map(|c| statistic > c)
 }
 
 fn p_value_bracket(stat: f64, (c10, c5, c1): (f64, f64, f64)) -> f64 {
@@ -566,5 +556,13 @@ mod tests {
     assert!((c10 - 9.31).abs() < 1e-6);
     assert!((c5 - 11.79).abs() < 1e-6);
     assert!((c1 - 15.46).abs() < 1e-6);
+  }
+
+  /// A statistic at its critical value does not reject; off the table there is no decision.
+  #[test]
+  fn a_statistic_at_its_critical_value_does_not_reject() {
+    assert_eq!(rejects(11.79, Some(11.79)), Some(false));
+    assert_eq!(rejects(11.790000000000001, Some(11.79)), Some(true));
+    assert_eq!(rejects(11.79, None), None);
   }
 }

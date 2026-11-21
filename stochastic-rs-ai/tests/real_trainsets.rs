@@ -98,6 +98,7 @@ fn rbergomi_set_trains() -> Result<()> {
 fn heston_set_is_the_fourier_surface_on_inverse_strikes() -> Result<()> {
   use stochastic_rs_ai::calibration::heston_params_from_surrogate;
   use stochastic_rs_ai::volatility::grid;
+  use stochastic_rs_quant::traits::ToModel;
   use stochastic_rs_quant::vol_surface::ModelSurface;
 
   let (params, surfaces) = load_trainset_gzip_npy(
@@ -111,7 +112,7 @@ fn heston_set_is_the_fourier_surface_on_inverse_strikes() -> Result<()> {
   let (mut on_inverse, mut on_direct) = (Vec::new(), Vec::new());
   for r in (0..params.nrows()).step_by(params.nrows() / 30) {
     let p = params.row(r).mapv(f64::from).to_vec();
-    let model = heston_params_from_surrogate(&p).to_model(0.0, 0.0);
+    let model = heston_params_from_surrogate(&p).to_model();
     let inverse = model.vol_surface(1.0, 0.0, 0.0, &ascending, &grid::MATURITIES);
     let direct = model.vol_surface(1.0, 0.0, 0.0, &grid::MONEYNESS, &grid::MATURITIES);
     for t in 0..grid::MATURITIES.len() {

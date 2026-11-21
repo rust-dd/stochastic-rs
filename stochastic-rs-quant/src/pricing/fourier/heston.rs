@@ -4,77 +4,80 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use super::heston_cumulants;
+use crate::pricing::heston::HestonParams;
+
+/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`.
+pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, Complex64) {
+  let HestonParams {
+    kappa,
+    theta,
+    sigma,
+    rho,
+    ..
+  } = *p;
+  let i = Complex64::i();
+  let beta = kappa - rho * sigma * i * xi;
+  riccati_cd(beta, i * xi + xi * xi, kappa * theta, sigma * sigma, t)
+}
+
+/// `(C, D)` solving `C' = κθD`, `D' = ½σ²D² − βD − ½m` from zero: the Little-Trap form with `g̃`
+/// multiplied out by its denominator `β + d`, which is 0 at `ξ = −i` when `ρσ > κ`.
+/// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+pub(crate) fn riccati_cd(
+  beta: Complex64,
+  moment: Complex64,
+  kappa_theta: f64,
+  sigma2: f64,
+  t: f64,
+) -> (Complex64, Complex64) {
+  let d = (beta * beta + sigma2 * moment).sqrt();
+  let exp_dt = (-d * t).exp();
+  let decay = if d == Complex64::ZERO {
+    Complex64::from(t)
+  } else {
+    (1.0 - exp_dt) / d
+  };
+  let denom = (beta + d) * decay + 2.0 * exp_dt;
+
+  let c_val = (kappa_theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
+  let d_val = -moment * decay / denom;
+
+  (c_val, d_val)
+}
 
 /// Heston stochastic volatility model for Fourier pricing.
 #[derive(Debug, Clone)]
 pub struct HestonFourier {
-  pub v0: f64,
-  pub kappa: f64,
-  pub theta: f64,
-  pub sigma: f64,
-  pub rho: f64,
-  pub r: f64,
-  pub q: f64,
+  params: HestonParams,
+}
+
+impl HestonFourier {
+  /// Panics unless `params` passes [`HestonParams::new`].
+  pub fn new(params: HestonParams) -> Self {
+    Self {
+      params: params.checked(),
+    }
+  }
+
+  pub fn params(&self) -> HestonParams {
+    self.params
+  }
 }
 
 impl FourierModelExt for HestonFourier {
-  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
-  /// `g̃ = 1/g_original` with `exp(-d·t)` keeps the principal-branch logarithm
-  /// stable for large τ and `|ρ| → 1`. Reverting to the original Heston (1993)
-  /// numerator `(κ - ρσiξ + d)` / `exp(+d·t)` triggers branch-cut jumps —
-  /// see the `heston_fourier_little_trap_long_maturity_high_rho` regression.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
-    let sigma2 = self.sigma * self.sigma;
-    let rsi = self.rho * self.sigma * i;
-
-    let d = ((self.kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
-    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
-
-    let exp_dt = (-d * t).exp();
-    let c_val = (self.kappa * self.theta / sigma2)
-      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_val = ((self.kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    (c_val + d_val * self.v0 + i * xi * (self.r - self.q) * t).exp()
+    let (c_val, d_val) = factor_cd(&self.params, t, xi);
+    (c_val + d_val * self.params.v0).exp()
   }
 
-  /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
-  /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1 = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
-      - 0.5 * self.theta * t;
-
-    let kappa2 = self.kappa * self.kappa;
-    let kappa3 = kappa2 * self.kappa;
-    let sigma2 = self.sigma * self.sigma;
-    let rs = self.rho * self.sigma;
-    let n0 = self.theta
-      * (8.0 * kappa3 * t - 8.0 * kappa2 * rs * t - 8.0 * kappa2
-        + 16.0 * self.kappa * rs
-        + 2.0 * self.kappa * sigma2 * t
-        - 5.0 * sigma2)
-      + self.v0 * 2.0 * (4.0 * kappa2 - 4.0 * self.kappa * rs + sigma2);
-    let n1 = self.theta
-      * -4.0
-      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * self.kappa * rs
-        - self.kappa * sigma2 * t
-        - sigma2)
-      + self.v0
-        * 4.0
-        * self.kappa
-        * (2.0 * self.kappa * rs * t - 2.0 * self.kappa + 2.0 * rs - sigma2 * t);
-    let n2 = sigma2 * (self.theta - 2.0 * self.v0);
-    let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
-
-    Cumulants { c1, c2, c4: None }
+    heston_cumulants(&self.params, t)
   }
 }
 
-/// Double Heston stochastic volatility model for Fourier pricing.
-///
-/// Two independent Cox-Ingersoll-Ross variance factors driving the spot:
+/// Double Heston: two independent CIR variance factors, each correlated only with its own spot
+/// Brownian motion ($\rho_j$), so the chf of $\ln(S_T/F_T)$ is a sum of two Heston exponents.
 /// $$
 /// \begin{aligned}
 /// dS_t &= (r-q)\,S_t\,dt + \sqrt{v_{1,t}}\,S_t\,dW_{1,t}^S + \sqrt{v_{2,t}}\,S_t\,dW_{2,t}^S \\
@@ -82,15 +85,9 @@ impl FourierModelExt for HestonFourier {
 /// dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v
 /// \end{aligned}
 /// $$
-/// with $d\langle W_1^S, W_1^v\rangle_t = \rho_1\,dt$ and
-/// $d\langle W_2^S, W_2^v\rangle_t = \rho_2\,dt$. All other Brownian motion
-/// pairs are independent. Because the factors are independent, the
-/// characteristic function of $\ln(S_T/S_0)$ factorises into a sum of two
-/// Heston-type contributions plus a single risk-neutral drift:
 /// $$
-/// \phi_T(u) = \exp\!\left(iu(r-q)T + \sum_{j=1}^{2}\bigl[C_j(u,T) + D_j(u,T)\,v_{j,0}\bigr]\right)
+/// \phi_T(u) = \exp\!\left(\sum_{j=1}^{2}\bigl[C_j(u,T) + D_j(u,T)\,v_{j,0}\bigr]\right)
 /// $$
-/// with, for $j=1,2$,
 /// $$
 /// \begin{aligned}
 /// d_j &= \sqrt{(\kappa_j - i\rho_j\sigma_j u)^2 + \sigma_j^2(u^2 + iu)} \\
@@ -100,93 +97,35 @@ impl FourierModelExt for HestonFourier {
 /// \end{aligned}
 /// $$
 ///
-/// Source:
-/// - Christoffersen, Heston & Jacobs (2009), "The Shape and Term Structure of
-///   the Index Option Smirk: Why Multifactor Stochastic Volatility Models Work
-///   So Well", <https://doi.org/10.1287/mnsc.1090.1065>
-/// - Mehrdoust, Noorani & Hamdi (2021), "Calibration of the double Heston
-///   model and an analytical formula in pricing American put option",
-///   J. Comput. Appl. Math. 392, 113422,
-///   <https://doi.org/10.1016/j.cam.2021.113422>
+/// Reference: Christoffersen, P., Heston, S. & Jacobs, K. (2009), "The Shape and Term Structure of the Index Option Smirk: Why Multifactor Stochastic Volatility Models Work So Well", Management Science 55(12), 1914–1932, DOI 10.1287/mnsc.1090.1065
+/// Reference: Mehrdoust, F., Noorani, I. & Hamdi, A. (2021), "Calibration of the double Heston model and an analytical formula in pricing American put option", J. Comput. Appl. Math. 392, 113422, DOI 10.1016/j.cam.2021.113422
 #[derive(Debug, Clone)]
 pub struct DoubleHestonFourier {
-  /// Initial variance of factor 1.
-  pub v1_0: f64,
-  /// Mean-reversion speed of factor 1.
-  pub kappa1: f64,
-  /// Long-run variance of factor 1.
-  pub theta1: f64,
-  /// Volatility-of-variance of factor 1.
-  pub sigma1: f64,
-  /// Spot-variance correlation for factor 1.
-  pub rho1: f64,
-  /// Initial variance of factor 2.
-  pub v2_0: f64,
-  /// Mean-reversion speed of factor 2.
-  pub kappa2: f64,
-  /// Long-run variance of factor 2.
-  pub theta2: f64,
-  /// Volatility-of-variance of factor 2.
-  pub sigma2: f64,
-  /// Spot-variance correlation for factor 2.
-  pub rho2: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
+  first: HestonParams,
+  second: HestonParams,
 }
 
 impl DoubleHestonFourier {
-  /// Compute a single Heston factor contribution $(C_j, D_j)$ evaluated at `xi`.
-  ///
-  /// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
-  /// form (`g̃ = 1/g_original`, `exp(-d·t)`) so each factor stays on the
-  /// principal log-branch for large τ and `|ρ_j| → 1`.
-  #[inline]
-  fn factor_cd(
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    rho: f64,
-    t: f64,
-    xi: Complex64,
-  ) -> (Complex64, Complex64) {
-    let i = Complex64::i();
-    let sigma2 = sigma * sigma;
-    let rsi = rho * sigma * i;
-
-    let d = ((kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
-    let g = (kappa - rsi * xi - d) / (kappa - rsi * xi + d);
-    let exp_dt = (-d * t).exp();
-
-    let c_val = (kappa * theta / sigma2)
-      * ((kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_val = ((kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    (c_val, d_val)
+  /// Panics unless both factors pass [`HestonParams::new`].
+  pub fn new(first: HestonParams, second: HestonParams) -> Self {
+    Self {
+      first: first.checked(),
+      second: second.checked(),
+    }
   }
 }
 
 impl FourierModelExt for DoubleHestonFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
+    let (c1, d1) = factor_cd(&self.first, t, xi);
+    let (c2, d2) = factor_cd(&self.second, t, xi);
 
-    let (c1, d1) = Self::factor_cd(self.kappa1, self.theta1, self.sigma1, self.rho1, t, xi);
-    let (c2, d2) = Self::factor_cd(self.kappa2, self.theta2, self.sigma2, self.rho2, t, xi);
-
-    (c1 + c2 + d1 * self.v1_0 + d2 * self.v2_0 + i * xi * (self.r - self.q) * t).exp()
+    (c1 + c2 + d1 * self.first.v0 + d2 * self.second.v0).exp()
   }
 
+  /// The factors are independent, so their cumulants add.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt1 = (-self.kappa1 * t).exp();
-    let ekt2 = (-self.kappa2 * t).exp();
-
-    let int_v1 = self.theta1 * t + (self.v1_0 - self.theta1) * (1.0 - ekt1) / self.kappa1;
-    let int_v2 = self.theta2 * t + (self.v2_0 - self.theta2) * (1.0 - ekt2) / self.kappa2;
-
-    let c1 = (self.r - self.q) * t - 0.5 * (int_v1 + int_v2);
-    let c2 = int_v1 + int_v2;
-    Cumulants { c1, c2, c4: None }
+    heston_cumulants(&self.first, t).plus(heston_cumulants(&self.second, t))
   }
 }
 
@@ -195,15 +134,13 @@ mod tests {
   use super::*;
 
   fn task1_params() -> HestonFourier {
-    HestonFourier {
+    HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    }
+    })
   }
 
   fn ln_chf(model: &HestonFourier, t: f64, u: f64) -> Complex64 {
@@ -230,12 +167,8 @@ mod tests {
     (c1, c2)
   }
 
-  /// `c4 = f''''(0)`, via the standard 5-point central-difference stencil.
-  /// Uses a looser step (`h=1e-2`) than `fd_c1_c2`: a 4th derivative's
-  /// cancellation noise scales as `O(\epsilon_{mach}/h^4)`, so it needs a
-  /// larger `h` to stay controlled — acceptable here since this is only
-  /// used to demonstrate `c4` is clearly nonzero (order of magnitude), not
-  /// matched to a tight tolerance.
+  /// `c4 = f''''(0)` by the 5-point stencil at `h = 1e-2`, whose `O(ε/h⁴)` rounding, near `1e-7`,
+  /// and `O(h²)` truncation limit it to a `c4` far above `1e-7`.
   fn fd_c4(model: &HestonFourier, t: f64) -> f64 {
     let h = 1e-2;
     let f0 = ln_chf(model, t, 0.0);
@@ -276,12 +209,18 @@ mod tests {
     }
   }
 
-  /// Heston's fourth cumulant has a closed form the crate does not compute; `None` says so
-  /// (finite differences give ~1e-3, not zero).
+  /// `c4` against a finite difference of `ln chf` at `τ = 1` and at `τ = 5`.
   #[test]
-  fn heston_c4_is_not_computed() {
+  fn heston_c4_matches_fd_of_log_chf() {
     let model = task1_params();
-    assert!(model.cumulants(1.0).c4.is_none());
-    assert!(fd_c4(&model, 1.0) > 1e-4);
+    for t in [1.0, 5.0] {
+      let c4 = model.cumulants(t).c4.unwrap();
+      let c4_fd = fd_c4(&model, t);
+      let rel = ((c4 - c4_fd) / c4_fd).abs();
+      assert!(
+        rel < 1e-3,
+        "t={t}: cumulants().c4={c4}, fd={c4_fd}, rel={rel}"
+      );
+    }
   }
 }

@@ -1,61 +1,42 @@
-//! # GARCH-family quasi-maximum likelihood
-//!
-//! Fits Bollerslev's GARCH, the Glosten–Jagannathan–Runkle GJR-GARCH and
-//! Nelson's EGARCH to a return series by maximising the Gaussian
-//! quasi-log-likelihood of the demeaned returns $\varepsilon_t = r_t - \mu$,
+//! Gaussian quasi-maximum likelihood for GARCH, Glosten–Jagannathan–Runkle GJR-GARCH and EGARCH.
 //!
 //! $$
-//! \ell(\theta) = -\frac12\sum_{t=1}^{n}\Bigl[\log 2\pi + \log\sigma_t^2 + \frac{\varepsilon_t^2}{\sigma_t^2}\Bigr],
+//! \ell(\theta) = -\frac12\sum_{t=1}^{n}\Bigl[\log 2\pi + \log\sigma_t^2 +
+//! \frac{\varepsilon_t^2}{\sigma_t^2}\Bigr],\qquad \varepsilon_t = r_t - \mu,\qquad
+//! z_t = \varepsilon_t/\sigma_t
 //! $$
-//!
-//! under the conditional-variance recursions
 //!
 //! $$
 //! \begin{aligned}
-//! \text{GARCH}(p,q):&\quad \sigma_t^2 = \omega + \sum_{i=1}^{p}\alpha_i\varepsilon_{t-i}^2 + \sum_{j=1}^{q}\beta_j\sigma_{t-j}^2,\\
-//! \text{GJR}(p,q):&\quad \sigma_t^2 = \omega + \sum_{i=1}^{p}\bigl(\alpha_i + \gamma_i\mathbf 1_{\{\varepsilon_{t-i}<0\}}\bigr)\varepsilon_{t-i}^2 + \sum_{j=1}^{q}\beta_j\sigma_{t-j}^2,\\
-//! \text{EGARCH}(p,q):&\quad \log\sigma_t^2 = \omega + \sum_{i=1}^{p}\bigl[\alpha_i(|z_{t-i}| - \sqrt{2/\pi}) + \gamma_i z_{t-i}\bigr] + \sum_{j=1}^{q}\beta_j\log\sigma_{t-j}^2,
+//! \text{GARCH}(p,q):&\quad \sigma_t^2 = \omega + \sum_{i=1}^{p}\alpha_i\varepsilon_{t-i}^2 +
+//! \sum_{j=1}^{q}\beta_j\sigma_{t-j}^2,\\
+//! \text{GJR}(p,q):&\quad \sigma_t^2 = \omega + \sum_{i=1}^{p}\bigl(\alpha_i +
+//! \gamma_i\mathbf 1_{\{\varepsilon_{t-i}<0\}}\bigr)\varepsilon_{t-i}^2 +
+//! \sum_{j=1}^{q}\beta_j\sigma_{t-j}^2,\\
+//! \text{EGARCH}(p,q):&\quad \log\sigma_t^2 = \omega + \sum_{i=1}^{p}\bigl[\alpha_i(|z_{t-i}| -
+//! \sqrt{2/\pi}) + \gamma_i z_{t-i}\bigr] + \sum_{j=1}^{q}\beta_j\log\sigma_{t-j}^2,
 //! \end{aligned}
 //! $$
 //!
-//! with $z_t = \varepsilon_t/\sigma_t$. Pre-sample terms are the backcast
-//! $\bar\sigma^2 = n^{-1}\sum_t(r_t - \bar r)^2$: every $\varepsilon_{t-i}^2$
-//! and $\sigma_{t-j}^2$ with a non-positive index is $\bar\sigma^2$, the GJR
-//! asymmetry term gets $\tfrac12\bar\sigma^2$, and EGARCH drops its shock
-//! terms and uses $\log\bar\sigma^2$ — the conventions of the `arch`
-//! reference implementation, whose fits the tests reproduce.
+//! $$
+//! \bar\sigma^2 = \frac1n\sum_t (r_t - \bar r)^2,\qquad
+//! \widehat{\mathrm{Cov}}_{H} = (-H)^{-1},\qquad
+//! \widehat{\mathrm{Cov}}_{BW} = H^{-1} J H^{-1},\quad J = \sum_t s_t s_t'
+//! $$
 //!
-//! The optimiser works in unconstrained coordinates that map onto the
-//! stationarity region (see the `transform` module), so a fit never leaves
-//! $\omega > 0$, $\alpha_i \ge 0$, $\alpha_i + \gamma_i \ge 0$, $\beta_j \ge 0$ and
-//! a persistence below one. Standard errors come in two flavours: the
-//! inverse Hessian $(-H)^{-1}$, exact only under Gaussian innovations, and the
-//! Bollerslev–Wooldridge sandwich $H^{-1} J H^{-1}$ with $J = \sum_t s_t s_t'$
-//! the outer product of the per-observation scores, which stays valid under
-//! non-Gaussian innovations — the "quasi" in QMLE. Both derivatives are
-//! central finite differences at the optimum in the natural parameters.
+//! Pre-sample terms take the backcast `σ̄²`, as `arch` does; the sandwich is the robust covariance.
 //!
-//! Reference: Bollerslev, "Generalized Autoregressive Conditional
-//! Heteroskedasticity", Journal of Econometrics, 31(3), 307-327 (1986).
-//! DOI: 10.1016/0304-4076(86)90063-1
-//!
-//! Reference: Nelson, "Conditional Heteroskedasticity in Asset Returns: A
-//! New Approach", Econometrica, 59(2), 347-370 (1991). DOI: 10.2307/2938260
-//!
-//! Reference: Glosten, Jagannathan, Runkle, "On the Relation between the
-//! Expected Value and the Volatility of the Nominal Excess Return on Stocks",
-//! Journal of Finance, 48(5), 1779-1801 (1993).
-//! DOI: 10.1111/j.1540-6261.1993.tb05128.x
-//!
-//! Reference: Bollerslev, Wooldridge, "Quasi-Maximum Likelihood Estimation
-//! and Inference in Dynamic Models with Time-Varying Covariances",
-//! Econometric Reviews, 11(2), 143-172 (1992). DOI: 10.1080/07474939208800229
+//! Reference: Bollerslev (1986), J. Econometrics 31(3), 307-327, DOI: 10.1016/0304-4076(86)90063-1
+//! Reference: Nelson (1991), Econometrica 59(2), 347-370, DOI: 10.2307/2938260
+//! Reference: Glosten et al. (1993), J. Fin. 48(5), 1779-1801, 10.1111/j.1540-6261.1993.tb05128.x
+//! Reference: Bollerslev–Wooldridge (1992), Econom. Rev. 11(2), 143-172, 10.1080/07474939208800229
 
 mod inference;
 mod recursion;
 #[cfg(test)]
 mod tests;
 mod transform;
+mod units;
 
 use std::convert::Infallible;
 
@@ -73,6 +54,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Conditional-variance recursion to fit.
@@ -159,9 +141,8 @@ impl GarchSpec {
     mean + 1 + self.p + gamma + self.q
   }
 
-  /// Parameter names in the flat layout
-  /// `[mu, omega, alpha[1..p], gamma[1..p], beta[1..q]]` (`mu` and `gamma`
-  /// only where the model has them).
+  /// Parameter names in the flat layout `[mu, omega, alpha[1..p], gamma[1..p], beta[1..q]]`, with
+  /// `mu` and `gamma` only where the model has them.
   pub fn param_names(&self) -> Vec<String> {
     let mut names = Vec::with_capacity(self.n_params());
     if self.mean == MeanSpec::Constant {
@@ -202,9 +183,9 @@ pub struct GarchFit {
   pub std_errors: Array1<f64>,
   /// Bollerslev–Wooldridge robust standard errors, aligned with `params`.
   pub robust_std_errors: Array1<f64>,
-  /// Inverse-Hessian covariance $(-H)^{-1}$.
+  /// Inverse-Hessian covariance $(-H)^{-1}$, `±∞` past the double range.
   pub covariance: Array2<f64>,
-  /// Sandwich covariance $H^{-1} J H^{-1}$.
+  /// Sandwich covariance $H^{-1} J H^{-1}$, `±∞` past the double range.
   pub robust_covariance: Array2<f64>,
   /// Fitted conditional variances $\hat\sigma_t^2$.
   pub conditional_variance: Array1<f64>,
@@ -225,14 +206,14 @@ pub struct GarchFit {
   pub backcast: f64,
   /// Simplex iterations plus L-BFGS polishing iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
   /// Number of observations.
   pub nobs: usize,
 }
 
-/// Gaussian QMLE of `spec` on `returns` (NaN standard errors at a singular Hessian); `Err` below 20
-/// returns, on a non-finite one or a zero or overflowing variance, and panics unless `spec.p >= 1`.
+/// Gaussian QMLE of `spec` at unit scale (NaN errors at a singular Hessian); `Err` below 20 points,
+/// a non-finite one, constant returns or a fit past the double range; panics unless `spec.p >= 1`.
 pub fn fit_garch<T: FloatExt>(
   returns: ArrayView1<T>,
   spec: GarchSpec,
@@ -240,21 +221,14 @@ pub fn fit_garch<T: FloatExt>(
   spec.validate();
   let r = returns
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .map(|x| x.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&r, 20)?;
   reject_constant(&r, "zero-variance returns")?;
+  let (r, unit) = unit_scaled(r);
   let n = r.len();
   let mean = r.iter().sum::<f64>() / n as f64;
   let backcast = r.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
-  if backcast == 0.0 {
-    return Err(StatsError::DegenerateData("zero-variance returns"));
-  }
-  if !backcast.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "backcast variance",
-    });
-  }
 
   let problem = Problem {
     spec,
@@ -268,23 +242,43 @@ pub fn fit_garch<T: FloatExt>(
     nelder_mead_vec(&theta_nm, 5_000, |theta| problem.objective(theta));
   let (theta, iters_lbfgs) = problem.polish(theta_nm);
 
-  let natural = transform::to_natural(&spec, &theta);
-  let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &natural, &r, backcast);
+  let fitted = transform::to_natural(&spec, &theta);
+  let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
+  if !(fitted.iter().all(|v| v.is_finite()) && log_likelihood.is_finite()) {
+    return Err(StatsError::Numerical { stage: "estimate" });
+  }
   let mut residuals = vec![0.0; n];
   let mut sigma2 = vec![0.0; n];
-  recursion::variance_path(&spec, &natural, &r, backcast, &mut residuals, &mut sigma2);
+  recursion::variance_path(&spec, &fitted, &r, backcast, &mut residuals, &mut sigma2);
   let standardized: Vec<f64> = residuals
     .iter()
     .zip(&sigma2)
     .map(|(e, v)| e / v.sqrt())
     .collect();
-
   let scales = transform::natural_scales(&spec, backcast);
-  let inference = inference::sandwich(&spec, &natural, &r, backcast, &scales);
+  let inference = inference::sandwich(&spec, &fitted, &r, backcast, &scales);
+
+  let natural = units::params(&spec, &fitted, unit)?;
+  let variance = |v: f64| v / unit / unit;
+  let backcast = variance(backcast);
+  let sigma2 = sigma2.into_iter().map(variance).collect::<Vec<f64>>();
+  let residuals = residuals
+    .into_iter()
+    .map(|e| e / unit)
+    .collect::<Vec<f64>>();
+  let lost = !(backcast > 0.0 && backcast.is_finite())
+    || !sigma2.iter().all(|&v| v > 0.0 && v.is_finite())
+    || !residuals.iter().all(|v| v.is_finite());
+  if lost {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  let log_likelihood = log_likelihood + n as f64 * unit.ln();
+  let (covariance, std_errors) = units::covariance(&spec, &inference.covariance, unit);
+  let (robust_covariance, robust_std_errors) =
+    units::covariance(&spec, &inference.robust_covariance, unit);
   let k = natural.len();
-  let std_errors = Array1::from_iter((0..k).map(|i| inference.covariance[[i, i]].sqrt()));
-  let robust_std_errors =
-    Array1::from_iter((0..k).map(|i| inference.robust_covariance[[i, i]].sqrt()));
 
   let split = spec.split(&natural);
   let alpha = Array1::from(split.alpha.to_vec());
@@ -306,8 +300,8 @@ pub fn fit_garch<T: FloatExt>(
     params: Array1::from(natural),
     std_errors,
     robust_std_errors,
-    covariance: inference.covariance,
-    robust_covariance: inference.robust_covariance,
+    covariance,
+    robust_covariance,
     conditional_variance: Array1::from(sigma2),
     residuals: Array1::from(residuals),
     standardized_residuals: Array1::from(standardized),

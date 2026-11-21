@@ -8,18 +8,23 @@ description: Development rules for stochastic-rs — enforces project convention
 ## 1. Follow folder structure
 
 ```
-src/
-  stochastic/       — stochastic processes (diffusion, volatility, jump, noise, interest, autoregressive, correlation, malliavin, sheet)
-  quant/            — quantitative finance (pricing, bonds, portfolio, strategies, calendar, fx, order_book, loss)
-  stats/            — statistical estimators and tests (stationarity, normality, spectral, MLE, KDE)
-  distributions/    — probability distributions
-  copulas/          — copula models (bivariate, multivariate, univariate, empirical, correlation)
-  ai/               — neural network based models (volatility calibration)
-  traits.rs         — core traits (FloatExt, ProcessExt, MalliavinExt, etc.)
-  macros.rs         — helper macros
-benches/            — criterion benchmarks
-tests/              — integration & comparison tests
+stochastic-rs/                        (workspace root + umbrella: re-exports, benches/, tests/)
+├── stochastic-rs-core/               — simd_rng (foundation)
+├── stochastic-rs-distributions/      — FloatExt/SimdFloatExt + distributions + qmc (Sobol/Halton)
+├── stochastic-rs-stochastic/         — ProcessExt + the processes (diffusion, volatility, jump, noise, interest, …)
+├── stochastic-rs-copulas/            — BivariateExt + copulas
+├── stochastic-rs-stats/              — estimators and tests
+├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
+├── stochastic-rs-ai/                 — experimental neural surrogates (feature-gated upstream)
+└── stochastic-rs-py/                 — pyo3 cdylib, built via `maturin`
 ```
+
+Each sub-crate keeps its traits in its own `src/traits.rs` (`FloatExt` in distributions, `ProcessExt` in
+stochastic) and the umbrella's `src/traits.rs` mirrors them; a Malliavin derivative is the plain struct
+`Malliavin<T, O>` a process's inherent `malliavin()` returns, not a trait.
+
+A source file stays at or under 600 lines; the two ruled exceptions are
+`stochastic-rs-stochastic/src/euler/spec.rs` (one enum) and `src/euler/spec/encode.rs` (one `match`).
 
 Place new code in the appropriate existing module. Do not create top-level modules without explicit approval.
 
@@ -50,7 +55,7 @@ Every new module must cite its source. Add a doc comment at the top of the file 
 
 ## 7. Prefer maintained libraries over raw implementations
 
-Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `roots`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
+Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
 
 Randomness is the standing exception — see §7a.
 
@@ -97,12 +102,22 @@ When adding a new dependency, always use the latest version available on crates.
 
 ## 9. Comments
 
+The rule, verbatim:
+
+> Max 1-2 lines, anywhere, in any repo — including `///` doc comments and new public API.
+> Write one only when it carries something the code does not: a non-obvious constraint, a
+> why. Never restate the code, never narrate edit history.
+
 A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
-code, public API, tests, benches and examples. Write one only for what the code cannot
-say: a non-obvious constraint, a reason, a unit or a convention. A literature citation
-may take one more line of its own, in addition to those two. Doc-test code does not count.
-A `$$ … $$` math display in a doc comment is exempt from the cap; the prose around it is not.
-Longer explanations belong in the PR body.
+code, public API, tests, benches and examples. A line past 100 columns counts as its
+wrapped length. Write one only for what the code cannot say: a non-obvious constraint, a
+reason, a unit or a convention. A literature citation takes one `Reference:` line per
+source, with its locator and its DOI or ISBN, beside those two. That line fits 100 columns:
+drop the title, abbreviate the journal (ISO 4), write "et al." beyond two authors, never
+drop the locator or the DOI. Doc-test code does not count.
+A `$$ … $$` math display in a doc comment is exempt from the cap, for mathematics only; the
+prose around it is not. A module doc opens on a summary line without TeX, since rustdoc
+shows that line as the module-list row. Longer explanations belong in the PR body.
 
 Never:
 
@@ -135,8 +150,8 @@ let z = normal.sample();
 /// Annualised Black volatility of the underlying.
 pub sigma: f64,
 
-/// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848.
 /// COS price of a European payoff from the log-price characteristic function.
+/// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848, DOI 10.1137/080718061
 pub fn price(/* … */) -> f64 { /* … */ }
 ```
 
@@ -207,19 +222,25 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   argument, the predicate spelled in the message and the value last:
   ``assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");``
   Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
+  In `stochastic-rs-stochastic` a field with a setter states its checks once, in `fn check_<field>`
+  built of `require!(pred, field)` (that `assert!`); `new` and the setter both call it. The grid's
+  `check_n` (`n >= 2`) and `check_t` live once in `precondition.rs`; a process with another bound
+  (`Gn`, `Cfgns`: `n >= 1`) keeps its own.
   A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
   `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
   In copulas `new` panics, while `try_new` and `from_tau` return `Result<_, CopulaError>` for the
   same preconditions.
 - **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
   too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
-  `converged() == false`, never `Err`. quant and ai return `anyhow::Error`, copulas `CopulaError`,
-  the devices `DeviceError`; `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk
-  estimators (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
-  degenerate data there becomes a `Result` is one pending decision for all of them.
+  `converged() == false`, never `Err`. quant returns `QuantError`, ai `anyhow::Error`, copulas
+  `CopulaError`, the devices `DeviceError`;
+  `Calibrator::Error: Debug + Display + Send + Sync + 'static`. A short VaR sample is
+  `Err(InsufficientData)` and a non-finite one `Err(InvalidInput)` — it is data; the confidence
+  level beside it is a parameter, and panics.
 - **A numerical evaluation outside its domain or an inversion with no root → documented `NaN`**:
   a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
-  *query* with a non-positive strike or spot. A `0.0` or any other plausible number is never a
+  *query* with a non-positive strike or spot, a live Black caplet on two negative rates — the
+  formula is undefined there. A `0.0` or any other plausible number is never a
   sentinel, and a query argument never panics — only a model parameter does.
 - **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
   `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";

@@ -1,8 +1,6 @@
 /// One constructor argument of a class: through the `=> map` the class names for it, else through
 /// the precision shims.
 #[cfg(feature = "python")]
-#[doc(hidden)]
-#[macro_export]
 macro_rules! py_arg {
   (f32, $param:ident) => {
     stochastic_rs_core::python::IntoF32::into_f32($param)
@@ -16,7 +14,6 @@ macro_rules! py_arg {
 }
 
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_dispatch_f64 {
   ($self:expr, |$inner:ident| $body:expr) => {
     if let Some(ref $inner) = $self.inner {
@@ -29,18 +26,15 @@ macro_rules! py_dispatch_f64 {
   };
 }
 
-/// `py_dispatch_f64!` on the class's device. A class whose parameters
-/// include a Python callable has no `float32` slot, so only the devices that
-/// compute in double precision can appear here — which is exactly the set
-/// `py_on_device_f64!` handles.
+/// `py_dispatch_f64!` on the class's device. A class with a Python callable has no `float32` slot,
+/// so only the double-precision devices appear here, the set `py_on_device_f64!` handles.
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_device_dispatch_f64 {
   ($self:expr, |$p:ident| $body:expr) => {
     if let Some(ref inner) = $self.inner {
-      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+      py_on_device_f64!($self.device, inner, |$p| $body)
     } else if let Some(ref inner) = $self.seeded {
-      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+      py_on_device_f64!($self.device, inner, |$p| $body)
     } else {
       unreachable!()
     }
@@ -48,7 +42,6 @@ macro_rules! py_device_dispatch_f64 {
 }
 
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_dispatch {
   ($self:expr, |$inner:ident| $body:expr) => {
     if let Some(ref $inner) = $self.inner_f64 {
@@ -65,12 +58,9 @@ macro_rules! py_dispatch {
   };
 }
 
-/// One `sample*` body over a `float64` slot on the class's device: the host
-/// slot as is, a device slot re-typed on a clone sharing its seed state. The
-/// single-precision devices never reach here — `Device::parse` rejects them
-/// for a `float64` process.
+/// One `sample*` body over a `float64` slot on the class's device: the host slot as is, a device
+/// slot re-typed on a clone sharing its seed state. `Device::parse` rejects the `f32` devices.
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_on_device_f64 {
   ($device:expr, $inner:ident, |$p:ident| $body:expr) => {
     match $device {
@@ -78,7 +68,7 @@ macro_rules! py_on_device_f64 {
         let $p = $inner;
         $body
       }
-      #[cfg(all(feature = "accelerate", target_os = "macos"))]
+      #[cfg(accelerate_backend)]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
@@ -101,7 +91,6 @@ macro_rules! py_on_device_f64 {
 /// `py_on_device_f64!` for a `float32` slot, which every compiled device
 /// accepts.
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_on_device_f32 {
   ($device:expr, $inner:ident, |$p:ident| $body:expr) => {
     match $device {
@@ -109,7 +98,7 @@ macro_rules! py_on_device_f32 {
         let $p = $inner;
         $body
       }
-      #[cfg(all(feature = "accelerate", target_os = "macos"))]
+      #[cfg(accelerate_backend)]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
@@ -123,7 +112,7 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+      #[cfg(metal_backend)]
       $crate::python_device::Device::Metal(ordinal, budget) => {
         let owned = $inner
           .clone()
@@ -140,17 +129,16 @@ macro_rules! py_on_device_f32 {
 /// `py_dispatch!` for a class with a `device` field: the four slots, each
 /// routed through `py_on_device_f64!` / `py_on_device_f32!`.
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_device_dispatch {
   ($self:expr, |$p:ident| $body:expr) => {
     if let Some(ref inner) = $self.inner_f64 {
-      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+      py_on_device_f64!($self.device, inner, |$p| $body)
     } else if let Some(ref inner) = $self.seeded_f64 {
-      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+      py_on_device_f64!($self.device, inner, |$p| $body)
     } else if let Some(ref inner) = $self.inner_f32 {
-      $crate::py_on_device_f32!($self.device, inner, |$p| $body)
+      py_on_device_f32!($self.device, inner, |$p| $body)
     } else if let Some(ref inner) = $self.seeded_f32 {
-      $crate::py_on_device_f32!($self.device, inner, |$p| $body)
+      py_on_device_f32!($self.device, inner, |$p| $body)
     } else {
       unreachable!()
     }

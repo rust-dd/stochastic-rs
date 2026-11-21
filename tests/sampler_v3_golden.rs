@@ -7,10 +7,13 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fou::Fou;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
-use stochastic_rs::stochastic::jump::bates::Bates1996;
+use stochastic_rs::stochastic::jump::bates::Bates;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::stochastic::params::Drift;
+use stochastic_rs::stochastic::params::Horizon;
 use stochastic_rs::stochastic::params::VarianceBoundary;
+use stochastic_rs::stochastic::process::CompoundPaths;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::stochastic::traits::PathSampler;
@@ -45,7 +48,7 @@ fn assert_close(actual: &ndarray::Array1<f64>, golden_bits: &[u64]) {
 
 #[test]
 fn golden_gbm_stream() {
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, N, Some(1.0), Some(1.0), Deterministic::new(42));
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, N, 1.0, Some(1.0), Deterministic::new(42));
   assert_close(
     &gbm.sample(),
     &[
@@ -90,8 +93,8 @@ fn golden_ou_stream() {
 #[test]
 fn golden_heston_streams() {
   let heston = Heston::<f64, Euler, _>::new(
-    Some(1.0),
-    Some(0.04),
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -209,10 +212,15 @@ fn golden_fou_stream() {
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
     SimdNormal::new(0.0, 0.1),
-    Poisson::<f64, _>::new(0.5, Some(N), Some(1.0), Unseeded),
+    Poisson::<f64, _>::new(0.5, Horizon::Events(N - 1), Unseeded),
     Deterministic::new(44),
   );
-  let [times, cum, jumps] = cpoisson.sample();
+  let CompoundPaths {
+    arrivals: times,
+    cumulative: cum,
+    jumps,
+    ..
+  } = cpoisson.sample();
   assert_close(
     &times,
     &[
@@ -284,15 +292,12 @@ fn golden_merton_streams() {
   );
 }
 
-/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
+/// `Bates`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
 /// compensator, so the `lambda = 0` counterfactual below isolates the jump term.
 #[test]
 fn golden_bates_streams() {
-  let bates = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+  let bates = Bates::new(
+    Drift::Mu(0.05),
     3.0,
     0.0,
     0.04,
@@ -301,8 +306,8 @@ fn golden_bates_streams() {
     -0.6,
     SimdNormal::new(0.0, 0.1),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -338,11 +343,8 @@ fn golden_bates_streams() {
   // Not a diffusion-only pin: a lambda=0 counterfactual (same seed, same k,
   // same everything else) diverges on the price path, which is only
   // possible if the golden above actually depends on the jump term.
-  let zero_lambda = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+  let zero_lambda = Bates::new(
+    Drift::Mu(0.05),
     0.0,
     0.0,
     0.04,
@@ -351,8 +353,8 @@ fn golden_bates_streams() {
     -0.6,
     SimdNormal::new(0.0, 0.1),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -389,8 +391,8 @@ fn sampler_first_path_matches_sample() {
   // The first `sampler().sample()` reproduces `sample()` bit-for-bit because
   // both derive the Gaussian source identically from the same seed. This is a
   // same-machine comparison, so it stays exact and portable.
-  let a = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
-  let b = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
+  let a = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
+  let b = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   assert_eq!(bits(&a.sample()), bits(&b.sampler().sample()));
 
   let f1 = Fgn::new(0.6f64, 32, Some(1.0), Deterministic::new(7));
@@ -401,7 +403,7 @@ fn sampler_first_path_matches_sample() {
 #[test]
 fn sampler_continues_stream() {
   // Reusing a sampler yields a fresh, independent path on each call.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   let mut s = gbm.sampler();
   let p1 = s.sample();
   let mut p2 = p1.clone();
@@ -413,7 +415,7 @@ fn sampler_continues_stream() {
 fn sample_map_matches_terminal_expectation() {
   // The buffer-reusing parallel fold must still produce the right law:
   // E[S_T] = exp(mu * T) = exp(0.05) for this GBM.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, 1.0, Some(1.0), Unseeded);
   let m = 20_000;
   let terminals = gbm.sample_map(m, |p| *p.last().unwrap());
   assert_eq!(terminals.len(), m);
@@ -424,7 +426,7 @@ fn sample_map_matches_terminal_expectation() {
 #[test]
 fn sample_par_returns_distinct_paths() {
   // `sample_par` yields the requested count, each an independent realisation.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, 1.0, Some(1.0), Unseeded);
   let paths = gbm.sample_par(64);
   assert_eq!(paths.len(), 64);
   assert!(paths.windows(2).all(|w| w[0] != w[1]));

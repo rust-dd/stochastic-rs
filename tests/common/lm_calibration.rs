@@ -1,16 +1,17 @@
 use ndarray::Array1;
 use stochastic_rs::prelude::OptionType;
+use stochastic_rs::quant::OptionQuote;
+use stochastic_rs::quant::QuantError;
 use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonJacobianMethod;
-use stochastic_rs::quant::calibration::heston::HestonParams;
 use stochastic_rs::quant::calibration::levy::LevyCalibrator;
 use stochastic_rs::quant::calibration::levy::LevyModelType;
-use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
@@ -31,7 +32,7 @@ pub struct Case {
 
 fn calibration<C>(name: &'static str, calibrator: C, max_rmse: f64) -> Case
 where
-  C: Calibrator<Error = anyhow::Error> + 'static,
+  C: Calibrator<Error = QuantError> + 'static,
 {
   Case {
     name,
@@ -43,60 +44,55 @@ where
   }
 }
 
+fn calls(
+  strikes: &Array1<f64>,
+  maturities: &[f64],
+  price: impl Fn(f64, f64) -> f64,
+) -> Vec<OptionQuote> {
+  maturities
+    .iter()
+    .flat_map(|&tau| strikes.iter().map(move |&k| (k, tau)))
+    .map(|(k, tau)| OptionQuote::new(k, tau, price(k, tau), OptionType::Call))
+    .collect()
+}
+
 pub fn cases() -> Vec<Case> {
   let strikes = Array1::from_iter((0..9).map(|i| 80.0 + 5.0 * i as f64));
-  let spot = Array1::from_elem(strikes.len(), 100.0);
   let mut cases = Vec::new();
   for (name, start) in [("bsm/low_start", 0.1), ("bsm/high_start", 0.5)] {
     let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
-    let prices = strikes.mapv(|k| model.price_call(100.0, k, 0.03, 0.0, 1.0));
+    let quotes = calls(&strikes, &[1.0], |k, tau| {
+      model.price_call(100.0, k, 0.03, 0.0, tau)
+    });
     cases.push(calibration(
       name,
-      BsmCalibrator::new(
-        BsmParams { v: start },
-        prices,
-        spot.clone(),
-        strikes.clone(),
-        0.03,
-        None,
-        None,
-        None,
-        1.0,
-        OptionType::Call,
-      ),
+      BsmCalibrator::new(100.0, 0.03, 0.0, quotes).with_start(BsmParams { sigma: start }),
       1e-8,
     ));
   }
-  let heston = HestonPricer::new(0.04, -0.6, 1.5, 0.04, 0.3, Some(0.0));
-  let slices = [0.25, 1.0, 2.0].map(|tau| MarketSlice {
-    strikes: strikes.to_vec(),
-    prices: strikes
-      .iter()
-      .map(|&k| heston.price_call(100.0, k, 0.03, 0.0, tau))
-      .collect(),
-    is_call: vec![true; strikes.len()],
-    tau,
+  let heston = HestonPricer::new(HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.6,
+  });
+  let heston_quotes = calls(&strikes, &[0.25, 1.0, 2.0], |k, tau| {
+    heston.price_call(100.0, k, 0.03, 0.0, tau)
   });
   for (name, method) in [
     ("heston/numeric", HestonJacobianMethod::NumericFiniteDiff),
     ("heston/analytic", HestonJacobianMethod::CuiAnalytic),
   ] {
-    let mut cal = HestonCalibrator::from_slices(
-      Some(HestonParams {
+    let cal = HestonCalibrator::new(100.0, 0.03, 0.0, heston_quotes.clone())
+      .with_start(HestonParams {
         v0: 0.06,
         kappa: 2.0,
         theta: 0.05,
         sigma: 0.25,
         rho: -0.4,
-      }),
-      &slices,
-      100.0,
-      0.03,
-      Some(0.0),
-      OptionType::Call,
-      false,
-    );
-    cal.set_jacobian_method(method);
+      })
+      .with_jacobian_method(method);
     // The analytic and numerical Heston pricers use different quadratures.
     // The pre-migration analytic fit has a price RMSE of 2.10e-5.
     let max_rmse = if method == HestonJacobianMethod::CuiAnalytic {
@@ -112,24 +108,21 @@ pub fn cases() -> Vec<Case> {
     rho: -0.3,
     nu: 0.6,
   });
+  let sabr_quotes = strikes
+    .iter()
+    .map(|&k| {
+      let price = sabr.price_call(100.0, k, 0.03, 0.0, 1.0);
+      OptionQuote::new(k, 1.0, price, OptionType::Call)
+    })
+    .collect();
   cases.push(calibration(
     "sabr",
-    SabrCalibrator::new(
-      Some(SabrParams {
-        alpha: 0.25,
-        beta: 1.0,
-        rho: 0.0,
-        nu: 0.8,
-      }),
-      strikes.mapv(|k| sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0),
-      spot,
-      strikes.clone(),
-      0.03,
-      None,
-      1.0,
-      OptionType::Call,
-      false,
-    ),
+    SabrCalibrator::new(100.0, 0.03, 0.0, sabr_quotes).with_start(SabrParams {
+      alpha: 0.25,
+      beta: 1.0,
+      rho: 0.0,
+      nu: 0.8,
+    }),
     1e-5,
   ));
   for (name, model, prices) in [
@@ -157,12 +150,11 @@ pub fn cases() -> Vec<Case> {
         100.0,
         0.05,
         0.0,
-        vec![MarketSlice {
-          strikes: strikes.to_vec(),
-          prices: prices.to_vec(),
-          is_call: vec![true; strikes.len()],
-          tau: 1.0,
-        }],
+        strikes
+          .iter()
+          .zip(prices)
+          .map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call))
+          .collect(),
       ),
       1e-4,
     ));
@@ -179,15 +171,7 @@ pub fn cases() -> Vec<Case> {
     max_rmse: 1e-9,
     run: Box::new(move || {
       let fit = calibrate_svi(&svi_ks, &ws, None);
-      let rmse = (svi_ks
-        .iter()
-        .zip(&ws)
-        .map(|(&k, &w)| (fit.total_variance(k) - w).powi(2))
-        .sum::<f64>()
-        / ws.len() as f64)
-        .sqrt();
-      // Surface calibration returns parameters without a termination report.
-      (None, rmse)
+      (Some(fit.converged), fit.rmse())
     }),
   });
   let truth = SsviParams::new(-0.4, 0.7, 0.4);
@@ -201,17 +185,7 @@ pub fn cases() -> Vec<Case> {
     max_rmse: 1e-9,
     run: Box::new(move || {
       let fit = calibrate_ssvi(&slices, None);
-      let squared = slices
-        .iter()
-        .flat_map(|s| {
-          s.log_moneyness
-            .iter()
-            .zip(&s.total_variance)
-            .map(move |(&k, &w)| (fit.total_variance(k, s.theta) - w).powi(2))
-        })
-        .sum::<f64>();
-      let rmse = (squared / (slices.len() * slices[0].log_moneyness.len()) as f64).sqrt();
-      (None, rmse)
+      (Some(fit.converged), fit.rmse())
     }),
   });
   cases

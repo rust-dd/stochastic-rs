@@ -1,4 +1,5 @@
-//! The moments and the entropy: sums of the kernel's powers about the centre, in units of the clipped width.
+//! The moments and the entropy: sums of the kernel's powers about the centre, in units of the
+//! clipped width.
 
 use std::ops::ControlFlow;
 use std::sync::OnceLock;
@@ -12,7 +13,8 @@ use super::panels::span;
 use crate::special::ldexp;
 
 impl<K: Kernel> Truncation<K> {
-  /// `(mean, (scale·2^p)²·variance, skewness, excess kurtosis)`, `2^p` the law's unit, in the square before it rounds.
+  /// `(mean, (scale·2^p)²·variance, skewness, excess kurtosis)`, `2^p` the law's unit, in the
+  /// square before it rounds.
   pub(in crate::truncated) fn moments(
     &self,
     scale: f64,
@@ -47,7 +49,8 @@ impl<K: Kernel> Truncation<K> {
     self.summed_moments(scale, p, summed)
   }
 
-  /// Whether the reference point is the clipped interval's midpoint, where a flat kernel's moments are summed.
+  /// Whether the reference point is the clipped interval's midpoint, where a flat kernel's moments
+  /// are summed.
   pub(in crate::truncated) fn about_midpoint(&self) -> bool {
     self.centre == self.a.shifted(0.5 * span(self.a, self.b))
   }
@@ -66,7 +69,8 @@ impl<K: Kernel> Truncation<K> {
       let d = mean[1] / mean[0];
       let m = self.moment_sums::<5>(reach, d);
       let e = m[1] / m[0];
-      // The central sums before they are divided by `m[0]`: beside a near-point mass `μ₂` is subnormal, its sums are not.
+      // The central sums before they are divided by `m[0]`: beside a near-point mass `μ₂` is
+      // subnormal, its sums are not.
       let c2 = m[2] - e * m[1];
       let c3 = m[3] - 3.0 * e * m[2] + 2.0 * e * e * m[1];
       let c4 = m[4] - 4.0 * e * m[3] + 6.0 * e * e * m[2] - 3.0 * e * e * e * m[1];
@@ -116,10 +120,12 @@ impl<K: Kernel> Truncation<K> {
       return f64::NAN;
     }
     *kept.get_or_init(|| {
-      // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
+      // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product
+      // (`β = 4.9e-165` at 1).
       let shift = self.m0.ln() + self.scale;
       let (mut mass, mut log) = (0.0, 0.0);
-      // Each singular panel's `Σ g·ln u` and exponent, scaled by `(e − 1)/e` once the mass is known.
+      // Each singular panel's `Σ g·ln u` and exponent, scaled by `(e − 1)/e` once the mass is
+      // known.
       let mut apart = [(0.0, 1.0); 2];
       let _ = self.walk_about_centre(self.reach(), |panel| {
         if let Some(e) = panel.singular {
@@ -144,7 +150,8 @@ impl<K: Kernel> Truncation<K> {
     })
   }
 
-  /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.
+  /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers
+  /// keep their digits.
   fn walk_about_centre<B>(
     &self,
     reach: (Cut, Cut),

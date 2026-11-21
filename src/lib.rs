@@ -15,7 +15,6 @@ pub use stochastic_rs_distributions as distributions;
 pub use stochastic_rs_quant as quant;
 pub use stochastic_rs_stats as stats;
 pub use stochastic_rs_stochastic as stochastic;
-pub mod bridges;
 pub mod traits;
 
 /// Convenience prelude that re-exports the most commonly used types and traits.

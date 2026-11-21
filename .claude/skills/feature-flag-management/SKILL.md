@@ -82,12 +82,19 @@ For a sub-crate's *own* internal feature (not exposed via the umbrella):
 
 ```rust
 // stochastic-rs-stochastic/tests/fgn_metal_pipeline.rs
-#![cfg(all(feature = "metal", target_os = "macos"))]   // file-level guard
+#![cfg(metal_backend)]   // file-level guard
 
-// or, at item level (Apple back-ends also gate on the target):
-#[cfg(all(feature = "metal", target_os = "macos"))]
+// or, at item level:
+#[cfg(metal_backend)]
 pub struct Metal;
 ```
+
+`stochastic-rs-stochastic/build.rs` emits the device gates as cfg aliases, so the target
+terms are written once: `metal_backend` (`metal` on Apple Silicon macOS), `accelerate_backend`
+(`accelerate` on macOS) and `device_backend` (CUDA or Metal). A misspelled alias is an
+`unexpected_cfgs` error under `-D warnings`. Other packages do not run that script: the
+umbrella's tests and benches and `stochastic-rs-py` spell the gate out,
+`all(feature = "metal", target_os = "macos", target_arch = "aarch64")`.
 
 The `#[cfg(not(feature))]` no-op variant is sometimes useful for
 keeping the public API stable, but the dev-rules feedback memo

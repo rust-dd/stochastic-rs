@@ -1,22 +1,19 @@
-//! Exponentially weighted moving-average (EWMA / RiskMetrics) variance.
+//! Exponentially weighted moving-average (EWMA, RiskMetrics) variance.
 //!
 //! $$
-//! \hat\sigma_t^2 = \lambda\,\hat\sigma_{t-1}^2 + (1-\lambda)\,r_{t-1}^2,
+//! \hat\sigma_t^2 = \lambda\,\hat\sigma_{t-1}^2 + (1-\lambda)\,r_{t-1}^2,\qquad
+//! \hat\sigma_1^2 = r_1^2
 //! $$
-//! seeded with $\hat\sigma_1^2 = r_1^2$ so the recursion is defined from the
-//! second observation without a burn-in convention.
 //!
-//! Reference: J.P. Morgan / Reuters, *RiskMetrics — Technical Document*,
-//! 4th ed. (1996), §5.2; the decay $\lambda = 0.94$ is the document's
-//! recommended value for daily returns and is exposed as
-//! [`RISKMETRICS_DAILY_LAMBDA`].
+//! The seed needs no burn-in; the document's daily `λ = 0.94` is [`RISKMETRICS_DAILY_LAMBDA`].
+//!
+//! Reference: J.P. Morgan / Reuters (1996), RiskMetrics — Technical Document, 4th ed., §5.2
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::StatsError;
-use crate::input::as_slice_or_copy;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// RiskMetrics' recommended daily decay factor.
@@ -36,8 +33,8 @@ pub struct EwmaResult {
   pub nobs: usize,
 }
 
-/// EWMA (RiskMetrics) conditional variance of a return series; `Err` below 2 observations or on a
-/// non-finite one, and panics unless `0 < lambda < 1`.
+/// EWMA (RiskMetrics) conditional variance of returns, `r²` on constant ones; `Err` below 2
+/// observations or on a non-finite one, and panics unless `0 < lambda < 1`.
 pub fn ewma_variance<T: FloatExt>(
   returns: ArrayView1<T>,
   lambda: f64,
@@ -46,17 +43,17 @@ pub fn ewma_variance<T: FloatExt>(
     lambda > 0.0 && lambda < 1.0,
     "lambda must satisfy `0.0 < lambda < 1.0`, got lambda = {lambda:?}"
   );
-  validate(&as_slice_or_copy(returns), 2)?;
+  validate_view(returns, 2)?;
   let n = returns.len();
 
   let mut variance = Array1::<f64>::zeros(n);
-  let r0 = returns[0].to_f64().unwrap_or(f64::NAN);
+  let r0 = returns[0].to_f64().unwrap();
   variance[0] = r0 * r0;
   for t in 1..n {
-    let r = returns[t - 1].to_f64().unwrap_or(f64::NAN);
+    let r = returns[t - 1].to_f64().unwrap();
     variance[t] = lambda * variance[t - 1] + (1.0 - lambda) * r * r;
   }
-  let last_r = returns[n - 1].to_f64().unwrap_or(f64::NAN);
+  let last_r = returns[n - 1].to_f64().unwrap();
   let forecast = lambda * variance[n - 1] + (1.0 - lambda) * last_r * last_r;
 
   Ok(EwmaResult {

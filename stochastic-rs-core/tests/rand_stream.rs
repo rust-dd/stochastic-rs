@@ -1,4 +1,5 @@
-//! Pins the seeded engine streams and the rand sampling built on them; a rand release that changes a sampling algorithm fails here first.
+//! Pins the seeded engine streams and the rand sampling built on them; a rand release that changes
+//! a sampling algorithm fails here first.
 
 use rand::Rng;
 use rand::RngExt;
@@ -147,7 +148,8 @@ fn simd_rng_is_usable_as_a_dyn_rng() {
   assert_ne!(dyn_rng.next_u64(), dyn_rng.next_u64());
 }
 
-/// Lengths cover whole words, short and long tails and crossing the 4-word buffer, from every buffer offset.
+/// Lengths cover whole words, short and long tails and crossing the 4-word buffer, from every
+/// buffer offset.
 #[test]
 fn fill_bytes_takes_the_words_next_u64_returns() {
   for offset in 0..4 {

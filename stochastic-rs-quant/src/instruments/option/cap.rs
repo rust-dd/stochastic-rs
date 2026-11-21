@@ -5,8 +5,7 @@
 //!   \mathrm{BlackCall}(F_i,K,\tau_i,\sigma_i)
 //! $$
 //!
-//! Reference: Hull, "Options, Futures, and Other Derivatives", 11th ed. (2021),
-//! §29.2.
+//! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §29.2
 
 use chrono::NaiveDate;
 

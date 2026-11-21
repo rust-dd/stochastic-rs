@@ -14,9 +14,12 @@
 //! - Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904
 //! - McCrickerd & Pakkanen (2018), DOI: 10.1080/14697688.2018.1459812, arXiv:1708.02563
 
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::mc::McEstimate;
+
 use crate::calibration::rbergomi::RBergomiParams;
 use crate::calibration::rbergomi::simulate_rbergomi_terminal_samples;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -26,7 +29,7 @@ use crate::traits::VanillaEuropeanCall;
 /// Wraps calibrated [`RBergomiParams`] and simulation settings to implement
 /// [`ModelPricer`], enabling integration with the vol-surface pipeline.
 #[derive(Debug, Clone)]
-pub struct RBergomiPricer {
+pub struct RBergomiPricer<S: SeedExt = Unseeded> {
   /// Calibrated rBergomi parameters (H, rho, eta, xi0).
   pub params: RBergomiParams,
   /// Number of Monte Carlo paths.
@@ -35,8 +38,8 @@ pub struct RBergomiPricer {
   pub steps_per_year: usize,
   /// Number of mSOE exponential terms for the fBM approximation.
   pub msoe_terms: usize,
-  /// RNG seed for reproducibility.
-  pub seed: u64,
+  /// Each call draws its two runs from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
   /// If true, use antithetic sampling for variance reduction.
   pub antithetic: bool,
 }
@@ -48,11 +51,13 @@ impl RBergomiPricer {
       n_paths: 100_000,
       steps_per_year: 200,
       msoe_terms: 12,
-      seed: 42,
+      seed: Unseeded,
       antithetic: true,
     }
   }
+}
 
+impl<S: SeedExt> RBergomiPricer<S> {
   pub fn with_paths(mut self, n_paths: usize) -> Self {
     self.n_paths = n_paths;
     self
@@ -68,9 +73,15 @@ impl RBergomiPricer {
     self
   }
 
-  pub fn with_seed(mut self, seed: u64) -> Self {
-    self.seed = seed;
-    self
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> RBergomiPricer<S2> {
+    RBergomiPricer {
+      params: self.params,
+      n_paths: self.n_paths,
+      steps_per_year: self.steps_per_year,
+      msoe_terms: self.msoe_terms,
+      seed,
+      antithetic: self.antithetic,
+    }
   }
 
   pub fn with_antithetic(mut self, antithetic: bool) -> Self {
@@ -83,6 +94,7 @@ impl RBergomiPricer {
   /// the error bar is computed over the per-path antithetic-pair means,
   /// the unit that actually averages to the estimate.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
+    let seed = self.seed.clone();
     let samples = simulate_rbergomi_terminal_samples(
       &self.params,
       s,
@@ -92,7 +104,7 @@ impl RBergomiPricer {
       self.n_paths,
       self.steps_per_year,
       self.msoe_terms,
-      self.seed,
+      &seed,
     );
 
     let payoff_sum: f64 = samples.iter().map(|&st| (st - k).max(0.0)).sum();
@@ -109,7 +121,7 @@ impl RBergomiPricer {
         self.n_paths,
         self.steps_per_year,
         self.msoe_terms,
-        self.seed.wrapping_add(0x9E37_79B9_7F4A_7C15),
+        &seed,
       );
       let payoff_sum_anti: f64 = samples_anti.iter().map(|&st| (st - k).max(0.0)).sum();
       let price_anti = payoff_sum_anti / samples_anti.len() as f64;
@@ -145,7 +157,7 @@ impl RBergomiPricer {
   }
 }
 
-impl ModelPricer for RBergomiPricer {
+impl<S: SeedExt> ModelPricer for RBergomiPricer<S> {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_call_estimate(s, k, r, q, tau).mean
   }
@@ -153,10 +165,12 @@ impl ModelPricer for RBergomiPricer {
 
 /// European vanilla call: the Monte Carlo averages $(S_T-K)^+$ over
 /// terminal samples drifted at $r-q$, so the default forward applies.
-impl VanillaEuropeanCall for RBergomiPricer {}
+impl<S: SeedExt> VanillaEuropeanCall for RBergomiPricer<S> {}
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
   use crate::calibration::rbergomi::RBergomiXi0;
 
@@ -168,7 +182,9 @@ mod tests {
       eta: 1.9,
       xi0: RBergomiXi0::Constant(0.04),
     };
-    let pricer = RBergomiPricer::new(params).with_paths(50_000);
+    let pricer = RBergomiPricer::new(params)
+      .with_paths(50_000)
+      .with_seed(Deterministic::new(42));
     let call = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
     assert!(
       call > 0.0 && call < 100.0,
@@ -184,7 +200,9 @@ mod tests {
       eta: 1.9,
       xi0: RBergomiXi0::Constant(0.04),
     };
-    let pricer = RBergomiPricer::new(params).with_paths(50_000);
+    let pricer = RBergomiPricer::new(params)
+      .with_paths(50_000)
+      .with_seed(Deterministic::new(42));
     let c_90 = pricer.price_call(100.0, 90.0, 0.05, 0.0, 0.5);
     let c_100 = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
     let c_110 = pricer.price_call(100.0, 110.0, 0.05, 0.0, 0.5);
@@ -203,7 +221,9 @@ mod tests {
       eta: 1.9,
       xi0: RBergomiXi0::Constant(0.04),
     };
-    let pricer = RBergomiPricer::new(params).with_paths(80_000);
+    let pricer = RBergomiPricer::new(params)
+      .with_paths(80_000)
+      .with_seed(Deterministic::new(42));
     let p_no_div = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     let p_with_div = pricer.price_call(100.0, 100.0, 0.05, 0.05, 1.0);
     // With shared seed, the only difference between the two MC runs is the q

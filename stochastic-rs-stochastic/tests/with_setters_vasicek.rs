@@ -1,22 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Vasicek`
-//! (`interest/vasicek.rs`). Cache: private `ou: Ou<T, S>` — `Vasicek`
-//! delegates its entire sampler to an embedded, fully-parameterized `Ou`.
-//! Every setter that touches `theta`/`mu`/`sigma`/`n`/`x0`/`t` must rebuild
-//! `ou`.
-//!
-//! **Different from every Task 2/this-task `Cgns`-cache case**: `new()`
-//! builds `ou` via `Ou::new(.., seed.derive())` — a *one-time* derive off
-//! the constructor's own `seed` argument, whose result is then stored
-//! permanently in `ou.seed` (itself `pub`). Rebuilding `ou` inside a setter
-//! by calling `self.seed.derive()` *again* would derive a second, different
-//! child from the (already-once-derived-from) `self.seed`, which would
-//! *not* match what a fresh `Vasicek::new(new_field, .., seed)` produces
-//! (that fresh call derives its *first* child from an unadvanced `seed`).
-//! The fix: reuse `self.ou.seed.clone()` (the already-fixed derived seed)
-//! when rebuilding `ou` for any setter *other than* `with_seed`; only
-//! `with_seed` re-derives, from the *new* outer seed, exactly mirroring
-//! `new()`'s own construction order. The bit-exact tests below are exactly
-//! what would fail if this distinction were gotten wrong.
+//! `with_*` setters on `Vasicek`, whose private `ou: Ou<T, S>` every parameter setter rebuilds
+//! with the child seed it holds; only `with_seed` derives again, in `new()`'s order.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -113,8 +96,8 @@ cache_test!(
   (3.0, 0.03, 0.02, 64, Some(0.06), Some(1.0))
 );
 cache_test!(
-  vasicek_with_steps_rebuilds_ou,
-  with_steps,
+  vasicek_with_points_rebuilds_ou,
+  with_points,
   n,
   128,
   (3.0, 0.03, 0.02, 128, Some(0.03), Some(1.0))
@@ -136,14 +119,8 @@ fn vasicek_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `vasicek_base()` helper the bit-exact `ou`-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `VasicekFields`
-/// mirror, not a `Vasicek { .., ..Vasicek::default() }` struct-update
-/// literal: `Vasicek` has a private `ou` cache field, so that literal
-/// wouldn't even compile from this external test crate.
+/// A `Default`-rooted `with_mu` round-trip. It compares through the `VasicekFields` mirror:
+/// `Vasicek` has a private `ou` cache, so a struct-update literal would not compile here.
 #[test]
 fn vasicek_default_with_mu_round_trip() {
   let base = Vasicek::<f64>::default();

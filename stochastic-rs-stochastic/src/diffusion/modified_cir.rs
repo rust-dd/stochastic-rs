@@ -1,19 +1,12 @@
-//! # ModifiedCIR
+//! CIR with `√X_t` replaced by the globally Lipschitz `√(1+X_t²)`, so `X_t` may go negative.
 //!
 //! $$
 //! dX_t=-\kappa X_t\,dt+\sigma\sqrt{1+X_t^2}\,dW_t
 //! $$
 //!
-//! A Cox-Ingersoll-Ross-style mean-reverting process (Cox, Ingersoll,
-//! Ross (1985), DOI: 10.2307/1911242) modified to replace the `√X_t`
-//! diffusion with the globally Lipschitz, linear-growth `√(1+X_t²)`.
-//! Unlike CIR, `X_t` is not constrained to stay non-negative — there is
-//! no square-root singularity at the origin to protect against, so the
-//! process is well-defined and strong-solution-unique for every real
-//! `κ`, `σ` with no Feller-type condition. No single paper naming this
-//! exact variant could be identified; it reads as a smooth,
-//! always-real-valued cousin of CIR rather than an implementation of a
-//! specific published model.
+//! No Feller condition applies; no published model of this exact form was identified.
+//!
+//! Reference: Cox, Ingersoll & Ross (1985), DOI 10.2307/1911242
 //!
 
 use ndarray::Array1;
@@ -30,8 +23,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
-pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone, Copy)]
+pub struct ModifiedCir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ pulling `X_t` toward 0 — this model has no
   /// separate long-run-level field; it always reverts to 0.
   pub kappa: T,
@@ -39,9 +32,9 @@ pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the modified-CIR path.
   pub n: usize,
-  /// Initial value X₀ of the modified-CIR path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -50,7 +43,8 @@ pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> ModifiedCIR<T, S> {
+impl<T: FloatExt, S: SeedExt> ModifiedCir<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -81,11 +75,9 @@ impl<T: FloatExt, S: SeedExt> ModifiedCIR<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> ModifiedCIR<T, S, B> {}
-
 /// The Euler engine's view of the modified CIR process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for ModifiedCIR<T, S, B>
+  for ModifiedCir<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::ModifiedSquareRoot {
@@ -117,15 +109,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] ModifiedCIR<T, S> { kappa, sigma, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] ModifiedCir<T, S> { kappa, sigma, n, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for ModifiedCIR<T, S, B>
+  for ModifiedCir<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for ModifiedCIR<T, S, B>
+  for ModifiedCir<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -146,9 +138,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -178,9 +169,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`ModifiedCIR`] sampling state: precomputed Euler step and the
+/// Reusable [`ModifiedCir`] sampling state: precomputed Euler step and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ModifiedCirSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -219,7 +211,7 @@ impl<T: FloatExt> PathSampler<T> for ModifiedCirSampler<T> {
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("ModifiedCIR output must be contiguous");
+      .expect("ModifiedCir output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -229,7 +221,7 @@ impl<T: FloatExt> PathSampler<T> for ModifiedCirSampler<T> {
   }
 }
 
-py_process_1d!(PyModifiedCIR, ModifiedCIR,
+py_process_1d!(PyModifiedCIR, ModifiedCir,
   sig: (kappa, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

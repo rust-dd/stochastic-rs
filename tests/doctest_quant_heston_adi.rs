@@ -1,6 +1,7 @@
 // docs: quant#heston-pde-by-adi-finite-differences
 //! Backs the Heston ADI example on the quant catalog page.
 
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::heston_adi::AdiScheme;
 use stochastic_rs::quant::pricing::heston_adi::HestonAdiPricer;
@@ -13,15 +14,26 @@ fn adi_solver_reprices_the_semi_analytic_heston_call() {
   let (s, k, r_d, r_f, tau) = (100.0, 100.0, 0.025, 0.0, 1.0);
 
   // Model + numerics state; the query travels as arguments (r = r_d, q = r_f).
-  let pde = HestonAdiPricer::new(v0, kappa, eta, sigma, rho)
-    .with_grid(100, 50, 50)
-    .with_scheme(AdiScheme::ModifiedCraigSneyd);
+  let pde = HestonAdiPricer::new(HestonParams {
+    v0,
+    kappa,
+    theta: eta,
+    sigma,
+    rho,
+  })
+  .with_grid(100, 50, 50)
+  .with_scheme(AdiScheme::ModifiedCraigSneyd);
   let adi = pde.price_call(s, k, r_d, r_f, tau);
 
   // Semi-analytic reference through the crate's Heston pricer.
-  let analytic = HestonPricer::new(v0, rho, kappa, eta, sigma, Some(0.0))
-    .call_put(s, k, r_d, r_f, tau)
-    .0;
+  let analytic = HestonPricer::new(HestonParams {
+    v0,
+    kappa,
+    theta: eta,
+    sigma,
+    rho,
+  })
+  .price_call(s, k, r_d, r_f, tau);
   assert!(
     (adi - analytic).abs() / analytic < 1e-2,
     "adi {adi} vs analytic {analytic}"

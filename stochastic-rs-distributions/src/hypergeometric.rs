@@ -1,14 +1,12 @@
-//! # Hypergeometric
+//! Hypergeometric law, drawn by inverting a cumulative table from the log-space pmf recurrence: one
+//! uniform and a binary search per draw, not `n_draws` Bernoulli trials.
 //!
 //! $$
 //! \mathbb{P}(X=k)=\frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
 //! $$
 //!
-//! Drawn by inverting a cumulative table built from the log-space pmf recurrence: one uniform and a
-//! binary search a draw, not `n_draws` Bernoulli trials.
-//!
-//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
-//! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
+//! Reference: Kachitvichyanukul, Schmeiser (1985), 22, 127-145, DOI 10.1080/00949658508810839.
+//! Reference: Johnson, N. L. et al. (2005), 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816.
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
@@ -103,7 +101,8 @@ impl<T: PrimInt> SimdHypergeometric<T> {
     self.n_draws
   }
 
-  /// The count whose cumulative probability first reaches `u`; an overflow of `T` saturates (and asserts in debug).
+  /// The count whose cumulative probability first reaches `u`; an overflow of `T` saturates (and
+  /// asserts in debug).
   #[inline]
   fn index_of(&self, u: f64) -> T {
     let k = self.k_min as usize + self.cdf.partition_point(|&p| p < u);
@@ -115,7 +114,8 @@ impl<T: PrimInt> SimdHypergeometric<T> {
     cast.unwrap_or(T::max_value())
   }
 
-  /// Kept out of line because inlined into `sample_matrix`'s workers the table search slows their fills by about 5 %.
+  /// Kept out of line because inlined into `sample_matrix`'s workers the table search slows their
+  /// fills by about 5 %.
   #[inline(never)]
   fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
     for x in out.iter_mut() {
@@ -265,7 +265,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     Some(n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0)))
   }
 
-  /// `NaN` for a point mass; at `N = 2` the only other law is Bernoulli(½), where `(N − 2)` reads `0/0`.
+  /// `NaN` for a point mass; at `N = 2` the only other law is Bernoulli(½), where `(N − 2)` reads
+  /// `0/0`.
   fn skewness(&self) -> Option<f64> {
     if self.variance()? == 0.0 {
       return Some(f64::NAN);

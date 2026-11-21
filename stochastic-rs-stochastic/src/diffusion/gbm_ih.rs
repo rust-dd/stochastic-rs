@@ -1,7 +1,7 @@
-//! # Gbm Ih
+//! Inhomogeneous GBM: a constant drift and a volatility given per step by `sigmas`.
 //!
 //! $$
-//! dS_t=\mu(t)S_t\,dt+\sigma(t)S_t\,dW_t
+//! dS_t=\mu S_t\,dt+\sigma(t)S_t\,dW_t
 //! $$
 //!
 
@@ -22,7 +22,7 @@ use crate::traits::ProcessExt;
 
 /// Inhomogeneous Gbm with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ — no mean reversion (only the
   /// diffusion coefficient is time-inhomogeneous in this model).
@@ -31,13 +31,13 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the inhomogeneous-GBM path.
   pub n: usize,
-  /// Initial value S₀ of the inhomogeneous-GBM path.
+  /// Initial value; `None` starts at zero, where the path stays.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -45,7 +45,8 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
-  /// Create a new GbmIh instance with the given parameters.
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `mu`, `sigma`, `x0` and a given
+  /// `sigmas` are finite, and `sigmas.len() == n - 1`.
   pub fn new(
     mu: T,
     sigma: T,
@@ -96,12 +97,8 @@ impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> GbmIh<T, S, B> {}
-
-/// The Euler engine's view of geometric Brownian motion over a term structure
-/// of volatilities. The host reads the term structure by increment index, so
-/// the curve is shifted by one: the value the kernel binds at step `i` is the
-/// one the host applies to that step.
+/// The Euler engine's view. The host reads the volatility term structure by increment index, so
+/// the curve is shifted by one: the kernel binds at step `i` the value the host applies there.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for GbmIh<T, S, B>
 {
@@ -171,9 +168,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel
-  /// with its time-varying coefficient bound per step, on the host devices it
-  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device binds the time-varying coefficient per step in its
+  /// kernel, the host runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -205,6 +201,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`GbmIh`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GbmIhSampler<T: FloatExt> {
   n: usize,
   x0: T,

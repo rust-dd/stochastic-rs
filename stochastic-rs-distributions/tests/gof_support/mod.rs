@@ -61,11 +61,15 @@ pub fn best_chi_square_p_value(
       let (samples, cdf) = make(seed);
       assert_eq!(samples.len(), n, "sample length mismatch for seed {seed}");
       let (edges, expected_prob) = pool_integer_bins(n as u64, k_lo, k_hi, cdf, 5.0);
-      let observed = bin_observed(&samples, &edges);
-      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
-        .unwrap()
-        .p_value
-        .unwrap()
+      let observed = bin_observed(ArrayView1::from(&samples), ArrayView1::from(&edges));
+      chi_square_gof_test(
+        ArrayView1::from(&observed),
+        ArrayView1::from(&expected_prob),
+        ChiSquareGofConfig::default(),
+      )
+      .unwrap()
+      .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }

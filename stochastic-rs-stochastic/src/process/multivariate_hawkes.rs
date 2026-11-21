@@ -1,19 +1,14 @@
-//! # Multivariate Hawkes Process
+//! D-dimensional self-exciting point process with exponential kernels and cross-excitation.
 //!
 //! $$
 //! \lambda_i(t) = \mu_i + \sum_{j=1}^{D}\sum_{T_k^j < t} \alpha_{ij}\,e^{-\beta_{ij}(t - T_k^j)},
 //! \quad i = 1,\dots,D
 //! $$
 //!
-//! D-dimensional self-exciting point process with exponential kernels and
-//! cross-excitation. Stationarity requires $\rho(\Gamma) < 1$ where
-//! $\Gamma_{ij} = \alpha_{ij}/\beta_{ij}$.
+//! Stationary when the spectral radius of `Γ`, `Γ_ij = α_ij / β_ij`, is below 1; Ogata thinning.
 //!
-//! Simulated via multivariate Ogata thinning.
-//!
-//! Reference:
-//! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
-//! - Bacry, Mastromatteo, Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
+//! Reference: Hawkes (1971), DOI 10.1093/biomet/58.1.83
+//! Reference: Bacry, Mastromatteo & Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -22,34 +17,27 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::params::Horizon;
 use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// D-dimensional Hawkes process with exponential kernels.
-///
-/// Output: `ProcessExt::Output = Vec<Array1<T>>` — one `Array1<T>` of
-/// event times per component (length D), each component's vector sized to
-/// however many events it actually had (event counts differ per
-/// component, so this is not a fixed-shape `Array2<T>`).
+/// D-dimensional Hawkes process with exponential kernels. The output is one `Array1<T>` of event
+/// times per component, each as long as that component's own event count.
+#[derive(Debug, Clone)]
 pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Baseline intensities $\mu_i > 0$, length D.
   pub mu: Array1<T>,
-  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D): size of the
-  /// intensity jump on component `i` triggered by an event on component
-  /// `j`.
+  /// Excitation matrix $\alpha_{ij} \ge 0$, shape (D, D): the intensity jump on component `i`
+  /// that an event on component `j` triggers.
   pub alpha: Array2<T>,
   /// Decay matrix $\beta_{ij} > 0$, shape (D, D): rate at which the
   /// `j`-to-`i` excitation from `alpha` fades back toward `mu_i`.
   pub beta: Array2<T>,
-  /// Time horizon — event generation stops once simulated time exceeds
-  /// this value. Ignored in count mode.
-  pub t_max: T,
-  /// Optional fixed number of events after the origins, across all
-  /// components: count mode, the one a device can run. `None` samples over
-  /// the horizon.
-  pub n: Option<usize>,
+  /// `Events(n)`: `n` events after the origins, across all components, the mode a device runs;
+  /// `Until(t)`: the events before `t`.
+  pub horizon: Horizon<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -58,11 +46,16 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
-  pub fn new(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T, seed: S) -> Self {
-    assert!(
-      t_max.is_finite(),
-      "t_max must satisfy `t_max.is_finite()`, got t_max = {t_max:?}"
-    );
+  /// Panics unless `alpha` and `beta` are `D × D` for `D = mu.len()`, every entry is finite, and
+  /// an `Until` horizon is positive and finite.
+  pub fn new(
+    mu: Array1<T>,
+    alpha: Array2<T>,
+    beta: Array2<T>,
+    horizon: Horizon<T>,
+    seed: S,
+  ) -> Self {
+    horizon.assert_valid();
     assert_entries("mu", "mu[i].is_finite()", &mu, |v| v.is_finite());
     assert_entries("alpha", "alpha[(i, j)].is_finite()", &alpha, |v| {
       v.is_finite()
@@ -85,18 +78,17 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
       mu,
       alpha,
       beta,
-      t_max,
-      n: None,
+      horizon,
       seed,
     }
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
-  /// Count mode: exactly `n` events after the origins, across all
-  /// components, the horizon ignored.
-  pub fn with_count(mut self, n: usize) -> Self {
-    self.n = Some(n);
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
+  pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
+    horizon.assert_valid();
+    self.horizon = horizon;
     self
   }
 
@@ -106,7 +98,7 @@ impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, t_max, n, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, horizon, seed } via euler);
 
 /// The device's two rows — every event's time and its component — back into
 /// one event list per component, each opening at the origin as the host's do.
@@ -123,6 +115,7 @@ fn rows_to_components<T: FloatExt>(rows: [Array1<T>; 2], d: usize) -> Vec<Array1
 /// The Euler engine's view of the process: the events as two rows, time and
 /// mark, one event per grid step.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(
   &'a MultivariateHawkes<T, S, B>,
 );
@@ -149,6 +142,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultivariateHawkesLaunchSampler<'a, T: FloatExt, S: SeedExt> {
   inner: MultivariateHawkesSampler<'a, T, S>,
 }
@@ -184,11 +178,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesLaunchSampler
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for MultivariateHawkesLaunch<'_, T, S, B>
 {
-  /// The baselines, the excitation matrix and one decay per target, a missing
-  /// second component travelling with a zero baseline and zero excitations. A
-  /// configuration the family cannot carry never reaches a launch —
-  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
-  /// bypassing that guard.
+  /// The baselines, the excitation matrix and one decay per target; a missing second component
+  /// has zero baseline and excitations. [`ProcessExt::sample`] keeps any other shape on the host.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     assert!(
@@ -220,9 +211,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   /// One step is one event, after the origin.
   fn grid_points(&self) -> usize {
-    self.0.n.expect(
-      "the Euler engine describes MultivariateHawkes's count mode; horizon mode has no grid",
-    ) + 1
+    let Horizon::Events(n) = self.0.horizon else {
+      panic!(
+        "the Euler engine describes MultivariateHawkes's count mode; horizon mode has no grid"
+      );
+    };
+    n + 1
   }
 
   /// One step is one event, so the grid has no horizon of its own; the waits
@@ -256,24 +250,20 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> MultivariateHawkesSampler<'_, T, S> {
     MultivariateHawkesSampler {
       mu: &self.mu,
       alpha: &self.alpha,
       beta: &self.beta,
-      t_max: self.t_max,
-      n: self.n,
+      horizon: self.horizon,
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine in count mode with at most two components and
-  /// one decay per target, where every step is one event; anything else keeps
-  /// the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine in count mode with at most two components and one decay per
+  /// target; anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Vec<Array1<T>> {
     if self.device_ready() {
       rows_to_components(
@@ -343,16 +333,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: count mode — the horizon mode's
-  /// length is itself random and has no grid — with at most two components,
-  /// one decay per target (`β_ij` constant along each row) and positive
-  /// baselines. The family superposes each target's exact excess clock with
-  /// the baselines' joint Poisson clock, which is what one decay per target
-  /// makes closed-form; per-pair decays keep the process on the host.
+  /// What a device runs: count mode, at most two components, positive baselines and one decay
+  /// per target, which makes each target's excess clock closed-form; per-pair decays stay on host.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = {
       let d = self.dim();
-      self.n.is_some()
+      matches!(self.horizon, Horizon::Events(_))
         && d <= 2
         && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
         && self.mu.iter().all(|&m| m > T::zero())
@@ -361,18 +347,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`MultivariateHawkes`] sampling state: borrows the baseline
-/// intensities, excitation and decay matrices and owns the seed source. The
-/// component count is a runtime property of `mu`, and event counts differ per
-/// path, so each call rebuilds the output `Vec`; the RNG is rebuilt from the
-/// owned seed each call, exactly as the legacy `sample` body did.
+/// Reusable [`MultivariateHawkes`] sampling state: it borrows the baselines and the two matrices
+/// and owns the seed source; each call rebuilds the output `Vec` and the RNG from that seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {
   mu: &'a Array1<T>,
   alpha: &'a Array2<T>,
   beta: &'a Array2<T>,
-  t_max: T,
-  n: Option<usize>,
+  horizon: Horizon<T>,
   seed: S,
 }
 
@@ -389,9 +372,9 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
     let mut produced = 0usize;
 
     loop {
-      match self.n {
-        Some(n) if produced >= n => break,
-        None if t >= self.t_max => break,
+      match self.horizon {
+        Horizon::Events(n) if produced >= n => break,
+        Horizon::Until(t_max) if t >= t_max => break,
         _ => {}
       }
       // Compute component intensities and total upper bound
@@ -412,7 +395,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
       let dt = -u.ln() / lambda_bar;
       t += dt;
 
-      if self.n.is_none() && t >= self.t_max {
+      if matches!(self.horizon, Horizon::Until(t_max) if t >= t_max) {
         break;
       }
 
@@ -479,7 +462,7 @@ mod tests {
     let mu = array![1.0_f64, 1.5];
     let alpha = Array2::from_shape_vec((2, 2), vec![0.3, 0.1, 0.2, 0.4]).unwrap();
     let beta = Array2::from_shape_vec((2, 2), vec![2.0, 2.0, 2.0, 2.0]).unwrap();
-    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0, Unseeded);
+    let h = MultivariateHawkes::new(mu, alpha, beta, Horizon::Until(10.0), Unseeded);
     let events = h.sample();
     assert_eq!(events.len(), 2);
     assert!(events[0].len() > 1, "component 0 should have events");
@@ -492,11 +475,17 @@ mod tests {
     let mu = array![2.0_f64, 2.0];
     let alpha_diag = Array2::from_shape_vec((2, 2), vec![0.5, 0.0, 0.0, 0.5]).unwrap();
     let beta = Array2::from_shape_vec((2, 2), vec![3.0, 3.0, 3.0, 3.0]).unwrap();
-    let h1 = MultivariateHawkes::new(mu.clone(), alpha_diag, beta.clone(), 50.0, Unseeded);
+    let h1 = MultivariateHawkes::new(
+      mu.clone(),
+      alpha_diag,
+      beta.clone(),
+      Horizon::Until(50.0),
+      Unseeded,
+    );
 
     // With cross-excitation
     let alpha_full = Array2::from_shape_vec((2, 2), vec![0.5, 0.5, 0.5, 0.5]).unwrap();
-    let h2 = MultivariateHawkes::new(mu, alpha_full, beta, 50.0, Unseeded);
+    let h2 = MultivariateHawkes::new(mu, alpha_full, beta, Horizon::Until(50.0), Unseeded);
 
     let n_trials = 20;
     let avg1: f64 = (0..n_trials)
@@ -521,7 +510,7 @@ mod tests {
     let mu = array![3.0_f64];
     let alpha = Array2::from_shape_vec((1, 1), vec![1.0]).unwrap();
     let beta = Array2::from_shape_vec((1, 1), vec![5.0]).unwrap();
-    let h = MultivariateHawkes::new(mu, alpha, beta, 10.0, Unseeded);
+    let h = MultivariateHawkes::new(mu, alpha, beta, Horizon::Until(10.0), Unseeded);
     let events = h.sample();
     assert_eq!(events.len(), 1);
     assert!(events[0].len() > 2, "should have multiple events");

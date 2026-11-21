@@ -1,313 +1,383 @@
-//! Yield curve bootstrapping from market instruments.
+//! Yield curve bootstrapping: deposits at the short end, FRAs and futures in the middle, swaps
+//! at the long end.
 //!
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
-//! Wilmott Magazine (2006).
+//! $$
+//! D(t) = \frac{1}{1 + r\,\delta},\qquad D(t_2) = \frac{D(t_1)}{1 + R\,\delta},\qquad
+//! D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}
+//! $$
 //!
-//! Reference: Ametrano & Bianchetti, "Everything You Always Wanted to Know About
-//! Multiple Interest Rate Curve Bootstrapping but Were Afraid to Ask",
-//! SSRN 2219548 (2013).
-//!
-//! Bootstrapping algorithm:
-//! 1. **Short end** (deposits): $D(t) = 1/(1 + r\,\delta)$
-//! 2. **Middle** (FRAs / futures): $D(t_2) = D(t_1)/(1 + R\,\delta)$
-//! 3. **Long end** (swaps): $D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}$
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
+mod segment;
+mod solve;
+mod spec;
+mod validate;
+
+pub use spec::BootstrapSpec;
+pub use spec::IterativeOptions;
+
+pub(super) use solve::trial_node;
+
+use self::segment::Segment;
 use super::discount_curve::DiscountCurve;
-use super::interpolation;
+use super::dual_curve;
+use super::interpolation::interpolate_discount_factor;
 use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::QuantError;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
-/// Build a discount curve by bootstrapping from a set of market instruments.
-///
-/// Instruments are processed in order of increasing maturity. Each instrument
-/// provides one equation for one unknown discount factor.
-pub fn bootstrap<T: RealExt>(
-  instruments: &[BootstrapInstrument<T>],
-  method: InterpolationMethod,
-) -> DiscountCurve<T> {
-  let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
-  sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
-
-  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
-    time: T::zero(),
-    discount_factor: T::one(),
-  }];
-
-  for inst in &sorted {
-    match inst {
-      BootstrapInstrument::Deposit { maturity, rate } => {
-        let df = T::one() / (T::one() + *rate * *maturity);
-        points.push(CurvePoint {
-          time: *maturity,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Fra { start, end, rate } => {
-        let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
-        let delta = *end - *start;
-        let df = d_start / (T::one() + *rate * delta);
-        points.push(CurvePoint {
-          time: *end,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Future {
-        start,
-        end,
-        price,
-        sigma,
-      } => {
-        let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
-        let delta = *end - *start;
-        let hundred = T::from_f64_fast(100.0);
-        let futures_rate = (hundred - *price) / hundred;
-        let half = T::from_f64_fast(0.5);
-        let convexity_adj = half * *sigma * *sigma * *start * *end;
-        let fra_rate = futures_rate - convexity_adj;
-        let df = d_start / (T::one() + fra_rate * delta);
-        points.push(CurvePoint {
-          time: *end,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Swap {
-        maturity,
-        rate,
-        frequency,
-      } => {
-        // Round-to-integer number of payments. The free-form BootstrapInstrument::Swap
-        // path requires `maturity · frequency` to be **close** to an integer:
-        // a 1.4Y semi-annual swap (mat·freq = 2.8) would round to 3 payments,
-        // mismatching the swap-quote convention by 0.2 (~73 days). A
-        // calendar-day-driven 5.0027y semi-annual swap (mat·freq = 10.005)
-        // rounds cleanly to 10 with negligible bias.
-        //
-        // We allow a 0.1-payment-fraction tolerance (≈ 18 days at semi-annual,
-        // ≈ 9 days at quarterly), enough to absorb day-count noise but tight
-        // enough to flag real schedule mismatches. For non-integer maturities
-        // outside this tolerance, route through the date-aware
-        // `market::rate_helper::SwapRateHelper`, which builds an explicit
-        // payment schedule with the calendar.
-        let raw_payments = *maturity * T::from_f64_fast(*frequency as f64);
-        let rounded = raw_payments.round();
-        let mismatch = (raw_payments - rounded).abs();
-        assert!(
-          mismatch < T::from_f64_fast(0.1),
-          "BootstrapInstrument::Swap requires maturity · frequency to be (close to) an integer \
-           (got maturity={:?}, frequency={}, payments mismatch {:?}). \
-           Use market::rate_helper::SwapRateHelper for date-aware non-integer schedules.",
-          maturity,
-          frequency,
-          mismatch
-        );
-        let delta = T::one() / T::from_f64_fast(*frequency as f64);
-        let n_payments = rounded.to_f64().unwrap() as usize;
-
-        let mut annuity = T::zero();
-        for i in 1..n_payments {
-          let t_i = T::from_f64_fast(i as f64) * delta;
-          let d_i = interpolation::interpolate_discount_factor(&points, t_i, method);
-          annuity += delta * d_i;
-        }
-
-        let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta);
-        points.push(CurvePoint {
-          time: *maturity,
-          discount_factor: df_n,
-        });
-      }
-      BootstrapInstrument::SwapWithSchedule {
-        rate,
-        payment_times,
-      } => {
-        // Calendar-aware par swap: annuity from explicit non-uniform period
-        // accruals. Par condition
-        //   0 = S · Σ δ_i · D(t_i)  +  D(T) − 1
-        // with the final period rolled to the RHS:
-        //   1 = S · Σ_{i<n} δ_i · D(t_i)  +  (1 + S · δ_n) · D(T)
-        //   ⟹ D(T) = (1 − S · annuity_{<n}) / (1 + S · δ_n)
-        // where `δ_i = t_i − t_{i−1}` with the convention `t_0 = 0`.
-        assert!(
-          !payment_times.is_empty(),
-          "BootstrapInstrument::SwapWithSchedule requires at least one payment time"
-        );
-        let n = payment_times.len();
-        let mut annuity = T::zero();
-        let mut prev = T::zero();
-        for (i, t_i) in payment_times.iter().enumerate() {
-          let delta_i = *t_i - prev;
-          if i + 1 < n {
-            let d_i = interpolation::interpolate_discount_factor(&points, *t_i, method);
-            annuity += delta_i * d_i;
-          }
-          prev = *t_i;
-        }
-        let delta_n = *payment_times.last().unwrap()
-          - if n >= 2 {
-            payment_times[n - 2]
-          } else {
-            T::zero()
-          };
-        let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta_n);
-        points.push(CurvePoint {
-          time: *payment_times.last().unwrap(),
-          discount_factor: df_n,
-        });
-      }
-    }
-  }
-
-  DiscountCurve::new(points, method)
+/// A curve with one pillar per instrument, by increasing maturity. `InsufficientData` for no
+/// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` for a solve with no root.
+pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve<T>, QuantError> {
+  bootstrap_numbered(spec, None)
 }
 
-/// Iterative bootstrapping with root-finding for instruments that don't align with nodes.
-///
-/// Uses the bisection method to solve for the unknown discount factor at each step.
-pub fn bootstrap_iterative<T: RealExt>(
-  instruments: &[BootstrapInstrument<T>],
-  method: InterpolationMethod,
-  tol: T,
-  max_iter: usize,
-) -> DiscountCurve<T> {
-  let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
-  sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
-
-  let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
-    time: T::zero(),
-    discount_factor: T::one(),
-  }];
-
-  for inst in &sorted {
-    match inst {
-      BootstrapInstrument::Deposit { maturity, rate } => {
-        let df = T::one() / (T::one() + *rate * *maturity);
-        points.push(CurvePoint {
-          time: *maturity,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Fra { start, end, rate } => {
-        let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
-        let delta = *end - *start;
-        let df = d_start / (T::one() + *rate * delta);
-        points.push(CurvePoint {
-          time: *end,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Future {
-        start,
-        end,
-        price,
-        sigma,
-      } => {
-        let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
-        let delta = *end - *start;
-        let hundred = T::from_f64_fast(100.0);
-        let futures_rate = (hundred - *price) / hundred;
-        let half = T::from_f64_fast(0.5);
-        let convexity_adj = half * *sigma * *sigma * *start * *end;
-        let fra_rate = futures_rate - convexity_adj;
-        let df = d_start / (T::one() + fra_rate * delta);
-        points.push(CurvePoint {
-          time: *end,
-          discount_factor: df,
-        });
-      }
-      BootstrapInstrument::Swap {
-        maturity,
-        rate,
-        frequency,
-      } => {
-        let df_n = solve_swap_df(&points, *maturity, *rate, *frequency, method, tol, max_iter);
-        points.push(CurvePoint {
-          time: *maturity,
-          discount_factor: df_n,
-        });
-      }
-      BootstrapInstrument::SwapWithSchedule {
-        rate,
-        payment_times,
-      } => {
-        // Calendar-aware par swap with explicit accrual periods. Same par
-        // condition as the closed-form path; the iterative variant doesn't
-        // benefit from bisection here because the equation is already linear
-        // in D(T) once the inner annuity is fixed by the interpolated curve.
-        assert!(
-          !payment_times.is_empty(),
-          "BootstrapInstrument::SwapWithSchedule requires at least one payment time"
-        );
-        let n = payment_times.len();
-        let mut annuity = T::zero();
-        let mut prev = T::zero();
-        for (i, t_i) in payment_times.iter().enumerate() {
-          let delta_i = *t_i - prev;
-          if i + 1 < n {
-            let d_i = interpolation::interpolate_discount_factor(&points, *t_i, method);
-            annuity += delta_i * d_i;
-          }
-          prev = *t_i;
-        }
-        let delta_n = *payment_times.last().unwrap()
-          - if n >= 2 {
-            payment_times[n - 2]
-          } else {
-            T::zero()
-          };
-        let df_n = (T::one() - *rate * annuity) / (T::one() + *rate * delta_n);
-        points.push(CurvePoint {
-          time: *payment_times.last().unwrap(),
-          discount_factor: df_n,
-        });
-      }
-    }
+/// [`bootstrap`], each error naming the instrument at `i` as quote `numbers[i]`.
+pub(crate) fn bootstrap_numbered<T: RealExt>(
+  spec: BootstrapSpec<'_, T>,
+  numbers: Option<&[usize]>,
+) -> Result<DiscountCurve<T>, QuantError> {
+  let BootstrapSpec {
+    instruments,
+    method,
+    iterative,
+    discount,
+  } = spec;
+  let number = |index: usize| numbers.map_or(index, |numbers| numbers[index]);
+  if instruments.is_empty() {
+    return Err(QuantError::InsufficientData {
+      what: "instruments",
+      needed: 1,
+      got: 0,
+    });
+  }
+  for (index, instrument) in instruments.iter().enumerate() {
+    validate::check(number(index), instrument, discount.is_some())?;
+  }
+  let mut order: Vec<usize> = (0..instruments.len()).collect();
+  order.sort_by(|&a, &b| ascending(&instruments[a].maturity(), &instruments[b].maturity()));
+  if let Some(pair) = order
+    .windows(2)
+    .find(|w| instruments[w[0]].maturity() == instruments[w[1]].maturity())
+  {
+    return Err(QuantError::InvalidQuote {
+      index: number(pair[1]),
+      reason: format!(
+        "maturity must differ from quote {}'s, got maturity = {:?} for both",
+        number(pair[0]),
+        instruments[pair[1]].maturity()
+      ),
+    });
   }
 
-  DiscountCurve::new(points, method)
+  let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(order.len());
+  for index in order {
+    let (instrument, quote) = (&instruments[index], number(index));
+    let discount_factor = match (instrument, discount) {
+      (
+        BootstrapInstrument::SwapWithSchedule {
+          rate,
+          fixed_times,
+          float_times,
+        },
+        Some(discount),
+      ) => dual_curve::swap_node(
+        &points,
+        *rate,
+        fixed_times,
+        float_times,
+        discount,
+        method,
+        quote,
+      )?,
+      _ => single_curve_node(&points, instrument, method, iterative, quote)?,
+    };
+    if !(discount_factor.is_finite() && discount_factor > T::zero()) {
+      return Err(QuantError::InvalidQuote {
+        index: quote,
+        reason: format!(
+          "the quote implies a discount factor that is not finite and positive, got {discount_factor:?}"
+        ),
+      });
+    }
+    points.push(CurvePoint {
+      time: instrument.maturity(),
+      discount_factor,
+    });
+  }
+  Ok(DiscountCurve::new(points, method))
 }
 
-/// Solve for the swap's terminal discount factor using bisection.
-fn solve_swap_df<T: RealExt>(
-  existing_points: &[CurvePoint<T>],
+/// A quote's equation in the discount factor `x` at its maturity,
+/// `D(start) − x = rate·(Σⱼ aⱼD(tⱼ) + accrual·x)`, on the coupons `(tⱼ, aⱼ)` paid before it.
+struct Equation<T, C> {
+  start: T,
+  rate: T,
+  accrual: T,
+  coupons: C,
+}
+
+impl<T: RealExt, C: Iterator<Item = (T, T)> + Clone> Equation<T, C> {
+  /// `D(start) − rate·Σⱼ aⱼD(tⱼ)`: linear in the reads, so their slopes in `x` give its own.
+  fn value(&self, start: T, annuity: T) -> T {
+    start - self.rate * annuity
+  }
+
+  fn slope(&self) -> T {
+    T::one() + self.rate * self.accrual
+  }
+
+  fn implied_rate(&self, start: T, annuity: T, x: T) -> T {
+    (start - x) / (annuity + self.accrual * x)
+  }
+}
+
+/// The equation each single-curve quote prices, solved for its pillar.
+fn single_curve_node<T: RealExt>(
+  points: &[CurvePoint<T>],
+  instrument: &BootstrapInstrument<T>,
+  method: InterpolationMethod,
+  iterative: Option<IterativeOptions<T>>,
+  quote: usize,
+) -> Result<T, QuantError> {
+  let maturity = instrument.maturity();
+  let single = |start: T, rate: T, accrual: T| Equation {
+    start,
+    rate,
+    accrual,
+    coupons: std::iter::empty(),
+  };
+  match instrument {
+    BootstrapInstrument::Deposit { rate, .. } => {
+      let equation = single(T::zero(), *rate, maturity);
+      node(points, maturity, method, quote, None, equation)
+    }
+    BootstrapInstrument::Fra { start, end, rate } => {
+      let equation = single(*start, *rate, *end - *start);
+      node(points, maturity, method, quote, None, equation)
+    }
+    BootstrapInstrument::Future {
+      start,
+      end,
+      price,
+      sigma,
+    } => {
+      let hundred = T::from_f64_fast(100.0);
+      let futures_rate = (hundred - *price) / hundred;
+      let convexity_adj = T::from_f64_fast(0.5) * *sigma * *sigma * *start * *end;
+      let equation = single(*start, futures_rate - convexity_adj, *end - *start);
+      node(points, maturity, method, quote, None, equation)
+    }
+    BootstrapInstrument::Swap {
+      rate, frequency, ..
+    } => {
+      let delta = T::one() / T::from_f64_fast(f64::from(frequency.periods_per_year()));
+      let payments = validate::whole_payments(quote, maturity, *frequency)?;
+      let equation = Equation {
+        start: T::zero(),
+        rate: *rate,
+        accrual: delta,
+        coupons: (1..payments).map(move |i| (T::from_f64_fast(i as f64) * delta, delta)),
+      };
+      node(points, maturity, method, quote, iterative, equation)
+    }
+    BootstrapInstrument::SwapWithSchedule {
+      rate, fixed_times, ..
+    } => {
+      let earlier = &fixed_times[..fixed_times.len() - 1];
+      let previous = |i: usize| if i == 0 { T::zero() } else { earlier[i - 1] };
+      let equation = Equation {
+        start: T::zero(),
+        rate: *rate,
+        accrual: maturity - earlier.last().copied().unwrap_or_else(T::zero),
+        coupons: (0..earlier.len()).map(move |i| (earlier[i], earlier[i] - previous(i))),
+      };
+      node(points, maturity, method, quote, None, equation)
+    }
+  }
+}
+
+/// The node at `maturity` that solves `equation`: its direct formula where every read sits at or
+/// before the last pillar, else its root on the curve that holds it, from the direct value.
+fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
+  points: &[CurvePoint<T>],
   maturity: T,
-  swap_rate: T,
-  frequency: u32,
   method: InterpolationMethod,
-  tol: T,
-  max_iter: usize,
-) -> T {
-  let delta = T::one() / T::from_f64_fast(frequency as f64);
-  let n_payments = (maturity * T::from_f64_fast(frequency as f64))
-    .round()
-    .to_f64()
-    .unwrap() as usize;
-
-  let mut annuity_known = T::zero();
-  for i in 1..n_payments {
-    let t_i = T::from_f64_fast(i as f64) * delta;
-    let d_i = interpolation::interpolate_discount_factor(existing_points, t_i, method);
-    annuity_known += delta * d_i;
+  quote: usize,
+  iterative: Option<IterativeOptions<T>>,
+  equation: Equation<T, C>,
+) -> Result<T, QuantError> {
+  let read = |t: T| pillar_read(points, t, method, quote);
+  let past = |t: T| points.last().is_some_and(|last| t > last.time);
+  let start = read(equation.start)?;
+  let (mut annuity, mut coupons, mut known) = (T::zero(), 0, (T::zero(), 0));
+  for (t, accrual) in equation.coupons.clone() {
+    annuity += accrual * read(t)?;
+    coupons += 1;
+    if !past(t) {
+      known = (annuity, coupons);
+    }
   }
-
-  let df_analytic = (T::one() - swap_rate * annuity_known) / (T::one() + swap_rate * delta);
-  if df_analytic > T::zero() && df_analytic < T::one() {
-    return df_analytic;
+  let direct = equation.value(start, annuity) / equation.slope();
+  let gapped = past(equation.start) || known.1 < coupons;
+  let mut reads = match points.last() {
+    Some(last) if gapped => {
+      let node = CurvePoint {
+        time: maturity,
+        discount_factor: direct,
+      };
+      match Segment::new(last, &node, method) {
+        Some(segment) => Reads::Local {
+          segment,
+          start: (!past(equation.start)).then_some(start),
+          known: known.0,
+          skip: known.1,
+        },
+        None => Reads::Whole {
+          trial: points.iter().copied().chain([node]).collect(),
+          method,
+        },
+      }
+    }
+    _ => Reads::Fixed { start, annuity },
+  };
+  let node = match points.last() {
+    Some(last) if gapped => {
+      let guess = if direct.is_finite() && direct > T::zero() {
+        direct
+      } else {
+        last.discount_factor
+      };
+      let residual = |x: T| {
+        let (start, annuity, slopes) = reads.at(&equation, x);
+        let slope =
+          slopes.map(|(start, annuity)| equation.value(start, annuity) - equation.slope());
+        (equation.value(start, annuity) - equation.slope() * x, slope)
+      };
+      trial_node(guess, residual).ok_or_else(|| QuantError::Optimizer {
+        what: "bootstrap",
+        reason: format!(
+          "no discount factor reprices quote {quote} on the curve that holds its node"
+        ),
+      })?
+    }
+    _ => direct,
+  };
+  match iterative {
+    Some(options) if !(node > T::zero() && node < T::one()) => {
+      let error = |x: T| {
+        let (start, annuity, _) = reads.at(&equation, x);
+        equation.implied_rate(start, annuity, x) - equation.rate
+      };
+      bisect_swap_df(error, options, quote)
+    }
+    _ => Ok(node),
   }
+}
 
+/// An equation's reads on the curve that holds its node.
+enum Reads<T: RealExt> {
+  /// Every read at or before the last pillar.
+  Fixed { start: T, annuity: T },
+  /// A local method: the reads at or before the last pillar taken once, the rest on its segment.
+  Local {
+    segment: Segment<T>,
+    start: Option<T>,
+    known: T,
+    skip: usize,
+  },
+  /// A method whose later pillar reshapes the earlier intervals: every read on the trial curve.
+  Whole {
+    trial: Vec<CurvePoint<T>>,
+    method: InterpolationMethod,
+  },
+}
+
+impl<T: RealExt> Reads<T> {
+  /// `D(start)` and `Σⱼ aⱼD(tⱼ)` at node `x`, with their slopes in `x` where the method gives them.
+  fn at<C: Iterator<Item = (T, T)> + Clone>(
+    &mut self,
+    equation: &Equation<T, C>,
+    x: T,
+  ) -> (T, T, Option<(T, T)>) {
+    match self {
+      Reads::Fixed { start, annuity } => (*start, *annuity, Some((T::zero(), T::zero()))),
+      Reads::Local {
+        segment,
+        start,
+        known,
+        skip,
+      } => {
+        let segment = segment.ending_at(x);
+        let (start, start_slope) = match *start {
+          Some(start) => (start, T::zero()),
+          None => {
+            let (d, elasticity) = segment.read(equation.start);
+            (d, elasticity * d / x)
+          }
+        };
+        let (mut annuity, mut weighted) = (*known, T::zero());
+        for (t, accrual) in equation.coupons.clone().skip(*skip) {
+          let (d, elasticity) = segment.read(t);
+          annuity += accrual * d;
+          weighted += accrual * elasticity * d;
+        }
+        (start, annuity, Some((start_slope, weighted / x)))
+      }
+      Reads::Whole { trial, method } => {
+        let slot = trial.len() - 1;
+        trial[slot].discount_factor = x;
+        let (trial, method) = (&trial[..], *method);
+        let read = |t: T| interpolate_discount_factor(trial, t, method);
+        let start = read(equation.start);
+        let annuity = equation
+          .coupons
+          .clone()
+          .fold(T::zero(), |sum, (t, accrual)| sum + accrual * read(t));
+        (start, annuity, None)
+      }
+    }
+  }
+}
+
+/// The curve built so far at `t`; `InvalidQuote` when `t > 0` is read before any pillar exists.
+fn pillar_read<T: RealExt>(
+  points: &[CurvePoint<T>],
+  t: T,
+  method: InterpolationMethod,
+  index: usize,
+) -> Result<T, QuantError> {
+  if t == T::zero() {
+    return Ok(T::one());
+  }
+  if points.is_empty() {
+    return Err(QuantError::InvalidQuote {
+      index,
+      reason: format!("no earlier pillar gives the discount factor at t = {t:?}"),
+    });
+  }
+  Ok(interpolate_discount_factor(points, t, method))
+}
+
+/// The last discount factor in `(1e-6, 1)` where the swap's implied rate is within the tolerance
+/// of its quote, `error` the difference; `Optimizer` if none is.
+fn bisect_swap_df<T: RealExt>(
+  mut error: impl FnMut(T) -> T,
+  options: IterativeOptions<T>,
+  index: usize,
+) -> Result<T, QuantError> {
   let mut lo = T::from_f64_fast(1e-6);
   let mut hi = T::one();
   let half = T::from_f64_fast(0.5);
-
-  for _ in 0..max_iter {
+  for _ in 0..options.max_iterations {
     let mid = half * (lo + hi);
-    let annuity_total = annuity_known + delta * mid;
-    let implied_rate = (T::one() - mid) / annuity_total;
-    let err = implied_rate - swap_rate;
-
-    if err.abs() < tol {
-      return mid;
+    let err = error(mid);
+    if err.abs() < options.tolerance {
+      return Ok(mid);
     }
     if err > T::zero() {
       lo = mid;
@@ -315,42 +385,14 @@ fn solve_swap_df<T: RealExt>(
       hi = mid;
     }
   }
-  half * (lo + hi)
+  Err(QuantError::Optimizer {
+    what: "bootstrap",
+    reason: format!(
+      "no discount factor in (1e-6, 1) reprices swap quote {index} within {:?} in {} bisections",
+      options.tolerance, options.max_iterations
+    ),
+  })
 }
 
 #[cfg(test)]
-mod tests {
-  use super::super::types::BootstrapInstrument;
-  use super::super::types::InterpolationMethod;
-  use super::*;
-
-  #[test]
-  fn bootstrap_single_deposit() {
-    let inst: Vec<BootstrapInstrument<f64>> = vec![BootstrapInstrument::Deposit {
-      maturity: 1.0,
-      rate: 0.05,
-    }];
-    let curve = bootstrap(&inst, InterpolationMethod::LinearOnZeroRates);
-    assert!(
-      !curve.is_empty(),
-      "bootstrap should produce at least one point"
-    );
-  }
-
-  #[test]
-  fn bootstrap_iterative_swap() {
-    let inst: Vec<BootstrapInstrument<f64>> = vec![
-      BootstrapInstrument::Deposit {
-        maturity: 0.25,
-        rate: 0.04,
-      },
-      BootstrapInstrument::Swap {
-        maturity: 1.0,
-        rate: 0.045,
-        frequency: 2,
-      },
-    ];
-    let curve = bootstrap_iterative(&inst, InterpolationMethod::LinearOnZeroRates, 1e-10, 50);
-    assert!(!curve.is_empty());
-  }
-}
+mod tests;

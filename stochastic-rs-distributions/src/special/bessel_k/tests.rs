@@ -313,7 +313,8 @@ fn the_two_part_logarithm_holds_where_k_overflows() {
   ]);
 }
 
-/// mpmath at 60 and 120 digits in the forms the plain logarithm also holds: Hankel's, Steed's, Temme's at `ν = 0`, `f₀`.
+/// mpmath at 60 and 120 digits in the forms the plain logarithm also holds: Hankel's, Steed's,
+/// Temme's at `ν = 0`, `f₀`.
 #[test]
 fn each_form_of_the_two_part_logarithm_holds() {
   assert_two_part_logarithm(&[

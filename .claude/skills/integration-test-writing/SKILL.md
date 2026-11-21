@@ -106,12 +106,12 @@ because that's where the empirical mean lands well within tolerance.
 When a test asserts agreement with a paper's published table:
 
 ```rust
-/// Reference: Heston (1993), Table 1, row 4 — call price 6.8061 at
-/// (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
+/// Call price 6.8061 at (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
+/// Reference: Heston (1993), RFS 6(2), 327-343, Table 1, row 4, DOI 10.1093/rfs/6.2.327
 #[test]
 fn heston_table1_row4() {
-    // Model parameters on the struct: v0, rho, kappa, theta, sigma, lambda.
-    let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.5, Some(0.0));
+    // Model parameters on the struct.
+    let model = HestonPricer::new(HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.5, rho: -0.5 });
     // Market query at the call: s, k, r, q, tau.
     let call = model.price_call(100.0, 100.0, 0.0, 0.0, 0.5);
     assert!(
@@ -155,15 +155,20 @@ If a test depends on a Cargo feature (e.g. uses a `metal`-gated
 backend), gate the *test* explicitly:
 
 ```rust
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_backend_test() { /* ... */ }
 ```
 
+`metal_backend`, `accelerate_backend` and `device_backend` are the aliases
+`stochastic-rs-stochastic/build.rs` emits for that crate's own targets; a test of
+the umbrella spells the gate out, `all(feature = "metal", target_os = "macos",
+target_arch = "aarch64")`.
+
 If the entire test module depends on a feature, gate the module:
 
 ```rust
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(metal_backend)]
 mod metal_tests {
     // ...
 }

@@ -1,6 +1,6 @@
-//! What every family's fit, conditional inverse and h-function share: the input checks and the NaN rule, the stable
-//! logarithmic helpers the h-functions are built from, Knuth's two-sum and the `ln h` quantile solver.
-//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
+//! What the families' fits, conditional inverses and h-functions share: input checks, the NaN rule,
+//! stable logarithmic helpers, Knuth's two-sum and the `ln h` quantile solver.
+//! Reference: Shewchuk (1997), 18(3), 305-363, DOI 10.1007/PL00009321, Theorem 7 (Knuth's two-sum).
 
 use std::cell::Cell;
 
@@ -9,14 +9,14 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::expm1_over;
 
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
-use crate::optim::zero;
 
-/// Brent's absolute tolerance `t` for the numerical inverse on `[0, 1]`: the least positive `f64`, as his `zero` needs
-/// `t > 0`, so a root keeps its relative precision down to the subnormals.
+/// Brent's absolute tolerance `t` for the numerical inverse on `[0, 1]`: the least positive `f64`,
+/// as his `zero` needs `t > 0`, so a root keeps its relative precision down to the subnormals.
 pub(crate) const ABSOLUTE_TOLERANCE: f64 = f64::from_bits(1);
 
 /// The one domain test for a level `y` or a conditioning value `v`.
@@ -24,8 +24,8 @@ pub(crate) fn in_unit(x: f64) -> bool {
   (0.0..=1.0).contains(&x)
 }
 
-/// `ln(a/b)` for `a, b > 0` to a relative rounding error: `ln_1p` of the exact difference when the ratio is near 1, the
-/// logarithms' difference when the ratio leaves the normal range, where it exceeds 708 in magnitude.
+/// `ln(a/b)` for `a, b > 0` to a relative rounding error: `ln_1p` of the exact difference near a
+/// ratio of 1, the logarithms' difference once the ratio leaves the normal range (beyond ±708).
 pub(crate) fn ln_ratio(a: f64, b: f64) -> f64 {
   let ratio = a / b;
   if (0.5..=2.0).contains(&ratio) {
@@ -37,7 +37,7 @@ pub(crate) fn ln_ratio(a: f64, b: f64) -> f64 {
   }
 }
 
-/// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
+/// `(m, M, ln(m/M), ℓ)`, `m ≤ M` of `x, y = −ln u, −ln v`, the log-ratio by `ln_log_ratio`,
 /// `ℓ = ln(1 + (m/M)^θ)`: Gumbel's `−ln C = M e^{ℓ/θ}` and Galambos's `T = m e^{−ℓ/θ}`.
 pub(crate) fn log_score_parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
   let (x, y) = (-u.ln(), -v.ln());
@@ -50,8 +50,8 @@ pub(crate) fn log_score_parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64
   )
 }
 
-/// `ln(x/y)` for `x, y = −ln a, −ln b`: near a ratio of 1, `ln_1p` of `x − y = ln(b/a)`, which `ln_ratio` holds to a
-/// rounding error, so `θ ln(x/y)` stays exact where `(x/y)^θ` is not negligible.
+/// `ln(x/y)` for `x, y = −ln a, −ln b`: near ratio 1, `ln_1p` of `x − y = ln(b/a)` from `ln_ratio`,
+/// held to rounding, so `θ ln(x/y)` stays exact where `(x/y)^θ` is not negligible.
 pub(crate) fn ln_log_ratio(a: f64, b: f64, x: f64, y: f64) -> f64 {
   let ratio = x / y;
   if (0.5..=2.0).contains(&ratio) {
@@ -61,8 +61,8 @@ pub(crate) fn ln_log_ratio(a: f64, b: f64, x: f64, y: f64) -> f64 {
   }
 }
 
-/// `ln(1 − x^θ)` from `ln x < 0`: `ln(1 − e^t)` at `t = θ ln x`, and `ln θ + ln(−ln x)` where `t` is subnormal, which drops
-/// only `t/2`, below every rounding unit, and keeps the digits the product loses.
+/// `ln(1 − x^θ)` from `ln x < 0`: `ln(1 − e^t)` at `t = θ ln x`, `ln θ + ln(−ln x)` where `t` is
+/// subnormal, dropping only `t/2` (below rounding) and keeping the digits the product loses.
 pub(crate) fn ln_one_minus_pow(theta: f64, ln_x: f64) -> f64 {
   let t = theta * ln_x;
   if -t >= f64::MIN_POSITIVE {
@@ -72,8 +72,8 @@ pub(crate) fn ln_one_minus_pow(theta: f64, ln_x: f64) -> f64 {
   }
 }
 
-/// `ln((1 − a^θ)/(1 − b^θ))` from `ln a, ln b < 0`: where both `θ ln` are above −1, the ratio of the logarithms times
-/// `expm1(t)/t` of each, so the two `ln θ` cancel exactly instead of in rounding.
+/// `ln((1 − a^θ)/(1 − b^θ))` from `ln a, ln b < 0`: where both `θ ln` exceed −1, the logarithms'
+/// ratio times each `expm1(t)/t`, so the two `ln θ` cancel exactly, not in rounding.
 pub(crate) fn ln_one_minus_pow_ratio(theta: f64, ln_a: f64, ln_b: f64) -> f64 {
   let (t_a, t_b) = (theta * ln_a, theta * ln_b);
   if t_a > -1.0 && t_b > -1.0 {
@@ -104,8 +104,8 @@ pub(crate) fn ln_add_exp(a: f64, b: f64) -> f64 {
   }
 }
 
-/// `ln((1 − u)/(1 − v))` to a relative rounding error: the complements are exact from `1/2` up, and near a ratio of 1
-/// below it the numerator is `v − u` in one rounding, not the difference of two rounded complements.
+/// `ln((1 − u)/(1 − v))` to a relative rounding error: the complements are exact from `1/2` up;
+/// below, near a ratio of 1, the numerator is `v − u`, rounded once.
 pub(crate) fn ln_ratio_complement(u: f64, v: f64) -> f64 {
   if u >= 0.5 && v >= 0.5 {
     return ln_ratio(1.0 - u, 1.0 - v);
@@ -118,8 +118,8 @@ pub(crate) fn ln_ratio_complement(u: f64, v: f64) -> f64 {
   }
 }
 
-/// `u + v − 1`, in one rounding for `s = u + v ∈ [1/2, 2]`: `s − 1` is exact there, `e` is the rounding error of `s`
-/// (Knuth's two-sum), so a sum near 1 keeps the digits of both terms.
+/// `u + v − 1`, in one rounding for `s = u + v ∈ [1/2, 2]`: `s − 1` is exact there, `e` is the
+/// rounding error of `s` (Knuth's two-sum), so a sum near 1 keeps the digits of both terms.
 pub(crate) fn sum_minus_one(u: f64, v: f64) -> f64 {
   let s = u + v;
   let z = s - u;
@@ -127,8 +127,8 @@ pub(crate) fn sum_minus_one(u: f64, v: f64) -> f64 {
   (s - 1.0) + e
 }
 
-/// `x − y` of the quantiles of `u` and `v` by `solve(anchor, level, gap, start)` from the exact level gap, anchored at the
-/// level farther from ½.
+/// `x − y` of the quantiles of `u` and `v` by `solve(anchor, level, gap, start)` from the exact
+/// level gap, anchored at the level farther from ½.
 pub(crate) fn level_difference(
   (u, v, x, y): (f64, f64, f64, f64),
   threshold: impl FnOnce(f64, f64) -> f64,
@@ -147,8 +147,8 @@ pub(crate) fn level_difference(
   }
 }
 
-/// `x + y` of the quantiles of `u` and `v` by `solve(score, level, gap, start)` from the exact gap `u + v − 1`, anchored
-/// at the lower level.
+/// `x + y` of the quantiles of `u` and `v` by `solve(score, level, gap, start)` from the exact gap
+/// `u + v − 1`, anchored at the lower level.
 pub(crate) fn level_sum(
   (u, v, x, y): (f64, f64, f64, f64),
   admit: impl FnOnce(f64, f64, f64, f64) -> bool,
@@ -169,7 +169,8 @@ pub(crate) fn softplus(x: f64) -> f64 {
   x.max(0.0) + (-x.abs()).exp().ln_1p()
 }
 
-/// `ln(1 − eᶻ)` for `z ≤ 0` without cancellation: `ln_1p(−eᶻ)` when `eᶻ` is small, `ln(−expm1(z))` near 1.
+/// `ln(1 − eᶻ)` for `z ≤ 0` without cancellation: `ln_1p(−eᶻ)` when `eᶻ` is small, `ln(−expm1(z))`
+/// near 1.
 pub(crate) fn ln_one_minus_exp(z: f64) -> f64 {
   if z < -std::f64::consts::LN_2 {
     (-z.exp()).ln_1p()
@@ -178,7 +179,8 @@ pub(crate) fn ln_one_minus_exp(z: f64) -> f64 {
   }
 }
 
-/// `MarginalOutOfRange` unless every value lies in `[0, 1]`, a NaN failing: the input rule of every batch entry point.
+/// `MarginalOutOfRange` unless every value lies in `[0, 1]`, a NaN failing: the input rule of every
+/// batch entry point.
 pub(crate) fn check_unit<'a>(values: impl IntoIterator<Item = &'a f64>) -> Result<(), CopulaError> {
   // `&` without short-circuit folds to one vector reduction.
   if values.into_iter().fold(true, |ok, &x| ok & in_unit(x)) {
@@ -188,9 +190,11 @@ pub(crate) fn check_unit<'a>(values: impl IntoIterator<Item = &'a f64>) -> Resul
   }
 }
 
-/// `MarginalOnBoundary` at the first 0 or 1 in `x`: a fit or test runs on pseudo-observations, which never reach either end.
+/// `MarginalOnBoundary` at the first 0 or 1 in `x`: a fit or test runs on pseudo-observations,
+/// which never reach either end.
 pub(crate) fn check_open(x: ArrayView2<f64>) -> Result<(), CopulaError> {
-  // `|` without short-circuit folds to one vector reduction; the cell is looked up only once a 0 or 1 is seen.
+  // `|` without short-circuit folds to one vector reduction; the cell is looked up only once a 0 or
+  // 1 is seen.
   if !x
     .iter()
     .fold(false, |seen, &u| seen | (u == 0.0) | (u == 1.0))
@@ -203,7 +207,8 @@ pub(crate) fn check_open(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   }
 }
 
-/// `DimensionMismatch` unless `x` has the two columns `(u, v)`; every batch method runs it before reading a column.
+/// `DimensionMismatch` unless `x` has the two columns `(u, v)`; every batch method runs it before
+/// reading a column.
 pub(crate) fn check_columns(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   if x.ncols() == 2 {
     return Ok(());
@@ -214,8 +219,8 @@ pub(crate) fn check_columns(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   })
 }
 
-/// `x` is n × 2, `n ≥ 2`, with every entry in `[0, 1]` (NaN fails), checked in that order; no uniformity test, so a valid
-/// sample never fails by chance.
+/// `x` is n × 2, `n ≥ 2`, with every entry in `[0, 1]` (NaN fails), checked in that order; no
+/// uniformity test, so a valid sample never fails by chance.
 pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   check_columns(x)?;
   if x.nrows() < 2 {
@@ -238,8 +243,8 @@ pub(crate) fn check_lengths(y: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<()
   })
 }
 
-/// `u` with an exact 0 or 1 moved one ulp inside `(0, 1)`: the one adjustment a sampler or a vine's h makes to a value
-/// it computed, so a draw or a conditioning value never lands on an edge by rounding.
+/// `u` with an exact 0 or 1 moved one ulp into `(0, 1)`, the one adjustment a sampler or a vine's h
+/// makes to a computed value, so no draw or conditioning value lands on an edge by rounding.
 pub(crate) fn inside(u: f64) -> f64 {
   if u == 0.0 {
     0.0_f64.next_up()
@@ -267,8 +272,8 @@ pub(crate) fn conditional_quantiles(
     .map_collect(|&y, &v| confine(quantile(y, v)))
 }
 
-/// The quantiles of a family given by `ln h(u | v)`: Brent's `zero` in `u ∈ [0, 1]` of `h − y` up to `y = 1/2` and of
-/// `(1 − y) − (1 − h)` above it, where `h` rounds away the tail, and in `ln u` of `ln h − ln y` for a subnormal `y`.
+/// Quantiles of `ln h(u | v)`: Brent's `zero` in `u ∈ [0, 1]` of `h − y` to `y = 1/2`, of
+/// `(1 − y) − (1 − h)` above, where `h` rounds away the tail, in `ln u` at a subnormal `y`.
 pub(crate) fn numerical_quantiles(
   y: ArrayView1<f64>,
   v: ArrayView1<f64>,
@@ -294,21 +299,22 @@ pub(crate) fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64
     nan.set(nan.get() | l.is_nan());
     l
   };
-  // The atom at `u = 0`, which a point-mass conditional law puts there, covers every level up to its mass.
+  // The atom at `u = 0`, which a point-mass conditional law puts there, covers every level up to
+  // its mass.
   let root = if y == 0.0 || ln_h(0.0) >= y.ln() {
     Some(0.0)
   } else if y > 0.5 {
-    zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| {
+    brent::zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| {
       (1.0 - y) + ln_h(u).exp_m1()
     })
   } else if y >= f64::MIN_POSITIVE {
-    zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| ln_h(u).exp() - y)
+    brent::zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| ln_h(u).exp() - y)
   } else {
     let (ln_y, least) = (y.ln(), f64::from_bits(1));
     if ln_h(least) >= ln_y {
       Some(0.0)
     } else {
-      zero(least.ln(), 0.0, ABSOLUTE_TOLERANCE, |t| {
+      brent::zero(least.ln(), 0.0, ABSOLUTE_TOLERANCE, |t| {
         ln_h(t.exp()) - ln_y
       })
       .map(f64::exp)
@@ -331,8 +337,8 @@ pub(crate) fn conditional_cdf(
   )
 }
 
-/// `C(u, v)` over the rows of `x`, each coordinate in `[0, 1]`: `interior` on the open square, 0 on a zero coordinate
-/// and the other coordinate on a unit one, exactly.
+/// `C(u, v)` over the rows of `x`, each coordinate in `[0, 1]`: `interior` on the open square, 0 on
+/// a zero coordinate and the other coordinate on a unit one, exactly.
 pub(crate) fn copula_cdf(
   x: ArrayView2<f64>,
   interior: impl Fn(f64, f64) -> f64,
@@ -356,8 +362,8 @@ pub(crate) fn copula_cdf(
   )
 }
 
-/// `density` over the rows of `x`, each coordinate in `[0, 1]`, on the open square, and NaN on its boundary, where the
-/// copula has no density.
+/// `density` over the rows of `x`, each coordinate in `[0, 1]`, on the open square, and NaN on its
+/// boundary, where the copula has no density.
 pub(crate) fn on_open_square(
   x: ArrayView2<f64>,
   density: impl Fn(f64, f64) -> f64,
@@ -396,7 +402,8 @@ mod tests {
   use crate::bivariate::plackett::Plackett;
   use crate::bivariate::t_copula::TCopula;
 
-  /// The brief's grid, its edges, the extreme uniform draws `2⁻⁵³` and `1 − 2⁻⁵³`, and tiny levels of the public API.
+  /// The brief's grid, its edges, the extreme uniform draws `2⁻⁵³` and `1 − 2⁻⁵³`, and tiny levels
+  /// of the public API.
   const GRID: [f64; 14] = [
     0.0,
     5e-324,
@@ -429,8 +436,8 @@ mod tests {
     );
   }
 
-  /// `confine` only absorbs rounding: every closed form's raw inverse is finite and within four rounding units of
-  /// `[0, 1]` on the grid, at each family's parameter extremes.
+  /// `confine` only absorbs rounding: every closed form's raw inverse is finite and within four
+  /// rounding units of `[0, 1]` on the grid, at each family's parameter extremes.
   #[test]
   fn the_raw_closed_forms_leave_the_unit_interval_by_rounding_only() {
     let frank: [f64; 14] = [

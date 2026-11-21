@@ -1,4 +1,10 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
+use crate::LossMetric;
+use crate::QuantError;
+use crate::calibration::CalibrationOptions;
+use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 
 #[test]
@@ -9,20 +15,17 @@ fn test_empirical_wasserstein_1_matches_simple_case() {
   assert!((w1 - 1.0).abs() < 1e-12);
 }
 
-#[test]
-fn test_rbergomi_calibration_reduces_loss_on_synthetic_data() {
-  let true_params = RBergomiParams {
+fn slices(maturities: &[f64]) -> Vec<RBergomiMarketSlice> {
+  let truth = RBergomiParams {
     hurst: 0.12,
     rho: -0.72,
     eta: 1.6,
     xi0: RBergomiXi0::Constant(0.04),
   };
-
-  let maturities = [0.25, 0.5, 1.0];
-  let mut market_slices = Vec::with_capacity(maturities.len());
-  for (i, &tau) in maturities.iter().enumerate() {
-    let market_samples = simulate_rbergomi_terminal_samples(
-      &true_params,
+  let slice = |(i, &tau): (usize, &f64)| RBergomiMarketSlice {
+    tau,
+    terminal_samples: simulate_rbergomi_terminal_samples(
+      &truth,
       100.0,
       0.01,
       0.0,
@@ -30,64 +33,177 @@ fn test_rbergomi_calibration_reduces_loss_on_synthetic_data() {
       512,
       96,
       12,
-      7_777 + i as u64,
-    );
-    market_slices.push(RBergomiMarketSlice {
-      tau,
-      terminal_samples: market_samples,
-    });
-  }
+      &Deterministic::new(7_777 + i as u64),
+    ),
+  };
+  maturities.iter().enumerate().map(slice).collect()
+}
 
-  let init_params = RBergomiParams {
+fn start() -> RBergomiParams {
+  RBergomiParams {
     hurst: 0.30,
     rho: -0.10,
     eta: 0.80,
     xi0: RBergomiXi0::Constant(0.02),
-  };
+  }
+}
 
-  let config = RBergomiCalibrationConfig {
+fn config() -> RBergomiCalibrationConfig {
+  RBergomiCalibrationConfig {
     paths: 512,
     steps_per_year: 96,
     msoe_terms: 12,
-    max_iters: 12,
     learning_rate: 0.08,
     finite_diff_eps: 5e-3,
     adam_beta1: 0.9,
     adam_beta2: 0.99,
     adam_eps: 1e-8,
-    random_seed: 123_456,
     stop_loss: None,
     improvement_tol: 1e-5,
-  };
+  }
+}
 
+#[test]
+fn test_rbergomi_calibration_reduces_loss_on_synthetic_data() {
+  let options = CalibrationOptions::default()
+    .with_max_iterations(12)
+    .with_record_history(true);
   let calibrator = RBergomiCalibrator::new(
     100.0,
     0.01,
-    init_params.clone(),
-    market_slices,
-    config,
-    true,
+    0.0,
+    start(),
+    slices(&[0.25, 0.5, 1.0]),
+    config(),
   )
-  .expect("RBergomi calibrator construction must succeed in test");
-
-  let result = calibrator.calibrate(None).unwrap();
-
-  println!(
-    "rBergomi calibration: initial_loss={:.6}, final_loss={:.6}, iterations={}",
-    result.initial_loss, result.final_loss, result.iterations
+  .with_seed(Deterministic::new(123_456))
+  .with_options(options);
+  let fit = calibrator.calibrate(None).unwrap();
+  let first = &fit.history[0];
+  assert_eq!(first.iteration, 0);
+  assert_eq!(first.params.hurst, start().projected().hurst);
+  assert_eq!(first.residuals.len(), 3);
+  let initial = first.loss.get(LossMetric::Mse);
+  let w1 = fit.loss.get(LossMetric::Mse);
+  assert!(w1 <= initial, "W1 {w1} against {initial} at the start");
+  assert_eq!(fit.rmse(), w1.abs().sqrt());
+  assert!(fit.iterations.is_some_and(|n| n <= 12));
+  assert!(fit.params.hurst > 0.0 && fit.params.hurst < 0.5);
+  assert!(fit.params.rho.abs() < 1.0 && fit.params.eta > 0.0);
+  assert!(matches!(fit.params.xi0, RBergomiXi0::Constant(x) if x > 0.0));
+  let replay = calibrator.calibrate(None).unwrap();
+  assert_eq!(
+    replay.history.len(),
+    fit.history.len(),
+    "one trail per call"
   );
-  println!("initial params: {:?}", result.initial_params);
-  println!("estimated params: {:?}", result.calibrated_params);
-  println!("per-maturity W1: {:?}", result.maturity_losses);
+}
 
-  assert!(result.final_loss <= result.initial_loss);
-  assert!(result.calibrated_params.hurst > 0.0 && result.calibrated_params.hurst < 0.5);
-  assert!(result.calibrated_params.rho.abs() < 1.0);
-  assert!(result.calibrated_params.eta > 0.0);
+#[test]
+fn the_start_and_the_slices_are_data() {
+  let calibrator = RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), slices(&[0.5]), config());
+  let bad_start = RBergomiParams {
+    hurst: 0.7,
+    ..start()
+  };
+  let err = calibrator.calibrate(Some(bad_start)).unwrap_err();
+  assert!(
+    matches!(
+      err,
+      QuantError::InvalidInput {
+        what: "RBergomiParams.hurst",
+        ..
+      }
+    ),
+    "{err}"
+  );
+  let mut empty = calibrator.clone();
+  empty.market_slices.clear();
+  assert_eq!(
+    empty.calibrate(None).unwrap_err(),
+    QuantError::InsufficientData {
+      what: "market slices",
+      needed: 1,
+      got: 0
+    }
+  );
+  let mut nan = calibrator;
+  nan.market_slices[0].terminal_samples[3] = f64::NAN;
+  assert!(matches!(
+    nan.calibrate(None).unwrap_err(),
+    QuantError::InvalidInput {
+      what: "RBergomiMarketSlice.terminal_samples",
+      ..
+    }
+  ));
+}
 
-  if let RBergomiXi0::Constant(xi0_hat) = result.calibrated_params.xi0 {
-    assert!(xi0_hat > 0.0);
-  } else {
-    panic!("Expected constant xi0 in this test");
+/// One short slice on few paths: a stop needs a step or two, not a converged fit.
+fn quick(config: RBergomiCalibrationConfig) -> RBergomiCalibrator {
+  let config = RBergomiCalibrationConfig {
+    paths: 256,
+    steps_per_year: 48,
+    ..config
+  };
+  RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), slices(&[0.25]), config)
+}
+
+#[test]
+fn converged_is_a_stop_on_the_fits_own_criterion_and_the_message_names_it() {
+  let loose = RBergomiCalibrationConfig {
+    improvement_tol: 1e9,
+    ..config()
+  };
+  let fit = quick(loose).calibrate(None).unwrap();
+  assert!(fit.converged, "{:?}", fit.message);
+  assert_eq!(
+    fit.message.as_deref(),
+    Some("improvement below improvement_tol")
+  );
+  let reached = RBergomiCalibrationConfig {
+    stop_loss: Some(1e9),
+    ..config()
+  };
+  let fit = quick(reached).calibrate(None).unwrap();
+  assert!(fit.converged, "{:?}", fit.message);
+  assert_eq!(fit.message.as_deref(), Some("loss reached stop_loss"));
+  let strict = RBergomiCalibrationConfig {
+    improvement_tol: 0.0,
+    ..config()
+  };
+  let capped = CalibrationOptions::default().with_max_iterations(1);
+  let fit = quick(strict).with_options(capped).calibrate(None).unwrap();
+  assert!(!fit.converged, "{:?}", fit.message);
+  assert_eq!(fit.message.as_deref(), Some("iteration cap reached"));
+}
+
+#[test]
+fn a_knob_adam_cannot_read_is_unsupported() {
+  let capped = || CalibrationOptions::default().with_max_iterations(1);
+  let pull = crate::calibration::Regularization::uniform(vec![0.0; 4], 1.0);
+  for (options, what) in [
+    (capped().with_tolerance(1e-6), "tolerance"),
+    (capped().with_patience(5), "patience"),
+    (
+      capped().with_loss_metrics(&[LossMetric::Mae]),
+      "loss_metrics",
+    ),
+    (capped().with_regularization(pull), "regularization"),
+  ] {
+    let err = quick(config())
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_err();
+    assert_eq!(err, QuantError::Unsupported { what });
   }
+}
+
+#[test]
+#[should_panic(expected = "config.paths must satisfy `config.paths > 0`, got config.paths = 0")]
+fn a_zero_path_count_panics() {
+  let config = RBergomiCalibrationConfig {
+    paths: 0,
+    ..config()
+  };
+  let _ = RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), Vec::new(), config);
 }

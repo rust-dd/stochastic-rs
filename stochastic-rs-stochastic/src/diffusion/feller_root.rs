@@ -1,4 +1,4 @@
-//! # FellerRoot
+//! A logistic-type drift with a 3/2-power diffusion, in the three parameters `theta1..theta3`.
 //!
 //! $$
 //! dX_t=X_t(\theta_1 - X_t(\theta_3^3 - \theta_1\theta_2))\,dt+\theta_3 X_t^{3/2}\,dW_t
@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Coefficient θ₁ setting the linear part of the drift
   /// `X_t(θ_1 − X_t(θ_3³ − θ_1θ_2))`.
@@ -32,9 +32,9 @@ pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub theta3: T,
   /// Number of points sampled along the Feller-root path.
   pub n: usize,
-  /// Initial value X₀ of the Feller-root path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -44,6 +44,7 @@ pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta1: T,
     theta2: T,
@@ -87,11 +88,8 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FellerRoot<T, S, B> {}
-
-/// The Euler engine's view of the Feller root process. The drift's constant
-/// `θ₃³ − θ₁θ₂` depends on no state, so it is folded here and travels as one
-/// parameter rather than being recomputed on every step of every path.
+/// The Euler engine's view. The drift's constant `θ₃³ − θ₁θ₂` depends on no state, so it is
+/// folded here and travels as one parameter.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for FellerRoot<T, S, B>
 {
@@ -156,9 +154,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -190,6 +187,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`FellerRoot`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FellerRootSampler<T: FloatExt> {
   n: usize,
   x0: T,

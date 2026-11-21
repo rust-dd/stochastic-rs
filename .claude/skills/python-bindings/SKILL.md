@@ -73,7 +73,7 @@ shape:
 | Macro | Output shape | Examples |
 |---|---|---|
 | `py_process_1d!` | `Array1<T>` (single 1-D path) | `Gbm`, `Ou`, `Fou`, `Fbm`, `Cir` |
-| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `HestonLog`, `DuffieKan`, `Cgns`, `Cbms` |
+| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `Svcgmy`, `DuffieKan`, `Cgns`, `Cbms` |
 | `py_process_2d!` | `Array2<T>` (correlated multi-asset) | `Cfou`, `Fbs` (`sheet/fbs.rs`) |
 
 Not every two-component process uses the macro: `Heston` itself has a
@@ -83,15 +83,21 @@ Reach for a hand-written wrapper when the constructor takes something
 the macro cannot express — a Python callable, or a third type parameter
 like `Heston`'s scheme selector. Such a wrapper carries `#[doc(hidden)]` on the
 line above its `#[pyclass]` (and above a `pub use python::…` re-export of it);
-`tests/python_surface_hidden.rs` enforces both.
+`tests/python_surface_hidden.rs` enforces both. A hand-written class on the macros'
+slots (`inner_f32`, `inner_f64`, `seeded_f32`, `seeded_f64`, and `device` for
+`py_device_dispatch`) writes only its `#[new]`, inside
+`py_process_methods!(PyX, <shape>, <dispatch>, { #[new] … })`
+(`array1`, `array2` or `pair`; `py_dispatch` or `py_device_dispatch`), which adds
+`sample`, `sample_par`, `device_fallback` and `device_ready` — see
+`process/poisson/python.rs`.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:
 
 ```rust
 py_process_1d!(PyGbm, Gbm,
-  sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  sig: (mu, sigma, n, x0, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: f64, t: Option<f64>)
 );
 ```
 
@@ -259,11 +265,13 @@ PyO3 `#[pyclass]` wrappers default to `Send + Sync`. For `unsendable` types
 handles), add `unsendable`:
 
 ```rust
-#[pyclass(name = "RBergomiCalibrator", unsendable)]
+#[pyclass(name = "Xyz", unsendable)] // its inner type holds an Rc<RefCell<…>>
 ```
 
 Forgetting `unsendable` on a non-`Send` type triggers a compile error
-("the trait `Send` is not implemented for `Rc<...>`").
+("the trait `Send` is not implemented for `Rc<...>`"). Every quant calibrator is
+`Send + Sync` (`stochastic-rs-quant/tests/calibration_errors.rs` asserts it), so
+its wrapper needs no `unsendable`.
 
 ### 5.2. Numpy interop
 
@@ -339,7 +347,7 @@ When wrapping a distribution, confirm:
 - [ ] `#[pyo3(signature = (...))]` lists every parameter
 - [ ] Constructors validate inputs and return `PyResult<Self>` with
       `PyValueError::new_err`
-- [ ] Calibrators map inner `anyhow::Error` to `PyValueError`
+- [ ] Calibrators map the inner `QuantError` to `PyValueError` with its `Display` text
 - [ ] `m.add_class::<PyXxx>()` registered
 - [ ] Smoke test: construct + 1-2 method calls
 - [ ] Round-trip test where applicable (e.g. price → IV → price)

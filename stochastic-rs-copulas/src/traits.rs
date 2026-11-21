@@ -1,6 +1,4 @@
-//! # Copula traits
-//!
-//! Organised as focused submodules: [`bivariate`] (`BivariateExt`) and [`multivariate`] (`MultivariateExt`).
+//! The copula traits: [`bivariate`] (`BivariateExt`) and [`multivariate`] (`MultivariateExt`).
 
 pub mod bivariate;
 pub mod multivariate;

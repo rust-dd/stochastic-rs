@@ -10,11 +10,8 @@
 //!   d=\frac{F-K}{\sigma\sqrt{\tau}}
 //! $$
 //!
-//! Reference: F. Black, "The Pricing of Commodity Contracts", Journal of
-//! Financial Economics 3(1-2), 167-179 (1976).
-//!
-//! Reference: D. Brigo & F. Mercurio, "Interest Rate Models — Theory and
-//! Practice", Springer, 2nd ed. (2006), §1.5.
+//! Reference: Black (1976), "The Pricing of Commodity Contracts", J. Financ. Econ. 3(1-2), 167–179
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5
 
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -23,7 +20,8 @@ use super::types::VolatilityQuoteKind;
 use super::volatility::VolatilityModel;
 use crate::traits::RealExt;
 
-/// Payoff where the closed form is undefined; NaN for a NaN rate or time, or a NaN vol while the option is still live.
+/// Payoff where the closed form is undefined; NaN for a NaN rate or time, or a NaN vol while
+/// the option is still live.
 fn intrinsic(moneyness: f64, t: f64, v: f64) -> f64 {
   if t.is_nan() || (t > 0.0 && v.is_nan()) {
     f64::NAN
@@ -32,14 +30,17 @@ fn intrinsic(moneyness: f64, t: f64, v: f64) -> f64 {
   }
 }
 
-/// Black-76 caplet undiscounted forward value $F\Phi(d_1)-K\Phi(d_2)$; the intrinsic value where the formula is undefined (a
-/// non-positive forward, strike, time or vol), NaN for a NaN rate or time, or a NaN vol on a live option.
+/// Black-76 caplet forward value `FΦ(d₁) − KΦ(d₂)`, intrinsic at `F`, `K`, `τ` or `σ` ≤ 0; NaN for
+/// a NaN rate or time and, while live, a NaN `σ` or `F, K < 0`: shift them or use Bachelier there.
 pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
+    if f < 0.0 && k < 0.0 && t > 0.0 && v > 0.0 {
+      return T::nan();
+    }
     return T::from_f64_fast(intrinsic(f - k, t, v));
   }
   let sqrt_t = t.sqrt();
@@ -48,13 +49,16 @@ pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T)
   T::from_f64_fast(f * norm_cdf(d1) - k * norm_cdf(d2))
 }
 
-/// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$, with [`black_forward_caplet`]'s fallback.
+/// Black-76 floorlet forward value `KΦ(−d₂) − FΦ(−d₁)`, with [`black_forward_caplet`]'s edge cases.
 pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
+    if f < 0.0 && k < 0.0 && t > 0.0 && v > 0.0 {
+      return T::nan();
+    }
     return T::from_f64_fast(intrinsic(k - f, t, v));
   }
   let sqrt_t = t.sqrt();
@@ -63,7 +67,8 @@ pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: 
   T::from_f64_fast(k * norm_cdf(-d2) - f * norm_cdf(-d1))
 }
 
-/// Bachelier caplet undiscounted forward value; intrinsic at a non-positive time or vol, with the Black helpers' NaN rule.
+/// Bachelier caplet forward value, any sign of `F` and `K`; intrinsic at `τ` or `σ` ≤ 0; NaN for a
+/// NaN rate or time and, while live, a NaN `σ`.
 pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
@@ -93,12 +98,8 @@ pub fn bachelier_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sig
   T::from_f64_fast((k - f) * norm_cdf(-d) + sqrt_vt * pdf)
 }
 
-/// Caplet or floorlet price discounted to the valuation date.
-///
-/// `tau` is the year fraction from valuation date to the caplet expiry (the
-/// fixing date of the forward rate). `accrual_factor` is $\alpha$, the day
-/// count fraction for the coupon period. `discount_factor` is $P(t,t_p)$ to
-/// the payment date $t_p$.
+/// Caplet or floorlet price at the valuation date: `tau` runs to the forward's fixing date,
+/// `accrual_factor` is $\alpha$ and `discount_factor` is $P(t,t_p)$ to the payment date.
 #[allow(clippy::too_many_arguments)]
 pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   forward: T,
@@ -111,12 +112,13 @@ pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   kind: InterestRateOptionKind,
 ) -> T {
   let sigma = vol.implied_volatility(forward, strike, tau);
+  let shift = vol.displacement();
   let forward_value = match (vol.quote_kind(), kind) {
     (VolatilityQuoteKind::Lognormal, InterestRateOptionKind::Cap) => {
-      black_forward_caplet(forward, strike, tau, sigma)
+      black_forward_caplet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Lognormal, InterestRateOptionKind::Floor) => {
-      black_forward_floorlet(forward, strike, tau, sigma)
+      black_forward_floorlet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Normal, InterestRateOptionKind::Cap) => {
       bachelier_forward_caplet(forward, strike, tau, sigma)
@@ -132,6 +134,7 @@ pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
 mod tests {
   use super::*;
   use crate::instruments::option::volatility::SabrVolatility;
+  use crate::instruments::option::volatility::ShiftedSabrVolatility;
 
   #[test]
   fn a_nan_rate_or_a_live_nan_vol_is_nan_not_a_clamped_value() {
@@ -165,6 +168,50 @@ mod tests {
     assert!((cap(0.03, -0.5) - 9700.0).abs() < 1e-6);
   }
 
+  /// Black-76 on `F + d` and `K + d` at the smile's vol, by mpmath with Hagan's A.69a written out.
+  #[test]
+  fn a_shifted_sabr_vol_prices_black_on_the_displaced_rates() {
+    let vol = ShiftedSabrVolatility::new(0.03_f64, 0.5, -0.2, 0.4, 0.03);
+    let rows = [
+      (
+        -0.01,
+        0.21948481714764004,
+        2887.580801986125,
+        462.58080198612515,
+      ),
+      (
+        0.0,
+        0.18274701476126484,
+        483.65242839036875,
+        2908.6524283903686,
+      ),
+      (
+        0.01,
+        0.18506642444813012,
+        57.53427247223141,
+        7332.534272472231,
+      ),
+    ];
+    for (strike, sigma, cap, floor) in rows {
+      let price = |kind| caplet_price(-0.005, strike, 2.0, 1e6, 0.5, 0.97, &vol, kind);
+      let got = vol.implied_volatility(-0.005, strike, 2.0);
+      assert!(
+        (got - sigma).abs() <= 1e-14 * sigma,
+        "K = {strike}: vol {got}"
+      );
+      for (kind, want) in [
+        (InterestRateOptionKind::Cap, cap),
+        (InterestRateOptionKind::Floor, floor),
+      ] {
+        let got = price(kind);
+        assert!(
+          (got - want).abs() <= 1e-12 * want,
+          "K = {strike}, {kind}: {got}"
+        );
+      }
+    }
+  }
+
   #[test]
   fn black_put_call_parity() {
     let f = 0.04_f64;
@@ -196,5 +243,67 @@ mod tests {
     let call = bachelier_forward_caplet(f, f, tau, sigma);
     let expected = sigma * tau.sqrt() / (2.0 * std::f64::consts::PI).sqrt();
     assert!((call - expected).abs() < 1e-12);
+  }
+
+  /// Black (1976) against mpmath's 50-digit lognormal expectation, the exact limits, and the one
+  /// undefined case: a live option on a negative forward and a negative strike.
+  #[test]
+  fn black_76_matches_the_reference_keeps_its_limits_and_is_nan_on_two_negative_rates() {
+    for ((f, k, t, v), (caplet, floorlet)) in [
+      (
+        (0.04_f64, 0.035, 1.5, 0.25),
+        (0.007_485_867_418_647_512, 0.002_485_867_418_647_512),
+      ),
+      (
+        (0.03, 0.02, 1.0, 0.2),
+        (0.010_038_495_064_659_41, 0.000_038_495_064_659_410_43),
+      ),
+      (
+        (0.02, 0.045, 0.5, 0.4),
+        (0.000_005_101_911_912_307_895, 0.025_005_101_911_912_308),
+      ),
+    ] {
+      assert!(
+        (black_forward_caplet(f, k, t, v) - caplet).abs() < 1e-15,
+        "caplet {f} {k}"
+      );
+      assert!(
+        (black_forward_floorlet(f, k, t, v) - floorlet).abs() < 1e-15,
+        "floorlet {f} {k}"
+      );
+    }
+    assert_eq!(
+      black_forward_caplet(0.03, -0.01, 1.0, 0.2),
+      0.04,
+      "k <= 0 < f: the payoff is linear"
+    );
+    assert_eq!(black_forward_floorlet(0.03, -0.01, 1.0, 0.2), 0.0);
+    assert_eq!(
+      black_forward_caplet(0.0, 0.02, 1.0, 0.2),
+      0.0,
+      "f = 0 is absorbed"
+    );
+    assert_eq!(black_forward_floorlet(0.0, 0.02, 1.0, 0.2), 0.02);
+    assert_eq!(
+      black_forward_caplet(-0.01, 0.02, 1.0, 0.2),
+      0.0,
+      "f < 0 < k under the sign-preserving reading"
+    );
+    assert_eq!(black_forward_floorlet(-0.01, 0.02, 1.0, 0.2), 0.03);
+    assert_eq!(
+      black_forward_caplet(-0.01, -0.02, 0.0, 0.2),
+      0.01,
+      "expired: intrinsic whatever the signs"
+    );
+    assert_eq!(
+      black_forward_caplet(-0.01, -0.02, 1.0, 0.0),
+      0.01,
+      "zero vol: intrinsic"
+    );
+    assert!(
+      black_forward_caplet(-0.01_f64, -0.02, 1.0, 0.2).is_nan(),
+      "a live option on two negative rates has no Black-76 value"
+    );
+    assert!(black_forward_floorlet(-0.01_f64, -0.02, 1.0, 0.2).is_nan());
   }
 }

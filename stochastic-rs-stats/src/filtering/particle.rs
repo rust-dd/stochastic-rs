@@ -1,13 +1,13 @@
-//! Bootstrap / Sequential Importance Resampling (SIR) particle filter.
+//! Bootstrap (sequential importance resampling) particle filter.
 //!
-//! Approximates the filtering distribution $p(x_t | y_{1:t})$ by a weighted
-//! particle ensemble $\{x_t^{(i)}, w_t^{(i)}\}_{i=1}^N$. The bootstrap variant
-//! uses the prior $p(x_t | x_{t-1})$ as proposal so the importance weight
-//! reduces to $w_t^{(i)} \propto p(y_t | x_t^{(i)})$.
+//! $$
+//! p(x_t \mid y_{1:t}) \approx \{x_t^{(i)}, w_t^{(i)}\}_{i=1}^N,\qquad
+//! w_t^{(i)} \propto p(y_t \mid x_t^{(i)})
+//! $$
 //!
-//! Reference: Gordon, Salmond, Smith, "Novel Approach to Nonlinear /
-//! Non-Gaussian Bayesian State Estimation", IEE Proceedings F, 140(2),
-//! 107-113 (1993). DOI: 10.1049/ip-f-2.1993.0015
+//! The proposal is the prior `p(x_t | x_{t-1})`, which leaves the weight the observation density.
+//!
+//! Reference: Gordon et al. (1993), IEE Proc. F 140(2), 107-113, DOI: 10.1049/ip-f-2.1993.0015
 
 use std::fmt::Display;
 
@@ -46,12 +46,8 @@ impl Display for ResamplingScheme {
   }
 }
 
-/// Bootstrap particle filter.
-///
-/// `transition`: $x_t = f(x_{t-1}, v_t)$ where the user samples the noise
-/// internally using the supplied RNG.
-///
-/// `log_observation_lik`: $\log p(y_t | x_t)$.
+/// Bootstrap particle filter: `transition` is $x_t = f(x_{t-1}, v_t)$, drawing its noise from the
+/// supplied RNG, and `log_observation_lik` is $\log p(y_t | x_t)$.
 pub struct ParticleFilter<F, G>
 where
   F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
@@ -66,13 +62,27 @@ where
   rng: SimdRng,
 }
 
+impl<F, G> std::fmt::Debug for ParticleFilter<F, G>
+where
+  F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
+  G: Fn(ArrayView1<f64>, ArrayView1<f64>) -> f64,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ParticleFilter")
+      .field("particles", &self.particles)
+      .field("log_weights", &self.log_weights)
+      .field("resampling", &self.resampling)
+      .field("effective_threshold", &self.effective_threshold)
+      .finish_non_exhaustive()
+  }
+}
+
 impl<F, G> ParticleFilter<F, G>
 where
   F: Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64>,
   G: Fn(ArrayView1<f64>, ArrayView1<f64>) -> f64,
 {
-  /// Initialise with `n_particles` drawn from the user-supplied initial
-  /// distribution `init`.
+  /// `n_particles` draws of the initial distribution `init`; panics unless `n_particles >= 1`.
   pub fn new<I>(
     n_particles: usize,
     init: I,
@@ -118,7 +128,7 @@ where
 
   /// Mean state across particles, weighted by the current normalised weights.
   pub fn mean_state(&self) -> Array1<f64> {
-    let (n, d) = self.particles.dim();
+    let d = self.particles.ncols();
     let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
@@ -127,8 +137,8 @@ where
       .collect();
     let total: f64 = weights.iter().sum();
     let mut m = Array1::<f64>::zeros(d);
-    for i in 0..n {
-      let w = weights[i] / total;
+    for (i, &weight) in weights.iter().enumerate() {
+      let w = weight / total;
       for j in 0..d {
         m[j] += w * self.particles[[i, j]];
       }
@@ -149,19 +159,22 @@ where
     1.0 / normalised.iter().map(|w| w * w).sum::<f64>()
   }
 
-  /// One filter step on observation `y_t`. Returns the **incremental data
-  /// log-likelihood** $\log p(y_t \mid y_{1:t-1}) \approx \log \sum_i
-  /// w_{t-1,i}\,p(y_t \mid x_{t,i})$ — the normalising constant absorbed by
-  /// the weight update. Summing the per-step returns over the data gives
-  /// the particle-filter approximation of the marginal log-likelihood
-  /// (Kitagawa 1996), the objective of [`crate::particle_mle`].
+  /// One step on `y_t`: its incremental log-likelihood, whose sum is the particle marginal one
+  /// (Kitagawa 1996), [`crate::particle_mle`]'s objective; panics if `transition` resizes a state.
+  /// $$
+  /// \log p(y_t \mid y_{1:t-1}) \approx \log \sum_i w_{t-1,i}\,p(y_t \mid x_{t,i})
+  /// $$
   pub fn step(&mut self, y_t: ArrayView1<f64>) -> f64 {
     let (n, d) = self.particles.dim();
     let mut new_particles = Array2::<f64>::zeros((n, d));
     for i in 0..n {
       let prev = self.particles.row(i);
       let propagated = (self.transition)(prev, &mut self.rng);
-      assert_eq!(propagated.len(), d, "transition must preserve state dim");
+      assert!(
+        propagated.len() == d,
+        "transition's output must satisfy `output.len() == d`, got output.len() = {}, d = {d}",
+        propagated.len()
+      );
       for j in 0..d {
         new_particles[[i, j]] = propagated[j];
       }
@@ -170,9 +183,8 @@ where
       self.log_weights[i] += (self.log_observation_lik)(new_particles.row(i), y_t);
     }
     self.particles = new_particles;
-    // The pre-normalisation log-sum-of-weights is the incremental
-    // log-likelihood: before the update the weights summed to 1, so this
-    // total is log Σ_i w_{t-1,i} p(y_t | x_{t,i}).
+    // Before the update the weights summed to 1, so the log of their new total is the incremental
+    // log-likelihood, `log Σ_i w_{t-1,i} p(y_t | x_{t,i})`.
     let incremental_loglik = self.normalise_log_weights();
     if self.effective_sample_size() < self.effective_threshold {
       self.resample();
@@ -249,8 +261,8 @@ where
   }
 }
 
-/// A driftless Gaussian random-walk `transition`: component `j` steps by an `N(0, scales[j]^2)` draw
-/// from the filter's rng; panics if a scale is not positive.
+/// A driftless Gaussian random-walk `transition`: component `j` steps by an `N(0, scales[j]²)`
+/// draw from the filter's rng; panics unless every scale is positive.
 pub fn gaussian_random_walk_transition(
   scales: Array1<f64>,
 ) -> impl Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64> {
@@ -349,5 +361,20 @@ mod tests {
     assert_eq!(pf.max_log_weight(), -0.5);
     pf.log_weights[2] = f64::NAN;
     assert!(pf.max_log_weight().is_nan());
+  }
+
+  /// The two closures and the generator have no `Debug`, so the filter shows its state only.
+  #[test]
+  fn the_filter_debugs_its_state_without_its_closures() {
+    let init = |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
+    let transition = |prev: ArrayView1<f64>, _rng: &mut SimdRng| prev.to_owned();
+    let log_obs = |_x: ArrayView1<f64>, _y: ArrayView1<f64>| 0.0;
+    let pf = ParticleFilter::new(2, init, transition, log_obs, 7);
+    let text = format!("{pf:?}");
+    assert!(text.starts_with("ParticleFilter { particles: "), "{text}");
+    assert!(
+      text.contains("resampling: Systematic") && text.ends_with(", .. }"),
+      "{text}"
+    );
   }
 }

@@ -1,5 +1,5 @@
-//! The t copula cdfs at `ν` from 0.01 to 0.25 against the χ² mixture `E_S[Φ_R(√(S/ν) t_ν⁻¹(u))]`, `S ~ χ²_ν`, integrated
-//! over `ln S`: at `d = 2` by mpmath at 30 and 45 digits, at `d = 3` by adaptive quadrature at two tolerances.
+//! The t copula cdfs at `ν` from 0.01 to 0.25 against the χ² mixture `E_S[Φ_R(√(S/ν) t_ν⁻¹(u))]`
+//! over `ln S`: mpmath (30, 45 digits) at `d = 2`, adaptive quadrature at `d = 3`.
 
 use ndarray::array;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
@@ -7,7 +7,8 @@ use stochastic_rs_copulas::multivariate::t::TMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
-/// `(ν, ρ, u, v, C)`, the two precisions agreeing to 27 digits; at `ν = 4` the mixture is the bivariate t cdf to `4e-16`.
+/// `(ν, ρ, u, v, C)`, the two precisions agreeing to 27 digits; at `ν = 4` the mixture is the
+/// bivariate t cdf to `4e-16`.
 const BIVARIATE: [(f64, f64, f64, f64, f64); 25] = [
   (0.25, 0.5, 0.3, 0.7, 0.22090860310133786),
   (0.25, 0.5, 0.1, 0.2, 0.06877357223769079),
@@ -36,7 +37,8 @@ const BIVARIATE: [(f64, f64, f64, f64, f64); 25] = [
   (0.01, -0.8, 0.001, 0.5, 0.0002032613010000381),
 ];
 
-/// `(ν, u, C)` at the correlation `[[1, 0.7, 0.3], [0.7, 1, 0.5], [0.3, 0.5, 1]]`, the two tolerances agreeing to `4e-16`.
+/// `(ν, u, C)` at the correlation `[[1, 0.7, 0.3], [0.7, 1, 0.5], [0.3, 0.5, 1]]`, the two
+/// tolerances agreeing to `4e-16`.
 const TRIVARIATE: [(f64, [f64; 3], f64); 15] = [
   (0.25, [0.3, 0.5, 0.7], 0.17276136691166671),
   (0.25, [0.1, 0.4, 0.8], 0.053615682383079344),
@@ -55,7 +57,8 @@ const TRIVARIATE: [(f64, [f64; 3], f64); 15] = [
   (0.01, [0.6, 0.6, 0.6], 0.40054323527261826),
 ];
 
-/// To a relative `1e-12`, as the bivariate table holds it, and the multivariate copula at `d = 2` bit for bit.
+/// To a relative `1e-12`, as the bivariate table holds it, and the multivariate copula at `d = 2`
+/// bit for bit.
 #[test]
 fn the_bivariate_t_cdf_holds_its_digits_at_small_nu() {
   for (nu, rho, u, v, want) in BIVARIATE {
@@ -71,7 +74,8 @@ fn the_bivariate_t_cdf_holds_its_digits_at_small_nu() {
   }
 }
 
-/// Within Genz–Bretz's absolute envelope `2.84e-4`, which their χ scale holds once its quantile does.
+/// Within Genz–Bretz's absolute envelope `2.84e-4`, which their χ scale holds once its quantile
+/// does.
 #[test]
 fn the_trivariate_t_cdf_holds_the_genz_envelope_at_small_nu() {
   let corr = array![[1.0, 0.7, 0.3], [0.7, 1.0, 0.5], [0.3, 0.5, 1.0]];

@@ -15,18 +15,25 @@ use std::convert::Infallible;
 
 use basin::CostFunction;
 
+use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
-use crate::calibration::run_nelder_mead;
+use crate::calibration::nelder_mead_fit;
+use crate::calibration::quote::check_finite_start;
+use crate::calibration::start_vertex;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::jamshidian::price_jamshidian_hull_white;
 use crate::instruments::option::types::SwaptionDirection;
+use crate::lattice::short_rate::HullWhiteTreeModel;
+use crate::traits::ToShortRateModel;
 
 /// Single European swaption quote entered as a market Black-76 volatility.
 #[derive(Debug, Clone)]
 pub struct SwaptionQuote {
   /// Time from valuation to exercise in years.
-  pub expiry: f64,
+  pub tau: f64,
   /// Swap tenor in years (from exercise to final maturity).
   pub tenor: f64,
   /// Black-76 at-the-money-forward volatility.
@@ -39,172 +46,218 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
-/// Calibrated parameter set for the Hull-White short-rate model.
+/// `InvalidQuote` for a `tau`, tenor or accrual not finite and `> 0`, a vol or weight not finite
+/// and `≥ 0`, over 100,000 payments or a negative or NaN swap rate; no quote is `InsufficientData`.
+pub(crate) fn validate_swaption_quotes(
+  quotes: &[SwaptionQuote],
+  curve: &DiscountCurve<f64>,
+) -> Result<(), QuantError> {
+  if quotes.is_empty() {
+    return Err(QuantError::InsufficientData {
+      what: "swaption quotes",
+      needed: 1,
+      got: 0,
+    });
+  }
+  for (index, quote) in quotes.iter().enumerate() {
+    let fields = [
+      ("tau", quote.tau, true),
+      ("tenor", quote.tenor, true),
+      ("fixed_accrual", quote.fixed_accrual, true),
+      ("black_vol", quote.black_vol, false),
+      ("weight", quote.weight.unwrap_or(1.0), false),
+    ];
+    for (name, value, positive) in fields {
+      let ok = value.is_finite() && if positive { value > 0.0 } else { value >= 0.0 };
+      if !ok {
+        let bound = if positive { "> 0.0" } else { ">= 0.0" };
+        let reason = format!(
+          "{name} must satisfy `{name}.is_finite() && {name} {bound}`, got {name} = {value:?}"
+        );
+        return Err(QuantError::InvalidQuote { index, reason });
+      }
+    }
+    let n_payments = payment_count(quote);
+    if n_payments > MAX_PAYMENTS {
+      let reason = format!(
+        "fixed_accrual implies {n_payments} fixed payments, above the cap of {MAX_PAYMENTS}"
+      );
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+    let fair_rate = market_swaption(quote, curve, 1.0).fair_rate;
+    if fair_rate.is_nan() || fair_rate < 0.0 {
+      let reason = format!(
+        "fair_rate must satisfy `fair_rate >= 0.0`, as Black-76 prices no negative forward, got fair_rate = {fair_rate:?}"
+      );
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+  }
+  Ok(())
+}
+
+/// Cap on a quote's fixed payments, so an absurd `fixed_accrual` is refused, not walked.
+const MAX_PAYMENTS: usize = 100_000;
+
+/// Fixed payments of a quote's swap: tenor over the accrual, rounded, at least one.
+pub(crate) fn payment_count(quote: &SwaptionQuote) -> usize {
+  let payments_per_year = (1.0 / quote.fixed_accrual).round();
+  ((quote.tenor * payments_per_year).round() as usize).max(1)
+}
+
+/// Market side of one quote: the forward swap and its Black-76 price.
 #[derive(Debug, Clone)]
+pub(crate) struct MarketSwaption {
+  pub(crate) fair_rate: f64,
+  pub(crate) coupon_times: Vec<f64>,
+  pub(crate) accrual: f64,
+  pub(crate) market_price: f64,
+}
+
+/// The one swap schedule every swaption calibrator and the quote validation price on.
+pub(crate) fn market_swaption(
+  quote: &SwaptionQuote,
+  curve: &DiscountCurve<f64>,
+  notional: f64,
+) -> MarketSwaption {
+  let n_payments = payment_count(quote);
+  let accrual = quote.tenor / n_payments as f64;
+  let coupon_times: Vec<f64> = (1..=n_payments)
+    .map(|k| quote.tau + accrual * k as f64)
+    .collect();
+  let annuity: f64 = coupon_times
+    .iter()
+    .map(|&t| curve.discount_factor(t) * accrual)
+    .sum::<f64>()
+    * notional;
+  let p_exp = curve.discount_factor(quote.tau);
+  let p_end = curve.discount_factor(*coupon_times.last().expect("non-empty"));
+  let fair_rate = (p_exp - p_end) / (annuity / notional).max(1e-14);
+  let market_price =
+    annuity * black_forward_caplet(fair_rate, fair_rate, quote.tau, quote.black_vol);
+  MarketSwaption {
+    fair_rate,
+    coupon_times,
+    accrual,
+    market_price,
+  }
+}
+
+/// `Σ (wᵢ·modelᵢ − wᵢ·marketᵢ)²`: the swaption objective, while `rmse()` stays on the raw prices.
+pub(crate) fn weighted_sse(quotes: &[SwaptionQuote], market: &[f64], model: &[f64]) -> f64 {
+  quotes
+    .iter()
+    .zip(market.iter().zip(model))
+    .map(|(quote, (q, m))| {
+      let w = quote.weight.unwrap_or(1.0);
+      (w * m - w * q).powi(2)
+    })
+    .sum()
+}
+
+/// Hull–White parameters; the tree inputs only shape the model `to_short_rate_model` returns.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HullWhiteParams {
   /// Mean reversion speed $a$.
   pub mean_reversion: f64,
   /// Short-rate volatility $\sigma$.
   pub sigma: f64,
-}
-
-/// Hull-White calibration result.
-#[derive(Debug, Clone)]
-pub struct HullWhiteCalibrationResult {
-  /// Calibrated mean reversion $a$.
-  pub mean_reversion: f64,
-  /// Calibrated volatility $\sigma$.
-  pub sigma: f64,
-  /// Root-mean-square error on the quote grid.
-  pub rmse: f64,
-  /// True when the Nelder-Mead simplex reported convergence.
-  pub converged: bool,
-  /// Per-quote model prices in the order of the input quotes.
-  pub model_prices: Vec<f64>,
-  /// Per-quote market prices in the same order.
-  pub market_prices: Vec<f64>,
-  /// Time-0 short rate the tree model starts from; not calibrated.
+  /// Time-0 short rate of the tree model; fixed during the fit.
   pub initial_rate: f64,
-  /// Constant drift offset of the tree model; not calibrated.
+  /// Constant drift offset of the tree model; fixed during the fit.
   pub theta: f64,
 }
 
-impl crate::traits::ToShortRateModel for HullWhiteCalibrationResult {
-  type Model = crate::lattice::short_rate::HullWhiteTreeModel<f64>;
+impl HullWhiteParams {
+  fn fields(&self) -> [(&'static str, f64); 4] {
+    [
+      ("mean_reversion", self.mean_reversion),
+      ("sigma", self.sigma),
+      ("initial_rate", self.initial_rate),
+      ("theta", self.theta),
+    ]
+  }
+}
+
+impl ToShortRateModel for Calibrated<HullWhiteParams> {
+  type Model = HullWhiteTreeModel<f64>;
 
   fn to_short_rate_model(&self) -> Self::Model {
-    crate::lattice::short_rate::HullWhiteTreeModel::new(
-      self.initial_rate,
-      self.mean_reversion,
-      self.theta,
-      self.sigma,
-    )
+    HullWhiteTreeModel::new(self.params)
   }
 }
 
-impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
-  type Params = HullWhiteParams;
-  fn rmse(&self) -> f64 {
-    self.rmse
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    HullWhiteParams {
-      mean_reversion: self.mean_reversion,
-      sigma: self.sigma,
-    }
-  }
-}
-
-impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
-  type InitialGuess = (f64, f64);
-  type Params = HullWhiteParams;
-  type Output = HullWhiteCalibrationResult;
-  type Error = anyhow::Error;
-
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
-    }
-    Ok(this.solve())
-  }
-}
-
-/// Hull-White calibrator.
+/// Hull–White `(a, σ)` against a swaption grid priced by Jamshidian's decomposition on `curve`.
 #[derive(Debug, Clone)]
 pub struct HullWhiteSwaptionCalibrator<'a> {
-  /// Market quotes.
   pub quotes: &'a [SwaptionQuote],
-  /// Initial market discount curve.
   pub curve: &'a DiscountCurve<f64>,
   /// Notional used consistently for all quotes.
   pub notional: f64,
-  /// Time-0 short rate the tree model starts from; not calibrated.
-  pub initial_rate: f64,
-  /// Constant drift offset of the tree model; not calibrated.
-  pub theta: f64,
-  /// Optional initial guess `(a, σ)`; defaults to `(0.05, 0.01)`.
-  pub initial_guess: Option<(f64, f64)>,
-  /// Maximum Nelder-Mead iterations.
-  pub max_iters: u64,
-  /// Convergence tolerance on simplex standard deviation.
-  pub sd_tolerance: f64,
-  /// Optional Tikhonov pull of `(a, σ)` toward an anchor.
-  pub regularization: Option<Regularization>,
+  pub start: HullWhiteParams,
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`, and
+  /// `patience` is `Unsupported`.
+  pub options: CalibrationOptions,
 }
 
 impl<'a> HullWhiteSwaptionCalibrator<'a> {
-  /// Construct a calibrator with sensible defaults.
+  /// `start` carries the tree inputs (`initial_rate`, `theta`) and the first `(a, σ)`; panics
+  /// unless `notional > 0` and the start is finite.
   pub fn new(
     quotes: &'a [SwaptionQuote],
     curve: &'a DiscountCurve<f64>,
     notional: f64,
-    initial_rate: f64,
-    theta: f64,
+    start: HullWhiteParams,
   ) -> Self {
+    assert!(
+      notional.is_finite() && notional > 0.0,
+      "notional must satisfy `notional.is_finite() && notional > 0.0`, got notional = {notional:?}"
+    );
+    check_finite_start(&start.fields()).unwrap_or_else(|e| panic!("{e}"));
     Self {
       quotes,
       curve,
       notional,
-      initial_rate,
-      theta,
-      initial_guess: None,
-      max_iters: 400,
-      sd_tolerance: 1e-10,
-      regularization: None,
+      start,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Adds a Tikhonov pull toward `regularization.anchor` in the order `(a, σ)`.
-  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
-    assert_eq!(
-      regularization.dimension(),
-      2,
-      "Hull-White regularisation needs two anchors"
-    );
-    self.regularization = Some(regularization);
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
+}
 
-  fn solve(&self) -> HullWhiteCalibrationResult {
+impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
+  type Params = HullWhiteParams;
+  type Output = Calibrated<HullWhiteParams>;
+  type Error = QuantError;
+
+  /// A start replaces `self.start` whole, tree inputs included; `InvalidInput` unless it is finite,
+  /// and the `CalibrationOptions` errors.
+  fn calibrate(&self, initial: Option<HullWhiteParams>) -> Result<Self::Output, QuantError> {
+    let start = initial.unwrap_or(self.start);
+    check_finite_start(&start.fields())?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = HullWhiteCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),
       notional: self.notional,
-      regularization: self.regularization.clone(),
+      regularization: self.options.regularization_for(2)?,
     };
-    let (a0, s0) = self.initial_guess.unwrap_or((0.05, 0.01));
-    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
-
-    let (best, converged) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
-
-    let a_hat = best[0].abs();
-    let sigma_hat = best[1].abs();
-    let (model_prices, market_prices) = problem.price_series(a_hat, sigma_hat);
-    let residual_sq: f64 = model_prices
-      .iter()
-      .zip(market_prices.iter())
-      .map(|(m, q)| (m - q).powi(2))
-      .sum();
-    let n = model_prices.len().max(1) as f64;
-    let rmse = (residual_sq / n).sqrt();
-
-    HullWhiteCalibrationResult {
-      mean_reversion: a_hat,
-      sigma: sigma_hat,
-      rmse,
-      converged,
-      model_prices,
-      market_prices,
-      initial_rate: self.initial_rate,
-      theta: self.theta,
-    }
+    let (a0, s0) = (start.mean_reversion, start.sigma);
+    let step = |x: f64| start_vertex(x, 1.5);
+    let simplex = vec![vec![a0, s0], vec![step(a0), s0], vec![a0, step(s0)]];
+    nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
+      let (mean_reversion, sigma) = (x[0].abs(), x[1].abs());
+      let (market, model) = problem.price_series(mean_reversion, sigma);
+      let params = HullWhiteParams {
+        mean_reversion,
+        sigma,
+        ..start
+      };
+      (params, market, model)
+    })
   }
 }
 
@@ -226,51 +279,25 @@ impl HullWhiteCost {
     let mut model_prices = Vec::with_capacity(self.quotes.len());
     let mut market_prices = Vec::with_capacity(self.quotes.len());
     for quote in &self.quotes {
-      let payments_per_year = (1.0 / quote.fixed_accrual).round();
-      let n_payments = (quote.tenor * payments_per_year).round() as usize;
-      let n_payments = n_payments.max(1);
-      let accrual = quote.tenor / n_payments as f64;
-      let coupon_times: Vec<f64> = (1..=n_payments)
-        .map(|k| quote.expiry + accrual * k as f64)
-        .collect();
-      let accrual_factors = vec![accrual; n_payments];
-
-      let annuity: f64 = coupon_times
-        .iter()
-        .map(|&t_i| curve.discount_factor(t_i) * accrual)
-        .sum::<f64>()
-        * self.notional;
-
-      let p_exp = curve.discount_factor(quote.expiry);
-      // `coupon_times` is built from `(1..=n_payments)` after `n_payments.max(1)`
-      // above, so it is non-empty by construction. Use `expect` to encode the
-      // invariant rather than blank `unwrap`.
-      let p_end = curve.discount_factor(
-        *coupon_times
-          .last()
-          .expect("coupon_times non-empty by n_payments.max(1) construction"),
-      );
-      let fair_rate = (p_exp - p_end) / (annuity / self.notional).max(1e-14);
-      let forward_value = black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
-      let market_price = annuity * forward_value;
+      let market = market_swaption(quote, &curve, self.notional);
+      let accrual_factors = vec![market.accrual; market.coupon_times.len()];
 
       let model_price = price_jamshidian_hull_white(
         quote.direction,
-        fair_rate,
+        market.fair_rate,
         self.notional,
-        quote.expiry,
-        &coupon_times,
+        quote.tau,
+        &market.coupon_times,
         &accrual_factors,
         a,
         sigma,
         &curve,
       );
 
-      let w = quote.weight.unwrap_or(1.0);
-      model_prices.push(w * model_price);
-      market_prices.push(w * market_price);
+      model_prices.push(model_price);
+      market_prices.push(market.market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -282,12 +309,8 @@ impl CostFunction for HullWhiteCost {
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let a = x[0].abs().max(1e-6);
     let sigma = x[1].abs().max(1e-6);
-    let (model_prices, market_prices) = self.price_series(a, sigma);
-    let loss: f64 = model_prices
-      .iter()
-      .zip(market_prices.iter())
-      .map(|(m, q)| (m - q).powi(2))
-      .sum();
+    let (market_prices, model_prices) = self.price_series(a, sigma);
+    let loss = weighted_sse(&self.quotes, &market_prices, &model_prices);
     let penalty = self
       .regularization
       .as_ref()
@@ -307,7 +330,7 @@ impl CurveSnapshot {
   pub(crate) fn rebuild(&self) -> DiscountCurve<f64> {
     let times = ndarray::Array1::from(self.times.clone());
     let rates = ndarray::Array1::from(self.rates.clone());
-    DiscountCurve::from_zero_rates(&times, &rates, self.method)
+    DiscountCurve::from_zero_rates(times.view(), rates.view(), self.method)
   }
 }
 
@@ -316,14 +339,7 @@ pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
   let times: Vec<f64> = points.iter().map(|p| p.time).collect();
   let rates: Vec<f64> = points
     .iter()
-    .map(|p| {
-      let t = p.time;
-      if t <= 0.0 {
-        0.0
-      } else {
-        -p.discount_factor.ln() / t
-      }
-    })
+    .map(|p| -p.discount_factor.ln() / p.time)
     .collect();
   CurveSnapshot {
     times,
@@ -333,22 +349,34 @@ pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
 }
 
 #[cfg(test)]
-mod regularization_tests {
+mod tests {
   use ndarray::Array1;
 
-  use super::HullWhiteSwaptionCalibrator;
-  use super::SwaptionQuote;
-  use crate::calibration::Regularization;
-  use crate::curves::DiscountCurve;
+  use super::*;
   use crate::curves::InterpolationMethod;
-  use crate::instruments::option::types::SwaptionDirection;
+  use crate::traits::CalibrationResult;
   use crate::traits::Calibrator;
+
+  const START: HullWhiteParams = HullWhiteParams {
+    mean_reversion: 0.1,
+    sigma: 0.01,
+    initial_rate: 0.03,
+    theta: 0.002,
+  };
+
+  fn curve() -> DiscountCurve<f64> {
+    DiscountCurve::from_zero_rates(
+      Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+      Array1::from_vec(vec![0.03; 4]).view(),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    )
+  }
 
   fn quotes() -> Vec<SwaptionQuote> {
     [(1.0, 2.0, 0.22), (2.0, 3.0, 0.20)]
       .into_iter()
-      .map(|(expiry, tenor, black_vol)| SwaptionQuote {
-        expiry,
+      .map(|(tau, tenor, black_vol)| SwaptionQuote {
+        tau,
         tenor,
         black_vol,
         fixed_accrual: 0.5,
@@ -362,40 +390,196 @@ mod regularization_tests {
   /// stays free to fit the quotes.
   #[test]
   fn anchor_on_mean_reversion_pins_it() {
-    let curve = DiscountCurve::from_zero_rates(
-      &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-      &Array1::from_vec(vec![0.03; 4]),
-      InterpolationMethod::LogLinearOnDiscountFactors,
-    );
-    let quotes = quotes();
-    let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
-      .calibrate(Some((0.1, 0.01)))
+    let (curve, quotes) = (curve(), quotes());
+    let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
       .expect("calibration runs");
-    let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
-      .with_regularization(Regularization::new(vec![0.3, 0.01], vec![1e6, 0.0]))
-      .calibrate(Some((0.1, 0.01)))
+    let pull = Regularization::new(vec![0.3, 0.01], vec![1e6, 0.0]);
+    let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .with_options(CalibrationOptions::default().with_regularization(pull))
+      .calibrate(None)
       .expect("calibration runs");
-    assert!(
-      (pulled.mean_reversion - 0.3).abs() < 1e-2,
-      "a {}",
-      pulled.mean_reversion
-    );
-    assert!(pulled.sigma > 0.0 && plain.sigma > 0.0);
+    let a = pulled.params.mean_reversion;
+    assert!((a - 0.3).abs() < 1e-2, "a {a}");
+    assert!(pulled.params.sigma > 0.0 && plain.params.sigma > 0.0);
   }
 
   #[test]
   fn the_result_carries_the_tree_inputs_it_was_given() {
+    let (curve, quotes) = (curve(), quotes());
+    let result = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
+      .expect("calibration runs");
+    let model = result.to_short_rate_model();
+    assert_eq!((model.initial_rate, model.theta), (0.03, 0.002));
+    assert_eq!(model.sigma, result.params.sigma);
+  }
+
+  #[test]
+  fn the_recorded_trail_ends_at_the_fit() {
+    let (curve, quotes) = (curve(), quotes());
+    let calibrator = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START);
+    let plain = calibrator.calibrate(None).unwrap();
+    let recorded = calibrator
+      .clone()
+      .with_options(CalibrationOptions::default().with_record_history(true))
+      .calibrate(None)
+      .unwrap();
+    assert!(plain.history().is_empty());
+    assert_eq!(recorded.params, plain.params);
+    assert_eq!(recorded.history.len(), recorded.iterations.unwrap() + 1);
+    let last = recorded.history.last().unwrap();
+    assert_eq!(
+      (last.iteration, last.params),
+      (recorded.iterations.unwrap(), recorded.params)
+    );
+    assert_eq!(last.loss.get(crate::LossMetric::Rmse), recorded.rmse());
+  }
+
+  /// At `σ = 1e-14` every price is zero and the cost is flat in both parameters.
+  #[test]
+  fn a_start_on_the_volatility_floor_still_reaches_the_fit() {
+    let (curve, quotes) = (curve(), quotes());
+    let calibrator = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START);
+    let reference = calibrator.calibrate(None).unwrap();
+    let floor = HullWhiteParams {
+      sigma: 1e-14,
+      ..START
+    };
+    let fit = calibrator.calibrate(Some(floor)).unwrap();
+    assert!(reference.converged && fit.converged, "{:?}", fit.message);
+    assert!(
+      fit.rmse() < 1e-6 * quotes.len() as f64,
+      "rmse {}",
+      fit.rmse()
+    );
+  }
+
+  #[test]
+  fn rmse_and_max_error_are_unweighted_price_errors() {
+    let (curve, mut quotes) = (curve(), quotes());
+    quotes[0].weight = Some(4.0);
+    quotes[1].weight = Some(0.25);
+    let fit = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
+      .unwrap();
+    let unweighted: Vec<_> = quotes
+      .iter()
+      .map(|quote| SwaptionQuote {
+        weight: None,
+        ..quote.clone()
+      })
+      .collect();
+    let cost = HullWhiteCost {
+      quotes: unweighted,
+      curve_points: serialize_curve(&curve),
+      notional: 1.0,
+      regularization: None,
+    };
+    let (market, model) = cost.price_series(fit.params.mean_reversion, fit.params.sigma);
+    assert_eq!(fit.rmse(), crate::loss::rmse(&market, &model));
+    let worst = market.iter().zip(&model).map(|(m, q)| (m - q).abs());
+    assert_eq!(fit.max_error, Some(worst.fold(0.0, f64::max)));
+  }
+
+  #[test]
+  fn bad_data_is_an_error() {
+    let (curve, mut quotes) = (curve(), quotes());
+    let fit = |quotes: &[SwaptionQuote], start: Option<HullWhiteParams>, options| {
+      HullWhiteSwaptionCalibrator::new(quotes, &curve, 1.0, START)
+        .with_options(options)
+        .calibrate(start)
+        .unwrap_err()
+    };
+    let defaults = CalibrationOptions::default;
+    let empty = fit(&[], None, defaults());
+    assert!(
+      matches!(empty, QuantError::InsufficientData { got: 0, .. }),
+      "{empty}"
+    );
+    let nan_start = Some(HullWhiteParams {
+      sigma: f64::NAN,
+      ..START
+    });
+    let start = fit(&quotes, nan_start, defaults());
+    assert!(
+      matches!(start, QuantError::InvalidInput { what: "start", .. }),
+      "{start}"
+    );
+    let pull = Regularization::uniform(vec![0.1, 0.01, 0.0], 1.0);
+    let reg = fit(&quotes, None, defaults().with_regularization(pull));
+    assert!(
+      matches!(
+        reg,
+        QuantError::DimensionMismatch {
+          expected: 2,
+          got: 3,
+          ..
+        }
+      ),
+      "{reg}"
+    );
+    let patience = fit(&quotes, None, defaults().with_patience(5));
+    assert_eq!(patience, QuantError::Unsupported { what: "patience" });
+    quotes[1].black_vol = f64::NAN;
+    let quote = fit(&quotes, None, defaults());
+    assert!(
+      matches!(quote, QuantError::InvalidQuote { index: 1, .. }),
+      "{quote}"
+    );
+  }
+
+  /// The forward turns negative past three years, so the 2y × 3y swap rate is about −3 %.
+  #[test]
+  fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
     let curve = DiscountCurve::from_zero_rates(
-      &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-      &Array1::from_vec(vec![0.03; 4]),
+      Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+      Array1::from_vec(vec![0.02, 0.02, -0.01]).view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     );
     let quotes = quotes();
-    let result = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.002)
-      .calibrate(Some((0.1, 0.01)))
-      .expect("calibration runs");
-    let model = crate::traits::ToShortRateModel::to_short_rate_model(&result);
-    assert_eq!((model.initial_rate, model.theta), (0.03, 0.002));
-    assert_eq!(model.sigma, result.sigma);
+    let err = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
+      .unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "invalid start: theta must satisfy `theta.is_finite()`")]
+  fn a_non_finite_start_in_new_panics() {
+    let (curve, quotes) = (curve(), quotes());
+    let start = HullWhiteParams {
+      theta: f64::INFINITY,
+      ..START
+    };
+    HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start);
+  }
+
+  #[test]
+  fn a_quote_whose_swap_rate_is_nan_is_refused_as_well() {
+    let curve = DiscountCurve::from_zero_rates(
+      Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+      Array1::from_vec(vec![0.02, f64::NAN, 0.02]).view(),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let err = validate_swaption_quotes(&quotes(), &curve).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { reason, .. } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
+
+  #[test]
+  fn an_accrual_that_implies_an_absurd_schedule_is_refused_before_it_is_walked() {
+    let mut quotes = quotes();
+    quotes[1].fixed_accrual = 1e-10;
+    let err = validate_swaption_quotes(&quotes, &curve()).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fixed_accrual")),
+      "{err}"
+    );
   }
 }

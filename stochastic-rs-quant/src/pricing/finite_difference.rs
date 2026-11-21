@@ -49,7 +49,7 @@ pub enum FiniteDifferenceMethod {
 #[derive(Debug, Clone, Copy)]
 pub struct FiniteDifferencePricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
   /// Time steps
   pub t_n: usize,
   /// Price steps
@@ -61,33 +61,23 @@ pub struct FiniteDifferencePricer {
 }
 
 impl FiniteDifferencePricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// Panics for negative or NaN volatility, fewer than one time step, or
-  /// fewer than two spot intervals. The implicit schemes require an interior
-  /// spot node in addition to the two boundaries. Zero volatility is accepted.
+  /// Panics unless `sigma` is finite and `>= 0`, `t_n >= 1` and `s_n >= 2`: the implicit schemes
+  /// need an interior spot node beside the two boundaries.
   pub fn new(
-    v: f64,
+    sigma: f64,
     t_n: usize,
     s_n: usize,
     option_style: OptionStyle,
     method: FiniteDifferenceMethod,
   ) -> Self {
     assert!(
-      v >= 0.0,
-      "FiniteDifferencePricer::new: v must be a non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    assert!(
-      t_n >= 1,
-      "FiniteDifferencePricer::new: t_n must be at least 1 (got {t_n})"
-    );
-    assert!(
-      s_n >= 2,
-      "FiniteDifferencePricer::new: s_n must be at least 2 (got {s_n})"
-    );
+    assert!(t_n >= 1, "t_n must satisfy `t_n >= 1`, got t_n = {t_n:?}");
+    assert!(s_n >= 2, "s_n must satisfy `s_n >= 2`, got s_n = {s_n:?}");
     Self {
-      v,
+      sigma,
       t_n,
       s_n,
       option_style,
@@ -143,7 +133,7 @@ impl VanillaEuropeanCall for FiniteDifferencePricer {
   ///
   /// Without the `NaN` an American surface is not merely approximate but
   /// convincing: at `q = 0.06` every point on a 5x2 grid inverts to a finite
-  /// vol within 0.008 of the model's own `v`, so nothing in the output marks
+  /// vol within 0.008 of the model's own `sigma`, so nothing in the output marks
   /// it as an American price pushed through a European formula. See
   /// `american_finite_difference_surface_is_all_nan`.
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -189,7 +179,7 @@ impl FdSolve<'_> {
 
         new_option_values[i] = option_values[i]
           + dt
-            * (0.5 * self.model.v.powi(2) * s_i.powi(2) * gamma + self.drift() * s_i * delta
+            * (0.5 * self.model.sigma.powi(2) * s_i.powi(2) * gamma + self.drift() * s_i * delta
               - self.r * option_values[i]);
 
         if let OptionStyle::American = self.model.option_style {
@@ -225,7 +215,7 @@ impl FdSolve<'_> {
 
       for i in 1..s_n {
         let s_i = s_values[i];
-        let sigma_sq = self.model.v.powi(2);
+        let sigma_sq = self.model.sigma.powi(2);
 
         a[i - 1] = -0.5 * dt * (sigma_sq * s_i.powi(2) / ds.powi(2) - self.drift() * s_i / ds);
         b[i - 1] = 1.0 + dt * (sigma_sq * s_i.powi(2) / ds.powi(2) + self.r);
@@ -273,7 +263,7 @@ impl FdSolve<'_> {
 
       for i in 1..s_n {
         let s_i = s_values[i];
-        let sigma_sq = self.model.v.powi(2);
+        let sigma_sq = self.model.sigma.powi(2);
 
         a[i - 1] = -0.25 * dt * (sigma_sq * s_i.powi(2) / ds.powi(2) - self.drift() * s_i / ds);
         b[i - 1] = 1.0 + 0.5 * dt * (sigma_sq * s_i.powi(2) / ds.powi(2) + self.r);
@@ -283,7 +273,7 @@ impl FdSolve<'_> {
       let mut d = Array1::<f64>::zeros(s_n - 1);
       for i in 1..s_n {
         let s_i = s_values[i];
-        let sigma_sq = self.model.v.powi(2);
+        let sigma_sq = self.model.sigma.powi(2);
 
         let a_past = 0.25 * dt * (sigma_sq * s_i.powi(2) / ds.powi(2) - self.drift() * s_i / ds);
         let b_past = 1.0 - 0.5 * dt * (sigma_sq * s_i.powi(2) / ds.powi(2) + self.r);

@@ -1,10 +1,11 @@
 #![doc = include_str!("../README.md")]
-// Defaults to `warn`, which is how 94 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// Deny, not rustdoc's default warn, so a broken link fails the build.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "a constructor takes its model's parameters by position, and a launch its buffers"
+)]
 // Numerical-loop indices are kept as-is; iterator chains hurt readability
 // in matrix/path index code where i, j, k carry mathematical meaning.
 #![allow(clippy::needless_range_loop)]
@@ -16,11 +17,6 @@ mod doctest_seals;
 mod linalg;
 
 pub mod traits;
-
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_distributions::traits::DistributionExt;
-pub use stochastic_rs_distributions::traits::SimdFloatExt;
 
 pub use crate::device::Backend;
 pub use crate::device::Cpu;
@@ -39,6 +35,7 @@ pub mod interest;
 pub mod isonormal;
 pub mod ito;
 pub mod jump;
+pub mod malliavin;
 pub mod mc;
 pub mod noise;
 pub mod numerics;
@@ -56,12 +53,3 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 pub mod volterra;
-
-/// Default number of time steps
-pub const N: usize = 1000;
-/// Default initial value
-pub const X0: f64 = 0.5;
-/// Default spot price for financial models
-pub const S0: f64 = 100.0;
-/// Default strike price
-pub const K: f64 = 100.0;

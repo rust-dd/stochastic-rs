@@ -1,221 +1,220 @@
-//! # Gaussian Kde
+//! Gaussian kernel density estimate with Silverman's rule-of-thumb bandwidth.
 //!
 //! $$
-//! \hat f_h(x)=\frac{1}{nh}\sum_{i=1}^n\phi\!\left(\frac{x-x_i}{h}\right)
+//! \hat f_h(x)=\frac{1}{nh}\sum_{i=1}^n\phi\!\left(\frac{x-x_i}{h}\right),\qquad
+//! h=0.9\,\min\!\left(\hat\sigma,\frac{\mathrm{IQR}}{1.34}\right)n^{-1/5}
 //! $$
 //!
+//! Reference: Silverman (1986), Density Estimation, §3.4.2, DOI: 10.1201/9781315140919
+
 use std::f64::consts::PI;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-/// A struct representing a Gaussian Kernel Density Estimator (KDE).
-///
-/// # Fields
-/// - `data`: 1D array of data points.
-/// - `bandwidth`: The bandwidth (smoothing parameter) for the Gaussian kernel.
-#[derive(Debug)]
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::mean_in_order;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::input::validate_view;
+
+/// Gaussian KDE over a copy of the sample.
+#[derive(Debug, Clone)]
 pub struct GaussianKde {
   data: Array1<f64>,
   bandwidth: f64,
 }
 
 impl GaussianKde {
-  /// Creates a new `GaussianKde` with given data and bandwidth.
-  ///
-  /// # Arguments
-  ///
-  /// * `data` - 1D array of data points.
-  /// * `bandwidth` - The smoothing parameter for the Gaussian kernel.
-  ///
-  /// # Returns
-  ///
-  /// A `GaussianKde` instance containing the specified data and bandwidth.
-  ///
-  /// # Examples
+  /// `Err` on an empty or non-finite sample; panics unless `bandwidth` is finite and positive.
   ///
   /// ```
-  /// use ndarray::Array1;
+  /// use ndarray::array;
   /// use stochastic_rs_stats::kde::GaussianKde;
   ///
-  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
-  /// let kde = GaussianKde::new(data, 0.5);
+  /// let kde = GaussianKde::new(array![1.0, 2.0, 3.0].view(), 0.5).unwrap();
+  /// assert!(kde.evaluate(1.5) > 0.0);
   /// ```
-  pub fn new(data: Array1<f64>, bandwidth: f64) -> Self {
-    Self { data, bandwidth }
+  pub fn new(data: ArrayView1<f64>, bandwidth: f64) -> Result<Self, StatsError> {
+    assert!(
+      bandwidth.is_finite(),
+      "bandwidth must satisfy `bandwidth.is_finite()`, got bandwidth = {bandwidth:?}"
+    );
+    assert!(
+      bandwidth > 0.0,
+      "bandwidth must satisfy `bandwidth > 0.0`, got bandwidth = {bandwidth:?}"
+    );
+    validate_view(data, 1)?;
+    Ok(Self {
+      data: data.to_owned(),
+      bandwidth,
+    })
   }
 
-  /// Creates a new `GaussianKde` where the bandwidth is automatically
-  /// chosen by Silverman's rule of thumb.
-  ///
-  /// Silverman’s rule of thumb (for 1D) is:
-  ///
-  /// `h = 0.9 * min(σ, IQR/1.34) * n^(-1/5)`,
-  ///
-  /// where:
-  /// - `σ` is the standard deviation of the data,
-  /// - `IQR` is the interquartile range (75th percentile - 25th percentile),
-  /// - `n` is the number of data points.
-  ///
-  /// # Arguments
-  ///
-  /// * `data` - 1D array of data points.
-  ///
-  /// # Returns
-  ///
-  /// A `GaussianKde` instance with bandwidth estimated by Silverman's rule.
-  pub fn with_silverman_bandwidth(data: Array1<f64>) -> Self {
-    let h = silverman_bandwidth(data.view());
-    Self { data, bandwidth: h }
+  /// The sample with [`silverman_bandwidth`]'s bandwidth, and its `Err` cases.
+  pub fn with_silverman_bandwidth(data: ArrayView1<f64>) -> Result<Self, StatsError> {
+    let bandwidth = silverman_bandwidth(data)?;
+    Self::new(data, bandwidth)
   }
 
-  /// Evaluates the Gaussian kernel (normal PDF) for a given `x`, centered at `xi`,
-  /// using the instance's bandwidth.
-  ///
-  /// # Arguments
-  ///
-  /// * `x`  - The point at which to evaluate the kernel.
-  /// * `xi` - The center of the kernel (an individual data point).
-  ///
-  /// # Returns
-  ///
-  /// The kernel value at `x`.
-  fn gaussian_kernel(&self, x: f64, xi: f64) -> f64 {
-    let norm_factor = 1.0 / (self.bandwidth * (2.0 * PI).sqrt());
-    let exponent = -0.5 * ((x - xi) / self.bandwidth).powi(2);
-    norm_factor * exponent.exp()
+  pub fn bandwidth(&self) -> f64 {
+    self.bandwidth
   }
 
-  /// Evaluates the Gaussian KDE at a single point `x`.
-  ///
-  /// # Arguments
-  ///
-  /// * `x` - The point at which to evaluate the KDE.
-  ///
-  /// # Returns
-  ///
-  /// The estimated density at `x`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use ndarray::Array1;
-  /// use stochastic_rs_stats::kde::GaussianKde;
-  ///
-  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
-  /// let kde = GaussianKde::new(data, 0.5);
-  /// let density_value = kde.evaluate(1.5);
-  /// assert!(density_value > 0.0);
-  /// ```
   pub fn evaluate(&self, x: f64) -> f64 {
+    let norm = 1.0 / (self.bandwidth * (2.0 * PI).sqrt());
     let sum: f64 = self
       .data
       .iter()
-      .map(|&xi| self.gaussian_kernel(x, xi))
+      .map(|&xi| norm * (-0.5 * ((x - xi) / self.bandwidth).powi(2)).exp())
       .sum();
     sum / (self.data.len() as f64)
   }
 
-  /// Evaluates the Gaussian KDE for multiple values of `x` (an array of points).
-  ///
-  /// # Arguments
-  ///
-  /// * `x_values` - 1D array of points at which to evaluate the KDE.
-  ///
-  /// # Returns
-  ///
-  /// A 1D array containing the density estimates for each point in `x_values`.
-  ///
-  /// # Examples
-  ///
   /// ```
   /// use ndarray::Array1;
+  /// use ndarray::array;
   /// use stochastic_rs_stats::kde::GaussianKde;
   ///
-  /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
-  /// let kde = GaussianKde::new(data, 0.5);
-  /// let xs = Array1::linspace(0.0, 5.0, 50);
-  /// let ys = kde.evaluate_array(&xs);
+  /// let kde = GaussianKde::new(array![1.0, 2.0, 3.0].view(), 0.5).unwrap();
+  /// let ys = kde.evaluate_array(Array1::linspace(0.0, 5.0, 50).view());
   /// assert_eq!(ys.len(), 50);
   /// ```
-  pub fn evaluate_array(&self, x_values: &Array1<f64>) -> Array1<f64> {
-    x_values.mapv(|x| self.evaluate(x))
+  pub fn evaluate_array(&self, x: ArrayView1<f64>) -> Array1<f64> {
+    x.mapv(|v| self.evaluate(v))
   }
 }
 
-/// Computes the bandwidth using Silverman's rule of thumb for 1D data.
-///
-/// Silverman’s rule of thumb (for 1D) is:
-///
-/// `h = 0.9 * min(σ, IQR/1.34) * n^(-1/5)`,
-///
-/// - `σ` = standard deviation of the data,
-/// - `IQR` = interquartile range = 75th percentile - 25th percentile,
-/// - `n` = number of data points.
-///
-/// # Arguments
-///
-/// * `data` - 1D array of data points.
-///
-/// # Returns
-///
-/// The estimated bandwidth.
-pub fn silverman_bandwidth(data: ArrayView1<f64>) -> f64 {
-  let n = data.len() as f64;
-  if n < 2.0 {
-    // If there's only one data point or empty, fallback to something minimal.
-    return 1e-6;
+/// Silverman's rule, `σ̂` alone when the interquartile range is zero; `Err` below two points, on a
+/// non-finite one or zero spread, `Err(Numerical { stage: "silverman bandwidth" })` on overflow.
+pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
+  let sample = as_slice_or_copy(data);
+  validate(&sample, 2)?;
+  reject_constant(&sample, "zero spread")?;
+  let nf = data.len() as f64;
+  let mean = mean_in_order(data);
+  let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
+  let mut sorted = sample.into_owned();
+  sorted.sort_by(f64::total_cmp);
+  let iqr = quantile_sorted(&sorted, 0.75) - quantile_sorted(&sorted, 0.25);
+  let scale = if iqr > 0.0 { std.min(iqr / 1.34) } else { std };
+  if scale == 0.0 {
+    return Err(StatsError::DegenerateData("zero spread"));
   }
-
-  // Compute the standard deviation.
-  let mean = data.mean().unwrap_or(0.0);
-  let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
-
-  // Compute the interquartile range.
-  let mut sorted = data.to_vec();
-  sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-  let q1 = percentile(&sorted, 25.0);
-  let q3 = percentile(&sorted, 75.0);
-  let iqr = q3 - q1;
-
-  let scale = std.min(iqr / 1.34);
-  let h = 0.9 * scale * (n.powf(-1.0 / 5.0));
-  // Avoid extremely small bandwidth.
-  if h < 1e-8 { 1e-8 } else { h }
-}
-
-/// Returns the p-th percentile of a sorted vector.
-///
-/// # Arguments
-///
-/// * `sorted_data` - A sorted vector of floating-point values.
-/// * `p`           - The percentile (0..100).
-///
-/// # Returns
-///
-/// The value corresponding to the p-th percentile.
-pub fn percentile(sorted_data: &[f64], p: f64) -> f64 {
-  if sorted_data.is_empty() {
-    return 0.0;
-  }
-  if p <= 0.0 {
-    return sorted_data[0];
-  }
-  if p >= 100.0 {
-    return sorted_data[sorted_data.len() - 1];
-  }
-
-  let rank = (p / 100.0) * (sorted_data.len() as f64 - 1.0);
-  let lower_index = rank.floor() as usize;
-  let upper_index = rank.ceil() as usize;
-
-  if lower_index == upper_index {
-    sorted_data[lower_index]
+  let h = 0.9 * scale * nf.powf(-1.0 / 5.0);
+  if h.is_finite() && h > 0.0 {
+    Ok(h)
   } else {
-    // Linear interpolation between lower and upper index
-    let weight = rank - lower_index as f64;
-    let lower_val = sorted_data[lower_index];
-    let upper_val = sorted_data[upper_index];
-    lower_val + weight * (upper_val - lower_val)
+    Err(StatsError::Numerical {
+      stage: "silverman bandwidth",
+    })
+  }
+}
+
+/// Linearly interpolated sample quantile at `p ∈ [0, 1]`; NaN outside it, on an empty sample or on
+/// a NaN.
+pub fn quantile(data: ArrayView1<f64>, p: f64) -> f64 {
+  if data.is_empty() || !(0.0..=1.0).contains(&p) || data.iter().any(|v| v.is_nan()) {
+    return f64::NAN;
+  }
+  let mut sorted = data.to_vec();
+  sorted.sort_by(f64::total_cmp);
+  quantile_sorted(&sorted, p)
+}
+
+/// An exact rank or equal neighbours return the element, so an infinity is not interpolated into
+/// NaN.
+fn quantile_sorted(sorted: &[f64], p: f64) -> f64 {
+  let rank = p * (sorted.len() as f64 - 1.0);
+  let lower = rank.floor() as usize;
+  let upper = rank.ceil() as usize;
+  if lower == upper || sorted[lower] == sorted[upper] {
+    return sorted[lower];
+  }
+  let weight = rank - lower as f64;
+  sorted[lower] + weight * (sorted[upper] - sorted[lower])
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Array1;
+  use ndarray::array;
+
+  use super::*;
+  use crate::StatsError;
+
+  #[test]
+  fn quantile_interpolates_and_answers_nan_outside_the_unit_interval() {
+    let data = array![3.0, 1.0, 2.0, 4.0];
+    assert_eq!(quantile(data.view(), 0.0), 1.0);
+    assert_eq!(quantile(data.view(), 1.0), 4.0);
+    assert_eq!(quantile(data.view(), 0.5), 2.5);
+    assert!(quantile(data.view(), 1.5).is_nan());
+    assert!(quantile(Array1::<f64>::zeros(0).view(), 0.5).is_nan());
+    assert!(quantile(array![1.0, f64::NAN].view(), 0.5).is_nan());
+    assert_eq!(
+      quantile(array![1.0, f64::INFINITY].view(), 1.0),
+      f64::INFINITY
+    );
+    let tail = array![1.0, f64::INFINITY, f64::INFINITY];
+    assert_eq!(quantile(tail.view(), 0.75), f64::INFINITY);
+  }
+
+  #[test]
+  fn silverman_needs_two_spread_points() {
+    assert_eq!(
+      silverman_bandwidth(array![1.0].view()).unwrap_err(),
+      StatsError::InsufficientData { needed: 2, got: 1 }
+    );
+    assert_eq!(
+      silverman_bandwidth(array![2.0, 2.0, 2.0].view()).unwrap_err(),
+      StatsError::DegenerateData("zero spread")
+    );
+    let h = silverman_bandwidth(array![1.0, 2.0, 3.0, 4.0, 10.0].view()).unwrap();
+    assert!(h > 0.0 && h.is_finite());
+  }
+
+  #[test]
+  fn silverman_reads_the_standard_deviation_alone_when_the_interquartile_range_is_zero() {
+    let data = array![1.0_f64, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 10.0];
+    let mean = data.sum() / 8.0;
+    let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / 7.0).sqrt();
+    assert_eq!(
+      silverman_bandwidth(data.view()).unwrap(),
+      0.9 * std * 8.0_f64.powf(-0.2)
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "bandwidth must satisfy `bandwidth > 0.0`")]
+  fn a_non_positive_bandwidth_is_a_precondition() {
+    let _ = GaussianKde::new(array![1.0, 2.0].view(), 0.0);
+  }
+
+  #[test]
+  fn an_empty_or_non_finite_sample_is_an_error() {
+    assert_eq!(
+      GaussianKde::new(Array1::<f64>::zeros(0).view(), 0.5).unwrap_err(),
+      StatsError::InsufficientData { needed: 1, got: 0 }
+    );
+    assert!(matches!(
+      GaussianKde::new(array![1.0, f64::NAN].view(), 0.5),
+      Err(StatsError::InvalidObservation { index: 1, .. })
+    ));
+    assert!(matches!(
+      GaussianKde::with_silverman_bandwidth(array![1.0, 2.0, f64::INFINITY].view()),
+      Err(StatsError::InvalidObservation { index: 2, .. })
+    ));
+  }
+
+  #[test]
+  fn the_density_integrates_to_one_on_a_wide_grid() {
+    let kde = GaussianKde::new(array![1.0, 2.0, 3.0].view(), 0.5).unwrap();
+    let xs = Array1::linspace(-10.0, 14.0, 24_001);
+    let ys = kde.evaluate_array(xs.view());
+    let mass = ys.sum() * (24.0 / 24_000.0);
+    assert!((mass - 1.0).abs() < 1e-6, "{mass}");
+    assert_eq!(kde.bandwidth(), 0.5);
   }
 }

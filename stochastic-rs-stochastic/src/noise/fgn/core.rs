@@ -1,7 +1,8 @@
-//! # Core
+//! The `Fgn` struct, its cached circulant spectrum and FFT plan, and the setters that rebuild them.
 //!
 //! $$
-//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
+//! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)
+//! =\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
 use std::sync::Arc;
@@ -10,7 +11,6 @@ use ndarray::prelude::*;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -37,15 +37,12 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Internal FFT length (power-of-two padded).
   pub(super) padded_n: usize,
   t: Option<T>,
-  /// Padding introduced by rounding the requested length up to the next
-  /// power of two (`n.next_power_of_two() - n`); the first `offset`
-  /// entries of the padded circulant sample are discarded.
+  /// Padding from rounding the length up to a power of two (`n.next_power_of_two() - n`); the
+  /// first `offset` entries of the padded circulant sample are discarded.
   pub(super) offset: usize,
   out_len: usize,
   pub(super) scale: T,
-  /// Precomputed square roots of the circulant-embedding eigenvalues
-  /// (Davies–Harte), shared via `Arc` across samplers so repeated calls
-  /// reuse the same FFT-derived spectrum.
+  /// Square roots of the circulant-embedding eigenvalues (Davies–Harte), shared across samplers.
   sqrt_eigenvalues: Arc<Array1<T>>,
   /// Precomputed FFT plan for the padded circulant length, shared via
   /// `Arc` across samplers.
@@ -55,20 +52,25 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub(crate) backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Fgn::default().with_hurst(0.3)`.
-///
-/// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
-/// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
-/// function of `hurst` and the *requested* length (`out_len`, not
-/// `padded_n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
-/// FFT setup (and risking it drifting out of sync), the three setters
-/// that feed the cache call `Self::new(..)` again wholesale, reusing
-/// `out_len` (not `padded_n`, which is already power-of-two padded) as the
-/// constructor's own `n` argument. `with_seed` is the one exception:
-/// neither cached array depends on the seed, so it stays a plain field
-/// write.
+impl<T: FloatExt, S: SeedExt + std::fmt::Debug, B: std::fmt::Debug> std::fmt::Debug
+  for Fgn<T, S, B>
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Fgn")
+      .field("hurst", &self.hurst)
+      .field("n", &self.out_len)
+      .field("t", &self.t)
+      .field("seed", &self.seed)
+      .field("backend", &self.backend)
+      .finish_non_exhaustive()
+  }
+}
+
+/// Rebuilds the embedding, so it is defined on the `Cpu` type; move to a device with `on`
+/// afterwards.
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
+  /// Panics unless `n >= 1`, a given `t` is positive and finite, `0 <= hurst <= 1`, and `hurst` is
+  /// finite.
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
@@ -89,18 +91,8 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     let out_len = n;
     let n = n.next_power_of_two();
     let circ_len = 2 * n;
-    // The embedding is built in double precision whatever `T` is, and only
-    // the square roots that come out of it are narrowed.
-    //
-    // The autocovariance is a second difference of `k^{2H}`, and second
-    // differences cancel: at `H = 0.7` and `k = 4000` the three terms are
-    // each about 2.6e5 and their combination about 1e-1, six digits gone. In
-    // `f32` that leaves nothing — the value is 12 % wrong by `k = 1000` and
-    // *exactly zero* past `k ≈ 4000`, so the kernel flattens, every
-    // eigenvalue but the first collapses, and the sampler returns white
-    // noise: lag-one autocorrelation −0.006 against a theoretical 0.3195 at
-    // `n = 16384`. It is a setup cost paid once per parameter set, so there
-    // is nothing to save by narrowing it early.
+    // The embedding is built in `f64` whatever `T` is: the autocovariance is a second difference
+    // of `k^{2H}`, which cancels to exactly zero in `f32` past `k ≈ 4000` and leaves white noise.
     let f2h = 2.0 * hurst.to_f64().unwrap_or(0.5);
 
     let mut buf = Array1::<Complex<f64>>::zeros(circ_len);
@@ -147,24 +139,25 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     }
   }
 
-  /// Replace `hurst`; rebuilds the FFT/eigenvalue cache.
+  /// Replace `hurst` and rebuild the FFT/eigenvalue cache; panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(self, hurst: T) -> Self {
     Self::new(hurst, self.out_len, self.t, self.seed)
   }
 
-  /// Replace the (requested, pre-padding) number of simulation steps;
-  /// rebuilds the FFT/eigenvalue cache.
-  pub fn with_steps(self, n: usize) -> Self {
+  /// Replace `n`, the increments before padding, and rebuild the cache; panics unless `n >= 1`.
+  pub fn with_increments(self, n: usize) -> Self {
     Self::new(self.hurst, n, self.t, self.seed)
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the FFT/eigenvalue cache
-  /// (`scale` depends on `t`).
+  /// Replace the horizon `t` and rebuild the cache, whose `scale` depends on it; panics unless
+  /// `t`, when given, is positive and finite.
   pub fn with_horizon(self, t: Option<T>) -> Self {
     Self::new(self.hurst, self.out_len, t, self.seed)
   }
+}
 
-  /// Replace the seed strategy's value, all else unchanged. Neither cached
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// Replace the seed strategy's value. Neither cached
   /// array depends on the seed, so this is a plain field write.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
@@ -172,9 +165,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   }
 }
 
-/// H=0.7 — this crate's own long-memory-example convention (used
-/// throughout the fractional-process `Default` impls). t=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// H=0.7, the crate's long-memory example; t=1, 252 increments, a trading year of daily returns.
 impl<T: FloatExt> Default for Fgn<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)
@@ -187,7 +178,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.hurst
   }
 
-  /// Number of increments per path, as passed to `new()` (the FFT pads it internally).
+  /// Increments the sample returns; the embedding pads to the next power of two internally.
   pub fn n(&self) -> usize {
     self.out_len
   }
@@ -197,7 +188,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
@@ -224,19 +215,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
   }
 
-  /// Sample fGn using a specific deterministic seed.
-  pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_cpu_impl(&Deterministic::new(seed))
-  }
-
-  /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
-  /// `ProcessExt::sample()` does for the `Cpu` backend. `FgnBackend::generate_batch`
-  /// used to call this once per path; it now builds one `SimdNormal` per
-  /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
-  /// this has no production caller left — kept `#[cfg(test)]` for the
-  /// covariance/marginal tests in this module and the CPU-vs-CUDA comparison
-  /// tests in `cuda/tests.rs`, rather than duplicating this one-liner
-  /// in both places.
+  /// `sample_cpu_impl(&self.seed)`, what `ProcessExt::sample()` does on `Cpu`; for this module's
+  /// covariance tests and the CPU-against-CUDA tests in `cuda/tests.rs`.
   #[cfg(test)]
   pub(crate) fn sample_cpu(&self) -> Array1<T> {
     self.sample_cpu_impl(&self.seed)
@@ -273,11 +253,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     fgn
   }
 
-  /// Fill `out` (length `out_len`) with one fGn path using a caller-owned
-  /// Gaussian source. Lets a [`FgnSampler`](super::FgnSampler) amortise the
-  /// `SimdNormal` construction across a Monte-Carlo loop; the FFT plan and
-  /// eigenvalues are already `Arc`-shared on the process and the complex
-  /// scratch is thread-local, so this allocates nothing.
+  /// Fill `out` (length `out_len`) with one fGn path from a caller-owned Gaussian source; the
+  /// plan and eigenvalues are shared and the complex scratch is thread-local, so nothing allocates.
   #[inline]
   pub(crate) fn fill_cpu(
     &self,
@@ -308,19 +285,12 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     });
   }
 
-  /// Sample a pair of independent fGn paths using a specific deterministic seed.
-  pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_impl(&Deterministic::new(seed))
-  }
-
   pub(crate) fn sample_pair_cpu(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu_impl(&self.seed)
   }
 
-  /// Two independent fGn paths per FFT call. Re and Im of the circulant
-  /// output are independent zero-mean Gaussians with the same target
-  /// covariance — Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2
-  /// Step 4, MATLAB listing "two independent fields").
+  /// Two independent fGn paths per FFT call, the real and imaginary parts of the circulant output:
+  /// Dietrich & Newsam (1997), Kroese & Botev (2013 §2.2 Step 4, "two independent fields").
   #[inline]
   pub(crate) fn sample_pair_cpu_impl<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
     let len = 2 * self.padded_n;
@@ -357,9 +327,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, padded_n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
-  /// One fGN increment vector on backend `B`, the device's error instead of
-  /// its panic. The host-side `seed` drives the CPU path and the GPU launch
-  /// seed alike.
+  /// One fGN increment vector on backend `B`, the device's error instead of its panic; `seed`
+  /// drives the CPU path and the GPU launch seed alike.
   pub(crate) fn try_noise<S2: SeedExt>(&self, seed: &S2) -> Result<Array1<T>, DeviceError> {
     self.backend.try_generate(self, seed)
   }

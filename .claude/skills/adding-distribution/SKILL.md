@@ -146,8 +146,8 @@ algorithm.
 
 ```rust
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdFoo<T> {
-  /// Every method returns `Option<f64>` (the trait is `f64`-only); `Some` where the law has a
-  /// closed form, and no override — the default `None` — where it has none. Never `Some(0.0)` for a gap.
+  /// `Option<f64>` throughout, the trait being `f64`-only: `Some` for a closed form, the default
+  /// `None` without one, never `Some(0.0)` for a gap.
   fn pdf(&self, x: f64) -> Option<f64> { /* derive from scratch, special functions from `crate::special` */ }
 
   fn cdf(&self, x: f64) -> Option<f64> { /* erf / regularised incomplete gamma or beta from `crate::special` */ }
@@ -170,15 +170,18 @@ A method with no closed form is simply not overridden. `quantile(p)` answers `So
 The `//!` header MUST include:
 
 ```rust
-//! # SimdFoo distribution
+//! Foo law, sampled by <method>.
 //!
-//! \[LaTeX block — pdf and/or cf\]
+//! $$
+//! <LaTeX of the pdf and/or cf>
+//! $$
 //!
-//! Reference: <Author, Year>, "<Title>", <Journal>, eq. <number>.
+//! Reference: <Author> (<Year>), <Journal> <vol>(<issue>), <pages>, eq. <number>, DOI <doi>
 ```
 
-Every distribution file opens with a `//!` header carrying the LaTeX
-for the pdf and/or characteristic function — see
+Every distribution file opens with a one-line summary without TeX (rustdoc
+shows it as the module-list row), then the `$$` display of the pdf and/or
+characteristic function and one `Reference:` line per source — see
 `normal_inverse_gauss.rs`, which states `Nig(α, β, δ, μ)` and its
 `ψ(u)` in the header before any code.
 
@@ -270,8 +273,8 @@ root — there are no per-crate `CLAUDE.md` files, so do not look for
 
 ## 8a. Jump-size laws
 
-A process's jump-size slot (`D: Distribution<T> + Send + Sync`: `CompoundPoisson`, `Bates1996`,
-`LevyDiffusion`, `JumpFOUCustom`, …) takes a scalar continuous `Simd*` law itself: it holds parameters only, so it
+A process's jump-size slot (`D: Distribution<T> + Send + Sync`: `CompoundPoisson`, `Bates`,
+`LevyDiffusion`, `JumpFouCustom`, …) takes a scalar continuous `Simd*` law itself: it holds parameters only, so it
 is `Send + Sync`, and `draw_with` gives it the honest `Distribution::sample(&mut rng)`. `SimdNormal` is the
 reference impl; the device engine recognises `SimdNormal` and `SimdExp`.
 

@@ -11,7 +11,7 @@ macro_rules! device_families {
       $(#[$meta:meta])*
       $code:literal => $name:ident { $($param:ident),* $(,)? }
         state ($($state:ident),+ $(,)?)
-        noise ($($noise:ident),+ $(,)?)
+        noise ($($noise:ident),* $(,)?)
         step { $($step:tt)* }
         report { $($report:tt)* }
         $(lift $lift:tt)?
@@ -26,7 +26,7 @@ macro_rules! device_families {
 
       impl Family for $name {
         const COMPONENTS: u32 = device_families!(@count $($report)*);
-        const NOISES: u32 = [$(stringify!($noise)),*].len() as u32;
+        const NOISES: u32 = <[&str]>::len(&[$(stringify!($noise)),*]) as u32;
         const HAS_LIFT: bool = device_families!(@present $($lift)?);
         const HAS_HISTORY: bool = device_families!(@present $($history)?);
         const HAS_SERIES: bool = device_families!(@present $($series)?);
@@ -34,7 +34,9 @@ macro_rules! device_families {
         const HAS_PROGRAM: bool = device_families!(@reads "pv", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?)
           || device_families!(@reads "pv2", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?);
         const HAS_UNIFORMS: bool = device_families!(@reads "u", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?)
-          || device_families!(@reads "u2", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?);
+          || device_families!(@reads "u2", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?)
+          || device_families!(@reads "u3", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?)
+          || device_families!(@reads "u4", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?);
         const READS_COUNT: bool = device_families!(@reads "nj", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?);
         const READS_JUMP: bool = device_families!(@reads "js", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?);
         const READS_GAMMA: bool = device_families!(@reads "gm", $($step)* $($report)* $($lift)? $($history)? $($series)? $($table)?)
@@ -81,7 +83,7 @@ macro_rules! device_families {
 
   (@method $method:ident, (
     $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident,
-    $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident,
+    $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident,
     $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident,
     state $state_slots:tt, noise $noise_slots:tt, select($component:ident, $produced:ident)
   ), [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*], $($body:tt)*) => {
@@ -89,7 +91,7 @@ macro_rules! device_families {
     unsafe fn $method($params: ReadBuffer<f32>, state: [f32; 4], input: Inputs) -> [f32; 4] {
       use super::vocabulary::*;
       device_families!(@inputs input, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7,
-        $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+        $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       device_families!(@params $params, [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19], $($param)*);
       device_families!(@slots state, [0 1 2 3], $($state)*);
       let noise = input.noise;
@@ -102,7 +104,7 @@ macro_rules! device_families {
 
   (@inputs $input:ident,
     $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident,
-    $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident,
+    $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident,
     $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident
   ) => {
     let $dt = $input.dt;
@@ -120,6 +122,8 @@ macro_rules! device_families {
     let $gm2 = $input.gamma[1];
     let $u = $input.uniform[0];
     let $u2 = $input.uniform[1];
+    let $u3 = $input.uniform[2];
+    let $u4 = $input.uniform[3];
     let $lv = $input.lift;
     let $cv = $input.convolution;
     let $sj = $input.series;

@@ -1,7 +1,8 @@
-//! # BilateralGamma
+//! Bilateral gamma: the difference of two gamma processes, alone or beside a Brownian motion.
 //!
 //! $$
-//! X_t=\Gamma^+_t-\Gamma^-_t,\quad \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
+//! X_t=\Gamma^+_t-\Gamma^-_t,\quad
+//! \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
 //! $$
 //!
 
@@ -20,16 +21,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Bilateral Gamma process.
-///
-/// Decomposes log-returns into independent positive and negative gamma jump
-/// components, each with its own shape and rate parameter.
-///
-/// Characteristic exponent:
+/// The difference of two independent gamma processes, with characteristic exponent
 /// $$
-/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
+/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}
+/// +\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape parameter for positive jumps.
   pub alpha_p: T,
@@ -41,9 +38,9 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda_m: T,
   /// Number of points sampled along the bilateral-gamma path.
   pub n: usize,
-  /// Initial value X₀ of the bilateral-gamma path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -53,6 +50,8 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     alpha_p: T,
     lambda_p: T,
@@ -117,8 +116,6 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
@@ -189,9 +186,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaSampler<T> {
-    // Positive and negative gamma sources are derived from `self.seed` in the
-    // same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The positive, then the negative gamma source are derived from `self.seed`, an order the
+    // pinned streams depend on; reuse advances both for independent paths.
     let dt = self.dt();
     BilateralGammaSampler {
       n: self.n,
@@ -201,9 +197,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -236,6 +231,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGamma`] sampling state: owns the positive- and
 /// negative-side gamma sources so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -288,7 +284,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
 /// $$
 /// X_t=\sigma W_t+\Gamma^+_t-\Gamma^-_t
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion coefficient of the Brownian component.
   pub sigma: T,
@@ -302,9 +298,9 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda_m: T,
   /// Number of points sampled along the bilateral-gamma-motion path.
   pub n: usize,
-  /// Initial value X₀ of the bilateral-gamma-motion path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -314,6 +310,8 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     sigma: T,
     alpha_p: T,
@@ -385,8 +383,6 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
@@ -456,9 +452,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaMotionSampler<T> {
-    // Gamma sources then the Gaussian source are derived from `self.seed` in
-    // the same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; all owned sources advance on reuse for independent paths.
+    // The gamma sources, then the Gaussian one are derived from `self.seed`, an order the pinned
+    // streams depend on; reuse advances all of them for independent paths.
     let dt = self.dt();
     BilateralGammaMotionSampler {
       n: self.n,
@@ -471,9 +466,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -506,6 +500,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGammaMotion`] sampling state: owns both gamma sources
 /// and the Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaMotionSampler<T: FloatExt> {
   n: usize,
   sigma: T,
@@ -559,45 +554,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn bg_seeded_correct_length() {
-    let p = BilateralGamma::new(
-      1.0_f64,
-      2.0,
-      1.5,
-      2.5,
-      100,
-      None,
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 100);
-  }
-
-  #[test]
-  fn bgm_seeded_correct_length() {
-    let p = BilateralGammaMotion::new(
-      0.2_f64,
-      1.0,
-      2.0,
-      1.5,
-      2.5,
-      100,
-      None,
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 100);
-  }
-}
+mod tests;
 
 py_process_1d!(PyBilateralGamma, BilateralGamma,
   sig: (alpha_p, lambda_p, alpha_m, lambda_m, n, x0=None, t=None, seed=None, dtype=None),

@@ -1,4 +1,5 @@
-//! The stateless laws and their seeded streams cross thread boundaries; the asserts are compile-time.
+//! The stateless laws and their seeded streams cross thread boundaries; the asserts are
+//! compile-time.
 
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::SimdRngExt;

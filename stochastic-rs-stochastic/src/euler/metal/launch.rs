@@ -6,7 +6,6 @@ use crate::device::metal::bindings::EulerArgs;
 use crate::euler::EulerSpec;
 
 /// Lends the completed plane-major output to `finish` with its component count.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn launch_paths<O>(
   ordinal: usize,
   spec: EulerSpec<f32>,
@@ -36,7 +35,7 @@ pub(super) fn launch_paths<O>(
     return Ok(finish(&[], components));
   }
   let streams = match increments {
-    Increments::Hashed => 0,
+    Increments::Drawn => 0,
     Increments::Device {
       buffer,
       streams,
@@ -64,11 +63,13 @@ pub(super) fn launch_paths<O>(
   let series_n = crate::euler::series_terms(family, n, series);
   let series_live = crate::euler::series_live(family);
   let (table_n, table_u0) = crate::euler::table_terms(family, table);
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let args = EulerArgs {
     family,
     components: components as u32,
     noises: noises as u32,
-    seed: (seed ^ (seed >> 32)) as u32,
+    seed_lo,
+    seed_hi,
     steps,
     paths,
     first_path,
@@ -148,7 +149,6 @@ fn validate_curve_extent(steps: u32, curves: usize) -> Result<()> {
 }
 
 /// Returns an owned `components × m × n` output array.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn device_paths(
   ordinal: usize,
   spec: EulerSpec<f32>,

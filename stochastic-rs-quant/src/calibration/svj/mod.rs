@@ -3,7 +3,7 @@
 //! $$
 //! \begin{aligned}
 //! dS_t &= (r-q-\lambda\bar k)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t \\
-//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma_v\sqrt{v_t}\,dW_t^v, \quad
+//! dv_t &= \kappa(\theta-v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v, \quad
 //! d\langle W^S,W^v\rangle_t = \rho\,dt
 //! \end{aligned}
 //! $$
@@ -26,11 +26,21 @@
 mod calibrator;
 mod loss;
 mod params;
-mod result;
 
 pub use calibrator::SvjCalibrator;
-pub use params::SvjParams;
-pub use result::SvjCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::pricing::fourier::BatesFourier;
+use crate::pricing::fourier::SvjParams;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<SvjParams> {
+  type Model = BatesFourier;
+
+  fn to_model(&self) -> BatesFourier {
+    BatesFourier::new(self.params)
+  }
+}
 
 #[cfg(test)]
 mod quadrature_tests;

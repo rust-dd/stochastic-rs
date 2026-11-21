@@ -1,4 +1,4 @@
-//! # NonLinearSDE
+//! Aït-Sahalia's nonlinear drift with a diffusion bracket that is not square-rooted.
 //!
 //! $$
 //! dX_t=\left(\frac{a_{-1}}{X_t}+a_0+a_1 X_t+a_2 X_t^2\right)dt+(b_0+b_1 X_t+b_2 X_t^{b_3})\,dW_t
@@ -19,8 +19,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
-pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone, Copy)]
+pub struct NonlinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse-state drift coefficient a₋₁ in `a₋₁/X_t + a_0 + a_1 X_t + a_2 X_t²`.
   pub am1: T,
   /// Constant drift coefficient a₀.
@@ -29,9 +29,8 @@ pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub a1: T,
   /// Quadratic drift coefficient a₂.
   pub a2: T,
-  /// Constant diffusion coefficient b₀ in `b_0 + b_1 X_t + b_2 X_t^{b_3}`
-  /// (unlike [`AitSahalia`](super::ait_sahalia::AitSahalia), this bracket is
-  /// **not** square-rooted — it is the diffusion coefficient directly).
+  /// Constant diffusion coefficient b₀ in `b_0 + b_1 X_t + b_2 X_t^{b_3}`; the bracket is the
+  /// diffusion itself, not square-rooted as [`AitSahalia`](super::ait_sahalia::AitSahalia)'s is.
   pub b0: T,
   /// Linear diffusion coefficient b₁.
   pub b1: T,
@@ -41,9 +40,9 @@ pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub b3: T,
   /// Number of points sampled along the nonlinear-SDE path.
   pub n: usize,
-  /// Initial value X₀ of the nonlinear-SDE path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -52,7 +51,8 @@ pub struct NonLinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> NonLinearSDE<T, S> {
+impl<T: FloatExt, S: SeedExt> NonlinearSde<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     am1: T,
     a0: T,
@@ -126,11 +126,9 @@ impl<T: FloatExt, S: SeedExt> NonLinearSDE<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> NonLinearSDE<T, S, B> {}
-
 /// The Euler engine's view of the non-linear SDE.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for NonLinearSDE<T, S, B>
+  for NonlinearSde<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::NonLinear {
@@ -168,15 +166,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] NonLinearSDE<T, S> { am1, a0, a1, a2, b0, b1, b2, b3, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] NonlinearSde<T, S> { am1, a0, a1, a2, b0, b1, b2, b3, n, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for NonLinearSDE<T, S, B>
+  for NonlinearSde<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for NonLinearSDE<T, S, B>
+  for NonlinearSde<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -203,9 +201,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -235,9 +232,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`NonLinearSDE`] sampling state: precomputed Euler step and the
+/// Reusable [`NonlinearSde`] sampling state: precomputed Euler step and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct NonLinearSdeSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -288,7 +286,7 @@ impl<T: FloatExt> PathSampler<T> for NonLinearSdeSampler<T> {
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("NonLinearSDE output must be contiguous");
+      .expect("NonlinearSde output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -298,7 +296,7 @@ impl<T: FloatExt> PathSampler<T> for NonLinearSdeSampler<T> {
   }
 }
 
-py_process_1d!(PyNonLinearSDE, NonLinearSDE,
+py_process_1d!(PyNonLinearSDE, NonlinearSde,
   sig: (am1, a0, a1, a2, b0, b1, b2, b3, n, x0=None, t=None, seed=None, dtype=None),
   params: (am1: f64, a0: f64, a1: f64, a2: f64, b0: f64, b1: f64, b2: f64, b3: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

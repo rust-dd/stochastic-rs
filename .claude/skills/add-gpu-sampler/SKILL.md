@@ -22,8 +22,8 @@ A handle only exists when its feature is compiled, and it implements a
 capability only for the precisions its kernels compute in, so selecting
 an unavailable backend — or `f64` on a `f32`-only device — is a
 **compile error**, not a silent fallback. Read
-`stochastic-rs-stochastic/src/device.rs` in full before touching any of
-this: it is current, and it is the contract. `euler.rs` is the second half.
+`stochastic-rs-stochastic/src/device.rs` and its `device/` submodules in full
+before touching any of this: they are current, and they are the contract. `euler.rs` and its `euler/` submodules are the second half.
 
 ## 0. What a back-end owes the caller
 
@@ -81,7 +81,7 @@ process-wide device state** — two processes on two GPUs are two
 handles — so never reintroduce a global selector or a global budget.
 
 `Backend` (`Clone + Send + Sync`; sealed, so a handle is declared in
-`device.rs` and never downstream) requires exactly one method,
+`device/handles.rs` and never downstream) requires exactly one method,
 `fn probe(&self) -> Result<DeviceInfo, DeviceError>`, which opens the
 device and reports `{ backend, name, precisions, ordinal }` or says why
 it cannot be used. `DeviceError` is `#[non_exhaustive]` with
@@ -109,8 +109,8 @@ Two rules follow, and both have already been violated once:
 - **Draw that seed once per batch, then offset per chunk.** A
   `Deterministic` source advances on every draw, so drawing inside the
   chunk loop shifts the stream and breaks the chunk-identity guarantee.
-  The kernels hash the *global* path index (`first_path + path`), which
-  is what makes a chunked batch bit-identical to one launch — assert it.
+  Every draw's counter carries the *global* path index (`first_path + path`),
+  which is what makes a chunked batch bit-identical to one launch — assert it.
 
 So: **do not write a `cpu_and_gpu_match_bit_for_bit` test.** What you
 test instead:
@@ -174,11 +174,11 @@ macro line per handle instead.
 ## 5. Adding an fGN backend
 
 Device-side fGN backends are registered by `gpu_backend!` in
-`device.rs`; the trailing scalars are the precisions the device serves:
+`device/fgn_backend.rs`; the trailing scalars are the precisions the device
+serves (`Metal` implements the trait by hand, to read its shared storage):
 
 ```rust
-gpu_backend!("cuda", Cuda  => sample_cuda_impl, f32, f64);
-gpu_backend!("metal",       Metal => sample_metal_impl,       f32);
+gpu_backend!(feature = "cuda", Cuda => sample_cuda_impl, f32, f64);
 ```
 
 The macro generates one feature-gated `impl FgnBackend<$scalar>` per
@@ -192,12 +192,16 @@ pub(crate) fn sample_<name>_impl<S2: SeedExt>(
 
 The work:
 
-1. Declare the handle in `device.rs`, feature-gated, `#[derive(Clone,
-   Debug, PartialEq, Eq)]` and `#[non_exhaustive]`, with a hand-written
-   `Default` (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), plus `new` /
-   `from_env` / `with_batch_budget`, plus `impl sealed::Sealed for
-   <Handle> {}` under the handle's `cfg`, beside the other seal impls in
-   `device.rs`, and name the handle in the seal's `on_unimplemented` note.
+1. Declare the handle in `device/handles.rs` with one `device_handle!`
+   invocation under its feature gate — the doc, the name, the ordinal's
+   doc — which writes the `#[non_exhaustive]` struct, its `Default`
+   (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), `new` / `from_env` /
+   `with_batch_budget` and the seal impl; re-export it from `device.rs`
+   and name it in the seal's `on_unimplemented` note. `device_handle!` and
+   `kernel_euler_backend!` compile only under the `device_backend` alias,
+   so extend it in `stochastic-rs-stochastic/build.rs` to the new feature,
+   with an alias of its own if the device is target-specific, as
+   `metal_backend` is.
 2. Implement `Backend::probe` for it.
 3. Write the sampler in a new `noise/fgn/<name>.rs`, gated on the
    feature: draw the launch seed **once** from `seed_src`, chunk with
@@ -230,8 +234,7 @@ divergence is measured and both impls document it.
 
 A process joins the Euler engine by implementing `EulerCoefficients`
 (its `EulerSpec` family, initial value, grid, horizon, device seed,
-`host_sample`) and switching its `backend_switch!` line from `via host`
-to `via euler`. A new drift/diffusion family is one `EulerSpec` variant
+`host_sample`) and declaring its `backend_switch!` line `via euler`. A new drift/diffusion family is one `EulerSpec` variant
 plus one `family` branch in the kernels.
 
 CUDA renders the C body in `euler/kernel.rs` (the `Language` struct fills in
@@ -247,10 +250,11 @@ NVRTC at runtime (`cuda/kernels.rs`), fusing RNG + scaling into
 one launch to avoid a memory round-trip. Four things carry over to a new
 kernel:
 
-- **Counter-based RNG** (Philox-2×32-10 for fGN, a Murmur3-style
-  finalizer for the Euler body), not cuRAND and no per-thread state:
-  the output must be a pure function of `(global index, seed)` or the
-  chunk-identity guarantee dies.
+- **Counter-based RNG** (Philox-4x32-10, `euler/philox.rs` in Rust and
+  `euler/kernel/philox.rs` in C, under the whole seed: the Euler body on the counter
+  `(path, step, site, index)`, the fGN and sheet pipelines on `(cell, which, site)` with
+  the batch-global cell), not cuRAND and no per-thread state: the output must be a
+  pure function of `(global index, seed)` or the chunk-identity guarantee dies.
 - **Fuse.** One launch for RNG + Box–Muller + `sqrt_eigenvalue` scaling,
   writing interleaved complex, rather than three round-trips.
 - **Pad to a power of two.** cuFFT and MPS are tuned for it; `Fgn::new`
@@ -287,20 +291,22 @@ kernel:
 
 ## 9. Reference impls
 
-- `device.rs` — the handles, `Backend` / `HostBackend` / `FgnBackend`,
-  the `gpu_backend!` macro, `chunk_rows`, the LRU cache helper, `Cpu`
-  and `Accelerate` written out by hand.
-- `euler.rs` — `EulerCoefficients`, `EulerKernel`, `EulerBackend`, the
-  `host_euler_backend!` and `kernel_euler_backend!` macros.
+- `device.rs` and `device/` — `Backend` / `HostBackend` (`device.rs`),
+  the handles (`handles.rs`: `Cpu` and `Accelerate` by hand, the two
+  device handles through `device_handle!`), `FgnBackend` and the
+  `gpu_backend!` macro (`fgn_backend.rs`), `chunk_rows` and the LRU cache
+  helper (`chunks.rs`).
+- `euler/` — `coefficients.rs` (`EulerCoefficients`), `kernel_trait.rs` (`EulerKernel`),
+  `backend.rs` (`EulerBackend`, the `host_euler_backend!` and `kernel_euler_backend!` macros).
 - `noise/fgn/cuda/` — `mod.rs`, `kernels.rs` (NVRTC sources),
-  `sampler.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most complete
-  fGN backend, and the only one with the two-stream pipeline.
-- `noise/fgn/metal.rs`, `noise/fgn/accelerate.rs` — the other two.
+  `sampler/{single,double}.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most
+  complete fGN backend, and the only one with the two-stream pipeline.
+- `noise/fgn/metal/` (`context.rs`, `pool.rs`, `sampling.rs`), `noise/fgn/accelerate.rs` — the other two.
 - `euler/kernel.rs`, `euler/cuda.rs`, `euler/metal.rs` — the Euler engine's
   shared body and its devices.
 - `macros.rs`'s `backend_switch!` — generates `.on::<B>()` and
-  `.on::<B>()` for a backend-generic process, in four forms
-  (`via fgn` / `via phantom` / `via host` / `via euler`). Invoke it
+  `.with_backend(handle)` for a backend-generic process, in four forms
+  (`via euler` / `via fgn euler` / `via phantom` / `via sheet`). Invoke it
   rather than hand-writing them.
 - `tests/deterministic_parallelism_accelerate.rs` — what a
   reproducibility test for a host-side backend looks like.
@@ -313,6 +319,6 @@ kernel:
 - `feature-flag-management` — propagating `cuda` / `metal` / `accelerate`
   from the sub-crate to the umbrella.
 - `add-fractional-process` — the backend-generic consumers (`Fou`,
-  `Fgbm`, `FJacobi`, `Cfou`, `JumpFou`, … all carry `B`).
+  `Fgbm`, `Fjacobi`, `Cfou`, `JumpFou`, … all carry `B`).
 - `bench-writing` — the exact `required-features` sets for the gated
   GPU benches.

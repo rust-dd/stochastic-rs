@@ -1,13 +1,7 @@
-//! Cointegration tests — Engle-Granger 2-step here, the Johansen rank tests
-//! and VECM estimation in [`johansen`].
+//! Cointegration tests: Engle–Granger two-step here, Johansen's rank tests and VECM in `johansen`.
 //!
-//! Reference: Engle, Granger, "Co-Integration and Error Correction:
-//! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
-//! (1987). DOI: 10.2307/1913236
-//!
-//! Reference: Johansen, "Statistical Analysis of Cointegration Vectors",
-//! Journal of Economic Dynamics and Control, 12(2-3), 231-254 (1988).
-//! DOI: 10.1016/0165-1889(88)90041-3
+//! Reference: Engle & Granger (1987), Econometrica 55(2), 251-276, DOI: 10.2307/1913236
+//! Reference: Johansen (1988), JEDC 12(2-3), 231-254, DOI: 10.1016/0165-1889(88)90041-3
 
 pub mod johansen;
 
@@ -18,15 +12,16 @@ pub use johansen::johansen_test;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
-use crate::linalg::lstsq;
+use crate::stationarity::Trend;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
+use crate::stationarity::common::prepared_with_unit;
+use crate::stationarity::common::reject_exact_fit;
 
 /// Configuration for [`engle_granger_test`].
 #[derive(Debug, Clone, Copy)]
@@ -70,8 +65,8 @@ impl crate::traits::HypothesisTest for EngleGrangerTest {
   }
 }
 
-/// Engle–Granger 2-step cointegration test; `Err` below 30 points, on a non-finite one, unequal
-/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0.01 <= alpha < 1`.
+/// Engle–Granger 2-step test; `Err` below 30 points, on non-finite or constant data, unequal
+/// lengths, a singular or exact fit or the residual ADF's `Err`; panics unless `0.01 <= alpha < 1`.
 pub fn engle_granger_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
@@ -86,16 +81,16 @@ pub fn engle_granger_test(
       got: x.len(),
     });
   }
-  validate(&as_slice_or_copy(y), 30)?;
-  validate(&as_slice_or_copy(x), 30)?;
+  let (y, y_unit) = prepared_with_unit(y, 30)?;
+  let (x, x_unit) = prepared_with_unit(x, 30)?;
+  let (y, x) = (Array1::from(y), Array1::from(x));
   let n = y.len();
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
     design[[i, 0]] = 1.0;
     design[[i, 1]] = x[i];
   }
-  let y_owned = y.to_owned();
-  let sol = lstsq(&design, &y_owned);
+  let sol = lstsq(design.view(), y.view());
   let intercept = sol[0];
   let beta = sol[1];
   if !(intercept.is_finite() && beta.is_finite()) {
@@ -105,15 +100,22 @@ pub fn engle_granger_test(
   for i in 0..n {
     residuals[i] = y[i] - intercept - beta * x[i];
   }
-  let adf = adf_test(residuals.view(), AdfConfig::default())?;
+  reject_exact_fit(y.as_slice().unwrap(), residuals.as_slice().unwrap(), 1.0)?;
+  // The residuals' ADF has no terms, as statsmodels' `coint` and arch's `engle_granger` run it,
+  // and as MacKinnon's (2010) and Phillips & Ouliaris's (1990) critical values assume.
+  let cfg = AdfConfig {
+    trend: Trend::None,
+    ..AdfConfig::default()
+  };
+  let adf = adf_test(residuals.view(), cfg)?;
   Ok(EngleGrangerTest {
     statistic: adf.statistic,
     p_value: None,
     critical_values: Some(critical_values),
     rejects_null: adf.statistic < critical,
-    intercept,
-    beta,
-    residuals,
+    intercept: intercept / y_unit,
+    beta: beta * x_unit / y_unit,
+    residuals: residuals / y_unit,
   })
 }
 
@@ -159,6 +161,36 @@ mod tests {
     let y = random_walk(17, 500, 1.0);
     let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
     assert!(!res.rejects_null);
+  }
+
+  /// A constant `x` leaves the regression singular, and a constant `y` fits it exactly.
+  #[test]
+  fn either_series_constant_is_degenerate_data() {
+    let (walk, constant) = (random_walk(13, 200, 1.0), Array1::from_elem(200, 0.3));
+    for (y, x) in [(&walk, &constant), (&constant, &walk)] {
+      assert_eq!(
+        engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
+  }
+
+  /// Both tests check each series in full before the next.
+  #[test]
+  fn a_constant_y_beside_a_nan_in_x_is_degenerate_data_as_in_granger() {
+    let y = Array1::from_elem(200, 0.3);
+    let mut x = random_walk(13, 200, 1.0);
+    x[10] = f64::NAN;
+    let constant = StatsError::DegenerateData("constant series");
+    assert_eq!(
+      engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+      constant
+    );
+    assert_eq!(
+      crate::econometrics::granger::granger_causality_test(y.view(), x.view(), 1, 0.05)
+        .unwrap_err(),
+      constant
+    );
   }
 
   #[test]

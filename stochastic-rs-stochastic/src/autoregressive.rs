@@ -1,37 +1,39 @@
-//! # Autoregressive
+//! Discrete-time series models: the ARMA family and the GARCH family of conditional variances.
 //!
 //! $$
 //! X_t = f(X_{t-1}, X_{t-2}, \ldots, \varepsilon_t, \varepsilon_{t-1}, \ldots)
 //! $$
 //!
-pub mod agrach;
+pub mod agarch;
 pub mod ar;
 pub mod arch;
 pub mod arima;
-pub mod drr_garch;
 pub mod egarch;
 pub mod garch;
+pub mod gjr_garch;
 pub mod ma;
 pub mod sarima;
-pub mod tgarch;
+mod threshold;
 
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
-  use super::agrach::Agarch;
-  use super::ar::ARp;
+  use super::agarch::Agarch;
+  use super::ar::Ar;
+  use super::arch::Arch;
   use super::egarch::Egarch;
   use super::garch::Garch;
+  use super::gjr_garch::GjrGarch;
   use super::sarima::Sarima;
-  use super::tgarch::GjrGarch;
   use crate::traits::ProcessExt;
 
   #[test]
   fn ar_rejects_short_initial_state() {
     let result = std::panic::catch_unwind(|| {
-      let _ = ARp::<f64>::new(
+      let _ = Ar::<f64>::new(
         Array1::from_vec(vec![0.4, -0.1]),
         0.1,
         16,
@@ -107,18 +109,40 @@ mod tests {
   }
 
   #[test]
-  fn garch_rejects_non_stationary_parameters_at_sampling() {
-    let result = std::panic::catch_unwind(|| {
-      let model = Garch::<f64>::new(
-        0.05,
-        Array1::from_vec(vec![0.7]),
-        Array1::from_vec(vec![0.4]),
-        128,
-        Unseeded,
-      );
-      let _ = model.sample();
-    });
-    assert!(result.is_err());
+  fn an_egarch_past_the_exponential_range_samples_without_a_panic() {
+    let model = Egarch::<f64, _>::new(
+      800.0,
+      Array1::from_vec(vec![0.1]),
+      Array1::from_vec(vec![0.0]),
+      Array1::from_vec(vec![0.5]),
+      64,
+      Deterministic::new(7),
+    );
+    let path = model.sample();
+    assert_eq!(path.len(), 64);
+    assert!(path.iter().any(|x| !x.is_finite()));
+  }
+
+  #[test]
+  fn a_stationary_second_order_egarch_beyond_unit_absolute_sum_samples_finite() {
+    let model = Egarch::<f64, _>::new(
+      -0.1,
+      Array1::from_vec(vec![0.1]),
+      Array1::from_vec(vec![-0.05]),
+      Array1::from_vec(vec![1.2, -0.3]),
+      512,
+      Deterministic::new(7),
+    );
+    assert!(model.sample().iter().all(|x| x.is_finite()));
+  }
+
+  #[test]
+  #[should_panic(expected = "alpha[0] must satisfy `alpha[i] >= T::zero()`, got alpha[0] = -0.5")]
+  fn an_arch_loading_written_negative_after_new_is_refused_at_sampling() {
+    let mut model =
+      Arch::<f64, _>::new(0.1, Array1::from_vec(vec![0.2]), 64, Deterministic::new(7));
+    model.alpha[0] = -0.5;
+    let _ = model.sample();
   }
 
   #[test]

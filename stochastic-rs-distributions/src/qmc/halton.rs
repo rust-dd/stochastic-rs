@@ -1,11 +1,9 @@
-//! # Halton Sequence
+//! Halton sequence: van der Corput sequences in successive prime bases.
 //!
 //! $$
 //! x_n^{(j)} = \sum_{k=0}^{\infty} d_k(n)\,p_j^{-(k+1)},\quad
 //! n = \sum_{k=0}^{\infty} d_k(n)\,p_j^k
 //! $$
-//!
-//! Van der Corput sequences in successive prime bases.
 //!
 //! Reference: Halton (1964), DOI: 10.1007/BF01386213
 
@@ -100,7 +98,8 @@ mod tests {
     assert_eq!(pts[[0, 39]], 1.0 / 173.0);
   }
 
-  /// Golden bits of the last column: the prime table and the radical inverse are part of the replayable stream.
+  /// Golden bits of the last column: the prime table and the radical inverse are part of the
+  /// replayable stream.
   #[test]
   fn the_base_173_column_is_pinned_bit_for_bit() {
     let pts = HaltonSeq::new(40).sample::<f64>(3);

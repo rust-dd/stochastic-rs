@@ -3,6 +3,8 @@
 
 mod context;
 
+pub(crate) use context::release;
+
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
@@ -13,17 +15,17 @@ use crate::traits::FloatExt;
 type Result<T> = std::result::Result<T, DeviceError>;
 
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
-  /// One seed drives the batch; cell and correction counters continue across chunks.
+  /// One seed keys the batch; the cell and sheet counters are batch-global, so chunks continue it.
   pub(crate) fn sample_metal_sheets(
     &self,
     sheets: usize,
     device: &crate::device::Metal,
   ) -> Result<Vec<Array2<T>>> {
-    let seed = self.seed.next_seed() as u32;
+    let key = crate::euler::philox::key(self.seed.next_seed());
     if sheets == 0 {
       return Ok(Vec::new());
     }
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     let cells = self.metal_cells()?;
     let lam = self
       .lam
@@ -50,9 +52,8 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     let mut first = 0;
     while first < sheets {
       let len = rows.min(sheets - first);
-      let correction_cell = (sheets * cells + first) as u64;
       context::with(device.ordinal, |context| {
-        let flat = context.sample_chunk(&launch, len, first, correction_cell, seed)?;
+        let flat = context.sample_chunk(&launch, len, first, key)?;
         out.extend(self.sheets_from_flat(flat));
         Ok(())
       })?;
@@ -71,7 +72,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
           DeviceError::Launch("sheet embedding sides must be nonzero powers of two".into())
         })
     };
-    let shape = (side(self.m)?, side(self.n)?);
+    let shape = (side(self.rows)?, side(self.cols)?);
     if self.lam.dim() != shape {
       return Err(DeviceError::Launch(
         "sheet dimensions do not match the stored embedding".into(),
@@ -91,7 +92,7 @@ mod chunk_tests {
   use crate::device::Metal;
   use crate::traits::ProcessExt;
 
-  /// Cell and correction counters keep chunked batches identical to one launch.
+  /// Batch-global cell and sheet counters keep chunked batches identical to one launch.
   #[test]
   fn chunks_are_bit_identical_to_one_launch() {
     let fbs = |device: Metal| {

@@ -8,9 +8,8 @@
 //! total mass `Σ ω_i ω'_j P_{i,j}` is constant in time up to the mixed flux
 //! at the two corners on `v = v_max`, where the density is negligible.
 
-use anyhow::Result;
-
 use super::mesh::Mesh;
+use crate::QuantError;
 
 mod implicit;
 
@@ -62,7 +61,7 @@ fn line_stencil(
 impl Direction {
   /// The `x` part at one time level: `D = ½ L_i² v_j`, `μ = r − q − ½ L² v_j`
   /// with `L` at a midpoint the mean of its two nodes.
-  pub fn along_x(mesh: &Mesh, carry: f64, leverage: &[f64]) -> Self {
+  pub(crate) fn along_x(mesh: &Mesh, carry: f64, leverage: &[f64]) -> Self {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let mut out = Self::empty(m1 * m2);
     let mut diffusion = vec![0.0; m1];
@@ -92,7 +91,7 @@ impl Direction {
 
   /// The `v` part: `D = ½ ξ² v_j`, `μ = κ(θ − v)` at the midpoints; constant
   /// in time and the same on every `x` line.
-  pub fn along_v(mesh: &Mesh, kappa: f64, theta: f64, xi: f64) -> Self {
+  pub(crate) fn along_v(mesh: &Mesh, kappa: f64, theta: f64, xi: f64) -> Self {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let mut out = Self::empty(m1 * m2);
     let diffusion = mesh
@@ -133,7 +132,7 @@ impl Direction {
   }
 
   /// `out = A p` along `x` (stride one).
-  pub fn apply_x(&self, mesh: &Mesh, p: &[f64], out: &mut [f64]) {
+  pub(crate) fn apply_x(&self, mesh: &Mesh, p: &[f64], out: &mut [f64]) {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     for j in 0..m2 {
       for i in 0..m1 {
@@ -151,7 +150,7 @@ impl Direction {
   }
 
   /// `out = A p` along `v` (stride `m1`).
-  pub fn apply_v(&self, mesh: &Mesh, p: &[f64], out: &mut [f64]) {
+  pub(crate) fn apply_v(&self, mesh: &Mesh, p: &[f64], out: &mut [f64]) {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     for j in 0..m2 {
       for i in 0..m1 {
@@ -170,7 +169,14 @@ impl Direction {
 
   /// Solves `(I − c A) out = rhs` line by line along `x` by the Thomas
   /// algorithm.
-  pub fn solve_x(&self, mesh: &Mesh, c: f64, rhs: &[f64], out: &mut [f64], scratch: &mut Scratch) {
+  pub(crate) fn solve_x(
+    &self,
+    mesh: &Mesh,
+    c: f64,
+    rhs: &[f64],
+    out: &mut [f64],
+    scratch: &mut Scratch,
+  ) {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     scratch.resize(m1);
     for j in 0..m2 {
@@ -189,7 +195,14 @@ impl Direction {
   }
 
   /// Solves `(I − c A) out = rhs` line by line along `v`.
-  pub fn solve_v(&self, mesh: &Mesh, c: f64, rhs: &[f64], out: &mut [f64], scratch: &mut Scratch) {
+  pub(crate) fn solve_v(
+    &self,
+    mesh: &Mesh,
+    c: f64,
+    rhs: &[f64],
+    out: &mut [f64],
+    scratch: &mut Scratch,
+  ) {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     scratch.resize(m2);
     for i in 0..m1 {
@@ -260,7 +273,13 @@ pub(super) struct Mixed<'a> {
 }
 
 impl<'a> Mixed<'a> {
-  pub fn new(mesh: &'a Mesh, rho: f64, xi: f64, leverage: &'a [f64], attainable: bool) -> Self {
+  pub(crate) fn new(
+    mesh: &'a Mesh,
+    rho: f64,
+    xi: f64,
+    leverage: &'a [f64],
+    attainable: bool,
+  ) -> Self {
     Self {
       mesh,
       rho_xi: rho * xi,
@@ -302,7 +321,7 @@ impl<'a> Mixed<'a> {
   }
 
   /// `out = A0 p`.
-  pub fn apply(&mut self, p: &[f64], out: &mut [f64]) {
+  pub(crate) fn apply(&mut self, p: &[f64], out: &mut [f64]) {
     let mesh = self.mesh;
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let width = m1 + 1;
@@ -333,7 +352,7 @@ pub(super) struct Level<'a> {
 }
 
 impl<'a> Level<'a> {
-  pub fn new(
+  pub(crate) fn new(
     mesh: &'a Mesh,
     carry: f64,
     rho: f64,
@@ -365,7 +384,7 @@ pub(super) struct StepBuffers {
 }
 
 impl StepBuffers {
-  pub fn new(n: usize) -> Self {
+  pub(crate) fn new(n: usize) -> Self {
     Self {
       f0: vec![0.0; n],
       f1: vec![0.0; n],
@@ -398,7 +417,7 @@ pub(super) fn step(
   w: &[f64],
   out: &mut [f64],
   b: &mut StepBuffers,
-) -> Result<()> {
+) -> Result<(), QuantError> {
   if damping {
     return b.implicit.solve(mesh, along_v, next, dt, w, out);
   }

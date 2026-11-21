@@ -1,4 +1,5 @@
-//! # Complex
+//! Complex-valued draws: the real part from one law and the imaginary part from another,
+//! independently.
 //!
 //! $$
 //! \mathbb P(X\in A)=\int_A f_X(x)dx\ \text{or}\ \sum_{x\in A}p_X(x)

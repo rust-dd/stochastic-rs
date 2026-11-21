@@ -28,7 +28,7 @@ fn gbm<T: FloatExt>(seed: u64) -> Gbm<T, Deterministic> {
     T::from_f64_fast(0.05),
     T::from_f64_fast(0.2),
     253,
-    Some(T::from_f64_fast(100.0)),
+    T::from_f64_fast(100.0),
     Some(T::one()),
     Deterministic::new(seed),
   )
@@ -91,7 +91,7 @@ fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T> + Default>(label: &str)
   assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_chunks_are_bit_identical_to_one_launch() {
   use crate::device::Metal;
@@ -111,14 +111,9 @@ fn metal_native_chunks_are_bit_identical_to_one_launch() {
   assert_eq!(mapped, whole.iter().map(|p| p[252]).collect::<Vec<_>>());
 }
 
-/// The chunk-invariance the engine promises, for the fractional launches
-/// rather than the hashed ones. A Gaussian family hashes its noise from
-/// `(first_path + path, step, seed)` and so is chunk-invariant by
-/// construction; a fractional one draws from a pipeline whose counter the
-/// launch has to advance itself, and a two-stream launch has to advance it
-/// by `streams` rows a path. Both are places a batch can silently repeat or
-/// overlap its own noise, which no statistic of a single batch reveals.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+/// The kernel's own draws are chunk-invariant by their Philox counters; a fractional launch moves
+/// its fGN counter itself, `streams` rows a path, and a slip there shows in no one-batch statistic.
+#[cfg(metal_backend)]
 #[test]
 fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -146,9 +141,8 @@ fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
     "fBM: two paths of one batch are identical, so a chunk repeated itself"
   );
 
-  // The two-stream launches: each path takes two rows of the embedding, so
-  // a chunk that advances by one row a path hands its own second stream to
-  // the next chunk as that chunk's first.
+  // The two-stream launches: each path takes two rows of the embedding, so a chunk that advanced
+  // by one row a path would hand its second stream to the next chunk as that chunk's first.
   let cfbms = || Cfbms::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Metal>();
   let pairs = cfbms().sample_par(M);
   assert_eq!(
@@ -176,10 +170,8 @@ fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
   );
 }
 
-/// [`metal_fractional_chunks_are_bit_identical_to_one_launch`] on CUDA. The
-/// two backends advance the pipeline's counter by different means — Metal
-/// offsets the seed, CUDA offsets the row index — so the invariant is
-/// asserted separately on each rather than assumed to carry over.
+/// [`metal_fractional_chunks_are_bit_identical_to_one_launch`] on CUDA, asserted separately:
+/// Metal offsets the seed to advance the pipeline's counter, CUDA offsets the row index.
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
@@ -208,9 +200,8 @@ fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
     "fBM: two paths of one batch are identical, so a chunk repeated itself"
   );
 
-  // The two-stream launches: each path takes two rows of the embedding, so
-  // a chunk that advances by one row a path hands its own second stream to
-  // the next chunk as that chunk's first.
+  // The two-stream launches: each path takes two rows of the embedding, so a chunk that advanced
+  // by one row a path would hand its second stream to the next chunk as that chunk's first.
   let cfbms = || Cfbms::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Cuda>();
   let pairs = cfbms().sample_par(M);
   assert_eq!(
@@ -240,7 +231,7 @@ fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
 
 /// Metal indexes in `uint`, so no launch passes that range: a plane of values, or the `2n`-point
 /// fGN rows that bind a correlated pair before its planes do. Rows that already fit are kept.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_index_rows_stop_at_the_uint_range() {
   use crate::device::Metal;
@@ -262,7 +253,7 @@ fn metal_index_rows_stop_at_the_uint_range() {
   assert_eq!(rows, limit / (fgn.streams * 2 * fgn.n));
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_rejects_wrapped_path_offsets_before_opening_a_device() {
   use crate::device::{DeviceError, Metal};
@@ -301,7 +292,7 @@ fn cuda_index_rows_bound_paths_and_the_fgn_buffer() {
 }
 
 /// A refused Metal allocation is the out-of-memory error the batch loops halve on.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_refused_allocation_is_out_of_memory() {
   use crate::device::metal::{context, device_error};
@@ -316,7 +307,7 @@ fn metal_refused_allocation_is_out_of_memory() {
   assert_eq!(granted.len(), 16);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_matrix_matches_the_rows_and_chunks() {
   use crate::device::Metal;
@@ -335,7 +326,7 @@ fn metal_native_matrix_matches_the_rows_and_chunks() {
   assert_eq!(chunked, matrix);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_probe_and_try_sample_par() {
   let info = crate::device::Metal::default()
@@ -351,7 +342,7 @@ fn metal_native_probe_and_try_sample_par() {
   assert_eq!(paths.len(), 5);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_backend_matches_the_moments() {
   gbm_moments_hold::<f32, crate::device::Metal>("Metal");
@@ -390,9 +381,8 @@ fn cuda_backend_matches_the_moments() {
   gbm_moments_hold::<f32, crate::device::Cuda>("Cuda f32");
   cir_stays_nonnegative::<f64, crate::device::Cuda>("Cuda f64");
   cir_stays_nonnegative::<f32, crate::device::Cuda>("Cuda f32");
-  // The f32 and f64 kernels draw the same uniforms (one integer hash) and
-  // differ only by float rounding, so the same process on the same grid
-  // agrees across the two precisions to well under 1e-3 relative.
+  // The two precisions read the same Philox words, an f32 draw the f64 one truncated, so the same
+  // process on the same grid agrees across them to well under 1e-3 relative.
   let single = gbm::<f32>(5).on::<crate::device::Cuda>().sample_par(4);
   let double = gbm::<f64>(5).on::<crate::device::Cuda>().sample_par(4);
   assert_eq!(single.len(), double.len());
@@ -406,3 +396,197 @@ fn cuda_backend_matches_the_moments() {
     }
   }
 }
+
+/// `refuse`'s answer, which must come at once: under a one-path budget an unrefused batch would
+/// run four billion launches, so it runs on a thread of its own and times out.
+fn promptly<R: Send + 'static>(refuse: impl FnOnce() -> R + Send + 'static) -> R {
+  let (tx, rx) = std::sync::mpsc::channel();
+  std::thread::spawn(move || tx.send(refuse()));
+  rx.recv_timeout(std::time::Duration::from_secs(60))
+    .expect("the batch is refused before its first launch")
+}
+
+/// Every batch entry refuses more paths than the kernels' 32-bit path index reaches, before it
+/// allocates or launches, and draws the one seed any call draws; `sample_par` panics alike.
+fn unindexable_batches_are_refused<K>(device: K)
+where
+  K: EulerKernel<f32> + EulerBackend<f32> + 'static,
+{
+  use std::panic::{AssertUnwindSafe, catch_unwind};
+
+  use crate::device::DeviceError;
+  use crate::volatility::bergomi::Bergomi;
+
+  let m = u32::MAX as usize + 1;
+  let gbm = Gbm::<f32, _>::new(0.05, 0.2, 2, 100.0, Some(1.0), Deterministic::new(1))
+    .with_backend(device.clone());
+  let bergomi = Bergomi::<f32, _>::new(
+    0.5,
+    0.04,
+    100.0,
+    0.0,
+    -0.7,
+    64,
+    Some(1.0),
+    Deterministic::new(2),
+  )
+  .with_backend(device.clone());
+  let (once_gbm, once_bergomi) = (gbm.clone(), bergomi.clone());
+  let _ = (once_gbm.device_seed(), once_bergomi.device_seed());
+  let (g, b) = (once_gbm.seed.current(), once_bergomi.seed.current());
+  let refusals: [(Result<(), DeviceError>, u64); 5] = [
+    promptly({
+      let p = gbm.clone();
+      move || (p.try_sample_par(m).map(drop), p.seed.current())
+    }),
+    promptly({
+      let (p, d) = (gbm.clone(), device.clone());
+      move || {
+        let refusal = d.try_euler_paths_map(&p, m, |path| path[0]).map(drop);
+        (refusal, p.seed.current())
+      }
+    }),
+    promptly({
+      let (p, d) = (gbm.clone(), device.clone());
+      move || {
+        let refusal = d.try_euler_paths_map_view(&p, m, |path| path[0]).map(drop);
+        (refusal, p.seed.current())
+      }
+    }),
+    promptly({
+      let p = bergomi.clone();
+      move || (p.try_sample_par(m).map(drop), p.seed.current())
+    }),
+    promptly({
+      let (p, d) = (bergomi, device);
+      move || {
+        let refusal = d.try_system_paths_map(&p, m, |paths| paths[0][0]).map(drop);
+        (refusal, p.seed.current())
+      }
+    }),
+  ];
+  for ((refusal, seed), once) in refusals.into_iter().zip([g, g, g, b, b]) {
+    assert!(
+      matches!(&refusal, Err(DeviceError::Launch(why)) if why.contains("32-bit path index")),
+      "{refusal:?}"
+    );
+    assert_eq!(seed, once, "a refusal draws exactly one seed");
+  }
+  let panic = promptly(move || catch_unwind(AssertUnwindSafe(move || drop(gbm.sample_par(m)))))
+    .expect_err("sample_par panics");
+  let message = panic.downcast_ref::<String>().expect("a formatted panic");
+  assert!(message.contains("32-bit path index"), "{message}");
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_refuses_more_paths_than_the_kernels_index() {
+  unindexable_batches_are_refused(crate::device::Metal::default().with_batch_budget(8));
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_refuses_more_paths_than_the_kernels_index() {
+  unindexable_batches_are_refused(crate::device::Cuda::default().with_batch_budget(8));
+}
+
+/// An empty launch answers before the host encodes its family: a history grid past the kernels'
+/// cap never reaches the check that would refuse it.
+fn an_empty_launch_answers_first<K: EulerKernel<f32>>(device: K) {
+  use crate::autoregressive::arima::Arima;
+
+  let n = HISTORY_SLOTS + 1;
+  let arima = Arima::<f32, _>::new(
+    ndarray::array![0.5],
+    ndarray::array![0.2],
+    0,
+    1.0,
+    n,
+    Unseeded,
+  );
+  let paths = device
+    .euler_kernel(&arima, 0, 0, 1)
+    .expect("an empty launch");
+  assert_eq!(paths.dim(), (0, n));
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_empty_launch_answers_first() {
+  an_empty_launch_answers_first(crate::device::Metal::default());
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_empty_launch_answers_first() {
+  an_empty_launch_answers_first(crate::device::Cuda::default());
+}
+
+/// A system launch budgets every plane its family steps: Bergomi steps four for the two it returns.
+fn system_rows_count_every_plane<K: EulerKernel<f32>>(device: K) {
+  use crate::volatility::bergomi::Bergomi;
+
+  let p = Bergomi::<f32, _>::new(0.5, 0.04, 100.0, 0.0, -0.7, 64, Some(1.0), Unseeded);
+  let (planes, rows) = system_rows(&device, &p);
+  assert_eq!(planes, 4);
+  assert_eq!(
+    rows,
+    crate::device::chunk_rows(device.batch_budget(), 4 * 64, 4)
+  );
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_system_rows_count_every_plane() {
+  system_rows_count_every_plane(crate::device::Metal::default().with_batch_budget(1 << 20));
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_system_rows_count_every_plane() {
+  system_rows_count_every_plane(crate::device::Cuda::default().with_batch_budget(1 << 20));
+}
+
+/// A release drops every cache the calling thread holds on the device, so the device context goes
+/// with them; releasing another ordinal leaves them alone.
+#[cfg(metal_backend)]
+#[test]
+fn metal_release_frees_every_cache_holding_the_device() {
+  use crate::device::Metal;
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+
+  let _ = gbm::<f32>(3).on::<Metal>().sample_par(4);
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Metal>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Metal>()
+    .sample();
+  let device = std::rc::Rc::downgrade(&crate::device::metal::context(0).expect("a Metal device"));
+  Metal::new(1).release();
+  assert!(
+    device.upgrade().is_some(),
+    "another ordinal's release kept them"
+  );
+  Metal::default().release();
+  assert!(device.upgrade().is_none(), "a cache still holds the device");
+}
+
+/// A release frees the compiled kernels and buffers; the next launch rebuilds them and draws the
+/// same paths from the same seed.
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_release_rebuilds_on_the_next_launch() {
+  use crate::device::Cuda;
+
+  let before = gbm::<f32>(9).on::<Cuda>().sample_par(8);
+  Cuda::default().release();
+  assert_eq!(before, gbm::<f32>(9).on::<Cuda>().sample_par(8));
+}
+
+mod philox;
+
+mod stable;
+
+mod vocabulary;

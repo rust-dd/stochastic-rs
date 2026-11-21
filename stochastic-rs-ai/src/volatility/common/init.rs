@@ -11,7 +11,8 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
-/// candle-nn's `linear` laws from the crate's own streams: weights `N(0, 2/in)`, biases `U(±1/√in)`, in name order.
+/// candle-nn's `linear` laws from the crate's own streams: weights `N(0, 2/in)`, biases
+/// `U(±1/√in)`, in name order.
 pub(super) fn seed_weights(varmap: &VarMap, device: &Device, seed: u64) -> Result<()> {
   let mut layout = {
     let vars = varmap

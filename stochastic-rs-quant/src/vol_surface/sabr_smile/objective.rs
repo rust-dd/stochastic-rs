@@ -10,7 +10,10 @@ use basin::MoreThuente;
 use basin::Problem;
 use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::RealExt;
 
+use super::types::SmileStrikes;
+use crate::QuantError;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::bs_price_fx;
@@ -42,6 +45,17 @@ pub(super) fn bf_premium_mismatch(
   (mc + mp) - (bc + bp)
 }
 
+pub(super) const NU_BOUNDS: (f64, f64) = (0.01, 10.0);
+
+pub(super) const RHO_BOUNDS: (f64, f64) = (-0.99, 0.99);
+
+/// Garman–Kohlhagen vega of one option at `sigma`.
+fn fx_vega(s: f64, k: f64, f: f64, r_f: f64, tau: f64, sigma: f64) -> f64 {
+  let root = tau.sqrt();
+  let d1 = ((f / k).ln() + 0.5 * sigma * sigma * tau) / (sigma * root);
+  s * (-r_f * tau).exp() * (-0.5 * d1 * d1).exp() / std::f64::consts::TAU.sqrt() * root
+}
+
 /// Optimization variables: `[k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]`.
 ///
 /// α is derived from σ_ATM via [`alpha_from_atm_vol`] so the ATM vol is
@@ -64,6 +78,45 @@ pub(super) struct SabrSmileProblem {
 }
 
 impl SabrSmileProblem {
+  /// Market and model `[ATM, RR, BF]` in vol, the model BF `σ_BF` plus the strangle premium
+  /// mismatch over its vega at `σ_ATM + σ_BF`; `Numerical` unless that vega is finite and positive.
+  pub(super) fn quotes_in_vol(
+    &self,
+    p: &SabrParams,
+    k: &SmileStrikes,
+  ) -> Result<([f64; 3], [f64; 3]), QuantError> {
+    let f = k.k_atm;
+    let sigma_ref = self.sigma_atm + self.sigma_bf;
+    let mismatch = bf_premium_mismatch(
+      self.s,
+      k.k_bf_call,
+      k.k_bf_put,
+      self.r_d,
+      self.r_f,
+      self.tau,
+      p,
+      sigma_ref,
+    );
+    let vega = fx_vega(self.s, k.k_bf_call, f, self.r_f, self.tau, sigma_ref)
+      + fx_vega(self.s, k.k_bf_put, f, self.r_f, self.tau, sigma_ref);
+    if !(vega.is_finite() && vega > 0.0) {
+      return Err(QuantError::Numerical {
+        what: "strangle vega",
+        reason: format!(
+          "it is {vega:?} at strikes {:?} and {:?}, sigma_atm + sigma_bf = {sigma_ref:?}",
+          k.k_bf_call, k.k_bf_put
+        ),
+      });
+    }
+    let market = [self.sigma_atm, self.sigma_rr, self.sigma_bf];
+    let model = [
+      hagan_implied_vol(f, f, self.tau, p),
+      rr_sigma(k.k_rr_call, k.k_rr_put, f, self.tau, p),
+      self.sigma_bf + mismatch / vega,
+    ];
+    Ok((market, model))
+  }
+
   pub(super) fn clamp_params(&self, x: &[f64]) -> [f64; NVARS] {
     std::array::from_fn(|i| x[i].clamp(self.bounds_lo[i], self.bounds_hi[i]))
   }
@@ -79,20 +132,21 @@ impl CostFunction for SabrSmileProblem {
     let x = self.clamp_params(x);
     let (k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho) = (x[0], x[1], x[2], x[3], x[4], x[5]);
 
+    // Parameters Hagan's formula refuses, a NaN coordinate's among them, price nothing.
+    if !(rho > -1.0 && rho < 1.0) {
+      return Ok(f64::NAN);
+    }
     let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
     let alpha = alpha_from_atm_vol(self.sigma_atm, f, self.tau, self.beta, rho, nu);
-    if !(alpha.is_finite() && alpha > 0.0) {
-      // Outside the Hagan formula's domain: an infeasible point of the search,
-      // scored as such rather than letting the formula's contract panic.
-      return Ok(f64::MAX);
-    }
-
     let params = SabrParams {
       alpha,
       beta: self.beta,
       rho,
       nu,
     };
+    if params.violation().is_some() {
+      return Ok(f64::NAN);
+    }
     let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, self.tau, &params) - self.sigma_rr).powi(2);
 
     let call_sigma_rr = hagan_implied_vol(k_rr_c, f, self.tau, &params);
@@ -126,10 +180,10 @@ impl Gradient for SabrSmileProblem {
     for i in 0..NVARS {
       let mut x_plus = x.to_vec();
       let mut x_minus = x.to_vec();
-      x_plus[i] = (x_plus[i] + eps).min(self.bounds_hi[i]);
-      x_minus[i] = (x_minus[i] - eps).max(self.bounds_lo[i]);
+      x_plus[i] = (x_plus[i] + eps).min_or_nan(self.bounds_hi[i]);
+      x_minus[i] = (x_minus[i] - eps).max_or_nan(self.bounds_lo[i]);
       let step = x_plus[i] - x_minus[i];
-      if step > 0.0 {
+      if step != 0.0 {
         grad[i] = (self.cost(&x_plus)? - self.cost(&x_minus)?) / step;
       }
     }
@@ -161,7 +215,9 @@ pub(super) fn basin_hopping_opt(
   let mut rng = SimdRng::from_seed(3);
 
   let mut current_x = problem.clamp_params(&x0);
-  let mut current_f = problem.cost(&current_x.to_vec()).unwrap_or(f64::INFINITY);
+  // A start Hagan's formula refuses costs NaN; ranked `+∞`, any hop that prices replaces it.
+  let start = problem.cost(&current_x.to_vec()).ok();
+  let mut current_f = start.filter(|f| !f.is_nan()).unwrap_or(f64::INFINITY);
 
   let mut best_x = current_x;
   let mut best_f = current_f;

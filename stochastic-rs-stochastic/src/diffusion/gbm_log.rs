@@ -1,10 +1,9 @@
-//! # Gbm Log
+//! GBM stepped by its exact log-increment, which keeps `S_t > 0`.
 //!
 //! $$
-//! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,\quad Z\sim\mathcal{N}(0,1)
+//! \ln(S_{t+dt}/S_t) = (\mu - \tfrac12\sigma^2)\,dt + \sigma\sqrt{dt}\,Z,
+//! \quad Z\sim\mathcal{N}(0,1)
 //! $$
-//!
-//! Exact log-increment scheme guarantees $S_t > 0$.
 //!
 
 use ndarray::Array1;
@@ -17,48 +16,24 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Drift;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Construction-time validator for log-normal-family drift parametrisations
-/// where the user can supply any of `(r, r_f)` (foreign-currency / dividend
-/// pair), `b` (cost-of-carry), or `mu` (direct drift). Panics at the API
-/// boundary if none are provided — moved here from the v1 deferred panic
-/// inside `sample()` so the user gets immediate feedback at construction.
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
-
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift rate
-  pub mu: Option<T>,
-  /// Cost-of-carry rate
-  pub b: Option<T>,
-  /// Domestic risk-free interest rate
-  pub r: Option<T>,
-  /// Foreign risk-free interest rate
-  pub r_f: Option<T>,
+  /// The price's drift: `μ`, a cost of carry, or the rate pair.
+  pub drift: Drift<T>,
   /// Volatility
   pub sigma: T,
   /// Number of points sampled along the log-Euler GBM path.
   pub n: usize,
-  /// Initial asset price (must be > 0)
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -66,40 +41,17 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
-  pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
-    sigma: T,
-    n: usize,
-    s0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
-    assert!(
-      mu.is_none_or(|v| v.is_finite()),
-      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      b.is_none_or(|v| v.is_finite()),
-      "b must satisfy `b.is_none_or(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      r.is_none_or(|v| v.is_finite()),
-      "r must satisfy `r.is_none_or(|v| v.is_finite())`, got r = {r:?}"
-    );
-    assert!(
-      r_f.is_none_or(|v| v.is_finite()),
-      "r_f must satisfy `r_f.is_none_or(|v| v.is_finite())`, got r_f = {r_f:?}"
-    );
+  /// Panics unless a given `t` is positive and finite, `n >= 2`, `sigma >= 0`, `s0 > 0`, and every
+  /// parameter is finite.
+  pub fn new(drift: Drift<T>, sigma: T, n: usize, s0: T, t: Option<T>, seed: S) -> Self {
+    drift.assert_finite();
     assert!(
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -110,13 +62,13 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
       sigma >= T::zero(),
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
-    validate_drift_args(mu, b, r, r_f, "GbmLog");
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       sigma,
       n,
       s0,
@@ -126,19 +78,12 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {
-  #[inline]
-  fn drift(&self) -> T {
-    // Construction-time `validate_drift_args` guarantees at least one option
-    // is set; this match is total at runtime.
-    match (self.r, self.r_f, self.b, self.mu) {
-      (Some(r), Some(r_f), _, _) => r - r_f,
-      (_, _, Some(b), _) => b,
-      (_, _, _, Some(mu)) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
+  /// Replace `drift`; panics unless its rate is finite.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
+    self
   }
 
   #[inline]
@@ -157,13 +102,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let half = T::from_f64_fast(0.5);
     crate::euler::EulerSpec::LogGeometric {
-      drift_ln: (self.drift() - half * self.sigma * self.sigma) * dt,
+      drift_ln: (self.drift.rate() - half * self.sigma * self.sigma) * dt,
       sigma: self.sigma,
     }
   }
 
   fn initial_value(&self) -> T {
-    self.s0.unwrap_or(T::one())
+    self.s0
   }
 
   fn grid_points(&self) -> usize {
@@ -185,7 +130,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] GbmLog<T, S> { mu, b, r, r_f, sigma, n, s0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] GbmLog<T, S> { drift, sigma, n, s0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for GbmLog<T, S, B>
@@ -201,21 +146,20 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
   fn sampler(&self) -> GbmLogSampler<T> {
     let dt = self.dt();
-    let drift = self.drift();
+    let drift = self.drift.rate();
     let half = T::from_f64_fast(0.5);
     let drift_ln = (drift - half * self.sigma * self.sigma) * dt;
     GbmLogSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       sigma: self.sigma,
       drift_ln,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -248,6 +192,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`GbmLog`] sampling state: precomputed log-drift and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GbmLogSampler<T: FloatExt> {
   n: usize,
   s0: T,
@@ -261,7 +206,11 @@ impl<T: FloatExt> GbmLogSampler<T> {
     if out.is_empty() {
       return;
     }
-    assert!(self.s0 > T::zero(), "s0 must be > 0 for log simulation");
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
     out[0] = self.s0;
     if out.len() == 1 {
       return;
@@ -298,28 +247,35 @@ impl<T: FloatExt> PathSampler<T> for GbmLogSampler<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
-  fn price_stays_positive() {
-    let p = GbmLog::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
-      0.2,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      Unseeded,
+  fn the_three_drift_forms_agree_on_the_rate() {
+    let rate = |d: Drift<f64>| {
+      GbmLog::<f64, Deterministic>::new(d, 0.2, 64, 1.0, Some(1.0), Deterministic::new(1)).sample()
+        [63]
+    };
+    assert_eq!(rate(Drift::Mu(0.5)), rate(Drift::CostOfCarry(0.5)));
+    assert_eq!(
+      rate(Drift::Mu(0.5)),
+      rate(Drift::Rates { r: 0.75, r_f: 0.25 })
     );
+    assert_ne!(rate(Drift::Mu(0.5)), rate(Drift::Mu(0.25)));
+  }
+
+  #[test]
+  fn price_stays_positive() {
+    let p = GbmLog::new(Drift::Mu(0.05_f64), 0.2, 1000, 100.0, Some(1.0), Unseeded);
     let s = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
   }
 }
 
-py_process_1d!(PyGbmLog, GbmLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, n: usize, s0: Option<f64>, t: Option<f64>),
-  device
-);
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyGbmLog;

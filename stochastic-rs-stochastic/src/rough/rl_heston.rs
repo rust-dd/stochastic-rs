@@ -1,25 +1,19 @@
-//! # Rough Heston
+//! Rough Heston: a Riemann–Liouville Volterra–CIR variance on one Markov lift, the price by Euler.
 //!
 //! $$
-//! \begin{aligned} dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\ V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s \end{aligned}
+//! \begin{aligned}
+//! dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\
+//! V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds +
+//! \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s
+//! \end{aligned}
 //! $$
 //!
-//! The variance process is a Volterra-Cir with Riemann–Liouville kernel
-//! (El Euch–Rosenbaum 2019), simulated via the Bilokon–Wong modified fast
-//! algorithm — a single Markov-lift with $f(V)=\kappa(\theta-V)$ and
-//! $g(V)=\nu\sqrt{V^+}$ — while the asset price is integrated with a
-//! standard Euler step driven by $W^s$ correlated to $W^v$.
+//! The lift takes drift $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps on $W^s$.
 //!
-//! The underlying kernel + Markov-lift is built once at struct construction
-//! and reused across every [`sample`](crate::traits::ProcessExt::sample) /
-//! [`sample_batch`](RlHeston::sample_batch) call.
-//!
-//! Reference: Bilokon & Wong (2026) §5.5; El Euch O., Rosenbaum M. *The
-//! characteristic function of rough Heston models*, Math. Finance 29 (2019),
-//! 3–38.
+//! Reference: Bilokon & Wong (2026), §5.5
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38, DOI 10.1111/mafi.12173
 
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -32,14 +26,14 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
   pub hurst: T,
-  /// Initial spot $S_0$.
-  pub s0: Option<T>,
-  /// Initial variance $V_0$.
-  pub v0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance.
+  pub v0: T,
   /// Variance mean-reversion speed $\kappa$.
   pub kappa: T,
   /// Long-run variance $\theta$.
@@ -52,7 +46,7 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Simulation horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree passed through to the kernel.
   pub degree: Option<usize>,
@@ -78,12 +72,13 @@ fn build_markov<T: FloatExt>(
 }
 
 impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `|rho| <= 1`, `n >= 2`, a given
+  /// `t` is positive and finite, a given `1 <= degree <= 175` and `kappa, theta, nu, v0 >= 0`.
   #[must_use]
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     kappa: T,
     theta: T,
     nu: T,
@@ -99,12 +94,12 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       kappa.is_finite(),
@@ -144,8 +139,8 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     Self {
       backend: Cpu,
@@ -167,53 +162,8 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RlHeston<T, S, B> {
-  /// Generate $m$ independent rough Heston paths.
-  /// Returns `[spot_paths, variance_paths]` where each is an $(m, n)$ array.
-  pub fn sample_batch(&self, m: usize) -> [Array2<T>; 2] {
-    let n_minus_1 = self.n - 1;
-
-    let mut dw_s = Array2::<T>::zeros((m, n_minus_1));
-    let mut dw_v = Array2::<T>::zeros((m, n_minus_1));
-    for p in 0..m {
-      let [s_row, v_row] = self.cgns.sample_impl(&self.seed.derive());
-      dw_s.row_mut(p).assign(&s_row);
-      dw_v.row_mut(p).assign(&v_row);
-    }
-
-    let kappa = self.kappa;
-    let theta = self.theta;
-    let nu = self.nu;
-    let v0 = self.v0.unwrap_or(T::zero()).max(T::zero());
-    let variance = self.markov.simulate_batch(
-      v0,
-      |vv| kappa * (theta - vv.max(T::zero())),
-      |vv| nu * vv.max(T::zero()).sqrt(),
-      dw_v.view(),
-    );
-
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let s0 = self.s0.unwrap_or(T::zero());
-    let mut spots = Array2::<T>::zeros((m, self.n));
-    for p in 0..m {
-      spots[[p, 0]] = s0;
-      for i in 1..self.n {
-        let v_prev = variance[[p, i - 1]].max(T::zero());
-        spots[[p, i]] = spots[[p, i - 1]]
-          + self.mu * spots[[p, i - 1]] * dt
-          + spots[[p, i - 1]] * v_prev.sqrt() * dw_s[[p, i - 1]];
-      }
-    }
-
-    let variance_clipped = variance.map(|v| (*v).max(T::zero()));
-    [spots, variance_clipped]
-  }
-}
-
-/// The Euler engine's view: the variance's lift goes to the device as its node
-/// constants and boundary terms — started at `v0`, floored as the host floors
-/// it — and the family steps the spot by Euler beside it, the two shocks
-/// correlated in the step exactly as the host's correlated pair is.
+/// The Euler engine's view: the variance's lift ships as node constants and boundary terms,
+/// started at `v0` and floored as on the host; the spot steps by Euler on the correlated shock.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for RlHeston<T, S, B>
 {
@@ -228,12 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::zero()),
-      self.v0.unwrap_or(T::zero()).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -260,7 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
       drift_boundary: lift.drift_boundary,
       diffusion_boundary: lift.diffusion_boundary,
-      x0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      x0: self.v0.max(T::zero()),
     })
   }
 
@@ -287,18 +232,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. `fill_paths`
-  /// then uses this owned seed directly (no further derive) — exactly one
-  /// derive from `self.seed` per chunk, matching what the legacy per-call
-  /// `derive()` consumed.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk bases. `fill_paths` uses the owned seed directly, one derive from `self.seed` per chunk.
   fn sampler(&self) -> RlHestonSampler<'_, T, S> {
     RlHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
-      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      s0: self.s0,
+      v0: self.v0.max(T::zero()),
       kappa: self.kappa,
       theta: self.theta,
       nu: self.nu,
@@ -310,9 +250,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the lift and both components run
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and both components in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -334,10 +273,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RlHeston`] sampling state: owns the correlated-Gaussian generator
-/// and the seed source, and borrows the prebuilt Markov-lift so a Monte-Carlo
-/// loop reuses both output buffers without rebuilding the kernel.
+/// Reusable [`RlHeston`] sampling state: owns the correlated-Gaussian generator and the seed
+/// source, and borrows the prebuilt Markov lift.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,
@@ -422,8 +361,8 @@ mod tests {
   fn rejects_too_short_grid() {
     let _ = RlHeston::<f64>::new(
       0.3,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       1.0,
       0.04,
       0.5,
@@ -440,8 +379,8 @@ mod tests {
   fn variance_stays_non_negative() {
     let p = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.1,
       0.3156,
       0.0331,
@@ -458,11 +397,11 @@ mod tests {
   }
 
   #[test]
-  fn batch_shape_and_nonneg_variance() {
+  fn paths_have_the_grid_length_and_a_non_negative_variance() {
     let p = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.1,
       0.3156,
       0.0331,
@@ -473,19 +412,21 @@ mod tests {
       Some(25),
       Deterministic::new(17),
     );
-    let [spots, variances] = p.sample_batch(13);
-    assert_eq!(spots.dim(), (13, 64));
-    assert_eq!(variances.dim(), (13, 64));
-    assert!(variances.iter().all(|x| *x >= 0.0));
-    assert!(spots.iter().all(|x| x.is_finite()));
+    let paths = p.sample_par(13);
+    assert_eq!(paths.len(), 13);
+    for [spot, variance] in &paths {
+      assert_eq!((spot.len(), variance.len()), (64, 64));
+      assert!(variance.iter().all(|x| *x >= 0.0));
+      assert!(spot.iter().all(|x| x.is_finite()));
+    }
   }
 
   #[test]
   fn heston_limit_h_half_asymptotic_variance_is_finite() {
     let p = RlHeston::new(
       0.49_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       1.0,
       0.04,
       0.3,
@@ -504,15 +445,14 @@ mod tests {
     );
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
-  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// The module doc calls this quantity ν, so the field is `nu`; a larger ν must widen the
   /// simulated variance dispersion.
   #[test]
   fn rl_heston_nu_drives_variance_dispersion() {
     let small = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.5,
       0.04,
       0.05,
@@ -525,8 +465,8 @@ mod tests {
     );
     let large = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.5,
       0.04,
       0.5,

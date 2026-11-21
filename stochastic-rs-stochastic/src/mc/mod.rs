@@ -1,22 +1,18 @@
-//! # Monte Carlo Methods
+//! Monte Carlo estimators: variance reduction, Brownian-bridge QMC paths and multi-level MC.
 //!
 //! $$
 //! \hat{\mu}_N = \frac{1}{N}\sum_{i=1}^{N} f(X_i),\quad
 //! \operatorname{Var}[\hat{\mu}_N] = \frac{\sigma^2}{N}
 //! $$
 //!
-//! Variance reduction, Brownian-bridge QMC paths over the `stochastic_rs_distributions::qmc`
-//! sequences, multi-level MC, and American option pricing via Longstaff-Schwartz.
+//! QMC reads `stochastic_rs_distributions::qmc`; Longstaff–Schwartz is quant's `BermudanLsmPricer`.
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*,
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, DOI 10.1007/978-0-387-21617-1
 
 pub mod antithetic;
 pub mod brownian_bridge_qmc;
 pub mod control_variates;
 pub mod importance_sampling;
-
-pub mod lsm;
 pub mod mlmc;
 pub mod stratified;
 pub mod welford;
@@ -26,7 +22,7 @@ pub use welford::Welford;
 use crate::traits::FloatExt;
 
 /// Result of a Monte Carlo estimation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct McEstimate<T: FloatExt> {
   /// Estimated mean.
   pub mean: T,
@@ -70,7 +66,7 @@ impl<T: FloatExt> From<&Welford> for McEstimate<T> {
 /// Mean and standard error of i.i.d. samples through [`Welford`]: `sqrt(s² / n)` on the `n − 1`
 /// sample variance, `NaN` with fewer than two samples or a non-finite one.
 ///
-/// Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
+/// Reference: Welford (1962), DOI 10.1080/00401706.1962.10490022
 pub(crate) fn estimate_from_samples<T: FloatExt>(
   samples: impl IntoIterator<Item = T>,
 ) -> McEstimate<T> {

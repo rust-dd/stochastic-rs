@@ -1,4 +1,4 @@
-//! # Mod Duffie Kan
+//! Duffie–Kan with jumps on the auxiliary factor at exponential inter-arrival times.
 //!
 //! $$
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
@@ -8,30 +8,21 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::exp::SimdExp;
-use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Duffie–Kan two-factor model with an exponential-inter-arrival jump
-/// overlay on the auxiliary factor `x_t`. The per-factor drift and
-/// diffusion-loading coefficients below (`a1..c2`, `alpha`/`beta`/`gamma`)
-/// are the concrete, fixed-numeric form of the module header's abstract
-/// `K(Θ-X)dt+√(A+BX)dW` — see each field's own doc for exactly which term
-/// it multiplies.
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DuffieKanJumpExp::new(..).with_rho(-0.5).with_lambda(0.8)`.
-#[derive(Clone)]
+/// Duffie–Kan with exponential-inter-arrival jumps on the auxiliary factor `x_t`: `a1..c2`,
+/// `alpha`, `beta`, `gamma` are the numeric form of the module's `K(Θ-X)dt+√(A+BX)dW`.
+#[derive(Debug, Clone)]
 pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Diffusion-loading coefficient on `r_t`, shared between both factors'
-  /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
-  /// itself scaled again by `sigma1`/`sigma2`).
+  /// Loading on `r_t` inside the shared diffusion scale `alpha*r + beta*x + gamma`, which
+  /// `sigma1` and `sigma2` scale again.
   pub alpha: T,
   /// Diffusion-loading coefficient on `x_t`, shared between both factors'
   /// diffusion scaling.
@@ -72,12 +63,12 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Initial short rate r₀.
   pub r0: Option<T>,
-  /// Initial value X₀ of the auxiliary factor.
+  /// Initial value; `None` starts at zero.
+  /// Of the auxiliary factor; the short rate starts at `r0`.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: Cgns<T>,
@@ -87,6 +78,8 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -108,75 +101,24 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      gamma.is_finite(),
-      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      a1.is_finite(),
-      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
-    );
-    assert!(
-      b1.is_finite(),
-      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
-    );
-    assert!(
-      c1.is_finite(),
-      "c1 must satisfy `c1.is_finite()`, got c1 = {c1:?}"
-    );
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      a2.is_finite(),
-      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
-    );
-    assert!(
-      b2.is_finite(),
-      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
-    );
-    assert!(
-      c2.is_finite(),
-      "c2 must satisfy `c2.is_finite()`, got c2 = {c2:?}"
-    );
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      jump_scale.is_finite(),
-      "jump_scale must satisfy `jump_scale.is_finite()`, got jump_scale = {jump_scale:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      r0.is_none_or(|v| v.is_finite()),
-      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
-    );
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_alpha(alpha);
+    Self::check_beta(beta);
+    Self::check_gamma(gamma);
+    Self::check_rho(rho);
+    Self::check_a1(a1);
+    Self::check_b1(b1);
+    Self::check_c1(c1);
+    Self::check_sigma1(sigma1);
+    Self::check_a2(a2);
+    Self::check_b2(b2);
+    Self::check_c2(c2);
+    Self::check_sigma2(sigma2);
+    Self::check_lambda(lambda);
+    Self::check_jump_scale(jump_scale);
+    check_n(n);
+    Self::check_r0(r0);
+    Self::check_x0(x0);
+    check_t(t);
     Self {
       backend: Cpu,
       alpha,
@@ -204,133 +146,211 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
-  /// Replace `alpha`, all else unchanged.
+  fn check_alpha(alpha: T) {
+    require!(alpha.is_finite(), alpha);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+  }
+
+  fn check_gamma(gamma: T) {
+    require!(gamma.is_finite(), gamma);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_a1(a1: T) {
+    require!(a1.is_finite(), a1);
+  }
+
+  fn check_b1(b1: T) {
+    require!(b1.is_finite(), b1);
+  }
+
+  fn check_c1(c1: T) {
+    require!(c1.is_finite(), c1);
+  }
+
+  fn check_sigma1(sigma1: T) {
+    require!(sigma1.is_finite(), sigma1);
+  }
+
+  fn check_a2(a2: T) {
+    require!(a2.is_finite(), a2);
+  }
+
+  fn check_b2(b2: T) {
+    require!(b2.is_finite(), b2);
+  }
+
+  fn check_c2(c2: T) {
+    require!(c2.is_finite(), c2);
+  }
+
+  fn check_sigma2(sigma2: T) {
+    require!(sigma2.is_finite(), sigma2);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+  }
+
+  fn check_jump_scale(jump_scale: T) {
+    require!(jump_scale.is_finite(), jump_scale);
+  }
+
+  fn check_r0(r0: Option<T>) {
+    require!(r0.is_none_or(|v| v.is_finite()), r0);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
+    Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
+    Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `gamma`, all else unchanged.
+  /// Replace `gamma`; panics unless `gamma` is finite.
   pub fn with_gamma(mut self, gamma: T) -> Self {
+    Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the correlated-Gaussian generator `cgns`, which would otherwise
+  /// keep the old correlation; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace `a1`, all else unchanged.
+  /// Replace `a1`; panics unless `a1` is finite.
   pub fn with_a1(mut self, a1: T) -> Self {
+    Self::check_a1(a1);
     self.a1 = a1;
     self
   }
 
-  /// Replace `b1`, all else unchanged.
+  /// Replace `b1`; panics unless `b1` is finite.
   pub fn with_b1(mut self, b1: T) -> Self {
+    Self::check_b1(b1);
     self.b1 = b1;
     self
   }
 
-  /// Replace `c1`, all else unchanged.
+  /// Replace `c1`; panics unless `c1` is finite.
   pub fn with_c1(mut self, c1: T) -> Self {
+    Self::check_c1(c1);
     self.c1 = c1;
     self
   }
 
-  /// Replace `sigma1`, all else unchanged.
+  /// Replace `sigma1`; panics unless `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
+    Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
-  /// Replace `a2`, all else unchanged.
+  /// Replace `a2`; panics unless `a2` is finite.
   pub fn with_a2(mut self, a2: T) -> Self {
+    Self::check_a2(a2);
     self.a2 = a2;
     self
   }
 
-  /// Replace `b2`, all else unchanged.
+  /// Replace `b2`; panics unless `b2` is finite.
   pub fn with_b2(mut self, b2: T) -> Self {
+    Self::check_b2(b2);
     self.b2 = b2;
     self
   }
 
-  /// Replace `c2`, all else unchanged.
+  /// Replace `c2`; panics unless `c2` is finite.
   pub fn with_c2(mut self, c2: T) -> Self {
+    Self::check_c2(c2);
     self.c2 = c2;
     self
   }
 
-  /// Replace `sigma2`, all else unchanged.
+  /// Replace `sigma2`; panics unless `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
+    Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`; panics unless `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace `jump_scale`, all else unchanged.
+  /// Replace `jump_scale`; panics unless `jump_scale` is finite.
   pub fn with_jump_scale(mut self, jump_scale: T) -> Self {
+    Self::check_jump_scale(jump_scale);
     self.jump_scale = jump_scale;
     self
   }
 
-  /// Replace `r0`, all else unchanged.
+  /// Replace `r0`; panics unless `r0` is finite.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
+    Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, and rebuild the correlated-Gaussian generator,
+  /// whose length and step size derive from it; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the horizon `t` and rebuild the correlated-Gaussian generator, whose step size
+  /// derives from it; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// The Euler engine's view of the jump-augmented Duffie-Kan model. The host
-/// walks its jump times sequentially; the exponential waiting time is
-/// memoryless, so the number a step sees is Poisson with mean `λ·dt` and the
-/// kernel draws it that way.
+/// The Euler engine's view. The host walks its jump times in sequence; the exponential wait is
+/// memoryless, so a step sees a Poisson count of mean `λ·dt`, which is how the kernel draws it.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for DuffieKanJumpExp<T, S, B>
 {
@@ -400,203 +420,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] DuffieKanJumpExp<T, S> { alpha, beta, gamma, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, lambda, jump_scale, n, r0, x0, t, seed, cgns } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for DuffieKanJumpExp<T, S, B>
-{
-}
-
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for DuffieKanJumpExp<T, S, B>
-{
-  type Output = [Array1<T>; 2];
-  type Sampler<'s>
-    = DuffieKanJumpExpSampler<T, S>
-  where
-    Self: 's;
-
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
-  fn sampler(&self) -> DuffieKanJumpExpSampler<T, S> {
-    DuffieKanJumpExpSampler {
-      n: self.n,
-      r0: self.r0.unwrap_or(T::zero()),
-      x0: self.x0.unwrap_or(T::zero()),
-      alpha: self.alpha,
-      beta: self.beta,
-      gamma: self.gamma,
-      a1: self.a1,
-      b1: self.b1,
-      c1: self.c1,
-      sigma1: self.sigma1,
-      a2: self.a2,
-      b2: self.b2,
-      c2: self.c2,
-      sigma2: self.sigma2,
-      lambda: self.lambda,
-      jump_scale: self.jump_scale,
-      dt: self.cgns.dt(),
-      cgns: self.cgns,
-      seed: self.seed.derive(),
-    }
-  }
-
-  /// Through the Euler engine: on a device both factors and the jump sum step
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 2] {
-    self.backend.system_sample(self)
-  }
-
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
-    self.backend.system_paths_map(self, m, f)
-  }
-
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
-    self.backend.system_paths(self, m)
-  }
-
-  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
-    self.backend.try_system_sample(self)
-  }
-
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
-    self.backend.try_system_paths(self, m)
-  }
-}
-
-/// Reusable [`DuffieKanJumpExp`] sampling state: owns the correlated-Gaussian
-/// generator and the seed source so a Monte-Carlo loop reuses both output
-/// buffers. The exponential inter-arrival driver and the Gaussian jump-size
-/// driver are rebuilt per call from the owned seed, reproducing the legacy
-/// stream on the first call and continuing it on subsequent ones.
-#[doc(hidden)]
-pub struct DuffieKanJumpExpSampler<T: FloatExt, S: SeedExt> {
-  n: usize,
-  r0: T,
-  x0: T,
-  alpha: T,
-  beta: T,
-  gamma: T,
-  a1: T,
-  b1: T,
-  c1: T,
-  sigma1: T,
-  a2: T,
-  b2: T,
-  c2: T,
-  sigma2: T,
-  lambda: T,
-  jump_scale: T,
-  dt: T,
-  cgns: Cgns<T>,
-  seed: S,
-}
-
-impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
-  fn fill_paths(&mut self, r: &mut [T], x: &mut [T]) {
-    if self.n == 0 {
-      return;
-    }
-    let dt = self.dt;
-    let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
-
-    r[0] = self.r0;
-    x[0] = self.x0;
-
-    let mut exp_dist = SimdExp::<T>::new(self.lambda).seeded(&self.seed);
-    let mut jump_dist = SimdNormal::<T>::new(T::zero(), self.jump_scale).seeded(&self.seed);
-
-    // A draw no engine reads; skipping it would move every stream seeded after this one.
-    self.seed.next_seed();
-    let mut next_jump_time = exp_dist.sample();
-
-    for i in 1..self.n {
-      let current_time = T::from_usize_(i) * dt;
-      let r_old = r[i - 1];
-      let x_old = x[i - 1];
-
-      let dr = (self.a1 * r_old + self.b1 * x_old + self.c1) * dt
-        + self.sigma1 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn1[i - 1];
-      let dx = (self.a2 * r_old + self.b2 * x_old + self.c2) * dt
-        + self.sigma2 * (self.alpha * r_old + self.beta * x_old + self.gamma) * cgn2[i - 1];
-
-      let mut jump_sum_x = T::zero();
-      while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample();
-        jump_sum_x += jump_x;
-        next_jump_time += exp_dist.sample();
-      }
-
-      r[i] = r_old + dr;
-      x[i] = x_old + dx + jump_sum_x;
-    }
-  }
-}
-
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DuffieKanJumpExpSampler<T, S> {}
-
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for DuffieKanJumpExpSampler<T, S> {
-  type Output = [Array1<T>; 2];
-
-  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
-    let [r_arr, x_arr] = out;
-    let r = r_arr
-      .as_slice_mut()
-      .expect("DuffieKanJumpExp output must be contiguous");
-    let x = x_arr
-      .as_slice_mut()
-      .expect("DuffieKanJumpExp output must be contiguous");
-    self.fill_paths(r, x);
-  }
-
-  fn sample(&mut self) -> [Array1<T>; 2] {
-    let mut r = Array1::<T>::zeros(self.n);
-    let mut x = Array1::<T>::zeros(self.n);
-    self.fill_paths(
-      r.as_slice_mut().expect("contiguous"),
-      x.as_slice_mut().expect("contiguous"),
-    );
-    [r, x]
-  }
-}
-
 py_process_2x1d!(PyDuffieKanJumpExp, DuffieKanJumpExp,
   sig: (alpha, beta, gamma_, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, lambda_, jump_scale, n, r0=None, x0=None, t=None, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, gamma_: f64, rho: f64, a1: f64, b1: f64, c1: f64, sigma1: f64, a2: f64, b2: f64, c2: f64, sigma2: f64, lambda_: f64, jump_scale: f64, n: usize, r0: Option<f64>, x0: Option<f64>, t: Option<f64>),
   device
 );
 
-#[cfg(test)]
-mod tests {
-  use super::*;
+mod sampler;
 
-  #[test]
-  fn sample_returns_two_paths() {
-    let dkj = DuffieKanJumpExp::<f64>::new(
-      0.5,
-      0.04,
-      0.5,
-      -0.3,
-      0.01,
-      0.0,
-      0.0,
-      0.01,
-      0.0,
-      0.5,
-      0.0,
-      0.005,
-      0.5,
-      0.01,
-      64,
-      Some(0.05),
-      Some(0.05),
-      Some(1.0),
-      Unseeded,
-    );
-    let [r, x] = dkj.sample();
-    assert_eq!(r.len(), 64);
-    assert_eq!(x.len(), 64);
-  }
-}
+#[doc(hidden)]
+pub use sampler::DuffieKanJumpExpSampler;
+
+#[cfg(test)]
+mod tests;

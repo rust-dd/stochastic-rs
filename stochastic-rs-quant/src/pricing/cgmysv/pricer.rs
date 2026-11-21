@@ -9,19 +9,19 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
 use crate::OptionType;
-use crate::mc::McEstimate;
 use crate::pricing::barrier::BarrierType;
 use crate::traits::ProcessExt;
 
 /// Monte Carlo pricer for the CGMYSV model.
 #[derive(Debug, Clone)]
-pub struct CgmysvPricer {
+pub struct CgmysvPricer<S: SeedExt = Unseeded> {
   /// CGMYSV model parameters.
   pub params: CgmysvParams,
   /// Spot price.
@@ -36,9 +36,24 @@ pub struct CgmysvPricer {
   pub n_steps: usize,
   /// Truncation terms for the jump series ($J$).
   pub n_jumps: usize,
+  /// Each call samples from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
-impl CgmysvPricer {
+impl<S: SeedExt> CgmysvPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> CgmysvPricer<S2> {
+    CgmysvPricer {
+      params: self.params,
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      n_jumps: self.n_jumps,
+      seed,
+    }
+  }
+
   /// Generate risk-neutral price paths $S_{n,m}$ and variance paths $v_{n,m}$.
   ///
   /// $S_{n,m} = S_0\exp\!\bigl((r-q)\,t_m + L_{n,m} - \omega(t_m)\bigr)$
@@ -57,15 +72,12 @@ impl CgmysvPricer {
       n,
       self.n_jumps,
       Some(p.rho * p.v0),
-      Some(p.v0),
+      p.v0,
       Some(tau),
-      Unseeded,
+      self.seed.clone(),
     );
 
-    let results: Vec<[ndarray::Array1<f64>; 2]> = (0..self.n_paths)
-      .into_par_iter()
-      .map(|_| process.sample())
-      .collect();
+    let results = process.sample_par(self.n_paths);
 
     let dt = tau / self.n_steps as f64;
     let mut omega = vec![0.0_f64; n];
@@ -184,7 +196,9 @@ impl CgmysvPricer {
 
       let x_mat = Array2::from_shape_vec((n_itm, n_basis), x_data)
         .expect("design matrix holds n_itm * n_basis entries");
-      let Some(beta) = crate::linalg::lstsq_svd(&x_mat, &Array1::from_vec(y_vec), 1e-10) else {
+      let Some(beta) =
+        crate::linalg::lstsq_svd(x_mat.view(), Array1::from_vec(y_vec).view(), 1e-10)
+      else {
         continue;
       };
 
@@ -329,6 +343,7 @@ mod tests {
       n_paths,
       n_steps: 100,
       n_jumps: 1024,
+      seed: Unseeded,
     }
   }
 
@@ -342,8 +357,6 @@ mod tests {
   fn table4_lewis_call() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let call = LewisPricer::price_call(&model, 2488.11, 2500.0, 0.01213, 0.01884, 28.0 / 365.0);
     println!("Table 4 — European call (K=2500, T=28d)");
@@ -434,22 +447,19 @@ mod tests {
     assert!(am.mean > 0.0, "American put positive: {am}");
   }
 
-  /// φ(0) = 1, φ(-i) = exp((r-q)T).
+  /// φ(0) = 1 and, the chf being drift-free, φ(-i) = E[e^X] = 1.
   #[test]
   fn chf_sanity() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let tau = 28.0 / 365.0;
     let phi0 = model.chf(tau, num_complex::Complex64::new(0.0, 0.0));
     let phi_ni = model.chf(tau, num_complex::Complex64::new(0.0, -1.0));
-    let expected = ((0.01213 - 0.01884) * tau).exp();
     println!("ChF sanity");
     println!("  φ(0)  = {:.10} (expected 1.0)", phi0.norm());
-    println!("  φ(-i) = {:.10} (expected {expected:.10})", phi_ni.re);
+    println!("  φ(-i) = {:.10} (expected 1.0)", phi_ni.re);
     assert!((phi0.norm() - 1.0).abs() < 1e-10, "φ(0) = {phi0}");
-    assert!((phi_ni.re - expected).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
+    assert!((phi_ni.re - 1.0).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
   }
 }

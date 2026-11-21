@@ -1,5 +1,5 @@
 //! A validated correlation matrix and the factors the elliptical copulas evaluate through.
-//! Reference: Higham, N.J., Strabić, N., Šego, V. (2016), "Restoring definiteness via shrinking, with an application to correlation matrices with a fixed block", SIAM Review 58(2), 245-263, eq. (2.1), §2, Algorithm 3.1 and §5.3 eqs. (5.6), (5.8), DOI 10.1137/140996112.
+//! Reference: Higham et al. (2016), eq. (2.1), Alg. 3.1, eqs. (5.6), (5.8), DOI 10.1137/140996112.
 
 use ndarray::Array2;
 use stochastic_rs_distributions::linalg::is_spd;
@@ -10,8 +10,8 @@ use crate::error::CopulaError;
 const SHRINK_TOLERANCE: f64 = 1e-6;
 const EIGENVALUE_FLOOR: f64 = 1e-3;
 
-/// Square with `dim >= 2`, unit diagonal, symmetric and finite to `1e-12`, positive definite; it carries its lower
-/// Cholesky factor, inverse and log-determinant.
+/// Square with `dim >= 2`, unit diagonal, symmetric and finite to `1e-12`, positive definite; it
+/// carries its lower Cholesky factor, inverse and log-determinant.
 #[derive(Debug, Clone)]
 pub(crate) struct CorrelationMatrix {
   corr: Array2<f64>,
@@ -21,7 +21,8 @@ pub(crate) struct CorrelationMatrix {
 }
 
 impl CorrelationMatrix {
-  /// `InvalidStructure` naming the first property `corr` fails, checked in the order of the type's doc.
+  /// `InvalidStructure` naming the first property `corr` fails, checked in the order of the type's
+  /// doc.
   pub(crate) fn try_new(corr: Array2<f64>) -> Result<Self, CopulaError> {
     let d = corr.nrows();
     if corr.ncols() != d {
@@ -88,8 +89,8 @@ impl CorrelationMatrix {
   }
 }
 
-/// The smallest shrink toward the identity, `(1 − λ) R + λ I`, that leaves every eigenvalue at least `1e-3`: `λ` is
-/// bisected to `1e-6` with a Cholesky test of `S(λ) − 1e-3 I` (Algorithm 3.1, §5.3); the unit diagonal survives.
+/// The smallest shrink `(1 − λ) R + λ I` leaving every eigenvalue `≥ 1e-3`: `λ` bisected to `1e-6`
+/// by a Cholesky test of `S(λ) − 1e-3 I` (Algorithm 3.1, §5.3), keeping the unit diagonal.
 pub(crate) fn shrink_to_spd(corr: Array2<f64>) -> Array2<f64> {
   let clears_floor = |matrix: &Array2<f64>| {
     let mut lowered = matrix.clone();
@@ -125,7 +126,8 @@ mod tests {
   use crate::multivariate::spectrum::condition_number;
   use crate::multivariate::spectrum::smallest_eigenvalue;
 
-  /// The documented bisection tolerance and eigenvalue floor, pinned here independently of the code's constants.
+  /// The documented bisection tolerance and eigenvalue floor, pinned here independently of the
+  /// code's constants.
   const TOLERANCE: f64 = 1e-6;
   const FLOOR: f64 = 1e-3;
 
@@ -206,8 +208,8 @@ mod tests {
     assert!(shrunk.diag().iter().all(|d| (d - 1.0).abs() < 1e-15));
   }
 
-  /// The shrink read off the first off-diagonal of `raw` against its analytic minimum `(FLOOR - mu) / (1 - mu)` for a
-  /// smallest eigenvalue `mu`, and the result's smallest eigenvalue: in `[FLOOR, FLOOR + TOLERANCE (1 - mu)]`.
+  /// The shrink read off `raw`'s first off-diagonal against its minimum `(FLOOR - mu) / (1 - mu)`,
+  /// the result's smallest eigenvalue in `[FLOOR, FLOOR + TOLERANCE (1 - mu)]`.
   fn assert_floored(raw: &Array2<f64>, shrunk: &Array2<f64>, mu: f64) {
     let lambda = 1.0 - shrunk[[0, 1]] / raw[[0, 1]];
     let want = (FLOOR - mu) / (1.0 - mu);

@@ -16,7 +16,8 @@ fn truncated_exp_cdf_round_trips() {
   assert_eq!(te.cdf(2.0).unwrap(), 1.0);
 }
 
-/// Draws in bounds with the mean `(1 − 1.5e^{−½})/(1 − e^{−½})` of Exp(1) on `[0, ½]`, best of three pinned seeds.
+/// Draws in bounds with the mean `(1 − 1.5e^{−½})/(1 − e^{−½})` of Exp(1) on `[0, ½]`, best of
+/// three pinned seeds.
 #[test]
 fn truncated_exp_samples_mean() {
   let expected = (1.0 - 1.5 * (-0.5_f64).exp()) / (1.0 - (-0.5_f64).exp());

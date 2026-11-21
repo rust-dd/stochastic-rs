@@ -128,7 +128,8 @@ fn narrow_intervals() {
   }
 }
 
-/// Singular ends at 0 and at 1: a right end's offsets are formed from 1, where `1 − x` would round to 0.
+/// Singular ends at 0 and at 1: a right end's offsets are formed from 1, where `1 − x` would round
+/// to 0.
 #[test]
 fn singular_ends() {
   check(
@@ -177,7 +178,8 @@ fn singular_ends() {
   }
 }
 
-/// Sums in units of the clipped width: an interval of 1e-70 keeps every moment (mpmath, 60 and 120 digits).
+/// Sums in units of the clipped width: an interval of 1e-70 keeps every moment (mpmath, 60 and 120
+/// digits).
 #[test]
 fn moments_on_a_tiny_interval() {
   moments_match(

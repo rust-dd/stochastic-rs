@@ -1,31 +1,12 @@
-//! # Ou
+//! Ornstein–Uhlenbeck: `theta` is the reversion speed, `mu` the level and `sigma` the noise scale.
 //!
 //! $$
 //! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dW_t
 //! $$
 //!
-//! The symbols are the field names: `theta` is the reversion speed, `mu` the
-//! level the path reverts to, `sigma` the noise scale. A general `mu` is the
-//! standard form of the process — the zero-mean `dX = −θX dt + σ dW` is the
-//! `mu = 0` case of it, not a different equation.
+//! `interest::vasicek::Vasicek` holds an `Ou` (`a` = `theta`, `b` = `mu`): one recursion for both.
 //!
-//! ## Same SDE as [`Vasicek`]
-//!
-//! [`Vasicek`] is this equation under short-rate vocabulary: its `a` is this
-//! `theta` (speed), its `b` is this `mu` (level), its `r` is this `X`. The
-//! two are not parallel implementations — `Vasicek` holds an `Ou`, samples
-//! through [`OuSampler`] and reports this process's Euler family, so there
-//! is one recursion and one device kernel behind both names. What differs is
-//! the application: reach for `Ou` when the state is a spread, a log-price
-//! or a mean-reverting signal, and for `Vasicek` when it is a short rate and
-//! the bond, yield-curve and calibration machinery in `stochastic-rs-quant`
-//! applies to it.
-//!
-//! Reference: Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of
-//! the Brownian Motion*, Physical Review 36(5), 823–841,
-//! DOI: 10.1103/PhysRev.36.823.
-//!
-//! [`Vasicek`]: crate::interest::vasicek::Vasicek
+//! Reference: Uhlenbeck & Ornstein (1930), Phys. Rev. 36(5), 823–841, DOI 10.1103/PhysRev.36.823
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -39,61 +20,46 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Ou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Mean-reversion speed (θ in the SDE `dX = θ(μ − X) dt + σ dW`). Controls
-  /// how fast `X` is pulled back toward [`mu`](Self::mu). The same quantity
+  /// Mean-reversion speed θ in `dX = θ(μ − X) dt + σ dW`, which
   /// [`Vasicek::theta`](crate::interest::vasicek::Vasicek::theta) calls `a`.
   pub theta: T,
-  /// Long-run mean level (μ in the SDE). The value `X` reverts to as
-  /// `t → ∞`. The same quantity
+  /// Long-run level μ that `X` reverts to, which
   /// [`Vasicek::mu`](crate::interest::vasicek::Vasicek::mu) calls `b`.
   pub mu: T,
   /// Diffusion scale σ multiplying `dW_t` (σ in the SDE).
   pub sigma: T,
   /// Number of points sampled along the OU path.
   pub n: usize,
-  /// Initial value X₀ of the OU path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Ou::default().with_theta(3.0).with_sigma(0.3)`. No persisted cache:
-/// `sampler()` builds its Gaussian stream fresh from `self` every call.
+/// Every field has a `with_*` setter (`Ou::default().with_theta(3.0).with_sigma(0.3)`); nothing
+/// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Ou<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_theta(theta);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    check_n(n);
+    Self::check_x0(x0);
+    check_t(t);
     Self {
       theta,
       mu,
@@ -105,52 +71,75 @@ impl<T: FloatExt, S: SeedExt> Ou<T, S> {
       backend: Cpu,
     }
   }
+}
 
-  /// Replace `theta`, all else unchanged.
+impl<T: FloatExt, S: SeedExt, B> Ou<T, S, B> {
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// θ=2.0, μ=0.0, σ=0.2, x₀=0 — a textbook Ou parameterization. t=1, n=252
-/// — one trading year of daily steps (this crate's `Default` convention).
+/// θ=2.0, μ=0.0, σ=0.2, x₀=0, a textbook Ou; t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Ou<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -218,11 +207,10 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Ou<T, S, B> 
   }
 }
 
-/// Reusable [`Ou`] sampling state: precomputed mean-reversion scales and the
-/// owned Gaussian source. Also the whole of
-/// [`Vasicek`](crate::interest::vasicek::Vasicek)'s sampler, which is an
-/// alias for this type — the mean-reverting recursion is written once.
+/// Reusable [`Ou`] sampling state: the mean-reversion scales and the owned Gaussian source. Also
+/// all of [`Vasicek`](crate::interest::vasicek::Vasicek)'s sampler, an alias for this type.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct OuSampler<T: FloatExt> {
   n: usize,
   x0: T,

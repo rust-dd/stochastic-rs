@@ -1,4 +1,4 @@
-//! # Bm
+//! Standard Brownian motion: `B_0 = 0`, then the running sum of independent Gaussian increments.
 //!
 //! $$
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
@@ -15,33 +15,31 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Number of discrete time points in the generated path.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Bm::default().with_steps(500)`. No persisted cache: `sampler()`
-/// builds its Gaussian source fresh from `self` every call.
+/// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bm<T, S> {
+  /// Panics unless `n >= 2` and a given `t` is positive and finite.
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    check_n(n);
+    check_t(t);
     Self {
       backend: Cpu,
       n,
@@ -52,36 +50,36 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bm<T, S, B> {
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Bm<T, Unseeded> {
   fn default() -> Self {
     Self::new(252, Some(T::one()), Unseeded)
   }
 }
 
-/// The Euler engine's view of Brownian motion: the additive family, whose
-/// step is the increment itself, so a device accumulates the increments in
-/// the same kernel that draws them.
+/// The Euler engine's view: the additive family, whose step is the increment itself, so a
+/// device accumulates the increments in the kernel that draws them.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Bm<T, S, B>
 {
@@ -135,9 +133,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -170,6 +167,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Bm`] sampling state: the owned Gaussian increment source. The
 /// path is `B_0 = 0` followed by the running sum of the increments.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BmSampler<T: FloatExt> {
   n: usize,
   normal: Seeded<SimdNormal<T>>,

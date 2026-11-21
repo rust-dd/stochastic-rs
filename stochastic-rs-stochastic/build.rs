@@ -1,8 +1,24 @@
-//! With the `metal` feature, keeps the Euler kernel entries in step with the family
-//! definitions; the kernel macros build the Metal library from them.
+//! Names the device gates once (`metal_backend`, `accelerate_backend`, `device_backend`) and, with
+//! `metal`, keeps the Euler kernel entries in step with the family definitions.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-  println!("cargo:rerun-if-changed=build.rs");
+  println!("cargo::rerun-if-changed=build.rs");
+  for name in ["metal_backend", "accelerate_backend", "device_backend"] {
+    println!("cargo::rustc-check-cfg=cfg({name})");
+  }
+  let feature = |name: &str| std::env::var_os(format!("CARGO_FEATURE_{name}")).is_some();
+  let target = |key: &str, value: &str| std::env::var(key).as_deref() == Ok(value);
+  let macos = target("CARGO_CFG_TARGET_OS", "macos");
+  let metal = feature("METAL") && macos && target("CARGO_CFG_TARGET_ARCH", "aarch64");
+  if metal {
+    println!("cargo::rustc-cfg=metal_backend");
+  }
+  if feature("ACCELERATE") && macos {
+    println!("cargo::rustc-cfg=accelerate_backend");
+  }
+  if feature("CUDA") || metal {
+    println!("cargo::rustc-cfg=device_backend");
+  }
   #[cfg(feature = "metal")]
   {
     entries::update(
@@ -31,7 +47,7 @@ mod entries {
   /// Rewrites the entry files in `destination` when the families in `definitions` changed.
   /// `METAL_OXIDE_ARTIFACTS=locked` makes stale entries an error instead.
   pub fn update(definitions: &Path, destination: &Path) -> Result<()> {
-    println!("cargo:rerun-if-changed={}", definitions.display());
+    println!("cargo::rerun-if-changed={}", definitions.display());
     if !destination.is_dir() {
       return Ok(());
     }

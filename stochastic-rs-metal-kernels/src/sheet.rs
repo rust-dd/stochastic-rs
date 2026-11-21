@@ -21,7 +21,8 @@ pub unsafe fn sheet_rows(
   log_cols: u32,
   log_cells: u32,
   tile_log: u32,
-  seed: u32,
+  seed_lo: u32,
+  seed_hi: u32,
   first_cell: u64,
   shared_real: DynamicThreadgroupBuffer<f32>,
   shared_imag: DynamicThreadgroupBuffer<f32>,
@@ -36,7 +37,8 @@ pub unsafe fn sheet_rows(
     let mut values: [Complex; 2] = uninit_array();
     for k in 0..2 {
       let cell = row + ((within + position(i, k, 0)).reverse_bits() >> (32 - log_cols));
-      let pair = crate::random::normal_pair(first_cell.wrapping_add(cell as u64), seed);
+      let global = first_cell.wrapping_add(cell as u64);
+      let pair = crate::random::normal_pair(global, crate::euler::SITE_SHEET, [seed_lo, seed_hi]);
       let eig = lam.load_unchecked(cell & ((1 << log_cells) - 1));
       values[k as usize] = Complex {
         re: pair.0 * eig,
@@ -104,8 +106,9 @@ pub unsafe fn sheet_extract(
   n: u32,
   r: f32,
   correction: f32,
-  seed: u32,
-  correction_cell: u64,
+  seed_lo: u32,
+  seed_hi: u32,
+  first_sheet: u64,
   total: u32,
 ) {
   let tid = crate::index();
@@ -116,7 +119,9 @@ pub unsafe fn sheet_extract(
     let i = local / n;
     let j = local % n;
     let base = sheet * cells;
-    let pair = crate::random::normal_pair(correction_cell.wrapping_add(sheet as u64), seed);
+    let global = first_sheet.wrapping_add(sheet as u64);
+    let site = crate::euler::SITE_SHEET_CORRECTION;
+    let pair = crate::random::normal_pair(global, site, [seed_lo, seed_hi]);
     let ty = r * (i + 1) as f32 / m as f32;
     let tx = r * (j + 1) as f32 / n as f32;
     // SAFETY: each lane reads within its sheet and writes its own output element.

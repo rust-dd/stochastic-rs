@@ -10,8 +10,8 @@ use stochastic_rs::traits::ProcessExt;
 #[test]
 fn heston_two_factor_sample() {
   let p = Heston::<f64>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,

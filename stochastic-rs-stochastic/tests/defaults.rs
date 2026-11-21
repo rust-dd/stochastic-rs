@@ -1,8 +1,5 @@
-//! TDD tests for A1-c Task 1: `Default` + `Clone` on the flagship process
-//! types. See `stochastic-rs-stochastic/src/traits/process.rs`'s `## Clone
-//! semantics` section for the pinned decision
-//! `clone_preserves_deterministic_path` below exercises, and each type's own
-//! `Default` impl doc for where its parameter values come from.
+//! `Default` and `Clone` on the flagship process types; each type's `Default` impl doc says
+//! where its parameter values come from.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -23,6 +20,7 @@ use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
@@ -33,7 +31,7 @@ use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 const N: usize = 252;
@@ -65,9 +63,8 @@ fn defaults_sample_finite() {
   assert!(ok(&Bessel::<f64>::default().sample()));
   assert!(ok(&DisplacedDiffusion::<f64>::default().sample()));
   assert!(ok(&Merton::<f64, SimdNormal<f64>>::default().sample()));
-  // `Kou` has no `Default` — see `Kou`'s own struct doc: a Gaussian jump
-  // distribution would silently ship Merton-with-Gaussian-jumps under the
-  // Kou name, since only `D` distinguishes the two samplers in this crate.
+  // `Kou` has no `Default`: a Gaussian jump law would ship Merton under the Kou name, since only
+  // `D` distinguishes the two samplers.
 
   let [s, v] = Heston::<f64>::default().sample();
   assert!(ok(&s) && ok(&v));
@@ -103,28 +100,11 @@ fn theta05(_t: f64) -> f64 {
   0.05
 }
 
-/// Same parameter values as each type's `Default` (seed swapped for an
-/// explicit `Deterministic` one) — `x.clone().sample() == x.sample()`
-/// bit-for-bit must hold uniformly per the pinned decision (`ProcessExt`'s
-/// `## Clone semantics`): whole-struct `Clone` snapshots the seed rather
-/// than forking it, so the clone replays the identical path if sampled
-/// before either side draws anything else.
-///
-/// `Merton`/`Kou` are included below (they were excluded before the
-/// zero-exception-reproducibility wave's Task 1: their `cpoisson` field
-/// type was `CompoundPoisson<T, D>`, fixing *that* field's own seed
-/// strategy to `Unseeded` regardless of the outer process's `S`, so
-/// `x.sample() != x.sample()` held for the very same instance before
-/// `Clone` even entered the picture). `new()` now builds `cpoisson`
-/// internally from the same `seed: S` passed in, so `#[derive(Clone)]`'s
-/// plain field-wise clone of `seed` — the mechanism this test otherwise
-/// exercises uniformly — snapshots the jump component's reproducibility
-/// exactly as it always did the diffusion's. A nonzero-intensity jump
-/// distribution is used for both so the jump half is actually exercised,
-/// not short-circuited to an all-zero, RNG-free array.
+/// A clone snapshots a `Deterministic` seed, so it replays its original's next path; `Merton` and
+/// `Kou` run at a nonzero rate, so their jumps replay too.
 #[test]
 fn clone_preserves_deterministic_path() {
-  let a = Gbm::<f64, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(42));
+  let a = Gbm::<f64, _>::new(0.05, 0.2, N, 100.0, Some(1.0), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
@@ -243,7 +223,7 @@ fn clone_preserves_deterministic_path() {
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
-  let a = Poisson::<f64, _>::new(2.0, Some(N), Some(1.0), Deterministic::new(42));
+  let a = Poisson::<f64, _>::new(2.0, Horizon::Events(N), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
@@ -273,21 +253,14 @@ fn clone_preserves_deterministic_path() {
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
-  let a = DisplacedDiffusion::<f64, _>::new(
-    0.05,
-    0.2,
-    30.0,
-    N,
-    Some(100.0),
-    Some(1.0),
-    Deterministic::new(42),
-  );
+  let a =
+    DisplacedDiffusion::<f64, _>::new(0.05, 0.2, 30.0, N, 100.0, Some(1.0), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
   let a = Heston::<f64, Euler, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -323,8 +296,8 @@ fn clone_preserves_deterministic_path() {
 
   let a = Bergomi::<f64, _>::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     N,
@@ -340,8 +313,8 @@ fn clone_preserves_deterministic_path() {
   let a = RoughBergomi::<f64, _>::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     N,
@@ -354,10 +327,6 @@ fn clone_preserves_deterministic_path() {
   assert_eq!(bits(&s1), bits(&s2));
   assert_eq!(bits(&v1), bits(&v2));
 
-  // `Merton`/`Kou`: see this function's module doc for why these two were
-  // excluded before the zero-exception-reproducibility wave's Task 1, and
-  // why a nonzero-intensity jump distribution is used here (proves the
-  // jump component specifically, not just the diffusion).
   let a = Merton::new(
     0.03,
     0.2,

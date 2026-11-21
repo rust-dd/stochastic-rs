@@ -10,21 +10,15 @@ pub struct PyFukasawaHurst {
 
 #[pymethods]
 impl PyFukasawaHurst {
-  /// Estimate Fukasawa Hurst directly from a price series.
+  /// Fit to log realized variance with `m` intraday samples per day of length `delta`.
   #[staticmethod]
-  fn from_prices<'py>(closes: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
-      inner: crate::hurst::whittle::estimate_from_prices(closes.as_array()),
-    }
-  }
-
-  /// Estimate from log realised variance series, with `m` intra-bucket samples
-  /// and `delta` sampling step.
-  #[staticmethod]
-  fn from_log_rv<'py>(log_rv: PyReadonlyArray1<'py, f64>, m: usize, delta: f64) -> Self {
-    Self {
-      inner: crate::hurst::whittle::estimate(log_rv.as_array(), m, delta),
-    }
+  fn from_log_rv<'py>(log_rv: PyReadonlyArray1<'py, f64>, m: usize, delta: f64) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      crate::hurst::Whittle::new(m, delta)
+        .fit(log_rv.as_array())
+        .map(|inner| Self { inner })
+        .map_err(stats_error)
+    })?
   }
 
   #[getter]
@@ -46,6 +40,11 @@ impl PyFukasawaHurst {
   fn n_obs(&self) -> usize {
     self.inner.nobs
   }
+
+  #[getter]
+  fn converged(&self) -> bool {
+    self.inner.converged
+  }
 }
 
 #[pyclass(name = "FouEstimate", unsendable)]
@@ -55,36 +54,41 @@ pub struct PyFouEstimate {
 
 #[pymethods]
 impl PyFouEstimate {
-  /// V1 estimator (Daubechies-filter-based).
+  /// `fit_fou_filtered_variations` with the Daubechies filter.
   #[staticmethod]
   #[pyo3(signature = (path, delta=None, hurst_override=None))]
   fn v1<'py>(
     path: PyReadonlyArray1<'py, f64>,
     delta: Option<f64>,
     hurst_override: Option<f64>,
-  ) -> Self {
-    Self {
-      inner: crate::fou::fit_fou_filtered_variations(
-        path.as_array(),
-        crate::fou::FilterType::Daubechies,
-        delta,
-        hurst_override,
-      ),
-    }
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::fou::fit_fou_filtered_variations(
+          path.as_array(),
+          crate::fou::FilterType::Daubechies,
+          delta,
+          hurst_override,
+        )
+        .map_err(stats_error)?,
+      })
+    })?
   }
 
-  /// V2 estimator (moments-based, no linear filters).
+  /// `fit_fou_central_differences`.
   #[staticmethod]
   #[pyo3(signature = (path, delta=None, hurst_override=None))]
   fn v2<'py>(
     path: PyReadonlyArray1<'py, f64>,
     delta: Option<f64>,
     hurst_override: Option<f64>,
-  ) -> Self {
-    let n = path.as_array().len();
-    Self {
-      inner: crate::fou::fit_fou_central_differences(path.as_array(), delta, n, hurst_override),
-    }
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::fou::fit_fou_central_differences(path.as_array(), delta, hurst_override)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -150,22 +154,6 @@ impl PyHurstResult {
   fn r_squared(&self) -> Option<f64> {
     match &self.inner.diagnostic {
       crate::hurst::HurstDiagnostic::LogLogRegression { r_squared, .. } => Some(*r_squared),
-      _ => None,
-    }
-  }
-
-  #[getter]
-  fn neg_log_lik(&self) -> Option<f64> {
-    match &self.inner.diagnostic {
-      crate::hurst::HurstDiagnostic::Whittle { neg_log_lik, .. } => Some(*neg_log_lik),
-      _ => None,
-    }
-  }
-
-  #[getter]
-  fn eta(&self) -> Option<f64> {
-    match &self.inner.diagnostic {
-      crate::hurst::HurstDiagnostic::Whittle { eta, .. } => Some(*eta),
       _ => None,
     }
   }
@@ -453,23 +441,24 @@ impl PyWhittle {
   #[new]
   #[pyo3(signature = (m=1, delta=1.0/250.0, psi=1e-5, k_trunc=500, j_max=20))]
   fn new(m: usize, delta: f64, psi: f64, k_trunc: usize, j_max: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::hurst::Whittle {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = crate::hurst::Whittle {
         m,
         delta,
         psi,
         k_trunc,
         j_max,
-      },
+      };
+      inner.assert_config();
+      Self { inner }
     })
   }
 
-  fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
-    use crate::hurst::HurstEstimator;
+  fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyFukasawaHurst> {
     self
       .inner
-      .estimate(x.as_array())
-      .map(|inner| PyHurstResult { inner })
+      .fit(x.as_array())
+      .map(|inner| PyFukasawaHurst { inner })
       .map_err(stats_error)
   }
 }
@@ -481,8 +470,7 @@ pub struct PyVariations {
 
 #[pymethods]
 impl PyVariations {
-  /// `kind` is one of `"daubechies"`, `"central_diff"`, or
-  /// `"power_variation"`.  For `"power_variation"` pass `k` and `p`
+  /// `kind` is `"daubechies"`, `"central_diff"` or `"power_variation"`, which takes `k` and `p`
   /// (defaults `k=2`, `p=2.0`).
   #[new]
   #[pyo3(signature = (kind="central_diff", k=2, p=2.0))]

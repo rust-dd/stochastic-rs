@@ -72,25 +72,14 @@ impl AnalyticBsEngine {
     self
   }
 
-  /// Current value of a market handle, or [`f64::NAN`] when the handle is
-  /// unlinked.
-  ///
-  /// An unset handle is *missing data*, not a zero market. Reading it as
-  /// `0.0` priced the option at a spot, vol or rate the caller never
-  /// supplied and returned a finite, confident, fictitious NPV; `NaN`
-  /// propagates instead, so `npv().is_finite()` is a real check. This is
-  /// the same answer the crate gives for a missing maturity
-  /// ([`TimeExt::tau_or_from_dates`]) and for a missing curve quote
-  /// (`market::rate_helper`, which drops the helper rather than substitute
-  /// a rate), so every input this engine reads now fails the same way.
+  /// Current value of a market handle; NaN when it is unlinked, since an unset handle is missing
+  /// data and reading it as `0.0` would price at a market the caller never supplied.
   fn read_quote(handle: &Handle<SimpleQuote<f64>>) -> f64 {
     handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
-  /// The [`BsmPricer`] model the current handles describe, paired with the
-  /// `(s, k, r, q, tau)` query point `opt` asks for. The instrument owns
-  /// the maturity, so τ is resolved through its own
-  /// [`TimeExt`](crate::traits::TimeExt) rather than by the model.
+  /// The model the handles describe and the `(s, k, r, q, tau)` query `opt` asks for; `tau` is
+  /// the instrument's own, through [`TimeExt`].
   fn model_and_query(&self, opt: &EuropeanOption) -> (BsmPricer, (f64, f64, f64, f64, f64)) {
     let model = BsmPricer::new(Self::read_quote(&self.volatility), self.coc);
     let query = (
@@ -98,20 +87,20 @@ impl AnalyticBsEngine {
       opt.strike,
       Self::read_quote(&self.r),
       Self::read_quote(&self.dividend_yield),
-      opt.tau_or_from_dates(),
+      opt.tau(),
     );
     (model, query)
   }
 
-  /// The `(s, k, r, q, tau)` query of a [`DigitalOption`], with τ resolved through its
-  /// [`TimeExt`](crate::traits::TimeExt) as in [`model_and_query`](Self::model_and_query).
+  /// The `(s, k, r, q, tau)` query of a [`DigitalOption`], as in
+  /// [`model_and_query`](Self::model_and_query).
   fn digital_query(&self, opt: &DigitalOption) -> (f64, f64, f64, f64, f64) {
     (
       Self::read_quote(&self.s),
       opt.strike,
       Self::read_quote(&self.r),
       Self::read_quote(&self.dividend_yield),
-      opt.tau_or_from_dates(),
+      opt.tau(),
     )
   }
 }
@@ -119,10 +108,8 @@ impl AnalyticBsEngine {
 impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
-  /// The NPV and every Greek are [`f64::NAN`] when any market handle is
-  /// unlinked or the instrument's maturity is unset — case 2 of the crate's
-  /// [failure convention](crate::traits::ModelPricer#how-pricing-fails). An
-  /// unset handle is missing data, not a zero market.
+  /// The NPV and every Greek are NaN when any market handle is unlinked or the maturity is NaN,
+  /// case 2 of the [failure convention](crate::traits::ModelPricer#how-pricing-fails).
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
     let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
     let ot = opt.option_type;
@@ -134,8 +121,8 @@ impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
 impl PricingEngine<DigitalOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
-  /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN when the maturity does not
-  /// resolve or any market handle is unlinked.
+  /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN when the maturity is NaN or
+  /// any market handle is unlinked.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let (s, k, r, q, tau) = self.digital_query(opt);
     let sigma = Self::read_quote(&self.volatility);
@@ -156,12 +143,13 @@ impl PricingEngine<DigitalOption> for AnalyticBsEngine {
 mod tests {
   use super::*;
   use crate::OptionType;
+  use crate::calendar::Maturity;
   use crate::traits::InstrumentExt;
   use crate::traits::PricingResult;
 
   #[test]
   fn european_call_atm_round_trip() {
-    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0);
@@ -173,8 +161,8 @@ mod tests {
 
   #[test]
   fn european_put_call_parity_via_engine() {
-    let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
+    let call = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
+    let put = EuropeanOption::new(100.0, OptionType::Put, Maturity::Tau(1.0));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.02);
     let c = engine.calculate(&call).npv();
     let p = engine.calculate(&put).npv();
@@ -184,7 +172,7 @@ mod tests {
 
   #[test]
   fn instrument_ext_npv_shortcut() {
-    let opt = EuropeanOption::new_tau(110.0, OptionType::Call, 0.5);
+    let opt = EuropeanOption::new(110.0, OptionType::Call, Maturity::Tau(0.5));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.04, 0.0);
     let direct = engine.calculate(&opt).npv();
     let via_ext = opt.npv(&engine);
@@ -193,7 +181,7 @@ mod tests {
 
   #[test]
   fn relinking_volatility_changes_npv() {
-    let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let vol_quote = Arc::new(SimpleQuote::new(0.20));
     let vol_handle = Handle::new(vol_quote.clone());
     let engine = AnalyticBsEngine::new(
@@ -218,7 +206,7 @@ mod tests {
   /// the Greek formulas, which `bsm/tests.rs` pins.
   #[test]
   fn engine_greeks_match_the_model_aggregate() {
-    let opt = EuropeanOption::new_tau(105.0, OptionType::Put, 0.75);
+    let opt = EuropeanOption::new(105.0, OptionType::Put, Maturity::Tau(0.75));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
     let got = engine.calculate(&opt).greeks().unwrap();
     let want = BsmPricer::new(0.25, BsmCoc::Merton1973).greeks(
@@ -232,25 +220,23 @@ mod tests {
     assert_eq!(got.as_array(), want.as_array());
   }
 
-  /// A dated instrument resolves its own τ through `TimeExt` now that the
-  /// model holds no dates. 2026-01-02 → 2027-01-02 is 365 days in a
-  /// non-leap year, so Act/365F gives τ = 1.0 exactly.
+  /// 2026-01-02 → 2027-01-02 is 365 days, so Act/365F gives τ = 1.0 exactly.
   #[test]
   fn engine_prices_a_dated_option_like_its_tau_equivalent() {
     let eval = chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
     let expiry = chrono::NaiveDate::from_ymd_opt(2027, 1, 2).unwrap();
-    let dated = EuropeanOption::new_dates(100.0, OptionType::Call, eval, expiry);
-    let by_tau = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
+    let dated = EuropeanOption::new(100.0, OptionType::Call, Maturity::Dates { eval, expiry });
+    let by_tau = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let a = engine.calculate(&dated).npv();
     let b = engine.calculate(&by_tau).npv();
     assert!((a - b).abs() < 1e-12, "dated={a}, tau=1.0 gives {b}");
   }
 
-  /// An unlinked spot reports NaN, as an unset maturity does, instead of pricing at `s = 0`.
+  /// An unlinked spot reports NaN, as a NaN maturity does, instead of pricing at `s = 0`.
   #[test]
-  fn an_unlinked_handle_reports_like_an_unset_maturity() {
-    let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
+  fn an_unlinked_handle_reports_like_a_nan_maturity() {
+    let put = EuropeanOption::new(100.0, OptionType::Put, Maturity::Tau(1.0));
     let no_spot = AnalyticBsEngine::new(
       Handle::empty(),
       Handle::new(Arc::new(SimpleQuote::new(0.20))),
@@ -260,11 +246,11 @@ mod tests {
     let npv = no_spot.calculate(&put).npv();
     assert!(npv.is_nan(), "unlinked spot must not price, got {npv}");
 
-    let no_tau = EuropeanOption { tau: None, ..put };
+    let no_tau = EuropeanOption::new(100.0, OptionType::Put, Maturity::Tau(f64::NAN));
     let full = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     assert!(
       full.calculate(&no_tau).npv().is_nan(),
-      "unset maturity must not price either"
+      "a NaN maturity must not price either"
     );
   }
 
@@ -274,8 +260,8 @@ mod tests {
   /// input happened to be missing.
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
-    let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let digital = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 1.0);
+    let call = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
+    let digital = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, Maturity::Tau(1.0));
     let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
     let quotes = [100.0, 0.20, 0.05, 0.0];
 
@@ -306,8 +292,38 @@ mod tests {
   }
 
   #[test]
+  fn an_expired_option_npvs_its_payoff_and_has_no_greek() {
+    let engine = AnalyticBsEngine::with_constants(110.0, 0.20, 0.05, 0.01);
+    let res = engine.calculate(&EuropeanOption::new(
+      100.0,
+      OptionType::Call,
+      Maturity::Tau(0.0),
+    ));
+    assert_eq!(res.npv(), 10.0);
+    let greeks = res.greeks().unwrap().as_array();
+    assert!(greeks.iter().all(|g| g.is_nan()), "{greeks:?}");
+    let put = EuropeanOption::new(100.0, OptionType::Put, Maturity::Tau(0.0));
+    assert_eq!(engine.calculate(&put).npv(), 0.0);
+    let digital =
+      |opt: &DigitalOption| PricingEngine::<DigitalOption>::calculate(&engine, opt).npv();
+    let cash = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 10.0, Maturity::Tau(0.0));
+    assert_eq!(digital(&cash), 10.0);
+    assert_eq!(
+      digital(&DigitalOption::asset_or_nothing(
+        100.0,
+        OptionType::Put,
+        Maturity::Tau(0.0)
+      )),
+      0.0
+    );
+    let at_strike =
+      DigitalOption::cash_or_nothing(110.0, OptionType::Call, 10.0, Maturity::Tau(0.0));
+    assert_eq!(digital(&at_strike), 0.0);
+  }
+
+  #[test]
   fn digital_cash_or_nothing() {
-    let opt = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 1.0);
+    let opt = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, Maturity::Tau(1.0));
     let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0 && r.npv() < 1.0);
@@ -327,36 +343,31 @@ mod tests {
     let (s, k, r, q, tau) = query;
 
     for ot in [OptionType::Call, OptionType::Put] {
-      let cash = DigitalOption::cash_or_nothing(k, ot, 10.0, tau);
+      let cash = DigitalOption::cash_or_nothing(k, ot, 10.0, Maturity::Tau(tau));
       let got = PricingEngine::<DigitalOption>::calculate(&engine, &cash).npv();
       let want = CashOrNothingPricer::new(10.0, 0.25).price_option(s, k, r, q, tau, ot);
       assert_eq!(got, want, "cash-or-nothing {ot:?}");
 
-      let asset = DigitalOption::asset_or_nothing(k, ot, tau);
+      let asset = DigitalOption::asset_or_nothing(k, ot, Maturity::Tau(tau));
       let got = PricingEngine::<DigitalOption>::calculate(&engine, &asset).npv();
       let want = AssetOrNothingPricer::new(0.25).price_option(s, k, r, q, tau, ot);
       assert_eq!(got, want, "asset-or-nothing {ot:?}");
     }
   }
 
-  /// The two arms of this engine now resolve their maturity identically. At
-  /// BASE the dated digital priced at `NaN` — `digital_query` read `opt.tau`
-  /// directly and the `(eval, expiry)` pair was inert — while the dated
-  /// European beside it priced normally off the same dates.
-  ///
-  /// Both halves are asserted: that the dated digital prices at all, and
-  /// that it prices *bit-identically* to the τ the dates resolve to. The
-  /// first alone would pass on any finite wrong number.
+  /// A dated digital prices bit-identically to the τ its dates resolve to.
   #[test]
   fn a_date_built_digital_prices_like_the_tau_the_dates_resolve_to() {
-    let eval = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let expiry = chrono::NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
+    let dates = Maturity::Dates {
+      eval: chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+      expiry: chrono::NaiveDate::from_ymd_opt(2024, 7, 1).unwrap(),
+    };
     let tau = 182.0 / 365.0;
     let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
 
     for ot in [OptionType::Call, OptionType::Put] {
-      let dated = DigitalOption::cash_or_nothing_dates(105.0, ot, 10.0, eval, expiry);
-      let by_tau = DigitalOption::cash_or_nothing(105.0, ot, 10.0, tau);
+      let dated = DigitalOption::cash_or_nothing(105.0, ot, 10.0, dates);
+      let by_tau = DigitalOption::cash_or_nothing(105.0, ot, 10.0, Maturity::Tau(tau));
       let got = PricingEngine::<DigitalOption>::calculate(&engine, &dated).npv();
       assert!(got.is_finite(), "dated cash-or-nothing {ot:?} priced {got}");
       assert_eq!(
@@ -365,8 +376,8 @@ mod tests {
         "dated cash-or-nothing {ot:?} must match its explicit-tau twin"
       );
 
-      let dated = DigitalOption::asset_or_nothing_dates(105.0, ot, eval, expiry);
-      let by_tau = DigitalOption::asset_or_nothing(105.0, ot, tau);
+      let dated = DigitalOption::asset_or_nothing(105.0, ot, dates);
+      let by_tau = DigitalOption::asset_or_nothing(105.0, ot, Maturity::Tau(tau));
       let got = PricingEngine::<DigitalOption>::calculate(&engine, &dated).npv();
       assert!(
         got.is_finite(),
@@ -380,16 +391,12 @@ mod tests {
     }
   }
 
-  /// The missing-maturity case is unchanged by the `TimeExt` routing: no
-  /// `tau` and no date pair is still `NaN`, not a zero maturity.
   #[test]
-  fn a_digital_with_neither_tau_nor_dates_still_does_not_price() {
+  fn a_digital_with_a_nan_maturity_does_not_price() {
     let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
-    let opt = DigitalOption {
-      tau: None,
-      ..DigitalOption::cash_or_nothing(105.0, OptionType::Call, 10.0, 0.5)
-    };
+    let opt =
+      DigitalOption::cash_or_nothing(105.0, OptionType::Call, 10.0, Maturity::Tau(f64::NAN));
     let npv = PricingEngine::<DigitalOption>::calculate(&engine, &opt).npv();
-    assert!(npv.is_nan(), "unset maturity must not price, got {npv}");
+    assert!(npv.is_nan(), "a NaN maturity must not price, got {npv}");
   }
 }

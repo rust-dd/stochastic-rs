@@ -6,10 +6,10 @@ use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
@@ -23,7 +23,7 @@ fn fou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -36,7 +36,7 @@ fn fgbm_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -61,7 +61,7 @@ fn fcir_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -70,11 +70,11 @@ fn fcir_cache_setters_match_fresh_construction() {
 
 #[test]
 fn fjacobi_cache_setters_match_fresh_construction() {
-  let make = |hurst, n, t| FJacobi::<f64, _>::new(hurst, 1.0, 2.0, 0.2, n, Some(0.5), t, seed(7));
+  let make = |hurst, n, t| Fjacobi::<f64, _>::new(hurst, 1.0, 2.0, 0.2, n, Some(0.5), t, seed(7));
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -87,7 +87,7 @@ fn cfbms_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -100,7 +100,7 @@ fn cfgns_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_increments(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -114,7 +114,7 @@ fn cfou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -140,7 +140,7 @@ fn jump_fou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0), 7).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0), 7).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0), 7).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0), 7).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0), 7).with_horizon(Some(1.0)).sample(),
     want
@@ -154,7 +154,7 @@ fn jump_fou_cache_setters_match_fresh_construction() {
 #[test]
 fn jump_fou_custom_cache_setters_match_fresh_construction() {
   let make = |hurst, n, t| {
-    JumpFOUCustom::<f64, _, _>::new(
+    JumpFouCustom::<f64, _, _, _>::new(
       hurst,
       1.0,
       0.0,
@@ -170,7 +170,7 @@ fn jump_fou_custom_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want

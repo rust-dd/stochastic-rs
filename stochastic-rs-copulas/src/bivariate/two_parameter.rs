@@ -1,5 +1,5 @@
-//! Shared plumbing of the two-parameter Archimedean families BB1 and BB7: the numerical Kendall's τ and the
-//! maximum-likelihood fit on unconstrained coordinates.
+//! Shared plumbing of the two-parameter Archimedean families BB1 and BB7: the numerical Kendall's τ
+//! and the maximum-likelihood fit on unconstrained coordinates.
 
 use ndarray::ArrayView1;
 
@@ -26,8 +26,8 @@ pub(crate) fn kendall_tau_numeric(h: impl Fn(f64, f64) -> f64, panels: usize) ->
   1.0 - 4.0 * acc * (0.5 * width).powi(2)
 }
 
-/// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v` inside `(0, 1)`: Nelder–Mead over
-/// `lower + exp(c)`, so the search is unconstrained, on the negative log-likelihood of the kernel `log_density(θ, δ)`.
+/// Maximum-likelihood `(θ, δ)` on pseudo-observation columns `u`, `v` in `(0, 1)`: unconstrained
+/// Nelder–Mead over `lower + exp(c)` on the negative log-likelihood of `log_density(θ, δ)`.
 pub(crate) fn fit_two_parameters<K: Fn(f64, f64) -> f64>(
   u: ArrayView1<f64>,
   v: ArrayView1<f64>,

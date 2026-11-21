@@ -12,7 +12,7 @@
         "alignment": 4,
         "kind": {
           "kind": "scalar",
-          "scalar": "f32"
+          "scalar": "u32"
         }
       },
       {
@@ -20,7 +20,7 @@
         "alignment": 4,
         "kind": {
           "kind": "scalar",
-          "scalar": "u32"
+          "scalar": "f32"
         }
       },
       {
@@ -28,13 +28,13 @@
         "alignment": 4,
         "kind": {
           "kind": "array",
-          "element": 0,
+          "element": 1,
           "length": 4,
           "stride": 4
         }
       },
       {
-        "size": 160,
+        "size": 164,
         "alignment": 4,
         "kind": {
           "kind": "record",
@@ -43,186 +43,191 @@
             {
               "name": "family",
               "offset": 0,
-              "layout": 1
+              "layout": 0
             },
             {
               "name": "components",
               "offset": 4,
-              "layout": 1
+              "layout": 0
             },
             {
               "name": "noises",
               "offset": 8,
-              "layout": 1
+              "layout": 0
             },
             {
-              "name": "seed",
+              "name": "seed_lo",
               "offset": 12,
-              "layout": 1
+              "layout": 0
+            },
+            {
+              "name": "seed_hi",
+              "offset": 16,
+              "layout": 0
             },
             {
               "name": "steps",
-              "offset": 16,
-              "layout": 1
+              "offset": 20,
+              "layout": 0
             },
             {
               "name": "paths",
-              "offset": 20,
-              "layout": 1
+              "offset": 24,
+              "layout": 0
             },
             {
               "name": "first_path",
-              "offset": 24,
-              "layout": 1
+              "offset": 28,
+              "layout": 0
             },
             {
               "name": "increments",
-              "offset": 28,
-              "layout": 1
+              "offset": 32,
+              "layout": 0
             },
             {
               "name": "n_curves",
-              "offset": 32,
-              "layout": 1
+              "offset": 36,
+              "layout": 0
             },
             {
               "name": "has_jumps",
-              "offset": 36,
-              "layout": 1
+              "offset": 40,
+              "layout": 0
             },
             {
               "name": "jump_law",
-              "offset": 40,
-              "layout": 1
+              "offset": 44,
+              "layout": 0
             },
             {
               "name": "step_first",
-              "offset": 44,
-              "layout": 1
+              "offset": 48,
+              "layout": 0
             },
             {
               "name": "gamma_law",
-              "offset": 48,
-              "layout": 1
-            },
-            {
-              "name": "dt",
               "offset": 52,
               "layout": 0
             },
             {
-              "name": "sqrt_dt",
+              "name": "dt",
               "offset": 56,
-              "layout": 0
+              "layout": 1
+            },
+            {
+              "name": "sqrt_dt",
+              "offset": 60,
+              "layout": 1
             },
             {
               "name": "jump_lambda",
-              "offset": 60,
-              "layout": 0
+              "offset": 64,
+              "layout": 1
             },
             {
               "name": "jump_a",
-              "offset": 64,
-              "layout": 0
+              "offset": 68,
+              "layout": 1
             },
             {
               "name": "jump_b",
-              "offset": 68,
-              "layout": 0
+              "offset": 72,
+              "layout": 1
             },
             {
               "name": "jump_c",
-              "offset": 72,
-              "layout": 0
+              "offset": 76,
+              "layout": 1
             },
             {
               "name": "g1_shape",
-              "offset": 76,
-              "layout": 0
+              "offset": 80,
+              "layout": 1
             },
             {
               "name": "g1_scale",
-              "offset": 80,
-              "layout": 0
+              "offset": 84,
+              "layout": 1
             },
             {
               "name": "g1_per",
-              "offset": 84,
-              "layout": 0
+              "offset": 88,
+              "layout": 1
             },
             {
               "name": "g2_shape",
-              "offset": 88,
-              "layout": 0
+              "offset": 92,
+              "layout": 1
             },
             {
               "name": "g2_scale",
-              "offset": 92,
-              "layout": 0
+              "offset": 96,
+              "layout": 1
             },
             {
               "name": "g2_per",
-              "offset": 96,
-              "layout": 0
-            },
-            {
-              "name": "has_lift",
               "offset": 100,
               "layout": 1
             },
             {
-              "name": "lift_n",
+              "name": "has_lift",
               "offset": 104,
-              "layout": 1
+              "layout": 0
             },
             {
-              "name": "lift_db",
+              "name": "lift_n",
               "offset": 108,
               "layout": 0
             },
             {
-              "name": "lift_fb",
+              "name": "lift_db",
               "offset": 112,
-              "layout": 0
+              "layout": 1
+            },
+            {
+              "name": "lift_fb",
+              "offset": 116,
+              "layout": 1
             },
             {
               "name": "lift_x0",
-              "offset": 116,
-              "layout": 0
-            },
-            {
-              "name": "hist_slot",
               "offset": 120,
               "layout": 1
             },
             {
-              "name": "series_n",
+              "name": "hist_slot",
               "offset": 124,
-              "layout": 1
+              "layout": 0
+            },
+            {
+              "name": "series_n",
+              "offset": 128,
+              "layout": 0
             },
             {
               "name": "series_live",
-              "offset": 128,
-              "layout": 1
+              "offset": 132,
+              "layout": 0
             },
             {
               "name": "table_n",
-              "offset": 132,
-              "layout": 1
+              "offset": 136,
+              "layout": 0
             },
             {
               "name": "program_n",
-              "offset": 136,
-              "layout": 1
-            },
-            {
-              "name": "table_u0",
               "offset": 140,
               "layout": 0
             },
             {
-              "name": "x0",
+              "name": "table_u0",
               "offset": 144,
+              "layout": 1
+            },
+            {
+              "name": "x0",
+              "offset": 148,
               "layout": 2
             }
           ]
@@ -240,11 +245,181 @@
     "signatures": [
       [
         {
-          "name": "output",
+          "name": "input",
           "binding": 0,
           "ty": {
             "kind": "buffer",
             "element": 0,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "words",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "draws",
+          "binding": 2,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "cases",
+          "binding": 3,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        }
+      ],
+      [
+        {
+          "name": "values",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "logs",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "cases",
+          "binding": 2,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        }
+      ],
+      [
+        {
+          "name": "values",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "cosines",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "cases",
+          "binding": 2,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        }
+      ],
+      [
+        {
+          "name": "values",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "sines",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "cases",
+          "binding": 2,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        }
+      ],
+      [
+        {
+          "name": "words",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "laws",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "jumps",
+          "binding": 2,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "cases",
+          "binding": 3,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        }
+      ],
+      [
+        {
+          "name": "output",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -254,7 +429,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -272,7 +447,7 @@
           "binding": 3,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -282,7 +457,7 @@
           "binding": 4,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -292,7 +467,7 @@
           "binding": 5,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -302,7 +477,7 @@
           "binding": 6,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -312,7 +487,7 @@
           "binding": 7,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -322,7 +497,7 @@
           "binding": 8,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -334,7 +509,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read_write"
           }
@@ -344,7 +519,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read_write"
           }
@@ -354,7 +529,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -364,7 +539,7 @@
           "binding": 3,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -372,7 +547,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -380,7 +555,7 @@
           "binding": 5,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         }
       ],
@@ -390,7 +565,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -400,7 +575,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -410,7 +585,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -420,7 +595,7 @@
           "binding": 3,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -428,7 +603,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -436,7 +611,7 @@
           "binding": 5,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -446,7 +621,7 @@
           "binding": 6,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -454,7 +629,7 @@
           "binding": 7,
           "ty": {
             "kind": "value",
-            "layout": 0
+            "layout": 1
           }
         },
         {
@@ -462,7 +637,7 @@
           "binding": 8,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -470,7 +645,7 @@
           "binding": 9,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -478,7 +653,7 @@
           "binding": 10,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         }
       ],
@@ -488,7 +663,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -498,7 +673,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -508,7 +683,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -518,7 +693,7 @@
           "binding": 3,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -528,7 +703,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -536,7 +711,7 @@
           "binding": 5,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -544,20 +719,28 @@
           "binding": 6,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
-          "name": "seed",
+          "name": "seed_lo",
           "binding": 7,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
+          }
+        },
+        {
+          "name": "seed_hi",
+          "binding": 8,
+          "ty": {
+            "kind": "value",
+            "layout": 0
           }
         },
         {
           "name": "first_cell",
-          "binding": 8,
+          "binding": 9,
           "ty": {
             "kind": "value",
             "layout": 4
@@ -568,7 +751,7 @@
           "binding": 0,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
             "stride": 4
           }
         },
@@ -577,7 +760,7 @@
           "binding": 1,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
             "stride": 4
           }
         }
@@ -588,7 +771,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -598,7 +781,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -608,7 +791,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -618,7 +801,7 @@
           "binding": 3,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -628,7 +811,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -636,7 +819,7 @@
           "binding": 5,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -644,7 +827,7 @@
           "binding": 6,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         }
       ],
@@ -654,7 +837,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -664,7 +847,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -674,7 +857,7 @@
           "binding": 2,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -682,7 +865,7 @@
           "binding": 3,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -690,7 +873,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -698,7 +881,7 @@
           "binding": 5,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -706,7 +889,7 @@
           "binding": 6,
           "ty": {
             "kind": "value",
-            "layout": 0
+            "layout": 1
           }
         },
         {
@@ -714,20 +897,28 @@
           "binding": 7,
           "ty": {
             "kind": "value",
-            "layout": 0
-          }
-        },
-        {
-          "name": "seed",
-          "binding": 8,
-          "ty": {
-            "kind": "value",
             "layout": 1
           }
         },
         {
-          "name": "correction_cell",
+          "name": "seed_lo",
+          "binding": 8,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "seed_hi",
           "binding": 9,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "first_sheet",
+          "binding": 10,
           "ty": {
             "kind": "value",
             "layout": 4
@@ -735,10 +926,10 @@
         },
         {
           "name": "total",
-          "binding": 10,
+          "binding": 11,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         }
       ],
@@ -748,7 +939,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -758,7 +949,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "write"
           }
@@ -768,7 +959,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -778,7 +969,7 @@
           "binding": 3,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -788,7 +979,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -796,109 +987,19 @@
           "binding": 5,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
-          "name": "seed",
+          "name": "seed_lo",
           "binding": 6,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
-          "name": "base_cell",
-          "binding": 7,
-          "ty": {
-            "kind": "value",
-            "layout": 4
-          }
-        },
-        {
-          "name": "shared_real",
-          "binding": 0,
-          "ty": {
-            "kind": "threadgroup",
-            "element": 0,
-            "stride": 4
-          }
-        },
-        {
-          "name": "shared_imag",
-          "binding": 1,
-          "ty": {
-            "kind": "threadgroup",
-            "element": 0,
-            "stride": 4
-          }
-        }
-      ],
-      [
-        {
-          "name": "eigs",
-          "binding": 0,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "read"
-          }
-        },
-        {
-          "name": "twiddles",
-          "binding": 1,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "read"
-          }
-        },
-        {
-          "name": "log_n",
-          "binding": 2,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "seed",
-          "binding": 3,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "base_cell",
-          "binding": 4,
-          "ty": {
-            "kind": "value",
-            "layout": 4
-          }
-        },
-        {
-          "name": "output",
-          "binding": 5,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "write"
-          }
-        },
-        {
-          "name": "size",
-          "binding": 6,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "scale",
+          "name": "seed_hi",
           "binding": 7,
           "ty": {
             "kind": "value",
@@ -906,19 +1007,11 @@
           }
         },
         {
-          "name": "rows",
+          "name": "base_cell",
           "binding": 8,
           "ty": {
             "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "parity",
-          "binding": 9,
-          "ty": {
-            "kind": "value",
-            "layout": 1
+            "layout": 4
           }
         },
         {
@@ -926,7 +1019,7 @@
           "binding": 0,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
             "stride": 4
           }
         },
@@ -935,7 +1028,121 @@
           "binding": 1,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
+            "stride": 4
+          }
+        }
+      ],
+      [
+        {
+          "name": "eigs",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "twiddles",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "log_n",
+          "binding": 2,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "seed_lo",
+          "binding": 3,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "seed_hi",
+          "binding": 4,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "base_cell",
+          "binding": 5,
+          "ty": {
+            "kind": "value",
+            "layout": 4
+          }
+        },
+        {
+          "name": "output",
+          "binding": 6,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "size",
+          "binding": 7,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "scale",
+          "binding": 8,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "rows",
+          "binding": 9,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "parity",
+          "binding": 10,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "shared_real",
+          "binding": 0,
+          "ty": {
+            "kind": "threadgroup",
+            "element": 1,
+            "stride": 4
+          }
+        },
+        {
+          "name": "shared_imag",
+          "binding": 1,
+          "ty": {
+            "kind": "threadgroup",
+            "element": 1,
             "stride": 4
           }
         }
@@ -946,7 +1153,7 @@
           "binding": 0,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read_write"
           }
@@ -956,7 +1163,7 @@
           "binding": 1,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read_write"
           }
@@ -966,7 +1173,7 @@
           "binding": 2,
           "ty": {
             "kind": "buffer",
-            "element": 0,
+            "element": 1,
             "stride": 4,
             "access": "read"
           }
@@ -976,7 +1183,7 @@
           "binding": 3,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -984,7 +1191,7 @@
           "binding": 4,
           "ty": {
             "kind": "value",
-            "layout": 1
+            "layout": 0
           }
         },
         {
@@ -992,7 +1199,7 @@
           "binding": 0,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
             "stride": 4
           }
         },
@@ -1001,7 +1208,7 @@
           "binding": 1,
           "ty": {
             "kind": "threadgroup",
-            "element": 0,
+            "element": 1,
             "stride": 4
           }
         }
@@ -1009,8 +1216,63 @@
     ],
     "kernels": [
       {
-        "name": "euler_0_0_0",
+        "name": "philox_kat",
         "signature": 0,
+        "required_block": null,
+        "gate_binding": 4,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "log_kat",
+        "signature": 1,
+        "required_block": null,
+        "gate_binding": 3,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "cos_kat",
+        "signature": 2,
+        "required_block": null,
+        "gate_binding": 3,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "sin_kat",
+        "signature": 3,
+        "required_block": null,
+        "gate_binding": 3,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "stable_kat",
+        "signature": 4,
+        "required_block": null,
+        "gate_binding": 4,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "euler_0_0_0",
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1021,7 +1283,7 @@
       },
       {
         "name": "euler_1_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1032,7 +1294,7 @@
       },
       {
         "name": "euler_2_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1043,7 +1305,7 @@
       },
       {
         "name": "euler_3_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1054,7 +1316,7 @@
       },
       {
         "name": "euler_4_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1065,7 +1327,7 @@
       },
       {
         "name": "euler_5_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1076,7 +1338,7 @@
       },
       {
         "name": "euler_6_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1087,7 +1349,7 @@
       },
       {
         "name": "euler_7_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1098,7 +1360,7 @@
       },
       {
         "name": "euler_8_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1109,7 +1371,7 @@
       },
       {
         "name": "euler_9_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1120,7 +1382,7 @@
       },
       {
         "name": "euler_10_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1131,7 +1393,7 @@
       },
       {
         "name": "euler_11_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1142,7 +1404,7 @@
       },
       {
         "name": "euler_12_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1153,7 +1415,7 @@
       },
       {
         "name": "euler_13_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1164,7 +1426,7 @@
       },
       {
         "name": "euler_14_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1175,7 +1437,7 @@
       },
       {
         "name": "euler_15_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1186,7 +1448,7 @@
       },
       {
         "name": "euler_16_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1197,7 +1459,7 @@
       },
       {
         "name": "euler_17_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1208,7 +1470,7 @@
       },
       {
         "name": "euler_18_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1219,7 +1481,7 @@
       },
       {
         "name": "euler_19_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1230,7 +1492,7 @@
       },
       {
         "name": "euler_20_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1241,7 +1503,7 @@
       },
       {
         "name": "euler_21_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1252,7 +1514,7 @@
       },
       {
         "name": "euler_22_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1263,7 +1525,7 @@
       },
       {
         "name": "euler_23_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1274,7 +1536,7 @@
       },
       {
         "name": "euler_24_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1285,7 +1547,7 @@
       },
       {
         "name": "euler_25_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1296,7 +1558,7 @@
       },
       {
         "name": "euler_26_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1307,7 +1569,7 @@
       },
       {
         "name": "euler_27_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1318,7 +1580,7 @@
       },
       {
         "name": "euler_28_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1329,7 +1591,7 @@
       },
       {
         "name": "euler_29_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1340,7 +1602,7 @@
       },
       {
         "name": "euler_30_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1351,7 +1613,7 @@
       },
       {
         "name": "euler_31_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1362,7 +1624,7 @@
       },
       {
         "name": "euler_32_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1373,7 +1635,7 @@
       },
       {
         "name": "euler_33_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1384,7 +1646,7 @@
       },
       {
         "name": "euler_34_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1395,7 +1657,7 @@
       },
       {
         "name": "euler_35_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1406,7 +1668,7 @@
       },
       {
         "name": "euler_36_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1417,7 +1679,7 @@
       },
       {
         "name": "euler_37_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1428,7 +1690,7 @@
       },
       {
         "name": "euler_38_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1439,7 +1701,7 @@
       },
       {
         "name": "euler_39_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1450,7 +1712,7 @@
       },
       {
         "name": "euler_40_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1461,7 +1723,7 @@
       },
       {
         "name": "euler_41_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1472,7 +1734,7 @@
       },
       {
         "name": "euler_42_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1483,7 +1745,7 @@
       },
       {
         "name": "euler_43_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1494,7 +1756,7 @@
       },
       {
         "name": "euler_44_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1505,7 +1767,7 @@
       },
       {
         "name": "euler_45_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1516,7 +1778,7 @@
       },
       {
         "name": "euler_46_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1527,7 +1789,7 @@
       },
       {
         "name": "euler_47_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1538,7 +1800,7 @@
       },
       {
         "name": "euler_48_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1549,7 +1811,7 @@
       },
       {
         "name": "euler_49_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1560,7 +1822,7 @@
       },
       {
         "name": "euler_50_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1571,7 +1833,7 @@
       },
       {
         "name": "euler_51_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1582,7 +1844,7 @@
       },
       {
         "name": "euler_52_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1593,7 +1855,7 @@
       },
       {
         "name": "euler_53_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1604,7 +1866,7 @@
       },
       {
         "name": "euler_54_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1615,7 +1877,7 @@
       },
       {
         "name": "euler_55_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1626,7 +1888,7 @@
       },
       {
         "name": "euler_56_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1637,7 +1899,7 @@
       },
       {
         "name": "euler_57_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1648,7 +1910,7 @@
       },
       {
         "name": "euler_58_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1659,7 +1921,7 @@
       },
       {
         "name": "euler_58_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1670,7 +1932,7 @@
       },
       {
         "name": "euler_59_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1681,7 +1943,7 @@
       },
       {
         "name": "euler_59_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1692,7 +1954,7 @@
       },
       {
         "name": "euler_60_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1703,7 +1965,7 @@
       },
       {
         "name": "euler_60_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1714,7 +1976,7 @@
       },
       {
         "name": "euler_61_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1725,7 +1987,7 @@
       },
       {
         "name": "euler_62_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1736,7 +1998,7 @@
       },
       {
         "name": "euler_62_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1747,7 +2009,7 @@
       },
       {
         "name": "euler_63_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1758,7 +2020,7 @@
       },
       {
         "name": "euler_64_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1769,7 +2031,7 @@
       },
       {
         "name": "euler_65_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1780,7 +2042,7 @@
       },
       {
         "name": "euler_66_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1791,7 +2053,7 @@
       },
       {
         "name": "euler_66_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1802,7 +2064,7 @@
       },
       {
         "name": "euler_67_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1813,7 +2075,7 @@
       },
       {
         "name": "euler_67_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1824,7 +2086,7 @@
       },
       {
         "name": "euler_68_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1835,7 +2097,7 @@
       },
       {
         "name": "euler_68_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1846,7 +2108,7 @@
       },
       {
         "name": "euler_69_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1857,7 +2119,7 @@
       },
       {
         "name": "euler_70_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1868,7 +2130,7 @@
       },
       {
         "name": "euler_71_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1879,7 +2141,7 @@
       },
       {
         "name": "euler_72_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1890,7 +2152,7 @@
       },
       {
         "name": "euler_73_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1901,7 +2163,7 @@
       },
       {
         "name": "euler_74_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1912,7 +2174,7 @@
       },
       {
         "name": "euler_75_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1923,7 +2185,7 @@
       },
       {
         "name": "euler_76_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1934,7 +2196,7 @@
       },
       {
         "name": "euler_77_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1945,7 +2207,7 @@
       },
       {
         "name": "euler_77_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1956,7 +2218,7 @@
       },
       {
         "name": "euler_77_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1967,7 +2229,7 @@
       },
       {
         "name": "euler_77_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1978,7 +2240,7 @@
       },
       {
         "name": "euler_78_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -1989,7 +2251,7 @@
       },
       {
         "name": "euler_78_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2000,7 +2262,7 @@
       },
       {
         "name": "euler_78_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2011,7 +2273,7 @@
       },
       {
         "name": "euler_78_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2022,7 +2284,7 @@
       },
       {
         "name": "euler_79_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2033,7 +2295,7 @@
       },
       {
         "name": "euler_79_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2044,7 +2306,7 @@
       },
       {
         "name": "euler_79_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2055,7 +2317,7 @@
       },
       {
         "name": "euler_79_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2066,7 +2328,7 @@
       },
       {
         "name": "euler_80_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2077,7 +2339,7 @@
       },
       {
         "name": "euler_80_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2088,7 +2350,7 @@
       },
       {
         "name": "euler_80_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2099,7 +2361,7 @@
       },
       {
         "name": "euler_80_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2110,7 +2372,7 @@
       },
       {
         "name": "euler_81_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2121,7 +2383,7 @@
       },
       {
         "name": "euler_81_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2132,7 +2394,7 @@
       },
       {
         "name": "euler_82_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2143,7 +2405,7 @@
       },
       {
         "name": "euler_82_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2154,7 +2416,7 @@
       },
       {
         "name": "euler_82_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2165,7 +2427,7 @@
       },
       {
         "name": "euler_82_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2176,7 +2438,7 @@
       },
       {
         "name": "euler_83_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2187,7 +2449,7 @@
       },
       {
         "name": "euler_84_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2198,7 +2460,7 @@
       },
       {
         "name": "euler_85_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2209,7 +2471,7 @@
       },
       {
         "name": "euler_86_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2220,7 +2482,7 @@
       },
       {
         "name": "euler_87_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2231,7 +2493,7 @@
       },
       {
         "name": "euler_88_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2242,7 +2504,7 @@
       },
       {
         "name": "euler_89_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2253,7 +2515,7 @@
       },
       {
         "name": "euler_90_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2264,7 +2526,7 @@
       },
       {
         "name": "euler_91_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2275,7 +2537,7 @@
       },
       {
         "name": "euler_92_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2286,7 +2548,7 @@
       },
       {
         "name": "euler_93_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2297,7 +2559,7 @@
       },
       {
         "name": "euler_94_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2308,7 +2570,7 @@
       },
       {
         "name": "euler_95_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2319,7 +2581,7 @@
       },
       {
         "name": "euler_96_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2330,7 +2592,7 @@
       },
       {
         "name": "euler_97_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2341,7 +2603,7 @@
       },
       {
         "name": "euler_98_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2352,7 +2614,7 @@
       },
       {
         "name": "euler_98_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2363,7 +2625,7 @@
       },
       {
         "name": "euler_99_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2374,7 +2636,7 @@
       },
       {
         "name": "euler_99_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2385,7 +2647,7 @@
       },
       {
         "name": "euler_100_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2396,7 +2658,7 @@
       },
       {
         "name": "euler_100_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2407,7 +2669,7 @@
       },
       {
         "name": "euler_101_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2418,7 +2680,7 @@
       },
       {
         "name": "euler_101_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2429,7 +2691,7 @@
       },
       {
         "name": "euler_102_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2440,7 +2702,7 @@
       },
       {
         "name": "euler_102_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2451,7 +2713,7 @@
       },
       {
         "name": "euler_103_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2462,7 +2724,7 @@
       },
       {
         "name": "euler_104_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2473,7 +2735,7 @@
       },
       {
         "name": "euler_105_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2484,7 +2746,7 @@
       },
       {
         "name": "euler_106_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2495,7 +2757,7 @@
       },
       {
         "name": "euler_106_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2506,7 +2768,7 @@
       },
       {
         "name": "euler_107_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2517,7 +2779,7 @@
       },
       {
         "name": "euler_108_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2528,7 +2790,7 @@
       },
       {
         "name": "euler_109_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2539,7 +2801,7 @@
       },
       {
         "name": "euler_110_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2550,7 +2812,7 @@
       },
       {
         "name": "euler_111_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2561,7 +2823,7 @@
       },
       {
         "name": "euler_112_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2572,7 +2834,7 @@
       },
       {
         "name": "euler_113_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2583,7 +2845,7 @@
       },
       {
         "name": "euler_114_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2594,7 +2856,7 @@
       },
       {
         "name": "euler_115_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2605,7 +2867,7 @@
       },
       {
         "name": "euler_115_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2616,7 +2878,7 @@
       },
       {
         "name": "euler_115_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2627,7 +2889,7 @@
       },
       {
         "name": "euler_115_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2638,7 +2900,7 @@
       },
       {
         "name": "euler_116_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2649,7 +2911,7 @@
       },
       {
         "name": "euler_116_0_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2660,7 +2922,7 @@
       },
       {
         "name": "euler_116_1_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2671,7 +2933,7 @@
       },
       {
         "name": "euler_116_1_1",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2682,7 +2944,7 @@
       },
       {
         "name": "euler_117_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2693,7 +2955,7 @@
       },
       {
         "name": "euler_118_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2704,7 +2966,7 @@
       },
       {
         "name": "euler_119_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2715,7 +2977,7 @@
       },
       {
         "name": "euler_120_0_0",
-        "signature": 0,
+        "signature": 5,
         "required_block": null,
         "gate_binding": 9,
         "fallible": false,
@@ -2726,7 +2988,7 @@
       },
       {
         "name": "fft_columns_1",
-        "signature": 1,
+        "signature": 6,
         "required_block": null,
         "gate_binding": 6,
         "fallible": false,
@@ -2737,7 +2999,7 @@
       },
       {
         "name": "fft_columns_2",
-        "signature": 1,
+        "signature": 6,
         "required_block": null,
         "gate_binding": 6,
         "fallible": false,
@@ -2748,7 +3010,7 @@
       },
       {
         "name": "fft_columns_3",
-        "signature": 1,
+        "signature": 6,
         "required_block": null,
         "gate_binding": 6,
         "fallible": false,
@@ -2759,7 +3021,7 @@
       },
       {
         "name": "fft_columns_extract_1",
-        "signature": 2,
+        "signature": 7,
         "required_block": null,
         "gate_binding": 11,
         "fallible": false,
@@ -2770,7 +3032,7 @@
       },
       {
         "name": "fft_columns_extract_2",
-        "signature": 2,
+        "signature": 7,
         "required_block": null,
         "gate_binding": 11,
         "fallible": false,
@@ -2781,7 +3043,7 @@
       },
       {
         "name": "fft_columns_extract_3",
-        "signature": 2,
+        "signature": 7,
         "required_block": null,
         "gate_binding": 11,
         "fallible": false,
@@ -2792,9 +3054,9 @@
       },
       {
         "name": "sheet_rows",
-        "signature": 3,
+        "signature": 8,
         "required_block": null,
-        "gate_binding": 9,
+        "gate_binding": 10,
         "fallible": false,
         "lengths": false,
         "one_dimensional": false,
@@ -2803,7 +3065,7 @@
       },
       {
         "name": "sheet_transpose",
-        "signature": 4,
+        "signature": 9,
         "required_block": null,
         "gate_binding": 7,
         "fallible": false,
@@ -2814,7 +3076,29 @@
       },
       {
         "name": "sheet_extract",
-        "signature": 5,
+        "signature": 10,
+        "required_block": null,
+        "gate_binding": 12,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "gen_tile_fft",
+        "signature": 11,
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false,
+        "lengths": false,
+        "one_dimensional": false,
+        "safe": false,
+        "requires": []
+      },
+      {
+        "name": "gen_fft_extract",
+        "signature": 12,
         "required_block": null,
         "gate_binding": 11,
         "fallible": false,
@@ -2824,30 +3108,8 @@
         "requires": []
       },
       {
-        "name": "gen_tile_fft",
-        "signature": 6,
-        "required_block": null,
-        "gate_binding": 8,
-        "fallible": false,
-        "lengths": false,
-        "one_dimensional": false,
-        "safe": false,
-        "requires": []
-      },
-      {
-        "name": "gen_fft_extract",
-        "signature": 7,
-        "required_block": null,
-        "gate_binding": 10,
-        "fallible": false,
-        "lengths": false,
-        "one_dimensional": false,
-        "safe": false,
-        "requires": []
-      },
-      {
         "name": "fft_tile",
-        "signature": 8,
+        "signature": 13,
         "required_block": null,
         "gate_binding": 5,
         "fallible": false,
@@ -2860,15 +3122,15 @@
   },
   "checks": [],
   "files": {
-    "msl": "80ff4e5d278b956aea5c9efff3d55f4c53aed733393267614434fd20b24da7a0",
-    "oxide_ir": "7ac1cc67472bf436e1724590314cf5c42e209bcdf4436ac7bff2814d9f81c300",
-    "rustc_args": "fce96cb99b3d39e4ee9c776bbc8a1a0d7ebe98ab3cf32d41f8bbca295e437eae",
-    "ir": "05b2a69cd10f5217ec973bcc055d1b93bef3df6e9f28d1718d677038f5f2742b",
-    "metallib": "47bd844e48b645810f9a7c7e923b038ddab892d96606ce7e32a303c9fcee07c5"
+    "msl": "c6e2fbdaf3734426a8758bf3624ed40d04453646f72c68d0ebc51be414d28cb6",
+    "oxide_ir": "5588a586217783d0a0a24e4a720450d73ae7166b0951eaef3ca3b7e2efa3ed84",
+    "rustc_args": "6a1b7b078a1a34a467510fb5c42600a8efbd96ca239d7cddc292b93416484326",
+    "ir": "badfb00c7582bfe52398a95e3cc3f9aef18b206993ab74e5fd96e953ee59d1f0",
+    "metallib": "4776a86b28de2680600a523317e49b90f4d7c497e5e8925b6f0ce8eaf2c7c338"
   },
   "build": {
-    "fingerprint": "8b99c2186401c282f53b6ebd5bacbcc01c7f77008c4ec34b597b30dd48f7fca2",
-    "compiler": "b9f27309057bc00d1aaa6d92383493258dfe6c9d252c96c8db7a5c867d26216c",
+    "fingerprint": "404a60ab474304e9d0b91a3ae9a34f3290f0e1d3a150f0e6b964ea95357395df",
+    "compiler": "4348fd85b672f6cc5b45c86eeb28c80f52d83bbdd7f1e64fddd34ef6a808762d",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.922 (metalfe-32023.922.4)",
     "sdk": "27.2",

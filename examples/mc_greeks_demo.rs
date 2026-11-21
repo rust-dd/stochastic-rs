@@ -1,27 +1,12 @@
-//! End-to-end Monte Carlo Greeks demo.
-//!
-//! Prices a vanilla European call via `McBarrierPricer` (with a far-OTM
-//! `UpAndOut` barrier so no path ever hits it — gives a plain vanilla
-//! payoff) and reports the full first- and second-order Greek aggregate
-//! (the analytic `BsmPricer`'s closed-form Greeks, collected into a
-//! `Greeks` aggregate).
-//!
-//! The MC pricer is wired in as the *price* engine; the Greeks come from
-//! the canonical analytic reference because `McBarrierPricer::price` does
-//! not accept an explicit seed, so a naive central-difference over
-//! independent re-runs would be dominated by sampling noise (gamma in
-//! particular needs pathwise / Malliavin estimators — see
-//! `stochastic_rs::quant::pricing::malliavin_thalmaier` for a worked
-//! example with the proper variance-reduction wiring).
-//!
-//! Run with:
-//!   cargo run --release --example mc_greeks_demo
+//! A Monte Carlo price beside the closed-form Greeks: `McBarrierPricer` on an up-and-out call whose
+//! barrier no path reaches, against `BsmPricer` (`cargo run --release --example mc_greeks_demo`).
 
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::barrier::BarrierType;
 use stochastic_rs::quant::pricing::barrier::McBarrierPricer;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
+use stochastic_rs::quant::pricing::exotic::BarrierOption;
 use stochastic_rs::quant::traits::ModelPricer;
 
 fn main() {
@@ -34,43 +19,26 @@ fn main() {
   println!("=== stochastic-rs MC Greeks demo ===");
   println!("Setup: S₀={s}, K={k}, r={r:.2}, σ={sigma:.2}, T={t}, n_paths=50 000, n_steps=252\n");
 
-  // 1) Monte Carlo price via McBarrierPricer with a barrier high enough
-  //    that no realistic GBM path hits it ⇒ vanilla European call payoff.
-  let mc = McBarrierPricer {
-    n_paths: 50_000,
-    n_steps: 252,
+  let far_barrier = BarrierOption {
+    strike: k,
+    barrier: 10.0 * s,
+    rebate: 0.0,
+    barrier_type: BarrierType::UpAndOut,
+    option_type: OptionType::Call,
   };
-  let huge_barrier = 10.0 * s;
-  let mc_est = mc.price(
-    s,
-    k,
-    huge_barrier,
-    r,
-    sigma,
-    t,
-    BarrierType::UpAndOut,
-    OptionType::Call,
-  );
-  let mc_price = mc_est.mean;
+  let mc_est = McBarrierPricer::new(sigma, 50_000, 252).price(&far_barrier, s, r, 0.0, t);
 
-  // 2) Analytic BS reference + the full first-/second-order Greek set.
-  //    `BsmPricer` holds only (v, coc); the (s, k, r, q, tau) query and
-  //    the option type travel to each call.
   let bs = BsmPricer::new(sigma, BsmCoc::Bsm1973);
-  let ot = OptionType::Call;
   let bs_price = bs.price_call(s, k, r, 0.0, t);
-  let greeks = bs.greeks(s, k, r, 0.0, t, ot);
+  let greeks = bs.greeks(s, k, r, 0.0, t, OptionType::Call);
 
   println!(
-    "Price:  BS analytic = {bs_price:.4}    MC = {mc_est}    rel-err = {:.4}%",
-    100.0 * (mc_price - bs_price).abs() / bs_price
+    "Price:  BS analytic = {bs_price:.4}    MC = {:.4} ± {:.4}    rel-err = {:.4}%",
+    mc_est.mean,
+    mc_est.std_err,
+    100.0 * (mc_est.mean - bs_price).abs() / bs_price
   );
 
-  // 3) Full Greeks struct from the analytic side (first- and second-order).
-  //    A production MC Greeks pipeline should plug into the Malliavin
-  //    family (see `pricing::malliavin_thalmaier`) rather than a naive
-  //    central-difference re-run, because the latter is dominated by
-  //    sampling noise on Γ, Θ, vanna, charm, volga, veta.
   println!("\nGreeks aggregate (closed-form, from BsmPricer):");
   println!(
     "  Δ      = {:+.4}      Γ     = {:+.4}      V    = {:+.4}",
@@ -85,8 +53,6 @@ fn main() {
     greeks.vanna, greeks.charm, greeks.volga, greeks.veta
   );
 
-  // 4) Greeks::as_array → 9-element canonical layout, stable positional
-  //    access for callers that hard-code `out[0] == delta` etc.
   let arr = greeks.as_array();
   println!(
     "\nGreeks::as_array (length = {}, COMPONENT_NAMES order):",

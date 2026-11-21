@@ -1,4 +1,4 @@
-//! # Clayton
+//! Clayton copula, Archimedean with lower-tail dependence and none in the upper tail.
 //!
 //! $$
 //! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
@@ -29,8 +29,8 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// Below this `θ`, `h(u | v) = u(1 + θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every `u, v ≥ 5e-324`
-/// (`θ · 744.5 · 743.5 < 2⁻⁵³`), where `θ ln u` can fall into the subnormals.
+/// Below this `θ`, `h(u | v) = u(1 + θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every
+/// `u, v ≥ 5e-324` (`θ · 744.5 · 743.5 < 2⁻⁵³`), where `θ ln u` can fall into the subnormals.
 const INDEPENDENT_BELOW: f64 = 2e-22;
 
 #[derive(Debug, Clone, Default)]
@@ -56,8 +56,8 @@ impl Clayton {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `∂_v C = (1 + z)^{−(1 + 1/θ)}`, `z = (v/u)^θ(1 − u^θ)`, in logarithms so neither power overflows; 1 at `v = 0`, whose
-  /// conditional law is a point mass at `u = 0`.
+  /// `∂_v C = (1 + z)^{−(1 + 1/θ)}`, `z = (v/u)^θ(1 − u^θ)`, in logarithms so neither power
+  /// overflows; 1 at `v = 0`, whose conditional law is a point mass at `u = 0`.
   pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let exponent = 1.0 + 1.0 / theta;
     move |u, v| {
@@ -70,7 +70,8 @@ impl Clayton {
       let ln_v_over_u = theta * ln_ratio(v, u);
       let one_minus = -(theta * u.ln()).exp_m1();
       let ln_z = ln_v_over_u + one_minus.ln();
-      // `z` itself below 1, where `exp(ln z)` would turn the rounding of `ln z` into a relative error times `1/θ`.
+      // `z` itself below 1, where `exp(ln z)` would turn the rounding of `ln z` into a relative
+      // error times `1/θ`.
       let ln_1p_z = if ln_z < 0.0 {
         (ln_v_over_u.exp() * one_minus).ln_1p()
       } else {
@@ -80,8 +81,8 @@ impl Clayton {
     }
   }
 
-  /// `δ = x + y + ln C ≥ 0`, `x, y = −ln u, −ln v`: `−ln(1 − (1 − u^θ)(1 − v^θ))/θ` from the logarithms of both factors,
-  /// so a small `θ` keeps its digits and a `u^θ` below rounding its own.
+  /// `δ = x + y + ln C ≥ 0`, `x, y = −ln u, −ln v`: `−ln(1 − (1 − u^θ)(1 − v^θ))/θ` from both
+  /// factors' logarithms, so a small `θ` keeps its digits and a `u^θ` below rounding its own.
   fn excess(theta: f64, u: f64, v: f64) -> f64 {
     -ln_one_minus_exp(ln_one_minus_pow(theta, u.ln()) + ln_one_minus_pow(theta, v.ln())) / theta
   }
@@ -96,8 +97,8 @@ impl Clayton {
     (-u.min(v).ln(), gap, ell)
   }
 
-  /// `ln c = ln(1 + θ) + (1 + θ)(x + y) − (1 + 2θ)(−ln C)`, chosen once per `θ`: `ln(1 + θ) − θ(x + y) + (1 + 2θ)δ` up to
-  /// `θ = 1`, `ln(1 + θ) − (1 + θ)(M − m) + M − (2 + 1/θ)ℓ` above, where the `θ`-sized terms would cancel.
+  /// `ln c` per `θ`: `ln(1 + θ) − θ(x + y) + (1 + 2θ)δ` up to `θ = 1`,
+  /// `ln(1 + θ) − (1 + θ)(M − m) + M − (2 + 1/θ)ℓ` above, where `θ`-sized terms would cancel.
   pub(crate) fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 0.0 {
       0.0
@@ -109,7 +110,8 @@ impl Clayton {
     }
   }
 
-  /// `partial_derivative` at one point: `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`.
+  /// `partial_derivative` at one point: `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the
+  /// point mass at `v = 0`.
   pub(crate) fn h_at(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 0.0 {
       u
@@ -120,8 +122,8 @@ impl Clayton {
     }
   }
 
-  /// `percent_point` at one point before the quantile rule: `Clayton::finish` of `Clayton::level`, `y` at `θ = 0` and
-  /// below `INDEPENDENT_BELOW` but at `v = 0`.
+  /// `percent_point` at one point before the quantile rule: `Clayton::finish` of `Clayton::level`,
+  /// `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
   pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
     if theta == 0.0 {
       y
@@ -132,13 +134,14 @@ impl Clayton {
     }
   }
 
-  /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
+  /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps
+  /// its digits.
   pub(crate) fn level(theta: f64, y: f64) -> f64 {
     (-theta / (1.0 + theta) * y.ln()).exp_m1()
   }
 
-  /// `exp(−ln_1p(a/v^θ)/θ)`; once `v^θ` leaves the normal range or `a/v^θ` overflows, `v a^{−1/θ}` (the dropped
-  /// `(1 + v^θ/a)^{−1/θ}` is 1 to rounding), `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
+  /// `exp(−ln_1p(a/v^θ)/θ)`, or `v a^{−1/θ}` once `v^θ` is not normal or `a/v^θ` overflows,
+  /// `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
   pub(crate) fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
     let ratio = a / v_theta;
     if v_theta >= f64::MIN_POSITIVE && ratio.is_finite() {
@@ -154,7 +157,8 @@ impl Clayton {
     v * (-(z + (-(-z).exp_m1()).ln()) / theta).exp()
   }
 
-  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below
+  /// `INDEPENDENT_BELOW` but at `v = 0`.
   fn unchecked_inverse(
     &self,
     y: ArrayView1<f64>,
@@ -171,7 +175,8 @@ impl Clayton {
       }));
     }
 
-    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
+    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair
+    // closure does not.
     let v_theta = v_col.powf(theta);
     let mut u = y.mapv(|y| Self::level(theta, y));
     Zip::from(&mut u)
@@ -182,8 +187,8 @@ impl Clayton {
     Ok(u)
   }
 
-  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, exact as `θ → 0` and `−ln t` at `θ = 0`;
-  /// `expm1(x)/θ` past `x = 1`, and `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1(x)` overflows before the quotient.
+  /// `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t` (`−ln t` at `θ = 0`);
+  /// `expm1(x)/θ` past `x = 1`, `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1` overflows.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -241,7 +246,8 @@ impl BivariateExt for Clayton {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = uv e^δ` for `θ ≤ 1` and `min(u, v) e^{−ℓ/θ}` above, the pieces of `Clayton::ln_density`; `uv` at `θ = 0`.
+  /// `C = uv e^δ` for `θ ≤ 1` and `min(u, v) e^{−ℓ/θ}` above, the pieces of `Clayton::ln_density`;
+  /// `uv` at `θ = 0`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -301,7 +307,7 @@ impl BivariateExt for Clayton {
 
   /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no upper-tail dependence
   /// ($\lambda_U = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 5.21 / Table 5.1.
+  /// Reference: Nelsen, R.B. (2006), Example 5.21 / Table 5.1, DOI 10.1007/0-387-28678-0.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();

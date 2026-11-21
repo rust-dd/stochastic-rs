@@ -8,15 +8,17 @@ use criterion::criterion_main;
 use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::jump::bates::Bates;
+use stochastic_rs::stochastic::jump::bates::LogNormalJump;
 use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs::stochastic::params::Drift;
 use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
-use stochastic_rs::stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs::stochastic::volatility::bns::Bns;
 use stochastic_rs::traits::ProcessExt;
 
@@ -28,17 +30,7 @@ fn bench_jump_processes(c: &mut Criterion) {
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
 
-  let bns = Bns::<f64>::new(
-    Some(100.0),
-    0.04,
-    1.0,
-    0.05,
-    2.0,
-    1.0,
-    1024,
-    Some(1.0),
-    Unseeded,
-  );
+  let bns = Bns::<f64>::new(100.0, 0.04, 1.0, 0.05, 2.0, 1.0, 1024, Some(1.0), Unseeded);
   group.bench_function("bns", |b| b.iter(|| black_box(bns.sample())));
 
   let ctrw = Ctrw::<f64>::new(
@@ -115,16 +107,13 @@ fn bench_jump_processes(c: &mut Criterion) {
     });
 
     let mjd = MjdLog::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       0.2,
       LAMBDA,
       0.0,
       0.1,
       n,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );
@@ -132,21 +121,19 @@ fn bench_jump_processes(c: &mut Criterion) {
       b.iter(|| black_box(mjd.sample()))
     });
 
-    let bates = BatesSvj::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+    let law = LogNormalJump::new(-0.1, 0.2);
+    let bates = Bates::new(
+      Drift::Mu(0.05),
       LAMBDA,
-      -0.1,
-      0.2,
+      law.mean(),
       0.04,
       1.5,
       0.3,
       -0.6,
+      law,
       n,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Unseeded,

@@ -1,4 +1,4 @@
-//! # Delta Hedge
+//! Delta hedge of one option position: its share count, cost, running profit and moneyness.
 //!
 //! $$
 //! \Delta_t=\partial_S V(t,S_t),\quad d\Pi_t=dV_t-\Delta_t dS_t
@@ -7,8 +7,9 @@
 use crate::Moneyness;
 use crate::OptionType;
 
-#[derive(Debug, Clone)]
-pub struct DeltaHedge {
+/// The option being hedged and the moneyness thresholds that classify it.
+#[derive(Debug, Clone, Copy)]
+pub struct DeltaHedgeSpec {
   /// Current option value used by strategy/PnL routines.
   pub c: f64,
   /// The option's premium
@@ -23,8 +24,6 @@ pub struct DeltaHedge {
   pub s0: f64,
   /// The size of the option contract
   pub contract_size: f64,
-  /// Hedge size
-  pub hedge_size: f64,
   /// Call or put being hedged.
   pub option_type: OptionType,
   /// Deep out-of-the-money threshold
@@ -37,87 +36,48 @@ pub struct DeltaHedge {
   pub itm_threshold: f64,
 }
 
-impl DeltaHedge {
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    c: f64,
-    c_premium: f64,
-    c_delta: f64,
-    k: f64,
-    s: f64,
-    s0: f64,
-    contract_size: f64,
-    hedge_size: f64,
-    option_type: OptionType,
-    dotm_threshold: f64,
-    ditm_threshold: f64,
-    atm_threshold: f64,
-    itm_threshold: f64,
-  ) -> Self {
-    Self {
-      c,
-      c_premium,
-      c_delta,
-      k,
-      s,
-      s0,
-      contract_size,
-      hedge_size,
-      option_type,
-      dotm_threshold,
-      ditm_threshold,
-      atm_threshold,
-      itm_threshold,
-    }
-  }
+/// Delta hedge of one option position: `c_delta · contract_size` shares against the premium.
+#[derive(Debug, Clone, Copy)]
+pub struct DeltaHedge {
+  /// The hedged option and its thresholds.
+  pub spec: DeltaHedgeSpec,
 }
 
 impl DeltaHedge {
+  pub fn new(spec: DeltaHedgeSpec) -> Self {
+    Self { spec }
+  }
+
   pub fn hedge_cost(&self) -> f64 {
-    self.hedge_shares() * self.s - (self.c_premium * self.contract_size)
+    self.hedge_shares() * self.spec.s - (self.spec.c_premium * self.spec.contract_size)
   }
 
   pub fn current_hedge_profit(&self) -> f64 {
-    let option_profit = (self.c_premium - self.c) * self.contract_size;
-    let stock_profit = (self.s - self.s0) * self.hedge_shares();
+    let option_profit = (self.spec.c_premium - self.spec.c) * self.spec.contract_size;
+    let stock_profit = (self.spec.s - self.spec.s0) * self.hedge_shares();
     option_profit + stock_profit
   }
 
   pub fn hedge_shares(&self) -> f64 {
-    self.c_delta * self.contract_size
+    self.spec.c_delta * self.spec.contract_size
   }
 
-  /// Classify the option as DOTM / OTM / ATM / ITM / DITM using
-  /// asymmetric thresholds.
-  ///
-  /// **Threshold semantics:** `moneyness_ratio = S/K` for a call,
-  /// `K/S` for a put — so the side that "goes ITM" always sees a ratio
-  /// above 1.
-  /// - `ditm_threshold` is a one-sided **upper** cut: `ratio >
-  ///   ditm_threshold` ⇒ Deep-ITM. Typical: 1.10 (10% past strike).
-  /// - `dotm_threshold` is a one-sided **lower** cut: `ratio <
-  ///   dotm_threshold` ⇒ Deep-OTM. Typical: 0.90.
-  /// - `atm_threshold` and `itm_threshold` together form a symmetric
-  ///   ATM band around 1.0 (`atm_threshold` close to 1, e.g. 0.99,
-  ///   makes the ATM band wide).
-  ///
-  /// These thresholds are **deliberately one-sided**: a 1.05 ratio is
-  /// "in the money" for a call but the implementation does not test
-  /// `1.0 - x` symmetrically below 1, since the OTM bucket already
-  /// covers that side.
+  /// Bucket of the ratio `S/K` (call) or `K/S` (put): deep ITM above `ditm_threshold`, ITM above
+  /// 1, ATM within `1 − atm_threshold` of `itm_threshold`, deep OTM below `dotm_threshold`.
   pub fn moneyness(&self) -> Moneyness {
-    let moneyness_ratio = match self.option_type {
-      OptionType::Call => self.s / self.k,
-      OptionType::Put => self.k / self.s,
+    let spec = &self.spec;
+    let moneyness_ratio = match spec.option_type {
+      OptionType::Call => spec.s / spec.k,
+      OptionType::Put => spec.k / spec.s,
     };
 
-    if moneyness_ratio > self.ditm_threshold {
+    if moneyness_ratio > spec.ditm_threshold {
       Moneyness::DeepInTheMoney
     } else if moneyness_ratio > 1.0 {
       Moneyness::InTheMoney
-    } else if (moneyness_ratio - self.itm_threshold).abs() <= (1.0 - self.atm_threshold) {
+    } else if (moneyness_ratio - spec.itm_threshold).abs() <= (1.0 - spec.atm_threshold) {
       Moneyness::AtTheMoney
-    } else if moneyness_ratio < self.dotm_threshold {
+    } else if moneyness_ratio < spec.dotm_threshold {
       Moneyness::DeepOutOfTheMoney
     } else {
       Moneyness::OutOfTheMoney

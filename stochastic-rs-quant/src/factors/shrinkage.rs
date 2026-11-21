@@ -1,16 +1,14 @@
-//! Sample covariance and Ledoit-Wolf shrinkage to scaled identity.
+//! Sample covariance and Ledoit–Wolf shrinkage to the scaled identity, with intensity
+//! $\alpha = b^2 / d^2$.
 //!
 //! $$
 //! \hat\Sigma_{LW} = \alpha\,\mu I + (1-\alpha)\,S,\qquad
 //! \mu = \mathrm{tr}(S)/p,\quad
 //! d^2 = \|S - \mu I\|_F^2 / p,\quad
-//! b^2 = \min\!\bigl(d^2,\, \tfrac{1}{p T^2}\sum_t \|X_t X_t^\top - S\|_F^2\bigr),
+//! b^2 = \min\!\bigl(d^2,\, \tfrac{1}{p T^2}\sum_t \|X_t X_t^\top - S\|_F^2\bigr)
 //! $$
-//! with shrinkage intensity $\alpha = b^2 / d^2$.
 //!
-//! Reference: Ledoit, Wolf, "A Well-Conditioned Estimator for
-//! Large-Dimensional Covariance Matrices", Journal of Multivariate Analysis,
-//! 88(2), 365-411 (2004). DOI: 10.1016/S0047-259X(03)00096-4
+//! Reference: Ledoit & Wolf (2004), J. Multivariate Anal. 88(2), DOI 10.1016/S0047-259X(03)00096-4
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -63,14 +61,8 @@ pub fn sample_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
   cov
 }
 
-/// Ledoit-Wolf (2004) shrinkage of the sample covariance toward the scaled
-/// identity target $\mu I$.
-///
-/// Optimal shrinkage intensity (LW 2004, eq. 14):
-/// $\hat\delta = \max(0, \min(1, (\hat\pi - \hat\rho)/(T\hat\gamma)))$
-/// with $\hat\pi_{ij} = \tfrac{1}{T}\sum_t (y_{ti}y_{tj} - s_{ij})^2$,
-/// $\hat\pi = \sum_{i,j}\hat\pi_{ij}$, $\hat\rho = \sum_i \hat\pi_{ii}$,
-/// $\hat\gamma = \|S - \mu I\|_F^2$.
+/// Ledoit–Wolf shrinkage of the sample covariance toward $\mu I$, with the intensity of their
+/// eq. 14, $\hat\delta = \max(0, \min(1, (\hat\pi - \hat\rho)/(T\hat\gamma)))$.
 pub fn ledoit_wolf_shrinkage<T: RealExt>(returns: ArrayView2<T>) -> LedoitWolfResult<T> {
   let (t, p) = returns.dim();
   assert!(

@@ -20,6 +20,7 @@
 use ndarray::Array2;
 
 use super::implied::ImpliedVolSurface;
+use crate::OptionType;
 use crate::pricing::fourier::CarrMadanPricer;
 use crate::pricing::fourier::FourierModelExt;
 use crate::traits::VanillaEuropeanCall;
@@ -49,7 +50,7 @@ use crate::traits::VanillaEuropeanCall;
 /// use stochastic_rs_quant::pricing::fourier::BsmFourier;
 /// use stochastic_rs_quant::vol_surface::ModelSurface;
 ///
-/// let model = BsmFourier { sigma: 0.35, r: 0.05, q: 0.0 };
+/// let model = BsmFourier { sigma: 0.35 };
 /// let surface = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
 /// ```
@@ -93,8 +94,8 @@ pub trait ModelSurface: VanillaEuropeanCall {
       strikes.to_vec(),
       maturities.to_vec(),
       forwards,
-      &prices,
-      true,
+      prices.view(),
+      OptionType::Call,
     )
   }
 }
@@ -157,7 +158,7 @@ pub fn fourier_model_surface_fft_with(
   for (j, &t) in maturities.iter().enumerate() {
     let df = (-r * t).exp();
     for (i, &k) in strikes.iter().enumerate() {
-      let call = cm.price_call(model, s, k, r, t);
+      let call = cm.price_call(model, s, k, r, q, t);
       let undiscounted = if df > 0.0 { call / df } else { call };
       prices[[j, i]] = undiscounted;
     }
@@ -167,8 +168,8 @@ pub fn fourier_model_surface_fft_with(
     strikes.to_vec(),
     maturities.to_vec(),
     forwards,
-    &prices,
-    true,
+    prices.view(),
+    OptionType::Call,
   )
 }
 
@@ -183,25 +184,26 @@ mod tests {
   use crate::pricing::fourier::BatesFourier;
   use crate::pricing::fourier::DoubleHestonFourier;
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::pricing::fourier::VarianceGammaFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
+  use crate::total_order::ascending;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
   const GRID_T: [f64; 2] = [0.25, 1.0];
 
   #[test]
   fn heston_via_model_surface() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -224,7 +226,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -235,15 +237,13 @@ mod tests {
 
   #[test]
   fn fft_surface_matches_the_quadrature_surface() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
     let fft = fourier_model_surface_fft(&model, 100.0, 0.05, 0.0, &GRID_K, &GRID_T);
     let quadrature = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
     let worst = fft
@@ -285,8 +285,6 @@ mod tests {
       sigma: 0.12,
       theta: -0.14,
       nu: 0.2,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -308,20 +306,22 @@ mod tests {
 
   #[test]
   fn double_heston_via_model_surface() {
-    let model = DoubleHestonFourier {
-      v1_0: 0.02,
-      kappa1: 3.0,
-      theta1: 0.02,
-      sigma1: 0.4,
-      rho1: -0.6,
-      v2_0: 0.02,
-      kappa2: 0.5,
-      theta2: 0.03,
-      sigma2: 0.2,
-      rho2: -0.3,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = DoubleHestonFourier::new(
+      HestonParams {
+        v0: 0.02,
+        kappa: 3.0,
+        theta: 0.02,
+        sigma: 0.4,
+        rho: -0.6,
+      },
+      HestonParams {
+        v0: 0.02,
+        kappa: 0.5,
+        theta: 0.03,
+        sigma: 0.2,
+        rho: -0.3,
+      },
+    );
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -344,7 +344,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -355,18 +355,16 @@ mod tests {
 
   #[test]
   fn bates_via_model_surface() {
-    let model = BatesFourier {
+    let model = BatesFourier::new(SvjParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
-      sigma_v: 0.3,
+      sigma: 0.3,
       rho: -0.7,
       lambda: 0.5,
       mu_j: -0.1,
       sigma_j: 0.15,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -414,21 +412,19 @@ mod tests {
 
   #[test]
   fn model_surface_then_ssvi_fit() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes: Vec<f64> = (80..=120).step_by(2).map(|k| k as f64).collect();
     let maturities = vec![0.25, 0.5, 1.0, 2.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    let ssvi = surface.fit_ssvi(None);
+    let ssvi = surface.fit_ssvi(None).params;
     let ks: Vec<f64> = (-3..=3).map(|i| i as f64 * 0.5).collect();
     assert!(ssvi.is_calendar_spread_free(&ks));
 
@@ -445,15 +441,13 @@ mod tests {
   /// tolerance would let a re-association move an ulp.
   #[test]
   fn default_forward_is_bit_identical_to_the_inlined_expression() {
-    let heston = HestonFourier {
+    let heston = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
     let sabr = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
@@ -583,7 +577,7 @@ mod tests {
         let iv = surface.ivs[[j, i]];
         assert!(
           (iv - 0.25).abs() < 5e-3,
-          "European FD should recover its own v: iv={iv} at T={t}, K={k}"
+          "European FD should recover its own sigma: iv={iv} at T={t}, K={k}"
         );
       }
     }

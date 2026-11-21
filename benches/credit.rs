@@ -34,8 +34,8 @@ fn flat_discount() -> DiscountCurve<f64> {
   let times = array![0.25_f64, 1.0, 3.0, 5.0, 10.0, 30.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03, 0.03, 0.03];
   DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -59,8 +59,8 @@ fn bench_cds_valuation(c: &mut Criterion) {
   let times = Array1::from_vec(vec![1.0_f64, 3.0, 5.0, 10.0]);
   let hazards = Array1::from_vec(vec![0.010_f64, 0.015, 0.020, 0.025]);
   let survival = SurvivalCurve::from_hazard_rates(
-    &times,
-    &hazards,
+    times.view(),
+    hazards.view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
 
@@ -108,7 +108,8 @@ fn bench_bootstrap(c: &mut Criterion) {
         0.4,
         &discount,
         DayCountConvention::Actual365Fixed,
-      );
+      )
+      .unwrap();
       std::hint::black_box(curve.survival_probability(5.0))
     });
   });

@@ -1,4 +1,5 @@
-//! # Wishart distribution
+//! Wishart law for `ν > p − 1` and an SPD `V`, drawn by Bartlett's decomposition below; the
+//! stream's [`sample_inverse`](crate::Seeded::sample_inverse) draws `X⁻¹ ~ IW_p(ν, V⁻¹)`.
 //!
 //! $$
 //! X \sim \mathcal{W}_p(\nu, V)
@@ -17,11 +18,8 @@
 //! \quad A_{jj} \sim \chi_{\nu - j + 1},\ A_{i>j} \sim \mathcal N(0, 1).
 //! $$
 //!
-//! For `ν > p − 1` and an SPD `V`, drawn by Bartlett's decomposition above; the stream's
-//! [`sample_inverse`](crate::Seeded::sample_inverse) draws `X⁻¹ ~ IW_p(ν, V⁻¹)`.
-//!
-//! Reference: Bartlett, M.S. (1933), "On the theory of statistical regression", *Proceedings of the Royal Society of Edinburgh* 53, 260-283, DOI 10.1017/S0370164600015637.
-//! Reference: Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart variate generator", *Applied Statistics* 21(3), 341-345, DOI 10.2307/2346290.
+//! Reference: Bartlett (1933), Proc. R. Soc. Edinb. 53, 260-283, DOI 10.1017/S0370164600015637.
+//! Reference: Smith, W.B., Hocking, R.R. (1972), Appl. Stat. 21(3), 341-345, DOI 10.2307/2346290.
 
 use ndarray::Array2;
 use rand::Rng;
@@ -40,7 +38,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Wishart law `W_p(nu, scale)`: parameters and the scale's Cholesky factor; a [`Seeded`] stream draws its matrices.
+/// Wishart law `W_p(nu, scale)`: parameters and the scale's Cholesky factor; a [`Seeded`] stream
+/// draws its matrices.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimdWishart<T> {
   nu: T,
@@ -52,7 +51,8 @@ pub struct SimdWishart<T> {
   diag: Vec<SimdChiSquared<T>>,
 }
 
-/// A Wishart stream: one gamma sub-stream per Bartlett diagonal entry, then the below-diagonal normal.
+/// A Wishart stream: one gamma sub-stream per Bartlett diagonal entry, then the below-diagonal
+/// normal.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct WishartState<T: SimdFloatExt, R: SimdRngExt> {
@@ -60,7 +60,8 @@ pub struct WishartState<T: SimdFloatExt, R: SimdRngExt> {
   normal: StreamState<T, R, 64>,
 }
 
-/// The diagonal χ² and the below-diagonal normal of a Bartlett factor, from a stream or the caller's rng.
+/// The diagonal χ² and the below-diagonal normal of a Bartlett factor, from a stream or the
+/// caller's rng.
 trait BartlettSource<T: SimdFloatExt> {
   fn chi2(&mut self, law: &SimdChiSquared<T>, j: usize) -> T;
 
@@ -155,7 +156,8 @@ impl<T: SimdFloatExt> SimdWishart<T> {
     self.p
   }
 
-  /// `L·A·Aᵀ·Lᵀ` for Bartlett's lower-triangular `A`: `√χ²_{ν−j}` on the diagonal, `N(0, 1)` below, column by column.
+  /// `L·A·Aᵀ·Lᵀ` for Bartlett's lower-triangular `A`: `√χ²_{ν−j}` on the diagonal, `N(0, 1)` below,
+  /// column by column.
   fn bartlett<S: BartlettSource<T>>(&self, src: &mut S) -> Array2<T> {
     let mut a = Array2::<T>::zeros((self.p, self.p));
     for (j, chi2) in self.diag.iter().enumerate() {
@@ -168,7 +170,8 @@ impl<T: SimdFloatExt> SimdWishart<T> {
     m.dot(&m.t())
   }
 
-  /// Log-density of an SPD `X`, in `f64` from the scale's stored factor; NaN where `X` is not positive definite.
+  /// Log-density of an SPD `X`, in `f64` from the scale's stored factor; NaN where `X` is not
+  /// positive definite.
   pub fn log_pdf(&self, x: &Array2<T>) -> T {
     let to_f64 = |m: &Array2<T>| m.mapv(|v| v.to_f64().unwrap_or(f64::NAN));
     let (x, chol) = (to_f64(x), to_f64(&self.chol));
@@ -221,7 +224,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdWishart<T>, R> {
     law.bartlett(state)
   }
 
-  /// The inverse of one Wishart draw, an inverse-Wishart `IW_p(ν, V⁻¹)` draw; `None` if it is not numerically SPD.
+  /// The inverse of one Wishart draw, an inverse-Wishart `IW_p(ν, V⁻¹)` draw; `None` if it is not
+  /// numerically SPD.
   pub fn sample_inverse(&mut self) -> Option<Array2<T>> {
     invert_spd(&self.sample())
   }
@@ -264,7 +268,8 @@ fn invert_spd<T: SimdFloatExt>(a: &Array2<T>) -> Option<Array2<T>> {
   Some(inverse_from_factor(&cholesky_lower(a).ok()?))
 }
 
-/// `(L·Lᵀ)⁻¹` for a lower-triangular `L` with a positive diagonal, one column of the identity at a time.
+/// `(L·Lᵀ)⁻¹` for a lower-triangular `L` with a positive diagonal, one column of the identity at a
+/// time.
 fn inverse_from_factor<T: SimdFloatExt>(l: &Array2<T>) -> Array2<T> {
   let n = l.nrows();
   let mut inv = Array2::<T>::zeros((n, n));
@@ -374,7 +379,8 @@ mod tests {
     }
   }
 
-  /// The `f32` law draws SPD `f32` matrices with the first moment `νV`, and `log_pdf` takes and answers its scalar.
+  /// The `f32` law draws SPD `f32` matrices with the first moment `νV`, and `log_pdf` takes and
+  /// answers its scalar.
   #[test]
   fn f32_wishart_draws_and_densities() {
     let v = array![[2.0_f32, 0.5], [0.5, 1.0]];
@@ -401,7 +407,8 @@ mod tests {
     assert!((x32 as f64 - x64).abs() < 1e-4, "{x32} vs {x64}");
   }
 
-  /// An `f32` scale whose `f32` factor is SPD but whose `f64` factor is not answers a finite density from its own factor.
+  /// An `f32` scale whose `f32` factor is SPD but whose `f64` factor is not answers a finite
+  /// density from its own factor.
   #[test]
   fn f32_scale_answers_its_density_from_its_own_factor() {
     let v = array![[3.718021_f32, 0.99840343], [0.99840343, 0.26810214]];

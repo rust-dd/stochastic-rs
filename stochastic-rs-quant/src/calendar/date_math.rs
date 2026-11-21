@@ -1,14 +1,5 @@
-//! Canonical calendar arithmetic primitives.
-//!
-//! Single source of truth for leap-year predicate, month-length lookup,
-//! month addition (with optional end-of-month preservation), day arithmetic
-//! and weekday extraction. Used by [`super::day_count`], [`super::schedule`],
-//! [`super::business_day`], and [`crate::cashflows`].
-//!
-//! [`add_months`] takes an `eom: bool` flag implementing the ISDA EOM rule:
-//! when `true`, an input on the last day of its month maps to the last day
-//! of the target month; when `false`, the day-of-month is clamped to the
-//! target month's length on overflow.
+//! Calendar arithmetic shared by the day counts, schedules, business-day rules and cashflows:
+//! leap years, month lengths, month and day shifts, weekdays, IMM dates.
 
 use chrono::Datelike;
 use chrono::NaiveDate;
@@ -20,9 +11,7 @@ pub fn is_leap_year(year: i32) -> bool {
   (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
-/// Days in `month` of `year`, with `month ∈ 1..=12`. Panics on out-of-range
-/// month (Rust `chrono::Datelike::month` always returns 1..=12, so this
-/// branch is unreachable from valid `NaiveDate`s).
+/// Days in `month` of `year`; panics unless `month ∈ 1..=12`.
 pub fn days_in_month(year: i32, month: u32) -> u32 {
   match month {
     1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -38,13 +27,8 @@ pub fn days_in_month(year: i32, month: u32) -> u32 {
   }
 }
 
-/// Add `months` calendar months to `date`. When `eom = true`, an input that
-/// falls on the last day of its month is mapped to the last day of the
-/// target month (ISDA EOM rule). When `eom = false`, the day-of-month is
-/// clamped to the target month's last day if the input day-of-month would
-/// overflow.
-///
-/// # Examples
+/// `date` plus `months`. With `eom`, a month-end input maps to the target month's end (the ISDA
+/// EOM rule); otherwise the day is clamped to the target month's length.
 ///
 /// ```
 /// use chrono::NaiveDate;
@@ -85,9 +69,8 @@ pub fn add_months(date: NaiveDate, months: i32, eom: bool) -> NaiveDate {
     .expect("add_months: clamped (year, month, day) must yield a valid NaiveDate")
 }
 
-/// Shift `date` by `days` calendar days. Negative values shift backward.
-/// Saturates to chrono's representable range on overflow rather than
-/// panicking — production callers should not hit either extreme.
+/// `date` shifted by `days` calendar days, backward for a negative count; saturates at chrono's
+/// representable range.
 pub fn add_days(date: NaiveDate, days: i32) -> NaiveDate {
   let saturation = if days >= 0 {
     NaiveDate::MAX
@@ -99,20 +82,13 @@ pub fn add_days(date: NaiveDate, days: i32) -> NaiveDate {
     .unwrap_or(saturation)
 }
 
-/// ISO weekday of `date` (`Mon..=Sun`). Thin wrapper over
-/// [`chrono::Datelike::weekday`] kept here so the calendar layer does not
-/// leak `chrono::Datelike` into downstream call sites.
+/// ISO weekday of `date`.
 pub fn weekday(date: NaiveDate) -> Weekday {
   date.weekday()
 }
 
-/// Third-Wednesday IMM date of `(year, quarter_month)` where `quarter_month
-/// ∈ {3, 6, 9, 12}` for March / June / September / December. The standard
-/// CME / LIFFE quarterly futures and interest-rate-swap rolls land on these
-/// dates.
-///
-/// # Panics
-/// Panics on invalid month outside `{3, 6, 9, 12}`.
+/// The IMM date, the third Wednesday, of `quarter_month` in `year`; panics unless
+/// `quarter_month ∈ {3, 6, 9, 12}`.
 pub fn imm_date(year: i32, quarter_month: u32) -> NaiveDate {
   assert!(
     matches!(quarter_month, 3 | 6 | 9 | 12),
@@ -138,6 +114,26 @@ pub fn snap_to_imm(date: NaiveDate) -> NaiveDate {
     _ => 12,
   };
   imm_date(date.year(), qmonth)
+}
+
+/// The CDS roll date (20 March, June, September or December, unadjusted) on or before `date`.
+pub fn cds_roll_on_or_before(date: NaiveDate) -> NaiveDate {
+  let month = date.month();
+  let mut roll_month = month - month % 3;
+  if roll_month == month && date.day() < 20 {
+    roll_month -= 3;
+  }
+  let (year, roll_month) = if roll_month == 0 {
+    (date.year() - 1, 12)
+  } else {
+    (date.year(), roll_month)
+  };
+  NaiveDate::from_ymd_opt(year, roll_month, 20).expect("the 20th of a quarter month exists")
+}
+
+/// The first CDS roll date after `date`.
+pub fn next_cds_roll(date: NaiveDate) -> NaiveDate {
+  add_months(cds_roll_on_or_before(date), 3, false)
 }
 
 #[cfg(test)]
@@ -233,11 +229,7 @@ mod tests {
 
   #[test]
   fn imm_date_matches_cme_calendar() {
-    // Authoritative CME futures-roll dates 2024:
-    //   IMM-Mar 2024 = 2024-03-20 (Wed)
-    //   IMM-Jun 2024 = 2024-06-19 (Wed)
-    //   IMM-Sep 2024 = 2024-09-18 (Wed)
-    //   IMM-Dec 2024 = 2024-12-18 (Wed)
+    // CME's 2024 roll dates: 20 March, 19 June, 18 September, 18 December.
     assert_eq!(
       imm_date(2024, 3),
       NaiveDate::from_ymd_opt(2024, 3, 20).unwrap()

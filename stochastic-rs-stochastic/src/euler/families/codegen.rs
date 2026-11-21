@@ -5,12 +5,12 @@ mod helpers;
 
 macro_rules! euler_families {
   (
-    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
+    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
       state ($($state:ident),+ $(,)?)
-      noise ($($noise:ident),+ $(,)?)
+      noise ($($noise:ident),* $(,)?)
       step { $($step:tt)* }
       report { $($report:tt)* }
       $(lift $lift:tt)?
@@ -30,17 +30,15 @@ macro_rules! euler_families {
 
     impl Family {
       /// Every declared family, in code order.
-      #[allow(dead_code)]
+      #[cfg(test)]
       pub(crate) const ALL: &'static [Family] = &[$(Family::$name),*];
 
       /// The code the kernels compare `family` against.
-      #[allow(dead_code)]
       pub(crate) fn code(self) -> u32 {
         self as u32
       }
 
       /// Returns the family with this code, or `None` for an unknown code.
-      #[allow(dead_code)]
       pub(crate) fn from_code(code: u32) -> Option<Self> {
         match code {
           $( $code => Some(Family::$name), )*
@@ -49,25 +47,14 @@ macro_rules! euler_families {
       }
 
       /// Output planes per path; auxiliary state slots need not be reported.
-      #[allow(dead_code)]
       pub(crate) fn components(self) -> usize {
         match self {
           $( Family::$name => euler_family_exprs!(@count_exprs $($report)*), )*
         }
       }
 
-      /// How many state slots the family steps — at least as many as it
-      /// reports, more when it keeps auxiliary state the path never records.
-      #[allow(dead_code)]
-      pub(crate) fn slots(self) -> usize {
-        match self {
-          $( Family::$name => [$(stringify!($state)),*].len(), )*
-        }
-      }
-
       /// The curve slot a family's `history` clause reads its weights from,
       /// `None` for a family without one.
-      #[allow(dead_code)]
       pub(crate) fn history_slot(self) -> Option<u32> {
         match self {
           $( Family::$name => euler_family_exprs!(@history_slot $($hist)?), )*
@@ -76,7 +63,6 @@ macro_rules! euler_families {
 
       /// Whether the family declares a `series` clause: terms drawn per path
       /// before the steps and summed into the grid cells they fall in.
-      #[allow(dead_code)]
       pub(crate) fn has_series(self) -> bool {
         match self {
           $( Family::$name => euler_family_exprs!(@has_series $($ser)?), )*
@@ -85,7 +71,6 @@ macro_rules! euler_families {
 
       /// Whether the family's `series` clause sizes its terms in the step of
       /// their cell, where the state is known, rather than in the preamble.
-      #[allow(dead_code)]
       pub(crate) fn series_live(self) -> bool {
         match self {
           $( Family::$name => euler_family_exprs!(@series_live $($ser)?), )*
@@ -94,7 +79,6 @@ macro_rules! euler_families {
 
       /// Whether the family declares a `table` clause: a monotone table built
       /// per path before the steps, whose inverse each step reads at its time.
-      #[allow(dead_code)]
       pub(crate) fn has_table(self) -> bool {
         match self {
           $( Family::$name => euler_family_exprs!(@has_table $($tab)?), )*
@@ -102,16 +86,16 @@ macro_rules! euler_families {
       }
 
       /// Independent noise components per step, before the family's correlation transform.
-      #[allow(dead_code)]
+      #[cfg_attr(not(device_backend), allow(dead_code))]
       pub(crate) fn noises(self) -> usize {
         match self {
-          $( Family::$name => [$(stringify!($noise)),*].len(), )*
+          $( Family::$name => <[&str]>::len(&[$(stringify!($noise)),*]), )*
         }
       }
 
       /// Whether the jump and the gamma launch shapes change what the family
       /// reads; shapes that differ only in unread draws share one Metal kernel.
-      #[allow(dead_code)]
+      #[cfg_attr(not(metal_backend), allow(dead_code))]
       pub(crate) fn draws(self) -> (bool, bool) {
         match self {
           $( Family::$name => {
@@ -128,7 +112,8 @@ macro_rules! euler_families {
 
     /// Evaluates every component from the pre-step state using the shared formula.
     /// Parameters, state and noise follow declaration order.
-    #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
+    #[cfg(test)]
+    #[allow(unused_variables, unused_mut, unused_assignments)]
     pub(crate) fn host_step<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -148,6 +133,8 @@ macro_rules! euler_families {
       $gm2: T,
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
       $ln: T,
       $cv: T,
       $sj: T,
@@ -189,7 +176,8 @@ macro_rules! euler_families {
     }
 
     /// Evaluates reports from state and parameters in declaration order.
-    #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
+    #[cfg(test)]
+    #[allow(unused_variables, unused_mut, unused_assignments)]
     pub(crate) fn host_report<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -208,6 +196,8 @@ macro_rules! euler_families {
       $gm2: T,
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
       $ln: T,
       $cv: T,
       $sj: T,
@@ -260,7 +250,8 @@ macro_rules! euler_families {
     )*);
 
     /// Evaluates `[drift, diffusion, shock]`, or zeros for a family without a lift.
-    #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
+    #[cfg(test)]
+    #[allow(unused_variables)]
     pub(crate) fn host_lift<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -288,7 +279,8 @@ macro_rules! euler_families {
     )*);
 
     /// Evaluates the next history value, or `None` for a family without history.
-    #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
+    #[cfg(test)]
+    #[allow(unused_variables)]
     pub(crate) fn host_history<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -297,13 +289,15 @@ macro_rules! euler_families {
       noise: &[T],
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
     ) -> Option<T> {
       #[allow(unused_imports)]
       use ops::*;
       match family {
         $(
           Family::$name => {
-            euler_family_exprs!(@host_history $params, $dt, $u, $u2, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($hist)?)
+            euler_family_exprs!(@host_history $params, $dt, $u, $u2, $u3, $u4, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($hist)?)
           }
         )*
       }
@@ -316,7 +310,8 @@ macro_rules! euler_families {
     )*);
 
     /// Evaluates one series term, or `None` for a family without a series.
-    #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
+    #[cfg(test)]
+    #[allow(unused_variables)]
     pub(crate) fn host_series<T: FloatExt>(
       family: Family,
       state: &[T],
@@ -345,7 +340,8 @@ macro_rules! euler_families {
     )*);
 
     /// Evaluates one table increment, or `None` for a family without a table.
-    #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
+    #[cfg(test)]
+    #[allow(unused_variables)]
     pub(crate) fn host_table<T: FloatExt>(
       family: Family,
       $params: &[T],

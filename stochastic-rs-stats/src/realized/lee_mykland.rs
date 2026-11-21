@@ -1,33 +1,20 @@
-//! Lee–Mykland nonparametric jump test on intraday log-returns.
-//!
-//! Each return is standardised by a bipower-variation estimate of the local
-//! volatility from the $K$ observations just before it (Definition 1),
+//! Lee–Mykland nonparametric jump test on intraday returns (Definition 1, Theorem 1, Lemma 1).
 //!
 //! $$
 //! \mathcal L(i) = \frac{r_i}{\hat\sigma(t_i)},\qquad
-//! \hat\sigma(t_i)^2 = \frac{1}{K-2}\sum_{j=i-K+2}^{i-1} |r_j|\,|r_{j-1}|,
+//! \hat\sigma(t_i)^2 = \frac{1}{K-2}\sum_{j=i-K+2}^{i-1} |r_j|\,|r_{j-1}|,\qquad
+//! \mathcal L(i) \approx \frac{U_i}{c},\quad c = \mathbb E|U_i| = \sqrt{2/\pi}
 //! $$
-//!
-//! so that under the no-jump null $\mathcal L(i) \approx U_i / c$ with
-//! $U_i$ standard normal and $c = \mathbb E|U_i| = \sqrt{2/\pi}$
-//! (Theorem 1). A return is declared a jump when its statistic leaves the
-//! Gumbel region of the sample maximum (Lemma 1),
 //!
 //! $$
 //! \frac{|\mathcal L(i)| - C_n}{S_n} > \beta^*,\qquad
 //! C_n = \frac{\sqrt{2\log n}}{c} - \frac{\log\pi + \log\log n}{2c\sqrt{2\log n}},\qquad
-//! S_n = \frac{1}{c\sqrt{2\log n}},
+//! S_n = \frac{1}{c\sqrt{2\log n}},\qquad \beta^* = -\log(-\log(1-\alpha))
 //! $$
 //!
-//! with $\beta^* = -\log(-\log(1-\alpha))$ and $n$ the number of return
-//! observations. The window must grow like $\Delta t^{\gamma}$ with
-//! $-1 < \gamma < -1/2$; the paper's rule of thumb picks the smallest
-//! integer above $\sqrt{252 \times \text{observations per day}}$, which is
-//! $K = 16$ for daily data ([`lee_mykland_window`]).
+//! The window `K` grows like `Δt^γ`, `−1 < γ < −1/2`; [`lee_mykland_window`] is the paper's rule.
 //!
-//! Reference: Lee, Mykland, "Jumps in Financial Markets: A New Nonparametric
-//! Test and Jump Dynamics", Review of Financial Studies, 21(6), 2535-2563
-//! (2008). DOI: 10.1093/rfs/hhm056
+//! Reference: Lee & Mykland (2008), Rev. Financ. Stud. 21(6), 2535-2563, DOI: 10.1093/rfs/hhm056
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -35,7 +22,8 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::reject_constant;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// $c = \mathbb E|U| = \sqrt{2/\pi}$ for a standard normal $U$: the scale of
@@ -45,9 +33,8 @@ pub const LEE_MYKLAND_C: f64 = std::f64::consts::FRAC_2_SQRT_PI / std::f64::cons
 /// Result of the Lee–Mykland jump test over a return series.
 #[derive(Debug, Clone)]
 pub struct LeeMyklandTest {
-  /// Statistics $\mathcal L(i)$ aligned with the input; the first
-  /// `window - 1` entries are NaN because their volatility window is
-  /// incomplete.
+  /// Statistics $\mathcal L(i)$ aligned with the input; the first `window - 1` are NaN, their
+  /// volatility window being incomplete.
   pub statistics: Array1<f64>,
   /// Local volatility $\hat\sigma(t_i)$ behind each statistic, NaN where
   /// the statistic is.
@@ -71,7 +58,7 @@ pub struct LeeMyklandTest {
 }
 
 /// Lee–Mykland test of each return against the bipower volatility of the `window` before it; `Err`
-/// below `window` or on a non-finite return, panics unless `window >= 3` and `0 < alpha < 1`.
+/// below `window`, on non-finite or constant returns; panics unless `window >= 3`, `0 < alpha < 1`.
 pub fn lee_mykland_test<T: FloatExt>(
   returns: ArrayView1<T>,
   window: usize,
@@ -82,13 +69,11 @@ pub fn lee_mykland_test<T: FloatExt>(
     "window must satisfy `window >= 3`, got window = {window:?}"
   );
   assert_alpha(alpha);
-  validate(&as_slice_or_copy(returns), window)?;
+  validate_view(returns, window)?;
+  reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
 
-  let r: Vec<f64> = returns
-    .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+  let r: Vec<f64> = returns.iter().map(|x| x.to_f64().unwrap()).collect();
   let mut statistics = Array1::<f64>::from_elem(n, f64::NAN);
   let mut local_volatility = Array1::<f64>::from_elem(n, f64::NAN);
   let scale = 1.0 / (window - 2) as f64;
@@ -275,6 +260,16 @@ mod tests {
       lee_mykland_test(array![0.01_f64, 0.02, 0.03].view(), 5, 0.01).unwrap_err(),
       StatsError::InsufficientData { needed: 5, got: 3 }
     );
+  }
+
+  #[test]
+  fn constant_and_zero_returns_are_a_constant_series() {
+    for r in [Array1::from_elem(200, 0.001), Array1::<f64>::zeros(200)] {
+      assert_eq!(
+        lee_mykland_test(r.view(), 16, 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]

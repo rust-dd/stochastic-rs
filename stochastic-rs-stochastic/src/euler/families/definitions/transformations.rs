@@ -1,16 +1,11 @@
 macro_rules! euler_transformations {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_lifts! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
-  /// `σ²_t = ω + αX²_{t−1} + βσ²_{t−1}`, `X_t = σ_t z_t`: GARCH(1,1), and at
-  /// `β = 0` ARCH(1). The series starts at `σ₀ z₀` with `σ₀²` the
-  /// unconditional variance, so the launch steps before writing its first
-  /// point and the third component marks whether that first step has been
-  /// taken — until it has, the variance stays at the level the host seeds it
-  /// with rather than running the recursion on a state that does not exist
-  /// yet.
+  /// `σ²_t = ω + αX²_{t−1} + βσ²_{t−1}`, `X_t = σ_t z_t`: GARCH(1,1), ARCH(1) at `β = 0`. The
+  /// series starts at `σ₀ z₀`; `warm` holds the variance at its seed until the first step is taken.
   70 => Garch { omega, alpha, beta }
     state (x, s2, warm)
     noise (dz)
@@ -22,9 +17,8 @@ macro_rules! euler_transformations {
     }
     report { x, s2, warm },
 
-  /// [`Garch`](Family::Garch) with a threshold term: `γX²_{t−1}` enters only
-  /// when the previous return was negative, which is the GJR asymmetry and,
-  /// under the other name its author gave it, the asymmetric GARCH.
+  /// [`Garch`](Family::Garch) with a threshold term: `γX²_{t−1}` enters only after a negative
+  /// return, the GJR asymmetry, also named the asymmetric GARCH.
   71 => ThresholdGarch { omega, alpha, gamma, beta }
     state (x, s2, warm)
     noise (dz)
@@ -37,11 +31,8 @@ macro_rules! euler_transformations {
     }
     report { x, s2, warm },
 
-  /// `ln σ²_t = ω + α(|z_{t−1}| − E|z|) + γ z_{t−1} + β ln σ²_{t−1}`,
-  /// `X_t = σ_t z_t`: EGARCH(1,1). The lagged standardised residual is the
-  /// previous return over the previous standard deviation, both of which the
-  /// state carries, so the step recovers it rather than keeping a third
-  /// series. `E|z| = √(2/π)` is folded on the host.
+  /// `ln σ²_t = ω + α(|z_{t−1}| − E|z|) + γ z_{t−1} + β ln σ²_{t−1}`, `X_t = σ_t z_t`: EGARCH(1,1).
+  /// The step recovers `z_{t−1}` from the state; `E|z| = √(2/π)` is folded on the host.
   72 => ExponentialGarch { omega, alpha, gamma, beta, e_abs_z }
     state (x, ls2, warm)
     noise (dz)
@@ -56,18 +47,16 @@ macro_rules! euler_transformations {
     }
     report { x, ls2, warm },
 
-  /// One draw per grid point: the innovations themselves, with no recursion
-  /// over them. White noise takes a mean and a standard deviation; Gaussian
-  /// noise is the same family at zero mean and `√dt`.
+  /// One draw per grid point, with no recursion: white noise takes a mean and a standard
+  /// deviation, and Gaussian noise is the same family at zero mean and `√dt`.
   73 => Innovation { mean, sd }
     state (x)
     noise (dz)
     step { mean + sd * (dz / sqrt($dt)) }
     report { x },
 
-  /// A correlated pair of innovations: the second is drawn independently and
-  /// correlated in the step, which is what every two-factor model here does
-  /// with its own shocks.
+  /// A correlated pair of innovations: the second is drawn independently and correlated in the
+  /// step, as every two-factor model here does with its shocks.
   74 => CorrelatedInnovation { rho }
     state (a, b)
     noise (dw, dq)
@@ -84,9 +73,8 @@ macro_rules! euler_transformations {
     step { phi * x + sigma * (dz / sqrt($dt)) }
     report { x },
 
-  /// `X_t = σz_t + θσz_{t−1}`: a first-order moving average. The lagged
-  /// innovation is state of its own, since the step cannot see the previous
-  /// draw any other way.
+  /// `X_t = σz_t + θσz_{t−1}`: a first-order moving average. The lagged innovation is state,
+  /// since the step cannot see the previous draw any other way.
   76 => MovingAverage { theta, sigma }
     state (x, e)
     noise (dz)
@@ -133,11 +121,8 @@ macro_rules! euler_transformations {
     step { x + drift + $js }
     report { x },
 
-  /// `dσ² = −λσ² dt + dZ` with `Z` a compound-Poisson subordinator of gamma
-  /// jumps, and a log-Euler asset over it: the Barndorff-Nielsen-Shephard
-  /// model. The variance step is exact in the decay, as the host takes it,
-  /// and the jump sum is one gamma draw whose shape is the step's own jump
-  /// count times a single jump's.
+  /// `dσ² = −λσ² dt + dZ` with gamma compound-Poisson jumps under a log-Euler asset: BNS. The
+  /// decay is exact, and the jump sum is one gamma draw of the jump count times a jump's shape.
   82 => BarndorffNielsenShephard { decay, mu }
     state (s, v)
     noise (dw)
@@ -147,11 +132,8 @@ macro_rules! euler_transformations {
     }
     report { s, v },
 
-  /// Two fractional rows out of one embedding: the first reads the increment
-  /// buffer's leading `paths` rows, the second the next block, and the step
-  /// correlates them exactly as `CorrelatedInnovation` correlates two
-  /// Brownian shocks. Both rows share a Hurst exponent, which is what lets a
-  /// single embedding feed the pair.
+  /// Two fractional rows from one embedding, which a shared Hurst exponent allows: the second
+  /// reads the buffer's next `paths` rows, and the step correlates them as `CorrelatedInnovation`.
   83 => CorrelatedFractionalMotion { rho }
     state (a, b)
     noise (dz1, dz2)
@@ -161,12 +143,8 @@ macro_rules! euler_transformations {
     }
     report { a, b },
 
-  /// The complex fractional Ornstein-Uhlenbeck process in its real and
-  /// imaginary parts: one complex mean reversion `lambda - i·omega` acting on
-  /// `x1 + i·x2`, driven by a complex fractional noise whose two parts are
-  /// the pair of streams the one embedding produces. `scale` is the noise
-  /// intensity `sqrt(a / 2)`, folded in on the host so the step carries no
-  /// square root of its own.
+  /// The complex fractional Ornstein-Uhlenbeck process in real and imaginary parts: the reversion
+  /// `lambda - i·omega` on `x1 + i·x2`, with the noise intensity `scale = sqrt(a / 2)` host-folded.
   84 => ComplexFractionalOu { lambda, omega, scale }
     state (x1, x2)
     noise (dz1, dz2)
@@ -176,13 +154,8 @@ macro_rules! euler_transformations {
     }
     report { x1, x2 },
 
-  /// An Ornstein-Uhlenbeck process reported through a bounded map onto
-  /// `(-1, 1)`, which is how a stochastic correlation is built from an
-  /// unbounded state. `arctan` selects the map: at zero it is `tanh x`, and
-  /// at one the shallower `(2/pi) arctan(pi x / 2)`, whose `pi / 2` arrives
-  /// as `half_pi` rather than as a literal the kernel would carry at the
-  /// wrong precision — `2 / pi` is its reciprocal. Both branches are
-  /// evaluated and one is picked, since neither can fault.
+  /// An Ornstein-Uhlenbeck process reported through a bounded map onto `(-1, 1)`: `tanh x` at
+  /// `arctan = 0`, `(2/pi) arctan(pi x / 2)` at one, with `pi / 2` passed as `half_pi`.
   85 => TransformedOrnsteinUhlenbeck { kappa, mu, sigma, arctan, half_pi }
     state (x)
     noise (dz)
@@ -195,23 +168,16 @@ macro_rules! euler_transformations {
       )
     },
 
-  /// The arrival times of a Poisson process sampled to a fixed count: a
-  /// running sum of exponential inter-arrival times, each drawn by inverse
-  /// CDF from the step's own uniform. The uniform is floored before the
-  /// logarithm because the hash stream can land on exactly zero, which is a
-  /// clamp of probability `1e-7` rather than a change of law.
+  /// The arrival times of a Poisson process sampled to a fixed count: a running sum of exponential
+  /// waits, each by inverse CDF from the step's own uniform.
   86 => PoissonArrivals { lambda }
     state (x)
     noise (dz)
-    step { x + negate(ln(max($u, lit(1.0e-7)))) * recip(lambda) }
+    step { x + negate(ln($u)) * recip(lambda) }
     report { x },
 
-  /// The dynamic SABR: a forward rate under a backbone exponent and a
-  /// log-normal volatility, with all three coefficients time-varying. The
-  /// term structure arrives as curves rather than parameters — `ct` is
-  /// `beta(t)`, `ct1` is `rho(t)` and `ct2` is `nu(t)` — which is what turns
-  /// the host's per-step bucket search into a buffer read. The volatility
-  /// takes the exact step for `d(alpha) = nu alpha dW`, not an Euler one.
+  /// The dynamic SABR with its term structure as curves: `ct` is `beta(t)`, `ct1` is `rho(t)`,
+  /// `ct2` is `nu(t)`. The volatility takes the exact step for `d(alpha) = nu alpha dW`.
   87 => DynamicSabr { }
     state (f, v)
     noise (dw1, dq)
@@ -222,12 +188,8 @@ macro_rules! euler_transformations {
     }
     report { f, v },
 
-  /// Heath-Jarrow-Morton in its three-row discretisation: the short rate,
-  /// the bond price and the forward rate each take a drift and a diffusion
-  /// coefficient that are functions of time alone, so all six travel as
-  /// curves — `ct`/`ct1` for the rate, `ct2`/`ct3` for the bond price with
-  /// its outer scale already folded into both, `ct4`/`ct5` for the forward
-  /// rate — and the family carries no parameter at all.
+  /// Heath-Jarrow-Morton in three rows, each with a drift and a diffusion curve: `ct`/`ct1` the
+  /// short rate, `ct2`/`ct3` the bond price (outer scale folded in), `ct4`/`ct5` the forward rate.
   88 => HeathJarrowMorton { }
     state (r, p, f)
     noise (dr, dp, df)
@@ -238,25 +200,16 @@ macro_rules! euler_transformations {
     }
     report { r, p, f },
 
-  /// One factor of the affine-diffusion Gaussian short-rate model: a
-  /// mean-reverting state under a time-varying level `ct = k(t)` and speed
-  /// `ct1 = theta(t)`, reported through the quadratic observation
-  /// `phi(t) + b(t) x + c(t) x^2` whose three coefficients are `ct2`, `ct3`
-  /// and `ct4`. Each factor carries its own diffusion scale, and a model of
-  /// several is that many independent launches of this family.
+  /// One factor of the affine-diffusion Gaussian model: level `ct = k(t)`, speed `ct1 = theta(t)`,
+  /// reported as `phi(t) + b(t) x + c(t) x^2` from `ct2`, `ct3`, `ct4`. One launch per factor.
   89 => AffineDiffusionGaussian { sigma }
     state (x)
     noise (dz)
     step { x + ($ct - $ct1 * x) * $dt + sigma * dz }
     report { $ct2 + $ct3 * x + $ct4 * x * x },
 
-  /// One forward-rate / volatility pair of the Wu-Zhang model: a square-root
-  /// variance mean-reverting to `alpha` at speed `beta` with vol-of-vol `nu`,
-  /// and a forward rate whose diffusion is `lambda` times the square root of
-  /// the variance *just stepped*, which is why the variance is bound first.
-  /// Both are floored at zero as the host does, the rate before its step and
-  /// the variance before and after. A model of several pairs is that many
-  /// independent launches of this family.
+  /// One Wu-Zhang pair: a square-root variance reverting to `alpha` at speed `beta`, and a rate
+  /// whose diffusion is `lambda` times the root of the variance just stepped, so it is bound first.
   90 => WuZhang { alpha, beta, nu, lambda }
     state (f, v)
     noise (df, dv)
@@ -267,11 +220,8 @@ macro_rules! euler_transformations {
     }
     report { f, v },
 
-  /// Up to four correlated geometric Brownian motions under one lower
-  /// Cholesky factor: the four shocks are combined through `L` and each asset
-  /// takes the exact log-normal step in its own combined increment. A model
-  /// with fewer assets pads the rest with zero drift, zero volatility and a
-  /// unit diagonal, which leaves them constant at their (zero) start.
+  /// Up to four correlated geometric Brownian motions under one lower Cholesky factor, each by
+  /// the exact log-normal step. A missing asset has zero drift and volatility and a unit diagonal.
   91 => CorrelatedGeometric4 { m0, m1, m2, m3, s0, s1, s2, s3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (a, b, c, d)
     noise (dz0, dz1, dz2, dz3)
@@ -287,10 +237,8 @@ macro_rules! euler_transformations {
     }
     report { a, b, c, d },
 
-  /// Up to four correlated Gaussian noises under one lower Cholesky factor:
-  /// the four-stream generalisation of `CorrelatedInnovation`, whose state
-  /// is the combined increment itself. A model with fewer streams pads the
-  /// factor with a unit diagonal and ignores the rows it did not ask for.
+  /// Up to four correlated Gaussian noises under one lower Cholesky factor; the state is the
+  /// combined increment. A missing stream gets a unit diagonal, and its row is ignored.
   92 => CorrelatedNoises4 { l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (a, b, c, d)
     noise (dz0, dz1, dz2, dz3)
@@ -306,14 +254,8 @@ macro_rules! euler_transformations {
     }
     report { a, b, c, d },
 
-  /// A log-normal spot whose volatility is set by a Markov chain of up to
-  /// four regimes. The regime rides in a state slot as `0..3`; `g0..g3` are
-  /// the regimes' volatilities and `c_r1..c_r3` the cumulative one-step
-  /// transition thresholds of row `r`, tabulated on the host from `exp(Q dt)`.
-  /// The spot steps under the regime it is in, then the regime draws its
-  /// successor from that row by inverse CDF on the step's uniform — the host's
-  /// own order. A chain with fewer regimes pads the rest with thresholds of
-  /// one, which no draw reaches.
+  /// A log-normal spot under a Markov chain of up to four regimes (slot value `0..3`): `g0..g3`
+  /// are volatilities, `c_r1..c_r3` row `r`'s cumulative thresholds from `exp(Q dt)`, padded by 1.
   93 => RegimeSwitching {
     mu, g0, g1, g2, g3, c01, c02, c03, c11, c12, c13, c21, c22, c23, c31, c32, c33
   }

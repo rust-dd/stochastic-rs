@@ -3,13 +3,15 @@ use pyo3::prelude::*;
 
 use super::stats_error;
 
-/// Random-walk Metropolis-Hastings with a Python-callable log target.
-///
-/// `log_target` is a Python function `numpy.ndarray -> float` that may return
-/// `-inf` to encode hard constraints. The chain runs in pure Python-callback
-/// mode (single-threaded, GIL-bound), so it is most useful for low-dimensional
-/// parameter spaces. For performance-critical work consider porting the
-/// log-density to Rust and exposing it as a closed-form distribution instead.
+/// The samples, their log targets and the acceptance rate.
+type Chain<'py> = (
+  pyo3::Bound<'py, numpy::PyArray2<f64>>,
+  pyo3::Bound<'py, numpy::PyArray1<f64>>,
+  f64,
+);
+
+/// Random-walk Metropolis–Hastings on a Python `log_target(numpy.ndarray) -> float`, which may
+/// return `-inf` for a hard constraint; every step calls back under the GIL, single-threaded.
 #[pyfunction]
 #[pyo3(signature = (initial, log_target, proposal_scale, n_samples, burn_in=1000, seed=42))]
 pub fn random_walk_metropolis<'py>(
@@ -20,11 +22,7 @@ pub fn random_walk_metropolis<'py>(
   n_samples: usize,
   burn_in: usize,
   seed: u64,
-) -> PyResult<(
-  pyo3::Bound<'py, numpy::PyArray2<f64>>,
-  pyo3::Bound<'py, numpy::PyArray1<f64>>,
-  f64,
-)> {
+) -> PyResult<Chain<'py>> {
   use ndarray::ArrayView1;
   use numpy::IntoPyArray;
   let init_arr = initial.as_array().to_owned();

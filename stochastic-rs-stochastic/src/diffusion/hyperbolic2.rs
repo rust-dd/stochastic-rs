@@ -1,9 +1,13 @@
-//! # Hyperbolic2
+//! The hyperbolic diffusion: constant volatility, a bounded pull to `mu` and a skew `beta`.
 //!
 //! $$
-//! dX_t=\frac{\sigma^2}{2}\left(\beta-\frac{\gamma X_t}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt+\sigma\,dW_t
+//! dX_t=\frac{\sigma^2}{2}
+//! \left(\beta-\frac{\gamma(X_t-\mu)}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt+\sigma\,dW_t
 //! $$
 //!
+//! For `γ > |β|` and `δ > 0` its invariant law is hyperbolic, `∝ exp(−γ√(δ² + (x−μ)²) + β(x−μ))`.
+//!
+//! Reference: Bibby & Sørensen (2003), DOI 10.1016/B978-044450896-6.50008-X
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -19,28 +23,25 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift-shape coefficient β, the constant term inside the bracket
-  /// `β − γX_t/√(δ²+(X_t−μ)²)`.
+  /// Skew β, the constant term inside the bracket `β − γ(X_t−μ)/√(δ²+(X_t−μ)²)`.
   pub beta: T,
-  /// Drift-shape coefficient γ scaling the restoring term inside the same
-  /// bracket.
+  /// Steepness γ of the restoring term inside the same bracket, the source's `α`.
   pub gamma: T,
   /// Curvature parameter δ > 0 of the hyperbolic restoring term near
   /// `X_t = μ`.
   pub delta: T,
-  /// Location parameter μ the restoring term is centered on — not a drift
-  /// rate; it enters only through `(X_t − μ)²`.
+  /// Location μ, where the restoring term vanishes — not a drift rate.
   pub mu: T,
   /// Diffusion scale σ multiplying `dW_t` (also rescales the drift bracket
   /// by `σ²/2`).
   pub sigma: T,
   /// Number of points sampled along the generalized-hyperbolic path.
   pub n: usize,
-  /// Initial value X₀ of the generalized-hyperbolic path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -50,6 +51,8 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `delta > 0`, `delta * delta > 0`,
+  /// `gamma > |beta|`, and every parameter is finite.
   pub fn new(
     beta: T,
     gamma: T,
@@ -90,6 +93,18 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      delta * delta > T::zero(),
+      "delta must satisfy `delta * delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma > beta.abs(),
+      "gamma must satisfy `gamma > beta.abs()`, got gamma = {gamma:?}, beta = {beta:?}"
+    );
     Self {
       backend: Cpu,
       beta,
@@ -104,8 +119,6 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Hyperbolic2<T, S, B> {}
 
 /// The Euler engine's view of the hyperbolic diffusion. The drift's leading
 /// `½σ²` is folded here rather than recomputed on every step.
@@ -178,9 +191,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -212,6 +224,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Hyperbolic2`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Hyperbolic2Sampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -239,7 +252,7 @@ impl<T: FloatExt> Hyperbolic2Sampler<T> {
     for z in tail.iter_mut() {
       let r = (self.delta * self.delta + (prev - self.mu) * (prev - self.mu)).sqrt();
       let half = T::from_f64_fast(0.5);
-      let drift = half * self.sigma * self.sigma * (self.beta - self.gamma * prev / r);
+      let drift = half * self.sigma * self.sigma * (self.beta - self.gamma * (prev - self.mu) / r);
       let next = prev + drift * self.dt + self.sigma * *z;
       *z = next;
       prev = next;
@@ -270,3 +283,73 @@ py_process_1d!(PyHyperbolic2, Hyperbolic2,
   params: (beta: f64, gamma: f64, delta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// Bibby & Sørensen's MaPhySto report, eq. (4.5): the restoring term `γ(X − μ)/√(δ² + (X − μ)²)`
+  /// is zero at `X = μ`, so with `β = 0` the first step from `μ` is the noise alone for any `γ`.
+  #[test]
+  fn the_restoring_term_vanishes_at_mu() {
+    let first = |gamma: f64| {
+      Hyperbolic2::new(
+        0.0,
+        gamma,
+        1.0,
+        2.0,
+        0.5,
+        9,
+        Some(2.0),
+        None,
+        Deterministic::new(3),
+      )
+      .sample()[1]
+    };
+    assert_eq!(first(0.5), first(5.0));
+  }
+
+  /// With `δ = 0` the restoring term is `0/0` at `x = μ`, where a path from `x0 = mu` starts.
+  #[test]
+  #[should_panic(expected = "delta must satisfy `delta > T::zero()`, got delta = 0.0")]
+  fn new_refuses_a_zero_delta() {
+    let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 0.0, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
+  }
+
+  /// A positive `δ` whose square underflows to zero leaves the restoring term `0/0` at `x = μ`.
+  #[test]
+  #[should_panic(expected = "delta must satisfy `delta * delta > T::zero()`, got delta = 1e-200")]
+  fn new_refuses_a_delta_whose_square_underflows() {
+    let _ = Hyperbolic2::<f64>::new(0.0, 1.0, 1e-200, 0.0, 0.2, 24, Some(0.0), None, Unseeded);
+  }
+
+  /// The hyperbolic law's density is integrable only for `γ > |β|`; here `γ = |β|`, `β < 0`.
+  #[test]
+  #[should_panic(
+    expected = "gamma must satisfy `gamma > beta.abs()`, got gamma = 0.5, beta = -0.5"
+  )]
+  fn new_refuses_a_gamma_at_most_the_skew() {
+    let _ = Hyperbolic2::<f64>::new(-0.5, 0.5, 1.0, 0.0, 0.2, 24, None, None, Unseeded);
+  }
+
+  /// With `β = 0` the invariant hyperbolic law is symmetric about `μ`, the long-run mean.
+  #[test]
+  fn the_symmetric_law_is_centred_on_mu() {
+    let path = Hyperbolic2::new(
+      0.0,
+      2.0,
+      1.0,
+      2.0,
+      1.0,
+      200_001,
+      Some(2.0),
+      Some(2000.0),
+      Deterministic::new(5),
+    )
+    .sample();
+    let mean = path.sum() / path.len() as f64;
+    assert!((mean - 2.0).abs() < 0.25, "long-run mean {mean}");
+  }
+}

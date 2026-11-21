@@ -118,6 +118,21 @@ def test_cheyette_state_and_bonds():
     assert abs(model.short_rate(0.5, 0.004) - 0.034) < 1e-15
 
 
+def test_hjm_returns_the_short_rate_bond_price_and_forward_rate():
+    flat = lambda t, m: 0.0
+    vol = lambda t, m: 0.01
+    model = sr.PyHjm(
+        lambda t: 0.0, lambda t: 0.01, lambda t, m: 1.0, flat, vol, flat, vol, 16,
+        r0=0.03, p0=1.0, f0=0.04, seed=3,
+    )
+    r, p, f = model.sample()
+    assert r.shape == p.shape == f.shape == (16,)
+    assert (r[0], p[0], f[0]) == (0.03, 1.0, 0.04)
+    rs, ps, fs = model.sample_par(8)
+    assert rs.shape == ps.shape == fs.shape == (8, 16)
+    assert (rs[:, 0] == 0.03).all() and (fs[:, 0] == 0.04).all()
+
+
 def test_device_classes_reproduce_the_euler_moments():
     paths = sr.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
     assert paths.shape == (20_000, 253) and np.allclose(paths[:, 0], 100.0)
@@ -133,7 +148,7 @@ def test_device_names_are_honoured_or_reported():
     # A device name is either served by a compiled back-end or refused with a
     # rebuild hint; never silently redirected to the CPU.
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 10, seed=7, device="tpu")
+        sr.PyGbm(0.05, 0.2, 10, x0=1.0, seed=7, device="tpu")
     for device in ("cuda", "metal"):
         try:
             gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
@@ -174,10 +189,10 @@ def test_device_argument_on_the_process_classes():
     assert np.array_equal(base.sample_par(4), same.sample_par(4))
     assert np.array_equal(sr.PyFgn(0.7, 64, seed=3).sample_par(2), sr.PyFgn(0.7, 64, seed=3, device="cpu").sample_par(2))
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 64, seed=7, device="tpu")
+        sr.PyGbm(0.05, 0.2, 64, x0=1.0, seed=7, device="tpu")
     # float64 on a single-precision device is refused whatever the build carries
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 64, seed=7, device="metal")
+        sr.PyGbm(0.05, 0.2, 64, x0=1.0, seed=7, device="metal")
     with pytest.raises(ValueError):
         sr.PyFbm(0.7, 64, seed=7, device="metal")
     for device in ("cuda", "metal", "accelerate"):
@@ -224,7 +239,7 @@ def test_heston_slv_samples_under_a_callable_and_a_grid_leverage():
 
 
 def test_heston_slv_rejects_bad_inputs_with_python_errors():
-    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65)
+    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65, s0=100.0, v0=0.04)
     unit = lambda t, s: 1.0
     for bad in (
         {"kappa": math.nan},
@@ -254,7 +269,7 @@ def test_heston_slv_callback_failures_are_runtime_errors(operation):
     def broken(t, s):
         raise RuntimeError("leverage callback failed")
 
-    process = sr.PyHestonSlv(2.0, 0.04, 0.3, -0.7, 0.05, 0.6, broken, 5, seed=7)
+    process = sr.PyHestonSlv(2.0, 0.04, 0.3, -0.7, 0.05, 0.6, broken, 5, 1.0, 0.04, seed=7)
     with pytest.raises(RuntimeError, match="leverage callback failed"):
         if operation == "leverage":
             process.leverage(0.0, 100.0)
@@ -269,7 +284,7 @@ def _heston(**kwargs):
 
 
 def test_heston_qe_prices_the_atm_call_within_monte_carlo_error():
-    exact = sr.HestonFourier(0.04, 1.5, 0.04, 0.5, -0.7, 0.02, 0.0).price_call(
+    exact = sr.HestonFourier(0.04, 1.5, 0.04, 0.5, -0.7).price_call(
         100.0, 100.0, 0.02, 0.0, 1.0
     )
     errors = []
@@ -320,3 +335,123 @@ def test_the_boundary_kwarg_selects_the_variance_step():
     for build in (variance, lambda b: sr.PyCir(1.5, 0.04, 0.3, 64, boundary=b)):
         with pytest.raises(ValueError):
             build("symmetric")
+
+
+def test_a_log_price_model_takes_exactly_one_drift():
+    def gbm_log(**drift):
+        return sr.PyGbmLog(sigma=0.2, n=64, s0=1.0, t=1.0, seed=4, **drift).sample()
+
+    assert np.array_equal(gbm_log(mu=0.5), gbm_log(b=0.5))
+    assert np.array_equal(gbm_log(mu=0.5), gbm_log(r=0.75, r_f=0.25))
+    assert not np.array_equal(gbm_log(mu=0.5), gbm_log(mu=0.25))
+    builds = [
+        lambda **d: sr.PyGbmLog(sigma=0.2, n=64, s0=1.0, **d),
+        lambda **d: sr.PyHestonLog(kappa=1.5, theta=0.04, xi=0.3, rho=-0.7, n=64, s0=1.0, v0=0.04, **d),
+        lambda **d: sr.PyMjdLog(sigma=0.2, lambda_=0.5, nu=-0.1, omega=0.15, n=64, s0=1.0, **d),
+        lambda **d: sr.PyBates(0.5, 0.0, 0.08, 2.0, 0.3, -0.5, lambda: 0.1, 64, s0=1.0, v0=0.0, **d),
+        lambda **d: sr.PyBatesSvj(0.5, 0.0, 0.1, 0.08, 2.0, 0.3, -0.7, 64, s0=1.0, v0=0.0, **d),
+    ]
+    for build in builds:
+        build(mu=0.05)
+        for bad in ({}, {"mu": 0.05, "b": 0.01}, {"r": 0.05}, {"mu": 0.05, "r": 0.05, "r_f": 0.0}):
+            with pytest.raises(ValueError, match="exactly one drift"):
+                build(**bad)
+
+
+def test_an_event_process_takes_exactly_one_of_n_and_t_max():
+    builds = [
+        lambda **h: sr.PyPoisson(2.0, **h),
+        lambda **h: sr.PyHawkes(0.5, 0.3, 1.0, **h),
+        lambda **h: sr.PyCustomJt(lambda: 0.1, **h),
+        lambda **h: sr.PyCompoundCustom(lambda: 0.1, lambda: 0.1, **h),
+        lambda **h: sr.PyCompoundPoisson(lambda: 0.1, 2.0, **h),
+    ]
+    for build in builds:
+        out = build(n=10).sample()
+        assert {len(row) for row in (out if isinstance(out, tuple) else (out,))} == {11}
+        build(t_max=1.0)
+        for bad in ({}, {"n": 10, "t_max": 1.0}):
+            with pytest.raises(ValueError, match="exactly one of n and t_max"):
+                build(**bad)
+    assert len(sr.PyPoisson(3.0, n=10, seed=2).sample()) == 11
+    assert np.all(sr.PyPoisson(3.0, t_max=2.0, seed=2).sample() <= 2.0)
+    assert sr.PyPoisson(3.0, n=10).device_ready() and sr.PyHawkes(0.5, 0.3, 1.0, n=10).device_ready()
+    assert not sr.PyPoisson(3.0, t_max=2.0).device_ready()
+    assert sr.PyHawkes(0.5, 0.3, 1.0, t_max=2.0).device_fallback() is not None
+
+
+def test_a_zero_rate_counts_no_arrival():
+    assert list(sr.PyPoisson(0.0, t_max=2.0, seed=2).sample()) == [0.0]
+    assert list(sr.PyPoisson(0.0, n=0, seed=2).sample()) == [0.0]
+    with pytest.raises(ValueError, match=r"Events\(1\.\.\)"):
+        sr.PyPoisson(0.0, n=3)
+    with pytest.raises(ValueError, match="lambda >= T::zero"):
+        sr.PyPoisson(-1.0, t_max=2.0)
+
+
+def test_ho_lee_takes_exactly_one_of_theta_and_forward_curve():
+    sr.PyHoLee(0.01, 64, theta=0.02)
+    sr.PyHoLee(0.01, 64, forward_curve=lambda t: 0.03)
+    for bad in ({}, {"theta": 0.02, "forward_curve": lambda t: 0.03}):
+        with pytest.raises(ValueError, match="exactly one drift: theta or forward_curve"):
+            sr.PyHoLee(0.01, 64, **bad)
+    with pytest.raises(TypeError):
+        sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
+
+
+def test_the_fractional_sheet_names_its_grid_rows_and_cols():
+    sheet = sr.PyFbs(0.7, rows=9, cols=5, r=1.0, seed=3).sample()
+    assert sheet.shape == (9, 5)
+    with pytest.raises(TypeError):
+        sr.PyFbs(0.7, m=9, n=5, r=1.0)
+
+
+def test_the_rough_heston_spot_drift_and_correlation_are_checked_at_construction():
+    for bad, match in (({"s0": 0.0}, "s0 must satisfy"), ({"mu": math.nan}, "mu must satisfy"),
+                       ({"rho": 1.5}, "rho must satisfy")):
+        with pytest.raises(ValueError, match=match):
+            sr.PyRoughHeston(0.1, 0.04, 1.0, 0.3, 64, 0.2, **bad)
+
+
+def test_the_bates_svj_jump_is_lognormal_and_compensated_by_its_mean():
+    def bates_svj(nu, omega, lambda_=5.0):
+        return sr.PyBatesSvj(lambda_, nu, omega, 0.0, 0.0, 0.0, 0.0, 33, mu=0.0, s0=100.0, v0=0.0,
+                             t=1.0, seed=5)
+
+    terminal = bates_svj(-0.1, 0.2).sample_par(20_000)[0][:, -1]
+    assert abs(terminal.mean() - 100.0) < 5.0 * terminal.std(ddof=1) / math.sqrt(terminal.size)
+    quarterly = sr.PyBatesSvj(1.0, -1.0, 0.5, 0.5, 2.0, 0.5, -0.7, 5, mu=0.05, s0=100.0, v0=0.25,
+                              t=1.0, seed=11)
+    assert np.all(quarterly.sample_par(20_000)[0] > 0.0)
+
+
+def test_the_bates_svj_takes_its_jumps_to_a_device():
+    def bates_svj(**device):
+        return sr.PyBatesSvj(3.0, -0.05, 0.1, 0.08, 2.0, 0.3, -0.7, 64, mu=0.02, s0=100.0, v0=0.04,
+                             t=1.0, seed=7, dtype="f32", **device)
+
+    assert bates_svj().device_ready() and bates_svj().device_fallback() is None
+    host = bates_svj().sample_par(256)[0]
+    for device in ("cuda", "metal"):
+        try:
+            on_device = bates_svj(device=device)
+        except (ValueError, RuntimeError):
+            continue
+        spots = on_device.sample_par(256)[0]
+        assert spots.shape == host.shape and np.all(spots > 0.0)
+        assert not np.array_equal(spots, host)
+
+
+def test_the_inverse_gaussian_process_is_the_unit_subordinator():
+    assert not hasattr(sr, "PyIg")
+    path = sr.PyIGSubordinator(2.0, 1.0, 65, seed=3).sample()
+    assert path.shape == (65,) and path[0] == 0.0 and np.all(np.diff(path) > 0.0)
+
+
+def test_white_noise_takes_its_location_as_mu_and_its_scale_as_sigma():
+    flat = sr.PyWn(64, mu=0.5, sigma=0.0, seed=1).sample()
+    assert np.all(flat == 0.5)
+    assert np.array_equal(sr.PyWn(64, sigma=2.0, seed=1).sample(), 2.0 * sr.PyWn(64, seed=1).sample())
+    for old in ({"std_dev": 1.0}, {"mean": 0.5}):
+        with pytest.raises(TypeError):
+            sr.PyWn(64, **old)

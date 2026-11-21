@@ -72,7 +72,11 @@ fn bench_density_eval(c: &mut Criterion) {
   });
 
   group.bench_function(BenchmarkId::new("Cir", "transition_pdf"), |b| {
-    b.iter(|| black_box(stochastic_rs::stats::cir::pdf(3.0, 0.3, 0.2, dt, 0.4, 0.41)))
+    b.iter(|| black_box(cir.transition_pdf(dt, 0.4, 0.41)))
+  });
+
+  group.bench_function(BenchmarkId::new("Cir", "transition_ln_pdf"), |b| {
+    b.iter(|| black_box(cir.transition_ln_pdf(dt, 0.4, 0.41)))
   });
 
   group.finish();
@@ -99,8 +103,7 @@ fn bench_log_likelihood(c: &mut Criterion) {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
-          let d = DensityApprox::Euler.density(&ou, path[i], path[i + 1], 0.0, dt);
-          sum += d.max(1e-30).ln();
+          sum += DensityApprox::Euler.ln_density(&ou, path[i], path[i + 1], 0.0, dt);
         }
         black_box(sum)
       })
@@ -110,8 +113,7 @@ fn bench_log_likelihood(c: &mut Criterion) {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
-          let d = DensityApprox::Kessler.density(&ou, path[i], path[i + 1], 0.0, dt);
-          sum += d.max(1e-30).ln();
+          sum += DensityApprox::Kessler.ln_density(&ou, path[i], path[i + 1], 0.0, dt);
         }
         black_box(sum)
       })

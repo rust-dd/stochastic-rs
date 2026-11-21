@@ -1,6 +1,4 @@
-//! `diffusion/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! The `diffusion/` slice of the reproducibility guard, `../reproducibility_all_processes.rs`.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -13,12 +11,12 @@ use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
 use stochastic_rs_stochastic::diffusion::displaced_diffusion::DisplacedDiffusion;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
-use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
+use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
-use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_ih::GbmIh;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
@@ -27,23 +25,25 @@ use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
 use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
 use stochastic_rs_stochastic::diffusion::kimura::Kimura;
-use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
+use stochastic_rs_stochastic::diffusion::linear_sde::LinearSde;
 use stochastic_rs_stochastic::diffusion::logistic::Logistic;
-use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
+use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
-use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
+use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
-use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
+use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
 use crate::common::guard;
+use crate::common::variant;
 
 guard!(ait_sahalia, "AitSahalia", |s| AitSahalia::new(
   0.01,
@@ -123,7 +123,7 @@ guard!(ckls, "Ckls", |s| Ckls::new(
 ));
 
 guard!(displaced_diffusion, "DisplacedDiffusion", |s| {
-  DisplacedDiffusion::new(0.05, 0.2, 0.3, N, Some(100.0), Some(1.0), s)
+  DisplacedDiffusion::new(0.05, 0.2, 0.3, N, 100.0, Some(1.0), s)
 });
 
 guard!(fcir, "Fcir", |s| Fcir::new(
@@ -169,7 +169,7 @@ guard!(fgbm, "Fgbm", |s| Fgbm::new(
   s
 ));
 
-guard!(fjacobi, "FJacobi", |s| FJacobi::new(
+guard!(fjacobi, "Fjacobi", |s| Fjacobi::new(
   0.7,
   0.5,
   1.5,
@@ -191,7 +191,7 @@ guard!(fou, "Fou", |s| Fou::new(
   s
 ));
 
-guard!(fouque_ou2d, "FouqueOU2D", |s| FouqueOU2D::new(
+guard!(fouque_ou2d, "FouqueOu2D", |s| FouqueOu2D::new(
   1.0,
   0.0,
   0.1,
@@ -203,14 +203,7 @@ guard!(fouque_ou2d, "FouqueOU2D", |s| FouqueOU2D::new(
   s
 ));
 
-guard!(gbm, "Gbm", |s| Gbm::new(
-  0.05,
-  0.2,
-  N,
-  Some(100.0),
-  Some(1.0),
-  s
-));
+guard!(gbm, "Gbm", |s| Gbm::new(0.05, 0.2, N, 100.0, Some(1.0), s));
 
 guard!(gbm_ih, "GbmIh", |s| GbmIh::new(
   0.05,
@@ -223,13 +216,10 @@ guard!(gbm_ih, "GbmIh", |s| GbmIh::new(
 ));
 
 guard!(gbm_log, "GbmLog", |s| GbmLog::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   0.2,
   N,
-  Some(100.0),
+  100.0,
   Some(1.0),
   s
 ));
@@ -265,6 +255,11 @@ guard!(hyperbolic2, "Hyperbolic2", |s| Hyperbolic2::new(
   s
 ));
 
+// A restoring term centred off the origin, which the guard above, at `mu = 0`, cannot tell apart.
+variant!(hyperbolic2_off_origin, "Hyperbolic2OffOrigin", |s| {
+  Hyperbolic2::new(0.1, 1.0, 1.0, 1.5, 0.2, N, Some(1.0), Some(1.0), s)
+});
+
 guard!(jacobi, "Jacobi", |s| Jacobi::new(
   0.5,
   1.5,
@@ -275,11 +270,8 @@ guard!(jacobi, "Jacobi", |s| Jacobi::new(
   s
 ));
 
-// `x0 = 0.0` sits exactly on the Wright–Fisher diffusion's absorbing
-// boundary: `sigma * sqrt(x0 * (1 - x0))` vanishes there, so the path stays
-// at 0 for every remaining step regardless of any Gaussian draw (correct
-// model behavior, not a sampler bug) and no seed could ever change the
-// output. `0.5` sits in the interior where the diffusion term is live.
+// `x0 = 0.0` is the Wright–Fisher diffusion's absorbing boundary, where no seed changes the
+// path; `0.5` is in the interior, where the diffusion term is live.
 guard!(kimura, "Kimura", |s| Kimura::new(
   0.1,
   0.2,
@@ -289,7 +281,7 @@ guard!(kimura, "Kimura", |s| Kimura::new(
   s
 ));
 
-guard!(linear_sde, "LinearSDE", |s| LinearSDE::new(
+guard!(linear_sde, "LinearSde", |s| LinearSde::new(
   0.1,
   0.0,
   0.2,
@@ -308,7 +300,7 @@ guard!(logistic, "Logistic", |s| Logistic::new(
   s
 ));
 
-guard!(modified_cir, "ModifiedCIR", |s| ModifiedCIR::new(
+guard!(modified_cir, "ModifiedCir", |s| ModifiedCir::new(
   1.0,
   0.2,
   N,
@@ -317,7 +309,7 @@ guard!(modified_cir, "ModifiedCIR", |s| ModifiedCIR::new(
   s
 ));
 
-guard!(nonlinear_sde, "NonLinearSDE", |s| NonLinearSDE::new(
+guard!(nonlinear_sde, "NonlinearSde", |s| NonlinearSde::new(
   0.01,
   0.02,
   -0.1,
@@ -365,7 +357,7 @@ guard!(quadratic, "Quadratic", |s| Quadratic::new(
   s
 ));
 
-guard!(radial_ou, "RadialOU", |s| RadialOU::new(
+guard!(radial_ou, "RadialOu", |s| RadialOu::new(
   1.0,
   0.2,
   N,
@@ -381,7 +373,7 @@ guard!(regime_switching, "RegimeSwitchingDiffusion", |s| {
     Array1::from(vec![0.2, 0.3]),
     0,
     N,
-    Some(100.0),
+    100.0,
     Some(1.0),
     s,
   )

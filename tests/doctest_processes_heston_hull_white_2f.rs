@@ -21,6 +21,8 @@ fn heston_hull_white_2f_sample() {
     [0.08, 0.0, -0.4, 1.0],
   ];
   let hybrid = HestonHullWhite2F::<f64, _, _>::new(
+    1.0, // s0
+    0.2, // v0
     0.8, // kappa
     0.2, // theta
     0.2, // sigma
@@ -30,11 +32,9 @@ fn heston_hull_white_2f_sample() {
     0.015, // sigma2
     0.8,   // b
     rho,
-    253,
-    Some(1.0),  // s0
-    Some(0.2),  // v0
     Some(0.03), // r0
-    Some(1.0),  // t
+    253,
+    Some(1.0), // t
     Deterministic::new(42),
   );
   // Rows: spot, variance, short rate, auxiliary factor, integrated short rate.

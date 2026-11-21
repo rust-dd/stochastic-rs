@@ -1,41 +1,34 @@
-//! Rate helpers that bridge market quotes with the bootstrapping engine.
+//! Rate helpers: each wraps a [`Handle`] to a [`Quote`] with the conventions that turn it into a
+//! [`crate::curves::BootstrapInstrument`], so a quote change needs only a new [`build_curve`].
 //!
-//! Each helper wraps a market [`Handle`] to a [`Quote`] with the conventions
-//! needed to convert that quote into a [`crate::curves::BootstrapInstrument`]
-//! consumed by `bootstrap`. Because helpers hold [`Handle`]s, rebuilding the
-//! curve after a quote change only requires re-running [`build_curve`].
-//!
-//! Reference: Ametrano & Bianchetti, "Everything You Always Wanted to Know
-//! About Multiple Interest Rate Curve Bootstrapping but Were Afraid to Ask",
-//! SSRN 2219548 (2013), §4.
-//!
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
-//! Wilmott Magazine (2006).
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+
+use std::sync::Arc;
 
 use chrono::NaiveDate;
 
 use super::handle::Handle;
 use super::quote::Quote;
+use crate::QuantError;
 use crate::calendar::BusinessDayConvention;
-use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::ScheduleBuilder;
+use crate::calendar::SharedCalendar;
 use crate::curves::BootstrapInstrument;
+use crate::curves::BootstrapSpec;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
-use crate::curves::bootstrap;
+use crate::curves::bootstrap::bootstrap_numbered;
 use crate::traits::RealExt;
 
 mod ois;
 
 pub use ois::OisRateHelper;
 
-/// Quote-driven curve input.
-///
-/// Implementations convert their current market quote plus conventions
-/// into the curve-building [`BootstrapInstrument`] enum. A helper whose quote is
-/// missing or invalid must return `None` so the caller can skip it.
+/// Quote-driven curve input: the current quote and its conventions as a [`BootstrapInstrument`];
+/// `None` for a missing or invalid quote, which the caller skips.
 pub trait RateHelper<T: RealExt>: Send + Sync {
   /// Current maturity (in years from the valuation date).
   fn maturity(&self, valuation_date: NaiveDate) -> T;
@@ -141,18 +134,8 @@ impl<T: RealExt> RateHelper<T> for FraRateHelper<T> {
   }
 }
 
-/// Vanilla fixed-vs-float swap helper for the long end of the curve.
-///
-/// When constructed via [`new`](Self::new) the helper hands off a uniform
-/// `δ = 1 / frequency` schedule to the bootstrapping engine — see
-/// [`BootstrapInstrument::Swap`] for the closed-form pricing.
-///
-/// When configured via [`with_calendar`](Self::with_calendar) the helper
-/// builds an **explicit calendar-adjusted payment schedule** via
-/// [`ScheduleBuilder`] and routes through [`BootstrapInstrument::SwapWithSchedule`],
-/// which prices the par leg from each calendar-noisy accrual `δ_i`
-/// individually. This removes the small day-count bias that the uniform
-/// path inherits when the real swap quote was business-day-adjusted.
+/// Fixed-vs-float swap helper: a uniform `δ = 1 / frequency` schedule from [`Self::new`], or
+/// calendar-adjusted accruals priced one by one after [`Self::with_calendar`].
 #[derive(Debug, Clone)]
 pub struct SwapRateHelper<T: RealExt> {
   /// Quote handle producing the par swap rate.
@@ -165,20 +148,17 @@ pub struct SwapRateHelper<T: RealExt> {
   pub fixed_frequency: Frequency,
   /// Day-count convention used to express the maturity in years.
   pub day_count: DayCountConvention,
-  /// Optional calendar for business-day-adjusted payment schedule
-  /// construction. When `None`, [`to_instrument`](Self::to_instrument) falls
-  /// back to the uniform [`BootstrapInstrument::Swap`] path.
-  pub calendar: Option<Calendar>,
-  /// Business day convention applied to each generated payment date.
-  /// Honoured only when [`calendar`](Self::calendar) is `Some`. Defaults to
-  /// `ModifiedFollowing` (market standard) when set via `with_calendar`.
+  /// Calendar for the business-day-adjusted payment schedule; `None` keeps the uniform
+  /// [`BootstrapInstrument::Swap`] path.
+  pub calendar: Option<SharedCalendar>,
+  /// Business day convention of each generated payment date, read only when
+  /// [`calendar`](Self::calendar) is `Some`.
   pub convention: Option<BusinessDayConvention>,
 }
 
 impl<T: RealExt> SwapRateHelper<T> {
-  /// Construct the helper from an observable swap rate quote and dates.
-  /// Routes through the uniform [`BootstrapInstrument::Swap`] path; for
-  /// calendar-aware bootstrapping, follow with [`with_calendar`](Self::with_calendar).
+  /// A helper on the uniform [`BootstrapInstrument::Swap`] path; [`Self::with_calendar`] switches
+  /// it to an explicit schedule.
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
     settlement_date: NaiveDate,
@@ -197,27 +177,25 @@ impl<T: RealExt> SwapRateHelper<T> {
     }
   }
 
-  /// Enable calendar-aware payment schedule construction. The helper now
-  /// generates an explicit [`Schedule`](crate::calendar::Schedule) via
-  /// [`ScheduleBuilder`] (backward generation, `ShortFirst` default stub)
-  /// and routes through [`BootstrapInstrument::SwapWithSchedule`] in `to_instrument`.
-  pub fn with_calendar(mut self, calendar: Calendar, convention: BusinessDayConvention) -> Self {
+  /// Switches to an explicit [`Schedule`](crate::calendar::Schedule) (backward generation,
+  /// `ShortFirst` stub) routed through [`BootstrapInstrument::SwapWithSchedule`].
+  pub fn with_calendar(
+    mut self,
+    calendar: SharedCalendar,
+    convention: BusinessDayConvention,
+  ) -> Self {
     self.calendar = Some(calendar);
     self.convention = Some(convention);
     self
   }
 
-  /// Build the calendar-adjusted fixed-leg payment schedule. Returns the
-  /// uniform raw dates when no calendar has been configured.
-  ///
-  /// The schedule runs from `settlement_date` to `maturity_date` with the
-  /// configured `fixed_frequency`; payment dates are business-day-adjusted
-  /// according to [`convention`](Self::convention) when set.
+  /// Fixed-leg payment dates from `settlement_date` to `maturity_date` at `fixed_frequency`,
+  /// business-day-adjusted when a calendar is set and the raw uniform dates otherwise.
   pub fn built_schedule(&self) -> Vec<NaiveDate> {
     let mut builder = ScheduleBuilder::new(self.settlement_date, self.maturity_date)
       .frequency(self.fixed_frequency);
     if let Some(cal) = &self.calendar {
-      builder = builder.calendar(cal.clone());
+      builder = builder.calendar(Arc::clone(cal));
     }
     if let Some(conv) = self.convention {
       builder = builder.convention(conv);
@@ -230,11 +208,8 @@ impl<T: RealExt> SwapRateHelper<T> {
     }
   }
 
-  /// Year-fractions of every fixed-leg payment relative to
-  /// [`settlement_date`](Self::settlement_date), using the configured
-  /// [`day_count`](Self::day_count). Skips the leading `settlement_date`
-  /// entry so the resulting slice matches the [`BootstrapInstrument::SwapWithSchedule`]
-  /// contract (one entry per fixed-leg payment).
+  /// Year fraction of each fixed-leg payment from [`settlement_date`](Self::settlement_date);
+  /// the leading settlement entry is skipped, so there is one entry per payment.
   pub fn payment_times(&self) -> Vec<T> {
     let dates = self.built_schedule();
     dates
@@ -255,21 +230,21 @@ impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
   fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
     if self.calendar.is_some() {
-      // Calendar-aware path: build explicit business-day-adjusted schedule
-      // anchored at `valuation_date` (not `settlement_date`) so the curve
-      // sees year-fractions relative to the bootstrap origin.
+      // Year fractions run from `valuation_date`, the bootstrap origin, not from
+      // `settlement_date`.
       let dates = self.built_schedule();
-      let payment_times: Vec<T> = dates
+      let fixed_times: Vec<T> = dates
         .iter()
         .skip(1)
         .map(|&d| self.day_count.year_fraction(valuation_date, d))
         .collect();
-      if payment_times.is_empty() {
+      if fixed_times.is_empty() {
         return None;
       }
       Some(BootstrapInstrument::SwapWithSchedule {
         rate,
-        payment_times,
+        fixed_times,
+        float_times: Vec::new(),
       })
     } else {
       let maturity = self
@@ -278,7 +253,7 @@ impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
       Some(BootstrapInstrument::Swap {
         maturity,
         rate,
-        frequency: self.fixed_frequency.periods_per_year(),
+        frequency: self.fixed_frequency,
       })
     }
   }
@@ -340,29 +315,19 @@ impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   }
 }
 
-/// Build a discount curve from a slice of rate helpers.
-///
-/// Helpers whose quotes are invalid are silently skipped. The resulting
-/// `Vec` of [`BootstrapInstrument`]s is sorted internally by
-/// [`bootstrap()`](crate::curves::bootstrap::bootstrap).
-///
-/// **Design note (`&[&dyn RateHelper<T>]`):** the bootstrap input is
-/// intentionally heterogeneous — deposits, FRAs, futures, and swaps each
-/// implement [`RateHelper`] differently but must coexist in one slice for
-/// term-structure bootstrapping. A generic `[H: RateHelper<T>]` parameter
-/// would force one concrete helper type per call, defeating the purpose.
-/// The slice-of-trait-objects pattern is the canonical QuantLib /
-/// `RateHelper`-vector approach.
+/// [`bootstrap()`](fn@crate::curves::bootstrap) over the quoted helpers, skipping the rest; its
+/// errors name each quote by the helper's own index.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
   method: InterpolationMethod,
-) -> DiscountCurve<T> {
-  let instruments: Vec<BootstrapInstrument<T>> = helpers
+) -> Result<DiscountCurve<T>, QuantError> {
+  let (origin, instruments): (Vec<usize>, Vec<BootstrapInstrument<T>>) = helpers
     .iter()
-    .filter_map(|h| h.to_instrument(valuation_date))
-    .collect();
-  bootstrap(&instruments, method)
+    .enumerate()
+    .filter_map(|(index, helper)| Some((index, helper.to_instrument(valuation_date)?)))
+    .unzip();
+  bootstrap_numbered(BootstrapSpec::new(&instruments, method), Some(&origin))
 }
 
 #[cfg(test)]
@@ -372,11 +337,7 @@ mod tests {
   use super::*;
   use crate::market::quote::SimpleQuote;
 
-  /// Tests construct dates from literal y/m/d tuples that we know are valid
-  /// at write time, so unwrap → expect with an informative message: it
-  /// flags the failure clearly if a future refactor introduces a bad
-  /// literal, without forcing every test to return `Result`. Prod paths
-  /// keep using `?`-propagation since they receive dates from callers.
+  /// `base` shifted by `months`, on the first of the month.
   fn months_later(base: NaiveDate, months: i32) -> NaiveDate {
     let total = base.year() * 12 + (base.month0() as i32) + months;
     let year = total.div_euclid(12);
@@ -414,8 +375,8 @@ mod tests {
     );
 
     let helpers: Vec<&dyn RateHelper<f64>> = vec![&dep, &fra, &swap];
-    let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates);
-    assert!(curve.len() >= 4);
+    let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates).unwrap();
+    assert_eq!(curve.len(), 3);
     let df_short = curve.discount_factor(0.25);
     let df_long = curve.discount_factor(2.0);
     assert!(df_short > df_long);
@@ -463,7 +424,7 @@ mod tests {
         rate, frequency, ..
       } => {
         assert!((rate - 0.04).abs() < 1e-12);
-        assert_eq!(frequency, 2);
+        assert_eq!(frequency, Frequency::SemiAnnual);
       }
       other => panic!("expected uniform BootstrapInstrument::Swap, got {other:?}"),
     }
@@ -475,9 +436,8 @@ mod tests {
     use crate::calendar::Calendar;
     use crate::calendar::HolidayCalendar;
 
-    // Configure with TARGET calendar + ModifiedFollowing so that a Jan-1
-    // payment is rolled to the next business day. The resulting payment
-    // schedule must be non-uniform and routed through SwapWithSchedule.
+    // TARGET with ModifiedFollowing rolls the 1 January payment, so the schedule is non-uniform
+    // and must route through `SwapWithSchedule`.
     let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 valid");
     let mat = months_later(val_date, 24);
     let q = Arc::new(SimpleQuote::<f64>::new(0.04));
@@ -490,7 +450,7 @@ mod tests {
       DayCountConvention::Actual365Fixed,
     )
     .with_calendar(
-      Calendar::new(HolidayCalendar::Target),
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
       BusinessDayConvention::ModifiedFollowing,
     );
 
@@ -504,11 +464,10 @@ mod tests {
 
     match helper.to_instrument(val_date).unwrap() {
       BootstrapInstrument::SwapWithSchedule {
-        rate,
-        payment_times,
+        rate, fixed_times, ..
       } => {
         assert!((rate - 0.04).abs() < 1e-12);
-        assert_eq!(payment_times.len(), 4);
+        assert_eq!(fixed_times.len(), 4);
       }
       other => panic!("expected SwapWithSchedule, got {other:?}"),
     }

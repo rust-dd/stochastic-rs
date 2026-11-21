@@ -75,7 +75,8 @@ mod sealed {
 
 pub(crate) use sealed::Sealed;
 
-/// A law whose parameters are plain data and whose stream state lives in [`Seeded`]; sealed to this crate.
+/// A law whose parameters are plain data and whose stream state lives in [`Seeded`]; sealed to this
+/// crate.
 pub trait SimdDistribution: Sealed + Clone + Send + Sync + 'static {
   #[doc(hidden)]
   type State<R: SimdRngExt>: Send + Sync + Clone + Debug;
@@ -90,7 +91,8 @@ pub trait SimdDistribution: Sealed + Clone + Send + Sync + 'static {
   }
 }
 
-/// A law with a bulk SIMD kernel and a buffered single draw; sealed, the kernels are the crate's own.
+/// A law with a bulk SIMD kernel and a buffered single draw; sealed, the kernels are the crate's
+/// own.
 pub trait SimdKernel: SimdDistribution {
   /// One draw: the scalar of a univariate law, `Complex<T>` for `ComplexDistribution`.
   type Item: Copy + Zero + Send + Sync + 'static;

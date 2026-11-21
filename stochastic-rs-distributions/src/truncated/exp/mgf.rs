@@ -9,7 +9,8 @@ use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::exp_split;
 use crate::truncated::quadrature::two_prod;
 
-/// Past this `|x|` the `e^{±x}` beside 1 is below every digit: `φ₊` and `φ` are their leading powers.
+/// Past this `|x|` the `e^{±x}` beside 1 is below every digit: `φ₊` and `φ` are their leading
+/// powers.
 const FAR: f64 = 700.0;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
@@ -53,7 +54,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   }
 }
 
-/// The three factors' mantissas multiplied and their powers of two added, so the one rounding is the last.
+/// The three factors' mantissas multiplied and their powers of two added, so the one rounding is
+/// the last.
 #[cold]
 #[inline(never)]
 fn scaled(t: f64, (hi, rest): (f64, f64), lam: f64, len: f64) -> f64 {
@@ -85,7 +87,8 @@ fn difference(a: f64, b: f64) -> (f64, i32) {
   (d.signum() * m, p + e)
 }
 
-/// `φ₊(sL)` for `s = m_s·2^{e_s}`: below `FAR` in size as it stands, past it `1/|sL|` or `e^{sL}/(sL)`.
+/// `φ₊(sL)` for `s = m_s·2^{e_s}`: below `FAR` in size as it stands, past it `1/|sL|` or
+/// `e^{sL}/(sL)`.
 fn phi_plus((ms, es): (f64, i32), len: f64) -> (f64, i32) {
   if ms == 0.0 {
     return (1.0, 0);

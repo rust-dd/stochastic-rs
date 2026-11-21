@@ -1,5 +1,5 @@
-//! Seeded copula streams pinned by hash; a row moves only with a `### Numerical changes` entry
-//! (`STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-copulas --test stream_snapshots -- --nocapture` prints the table).
+//! Seeded copula streams pinned by hash, a row moving only with a `### Numerical changes` entry;
+//! `STREAM_SNAPSHOT_REGEN=1` with `--nocapture` prints the table.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -101,8 +101,8 @@ fn pair_trees() -> Vec<Vec<PairCopula>> {
   ]
 }
 
-/// A different dependent pair on every edge, in dimension 5: the first at which the `i > 3` loop of Aas et al. (2009)
-/// Algorithm 2 runs, so every conditioning value the D-vine sampler builds above its first tree reaches the pin.
+/// A different dependent pair on every edge in dimension 5, where Aas et al. (2009) Algorithm 2's
+/// `i > 3` loop first runs, so every conditioning value past tree 1 reaches the pin.
 fn mixed_trees() -> Vec<Vec<PairCopula>> {
   vec![
     vec![
@@ -310,7 +310,8 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   rows
 }
 
-// The bits depend on libm and FMA, so they are pinned for aarch64 macOS only and other targets skip this test.
+// The bits depend on libm and FMA, so they are pinned for aarch64 macOS only and other targets skip
+// this test.
 #[test]
 #[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
 fn seeded_copula_streams_are_pinned() {

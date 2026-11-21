@@ -1,4 +1,4 @@
-//! # Compound
+//! Geske's compound option, an option on an option, in closed form under Black–Scholes.
 //!
 //! $$
 //! C^c = Se^{-qT_2}M(z_1,y_1;\sqrt{T_1/T_2})
@@ -6,15 +6,21 @@
 //!     - K_1 e^{-rT_1}N(z_2)
 //! $$
 //!
-//! Source:
-//! - Geske, R. (1979), "The Valuation of Compound Options", J. Financial Economics 7
-//! - Rubinstein, M. (1991), "Double Trouble", *RISK Magazine* 5(1)
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4.3
+//! Reference: Geske (1979), J. Financial Economics 7(1), 63–81, DOI 10.1016/0304-405X(79)90022-9
+//! Reference: Rubinstein, M. (1991), "Double Trouble", *Risk* 5, 73
+//! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
+//! Reference: Vector Risk (2017), "Compound Option", v8.0.7905, pp. 1–2: Geske's form for all four
 //!
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::exotic::CompoundOption;
+use crate::pricing::exotic::assert_sigma;
+use crate::traits::ModelPricer;
 
 /// Compound option type. The outer option has strike $K_1$, maturity $T_1$;
 /// the inner option has strike $K_2$, maturity $T_2 > T_1$.
@@ -48,82 +54,93 @@ impl CompoundType {
   }
 }
 
-/// Geske (1979) compound option.
-#[derive(Debug, Clone)]
+/// Geske (1979) compound option: an option on an option, both on the spot.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CompoundPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Outer strike.
-  pub k1: f64,
-  /// Inner strike.
-  pub k2: f64,
-  /// Outer maturity.
-  pub t1: f64,
-  /// Inner maturity (must satisfy $T_2 > T_1$).
-  pub t2: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Which of the outer and inner options are calls or puts.
-  pub compound_type: CompoundType,
 }
 
 impl CompoundPricer {
-  pub fn price(&self) -> f64 {
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` NaN, but at `outer_tau = 0` the exercise
+  /// value on the inner leg's deterministic limit, NaN at the money forward.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma }
+  }
+
+  /// Geske's price with `tau` the inner maturity, at `outer_tau = 0` the outer payoff on the inner
+  /// leg; NaN unless `0 <= outer_tau <= tau`, and for a spot that is not positive before expiry.
+  pub fn price(&self, option: &CompoundOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let CompoundOption {
+      outer_strike: k1,
+      outer_tau: t1,
+      inner_strike: k2,
+      compound_type,
+    } = *option;
+    if !(0.0 <= t1 && t1 <= tau) || t1.is_infinite() {
+      return f64::NAN;
+    }
+    if tau > 0.0 && (s.is_nan() || s <= 0.0) {
+      return f64::NAN;
+    }
+    if t1 == 0.0 {
+      let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
+      let inner = vanilla.price_option(s, k2, r, q, tau, compound_type.inner());
+      return vanilla_payoff(compound_type.outer(), inner, k1);
+    }
+    let t2 = tau;
     let v = self.sigma;
     let v2 = v * v;
-    let b = self.r - self.q;
-    let s_star = self.critical_inner_price();
+    let b = r - q;
+    let s_star = self.critical_inner_price(option, s, r, q, tau);
     let cdf2 = |x: f64, y: f64, rho: f64| -> f64 { biv_norm(-x, -y, rho) };
 
-    let z1 = ((self.s / s_star).ln() + (b + 0.5 * v2) * self.t1) / (v * self.t1.sqrt());
-    let z2 = z1 - v * self.t1.sqrt();
-    let y1 = ((self.s / self.k2).ln() + (b + 0.5 * v2) * self.t2) / (v * self.t2.sqrt());
-    let y2 = y1 - v * self.t2.sqrt();
-    let rho = (self.t1 / self.t2).sqrt();
+    let z1 = ((s / s_star).ln() + (b + 0.5 * v2) * t1) / (v * t1.sqrt());
+    let z2 = z1 - v * t1.sqrt();
+    let y1 = ((s / k2).ln() + (b + 0.5 * v2) * t2) / (v * t2.sqrt());
+    let y2 = y1 - v * t2.sqrt();
+    let rho = (t1 / t2).sqrt();
 
-    let coc_t2 = ((b - self.r) * self.t2).exp();
-    let disc_t1 = (-self.r * self.t1).exp();
-    let disc_t2 = (-self.r * self.t2).exp();
+    let coc_t2 = ((b - r) * t2).exp();
+    let disc_t1 = (-r * t1).exp();
+    let disc_t2 = (-r * t2).exp();
 
-    match self.compound_type {
+    match compound_type {
       CompoundType::CallOnCall => {
-        self.s * coc_t2 * cdf2(z1, y1, rho)
-          - self.k2 * disc_t2 * cdf2(z2, y2, rho)
-          - self.k1 * disc_t1 * norm_cdf(z2)
+        s * coc_t2 * cdf2(z1, y1, rho)
+          - k2 * disc_t2 * cdf2(z2, y2, rho)
+          - k1 * disc_t1 * norm_cdf(z2)
       }
       CompoundType::PutOnCall => {
-        self.k2 * disc_t2 * cdf2(-z2, y2, -rho) - self.s * coc_t2 * cdf2(-z1, y1, -rho)
-          + self.k1 * disc_t1 * norm_cdf(-z2)
+        k2 * disc_t2 * cdf2(-z2, y2, -rho) - s * coc_t2 * cdf2(-z1, y1, -rho)
+          + k1 * disc_t1 * norm_cdf(-z2)
       }
       CompoundType::CallOnPut => {
-        self.k2 * disc_t2 * cdf2(-z2, -y2, rho)
-          - self.s * coc_t2 * cdf2(-z1, -y1, rho)
-          - self.k1 * disc_t1 * norm_cdf(-z2)
+        k2 * disc_t2 * cdf2(-z2, -y2, rho)
+          - s * coc_t2 * cdf2(-z1, -y1, rho)
+          - k1 * disc_t1 * norm_cdf(-z2)
       }
       CompoundType::PutOnPut => {
-        self.s * coc_t2 * cdf2(z1, -y1, -rho) - self.k2 * disc_t2 * cdf2(z2, -y2, -rho)
-          + self.k1 * disc_t1 * norm_cdf(z2)
+        s * coc_t2 * cdf2(z1, -y1, -rho) - k2 * disc_t2 * cdf2(z2, -y2, -rho)
+          + k1 * disc_t1 * norm_cdf(z2)
       }
     }
   }
 
-  /// Solve for the spot price at $T_1$ where the inner option payoff equals
-  /// the outer strike $K_1$ (or $K_1 - 0$ for puts).
-  fn critical_inner_price(&self) -> f64 {
+  /// Bisection for the spot at the outer maturity where the inner option is worth the outer
+  /// strike.
+  fn critical_inner_price(&self, option: &CompoundOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let mut lo = 1e-6;
-    let mut hi = (self.k2 + self.k1).max(self.s) * 100.0;
+    let mut hi = (option.inner_strike + option.outer_strike).max(s) * 100.0;
     for _ in 0..200 {
       let mid = 0.5 * (lo + hi);
-      let inner = self.inner_price(mid);
-      let diff = inner - self.k1;
+      let inner = self.inner_price(option, mid, r, q, tau);
+      let diff = inner - option.outer_strike;
       if diff.abs() < 1e-10 {
         return mid;
       }
-      match self.compound_type.inner() {
+      match option.compound_type.inner() {
         OptionType::Call => {
           if diff > 0.0 {
             hi = mid;
@@ -143,21 +160,22 @@ impl CompoundPricer {
     0.5 * (lo + hi)
   }
 
-  fn inner_price(&self, s: f64) -> f64 {
+  /// The inner option at the outer maturity, at a trial spot `s_t1`.
+  fn inner_price(&self, option: &CompoundOption, s_t1: f64, r: f64, q: f64, tau: f64) -> f64 {
+    let s = s_t1;
+    let k2 = option.inner_strike;
     let v = self.sigma;
     let v2 = v * v;
-    let b = self.r - self.q;
-    let tau = self.t2 - self.t1;
-    let d1 = ((s / self.k2).ln() + (b + 0.5 * v2) * tau) / (v * tau.sqrt());
+    let b = r - q;
+    let tau = tau - option.outer_tau;
+    let d1 = ((s / k2).ln() + (b + 0.5 * v2) * tau) / (v * tau.sqrt());
     let d2 = d1 - v * tau.sqrt();
-    match self.compound_type.inner() {
+    match option.compound_type.inner() {
       OptionType::Call => {
-        s * ((b - self.r) * tau).exp() * norm_cdf(d1)
-          - self.k2 * (-self.r * tau).exp() * norm_cdf(d2)
+        s * ((b - r) * tau).exp() * norm_cdf(d1) - k2 * (-r * tau).exp() * norm_cdf(d2)
       }
       OptionType::Put => {
-        self.k2 * (-self.r * tau).exp() * norm_cdf(-d2)
-          - s * ((b - self.r) * tau).exp() * norm_cdf(-d1)
+        k2 * (-r * tau).exp() * norm_cdf(-d2) - s * ((b - r) * tau).exp() * norm_cdf(-d1)
       }
     }
   }
@@ -167,6 +185,15 @@ impl CompoundPricer {
 mod tests {
   use super::*;
 
+  fn compound(outer_strike: f64, outer_tau: f64, compound_type: CompoundType) -> CompoundOption {
+    CompoundOption {
+      outer_strike,
+      outer_tau,
+      inner_strike: 100.0,
+      compound_type,
+    }
+  }
+
   /// Geske (1979) classic example: S=50, K1=10, K2=50, T1=0.5, T2=1.0,
   /// r=0.05, b=0.05, sigma=0.40 — Call on Call should be positive and bounded
   /// above by the inner call $C(S, K_2, T_2)$.
@@ -175,18 +202,13 @@ mod tests {
     use crate::pricing::bsm::BsmCoc;
     use crate::pricing::bsm::BsmPricer;
     use crate::traits::ModelPricer;
-    let p = CompoundPricer {
-      s: 50.0,
-      k1: 10.0,
-      k2: 50.0,
-      t1: 0.5,
-      t2: 1.0,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.40,
+    let option = CompoundOption {
+      outer_strike: 10.0,
+      outer_tau: 0.5,
+      inner_strike: 50.0,
       compound_type: CompoundType::CallOnCall,
     };
-    let coc_price = p.price();
+    let coc_price = CompoundPricer::new(0.40).price(&option, 50.0, 0.05, 0.0, 1.0);
     let inner = BsmPricer::new(0.40, BsmCoc::Bsm1973).price_call(50.0, 50.0, 0.05, 0.0, 1.0);
     assert!(coc_price > 0.0, "CoC={coc_price}");
     assert!(
@@ -195,7 +217,7 @@ mod tests {
     );
   }
 
-  /// Compound option must be at least the discounted vanilla $C - K_1$.
+  /// A call on a call is worth less than the call it buys.
   #[test]
   fn coc_bounded_below_by_call_minus_strike() {
     use crate::pricing::bsm::BsmCoc;
@@ -206,22 +228,11 @@ mod tests {
     let r = 0.05;
     let sigma = 0.25;
 
-    let p = CompoundPricer {
-      s,
-      k1: 5.0,
-      k2: 100.0,
-      t1: 0.25,
-      t2: 1.0,
-      r,
-      q: 0.0,
-      sigma,
-      compound_type: CompoundType::CallOnCall,
-    };
-    let coc = p.price();
+    let option = compound(5.0, 0.25, CompoundType::CallOnCall);
+    let coc = CompoundPricer::new(sigma).price(&option, s, r, 0.0, 1.0);
 
     let outer = BsmPricer::new(sigma, BsmCoc::Bsm1973).price_call(s, 100.0, r, 0.0, 1.0);
 
-    // Compound is bounded by inner option price minus discounted strike (very loose but always true)
     assert!(coc < outer);
     assert!(coc > 0.0);
   }
@@ -229,18 +240,8 @@ mod tests {
   /// Put-on-call with deep OTM outer strike approaches zero.
   #[test]
   fn put_on_call_otm() {
-    let p = CompoundPricer {
-      s: 100.0,
-      k1: 0.001,
-      k2: 100.0,
-      t1: 0.25,
-      t2: 1.0,
-      r: 0.05,
-      q: 0.0,
-      sigma: 0.25,
-      compound_type: CompoundType::PutOnCall,
-    };
-    let price = p.price();
+    let option = compound(0.001, 0.25, CompoundType::PutOnCall);
+    let price = CompoundPricer::new(0.25).price(&option, 100.0, 0.05, 0.0, 1.0);
     assert!(price < 0.05, "PoC OTM={price}");
   }
 
@@ -260,25 +261,13 @@ mod tests {
     let r = 0.05;
     let sigma = 0.25;
 
-    let coc = CompoundPricer {
-      s,
-      k1,
-      k2,
-      t1,
-      t2,
-      r,
-      q: 0.0,
-      sigma,
-      compound_type: CompoundType::CallOnCall,
-    };
-    let poc = CompoundPricer {
-      compound_type: CompoundType::PutOnCall,
-      ..coc.clone()
-    };
+    let pricer = CompoundPricer::new(sigma);
+    let coc = pricer.price(&compound(k1, t1, CompoundType::CallOnCall), s, r, 0.0, t2);
+    let poc = pricer.price(&compound(k1, t1, CompoundType::PutOnCall), s, r, 0.0, t2);
 
     let inner_call = BsmPricer::new(sigma, BsmCoc::Bsm1973).price_call(s, k2, r, 0.0, t2);
 
-    let lhs = coc.price() - poc.price();
+    let lhs = coc - poc;
     let rhs = inner_call - k1 * (-r * t1).exp();
     assert!(
       (lhs - rhs).abs() < 0.05,

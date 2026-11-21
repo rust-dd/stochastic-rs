@@ -4,93 +4,16 @@
 //! \hat\theta=\arg\min_\theta\sum_i w_i\left(P_i^{model}(\theta)-P_i^{mkt}\right)^2
 //! $$
 //!
-use std::convert::Infallible;
 use std::sync::OnceLock;
 
-use basin::BasicSimplexState;
-use basin::CostFunction;
-use basin::Executor;
-use basin::NelderMead;
-use basin::SimplexState;
-use basin::TerminationReason;
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
-use crate::CalibrationLossScore;
-
-/// Preserves the existing sample-standard-deviation stopping rule for simplex fits.
-pub(crate) struct SimplexStandardDeviation {
-  tolerance: f64,
-}
-
-impl SimplexStandardDeviation {
-  pub(crate) fn new(tolerance: f64) -> Option<Self> {
-    (tolerance.is_finite() && tolerance >= 0.0).then_some(Self { tolerance })
-  }
-}
-
-impl SimplexStandardDeviation {
-  fn check<S: SimplexState<Float = f64>>(&self, state: &S) -> Option<TerminationReason> {
-    match sample_standard_deviation(state.costs()) {
-      Some(sd) => (sd < self.tolerance).then_some(TerminationReason::SimplexTolerance),
-      // Undefined spread must not silently disable the stopping rule.
-      None => Some(TerminationReason::SolverFailed),
-    }
-  }
-}
-
-fn sample_standard_deviation(values: &[f64]) -> Option<f64> {
-  if values.len() < 2 || values.iter().any(|value| !value.is_finite()) {
-    return None;
-  }
-  // Scaling keeps finite costs from overflowing the mean or squared deviations.
-  let scale = values
-    .iter()
-    .map(|value| value.abs())
-    .fold(0.0, f64::max_or_nan);
-  if scale == 0.0 {
-    return Some(0.0);
-  }
-  let mean = values.iter().map(|value| value / scale).sum::<f64>() / values.len() as f64;
-  let squared_deviations = values
-    .iter()
-    .map(|value| (value / scale - mean).powi(2))
-    .sum::<f64>();
-  let sd = scale * (squared_deviations / (values.len() - 1) as f64).sqrt();
-  sd.is_finite().then_some(sd)
-}
-
-pub(crate) fn run_nelder_mead<P>(
-  problem: P,
-  simplex: Vec<Vec<f64>>,
-  max_iters: u64,
-  sd_tolerance: f64,
-) -> (Vec<f64>, bool)
-where
-  P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
-{
-  assert!(
-    simplex.len() >= 2,
-    "simplex must contain at least two vertices"
-  );
-  let fallback = simplex[0].clone();
-  let Some(criterion) = SimplexStandardDeviation::new(sd_tolerance) else {
-    return (fallback, false);
-  };
-  let state = BasicSimplexState::from_simplex(simplex);
-  let result = Executor::new(problem, NelderMead::new(), state)
-    .max_iter(max_iters)
-    .stop_when(move |state| criterion.check(state))
-    .run()
-    .expect("calibration objective is infallible");
-  (
-    result.best_param().clone(),
-    result.reason == TerminationReason::SimplexTolerance,
-  )
-}
-
 pub mod bsm;
+mod calibrated;
 pub mod cgmysv;
 pub mod double_heston;
 pub mod heston;
@@ -101,147 +24,50 @@ pub mod hw_swaption;
 #[doc(hidden)]
 pub mod least_squares;
 pub mod levy;
+mod nelder_mead;
+pub(crate) mod quote;
 pub mod rbergomi;
 pub mod regularization;
+mod reseat;
 pub mod sabr;
 pub mod sabr_caplet;
+pub(crate) mod stencil;
 pub mod svj;
 pub mod tree_swaption;
 
 #[cfg(test)]
 mod quadrature_tests;
 
-#[cfg(test)]
-mod optimizer_tests {
-  use std::convert::Infallible;
-
-  use basin::CostFunction;
-
-  use super::run_nelder_mead;
-  use super::sample_standard_deviation;
-
-  struct Sphere;
-
-  impl CostFunction for Sphere {
-    type Param = Vec<f64>;
-    type Output = f64;
-    type Error = Infallible;
-
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
-      Ok(x.iter().map(|value| value.powi(2)).sum())
-    }
-  }
-
-  #[test]
-  fn simplex_spread_uses_sample_standard_deviation() {
-    assert_eq!(sample_standard_deviation(&[1.0, 2.0, 3.0]), Some(1.0));
-    assert_eq!(sample_standard_deviation(&[0.0, 0.0]), Some(0.0));
-    assert_eq!(sample_standard_deviation(&[f64::MAX, f64::MAX]), Some(0.0));
-  }
-
-  #[test]
-  fn undefined_simplex_spread_is_rejected() {
-    for costs in [&[][..], &[1.0], &[0.0, f64::INFINITY], &[0.0, f64::NAN]] {
-      assert_eq!(sample_standard_deviation(costs), None);
-    }
-  }
-
-  #[test]
-  #[should_panic(expected = "simplex must contain at least two vertices")]
-  fn empty_simplex_has_an_explicit_precondition() {
-    run_nelder_mead(Sphere, vec![], 100, 1e-10);
-  }
-
-  #[test]
-  fn invalid_simplex_tolerance_returns_the_initial_point() {
-    let initial = vec![2.0];
-    for tolerance in [-1.0, f64::NAN, f64::INFINITY] {
-      let simplex = vec![initial.clone(), vec![3.0]];
-      let (best, converged) = run_nelder_mead(Sphere, simplex, 100, tolerance);
-      assert_eq!(best, initial);
-      assert!(!converged);
-    }
-  }
-
-  #[test]
-  fn iteration_limit_is_not_reported_as_convergence() {
-    let simplex = vec![vec![2.0], vec![3.0]];
-
-    let (_, converged) = run_nelder_mead(Sphere, simplex, 0, 1e-10);
-
-    assert!(!converged);
-  }
-
-  #[test]
-  fn nonfinite_simplex_costs_stop_without_convergence() {
-    struct Nonfinite;
-
-    impl CostFunction for Nonfinite {
-      type Param = Vec<f64>;
-      type Output = f64;
-      type Error = Infallible;
-
-      fn cost(&self, x: &Self::Param) -> Result<f64, Infallible> {
-        Ok(if x[0] > 0.0 { f64::INFINITY } else { 0.0 })
-      }
-    }
-
-    let state = basin::BasicSimplexState::from_simplex(vec![vec![0.0], vec![1.0]]);
-    let result = basin::Executor::new(Nonfinite, basin::NelderMead::new(), state)
-      .max_iter(100)
-      .stop_when(|state| {
-        super::SimplexStandardDeviation::new(1e-10)
-          .unwrap()
-          .check(state)
-      })
-      .run()
-      .unwrap();
-    assert_eq!(result.reason, basin::TerminationReason::SolverFailed);
-    assert_eq!(result.iter(), 0);
-    assert_eq!(result.best_param(), &vec![0.0]);
-  }
-}
-
-pub use bsm::BsmCalibrationResult;
 pub use bsm::BsmCalibrator;
 pub use bsm::BsmParams;
-pub use cgmysv::CgmysvCalibrationResult;
+pub use calibrated::Calibrated;
+pub use calibrated::CalibrationHistory;
+pub use calibrated::CalibrationOptions;
+pub(crate) use calibrated::Knob;
 pub use cgmysv::CgmysvCalibrator;
-pub use double_heston::DoubleHestonCalibrationResult;
 pub use double_heston::DoubleHestonCalibrator;
 pub use double_heston::DoubleHestonParams;
-pub use heston::HestonCalibrationResult;
 pub use heston::HestonCalibrator;
-pub use heston::HestonParams;
-pub use heston_stoch_corr::HscmCalibrationResult;
+pub use heston::HestonMleSeed;
+pub use heston_stoch_corr::HscmCalibrator;
 pub use heston_stoch_corr::HscmParams;
-pub use heston_stoch_corr::MarketOption;
-pub use heston_stoch_corr::calibrate_hscm;
-pub use hkde::HkdeCalibrationResult;
 pub use hkde::HkdeCalibrator;
-pub use hkde::HkdeParams;
-pub use hw_swaption::HullWhiteCalibrationResult;
 pub use hw_swaption::HullWhiteParams;
 pub use hw_swaption::HullWhiteSwaptionCalibrator;
 pub use hw_swaption::SwaptionQuote;
-pub use levy::LevyCalibrationResult;
 pub use levy::LevyCalibrator;
 pub use levy::LevyModelType;
 pub use levy::LevyParams;
-pub use levy::MarketSlice;
+pub(crate) use nelder_mead::nelder_mead_fit;
+pub(crate) use nelder_mead::run_nelder_mead;
+pub(crate) use nelder_mead::start_vertex;
 pub use regularization::Regularization;
-pub use sabr::SabrCalibrationResult;
 pub use sabr::SabrCalibrator;
-pub use sabr_caplet::SabrCapletCalibrationResult;
 pub use sabr_caplet::SabrCapletCalibrator;
 pub use sabr_caplet::SabrCapletParams;
-pub use svj::SvjCalibrationResult;
 pub use svj::SvjCalibrator;
-pub use svj::SvjParams;
-pub use tree_swaption::BlackKarasinskiCalibrationResult;
 pub use tree_swaption::BlackKarasinskiParams;
 pub use tree_swaption::BlackKarasinskiSwaptionCalibrator;
-pub use tree_swaption::G2ppCalibrationResult;
 pub use tree_swaption::G2ppParams;
 pub use tree_swaption::G2ppSwaptionCalibrator;
 
@@ -326,6 +152,42 @@ where
   None
 }
 
+/// A finite negative model price clipped to 0; NaN and ±∞ pass through, so the optimiser rejects
+/// the trial instead of reading a price.
+pub(crate) fn clip_negative(price: f64) -> f64 {
+  if price.is_finite() {
+    price.max(0.0)
+  } else {
+    price
+  }
+}
+
+/// `d periodic_map / dx`: −1 where `x` lies an odd number of ranges outside `[c, d]`.
+pub(crate) fn periodic_slope(x: f64, c: f64, d: f64) -> f64 {
+  let reflections = ((x - c) / (d - c)).floor() as i64;
+  if (c <= x && x <= d) || reflections % 2 == 0 {
+    1.0
+  } else {
+    -1.0
+  }
+}
+
+/// `periodic_slope` of each coordinate against its box.
+pub(crate) fn periodic_slopes(x: ArrayView1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
+  let slopes = x.iter().zip(bounds);
+  slopes
+    .map(|(&x, &(c, d))| periodic_slope(x, c, d))
+    .collect()
+}
+
+/// A Jacobian in projected parameters times `dθⱼ/dxⱼ`, column by column.
+pub(crate) fn scale_columns(mut jacobian: Array2<f64>, slopes: ArrayView1<f64>) -> Array2<f64> {
+  for (mut column, slope) in jacobian.columns_mut().into_iter().zip(slopes) {
+    column *= *slope;
+  }
+  jacobian
+}
+
 /// Periodic linear extension mapping `x` into `[c, d]`.
 ///
 /// Used to keep optimiser parameters in range without hard clipping.
@@ -347,20 +209,16 @@ pub(crate) fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
   }
 }
 
-#[derive(Clone, Debug)]
-pub struct CalibrationHistory<T> {
-  /// Residual vector from calibration objective.
-  pub residuals: Array1<f64>,
-  pub call_put: Array1<(f64, f64)>,
-  /// Model parameter set (input or calibrated output).
-  pub params: T,
-  /// Calibration loss metric configuration/result.
-  pub loss_scores: CalibrationLossScore,
-}
+#[cfg(test)]
+mod tests {
+  use super::clip_negative;
 
-impl<T> CalibrationHistory<T> {
-  /// Extract the history of a single loss metric across iterations.
-  pub fn metric_history(history: &[Self], metric: crate::LossMetric) -> Vec<f64> {
-    history.iter().map(|h| h.loss_scores.get(metric)).collect()
+  #[test]
+  fn a_finite_negative_price_clips_to_zero_and_a_non_finite_one_passes() {
+    assert_eq!(clip_negative(-1e-12), 0.0);
+    assert_eq!(clip_negative(3.5), 3.5);
+    assert!(clip_negative(f64::NAN).is_nan());
+    assert_eq!(clip_negative(f64::INFINITY), f64::INFINITY);
+    assert_eq!(clip_negative(f64::NEG_INFINITY), f64::NEG_INFINITY);
   }
 }

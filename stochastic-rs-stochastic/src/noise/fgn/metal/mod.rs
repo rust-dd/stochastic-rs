@@ -13,6 +13,12 @@ pub(crate) use sampling::index_rows;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
+/// Drops the calling thread's fGN pipelines, sized buffers and pooled outputs on `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  context::release(ordinal);
+  pool::release(ordinal);
+}
+
 #[derive(Clone, Copy)]
 struct Launch<'a> {
   sqrt_eigs: &'a [f32],
@@ -21,7 +27,7 @@ struct Launch<'a> {
   offset: usize,
   hurst: f64,
   t: f64,
-  seed: u32,
+  key: [u32; 2],
   first_cell: u64,
   ordinal: usize,
 }
@@ -130,7 +136,7 @@ mod tests {
       offset: 1,
       hurst: 0.5,
       t: 1.0,
-      seed: 0,
+      key: [0, 0],
       first_cell: 0,
       ordinal: 0,
     };

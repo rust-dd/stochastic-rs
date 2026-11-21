@@ -1,45 +1,5 @@
-//! `ProcessExt::sample_par` / `sample_map` must be reproducible under
-//! `Deterministic` seeding regardless of the ambient rayon thread-pool size.
-//!
-//! The defect this covers: the pre-fix default methods built one sampler per
-//! `map_init` invocation, and rayon decides how many times `map_init`'s init
-//! closure fires based on work-stealing, not on `m`. Each sampler
-//! construction advances the process's shared `Deterministic` seed state, so
-//! the number and interleaving of those advances — and hence the output —
-//! depended on scheduling, which in turn depends on the thread-pool size. A
-//! reviewer measured three runs of one pinned config giving means 4.01900 /
-//! 4.02577 / 4.00938. These tests pin an explicit pool size (1, 3, 8, ...)
-//! via `ThreadPoolBuilder::install` for exactly this reason: asserting
-//! reproducibility only under the ambient pool would not exercise the
-//! defect at all.
-//!
-//! A follow-up review found the first version of this fix actively
-//! regressed processes whose `sampler()` *clones* the seed (`Sabr` and 28
-//! others — a non-advancing snapshot per `SeedExt`'s design, so every chunk
-//! cloned the same state and `m` extra paths bought zero extra diversity).
-//! `sabr_sample_par_is_thread_count_independent` and
-//! `sabr_sample_par_paths_are_distinct` below cover that class explicitly,
-//! in addition to `Gbm`.
-//!
-//! The same review found the fix was a no-op for processes whose
-//! `sampler()` reads the seed *lazily* per path from inside the returned
-//! sampler (`Heston`, and 9 more) — advancing the seed sequentially before
-//! any chunk runs cannot help a process that never advances anything at
-//! `sampler()` construction; each chunk's sampler shares live access to the
-//! same atomic and races on it during the parallel region itself.
-//! `heston_sample_par_is_thread_count_independent` below covers that class,
-//! fixed by rewriting the sampler to own a seed rather than reading the
-//! process's directly.
-//!
-//! A third review found a distinct bug class neither the `seed.clone()` grep
-//! nor a `sampler()`-body sweep can see: `Cgmy`, `KoBoL`, `Cts`, `Rdts` and
-//! `Svcgmy` each hard-wire `Unseeded` on a `Poisson` built *inside*
-//! `fill_path`/`fill_paths` (an arrival-time series reused as Γ_j), so that
-//! one component of the path was never reachable from `self.seed` at all —
-//! not a chunking defect, a plain missed wire. `cgmy_sample_is_deterministic`
-//! / `svcgmy_sample_is_deterministic` below cover the two the review asked
-//! for by name; `KoBoL`/`Cts`/`Rdts` got the identical one-line fix without
-//! their own dedicated tests here (see the source for the shared pattern).
+//! `sample_par` and `sample_map` reproduce under a `Deterministic` seed at any rayon pool size,
+//! which the tests pin explicitly (1, 3, 8, …): the ambient pool alone exercises no scheduling.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
@@ -57,24 +17,15 @@ use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 const SEED: u64 = 42;
 
 fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
-  Gbm::<f64, _>::new(
-    0.05,
-    0.2,
-    32,
-    Some(1.0),
-    Some(1.0),
-    Deterministic::new(seed),
-  )
+  Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(seed))
 }
 
-/// `Heston` is "lazy": pre-fix, `sampler()` did nothing and `Sch::simulate`
-/// read `model.seed.derive()` fresh per path, from inside the (potentially
-/// parallel) closure — advancing `self.seed` at construction alone cannot
-/// fix a process that never advances anything at construction.
+/// `Heston` is the lazy class: the scheme draws per path inside the parallel closure, so its
+/// sampler has to own a derived seed and never read `model.seed` there.
 fn heston(seed: u64) -> Heston<f64, Euler, Deterministic> {
   Heston::new(
-    Some(1.0),
-    Some(0.04),
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -88,10 +39,8 @@ fn heston(seed: u64) -> Heston<f64, Euler, Deterministic> {
   )
 }
 
-/// `Sabr` is "clone-snapshot": `sampler()` does `seed: self.seed.clone()`,
-/// and `Deterministic::clone()` is a non-advancing snapshot of the current
-/// state — every chunk that clones before `self.seed` itself advances gets
-/// the identical snapshot.
+/// `Sabr` is the clone-snapshot class: `Deterministic::clone()` does not advance, so a sampler
+/// that cloned `self.seed` would hand every chunk the same snapshot.
 fn sabr(seed: u64) -> Sabr<f64, Deterministic> {
   Sabr::<f64, _>::new(
     0.3,
@@ -105,9 +54,8 @@ fn sabr(seed: u64) -> Sabr<f64, Deterministic> {
   )
 }
 
-/// `Cgmy` is the tempered-stable jump family's base case: its per-path
-/// Gamma-arrival-time series `P` was built via `Poisson::new(..., Unseeded)`
-/// inside `fill_path`, entirely bypassing `self.seed`.
+/// `Cgmy` is the tempered-stable family's base case: its per-path Gamma arrival series `P` is a
+/// `Poisson` built inside `fill_path`, which has to be seeded from `self.seed` too.
 fn cgmy(seed: u64) -> Cgmy<f64, Deterministic> {
   Cgmy::<f64, _>::new(
     1.0,
@@ -122,11 +70,8 @@ fn cgmy(seed: u64) -> Cgmy<f64, Deterministic> {
   )
 }
 
-/// `Svcgmy` had the identical hard-wired-`Unseeded` `Poisson` bug, but is
-/// the sharper case: its `sampler()` was already fixed to `derive()` (not
-/// `clone()`) in the cross-chunk-correlation round, so it was covered by
-/// that round's "Guarantee, corrected" claim while still not being
-/// seed-reproducible at all, via this one line.
+/// `Svcgmy` builds the same per-path `Poisson` inside its fill; a `sampler()` that derives
+/// correctly does not make that component seed-reproducible.
 fn svcgmy(seed: u64) -> Svcgmy<f64, Deterministic> {
   Svcgmy::<f64, _>::new(
     1.0,
@@ -139,7 +84,7 @@ fn svcgmy(seed: u64) -> Svcgmy<f64, Deterministic> {
     32,
     8,
     Some(0.0),
-    Some(0.04),
+    0.04,
     Some(1.0),
     Deterministic::new(seed),
   )
@@ -164,9 +109,7 @@ fn pool(num_threads: usize) -> rayon::ThreadPool {
     .expect("failed to build rayon thread pool")
 }
 
-/// `sample_par` must be bit-identical across thread-pool sizes — the defect
-/// this task fixes produced means 4.01900 / 4.02577 / 4.00938 for one pinned
-/// config.
+/// `sample_par` is bit-identical across thread-pool sizes.
 #[test]
 fn sample_par_is_thread_count_independent() {
   let m = 64;
@@ -181,9 +124,7 @@ fn sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "sample_par diverged between 1 and 8 threads");
 }
 
-/// Same guarantee, on the "lazy" class (`Heston`): pre-fix, this was a
-/// no-op — the fix has to rewrite `sampler()` to own the seed, not merely
-/// pre-build samplers sequentially.
+/// The same guarantee on the lazy class (`Heston`), whose sampler owns its seed.
 #[test]
 fn heston_sample_par_is_thread_count_independent() {
   let m = 64;
@@ -204,10 +145,8 @@ fn heston_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Heston sample_par diverged between 1 and 8 threads");
 }
 
-/// Same guarantee, on the "clone-snapshot" class (`Sabr`): pre-fix, every
-/// chunk cloned the identical snapshot, so this held trivially (all chunks
-/// agreed — with each other, uselessly) but `sabr_sample_par_paths_are_distinct`
-/// below would have failed.
+/// The same guarantee on the clone-snapshot class (`Sabr`); identical snapshots would pass this
+/// and fail `sabr_sample_par_paths_are_distinct` below.
 #[test]
 fn sabr_sample_par_is_thread_count_independent() {
   let m = 64;
@@ -228,13 +167,8 @@ fn sabr_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Sabr sample_par diverged between 1 and 8 threads");
 }
 
-/// `Sabr` (clone-snapshot), `m = 64`: no two paths identical. This is the
-/// test that catches the clone-snapshot regression specifically. Under the
-/// very first fix (the `m.div_ceil(8)` chunking rule — `MAX_CHUNKS` did not
-/// exist at that point in the fix's history), every chunk cloned the same
-/// unchanged seed, so `sample_par(m)` degenerated to only as many distinct
-/// paths as one chunk's own LENGTH (8, under that rule — a path-count, not
-/// a chunk-count), each repeated across every chunk.
+/// `Sabr`, `m = 64`: no two paths identical. A sampler that clones the seed gives every chunk
+/// the same paths, as many distinct ones as one chunk is long.
 #[test]
 fn sabr_sample_par_paths_are_distinct() {
   let m = 64;
@@ -247,15 +181,8 @@ fn sabr_sample_par_paths_are_distinct() {
   assert_eq!(keys.len(), m, "Sabr sample_par produced duplicate paths");
 }
 
-/// `Sabr` (clone-snapshot) beyond `MAX_CHUNKS = 64`: at `m = 256`,
-/// `chunk_count` caps at 64 chunks, so several chunks carry more than one
-/// path each — the regime the `m = 64` test above cannot exercise (there,
-/// `chunk_count(64) == 64` gives exactly one path per chunk, which cannot
-/// expose cross-chunk correlation). Before `sampler()` derived — rather
-/// than cloned — its chunk basis, adjacent chunks' bases were a raw,
-/// unmixed γ stride apart, so `sample_par(1000)` measured only 78 of 1000
-/// paths distinct; deriving gives every chunk a hash-scrambled,
-/// uncorrelated basis regardless of how many paths share it.
+/// `Sabr` beyond `MAX_CHUNKS = 64`: at `m = 256` several paths share a chunk, which `m = 64` (one
+/// path per chunk) cannot show. Cloned bases one raw γ stride apart gave 78 distinct of 1000.
 #[test]
 fn sabr_sample_par_paths_are_distinct_beyond_max_chunks() {
   let m = 256;
@@ -272,11 +199,8 @@ fn sabr_sample_par_paths_are_distinct_beyond_max_chunks() {
   );
 }
 
-/// Same guarantee on the "lazy-rewritten" class (`Heston`) beyond
-/// `MAX_CHUNKS`: `Heston::sampler()` now derives its own basis once (rather
-/// than the process's `self.seed` being read fresh per path), so chunk
-/// bases stay hash-scrambled relative to each other even when `m` forces
-/// multiple paths onto the same chunk.
+/// The same on the lazy class (`Heston`) beyond `MAX_CHUNKS`: `sampler()` derives its basis
+/// once, so chunk bases stay hash-scrambled when several paths share a chunk.
 #[test]
 fn heston_sample_par_paths_are_distinct_beyond_max_chunks() {
   let m = 256;
@@ -293,14 +217,8 @@ fn heston_sample_par_paths_are_distinct_beyond_max_chunks() {
   );
 }
 
-/// `Cgmy`'s per-path Gamma-arrival-time series `P` was hard-wired to
-/// `Unseeded` inside `fill_path` — invisible to both the `seed.clone()` grep
-/// and the `sampler()`-body sweep that found every other bug in this suite,
-/// since `sampler()` itself is correctly seeded and the defect is a plain
-/// object *inside* the per-path method. Before the fix, two identically-
-/// `Deterministic`-seeded `Cgmy` objects disagreed on a single `.sample()`
-/// call — not a chunking defect, `sample_par`/`sample_map` are not even
-/// involved here.
+/// Two identically seeded `Cgmy` objects agree on one `.sample()`: the Gamma arrival series `P`,
+/// built inside `fill_path`, reads the seed. No chunking is involved.
 #[test]
 fn cgmy_sample_is_deterministic() {
   let a = bits_1d(&cgmy(SEED).sample());
@@ -308,10 +226,8 @@ fn cgmy_sample_is_deterministic() {
   assert_eq!(a, b, "two identically-seeded Cgmy objects diverged");
 }
 
-/// Same bug as `cgmy_sample_is_deterministic`, exercised through
-/// `sample_par` at `m = 256`: fixed by deriving the per-path `Poisson`'s
-/// seed from the sampler's own (already chunk-decorrelated) `seed` field
-/// instead of hard-wiring `Unseeded`.
+/// The same through `sample_par` at `m = 256`: the per-path `Poisson`'s seed is derived from the
+/// sampler's own chunk-decorrelated `seed`.
 #[test]
 fn cgmy_sample_par_is_thread_count_independent() {
   let m = 256;
@@ -324,11 +240,8 @@ fn cgmy_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Cgmy sample_par diverged between 1 and 8 threads");
 }
 
-/// `Svcgmy` — the review's named "sharp" case: this file's own
-/// cross-chunk-correlation fix already converted its `sampler()` from
-/// `clone()` to `derive()`, so it was covered by that round's "Guarantee,
-/// corrected" claim while still not being seed-reproducible at all, via the
-/// identical hard-wired-`Unseeded` per-path `Poisson` as `Cgmy`.
+/// `Svcgmy`: a `sampler()` that derives its seed is not enough when the per-path `Poisson`
+/// inside the fill is not seeded from it.
 #[test]
 fn svcgmy_sample_is_deterministic() {
   let a = svcgmy(SEED).sample();
@@ -360,10 +273,8 @@ fn svcgmy_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Svcgmy sample_par diverged between 1 and 8 threads");
 }
 
-/// Two identically-seeded processes, same `m`, run under *different*
-/// explicit pool sizes ⇒ identical output. This also covers the plain
-/// same-object / same-pool repeatability the task brief asks for, one level
-/// stronger (pool sizes differ between the two calls, not just the objects).
+/// Two identically seeded processes, the same `m`, different explicit pool sizes: identical
+/// output, which also covers same-pool repeatability.
 #[test]
 fn sample_par_is_repeatable_across_objects() {
   let m = 48;
@@ -395,9 +306,8 @@ fn sample_map_is_thread_count_independent() {
   assert_eq!(r1, r8, "sample_map diverged between 1 and 8 threads");
 }
 
-/// `m = 16`: no two paths are identical. A chunking bug that let two chunks
-/// consume the same seed (instead of advancing it once per chunk) would
-/// collapse chunk 0's paths onto chunk 1's.
+/// `m = 16`: no two paths are identical; two chunks consuming the same seed would collapse
+/// chunk 0's paths onto chunk 1's.
 #[test]
 fn sample_par_paths_are_distinct() {
   let m = 16;

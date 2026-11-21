@@ -1,41 +1,13 @@
-//! # Vasicek
+//! Vasicek: the Ornstein–Uhlenbeck process with the short rate as its state.
 //!
 //! $$
 //! dr_t=a(b-r_t)dt+\sigma dW_t
 //! $$
 //!
-//! ## Same SDE as [`Ou`]
+//! Holds an [`Ou`] (`a` = `theta`, `b` = `mu`) and samples through it, on a child seed of its own.
 //!
-//! Vasicek's contribution was the term-structure theory built on top of this
-//! equation, not the equation: `dr = a(b − r)dt + σ dW` is the
-//! Ornstein-Uhlenbeck process with the short rate as its state. The
-//! dictionary is `a = ` [`theta`](Vasicek::theta) `= ` [`Ou::theta`]
-//! (reversion speed), `b = ` [`mu`](Vasicek::mu) `= ` [`Ou::mu`] (the level
-//! reverted to), `σ = ` [`sigma`](Vasicek::sigma) `= ` [`Ou::sigma`], and
-//! `r = X`.
-//!
-//! So this type does not re-derive anything. It holds an [`Ou`], its sampler
-//! *is* [`OuSampler`], and the Euler family it reports is the one that `Ou`
-//! reports — one recursion and one device kernel serve both names. The
-//! separate identity buys the short-rate application: bond prices, yield
-//! curves and the calibration surface in `stochastic-rs-quant` are stated
-//! against `Vasicek`, and none of them are meaningful for a spread or a
-//! log-price sampled as an `Ou`.
-//!
-//! The one thing the two do not share is a random stream. [`Vasicek::new`]
-//! derives a child seed for the embedded `Ou`, so an `Ou` and a `Vasicek`
-//! built from the same [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)
-//! seed are two independent draws of the same law, not the same path.
-//!
-//! References:
-//! - Vasicek O. (1977) — *An Equilibrium Characterization of the Term
-//!   Structure*, Journal of Financial Economics 5(2), 177–188,
-//!   DOI: 10.1016/0304-405X(77)90016-2.
-//! - Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of the
-//!   Brownian Motion*, Physical Review 36(5), 823–841,
-//!   DOI: 10.1103/PhysRev.36.823 — the underlying mean-reverting
-//!   diffusion ([`Ou`]) this file wraps under
-//!   short-rate parameter names.
+//! Reference: Vasicek (1977), J. Financ. Econ. 5(2), 177–188, DOI 10.1016/0304-405X(77)90016-2
+//! Reference: Uhlenbeck & Ornstein (1930), Phys. Rev. 36(5), 823–841, DOI 10.1103/PhysRev.36.823
 //!
 
 use ndarray::Array1;
@@ -45,21 +17,14 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::device::Cpu;
 use crate::diffusion::ou::Ou;
 use crate::diffusion::ou::OuSampler;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Vasicek short-rate model — the [`Ou`] process under short-rate
-/// vocabulary, and built on it: in the SDE `dr = a(b − r) dt + σ dW` (file
-/// header) the Rust field [`theta`](Self::theta) is `a` (mean-reversion
-/// speed) and [`mu`](Self::mu) is `b` (long-run mean level).
-///
-/// The embedded `Ou` is what actually samples and what names the Euler
-/// family, so the two names cannot come apart. It is kept in step with the
-/// mirrored fields by [`new`](Self::new) and by every `with_*` setter;
-/// assigning to a public field directly changes the mirror only, so build
-/// with those rather than by mutating in place.
-#[derive(Clone)]
+/// Vasicek short rate on an [`Ou`]: [`theta`](Self::theta) is `a` and [`mu`](Self::mu) is `b`.
+/// [`new`](Self::new) and the setters keep the embedded `Ou` in step; a field write does not.
+#[derive(Debug, Clone)]
 pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (`a` in the SDE). Controls how fast `r` is pulled
   /// back toward [`mu`](Self::mu).
@@ -71,11 +36,11 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the Vasicek path.
   pub n: usize,
-  /// Initial short rate r₀.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   ou: Ou<T, S>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -86,27 +51,13 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Vasicek::default().with_theta(1.0).with_sigma(0.05)`.
 impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_theta(theta);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_x0(x0);
+    check_t(t);
     Self {
       backend: Cpu,
       mu,
@@ -122,18 +73,24 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
-  /// Rebuilds the embedded [`Ou`] from the mirrored fields, keeping the
-  /// child seed it already holds.
-  ///
-  /// Keeping that seed rather than deriving a new one is what makes a
-  /// setter agree with a fresh [`new`](Self::new). `new` derives its child
-  /// from an *unadvanced* outer seed; deriving again here would take a
-  /// second, different child off a seed the first derive already advanced,
-  /// so `Vasicek::new(a, ..).with_mu(b)` and `Vasicek::new(a, b, ..)` would
-  /// draw different paths from the same seed. `Ou::seed` is `pub`, so the
-  /// fixed child is simply cloned across. Only [`with_seed`](Self::with_seed)
-  /// derives, because it is the one setter that mirrors `new`'s own
-  /// construction order.
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Rebuilds the embedded [`Ou`] from the mirrored fields and keeps its child seed: a second
+  /// derive would make `new(a, ..).with_mu(b)` and `new(a, b, ..)` draw different paths.
   fn resync(mut self) -> Self {
     let ou_seed = self.ou.seed.clone();
     self.ou = Ou::new(
@@ -142,45 +99,49 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
+    Self::check_theta(theta);
     self.theta = theta;
     self.resync()
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
     self.mu = mu;
     self.resync()
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self.resync()
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self.resync()
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.resync()
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self.resync()
   }
 
-  /// Replace the seed strategy's value; re-derives the embedded `Ou`'s
-  /// seed from the *new* outer seed, exactly mirroring `new()`'s own
-  /// construction order (derive before moving `seed` into `self.seed`).
+  /// Replace the seed; re-derives the embedded `Ou`'s seed from the new one, in `new()`'s own
+  /// order: derive first, then move `seed` into `self.seed`.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.ou = Ou::new(
       self.theta,
@@ -196,9 +157,8 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
   }
 }
 
-/// a=3.0, b=0.03, σ=0.02, r₀=0.03 — a textbook Vasicek parameterization.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// a=3.0, b=0.03, σ=0.02, r₀=0.03, a textbook Vasicek; t=1, 252 points, a trading year of daily
+/// closes.
 impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -213,12 +173,8 @@ impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
   }
 }
 
-/// Vasicek is Ornstein-Uhlenbeck under another name, so it reaches every
-/// device through the family a Gaussian [`Ou`] already declares — no kernel
-/// and no declaration of its own. The embedded process answers for the
-/// family, the state and the grid rather than this file restating them,
-/// which is what keeps the device path and the host path describing one
-/// model.
+/// Vasicek reaches every device through the family a Gaussian [`Ou`] declares: the embedded
+/// process answers for the family, the state and the grid, so host and device describe one model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Vasicek<T, S, B>
 {
@@ -238,9 +194,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::EulerCoefficients::horizon(&self.ou)
   }
 
-  /// The one thing not taken from the embedded `Ou`: its seed is a child of
-  /// this one, so reading it here would give a `Vasicek` the stream of the
-  /// `Ou` it holds rather than its own.
+  /// Not taken from the embedded `Ou`, whose seed is a child of this one: reading it here would
+  /// give a `Vasicek` the stream of the `Ou` it holds.
   fn device_seed(&self) -> u64 {
     crate::euler::draw_seed(&self.seed)
   }
@@ -270,9 +225,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     self.ou.sampler()
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -302,9 +256,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Vasicek`] sampling state, which is [`OuSampler`] itself: the
-/// Vasicek path is the OU path, so there is one recursion rather than a
-/// forwarding shell around it.
+/// Reusable [`Vasicek`] sampling state, which is [`OuSampler`] itself: the Vasicek path is the OU
+/// path, so there is one recursion and no forwarding shell.
 #[doc(hidden)]
 pub type VasicekSampler<T> = OuSampler<T>;
 
@@ -320,17 +273,8 @@ mod tests {
 
   use super::*;
 
-  /// Both names run the same recursion, with the same parameters.
-  ///
-  /// This is what makes the consolidation a refactor rather than a rewrite:
-  /// `Vasicek` samples through the `Ou` it holds. The two *paths* differ,
-  /// because the embedded process gets a derived child seed — so what is
-  /// checked is the recursion itself. Inverting the Euler step,
-  /// `(x[i] − x[i−1] − θ(μ − x[i−1])Δ) / (σ√Δ)` is the standard normal the
-  /// step drew, and it is standard only if all three parameters entered
-  /// where they claim to. A swapped `theta`/`mu`, a missing `dt` or a
-  /// re-derived recursion moves the residual mean or its spread well past
-  /// the band, whatever the noise was.
+  /// Both names run one recursion. The paths differ by the child seed, so the check inverts the
+  /// Euler step: `(x[i] − x[i−1] − θ(μ − x[i−1])Δ) / (σ√Δ)` is standard normal only if all fit.
   #[test]
   fn both_names_run_the_same_recursion() {
     for (theta, mu, sigma, x0) in [

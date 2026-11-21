@@ -11,8 +11,8 @@
 //! - [`pricing`] — Black-Scholes, Heston, Bates, rBergomi, CGMYsv, basket /
 //!   rainbow / Asian / barrier / lookback / cliquet payoffs; Fourier
 //!   (Carr-Madan, Lewis, Gil-Pelaez); Malliavin-Thalmaier Greeks; SLV.
-//! - [`mc`] — variance reduction (antithetic, control variates, stratified, importance sampling),
-//!   Brownian-bridge QMC, multilevel MC (MLMC) and [`mc::McEstimate`]; re-exported from `stochastic-rs-stochastic`.
+//! - `stochastic_rs_stochastic::mc` — variance reduction, Brownian-bridge QMC, multilevel MC and
+//!   `McEstimate`, the type the Monte Carlo pricers here return.
 //! - [`bonds`] — affine zero-coupon bond pricing (Vasicek, CIR, Hull-White,
 //!   G2++), duration / convexity.
 //! - [`fourier_malliavin`] — non-parametric realised volatility / leverage /
@@ -83,17 +83,14 @@
 #![allow(clippy::needless_range_loop)]
 
 #[cfg(doctest)]
+mod doctest_fields;
+#[cfg(doctest)]
 mod doctest_names;
+mod error;
 mod linalg;
+mod total_order;
 
 pub mod traits;
-
-pub use stochastic_rs_copulas as copulas;
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_stats as stats;
-pub use stochastic_rs_stochastic as stochastic;
-pub use stochastic_rs_stochastic::mc;
 
 /// Pricing engines — analytic, Fourier (Carr-Madan / Lewis / Gil-Pelaez),
 /// finite-difference, MC, lattice — for European, American, Asian, barrier,
@@ -194,7 +191,10 @@ pub mod fourier_malliavin;
 
 mod types;
 
+pub use calibration::quote::OptionQuote;
+pub use error::QuantError;
 pub use types::CalibrationLossScore;
+pub use types::CallPut;
 pub use types::LossMetric;
 pub use types::Moneyness;
 pub use types::OptionStyle;

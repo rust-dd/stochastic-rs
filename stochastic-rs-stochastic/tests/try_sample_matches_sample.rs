@@ -1,9 +1,5 @@
-//! `ProcessExt::try_sample` / `try_sample_par` on the host devices are the
-//! plain `sample` / `sample_par`: always `Ok`, bit-identical paths, the same
-//! seed consumption. One process per sampling shape: a host sampler (`Bm`),
-//! the Euler engine (`Ou`), the fGN generator (`Fgn`), a wrapper that batches
-//! through it (`Fbm`), one that draws per path (`Fou`) and one that draws a
-//! pair (`Cfgns`).
+//! On the host devices `try_sample` and `try_sample_par` are `sample` and `sample_par`: always
+//! `Ok`, the same bits and seed consumption, for one process per sampling shape.
 
 use std::fmt::Debug;
 

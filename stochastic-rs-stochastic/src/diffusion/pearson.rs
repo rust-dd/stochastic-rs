@@ -1,4 +1,4 @@
-//! # Pearson
+//! Pearson diffusion: a mean-reverting drift and a squared diffusion quadratic in the state.
 //!
 //! $$
 //! dX_t=\kappa(\mu-X_t)\,dt+\sqrt{2\kappa(aX_t^2+bX_t+c)}\,dW_t
@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ.
   pub kappa: T,
@@ -34,9 +34,9 @@ pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub c: T,
   /// Number of points sampled along the Pearson-diffusion path.
   pub n: usize,
-  /// Initial value X₀ of the Pearson-diffusion path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -46,6 +46,7 @@ pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Pearson<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     kappa: T,
     mu: T,
@@ -101,11 +102,8 @@ impl<T: FloatExt, S: SeedExt> Pearson<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Pearson<T, S, B> {}
-
-/// The Euler engine's view of the Pearson diffusion. The diffusion's leading
-/// `2κ` depends on no state, so it is folded here rather than recomputed on
-/// every step of every path.
+/// The Euler engine's view. The diffusion's leading `2κ` depends on no state, so it is folded
+/// here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Pearson<T, S, B>
 {
@@ -173,9 +171,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -208,6 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Pearson`] sampling state: precomputed Euler step and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct PearsonSampler<T: FloatExt> {
   n: usize,
   x0: T,

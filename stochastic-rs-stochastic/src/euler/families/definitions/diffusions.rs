@@ -1,8 +1,8 @@
 macro_rules! euler_diffusions {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_systems! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// `dX = μX dt + σX dW`.
   0 => GeometricBrownian { mu, sigma }
@@ -18,26 +18,24 @@ macro_rules! euler_diffusions {
     step { x + theta * (mu - x) * $dt + sigma * dz }
     report { x },
 
+  /// `dX = κ(θ − X) dt + σ√X dW` with full truncation (Lord, Koekkoek & van Dijk 2010): an
+  /// auxiliary state whose positive part enters drift, diffusion and the reported path.
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)
     step { x + kappa * (theta - positive(x)) * $dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },
 
-  /// `dX = κ(θ − X) dt + σ√X dW`, stepped with full truncation (Lord,
-  /// Koekkoek & van Dijk 2010): the recursion runs on an auxiliary state
-  /// whose positive part enters drift, diffusion and the reported path.
-  /// `dX = dW`: the increment accumulates, which is fractional Brownian
-  /// motion when the increments come from an fGN pipeline.
+  /// `dX = dW`: the increment accumulates, which is fractional Brownian motion when the
+  /// increments come from an fGN pipeline.
   3 => Additive { }
     state (x)
     noise (dz)
     step { x + dz }
     report { x },
 
-  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step — the
-  /// fractional CIR recursion, which truncates the *result* rather than
-  /// stepping on a truncated state.
+  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step: the fractional CIR
+  /// recursion, which truncates the result, not the state it steps on.
   4 => ReflectedSquareRoot { theta, mu, sigma }
     state (x)
     noise (dz)
@@ -51,10 +49,8 @@ macro_rules! euler_diffusions {
     step { abs(x + theta * (mu - x) * $dt + sigma * sqrt(abs(x)) * dz) }
     report { x },
 
-  /// `dX = (α − βX) dt + σ√(X(1−X)) dW` on the unit interval, absorbing at
-  /// both ends — the fractional Jacobi recursion. `X(1−X)` is written
-  /// `x - x * x`, which needs no literal and so no type to infer, and both
-  /// arms of a `pick` are evaluated, so the diffusion guards its own root.
+  /// `dX = (α − βX) dt + σ√(X(1−X)) dW` on the unit interval, absorbing at both ends: fractional
+  /// Jacobi. `X(1−X)` is `x - x * x`, with no literal, and the diffusion guards its own root.
   6 => Jacobi { alpha, beta, sigma }
     state (x)
     noise (dz)
@@ -103,18 +99,16 @@ macro_rules! euler_diffusions {
     step { x + kappa * x * (mu - x) * $dt + sigma * pow(abs(x), lit(1.5)) * dz }
     report { x },
 
-  /// Geometric Brownian motion stepped in logs: `X ← X·exp(m + σ dW)`, with
-  /// `m = (μ − σ²/2)Δt` computed once on the host, so the kernel needs no
-  /// literal and the exponential is exact rather than a first-order step.
+  /// Geometric Brownian motion stepped in logs, `X ← X·exp(m + σ dW)`, with `m = (μ − σ²/2)Δt`
+  /// folded on the host: no literal in the kernel, and an exact exponential step.
   11 => LogGeometric { drift_ln, sigma }
     state (x)
     noise (dz)
     step { x * exp(drift_ln + sigma * dz) }
     report { x },
 
-  /// `dX = (κ/X − X) dt + σ dW`: the radial Ornstein–Uhlenbeck process, whose
-  /// drift is guarded away from the origin exactly as the host sampler guards
-  /// it.
+  /// `dX = (κ/X − X) dt + σ dW`: the radial Ornstein–Uhlenbeck process, its drift guarded away
+  /// from the origin as the host sampler guards it.
   12 => RadialOrnsteinUhlenbeck { kappa, sigma }
     state (x)
     noise (dz)
@@ -153,9 +147,8 @@ macro_rules! euler_diffusions {
     step { x + x * (theta1 - x * decay) * $dt + theta3 * pow(abs(x), lit(1.5)) * dz }
     report { x },
 
-  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + √|b₀ + b₁X + b₂|X|^{b₃}| dW`: the
-  /// Aït-Sahalia short-rate model, whose drift is guarded away from the origin
-  /// exactly as the host sampler guards it.
+  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + √|b₀ + b₁X + b₂|X|^{b₃}| dW`: the Aït-Sahalia
+  /// short-rate model, its drift guarded away from the origin as the host sampler guards it.
   17 => AitSahalia { am1, a0, a1, a2, b0, b1, b2, b3 }
     state (x)
     noise (dz)
@@ -166,19 +159,16 @@ macro_rules! euler_diffusions {
     }
     report { x },
 
-  /// `dX = (a − b·ln X)X dt + σX dW`, floored at `1e-12`. The step's own
-  /// floor makes the state positive from the first step on, and the process
-  /// floors `X₀` the same way, so the guard the host applies to every
-  /// coefficient is already true of `x` here.
+  /// `dX = (a − b·ln X)X dt + σX dW`, floored at `1e-12`. The step's floor and the process's
+  /// floor on `X₀` keep `x` positive, so the host's guard on every coefficient already holds.
   18 => Gompertz { a, b, sigma }
     state (x)
     noise (dz)
     step { max(x + (a - b * ln(x)) * x * $dt + sigma * x * dz, lit(1e-12)) }
     report { x },
 
-  /// `dX = aX(1−X) dt + σ√(X(1−X)) dW` on `[0, 1]`: the Kimura diffusion of
-  /// population genetics. As with [`Gompertz`](Family::Gompertz) the step's
-  /// own clamp is what keeps the coefficients in range.
+  /// `dX = aX(1−X) dt + σ√(X(1−X)) dW` on `[0, 1]`: the Kimura diffusion of population
+  /// genetics. As with [`Gompertz`](Family::Gompertz) the step's clamp keeps the coefficients real.
   19 => Kimura { a, sigma }
     state (x)
     noise (dz)
@@ -264,9 +254,8 @@ macro_rules! euler_diffusions {
     step { abs(x + delta * $dt + two * sqrt(abs(x)) * dz) }
     report { x },
 
-  /// [`SquaredBesselState`](Family::SquaredBesselState) reporting `√X`: the
-  /// Bessel process itself, stepped in squared space so the `(δ−1)/2X`
-  /// singularity never enters the recursion.
+  /// [`SquaredBesselState`](Family::SquaredBesselState) reporting `√X`: the Bessel process,
+  /// stepped in squared space so the `(δ−1)/2X` singularity never enters the recursion.
   28 => BesselFromSquared { delta, two }
     state (x)
     noise (dz)
@@ -280,21 +269,19 @@ macro_rules! euler_diffusions {
     step { abs(x + delta * $dt + two * sqrt(abs(x)) * dz) }
     report { sqrt(x) },
 
-  /// `dX = ½σ²(β − γ(X−μ)/√(δ² + (X−μ)²)) dt + σ dW`: the hyperbolic
-  /// diffusion whose stationary law is the hyperbolic distribution. `½σ²` is
-  /// folded on the host.
+  /// `dX = ½σ²(β − γ(X−μ)/√(δ² + (X−μ)²)) dt + σ dW`: the hyperbolic diffusion, whose stationary
+  /// law is the hyperbolic distribution. `½σ²` is folded on the host.
   30 => HyperbolicDiffusion { beta, gamma, delta, mu, sigma, half_var }
     state (x)
     noise (dz)
     step {
-      x + half_var * (beta - gamma * x / sqrt(delta * delta + (x - mu) * (x - mu))) * $dt
+      x + half_var * (beta - gamma * (x - mu) / sqrt(delta * delta + (x - mu) * (x - mu))) * $dt
         + sigma * dz
     }
     report { x },
 
-  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + (b₀ + b₁X + b₂|X|^{b₃}) dW`: the
-  /// Aït-Sahalia drift with the diffusion left unsquared, guarded away from
-  /// the origin exactly as the host sampler guards it.
+  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + (b₀ + b₁X + b₂|X|^{b₃}) dW`: the Aït-Sahalia drift
+  /// with the diffusion left unsquared, guarded away from the origin as the host guards it.
   31 => NonLinear { am1, a0, a1, a2, b0, b1, b2, b3 }
     state (x)
     noise (dz)
@@ -305,18 +292,16 @@ macro_rules! euler_diffusions {
     }
     report { x },
 
-  /// Geometric Brownian motion on the shifted variable `Y = S + β`, reported
-  /// as `Y − β`: the displaced diffusion. The shift lives in the report, so
-  /// the step is the geometric one term for term.
+  /// Geometric Brownian motion on the shifted variable `Y = S + β`, reported as `Y − β`: the
+  /// displaced diffusion. The shift lives in the report, so the step is the geometric one.
   32 => Displaced { mu, sigma, beta }
     state (x)
     noise (dz)
     step { x + mu * x * $dt + sigma * x * dz }
     report { x - beta },
 
-  /// `dX = κ(μ − tanh X) dt + σ dW` reported as `tanh X`: Teng's stochastic
-  /// correlation process, stepped on the unbounded variable so the reported
-  /// correlation stays in `(−1, 1)` by construction.
+  /// `dX = κ(μ − tanh X) dt + σ dW` reported as `tanh X`: Teng's stochastic correlation, stepped
+  /// on the unbounded variable so the reported correlation stays in `(−1, 1)`.
   33 => TanhOrnsteinUhlenbeck { kappa, mu, sigma }
     state (x)
     noise (dz)

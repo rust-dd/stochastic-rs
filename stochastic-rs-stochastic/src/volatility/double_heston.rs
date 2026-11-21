@@ -1,25 +1,18 @@
-//! # Double Heston
-//!
-//! Two-factor stochastic volatility model with independent Cox-Ingersoll-Ross
-//! variance factors.
+//! Double Heston: a spot driven by two square-root variance factors, returned as three paths.
 //!
 //! $$
 //! \begin{aligned}
 //! dS_t &= \mu S_t\,dt + \sqrt{v_{1,t}}\,S_t\,dW_{1,t}^S + \sqrt{v_{2,t}}\,S_t\,dW_{2,t}^S \\
 //! dv_{1,t} &= \kappa_1(\theta_1 - v_{1,t})\,dt + \sigma_1\sqrt{v_{1,t}}\,dW_{1,t}^v \\
-//! dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v
+//! dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v \\
+//! d\langle W_1^S,W_1^v\rangle_t &= \rho_1\,dt,\quad d\langle W_2^S,W_2^v\rangle_t=\rho_2\,dt
 //! \end{aligned}
 //! $$
-//! with $d\langle W_1^S,W_1^v\rangle_t=\rho_1\,dt$,
-//! $d\langle W_2^S,W_2^v\rangle_t=\rho_2\,dt$, and every other Brownian
-//! motion pair independent.
 //!
-//! Source:
-//! - Christoffersen, Heston & Jacobs (2009), "The Shape and Term Structure of
-//!   the Index Option Smirk", <https://doi.org/10.1287/mnsc.1090.1065>
-//! - Mehrdoust, Noorani & Hamdi (2021), "Calibration of the double Heston
-//!   model and an analytical formula in pricing American put option",
-//!   <https://doi.org/10.1016/j.cam.2021.113422>
+//! Two independent Cox-Ingersoll-Ross variance factors; every other Brownian pair is independent.
+//!
+//! Reference: Christoffersen, Heston & Jacobs (2009), DOI 10.1287/mnsc.1090.1065
+//! Reference: Mehrdoust, Noorani & Hamdi (2021), DOI 10.1016/j.cam.2021.113422
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -28,25 +21,22 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Double Heston stochastic volatility process.
-///
-/// The two variance factors are assumed independent of each other; only
-/// within a factor is there a correlation between the stock shock and the
-/// variance shock ($\rho_1$ and $\rho_2$).
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
+/// Double Heston stochastic volatility: the two variance factors are independent, and each
+/// correlates with its own stock shock only ($\rho_1$, $\rho_2$).
+#[derive(Debug, Clone)]
 pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price.
-  pub s0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
   /// Initial variance of factor 1.
-  pub v1_0: Option<T>,
+  pub v1_0: T,
   /// Initial variance of factor 2.
-  pub v2_0: Option<T>,
+  pub v2_0: T,
   /// Mean-reversion speed of factor 1.
   pub kappa1: T,
   /// Long-run variance of factor 1.
@@ -65,13 +55,13 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho2: T,
   /// Drift of the stock price (risk-neutral drift = r - q).
   pub mu: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
-  /// Time to maturity.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  /// How a negative square-root state is treated after a step; Feller's condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
   cgns1: Cgns<T>,
@@ -82,12 +72,28 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
+/// Spot and the two variance factors.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct DoubleHestonPaths<T> {
+  pub s: Array1<T>,
+  pub v1: Array1<T>,
+  pub v2: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
+  fn from([s, v1, v2]: [Array1<T>; 3]) -> Self {
+    Self { s, v1, v2 }
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
-  #[allow(clippy::too_many_arguments)]
+  /// Panics unless every parameter is finite, each `v*_0`, `kappa*`, `theta*`, `sigma*` is
+  /// non-negative, each `-1 <= rho* <= 1`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
-    s0: Option<T>,
-    v1_0: Option<T>,
-    v2_0: Option<T>,
+    s0: T,
+    v1_0: T,
+    v2_0: T,
     kappa1: T,
     theta1: T,
     sigma1: T,
@@ -102,91 +108,20 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
-    );
-    assert!(
-      v1_0.is_none_or(|v| v.is_finite()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v.is_finite())`, got v1_0 = {v1_0:?}"
-    );
-    assert!(
-      v2_0.is_none_or(|v| v.is_finite()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v.is_finite())`, got v2_0 = {v2_0:?}"
-    );
-    assert!(
-      kappa1.is_finite(),
-      "kappa1 must satisfy `kappa1.is_finite()`, got kappa1 = {kappa1:?}"
-    );
-    assert!(
-      theta1.is_finite(),
-      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
-    );
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      rho1.is_finite(),
-      "rho1 must satisfy `rho1.is_finite()`, got rho1 = {rho1:?}"
-    );
-    assert!(
-      kappa2.is_finite(),
-      "kappa2 must satisfy `kappa2.is_finite()`, got kappa2 = {kappa2:?}"
-    );
-    assert!(
-      theta2.is_finite(),
-      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
-    );
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      rho2.is_finite(),
-      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      kappa1 >= T::zero(),
-      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
-    );
-    assert!(
-      theta1 >= T::zero(),
-      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
-    );
-    assert!(
-      sigma1 >= T::zero(),
-      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      kappa2 >= T::zero(),
-      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
-    );
-    assert!(
-      theta2 >= T::zero(),
-      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
-    );
-    assert!(
-      sigma2 >= T::zero(),
-      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      v1_0.is_none_or(|v| v >= T::zero()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
-    );
-    assert!(
-      v2_0.is_none_or(|v| v >= T::zero()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
-    );
+    Self::check_s0(s0);
+    Self::check_v1_0(v1_0);
+    Self::check_v2_0(v2_0);
+    Self::check_kappa1(kappa1);
+    Self::check_theta1(theta1);
+    Self::check_sigma1(sigma1);
+    Self::check_rho1(rho1);
+    Self::check_kappa2(kappa2);
+    Self::check_theta2(theta2);
+    Self::check_sigma2(sigma2);
+    Self::check_rho2(rho2);
+    Self::check_mu(mu);
+    check_n(n);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -213,151 +148,185 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
-  /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v1_0(v1_0: T) {
+    require!(v1_0.is_finite(), v1_0);
+    require!(v1_0 >= T::zero(), v1_0);
+  }
+
+  fn check_v2_0(v2_0: T) {
+    require!(v2_0.is_finite(), v2_0);
+    require!(v2_0 >= T::zero(), v2_0);
+  }
+
+  fn check_kappa1(kappa1: T) {
+    require!(kappa1.is_finite(), kappa1);
+    require!(kappa1 >= T::zero(), kappa1);
+  }
+
+  fn check_theta1(theta1: T) {
+    require!(theta1.is_finite(), theta1);
+    require!(theta1 >= T::zero(), theta1);
+  }
+
+  fn check_sigma1(sigma1: T) {
+    require!(sigma1.is_finite(), sigma1);
+    require!(sigma1 >= T::zero(), sigma1);
+  }
+
+  fn check_rho1(rho1: T) {
+    require!(rho1.is_finite(), rho1);
+  }
+
+  fn check_kappa2(kappa2: T) {
+    require!(kappa2.is_finite(), kappa2);
+    require!(kappa2 >= T::zero(), kappa2);
+  }
+
+  fn check_theta2(theta2: T) {
+    require!(theta2.is_finite(), theta2);
+    require!(theta2 >= T::zero(), theta2);
+  }
+
+  fn check_sigma2(sigma2: T) {
+    require!(sigma2.is_finite(), sigma2);
+    require!(sigma2 >= T::zero(), sigma2);
+  }
+
+  fn check_rho2(rho2: T) {
+    require!(rho2.is_finite(), rho2);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  /// Replace `s0`; panics unless `s0` is finite.
+  pub fn with_s0(mut self, s0: T) -> Self {
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v1_0`, all else unchanged.
-  pub fn with_v1_0(mut self, v1_0: Option<T>) -> Self {
-    assert!(
-      v1_0.is_none_or(|v| v >= T::zero()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
-    );
+  /// Replace `v1_0`; panics unless `v1_0 >= 0` and `v1_0` is finite.
+  pub fn with_v1_0(mut self, v1_0: T) -> Self {
+    Self::check_v1_0(v1_0);
     self.v1_0 = v1_0;
     self
   }
 
-  /// Replace `v2_0`, all else unchanged.
-  pub fn with_v2_0(mut self, v2_0: Option<T>) -> Self {
-    assert!(
-      v2_0.is_none_or(|v| v >= T::zero()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
-    );
+  /// Replace `v2_0`; panics unless `v2_0 >= 0` and `v2_0` is finite.
+  pub fn with_v2_0(mut self, v2_0: T) -> Self {
+    Self::check_v2_0(v2_0);
     self.v2_0 = v2_0;
     self
   }
 
-  /// Replace `kappa1`, all else unchanged.
+  /// Replace `kappa1`; panics unless `kappa1 >= 0` and `kappa1` is finite.
   pub fn with_kappa1(mut self, kappa1: T) -> Self {
-    assert!(
-      kappa1 >= T::zero(),
-      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
-    );
+    Self::check_kappa1(kappa1);
     self.kappa1 = kappa1;
     self
   }
 
-  /// Replace `theta1`, all else unchanged.
+  /// Replace `theta1`; panics unless `theta1 >= 0` and `theta1` is finite.
   pub fn with_theta1(mut self, theta1: T) -> Self {
-    assert!(
-      theta1 >= T::zero(),
-      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
-    );
+    Self::check_theta1(theta1);
     self.theta1 = theta1;
     self
   }
 
-  /// Replace `sigma1`, all else unchanged.
+  /// Replace `sigma1`; panics unless `sigma1 >= 0` and `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
-    assert!(
-      sigma1 >= T::zero(),
-      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
-    );
+    Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
-  /// Replace `rho1`; rebuilds the first factor's cached correlated-Gaussian
-  /// generator (`cgns1`) so the new correlation actually reaches the
-  /// sampler instead of a stale one computed from the old `rho1`.
+  /// Replace `rho1` and rebuild the first factor's cached generator `cgns1`, which the sampler
+  /// reads; panics unless `-1 <= rho1 <= 1`.
   pub fn with_rho1(mut self, rho1: T) -> Self {
+    Self::check_rho1(rho1);
     self.rho1 = rho1;
     self.cgns1 = Cgns::new(rho1, self.n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace `kappa2`, all else unchanged.
+  /// Replace `kappa2`; panics unless `kappa2 >= 0` and `kappa2` is finite.
   pub fn with_kappa2(mut self, kappa2: T) -> Self {
-    assert!(
-      kappa2 >= T::zero(),
-      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
-    );
+    Self::check_kappa2(kappa2);
     self.kappa2 = kappa2;
     self
   }
 
-  /// Replace `theta2`, all else unchanged.
+  /// Replace `theta2`; panics unless `theta2 >= 0` and `theta2` is finite.
   pub fn with_theta2(mut self, theta2: T) -> Self {
-    assert!(
-      theta2 >= T::zero(),
-      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
-    );
+    Self::check_theta2(theta2);
     self.theta2 = theta2;
     self
   }
 
-  /// Replace `sigma2`, all else unchanged.
+  /// Replace `sigma2`; panics unless `sigma2 >= 0` and `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
-    assert!(
-      sigma2 >= T::zero(),
-      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
-    );
+    Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
-  /// Replace `rho2`; rebuilds the second factor's cached correlated-Gaussian
-  /// generator (`cgns2`) so the new correlation actually reaches the
-  /// sampler instead of a stale one computed from the old `rho2`.
+  /// Replace `rho2` and rebuild the second factor's cached generator `cgns2`, which the sampler
+  /// reads; panics unless `-1 <= rho2 <= 1`.
   pub fn with_rho2(mut self, rho2: T) -> Self {
+    Self::check_rho2(rho2);
     self.rho2 = rho2;
     self.cgns2 = Cgns::new(rho2, self.n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds both cached
-  /// correlated-Gaussian generators, whose lengths and step sizes derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
+  /// generators, whose lengths and step sizes derive from `n`; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds both cached
-  /// correlated-Gaussian generators' step sizes, which derive from `t`.
+  /// Replace the simulation horizon `t`; rebuilds both cached correlated-Gaussian generators' step
+  /// sizes, which derive from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self.cgns1 = Cgns::new(self.rho1, self.n - 1, t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, self.n - 1, t, Unseeded);
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// The Euler engine's view of the double Heston model: one spot driven by two
-/// independent variance factors, each with its own correlation to the spot's
-/// share of the shock.
+/// The Euler engine's view: one spot driven by two independent variance factors, each
+/// correlated with its own share of the spot's shock.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for DoubleHeston<T, S, B>
 {
@@ -390,9 +359,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   fn initial_state(&self) -> [T; 4] {
     [
-      self.s0.unwrap_or(T::zero()),
-      self.v1_0.unwrap_or(T::zero()).max(T::zero()),
-      self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      self.s0,
+      self.v1_0.max(T::zero()),
+      self.v2_0.max(T::zero()),
       T::zero(),
     ]
   }
@@ -415,7 +384,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> DoubleHestonPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -432,23 +401,20 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DoubleHeston<T, S, B>
 {
-  /// Output tuple: `[S, v1, v2]`.
-  type Output = [Array1<T>; 3];
+  type Output = DoubleHestonPaths<T>;
   type Sampler<'s>
     = DoubleHestonSampler<T, S>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> DoubleHestonSampler<T, S> {
     DoubleHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
-      v1_0: self.v1_0.unwrap_or(T::zero()).max(T::zero()),
-      v2_0: self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      s0: self.s0,
+      v1_0: self.v1_0.max(T::zero()),
+      v2_0: self.v2_0.max(T::zero()),
       kappa1: self.kappa1,
       theta1: self.theta1,
       sigma1: self.sigma1,
@@ -464,34 +430,36 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
+  fn sample(&self) -> DoubleHestonPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&DoubleHestonPaths<T>) -> R + Sync) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<DoubleHestonPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<DoubleHestonPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<DoubleHestonPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
 
-/// Reusable [`DoubleHeston`] sampling state: owns both correlated-Gaussian
-/// generators and the seed source so a Monte-Carlo loop reuses all three
-/// output buffers.
+/// Reusable [`DoubleHeston`] sampling state: both correlated-Gaussian generators and the seed
+/// source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct DoubleHestonSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,
@@ -553,10 +521,10 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
 impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DoubleHestonSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
-  type Output = [Array1<T>; 3];
+  type Output = DoubleHestonPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
-    let [s, v1, v2] = out;
+  fn sample_into(&mut self, out: &mut DoubleHestonPaths<T>) {
+    let DoubleHestonPaths { s, v1, v2 } = out;
     self.fill_paths(
       s.as_slice_mut()
         .expect("DoubleHeston output must be contiguous"),
@@ -567,7 +535,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
     );
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> DoubleHestonPaths<T> {
     let mut s = Array1::<T>::zeros(self.n);
     let mut v1 = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);
@@ -576,87 +544,9 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
       v1.as_slice_mut().expect("contiguous"),
       v2.as_slice_mut().expect("contiguous"),
     );
-    [s, v1, v2]
+    DoubleHestonPaths { s, v1, v2 }
   }
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  #[test]
-  #[should_panic(
-    expected = "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = Some(-0.01)"
-  )]
-  fn negative_initial_variance_panics() {
-    let _ = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(-0.01),
-      Some(0.02),
-      1.0,
-      0.04,
-      0.3,
-      -0.5,
-      0.5,
-      0.04,
-      0.2,
-      -0.3,
-      0.0,
-      8,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Unseeded,
-    );
-  }
-
-  #[test]
-  fn variance_paths_stay_non_negative() {
-    let p = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(0.02),
-      Some(0.02),
-      3.0,
-      0.02,
-      0.4,
-      -0.6,
-      0.5,
-      0.02,
-      0.2,
-      -0.3,
-      0.05,
-      128,
-      Some(1.0),
-      VarianceBoundary::Reflect,
-      Unseeded,
-    );
-    let [_s, v1, v2] = p.sample();
-    assert!(v1.iter().all(|x| *x >= 0.0));
-    assert!(v2.iter().all(|x| *x >= 0.0));
-  }
-
-  #[test]
-  fn stock_path_is_finite() {
-    let p = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(0.02),
-      Some(0.02),
-      3.0,
-      0.02,
-      0.4,
-      -0.6,
-      0.5,
-      0.02,
-      0.2,
-      -0.3,
-      0.05,
-      64,
-      Some(0.5),
-      VarianceBoundary::Reflect,
-      Deterministic::new(42),
-    );
-    let [s, _, _] = p.sample();
-    assert!(s.iter().all(|x| x.is_finite()));
-  }
-}
+mod tests;

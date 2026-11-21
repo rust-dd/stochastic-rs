@@ -1,10 +1,20 @@
-//! The crate's precondition form for an array argument.
+//! The crate's precondition form for an array argument, and the grid checks the processes share.
 
 use std::fmt::Debug;
 
 use ndarray::ArrayBase;
 use ndarray::Data;
 use ndarray::Dimension;
+
+use crate::traits::FloatExt;
+
+pub(crate) fn check_n(n: usize) {
+  require!(n >= 2, n);
+}
+
+pub(crate) fn check_t<T: FloatExt>(t: Option<T>) {
+  require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+}
 
 /// Panics at the first entry of `values` that fails `holds`, naming that entry and its value
 /// (``alpha[3] must satisfy `alpha[i].is_finite()`, got alpha[3] = NaN``), never the whole array.

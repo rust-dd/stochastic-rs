@@ -1,4 +1,4 @@
-//! # Cgns
+//! Two Gaussian increment streams of variance `dt`, correlated by `rho`.
 //!
 //! $$
 //! Z_t=L\varepsilon_t,\quad \varepsilon_t\sim\mathcal N(0,I),\ LL^\top=\Sigma
@@ -6,7 +6,6 @@
 //!
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -17,16 +16,15 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation ρ between the two output Gaussian streams.
   pub rho: T,
-  /// Number of points sampled along each correlated-Gaussian stream.
+  /// Increments drawn per stream; `dt = t / n`.
   pub n: usize,
-  /// Simulation horizon [0, t] for both streams (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -34,6 +32,8 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
+  /// Panics unless `n >= 1`, a given `t` is positive and finite, `-1 <= rho <= 1`, and `rho` is
+  /// finite.
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       rho.is_finite(),
@@ -59,14 +59,7 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
-  /// Sample with an explicit seed, used by callers like Cbms.
-  pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
@@ -100,9 +93,8 @@ impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
   }
 }
 
-/// The Euler engine's view of a correlated Gaussian pair: every grid point is
-/// one draw, so the launch steps before writing the first, and the second
-/// component is correlated in the step exactly as the host correlates it.
+/// The Euler engine's view: every grid point is one draw, so the launch steps before it writes
+/// the first, and the step correlates the second component as the host does.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Cgns<T, S, B>
 {
@@ -155,11 +147,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed`: a whole-struct `self.clone()` here
-  /// would copy `self.seed`'s raw, unmixed counter into every chunk's
-  /// sampler, so adjacent chunks' bases would differ by exactly one γ
-  /// stride instead of being hash-scrambled relative to each other — the
-  /// same cross-chunk correlation bug this fixes elsewhere in the crate.
+  /// Derives `self.seed`, never clones it: a raw clone leaves adjacent chunks' bases one γ stride
+  /// apart, where the derived tick hash-scrambles them.
   fn sampler(&self) -> CgnsSampler<T, S> {
     CgnsSampler {
       cgns: Cgns {
@@ -172,9 +161,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device both rows are drawn in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws both rows in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -196,16 +184,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cgns`] sampling state: owns the (cheap, `Copy`) generator and a
-/// **derived** copy of its seed source. `sampler()` calls `self.seed.derive()`
-/// once, so each chunk's `CgnsSampler` starts from a hash-mixed, chunk-unique
-/// basis rather than a raw clone — required for `sample_par`/`sample_map` to
-/// produce independent chunks. This means the very first `sample()` no
-/// longer matches a bare `sample_impl(&seed)` call bit-for-bit (one extra
-/// hash-mixing hop versus the pre-existing behavior); no golden test pins
-/// that old equivalence. Every subsequent call was already independent
-/// under the previous scheme and remains so here.
+/// Reusable [`Cgns`] sampling state: the `Copy` generator and a seed derived once by `sampler()`,
+/// so each chunk starts from a hash-mixed basis, as `sample_par` and `sample_map` need.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CgnsSampler<T: FloatExt, S: SeedExt> {
   cgns: Cgns<T, S>,
 }

@@ -1,18 +1,12 @@
-//! # Ito
+//! Itô's lemma by finite differences for a user-supplied diffusion and function, `f64` only.
 //!
 //! $$
 //! df(t,X_t)=\left(f_t+a f_x+\tfrac12 b^2 f_{xx}\right)dt + b f_x dW_t
 //! $$
 //!
-//! ## Precision
-//!
-//! This module is **`f64`-only by design**. The `DiffusionProcessFn`
-//! and `Function2D` user-supplied closures take `f64` arguments (a
-//! finite-difference Itô calculator does not benefit meaningfully from
-//! `f32` precision, and `f32` would lose accuracy on the central
-//! differences). For generic-precision SDE simulation use
-//! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
-//! [`crate::traits::ProcessExt`] processes.
+//! The closures take `f64`, as `f32` loses accuracy in the central differences; `Sde` is generic.
+use std::fmt;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
@@ -33,7 +27,20 @@ pub struct Function2D {
   pub eval: Box<dyn Fn(f64, f64) -> f64 + Send + Sync>,
 }
 
+impl fmt::Debug for DiffusionProcessFn {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("DiffusionProcessFn").finish_non_exhaustive()
+  }
+}
+
+impl fmt::Debug for Function2D {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("Function2D").finish_non_exhaustive()
+  }
+}
+
 /// A simple result structure holding the drift and diffusion terms from the Ito transformation.
+#[derive(Debug)]
 pub struct ItoResult {
   /// Combined `dt`-coefficient `∂f/∂t + μ ∂f/∂x + ½σ² ∂²f/∂x²` from Ito's
   /// lemma applied to `f(t, X_t)`.
@@ -43,14 +50,9 @@ pub struct ItoResult {
   pub diffusion_term: f64,
 }
 
-/// This calculator applies finite-difference approximations to the given `function` in order
-/// to compute partial derivatives for Ito's lemma. It also simulates trajectories of the SDE
-/// defined by `process`.
-///
-/// # Fields
-/// * `process` - The stochastic process (drift, diffusion, jump).
-/// * `function` - The 2D function \(f(t, x)\) for Ito's lemma.
-/// * `h` - A small step used in the finite-difference approximation.
+/// Applies Itô's lemma to `function` along the SDE `process`, with partial derivatives by central
+/// differences of step `h`; it also simulates the SDE's paths.
+#[derive(Debug)]
 pub struct ItoCalculator {
   /// The underlying SDE's drift/diffusion/jump functions being
   /// transformed by Ito's lemma.
@@ -64,11 +66,7 @@ pub struct ItoCalculator {
 }
 
 impl ItoCalculator {
-  /// Creates a new instance of the ItoCalculator with the specified process, function, and step size `h`.
-  ///
-  /// * `process` - Contains the drift, diffusion, and optional jump term.
-  /// * `function` - The function to be used in the Ito transformation.
-  /// * `h` - The finite-difference step for numerical approximations of derivatives.
+  /// `h` is the central-difference step of every derivative; it is not checked.
   pub fn new(process: DiffusionProcessFn, function: Function2D, h: f64) -> Self {
     ItoCalculator {
       process,
@@ -77,48 +75,28 @@ impl ItoCalculator {
     }
   }
 
-  /// Numerically approximates the partial derivative \(\frac{\partial f}{\partial x}\)
-  /// using central differences:
-  /// \[
-  /// \frac{f(t, x + h) - f(t, x - h)}{2h}.
-  /// \]
+  /// `∂f/∂x` by the central difference `(f(t, x + h) − f(t, x − h)) / 2h`.
   fn dfdx(&self, t: f64, x: f64) -> f64 {
     ((self.function.eval)(t, x + self.h) - (self.function.eval)(t, x - self.h)) / (2.0 * self.h)
   }
 
-  /// Numerically approximates the second partial derivative \(\frac{\partial^2 f}{\partial x^2}\)
-  /// using central differences:
-  /// \[
-  /// \frac{f(t, x + h) - 2 f(t, x) + f(t, x - h)}{h^2}.
-  /// \]
+  /// `∂²f/∂x²` by the central difference `(f(t, x + h) − 2 f(t, x) + f(t, x − h)) / h²`.
   fn d2fdx2(&self, t: f64, x: f64) -> f64 {
     ((self.function.eval)(t, x + self.h) - 2.0 * (self.function.eval)(t, x)
       + (self.function.eval)(t, x - self.h))
       / self.h.powi(2)
   }
 
-  /// Numerically approximates the partial derivative \(\frac{\partial f}{\partial t}\)
-  /// using central differences:
-  /// \[
-  /// \frac{f(t + h, x) - f(t - h, x)}{2h}.
-  /// \]
+  /// `∂f/∂t` by the central difference `(f(t + h, x) − f(t − h, x)) / 2h`.
   fn dfdt(&self, t: f64, x: f64) -> f64 {
     ((self.function.eval)(t + self.h, x) - (self.function.eval)(t - self.h, x)) / (2.0 * self.h)
   }
 
-  /// Applies Ito's lemma to compute the drift and diffusion terms for the transformation
-  /// of \(f(t, x)\), where:
+  /// Itô's lemma for `f(t, x)`: returns the coefficient of `dt` and the coefficient of `dW_t`.
   ///
-  /// \[
-  ///    df = \frac{\partial f}{\partial t} \, dt
-  ///         + \mu(t, x) \frac{\partial f}{\partial x} \, dt
-  ///         + \frac{1}{2} \sigma^2(t, x) \frac{\partial^2 f}{\partial x^2}\, dt
-  ///         + \sigma(t, x) \frac{\partial f}{\partial x}\, dW_t.
-  /// \]
-  ///
-  /// # Returns
-  /// * `drift_term` - The combined coefficient in front of `dt`.
-  /// * `diffusion_term` - The coefficient in front of `dW_t`.
+  /// $$
+  /// df = \left(f_t + \mu f_x + \tfrac12 \sigma^2 f_{xx}\right)dt + \sigma f_x\,dW_t
+  /// $$
   pub fn ito_transform(&self, t: f64, x: f64) -> ItoResult {
     let mu = (self.process.drift)(t, x);
     let sigma = (self.process.diffusion)(t, x);

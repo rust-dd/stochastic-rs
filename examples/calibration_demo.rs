@@ -1,15 +1,15 @@
 //! BSM and Heston calibration end to end: `Calibrator::calibrate`, `ToModel::to_model` and
 //! `ModelPricer::price_call` recover known parameters (`cargo run --example calibration_demo`).
 
-use ndarray::Array1;
 use stochastic_rs::prelude::*;
+use stochastic_rs::quant::OptionQuote;
 use stochastic_rs::quant::OptionType;
+use stochastic_rs::quant::calibration::CalibrationOptions;
 use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
-use stochastic_rs::quant::calibration::heston::HestonParams;
-use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 
 fn main() {
   println!("=== stochastic-rs calibration demo ===\n");
@@ -27,31 +27,21 @@ fn bsm_demo() {
   let q = 0.0_f64;
   let tau = 0.5_f64;
   let sigma_true = 0.22_f64;
-  let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+  let strikes = [80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
 
   // Synthesise call prices from the closed-form chf via Gil-Pelaez.
-  let model_true = stochastic_rs::quant::pricing::fourier::BsmFourier {
-    sigma: sigma_true,
-    r,
-    q,
-  };
+  let model_true = stochastic_rs::quant::pricing::fourier::BsmFourier { sigma: sigma_true };
   let market: Vec<f64> = strikes
     .iter()
     .map(|&k| model_true.price_call(s0, k, r, q, tau))
     .collect();
 
-  let calibrator = BsmCalibrator::new(
-    BsmParams { v: 0.30 },
-    Array1::from_vec(market.clone()),
-    Array1::from_vec(vec![s0; strikes.len()]),
-    Array1::from_vec(strikes.clone()),
-    r,
-    None,
-    None,
-    Some(q),
-    tau,
-    OptionType::Call,
-  );
+  let quotes = strikes
+    .iter()
+    .zip(&market)
+    .map(|(&k, &price)| OptionQuote::new(k, tau, price, OptionType::Call))
+    .collect();
+  let calibrator = BsmCalibrator::new(s0, r, q, quotes).with_start(BsmParams { sigma: 0.30 });
 
   let res = calibrator
     .calibrate(None)
@@ -60,8 +50,8 @@ fn bsm_demo() {
   println!(
     "  σ_true = {:.4}, σ_calibrated = {:.4}, |Δσ| = {:.2e}",
     sigma_true,
-    res.params().v,
-    (res.params().v - sigma_true).abs(),
+    res.params().sigma,
+    (res.params().sigma - sigma_true).abs(),
   );
   println!(
     "  RMSE = {:.4e}, converged = {}",
@@ -69,16 +59,17 @@ fn bsm_demo() {
     res.converged()
   );
   assert!(
-    (res.params().v - sigma_true).abs() < 1e-4,
+    (res.params().sigma - sigma_true).abs() < 1e-4,
     "BSM should recover σ to ~1e-4"
   );
 
-  let model = res.to_model(r, q);
-  let max_repricing_err = strikes
-    .iter()
-    .zip(market.iter())
-    .map(|(&k, &px)| (model.price_call(s0, k, r, q, tau) - px).abs())
-    .fold(0.0_f64, f64::max);
+  let model = res.to_model();
+  let max_repricing_err = f64::max_or_nan_fold(
+    strikes
+      .iter()
+      .zip(market.iter())
+      .map(|(&k, &px)| (model.price_call(s0, k, r, q, tau) - px).abs()),
+  );
   println!("  max re-pricing error = {max_repricing_err:.2e}");
   assert!(max_repricing_err < 1e-3);
 }
@@ -103,29 +94,21 @@ fn heston_demo() {
     sigma: 0.30,
     rho: -0.6,
   };
-  let model_true = HestonFourier {
-    v0: true_params.v0,
-    kappa: true_params.kappa,
-    theta: true_params.theta,
-    sigma: true_params.sigma,
-    rho: true_params.rho,
-    r,
-    q,
-  };
+  let model_true = HestonFourier::new(true_params);
 
-  let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+  let strikes = [80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let maturities = [0.25_f64, 0.5, 1.0, 2.0];
 
-  let slices: Vec<MarketSlice> = maturities
+  let quotes: Vec<OptionQuote> = maturities
     .iter()
-    .map(|&tau| MarketSlice {
-      strikes: strikes.clone(),
-      prices: strikes
-        .iter()
-        .map(|&k| model_true.price_call(s0, k, r, q, tau))
-        .collect(),
-      is_call: vec![true; strikes.len()],
-      tau,
+    .flat_map(|&tau| strikes.iter().map(move |&k| (k, tau)))
+    .map(|(k, tau)| {
+      OptionQuote::new(
+        k,
+        tau,
+        model_true.price_call(s0, k, r, q, tau),
+        OptionType::Call,
+      )
     })
     .collect();
 
@@ -137,15 +120,9 @@ fn heston_demo() {
     sigma: 0.5,
     rho: -0.3,
   };
-  let calibrator = HestonCalibrator::from_slices(
-    Some(initial),
-    &slices,
-    s0,
-    r,
-    Some(q),
-    OptionType::Call,
-    false,
-  );
+  let calibrator = HestonCalibrator::new(s0, r, q, quotes.clone())
+    .with_start(initial)
+    .with_options(CalibrationOptions::default().with_record_history(true));
 
   let res = calibrator
     .calibrate(None)
@@ -161,19 +138,18 @@ fn heston_demo() {
     p.v0, p.kappa, p.theta, p.sigma, p.rho
   );
   println!(
-    "  RMSE = {:.4e}, converged = {}",
+    "  RMSE = {:.4e}, converged = {}, {} accepted iterates recorded",
     res.rmse(),
-    res.converged()
+    res.converged(),
+    res.history().len()
   );
 
   // ToModel → ModelPricer round-trip on the full surface.
-  let model = res.to_model(r, q);
-  let mut max_err = 0.0_f64;
-  for slice in &slices {
-    for (&k, &px) in slice.strikes.iter().zip(slice.prices.iter()) {
-      let priced = model.price_call(s0, k, r, q, slice.tau);
-      max_err = max_err.max((priced - px).abs());
-    }
-  }
+  let model = res.to_model();
+  let max_err = f64::max_or_nan_fold(
+    quotes
+      .iter()
+      .map(|quote| (model.price_call(s0, quote.strike, r, q, quote.tau) - quote.price).abs()),
+  );
   println!("  max re-pricing error across surface = {max_err:.2e}");
 }

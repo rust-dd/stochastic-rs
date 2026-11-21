@@ -5,6 +5,7 @@
 //! price Brownian motions and an exponential log-price update.
 
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use crate::traits::FloatExt;
 
@@ -45,7 +46,7 @@ impl<T: FloatExt> MultiSvPaths<T> for super::heston::MultiHestonPaths<T> {
 /// `impl Trait` lets the call site inline the per-step accessors.
 pub fn malliavin_cov_generic<T: FloatExt>(
   paths: &(impl MultiSvPaths<T> + ?Sized),
-  cross_corr: &Array2<T>,
+  cross_corr: ArrayView2<T>,
   tau: T,
 ) -> Array2<T> {
   let d = paths.n_assets();
@@ -121,9 +122,11 @@ mod tests {
       tau: 1.0,
       n_steps: 100,
     };
-    let paths = p.sample_with_seed(0x7a_17_01);
+    let paths = p.sample(&stochastic_rs_core::simd_rng::Deterministic::new(
+      0x7a_17_01,
+    ));
 
-    let gamma = malliavin_cov_generic(&paths, &cross, 1.0);
+    let gamma = malliavin_cov_generic(&paths, cross.view(), 1.0);
     assert!(gamma[[0, 0]] > 0.0);
 
     let ito = ito_integral_generic(&paths, 0, 0.05, 1.0);

@@ -1,21 +1,19 @@
-//! Fama-MacBeth two-pass cross-sectional regression for factor risk premia.
+//! Fama–MacBeth two-pass regression: time-series betas per asset, a cross-sectional regression
+//! per date, then the mean premium $\bar\gamma$ with error $\sqrt{\mathrm{Var}(\gamma_t)/T}$.
 //!
-//! 1. **Time-series regression** — for each asset $i$, estimate
-//!    $R_{i,t} = a_i + \beta_i^\top F_t + \varepsilon_{i,t}$ by OLS.
-//! 2. **Cross-sectional regression** — at each $t$, regress
-//!    $R_{i,t} = \gamma_{0,t} + \gamma_t^\top \beta_i + \eta_{i,t}$ to obtain
-//!    factor risk premia $\gamma_t$.
-//! 3. **Inference** — average $\bar\gamma = \tfrac{1}{T}\sum_t\gamma_t$ with
-//!    standard errors $\sqrt{\widehat{\mathrm{Var}}(\gamma_t) / T}$.
+//! $$
+//! R_{i,t} = a_i + \beta_i^\top F_t + \varepsilon_{i,t},\qquad
+//! R_{i,t} = \gamma_{0,t} + \gamma_t^\top \beta_i + \eta_{i,t}
+//! $$
 //!
-//! Reference: Fama, MacBeth, "Risk, Return, and Equilibrium: Empirical Tests",
-//! Journal of Political Economy, 81(3), 607-636 (1973). DOI: 10.1086/260061
+//! Reference: Fama & MacBeth (1973), J. Political Economy 81(3), 607–636, DOI 10.1086/260061
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::lstsq;
 
-use crate::linalg::lstsq;
+use crate::QuantError;
 
 /// Result of a Fama-MacBeth two-pass regression.
 #[derive(Debug, Clone)]
@@ -33,35 +31,33 @@ pub struct FamaMacBethResult {
   pub betas: Array2<f64>,
 }
 
-/// Run a Fama-MacBeth regression. `returns[t, i]` is asset `i`'s return at
-/// time `t`; `factors[t, k]` is factor `k`'s realisation at time `t`.
-///
-/// Panics if either OLS pass is rank-deficient. Use [`try_fama_macbeth`] for
-/// a falliable variant returning [`crate::factors::FactorsError`].
+/// Fama-MacBeth risk premia from `returns[t, i]` (asset `i`) and `factors[t, k]` (factor `k`) at
+/// time `t`; panics where [`try_fama_macbeth`] errs.
 pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaMacBethResult {
-  try_fama_macbeth(returns, factors)
-    .expect("fama_macbeth: OLS pass failed; use try_fama_macbeth for falliable variant")
+  try_fama_macbeth(returns, factors).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Falliable variant of [`fama_macbeth`]. Returns
-/// [`crate::factors::FactorsError::OlsFailed`] when either the first-pass
-/// time-series OLS or the second-pass cross-sectional OLS is rank-deficient.
+/// [`fama_macbeth`] with `DimensionMismatch` when `returns` and `factors` differ in rows and
+/// `InsufficientData` below `k + 2` observations.
 pub fn try_fama_macbeth(
   returns: ArrayView2<f64>,
   factors: ArrayView2<f64>,
-) -> Result<FamaMacBethResult, crate::factors::FactorsError> {
+) -> Result<FamaMacBethResult, QuantError> {
   let (t, n) = returns.dim();
   let (tt, k) = factors.dim();
   if t != tt {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "returns rows ({t}) must equal factors rows ({tt})"
-    )));
+    return Err(QuantError::DimensionMismatch {
+      what: "factor rows, one per return row",
+      expected: t,
+      got: tt,
+    });
   }
   if t < k + 2 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least k+2 = {} observations, got {t}",
-      k + 2
-    )));
+    return Err(QuantError::InsufficientData {
+      what: "observations in a Fama-MacBeth regression",
+      needed: k + 2,
+      got: t,
+    });
   }
   let mut design_ts = Array2::<f64>::zeros((t, k + 1));
   for r in 0..t {
@@ -73,7 +69,7 @@ pub fn try_fama_macbeth(
   let mut betas = Array2::<f64>::zeros((n, k + 1));
   for asset in 0..n {
     let y: Array1<f64> = returns.column(asset).to_owned();
-    let sol = lstsq(&design_ts, &y);
+    let sol = lstsq(design_ts.view(), y.view());
     for j in 0..(k + 1) {
       betas[[asset, j]] = sol[j];
     }
@@ -88,7 +84,7 @@ pub fn try_fama_macbeth(
   let mut gamma_series = Array2::<f64>::zeros((t, k + 1));
   for time in 0..t {
     let y: Array1<f64> = returns.row(time).to_owned();
-    let sol = lstsq(&design_xs, &y);
+    let sol = lstsq(design_xs.view(), y.view());
     for j in 0..(k + 1) {
       gamma_series[[time, j]] = sol[j];
     }

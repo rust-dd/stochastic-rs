@@ -23,10 +23,12 @@
 
 pub mod irs;
 
-use ndarray::Array2;
+use ndarray::ArrayView2;
 
+use crate::QuantError;
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::curves::DiscountCurve;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Exposure profile on a date grid.
@@ -50,31 +52,69 @@ impl ExposureProfile {
   ///
   /// Panics on invalid dimensions, dates, quantiles or non-finite MtM values.
   /// Use [`Self::try_from_mtm`] to handle invalid input without panicking.
-  pub fn from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> Self {
-    Self::try_from_mtm(mtm, times, quantile).expect("invalid exposure data")
+  pub fn from_mtm(mtm: ArrayView2<f64>, times: Vec<f64>, quantile: f64) -> Self {
+    Self::try_from_mtm(mtm, times, quantile).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Reduces finite mark-to-market values to an exposure profile.
-  pub fn try_from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> anyhow::Result<Self> {
-    anyhow::ensure!(
-      mtm.ncols() == times.len(),
-      "one MtM column per exposure date"
-    );
-    anyhow::ensure!(mtm.nrows() > 0, "the MtM matrix needs at least one path");
-    anyhow::ensure!(
-      (0.0..=1.0).contains(&quantile),
-      "quantile must lie in [0, 1]"
-    );
-    anyhow::ensure!(
-      !times.is_empty()
-        && times.iter().all(|t| t.is_finite() && *t > 0.0)
-        && times.windows(2).all(|w| w[0] < w[1]),
-      "exposure dates must be finite, positive and increasing"
-    );
-    anyhow::ensure!(
-      mtm.iter().all(|v| v.is_finite()),
-      "MtM values must be finite"
-    );
+  pub fn try_from_mtm(
+    mtm: ArrayView2<f64>,
+    times: Vec<f64>,
+    quantile: f64,
+  ) -> Result<Self, QuantError> {
+    if mtm.ncols() != times.len() {
+      return Err(QuantError::DimensionMismatch {
+        what: "MtM columns, one per exposure date",
+        expected: times.len(),
+        got: mtm.ncols(),
+      });
+    }
+    if mtm.nrows() == 0 {
+      return Err(QuantError::InsufficientData {
+        what: "MtM paths in the exposure profile",
+        needed: 1,
+        got: 0,
+      });
+    }
+    if !(0.0..=1.0).contains(&quantile) {
+      return Err(QuantError::invalid(
+        "quantile",
+        format!("must lie in [0, 1], got {quantile}"),
+      ));
+    }
+    if times.is_empty() {
+      return Err(QuantError::InsufficientData {
+        what: "dates in the exposure profile",
+        needed: 1,
+        got: 0,
+      });
+    }
+    if let Some((i, t)) = times
+      .iter()
+      .enumerate()
+      .find(|(_, t)| !(t.is_finite() && **t > 0.0))
+    {
+      return Err(QuantError::invalid(
+        "exposure dates",
+        format!("date {i} must be finite and positive, got {t}"),
+      ));
+    }
+    if let Some(i) = times.windows(2).position(|w| w[0] >= w[1]) {
+      return Err(QuantError::invalid(
+        "exposure dates",
+        format!(
+          "must be strictly increasing, got date {i} = {} before {}",
+          times[i],
+          times[i + 1]
+        ),
+      ));
+    }
+    if let Some(((path, date), v)) = mtm.indexed_iter().find(|(_, v)| !v.is_finite()) {
+      return Err(QuantError::invalid(
+        "MtM matrix",
+        format!("MtM values must be finite, got {v} at path {path}, date {date}"),
+      ));
+    }
     let paths = mtm.nrows() as f64;
     let mut epe = Vec::with_capacity(times.len());
     let mut ene = Vec::with_capacity(times.len());
@@ -83,7 +123,7 @@ impl ExposureProfile {
       let mut positive = col.iter().map(|v| v.max(0.0)).collect::<Vec<_>>();
       epe.push(positive.iter().sum::<f64>() / paths);
       ene.push(col.iter().map(|v| (-v).max(0.0)).sum::<f64>() / paths);
-      positive.sort_by(|a, b| a.partial_cmp(b).expect("finite exposures"));
+      positive.sort_by(ascending);
       let rank = ((positive.len() - 1) as f64 * quantile).round() as usize;
       pfe.push(positive[rank]);
     }
@@ -117,7 +157,7 @@ impl ExposureProfile {
 
   /// Peak expected positive exposure.
   pub fn peak_epe(&self) -> f64 {
-    self.epe.iter().copied().fold(0.0, f64::max_or_nan)
+    f64::max_or_nan_fold(self.epe.iter().copied()).max_or_nan(0.0)
   }
 
   /// Time-averaged expected positive exposure (the "expected exposure"

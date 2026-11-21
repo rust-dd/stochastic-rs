@@ -69,3 +69,28 @@ def test_one_seed_gives_one_network():
     assert np.array_equal(first, trained(5))
     second = trained(6)
     assert np.isfinite(second).all() and not np.array_equal(first, second)
+
+
+def test_the_ascending_grid_goes_in_with_its_axes():
+    model = sr.HestonNn()
+    lb, ub = np.array(model.param_lb), np.array(model.param_ub)
+    rng = np.random.default_rng(3)
+    params = lb + rng.uniform(size=(256, 5)) * (ub - lb)
+    model.train(params, _synthetic(params, lb, ub, 88), epochs=20, seed=1)
+    theta = list(lb + 0.4 * (ub - lb))
+    n_t, n_k = len(model.maturities), len(model.strikes)
+    grid = model.predict_surface(theta).reshape(n_t, n_k)[:, ::-1]
+    strikes = sorted(k * 100.0 for k in model.strikes)
+    axes = dict(strikes=strikes, maturities=model.maturities, spot=100.0)
+    fit = sr.calibrate_surrogate(model, grid, **axes)
+    assert fit["converged"] and fit["rmse"] < 1e-5
+    assert np.allclose(fit["params"], theta, atol=1e-2 * (ub - lb))
+    misread = sr.calibrate_surrogate(model, np.ascontiguousarray(grid).ravel())
+    assert not np.allclose(misread["params"], theta, atol=1e-2 * (ub - lb))
+    off = dict(axes, strikes=[k * 1.01 if i == 2 else k for i, k in enumerate(strikes)])
+    with pytest.raises(ValueError, match=r"strikes\[2\]"):
+        sr.calibrate_surrogate(model, grid, **off)
+    with pytest.raises(ValueError):
+        sr.calibrate_surrogate(model, grid)
+    with pytest.raises(ValueError):
+        sr.calibrate_surrogate(model, grid, strikes=strikes)

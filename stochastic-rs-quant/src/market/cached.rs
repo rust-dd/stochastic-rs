@@ -1,10 +1,5 @@
-//! Stale-tracking cache for values derived from observable market data.
-//!
-//! [`MarketObserver`] watches one or more [`Observable`]s and flips a stale
-//! flag the moment any of them notify. [`Cached<T>`] pairs that flag with a
-//! computed value plus a recompute closure, giving calibration results,
-//! engine outputs, or any "derived from market" datum a uniform invalidation
-//! API.
+//! Stale tracking for values derived from market data: a [`MarketObserver`] flips a flag when
+//! any watched [`Observable`] notifies, and [`Cached<T>`] recomputes on the next read.
 //!
 //! ```
 //! use std::sync::Arc;
@@ -25,15 +20,8 @@ use std::sync::atomic::Ordering;
 use super::observable::Observable;
 use super::observable::Observer;
 
-/// Watches one or more [`Observable`]s and exposes a single boolean
-/// "anything I'm watching has changed" flag.
-///
-/// `MarketObserver` itself implements [`Observer`] — register it as
-/// observer of any number of quotes, handles, or composite observables and
-/// it will set its stale flag the first time any of them fires `update`.
-/// Reading the flag through [`is_stale`](Self::is_stale) consumes it
-/// (clears back to `false`) so callers can implement edge-triggered cache
-/// invalidation.
+/// An [`Observer`] that turns stale the first time any watched [`Observable`] fires. Reading
+/// [`is_stale`](Self::is_stale) clears the flag, which makes the invalidation edge-triggered.
 pub struct MarketObserver {
   stale: AtomicBool,
 }
@@ -47,9 +35,8 @@ impl std::fmt::Debug for MarketObserver {
 }
 
 impl MarketObserver {
-  /// Build a fresh observer (initially not stale) and subscribe it to every
-  /// observable in `sources`. Returns an `Arc` so the observer can also be
-  /// stored in caller-side state (the observable list keeps a `Weak`).
+  /// A fresh observer subscribed to every observable in `sources`; the observables keep only a
+  /// `Weak`, so the caller's `Arc` owns it.
   pub fn watching(sources: Vec<Arc<dyn Observable>>) -> Arc<Self> {
     let observer = Arc::new(Self {
       stale: AtomicBool::new(false),
@@ -86,21 +73,8 @@ impl Observer for MarketObserver {
   }
 }
 
-/// Thin cache wrapping an arbitrary computed value `T` whose freshness is
-/// tied to a [`MarketObserver`].
-///
-/// `T` is computed once eagerly on construction. Subsequent calls to
-/// [`get`](Self::get) return the cached value if no upstream observable
-/// notified, and recompute via the supplied closure on the first read after
-/// any change. The cache is `Sync` and can be shared by clones of `Arc<Cached<T>>`.
-///
-/// **Design note (`Box<dyn Fn>`):** the `recompute` closure is intentionally
-/// erased — different `Cached<T>` instances in the same collection (e.g. a
-/// vector of cached curve points keyed by tenor) hold structurally different
-/// closures, so making the closure type a generic parameter would propagate
-/// to every caller and force heterogeneous collections to pin a single
-/// closure type via a wrapping enum. Heap-allocating one closure per cache
-/// is the canonical reactive-cache trade-off used by QuantLib's `LazyObject`.
+/// A value computed eagerly and again on the first [`get`](Self::get) after a source notified.
+/// The closure is boxed so caches with different closures fit in one collection.
 pub struct Cached<T> {
   value: Mutex<T>,
   recompute: Box<dyn Fn() -> T + Send + Sync>,
@@ -120,9 +94,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Cached<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> Cached<T> {
-  /// Build a cache. The closure is invoked once eagerly to populate the
-  /// initial value; afterwards it is invoked on demand whenever any of the
-  /// `sources` observables has notified.
+  /// A cache whose closure runs once now and again on a read after any of `sources` notified.
   pub fn new(
     sources: Vec<Arc<dyn Observable>>,
     recompute: impl Fn() -> T + Send + Sync + 'static,

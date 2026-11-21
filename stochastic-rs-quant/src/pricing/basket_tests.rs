@@ -1,6 +1,7 @@
 use ndarray::array;
 
 use super::*;
+use crate::QuantError;
 
 fn iid_basket(
   n: usize,
@@ -528,8 +529,12 @@ fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
   let err = model
     .try_price(s.view(), 100.0, 0.05, q.view(), 1.0, OptionType::Call)
     .expect_err("a two-asset query against a three-asset model is not priceable");
-  assert!(
-    err.to_string().contains("does not match n_assets=2"),
-    "{err}"
+  assert_eq!(
+    err,
+    QuantError::DimensionMismatch {
+      what: "rho rows, one per asset",
+      expected: 2,
+      got: 3,
+    }
   );
 }

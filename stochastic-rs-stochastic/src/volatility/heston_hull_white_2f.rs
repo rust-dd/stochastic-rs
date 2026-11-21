@@ -32,6 +32,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::linalg::validate_correlation;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -46,12 +48,16 @@ pub use crate::volatility::heston::Euler;
 /// Rows of the output: spot, variance, short rate, auxiliary rate factor, integrated short rate.
 pub const ROWS: usize = 5;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt = Unseeded, B = Cpu>
 {
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance, not a volatility.
+  pub v0: T,
   /// Mean-reversion speed κ of the variance.
   pub kappa: T,
-  /// Long-run variance θ, a variance and not a volatility; also the default start `v0`.
+  /// Long-run variance θ, a variance and not a volatility.
   pub theta: T,
   /// Volatility of variance σ.
   pub sigma: T,
@@ -68,14 +74,10 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   /// Correlation matrix of the drivers in the order `(x, v, r, u)`: `4 × 4`, unit diagonal,
   /// symmetric and positive definite.
   pub rho: Array2<T>,
-  /// Grid points including `t = 0`, at least 2.
-  pub n: usize,
-  /// Initial spot (defaults to 1).
-  pub s0: Option<T>,
-  /// Initial variance (defaults to `theta`).
-  pub v0: Option<T>,
   /// Initial short rate (defaults to 0); `u` starts at 0.
   pub r0: Option<T>,
+  /// Grid points including `t = 0`, at least 2.
+  pub n: usize,
   /// Horizon (defaults to 1).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
@@ -87,44 +89,23 @@ pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt 
   pub backend: B,
 }
 
-/// `name` must be finite and non-negative; the hybrid's rates and volatilities are checked this way.
-fn assert_non_negative<T: FloatExt>(name: &str, x: T) {
-  assert!(
-    x.is_finite() && x >= T::zero(),
-    "{name} must satisfy `{name}.is_finite() && {name} >= T::zero()`, got {name} = {x:?}"
-  );
-}
-
 /// `rho` must be a `4 × 4` correlation matrix; the Cholesky factorisation rejects an indefinite one.
 fn checked_factor<T: FloatExt, Sch: HybridScheme>(rho: &Array2<T>) -> Array2<T> {
-  assert_eq!(
-    rho.dim(),
-    (4, 4),
-    "rho must satisfy `rho.dim() == (4, 4)`, got rho.dim() = {:?}",
-    rho.dim()
+  let dim = rho.dim();
+  assert!(
+    dim == (4, 4),
+    "rho must satisfy `rho.dim() == (4, 4)`, got rho.dim() = {dim:?}"
   );
   validate_correlation(rho);
   Sch::factor(rho)
 }
 
-fn assert_finite<T: FloatExt>(name: &str, x: T) {
-  assert!(
-    x.is_finite(),
-    "{name} must satisfy `{name}.is_finite()`, got {name} = {x:?}"
-  );
-}
-
-fn assert_positive<T: FloatExt>(name: &str, x: T) {
-  assert!(
-    x.is_finite() && x > T::zero(),
-    "{name} must satisfy `{name}.is_finite() && {name} > T::zero()`, got {name} = {x:?}"
-  );
-}
-
 impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
-  /// Panics if a parameter is not finite, `kappa`, `theta`, `sigma`, `sigma1`, `sigma2` or `v0` is
-  /// negative, `s0` or `t` is not positive, `n < 2`, or `rho` is not a `4 × 4` positive-definite correlation matrix.
+  /// Panics unless every parameter is finite, `s0 > 0`, `v0`, `kappa`, `theta`, `sigma`, `sigma1` and
+  /// `sigma2` are non-negative, `n >= 2`, a given `t` is positive and `rho` is a `4 × 4` correlation.
   pub fn new(
+    s0: T,
+    v0: T,
     kappa: T,
     theta: T,
     sigma: T,
@@ -134,35 +115,27 @@ impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
     sigma2: T,
     b: T,
     rho: Array2<T>,
-    n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
     r0: Option<T>,
+    n: usize,
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert_non_negative("kappa", kappa);
-    assert_non_negative("theta", theta);
-    assert_non_negative("sigma", sigma);
-    assert_finite("a", a);
-    assert_non_negative("sigma1", sigma1);
-    assert_non_negative("sigma2", sigma2);
-    assert_finite("b", b);
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
-    if let Some(s0) = s0 {
-      assert_positive("s0", s0);
-    }
-    if let Some(v0) = v0 {
-      assert_non_negative("v0", v0);
-    }
-    if let Some(r0) = r0 {
-      assert_finite("r0", r0);
-    }
-    if let Some(t) = t {
-      assert_positive("t", t);
-    }
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_sigma(sigma);
+    Self::check_a(a);
+    Self::check_sigma1(sigma1);
+    Self::check_sigma2(sigma2);
+    Self::check_b(b);
+    Self::check_r0(r0);
+    check_n(n);
+    check_t(t);
     let chol = checked_factor::<T, Euler>(&rho);
     Self {
+      s0,
+      v0,
       kappa,
       theta,
       sigma,
@@ -172,10 +145,8 @@ impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
       sigma2,
       b,
       rho,
-      n,
-      s0,
-      v0,
       r0,
+      n,
       t,
       seed,
       chol,
@@ -202,6 +173,8 @@ impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
       [f(0.08), f(0.0), f(-0.4), f(1.0)],
     ];
     Self::new(
+      T::one(),
+      f(0.2),
       f(0.8),
       f(0.2),
       f(0.2),
@@ -211,10 +184,8 @@ impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
       f(0.015),
       f(0.8),
       rho,
-      252,
-      Some(T::one()),
-      Some(f(0.2)),
       Some(f(0.03)),
+      252,
       Some(T::one()),
       Unseeded,
     )
@@ -223,20 +194,79 @@ impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
 
 /// Every field has a matching `with_*` setter, checked as `new` checks it, chaining after [`qe`](Self::qe) too.
 impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+    require!(s0 > T::zero(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+    require!(kappa >= T::zero(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+    require!(theta >= T::zero(), theta);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+    require!(sigma >= T::zero(), sigma);
+  }
+
+  fn check_a(a: T) {
+    require!(a.is_finite(), a);
+  }
+
+  fn check_sigma1(sigma1: T) {
+    require!(sigma1.is_finite(), sigma1);
+    require!(sigma1 >= T::zero(), sigma1);
+  }
+
+  fn check_sigma2(sigma2: T) {
+    require!(sigma2.is_finite(), sigma2);
+    require!(sigma2 >= T::zero(), sigma2);
+  }
+
+  fn check_b(b: T) {
+    require!(b.is_finite(), b);
+  }
+
+  fn check_r0(r0: Option<T>) {
+    require!(r0.is_none_or(|r0| r0.is_finite()), r0);
+  }
+
+  pub fn with_s0(mut self, s0: T) -> Self {
+    Self::check_s0(s0);
+    self.s0 = s0;
+    self
+  }
+
+  pub fn with_v0(mut self, v0: T) -> Self {
+    Self::check_v0(v0);
+    self.v0 = v0;
+    self
+  }
+
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert_non_negative("kappa", kappa);
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert_non_negative("theta", theta);
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert_non_negative("sigma", sigma);
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
@@ -247,25 +277,25 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
   }
 
   pub fn with_a(mut self, a: T) -> Self {
-    assert_finite("a", a);
+    Self::check_a(a);
     self.a = a;
     self
   }
 
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
-    assert_non_negative("sigma1", sigma1);
+    Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
-    assert_non_negative("sigma2", sigma2);
+    Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
   pub fn with_b(mut self, b: T) -> Self {
-    assert_finite("b", b);
+    Self::check_b(b);
     self.b = b;
     self
   }
@@ -277,40 +307,20 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
     self
   }
 
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
-    self.n = n;
-    self
-  }
-
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
-    if let Some(s0) = s0 {
-      assert_positive("s0", s0);
-    }
-    self.s0 = s0;
-    self
-  }
-
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
-    if let Some(v0) = v0 {
-      assert_non_negative("v0", v0);
-    }
-    self.v0 = v0;
-    self
-  }
-
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
-    if let Some(r0) = r0 {
-      assert_finite("r0", r0);
-    }
+    Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
+    self.n = n;
+    self
+  }
+
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    if let Some(t) = t {
-      assert_positive("t", t);
-    }
+    check_t(t);
     self.t = t;
     self
   }
@@ -327,9 +337,10 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
 
   /// QE's preconditions, checked at the switch and again where the scheme runs, since the fields stay public.
   fn assert_qe_parameters(&self) {
-    assert_positive("kappa", self.kappa);
-    assert_positive("theta", self.theta);
-    assert_positive("sigma", self.sigma);
+    let (kappa, theta, sigma) = (self.kappa, self.theta, self.sigma);
+    require!(kappa > T::zero(), kappa);
+    require!(theta > T::zero(), theta);
+    require!(sigma > T::zero(), sigma);
     for (what, index) in [("rho[(1, 2)]", (1, 2)), ("rho[(1, 3)]", (1, 3))] {
       let value = self.rho[index];
       assert!(
@@ -345,6 +356,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
   /// `sigma` are positive and the rate-variance correlations `rho[(1, 2)]`, `rho[(1, 3)]` are zero.
   pub fn qe(self) -> HestonHullWhite2F<T, AndersenQe, S, B> {
     let model = HestonHullWhite2F {
+      s0: self.s0,
+      v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,
       sigma: self.sigma,
@@ -355,10 +368,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
       b: self.b,
       chol: checked_factor::<T, AndersenQe>(&self.rho),
       rho: self.rho,
-      n: self.n,
-      s0: self.s0,
-      v0: self.v0,
       r0: self.r0,
+      n: self.n,
       t: self.t,
       seed: self.seed,
       _scheme: PhantomData,
@@ -369,14 +380,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, Sch: HybridScheme, S: SeedExt] HestonHullWhite2F<T, Sch, S> { kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0, t, seed, chol, _scheme } via host);
+backend_switch!([T: FloatExt, Sch: HybridScheme, S: SeedExt] HestonHullWhite2F<T, Sch, S> { s0, v0, kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, r0, n, t, seed, chol, _scheme } via euler);
 
-impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend>
+impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T>>
   crate::traits::Sealed for HestonHullWhite2F<T, Sch, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend> ProcessExt<T>
+impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonHullWhite2F<T, Sch, S, B>
 {
   type Output = Array2<T>;
@@ -393,15 +404,16 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend> 
     }
   }
 
-  /// Five state rows and four shocks exceed the engine's four slots, so every configuration samples here.
+  /// No device family carries the hybrid yet, so every configuration samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    Some("five state rows, one more than the kernels' four slots")
+    Some("no device family steps the hybrid's four drivers yet")
   }
 }
 
 /// Reusable [`HestonHullWhite2F`] sampler: borrows the model for `theta_r` and owns a seed derived
 /// once, which the scheme's streams advance on every path of the chunk.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonHullWhite2FSampler<'a, T: FloatExt, Sch: HybridScheme, S: SeedExt, B> {
   model: &'a HestonHullWhite2F<T, Sch, S, B>,
   seed: S,

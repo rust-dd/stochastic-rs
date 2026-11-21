@@ -231,31 +231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bon"
-version = "3.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a602c73c7b0148ec6d12af6fd5cc7a46e2eacc8878271a999abac56eed12f561"
-dependencies = [
- "bon-macros",
- "rustversion",
-]
-
-[[package]]
-name = "bon-macros"
-version = "3.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dee98b0db6a962de883bf5d20362dee4d7ca0d12fe39a7c6c73c844e1cd7c1f"
-dependencies = [
- "darling 0.23.0",
- "ident_case",
- "prettyplease",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1665,12 +1640,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "implied-vol"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cd92cc6c9f636e6b9aa58d61826d8ec1e2d56330b3b9877f9330860d5546622"
-dependencies = [
- "bon",
-]
+checksum = "4bc19a565321de8ddf10b34f7f877a55e737210219c3dc353cb1b487ae370a30"
 
 [[package]]
 name = "indexmap"
@@ -2616,16 +2588,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.2.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
-dependencies = [
- "proc-macro2",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "primal-check"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2636,9 +2598,9 @@ dependencies = [
 
 [[package]]
 name = "private-gemm-x86"
-version = "0.1.20"
+version = "0.1.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0af8c3e5087969c323f667ccb4b789fa0954f5aa650550e38e81cf9108be21b5"
+checksum = "bba0a7831d1297712e7e7b33759b0c837941e79196dd05df506d5f36f7f78619"
 dependencies = [
  "crossbeam",
  "defer",
@@ -2778,12 +2740,6 @@ dependencies = [
  "num-traits",
  "pulp 0.22.3",
 ]
-
-[[package]]
-name = "quadrature"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2054ccb02f454fcb2bc81e343aa0a171636a6331003fd5ec24c47a10966634b7"
 
 [[package]]
 name = "quote"
@@ -3000,12 +2956,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "roots"
-version = "0.0.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "082f11ffa03bbef6c2c6ea6bea1acafaade2fd9050ae0234ab44a2153742b058"
 
 [[package]]
 name = "rustc-hash"
@@ -3378,7 +3328,6 @@ dependencies = [
 name = "stochastic-rs"
 version = "3.0.0-rc.4"
 dependencies = [
- "anyhow",
  "chrono",
  "criterion",
  "log",
@@ -3489,7 +3438,6 @@ dependencies = [
 name = "stochastic-rs-quant"
 version = "3.0.0-rc.4"
 dependencies = [
- "anyhow",
  "basin",
  "chrono",
  "faer",
@@ -3506,11 +3454,8 @@ dependencies = [
  "owens-t",
  "plotly",
  "pyo3",
- "quadrature",
  "rayon",
- "roots",
  "slsqp",
- "stochastic-rs-copulas",
  "stochastic-rs-core",
  "stochastic-rs-distributions",
  "stochastic-rs-stats",
@@ -3523,8 +3468,6 @@ name = "stochastic-rs-stats"
 version = "3.0.0-rc.4"
 dependencies = [
  "basin",
- "faer",
- "faer-ext",
  "linreg",
  "ndarray",
  "ndrustfft",
@@ -3542,6 +3485,7 @@ dependencies = [
 name = "stochastic-rs-stochastic"
 version = "3.0.0-rc.4"
 dependencies = [
+ "criterion",
  "cudarc",
  "faer",
  "faer-ext",

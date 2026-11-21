@@ -1,26 +1,18 @@
-//! Unscented Kalman Filter (UKF) — single forward step.
+//! Unscented Kalman filter, one forward step.
 //!
-//! Approximates the moments of a non-linear stochastic state-space model by
-//! propagating $2n+1$ deterministically-chosen sigma points through the
-//! transition $f$ and measurement $h$ functions, then computing weighted
-//! sample mean and covariance.
+//! `2n + 1` sigma points go through the transition and the measurement; the step is their moments.
 //!
-//! Reference: Julier, Uhlmann, "Unscented Filtering and Nonlinear Estimation",
-//! Proceedings of the IEEE, 92(3), 401-422 (2004).
-//! DOI: 10.1109/JPROC.2003.823141
-//!
-//! Reference: Wan, van der Merwe, "The Unscented Kalman Filter for Nonlinear
-//! Estimation", IEEE Adaptive Systems for Signal Processing, Communications,
-//! and Control Symposium 2000, 153-158. DOI: 10.1109/ASSPCC.2000.882463
+//! Reference: Julier & Uhlmann (2004), Proc. IEEE 92(3), 401-422, DOI: 10.1109/JPROC.2003.823141
+//! Reference: Wan & van der Merwe (2000), IEEE AS-SPCC, 153-158, DOI: 10.1109/ASSPCC.2000.882463
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 
 use crate::StatsError;
-use crate::linalg::inverse;
-use crate::linalg::spd_cholesky_lower;
 
 /// State estimate (mean + covariance) on entry to / exit from a UKF step.
 #[derive(Debug, Clone)]
@@ -31,8 +23,31 @@ pub struct UkfState {
   pub covariance: Array2<f64>,
 }
 
-/// One UKF predict-update of `prior`, tuned by `(alpha, beta, kappa)` such as `(1e-3, 2, 0)`; `Err`
-/// on a non-PD prior or a singular innovation covariance, and panics on mismatched shapes.
+/// Sigma-point parameters of [`unscented_kalman_step`] (Wan & van der Merwe 2000); all finite,
+/// `alpha > 0`, `n + kappa > 0` (`n` the state dimension) and `n + lambda` finite and positive.
+#[derive(Debug, Clone, Copy)]
+pub struct UkfTuning {
+  /// Spread of the sigma points; `lambda = alpha^2 (n + kappa) - n` cancels `n + lambda` to 0
+  /// below about 1e-8 and overflows it above about 1e154.
+  pub alpha: f64,
+  /// Prior knowledge of the state's distribution; 2 is optimal for a Gaussian.
+  pub beta: f64,
+  /// Secondary scaling of the sigma points.
+  pub kappa: f64,
+}
+
+impl Default for UkfTuning {
+  fn default() -> Self {
+    Self {
+      alpha: 1e-3,
+      beta: 2.0,
+      kappa: 0.0,
+    }
+  }
+}
+
+/// One UKF predict-update of `prior` with sigma points set by `tuning`; `Err` on a non-PD prior or
+/// a singular innovation covariance; panics unless the shapes agree and `tuning` is in its range.
 pub fn unscented_kalman_step<F, H>(
   prior: &UkfState,
   transition: F,
@@ -40,22 +55,30 @@ pub fn unscented_kalman_step<F, H>(
   process_cov: ArrayView2<f64>,
   measurement_cov: ArrayView2<f64>,
   observation: ArrayView1<f64>,
-  alpha: f64,
-  beta: f64,
-  kappa: f64,
+  tuning: UkfTuning,
 ) -> Result<UkfState, StatsError>
 where
   F: Fn(ArrayView1<f64>) -> Array1<f64>,
   H: Fn(ArrayView1<f64>) -> Array1<f64>,
 {
+  let UkfTuning { alpha, beta, kappa } = tuning;
   let n = prior.mean.len();
-  assert_eq!(prior.covariance.dim(), (n, n));
-  assert_eq!(process_cov.dim(), (n, n));
+  assert!(
+    prior.covariance.dim() == (n, n),
+    "prior.covariance must satisfy `prior.covariance.dim() == (n, n)`, got prior.covariance.dim() = {:?}, n = {n}",
+    prior.covariance.dim()
+  );
+  assert!(
+    process_cov.dim() == (n, n),
+    "process_cov must satisfy `process_cov.dim() == (n, n)`, got process_cov.dim() = {:?}, n = {n}",
+    process_cov.dim()
+  );
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
+  assert_tuning(tuning, n, lambda);
   let scale = (n as f64 + lambda).sqrt();
 
   let chol =
-    spd_cholesky_lower(&prior.covariance).ok_or(StatsError::Singular("prior covariance"))?;
+    spd_cholesky_lower(prior.covariance.view()).ok_or(StatsError::Singular("prior covariance"))?;
 
   let n_sigma = 2 * n + 1;
   let mut sigma = Array2::<f64>::zeros((n_sigma, n));
@@ -83,7 +106,11 @@ where
   for i in 0..n_sigma {
     let row = sigma.row(i);
     let propagated = transition(row);
-    assert_eq!(propagated.len(), n);
+    assert!(
+      propagated.len() == n,
+      "transition's output must satisfy `output.len() == n`, got output.len() = {}, n = {n}",
+      propagated.len()
+    );
     for j in 0..n {
       x_pred[[i, j]] = propagated[j];
     }
@@ -110,11 +137,19 @@ where
   }
 
   let m = observation.len();
-  assert_eq!(measurement_cov.dim(), (m, m));
+  assert!(
+    measurement_cov.dim() == (m, m),
+    "measurement_cov must satisfy `measurement_cov.dim() == (m, m)`, got measurement_cov.dim() = {:?}, m = {m}",
+    measurement_cov.dim()
+  );
   let mut z_pred_set = Array2::<f64>::zeros((n_sigma, m));
   for i in 0..n_sigma {
     let z = measurement(x_pred.row(i));
-    assert_eq!(z.len(), m);
+    assert!(
+      z.len() == m,
+      "measurement's output must satisfy `output.len() == m`, got output.len() = {}, m = {m}",
+      z.len()
+    );
     for j in 0..m {
       z_pred_set[[i, j]] = z[j];
     }
@@ -153,7 +188,7 @@ where
       }
     }
   }
-  let s_inv = inverse(&s).ok_or(StatsError::Singular("innovation covariance"))?;
+  let s_inv = inverse(s.view()).ok_or(StatsError::Singular("innovation covariance"))?;
   let kalman_gain = cross.dot(&s_inv);
   let innovation: Array1<f64> = (0..m)
     .map(|j| observation[j] - z_mean[j])
@@ -176,6 +211,38 @@ where
     mean: mean_post,
     covariance: cov_post,
   })
+}
+
+#[track_caller]
+#[inline(never)]
+fn assert_tuning(tuning: UkfTuning, n: usize, lambda: f64) {
+  let UkfTuning { alpha, beta, kappa } = tuning;
+  assert!(
+    alpha.is_finite(),
+    "tuning.alpha must satisfy `tuning.alpha.is_finite()`, got tuning.alpha = {alpha:?}"
+  );
+  assert!(
+    alpha > 0.0,
+    "tuning.alpha must satisfy `tuning.alpha > 0.0`, got tuning.alpha = {alpha:?}"
+  );
+  assert!(
+    beta.is_finite(),
+    "tuning.beta must satisfy `tuning.beta.is_finite()`, got tuning.beta = {beta:?}"
+  );
+  assert!(
+    kappa.is_finite(),
+    "tuning.kappa must satisfy `tuning.kappa.is_finite()`, got tuning.kappa = {kappa:?}"
+  );
+  let spread = n as f64 + kappa;
+  assert!(
+    spread > 0.0,
+    "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = {spread:?}, n = {n}"
+  );
+  let total = n as f64 + lambda;
+  assert!(
+    total.is_finite() && total > 0.0,
+    "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = {total:?}, lambda = {lambda:?}, n = {n}"
+  );
 }
 
 #[cfg(test)]
@@ -222,9 +289,7 @@ mod tests {
         q.view(),
         r.view(),
         y.view(),
-        0.001,
-        2.0,
-        0.0,
+        UkfTuning::default(),
       )
       .unwrap();
       errs += (state.mean[0] - x_true[t]).abs();
@@ -252,9 +317,7 @@ mod tests {
         q.view(),
         r.view(),
         y.view(),
-        0.001,
-        2.0,
-        0.0,
+        UkfTuning::default(),
       )
       .unwrap();
       assert!(state.mean.iter().all(|v| v.is_finite()));
@@ -279,12 +342,94 @@ mod tests {
       q.view(),
       r.view(),
       y.view(),
-      1e-3,
-      2.0,
-      0.0,
+      UkfTuning::default(),
     )
     .unwrap_err();
     assert_eq!(err, StatsError::Singular("prior covariance"));
+  }
+
+  #[test]
+  fn a_tuning_outside_its_range_panics_in_the_predicate_form() {
+    let default = UkfTuning::default();
+    let cases = [
+      (
+        UkfTuning {
+          alpha: f64::NAN,
+          ..default
+        },
+        "tuning.alpha must satisfy `tuning.alpha.is_finite()`, got tuning.alpha = NaN",
+      ),
+      (
+        UkfTuning {
+          alpha: 0.0,
+          ..default
+        },
+        "tuning.alpha must satisfy `tuning.alpha > 0.0`, got tuning.alpha = 0.0",
+      ),
+      (
+        UkfTuning {
+          beta: f64::INFINITY,
+          ..default
+        },
+        "tuning.beta must satisfy `tuning.beta.is_finite()`, got tuning.beta = inf",
+      ),
+      (
+        UkfTuning {
+          kappa: f64::NAN,
+          ..default
+        },
+        "tuning.kappa must satisfy `tuning.kappa.is_finite()`, got tuning.kappa = NaN",
+      ),
+      (
+        UkfTuning {
+          kappa: -2.0,
+          ..default
+        },
+        "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = 0.0, n = 2",
+      ),
+      (
+        UkfTuning {
+          alpha: 1e-9,
+          ..default
+        },
+        "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = 0.0, lambda = -2.0, n = 2",
+      ),
+      (
+        UkfTuning {
+          alpha: 1e155,
+          ..default
+        },
+        "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = inf, lambda = inf, n = 2",
+      ),
+    ];
+    for (tuning, message) in cases {
+      let payload = std::panic::catch_unwind(|| {
+        let prior = UkfState {
+          mean: Array1::from(vec![0.0_f64, 0.0]),
+          covariance: Array2::<f64>::eye(2),
+        };
+        let identity = |x: ArrayView1<f64>| x.to_owned();
+        let first = |x: ArrayView1<f64>| Array1::from(vec![x[0]]);
+        let (q, r) = (Array2::<f64>::eye(2), Array2::<f64>::eye(1));
+        let y = Array1::from(vec![0.5_f64]);
+        let _ = unscented_kalman_step(
+          &prior,
+          identity,
+          first,
+          q.view(),
+          r.view(),
+          y.view(),
+          tuning,
+        );
+      })
+      .expect_err("the step accepted an invalid tuning");
+      let text = payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .expect("a text panic payload");
+      assert_eq!(text, message);
+    }
   }
 
   #[test]
@@ -305,9 +450,7 @@ mod tests {
       q.view(),
       r.view(),
       y.view(),
-      1e-3,
-      2.0,
-      0.0,
+      UkfTuning::default(),
     )
     .unwrap_err();
     assert_eq!(err, StatsError::Singular("innovation covariance"));

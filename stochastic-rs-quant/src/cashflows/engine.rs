@@ -1,7 +1,6 @@
 //! Present-value routines for cashflow legs.
 //!
-//! Reference: Hagan & West, "Interpolation Methods for Curve Construction",
-//! applied here through the library discount-curve abstraction.
+//! Reference: Hagan & West (2006), Applied Mathematical Finance 13(2), 89–129
 
 use chrono::NaiveDate;
 

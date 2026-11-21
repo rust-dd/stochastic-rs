@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
+use crate::CallPut;
 use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
 use crate::traits::RealExt;
@@ -66,12 +67,13 @@ impl Degenerate {
     }
   }
 
-  fn call_put(&self, s: f64, k: f64, r: f64, tau: f64) -> (f64, f64) {
-    match self {
+  fn price_call_put(&self, s: f64, k: f64, r: f64, tau: f64) -> CallPut {
+    let (call, put) = match self {
       Self::OffDomain => (f64::NAN, f64::NAN),
       Self::ZeroHorizon => ((s - k).max_or_nan(0.0), (k - s).max_or_nan(0.0)),
       Self::ZeroSpot => (0.0, k * (-r * tau).exp()),
-    }
+    };
+    CallPut { call, put }
   }
 
   /// The spot at `t_eval` and the conditional call there, on each of `m` paths.
@@ -95,105 +97,95 @@ impl Degenerate {
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
-  pub v: f64,
+  sigma: f64,
   /// Number of Monte Carlo paths (M)
-  pub n_paths: usize,
+  n_paths: usize,
   /// Number of time steps (N)
-  pub n_steps: usize,
+  n_steps: usize,
   /// Intermediate time t where the Malliavin conditional price C(t, S_t) is estimated
   /// (0 < t_eval < tau)
-  pub t_eval: f64,
+  t_eval: f64,
   /// Seed strategy handed to the underlying [`Gbm`].
   pub seed: S,
 }
 
 impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default for two reasons. The
-  /// arithmetic is the same put-call parity — this is a Gbm model, so the
-  /// carry factor really is $e^{-q\tau}$ — but the default would run a
-  /// **second, independent** Monte Carlo for its `price_call` term, so the
-  /// returned put would be derived from a different sample than any call
-  /// the caller had already obtained. It also drops the `max(0)` floor the
-  /// pre-query `calculate_call_put` applied. This routes through
-  /// [`call_put`](Self::call_put), which does one simulation and floors
-  /// both legs.
+  /// The pair's put, floored at zero and from the call's own simulation, which the parity default
+  /// would not give.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 
-/// European vanilla call: the Malliavin conditional estimator targets the
-/// vanilla call under Gbm, whose carry is $b=r-q$. A surface built from it
-/// carries the estimator's Monte Carlo error into every implied vol, and
-/// [`t_eval`](GbmMalliavinPricer::t_eval) still bounds which maturities the
-/// grid may contain.
+/// European vanilla call under Gbm's carry `b = r − q`; a surface inherits the Monte Carlo error,
+/// and each maturity of its grid must exceed [`t_eval`](GbmMalliavinPricer::t_eval()).
 impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
-impl<S: SeedExt> GbmMalliavinPricer<S> {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. Unlike the squared-only uses elsewhere
-  ///   in this crate, the Malliavin weight carries `+ sigma * t_eval`
-  ///   *linearly*, so a negative volatility is not absorbed — it biases the
-  ///   weight and every conditional expectation built on it.
-  /// - if `n_paths` is `0` — there is nothing to average, and
-  ///   `call_put_from_conditional` takes its `count == 0` branch and
-  ///   returns a fabricated `0.0` price.
-  /// - if `n_steps` is below `2` — the step size is `tau / (n_steps - 1)`,
-  ///   which is infinite at `1` (fabricating the same `0.0`) and underflows
-  ///   at `0`.
-  /// - if `t_eval` is not strictly positive, or `NaN`.
-  ///
-  /// Only the query-independent half of `0 < t_eval < tau` is checkable
-  /// here, since `tau` arrives per call; the upper half stays where it was,
-  /// with its own distinct wording, so an `expected` anchor on one cannot
-  /// be satisfied by the other.
-  ///
-  /// `seed` is unvalidated — it is a type, not a number, so there is no
-  /// invalid value to reject. See the type-level [Seeding](Self#seeding)
-  /// note for why it is the last parameter.
-  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
+impl GbmMalliavinPricer {
+  /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
+  /// `n_paths >= 1`, `n_steps >= 2` and `t_eval` is finite and `> 0`; `t_eval < tau` is per query.
+  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
     assert!(
-      v.is_finite() && v >= 0.0,
-      "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       n_paths >= 1,
-      "GbmMalliavinPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     assert!(
       n_steps >= 2,
-      "GbmMalliavinPricer::new: n_steps must be at least 2 (got {n_steps})"
+      "n_steps must satisfy `n_steps >= 2`, got n_steps = {n_steps:?}"
     );
     assert!(
-      t_eval > 0.0,
-      "GbmMalliavinPricer::new: t_eval must be strictly positive (got {t_eval})"
+      t_eval.is_finite() && t_eval > 0.0,
+      "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = {t_eval:?}"
     );
     Self {
-      v,
+      sigma,
       n_paths,
       n_steps,
       t_eval,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> GbmMalliavinPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> GbmMalliavinPricer<S2> {
+    GbmMalliavinPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      t_eval: self.t_eval,
       seed,
     }
   }
 
-  /// Call and put from one simulation of the plain Malliavin estimator; a zero spot or horizon
-  /// prices at its limit, a negative or non-finite spot or horizon or a non-finite rate at NaN.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    if let Some(limit) = Degenerate::of(s, r, q, tau) {
-      return limit.call_put(s, k, r, tau);
-    }
-    let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+  pub fn sigma(&self) -> f64 {
+    self.sigma
   }
 
-  fn call_put_from_conditional(
+  /// The time `t` of `C(t, S_t)`, which each queried `tau` must exceed.
+  pub fn t_eval(&self) -> f64 {
+    self.t_eval
+  }
+
+  /// Call and put from one simulation of the plain Malliavin estimator; a zero spot or horizon
+  /// prices at its limit, a negative or non-finite spot or horizon or a non-finite rate at NaN.
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    if let Some(limit) = Degenerate::of(s, r, q, tau) {
+      return limit.price_call_put(s, k, r, tau);
+    }
+    let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
+  }
+
+  fn price_call_put_from_conditional(
     &self,
     s: f64,
     k: f64,
@@ -201,7 +193,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
     c_t: &Array1<f64>,
-  ) -> (f64, f64) {
+  ) -> CallPut {
     let t_eval = self.t_eval;
     assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
@@ -235,16 +227,20 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       put_0 = 0.0;
     }
 
-    (call_0, put_0)
+    CallPut {
+      call: call_0,
+      put: put_0,
+    }
   }
 
-  /// Call and put from the localized estimator, at [`call_put`](Self::call_put)'s limits.
-  pub fn call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Call and put from one simulation of the localized estimator, at
+  /// [`price_call_put`](Self::price_call_put)'s limits.
+  pub fn price_call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
     if let Some(limit) = Degenerate::of(s, r, q, tau) {
-      return limit.call_put(s, k, r, tau);
+      return limit.price_call_put(s, k, r, tau);
     }
     let (_s_t, c_t) = self.conditional_call_malliavin_localized(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
 
   /// Simulate Gbm paths S_t using the existing Gbm<f64> module.
@@ -264,9 +260,9 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // Construct a Gbm process with Euler discretization on [0, T].
     let gbm = Gbm::new(
       mu,
-      self.v,
+      self.sigma,
       self.n_steps,
-      Some(s),
+      s,
       Some(tau),
       self.seed.clone(),
     );
@@ -354,7 +350,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       if st.abs() < 1e-14 {
         coef[i] = 0.0;
       } else {
-        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.v * t_eval;
+        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.sigma * t_eval;
         coef[i] = num / st;
       }
     }
@@ -439,7 +435,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // DeltaW = (T * W_t - t_eval * W_T) + (T - t_eval) * t_eval * σ
     let mut delta_w = Array1::<f64>::zeros(m);
     for i in 0..m {
-      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.v;
+      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.sigma;
     }
 
     // den_loc = payoff^2
@@ -447,7 +443,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 
     // t2 = DeltaW / (t_eval * (T - t_eval) * σ * S_t)
     let mut t2 = Array1::<f64>::zeros(m);
-    let denom_scalar = t_eval * (tau - t_eval) * self.v;
+    let denom_scalar = t_eval * (tau - t_eval) * self.sigma;
     for i in 0..m {
       let st = s_t[i];
       if st.abs() > 1e-14 && denom_scalar.abs() > 1e-14 {
@@ -472,7 +468,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     };
 
     // l1 scale
-    let sigma2 = self.v * self.v;
+    let sigma2 = self.sigma * self.sigma;
     let h = mu - 0.5 * sigma2;
     let t = t_eval;
     let numer_l = tau + sigma2 * t * (tau - t);
@@ -535,7 +531,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
         let s_curr = paths[[i, step]];
 
         let dw = if s_prev.abs() > 1e-14 {
-          (s_curr - s_prev - mu * s_prev * dt) / (self.v * s_prev)
+          (s_curr - s_prev - mu * s_prev * dt) / (self.sigma * s_prev)
         } else {
           0.0
         };

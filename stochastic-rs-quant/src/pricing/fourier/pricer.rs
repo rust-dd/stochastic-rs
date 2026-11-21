@@ -9,29 +9,12 @@ use ndrustfft::ndfft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
-use crate::pricing::cf_quadrature::integrate_to_convergence;
+use crate::pricing::cf_quadrature::Panels;
+use crate::pricing::cf_quadrature::Walk;
+use crate::pricing::cf_quadrature::integrate_walk;
 
-/// Floor a price at zero **without** swallowing a `NaN`.
-///
-/// A floor and a poison-check are different operations, and `f64::max` runs
-/// them together into one wrong answer: it returns the non-`NaN` operand, so
-/// `f64::NAN.max(0.0)` is `0.0`. A bare `.max(0.0)` therefore converts an
-/// undefined price into a plausible zero, which is precisely the sentinel
-/// [the failure convention](crate::traits::ModelPricer#how-pricing-fails)
-/// rules out.
-///
-/// The two conditions the three call sites face are genuinely different:
-///
-/// - A small **negative** price is quadrature or FFT round-off around a
-///   deep-wing value whose true price is a few ulp above zero. Zero is the
-///   right answer, and the floor stays.
-/// - A **`NaN`** price means an input was undefined — a `NaN` maturity
-///   arriving from [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt),
-///   a non-positive strike, a characteristic function that overflowed. There
-///   is no price to floor, so the `NaN` travels on.
-///
-/// Same shape as `VarianceSwapPricer::fair_strike_replication`'s floor and
-/// `CosEngine::price`'s, which close the identical trap.
+/// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
+/// `f64::max` would turn into a plausible `0.0`.
 #[inline]
 fn floor_price(x: f64) -> f64 {
   if x.is_nan() { x } else { x.max(0.0) }
@@ -73,47 +56,19 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Build a Carr-Madan pricer with cumulant-based grid sizing
-  /// (Lord-Kahl 2010 §3.2, Andersen-Andreasen 2002).
+  /// The default grid, with `eta` refined until it spans `|ln s| + truncation_half_width(l_factor)`
+  /// either side of `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
   ///
-  /// Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in
-  /// Heston-like models", *Mathematical Finance* 20(4), §3.2 (truncation /
-  /// step-size rule).
+  /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
   ///
-  /// The FFT log-strike grid runs over `[-L/2, +L/2]` with half-width
-  /// $L/2 = |\ln S_0| + L_{\text{factor}}\sqrt{|c_2|+\sqrt{|c_4|}}$. The
-  /// $|\ln S_0|$ term guarantees the grid covers the at-the-money log-strike
-  /// $\ln S_0$; the cumulant term scales the tail buffer by the model's
-  /// second / fourth cumulants at maturity $t$, so skewed (Heston/Bates with
-  /// large $|\rho|$) or long-dated models get a wider grid than typical
-  /// equity options. Per Lord-Kahl 2010 §3.2, $L_{\text{factor}} = 12$
-  /// is the practical sweet spot — it captures > 99.9% of the log-return
-  /// distribution mass for moderate skew/kurtosis without diluting the
-  /// FFT resolution.
-  ///
-  /// **Grid centring note:** This pricer keeps the FFT grid centred at
-  /// $\ln K = 0$, since the standard FFT phase $e^{-2\pi i j u / N}$ does
-  /// not tolerate an arbitrary grid shift. For true Lord-Kahl grid
-  /// centring around the model-implied log-asset mean
-  /// $\mu_T = \ln S_0 + c_1$ — which puts the FFT resolution where the
-  /// option is price-sensitive and reaches the same accuracy on a much
-  /// smaller grid — use [`super::FrftCarrMadanPricer`], the fractional-FFT
-  /// variant. The cumulant-sized half-width here already gives the
-  /// dominant accuracy gain for production Heston / Bates / Lévy
-  /// calibration workloads.
-  ///
-  /// Panics unless `s`, `l_factor` and the model's second cumulant are finite and positive; `alpha` stays the
-  /// default damping (0.75).
-  ///
-  /// # Example
   /// ```
   /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
+  /// use stochastic_rs_quant::pricing::heston::HestonParams;
   ///
-  /// let heston = HestonFourier {
-  ///     v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6, r: 0.05, q: 0.0,
-  /// };
+  /// let p = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
+  /// let heston = HestonFourier::new(p);
   /// let pricer = CarrMadanPricer::cumulant_sized(&heston, /* t */ 5.0, /* s */ 100.0, 12.0);
-  /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 5.0);
+  /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 0.0, 5.0);
   /// assert!(price.is_finite() && price > 0.0);
   /// ```
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
@@ -131,18 +86,14 @@ impl CarrMadanPricer {
       c2.is_finite() && c2 > 0.0,
       "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
     );
-    let c4_term = cumulants
-      .c4
-      .filter(|c| c.is_finite() && *c >= 0.0)
-      .map_or(0.0, f64::sqrt);
-    let cumulant_buffer = l_factor * (c2.abs() + c4_term).sqrt();
-    let required_half_width = s.ln().abs() + cumulant_buffer;
-    let n = 4096_usize;
-    let eta = PI / required_half_width;
+    let required_half_width = s.ln().abs() + cumulants.truncation_half_width(l_factor);
+    let default = Self::default();
+    // Simpson's alternating weights image the damped price half a period away, `(S/3)e^{−απ/η}`:
+    // 0.56 on a spot of 100 at `η = 0.59`, so a narrow range must not coarsen `η`.
+    let eta = (PI / required_half_width).min(default.eta);
     Self {
-      n,
-      alpha: 0.75,
       eta: eta.max(0.001),
+      ..default
     }
   }
 
@@ -160,6 +111,7 @@ impl CarrMadanPricer {
     model: &impl FourierModelExt,
     s: f64,
     r: f64,
+    q: f64,
     t: f64,
   ) -> (Array1<f64>, Array1<f64>) {
     let n = self.n;
@@ -169,7 +121,7 @@ impl CarrMadanPricer {
     let b = -0.5 * n as f64 * lambda;
 
     let i_unit = Complex64::i();
-    let ln_s = s.ln();
+    let ln_f = s.ln() + (r - q) * t;
     let disc = (-r * t).exp();
 
     let mut input = Array1::<Complex64>::zeros(n);
@@ -186,7 +138,7 @@ impl CarrMadanPricer {
       };
 
       let xi = Complex64::new(v_j, -(alpha + 1.0));
-      let phi = model.chf(t, xi) * (i_unit * xi * ln_s).exp();
+      let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
 
       let denom = Complex64::new(alpha * alpha + alpha - v_j * v_j, (2.0 * alpha + 1.0) * v_j);
 
@@ -212,12 +164,20 @@ impl CarrMadanPricer {
 
   /// Call price interpolated on the FFT surface; NaN when `ln(k)` falls outside the grid (test with
   /// [`Self::strike_in_grid`], or widen it with a larger `n` or a smaller `eta`).
-  pub fn price_call(&self, model: &impl FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
-    let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
+  pub fn price_call(
+    &self,
+    model: &impl FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+  ) -> f64 {
+    let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
 
-    if target < log_strikes[0] || target > log_strikes[n - 1] {
+    if !(log_strikes[0] <= target && target <= log_strikes[n - 1]) {
       return f64::NAN;
     }
 
@@ -239,9 +199,10 @@ impl CarrMadanPricer {
     s: f64,
     k: f64,
     r: f64,
+    q: f64,
     t: f64,
   ) -> bool {
-    let (log_strikes, _) = self.price_call_surface(model, s, r, t);
+    let (log_strikes, _) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
     target >= log_strikes[0] && target <= log_strikes[n - 1]
@@ -257,7 +218,7 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let call = self.price_call(model, s, k, r, t);
+    let call = self.price_call(model, s, k, r, q, t);
     call - s * (-q * t).exp() + k * (-r * t).exp()
   }
 }
@@ -268,33 +229,36 @@ impl CarrMadanPricer {
 pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
-  /// Price a European call using double-exponential quadrature.
-  ///
-  /// This is the blanket [`ModelPricer::price_call`](crate::traits::ModelPricer)
-  /// for every [`FourierModelExt`] model, so it is the crate's busiest pricing
-  /// path.
-  ///
-  /// Returns [`f64::NAN`] when any of `s`, `k`, `r`, `q` or `t` is non-finite
-  /// — `tau` reaches it as one legitimately, since
-  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) documents `NaN`
-  /// as its missing-data return. The result is otherwise floored at zero; see
-  /// `floor_price` for why the two are separate operations.
+  /// The blanket `ModelPricer::price_call` of every [`FourierModelExt`] model, by quadrature:
+  /// NaN for a non-finite `s`, `k`, `r`, `q` or `t`, otherwise floored at zero.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    let ln_ks = (k / s).ln();
+    Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
+  }
+
+  /// [`Self::price_call`] with its two integrals, `P₁`'s then `P₂`'s, run as `walk` says.
+  pub(crate) fn price_call_walk(
+    model: &impl FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+    walk: &mut Walk<'_, Panels>,
+  ) -> f64 {
+    // The carry e^{iu(r−q)t} of both integrands folds into the kernel's phase as ln(K/F).
+    let ln_kf = (k / s).ln() - (r - q) * t;
 
     let i_unit = Complex64::i();
+    let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
+    let no_share_measure = phi_neg_i.norm() < 1e-30;
 
     let integrand_p1 = |u: f64| -> f64 {
-      if u.abs() < 1e-12 {
+      if u.abs() < 1e-12 || no_share_measure {
         return 0.0;
       }
       let xi = Complex64::new(u, -1.0);
       let phi = model.chf(t, xi);
-      let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
-      if phi_neg_i.norm() < 1e-30 {
-        return 0.0;
-      }
-      let kernel = (-i_unit * u * ln_ks).exp() / (i_unit * u);
+      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi / phi_neg_i).re
     };
 
@@ -304,12 +268,12 @@ impl GilPelaezPricer {
       }
       let xi = Complex64::new(u, 0.0);
       let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_ks).exp() / (i_unit * u);
+      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi).re
     };
 
-    let p1 = 0.5 + FRAC_1_PI * integrate_to_convergence(integrand_p1, 1e-8, 1e-8);
-    let p2 = 0.5 + FRAC_1_PI * integrate_to_convergence(integrand_p2, 1e-8, 1e-8);
+    let p1 = 0.5 + FRAC_1_PI * integrate_walk(integrand_p1, 1e-8, 1e-8, walk);
+    let p2 = 0.5 + FRAC_1_PI * integrate_walk(integrand_p2, 1e-8, 1e-8, walk);
 
     let call = s * (-q * t).exp() * p1 - k * (-r * t).exp() * p2;
     floor_price(call)
@@ -319,8 +283,8 @@ impl GilPelaezPricer {
 /// Lewis (2001) single-strike quadrature pricer.
 ///
 /// $$
-/// C=S F e^{-rT}-\frac{\sqrt{SK}\,e^{-rT}}{\pi}
-/// \int_0^\infty\!\operatorname{Re}\!\left[\frac{\phi_T(u-\tfrac i2)\,e^{-iu\ln(K/S)}}{u^2+\tfrac14}\right]du
+/// C=Se^{-qT}-\frac{\sqrt{SK}\,e^{-(r+q)T/2}}{\pi}
+/// \int_0^\infty\!\operatorname{Re}\!\left[\frac{e^{-iu\ln(K/F)}\,\phi_X(u-\tfrac i2)}{u^2+\tfrac14}\right]du
 /// $$
 pub struct LewisPricer;
 
@@ -331,9 +295,25 @@ impl LewisPricer {
   /// on the same terms as [`GilPelaezPricer::price_call`]; the result is
   /// otherwise floored at zero by `floor_price`.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    let ln_ks = (k / s).ln();
+    Self::price_call_walk(model, s, k, r, q, t, &mut Walk::Adaptive)
+  }
+
+  /// [`Self::price_call`] with its integral run as `walk` says.
+  pub(crate) fn price_call_walk(
+    model: &impl FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+    walk: &mut Walk<'_, Panels>,
+  ) -> f64 {
+    let carry = (r - q) * t;
+    // e^{iξ(r−q)t} at ξ = u − i/2 is a phase, folded into ln(K/F), times e^{(r−q)t/2}.
+    let ln_kf = (k / s).ln() - carry;
+    let half_carry = (0.5 * carry).exp();
     let disc = (-r * t).exp();
-    let fwd_factor = ((r - q) * t).exp();
+    let fwd_factor = carry.exp();
     let sqrt_sk = (s * k).sqrt();
 
     let i_unit = Complex64::i();
@@ -341,11 +321,11 @@ impl LewisPricer {
     let integrand = |u: f64| -> f64 {
       let xi = Complex64::new(u, -0.5);
       let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_ks).exp() / (u * u + 0.25);
+      let kernel = half_carry * (-i_unit * u * ln_kf).exp() / (u * u + 0.25);
       (kernel * phi).re
     };
 
-    let integral = integrate_to_convergence(integrand, 1e-8, 1e-8);
+    let integral = integrate_walk(integrand, 0.0, 1e-8, walk);
 
     let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
     floor_price(call)
@@ -378,11 +358,14 @@ mod tests {
   }
 
   fn bsm() -> BsmFourier {
-    BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.0,
-    }
+    BsmFourier { sigma: 0.15 }
+  }
+
+  /// A NaN strike prices NaN rather than falling through the grid bracket.
+  #[test]
+  fn carr_madan_nan_strike_prices_nan() {
+    let price = CarrMadanPricer::default().price_call(&bsm(), 100.0, f64::NAN, 0.05, 0.0, 1.0);
+    assert!(price.is_nan(), "NaN strike must price NaN, got {price}");
   }
 
   /// The FFT carries a `NaN` characteristic function straight through to the
@@ -392,13 +375,13 @@ mod tests {
   #[test]
   fn carr_madan_surface_preserves_nan_from_chf_blowup() {
     let pricer = CarrMadanPricer::default();
-    let (_, prices) = pricer.price_call_surface(&NanChfModel, 100.0, 0.05, 1.0);
+    let (_, prices) = pricer.price_call_surface(&NanChfModel, 100.0, 0.05, 0.0, 1.0);
     assert!(
       prices.iter().all(|p| p.is_nan()),
       "a NaN chf must leave every grid price NaN"
     );
 
-    let interpolated = pricer.price_call(&NanChfModel, 100.0, 100.0, 0.05, 1.0);
+    let interpolated = pricer.price_call(&NanChfModel, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       interpolated.is_nan(),
       "interpolating a poisoned grid must stay NaN, got {interpolated}"
@@ -416,10 +399,7 @@ mod tests {
     }
   }
 
-  /// Each of `s`, `k`, `r` and `tau` reaches the final floor as a `NaN` when
-  /// supplied as one, and `tau` is not hypothetical: `TimeExt::tau_or_from_dates`
-  /// documents `NaN` as its missing-data return, so an option whose expiry date
-  /// never resolved priced at exactly `0.0` here.
+  /// A NaN `s`, `k`, `r` or `tau` reaches the final floor as NaN, not as a price of `0.0`.
   #[test]
   fn gil_pelaez_preserves_nan_market_inputs() {
     let m = bsm();
@@ -467,7 +447,7 @@ mod tests {
     let m = bsm();
     let gp = GilPelaezPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
     let lw = LewisPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
-    let cm = CarrMadanPricer::default().price_call(&m, 100.0, 100.0, 0.05, 1.0);
+    let cm = CarrMadanPricer::default().price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
     for (name, p) in [("gil-pelaez", gp), ("lewis", lw), ("carr-madan", cm)] {
       assert!(
         p.is_finite() && p > 0.0,
@@ -481,22 +461,14 @@ mod tests {
     expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = 0.0"
   )]
   fn cumulant_sizing_rejects_a_non_positive_l_factor() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 0.0);
   }
 
   #[test]
   #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
   fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = CarrMadanPricer::cumulant_sized(&model, 0.0, 100.0, 12.0);
   }
 }

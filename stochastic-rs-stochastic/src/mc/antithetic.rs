@@ -1,12 +1,11 @@
-//! # Antithetic Variates
+//! Antithetic variates: each standard normal draw is paired with its negation and averaged.
 //!
 //! $$
 //! \hat{\mu}_{\mathrm{AV}} = \frac{1}{N}\sum_{i=1}^{N}
 //! \frac{f(Z_i)+f(-Z_i)}{2}
 //! $$
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.2.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.2, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

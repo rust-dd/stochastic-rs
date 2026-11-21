@@ -7,104 +7,114 @@ use crate::lattice::tree::TrinomialBranch;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
-/// Zero-mean Ornstein-Uhlenbeck factor used as a primitive for Gaussian
-/// short-rate constructions (G2++, curve-fitted Hull-White, …).
-#[derive(Debug, Clone)]
+/// The state every short-rate tree is built for, `dx = a(m − x)dt + σ dW` from `initial_state`.
+#[derive(Debug, Clone, Copy)]
 pub(super) struct OrnsteinUhlenbeckFactor<T: RealExt> {
   pub(super) initial_state: T,
+  pub(super) long_run_mean: T,
   pub(super) mean_reversion: T,
   pub(super) sigma: T,
 }
 
-impl<T: RealExt> OneFactorShortRateModel<T> for OrnsteinUhlenbeckFactor<T> {
-  fn initial_state(&self) -> T {
-    self.initial_state
-  }
-
-  fn drift(&self, _time: T, state: T) -> T {
-    -self.mean_reversion * state
-  }
-
-  fn diffusion(&self, _time: T, _state: T) -> T {
-    self.sigma
-  }
-
-  fn short_rate(&self, _time: T, state: T) -> T {
-    state
-  }
-}
-
-pub(super) fn build_one_factor_trinomial_tree<T: RealExt, M: OneFactorShortRateModel<T>>(
-  model: &M,
+/// Each level on the state's exact mean, each branch on the nearest node: no branch below 1/24.
+///
+/// $$
+/// M = x\,e^{-a\Delta t},\quad V = \sigma^2\,\frac{1-e^{-2a\Delta t}}{2a},\quad
+/// \Delta x = \sqrt{3V},\quad k = \operatorname{round}(M/\Delta x),\quad \eta = M - k\,\Delta x
+/// $$
+/// $$
+/// p_u = \frac16 + \frac{\eta^2}{6V} + \frac{\eta}{2\sqrt{3V}},\qquad
+/// p_m = \frac23 - \frac{\eta^2}{3V},\qquad
+/// p_d = \frac16 + \frac{\eta^2}{6V} - \frac{\eta}{2\sqrt{3V}}
+/// $$
+///
+/// Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, §II, note 5, DOI 10.3905/jod.1994.407902
+/// Reference: Brigo & Mercurio (2006), §3.3.3, p. 78, read in Baldvinsdóttir & Palmborg (2011)
+/// Reference: Hull & White (1996), J. Deriv. 3(3), 26–36, §I: each level on the analytic mean
+pub(super) fn build_one_factor_trinomial_tree<T: RealExt>(
+  factor: &OrnsteinUhlenbeckFactor<T>,
   horizon: T,
   steps: usize,
 ) -> TrinomialTree<T> {
-  assert!(steps > 0, "steps must be strictly positive");
+  require_positive("horizon", horizon);
+  assert!(
+    steps > 0,
+    "steps must satisfy `steps > 0`, got steps = {steps}"
+  );
+  let OrnsteinUhlenbeckFactor {
+    initial_state,
+    long_run_mean,
+    mean_reversion,
+    sigma,
+  } = *factor;
   let dt = horizon / T::from_usize_(steps);
-  let sigma = model.diffusion(T::zero(), model.initial_state()).abs();
-  let x0 = model.initial_state();
-  let diffusion_dx = sigma * (T::from_f64_fast(3.0) * dt).sqrt();
-  let drift_dx = model.drift(T::zero(), x0).abs() * dt;
-  let dx = diffusion_dx.max(drift_dx).max(T::from_f64_fast(1e-6));
+  let two_a_dt = (mean_reversion + mean_reversion) * dt;
+  // `(1 − e^{−2aΔt})/(2aΔt)`, so `σ` is never squared and `a = 0` is `V = σ²Δt`.
+  let variance_share = if two_a_dt > T::zero() {
+    -(-two_a_dt).exp_m1() / two_a_dt
+  } else {
+    T::one()
+  };
+  let dx = sigma * (T::from_f64_fast(3.0) * dt * variance_share).sqrt();
+  let decay = (-mean_reversion * dt).exp();
+  let offset = |j: usize, i: usize| T::from_f64_fast(j as f64 - i as f64);
 
   let states = (0..=steps)
-    .map(|level| {
-      let center = level as isize;
-      Array1::from_iter((0..(2 * level + 1)).map(|idx| {
-        let j = idx as isize - center;
-        x0 + T::from_f64_fast(j as f64) * dx
-      }))
+    .map(|i| {
+      let time = T::from_usize_(i) * dt;
+      let mean = long_run_mean + (initial_state - long_run_mean) * (-mean_reversion * time).exp();
+      Array1::from_iter((0..=2 * i).map(|j| mean + offset(j, i) * dx))
     })
     .collect::<Vec<_>>();
 
   let branches = (0..steps)
-    .map(|level| {
-      let time = T::from_usize_(level) * dt;
-      let next_center = (level + 1) as isize;
-      (0..(2 * level + 1))
-        .map(|idx| {
-          let state = states[level][idx];
-          let mean = state + model.drift(time, state) * dt;
-          let variance = model.diffusion(time, state).powi(2) * dt;
-
-          if variance <= T::min_positive_val() {
-            // mean/x0/dx are all derived from finite model coefficients here,
-            // but defensively fall back to the centre node (j=0) if any
-            // intermediate produces NaN (e.g. zero-diffusion *and* zero-drift
-            // pathological inputs that bypass earlier validation).
-            let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
-            let j = j.clamp(-next_center + 1, next_center - 1);
-            return TrinomialBranch {
-              center_index: (j + next_center) as usize,
-              down_probability: T::zero(),
-              middle_probability: T::one(),
-              up_probability: T::zero(),
-            };
-          }
-
-          let j = (((mean - x0) / dx).round().to_f64().unwrap_or(0.0)) as isize;
-          let j = j.clamp(-next_center + 1, next_center - 1);
-          let target = x0 + T::from_f64_fast(j as f64) * dx;
-          let eta = mean - target;
-          let dx2 = dx * dx;
-          let q = (variance + eta * eta) / dx2;
-          let mut down = T::from_f64_fast(0.5) * (q - eta / dx);
-          let mut up = T::from_f64_fast(0.5) * (q + eta / dx);
-          let mut middle = T::one() - q;
-          sanitize_probabilities(&mut down, &mut middle, &mut up);
-
-          TrinomialBranch {
-            center_index: (j + next_center) as usize,
-            down_probability: down,
-            middle_probability: middle,
-            up_probability: up,
-          }
-        })
+    .map(|i| {
+      (0..=2 * i)
+        .map(|j| nearest_node_branch(offset(j, i) * decay, i + 1))
         .collect::<Vec<_>>()
     })
     .collect::<Vec<_>>();
 
   TrinomialTree::new(dt, states, branches)
+}
+
+pub(super) fn require_finite<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite(),
+    "{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_non_negative<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value >= T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} >= T::zero()`, got {name} = {value:?}"
+  );
+}
+
+pub(super) fn require_positive<T: RealExt>(name: &str, value: T) {
+  assert!(
+    value.is_finite() && value > T::zero(),
+    "{name} must satisfy `{name}.is_finite() && {name} > T::zero()`, got {name} = {value:?}"
+  );
+}
+
+/// The branch whose exact conditional mean lies `target = M/Δx` spacings off the next centre.
+fn nearest_node_branch<T: RealExt>(target: T, next_center: usize) -> TrinomialBranch<T> {
+  let k = target.round();
+  // `e = η/Δx`: with `Δx² = 3V` the formulas above are `1/6 + e²/2 ± e/2` and `2/3 − e²`.
+  let e = target - k;
+  let half = T::from_f64_fast(0.5);
+  let outer = T::from_f64_fast(1.0 / 6.0) + half * e * e;
+  let k = k.to_isize().expect("a finite target rounds to an integer");
+  TrinomialBranch {
+    center_index: next_center
+      .checked_add_signed(k)
+      .expect("|k| is at most the node's offset"),
+    down_probability: outer - half * e,
+    middle_probability: T::from_f64_fast(2.0 / 3.0) - e * e,
+    up_probability: outer + half * e,
+  }
 }
 
 pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
@@ -118,36 +128,9 @@ pub(super) fn price_one_factor_zcb<T: RealExt, M: OneFactorShortRateModel<T>>(
   })
 }
 
-fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) {
-  let zero = T::zero();
-  let tol = T::from_f64_fast(1e-12);
-  if *down < zero && *down > -tol {
-    *down = zero;
-  }
-  if *middle < zero && *middle > -tol {
-    *middle = zero;
-  }
-  if *up < zero && *up > -tol {
-    *up = zero;
-  }
-  let sum = *down + *middle + *up;
-  if sum > zero {
-    *down = *down / sum;
-    *middle = *middle / sum;
-    *up = *up / sum;
-  } else {
-    *down = zero;
-    *middle = T::one();
-    *up = zero;
-  }
-}
-
-/// λ = ρ/12: four corner shifts of λ add 4λ·d_X·d_Y to the covariance, and d = σ√(3 dt) makes that
-/// ρσ_Xσ_Y dt. Both marginals are kept, so it is exact on any branch while no corner clamps at 0.
-pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
-
-/// G2++ joint probabilities: marginal product plus ρ/12 on the four corners; marginals hold and the
-/// covariance is ρ/3 until a corner clamps at 0: |ρ| > 1/3 at `p_u = p_d = 1/6`, less off-centre.
+/// G2++ joint probabilities `Π⁰ + s̄·(|ρ|/36)·M`, Brigo–Mercurio's `M` +5 on the corners ρ favours,
+/// −1 on the other two, −4 on the edges, +8 at the centre; `s̄ ≤ 1`, the largest keeping `Π ≥ 0`.
+/// Auer (2009), Proc. World Congress on Engineering II, 1388–1389: Brigo–Mercurio's pattern, BM′.
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
@@ -162,46 +145,123 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
     }
   }
 
-  let mut lambda = rho / T::from_f64_fast(SYMMETRIC_BRANCH_CORNER_DENOM);
-  if lambda > T::zero() {
-    let max_positive = joint[0][2].min(joint[2][0]);
-    lambda = lambda.min(max_positive);
-  } else if lambda < T::zero() {
-    let max_negative = joint[0][0].min(joint[2][2]);
-    lambda = lambda.max(-max_negative);
-  }
-
-  joint[0][0] += lambda;
-  joint[2][2] += lambda;
-  joint[0][2] -= lambda;
-  joint[2][0] -= lambda;
-
-  let mut sum = T::zero();
-  for row in &joint {
-    for value in row {
-      sum += *value;
-    }
-  }
-  if sum > T::zero() {
-    for row in &mut joint {
-      for value in row {
-        *value = (*value).max(T::zero());
+  let (corner, edge, centre) = (
+    T::from_f64_fast(5.0),
+    T::from_f64_fast(-4.0),
+    T::from_f64_fast(8.0),
+  );
+  let (same, opposite) = if rho > T::zero() {
+    (corner, -T::one())
+  } else {
+    (-T::one(), corner)
+  };
+  let pattern = [
+    [same, edge, opposite],
+    [edge, centre, edge],
+    [opposite, edge, same],
+  ];
+  let scale = rho.abs() / T::from_f64_fast(36.0);
+  let mut s_bar = T::one();
+  for i in 0..3 {
+    for j in 0..3 {
+      let delta = pattern[i][j] * scale;
+      if delta < T::zero() && joint[i][j] + delta < T::zero() {
+        s_bar = s_bar.min_or_nan(joint[i][j] / -delta);
       }
     }
-    let mut normalized_sum = T::zero();
-    for row in &joint {
-      for value in row {
-        normalized_sum += *value;
+  }
+  // Rows and columns of `M` sum to zero, so the marginals hold; the floor only meets a −0 or the
+  // binding cell's last-ulp negative.
+  for i in 0..3 {
+    for j in 0..3 {
+      joint[i][j] = (joint[i][j] + s_bar * pattern[i][j] * scale).max_or_nan(T::zero());
+    }
+  }
+  joint
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn symmetric() -> TrinomialBranch<f64> {
+    TrinomialBranch {
+      center_index: 1,
+      down_probability: 1.0 / 6.0,
+      middle_probability: 2.0 / 3.0,
+      up_probability: 1.0 / 6.0,
+    }
+  }
+
+  /// One-step correlation of the moves `−1, 0, +1` on both axes, about their means.
+  fn realised_correlation(joint: &[[f64; 3]; 3]) -> f64 {
+    let moves = [-1.0, 0.0, 1.0];
+    let (mut mx, mut my) = (0.0, 0.0);
+    for i in 0..3 {
+      for j in 0..3 {
+        mx += joint[i][j] * moves[i];
+        my += joint[i][j] * moves[j];
       }
     }
-    if normalized_sum > T::zero() {
-      for row in &mut joint {
-        for value in row {
-          *value = *value / normalized_sum;
+    let (mut cov, mut vx, mut vy) = (0.0, 0.0, 0.0);
+    for i in 0..3 {
+      for j in 0..3 {
+        let (dx, dy) = (moves[i] - mx, moves[j] - my);
+        cov += joint[i][j] * dx * dy;
+        vx += joint[i][j] * dx * dx;
+        vy += joint[i][j] * dy * dy;
+      }
+    }
+    cov / (vx * vy).sqrt()
+  }
+
+  #[test]
+  fn the_symmetric_branch_realises_rho_exactly_up_to_one() {
+    for rho in [-1.0, -0.9, -0.7, -1.0 / 3.0, 0.0, 0.5, 0.95, 1.0] {
+      let joint = correlated_joint_probabilities(symmetric(), symmetric(), rho);
+      let realised = realised_correlation(&joint);
+      assert!(
+        (realised - rho).abs() < 1e-14,
+        "rho {rho}: realised {realised}"
+      );
+      let (mut rows, mut cols) = ([0.0; 3], [0.0; 3]);
+      for i in 0..3 {
+        for j in 0..3 {
+          assert!(
+            joint[i][j] >= 0.0,
+            "rho {rho}: cell ({i}, {j}) = {}",
+            joint[i][j]
+          );
+          rows[i] += joint[i][j];
+          cols[j] += joint[i][j];
         }
       }
+      let marginal = symmetric().probabilities();
+      for k in 0..3 {
+        assert!((rows[k] - marginal[k]).abs() < 1e-15 && (cols[k] - marginal[k]).abs() < 1e-15);
+      }
     }
   }
 
-  joint
+  #[test]
+  fn a_drift_shifted_branch_scales_the_pattern_instead_of_dropping_it() {
+    // Auer's s̄ = 35/36 on the branch (1/4, 7/12, 1/6) at rho = −0.9 realises −7√177/118 exactly.
+    let shifted = TrinomialBranch {
+      center_index: 1,
+      down_probability: 0.25,
+      middle_probability: 7.0 / 12.0,
+      up_probability: 1.0 / 6.0,
+    };
+    let joint = correlated_joint_probabilities(shifted, symmetric(), -0.9);
+    let min_cell = f64::min_or_nan_fold(joint.iter().flatten().copied());
+    assert!(
+      (0.0..1e-15).contains(&min_cell),
+      "the binding cell is zero: {min_cell}"
+    );
+    let realised = realised_correlation(&joint);
+    assert!(
+      (realised + 7.0 * 177.0_f64.sqrt() / 118.0).abs() < 1e-14,
+      "{realised}"
+    );
+  }
 }

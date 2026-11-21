@@ -52,10 +52,8 @@ impl<T: RealExt> ZeroCouponBond<T> {
     self.face_value * compounding.discount_factor(yield_to_maturity, tau)
   }
 
-  /// Yield-to-maturity implied by a price.
-  ///
-  /// Returns `NaN` when the price is not positive and finite, or when the
-  /// maturity is not after the settlement date, where the yield is undefined.
+  /// Yield to maturity implied by a price; `NaN` when the price is not positive and finite or
+  /// the maturity is not after the settlement date.
   pub fn yield_to_maturity(
     &self,
     settlement_date: NaiveDate,

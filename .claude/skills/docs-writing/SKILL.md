@@ -158,8 +158,8 @@ moment generating function — only if it exists.>
 |-----------|-------------|----------------------------------------------|
 | `<arg>`   | `T`         | <one-line meaning + units / range>           |
 | `n`       | `usize`     | Number of steps                              |
-| `x0`      | `Option<T>` | Initial value (defaults to <doc default>)    |
-| `t`       | `Option<T>` | Horizon (defaults to <doc default>)          |
+| `x0`      | `Option<T>` | Initial value; `None` starts at zero         |
+| `t`       | `Option<T>` | Horizon of the path; `None` is a unit horizon |
 
 ## Examples
 

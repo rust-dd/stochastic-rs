@@ -1,8 +1,8 @@
 //! `t·x` modulo 2π of doubles, exact however far the product passes the doubles: mantissas multiply
 //! exactly and only the bits of 1/(2π) reaching the fraction enter (Payne–Hanek).
 //!
-//! Reference: Payne, M. H. & Hanek, R. N. (1983), "Radian reduction for trigonometric functions", *ACM SIGNUM Newsletter* 18(1), 19-24, DOI 10.1145/1057600.1057602.
-//! Reference: Cody, W. J. & Waite, W. (1980), *Software Manual for the Elementary Functions*, Prentice-Hall, ch. 8, ISBN 0-13-822064-6 (the reduction of a moderate argument by a split constant).
+//! Reference: Payne & Hanek (1983), ACM SIGNUM Newsl. 18(1), 19-24, DOI 10.1145/1057600.1057602.
+//! Reference: Cody, W. J. & Waite, W. (1980), Prentice-Hall, ch. 8, ISBN 0-13-822064-6.
 
 use std::f64::consts::TAU;
 
@@ -107,7 +107,8 @@ const TAU_PARTS: [f64; 4] = [
   3.39137106414756e-31,
 ];
 
-/// `hi + lo` reduced to about `[−π, π]` by Cody and Waite's subtraction of `k` parts of 2π, for `|hi| < 2²⁰`.
+/// `hi + lo` reduced to about `[−π, π]` by Cody and Waite's subtraction of `k` parts of 2π, for
+/// `|hi| < 2²⁰`.
 pub(super) fn reduce(hi: f64, lo: f64) -> f64 {
   let k = (hi / TAU).round();
   let [c1, c2, c3, c3t] = TAU_PARTS;
@@ -123,7 +124,8 @@ pub(super) fn radians(r: u128) -> f64 {
 mod tests {
   use super::*;
 
-  /// Products past the doubles, to the table's deep end at `f64::MAX²`, against mpmath at 2600 and 2800 digits.
+  /// Products past the doubles, to the table's deep end at `f64::MAX²`, against mpmath at 2600 and
+  /// 2800 digits.
   #[test]
   fn turns_reduce_products_past_the_doubles() {
     for (t, x, want) in [

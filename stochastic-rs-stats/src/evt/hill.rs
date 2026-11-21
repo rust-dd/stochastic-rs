@@ -1,21 +1,17 @@
-//! Hill (1975) estimator of the tail index from the `k` largest positive
-//! observations.
-//!
-//! With the positive observations ordered $X_{(1)} \ge X_{(2)} \ge \dots$,
+//! Hill (1975) estimator of the tail index from the `k` largest positive observations.
 //!
 //! $$
 //! \hat\xi_k = \frac1k\sum_{i=1}^{k}\log X_{(i)} - \log X_{(k+1)},\qquad
-//! \hat\alpha_k = 1/\hat\xi_k,
+//! \hat\alpha_k = 1/\hat\xi_k,\qquad X_{(1)} \ge X_{(2)} \ge \dots
 //! $$
 //!
-//! estimates the extreme-value index $\xi > 0$ of a Pareto-type tail
-//! $P(X > x) \sim x^{-\alpha}$; under second-order regular variation
-//! $\sqrt k(\hat\xi_k - \xi) \to \mathcal N(0, \xi^2)$, so the reported
-//! standard error is $\hat\xi_k/\sqrt k$.
+//! $$
+//! P(X > x) \sim x^{-\alpha},\qquad \sqrt k\,(\hat\xi_k - \xi) \to \mathcal N(0, \xi^2)
+//! $$
 //!
-//! Reference: Hill, "A Simple General Approach to Inference About the Tail
-//! of a Distribution", Annals of Statistics, 3(5), 1163-1174 (1975).
-//! DOI: 10.1214/aos/1176343247
+//! The standard error is `ξ̂_k / √k`, the limit's, which needs second-order regular variation.
+//!
+//! Reference: Hill (1975), Annals of Statistics 3(5), 1163-1174, DOI: 10.1214/aos/1176343247
 
 use ndarray::ArrayView1;
 
@@ -40,13 +36,13 @@ pub struct HillFit {
   pub nobs: usize,
 }
 
-/// Hill estimator on the `k` largest positive entries of `data` (non-positive ones are ignored);
-/// `Err` on a non-finite entry or at most `k` positive ones, and panics unless `k >= 1`.
+/// Hill estimator on the `k` largest positive entries of `data`, `ξ̂ = 0` if they tie; `Err` on a
+/// non-finite entry or at most `k` positive ones (others are ignored); panics unless `k >= 1`.
 pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> Result<HillFit, StatsError> {
   assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
   let x = data
     .iter()
-    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   validate(&x, 0)?;
   let mut positive = x.into_iter().filter(|v| *v > 0.0).collect::<Vec<f64>>();

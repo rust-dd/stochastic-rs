@@ -1,16 +1,8 @@
-//! # Stochastic Correlation Processes
+//! Bounded stochastic correlation in (−1, 1): a transformed OU, a Jacobi SDE, Teng's modified OU.
 //!
-//! Bounded stochastic correlation models on (−1, 1) following
-//! Teng, Ehrhardt & Günther (2016) "Modelling stochastic correlation",
-//! *Journal of Mathematics in Industry* 6:2.
+//! [`TransformedOu`] is the reference's Section 2.1, [`VanEmmerich`] Eq. 15, [`TengScp`] Eq. 19/20.
 //!
-//! ## Models
-//!
-//! - [`TransformedOU`]: ρ_t = f(X_t) where dX = κ(μ−X)dt + σ dW
-//!   (Section 2.1; supports [`Transformation::Tanh`] and [`Transformation::Arctan`])
-//! - [`VanEmmerich`]: dρ = κ(μ−ρ)dt + σ√(1−ρ²) dW  (Eq. 15)
-//! - [`TengSCP`]: Modified Ou in X-space, ρ = tanh(X)  (Eq. 19/20)
-//!
+//! Reference: Teng, Ehrhardt & Günther (2016), J. Math. Industry 6:2, DOI 10.1186/s13362-016-0018-4
 
 pub mod heston_stoch_corr;
 pub mod teng;
@@ -23,13 +15,13 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
-pub use teng::TengSCP;
+pub use teng::TengScp;
 pub use transformed_ou::Transformation;
-pub use transformed_ou::TransformedOU;
+pub use transformed_ou::TransformedOu;
 pub use van_emmerich::VanEmmerich;
 
 /// `[dW₁, dW₂]`, each scaled by `√dt`, with `Corr(dW₁[i], dW₂[i]) = rho_path[i]` (Teng et al. 2016,
-/// Eq. 43); panics if an entry lies outside `[-1, 1]`. A constant ρ samples faster through `Cgns`.
+/// Eq. 43); panics unless `-1 <= rho_path[i] <= 1` for every `i`. A constant ρ is faster on `Cgns`.
 pub fn stochastic_correlated_bm<S: SeedExt>(
   rho_path: &Array1<f64>,
   t: Option<f64>,

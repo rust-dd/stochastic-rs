@@ -32,8 +32,9 @@ impl PyPca {
   #[new]
   #[pyo3(signature = (returns, k=0))]
   fn new<'py>(returns: numpy::PyReadonlyArray2<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::pca::pca_decompose(returns.as_array(), k),
+    Ok(Self {
+      inner: crate::factors::pca::try_pca_decompose(returns.as_array(), k)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -80,8 +81,9 @@ impl PyFamaMacBeth {
     returns: numpy::PyReadonlyArray2<'py, f64>,
     factors: numpy::PyReadonlyArray2<'py, f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::fama_macbeth::fama_macbeth(returns.as_array(), factors.as_array()),
+    Ok(Self {
+      inner: crate::factors::fama_macbeth::try_fama_macbeth(returns.as_array(), factors.as_array())
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -123,8 +125,9 @@ impl PyPairsStrategy {
     entry_z: f64,
     exit_z: f64,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::pairs::pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z),
+    Ok(Self {
+      inner: crate::factors::pairs::try_pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -175,23 +178,17 @@ impl PyPairsStrategy {
   }
 }
 
-/// Empirical CVaR, `-mean` of the worst `alpha` fraction of `returns` (`0.05` is the worst 5 %, the opposite of `value_at_risk`'s
-/// confidence level); raises `ValueError` on an empty sample or an `alpha` outside `(0, 0.5)`.
+/// Tail mean of the losses `−returns` over their worst `alpha` share (`0.05`: the worst 5 %, not a
+/// confidence level); `ValueError` for an empty or non-finite sample or `alpha` outside `(0, 0.5)`.
 #[pyfunction]
 #[pyo3(signature = (returns, alpha))]
 pub fn empirical_cvar<'py>(
   returns: numpy::PyReadonlyArray1<'py, f64>,
   alpha: f64,
 ) -> PyResult<f64> {
-  if !(alpha > 0.0 && alpha < 0.5) {
-    return Err(PyValueError::new_err(format!(
-      "empirical_cvar `alpha` is the tail proportion (typical 0.01-0.10), \
-       not a confidence level. Got {alpha}. Pass `1.0 - c` if you have a \
-       confidence c (e.g. 0.95)."
-    )));
-  }
   let mut returns_vec: Vec<f64> = returns.as_array().to_vec();
   stochastic_rs_distributions::python::value_error_on_panic(|| {
     crate::portfolio::optimizers::empirical_cvar(&mut returns_vec, alpha)
-  })
+  })?
+  .map_err(|e| PyValueError::new_err(e.to_string()))
 }

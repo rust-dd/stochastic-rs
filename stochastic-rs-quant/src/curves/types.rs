@@ -1,9 +1,11 @@
 //! Core types for yield curve construction.
 //!
-//! Reference: ISDA 2006 Definitions; Brigo & Mercurio, "Interest Rate Models — Theory and Practice" (2006)
+//! Reference: ISDA 2006 Definitions
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Springer
 
 use std::fmt::Display;
 
+use crate::calendar::Frequency;
 use crate::traits::RealExt;
 
 /// Compounding convention for interest rate calculations.
@@ -113,27 +115,26 @@ pub enum BootstrapInstrument<T: RealExt> {
   Swap {
     maturity: T,
     rate: T,
-    frequency: u32,
+    frequency: Frequency,
   },
-  /// Par swap with an **explicit, calendar-adjusted** payment schedule.
-  /// `payment_times` lists the year-fractions of every fixed-leg payment
-  /// (final entry = maturity); used when the schedule is non-uniform because
-  /// of holidays / day-count / stub conventions and the uniform `Swap`
-  /// variant's `δ = 1 / frequency` round-trip is not accurate enough.
-  /// Built by [`crate::market::rate_helper::SwapRateHelper`] when configured
-  /// via `with_calendar`.
-  SwapWithSchedule { rate: T, payment_times: Vec<T> },
+  /// Par swap on explicit payment times in years, the last fixed one its maturity. `float_times`
+  /// is read only against an exogenous discount curve, where the floating leg does not telescope.
+  SwapWithSchedule {
+    rate: T,
+    fixed_times: Vec<T>,
+    float_times: Vec<T>,
+  },
 }
 
 impl<T: RealExt> BootstrapInstrument<T> {
-  /// The maturity (or end date) of the instrument.
+  /// The maturity (or end date) of the instrument; NaN for an empty schedule.
   pub fn maturity(&self) -> T {
     match self {
       Self::Deposit { maturity, .. } => *maturity,
       Self::Fra { end, .. } | Self::Future { end, .. } => *end,
       Self::Swap { maturity, .. } => *maturity,
-      Self::SwapWithSchedule { payment_times, .. } => {
-        payment_times.last().copied().unwrap_or_else(T::zero)
+      Self::SwapWithSchedule { fixed_times, .. } => {
+        fixed_times.last().copied().unwrap_or_else(T::nan)
       }
     }
   }

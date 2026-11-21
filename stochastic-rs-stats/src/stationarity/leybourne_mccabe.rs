@@ -1,3 +1,7 @@
+//! Leybourne–McCabe stationarity test: KPSS's statistic on AR-prewhitened residuals, bootstrapped.
+//!
+//! Reference: Leybourne & McCabe (1994), JBES 12(2), 157-166, DOI: 10.1080/07350015.1994.10510004
+
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
@@ -5,18 +9,20 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use super::common::OlsResult;
 use super::common::Trend;
+use super::common::centred;
 use super::common::fit_ar;
 use super::common::min_sample_size;
+use super::common::prepared;
 use super::common::regress_on_deterministics;
+use super::common::reject_exact_fit;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 
-/// Configuration for the Leybourne-McCabe stationarity test.
+/// Configuration of the Leybourne–McCabe test, which panics unless `trend != Trend::None`,
+/// `ar_lags >= 1`, `bootstrap_samples >= 1` and `0 < alpha < 1`.
 #[derive(Debug, Clone, Copy)]
 pub struct LeybourneMcCabeConfig {
   /// Null deterministic structure: `Constant` (level) or `ConstantTrend`.
@@ -71,37 +77,33 @@ fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError
   if include_trend {
     Ok(regress_on_deterministics(y, true)?.residuals)
   } else {
-    let mean = y.iter().sum::<f64>() / y.len() as f64;
-    Ok(y.iter().map(|v| v - mean).collect())
+    Ok(centred(y))
   }
 }
 
-fn lm_statistic_from_residuals(residuals: &[f64]) -> f64 {
-  let m = residuals.len();
-  let m_f = m as f64;
-  let sigma2 = residuals.iter().map(|u| u * u).sum::<f64>() / m_f;
-  if sigma2 <= 0.0 || !sigma2.is_finite() {
-    return f64::INFINITY;
+/// `Σ S_t² / (m² σ²)` of AR residuals `u`, `S_t` their partial sums and `σ²` their mean square;
+/// `Numerical` when that mean square is not finite.
+fn lm_statistic(u: &[f64]) -> Result<f64, StatsError> {
+  let m_f = u.len() as f64;
+  let sigma2 = u.iter().map(|v| v * v).sum::<f64>() / m_f;
+  if !sigma2.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "residual variance",
+    });
   }
-
   let mut cum = 0.0;
   let mut sum_sq = 0.0;
-  for &u in residuals {
-    cum += u;
+  for &v in u {
+    cum += v;
     sum_sq += cum * cum;
   }
-  sum_sq / (m_f * m_f * sigma2)
+  Ok(sum_sq / (m_f * m_f * sigma2))
 }
 
-fn lm_statistic_with_prewhitening(
-  y: &[f64],
-  include_trend: bool,
-  ar_lags: usize,
-) -> Result<(f64, Vec<f64>, f64), StatsError> {
-  let y_det = detrend_series(y, include_trend)?;
-  let (phi, residuals, sigma) = fit_ar(&y_det, ar_lags)?;
-  let stat = lm_statistic_from_residuals(&residuals);
-  Ok((stat, phi, sigma))
+/// The AR fit of `y` less its constant, or less its line under a trend: one solve, with its bound,
+/// for the series and for each bootstrap path.
+fn prewhitened(y: &[f64], include_trend: bool, ar_lags: usize) -> Result<OlsResult, StatsError> {
+  fit_ar(&detrend_series(y, include_trend)?, ar_lags)
 }
 
 fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Vec<f64> {
@@ -117,18 +119,14 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
     for i in 0..p {
       value += phi[i] * x[t - 1 - i];
     }
-    if !value.is_finite() {
-      value = 0.0;
-    }
-    value = value.clamp(-1e6, 1e6);
     x[t] = value;
   }
 
   x[burnin..].to_vec()
 }
 
-/// Leybourne–McCabe test with a bootstrap p-value; `Err` below `max(40, p + 15, 2p + 1)` points
-/// (`p = ar_lags`), on a non-finite one, a constant series or a singular fit; panics on bad config.
+/// Leybourne–McCabe test; `Err` below `max(40, ar_lags + 15, 2 ar_lags + 1)` points, a non-finite
+/// or constant series, a singular or exact AR fit, a failed bootstrap; panics as `cfg`'s type says.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
@@ -149,22 +147,31 @@ pub fn leybourne_mccabe_test(
     cfg.bootstrap_samples
   );
   assert_alpha(cfg.alpha);
-  let y = as_slice_or_copy(y);
   let needed = 40
     .max(cfg.ar_lags.saturating_add(15))
     .max(min_sample_size(cfg.ar_lags, Trend::None));
-  validate(&y, needed)?;
-  reject_constant(&y, "constant series")?;
+  // Less its mean first, an exact subtraction: detrending then meets the series near zero, where a
+  // second mean or a trend's constant does not round the variation away.
+  let y = centred(&prepared(y, needed)?);
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
-  let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
+  let fit = prewhitened(&y, include_trend, cfg.ar_lags)?;
+  let obs_stat = lm_statistic(&fit.residuals)?;
+  reject_exact_fit(&y, &fit.residuals, fit.condition)?;
 
   let mut noise =
-    SimdNormal::<f64>::new(0.0, sigma.max(1e-12)).seeded(&Deterministic::new(cfg.bootstrap_seed));
+    SimdNormal::<f64>::new(0.0, fit.sigma2.sqrt()).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut exceed = 0usize;
   for _ in 0..cfg.bootstrap_samples {
-    let sim = simulate_ar(&phi, &mut noise, y.len());
-    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags)?;
+    let sim = simulate_ar(&fit.beta, &mut noise, y.len());
+    // The exact-fit rule guards the caller's series, not its paths, which keep the solve's bound.
+    let sim_stat = prewhitened(&sim, include_trend, cfg.ar_lags)
+      .and_then(|path| lm_statistic(&path.residuals))
+      .ok()
+      .filter(|s| s.is_finite())
+      .ok_or(StatsError::Numerical {
+        stage: "bootstrap path",
+      })?;
     if sim_stat >= obs_stat {
       exceed += 1;
     }
@@ -189,6 +196,7 @@ mod tests {
 
   use super::LeybourneMcCabeConfig;
   use super::leybourne_mccabe_test;
+  use super::simulate_ar;
   use crate::StatsError;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
@@ -237,8 +245,8 @@ mod tests {
   /// non-stationary alternative, so the null must be rejected.
   #[test]
   fn leybourne_mccabe_rejects_random_walk() {
-    // 900 points and 160 bootstrap replicates gave too little power to reject
-    // reliably; a longer series plus the best-of-three seeds fixes that.
+    // Power grows with the length, so the walk is 2,500 points long; the test asks any of three
+    // seeds to reject, so that no one draw decides it.
     let runs = [0x1E7B0Bu64, 0x1E7B0C, 0x1E7B0D].map(|seed| {
       let x = simulate_random_walk(2500, seed);
       let cfg = LeybourneMcCabeConfig {
@@ -284,6 +292,14 @@ mod tests {
         got: 40
       }
     );
+  }
+
+  /// An explosive fitted AR overflows its bootstrap path, which the test then answers with `Err`.
+  #[test]
+  fn an_explosive_bootstrap_path_overflows() {
+    let mut noise = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(3));
+    let path = simulate_ar(&[30.0], &mut noise, 40);
+    assert!(path.iter().any(|v| !v.is_finite()), "{path:?}");
   }
 
   #[test]

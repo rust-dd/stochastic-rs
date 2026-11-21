@@ -1,14 +1,10 @@
-//! Augmented Dickey-Fuller unit-root test.
+//! Augmented Dickey–Fuller test of a unit root against a stationary alternative.
 //!
-//! References:
-//! - Dickey D. A. & Fuller W. A. (1979) — *Distribution of the
-//!   Estimators for Autoregressive Time Series with a Unit Root*,
-//!   Journal of the American Statistical Association 74(366), 427–431,
-//!   DOI: 10.2307/2286348.
-//! - Said S. E. & Dickey D. A. (1984) — *Testing for Unit Roots in
-//!   Autoregressive-Moving Average Models of Unknown Order*, Biometrika
-//!   71(3), 599–607, DOI: 10.1093/biomet/71.3.599 — the lagged-difference
-//!   augmentation this file's `p`-lag regression implements.
+//! Said–Dickey lags augment the regression, each candidate scored on one common sample (Ng–Perron).
+//!
+//! Reference: Dickey & Fuller (1979), JASA 74(366), 427–431, DOI: 10.2307/2286348
+//! Reference: Said & Dickey (1984), Biometrika 71(3), 599–607, DOI: 10.1093/biomet/71.3.599
+//! Reference: Ng & Perron (2005), OBES 67(1), 115–134, DOI: 10.1111/j.1468-0084.2005.00113.x
 
 use ndarray::ArrayView1;
 
@@ -18,12 +14,11 @@ use super::common::adf_critical_values;
 use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
 use super::common::min_sample_size;
+use super::common::prepared;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
 
 /// Configuration for the Augmented Dickey-Fuller unit-root test.
 #[derive(Debug, Clone, Copy)]
@@ -75,14 +70,13 @@ impl crate::traits::HypothesisTest for AdfTest {
   }
 }
 
-/// Augmented Dickey–Fuller test; `Err` below 20 points or `2p + c + 3` for the largest lag `p` and
-/// `c` trend terms, on a non-finite one or a singular fit; panics unless `0.01 <= alpha < 1`.
+/// ADF test; `Err` below `max(20, 2p + c + 3)` points for the largest lag `p` and `c` terms, on
+/// non-finite or constant data or a singular or exact fit; panics unless `0.01 <= alpha < 1`.
 pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsError> {
   assert_alpha(cfg.alpha);
   let critical_values = adf_critical_values(cfg.trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
+  let y = prepared(y, 20)?;
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
@@ -96,7 +90,7 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsErro
   }
 
   let used_lags = choose_lag_for_adf(&y, cfg.trend, cfg.lag_selection, max_lags)?;
-  let fit = fit_adf(&y, used_lags, cfg.trend)?;
+  let fit = fit_adf(&y, used_lags, cfg.trend, &y)?;
 
   Ok(AdfTest {
     statistic: fit.statistic,

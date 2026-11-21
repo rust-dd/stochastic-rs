@@ -1,17 +1,13 @@
-//! # Mcgns
+//! `k` Brownian increment streams correlated by `ρ`'s lower Cholesky factor.
 //!
 //! $$
-//! \Delta W_t = L\,\varepsilon_t\sqrt{\Delta t},\quad \varepsilon_t\sim\mathcal N(0,I_k),\ LL^\top=\rho
+//! \Delta W_t = L\,\varepsilon_t\sqrt{\Delta t},\quad
+//! \varepsilon_t\sim\mathcal N(0,I_k),\ LL^\top=\rho
 //! $$
 //!
-//! Multivariate correlated Gaussian noise: `k` Brownian increment streams
-//! with instantaneous correlation matrix `ρ`, built from independent
-//! standard normals through the lower Cholesky factor of `ρ` — the
-//! `k`-dimensional driver behind [`crate::diffusion::multi_gbm::MultiGbm`]
-//! and the generalisation of the two-stream [`crate::noise::cgns::Cgns`].
+//! Drives [`crate::diffusion::multi_gbm::MultiGbm`] and generalises [`crate::noise::cgns::Cgns`].
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial
-//! Engineering*, Springer, §2.3.3. DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §2.3.3, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -29,15 +25,15 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation matrix ρ of the `k` streams (`k × k`).
   pub rho: Array2<T>,
   /// Number of increments sampled along each stream.
   pub n: usize,
-  /// Simulation horizon [0, t] (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   chol: Array2<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -46,7 +42,8 @@ pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
-  /// `rho` must be a valid, positive-definite correlation matrix.
+  /// Panics unless `rho` is a finite, positive-definite correlation matrix, `n >= 1` and a given
+  /// `t` is positive and finite.
   pub fn new(rho: Array2<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
@@ -109,12 +106,10 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
   }
 }
 
-/// The streams in the engine's four slots. `Mcgns` reports a `k × n` matrix
-/// and the correlated noise family steps four components under one Cholesky
-/// factor, so this view carries a launch when `k <= 4`, the unused slots
-/// padded with a unit diagonal and dropped. It borrows rather than owns, so
-/// the seed it advances is the process's own.
+/// The streams in the engine's four slots: a launch for `k <= 4`, the unused slots padded with a
+/// unit diagonal and dropped. It borrows, so the seed it advances is the process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct McgnsLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Mcgns<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -141,6 +136,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// [`McgnsLaunch`]'s sampler: the matrix sampler, its rows lifted into the
 /// four slots.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct McgnsLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: McgnsSampler<T, S>,
 }
@@ -236,10 +232,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine for up to four streams, which is what the
-  /// correlated noise family carries: on a device the whole matrix is drawn
-  /// in one kernel under its Cholesky factor. More streams stay on this
-  /// process's own sampler whatever the backend.
+  /// Through the Euler engine for up to four streams, which a device draws in one kernel under
+  /// the Cholesky factor; more streams stay on this process's own sampler whatever the backend.
   fn sample(&self) -> Array2<T> {
     if self.dims() <= crate::euler::CORRELATED_STREAMS {
       slots_to_matrix(self.backend.system_sample(&McgnsLaunch(self)), self.dims())
@@ -317,6 +311,7 @@ fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
 /// Reusable [`Mcgns`] sampling state with a derived seed, so parallel
 /// chunks draw independent streams.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct McgnsSampler<T: FloatExt, S: SeedExt> {
   noise: Mcgns<T, S>,
 }
@@ -377,9 +372,8 @@ mod tests {
     assert!(cross.abs() * 50_000.0 < 0.02 * 50_000.0 / 50_000.0_f64.sqrt() * 3.0 + 1e-3);
   }
 
-  /// Consecutive paths of one sampler differ: the derived seed is passed by
-  /// reference so each call advances it, where a cloned seed would replay
-  /// the same increments for every path of a chunk.
+  /// Consecutive paths of one sampler differ: the derived seed is passed by reference and each
+  /// call advances it, where a cloned seed would replay one path's increments.
   #[test]
   fn consecutive_paths_of_one_sampler_differ() {
     let noise = Mcgns::new(
@@ -427,6 +421,15 @@ mod tests {
   )]
   fn rejects_a_covariance_matrix() {
     let _ = Mcgns::new(array![[2.0_f64, 0.5], [0.5, 1.0]], 8, None, Unseeded);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "rho must satisfy `every Cholesky pivot of rho > T::zero()`, got pivot 2 = -1.3"
+  )]
+  fn rejects_an_indefinite_correlation_matrix() {
+    let rho = array![[1.0_f64, 0.5, -1.0], [0.5, 1.0, 0.5], [-1.0, 0.5, 1.0]];
+    let _ = Mcgns::new(rho, 8, None, Unseeded);
   }
 }
 
@@ -476,7 +479,7 @@ impl PyMcgns {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| inner
+      py_dispatch_f64!(self, |inner| inner
         .sample()
         .into_pyarray(py)
         .into_py_any(py)
@@ -493,7 +496,7 @@ impl PyMcgns {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let samples = inner.sample_par(m);
         pyo3::types::PyList::new(
           py,

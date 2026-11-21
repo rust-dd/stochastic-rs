@@ -11,8 +11,9 @@ workspace. Every estimator is anchored to a published paper.
 
 ## What is in it
 
-- **Hurst exponent** — Fukasawa, rescaled range, DFA, GPH, wavelet,
-  Whittle, variogram and Higuchi fractal dimension.
+- **Hurst exponent** — rescaled range, DFA, GPH, wavelet, variations,
+  variogram and Higuchi fractal dimension; `Whittle::fit` for the roughness
+  of volatility from realized variance.
 - **Maximum likelihood** — 1-D diffusions with six transition-density
   approximations, plus QMLE, GMM for CIR, Heston MLE, particle MLE and a
   non-linear-marginal CEKF for Heston.
@@ -21,6 +22,17 @@ workspace. Every estimator is anchored to a published paper.
 - **Stationarity** — ADF, KPSS, Phillips-Perron, ERS-DFGLS,
   Leybourne-McCabe, Lo-MacKinlay, Andrews-Ploberger, CUSUM, RESET.
 - **Normality** — Jarque-Bera, Anderson-Darling, Shapiro-Francia.
+- **Goodness of fit** — Kolmogorov-Smirnov and Pearson chi-square against a
+  given law.
+- **Dependence** — ACF, PACF and the Ljung-Box test.
+- **Volatility models** — GARCH, GJR-GARCH and EGARCH by Gaussian QMLE.
+- **Extremes** — GEV and GPD maximum likelihood, peaks over threshold, Hill.
+- **Return laws** — Johnson SU, Hansen skew-t and variance-gamma by maximum
+  likelihood.
+- **Fractional OU** — the fOU parameters from filtered, central and power
+  variations.
+- **Densities** — Gaussian kernel density with Silverman's bandwidth, sample
+  quantiles.
 - **Econometrics** — cointegration, Granger causality, hidden Markov
   models, changepoint detection.
 - **Filtering** — particle filter, unscented Kalman filter, MCMC.
@@ -45,9 +57,8 @@ let est = estimator.estimate(path.view()).expect("a path long enough to estimate
 assert!((est.hurst - 0.3).abs() < 0.1);
 ```
 
-The Fukasawa and Whittle estimators in `hurst::whittle` take price data
-(`estimate_from_prices(closes)`) and estimate the roughness of volatility,
-not the Hurst exponent of the path itself.
+`hurst::whittle::Whittle::fit` takes log realized variance and estimates
+the roughness of volatility, not the Hurst exponent of the path itself.
 
 ## Part of stochastic-rs
 

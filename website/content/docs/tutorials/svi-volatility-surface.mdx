@@ -72,11 +72,12 @@ print(f"a={a:.4f} b={b:.4f} rho={rho:.4f} m={m:.4f} sigma={sigma:.4f}")
 # a=0.0200 b=0.1000 rho=-0.4000 m=0.0500 sigma=0.2000
 print(srs.SviRawParams(a, b, rho, m, sigma).is_admissible())  # True
 print(round(fit.implied_vol(0.0, 1.0), 4))                    # 0.2064, at the money one year out
+print(fit.converged(), fit.message())                         # True converged, the fit's stop
 ```
 </Tab>
 </Tabs>
 
-`fit_svi(None)` starts from the library's own initial guess; pass `Some(params)` to start from a previous fit. `is_admissible()` checks the parameter constraints of raw SVI ($b \ge 0$, $\lvert\rho\rvert < 1$, $\sigma > 0$ and a non-negative minimum variance).
+`fit_svi(None)` starts from the library's own initial guess and returns a `Calibrated`: the slice's parameters in `params`, and in `converged` and `message` (`converged()` and `message()` in Python) the stop of its Levenberg–Marquardt fit; pass `Some(fit.params)` to start from a previous fit. `is_admissible()` checks the parameter constraints of raw SVI ($b \ge 0$, $\lvert\rho\rvert < 1$, $\sigma > 0$ and a non-negative minimum variance).
 
 ## Step 2 — check the slice for butterfly arbitrage
 
@@ -103,6 +104,7 @@ slices = [(ks, [truth.total_variance(k, 0.04 * t) for k in ks], 0.04 * t)
 fit = srs.SsviCalibrator(slices)
 print(tuple(round(x, 4) for x in fit.params()))                      # (-0.4, 0.6, 0.4)
 print(srs.SsviParams(*fit.params()).satisfies_no_butterfly_condition())  # True
+print(fit.converged(), fit.message())                                # True converged
 ```
 </Tab>
 </Tabs>

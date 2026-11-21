@@ -21,10 +21,10 @@ struct PyHestonHullWhite2FQe {
 }
 
 macro_rules! py_hybrid_dispatch {
-  ($self:expr, |$p:ident| $body:expr) => {
+  ($dispatch:ident, $self:expr, |$p:ident| $body:expr) => {
     match &$self.qe {
-      Some(qe) => $crate::py_dispatch!(qe, |$p| $body),
-      None => $crate::py_dispatch!($self, |$p| $body),
+      Some(qe) => $dispatch!(qe, |$p| $body),
+      None => $dispatch!($self, |$p| $body),
     }
   };
 }
@@ -36,6 +36,8 @@ fn build<T: FloatExt, S: SeedExt>(
 ) -> HestonHullWhite2F<T, Euler, S> {
   let f = |x: f64| T::from_f64_fast(x);
   HestonHullWhite2F::new(
+    f(args.s0),
+    f(args.v0),
     f(args.kappa),
     f(args.theta),
     f(args.sigma),
@@ -45,10 +47,8 @@ fn build<T: FloatExt, S: SeedExt>(
     f(args.sigma2),
     f(args.b),
     args.rho.mapv(f),
-    args.n,
-    args.s0.map(f),
-    args.v0.map(f),
     args.r0.map(f),
+    args.n,
     args.t.map(f),
     seed,
   )
@@ -65,8 +65,8 @@ struct Args {
   b: f64,
   rho: Array2<f64>,
   n: usize,
-  s0: Option<f64>,
-  v0: Option<f64>,
+  s0: f64,
+  v0: f64,
   r0: Option<f64>,
   t: Option<f64>,
 }
@@ -74,7 +74,7 @@ struct Args {
 #[pyo3::prelude::pymethods]
 impl PyHestonHullWhite2F {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0=None, v0=None, r0=None, t=None, seed=None, dtype=None, scheme="euler"))]
+  #[pyo3(signature = (kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0=None, t=None, seed=None, dtype=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -86,8 +86,8 @@ impl PyHestonHullWhite2F {
     b: f64,
     rho: numpy::PyReadonlyArray2<'_, f64>,
     n: usize,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     r0: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
@@ -168,7 +168,7 @@ impl PyHestonHullWhite2F {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_hybrid_dispatch!(self, |inner| inner
+      py_hybrid_dispatch!(py_dispatch, self, |inner| inner
         .sample()
         .into_pyarray(py)
         .into_py_any(py)
@@ -189,7 +189,7 @@ impl PyHestonHullWhite2F {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_hybrid_dispatch!(self, |inner| {
+      py_hybrid_dispatch!(py_dispatch, self, |inner| {
         let paths = py.detach(|| inner.sample_par(m));
         let n = paths.first().map_or(0, |p| p.ncols());
         let mut out = Array3::zeros((m, ROWS, n));

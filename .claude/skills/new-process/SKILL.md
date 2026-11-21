@@ -49,8 +49,8 @@ crate's `src/lib.rs`.
 `new(..)` takes the fields positionally, ending with `seed: S`, and asserts each precondition
 in dev-rules §14's form: every float finite (an `Option<T>` `None` or finite), `t` `None` or
 positive, and `n >= 2` on a grid (`n >= 1` on a noise or a discrete-time series). Every field
-gets a `with_*(mut self, ..) -> Self`; one changing a value mirrored elsewhere re-syncs it
-(`Merton::resync_cpoisson_poisson`). `Default` is `n = 252`, `t = 1`.
+gets a `with_*(mut self, ..) -> Self`; one changing a value a cache derives from rebuilds the
+cache (`Fbm::with_hurst`). `Default` is `n = 252`, `t = 1`.
 
 The sampler is a separate `#[doc(hidden)] pub struct FooSampler<..>` holding all
 per-call mutable state and implementing `PathSampler<T>` (`src/traits/sampler.rs`):
@@ -66,9 +66,9 @@ on `ProcessExt` in `src/traits/process.rs` before writing `sampler()`.** Its rul
 never `&self.seed` read lazily per path (`chunked_samplers` calls `sampler()` once per
 chunk, sequentially, before any chunk reaches rayon, and only `derive()` hash-mixes
 those bases apart); a sampler may `.derive()` again on its *own* basis for sub-streams;
-**never construct `Unseeded` inside a sampler** — a sub-process built there (`Cgns`,
-`CompoundPoisson`) is driven from an owned already-derived seed
-(`Cgns::sample_impl(&self.seed)`, a captured `self.cpoisson.seed.derive()`); override
+**never construct `Unseeded` inside a sampler** — a sub-process built there (`Cgns`, a
+jump driver) is driven from an owned already-derived seed
+(`Cgns::sample_impl(&self.seed)`, a captured `self.jumps.seed.derive()`); override
 `advance_chunk_seed` only when the chunk's clone feeds a *persistent* engine
 (`CirPlusPlus`).
 
@@ -82,11 +82,9 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
 | `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 119 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 0 |
 | `via sheet` | `SheetBackend<T>` | `backend: B` | a two-dimensional field through the sheet pipeline (`Fbs`) | 1 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
-| `via fgn` | `FgnBackend<T>` | `fgn: Fgn<_, _, B>` | fractional, not on the engine | 0 |
 
 Verify by diffing the brace list against the struct's `pub` fields. Never count arms
 with a one-line grep — a wrapped `backend_switch!` call is invisible to it.
@@ -97,8 +95,8 @@ Never hand-write a kernel: the CUDA and Metal bodies are generated (`grep -c "fa
 src/euler/{cuda,metal}.rs` → `0` for both).
 
 **2a. Declare the family** in the fitting chunk of `src/euler/families/definitions/`,
-with the next free integer code. Read the module doc of `src/euler/families.rs` — it
-is the DSL specification. The host and CUDA generator `euler_families!` lives in
+with the next free integer code. The DSL is specified under "The family DSL" at the end of
+this section. The host and CUDA generator `euler_families!` lives in
 `src/euler/families/codegen.rs`; the Metal kernel crate expands the same declarations
 in `stochastic-rs-metal-kernels/src/euler/families/codegen.rs`. The vocabulary pair is
 in `src/euler/families/vocabulary.rs`, mirrored by the kernel crate's `vocabulary.rs`.
@@ -121,7 +119,7 @@ the terms are sized in the step of their cell and the size may read the state �
 — one increment of a monotone table from `uj`, `uv` and the spacing `tv`, and the step
 reads the table's interpolated inverse at its time as `iv`. A step or report may open
 with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its noise
-names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
+names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`..`u4`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
 leq geq pick` — a **new** intrinsic goes into host `ops` and `C_PRELUDE` in
@@ -142,11 +140,11 @@ Traps, each learned from a real failure:
   counts *report* expressions (planes written), `Family::slots()` counts *state*;
   `RoughHestonMemory` has four states, two reports.
 
-**2b. The `EulerSpec` variant.** `src/euler.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
-`encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
+**2b. The `EulerSpec` variant.** `src/euler/spec.rs` carries one
+`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) and
+`src/euler/spec/encode.rs` its `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
-`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
+`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump
 sum `js`, Gamma draws `gm`/`gm2`, lifted value `lv` over `LIFT_SLOTS = 176` nodes,
 history convolution `cv` over `HISTORY_SLOTS = 512` grid points, series cell sum `sj`
 over `SERIES_SLOTS = 512` grid points, table inverse `iv` over `TABLE_SLOTS = 512`
@@ -154,7 +152,8 @@ table points, `CORRELATED_STREAMS = 4`.
 
 **2c. The trait impl.** One component → `crate::euler::EulerCoefficients<T>`
 (needs `ProcessExt<T, Output = Array1<T>>`); 2–4 components →
-`crate::euler::EulerSystem<T, D>` (needs `Output = [Array1<T>; D]`).
+`crate::euler::EulerSystem<T, D>` (needs an `Output` built `From<[Array1<T>; D]>`: the
+`D` arrays themselves, or a named struct of them such as `HjmPaths`).
 
 | Hook | Required | Notes |
 |---|---|---|
@@ -166,13 +165,19 @@ table points, `CORRELATED_STREAMS = 4`.
 | `host_sample()` | yes | sampler **and** `advance_chunk_seed` (below) |
 | `time_step()` | default `horizon / (n − 1)` | override when the host divides differently |
 | `curve()` / `curves()` | default `None` | implement **one**, never both; ≤ `CURVE_SLOTS` |
-| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
+| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 12 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
 | `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
+
+A `jump_intensity()` makes the kernel count the step's arrivals, up to 64: `device_fallback()` (§3)
+answers `crate::euler::count_fallback(jump_intensity, time_step)` through the trait it implements
+(`<Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self)`), after any reason of its own,
+and every sampling method branches on `device_ready()`. The dense-count table in
+`tests/device_introspection.rs` gains a row; its census of `fn jump_intensity` fails without one.
 
 `host_sample` is always exactly this — the `advance_chunk_seed` call is what keeps a
 host fallback chunk-correct:
@@ -193,7 +198,8 @@ toolchain, and commit the regenerated artifact. CI's `--check` rejects stale ent
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
 `every_family()` (one component) or `every_two_component_family()` /
-`every_three_component_family()` / `every_four_component_family()`, built with the local
+`every_three_component_family()` / `every_four_component_family()` (one file each under
+`family_parity/`, the last two sharing `three_four_component.rs`), built with the local
 `p(spec, x0)` closure — `p_lift(spec, x0)` for a lifted family.
 `every_family_has_a_probe` asserts declared-family count equals probe count and checks
 each probe's arity. Give `probe_sizes(spec)` an arm when the family exists to exercise a
@@ -209,6 +215,28 @@ Verify §2: `cargo test -p stochastic-rs-stochastic --lib -- euler::families` re
 every family into the C body, families counted by `cat src/euler/families/definitions/*.rs | grep -cE "^  [0-9]+ => "`.
 A probe needs no series or table work of its own: `Probe::series_terms` and
 `Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
+
+### The family DSL
+
+A family is written in a subset that is simultaneously a valid Rust expression and a valid C expression: infix arithmetic, parentheses and a small vocabulary of functions. The shared `definitions` chunks feed the host and C generator (`families/codegen.rs`) and the Rust Metal kernel generator in `stochastic-rs-metal-kernels`, preserving each formula's operation order.
+
+`euler::family_parity` launches every declared family on the device present and checks dimensions and finiteness. Its migration fixture also pins exact Metal paths across every family and launch shape.
+
+A step or report may open with `bind name = expr;` lines before its final expression. Each becomes a `let` on the host and a `const REAL` in the emitted C, which is how a family names a clamped or guarded state once and then reads like the host sampler it came from.
+
+A step or report may read `u`, `u2`, `u3` and `u4`, four uniforms in `(0, 1)` for the step, `nj`, the number of jumps it saw, `js`, the sum of their sizes, `gm` and `gm2`, one or two Gamma draws, and `ct`, the step's value of a time-varying coefficient the host supplies as one value per grid point. A family that never names it costs nothing for it.
+
+The names a step may use are fixed: `x` for the state, `dt` for the step size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian noise, the fractional increment itself for fGN, which is what lets one declaration serve both — and the family's own parameters, which the generated code binds as locals from the parameter buffer in declaration order. The `report` expression maps the state to what the path records and is evaluated at `t = 0` as well, where no noise exists.
+
+A family with a `history { push (..) weights (ctK) }` clause reads `cv`, the convolution of what it has pushed so far with the weights the launch tabulated in curve slot `K`, indexed by lag: at the step that produces grid point `i` the frame appends the pushed value `p_i` (evaluated on the pre-step state, this step's noise and uniforms) and hands the step `cv = Σ_{k≤i} w_k p_{i-k}`. That is the exact O(n²) scheme of a moving average over the whole past — a Volterra integral on the grid, an ARMA filter, a fractional stable motion — for grids up to `HISTORY_SLOTS` points.
+
+A family with a `series { size (..) }` clause reads `sj`, the sum of the terms that fell into the step's grid cell: before the steps the frame draws, per path, as many terms as the launch's `series_terms()` names — for each, `gj` the arrival of a unit-rate Poisson process, `ej` an `Exp(1)`, `uj` and `uv` two uniforms, and a uniform arrival time on the horizon — sizes each with the clause's expression and adds it to the cell its time falls in. That is the shot-noise series representation of a Lévy process, the sort with a rejection-free size bound, run without the host's sort: cells are addressed, not ordered. Grids up to `SERIES_SLOTS` points. A clause written `series { live size (..) }` sizes each term in the step of its cell instead, where the size may read the state — a scale that follows a simulated variance — and the frame keeps the arrivals per term rather than the sums per cell, so the term count is what the slots then bound.
+
+A family with a `table { increment (..) }` clause reads `iv`, the inverse of a monotone table at the step's time: before the steps the frame builds, per path, a table of as many points as the launch's `table_spec()` names over `[0, u_max]` — each increment from the clause's expression of the two uniforms `uj`, `uv` and the spacing `tv` — trying up to ten extents, each double the last, until the table reaches the horizon, exactly as the host does; each step then finds the first table value at or past its time and interpolates the abscissa linearly. That is the inverse subordinator, the first-passage clock of a positive process. Tables up to `TABLE_SLOTS` points; the grid is free.
+
+The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`, `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal `lit`, the comparisons `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host implementation in `vocabulary::ops` (compiled for tests only, where `host_step` and `host_report` evaluate the declarations) and a CUDA definition in `vocabulary::C_PRELUDE`, the two kept together in `families/vocabulary.rs`; the Metal kernel crate mirrors them in its own `vocabulary` module. Anything outside it fails to compile on the host, which is the intended way to find out that a kernel could not have run it either.
+
+`families/definitions/` stores the table in code order, one chunk per kind of family. `families/tests` pins the generated host step and report against closed forms.
 
 ## 3. The mandatory dispatch overrides
 
@@ -261,8 +289,8 @@ of silently drawing zeros — `Merton::jump_sizes`,
 `GaussianPolynomialVolatility::euler_spec`. Guards in tree: `Merton` (a jump law the
 kernels draw, via `src/process/cpoisson.rs::device_jump_sizes`),
 `GaussianPolynomialVolatility` (`DEVICE_COEFFICIENTS = 8`), `MultiGbm` (`assets() <=
-CORRELATED_STREAMS`), `RoughHeston` / `RoughBergomi` / `FBatesSvj` / `Arima`
-(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `KoBoL` / `Rdts` (`SERIES_SLOTS`),
+CORRELATED_STREAMS`), `Fheston` / `RoughBergomi` / `FbatesSvj` / `Arima`
+(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `Kobol` / `Rdts` (`SERIES_SLOTS`),
 `InverseAlphaStableSubordinator` (`TABLE_SLOTS`), `Lmm` (`CORRELATED_STREAMS`
 forwards), `Ctrw` (exponential waits), `Hawkes` (count mode).
 
@@ -271,17 +299,20 @@ of a matrix), add a borrowed **launch view**: a `#[doc(hidden)] pub struct FooLa
 ..>(&'a Foo<..>)` implementing `ProcessExt` and `EulerSystem`/`EulerCoefficients`, then
 launch `self.backend.system_paths(&FooLaunch(self), m)` and reshape. It borrows, so the
 seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`,
-`MultifactorHestonLaunch`, `BgmRow(self, i)` (one launch per independent row),
+`MultifactorHestonLaunch`, `AdgRow(self, i)` (one launch per independent row),
 `CfouParts`.
 
 ## 4. Tests
 
-**4a. Device law** — `tests/device_law/<group>.rs`, declared
-`pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
-`tests/device_law.rs`. The binary is gated `#![cfg(any(all(feature = "metal", target_os = "macos"), feature =
-"cuda"))]` and is `f32` throughout. Groups — pick by what the comparison must allow for,
-not by source directory: `bounded`, `conditional_variance`, `curves`, `fractional`,
-`gaussian`, `jumps`, `levy`, `memory`, `rows`, `systems`. Helpers in
+**4a. Device law** — a leaf file of `tests/device_law/`: `<group>.rs`, or
+`<group>/<part>.rs` for the three groups that are thin parents (`fractional/{correlated,driven,volterra}.rs`,
+`levy/{arrivals,subordinators}.rs`, `systems/{affine,heston,jumps,regimes,volatility}.rs`); never the
+parent. A new group is declared `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
+`tests/device_law.rs`. The binary is gated `#![cfg(device_backend)]` (an alias the crate's
+`build.rs` emits) and is `f32` throughout. Groups — pick by what the comparison must allow for,
+not by source directory: `bounded`, `coefficients`, `conditional_variance`, `counts`, `curves`,
+`fractional`, `gaussian`, `jumps`, `levy`, `memory`, `rows`, `seed`, `series`, `sheet`, `stable`,
+`systems`. Helpers in
 `device_law/common.rs`, reached with `use super::common::..`: `Device` (Cuda, else
 Metal), `M = 4_000`, `terminal_mean`, `terminal_std`, `agrees(host, device, tol, what)`
 (relative error), `all_finite`, `within`.
@@ -318,13 +349,14 @@ not statistics; the fallback must be bit-identical to the plain host build
 nothing until it has been made to fail:
 
 ```bash
-  cp stochastic-rs-stochastic/src/euler/families.rs /tmp/families.bak
+  F=stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs  # the chunk that declares it
+  cp $F /tmp/families.bak
   # in the new family scale one term by `lit(3.0)`, literal on the RIGHT:
   #   `sigma * dz`  ->  `sigma * dz * lit(3.0)`
   cargo test -p stochastic-rs-stochastic --features metal --test device_law foo_agrees
   # it MUST fail. If it passes, the statistic is blind — pick another one.
-  cp /tmp/families.bak stochastic-rs-stochastic/src/euler/families.rs
-  cmp /tmp/families.bak stochastic-rs-stochastic/src/euler/families.rs && echo reverted
+  cp /tmp/families.bak $F
+  cmp /tmp/families.bak $F && echo reverted
 ```
 
 **4c. Chunk invariance** for an fGN-fed family. Chunking has no statistical
@@ -367,10 +399,10 @@ seeds only — `Deterministic::new(42)`, never `Unseeded`, never `rand::rng()`; 
 ## 5. Python bindings
 
 At column 0 in the process file, invoke the wrapper macro from `src/macros.rs`:
-`py_process_1d!` for an `Array1` output (69 uses), `py_process_2x1d!` for `[Array1; 2]`
-(10), `py_process_2d!` for `Array2` (2). Each has a plain and a `device` arm; the
+`py_process_1d!` for an `Array1` output (65 uses), `py_process_2x1d!` for `[Array1; 2]`
+(9), `py_process_2d!` for `Array2` (2). Each has a plain and a `device` arm; the
 trailing bare `device` token adds a `device=` keyword routed through
-`py_device_dispatch!` (46 of the 81 invocations carry it) — add it whenever the process
+`py_device_dispatch!` (all 76 invocations carry it) — add it whenever the process
 reaches the engine. `sig:` is the `#[pyo3(signature = ..)]` list, `seed=None,
 dtype=None` always last and `lambda_`/`gamma_` for Python keywords; `params:` repeats
 the same names with Rust types, in `new()`'s order.
@@ -388,15 +420,19 @@ hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton
 `#[doc(hidden)]` on the line above that `#[pyclass]` (the macros already carry it) and
 above any `pub use python::…` re-export of it; `tests/python_surface_hidden.rs` fails without it.
 
+A hand-written class on the macros' slots (`inner_f32`, `inner_f64`, `seeded_f32`,
+`seeded_f64`, and `device` for `py_device_dispatch`) writes only its `#[new]`, inside
+`py_process_methods!(PyX, <shape>, <dispatch>, { #[new] … })` (`array1`, `array2` or
+`pair`; `py_dispatch` or `py_device_dispatch`), which adds `sample`, `sample_par`,
+`device_fallback` and `device_ready` — see `process/poisson/python.rs`.
+
 Register in the single flat `#[pymodule]` of `stochastic-rs-py/src/lib.rs` (its only
 source file): a `use` in the `// Stochastic — <dir>` banner group, then
 `m.add_class::<PyFoo>()?;` in the bare-ident form. The Python-visible name is the Rust
 ident unless `#[pyclass(name = "..")]` renames it, and the macro-generated classes carry
 no rename, so it really is `sr.PyFoo`.
 
-No live pytest enumerates classes or asserts a count, so nothing there breaks —
-`tests/python_bindings_smoke.py` at the repo root has a hardcoded name list but is
-stale, outside `testpaths`, and run by neither pytest nor CI; do not add to it. Add a
+No live pytest enumerates classes or asserts a count, so nothing there breaks. Add a
 case to `stochastic-rs-py/tests/test_stochastic.py` in the seed-determinism / path-shape
 style if the process is user-facing. Build from the repo root with `maturin develop
 --release` (`pyproject.toml` `[tool.maturin] manifest-path =
@@ -419,14 +455,14 @@ prelude item.
 
 What does go stale:
 
-1. `CLAUDE.md` — the `131 processes` in the layout tree and the `ProcessExt`
-   bullet's `**132** concrete implementors over **131** processes`. Recount with
+1. `CLAUDE.md` — the `129 processes` in the layout tree and the `ProcessExt`
+   bullet's `**138** concrete implementors over **129** processes`. Recount with
    the command that bullet quotes (the `-A1` is load-bearing):
    `grep -rhE -A1 "impl.*ProcessExt<T>" stochastic-rs-stochastic/src --include='*.rs' | grep -oE "for [A-Z][A-Za-z0-9]*" | sed 's/for //' | sort -u | wc -l`
    Implementors exceed processes by the launch/row views, which carry no
-   reproducibility guard — today 141 minus `AdgRow`, `BgmRow`, `CfouParts`,
+   reproducibility guard — today 138 minus `AdgRow`, `CfouParts`,
    `LmmLaunch`, `McgnsLaunch`, `MultiGbmLaunch`, `MultifactorHestonLaunch`,
-   `MultivariateHawkesLaunch`, `WishartLaunch`, `WuZhangPair` = 131, matching `grep -rhoE "guard!\(" stochastic-rs-stochastic/tests/reproducibility_all_processes/*.rs | wc -l`.
+   `MultivariateHawkesLaunch`, `WishartLaunch`, `WuZhangPair` = 129, matching `grep -rhoE "guard!\(" stochastic-rs-stochastic/tests/reproducibility_all_processes/*.rs | wc -l`.
    The prelude count is unaffected by a process.
 2. `CLAUDE.md`'s Python entry counts, from §5's two greps.
 3. `website/public/python-parity.json`, regenerated by `bun run python:parity`
@@ -434,11 +470,11 @@ What does go stale:
    drops fully-qualified `add_class` lines — another reason to register in the
    bare-ident form.
 4. `website/content/docs/concepts/gpu-support.mdx` — the support-matrix rows
-   `83 processes` (one component), `33 processes` (systems), the explicit
-   fractional name list with its `(11, counted above)`, and `the remaining 14
-   processes`; the prose sentence opening `The 116 processes on the engine cover
-   ...`; for a host-only process, the matching bullet under "What stays on the
-   host, and why"; and, for a new *family*, `the engine's **110 families**`.
+   `89 processes` (one component) and `38 processes` (systems), the explicit
+   fractional name list with its `(11, counted above)`, and the prose sentence
+   `the other 127 through the Euler engine`, whose list of what the engine covers
+   follows it; for a configuration that stays on the host, the matching bullet
+   under "What stays on the host". The page carries no family count.
 5. `notebooks/colab_cuda_check.ipynb`, cell index 5 — a prose enumeration with no
    hard counts; insert the name into the paragraph matching its family. Edit
    through Python, keeping the file's own formatting:
@@ -475,8 +511,9 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
-allow(dead_code))]`. `src/lib.rs` carries
+in `euler/slots.rs` have — `#[cfg_attr(not(device_backend), allow(dead_code))]`. The crate's `build.rs`
+emits `device_backend` (CUDA or Metal), `metal_backend` and `accelerate_backend`, the only
+spellings of the device gates inside `stochastic-rs-stochastic`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`
 rather than warning.
 
@@ -513,13 +550,12 @@ how `Svcgmy`'s exact CIR step and `Wishart`'s squared Bessel draws run; **more t
 state slots or 4 noise components** (`Lmm` / `MultiGbm` / `Mcgns` above four, `Wishart`
 above `d = 2`).
 
-Before declaring a process host-only — the current list is whatever
-`grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it
-shrinks as the engine grows (empty today) — check the nine documented ways round the cap:
+Before declaring a process host-only — none is today, and `backend_switch!` keeps
+no host-only form — check the nine documented ways round the cap:
 
 1. **A launch view with a runtime cap** — pad a runtime `k` into the fixed
    four-slot family and fall back to the host above it (`MultiGbmLaunch`), or
-   launch once per independent row (`BgmRow`).
+   launch once per independent row (`AdgRow`).
 2. **Runtime law recognition** — a process generic over `D: Distribution<T>`
    stays generic on the host and reaches the device by `Any` downcast in
    `src/process/cpoisson.rs::device_jump_sizes` / `device_arrival_rate`; an
@@ -528,37 +564,36 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    `LIFT_SLOTS` nodes.
 4. **A `history` clause** — the host's own exact O(n²) convolution for grids up
    to `HISTORY_SLOTS`, weights travelling as a curve. This is what moved
-   `RoughHeston`, `FBatesSvj`, `RoughBergomi`, `Lfsm` and `Arima`/`Sarima` onto
+   `Fheston`, `FbatesSvj`, `RoughBergomi`, `Lfsm` and `Arima`/`Sarima` onto
    the engine.
 5. **A `series` clause** — a shot-noise series drawn per path before the steps
    and summed into the grid cells its terms fall in, so the host's sort is not
-   needed; grids up to `SERIES_SLOTS`. This is what moved `Cgmy`, `Cts`, `KoBoL`
+   needed; grids up to `SERIES_SLOTS`. This is what moved `Cgmy`, `Cts`, `Kobol`
    and `Rdts` onto the engine, as one family with host-folded constants.
 6. **A `table` clause** — a monotone table built per path before the steps and
    inverted by interpolation at every step, the extent doubled until the table
    reaches the horizon; tables up to `TABLE_SLOTS`. This is what moved
    `InverseAlphaStableSubordinator` onto the engine.
-7. **An exact recursion in place of a rejection loop** — a family reads two
+7. **An exact recursion in place of a rejection loop** — a family reads four
    uniforms a step, so a thinning loop with a random number of proposals has no
    home in it, but an exact inverse-transform of the same law does. This is
    what moved `Hawkes` (Dassios–Zhao) onto the engine, and `MultivariateHawkes`
    in count mode by **superposition**: each target's excess clock and the
    baselines' joint Poisson clock are independent given the state, so the next
-   event is the earliest of their exact arrivals and the mark its index. Extra
-   uniforms come from the noise components — half the sum of two squared
-   normals is a unit exponential and one minus its negative exponential a
-   uniform — so no `erf` enters the vocabulary.
+   event is the earliest of their exact arrivals and the mark its index. The
+   first target's clock reads `$u`, the second's `$u3`, the baselines' clock
+   `$u2` and its mark `$u4`, each a uniform of its own.
 8. **A pipeline of its own** — a process whose sample is a transform rather
    than a recursion gets a capability trait beside `FgnBackend`
-   (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
+   (`SheetBackend<T>` in `device/sheet_backend.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
-   reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
+   reusing the fGN pipeline's FFT stages, Philox draws and bit reversal. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
    kernels take (radix-2: embedding sides that are powers of two). This is
    what moved the sheet `Fbs` onto the devices. A chunk-invariance test
-   (`with_batch_budget`) is mandatory: every hash must run on a batch-global
-   counter, the correction's on one past every cell of the batch.
+   (`with_batch_budget`) is mandatory: every Philox draw must count a batch-global
+   cell, and the correction's a batch-global sheet under a site of its own.
 9. **A program** — a coefficient of time and state the user writes as an
    `Expr` (`stochastic_rs_distributions::traits::Expr`, stored as
    `Fn2D::Expr(Program)`) reaches the kernel as postfix code: the process
@@ -579,12 +614,12 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 - [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`; each impl preceded by its `crate::traits::Sealed` marker
 - [ ] `sampler()` derives (`self.seed.derive()`), constructs no `Unseeded`, races no shared atomic
 - [ ] `backend_switch!` with the right arm and **every** field named
-- [ ] Family declared in `families.rs`; the six DSL traps checked
+- [ ] Family declared in its `families/definitions/` chunk; the six DSL traps checked
 - [ ] `EulerSpec` variant + `encode()` arm; ≤ 20 params, ≤ 8 curves, ≤ 4 states, ≤ 4 noises
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
 - [ ] All five `ProcessExt` methods overridden through the backend; a configuration the kernels cannot carry answers `device_ready()` (a `ProcessExt` override) and falls back to the host in every one of them, never a panic; the hook's `assert!` names the bypass
-- [ ] Device-law case in the right `device_law/<group>.rs`; statistic moves with every parameter; tolerance not padded
+- [ ] Device-law case in the right leaf of `device_law/` (`<group>.rs`, or `<group>/<part>.rs` under `fractional`, `levy`, `systems`); statistic moves with every parameter; tolerance not padded
 - [ ] **Sabotage-verified**: term scaled by `lit(3.0)` → test fails → reverted, `cmp` clean
 - [ ] Chunk-invariance test extended if the family is fGN-fed
 - [ ] `guard!` line added; that tree's per-directory count and total bumped

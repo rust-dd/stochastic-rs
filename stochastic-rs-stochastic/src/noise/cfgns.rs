@@ -1,11 +1,10 @@
-//! # Cfgns
+//! Two fractional Gaussian noises of one Hurst exponent, correlated by `rho`.
 //!
 //! $$
 //! Z_t=L\eta_t^H,\quad \operatorname{Cov}(\eta_i^H,\eta_j^H)=\gamma_H(i-j)
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -13,15 +12,13 @@ use super::fgn::Fgn;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over
-/// `[0, t]`.
-///
-/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
-/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+/// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over `[0, t]`. Fields are
+/// private: the fGN driver caches a spectrum of `hurst`, `n` and `t` that the setters rebuild.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -29,7 +26,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Cfgns::<f64>::new(0.7, 0.3, 10, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   rho: T,
@@ -40,28 +37,22 @@ pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+    require!((T::zero()..=T::one()).contains(&hurst), hurst);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 1, n);
+  }
+
+  /// Panics unless `0 <= hurst <= 1`, `-1 <= rho <= 1`, `n >= 1`, a given `t` is positive and
+  /// finite, and every parameter is finite.
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    check_t(t);
 
     Self {
       hurst,
@@ -69,61 +60,58 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
       n,
       t,
       seed,
-      fgn: Self::fgn_for(hurst, n, t),
+      fgn: Fgn::new(hurst, n, t, Unseeded),
     }
   }
 
-  /// Shared by `new()` and the `with_*` setters so they cannot drift.
-  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
-    Fgn::new(hurst, n, t, Unseeded)
-  }
-
-  /// Replace `hurst`; rebuilds the embedded `fgn`. Panics if `hurst` is
-  /// outside `[0, 1]`, matching `new()`'s own assertion.
+  /// Replace `hurst`; panics unless `0 <= hurst <= 1`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
-    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self.fgn = Fgn::new(hurst, self.n, self.t, Unseeded);
     self
   }
 
-  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
-  /// own assertion.
-  pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
-    self.rho = rho;
-    self
-  }
-
-  /// Replace the number of points `n`; rebuilds the embedded `fgn`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `n >= 1`.
+  pub fn with_increments(mut self, n: usize) -> Self {
+    Self::check_n(n);
     self.n = n;
-    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self.fgn = Fgn::new(self.hurst, n, self.t, Unseeded);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
-    self
-  }
-
-  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
-  /// seed is a never-read dummy, so this does not touch it.
-  pub fn with_seed(mut self, seed: S) -> Self {
-    self.seed = seed;
+    self.fgn = Fgn::new(self.hurst, self.n, t, Unseeded);
     self
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+    require!((-T::one()..=T::one()).contains(&rho), rho);
+  }
+
+  /// Replace `rho`; panics unless `-1 <= rho <= 1`.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    Self::check_rho(rho);
+    self.rho = rho;
+    self
+  }
+
+  /// Replace the seed strategy's value. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst
@@ -145,21 +133,15 @@ impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
-  /// Sample with an explicit seed, used by callers like Cfbms.
-  pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
-  /// Core sampling — monomorphised per seed strategy, zero runtime branching.
-  /// Uses one paired fGN pass (real/imag of a single circulant FFT) for the two
-  /// independent fields; on a GPU backend they come from a batch of two.
+  /// One paired fGN pass (the real and imaginary parts of a single circulant FFT) gives the two
+  /// independent fields; a GPU backend takes them from a batch of two.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
     self
@@ -197,17 +179,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at
-  /// construction. Deriving (not cloning) is what decorrelates chunks: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. The first
-  /// `sample` reproduces the legacy `sample_impl(&seed)` stream bit-for-bit
-  /// — `sample_impl`'s own use of the seed is what advances it, the same
-  /// tick the legacy code consumed from `self.seed` directly — and each
-  /// subsequent call advances the owned seed further for an independent
-  /// correlated pair.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once,
+  /// which hash-scrambles chunk bases; `sample_impl` advances it, so each call gives a new pair.
   fn sampler(&self) -> CfgnsSampler<'_, T, S, B> {
     CfgnsSampler {
       cfgns: self,
@@ -215,10 +188,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine: on a device both rows are produced in the
-  /// kernel from the increments the fractional pipeline wrote to that same
-  /// device, on the host devices it is this process's own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device produces both rows in its kernel from the increments the
+  /// fractional pipeline wrote there; the host runs this process's own chunked sampler.
   fn sample(&self) -> [Array1<T>; 2] {
     crate::euler::EulerBackend::system_sample(&self.fgn.backend, self)
   }
@@ -240,10 +211,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`]
-/// (one paired fGN pass per call) and owns a seed derived once at
-/// construction.
+/// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`] (one paired fGN
+/// pass per call) and owns a seed derived once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfgns: &'a Cfgns<T, S, B>,
   seed: S,
@@ -281,11 +252,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<
   }
 }
 
-/// The Euler engine's view of correlated fGn: the pair *is* the step, so the
-/// two-shock innovation family reports its own noise. Both rows come out of
-/// one embedding — they share a Hurst exponent — so the pipeline draws
-/// `2 · m` paths in the one batched call and the step reads its second stream
-/// from the buffer's next `paths` rows.
+/// The Euler engine's view: the pair is the step, so the two-shock innovation family reports its
+/// noise. One embedding gives both rows: `2 · m` paths per call, the second stream `paths` rows on.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerSystem<T, 2> for Cfgns<T, S, B>
 {

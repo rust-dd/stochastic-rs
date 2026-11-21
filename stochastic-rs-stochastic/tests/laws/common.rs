@@ -4,21 +4,16 @@
 use ndarray::Array1;
 use num_complex::Complex64;
 
-/// Paths per case. They are independent — each draws its own stream — so the
-/// spread across them is the error bar every assertion below is built from,
-/// whatever the dependence *inside* a path is.
+/// Paths per case. Each draws its own stream, so the spread across them is the error bar of
+/// every assertion, whatever the dependence inside a path.
 pub(crate) const PATHS: usize = 256;
 
-/// Points per path. Long enough that the O(1/n) bias of a sample
-/// autocorrelation stays well under the band: for an AR(1) at φ = 0.6 that
-/// bias is ≈ 2.8/n, against a standard error of √((1 − ρ²)/(n · PATHS)), so
-/// at these sizes it is about 0.6 of one standard error.
+/// Points per path, long enough that the O(1/n) bias of a sample autocorrelation stays under
+/// the band: for an AR(1) at φ = 0.6 it is ≈ 2.8/n, about 0.6 of one standard error.
 pub(crate) const N: usize = 16_384;
 
-/// Points dropped from the head of every path. A sampler starts from zero or
-/// from the unconditional variance, not from a draw of the stationary law, so
-/// the first points are a transient; 1024 is past 10⁻¹⁰ of any persistence
-/// used here (0.85^1024 ≈ 10⁻⁷²).
+/// Points dropped from the head of every path: a sampler starts from zero or the unconditional
+/// variance, not a stationary draw, and 1024 outlasts any persistence here (0.85^1024 ≈ 10⁻⁷²).
 pub(crate) const BURN: usize = 1_024;
 
 /// A statistic estimated from independent paths.
@@ -49,19 +44,27 @@ fn estimate(paths: &[Array1<f64>], burn: usize, stat: impl Fn(&[f64]) -> f64) ->
   }
 }
 
-/// The estimate covers `theory` within five standard errors.
-///
-/// Five rather than three: a file of this many assertions run on two
-/// architectures — the SIMD stream differs between them, so a seed verified
-/// on one is an unverified draw on the other — needs a per-assertion false
-/// failure rate near 10⁻⁶, and a wrong closed form is off by tens of percent,
-/// hundreds of standard errors away.
+/// The estimate covers `theory` within five standard errors. Five, not three: many assertions
+/// on two architectures with different SIMD streams need a false-failure rate near 10⁻⁶.
 pub(crate) fn holds(estimate: Estimate, theory: f64, what: &str) {
   let Estimate { mean, se } = estimate;
   let z = (mean - theory) / se;
   assert!(
     z.abs() < 5.0,
     "{what}: sampled {mean} ± {se}, the law says {theory} ({z:.1} standard errors away)"
+  );
+}
+
+/// [`holds`] for the best of several estimates, one per pinned seed: a right law fails only when
+/// every seed misses, at the band's rate raised to the number of seeds.
+pub(crate) fn holds_on_one_of(estimates: &[Estimate], theory: f64, what: &str) {
+  let z = |e: &Estimate| ((e.mean - theory) / e.se).abs();
+  let best = estimates.iter().map(z).fold(f64::INFINITY, f64::min);
+  assert!(
+    best < 5.0,
+    "{what}: the law says {theory}, the best of {} seeds is {best:.1} standard errors away: {:?}",
+    estimates.len(),
+    estimates.iter().map(|e| (e.mean, e.se)).collect::<Vec<_>>()
   );
 }
 
@@ -81,9 +84,8 @@ pub(crate) fn over_paths(values: &[f64]) -> Estimate {
   }
 }
 
-/// The variance of independent per-path values and its standard error, taken
-/// from the sample's own fourth moment: `Var(s²) = (m₄ − m₂²)/P`, which needs
-/// no normality assumption of the values themselves.
+/// The variance of independent per-path values and its standard error from the sample's own
+/// fourth moment, `Var(s²) = (m₄ − m₂²)/P`, which assumes no normality.
 pub(crate) fn spread_over_paths(values: &[f64]) -> Estimate {
   let n = values.len() as f64;
   let m = values.iter().sum::<f64>() / n;
@@ -95,13 +97,8 @@ pub(crate) fn spread_over_paths(values: &[f64]) -> Estimate {
   }
 }
 
-/// The estimate covers `theory` within five standard errors, widened by the
-/// bias the sampler's own scheme carries.
-///
-/// `bias` is a difference of two closed forms — the law of the chain the code
-/// steps minus the law of the diffusion it approximates — so it is computed,
-/// not chosen, and a case that needs a large one is a case whose step is too
-/// coarse to be testing the model at all.
+/// The estimate covers `theory` within five standard errors widened by `bias`, the computed
+/// difference between the law of the chain the code steps and the diffusion's.
 pub(crate) fn holds_within(estimate: Estimate, theory: f64, bias: f64, what: &str) {
   let Estimate { mean, se } = estimate;
   let band = 5.0 * se + bias.abs();
@@ -124,9 +121,8 @@ pub(crate) fn variance(x: &[f64]) -> f64 {
   x.iter().map(|v| (v - m).powi(2)).sum::<f64>() / x.len() as f64
 }
 
-/// The sample autocorrelation at lag `k`, normalised by the series length as
-/// the textbook estimator is, so it is the quantity the published ACF
-/// formulas name.
+/// The sample autocorrelation at lag `k`, normalised by the series length as the textbook
+/// estimator is, so it is the quantity the published ACF formulas name.
 pub(crate) fn autocorr(x: &[f64], k: usize) -> f64 {
   let m = mean(x);
   let n = x.len();
@@ -143,15 +139,8 @@ pub(crate) fn kurtosis(x: &[f64]) -> f64 {
   x.iter().map(|s| (s - m).powi(4)).sum::<f64>() / x.len() as f64 / v.powi(2)
 }
 
-/// The sample autocovariance at lag `k` about a mean the law names.
-///
-/// The correlation is a ratio of two sums over the same series, and at high
-/// persistence that ratio carries a bias of order `1/n` — at `ρ = 0.994` and
-/// `n = 15360` it runs to six standard errors, an order above the
-/// discretisation it would be used to measure. Dividing by the number of
-/// products actually formed and centring on the known mean leaves an
-/// estimator with no such bias, and the law states a covariance as readily as
-/// a correlation.
+/// The sample autocovariance at lag `k` about a known mean, over the number of products formed:
+/// unbiased, where the correlation ratio's `1/n` bias is six standard errors at `ρ = 0.994`.
 pub(crate) fn autocovariance(x: &[f64], k: usize, centre: f64) -> f64 {
   (k..x.len())
     .map(|t| (x[t] - centre) * (x[t - k] - centre))
@@ -159,20 +148,15 @@ pub(crate) fn autocovariance(x: &[f64], k: usize, centre: f64) -> f64 {
     / (x.len() - k) as f64
 }
 
-/// The autocorrelation of the squared series, the statistic a conditional
-/// variance model is read through: the level series of a GARCH is white
-/// noise, and everything the model says lives in the squares.
+/// The autocorrelation of the squared series, the statistic a conditional variance model is
+/// read through: a GARCH's level series is white noise.
 pub(crate) fn squared_autocorr(x: &[f64], k: usize) -> f64 {
   let squares: Vec<f64> = x.iter().map(|v| v * v).collect();
   autocorr(&squares, k)
 }
 
-/// Every increment of every path, pooled.
-///
-/// A Lévy process has independent, identically distributed increments, so the
-/// `paths · (n − 1)` differences are that many independent draws of the law
-/// at one step — a far sharper sample than the terminal values alone, which
-/// number only `paths`.
+/// Every increment of every path, pooled: a Lévy process's `paths · (n − 1)` increments are
+/// independent draws of the one-step law, a far sharper sample than `paths` terminal values.
 pub(crate) fn increments(paths: &[Array1<f64>]) -> Vec<f64> {
   paths
     .iter()
@@ -183,14 +167,8 @@ pub(crate) fn increments(paths: &[Array1<f64>]) -> Vec<f64> {
     .collect()
 }
 
-/// The sample mean of `f` over independent draws, against the value the law
-/// gives it, within five standard errors of the sample's own spread.
-///
-/// The transforms below are what this exists for: `f = cos(ux)` and
-/// `sin(ux)` estimate a characteristic function, `f = exp(−ux)` a Laplace
-/// transform. All three are bounded, so the standard error is the sample's
-/// and needs no moment condition on the process itself — which is what makes
-/// this the one statistic that reaches a law with no finite mean.
+/// The sample mean of `f` against the law's value, within five standard errors. A bounded `f`
+/// (`cos(ux)`, `sin(ux)`, `exp(−ux)`) needs no moment, so it reaches a law with no finite mean.
 pub(crate) fn transform_holds(sample: &[f64], f: impl Fn(f64) -> f64, theory: f64, what: &str) {
   let values: Vec<f64> = sample.iter().map(|&x| f(x)).collect();
   let n = values.len() as f64;

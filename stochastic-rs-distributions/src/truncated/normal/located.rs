@@ -53,7 +53,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     } else {
       halved_gap(lo, up, mu, sigma)
     };
-    // `k(z)/∫k·(1 − k(far)/k(z))` from the bound `z` nearer `μ`, in logs: kernel values below the doubles keep it.
+    // `k(z)/∫k·(1 − k(far)/k(z))` from the bound `z` nearer `μ`, in logs: kernel values below the
+    // doubles keep it.
     let (z, bound, share) = match (alpha.is_finite(), beta.is_finite()) {
       (false, false) => return Some((0.0, 0)),
       (true, false) => (alpha, lo, 1.0),
@@ -65,7 +66,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       _ if half_gap >= 0.0 => (alpha, lo, -(-half_gap).exp_m1()),
       _ => (beta, up, half_gap.exp_m1()),
     };
-    // `z`'s rest `(bound − μ)/σ − z`: near 38σ out `z²/2` is 700, and an ulp of `z` moves it by 1e-13.
+    // `z`'s rest `(bound − μ)/σ − z`: near 38σ out `z²/2` is 700, and an ulp of `z` moves it by
+    // 1e-13.
     let (d, d_lo) = two_sum(bound, -mu);
     let rest = if d.is_finite() {
       ((-z).mul_add(sigma, d) + d_lo) / sigma
@@ -81,7 +83,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some((m * share, p))
   }
 
-  /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
+  /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still
+  /// scales by `σ`.
   fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
     let (es, ms) = split_pow2(self.base.sigma().to_f64()?);
     let v = ldexp(ms * m, es + p);
@@ -276,7 +279,8 @@ fn halved(x: f64, mu: f64, sigma: f64) -> f64 {
   (0.5 * x - 0.5 * mu) / (0.5 * sigma)
 }
 
-/// `(up − lo)/σ` for an interval off `μ`, from halves where `up − lo` overflows; NaN about `μ` or past the doubles.
+/// `(up − lo)/σ` for an interval off `μ`, from halves where `up − lo` overflows; NaN about `μ` or
+/// past the doubles.
 pub(super) fn width(alpha: f64, beta: f64, lo: f64, up: f64, sigma: f64) -> f64 {
   let w = if (up - lo).is_finite() {
     (up - lo) / sigma

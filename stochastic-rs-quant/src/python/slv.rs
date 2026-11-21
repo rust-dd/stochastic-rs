@@ -6,11 +6,13 @@ use numpy::PyReadonlyArray1;
 use numpy::PyReadonlyArray2;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::PyMcEstimate;
-use crate::calibration::heston::HestonParams;
-use crate::calibration::heston_slv::HestonSlvCalibrationResult;
+use crate::calibration::Calibrated;
 use crate::calibration::heston_slv::HestonSlvCalibrator;
+use crate::calibration::heston_slv::HestonSlvFit;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::HestonSlvPricer;
@@ -21,7 +23,8 @@ use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
 
 fn params_tuple(p: &HestonSlvParams) -> (f64, f64, f64, f64, f64, f64) {
-  (p.kappa, p.theta, p.sigma, p.rho, p.v0, p.eta)
+  let h = p.heston;
+  (h.kappa, h.theta, h.sigma, h.rho, h.v0, p.eta)
 }
 
 #[pyclass(name = "LeverageSurface", from_py_object)]
@@ -115,7 +118,7 @@ impl PyLeverageSurface {
 
 #[pyclass(name = "HestonSlvPricer")]
 pub struct PyHestonSlvPricer {
-  inner: HestonSlvPricer,
+  inner: HestonSlvPricer<Deterministic>,
 }
 
 #[pymethods]
@@ -161,11 +164,13 @@ impl PyHestonSlvPricer {
         ));
       }
       let params = HestonSlvParams {
-        kappa,
-        theta,
-        sigma,
-        rho,
-        v0,
+        heston: HestonParams {
+          v0,
+          kappa,
+          theta,
+          sigma,
+          rho,
+        },
         eta,
       };
       let inner = match (r, q) {
@@ -181,7 +186,7 @@ impl PyHestonSlvPricer {
         inner: inner
           .with_paths(n_paths)
           .with_steps_per_year(steps_per_year)
-          .with_seed(seed),
+          .with_seed(Deterministic::new(seed)),
       })
     })?
   }
@@ -250,19 +255,19 @@ impl PyHestonSlvPricer {
 
 #[pyclass(name = "HestonSlvCalibrationResult")]
 pub struct PyHestonSlvCalibrationResult {
-  inner: HestonSlvCalibrationResult,
+  inner: Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>>,
 }
 
 #[pymethods]
 impl PyHestonSlvCalibrationResult {
   /// `(kappa, theta, sigma, rho, v0, eta)`.
   fn params(&self) -> (f64, f64, f64, f64, f64, f64) {
-    params_tuple(&self.inner.fit.params)
+    params_tuple(&self.inner.params.params)
   }
 
   fn leverage(&self) -> PyLeverageSurface {
     PyLeverageSurface {
-      inner: self.inner.fit.leverage.clone(),
+      inner: self.inner.params.leverage.clone(),
     }
   }
 
@@ -270,7 +275,7 @@ impl PyHestonSlvCalibrationResult {
   /// `(v0, kappa, theta, sigma, rho, converged, rmse)`, `None` when they
   /// were pinned.
   fn heston(&self) -> Option<(f64, f64, f64, f64, f64, bool, f64)> {
-    self.inner.heston.as_ref().map(|fit| {
+    self.inner.diagnostics.as_ref().map(|fit| {
       let p = &fit.params;
       (
         p.v0,
@@ -291,7 +296,7 @@ impl PyHestonSlvCalibrationResult {
 
   #[getter]
   fn max_error(&self) -> f64 {
-    self.inner.max_error
+    self.inner.max_error.expect("an SLV fit reprices its grid")
   }
 
   #[getter]
@@ -302,7 +307,7 @@ impl PyHestonSlvCalibrationResult {
   /// The rates the leverage is anchored to.
   #[getter]
   fn rates(&self) -> (f64, f64) {
-    (self.inner.r, self.inner.q)
+    (self.inner.params.r, self.inner.params.q)
   }
 
   /// The Monte Carlo pricer of the calibrated model, anchored to the
@@ -310,19 +315,35 @@ impl PyHestonSlvCalibrationResult {
   #[pyo3(signature = (n_paths=100_000, steps_per_year=200, seed=42))]
   fn to_model(&self, n_paths: usize, steps_per_year: usize, seed: u64) -> PyHestonSlvPricer {
     PyHestonSlvPricer {
-      inner: self
-        .inner
-        .to_model(self.inner.r, self.inner.q)
+      inner: crate::traits::ToModel::to_model(&self.inner)
         .with_paths(n_paths)
         .with_steps_per_year(steps_per_year)
-        .with_seed(seed),
+        .with_seed(Deterministic::new(seed)),
     }
   }
 }
 
 #[pyclass(name = "HestonSlvCalibrator")]
 pub struct PyHestonSlvCalibrator {
-  inner: HestonSlvCalibrator,
+  inner: HestonSlvCalibrator<Deterministic>,
+  heston_start: Option<HestonParams>,
+}
+
+impl PyHestonSlvCalibrator {
+  /// `heston_initial_guess` as a start; `calibrate` reads its Heston part only.
+  fn start(&self) -> Option<HestonSlvFit> {
+    let c = &self.inner;
+    self.heston_start.map(|heston| HestonSlvFit {
+      params: HestonSlvParams { heston, eta: c.eta },
+      leverage: LeverageSurface::new(
+        Array1::from_elem(1, c.s()),
+        Array1::from_elem(1, 1.0),
+        ndarray::Array2::ones((1, 1)),
+      ),
+      r: c.r(),
+      q: c.q(),
+    })
+  }
 }
 
 #[pymethods]
@@ -371,18 +392,18 @@ impl PyHestonSlvCalibrator {
           rho,
         };
       let calls = calls.as_array().to_owned();
+      let particle = ParticleMethod::default()
+        .with_particles(n_particles)
+        .with_steps_per_year(steps_per_year)
+        .with_seed(Deterministic::new(seed))
+        .with_bandwidth_factor(bandwidth_factor)
+        .with_bandwidth_t_min(bandwidth_t_min);
       let mut inner = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
         .with_mixing(eta)
-        .with_dupire_eps(dupire_eps);
+        .with_dupire_eps(dupire_eps)
+        .with_particle_method(particle);
       inner = match method.to_ascii_lowercase().as_str() {
-        "particle" => inner.with_particle_method(
-          ParticleMethod::default()
-            .with_particles(n_particles)
-            .with_steps_per_year(steps_per_year)
-            .with_seed(seed)
-            .with_bandwidth_factor(bandwidth_factor)
-            .with_bandwidth_t_min(bandwidth_t_min),
-        ),
+        "particle" => inner,
         "fokker_planck" | "fokker-planck" | "pde" => inner.with_fokker_planck(
           FokkerPlanckMethod::default()
             .with_nodes(log_spot_nodes, variance_nodes)
@@ -398,21 +419,22 @@ impl PyHestonSlvCalibrator {
       if let Some(pinned) = heston {
         inner = inner.with_heston_params(heston_params(pinned));
       }
-      if let Some(guess) = heston_initial_guess {
-        inner = inner.with_heston_initial_guess(heston_params(guess));
-      }
       if let Some(lv) = local_vol {
         let lv = lv.as_array().to_owned();
         inner = inner.with_local_vol(lv);
       }
-      Ok(Self { inner })
+      let heston_start = heston_initial_guess.map(heston_params);
+      Ok(Self {
+        inner,
+        heston_start,
+      })
     })?
   }
 
   fn calibrate(&self) -> PyResult<PyHestonSlvCalibrationResult> {
     let inner = self
       .inner
-      .calibrate(None)
+      .calibrate(self.start())
       .map_err(|e| PyValueError::new_err(format!("Heston SLV calibration failed: {e}")))?;
     Ok(PyHestonSlvCalibrationResult { inner })
   }

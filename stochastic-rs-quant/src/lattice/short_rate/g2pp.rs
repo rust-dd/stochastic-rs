@@ -7,6 +7,13 @@ use super::TwoFactorShortRateModel;
 use super::common::OrnsteinUhlenbeckFactor;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::correlated_joint_probabilities;
+use super::common::require_finite;
+use super::common::require_non_negative;
+use crate::calibration::tree_swaption::G2ppParams;
+use crate::instruments::option::BermudanSwaption;
+use crate::instruments::option::BermudanSwaptionValuation;
+use crate::instruments::option::BermudanTree;
+use crate::instruments::option::bermudan::g2pp_valuation;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -32,56 +39,40 @@ pub struct G2ppTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> G2ppTreeModel<T> {
-  /// Construct a G2++ tree model.
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    initial_x: T,
-    initial_y: T,
-    phi: T,
-    mean_reversion_x: T,
-    mean_reversion_y: T,
-    sigma_x: T,
-    sigma_y: T,
-    rho: T,
-  ) -> Self {
-    Self {
+  /// The two factors' time-0 values, then the calibrated parameters with their constant shift;
+  /// panics unless every value is finite, both reversions and vols are `≥ 0` and `−1 ≤ ρ ≤ 1`.
+  pub fn new(initial_x: T, initial_y: T, params: G2ppParams) -> Self {
+    let model = Self {
       initial_x,
       initial_y,
-      phi,
-      mean_reversion_x,
-      mean_reversion_y,
-      sigma_x,
-      sigma_y,
-      rho,
-    }
+      phi: T::from_f64_fast(params.phi),
+      mean_reversion_x: T::from_f64_fast(params.mean_reversion_x),
+      mean_reversion_y: T::from_f64_fast(params.mean_reversion_y),
+      sigma_x: T::from_f64_fast(params.sigma_x),
+      sigma_y: T::from_f64_fast(params.sigma_y),
+      rho: T::from_f64_fast(params.rho),
+    };
+    model.check();
+    model
+  }
+
+  fn check(&self) {
+    require_finite("initial_x", self.initial_x);
+    require_finite("initial_y", self.initial_y);
+    require_non_negative("mean_reversion_x", self.mean_reversion_x);
+    require_non_negative("mean_reversion_y", self.mean_reversion_y);
+    require_non_negative("sigma_x", self.sigma_x);
+    require_non_negative("sigma_y", self.sigma_y);
+    let rho = self.rho;
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
+    );
+    require_finite("phi", self.phi);
   }
 }
 
 impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
-  fn initial_x(&self) -> T {
-    self.initial_x
-  }
-
-  fn initial_y(&self) -> T {
-    self.initial_y
-  }
-
-  fn drift_x(&self, _time: T, x: T) -> T {
-    -self.mean_reversion_x * x
-  }
-
-  fn drift_y(&self, _time: T, y: T) -> T {
-    -self.mean_reversion_y * y
-  }
-
-  fn diffusion_x(&self, _time: T, _x: T) -> T {
-    self.sigma_x
-  }
-
-  fn diffusion_y(&self, _time: T, _y: T) -> T {
-    self.sigma_y
-  }
-
   fn correlation(&self) -> T {
     self.rho
   }
@@ -91,8 +82,8 @@ impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
   }
 }
 
-/// G2++ two-factor tree: Gaussian OU factor trees coupled per step by a corner correction that
-/// keeps both marginals and matches ρ only until a corner clamps at 0 (at most |ρ| = 1/3).
+/// OU factor trees joined by Brigo–Mercurio's `ρ/36` pattern, scaled where a branch lacks the mass;
+/// so on 4 to 64 steps a year a 1y×2y payer is 8–22 % high at `ρ = −0.95`, 54–85 % at `−0.99`.
 #[derive(Debug, Clone)]
 pub struct G2ppTree<T: RealExt> {
   /// Underlying model.
@@ -108,20 +99,24 @@ pub struct G2ppTree<T: RealExt> {
 }
 
 impl<T: RealExt> G2ppTree<T> {
-  /// Build a G2++ tree with `steps` time steps up to `horizon`.
+  /// `steps` levels up to `horizon`; panics unless `horizon` is finite and positive, `steps > 0`
+  /// and the model passes the checks of [`G2ppTreeModel::new`], which a struct literal skips.
   pub fn new(model: G2ppTreeModel<T>, horizon: T, steps: usize) -> Self {
-    let x_model = OrnsteinUhlenbeckFactor {
+    model.check();
+    let x_factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_x,
+      long_run_mean: T::zero(),
       mean_reversion: model.mean_reversion_x,
       sigma: model.sigma_x,
     };
-    let y_model = OrnsteinUhlenbeckFactor {
+    let y_factor = OrnsteinUhlenbeckFactor {
       initial_state: model.initial_y,
+      long_run_mean: T::zero(),
       mean_reversion: model.mean_reversion_y,
       sigma: model.sigma_y,
     };
-    let x_tree = build_one_factor_trinomial_tree(&x_model, horizon, steps);
-    let y_tree = build_one_factor_trinomial_tree(&y_model, horizon, steps);
+    let x_tree = build_one_factor_trinomial_tree(&x_factor, horizon, steps);
+    let y_tree = build_one_factor_trinomial_tree(&y_factor, horizon, steps);
     Self {
       model,
       dt: horizon / T::from_usize_(steps),
@@ -184,5 +179,87 @@ impl<T: RealExt> G2ppTree<T> {
     }
 
     values[[0, 0]]
+  }
+}
+
+impl<T: RealExt> BermudanTree<T> for G2ppTree<T> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T> {
+    g2pp_valuation(swaption, self)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Axis;
+
+  use super::*;
+
+  fn unit_vol_params(a: f64, b: f64, rho: f64) -> G2ppParams {
+    G2ppParams {
+      mean_reversion_x: a,
+      mean_reversion_y: b,
+      sigma_x: 1.0,
+      sigma_y: 1.0,
+      rho,
+      phi: 0.0,
+    }
+  }
+
+  /// `Corr(x_T, y_T)` of the tree: the root's unit mass carried forward through the joint tables.
+  fn terminal_correlation(a: f64, b: f64, rho: f64, t: f64, steps: usize) -> f64 {
+    let tree = G2ppTree::new(
+      G2ppTreeModel::new(0.0, 0.0, unit_vol_params(a, b, rho)),
+      t,
+      steps,
+    );
+    let mut mass = Array2::from_elem((1, 1), 1.0);
+    for level in 0..steps {
+      let mut next = Array2::zeros((2 * level + 3, 2 * level + 3));
+      for ((ix, iy), &m) in mass.indexed_iter() {
+        let (bx, by) = (
+          tree.x_tree.branches[level][ix],
+          tree.y_tree.branches[level][iy],
+        );
+        let joint = correlated_joint_probabilities(bx, by, rho);
+        for (u, row) in joint.iter().enumerate() {
+          for (v, p) in row.iter().enumerate() {
+            next[[bx.center_index + u - 1, by.center_index + v - 1]] += m * p;
+          }
+        }
+      }
+      mass = next;
+    }
+    let (x, y) = (&tree.x_tree.states[steps], &tree.y_tree.states[steps]);
+    let (px, py) = (mass.sum_axis(Axis(1)), mass.sum_axis(Axis(0)));
+    let (mx, my) = (px.dot(x), py.dot(y));
+    let (dx, dy) = (x - mx, y - my);
+    let cov = dx.dot(&mass.dot(&dy));
+    cov / (px.dot(&(&dx * &dx)) * py.dot(&(&dy * &dy))).sqrt()
+  }
+
+  /// Auer (2009)'s `Corr_{x,y}(t)`: within 0.05 for `|ρ| < 1` and converging where `a ≠ b`.
+  #[test]
+  fn the_terminal_factor_correlation_converges_to_auers() {
+    for (a, b, rho, t, auer) in [
+      (0.5, 0.05, -0.7, 3.0, -0.655_250_231_639_761_1),
+      (0.05, 0.05, -0.9, 1.0, -0.9),
+      (0.5, 0.05, -0.7, 1.0, -0.694_215_295_961_855_3),
+      (0.5, 0.05, -1.0, 3.0, -0.936_071_759_485_373),
+    ] {
+      let coarse = terminal_correlation(a, b, rho, t, 30);
+      let fine = terminal_correlation(a, b, rho, t, 120);
+      if rho.abs() < 1.0 {
+        assert!(
+          (fine - auer).abs() < 0.05,
+          "a {a} b {b} t {t}: {fine} vs {auer}"
+        );
+      }
+      if a != b {
+        assert!(
+          (fine - auer).abs() < (coarse - auer).abs(),
+          "{coarse} -> {fine} vs {auer}"
+        );
+      }
+    }
   }
 }

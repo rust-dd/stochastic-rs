@@ -1,15 +1,14 @@
-//! The processes whose families clamp, truncate or reflect. For these the
-//! boundary is as much of the contract as the law, so each case asserts the
-//! interval the family promises alongside the terminal statistic.
+//! The processes whose families clamp, truncate or reflect: each case asserts the interval the
+//! family promises alongside the terminal statistic.
 
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::correlation::teng::TengSCP;
+use stochastic_rs_stochastic::correlation::teng::TengScp;
 use stochastic_rs_stochastic::correlation::van_emmerich::VanEmmerich;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::displaced_diffusion::DisplacedDiffusion;
-use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
+use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
 use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
@@ -277,9 +276,8 @@ fn pearson_agrees_with_the_cpu_law() {
   );
 }
 
-/// The displaced diffusion steps the shifted variable and reports the shift
-/// back out, so what the device must reproduce is the reported level, not the
-/// state it stepped.
+/// The displaced diffusion steps the shifted variable and reports the shift back out, so the
+/// device must reproduce the reported level, not the state it stepped.
 #[test]
 fn displaced_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -288,7 +286,7 @@ fn displaced_diffusion_agrees_with_the_cpu_law() {
       0.2,
       20.0,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(3),
     )
@@ -303,12 +301,11 @@ fn displaced_diffusion_agrees_with_the_cpu_law() {
   );
 }
 
-/// Teng's process is stepped on an unbounded variable and reported through a
-/// `tanh`, so the reported correlation cannot leave `(−1, 1)` however the
-/// state wanders.
+/// Teng's process is stepped on an unbounded variable and reported through a `tanh`, so the
+/// reported correlation cannot leave `(−1, 1)`.
 #[test]
 fn teng_correlation_stays_in_range() {
-  let build = || TengSCP::<f32, _>::new(1.0, 0.3, 0.4, 0.2, 253, Some(1.0), Deterministic::new(3));
+  let build = || TengScp::<f32, _>::new(1.0, 0.3, 0.4, 0.2, 253, Some(1.0), Deterministic::new(3));
   let device = build().on::<Device>().sample_par(M);
   within(&device, -1.0, 1.0, "Teng correlation");
   agrees(

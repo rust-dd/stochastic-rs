@@ -1,14 +1,7 @@
-//! Jarque-Bera test for normality, comparing sample skewness and excess
-//! kurtosis against their values under normality via the asymptotic
-//! chi-square(2) statistic.
+//! Jarque–Bera test for normality: sample skewness and excess kurtosis in a `χ²(2)` statistic.
 //!
-//! References:
-//! - Jarque C. M. & Bera A. K. (1980) — *Efficient Tests for Normality,
-//!   Homoscedasticity and Serial Independence of Regression Residuals*,
-//!   Economics Letters 6(3), 255–259, DOI: 10.1016/0165-1765(80)90024-5.
-//! - Jarque C. M. & Bera A. K. (1987) — *A Test for Normality of
-//!   Observations and Regression Residuals*, International Statistical
-//!   Review 55(2), 163–172, DOI: 10.2307/1403192.
+//! Reference: Jarque & Bera (1980), Econ. Lett. 6(3), 255–259, DOI: 10.1016/0165-1765(80)90024-5
+//! Reference: Jarque & Bera (1987), Int. Stat. Rev. 55(2), 163–172, DOI: 10.2307/1403192
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_p;
@@ -17,6 +10,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Jarque-Bera normality test.
@@ -67,9 +61,7 @@ pub fn jarque_bera_test(
   assert_alpha(cfg.alpha);
   let sample = as_slice_or_copy(sample);
   validate(&sample, 8)?;
-  if sample.iter().all(|&v| v == sample[0]) {
-    return Err(StatsError::DegenerateData("constant sample"));
-  }
+  reject_constant(&sample, "constant sample")?;
 
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;
@@ -99,9 +91,8 @@ pub fn jarque_bera_test(
   let excess_kurtosis = kurtosis - 3.0;
   let statistic = (n / 6.0) * (skewness * skewness + 0.25 * excess_kurtosis * excess_kurtosis);
 
-  // χ²(df=2) survival function: P(X > t) = 1 − P(1, t/2) = exp(−t/2).
-  // Use the regularised lower incomplete gamma to make the dependency
-  // explicit and uniform with other CDF use sites.
+  // χ²(2) survival function `exp(−t/2)`, as `1 − P(1, t/2)` through the regularised incomplete
+  // gamma the other CDF sites use.
   let p_value = (1.0 - gamma_p(1.0, 0.5 * statistic)).clamp(0.0, 1.0);
 
   Ok(JarqueBeraTest {
@@ -127,9 +118,8 @@ mod tests {
   use super::jarque_bera_test;
   use crate::StatsError;
 
-  /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
-  /// `fill_slice` takes no RNG at all and draws from the distribution's own
-  /// SIMD stream, so only the constructor's seed controls the data.
+  /// From a `Deterministic` seed: `fill_slice` takes no RNG and draws from the distribution's own
+  /// stream, so only the constructor's seed controls the data.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
     let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0; n];
@@ -139,10 +129,8 @@ mod tests {
 
   #[test]
   fn jarque_bera_accepts_normal_sample() {
-    // A correct test still rejects a genuine normal sample at rate `alpha`,
-    // and the SIMD stream differs between platforms, so one seed cannot be
-    // trusted to be lucky everywhere. Three independent seeds put the
-    // false-failure probability at roughly 1e-6 on any target.
+    // A correct test rejects a true normal sample at rate `alpha`, and the SIMD stream differs by
+    // platform: three independent seeds put a false failure near 1e-6 on any target.
     let best_p = [1u64, 999, 7]
       .into_iter()
       .map(|seed| {
@@ -164,9 +152,8 @@ mod tests {
   fn jarque_bera_rejects_heavy_tail_sample() {
     let mut x = normal_sample(42, 5000);
 
-    // The bimodal +/-2 shift is what makes the sample non-normal, so the
-    // coin flips genuinely drive the data and get their own seed, distinct
-    // from the one behind `normal_sample`.
+    // The ±2 shift is what makes the sample bimodal, so the coin flips drive the data and take a
+    // seed of their own, apart from `normal_sample`'s.
     let mut coin = vec![0.0_f64; x.len()];
     SimdUniform::<f64>::new(0.0, 1.0)
       .seeded(&Deterministic::new(43))

@@ -15,6 +15,7 @@ use stochastic_rs::quant::microstructure::optimal_execution;
 use stochastic_rs::quant::microstructure::propagator_impact_path;
 use stochastic_rs::quant::microstructure::roll_spread;
 use stochastic_rs::quant::microstructure::single_period_kyle;
+use stochastic_rs::quant::order_book::Side;
 use stochastic_rs::simd_rng::Deterministic;
 
 fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
@@ -25,7 +26,7 @@ fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
 }
 
 fn bench_almgren_chriss(c: &mut Criterion) {
-  let p = AlmgrenChrissParams::new(50_000.0_f64, 1.0, 200, 0.02, 1e-7, 1e-5, 1.0);
+  let p = AlmgrenChrissParams::new(Side::Sell, 50_000.0_f64, 1.0, 200, 0.02, 1e-7, 1e-5, 1.0);
   c.bench_function("almgren_chriss_n200", |b| {
     b.iter(|| std::hint::black_box(optimal_execution(&p)));
   });

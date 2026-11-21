@@ -10,7 +10,8 @@ pub(super) fn one_minus_exp_over(z: f64) -> f64 {
   }
 }
 
-/// The $x^{2k-1}$ coefficients $-B_{2k}/(2k)!$, $k = 1..=7$, of `mean_fraction` past its constant ½, rounded to `f64`.
+/// The $x^{2k-1}$ coefficients $-B_{2k}/(2k)!$, $k = 1..=7$, of `mean_fraction` past its constant
+/// ½, rounded to `f64`.
 const MEAN_SERIES: [f64; 7] = [
   -0.08333333333333333,
   0.001388888888888889,
@@ -21,7 +22,8 @@ const MEAN_SERIES: [f64; 7] = [
   -1.3382536530684679e-11,
 ];
 
-/// The $x^{2k-2}$ coefficients $(2k-1)B_{2k}/(2k)!$, $k = 1..=12$, of `variance_fraction`, rounded to `f64`.
+/// The $x^{2k-2}$ coefficients $(2k-1)B_{2k}/(2k)!$, $k = 1..=12$, of `variance_fraction`, rounded
+/// to `f64`.
 const VARIANCE_SERIES: [f64; 12] = [
   0.08333333333333333,
   -0.004166666666666667,

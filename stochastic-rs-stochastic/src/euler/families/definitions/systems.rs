@@ -1,13 +1,11 @@
 macro_rules! euler_systems {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_jump_schemes! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
-  /// `dS = μS dt + S√V dW`, `dV = κ(θ − V) dt + σV^p dB` with `corr(W, B) = ρ`
-  /// and the variance truncated at zero: the Heston model under its Euler
-  /// scheme. The two noise components are drawn independently and correlated
-  /// here, which is what the host sampler does with its own pair.
+  /// `dS = μS dt + S√V dW`, `dV = κ(θ − V) dt + σV^p dB`, `corr(W, B) = ρ`, the variance
+  /// truncated at zero: Heston under Euler. The noises are drawn independently and correlated here.
   35 => Heston { mu, kappa, theta, sigma, rho, pow_v }
     state (s, v)
     noise (dw, dz)
@@ -32,9 +30,8 @@ macro_rules! euler_systems {
     }
     report { s, v },
 
-  /// `dF = α F^β dW`, `dα = ν α dB` with `corr(W, B) = ρ`: SABR, with the
-  /// volatility stepped by its exact log-normal solution so it stays
-  /// positive. `½ν²` is folded on the host.
+  /// `dF = α F^β dW`, `dα = ν α dB` with `corr(W, B) = ρ`: SABR, the volatility stepped by its
+  /// exact log-normal solution so it stays positive. `½ν²` is folded on the host.
   37 => Sabr { beta, rho, nu, half_nu_sq }
     state (f, v)
     noise (dw, dz)
@@ -47,10 +44,8 @@ macro_rules! euler_systems {
     }
     report { f, v },
 
-  /// `dS = rS dt + S√V dW`, `V_t = V₀ exp(ν Z_t − ½ν² t)` with `Z` the
-  /// running sum of the correlated increments: the Bergomi variance is a
-  /// function of that sum, so the sum and the elapsed time are stepped as
-  /// state of their own rather than recomputed from the whole history.
+  /// `dS = rS dt + S√V dW`, `V_t = V₀ exp(ν Z_t − ½ν² t)`: Bergomi. `Z`, the running sum of the
+  /// correlated increments, and the elapsed time are state, not recomputed from the history.
   38 => Bergomi { r, nu, half_nu_sq, v0_sq, rho }
     state (s, v, z, elapsed)
     noise (dw, dq)
@@ -74,10 +69,8 @@ macro_rules! euler_systems {
     }
     report { x, y },
 
-  /// The Heston model stepped in log-price: `S` advances by the exponential
-  /// of its log increment, so it stays positive whatever the variance does.
-  /// The variance is truncated at zero and, unlike the arithmetic form, the
-  /// truncated value is what the next step starts from.
+  /// Heston stepped in log-price, so `S` stays positive. The variance is truncated at zero and,
+  /// unlike the arithmetic form, the truncated value is what the next step starts from.
   40 => LogHeston { drift, kappa, theta, xi, rho }
     state (s, v)
     noise (dw, dq)
@@ -103,9 +96,8 @@ macro_rules! euler_systems {
     }
     report { s, v },
 
-  /// Two independent square-root variance factors driving one spot, each with
-  /// its own correlation to the spot's own shock: the double Heston model,
-  /// with both variances truncated at zero.
+  /// Two independent square-root variance factors driving one spot, each correlated with the
+  /// spot's shock: the double Heston model, both variances truncated at zero.
   42 => DoubleHeston {
     mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2
   }
@@ -139,10 +131,8 @@ macro_rules! euler_systems {
     }
     report { s, v1, v2 },
 
-  /// A Heston spot whose correlation to its own variance is itself a
-  /// mean-reverting process, stepped on the unbounded variable and reported
-  /// through a `tanh`. The log increment reads the correlation *after* its
-  /// own step, so the third component is computed once and used by both.
+  /// A Heston spot whose correlation with its variance is a mean-reverting process reported
+  /// through `tanh`. The log increment reads the correlation after its step, so it is bound once.
   44 => StochasticCorrelationHeston {
     kappa_r, mu_r, sigma_r, kappa_v, mu_v, sigma_v, r, rho2
   }
@@ -181,14 +171,12 @@ macro_rules! euler_systems {
     step { x + $ct * $dt + sigma * dz }
     report { x },
 
-  /// The exact one-step Ornstein–Uhlenbeck transition in log space, reported
-  /// exponentiated: Black-Karasinski. `decay` is `exp(−a·dt)` and the noise
-  /// scale folds the exact transition standard deviation, both of which
-  /// depend on `dt` alone.
-  47 => LogMeanReverting { decay, a, sigma_eff }
+  /// Black-Karasinski's exact OU step in log space, reported exponentiated: `decay = e^{−a dt}`,
+  /// `pull` the host's `(1 − decay)/a` (`dt` at `a = 0`), the noise scale the step's deviation.
+  47 => LogMeanReverting { decay, pull, sigma_eff }
     state (y)
     noise (dz)
-    step { y * decay + ($ct / a) * negate(decay - lit(1.0)) + sigma_eff * dz }
+    step { y * decay + $ct * pull + sigma_eff * dz }
     report { exp(y) },
 
   /// A square-root diffusion shifted by a deterministic curve, truncated at
@@ -225,11 +213,8 @@ macro_rules! euler_systems {
     }
     report { a, b },
 
-  /// A Brownian bridge from `X₀` to `xt`, stepped by the exact conditional
-  /// law rather than by Euler's own variance. The curve carries `1/(T − s)`,
-  /// from which both the drift and the per-step variance ratio follow; at the
-  /// last step that ratio is zero and the drift is the whole remaining gap,
-  /// so the path lands on `xt` exactly rather than by a diffusion kick.
+  /// A Brownian bridge from `X₀` to `xt` by the exact conditional law. The curve carries
+  /// `1/(T − s)`; at the last step the variance ratio is zero, so the path lands on `xt` exactly.
   52 => BrownianBridge { xt, sigma }
     state (x)
     noise (dz)
@@ -250,10 +235,8 @@ macro_rules! euler_systems {
     }
     report { x, $u },
 
-  /// Two independent square-root factors whose sum, shifted by the curve, is
-  /// the reported short rate: the two-factor CIR model. Each factor chooses
-  /// reflection or truncation through a flag rather than a family of its own,
-  /// since the pair would otherwise need four.
+  /// Two independent square-root factors whose sum, shifted by the curve, is the short rate:
+  /// two-factor CIR. A flag per factor picks reflection or truncation, sparing four families.
   54 => TwoFactorSquareRoot {
     theta1, mu1, sigma1, theta2, mu2, sigma2, sym1, sym2
   }
@@ -282,9 +265,8 @@ macro_rules! euler_systems {
     }
     report { r, x },
 
-  /// Two Heston assets under one 4×4 Cholesky factor: both log-prices and
-  /// both variances step together, so every cross-correlation the factor
-  /// encodes is present in one launch. The variances are truncated at zero.
+  /// Two Heston assets under one 4×4 Cholesky factor: both log-prices and both variances step
+  /// together, with every cross-correlation in one launch. The variances are truncated at zero.
   56 => TwoAssetHeston {
     mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
     l11, l21, l22, l31, l32, l33, l41, l42, l43, l44

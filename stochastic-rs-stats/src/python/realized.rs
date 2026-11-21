@@ -15,9 +15,8 @@ pub struct PyRealizedMoments {
 
 #[pymethods]
 impl PyRealizedMoments {
-  /// Compute realised variance, volatility, skewness, kurtosis and quarticity
-  /// from a log-return series. `annualisation` is multiplied into the realised
-  /// volatility result (e.g. 252.0 for daily-to-annual).
+  /// Realised variance, volatility, skewness, kurtosis and quarticity of a log-return series;
+  /// `annualisation` multiplies the volatility (252.0 for daily to annual).
   #[new]
   #[pyo3(signature = (returns, annualisation=1.0))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, annualisation: f64) -> pyo3::PyResult<Self> {
@@ -147,9 +146,8 @@ pub struct PyLeeMyklandJumpTest {
 
 #[pymethods]
 impl PyLeeMyklandJumpTest {
-  /// Lee-Mykland jump test of every return, with the local volatility taken
-  /// from the `window` observations before it; `alpha` defaults to the
-  /// paper's 1% level.
+  /// Lee–Mykland jump test of every return, its local volatility from the `window` observations
+  /// before it; `alpha` defaults to the paper's 1% level.
   #[new]
   #[pyo3(signature = (returns, window, alpha=0.01))]
   fn new<'py>(
@@ -234,10 +232,8 @@ pub struct PyRealizedKernel {
 
 #[pymethods]
 impl PyRealizedKernel {
-  /// Realised kernel (Barndorff-Nielsen, Hansen, Lunde, Shephard 2008).
-  /// `kernel`: one of "parzen" (default), "bartlett", "tukey_hanning",
-  /// "tukey_hanning2", "cubic", "quadratic_spectral". `bandwidth` (None →
-  /// Parzen automatic via `parzen_default_bandwidth`).
+  /// Realised kernel (Barndorff-Nielsen et al. 2008) with `kernel` "parzen" (default), "bartlett",
+  /// "tukey_hanning", "tukey_hanning2", "cubic" or "quadratic_spectral"; no `bandwidth` is Parzen.
   #[new]
   #[pyo3(signature = (returns, kernel="parzen", bandwidth=None))]
   fn new<'py>(

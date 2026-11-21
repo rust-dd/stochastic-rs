@@ -1,28 +1,20 @@
-//! Veitch-Abry (1999) wavelet-based Hurst estimator.
+//! Veitch–Abry (1999) wavelet Hurst estimator: a weighted regression of detail energies on scale.
 //!
-//! 1. Apply the pyramidal discrete wavelet transform with a
-//!    compactly-supported orthonormal wavelet (currently Daubechies-4)
-//!    using periodic boundary extension.
-//! 2. At each dyadic scale `j` compute the sample energy
-//!    `μⱼ = (1/Nⱼ) Σₖ d²_{j,k}` of the detail coefficients.
-//! 3. Subtract the Eq. 21 bias correction
-//!    `gⱼ = (ψ(Nⱼ/2) - ln(Nⱼ/2)) / ln 2` so the residual is unbiased
-//!    in expectation under Gaussianity.
-//! 4. Weighted least-squares regression `log₂ μⱼ - gⱼ ~ slope · j + c`
-//!    with weights `wⱼ = Nⱼ (ln 2)² / 2`.
-//! 5. Slope inversion: FBM input → `H = (slope - 1) / 2`; FGN input →
-//!    `H = (slope + 1) / 2`.
+//! $$
+//! \mu_j = \frac{1}{N_j}\sum_k d_{j,k}^2,\qquad
+//! g_j = \frac{\psi(N_j/2) - \ln(N_j/2)}{\ln 2},\qquad
+//! \log_2\mu_j - g_j \sim \mathrm{slope}\cdot j + c,\quad w_j = \frac{N_j(\ln 2)^2}{2}
+//! $$
 //!
-//! Standard error: `SE(H) = √(2 / (slope-variance · Σ wⱼ))`
-//! (asymptotic Veitch-Abry result, simplified to the unweighted
-//! variance form).
+//! $$
+//! H = \frac{\mathrm{slope} + 1}{2},\qquad
+//! \mathrm{SE}(H) = \frac12\sqrt{\frac{2}{\sum_j w_j}}
+//! $$
 //!
-//! References:
-//! - Veitch D. & Abry P. (1999) — *A wavelet-based joint estimator of
-//!   the parameters of long-range dependence*, IEEE T-IT 45(3),
-//!   878–897, DOI: 10.1109/18.761330.
-//! - Abry P., Flandrin P., Taqqu M. S., Veitch D. (2003) — *Self-
-//!   similarity and long-range dependence through the wavelet lens*.
+//! `d_{j,k}` are periodic Daubechies-4 DWT details; `g_j` is Eq. 21's bias under Gaussianity.
+//!
+//! Reference: Veitch & Abry (1999), IEEE Trans. Inf. Theory 45(3), 878–897, DOI: 10.1109/18.761330
+//! Reference: Abry et al. (2003), Theory and Applications of Long-Range Dependence, 527–556
 
 use std::f64::consts::LN_2;
 
@@ -35,12 +27,11 @@ use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
-/// Standard Daubechies-4 scaling (low-pass) filter coefficients,
-/// normalised so that `Σ hₖ = √2` and `Σ h²ₖ = 1`.  Distinct from
-/// [`super::variations::daubechies_coeffs`] (Coeurjolly variant,
-/// different normalisation and sign pattern).
+/// The Daubechies-4 scaling (low-pass) filter, `Σ hₖ = √2` and `Σ h²ₖ = 1`; not Brouste & Iacus's
+/// high-pass [`super::variations::daubechies_coeffs`].
 fn daubechies4_scaling() -> Vec<f64> {
   vec![
     0.482_962_913_144_534_1,
@@ -57,12 +48,8 @@ pub enum WaveletKind {
   Daubechies4,
 }
 
-/// Veitch-Abry wavelet Hurst estimator.
-///
-/// The estimator is defined on stationary FGN-like input.  When
-/// `take_differences = true` (default) the input is first-differenced
-/// internally so FBM-like walks can be passed directly.  Slope-to-`H`
-/// map is always the FGN form `H = (slope + 1) / 2`.
+/// Veitch–Abry wavelet Hurst estimator, defined on FGN-like input: `take_differences` (default
+/// `true`) differences a walk first, and the slope maps as `H = (slope + 1) / 2` either way.
 #[derive(Clone, Debug)]
 pub struct Wavelet {
   pub wavelet: WaveletKind,
@@ -126,6 +113,7 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
     }
 
     let signal_raw = to_f64_vec::<T>(x);
+    reject_constant(&signal_raw, "constant series")?;
     let signal: Vec<f64> = if self.take_differences {
       signal_raw.windows(2).map(|w| w[1] - w[0]).collect()
     } else {
@@ -221,9 +209,8 @@ fn qmf_from_low(h: &[f64]) -> (Vec<f64>, Vec<f64>) {
   (h.to_vec(), g)
 }
 
-/// Pyramidal DWT with periodic boundary.  Returns one detail-coefficient
-/// vector per scale `j = 1..=max_levels` (or until the working vector
-/// becomes shorter than the filter).
+/// Pyramidal DWT with periodic boundary: one detail vector per scale `j = 1..=max_levels`, or
+/// until the working vector is shorter than the filter.
 pub(crate) fn pyramidal_dwt(
   signal: &[f64],
   h_filter: &[f64],

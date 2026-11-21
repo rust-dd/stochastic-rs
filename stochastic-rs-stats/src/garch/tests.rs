@@ -2,11 +2,8 @@ use ndarray::Array1;
 
 use super::*;
 
-/// GARCH(1,1) path ($\omega = 0.05$, $\alpha = 0.10$, $\beta = 0.85$,
-/// $\mu = 0.02$) driven by sum-of-twelve-uniform innovations from an integer
-/// LCG, bit-identical to the Python generator behind the `arch` 7.x
-/// reference numbers below (`arch_model(..., rescale=False).fit(backcast=
-/// mean((r - mean(r))**2), tol=1e-12)`).
+/// A GARCH(1,1) path (ω = 0.05, α = 0.10, β = 0.85, μ = 0.02) on twelve-uniform innovations of an
+/// LCG; `arch` 7.x fits it with `rescale=False`, `backcast=mean((r - mean(r))**2)`, `tol=1e-12`.
 fn lcg_garch_returns() -> Array1<f64> {
   let mut x: u64 = 11;
   let mut next = || {
@@ -43,9 +40,8 @@ fn assert_relative(got: f64, want: f64, tol: f64, what: &str) {
   );
 }
 
-/// The likelihood evaluated at `arch`'s optimum must reproduce its
-/// log-likelihood and conditional variances, isolating the recursion from
-/// the optimiser.
+/// The likelihood at `arch`'s optimum reproduces its log-likelihood and conditional variances,
+/// which isolates the recursion from the optimiser.
 fn check_likelihood_at(spec: GarchSpec, natural: &[f64], loglik: f64, sigma2: [f64; 3]) {
   let r = lcg_garch_returns();
   let returns: Vec<f64> = r.to_vec();
@@ -408,14 +404,18 @@ fn rejects_constant_returns() {
   );
 }
 
-/// Returns of magnitude 1e155 have a finite spread whose square overflows.
+/// Returns of magnitude `1e-170` and `1e155` fit at unit scale, but their variance of `1e-340` and
+/// `1e310` has no double.
 #[test]
-fn an_overflowing_backcast_is_a_numerical_error() {
-  let r = Array1::from_iter((0..40).map(|t| if t % 2 == 0 { 1e155 } else { -1e155 }));
-  assert_eq!(
-    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
-    StatsError::Numerical {
-      stage: "backcast variance"
-    }
-  );
+fn a_variance_past_the_double_range_is_a_numerical_error() {
+  for level in [1e-170, 1e155] {
+    let r = Array1::from_iter((0..40).map(|t| if t % 2 == 0 { level } else { -level }));
+    assert_eq!(
+      fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+      StatsError::Numerical {
+        stage: "data scale"
+      },
+      "{level:e}"
+    );
+  }
 }

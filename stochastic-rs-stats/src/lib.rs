@@ -1,14 +1,8 @@
 #![doc = include_str!("../README.md")]
-// Defaults to `warn`, which is how 7 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// Deny, not rustdoc's default warn, so a broken link fails the build.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::needless_range_loop)]
 
 mod input;
-mod linalg;
 
 pub mod error;
 pub mod traits;
@@ -17,10 +11,8 @@ pub use error::StatsError;
 
 pub mod acf;
 pub mod bayesian_diffusion;
-pub mod cir;
 pub mod critical_values;
 pub mod distfit;
-pub mod double_exp;
 pub mod econometrics;
 pub mod evt;
 pub mod filtering;

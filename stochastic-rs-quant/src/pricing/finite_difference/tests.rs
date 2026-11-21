@@ -1,7 +1,8 @@
-use stochastic_rs_stochastic::K;
-use stochastic_rs_stochastic::S0;
-
 use super::*;
+
+const S0: f64 = 100.0;
+
+const K: f64 = 100.0;
 
 fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {
   FiniteDifferencePricer::new(0.1, 10000, 250, style, method).price(S0, K, 0.05, 0.0, 1.0, r#type)
@@ -289,7 +290,7 @@ fn fd_one_model_prices_a_grid() {
 /// `s_n = 0` is louder — it underflows `s_n - 1` — but neither is a
 /// price, and only one of the two announced itself.
 #[test]
-#[should_panic(expected = "FiniteDifferencePricer::new: t_n must be at least 1 (got 0)")]
+#[should_panic(expected = "t_n must satisfy `t_n >= 1`, got t_n = 0")]
 fn new_rejects_zero_time_steps() {
   let _ = FiniteDifferencePricer::new(
     0.25,
@@ -301,7 +302,7 @@ fn new_rejects_zero_time_steps() {
 }
 
 #[test]
-#[should_panic(expected = "FiniteDifferencePricer::new: s_n must be at least 2 (got 0)")]
+#[should_panic(expected = "s_n must satisfy `s_n >= 2`, got s_n = 0")]
 fn new_rejects_zero_price_steps() {
   let _ = FiniteDifferencePricer::new(
     0.25,
@@ -312,16 +313,30 @@ fn new_rejects_zero_price_steps() {
   );
 }
 
-/// The PDE coefficients use `v²`, so a negative volatility prices as its
+/// The PDE coefficients use `σ²`, so a negative volatility prices as its
 /// own absolute value — the solver silently answers a question the caller
 /// did not ask rather than the one they did.
 #[test]
 #[should_panic(
-  expected = "FiniteDifferencePricer::new: v must be a non-negative volatility (got -0.25)"
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.25"
 )]
 fn new_rejects_negative_volatility() {
   let _ = FiniteDifferencePricer::new(
     -0.25,
+    500,
+    100,
+    OptionStyle::European,
+    FiniteDifferenceMethod::CrankNicolson,
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+)]
+fn new_rejects_an_infinite_volatility() {
+  let _ = FiniteDifferencePricer::new(
+    f64::INFINITY,
     500,
     100,
     OptionStyle::European,

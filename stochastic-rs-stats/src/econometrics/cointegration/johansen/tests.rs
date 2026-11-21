@@ -31,11 +31,8 @@ fn three_walks() -> Array2<f64> {
   s
 }
 
-/// A cointegrated three-variable system (two series sharing one random
-/// walk, a third independent) built from an integer LCG so the Rust and
-/// Python inputs are bit-identical. Reference values below come from
-/// `statsmodels` 0.14: `coint_johansen(y, det_order=0, k_ar_diff=lags-1)`
-/// and `VECM(y, k_ar_diff=lags-1, coint_rank=r, deterministic="co").fit()`.
+/// Two series on one random walk and a third apart, from an integer LCG. Against statsmodels 0.14's
+/// `coint_johansen(y, det_order=0, k_ar_diff=lags-1)` and `VECM(.., deterministic="co").fit()`.
 fn lcg_system() -> Array2<f64> {
   let mut x: u64 = 7;
   let mut next = || {
@@ -165,13 +162,8 @@ fn rank_tests_match_statsmodels_on_the_lcg_system() {
   } else {
     1.0
   };
-  for i in 0..3 {
-    assert_close(
-      flip * res.eigenvectors[[i, 0]],
-      evec[i],
-      1e-6,
-      "eigenvector",
-    );
+  for (i, &want) in evec.iter().enumerate() {
+    assert_close(flip * res.eigenvectors[[i, 0]], want, 1e-6, "eigenvector");
   }
 }
 
@@ -294,8 +286,8 @@ fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
     0.014_455_198_943_958_624,
     -0.010_135_064_323_076_49,
   ];
-  for i in 0..3 {
-    assert_close(fit.intercept[i], intercept[i], 1e-9, "intercept");
+  for (i, &want) in intercept.iter().enumerate() {
+    assert_close(fit.intercept[i], want, 1e-9, "intercept");
   }
   assert_close(
     fit.sigma[[0, 0]],

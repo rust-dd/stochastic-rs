@@ -4,7 +4,6 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
@@ -12,6 +11,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
+use crate::QuantError;
+use crate::error::check_grid_shape;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
@@ -61,30 +62,44 @@ impl<T: FloatExt> MultiHestonParams<T> {
     self.assets.len()
   }
 
-  /// Validate model, time-grid and joint-correlation inputs.
-  ///
-  /// This must be called before [`Self::sample`] or [`Self::sample_with_seed`]
-  /// for user-supplied parameters. Their fallible variants call it directly.
-  pub fn validate(&self) -> anyhow::Result<()> {
+  /// Validate model, time-grid and joint-correlation inputs, which [`Self::sample`] needs for
+  /// user-supplied parameters and [`Self::try_sample`] runs itself.
+  pub fn validate(&self) -> Result<(), QuantError> {
+    const CORR: &str = "cross-asset correlation";
+    const ASSETS: &str = "asset parameters";
     let d = self.n_assets();
     if d == 0 {
-      anyhow::bail!("need at least one asset");
+      return Err(QuantError::invalid(
+        ASSETS,
+        "need at least one asset, got none",
+      ));
     }
     if self.n_steps < 2 {
-      anyhow::bail!("n_steps must be >= 2, got {}", self.n_steps);
+      return Err(QuantError::invalid(
+        "n_steps",
+        format!("must be >= 2, got {}", self.n_steps),
+      ));
     }
     if !num_traits::Float::is_finite(self.r) {
-      anyhow::bail!("r must be finite");
+      return Err(QuantError::invalid(
+        "r",
+        format!("must be finite, got {:?}", self.r),
+      ));
     }
     if !num_traits::Float::is_finite(self.tau) || self.tau <= T::zero() {
-      anyhow::bail!("tau must be finite and positive");
+      return Err(QuantError::invalid(
+        "tau",
+        format!("must be finite and positive, got {:?}", self.tau),
+      ));
     }
-    if self.cross_corr.shape() != [d, d] {
-      anyhow::bail!(
-        "cross_corr shape {:?} does not match n_assets={d}",
-        self.cross_corr.shape()
-      );
-    }
+    check_grid_shape(
+      [
+        "cross_corr rows, one per asset",
+        "cross_corr columns, one per asset",
+      ],
+      (d, d),
+      self.cross_corr.dim(),
+    )?;
     let one = T::one();
     let neg_one = -one;
     let tol = T::from_f64_fast(1e-10);
@@ -92,26 +107,41 @@ impl<T: FloatExt> MultiHestonParams<T> {
       for j in 0..d {
         let v = self.cross_corr[[i, j]];
         if !num_traits::Float::is_finite(v) {
-          anyhow::bail!("cross_corr[{i},{j}] must be finite");
+          return Err(QuantError::invalid(
+            CORR,
+            format!("cross_corr[{i},{j}] must be finite, got {v:?}"),
+          ));
         }
         if i == j {
           if num_traits::Float::abs(v - one) > tol {
-            anyhow::bail!("cross_corr[{i},{i}]={:?} is not 1", v);
+            return Err(QuantError::invalid(
+              CORR,
+              format!("cross_corr[{i},{i}] = {v:?} is not 1"),
+            ));
           }
         } else {
           if v < neg_one || v > one {
-            anyhow::bail!("cross_corr[{i},{j}]={:?} is outside [-1, 1]", v);
+            return Err(QuantError::invalid(
+              CORR,
+              format!("cross_corr[{i},{j}] = {v:?} is outside [-1, 1]"),
+            ));
           }
           let v_sym = self.cross_corr[[j, i]];
           if num_traits::Float::abs(v - v_sym) > tol {
-            anyhow::bail!("cross_corr is not symmetric at ({i},{j})");
+            return Err(QuantError::invalid(
+              CORR,
+              format!("cross_corr is not symmetric at ({i},{j}): {v:?} against {v_sym:?}"),
+            ));
           }
         }
       }
     }
     for (i, a) in self.assets.iter().enumerate() {
       if !num_traits::Float::is_finite(a.s) || a.s <= T::zero() {
-        anyhow::bail!("assets[{i}].s must be finite and positive");
+        return Err(QuantError::invalid(
+          ASSETS,
+          format!("assets[{i}].s must be finite and positive, got {:?}", a.s),
+        ));
       }
       for (name, value) in [
         ("v0", a.v0),
@@ -120,14 +150,20 @@ impl<T: FloatExt> MultiHestonParams<T> {
         ("xi", a.xi),
       ] {
         if !num_traits::Float::is_finite(value) || value < T::zero() {
-          anyhow::bail!("assets[{i}].{name} must be finite and non-negative");
+          return Err(QuantError::invalid(
+            ASSETS,
+            format!("assets[{i}].{name} must be finite and non-negative, got {value:?}"),
+          ));
         }
       }
-      if !num_traits::Float::is_finite(a.rho) {
-        anyhow::bail!("assets[{i}].rho must be finite");
-      }
-      if num_traits::Float::abs(a.rho) >= one {
-        anyhow::bail!("assets[{i}].rho={:?} must satisfy |rho| < 1", a.rho);
+      if !num_traits::Float::is_finite(a.rho) || num_traits::Float::abs(a.rho) >= one {
+        return Err(QuantError::invalid(
+          ASSETS,
+          format!(
+            "assets[{i}].rho must be finite with |rho| < 1, got {:?}",
+            a.rho
+          ),
+        ));
       }
     }
 
@@ -142,8 +178,10 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    if !crate::linalg::is_spd_t(&corr) {
-      anyhow::bail!("joint Brownian correlation matrix is not positive definite");
+    if !crate::linalg::is_spd_t(corr.view()) {
+      return Err(QuantError::NotPositiveDefinite {
+        what: "the joint Brownian correlation matrix",
+      });
     }
     Ok(())
   }
@@ -207,39 +245,16 @@ impl<T: FloatExt> MultiHestonParams<T> {
     }
   }
 
-  /// Simulate one set of paths. Requires LAPACK for Cholesky.
-  ///
-  /// **Precondition:** `self.cross_corr` must be a valid `d×d` symmetric
-  /// positive-definite correlation matrix (jointly with the per-asset `rho`s).
-  /// Call [`Self::validate`] up-front when the matrix is user-supplied —
-  /// the underlying Cholesky factorisation panics on a non-SPD input. Prefer
-  /// [`Self::try_sample`] when the matrix comes from external user input.
-  pub fn sample(&self) -> MultiHestonPaths<T> {
-    self.sample_with_fill(T::fill_standard_normal_slice)
-  }
-
-  /// Fallible variant of [`Self::sample`]. Runs [`Self::validate`] first and
-  /// returns an error when the joint Brownian correlation matrix fails the
-  /// positive-definite check (otherwise [`Self::sample`] would panic on the
-  /// internal Cholesky factorisation).
-  pub fn try_sample(&self) -> anyhow::Result<MultiHestonPaths<T>> {
-    self.validate()?;
-    Ok(self.sample_with_fill(T::fill_standard_normal_slice))
-  }
-
-  /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
-  /// tests and benchmark comparisons.
-  pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T> {
-    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
+  /// One set of paths drawn from `seed`, which advances; the Cholesky factorisation panics unless
+  /// [`Self::validate`] passes, which [`Self::try_sample`] reports as an error instead.
+  pub fn sample(&self, seed: &impl SeedExt) -> MultiHestonPaths<T> {
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
     self.sample_with_fill(|z| normal.fill_slice(z))
   }
 
-  /// Fallible variant of [`Self::sample_with_seed`]. See [`Self::try_sample`]
-  /// for the failure mode (non-SPD joint Brownian correlation).
-  pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>> {
+  pub fn try_sample(&self, seed: &impl SeedExt) -> Result<MultiHestonPaths<T>, QuantError> {
     self.validate()?;
-    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
-    Ok(self.sample_with_fill(|z| normal.fill_slice(z)))
+    Ok(self.sample(seed))
   }
 
   fn brownian_cholesky(&self) -> Array2<T> {
@@ -255,7 +270,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    crate::linalg::spd_cholesky_lower_t(&corr).expect(
+    crate::linalg::spd_cholesky_lower_t(corr.view()).expect(
       "correlation matrix not positive-definite — call MultiHestonParams::validate() up-front",
     )
   }

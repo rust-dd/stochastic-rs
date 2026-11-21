@@ -7,21 +7,26 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::special::norm_cdf;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
 use stochastic_rs::quant::pricing::slv::LeverageSurface;
 use stochastic_rs::quant::pricing::slv::ParticleMethod;
 use stochastic_rs::quant::pricing::slv::calibrate_leverage;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::Grid2D;
 use stochastic_rs::traits::ModelPricer;
 
 fn heston_params(eta: f64) -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta,
   }
 }
@@ -34,11 +39,11 @@ fn flat_local_vol(vol: f64, spots: &Array1<f64>, times: &Array1<f64>) -> Grid2D<
   )
 }
 
-fn method(n: usize, seed: u64) -> ParticleMethod {
+fn method(n: usize, seed: u64) -> ParticleMethod<Deterministic> {
   ParticleMethod::default()
     .with_particles(n)
     .with_steps_per_year(50)
-    .with_seed(seed)
+    .with_seed(Deterministic::new(seed))
 }
 
 #[test]
@@ -135,7 +140,7 @@ fn slv_pricer_produces_positive_monotone_prices() {
   let pricer = HestonSlvPricer::new(params, run.leverage, 0.05, 0.0)
     .with_paths(20_000)
     .with_steps_per_year(100)
-    .with_seed(77);
+    .with_seed(Deterministic::new(77));
 
   let c_itm = pricer.price_call(100.0, 90.0, 0.05, 0.0, 0.5);
   let c_atm = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
@@ -165,12 +170,12 @@ fn slv_pricer_flat_vol_is_black_scholes() {
   let pricer = HestonSlvPricer::new(params, run.leverage, r, q)
     .with_paths(50_000)
     .with_steps_per_year(200)
-    .with_seed(123);
+    .with_seed(Deterministic::new(123));
 
   let estimate = pricer.price_call_estimate(s0, k, r, q, tau);
   let d1 = ((s0 / k).ln() + (r + 0.5 * vol * vol) * tau) / (vol * tau.sqrt());
   let d2 = d1 - vol * tau.sqrt();
-  let bsm = s0 * normal_cdf(d1) - k * (-r * tau).exp() * normal_cdf(d2);
+  let bsm = s0 * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2);
   assert!(
     (estimate.mean - bsm).abs() < 3.0 * estimate.std_err,
     "slv={} ± {}, bsm={bsm}",
@@ -194,7 +199,7 @@ fn slv_price_is_nan_outside_the_calibrated_spot_range() {
   let pricer = HestonSlvPricer::new(params, run.leverage, 0.05, 0.0)
     .with_paths(2_000)
     .with_steps_per_year(48)
-    .with_seed(77);
+    .with_seed(Deterministic::new(77));
 
   let inside = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
   assert!(inside.is_finite() && inside > 0.0, "in-grid spot: {inside}");
@@ -218,7 +223,7 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
   let pricer = HestonSlvPricer::new(params, run.leverage, 0.05, 0.0)
     .with_paths(2_000)
     .with_steps_per_year(48)
-    .with_seed(77);
+    .with_seed(Deterministic::new(77));
 
   let at_horizon = pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
   assert!(at_horizon.is_finite() && at_horizon > 0.0);
@@ -231,16 +236,11 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
   }
 }
 
-fn normal_cdf(x: f64) -> f64 {
-  stochastic_rs::distributions::special::norm_cdf(x)
-}
-
 /// The process and the pricer run the same recursion under the same
 /// surface, so a vanilla priced from the process's own paths agrees with the
 /// pricer's estimate within the two Monte Carlo errors.
 #[test]
 fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
-  use stochastic_rs::simd_rng::Deterministic;
   use stochastic_rs::stochastic::volatility::heston_slv::HestonSlv;
   use stochastic_rs::traits::ProcessExt;
 
@@ -269,17 +269,17 @@ fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
   let pricer = HestonSlvPricer::new(params, surface.clone(), r, q)
     .with_paths(40_000)
     .with_steps_per_year(100)
-    .with_seed(21);
+    .with_seed(Deterministic::new(21));
   let estimate = pricer.price_call_estimate(s0, k, r, q, tau);
 
   let n = 51;
   let process = HestonSlv::<f64, _>::new(
-    Some(s0),
-    Some(params.v0),
-    params.kappa,
-    params.theta,
-    params.sigma,
-    params.rho,
+    s0,
+    params.heston.v0,
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.sigma,
+    params.heston.rho,
     r - q,
     params.eta,
     surface,

@@ -49,8 +49,8 @@ fn misses(label: String, (pdf, log_pdf): (f64, f64), want: f64) -> Option<String
     .then(|| format!("{label}: pdf {pdf:e} vs {want:e} (rel {rel:.1e}), log gap {log_gap:.1e}"))
 }
 
-/// Flat densities at `U10[..d]` against mpmath's exact multilinear derivative of `C` at 80 digits, which matches Hofert,
-/// Mächler & McNeil (2012), Cor. 3.3, to 1e-79.
+/// Flat densities at `U10[..d]` against mpmath's exact multilinear derivative of `C` at 80 digits,
+/// which matches Hofert, Mächler & McNeil (2012), Cor. 3.3, to 1e-79.
 #[test]
 fn flat_density_matches_the_80_digit_references() {
   let pins = [
@@ -113,8 +113,8 @@ fn flat_density_matches_the_80_digit_references() {
   assert!(failed.is_empty(), "{failed:#?}");
 }
 
-/// The same reference on Hofert & Pham's (2013) two- and three-level shapes (Thm 3.3, eq. (33)) and on `fit`'s binary
-/// shapes down to nine levels, where their Remark 6.2 recursion carries the density.
+/// The same reference on Hofert & Pham's (2013) two- and three-level shapes (Thm 3.3, eq. (33)) and
+/// `fit`'s binary shapes to nine levels, where their Remark 6.2 recursion carries the density.
 #[test]
 fn nested_density_matches_the_80_digit_references() {
   let trees = [
@@ -189,7 +189,8 @@ fn nested_density_matches_the_80_digit_references() {
   assert!(failed.is_empty(), "{failed:#?}");
 }
 
-/// Corners where `pdf` underflows or a coordinate sits within 1e-12 of 0 or 1: `log_pdf` holds mpmath's log-density.
+/// Corners where `pdf` underflows or a coordinate sits within 1e-12 of 0 or 1: `log_pdf` holds
+/// mpmath's log-density.
 #[test]
 fn log_pdf_stays_finite_where_pdf_underflows() {
   let with = |i: usize, x: f64| {
@@ -256,7 +257,8 @@ fn log_pdf_stays_finite_where_pdf_underflows() {
   }
 }
 
-/// The density lives on the open cube: a coordinate at 0 or 1 is NaN, where a number would be a guess at a limit.
+/// The density lives on the open cube: a coordinate at 0 or 1 is NaN, where a number would be a
+/// guess at a limit.
 #[test]
 fn a_coordinate_on_the_boundary_is_nan() {
   let x = ndarray::array![[0.0, 0.5, 0.6], [0.3, 1.0, 0.6], [0.3, 0.5, 0.6]];
@@ -272,7 +274,8 @@ fn a_coordinate_on_the_boundary_is_nan() {
   }
 }
 
-/// Equal parameters collapse a nesting to the flat copula, and a Gumbel root at `θ = 1` multiplies its children's densities.
+/// Equal parameters collapse a nesting to the flat copula, and a Gumbel root at `θ = 1` multiplies
+/// its children's densities.
 #[test]
 fn nesting_identities_hold_to_rounding() {
   let u = &U10[..5];
@@ -307,7 +310,8 @@ fn nesting_identities_hold_to_rounding() {
   );
 }
 
-/// At `d = 2` the flat copula is the pair copula, whose closed-form `pdf` the bivariate module carries.
+/// At `d = 2` the flat copula is the pair copula, whose closed-form `pdf` the bivariate module
+/// carries.
 #[test]
 fn the_bivariate_case_is_the_pair_copula() {
   let x = ndarray::array![[0.3, 0.8], [0.05, 0.1], [0.9, 0.95], [0.5, 0.02]];

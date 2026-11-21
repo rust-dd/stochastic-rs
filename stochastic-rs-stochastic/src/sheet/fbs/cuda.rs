@@ -1,12 +1,5 @@
-//! # CUDA sheets
-//!
-//! The two-dimensional circulant embedding on the native CUDA runtime:
-//! Philox complex Gaussian noise scaled by the embedding's eigenvalue roots
-//! in natural order, the row transforms by a batched cuFFT plan, a
-//! transpose, the column transforms by a second batched plan, and the
-//! read-out of the leading `m × n` block less its corner plus Stein's linear
-//! correction from two more Philox normals. Templated on `float` and
-//! `double`, so an `f64` sheet is computed in double.
+//! The two-dimensional circulant embedding on CUDA, in `float` or `double`: Philox noise scaled by
+//! the eigenvalue roots, a batched cuFFT per axis around a transpose, and Stein's read-out.
 
 use std::any::TypeId;
 use std::sync::Arc;
@@ -22,48 +15,29 @@ use super::Fbs;
 use super::SheetLaunch;
 use crate::device::DeviceError;
 use crate::device::launch_len;
-use crate::noise::fgn::cuda::sampler::counter_offset;
 use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
 const CUFFT_FORWARD: i32 = -1;
 
-/// The three kernels with `REAL` standing for the scalar; the Philox-2x32-10
-/// counter runs on the batch-global cell (the draw) or on a counter past
-/// every cell of the batch (the correction), so a chunk continues one
-/// launch's stream.
+/// The three kernels with `REAL` standing for the scalar; each normal is a Philox draw on the
+/// batch-global cell (the draw) or sheet (the correction), so a chunk continues one launch.
 const KERNELS: &str = r#"
-__device__ inline void philox_pair(unsigned long long counter, unsigned long long seed, REAL* n1, REAL* n2)
-{
-    unsigned int lo = (unsigned int)counter;
-    unsigned int hi = (unsigned int)(counter >> 32);
-    unsigned int k  = (unsigned int)seed;
-    #pragma unroll
-    for (int i = 0; i < 10; i++) {
-        unsigned long long p = (unsigned long long)0xD2511F53u * lo;
-        lo = ((unsigned int)(p >> 32)) ^ hi ^ k;
-        hi = (unsigned int)p;
-        k += 0x9E3779B9u;
-    }
-    REAL u1 = ((REAL)lo + (REAL)0.5) * (REAL)2.3283064365386963e-10;
-    REAL u2 = ((REAL)hi + (REAL)0.5) * (REAL)2.3283064365386963e-10;
-    REAL r  = sqrt((REAL)-2.0 * log(u1));
-    REAL angle = (REAL)6.283185307179586 * u2;
-    *n1 = r * cos(angle);
-    *n2 = r * sin(angle);
-}
-
 extern "C" __global__ void sheet_gen_REAL(
     REAL* __restrict__ data,
     const REAL* __restrict__ lam,
     int cells, int total,
-    unsigned long long seed, unsigned long long seq)
+    unsigned int seed_lo, unsigned int seed_hi, unsigned long long first_cell)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= total) return;
-    REAL n_re, n_im;
-    philox_pair((unsigned long long)tid + seq, seed, &n_re, &n_im);
+    unsigned long long cell = first_cell + (unsigned long long)tid;
+    unsigned int words[4];
+    stoch_philox((unsigned int)cell, (unsigned int)(cell >> 32), 0u, site_sheet, seed_lo, seed_hi, words);
+    REAL n_re = stoch_normal(words[0], words[1], words[2], words[3]);
+    stoch_philox((unsigned int)cell, (unsigned int)(cell >> 32), 1u, site_sheet, seed_lo, seed_hi, words);
+    REAL n_im = stoch_normal(words[0], words[1], words[2], words[3]);
     REAL l = lam[tid % cells];
     data[2 * tid]     = n_re * l;
     data[2 * tid + 1] = n_im * l;
@@ -90,7 +64,7 @@ extern "C" __global__ void sheet_extract_REAL(
     REAL* __restrict__ out,
     int cells, int rows, int m, int n,
     REAL r, REAL corr,
-    unsigned long long seed, unsigned long long seq_corr,
+    unsigned int seed_lo, unsigned int seed_hi, unsigned long long first_sheet,
     int total)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -102,19 +76,28 @@ extern "C" __global__ void sheet_extract_REAL(
     int j = local % n;
     int base = sheet * cells;
     REAL value = freq[2 * (base + j * rows + i)] - freq[2 * base];
-    REAL z1, z2;
-    philox_pair((unsigned long long)sheet + seq_corr, seed, &z1, &z2);
+    unsigned long long global = first_sheet + (unsigned long long)sheet;
+    unsigned int words[4];
+    stoch_philox((unsigned int)global, (unsigned int)(global >> 32), 0u, site_sheet_correction, seed_lo, seed_hi, words);
+    REAL z1 = stoch_normal(words[0], words[1], words[2], words[3]);
+    stoch_philox((unsigned int)global, (unsigned int)(global >> 32), 1u, site_sheet_correction, seed_lo, seed_hi, words);
+    REAL z2 = stoch_normal(words[0], words[1], words[2], words[3]);
     REAL ty = r * (REAL)(i + 1) / (REAL)m;
     REAL tx = r * (REAL)(j + 1) / (REAL)n;
     out[tid] = value + corr * (ty * z1 + tx * z2);
 }
 "#;
 
-fn kernel_source(real: &str) -> String {
-  KERNELS.replace("REAL", real)
+pub(crate) fn kernel_source(real: &'static str) -> String {
+  format!(
+    "{}{}",
+    crate::euler::kernel::philox_prelude(&crate::euler::kernel::cuda_language(real)),
+    KERNELS.replace("REAL", real)
+  )
 }
 
 /// Persistent GPU state: the stream and the six compiled kernels.
+#[derive(Clone)]
 struct Kernels {
   ordinal: usize,
   stream: Arc<CudaStream>,
@@ -131,15 +114,46 @@ unsafe impl Send for Kernels {}
 
 static GPU: Mutex<Option<Kernels>> = Mutex::new(None);
 
-fn ensure_kernels(ordinal: usize) -> Result<()> {
-  let mut g = GPU.lock();
-  if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    return Ok(());
+/// Drops the sheet kernels, cuFFT plans and buffers cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut gpu = GPU.lock();
+  if crate::noise::fgn::cuda::frees(gpu.as_ref().map(|k| k.ordinal), ordinal) {
+    invalidate(&mut gpu);
   }
-  // A new context invalidates the per-size buffers and plans of the old one.
-  *g = None;
+}
+
+/// Empties the cache: the per-size buffers and plans belong to the context that built them.
+fn invalidate(gpu: &mut Option<Kernels>) {
+  *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(crate) fn cached_sizes() -> usize {
+  SIZED_F32.lock().len() + SIZED_F64.lock().len()
+}
+
+#[cfg(test)]
+pub(crate) fn forget_kernels() {
+  *GPU.lock() = None;
+}
+
+#[cfg(test)]
+pub(crate) fn cached_context() -> Option<std::sync::Weak<CudaContext>> {
+  GPU
+    .lock()
+    .as_ref()
+    .map(|k| Arc::downgrade(k.stream.context()))
+}
+
+/// The stream and kernels of the device at `ordinal`, opened if need be and cloned under one lock.
+fn ensure_kernels(ordinal: usize) -> Result<Kernels> {
+  let mut g = GPU.lock();
+  if let Some(k) = g.as_ref().filter(|k| k.ordinal == ordinal) {
+    return Ok(k.clone());
+  }
+  invalidate(&mut g);
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
@@ -147,7 +161,7 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
     .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
   let c = stream.context();
 
-  let load = |real: &str| -> Result<(CudaFunction, CudaFunction, CudaFunction)> {
+  let load = |real: &'static str| -> Result<(CudaFunction, CudaFunction, CudaFunction)> {
     let src = kernel_source(real);
     let ptx = nvrtc::compile_ptx(src)
       .map_err(|e| DeviceError::Compile(format!("NVRTC sheet {real}: {e}")))?;
@@ -168,7 +182,7 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
   let (gen_f32, transpose_f32, extract_f32) = load("float")?;
   let (gen_f64, transpose_f64, extract_f64) = load("double")?;
 
-  *g = Some(Kernels {
+  let kernels = Kernels {
     ordinal,
     stream,
     gen_f32,
@@ -177,8 +191,9 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
     gen_f64,
     transpose_f64,
     extract_f64,
-  });
-  Ok(())
+  };
+  *g = Some(kernels.clone());
+  Ok(kernels)
 }
 
 /// A batched one-dimensional plan on the stream, destroyed with its cache
@@ -227,17 +242,15 @@ macro_rules! sheet_precision {
 
     unsafe impl Send for $sized {}
 
-    /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+    /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first; a launch reuses
+    /// one only on the stream that built it, which its plans run on.
     static $cache: Mutex<Vec<$sized>> = Mutex::new(Vec::new());
 
-    /// One chunk of the batch: `sheets` sheets from `first` on, as their
-    /// `sheets · m · n` values. `corr_cell` is the batch-global counter the
-    /// correction's normals run from, past every cell of the whole batch.
+    /// One chunk of the batch: `sheets` sheets from `first` on, as their `sheets · m · n` values.
     fn $chunk(
       sheet: &SheetLaunch<'_, $t>,
       sheets: usize,
       first: usize,
-      corr_cell: u64,
       seed: u64,
       ordinal: usize,
     ) -> Result<Vec<$t>> {
@@ -260,23 +273,23 @@ macro_rules! sheet_precision {
       let grid = launch_len::<u32>(total, "sheet grid")?;
       let grid_out = launch_len::<u32>(out_len, "sheet_extract grid")?;
 
-      ensure_kernels(ordinal)?;
-      // Clone the handles out of the global lock so another size can launch
-      // concurrently; the per-size state below keeps its own lock.
-      let (stream, draw, transpose, extract) = {
-        let g = GPU.lock();
-        let k = g.as_ref().unwrap();
-        (
-          k.stream.clone(),
-          k.$gen.clone(),
-          k.$transpose.clone(),
-          k.$extract.clone(),
-        )
-      };
+      let Kernels {
+        stream,
+        $gen: draw,
+        $transpose: transpose,
+        $extract: extract,
+        ..
+      } = ensure_kernels(ordinal)?;
       let mut sized = $cache.lock();
       let s = crate::device::lru_slot(
         &mut sized,
-        |s| s.m == m && s.n == n && s.sheets == sheets && s.key == sheet.key,
+        |s| {
+          Arc::ptr_eq(s.d_out.stream(), &stream)
+            && s.m == m
+            && s.n == n
+            && s.sheets == sheets
+            && s.key == sheet.key
+        },
         || {
           let plan_rows = make_plan(
             &stream,
@@ -329,9 +342,8 @@ macro_rules! sheet_precision {
         },
       )?;
 
-      let base = counter_offset(seed);
-      let seq = base + (first * cells) as u64;
-      let seq_corr = base + corr_cell;
+      let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
+      let (first_cell, first_sheet) = ((first * cells) as u64, first as u64);
 
       // 1. Draw and scale, in natural order.
       unsafe {
@@ -341,8 +353,9 @@ macro_rules! sheet_precision {
           .arg(&s.d_lam)
           .arg(&cells_i)
           .arg(&total_i)
-          .arg(&seed)
-          .arg(&seq)
+          .arg(&seed_lo)
+          .arg(&seed_hi)
+          .arg(&first_cell)
           .launch(LaunchConfig::for_num_elems(grid))
           .map_err(|e| DeviceError::Launch(format!("sheet_gen: {e}")))?;
       }
@@ -391,8 +404,9 @@ macro_rules! sheet_precision {
           .arg(&n_i)
           .arg(&sheet.r)
           .arg(&sheet.corr)
-          .arg(&seed)
-          .arg(&seq_corr)
+          .arg(&seed_lo)
+          .arg(&seed_hi)
+          .arg(&first_sheet)
           .arg(&out_i)
           .launch(LaunchConfig::for_num_elems(grid_out))
           .map_err(|e| DeviceError::Launch(format!("sheet_extract: {e}")))?;
@@ -434,18 +448,14 @@ sheet_precision!(
 );
 
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
-  /// `sheets` sheets on the selected CUDA device, in chunks that fit the
-  /// batch budget: one seed for the whole batch, the Philox counter offset
-  /// per chunk by the cells already produced and the correction's counter by
-  /// the sheets, so the result is the same whatever the budget. `f64` runs the
-  /// double-precision kernels; a failing double launch is reported, never
-  /// quietly replaced by the `f32` one.
+  /// `sheets` sheets in chunks that fit the batch budget, one seed for the batch, so the result is
+  /// the same whatever the budget; a failing `f64` launch is reported, never replaced by `f32`.
   pub(crate) fn sample_cuda_sheets(
     &self,
     sheets: usize,
     device: &crate::device::Cuda,
   ) -> Result<Vec<Array2<T>>> {
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     let cells = self.cells();
     let seed = self.seed.next_seed();
     // A sheet is `cells` complex values of work buffer, which the kernels
@@ -464,7 +474,6 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     let mut first = 0;
     while first < sheets {
       let len = rows.min(sheets - first);
-      let corr_cell = (sheets * cells + first) as u64;
       if TypeId::of::<T>() == TypeId::of::<f32>() {
         let lam: Vec<f32> = self.lam.iter().map(|x| x.to_f32().unwrap()).collect();
         let launch = SheetLaunch {
@@ -475,7 +484,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
           corr: self.correction().to_f32().unwrap(),
           key,
         };
-        let flat = sample_chunk_f32(&launch, len, first, corr_cell, seed, device.ordinal)?;
+        let flat = sample_chunk_f32(&launch, len, first, seed, device.ordinal)?;
         out.extend(self.sheets_from_flat(&flat));
       } else {
         let lam: Vec<f64> = self.lam.iter().map(|x| x.to_f64().unwrap()).collect();
@@ -487,7 +496,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
           corr: self.correction().to_f64().unwrap(),
           key,
         };
-        let flat = sample_chunk_f64(&launch, len, first, corr_cell, seed, device.ordinal)?;
+        let flat = sample_chunk_f64(&launch, len, first, seed, device.ordinal)?;
         out.extend(self.sheets_from_flat(&flat));
       }
       first += len;

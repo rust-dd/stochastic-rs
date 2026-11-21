@@ -72,7 +72,7 @@ print(host.shape, gpu.shape)  # (4000, 512) (4000, 512)
 
 ## Step 2 — compare the law, not the path
 
-The host draws from the crate's SIMD ziggurat and the kernel hashes its own normals from `(path, step, seed)`, so the two sides never produce the same path — comparing them point by point is meaningless. What must agree is the law. Take the terminal column of each and compare means and spreads in units of their standard error:
+The host draws from the crate's SIMD ziggurat and the kernel draws its own normals from Philox-4x32-10 on `(path, step, site, index)`, so the two sides never produce the same path — comparing them point by point is meaningless. What must agree is the law. Take the terminal column of each and compare means and spreads in units of their standard error:
 
 ```python
 def z(a, b, se):

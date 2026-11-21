@@ -168,7 +168,8 @@ const T_FAR_PDF: [(f64, f64, f64); 5] = [
   (1e15, -37.35634609308015, 3.738307707800662e-304),
 ];
 
-/// `(ν, p, q(p), κ)`, `κ = p̃/(|q| f(q))`, `p̃ = min(p, 1 − p)`; an infinite `q` lies past `f64::MAX`.
+/// `(ν, p, q(p), κ)`, `κ = p̃/(|q| f(q))`, `p̃ = min(p, 1 − p)`; an infinite `q` lies past
+/// `f64::MAX`.
 const T_QUANTILE: [(f64, f64, f64, f64); 71] = [
   (0.01, 1e-300, f64::NEG_INFINITY, 100.0),
   (0.01, 1e-100, f64::NEG_INFINITY, 100.0),
@@ -340,7 +341,8 @@ const CHI2_MEDIAN: [(f64, f64, f64); 8] = [
   (100.0, 99.33412923598846, 0.17773882159599552),
 ];
 
-/// Within `4e-15 · max(1, |ln F|) · F` below ½ and `1e-15` above, where `1 − F` cannot carry the upper tail; exact at 0.
+/// Within `4e-15 · max(1, |ln F|) · F` below ½ and `1e-15` above, where `1 − F` cannot carry the
+/// upper tail; exact at 0.
 fn cdf_agrees(got: f64, want: f64) -> bool {
   if want == 0.0 || want.is_infinite() {
     return got == want;
@@ -384,7 +386,8 @@ fn the_t_cdf_matches_mpmath() {
   report("t cdf", T_CDF.len(), failures);
 }
 
-/// Both carry their exponent past double precision: the cdf within `2.5e-15` relative, the density within `1.5e-15`.
+/// Both carry their exponent past double precision: the cdf within `2.5e-15` relative, the density
+/// within `1.5e-15`.
 #[test]
 fn the_t_far_tail_holds_its_digits() {
   let cdf = T_FAR_CDF.iter().filter_map(|&(nu, x, want)| {
@@ -417,7 +420,8 @@ fn the_t_quantile_matches_mpmath() {
   report("t quantile", T_QUANTILE.len(), failures);
 }
 
-/// The upper half is the lower one reflected: `q(p) = −q(1 − p)` to the bit, `1 − p` exact for `p > ½`.
+/// The upper half is the lower one reflected: `q(p) = −q(1 − p)` to the bit, `1 − p` exact for
+/// `p > ½`.
 #[test]
 fn the_t_quantile_is_odd_to_the_bit() {
   let levels = T_QUANTILE.iter().filter(|row| row.1 > 0.5);

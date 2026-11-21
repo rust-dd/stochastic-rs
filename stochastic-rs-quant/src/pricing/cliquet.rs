@@ -19,12 +19,18 @@
 //!   arXiv:1810.09670, DOI: 10.15559/18-VMSTA107
 //! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed.
 //!
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_stochastic::mc::McEstimate;
 
-use crate::mc::McEstimate;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::exotic::CliquetOption;
+use crate::pricing::exotic::assert_sigma;
+use crate::pricing::mc_stats::par_estimate;
 
 /// Closed-form cliquet on $M$ equal sub-periods under Black-Scholes.
 ///
@@ -32,53 +38,53 @@ use crate::traits::FloatExt;
 /// $\min(\max(R_i, f_l), c_l)$. Under BSM the price reduces to a finite sum
 /// of forward-start option values, which by scaling invariance share a
 /// common value (so the total is $M$ times one).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CliquetPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Notional the summed period payoffs are paid on.
-  pub notional: f64,
-  /// Number of sub-periods.
-  pub m: usize,
-  /// Time to maturity in years (each period = $T/M$).
-  pub tau: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Constant volatility.
   pub sigma: f64,
-  /// Local floor on per-period return (e.g. 0.0 means "drop negative").
-  pub local_floor: Option<f64>,
-  /// Local cap on per-period return.
-  pub local_cap: Option<f64>,
 }
 
 impl CliquetPricer {
-  /// Payoff convention: the sum of capped/floored returns is paid at
-  /// maturity $T$, discounted by a single factor $e^{-rT}$.
-  pub fn price(&self) -> f64 {
-    let period_tau = self.tau / self.m as f64;
-    let per_period = self.expected_period_payoff(period_tau);
-    self.notional * self.m as f64 * per_period * (-self.r * self.tau).exp()
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the deterministic limit, NaN where a local
+  /// bound equals the period's forward return.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
+    Self { sigma }
+  }
+
+  /// The summed period payoffs paid at `tau`, the zero-length periods' at `tau = 0`; NaN for a NaN
+  /// rate, a negative or NaN `tau` or a global bound, which only [`McCliquetPricer`] prices.
+  pub fn price(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> f64 {
+    let global = option.global_floor.is_some() || option.global_cap.is_some();
+    if global || tau.is_nan() || tau < 0.0 || r.is_nan() || q.is_nan() {
+      return f64::NAN;
+    }
+    if tau == 0.0 {
+      let floor = option.local_floor.unwrap_or(f64::NEG_INFINITY);
+      let cap = option.local_cap.unwrap_or(f64::INFINITY);
+      return option.notional * option.periods as f64 * 0.0_f64.max_or_nan(floor).min_or_nan(cap);
+    }
+    let period_tau = tau / option.periods as f64;
+    let per_period = self.expected_period_payoff(option, r, q, period_tau);
+    option.notional * option.periods as f64 * per_period * (-r * tau).exp()
   }
 
   /// Risk-neutral expectation $E^Q[\min(\max(R, f_l), c_l)]$ for one
   /// period of length $\tau$ — undiscounted; the BSM scaling invariance
   /// makes this the same for every period.
-  fn expected_period_payoff(&self, tau: f64) -> f64 {
+  fn expected_period_payoff(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> f64 {
     let v = self.sigma;
-    let drift = self.r - self.q;
-    match (self.local_floor, self.local_cap) {
+    let drift = r - q;
+    match (option.local_floor, option.local_cap) {
       (None, None) => (drift * tau).exp() - 1.0,
-      (Some(f), None) => f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f),
+      (Some(f), None) => f + Self::expected_max_return_minus(r, q, v, tau, 1.0 + f),
       (None, Some(c)) => {
         let unbounded = (drift * tau).exp() - 1.0;
-        unbounded - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c)
+        unbounded - Self::expected_max_return_minus(r, q, v, tau, 1.0 + c)
       }
       (Some(f), Some(c)) => {
-        f + Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + f)
-          - Self::expected_max_return_minus(self.r, self.q, v, tau, 1.0 + c)
+        f + Self::expected_max_return_minus(r, q, v, tau, 1.0 + f)
+          - Self::expected_max_return_minus(r, q, v, tau, 1.0 + c)
       }
     }
   }
@@ -95,85 +101,105 @@ impl CliquetPricer {
   }
 }
 
-/// Monte-Carlo cliquet pricer with optional global cap/floor on the sum of
-/// local-capped returns.
-#[derive(Debug, Clone)]
-pub struct McCliquetPricer {
-  /// Spot price.
-  pub s: f64,
-  /// Notional the summed period payoffs are paid on.
-  pub notional: f64,
-  /// Number of sub-periods.
-  pub m: usize,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Constant volatility.
-  pub sigma: f64,
-  /// Local floor on per-period return.
-  pub local_floor: Option<f64>,
-  /// Local cap on per-period return.
-  pub local_cap: Option<f64>,
-  /// Floor on the sum of the locally capped and floored period returns.
-  pub global_floor: Option<f64>,
-  /// Cap on that sum.
-  pub global_cap: Option<f64>,
-  /// Number of MC paths.
-  pub n_paths: usize,
+/// Monte Carlo price of a [`CliquetOption`], global floor and cap included, which the closed form
+/// answers with NaN.
+#[derive(Debug, Clone, Copy)]
+pub struct McCliquetPricer<S: SeedExt = Unseeded> {
+  /// Annualised Black–Scholes volatility.
+  sigma: f64,
+  n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McCliquetPricer {
-  pub fn price(&self) -> McEstimate<f64> {
-    let period_tau = self.tau / self.m as f64;
-    let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * period_tau;
-    let vol = self.sigma * period_tau.sqrt();
-    let m = self.m;
-    let f_l = self.local_floor.unwrap_or(f64::NEG_INFINITY);
-    let c_l = self.local_cap.unwrap_or(f64::INFINITY);
-    let f_g = self.global_floor.unwrap_or(f64::NEG_INFINITY);
-    let c_g = self.global_cap.unwrap_or(f64::INFINITY);
+  /// Panics unless `sigma` is finite and `>= 0` and `n_paths >= 1`.
+  pub fn new(sigma: f64, n_paths: usize) -> Self {
+    assert_sigma(sigma);
+    assert!(
+      n_paths >= 1,
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
+    );
+    Self {
+      sigma,
+      n_paths,
+      seed: Unseeded,
+    }
+  }
+}
 
-    // Pre-generate all standard normals using the project's SIMD ziggurat.
+impl<S: SeedExt> McCliquetPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McCliquetPricer<S2> {
+    McCliquetPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      seed,
+    }
+  }
+
+  /// Discounted estimate at [`CliquetPricer::price`]'s query, which reads no spot; NaN for a
+  /// negative or NaN `tau` or a NaN rate.
+  pub fn price(&self, option: &CliquetOption, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
+    if tau.is_nan() || tau < 0.0 || r.is_nan() || q.is_nan() {
+      return McEstimate {
+        mean: f64::NAN,
+        std_err: f64::NAN,
+        n_samples: 0,
+      };
+    }
+    let CliquetOption {
+      notional,
+      periods: m,
+      local_floor,
+      local_cap,
+      global_floor,
+      global_cap,
+    } = *option;
+    let period_tau = tau / m as f64;
+    let drift = (r - q - 0.5 * self.sigma * self.sigma) * period_tau;
+    let vol = self.sigma * period_tau.sqrt();
+    let f_l = local_floor.unwrap_or(f64::NEG_INFINITY);
+    let c_l = local_cap.unwrap_or(f64::INFINITY);
+    let f_g = global_floor.unwrap_or(f64::NEG_INFINITY);
+    let c_g = global_cap.unwrap_or(f64::INFINITY);
+
     let mut all_z = vec![0.0_f64; self.n_paths * m];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
-      let z = &all_z[p * m..(p + 1) * m];
-      let mut s_curr = self.s;
-      let mut sum_returns = 0.0;
-      for k in 0..m {
-        let s_next = s_curr * (drift + vol * z[k]).exp();
-        let r_i = s_next / s_curr - 1.0;
-        let r_capped = r_i.max(f_l).min(c_l);
-        sum_returns += r_capped;
-        s_curr = s_next;
-      }
-      sum_returns.min(c_g).max(f_g)
+      let returns = all_z[p * m..(p + 1) * m]
+        .iter()
+        .map(|&z| (drift + vol * z).exp_m1().max_or_nan(f_l).min_or_nan(c_l));
+      returns.sum::<f64>().min_or_nan(c_g).max_or_nan(f_g)
     };
-    let sum: f64 = (0..self.n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..self.n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    let scale = self.notional * (-self.r * self.tau).exp();
-    McEstimate {
-      mean: scale * sum / self.n_paths as f64,
-      std_err: scale.abs() * std_err_from_sums(sum, sum_sq, self.n_paths),
-      n_samples: self.n_paths,
-    }
+    par_estimate(self.n_paths, notional * (-r * tau).exp(), payoff_of)
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
+
+  fn cliquet(
+    notional: f64,
+    periods: usize,
+    local_floor: Option<f64>,
+    local_cap: Option<f64>,
+  ) -> CliquetOption {
+    CliquetOption {
+      notional,
+      periods,
+      local_floor,
+      local_cap,
+      global_floor: None,
+      global_cap: None,
+    }
+  }
 
   /// Cliquet with M=1 and no caps pays the simple return $R$ at maturity.
   /// PV = $e^{-rT} E^Q[R] = e^{-rT}(e^{(r-q)T} - 1)$.
@@ -182,18 +208,8 @@ mod tests {
     let r: f64 = 0.05;
     let q: f64 = 0.0;
     let tau: f64 = 1.0;
-    let p = CliquetPricer {
-      s: 100.0,
-      notional: 1.0,
-      m: 1,
-      tau,
-      r,
-      q,
-      sigma: 0.20,
-      local_floor: None,
-      local_cap: None,
-    };
-    let price = p.price();
+    let option = cliquet(1.0, 1, None, None);
+    let price = CliquetPricer::new(0.20).price(&option, r, q, tau);
     let expected = (-r * tau).exp() * (((r - q) * tau).exp() - 1.0);
     assert!(
       (price - expected).abs() < 1e-9,
@@ -207,18 +223,8 @@ mod tests {
   fn floored_cliquet_linearity_in_m() {
     let mut prev = 0.0;
     for m in [1, 2, 4, 12, 252] {
-      let p = CliquetPricer {
-        s: 100.0,
-        notional: 100.0,
-        m,
-        tau: 1.0,
-        r: 0.05,
-        q: 0.0,
-        sigma: 0.20,
-        local_floor: Some(0.0),
-        local_cap: None,
-      };
-      let price = p.price();
+      let option = cliquet(100.0, m, Some(0.0), None);
+      let price = CliquetPricer::new(0.20).price(&option, 0.05, 0.0, 1.0);
       // monotonic: more sub-periods, more upside captured (per Jensen)
       assert!(price > prev, "m={m}: price={price} not > prev={prev}");
       prev = price;
@@ -228,34 +234,11 @@ mod tests {
   /// Closed-form cliquet should agree with MC within ~3% (no global cap).
   #[test]
   fn closed_form_matches_mc() {
-    let cf = CliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(-0.01),
-      local_cap: Some(0.04),
-    }
-    .price();
-    let mc = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(-0.01),
-      local_cap: Some(0.04),
-      global_floor: None,
-      global_cap: None,
-      n_paths: 100_000,
-    }
-    .price()
-    .mean;
+    let option = cliquet(100.0, 12, Some(-0.01), Some(0.04));
+    let cf = CliquetPricer::new(0.25).price(&option, 0.04, 0.0, 1.0);
+    let mc = McCliquetPricer::new(0.25, 100_000)
+      .price(&option, 0.04, 0.0, 1.0)
+      .mean;
     let rel = (cf - mc).abs() / cf.abs().max(1e-10);
     assert!(rel < 0.04, "cf={cf}, mc={mc}, rel={rel}");
   }
@@ -263,58 +246,68 @@ mod tests {
   /// Adding a global cap reduces the MC price.
   #[test]
   fn global_cap_reduces_price() {
-    let no_cap = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(0.0),
-      local_cap: Some(0.05),
-      global_floor: None,
-      global_cap: None,
-      n_paths: 50_000,
-    }
-    .price()
-    .mean;
-    let capped = McCliquetPricer {
-      s: 100.0,
-      notional: 100.0,
-      m: 12,
-      tau: 1.0,
-      r: 0.04,
-      q: 0.0,
-      sigma: 0.25,
-      local_floor: Some(0.0),
-      local_cap: Some(0.05),
-      global_floor: None,
+    let mc = McCliquetPricer::new(0.25, 50_000);
+    let no_cap = cliquet(100.0, 12, Some(0.0), Some(0.05));
+    let capped = CliquetOption {
       global_cap: Some(0.20),
-      n_paths: 50_000,
-    }
-    .price()
-    .mean;
+      ..no_cap
+    };
+    let no_cap = mc.price(&no_cap, 0.04, 0.0, 1.0).mean;
+    let capped = mc.price(&capped, 0.04, 0.0, 1.0).mean;
     assert!(capped < no_cap, "capped={capped}, no_cap={no_cap}");
   }
 
   /// Higher volatility increases a floored cliquet's value (vega positive).
   #[test]
   fn floored_cliquet_has_positive_vega() {
-    let make = |sigma: f64| {
-      CliquetPricer {
-        s: 100.0,
-        notional: 100.0,
-        m: 12,
-        tau: 1.0,
-        r: 0.04,
-        q: 0.0,
-        sigma,
-        local_floor: Some(0.0),
-        local_cap: None,
-      }
-      .price()
-    };
+    let option = cliquet(100.0, 12, Some(0.0), None);
+    let make = |sigma: f64| CliquetPricer::new(sigma).price(&option, 0.04, 0.0, 1.0);
     assert!(make(0.30) > make(0.15));
+  }
+
+  #[test]
+  fn the_closed_form_answers_a_global_floor_or_cap_with_nan() {
+    let pricer = CliquetPricer::new(0.25);
+    let local = cliquet(100.0, 12, Some(0.0), Some(0.05));
+    let floored = CliquetOption {
+      global_floor: Some(0.0),
+      ..local
+    };
+    let capped = CliquetOption {
+      global_cap: Some(0.2),
+      ..local
+    };
+    assert!(pricer.price(&local, 0.04, 0.0, 1.0).is_finite());
+    assert!(pricer.price(&floored, 0.04, 0.0, 1.0).is_nan());
+    assert!(pricer.price(&capped, 0.04, 0.0, 1.0).is_nan());
+  }
+
+  #[test]
+  fn a_nan_bound_prices_nan_in_both_pricers() {
+    let mc = McCliquetPricer::new(0.2, 2_000).with_seed(Deterministic::new(1));
+    let bounded = cliquet(1.0, 4, Some(0.0), Some(0.05));
+    for option in [
+      cliquet(1.0, 4, Some(f64::NAN), Some(0.05)),
+      cliquet(1.0, 4, Some(0.0), Some(f64::NAN)),
+      CliquetOption {
+        global_floor: Some(f64::NAN),
+        ..bounded
+      },
+      CliquetOption {
+        global_cap: Some(f64::NAN),
+        ..bounded
+      },
+    ] {
+      assert!(
+        CliquetPricer::new(0.2)
+          .price(&option, 0.03, 0.0, 1.0)
+          .is_nan()
+      );
+      let est = mc.price(&option, 0.03, 0.0, 1.0);
+      assert!(
+        est.mean.is_nan() && est.std_err.is_nan(),
+        "{option:?}: {est}"
+      );
+    }
   }
 }

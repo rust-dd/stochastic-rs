@@ -1,12 +1,11 @@
-//! # Control Variates
+//! Control variates: a payoff corrected by a control of known mean on the same normal draws.
 //!
 //! $$
 //! W = Y + c^*\bigl(V - \mathbb{E}\[V\]\bigr),\quad
 //! c^* = -\frac{\operatorname{Cov}(Y,V)}{\operatorname{Var}(V)}
 //! $$
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.1.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

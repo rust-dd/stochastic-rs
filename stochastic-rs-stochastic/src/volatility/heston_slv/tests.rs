@@ -3,6 +3,7 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::params::Drift;
 use crate::params::VarianceBoundary;
 use crate::traits::Grid2D;
 use crate::volatility::heston_log::HestonLog;
@@ -11,8 +12,8 @@ const N: usize = 64;
 
 fn slv<S: SeedExt>(eta: f64, leverage: impl Into<Fn2D<f64>>, seed: S) -> HestonSlv<f64, S> {
   HestonSlv::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -30,9 +31,8 @@ fn affine_leverage(_t: f64, s: f64) -> f64 {
   0.8 + 0.002 * s
 }
 
-/// Under full mixing and unit leverage the recursion is `HestonLog`'s, and
-/// the two Gaussian streams are built the same way, so the two processes
-/// agree to the bit at the same seed.
+/// Under full mixing and unit leverage the recursion and the two Gaussian streams are
+/// `HestonLog`'s, so the two processes agree to the bit at the same seed.
 #[test]
 fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
   let [s, v] = slv(
@@ -42,17 +42,14 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
   )
   .sample();
   let [s_log, v_log] = HestonLog::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     2.0,
     0.04,
     0.3,
     -0.7,
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -79,9 +76,8 @@ fn seeded_is_deterministic_and_the_seed_matters() {
   assert_ne!(a.sample(), c.sample());
 }
 
-/// A grid that tabulates an affine leverage reproduces it by bilinear
-/// interpolation, so the two coefficients drive the same path up to
-/// rounding.
+/// A grid that tabulates an affine leverage reproduces it by bilinear interpolation, so both
+/// drive the same path up to rounding.
 #[test]
 fn a_grid_leverage_matches_the_closure_it_tabulates() {
   let spots = Array1::linspace(1.0, 400.0, 400);
@@ -138,10 +134,7 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
     (p.kappa, p.theta, p.sigma, p.rho, p.mu, p.eta),
     (2.0, 0.04, 0.3, -0.7, 0.05, 1.0)
   );
-  assert_eq!(
-    (p.n, p.t, p.s0, p.v0),
-    (252, Some(1.0), Some(100.0), Some(0.04))
-  );
+  assert_eq!((p.n, p.t, p.s0, p.v0), (252, Some(1.0), 100.0, 0.04));
   assert!(p.device_ready(), "the default leverage is an expression");
   assert_eq!(p.leverage.call(0.3, 120.0), 1.0);
   let [s, v] = p.sample();
@@ -153,8 +146,8 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
 #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = HestonSlv::<f64, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,

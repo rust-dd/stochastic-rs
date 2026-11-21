@@ -2,10 +2,10 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
@@ -48,8 +48,8 @@ fn fcir() -> Fcir<f64> {
   )
 }
 
-fn fjacobi() -> FJacobi<f64> {
-  FJacobi::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Default::default())
+fn fjacobi() -> Fjacobi<f64> {
+  Fjacobi::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Default::default())
 }
 
 fn cfbms() -> Cfbms<f64> {
@@ -79,8 +79,8 @@ fn jump_fou() -> JumpFou<f64, SimdNormal<f64>> {
   )
 }
 
-fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
-  JumpFOUCustom::new(
+fn jump_fou_custom() -> JumpFouCustom<f64, SimdNormal<f64>, SimdNormal<f64>> {
+  JumpFouCustom::new(
     0.7,
     1.0,
     0.0,
@@ -95,14 +95,14 @@ fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
 }
 
 rejects! {
-  fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fou().with_steps(1);
-  fgbm_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fgbm().with_steps(1);
-  fcir_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fcir().with_steps(1);
-  fjacobi_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fjacobi().with_steps(1);
-  cfbms_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfbms().with_steps(1);
-  cfou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfou().with_steps(1);
-  jump_fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou().with_steps(1);
-  jump_fou_custom_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou_custom().with_steps(1);
+  fou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fou().with_points(1);
+  fgbm_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fgbm().with_points(1);
+  fcir_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fcir().with_points(1);
+  fjacobi_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fjacobi().with_points(1);
+  cfbms_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfbms().with_points(1);
+  cfou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfou().with_points(1);
+  jump_fou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou().with_points(1);
+  jump_fou_custom_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou_custom().with_points(1);
 
   fjacobi_with_alpha_rejects_zero: "alpha must satisfy `alpha > T::zero()`, got alpha = 0.0" => fjacobi().with_alpha(0.0);
   fjacobi_with_alpha_rejects_the_value_of_beta: "alpha must satisfy `alpha < self.beta`, got alpha = 2.0, self.beta = 2.0" => fjacobi().with_alpha(2.0);

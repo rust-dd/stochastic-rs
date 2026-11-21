@@ -1,13 +1,8 @@
 //! Heston consistent extended Kalman filtering and NMLE parameter estimation.
 //!
-//! The fixed-parameter filter and the alternating batch estimator are
-//! separate APIs. This keeps filtering semantics independent from
-//! parameter-update and convergence semantics.
+//! Filter and batch fit are separate entry points; zero returns, a constant price path's, are data.
 //!
-//! Reference: Wang, X., He, X., Bao, Y., Zhao, Y. (2018), "Parameter estimates
-//! of Heston stochastic volatility model with MLE and consistent EKF
-//! algorithm", *Science China Information Sciences* 61.
-//! DOI: 10.1007/s11432-017-9215-8
+//! Reference: Wang, He, Bao & Zhao (2018), Sci. China Inf. Sci. 61, DOI: 10.1007/s11432-017-9215-8
 
 use crate::heston_mle::HestonMleFit;
 
@@ -15,6 +10,7 @@ mod batch;
 mod filter;
 
 pub use batch::HestonNmleCekfConfig;
+pub use batch::HestonNmleCekfCorrection;
 pub use batch::HestonNmleCekfFit;
 pub use batch::fit_heston_nmle_cekf;
 pub use filter::HestonCekfConsistencyBounds;
@@ -66,10 +62,8 @@ impl From<HestonMleFit> for HestonNmleCekfParams {
 }
 
 impl HestonNmleCekfParams {
+  /// The batch's bound on an iterate's `rho`; the refit's moment estimate is held in `[-1, 1]`.
   pub(crate) fn projected_batch(mut self) -> Self {
-    self.kappa = self.kappa.abs().max(EPS);
-    self.theta = self.theta.abs().max(EPS);
-    self.sigma = self.sigma.abs().max(EPS);
     self.rho = self.rho.clamp(-BATCH_RHO_MAX, BATCH_RHO_MAX);
     self
   }

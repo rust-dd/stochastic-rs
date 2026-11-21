@@ -1,19 +1,19 @@
-//! # Multi-Level Monte Carlo (MLMC)
+//! Multilevel Monte Carlo with the sample allocation of Giles (2008) eq. (12) at `M = 2`.
 //!
-//! $\mathbb{E}\[P_L\] = \mathbb{E}\[P_0\]
-//!   + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]$
+//! $$
+//! \mathbb{E}\[P_L\] = \mathbb{E}\[P_0\] + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]
+//! $$
 //!
-//! Levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$; $V_\ell$ is the per-level `n − 1` variance.
-//! Giles (2008) eq. (12) allocation at cost $C_\ell \propto h_\ell^{-1}$ ($M = 2$):
+//! Levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$; `V_ℓ` the `n − 1` variance, `C_ℓ ∝ 1/h_ℓ`:
 //!
 //! $$
 //! N_\ell = \Bigl\lceil 2\epsilon^{-2}\sqrt{V_\ell / C_\ell}\,
 //!   \sum_{k=0}^{L}\sqrt{V_k C_k}\Bigr\rceil
 //! $$
 //!
-//! Giles (2008), "Multilevel Monte Carlo Path Simulation", DOI: 10.1287/opre.1070.0496.
-//! Giles (2015), "Multilevel Monte Carlo methods", DOI: 10.1017/S096249291500001X.
-//! Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
+//! Reference: Giles (2008), "Multilevel Monte Carlo Path Simulation", DOI 10.1287/opre.1070.0496
+//! Reference: Giles (2015), "Multilevel Monte Carlo methods", DOI 10.1017/S096249291500001X
+//! Reference: Welford (1962), DOI 10.1080/00401706.1962.10490022
 
 use ndarray::Array1;
 
@@ -48,11 +48,7 @@ pub struct MlmcResult<T: FloatExt> {
 }
 
 impl<T: FloatExt> Mlmc<T> {
-  /// Configure an MLMC run.
-  ///
-  /// # Panics
-  ///
-  /// If `epsilon <= 0`, `l_max < l_min` or `n0 < 2`.
+  /// Configure an MLMC run; panics unless `epsilon > 0`, `l_max >= l_min` and `n0 >= 2`.
   pub fn new(epsilon: T, l_min: usize, l_max: usize, n0: usize) -> Self {
     assert!(
       epsilon > T::zero(),
@@ -71,12 +67,8 @@ impl<T: FloatExt> Mlmc<T> {
     }
   }
 
-  /// Run the adaptive MLMC algorithm.
-  ///
-  /// `level_sampler(l, n)` must return `n` coupled differences
-  /// `P_l − P_{l−1}` for level `l > 0`, or `n` values of `P_0` for `l = 0`.
-  /// The caller is responsible for using the same Brownian increments on the
-  /// fine and coarse paths (strong coupling).
+  /// Run adaptive MLMC. `level_sampler(l, n)` returns `n` coupled differences `P_l − P_{l−1}`, or
+  /// `P_0` at `l = 0`; the caller couples fine and coarse paths on the same Brownian increments.
   pub fn estimate<F>(&self, level_sampler: F) -> MlmcResult<T>
   where
     F: Fn(usize, usize) -> Array1<T>,

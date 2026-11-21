@@ -1,30 +1,22 @@
-//! KPSS stationarity test: an LM statistic for the null of
-//! (trend-)stationarity against a unit-root alternative, using a
-//! Newey-West long-run variance estimate.
+//! KPSS stationarity test: an LM statistic for (trend-)stationarity against a unit root.
 //!
-//! References:
-//! - Kwiatkowski D., Phillips P. C. B., Schmidt P., Shin Y. (1992) —
-//!   *Testing the Null Hypothesis of Stationarity Against the
-//!   Alternative of a Unit Root*, Journal of Econometrics 54(1-3),
-//!   159–178, DOI: 10.1016/0304-4076(92)90104-Y. Critical values below
-//!   are this paper's Table 1.
-//! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
-//!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
-//!   Covariance Matrix*, Econometrica 55(3), 703–708,
-//!   DOI: 10.2307/1913610.
+//! The long-run variance is Newey–West's, and the critical values are the paper's Table 1.
+//!
+//! Reference: Kwiatkowski et al. (1992), J. Econom. 54(1-3), 159–178, 10.1016/0304-4076(92)90104-Y
+//! Reference: Newey & West (1987), Econometrica 55(3), 703–708, DOI: 10.2307/1913610
 
 use ndarray::ArrayView1;
 
 use super::common::Trend;
+use super::common::centred;
 use super::common::newey_west_long_run_variance;
+use super::common::prepared;
 use super::common::regress_on_deterministics;
+use super::common::reject_exact_fit;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 
 /// Configuration for the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
@@ -79,8 +71,8 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// KPSS stationarity test; `Err` below 20 points, on a non-finite one or a constant series, and
-/// panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// KPSS test at any scale; `Err` below 20 points, on non-finite, constant or exactly fitted data or
+/// a zero long-run variance; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -91,12 +83,10 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = kpss_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
-  reject_constant(&y, "constant series")?;
-
-  let reg = regress_on_deterministics(&y, include_trend)?;
-  let resid = reg.residuals;
+  let y = prepared(y, 20)?;
+  let fit = regress_on_deterministics(&centred(&y), include_trend)?;
+  reject_exact_fit(&y, &fit.residuals, fit.condition)?;
+  let resid = fit.residuals;
   let n = resid.len();
   let n_f = n as f64;
 
@@ -109,7 +99,7 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   eta /= n_f * n_f;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(n));
-  let long_run_var = newey_west_long_run_variance(&resid, used_lags)?.max(1e-12);
+  let long_run_var = newey_west_long_run_variance(&resid, used_lags)?;
   let statistic = eta / long_run_var;
 
   Ok(KpssTest {

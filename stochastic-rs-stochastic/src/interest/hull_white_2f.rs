@@ -1,26 +1,14 @@
-//! # Hull White 2f
+//! Two-factor Hull–White in the state-space form of Brigo–Mercurio §4.2; the output is `[r, u]`.
 //!
 //! $$
 //! dr_t=\bigl[\theta(t)+u_t-a\,r_t\bigr]dt+\sigma_1\,dW_t^1,\qquad
 //! du_t=-b\,u_t\,dt+\sigma_2\,dW_t^2
 //! $$
 //!
-//! State-space (Brigo–Mercurio §4.2-style) two-factor Hull-White: `r_t`
-//! (returned as `x` below) directly carries the short rate — the
-//! calibration function `θ(t)` and the auxiliary factor `u_t` both feed
-//! straight into `r`'s own drift. Output is `[r, u]`; unlike the
-//! equivalent G2++ parametrization, `r` is never formed by summing two
-//! independent zero-drift factors — `u_t` is that second factor, but it
-//! enters `r`'s drift directly rather than being added to it externally.
+//! `θ(t)` and the auxiliary factor `u_t` enter `r`'s drift directly, where G2++ sums two factors.
 //!
-//! References:
-//! - Hull J. & White A. (1994) — *Numerical Procedures for Implementing
-//!   Term Structure Models II: Two-Factor Models*, Journal of
-//!   Derivatives 2(2), 37–48, DOI: 10.3905/jod.1994.407908.
-//! - Brigo D. & Mercurio F. (2006) — *Interest Rate Models — Theory and
-//!   Practice*, 2nd ed., Springer Finance,
-//!   DOI: 10.1007/978-3-540-34604-3 — source of the §4.2-style
-//!   state-space parametrization above.
+//! Reference: Hull & White (1994), J. Derivatives 2(2), 37–48, DOI 10.3905/jod.1994.407908
+//! Reference: Brigo & Mercurio (2006), 2nd ed., Springer, §4.2, DOI 10.1007/978-3-540-34604-3
 //!
 
 use ndarray::Array1;
@@ -34,11 +22,10 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Time-dependent drift target $\theta(t)$, fitted to the initial term
-  /// structure — the additive role `HullWhite::theta` plays for the
-  /// single-factor model.
+  /// Time-dependent drift target $\theta(t)$, fitted to the initial term structure, as
+  /// `HullWhite::theta` in the single-factor model.
   pub theta: Fn1D<T>,
   /// Mean-reversion speed $a$ of the primary state variable.
   pub a: T,
@@ -49,18 +36,16 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation ρ between the two driving Brownian motions
   /// `dW1`/`dW2`.
   pub rho: T,
-  /// Mean-reversion speed b of the auxiliary factor u_t (multiplies
-  /// `-u_{t-1}` in u's own drift) — not a diffusion term despite the
-  /// field's former doc; `sigma1`/`sigma2` are the diffusion terms.
+  /// Mean-reversion speed b of the auxiliary factor u_t, multiplying `-u_{t-1}` in its drift;
+  /// the diffusion terms are `sigma1` and `sigma2`.
   pub b: T,
-  /// Initial short rate r₀ (returned as `x[0]`).
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Number of points sampled along each of the `r`/`u` paths.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -69,6 +54,8 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     a: T,
@@ -126,8 +113,6 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> HullWhite2F<T, S, B> {}
 
 /// The Euler engine's view of the two-factor Hull-White model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
@@ -203,10 +188,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> HullWhite2FSampler<'_, T, S> {
     HullWhite2FSampler {
       n: self.n,
@@ -222,9 +205,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -246,10 +228,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`HullWhite2F`] sampling state. Borrows the process for its
-/// time-dependent drift `theta(t)` and owns the correlated-Gaussian generator
-/// plus the seed source so a Monte-Carlo loop reuses both output buffers.
+/// Reusable [`HullWhite2F`] sampling state: it borrows the process for `theta(t)` and owns the
+/// correlated-Gaussian generator and the seed source, so a loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HullWhite2FSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   x0: T,
@@ -324,10 +306,8 @@ pub struct PyHullWhite2F {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHullWhite2F {
-  // The two leading keywords are named for what they are in the model, and
-  // for what every other short-rate class here calls them: `theta` is the
-  // drift-target curve, `a` the mean-reversion speed. They were once `k` and
-  // `theta`, which put the name of the curve on the speed.
+  // `theta` is the drift-target curve and `a` the mean-reversion speed, the names every other
+  // short-rate class here gives them.
   #[new]
   #[pyo3(signature = (theta, a, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None, device=None))]
   fn new(
@@ -382,13 +362,11 @@ impl PyHullWhite2F {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+    py_dispatch_f64!(self, |inner| inner.device_fallback())
   }
 
   /// Whether this configuration runs on a device kernel: the absence of a
@@ -416,10 +394,8 @@ impl PyHullWhite2F {
     })
   }
 
-  /// `m` independent paths as a pair of `(m, n)` arrays, one a component.
-  /// The GIL is released while the paths are generated; every callable
-  /// coefficient re-acquires it, so a Python function is called from rayon
-  /// workers one at a time.
+  /// `m` independent paths as a pair of `(m, n)` arrays, one a component. The GIL is released
+  /// meanwhile; a callable coefficient re-acquires it, so rayon workers call Python one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -476,11 +452,8 @@ mod tests {
     assert_eq!(u.len(), 64);
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: `theta` is the
-  /// additive time-dependent target θ(t) and `a` is the multiplicative
-  /// mean-reversion speed — matches this module's own SDE and the sibling
-  /// `HullWhite::theta`/`alpha` split. Also pins the pre-rename recursion
-  /// (with diffusion zeroed out) as a behavior-regression guard.
+  /// `theta` is the additive target θ(t) and `a` the mean-reversion speed, as in the module's SDE
+  /// and `HullWhite`'s `theta`/`alpha`; with the diffusion zeroed the path is deterministic Euler.
   #[test]
   fn hw2f_a_and_theta_zero_diffusion_matches_deterministic_euler() {
     let a = 0.6_f64;

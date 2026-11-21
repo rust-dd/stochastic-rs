@@ -1,13 +1,12 @@
-use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
@@ -20,7 +19,7 @@ use super::common::seed;
 fn fbm_setters_match_fresh_construction() {
   let chained = Fbm::<f64, _>::new(0.3, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
-    .with_steps(64)
+    .with_points(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Fbm::<f64, _>::new(0.7, 64, Some(1.0), seed(7));
@@ -40,7 +39,7 @@ fn fou_setters_match_fresh_construction() {
     .with_theta(1.0)
     .with_mu(0.0)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(0.0))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
@@ -69,7 +68,7 @@ fn fgbm_setters_match_fresh_construction() {
     .with_hurst(0.7)
     .with_mu(0.05)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(1.0))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
@@ -104,7 +103,7 @@ fn fcir_setters_match_fresh_construction() {
   .with_theta(1.0)
   .with_mu(0.04)
   .with_sigma(0.1)
-  .with_steps(64)
+  .with_points(64)
   .with_x0(Some(0.04))
   .with_horizon(Some(1.0))
   .with_boundary(VarianceBoundary::Floor)
@@ -140,16 +139,16 @@ fn fcir_setters_match_fresh_construction() {
 
 #[test]
 fn fjacobi_setters_match_fresh_construction() {
-  let chained = FJacobi::<f64, _>::new(0.3, 0.5, 1.5, 0.4, 16, Some(0.3), Some(2.0), seed(1))
+  let chained = Fjacobi::<f64, _>::new(0.3, 0.5, 1.5, 0.4, 16, Some(0.3), Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_beta(2.0)
     .with_alpha(1.0)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(0.5))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
-  let fresh = FJacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 64, Some(0.5), Some(1.0), seed(7));
+  let fresh = Fjacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 64, Some(0.5), Some(1.0), seed(7));
 
   assert_eq!(
     (
@@ -173,7 +172,7 @@ fn cfbms_setters_match_fresh_construction() {
   let chained = Cfbms::<f64, _>::new(0.4, -0.5, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_rho(0.3)
-    .with_steps(64)
+    .with_points(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Cfbms::<f64, _>::new(0.7, 0.3, 64, Some(1.0), seed(7));
@@ -191,7 +190,7 @@ fn cfgns_setters_match_fresh_construction() {
   let chained = Cfgns::<f64, _>::new(0.4, -0.5, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_rho(0.3)
-    .with_steps(64)
+    .with_increments(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Cfgns::<f64, _>::new(0.7, 0.3, 64, Some(1.0), seed(7));
@@ -221,7 +220,7 @@ fn cfou_setters_match_fresh_construction() {
   .with_lambda(1.0)
   .with_omega(0.5)
   .with_a(0.2)
-  .with_steps(64)
+  .with_points(64)
   .with_x1_0(Some(0.0))
   .with_x2_0(Some(0.0))
   .with_horizon(Some(1.0))
@@ -275,8 +274,8 @@ fn jump_fou_setters_match_fresh_construction() {
   .with_mu(0.0)
   .with_sigma(0.2)
   .with_lambda(3.0)
-  .with_jump_dist(jump_law(0.05))
-  .with_steps(64)
+  .with_jump_law(jump_law(0.05))
+  .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0));
   let fresh = JumpFou::<f64, _, _>::new(
@@ -309,41 +308,63 @@ fn jump_fou_setters_match_fresh_construction() {
   assert_eq!(chained.sample(), fresh.sample());
 }
 
+/// After a draw has advanced the seed, `with_horizon` leaves the jumps' seed where it was: the next
+/// path is the one an untouched process draws second.
 #[test]
-fn jump_fou_setters_keep_the_jump_driver_in_step() {
-  let p = JumpFou::<f64, _, _>::new(
-    0.7,
-    1.0,
-    0.0,
-    0.2,
-    2.0,
-    jump_law(0.1),
-    16,
-    Some(0.0),
-    Some(1.0),
-    seed(1),
-  );
-  assert_eq!(p.cpoisson().poisson.lambda, 2.0);
-  assert_eq!(p.cpoisson().poisson.n, Some(16));
-  assert_eq!(p.cpoisson().poisson.t_max, Some(1.0));
+fn jump_fou_with_horizon_leaves_the_jump_driver_alone() {
+  let build = || {
+    JumpFou::<f64, _, _>::new(
+      0.7,
+      1.0,
+      0.0,
+      0.2,
+      2.0,
+      jump_law(0.1),
+      16,
+      Some(0.0),
+      Some(1.0),
+      seed(1),
+    )
+  };
+  let p = build();
+  let _ = p.sample();
+  let untouched = build();
+  let _ = untouched.sample();
+  assert_eq!(p.with_horizon(Some(1.0)).sample(), untouched.sample());
+}
 
-  let p = p.with_lambda(3.0);
-  assert_eq!(p.lambda(), 3.0);
-  assert_eq!(p.cpoisson().poisson.lambda, 3.0);
-
-  let p = p.with_steps(64);
-  assert_eq!(p.cpoisson().poisson.n, Some(64));
-
-  let p = p.with_horizon(Some(2.0));
-  assert_eq!(p.cpoisson().poisson.t_max, Some(2.0));
-
-  let p = p.with_seed(seed(7));
-  assert_eq!(p.cpoisson().seed.current(), seed(7).derive().current());
+/// `with_lambda`, `with_points` and `with_jump_law` after a draw keep the jumps' seed as well; at
+/// λ = 50 a path with no jump, which would hide a moved seed, has probability e⁻⁵⁰.
+#[test]
+fn jump_fou_setters_after_a_draw_keep_the_jump_seed() {
+  let build = || {
+    JumpFou::<f64, _, _>::new(
+      0.7,
+      1.0,
+      0.0,
+      0.2,
+      50.0,
+      jump_law(0.1),
+      16,
+      Some(0.0),
+      Some(1.0),
+      seed(1),
+    )
+  };
+  let drawn = || {
+    let p = build();
+    let _ = p.sample();
+    p
+  };
+  let second = drawn().sample();
+  assert_eq!(drawn().with_lambda(50.0).sample(), second);
+  assert_eq!(drawn().with_points(16).sample(), second);
+  assert_eq!(drawn().with_jump_law(jump_law(0.1)).sample(), second);
 }
 
 #[test]
 fn jump_fou_custom_setters_match_fresh_construction() {
-  let chained = JumpFOUCustom::<f64, _, _>::new(
+  let chained = JumpFouCustom::<f64, _, _, _>::new(
     0.3,
     2.0,
     0.5,
@@ -359,13 +380,13 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_theta(1.0)
   .with_mu(0.0)
   .with_sigma(0.2)
-  .with_steps(64)
+  .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0))
-  .with_jump_times(SimdNormal::new(0.5, 0.01))
-  .with_jump_sizes(jump_law(0.1))
+  .with_jump_time_law(SimdNormal::new(0.5, 0.01))
+  .with_jump_size_law(jump_law(0.1))
   .with_seed(seed(7));
-  let fresh = JumpFOUCustom::<f64, _, _>::new(
+  let fresh = JumpFouCustom::<f64, _, _, _>::new(
     0.7,
     1.0,
     0.0,
@@ -392,7 +413,10 @@ fn jump_fou_custom_setters_match_fresh_construction() {
     (64, Some(0.0), Some(1.0))
   );
   assert_eq!(
-    (chained.jump_times().mu(), chained.jump_sizes().sigma()),
+    (
+      chained.jump_time_law().mu(),
+      chained.jump_size_law().sigma()
+    ),
     (0.5, 0.1)
   );
   assert_eq!(chained.seed().current(), 7);

@@ -1,4 +1,5 @@
-//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`:
+//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`.
+//!
 //! $$
 //! L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
 //!          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
@@ -15,6 +16,8 @@ use super::FdDiagnostic;
 use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
+use crate::hurst::to_f64_vec;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Higuchi fractal-dimension estimator.
@@ -57,12 +60,14 @@ impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   }
 }
 
+type LogLogFit = (f64, f64, f64, Vec<f64>, Vec<f64>);
+
 /// The log-log fit `(d, intercept, r_squared, log_scales, log_stats)`, `d` its slope; `Err` below
 /// 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
 fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   kmax: usize,
-) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), StatsError> {
+) -> Result<LogLogFit, StatsError> {
   let n_times = x.len();
   if n_times < 3 {
     return Err(StatsError::InsufficientData {
@@ -77,6 +82,7 @@ fn compute_with_diagnostic<T: FloatExt>(
       constraint: "kmax >= 2",
     });
   }
+  reject_constant(&to_f64_vec(x), "constant series")?;
 
   let k_upper = kmax.min(n_times - 1);
   let mut x_reg = Array1::<f64>::zeros(k_upper);
@@ -95,8 +101,8 @@ fn compute_with_diagnostic<T: FloatExt>(
 
       let mut ll = 0.0_f64;
       for j in 1..=n_max {
-        let a = x[m + j * k].to_f64().unwrap_or(f64::NAN);
-        let b = x[m + (j - 1) * k].to_f64().unwrap_or(f64::NAN);
+        let a = x[m + j * k].to_f64().unwrap();
+        let b = x[m + (j - 1) * k].to_f64().unwrap();
         ll += (a - b).abs();
       }
 

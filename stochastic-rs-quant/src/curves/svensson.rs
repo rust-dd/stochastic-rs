@@ -10,7 +10,7 @@
 //!   \beta_3 \left(\frac{1 - e^{-\tau/\lambda_2}}{\tau/\lambda_2} - e^{-\tau/\lambda_2}\right)
 //! $$
 
-use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::types::CurvePoint;
 use crate::traits::RealExt;
@@ -85,7 +85,7 @@ impl<T: RealExt> Svensson<T> {
   }
 
   /// Generate curve points at the given maturities.
-  pub fn curve_points(&self, maturities: &Array1<T>) -> Vec<CurvePoint<T>> {
+  pub fn curve_points(&self, maturities: ArrayView1<T>) -> Vec<CurvePoint<T>> {
     maturities
       .iter()
       .map(|&tau| CurvePoint {
@@ -96,7 +96,7 @@ impl<T: RealExt> Svensson<T> {
   }
 
   /// Fit the model to market zero rates using grid search on (lambda1, lambda2) + OLS for betas.
-  pub fn fit(maturities: &Array1<T>, market_rates: &Array1<T>) -> Self {
+  pub fn fit(maturities: ArrayView1<T>, market_rates: ArrayView1<T>) -> Self {
     let n = maturities.len();
     let mut best_sse = T::from_f64_fast(f64::MAX);
     let mut best = Self::new(
@@ -143,7 +143,7 @@ impl<T: RealExt> Svensson<T> {
           }
         }
 
-        if let Some(betas) = super::linalg::solve_linalg::<4>(&xtx_data, &xty_data) {
+        if let Some(betas) = crate::linalg::solve_small::<4>(&xtx_data, &xty_data) {
           let candidate = Self::new(
             T::from_f64_fast(betas[0]),
             T::from_f64_fast(betas[1]),

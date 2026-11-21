@@ -1,7 +1,7 @@
 //! Error-free sums and products, the running sum the mass walks carry their roundings in, and an
 //! exponent's terms summed exactly in a frame scaled below the doubles' range.
 //!
-//! Reference: Shewchuk, J. R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321 (the growing expansion).
+//! Reference: Shewchuk (1997), Discrete Comput. Geom. 18(3), 305-363, DOI 10.1007/PL00009321.
 
 pub(in crate::truncated) use crate::special::two_prod;
 pub(in crate::truncated) use crate::special::two_sum;

@@ -30,9 +30,10 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::OptionType;
 use crate::traits::Greeks;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 
-/// Cash-or-nothing digital pays a fixed cash amount $Q$ when the option
-/// finishes in the money.
+/// Cash-or-nothing digital: pays the cash $Q$ when the option finishes strictly in the money, so
+/// nothing at `s = k`; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// C_{\text{CoN}}=Qe^{-rT}N(d_2),\qquad P_{\text{CoN}}=Qe^{-rT}N(-d_2)
@@ -58,34 +59,8 @@ pub struct CashOrNothingPricer {
 }
 
 impl CashOrNothingPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  ///
-  /// `cash` is a contract term with no invalid value — a negative payout is
-  /// a short digital — so it is deliberately unchecked.
+  /// Panics for a negative `sigma`, which flips `d1` into a finite wrong price; a NaN `sigma` is
+  /// kept, since an unlinked engine handle reads NaN and must price NaN. `cash` is unchecked.
   pub fn new(cash: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -105,6 +80,9 @@ impl CashOrNothingPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau, option_type),
@@ -115,6 +93,9 @@ impl CashOrNothingPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
     let denom = s * self.sigma * tau.sqrt();
@@ -124,6 +105,9 @@ impl CashOrNothingPricer {
 
   /// Gamma — $\partial^2 V/\partial S^2$.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
     let v = self.sigma;
@@ -136,6 +120,9 @@ impl CashOrNothingPricer {
 
   /// Vega — $\partial V/\partial \sigma$.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
 
@@ -147,8 +134,12 @@ impl ModelPricer for CashOrNothingPricer {
   /// `cash`/`sigma` are model state; `(s, k, r, q, tau)` is the query, with
   /// $b = r - q$ fed into $d_2$.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * ((r - q) * tau).exp();
+      return self.cash * disc * expiry_indicator(OptionType::Call, forward, k);
+    }
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     self.cash * disc * norm_cdf(d2)
   }
 
@@ -156,14 +147,18 @@ impl ModelPricer for CashOrNothingPricer {
   /// $C_{\text{CoN}} + P_{\text{CoN}} = Qe^{-rT}$, not
   /// $C - Se^{-qT} + Ke^{-rT}$ — see `cash_call_put_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * ((r - q) * tau).exp();
+      return self.cash * disc * expiry_indicator(OptionType::Put, forward, k);
+    }
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     self.cash * disc * norm_cdf(-d2)
   }
 }
 
-/// Asset-or-nothing digital pays the underlying when the option finishes in
-/// the money.
+/// Asset-or-nothing digital: pays the underlying when the option finishes strictly in the money, so
+/// nothing at `s = k`; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// C_{\text{AoN}}=Se^{(b-r)T}N(d_1),\qquad P_{\text{AoN}}=Se^{(b-r)T}N(-d_1)
@@ -185,31 +180,7 @@ pub struct AssetOrNothingPricer {
 }
 
 impl AssetOrNothingPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
+  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
   pub fn new(sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -231,6 +202,9 @@ impl AssetOrNothingPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       ..Greeks::nan()
@@ -239,6 +213,9 @@ impl AssetOrNothingPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let b = r - q;
     let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
@@ -257,8 +234,12 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `sigma` is model state; `(s, k, r, q, tau)` is the query, $b = r - q$.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * (b * tau).exp();
+      return s * coc * expiry_indicator(OptionType::Call, forward, k);
+    }
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(d1)
   }
 
@@ -267,14 +248,18 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `aon_call_put_parity` — not vanilla put-call parity.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * (b * tau).exp();
+      return s * coc * expiry_indicator(OptionType::Put, forward, k);
+    }
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(-d1)
   }
 }
 
-/// Gap option: pays $S - K_2$ when $S > K_1$ (call) or $K_2 - S$ when
-/// $S < K_1$ (put). Reduces to a vanilla when $K_1 = K_2$.
+/// Gap option, a vanilla when $K_1 = K_2$: pays $S - K_2$ when $S > K_1$ (call) or $K_2 - S$ when
+/// $S < K_1$ (put), so nothing at $S = K_1$; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// V = S e^{(b-r)T}N(d_1) - K_2 e^{-rT}N(d_2),\quad
@@ -301,35 +286,8 @@ pub struct GapPricer {
 }
 
 impl GapPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  ///
-  /// `k2` is the payoff strike — a contract term, not a market or model
-  /// quantity — so like [`CashOrNothingPricer`]'s `cash` it has no invalid
-  /// value and is unchecked.
+  /// Panics for a negative `sigma`; a NaN `sigma` is kept, as on [`CashOrNothingPricer::new`].
+  /// The payoff strike `k2` is a contract term and unchecked.
   pub fn new(k2: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -346,9 +304,13 @@ impl ModelPricer for GapPricer {
   /// `gap_reduces_to_vanilla`.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = expiry_indicator(OptionType::Call, s, k);
+      return s * coc * pays - self.k2 * disc * pays;
+    }
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2)
   }
 
@@ -356,14 +318,19 @@ impl ModelPricer for GapPricer {
   /// rather than trusting vanilla parity against a single strike.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = expiry_indicator(OptionType::Put, s, k);
+      return self.k2 * disc * pays - s * coc * pays;
+    }
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     self.k2 * disc * norm_cdf(-d2) - s * coc * norm_cdf(-d1)
   }
 }
 
-/// Supershare option pays $S_T / X_L$ when $X_L \le S_T \le X_H$.
+/// Supershare option: pays $S_T / X_L$ when $X_L \le S_T \le X_H$, both band edges included; at
+/// `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// V = \frac{S}{X_L} e^{(b-r)T}[N(d_1) - N(d_2)]
@@ -390,42 +357,8 @@ pub struct SuperSharePricer {
 }
 
 impl SuperSharePricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma` is negative. All four digitals share `bsm_d1`, so all
-  ///   four share what a negative volatility does to it:
-  ///   `1/(sigma*sqrt(tau))` flips sign, $d_1$ flips with it, and the price
-  ///   that comes back is finite, plausible and wrong — negative for two of
-  ///   the four. Case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A `NaN` `sigma` is deliberately **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
-  /// rejected. The difference is where the value comes from:
-  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
-  /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
-  /// reads as `NaN` *by design* — the crate's missing-data answer, the same
-  /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
-  /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
-  /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
-  /// precisely so the two cases stay apart and neither is a side effect of
-  /// how `NaN` compares. Heston's parameters have no such path — they arrive
-  /// from calibration output, never from a handle.
-  ///
-  /// `sigma == 0` is the deterministic limit and stays accepted.
-  /// - if `x_high` is not strictly positive, or `NaN` — the upper band edge
-  ///   is a price level, and a non-positive one is not a band.
-  ///
-  /// `x_high` is a contract term the caller states outright, with no
-  /// handle behind it, so unlike `sigma` it has no missing-data reading and
-  /// a `NaN` is rejected along with the non-positive values.
-  ///
-  /// An *inverted* band (`x_high` below the query's `k`) is deliberately
-  /// **not** rejected here even though it prices negative: `k` is the query
-  /// strike, so no single argument to this constructor is invalid in that
-  /// case — it is a model/query combination, which this layer cannot see.
+  /// Panics for a negative `sigma` (NaN is kept, as on [`CashOrNothingPricer::new`]) and unless
+  /// `x_high > 0`; a band inverted against the query's `k` prices negative and is not refused.
   pub fn new(x_high: f64, sigma: f64) -> Self {
     assert!(
       sigma.is_nan() || sigma >= 0.0,
@@ -445,9 +378,13 @@ impl ModelPricer for SuperSharePricer {
   /// `self.sigma`.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
+    let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = if k <= s && s <= self.x_high { 1.0 } else { 0.0 };
+      return s / k * coc * pays;
+    }
     let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let d2 = bsm_d1(s, self.x_high, b, self.sigma, tau);
-    let coc = ((b - r) * tau).exp();
     s / k * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 
@@ -457,6 +394,27 @@ impl ModelPricer for SuperSharePricer {
   /// corresponding instrument.
   fn price_put(&self, _s: f64, _k: f64, _r: f64, _q: f64, _tau: f64) -> f64 {
     f64::NAN
+  }
+}
+
+/// `1` strictly past the strike, `0` at or short of it, as QuantLib's `CashOrNothingPayoff` and
+/// `AssetOrNothingPayoff` pay; NaN for a NaN forward or strike.
+pub(crate) fn expiry_indicator(option_type: OptionType, forward: f64, k: f64) -> f64 {
+  if forward.is_nan() || k.is_nan() {
+    return f64::NAN;
+  }
+  let in_the_money = match option_type {
+    OptionType::Call => forward > k,
+    OptionType::Put => forward < k,
+  };
+  if in_the_money { 1.0 } else { 0.0 }
+}
+
+/// `(s − k)⁺` for a call and `(k − s)⁺` for a put, NaN for a NaN `s` or `k`.
+pub(crate) fn vanilla_payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
+  match option_type {
+    OptionType::Call => (s - k).max_or_nan(0.0),
+    OptionType::Put => (k - s).max_or_nan(0.0),
   }
 }
 

@@ -1,4 +1,5 @@
-//! The ratio of two Bessel `K` that the GH and GIG moment generating functions and the GIG moments share.
+//! The ratio of two Bessel `K` that the GH and GIG moment generating functions and the GIG moments
+//! share.
 
 use super::bessel_k::steed_pair;
 use super::bessel_k::temme_sums_at;
@@ -56,7 +57,8 @@ pub(crate) fn ratio_regime(
   (normal && x1 >= TEMME_FLOOR && den.x >= TEMME_FLOOR).then_some(value)
 }
 
-/// `ln(a/b)`, as `ln a − ln b` where the quotient leaves the normal range, which a subnormal or infinite `a/b` would cost.
+/// `ln(a/b)`, as `ln a − ln b` where the quotient leaves the normal range, which a subnormal or
+/// infinite `a/b` would cost.
 pub(crate) fn ln_quotient(a: f64, b: f64) -> f64 {
   let q = a / b;
   if q.is_normal() {
@@ -87,7 +89,8 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
   if let Some(g) = k_half_ratio_plain(nu, x, ln_2_x) {
     return split_pow2(g);
   }
-  // Only Temme's quotient leaves the normal range: near `μ = −½` at a subnormal `x` it is `(x/2)^{−2μ}`, its terms not.
+  // Only Temme's quotient leaves the normal range: near `μ = −½` at a subnormal `x` it is
+  // `(x/2)^{−2μ}`, its terms not.
   let n = (nu + 0.5).floor();
   let mu = nu - n;
   let (k, k1) = temme_sums_at(x, mu, mu * mu, ln_2_x);
@@ -126,7 +129,8 @@ pub(crate) fn k_half_ratio_plain(nu: f64, x: f64, ln_2_x: f64) -> Option<f64> {
     }
     return Some(g);
   }
-  // Steed's `2(1 + x)` overflows past MAX/2; from `2¹⁰⁰⁰` Hankel's `R_ν = 1 + (2ν + 1)/2x` misses by under `ν²/x²`.
+  // Steed's `2(1 + x)` overflows past MAX/2; from `2¹⁰⁰⁰` Hankel's `R_ν = 1 + (2ν + 1)/2x` misses
+  // by under `ν²/x²`.
   if x >= HANKEL_FROM {
     return Some(0.5 * x + 0.25 * (2.0 * nu + 1.0));
   }
@@ -140,7 +144,8 @@ pub(crate) fn k_half_ratio_plain(nu: f64, x: f64, ln_2_x: f64) -> Option<f64> {
   Some(0.5 * x * ratio)
 }
 
-/// `ln(2/ω)` for `ω = √χ√ψ`, from the roots where `ω` is subnormal and carries only its own few digits.
+/// `ln(2/ω)` for `ω = √χ√ψ`, from the roots where `ω` is subnormal and carries only its own few
+/// digits.
 pub(crate) fn ln_two_over(root_chi: f64, root_psi: f64, omega: f64) -> f64 {
   if omega.is_normal() {
     -(0.5 * omega).ln()

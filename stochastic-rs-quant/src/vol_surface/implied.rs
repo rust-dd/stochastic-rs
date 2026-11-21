@@ -6,65 +6,40 @@
 //! maturities $T$, inverts the Black-Scholes formula to obtain
 //! $\sigma_{\mathrm{imp}}(K_i, T_j)$.
 //!
-//! Uses the [`implied_vol`] crate (Jäckel's rational approximation) for
-//! robust, high-precision inversion.
+//! Uses the [`implied_vol`] crate's `Hybrid` solver: Jäckel's rational approximation with FlashIV.
 //!
-//! Reference: Jäckel (2017), "Let's Be Rational"
+//! Reference: Jäckel (2015), "Let's Be Rational", Wilmott 2015(75), 40–53
 
-use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
+use implied_vol::solver::Hybrid;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
-/// Error returned by the falliable [`ImpliedVolSurface`] constructors.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum ImpliedSurfaceError {
-  /// A quote's maturity has no matching forward in the supplied
-  /// `forwards` slice. Add a `(tau, forward)` entry to `forwards` for
-  /// every distinct quote maturity.
-  MissingForward { tau: f64 },
-  /// `flat_ivs.len()` did not equal `N_T * N_K`.
-  FlatLengthMismatch {
-    got: usize,
-    nt: usize,
-    nk: usize,
-    expected: usize,
-  },
-}
+use crate::OptionQuote;
+use crate::OptionType;
+use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::quote::validate_quotes;
+use crate::total_order::ascending;
 
-impl std::fmt::Display for ImpliedSurfaceError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::MissingForward { tau } => write!(
-        f,
-        "missing forward for tau={tau}; supply (tau, forward) for every distinct quote maturity"
-      ),
-      Self::FlatLengthMismatch {
-        got,
-        nt,
-        nk,
-        expected,
-      } => write!(
-        f,
-        "flat_ivs length {got} must equal N_T * N_K = {nt} * {nk} = {expected}"
-      ),
-    }
-  }
-}
-
-impl std::error::Error for ImpliedSurfaceError {}
-
-/// Market data for a single option quote.
-#[derive(Clone, Debug)]
-pub struct OptionQuote {
-  /// Strike price
-  pub strike: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Market price of the option
-  pub price: f64,
-  /// `true` for call, `false` for put
-  pub is_call: bool,
+/// Black implied volatility of an undiscounted price on a forward: `0.0` at the intrinsic price,
+/// `+∞` at the forward (the strike for a put), NaN outside them. Jäckel (2015), Wilmott 2015(75).
+pub(crate) fn black_implied_vol(
+  undiscounted_price: f64,
+  forward: f64,
+  strike: f64,
+  tau: f64,
+  option_type: OptionType,
+) -> f64 {
+  ImpliedBlackVolatility::builder()
+    .option_price(undiscounted_price)
+    .forward(forward)
+    .strike(strike)
+    .expiry(tau)
+    .is_call(option_type == OptionType::Call)
+    .build()
+    .and_then(|iv| iv.calculate_with::<Hybrid>())
+    .unwrap_or(f64::NAN)
 }
 
 /// Implied volatility surface built from market data.
@@ -97,15 +72,15 @@ fn assert_ascending_axes(strikes: &[f64], maturities: &[f64]) {
 }
 
 impl ImpliedVolSurface {
-  /// A surface from an **undiscounted** call (`is_call`) or put price grid of shape `(N_T, N_K)`, one forward per maturity; a cell is
-  /// NaN where the price does not invert to a positive finite Black vol; panics unless both axes ascend strictly and shapes agree.
+  /// A surface from an **undiscounted** price grid of shape `(N_T, N_K)`, one forward per maturity:
+  /// NaN where a price has no Black vol; panics unless both axes ascend strictly and shapes agree.
   #[must_use]
   pub fn from_prices(
     strikes: Vec<f64>,
     maturities: Vec<f64>,
     forwards: Vec<f64>,
-    prices: &Array2<f64>,
-    is_call: bool,
+    prices: ArrayView2<f64>,
+    option_type: OptionType,
   ) -> Self {
     let nt = maturities.len();
     let nk = strikes.len();
@@ -124,15 +99,7 @@ impl ImpliedVolSurface {
         let k = strikes[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = ImpliedBlackVolatility::builder()
-          .option_price(prices[[j, i]])
-          .forward(f)
-          .strike(k)
-          .expiry(t)
-          .is_call(is_call)
-          .build()
-          .and_then(|v| v.calculate::<DefaultSpecialFn>())
-          .unwrap_or(f64::NAN);
+        let iv = black_implied_vol(prices[[j, i]], f, k, t, option_type);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;
@@ -232,35 +199,27 @@ impl ImpliedVolSurface {
     Self::from_iv_grid(strikes, maturities, forwards, ivs)
   }
 
-  /// Build from a flat list of [`OptionQuote`]s.
-  ///
-  /// Quotes are sorted and grouped by maturity, then by strike.
-  /// Forward prices are required for each unique maturity.
-  ///
-  /// Panics on missing forwards. Use [`Self::try_from_quotes`] for a
-  /// falliable variant returning [`ImpliedSurfaceError`].
-  #[must_use]
-  pub fn from_quotes(quotes: &[OptionQuote], forwards: &[(f64, f64)]) -> Self {
-    Self::try_from_quotes(quotes, forwards)
-      .expect("from_quotes: forwards missing — use try_from_quotes for the Result variant")
-  }
-
-  /// Falliable variant of [`Self::from_quotes`] returning
-  /// [`ImpliedSurfaceError::MissingForward`] when a quote's maturity
-  /// has no matching forward in `forwards`.
-  ///
-  /// A cell with no quote at that maturity and strike, or whose price does not
-  /// invert to a positive finite Black volatility, is left NaN.
+  /// A surface from present-value quotes, inverted as `price · e^{rτ}` Black-76 prices; a cell with
+  /// no quote or root is NaN; `InsufficientData`, `InvalidQuote`, `MissingInput`, `InvalidInput`.
   pub fn try_from_quotes(
     quotes: &[OptionQuote],
     forwards: &[(f64, f64)],
-  ) -> Result<Self, ImpliedSurfaceError> {
+    r: f64,
+  ) -> Result<Self, QuantError> {
+    validate_quotes(quotes)?;
+    if !r.is_finite() {
+      return Err(QuantError::InvalidInput {
+        what: "r",
+        reason: format!("must be finite, got {r}"),
+      });
+    }
+
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
-    tau_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    tau_set.sort_by(ascending);
     tau_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let mut strike_set: Vec<f64> = quotes.iter().map(|q| q.strike).collect();
-    strike_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    strike_set.sort_by(ascending);
     strike_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let fwd_map: std::collections::HashMap<u64, f64> =
@@ -269,14 +228,17 @@ impl ImpliedVolSurface {
     let nt = tau_set.len();
     let nk = strike_set.len();
     let mut prices = Array2::<f64>::from_elem((nt, nk), f64::NAN);
-    let mut is_call_grid = vec![true; nt * nk];
+    let mut option_types = vec![OptionType::Call; nt * nk];
     let fwd_vec: Vec<f64> = tau_set
       .iter()
       .map(|t| {
         fwd_map
           .get(&t.to_bits())
           .copied()
-          .ok_or(ImpliedSurfaceError::MissingForward { tau: *t })
+          .ok_or_else(|| QuantError::MissingInput {
+            what: "forward",
+            detail: format!("tau = {t}"),
+          })
       })
       .collect::<Result<_, _>>()?;
 
@@ -289,8 +251,8 @@ impl ImpliedVolSurface {
         .iter()
         .position(|k| (k - q.strike).abs() < 1e-12)
         .unwrap();
-      prices[[j, i]] = q.price;
-      is_call_grid[j * nk + i] = q.is_call;
+      prices[[j, i]] = q.price * (r * q.tau).exp();
+      option_types[j * nk + i] = q.option_type;
     }
 
     let mut ivs = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -308,15 +270,7 @@ impl ImpliedVolSurface {
         let k = strike_set[i];
         log_moneyness[[j, i]] = (k / f).ln();
 
-        let iv = ImpliedBlackVolatility::builder()
-          .option_price(p)
-          .forward(f)
-          .strike(k)
-          .expiry(t)
-          .is_call(is_call_grid[j * nk + i])
-          .build()
-          .and_then(|v| v.calculate::<DefaultSpecialFn>())
-          .unwrap_or(f64::NAN);
+        let iv = black_implied_vol(p, f, k, t, option_types[j * nk + i]);
 
         if iv.is_finite() && iv > 0.0 {
           ivs[[j, i]] = iv;
@@ -345,14 +299,16 @@ impl ImpliedVolSurface {
     symbol: &str,
     r: f64,
     q: f64,
-  ) -> anyhow::Result<Self> {
+  ) -> Result<Self, QuantError> {
     let chain = provider.option_chain(symbol)?;
     let (quotes, forwards) = chain.to_surface_inputs(r, q);
     if quotes.is_empty() {
-      anyhow::bail!("from_provider: option chain for '{symbol}' yielded no usable quotes");
+      return Err(QuantError::MarketData {
+        symbol: symbol.to_string(),
+        reason: "the option chain yielded no usable quotes".to_string(),
+      });
     }
-    Self::try_from_quotes(&quotes, &forwards)
-      .map_err(|e| anyhow::anyhow!("from_provider: surface build failed: {e}"))
+    Self::try_from_quotes(&quotes, &forwards, r)
   }
 
   /// Extract a single smile slice (implied vols for one maturity).
@@ -408,7 +364,7 @@ impl SmileSlice {
   pub fn fit_svi(
     &self,
     initial: Option<super::svi::SviRawParams<f64>>,
-  ) -> super::svi::SviRawParams<f64> {
+  ) -> Calibrated<super::svi::SviRawParams<f64>> {
     super::svi::calibrate_svi(&self.log_moneyness, &self.total_variance, initial)
   }
 
@@ -480,7 +436,7 @@ impl SmileSlice {
 
 impl ImpliedVolSurface {
   /// Fit SVI parameters to each maturity slice independently.
-  pub fn fit_svi_slices(&self) -> Vec<super::svi::SviRawParams<f64>> {
+  pub fn fit_svi_slices(&self) -> Vec<Calibrated<super::svi::SviRawParams<f64>>> {
     let nt = self.maturities.len();
     (0..nt).map(|j| self.smile_slice(j).fit_svi(None)).collect()
   }
@@ -492,151 +448,29 @@ impl ImpliedVolSurface {
   pub fn fit_ssvi(
     &self,
     initial: Option<super::ssvi::SsviParams<f64>>,
-  ) -> super::ssvi::SsviSurface<f64> {
+  ) -> Calibrated<super::ssvi::SsviSurface<f64>> {
     let nt = self.maturities.len();
     let slices: Vec<super::ssvi::SsviSlice<f64>> = (0..nt)
       .map(|j| self.smile_slice(j).to_ssvi_slice())
       .collect();
 
-    let params = super::ssvi::calibrate_ssvi(&slices, initial);
+    let fit = super::ssvi::calibrate_ssvi(&slices, initial);
 
     let thetas: Vec<f64> = slices.iter().map(|s| s.theta).collect();
 
-    super::ssvi::SsviSurface::new(params, thetas, self.maturities.clone())
+    let surface = super::ssvi::SsviSurface::new(fit.params, thetas, self.maturities.clone());
+    Calibrated {
+      params: surface,
+      loss: fit.loss,
+      converged: fit.converged,
+      iterations: fit.iterations,
+      message: fit.message,
+      max_error: fit.max_error,
+      history: Vec::new(),
+      diagnostics: (),
+    }
   }
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::array;
-
-  use super::*;
-
-  /// `from_provider` against a `MockProvider` whose option chain carries
-  /// undiscounted-Black call prices: the recovered implied vols must match
-  /// the σ those prices were generated from. Exercises the full Tier 3
-  /// provider → surface wiring offline.
-  #[test]
-  fn from_provider_recovers_surface_from_mock_chain() {
-    use stochastic_rs_distributions::special::norm_cdf;
-
-    use crate::market::provider::ChainQuote;
-    use crate::market::provider::MockProvider;
-    use crate::market::provider::OptionChain;
-
-    let s = 100.0_f64;
-    let r = 0.04_f64;
-    let sigma = 0.22_f64;
-    let strikes = [90.0_f64, 100.0, 110.0];
-    let taus = [0.5_f64, 1.0];
-
-    let mut quotes = Vec::new();
-    for &t in &taus {
-      let f = s * (r * t).exp();
-      for &k in &strikes {
-        let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-        let d2 = d1 - sigma * t.sqrt();
-        let price = f * norm_cdf(d1) - k * norm_cdf(d2); // undiscounted Black
-        quotes.push(ChainQuote {
-          strike: k,
-          tau: t,
-          last: price,
-          bid: price,
-          ask: price,
-          implied_vol: sigma,
-          is_call: true,
-        });
-      }
-    }
-    let mut mp = MockProvider::new();
-    mp.insert_option_chain(OptionChain {
-      symbol: "ACME".to_string(),
-      s,
-      quotes,
-    });
-
-    let surface = ImpliedVolSurface::from_provider(&mp, "ACME", r, 0.0).unwrap();
-    for j in 0..taus.len() {
-      for i in 0..strikes.len() {
-        let iv = surface.ivs[[j, i]];
-        assert!(
-          (iv - sigma).abs() < 1e-4,
-          "recovered iv={iv} vs σ={sigma} at T={}, K={}",
-          taus[j],
-          strikes[i]
-        );
-      }
-    }
-  }
-
-  /// `from_provider` propagates a provider error for a missing symbol.
-  #[test]
-  fn from_provider_errors_on_missing_symbol() {
-    use crate::market::provider::MockProvider;
-
-    let mp = MockProvider::new();
-    let res = ImpliedVolSurface::from_provider(&mp, "NOPE", 0.05, 0.0);
-    assert!(res.is_err());
-  }
-
-  #[test]
-  fn from_prices_round_trip() {
-    use stochastic_rs_distributions::special::norm_cdf;
-
-    let s = 100.0;
-    let r = 0.05;
-    let sigma = 0.20;
-
-    let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-    let maturities = vec![0.25, 0.50, 1.0];
-    let forwards: Vec<f64> = maturities.iter().map(|&t| s * f64::exp(r * t)).collect();
-
-    let mut prices = Array2::<f64>::zeros((maturities.len(), strikes.len()));
-    for (j, &t) in maturities.iter().enumerate() {
-      let f = forwards[j];
-      for (i, &k) in strikes.iter().enumerate() {
-        let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-        let d2 = d1 - sigma * t.sqrt();
-        // Undiscounted Black price
-        prices[[j, i]] = f * norm_cdf(d1) - k * norm_cdf(d2);
-      }
-    }
-
-    let surface = ImpliedVolSurface::from_prices(
-      strikes.clone(),
-      maturities.clone(),
-      forwards.clone(),
-      &prices,
-      true,
-    );
-
-    for j in 0..maturities.len() {
-      for i in 0..strikes.len() {
-        let iv = surface.ivs[[j, i]];
-        assert!(
-          (iv - sigma).abs() < 1e-6,
-          "iv={iv} vs sigma={sigma} at T={}, K={}",
-          maturities[j],
-          strikes[i]
-        );
-      }
-    }
-  }
-
-  #[test]
-  fn smile_slice_filters_nans() {
-    let surface = ImpliedVolSurface {
-      strikes: vec![90.0, 100.0, 110.0],
-      maturities: vec![0.5],
-      forwards: vec![100.0],
-      ivs: array![[0.22, f64::NAN, 0.20]],
-      total_variance: array![[0.0242, f64::NAN, 0.02]],
-      log_moneyness: array![[(90.0_f64 / 100.0).ln(), 0.0, (110.0_f64 / 100.0).ln()]],
-    };
-
-    let slice = surface.smile_slice(0);
-    assert_eq!(slice.implied_vols.len(), 2);
-    assert!((slice.implied_vols[0] - 0.22).abs() < 1e-12);
-    assert!((slice.implied_vols[1] - 0.20).abs() < 1e-12);
-  }
-}
+mod tests;

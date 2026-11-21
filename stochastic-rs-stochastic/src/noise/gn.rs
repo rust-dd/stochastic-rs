@@ -1,4 +1,4 @@
-//! # GN
+//! Gaussian noise: `n` independent Brownian increments of variance `t / n`, with no leading zero.
 //!
 //! $$
 //! \Delta W_i\sim\mathcal N(0,\Delta t)
@@ -15,33 +15,31 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Number of `N(0, dt)` increments sampled (no leading zero).
+  /// Increments drawn, with no leading zero; `dt = t / n`.
   pub n: usize,
-  /// Simulation horizon `[0, t]` the `n` increments span (1 when omitted); sets `dt = t / max(n, 1)`.
+  /// Horizon of the path; `None` is a unit horizon.
+  /// The `n` increments span it, so `dt = t / n`.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Gn::default().with_steps(500)`. No persisted cache: `sampler()`
-/// builds its Gaussian source fresh from `self` every call.
+/// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
+  /// Panics unless `n >= 1` and a given `t` is positive and finite.
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_n(n);
+    check_t(t);
     Gn {
       backend: Cpu,
       n,
@@ -52,19 +50,25 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
-  /// Replace the number of increments `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  fn check_n(n: usize) {
+    require!(n >= 1, n);
+  }
+
+  /// Replace the number of increments `n`; panics unless `n >= 1`.
+  pub fn with_increments(mut self, n: usize) -> Self {
+    Self::check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
@@ -145,9 +149,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws in its kernel, the host runs this process's own
+  /// sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -180,6 +183,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Gn`] sampling state: the owned Gaussian source. Each path is `n`
 /// i.i.d. `N(0, dt)` increments (no leading zero, unlike [`Bm`]).
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GnSampler<T: FloatExt> {
   n: usize,
   normal: Seeded<SimdNormal<T>>,
@@ -233,3 +237,13 @@ py_process_1d!(PyGn, Gn,
   params: (n: usize, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn ten_increments_split_a_unit_horizon_into_tenths() {
+    assert_eq!(Gn::<f64>::default().with_increments(10).dt(), 0.1);
+  }
+}

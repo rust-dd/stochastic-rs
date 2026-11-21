@@ -295,7 +295,7 @@ that another seed passes it too.
 
 ## 9. Reference impls
 
-The `mc/` module is nine files under
+The `mc/` module is eight files under
 `stochastic-rs-stochastic/src/mc/`:
 
 - `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
@@ -316,11 +316,8 @@ The `mc/` module is nine files under
   variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
   note it returns its own result type, not `McEstimate`. Its per-level
   mean and variance come from `mc::Welford`.
-- `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
-  `price(paths, payoff)`. Ungated — the least-squares solve runs on the
-  pure-Rust `faer`, so it is in every build —
-  it needs LAPACK for the regression step, so it is absent from a
-  default build.
+- Longstaff–Schwartz is not here: it is quant's
+  `stochastic_rs_quant::pricing::BermudanLsmPricer`.
 
 ## Related SKILLs
 
@@ -328,7 +325,6 @@ The `mc/` module is nine files under
 - `add-diffusion-process` — produces the underlying paths; the seed is
   the constructor's last parameter, and CRN depends on `Clone`
   snapshotting it.
-- `feature-flag-management` — if a new
-  LAPACK-dependent technique needs the same treatment.
+- `feature-flag-management` — if a new technique needs a feature gate.
 - `bench-writing` — variance-reduction factor is a natural benchmark
   metric.

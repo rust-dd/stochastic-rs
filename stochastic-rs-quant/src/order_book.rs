@@ -21,7 +21,7 @@ const EPSILON: f64 = 1e-9;
 /// A total‑ordered price key (wraps `f64` so it can live in a `BTreeMap`).
 pub type Price = OrderedFloat<f64>;
 
-/// Order side.
+/// Order side; also the direction of an Almgren–Chriss parent order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Side {
   Buy,
@@ -57,6 +57,42 @@ pub struct Trade {
   pub maker_id: u64,
 }
 
+/// One price level: the price and the total size resting at it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Level {
+  pub price: f64,
+  pub size: f64,
+}
+
+/// What a limit order did on arrival: its id and the trades it crossed into.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+  pub order_id: u64,
+  pub trades: Vec<Trade>,
+}
+
+/// What a market order did: its id, its trades and the size the book could not fill.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Execution {
+  pub order_id: u64,
+  pub trades: Vec<Trade>,
+  pub unfilled: f64,
+}
+
+/// Both sides of the book, each from its best price outwards.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Depth {
+  pub bids: Vec<Level>,
+  pub asks: Vec<Level>,
+}
+
+fn level((&price, queue): (&Price, &VecDeque<Order>)) -> Level {
+  Level {
+    price: price.into_inner(),
+    size: queue.iter().map(|o| o.size).sum(),
+  }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct OrderBook {
   bids: BTreeMap<Price, VecDeque<Order>>, // best bid = last key
@@ -74,7 +110,7 @@ impl OrderBook {
   /// Execute a market order – consume liquidity until either the desired
   /// `size` is filled or the book runs out of contra‑side orders. The order
   /// never rests in the book.
-  pub fn execute_order(&mut self, side: Side, mut size: f64) -> (u64, Vec<Trade>, f64) {
+  pub fn execute_order(&mut self, side: Side, mut size: f64) -> Execution {
     assert!(size > 0.0, "size must be positive");
     self.next_id += 1;
     let taker_id = self.next_id;
@@ -160,11 +196,15 @@ impl OrderBook {
       }
     }
 
-    (taker_id, trades, size) // any leftover size could not be executed
+    Execution {
+      order_id: taker_id,
+      trades,
+      unfilled: size,
+    }
   }
 
   /// Add limit order.
-  pub fn add_order(&mut self, side: Side, price: f64, mut size: f64) -> (u64, Vec<Trade>) {
+  pub fn add_order(&mut self, side: Side, price: f64, mut size: f64) -> Placement {
     assert!(size > 0.0, "size must be positive");
     self.next_id += 1;
     let taker_id = self.next_id;
@@ -292,7 +332,10 @@ impl OrderBook {
         }
       }
     }
-    (taker_id, trades)
+    Placement {
+      order_id: taker_id,
+      trades,
+    }
   }
 
   /// Cancel an existing order by id.
@@ -315,43 +358,29 @@ impl OrderBook {
     true
   }
 
-  pub fn best_bid(&self) -> Option<(f64, f64)> {
-    let (&price, queue) = self.bids.iter().next_back()?;
-    Some((price.into_inner(), queue.iter().map(|o| o.size).sum()))
+  pub fn best_bid(&self) -> Option<Level> {
+    self.bids.iter().next_back().map(level)
   }
 
-  pub fn best_ask(&self) -> Option<(f64, f64)> {
-    let (&price, queue) = self.asks.iter().next()?;
-    Some((price.into_inner(), queue.iter().map(|o| o.size).sum()))
+  pub fn best_ask(&self) -> Option<Level> {
+    self.asks.iter().next().map(level)
   }
 
   /// Mid-price (average of best bid and best ask). `None` if either side is empty.
   pub fn mid(&self) -> Option<f64> {
-    let (b, _) = self.best_bid()?;
-    let (a, _) = self.best_ask()?;
-    Some((b + a) / 2.0)
+    Some((self.best_bid()?.price + self.best_ask()?.price) / 2.0)
   }
 
   /// Bid-ask spread (best ask − best bid). `None` if either side is empty.
   pub fn spread(&self) -> Option<f64> {
-    let (b, _) = self.best_bid()?;
-    let (a, _) = self.best_ask()?;
-    Some(a - b)
+    Some(self.best_ask()?.price - self.best_bid()?.price)
   }
 
-  pub fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
-    let bids = self
-      .bids
-      .iter()
-      .rev()
-      .map(|(&p, q)| (p.into_inner(), q.iter().map(|o| o.size).sum()))
-      .collect();
-    let asks = self
-      .asks
-      .iter()
-      .map(|(&p, q)| (p.into_inner(), q.iter().map(|o| o.size).sum()))
-      .collect();
-    (bids, asks)
+  pub fn depth(&self) -> Depth {
+    Depth {
+      bids: self.bids.iter().rev().map(level).collect(),
+      asks: self.asks.iter().map(level).collect(),
+    }
   }
 }
 
@@ -362,11 +391,11 @@ mod tests {
   #[test]
   fn add_and_cancel() {
     let mut ob = OrderBook::new();
-    let (id1, _) = ob.add_order(Side::Buy, 10.0, 5.0);
-    let (_id2, _) = ob.add_order(Side::Buy, 10.0, 3.0);
-    assert_eq!(ob.best_bid().unwrap().1, 8.0);
+    let id1 = ob.add_order(Side::Buy, 10.0, 5.0).order_id;
+    ob.add_order(Side::Buy, 10.0, 3.0);
+    assert_eq!(ob.best_bid().unwrap().size, 8.0);
     assert!(ob.cancel_order(id1));
-    assert_eq!(ob.best_bid().unwrap().1, 3.0);
+    assert_eq!(ob.best_bid().unwrap().size, 3.0);
     assert!(!ob.cancel_order(999));
   }
 
@@ -374,10 +403,10 @@ mod tests {
   fn match_flow() {
     let mut ob = OrderBook::new();
     ob.add_order(Side::Buy, 100.0, 5.0);
-    let (_, trades) = ob.add_order(Side::Sell, 99.0, 3.0);
+    let trades = ob.add_order(Side::Sell, 99.0, 3.0).trades;
     assert_eq!(trades.len(), 1);
     assert_eq!(trades[0].size, 3.0);
-    assert_eq!(ob.best_bid().unwrap().1, 2.0);
+    assert_eq!(ob.best_bid().unwrap().size, 2.0);
   }
 
   #[test]
@@ -385,10 +414,10 @@ mod tests {
     let mut ob = OrderBook::new();
     ob.add_order(Side::Sell, 101.0, 4.0); // best ask
     ob.add_order(Side::Sell, 102.0, 2.0);
-    let (_id, trades, leftover) = ob.execute_order(Side::Buy, 5.0);
-    assert_eq!(trades.len(), 2);
-    assert_eq!(leftover, 0.0);
+    let filled = ob.execute_order(Side::Buy, 5.0);
+    assert_eq!(filled.trades.len(), 2);
+    assert_eq!(filled.unfilled, 0.0);
     // Book now has 1 @ 102 ask remaining
-    assert_eq!(ob.best_ask().unwrap().1, 1.0);
+    assert_eq!(ob.best_ask().unwrap().size, 1.0);
   }
 }

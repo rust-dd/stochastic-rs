@@ -1,6 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Bm`
-//! (`process/bm.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! source fresh from `self.{n,t,seed}` on every call.
+//! `with_*` setters on `Bm` (`process/bm.rs`), which caches nothing: `sampler()` builds its
+//! Gaussian source from `self.{n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -22,12 +21,12 @@ fn finite(out: &Array1<f64>) -> bool {
 }
 
 #[test]
-fn bm_with_steps_round_trip() {
+fn bm_with_points_round_trip() {
   let expected = Bm::<f64> {
     n: 64,
     ..Bm::<f64>::default()
   };
-  let got = Bm::<f64>::default().with_steps(64);
+  let got = Bm::<f64>::default().with_points(64);
   assert_eq!(got.n, 64);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite(&got.sample()));

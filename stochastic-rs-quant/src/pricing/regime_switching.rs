@@ -4,13 +4,13 @@
 //! enabling pricing via any Fourier pricer (Carr-Madan, Gil-Pelaez, Lewis).
 //!
 //! $$
-//! dS_t = (r - q - \tfrac12\sigma_{Z_t}^2)S_t\,dt + \sigma_{Z_t}S_t\,dW_t
+//! d\ln S_t = (r - q - \tfrac12\sigma_{Z_t}^2)\,dt + \sigma_{Z_t}\,dW_t
 //! $$
 //!
 //! where $Z_t$ is a continuous-time Markov chain with generator matrix $Q$.
 //!
-//! The characteristic function is obtained via the matrix exponential of a
-//! state-dependent drift/diffusion matrix:
+//! The characteristic function of $\ln(S_T/F_T)$, with $\mu_k=-\tfrac12\sigma_k^2$, is the
+//! matrix exponential of a state-dependent drift/diffusion matrix:
 //!
 //! $$
 //! \phi_T(\xi) = \mathbf{e}_{z_0}^\top \exp\!\bigl(T\bigl(Q + \mathrm{diag}(
@@ -22,21 +22,19 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use num_complex::Complex64;
 
+use super::fourier::CosEngine;
 use super::fourier::Cumulants;
 use super::fourier::FourierModelExt;
+use crate::OptionType;
 use crate::traits::RealExt;
 
 fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
-  // ndarray's `mapv(Complex64::norm)` + per-row sum + max gives us the
-  // infinity norm in three lines without a hand-written triple loop.
   let abs = a.mapv(|z| z.norm());
-  abs
-    .rows()
-    .into_iter()
-    .map(|row| row.sum())
-    .fold(0.0_f64, f64::max_or_nan)
+  f64::max_or_nan_fold(abs.rows().into_iter().map(|row| row.sum())).max_or_nan(0.0)
 }
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
@@ -72,12 +70,8 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
   result
 }
 
-/// Regime-switching diffusion model for Fourier pricing.
-///
-/// The stock follows Gbm with regime-dependent volatility. Regime transitions
-/// are governed by a continuous-time Markov chain with generator matrix `q_matrix`.
-///
-/// # Example
+/// Regime-switching diffusion for Fourier pricing: a GBM whose volatility is driven by a
+/// continuous-time Markov chain with generator `q_matrix`.
 ///
 /// ```
 /// use ndarray::{array, Array2};
@@ -87,8 +81,6 @@ fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
 /// let model = RegimeSwitchingModel {
 ///   q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],
 ///   vols: array![0.15, 0.35],
-///   r: 0.05,
-///   q: 0.01,
 ///   initial_state: 0,
 /// };
 /// let price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
@@ -101,10 +93,6 @@ pub struct RegimeSwitchingModel {
   pub q_matrix: Array2<f64>,
   /// Per-regime volatilities (length M).
   pub vols: Array1<f64>,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Initial regime index (0-based).
   pub initial_state: usize,
 }
@@ -120,7 +108,7 @@ impl FourierModelExt for RegimeSwitchingModel {
         a[[row, col]] = Complex64::new(self.q_matrix[[row, col]] * t, 0.0);
       }
       let sig2 = self.vols[row] * self.vols[row];
-      let drift = self.r - self.q - 0.5 * sig2;
+      let drift = -0.5 * sig2;
       a[[row, row]] += i * xi * drift * t - 0.5 * sig2 * xi * xi * t;
     }
 
@@ -133,32 +121,50 @@ impl FourierModelExt for RegimeSwitchingModel {
     chf_val
   }
 
+  /// Exact, from `I = ∫₀ᵗ σ²(Z_s) ds`: given `I` the log-return is `N(−I/2, I)`, so its cumulant
+  /// function is `K_I((s² − s)/2)` and `c4 = 3κ₂(I) + (3/2)κ₃(I) + κ₄(I)/16`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let m = self.vols.len();
-    let sigma_eff = self.vols[self.initial_state];
-
-    let (mean_sig2, mean_sig4) = if m == 2 {
-      let q01 = self.q_matrix[[0, 1]];
-      let q10 = self.q_matrix[[1, 0]];
-      let total = q01 + q10;
-      if total > 1e-12 {
-        let pi0 = q10 / total;
-        let pi1 = q01 / total;
-        let s2 = pi0 * self.vols[0].powi(2) + pi1 * self.vols[1].powi(2);
-        let s4 = pi0 * self.vols[0].powi(4) + pi1 * self.vols[1].powi(4);
-        (s2, s4)
-      } else {
-        (sigma_eff.powi(2), sigma_eff.powi(4))
-      }
-    } else {
-      (sigma_eff.powi(2), sigma_eff.powi(4))
-    };
-
+    let [centre, ..] = self.integrated_variance_moments(t, 0.0, 1);
+    let [m1, m2, m3, m4] = self.integrated_variance_moments(t, centre, 4);
+    let k2 = m2 - m1 * m1;
+    let k3 = m3 - 3.0 * m2 * m1 + 2.0 * m1 * m1 * m1;
+    let k4 = m4 - 4.0 * m3 * m1 - 3.0 * m2 * m2 + 12.0 * m2 * m1 * m1 - 6.0 * m1.powi(4);
+    let mean = centre + m1;
     Cumulants {
-      c1: (self.r - self.q - 0.5 * mean_sig2) * t,
-      c2: mean_sig2 * t,
-      c4: Some(3.0 * mean_sig4 * t),
+      c1: -0.5 * mean,
+      c2: mean + 0.25 * k2,
+      c4: Some(3.0 * k2 + 1.5 * k3 + k4 / 16.0),
     }
+  }
+}
+
+impl RegimeSwitchingModel {
+  /// `E[(I − c)ᵏ] = k!·B₁,ₖ₊₁1` at the initial state for `k ≤ order`, `B` the first block row of
+  /// `exp(A)`, `A` with `tQ` on and `diag(σᵢ²t − c)` above its block diagonal; `c = E[I]` centres.
+  /// Carbonell, Jimenez & Pedroso (2008), J. Comput. Appl. Math. 213(1), 300–305.
+  fn integrated_variance_moments(&self, t: f64, c: f64, order: usize) -> [f64; 4] {
+    let (m, blocks) = (self.vols.len(), order + 1);
+    let mut block = Array2::<Complex64>::zeros((blocks * m, blocks * m));
+    for i in 0..m {
+      let above = self.vols[i] * self.vols[i] * t - c;
+      for d in 0..blocks {
+        for j in 0..m {
+          block[[d * m + i, d * m + j]] = Complex64::new(self.q_matrix[[i, j]] * t, 0.0);
+        }
+        if d < order {
+          block[[d * m + i, (d + 1) * m + i]] = Complex64::new(above, 0.0);
+        }
+      }
+    }
+    let exp = matrix_exp_complex(&block);
+    let row = self.initial_state;
+    let mut moments = [0.0; 4];
+    let mut factorial = 1.0;
+    for k in 1..=order {
+      factorial *= k as f64;
+      moments[k - 1] = factorial * (0..m).map(|j| exp[[row, k * m + j]].re).sum::<f64>();
+    }
+    moments
   }
 }
 
@@ -171,15 +177,15 @@ impl FourierModelExt for RegimeSwitchingModel {
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
 #[derive(Debug, Clone)]
 pub struct CosPricer {
-  /// Number of cosine expansion terms.
-  pub n: usize,
+  /// Cosine terms, as [`CosEngine`]'s: `None`, the default, follows the chf's decay.
+  pub n: Option<usize>,
   /// Grid half-width parameter (L). Controls the truncation of the density.
   pub l: f64,
 }
 
 impl Default for CosPricer {
   fn default() -> Self {
-    Self { n: 256, l: 12.0 }
+    Self { n: None, l: 12.0 }
   }
 }
 
@@ -192,46 +198,12 @@ impl CosPricer {
     r: f64,
     q_div: f64,
     t: f64,
-    q_matrix: &Array2<f64>,
-    vols: &Array1<f64>,
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
     initial_state: usize,
   ) -> f64 {
-    let model = RegimeSwitchingModel {
-      q_matrix: q_matrix.clone(),
-      vols: vols.clone(),
-      r,
-      q: q_div,
-      initial_state,
-    };
-
-    let cum = model.cumulants(t);
-    let width =
-      self.l * (cum.c2.abs().sqrt() + cum.c4.map_or(0.0, |c| c.abs().powf(0.25))).max(0.1);
-    let a = cum.c1 - width;
-    let b = cum.c1 + width;
-    let bma = b - a;
-    let pi = std::f64::consts::PI;
-
-    let disc = (-r * t).exp();
-    let i_unit = Complex64::i();
-
-    let mut price = 0.0;
-    for k_idx in 0..self.n {
-      let kf = k_idx as f64;
-      let xi = kf * pi / bma;
-
-      let chf_val = model.chf(t, Complex64::new(xi, 0.0));
-
-      let phase = (-i_unit * xi * a).exp();
-      let f_k = (chf_val * phase).re;
-
-      let v_k = self.call_payoff_coeff(s, k, a, b, kf);
-
-      let weight = if k_idx == 0 { 0.5 } else { 1.0 };
-      price += weight * f_k * v_k;
-    }
-
-    (disc * price).max(0.0)
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Call)
   }
 
   /// Price a European put option under regime-switching diffusion.
@@ -242,50 +214,32 @@ impl CosPricer {
     r: f64,
     q_div: f64,
     t: f64,
-    q_matrix: &Array2<f64>,
-    vols: &Array1<f64>,
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
     initial_state: usize,
   ) -> f64 {
-    let call = self.price_call(s, k, r, q_div, t, q_matrix, vols, initial_state);
-    (call - s * (-q_div * t).exp() + k * (-r * t).exp()).max(0.0)
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Put)
   }
 
-  fn call_payoff_coeff(&self, s: f64, k: f64, a: f64, b: f64, kf: f64) -> f64 {
-    let bma = b - a;
-    let x_star = (k / s).ln();
-    let c = x_star.max(a);
-    let d = b;
-
-    if c >= d {
-      return 0.0;
+  fn price(
+    &self,
+    (s, k, r, q_div, t): (f64, f64, f64, f64, f64),
+    q_matrix: ArrayView2<f64>,
+    vols: ArrayView1<f64>,
+    initial_state: usize,
+    option_type: OptionType,
+  ) -> f64 {
+    let model = RegimeSwitchingModel {
+      q_matrix: q_matrix.to_owned(),
+      vols: vols.to_owned(),
+      initial_state,
+    };
+    CosEngine {
+      n: self.n,
+      l: self.l,
     }
-
-    let (chi, psi) = self.chi_psi(kf, a, bma, c, d);
-
-    (2.0 / bma) * (s * chi - k * psi)
-  }
-
-  fn chi_psi(&self, kf: f64, a: f64, bma: f64, c: f64, d: f64) -> (f64, f64) {
-    let pi = std::f64::consts::PI;
-
-    let psi = if kf.abs() < 1e-14 {
-      d - c
-    } else {
-      let w = kf * pi / bma;
-      (w * (d - a)).sin() / w - (w * (c - a)).sin() / w
-    };
-
-    let chi = if kf.abs() < 1e-14 {
-      d.exp() - c.exp()
-    } else {
-      let w = kf * pi / bma;
-      let denom = 1.0 + w * w;
-      let term_d = d.exp() * ((w * (d - a)).cos() + w * (w * (d - a)).sin());
-      let term_c = c.exp() * ((w * (c - a)).cos() + w * (w * (c - a)).sin());
-      (term_d - term_c) / denom
-    };
-
-    (chi, psi)
+    .price(&model, s, k, r, q_div, t, option_type)
   }
 }
 
@@ -309,12 +263,10 @@ mod tests {
     let rs_model = RegimeSwitchingModel {
       q_matrix: array![[0.0]],
       vols: array![sigma],
-      r,
-      q,
       initial_state: 0,
     };
 
-    let bsm_model = BsmFourier { sigma, r, q };
+    let bsm_model = BsmFourier { sigma };
 
     let rs_price = LewisPricer::price_call(&rs_model, 100.0, 100.0, r, q, 1.0);
     let bsm_price = LewisPricer::price_call(&bsm_model, 100.0, 100.0, r, q, 1.0);
@@ -332,8 +284,6 @@ mod tests {
     let model = RegimeSwitchingModel {
       q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],
       vols: array![0.15, 0.35],
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
 
@@ -351,8 +301,6 @@ mod tests {
     let model = RegimeSwitchingModel {
       q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],
       vols: array![0.15, 0.35],
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
 
@@ -374,8 +322,6 @@ mod tests {
     let model = RegimeSwitchingModel {
       q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],
       vols: array![0.15, 0.35],
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
 
@@ -404,8 +350,6 @@ mod tests {
     let model = RegimeSwitchingModel {
       q_matrix: array![[-1.0, 0.5, 0.5], [0.3, -0.6, 0.3], [0.4, 0.4, -0.8],],
       vols: array![0.10, 0.25, 0.50],
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
 
@@ -424,13 +368,11 @@ mod tests {
     let model = RegimeSwitchingModel {
       q_matrix: array![[-0.5, 0.5], [1.0, -1.0]],
       vols: array![0.15, 0.35],
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
 
     let lewis_price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
-    let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
 
     assert!(
       (lewis_price - cm_price).abs() < TOL_FOURIER,
@@ -510,7 +452,7 @@ mod tests {
     let pricer = CosPricer::default();
     let q_mat = array![[0.0]];
     let vols = array![0.2];
-    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
     assert!(
       price > 0.0,
       "COS single-regime call price should be positive, got={price}"
@@ -522,7 +464,7 @@ mod tests {
     let pricer = CosPricer::default();
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
-    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let price = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
     assert!(
       price > 0.0,
       "COS two-regime call price should be positive, got={price}"
@@ -535,9 +477,9 @@ mod tests {
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
 
-    let p1 = pricer.price_call(100.0, 90.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
-    let p2 = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
-    let p3 = pricer.price_call(100.0, 110.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let p1 = pricer.price_call(100.0, 90.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
+    let p2 = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
+    let p3 = pricer.price_call(100.0, 110.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
 
     assert!(
       p1 > p2 && p2 > p3,
@@ -549,18 +491,19 @@ mod tests {
   fn cos_agrees_with_lewis() {
     use super::super::fourier::LewisPricer;
 
-    let pricer = CosPricer { n: 512, l: 14.0 };
+    let pricer = CosPricer {
+      n: Some(512),
+      l: 14.0,
+    };
 
     let q_mat = array![[0.0]];
     let vols = array![0.2];
 
-    let cos_call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, &q_mat, &vols, 0);
+    let cos_call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 1.0, q_mat.view(), vols.view(), 0);
 
     let model = RegimeSwitchingModel {
       q_matrix: q_mat,
       vols,
-      r: 0.05,
-      q: 0.01,
       initial_state: 0,
     };
     let lewis_call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
@@ -569,6 +512,17 @@ mod tests {
       (cos_call - lewis_call).abs() < 0.5,
       "COS vs Lewis single-regime: cos={cos_call}, lewis={lewis_call}"
     );
+  }
+
+  /// At `t = 0` the density degenerates: call and put are NaN, the put not floored to `0.0`.
+  #[test]
+  fn cos_degenerate_maturity_prices_nan() {
+    let pricer = CosPricer::default();
+    let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
+    let vols = array![0.15, 0.35];
+    let call = pricer.price_call(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
+    let put = pricer.price_put(100.0, 100.0, 0.05, 0.01, 0.0, q_mat.view(), vols.view(), 0);
+    assert!(call.is_nan() && put.is_nan(), "call {call}, put {put}");
   }
 
   #[test]
@@ -583,8 +537,8 @@ mod tests {
     let q_mat = array![[-0.5, 0.5], [1.0, -1.0]];
     let vols = array![0.15, 0.35];
 
-    let call = pricer.price_call(s, k, r, q_div, t, &q_mat, &vols, 0);
-    let put = pricer.price_put(s, k, r, q_div, t, &q_mat, &vols, 0);
+    let call = pricer.price_call(s, k, r, q_div, t, q_mat.view(), vols.view(), 0);
+    let put = pricer.price_put(s, k, r, q_div, t, q_mat.view(), vols.view(), 0);
 
     let lhs = call - put;
     let rhs = s * (-q_div * t).exp() - k * (-r * t).exp();

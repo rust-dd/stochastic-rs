@@ -1,6 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `BrownianBridge`
-//! (`process/brownian_bridge.rs`). No persisted cache: `sampler()` builds
-//! its Gaussian source fresh from `self.{n,t,seed}` on every call.
+//! `with_*` setters on `BrownianBridge`, which caches nothing: `sampler()` builds its Gaussian
+//! source from `self.{n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -49,7 +48,7 @@ macro_rules! plain_test {
 plain_test!(bb_with_sigma_round_trip, with_sigma, sigma, 0.5);
 plain_test!(bb_with_x0_round_trip, with_x0, x0, Some(0.5));
 plain_test!(bb_with_xt_round_trip, with_xt, xt, Some(-1.0));
-plain_test!(bb_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(bb_with_points_round_trip, with_points, n, 64usize);
 plain_test!(bb_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

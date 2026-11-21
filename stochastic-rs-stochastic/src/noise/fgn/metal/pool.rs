@@ -15,6 +15,11 @@ thread_local! {
   static OUT_POOL: RefCell<Vec<Output>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Drops the calling thread's pooled outputs on `ordinal`'s device.
+pub(super) fn release(ordinal: usize) {
+  OUT_POOL.with_borrow_mut(|pool| pool.retain(|output| output.context.ordinal != ordinal));
+}
+
 pub(crate) struct OutputRental(Option<Output>);
 
 impl OutputRental {
@@ -77,7 +82,6 @@ fn sample(launch: Launch<'_>) -> Result<(OutputRental, usize)> {
   Ok((output, out_size))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn sample_f32_buffer(
   sqrt_eigs: &[f32],
   n: usize,
@@ -85,7 +89,7 @@ pub(crate) fn sample_f32_buffer(
   offset: usize,
   hurst: f64,
   t: f64,
-  seed: u32,
+  key: [u32; 2],
   first_cell: u64,
   ordinal: usize,
 ) -> Result<(OutputRental, usize)> {
@@ -96,7 +100,7 @@ pub(crate) fn sample_f32_buffer(
     offset,
     hurst,
     t,
-    seed,
+    key,
     first_cell,
     ordinal,
   })

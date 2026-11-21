@@ -1,14 +1,11 @@
 //! Optimization helpers shared by the estimator modules.
 //!
-//! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) minimise
-//! a smooth 3-parameter objective in log-space and the GARCH fitter a
-//! `p + q + 2`-parameter one; a compact Nelder-Mead simplex is enough for
-//! both, so the fixed-size entry point is a thin wrapper over the
-//! any-dimension one.
+//! One Nelder–Mead simplex: the three-parameter entry wraps the any-dimension one GARCH uses.
 
 use std::cmp::Ordering;
 
 use basin::MoreThuente;
+use basin::TerminationReason;
 
 /// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
 pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
@@ -27,6 +24,16 @@ pub(crate) fn best_start<P: AsRef<[f64]>>(
     .map(|(_, start)| start)
 }
 
+/// Whether a basin search stopped on one of its tolerances, not on a budget or a failure.
+pub(crate) fn stopped_on_tolerance(reason: TerminationReason) -> bool {
+  matches!(
+    reason,
+    TerminationReason::CostTolerance
+      | TerminationReason::ProjectedGradientTolerance
+      | TerminationReason::SolverConverged
+  )
+}
+
 /// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.
 pub(crate) fn more_thuente() -> MoreThuente<f64> {
   MoreThuente::new()
@@ -37,17 +44,8 @@ pub(crate) fn more_thuente() -> MoreThuente<f64> {
     .stpmax(f64::INFINITY)
 }
 
-/// Nelder-Mead simplex minimiser for a 3-parameter objective.
-///
-/// Returns `(argmin, iterations, converged)`. The caller is responsible
-/// for any parameter reparameterisation (e.g. carrying log-parameters so
-/// the search stays in the positive orthant).
-///
-/// `max_iter` caps the simplex iterations: a smooth analytic objective
-/// (GMM / QMLE) converges in tens of iterations to the `1e-10` tolerance,
-/// but a Monte-Carlo objective with small resampling-induced kinks (the
-/// particle-filter likelihood) never hits that tolerance and should be
-/// capped at a few hundred iterations to bound runtime.
+/// Nelder–Mead minimiser of a three-parameter objective: `(argmin, iterations, converged)`.
+/// `max_iter` bounds a Monte-Carlo objective, whose resampling kinks never reach the tolerance.
 pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   start: [f64; 3],
   max_iter: usize,
@@ -57,10 +55,8 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   ([p[0], p[1], p[2]], iters, converged)
 }
 
-/// Nelder-Mead simplex minimiser for an objective of any dimension, under
-/// the same reflection / expansion / contraction / shrink coefficients and
-/// `1e-10` spread tolerance as [`nelder_mead`]; the initial simplex offsets
-/// each coordinate by `0.1`.
+/// Nelder–Mead minimiser in any dimension, with [`nelder_mead`]'s coefficients and `1e-10` spread
+/// tolerance; the initial simplex offsets each coordinate by `0.1`.
 pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   start: &[f64],
   max_iter: usize,

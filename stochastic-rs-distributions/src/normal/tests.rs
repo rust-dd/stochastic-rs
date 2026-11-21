@@ -17,7 +17,8 @@ fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every platform.
+/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every
+/// platform.
 fn best_ks_p_value(
   n: usize,
   make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
@@ -207,7 +208,8 @@ fn getters_are_mu_and_sigma() {
   assert_eq!(n.mean(), Some(0.5));
 }
 
-/// The affine-free fill behind `FloatExt`'s thread-local stream equals a seeded `N(0, 1)` stream's bulk fill.
+/// The affine-free fill behind `FloatExt`'s thread-local stream equals a seeded `N(0, 1)` stream's
+/// bulk fill.
 #[test]
 fn fill_standard_equals_the_standard_stream_fill() {
   for len in [7usize, 16, 1003] {

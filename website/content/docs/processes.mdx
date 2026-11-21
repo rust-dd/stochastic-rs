@@ -1,29 +1,29 @@
 ---
 title: Stochastic processes
 seo_title: Stochastic processes in Rust and Python
-description: 133 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 130 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **133 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
+The `stochastic-rs-stochastic` crate ships **130 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
 | Family                        | Count | Examples                                                        |
 |--------------------------------|-------|-----------------------------------------------------------------|
 | **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
-| **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
-| **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
-| **Volatility**                 | 17    | Heston (+ log, 2D, multifactor, stochastic-local, Hull-White 2F hybrid), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
-| **Interest rate**               | 16    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
+| **Core building blocks**       | 19    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion |
+| **Jump**                       | 16    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
+| **Volatility**                 | 16    | Heston (+ log, 2D, multifactor, stochastic-local, Hull-White 2F hybrid), SABR (+ multifactor), Bergomi, rough Bergomi, fractional Heston, double-Heston, BNS, HKDE, fractional Bates SVJ, SVCGMY |
+| **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
 | **Rough (Riemann–Liouville lift)** | 4  | RL Black-Scholes, RL fBM, RL Heston, RL fOU |
 | **Stochastic correlation**      | 4     | Van Emmerich / Jacobi-type, Teng-modified OU, general transformed-OU, Heston with stochastic correlation |
 | **Sheet**                       | 1     | Fractional Brownian sheet (`Fbs`) |
-| **Volterra**                    | 3     | See the Volterra section below |
+| **Volterra**                    | 4     | See the Volterra section below |
 
 Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-stochastic) has the full list.
 
@@ -34,12 +34,12 @@ Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-
 | A price path with constant volatility | `Gbm` (exact log-normal steps) | `GbmLog` for the log-price, `Cev` for a local-vol elasticity |
 | Mean reversion | `Ou` (Gaussian), `Cir` (positive, square-root), `Vasicek` / `HullWhite` for rates | `CirPlusPlus` to fit a term structure, `Cheyette` for a quasi-Gaussian HJM |
 | Stochastic volatility | `Heston` (Euler / QE schemes), `Sabr`, `Bergomi` | `DoubleHeston`, `MultifactorHeston`, `HestonStochCorr`, `HestonSlv` |
-| Rough volatility | `RoughBergomi` (hybrid scheme), `RoughHeston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
+| Rough volatility | `RoughBergomi` (hybrid scheme), `Fheston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
 | Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | all driven by the fGN FFT pipeline, on the host or a device |
-| Jumps | `Merton`, `Kou`, `Bates1996`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
+| Jumps | `Merton`, `Kou`, `Bates`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
 | Several correlated assets | `Mcgns` (driver) → `MultiGbm`, `Wishart` (covariance) | `Cfgns` for correlated fractional noise |
-| A rates curve, not a rate | `Hjm`, `Lmm`, `Bgm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
-| Time-series style | `ARp`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
+| A rates curve, not a rate | `Hjm`, `Lmm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
+| Time-series style | `Ar`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
 
 ## Examples
 
@@ -272,14 +272,14 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
 // auto-seeded
-let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, 100.0, Some(1.0), Unseeded);
 
 // reproducible
 let p = Gbm::<f64, _>::new(
   0.05,
   0.2,
   1_000,
-  Some(100.0),
+  100.0,
   Some(1.0),
   Deterministic::new(42),
 );
@@ -318,14 +318,14 @@ Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Accelerate` (`ac
 
 ## Euler engine
 
-The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 130 of the 133: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
+The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 127 of the 130: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and Philox Box–Muller normals (`sample_par` is one launch for all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
 | `Cuda` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `Metal` | `metal` | Apple Silicon GPUs, metal-oxide kernels | `f32` |
 
-The device seed is drawn from the process's own seed source (the same `Deterministic` seed value gives the same paths, consecutive calls advance the stream, `Unseeded` draws fresh entropy). The device kernels share one integer hash for their uniforms, so the device back-ends agree with each other seed for seed up to libm rounding; the host path is the process's own stream, so CPU and device paths agree in distribution rather than bit for bit. Every process answers `device_ready()` for the configuration it holds — a `false` samples on the host, bit-identically to the `Cpu` build. [GPU support](/docs/concepts/gpu-support) tabulates what runs where.
+The device seed is drawn from the process's own seed source (the same `Deterministic` seed value gives the same paths, consecutive calls advance the stream, `Unseeded` draws fresh entropy). The device kernels and the fGN and sheet pipelines share one generator, Philox-4x32-10 keyed on the whole seed, so the Euler engine's back-ends agree with each other seed for seed up to libm rounding (the pipelines' back-ends draw the same normal at a cell but cut their rows from the transforms differently); the host path is the process's own stream, so CPU and device paths agree in distribution rather than bit for bit. Every process answers `device_ready()` for the configuration it holds — a `false` samples on the host, bit-identically to the `Cpu` build. [GPU support](/docs/concepts/gpu-support) tabulates what runs where.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -336,7 +336,7 @@ The device seed is drawn from the process's own seed source (the same `Determini
 import numpy as np
 import stochastic_rs as srs
 
-# PyGbm(mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None)
+# PyGbm(mu, sigma, n, x0, t=None, seed=None, dtype=None, device=None)
 paths = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
 ou = srs.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0).sample_par(10_000)
@@ -347,6 +347,12 @@ gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="me
 ```
 </Tab>
 </Tabs>
+
+### What is public
+
+`EulerBackend` is the capability a generic bound names — `B: EulerBackend<T>` says a process runs on the device `B` through this engine — and it is the one item of the `euler` module a caller writes. Everything else is the engine's own machinery: the family specification `EulerSpec`, the launch hooks `EulerCoefficients` and `EulerSystem`, the lift, table and program specifications, the slot caps and the kernel-implementor trait `EulerKernel`. Those items are public so the crate's sub-modules, tests and probes can reach them, hidden from the rendered documentation, and outside the stability promise. A process reaches a device by declaring a family in the crate's table and describing its coefficients as an `EulerSpec` through `EulerCoefficients`, not by implementing these traits from outside.
+
+The recursion is the Euler–Maruyama scheme of Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of Stochastic Differential Equations*, Springer, §10.2. The device kernels step CIR with the full truncation of Lord, R., Koekkoek, R. & van Dijk, D. (2010), *A comparison of biased simulation schemes for stochastic volatility models*, Quantitative Finance 10(2), 177–194. The generator is Philox-4x32-10: Salmon, J. K., Moraes, M. A., Dror, R. O. & Shaw, D. E. (2011), *Parallel random numbers: as easy as 1, 2, 3*, SC'11, DOI 10.1145/2063384.2063405.
 
 ## Generic SDE solver
 
@@ -365,8 +371,60 @@ let sde = Sde::new(
   NoiseModel::Gaussian,
   None,
 );
-let paths = sde.solve(&array![100.0], 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &Deterministic::new(42)); // [100, 1001, 1]
+let paths = sde.solve(&array![100.0], 0.0, 1.0, 1000, 100, SdeMethod::Milstein, &Deterministic::new(42)); // [100, 1001, 1]
 ```
+
+Reach for `Sde` when the equation is not one of the built-in processes, or to compare schemes on one equation; a built-in model has its own sampler and its place in the pricing stack. Every scheme takes one Brownian increment $\Delta W_n \sim \mathcal N(0, \Delta t)$ per step, and under `NoiseModel::Fractional` the field `hursts` holds one Hurst exponent $H \in (0, 1)$ per dimension.
+
+| `SdeMethod` | Strong order | Weak order |
+|---|---|---|
+| `Euler` (Euler–Maruyama) | 0.5 | 1.0 |
+| `Milstein` | 1.0 | 1.0 |
+| `SRK2` (stochastic midpoint) | 0.5 | |
+| `SRK4` (RK4 structure) | 0.5 | |
+
+**Euler–Maruyama** (Maruyama, 1955):
+
+$$
+X_{n+1}^i = X_n^i + a^i(X_n, t_n)\,\Delta t + \sum_{j=1}^{d} b^{ij}(X_n, t_n)\,\Delta W_n^j .
+$$
+
+**Milstein** (Milstein, 1974) adds the first Itô–Taylor correction,
+
+$$
+X_{n+1}^i = X_n^i + a^i \Delta t + \sum_j b^{ij} \Delta W^j
+  + \sum_{j_1=1}^{d} \sum_{j_2=1}^{d} \mathcal{L}^{j_1} b^{i,j_2}\, I_{(j_1,j_2)},
+\qquad
+\mathcal{L}^{j_1} b^{i,j_2} = \sum_{k=1}^{d} b^{k,j_1}\,\frac{\partial b^{i,j_2}}{\partial x_k},
+$$
+
+with the double Itô integrals taken under the commutative-noise assumption,
+
+$$
+I_{(j,j)} = \tfrac{1}{2}\bigl((\Delta W^j)^2 - \Delta t\bigr), \qquad
+I_{(j_1,j_2)} \approx \tfrac{1}{2}\,\Delta W^{j_1}\,\Delta W^{j_2} \quad (j_1 \neq j_2).
+$$
+
+The off-diagonal approximation holds only when $\mathcal{L}^{j_1} b^{i,j_2} = \mathcal{L}^{j_2} b^{i,j_1}$; otherwise the Lévy area has to be simulated, which `Sde` does not do. The partial derivatives are forward finite differences with step $\varepsilon = 10^{-7}$.
+
+**Stochastic midpoint** (`SRK2`) evaluates both coefficients at an intermediate point:
+
+$$
+\hat{X} = X_n + \tfrac{1}{2}\,a(X_n, t_n)\,\Delta t + \tfrac{1}{2}\,b(X_n, t_n)\,\Delta W_n, \qquad
+X_{n+1} = X_n + a\bigl(\hat{X}, t_n + \tfrac{\Delta t}{2}\bigr)\,\Delta t + b\bigl(\hat{X}, t_n + \tfrac{\Delta t}{2}\bigr)\,\Delta W_n .
+$$
+
+**RK4 structure** (`SRK4`) averages four stages, at $t_n$, $t_n + \Delta t/2$ twice and $t_n + \Delta t$, with the weights $(1, 2, 2, 1)/6$ for the drift and the diffusion alike:
+
+$$
+X_{n+1} = X_n + \bar{a}\,\Delta t + \sum_j \bar{b}^{ij}\,\Delta W^j, \qquad
+\bar{a} = \tfrac{1}{6}(a_1 + 2a_2 + 2a_3 + a_4), \quad
+\bar{b}^{ij} = \tfrac{1}{6}\bigl(b_1^{ij} + 2b_2^{ij} + 2b_3^{ij} + b_4^{ij}\bigr).
+$$
+
+It is a heuristic: with one Brownian increment per step its strong order is 0.5, not 4. It helps where the drift dominates or the noise is small; for schemes of higher stochastic order see Rößler (2010) or Burrage & Platen (1994).
+
+References: Maruyama, G. (1955), *Continuous Markov processes and stochastic equations*, Rendiconti del Circolo Matematico di Palermo 4, 48–90; Milstein, G. N. (1974), *Approximate integration of stochastic differential equations*, Theory of Probability & Its Applications 19(3), 557–562.
 
 ## Volterra (stochastic Volterra equations)
 
@@ -377,5 +435,186 @@ Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution
 | `VolterraSde` | The general equation `X_t = X_0 + ∫ K(t-s) b(s,X_s) ds + ∫ K(t-s) σ(s,X_s) dW_s` |
 | `VolterraSquareRoot` | The Volterra Heston variance leg, nonnegative by construction |
 | `GaussianPolynomialVolatility` | Volatility as a polynomial of a Gaussian Volterra process, incl. the quintic parameterisation |
+| `Volterra` | The Gaussian process `∫ K(t,s) dW_s` under an fBM, power-law or exponential kernel, by Markov lift for an fBM with `H < 1/2` and by the direct convolution otherwise |
 
 Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville), `ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.
+
+A weakly singular kernel makes $X$ neither Markov nor a semimartingale, so every step of the direct convolution needs the whole path. Writing $K(t) \approx \sum_{l=1}^{N'} w_l e^{-x_l t}$ turns the equation into $N' \ll n$ coupled Ornstein–Uhlenbeck-like factors, each updated from its own previous value. A `VolterraKernel` supplies the nodes and weights and two closed forms the sum cannot give for the current step, which has no history yet: $K(\delta t)$ and $\int_0^{\delta t} K(u)\,du$. `VolterraLift` is the stepper, `VolterraSde` the process built on it, and `rough::MarkovLift` the same lift for `RlKernel` and coefficients of the state alone. `volterra::reference::reference_path` is the direct $O(n^2)$ discretisation with the exact kernel: the cross-implementation oracle of the lift, and the sampler `Volterra` uses for a kernel the lift cannot represent, such as an fBM kernel with $H \ge 1/2$.
+
+### Convergence
+
+The rates of ordinary SDE schemes do not carry over. For weakly singular kernels the strong rate is $\min\{1-\alpha,\ \tfrac12-\beta\}$ for the $\theta$-Euler–Maruyama scheme and $\min\{1-\alpha,\ 1-2\beta\}$ for Milstein (Li, Huang & Hu, 2020, arXiv:2004.04916), not $1/2$ and $1$; Liu, Hu & Gao (2024, arXiv:2412.11126) show that the Milstein rate $n^{-2H}$ is optimal. `VolterraSde` evaluates its coefficients explicitly at the left point, which puts it in the Euler–Maruyama class; these rates are the literature's and are not measured for this implementation. The kernel approximation is a second, separate error: Bayer & Breneis prove superpolynomial strong convergence in $N'$ for Lipschitz coefficients (2021, arXiv:2108.05048) and that the weak error is governed by the $L^1$ error of the kernel (2023, arXiv:2309.07023).
+
+### An $L^1$ weight refit
+
+A quadrature fit such as `RlKernel`'s Gauss–Laguerre rule targets a pointwise criterion, the right one for pathwise error. `volterra::fit::fit_l1` keeps the nodes and refits the weights in $L^1$ by iteratively reweighted least squares on a log-spaced grid, the objective that bounds the weak (pricing) error; `l1_error` measures the result. Use the quadrature fit for pathwise work and the refit for pricing. Measured at degree 40 on $[10^{-4}, 1]$:
+
+| $H$ | $L^1$ error, before → after | worst pointwise relative error, before → after |
+|---|---|---|
+| 0.05 | 2.98e-2 → 1.29e-2 (2.31×) | 8.30e-1 → 7.14e-1 (0.86×) |
+| 0.10 | 2.10e-2 → 9.02e-3 (2.33×) | 7.91e-1 → 6.69e-1 (0.85×) |
+| 0.30 | 3.83e-3 → 1.35e-3 (2.83×) | 5.31e-1 → 4.19e-1 (0.79×) |
+| 0.45 | 4.16e-4 → 1.14e-4 (3.64×) | 1.68e-1 → 1.17e-1 (0.70×) |
+
+The refit can still be worse at a single $t$ (at $t = 10^{-2}$ the quadrature fit is the tighter one), and it cannot repair badly placed nodes. Near the singularity neither fit is accurate: at $t = 10^{-4}$ with $H = 0.05$ both are about 80% off, because no degree-40 exponential sum tracks $t^{H-1/2}$ that close to the origin. That is why the lift takes the first step from the closed-form boundary term and not from the sum.
+
+### The square-root process
+
+`VolterraSquareRoot` is the variance leg of the Volterra Heston model (Abi Jaber & El Euch, arXiv:1803.00477), and of rough Heston under the Riemann–Liouville kernel. $\sqrt{V}$ is not Lipschitz at the origin, and a naive step of the lifted system drives $V$ negative whenever the Feller condition fails. The process uses full truncation (Lord, Koekkoek & van Dijk, 2010, Quantitative Finance 10(2)): both coefficients are evaluated at $V^+ = \max(V, 0)$ and the reported path is floored. The output is nonnegative at any parameters, and the scheme is biased, not exact in law.
+
+Three constructions in the literature keep the law and are not implemented: the state space of the multifactor approximation as a linear image of the nonnegative orthant (Abi Jaber, Bayer & Breneis, 2024, arXiv:2412.17526); simulating the integrated process first, exact in two regimes for the classical square-root process (Abi Jaber, 2024, arXiv:2412.11264); and iVi, its Volterra generalisation, which proves weak convergence with few steps and not exactness (Abi Jaber & Attal, 2025, arXiv:2504.19885). A path that touches zero is not a defect of the scheme: Friesen, Gerhold & Wiedermann (2026, arXiv:2606.07290) give a time-dependent Feller condition and show that rough kernels can attain the boundary.
+
+`GaussianPolynomialVolatility` is the volatility $\sigma_t = p(X_t)$ alone, without the price leg; over an `ExponentialKernel` the driver $X$ is an exact Ornstein–Uhlenbeck process, the setting of the quintic model (Abi Jaber, Illand & Li, 2022, arXiv:2212.08297 and arXiv:2212.10917).
+
+## Symbol glossary
+
+**Design principle.** This crate keeps literature-faithful, per-model parameter names instead of forcing one global naming convention across 130 processes. The same Greek letter legitimately plays different roles in different models: `theta` is a mean-reversion **speed** in `Ou` / `Cir` / `Vasicek`, but a long-run **variance level** in `Heston`; `alpha` alone has around seven unrelated meanings in this crate (see below). Renaming every colliding field to remove the ambiguity would break positional constructor calls, diverge from the paper each model transcribes, and erase the very naming convention practitioners expect to find.
+
+So instead: **every field's own `///` doc states its role in that specific model**, and this section is the cross-model index for the symbols that recur most. Read a field's own doc comment for the authoritative answer; this page is a map to help you find the right model, not a replacement for the field doc.
+
+Coverage note: these tables survey only `stochastic-rs-stochastic`. The same letters accumulate still more meanings elsewhere in the workspace (e.g. `alpha` as a CVaR confidence level in `stochastic-rs-quant`, or as a copula shape parameter in `stochastic-rs-copulas`) — out of scope here.
+
+### θ (theta)
+
+| Role | Models (field) |
+|---|---|
+| Mean-reversion **speed** (κ in the model's own SDE) | `Ou`, `Cir`, `Vasicek`, `Fou`, `Fcir`, `JumpFou`/`JumpFouCustom` (`theta`); `Adg` plays the same role via a time-dependent function rather than a constant (`theta: Fn1D<T>`) |
+| Long-run **level** of a CIR-type mean-reverting factor (θ in the model's own literature notation; Brigo & Mercurio 2006 §3.9), paired with a *speed* field named `kappa` rather than `theta` — the opposite of the row directly above, where `theta` names `Cir`'s own speed; a deliberate literature-notation choice for this type, not an inconsistency to unify | `CirPlusPlus` (`theta`) |
+| Carrying-capacity **level** of a logistic-growth diffusion (θ in `κ(θ−X)X`), paired with a speed field named `kappa` rather than `theta` — the same naming inversion as the row above, for an unrelated (density-dependent, not CIR-linear) drift shape | `FellerLogistic` (`theta`) |
+| Long-run **variance level** (θ in the model's own SDE) | `Heston`, `RlHeston`, and the wider Heston family (`theta`) |
+| Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | `HullWhite`, `HullWhite2F`, `BlackKarasinski` (`theta: Fn1D<T>`); the same role is played by `Adg`'s `k` field, which is named differently |
+| Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | `Merton`, `Kou` (`theta`); the same role is played by `Bates`'s `k` field |
+| Drift per unit of subordinated time, which skews the law (θ in the model's own display; Barndorff-Nielsen's β is θ/σ²) — **not** mean reversion; NIG has none | `Nig` (`theta`) |
+
+`Ckls`'s `theta1..theta4` are a separate, non-colliding convention: the Chan–Karolyi–Longstaff–Sanders paper itself numbers its four coefficients θ₁–θ₄ (drift intercept, drift slope, diffusion scale, diffusion elasticity) — not an instance of the single-θ ambiguity above.
+
+### α (alpha)
+
+| Role | Models (field) |
+|---|---|
+| Mean-reversion speed | `HullWhite` (`alpha`) |
+| Lévy tail/stability index Y ∈ (0, 2) | `Cgmy`, `Cts`, `Rdts`, `Kobol` (`alpha`) |
+| Drift rate μ (despite the name) | `Merton`, `Kou` (`alpha`) |
+| Linear-drift **intercept** (κθ combined) in a reparametrized `drift = alpha − beta·X` form | `Bates`'s variance factor, `Fjacobi`, `Jacobi` (`alpha`) |
+| Constant (zeroth-order) term of a polynomial drift | `Quadratic` (`alpha`) |
+| Self-excitation jump magnitude added to the intensity on each event | `Hawkes`, `MultivariateHawkes`, `HawkesJd` (`alpha`) |
+| Affine diffusion-loading coefficient (multiplies a state variable inside a shared volatility loading) | `DuffieKanJumpExp` (`alpha`) |
+
+### σ (sigma)
+
+Mostly consistent: the diffusion scale of a Brownian driver. Two notes:
+
+- In most of the Heston family, `sigma` is the **vol-of-vol** — it scales the *variance* process's own noise, one level removed from the asset. Two members spell this same role `xi` instead (`HestonLog`, `FbatesSvj`; see the ξ section below), and `Hkde` spells it `sigma_v` — a third and fourth spelling of the same role, not a new meaning.
+- In jump models built as Brownian-subordinated Lévy processes (`Vg`, `Nig`), `sigma` scales only the Gaussian half of the model, not overall dispersion.
+
+`RlFou` and `RlHeston` name their vol-of-vol `nu`, as their own formulas do, and have no `sigma` field.
+
+`VolterraSde` and `VolterraLift` are the one place in this crate where the diffusion coefficient is **not** spelled `sigma` at all — deliberately, not a collision to resolve. Both are kernel-generic engines taking an arbitrary $(t,x)\mapsto T$ callable, not a fixed named model with a literature-pinned Greek letter for that slot, so the fields are spelled out in English (`drift`, `diffusion`) instead; `MarkovLift`, the same engine for `RlKernel` and $(x)$-only coefficients, takes its `f`/`g` closures the same way.
+
+### ν (nu)
+
+| Role | Models (field) |
+|---|---|
+| Vol-of-vol (diffusion scale of a stochastic-volatility state) | `Sabr`, `MultifactorSabr`, `RlFou`, `RlHeston`, `Bergomi`, `RoughBergomi`, `Fheston` (`nu`) |
+| Variance rate of a gamma time-change (kurtosis/tail-thickness control) — not a volatility at all | `Vg` (`nu`) |
+| Mean of a log-jump-size distribution (a **location**, not a scale) | `MjdLog`, `LogNormalJump`, `FbatesSvj` (`nu`) |
+| Jump (Poisson) intensity — an arrival rate, despite the letter this glossary's λ table otherwise reserves for that role | `Bns` (`nu`) |
+
+### ξ (xi)
+
+| Role | Models (field) |
+|---|---|
+| Vol-of-vol (diffusion scale of a stochastic-volatility state) — the same role `nu`/`sigma` play elsewhere in this glossary (see the σ and ν sections above) | `HestonLog`, `FbatesSvj` (`xi`) |
+
+### β (beta)
+
+| Role | Models (field) |
+|---|---|
+| CEV exponent (elasticity of the state's own volatility) | `Sabr`, `MultifactorSabr` (`beta`) |
+| Linear-drift **slope** (mean-reversion speed κ), paired with `alpha`'s intercept role | `Bates`'s variance factor, `Fjacobi`, `Jacobi` (`beta`) |
+| Linear coefficient of a polynomial drift | `Quadratic` (`beta`) |
+| Excitation-kernel decay rate (how fast a jump's influence fades) | `Hawkes`, `MultivariateHawkes` (`beta`) |
+| Displacement / shift applied to the driven state before GBM-style dynamics act on it (`S_t + beta`) | `DisplacedDiffusion` (`beta`) |
+
+### δ (delta)
+
+| Role | Models (field) |
+|---|---|
+| Dimension of a (squared) Bessel process; δ ≥ 2 keeps it strictly positive | `SquaredBessel`, `Bessel` (`delta`) |
+| Curvature of a hyperbolic restoring drift term | `Hyperbolic2` (`delta`) |
+| Scale of an Inverse-Gaussian subordinator | `IgSubordinator` (`delta`) |
+| Per-lag negative-shock (leverage) coefficient vector, unrelated to the scalar roles above | `Agarch` (`delta`) |
+
+### μ (mu)
+
+| Role | Models (field) |
+|---|---|
+| Constant proportional drift rate — **no** mean reversion | `Gbm`, `Fgbm`, `GbmIh`, `DisplacedDiffusion` (`mu`) |
+| Long-run mean **level** (θ in the model's own SDE), reverted toward by a separate speed field | `Ou`, `Cir`, `Vasicek`, `Fou`, `Fcir`, `JumpFou`/`JumpFouCustom` (`mu`); the same role is played by `CirPlusPlus`'s `theta` field, which is named differently |
+| Drift-in-subordinated-time (θ in the model's own SDE) — a skewness parameter, not a level | `Vg` (`mu`) |
+| Baseline Poisson intensity vector — not a drift or level | `MultivariateHawkes` (`mu`) |
+| Location parameter inside a rational drift term (not a rate) | `Hyperbolic2` (`mu`) |
+
+### λ (lambda)
+
+| Role | Models (field) |
+|---|---|
+| Jump (Poisson) intensity — arrival rate | `Merton`, `Kou`, `Bates`, `MjdLog`, `JumpFou`, `LevyDiffusion` (`lambda`) |
+| Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, CGMY's M/G) — the jump-size density's decay, exponential (Gaussian for `Rdts`), not an arrival rate | `Cgmy`, `Cts`, `Rdts`, `Kobol`, `BilateralGamma` (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
+
+In the Hawkes family, `lambda_t` is the modeled self-exciting intensity **state**, not an input parameter; the input baseline is a separate `mu` field.
+
+### κ (kappa)
+
+| Role | Models (field) |
+|---|---|
+| Mean-reversion speed | `Cir` (as `theta`), `CirPlusPlus`, `FellerLogistic`, `ThreeHalf`, `Pearson` (`kappa`) |
+| Jump-size compensator (E\[Y−1\]-like term), unrelated to speed | `Bates` (`k`) |
+| Variance rate of an inverse-Gaussian subordinator (dispersion control, akin to `nu` in `Vg`) — **not** a mean-reversion speed, despite the letter; NIG has no mean reversion | `Nig` (`kappa`) |
+
+### ρ (rho)
+
+| Role | Models (field) |
+|---|---|
+| Instantaneous correlation between two driving Brownian motions (an input constant) | `Heston`, `Sabr`, `Bates`, `HullWhite2F`, `DuffieKanJumpExp` (`rho`) |
+| The modeled correlation **process** itself (an output, not an input) | `TransformedOu`, `VanEmmerich`, `TengScp` (implicit; their `rho0` is the level it starts from / reverts to) |
+
+### φ (phi)
+
+| Role | Models (field) |
+|---|---|
+| Deterministic time-dependent shift added to a CIR-type factor (or sum of factors) so the observed short rate matches today's initial term structure exactly (the shift-extension trick) | `Cir2F`, `CirPlusPlus` (`phi: Fn1D<T>`) |
+
+### The x₀ family (x0 / s0 / v0 / f0 / r0 / alpha0 / …)
+
+All name an **initial value**, but of different state variables:
+
+| Field | Initial value of |
+|---|---|
+| `x0` | The generic primary state variable — used across most non-financially-typed processes; `Gbm` is the financially-typed exception, spelling its asset-price initial value `x0` rather than `s0` |
+| `s0` | Spot / asset price (`Heston`, `Bates`) |
+| `v0` | Variance / volatility state (`Heston`, `Bergomi`) |
+| `f0` | Forward rate/price, for models built around a forward rather than a spot (`Sabr`, `MultifactorSabr`) |
+| `alpha0` | Volatility state, specifically in `Sabr` / `MultifactorSabr` — named for the model's own α_t, not `v0` |
+| `r0` | Short rate (`Hjm`, `DuffieKanJumpExp`, `BlackKarasinski`) |
+| `p0` | Bond price / auxiliary level (`Hjm`) |
+| `y0` | Secondary state variable, paired with a primary `x0` (`FouqueOu2D`) |
+| `rho0` | Correlation level a stochastic-correlation process starts from / reverts to — the odd one out, since it anchors a correlation, not a price or rate (`TransformedOu`, `VanEmmerich`) |
+
+`BrownianBridge` pairs `x0` with `xt`, the pinned **terminal** value at `s = T` — the one field in this family that is not an initial value; named to mirror `x0` rather than to fit this table's own "Initial value of" column.
+
+### Numbered-coefficient conventions (not collisions)
+
+A handful of models transcribe a paper that itself indexes its coefficients rather than naming them: `Ckls` (`theta1..theta4`), `AitSahalia` / `NonlinearSde` (`am1, a0, a1, a2, b0..b3`), `Pearson` (`kappa, mu, a, b, c`), `FellerRoot` (`theta1, theta2, theta3`). These are not instances of the cross-model ambiguity documented above — each field's own doc states which term of the model's own formula it multiplies.
+
+### Volterra kernel symbols
+
+These belong to the `volterra` engine rather than to a single model, and are listed here because they appear on several types.
+
+| Symbol | Role | Where |
+|---|---|---|
+| $K$ | The Volterra kernel itself. `evaluate` returns it exactly; the exponential sum approximates it | `VolterraKernel` |
+| $N'$ | Number of exponential factors in the fit — the lift's state size, and what turns $O(n^2)$ into $O(n N')$ | `degree()` on every kernel |
+| $x_l$ | Quadrature **nodes**: the mean-reversion speeds of the lifted factors | `nodes()` |
+| $w_l$ | Quadrature **weights**, already carrying any normalising constant. See the invariant on `weights` — a kernel-generic caller must not re-apply a normalisation on top | `weights()` |
+| $H$ | Hurst exponent of the Riemann–Liouville kernel, $K(t)=t^{H-1/2}/\Gamma(H+1/2)$. Note this is the *kernel's* roughness, distinct from the `hurst` field on fractional-noise processes, though they coincide for `RlKernel` | `RlKernel` |

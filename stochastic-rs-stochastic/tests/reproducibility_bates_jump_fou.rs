@@ -1,35 +1,14 @@
-//! Reproducibility tests for Task 2 of the zero-exception-reproducibility
-//! wave: `Bates1996` and `JumpFou` absorb their compound-Poisson jump
-//! driver's construction into `new()`, threading the constructor's own
-//! `seed: S` into it (`seed.clone().derive()`) instead of hard-wiring
-//! `cpoisson: CompoundPoisson<T, D>` to `Unseeded` in the public field type
-//! — the same fix Task 1 applied to `Merton`/`Kou`/`LevyDiffusion` (see
-//! `reproducibility_jump_family.rs`). Both types' diffusion component was
-//! already seed-reproducible before this task (`Bates1996`'s `cgns`, fixed
-//! by an earlier wave; `JumpFou`'s private `fgn`, fixed by the predecessor
-//! wave's final round — see `deterministic_parallelism_jump_fou.rs`), so
-//! this task closes the crate's last exception: **zero** exceptions remain.
-//!
-//! Before this fix, two identically-`Deterministic`-seeded objects diverged
-//! on their jump-carrying output under any nonzero jump intensity, because
-//! `cpoisson`'s own seed field was structurally pinned to `Unseeded`
-//! regardless of the outer `S`. `lambda = 50` below makes jumps dominate
-//! (mean ~50 arrivals over the unit horizon at `N = 128`), so a
-//! reproducibility failure in the jump component cannot hide behind a
-//! diffusion-only comparison — confirmed directly by
-//! `bates_price_path_diverges_from_zero_lambda_counterfactual` /
-//! `jump_fou_diverges_from_zero_lambda_counterfactual` below, which are not
-//! merely restating the bit-identity tests: they show the *value* actually
-//! moves when the jump component is toggled off, so the bit-identity tests
-//! above them cannot be silently passing because the jump term is a
-//! structural no-op.
+//! A seeded `Bates` or `JumpFou` reproduces its jumps and its diffusion at any thread count.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
+use stochastic_rs_stochastic::euler::EulerSystem;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -37,18 +16,11 @@ const SEED: u64 = 42;
 const N: usize = 128;
 const LAMBDA: f64 = 50.0;
 
-/// `k = 0` isolates the jump half: the drift's `-lambda*k` compensator term
-/// is neutralized regardless of `lambda`'s value, so any observed
-/// difference between two `lambda` settings (or two identically-seeded
-/// objects) can only come from the jump increments themselves, not a
-/// residual deterministic drift shift — the same isolation technique the
-/// task's own RED-phase measurement used (see the task report).
-fn bates_with_jumps(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
-  Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+/// `k = 0` isolates the jump half: the drift's `-lambda*k` compensator vanishes, so a difference
+/// between two `lambda` settings comes from the jump increments alone.
+fn bates_with_jumps(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
+  Bates::new(
+    Drift::Mu(0.05),
     LAMBDA,
     0.0,
     0.04,
@@ -57,20 +29,17 @@ fn bates_with_jumps(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic>
     -0.6,
     SimdNormal::new(0.0, 0.05),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(seed),
   )
 }
 
-fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
-  Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+fn bates_lambda(lambda: f64, seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
+  Bates::new(
+    Drift::Mu(0.05),
     lambda,
     0.0,
     0.04,
@@ -79,8 +48,8 @@ fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deter
     -0.6,
     SimdNormal::new(0.0, 0.05),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(seed),
@@ -147,14 +116,12 @@ fn bates_is_seed_reproducible_including_jumps() {
   assert_eq!(
     bits_2d(&a),
     bits_2d(&b),
-    "two identically-seeded Bates1996 objects diverged under lambda={LAMBDA}"
+    "two identically-seeded Bates objects diverged under lambda={LAMBDA}"
   );
 }
 
-/// Proves the golden-adjacent claim "this is not a diffusion-only
-/// comparison": the price path actually moves when jumps are switched off,
-/// so `bates_is_seed_reproducible_including_jumps` above is not vacuously
-/// passing because `s` never depended on the jump term in the first place.
+/// The price path moves when jumps are switched off, so
+/// `bates_is_seed_reproducible_including_jumps` above is not a diffusion-only comparison.
 #[test]
 fn bates_price_path_diverges_from_zero_lambda_counterfactual() {
   let [s_jumps, _] = bates_with_jumps(SEED).sample();
@@ -162,7 +129,7 @@ fn bates_price_path_diverges_from_zero_lambda_counterfactual() {
   assert_ne!(
     bits_1d(&s_jumps),
     bits_1d(&s_zero),
-    "Bates1996 price path at lambda={LAMBDA} must differ from the lambda=0 counterfactual"
+    "Bates price path at lambda={LAMBDA} must differ from the lambda=0 counterfactual"
   );
 }
 
@@ -178,11 +145,11 @@ fn bates_sample_par_is_thread_count_independent() {
     assert_eq!(r1.len(), m);
     assert_eq!(
       r1, r3,
-      "Bates1996 sample_par diverged between 1 and 3 threads at m={m}"
+      "Bates sample_par diverged between 1 and 3 threads at m={m}"
     );
     assert_eq!(
       r1, r8,
-      "Bates1996 sample_par diverged between 1 and 8 threads at m={m}"
+      "Bates sample_par diverged between 1 and 8 threads at m={m}"
     );
   }
 }
@@ -199,7 +166,7 @@ fn bates_sample_par_paths_are_distinct() {
   assert_eq!(
     keys.len(),
     m,
-    "Bates1996 sample_par produced duplicate paths at m=256"
+    "Bates sample_par produced duplicate paths at m=256"
   );
 }
 
@@ -214,7 +181,7 @@ fn jump_fou_is_seed_reproducible_including_jumps() {
   );
 }
 
-/// Same "not a diffusion-only pin" proof as `Bates1996`'s counterpart above,
+/// Same "not a diffusion-only pin" proof as `Bates`'s counterpart above,
 /// adapted to `JumpFou`'s single, additively-mixed output array.
 #[test]
 fn jump_fou_diverges_from_zero_lambda_counterfactual() {
@@ -264,17 +231,14 @@ fn jump_fou_sample_par_paths_are_distinct() {
   );
 }
 
-/// Guards the single-source-of-truth invariant established at construction
-/// for both types (see `Bates1996::lambda`'s and `JumpFou::lambda`'s field
-/// docs): `self.lambda` and the otherwise-cosmetic mirror
-/// `cpoisson.poisson.lambda` must agree right out of `new()`.
+/// The host and the engine read one rate.
 #[test]
 fn lambda_is_single_sourced_at_construction() {
   let b = bates_with_jumps(SEED);
   assert_eq!(b.lambda, LAMBDA);
-  assert_eq!(b.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerSystem::jump_intensity(&b), Some(LAMBDA));
 
   let j = jump_fou_with_jumps(SEED);
   assert_eq!(j.lambda(), LAMBDA);
-  assert_eq!(j.cpoisson().poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&j), Some(LAMBDA));
 }

@@ -1,16 +1,14 @@
-//! # Goodness of fit
+//! Cramér–von Mises test of the pseudo-observations' Rosenblatt transform `E_i` against
+//! independence; the parametric-bootstrap p-value holds for estimated parameters.
 //!
 //! $$
 //! S_n = \sum_{i=1}^n \bigl(D_n(\mathbf E_i) - E_{i1}E_{i2}\bigr)^2,\qquad
 //! \mathbf E_i = \bigl(U_{i2},\ \partial_v C(U_{i1}, U_{i2})\bigr)
 //! $$
 //!
-//! Cramér–von Mises distance between the empirical distribution function `D_n` of the Rosenblatt transform `E_i` of the
-//! pseudo-observations and the independence copula; the p-value is a parametric bootstrap, valid when the parameters are estimated.
-//!
-//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 eq. (5) with the coordinates in the order (U₂, U₁), which §7 I(c) allows; §4 eq. (9) and Appendix D: `S_n^{(C)}` and its parametric bootstrap).
-//! Reference: Rosenblatt, M. (1952), "Remarks on a multivariate transformation", Annals of Mathematical Statistics 23(3), 470–472, doi:10.1214/aoms/1177729394.
-//! Reference: Phipson, B. & Smyth, G. K. (2010), "Permutation P-values should never be zero: calculating exact P-values when permutations are randomly drawn", Statistical Applications in Genetics and Molecular Biology 9(1), Article 39, doi:10.2202/1544-6115.1585, arXiv:1603.05766 (the exact Monte Carlo p-value `(b + 1)/(m + 1)`).
+//! Reference: Genest et al. (2009), eqs. (5), (9), App. D, DOI 10.1016/j.insmatheco.2007.10.005.
+//! Reference: Rosenblatt, M. (1952), Ann. Math. Stat. 23(3), 470–472, DOI 10.1214/aoms/1177729394.
+//! Reference: Phipson & Smyth (2010), 9(1), Art. 39, DOI 10.2202/1544-6115.1585.
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -33,8 +31,8 @@ pub fn rosenblatt<C: BivariateExt + ?Sized>(
   Ok(stack![Axis(1), x.column(1), conditional.view()])
 }
 
-/// Cramér–von Mises distance between the empirical distribution function `D_n` of the rows `E_i` of `r` and the
-/// product copula, `Σ_i (D_n(E_i) − E_{i1} E_{i2})²`.
+/// Cramér–von Mises distance between the empirical distribution function `D_n` of the rows `E_i` of
+/// `r` and the product copula, `Σ_i (D_n(E_i) − E_{i1} E_{i2})²`.
 pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
   let n = r.nrows();
   let mut statistic = 0.0;
@@ -63,8 +61,8 @@ fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
 /// Settings of the parametric-bootstrap test.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GofConfig {
-  /// Bootstrap replications behind the p-value, which is at least `1/(replications + 1)`: a rejection at `alpha` needs
-  /// `replications ≥ ⌊1/alpha⌋`.
+  /// Bootstrap replications behind the p-value, which is at least `1/(replications + 1)`: a
+  /// rejection at `alpha` needs `replications ≥ ⌊1/alpha⌋`.
   pub replications: usize,
   /// Significance level of the rejection decision.
   pub alpha: f64,
@@ -84,7 +82,8 @@ impl Default for GofConfig {
 pub struct GofResult {
   /// Statistic on the data.
   pub statistic: f64,
-  /// Bootstrap p-value `(1 + #{S* ≥ S})/(N + 1)` (Phipson & Smyth 2010); Appendix D's strict `>` differs only on exact ties.
+  /// Bootstrap p-value `(1 + #{S* ≥ S})/(N + 1)` (Phipson & Smyth 2010); Appendix D's strict `>`
+  /// differs only on exact ties.
   pub p_value: f64,
   /// Number of bootstrap replications.
   pub replications: usize,
@@ -104,8 +103,8 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on pseudo-observations `x`, one `seed` stream per replication (Genest,
-/// Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` (a 0 or 1 is `MarginalOnBoundary`) or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
+/// Bootstrap Cramér–von Mises test of `copula` on pseudo-observations `x`: `MarginalOnBoundary` at
+/// a 0 or 1, `Numerical` on a non-finite statistic; asserts `0 < alpha < 1`, `replications > 0`.
 pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
   x: ArrayView2<f64>,
@@ -153,8 +152,8 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   })
 }
 
-/// Pseudo-observations `rank / (n + 1)` of raw data, a tie group taking the mean of its ranks; a column holding a NaN is
-/// all NaN.
+/// Pseudo-observations `rank / (n + 1)` of raw data, a tie group taking the mean of its ranks; a
+/// column holding a NaN is all NaN.
 pub fn pseudo_observations(data: ArrayView2<f64>) -> Array2<f64> {
   let n = data.nrows();
   let mut out = Array2::<f64>::zeros(data.raw_dim());
@@ -440,8 +439,8 @@ mod tests {
     assert!(matches!(boot_err, CopulaError::Numerical(_)), "{boot_err}");
   }
 
-  /// Raw uniform samples fail a KS gate on their margins by chance (17 of 1000 seeds at n = 600, four of these 200); the
-  /// input check must not.
+  /// Raw uniform samples fail a KS gate on their margins by chance (17 of 1000 seeds at n = 600,
+  /// four of these 200); the input check must not.
   #[test]
   fn a_raw_uniform_sample_passes_the_input_check_on_every_seed() {
     let copula = Clayton::new(3.0);
@@ -520,8 +519,8 @@ mod tests {
     assert_eq!(u[(1, 1)], 0.75);
   }
 
-  /// A tie group takes the mean of its ranks, so the pseudo-observations do not depend on the row order and keep the data's
-  /// τ-b: `(1,1,2,3)` × `(1,2,2,3)` in two orders is `0.8` either way (ordinal ranks give `1.0` and `2/3`).
+  /// A tie group takes its mean rank, so the pseudo-observations ignore row order and keep the
+  /// data's τ-b: `(1,1,2,3)` × `(1,2,2,3)` is `0.8` in both orders (ordinal ranks: `1.0`, `2/3`).
   #[test]
   fn tied_values_share_their_mean_rank_in_every_row_order() {
     let a = ndarray::array![[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]];
@@ -554,8 +553,8 @@ mod tests {
     assert_eq!(u.column(1).to_vec(), vec![0.3, 0.3, 0.6, 0.8]);
   }
 
-  /// A column holding a NaN comes out all NaN, as scipy's `rankdata(nan_policy="propagate")`, where an unordered pair
-  /// panics in the std sort from about 40 rows; the other columns keep their ranks.
+  /// A column holding a NaN comes out all NaN, as scipy's `rankdata(nan_policy="propagate")` (an
+  /// unordered pair panics the std sort from about 40 rows); other columns keep their ranks.
   #[test]
   fn a_column_with_a_nan_is_all_nan_at_any_size() {
     let n = 100;

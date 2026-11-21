@@ -1,6 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Cir`
-//! (`diffusion/cir.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! stream fresh from `self.{theta,sigma,n,t,seed}` on every call.
+//! `with_*` setters on `Cir` (`diffusion/cir.rs`), which caches nothing: `sampler()` builds its
+//! Gaussian stream from `self.{theta,sigma,n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -61,7 +60,7 @@ plain_test!(
   boundary,
   VarianceBoundary::Reflect
 );
-plain_test!(cir_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(cir_with_points_round_trip, with_points, n, 64usize);
 plain_test!(cir_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

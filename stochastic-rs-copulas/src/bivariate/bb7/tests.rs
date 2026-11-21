@@ -67,8 +67,8 @@ fn tail_coefficients_follow_joe() {
   assert!((td.lower - 0.5).abs() < 1e-15);
 }
 
-/// Cor. 5.1.4's Beta form by mpmath at 60 digits across its pole at `θ = 2`, at `θ = 1` (Clayton), past the switch at
-/// `θ = 4` and far out; within `1e-15/min(δ, 1)`, as `R(b) − 1/(1 + b)` cancels to `O(δ)`.
+/// Cor. 5.1.4's Beta form by mpmath at 60 digits across its pole at `θ = 2`, at `θ = 1` (Clayton),
+/// past the switch at `θ = 4` and far out, within `1e-15/min(δ, 1)` (`R(b) − 1/(1 + b)` is `O(δ)`).
 #[test]
 fn kendall_tau_matches_the_beta_form() {
   for (theta, delta, want) in [

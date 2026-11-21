@@ -35,9 +35,15 @@ fn make_test_prices() -> (Vec<f64>, Vec<f64>, Vec<f64>, Array2<f64>) {
 fn full_pipeline() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
 
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   assert_eq!(result.analytics.len(), 3);
   assert_eq!(result.butterfly_checks.len(), 3);
 
@@ -49,8 +55,8 @@ fn full_pipeline() {
     assert!(a.atm_skew.is_finite(), "ATM skew should be finite");
   }
 
-  for svi in &result.svi_params {
-    assert!(svi.is_admissible(), "SVI should be admissible");
+  for fit in &result.svi_fits {
+    assert!(fit.params.is_admissible(), "SVI should be admissible");
   }
 
   assert!(
@@ -62,7 +68,13 @@ fn full_pipeline() {
 #[test]
 fn pipeline_local_vol() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   let ks: Vec<f64> = (-10..=10).map(|i| i as f64 * 0.05).collect();
   let ts = vec![0.3, 0.5, 0.75];
@@ -80,22 +92,21 @@ fn pipeline_local_vol() {
 #[test]
 fn build_surface_from_model_heston() {
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
 
-  let model = HestonFourier {
+  let model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
-  };
+  });
   let strikes: Vec<f64> = (85..=115).step_by(5).map(|k| k as f64).collect();
   let maturities = vec![0.25, 0.5, 1.0];
 
   let result = build_surface_from_model(&model, 100.0, 0.05, 0.0, &strikes, &maturities);
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   assert_eq!(result.analytics.len(), 3);
   for a in &result.analytics {
     assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite());
@@ -104,57 +115,37 @@ fn build_surface_from_model_heston() {
 
 #[test]
 fn build_surface_from_calibration_heston_multi_maturity() {
+  use crate::OptionQuote;
   use crate::OptionType;
   use crate::calibration::heston::HestonCalibrator;
-  use crate::calibration::heston::HestonParams;
-  use crate::calibration::levy::MarketSlice;
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::traits::ModelPricer;
 
   // Generate synthetic prices from known Heston params
-  let true_model = HestonFourier {
+  let true_model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
-  };
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-  let taus = [0.25, 0.5, 1.0];
-
-  let slices: Vec<MarketSlice> = taus
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  });
+  let quotes = [0.25, 0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| [90.0, 95.0, 100.0, 105.0, 110.0].map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = HestonCalibrator::from_slices(
-    Some(HestonParams {
-      v0: 0.06,
-      kappa: 1.5,
-      theta: 0.06,
-      sigma: 0.4,
-      rho: -0.5,
-    }),
-    &slices,
-    100.0,
-    0.05,
-    Some(0.0),
-    OptionType::Call,
-    false,
-  );
+  let cal = HestonCalibrator::new(100.0, 0.05, 0.0, quotes).with_start(HestonParams {
+    v0: 0.06,
+    kappa: 1.5,
+    theta: 0.06,
+    sigma: 0.4,
+    rho: -0.5,
+  });
   let calibration = cal.calibrate(None).unwrap();
 
   let result = build_surface_from_calibration(
@@ -166,7 +157,7 @@ fn build_surface_from_calibration_heston_multi_maturity() {
     &[0.25, 0.5, 1.0],
   );
 
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
   for a in &result.analytics {
     assert!(a.atm_vol > 0.0 && a.atm_vol.is_finite());
     assert!(
@@ -178,52 +169,34 @@ fn build_surface_from_calibration_heston_multi_maturity() {
 
 #[test]
 fn build_surface_from_calibration_svj_multi_maturity() {
+  use crate::OptionQuote;
   use crate::OptionType;
-  use crate::calibration::levy::MarketSlice;
   use crate::calibration::svj::SvjCalibrator;
   use crate::pricing::fourier::BatesFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::traits::ModelPricer;
 
-  let true_model = BatesFourier {
+  let true_model = BatesFourier::new(SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.5,
     mu_j: -0.1,
     sigma_j: 0.15,
-    r: 0.05,
-    q: 0.0,
-  };
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-  let taus = [0.5, 1.0];
-
-  let slices: Vec<MarketSlice> = taus
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  });
+  let strikes = [90.0, 95.0, 100.0, 105.0, 110.0];
+  let quotes = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| strikes.map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = SvjCalibrator::from_slices(
-    None,
-    &slices,
-    100.0,
-    0.05,
-    Some(0.0),
-    OptionType::Call,
-    false,
-  );
+  let cal = SvjCalibrator::new(100.0, 0.05, 0.0, quotes);
   let result = cal.calibrate(None).unwrap();
   assert!(result.converged, "SVJ should converge");
 
@@ -243,9 +216,10 @@ fn build_surface_from_calibration_svj_multi_maturity() {
 
 #[test]
 fn build_surface_from_calibration_levy_vg() {
+  use crate::OptionQuote;
+  use crate::OptionType;
   use crate::calibration::levy::LevyCalibrator;
   use crate::calibration::levy::LevyModelType;
-  use crate::calibration::levy::MarketSlice;
   use crate::pricing::fourier::VarianceGammaFourier;
   use crate::traits::ModelPricer;
 
@@ -253,28 +227,18 @@ fn build_surface_from_calibration_levy_vg() {
     sigma: 0.12,
     theta: -0.14,
     nu: 0.2,
-    r: 0.05,
-    q: 0.0,
   };
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-
-  let slices: Vec<MarketSlice> = [0.5, 1.0]
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  let strikes = [90.0, 95.0, 100.0, 105.0, 110.0];
+  let quotes = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| strikes.map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, slices);
+  let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, quotes);
   let result = cal.calibrate(None).unwrap();
 
   let surface = build_surface_from_calibration(
@@ -319,32 +283,31 @@ fn build_surface_from_model_sabr() {
 #[test]
 fn to_model_trait_works_with_pipeline() {
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::traits::ToModel;
 
-  let model = HestonFourier {
+  let model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
-  };
+  });
   // Use HestonParams (implements ToModel) via the trait
-  let params = crate::calibration::heston::HestonParams {
+  let params = HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
   };
-  let pricer = ToModel::to_model(&params, 0.05, 0.0);
+  let pricer = ToModel::to_model(&params);
 
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
   let maturities = vec![0.25, 0.5, 1.0];
 
   let result = build_surface_from_model(&pricer, 100.0, 0.05, 0.0, &strikes, &maturities);
-  assert_eq!(result.svi_params.len(), 3);
+  assert_eq!(result.svi_fits.len(), 3);
 
   // Verify prices match direct model
   use crate::traits::ModelPricer;
@@ -359,10 +322,16 @@ fn to_model_trait_works_with_pipeline() {
 #[test]
 fn smile_slice_svi_fit() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, &prices, true);
+  let iv_surface = ImpliedVolSurface::from_prices(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   let slice = iv_surface.smile_slice(1);
-  let svi = slice.fit_svi(None);
+  let svi = slice.fit_svi(None).params;
 
   assert!(svi.is_admissible());
 
@@ -386,8 +355,8 @@ fn all_nan_surface_reports_nothing_checkable() {
     vec![90.0, 100.0, 110.0],
     vec![0.5, 1.0],
     vec![100.0, 100.0],
-    &prices,
-    true,
+    prices.view(),
+    OptionType::Call,
   );
 
   let finite = result
@@ -422,10 +391,44 @@ fn all_nan_surface_reports_nothing_checkable() {
 #[test]
 fn checkable_surface_still_answers() {
   let (strikes, maturities, forwards, prices) = make_test_prices();
-  let result = build_surface(strikes, maturities, forwards, &prices, true);
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
 
   for (_, min_g) in &result.butterfly_checks {
     assert!(min_g.is_finite(), "every slice must have been evaluated");
   }
   assert_eq!(result.is_arbitrage_free(), Some(true));
+}
+
+/// The pipeline keeps each slice's and the surface's whole fit, the stop's verdict and words with
+/// the parameters, as the fits themselves return it.
+#[test]
+fn the_pipeline_carries_each_fits_stop() {
+  use crate::traits::CalibrationResult;
+  let (strikes, maturities, forwards, prices) = make_test_prices();
+  let result = build_surface(
+    strikes,
+    maturities,
+    forwards,
+    prices.view(),
+    OptionType::Call,
+  );
+  let surface = &result.iv_surface;
+  assert_eq!(result.svi_fits.len(), 3);
+  for (j, fit) in result.svi_fits.iter().enumerate() {
+    let own = surface.smile_slice(j).fit_svi(None);
+    assert_eq!((fit.converged, &fit.message), (own.converged, &own.message));
+    assert!(
+      fit.message.is_some() && fit.rmse() == own.rmse(),
+      "slice {j}: {fit:?}"
+    );
+  }
+  let (fit, own) = (&result.ssvi_fit, surface.fit_ssvi(None));
+  assert_eq!((fit.converged, &fit.message), (own.converged, &own.message));
+  assert!(fit.message.is_some() && fit.rmse() == own.rmse(), "{fit:?}");
 }

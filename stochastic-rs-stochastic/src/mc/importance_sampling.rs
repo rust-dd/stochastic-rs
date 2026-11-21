@@ -1,14 +1,11 @@
-//! # Importance Sampling
+//! A standard normal expectation from draws under a shifted mean, reweighted to stay unbiased.
 //!
 //! $$
 //! \mathbb{E}_P[f(Z)] = \mathbb{E}_Q\!\left[f(Z)\,\frac{dP}{dQ}(Z)\right],\quad
 //! \frac{dP}{dQ}(z)=\exp\!\bigl(-z\!\cdot\!\theta+\tfrac{|\theta|^2}{2}\bigr)
 //! $$
 //!
-//! Gaussian mean-shift importance sampling.
-//!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.6.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.6, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

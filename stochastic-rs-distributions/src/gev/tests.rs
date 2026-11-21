@@ -27,7 +27,8 @@ fn gev_gumbel_sample_mean_euler() {
   assert!(gap < five_se, "best |mean − γ| = {gap}, 5 SE = {five_se}");
 }
 
-/// Fréchet at ξ = 0.2, where the variance `(Γ(1 − 2ξ) − Γ(1 − ξ)²)/ξ²` is finite: within 5 SE of `(Γ(1 − ξ) − 1)/ξ`.
+/// Fréchet at ξ = 0.2, where the variance `(Γ(1 − 2ξ) − Γ(1 − ξ)²)/ξ²` is finite: within 5 SE of
+/// `(Γ(1 − ξ) − 1)/ξ`.
 #[test]
 fn gev_frechet_sample_mean_closed_form() {
   let (xi, n) = (0.2_f64, 30_000);
@@ -245,7 +246,8 @@ fn moments_across_the_series_switch() {
       rel(g.skewness().unwrap(), skew) < 1e-12,
       "xi = {xi}: skewness"
     );
-    // ξ = −0.3 sits in the Γ forms' noise band, whose worst kurtosis error is 5.9e-12 over [−0.31, −0.29].
+    // ξ = −0.3 sits in the Γ forms' noise band, whose worst kurtosis error is 5.9e-12 over [−0.31,
+    // −0.29].
     let kurt_bar = if xi == -0.3 { 6e-12 } else { 1e-12 };
     assert!(
       rel(g.kurtosis().unwrap(), kurt) < kurt_bar,
@@ -254,7 +256,8 @@ fn moments_across_the_series_switch() {
   }
 }
 
-/// mpmath at 50 and 100 digits: where `ξ ln y` or `ξz` leaves the normals, the forms take the Gumbel law's values.
+/// mpmath at 50 and 100 digits: where `ξ ln y` or `ξz` leaves the normals, the forms take the
+/// Gumbel law's values.
 #[test]
 fn subnormal_shape_products_meet_the_gumbel_law() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -287,7 +290,8 @@ fn draws<T: SimdFloatExt>(sigma: T, xi: T) -> Vec<T> {
   long
 }
 
-/// Below the cut a stream draws the Gumbel law's bits; above it no draw overflows at a scale the Gumbel law keeps finite.
+/// Below the cut a stream draws the Gumbel law's bits; above it no draw overflows at a scale the
+/// Gumbel law keeps finite.
 #[test]
 fn tiny_shapes_draw_finite_values() {
   assert_eq!(draws(1000.0_f32, 1e-36), draws(1000.0_f32, 0.0));
@@ -400,7 +404,8 @@ fn pdf_and_cdf_at_infinite_arguments() {
   }
 }
 
-/// mpmath at 120 and 200 digits: the moments where the Γ values overflow; at ξ = −100 the variance itself does.
+/// mpmath at 120 and 200 digits: the moments where the Γ values overflow; at ξ = −100 the variance
+/// itself does.
 #[test]
 fn moments_past_the_gamma_overflow() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();

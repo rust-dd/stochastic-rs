@@ -17,11 +17,8 @@ pub use projection::HestonCekfVarianceProjection;
 use step::FloorPolicy;
 use step::step_impl;
 
-/// Prior coefficient bounds required by the consistent-EKF correction.
-///
-/// These are bounds over the admissible parameter set, not values copied from
-/// the parameters being filtered. The filter verifies that the current
-/// coefficients lie inside the supplied bounds.
+/// Prior coefficient bounds of the consistent-EKF correction: bounds over the admissible parameter
+/// set, which the filter checks the current coefficients against, not the filtered values.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonCekfConsistencyBounds {
   pub max_abs_state_transition: f64,
@@ -39,7 +36,8 @@ pub enum HestonCekfCorrection {
   },
 }
 
-/// Configuration shared by fixed-parameter CEKF steps and complete passes.
+/// Configuration of a CEKF step or pass: `r` finite; `delta`, `initial_variance` and the initial
+/// covariance bound finite, positive; `q11, q22 >= 0` with `q11 q22 >= q12²`; a `floor` positive.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonCekfFilterConfig {
   pub r: f64,
@@ -110,8 +108,8 @@ pub struct HestonCekfFilterResult {
   pub projection_diagnostics: HestonCekfProjectionDiagnostics,
 }
 
-/// Advances the CEKF by one observed log return; `Err` on a non-finite return, a non-finite or
-/// non-positive previous state or a floor hit; panics on an invalid configuration or parameters.
+/// Advances the CEKF by one log return; `Err` on a non-finite return, a bad previous state, a floor
+/// hit; panics unless `config` is in range, `kappa`, `theta`, `sigma > 0`, `|rho| <= 1`, in bounds.
 pub fn heston_cekf_step(
   previous: HestonCekfState,
   log_return: f64,
@@ -134,7 +132,7 @@ pub fn heston_cekf_step(
 }
 
 /// One CEKF pass over a price series at fixed Heston parameters; `Err` on fewer than two prices, a
-/// non-finite or non-positive price or a floor hit; panics on invalid configuration or parameters.
+/// non-finite or non-positive price or a floor hit; panics as [`heston_cekf_step`].
 pub fn filter_heston_cekf(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
@@ -151,7 +149,8 @@ pub fn filter_heston_cekf(
   filter_impl(prices, parameters, config, initial, FloorPolicy::Error)
 }
 
-/// The batch's pass over prices its caller validated; `FloorPolicy::Clamp` keeps every step `Ok`.
+/// The batch's pass over prices its caller validated: `FloorPolicy::Clamp` lifts a finite value to
+/// `EPS` where `Error` would fail, and a NaN or an infinity is `Err` under both.
 pub(crate) fn filter_heston_cekf_batch(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
@@ -172,14 +171,7 @@ pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
     "initial_error_covariance_bound",
     config.initial_error_covariance_bound,
   );
-  assert_nonnegative("q11", config.q11);
-  assert_finite("q12", config.q12);
-  assert_nonnegative("q22", config.q22);
-  let noise_determinant = config.q11 * config.q22 - config.q12 * config.q12;
-  assert!(
-    noise_determinant >= -EPS,
-    "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
-  );
+  assert_noise(config.q11, config.q12, config.q22);
   if let HestonCekfCorrection::Consistent { bounds } = config.correction {
     assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
     assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);
@@ -189,7 +181,7 @@ pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
     assert_finite("floor", floor);
     assert!(
       floor > EPS,
-      "floor must satisfy `floor > EPS`, got floor = {floor:?}"
+      "floor must satisfy `floor > {EPS:?}`, got floor = {floor:?}"
     );
   }
 }
@@ -294,7 +286,7 @@ fn validate_state(value: f64) -> Result<(), StatsError> {
 }
 
 #[track_caller]
-fn assert_finite(name: &str, value: f64) {
+pub(super) fn assert_finite(name: &str, value: f64) {
   assert!(
     value.is_finite(),
     "{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"
@@ -302,7 +294,7 @@ fn assert_finite(name: &str, value: f64) {
 }
 
 #[track_caller]
-fn assert_positive(name: &str, value: f64) {
+pub(super) fn assert_positive(name: &str, value: f64) {
   assert_finite(name, value);
   assert!(
     value > 0.0,
@@ -311,7 +303,7 @@ fn assert_positive(name: &str, value: f64) {
 }
 
 #[track_caller]
-fn assert_nonnegative(name: &str, value: f64) {
+pub(super) fn assert_nonnegative(name: &str, value: f64) {
   assert_finite(name, value);
   assert!(
     value >= 0.0,
@@ -320,9 +312,21 @@ fn assert_nonnegative(name: &str, value: f64) {
 }
 
 #[track_caller]
+pub(super) fn assert_noise(q11: f64, q12: f64, q22: f64) {
+  assert_nonnegative("q11", q11);
+  assert_finite("q12", q12);
+  assert_nonnegative("q22", q22);
+  let determinant = q11 * q22 - q12 * q12;
+  assert!(
+    determinant >= -EPS,
+    "q11 * q22 - q12 * q12 must satisfy `q11 * q22 - q12 * q12 >= -{EPS:?}`, got q11 * q22 - q12 * q12 = {determinant:?}"
+  );
+}
+
+#[track_caller]
 fn assert_bound(coefficient: &str, actual: f64, bound_name: &str, bound: f64) {
   assert!(
     actual <= bound + EPS,
-    "{coefficient} must satisfy `<= {bound_name}`, got {coefficient} = {actual:?}, {bound_name} = {bound:?}"
+    "{coefficient} must satisfy `{coefficient} <= {bound_name} + {EPS:?}`, got {coefficient} = {actual:?}, {bound_name} = {bound:?}"
   );
 }

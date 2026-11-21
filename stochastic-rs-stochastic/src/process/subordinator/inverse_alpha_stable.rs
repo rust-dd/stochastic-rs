@@ -1,9 +1,6 @@
-//! Inverse stable subordinator, simulated by inverting a directly
-//! simulated forward positive `alpha`-stable subordinator path.
+//! Inverse stable subordinator, by inverting a simulated forward positive `alpha`-stable path.
 //!
-//! Reference: Meerschaert M. M., Straka P. (2013) — *Inverse Stable
-//! Subordinators*, Mathematical Modelling of Natural Phenomena 8(2),
-//! 1–16, DOI: 10.1051/mmnp/20138201.
+//! Reference: Meerschaert & Straka (2013), MMNP 8(2), 1–16, DOI 10.1051/mmnp/20138201
 
 use std::marker::PhantomData;
 
@@ -23,7 +20,7 @@ use crate::traits::ProcessExt;
 
 /// Inverse alpha-stable subordinator:
 /// `E_alpha(t) = inf { u >= 0 : D_alpha(u) > t }`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -31,13 +28,13 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B 
   pub c: T,
   /// Number of target time-grid points.
   pub n: usize,
-  /// Horizon for target time-grid.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Internal grid size for the direct process `D_alpha(u)`.
   pub u_steps: usize,
   /// Optional upper bound for inverse-domain `u`.
   pub u_max: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -45,6 +42,8 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B 
 }
 
 impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
+  /// Panics unless a given `t` is positive and finite, `n >= 1`, `0 < alpha < 1`, `c > 0`,
+  /// `u_steps >= 2`, and every parameter is finite.
   pub fn new(
     alpha: T,
     c: T,
@@ -124,9 +123,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.t.unwrap_or(T::one())
   }
 
-  /// The direct subordinator's table: `u_steps` points over the extent given,
-  /// or over the horizon when none was, grown by doubling until it reaches
-  /// the horizon, as the host grows it.
+  /// The direct subordinator's table: `u_steps` points over the given extent, or the horizon,
+  /// doubled until it reaches the horizon, as the host grows it.
   fn table_spec(&self) -> Option<crate::euler::TableSpec<T>> {
     Some(crate::euler::TableSpec {
       points: self.u_steps as u32,
@@ -180,9 +178,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine when the direct subordinator's table fits the
-  /// kernels' per-path table; a finer one keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the direct subordinator's table fits the kernels' per-path
+  /// table; a finer one stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -237,9 +234,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: the direct subordinator's table
-  /// has at least two points and fits the kernels' per-path table. A finer
-  /// one samples on the host.
+  /// What a device runs: a direct-subordinator table of at least two points that fits the
+  /// kernels' per-path table; a finer one samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!((2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)))
       .then_some("a table outside the kernels' per-path table")
@@ -249,6 +245,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`InverseAlphaStableSubordinator`] sampling state: the owned
 /// uniform source driving the direct stable path plus the f64 process scalars.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct InverseAlphaStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   alpha: f64,

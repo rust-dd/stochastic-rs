@@ -30,7 +30,7 @@ fn merton_at(v: f64, lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
 
 fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
   let mut p = *m;
-  p.v += dv;
+  p.sigma += dv;
   p.price_option(S + ds, K, R, Q, TAU + dtau, OT)
 }
 
@@ -40,7 +40,7 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BsmPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.sigma, m.b);
 
   let cases = [
     (
@@ -66,33 +66,16 @@ fn merton_greeks_lambda_zero_equals_bs() {
       m.charm(S, K, R, Q, TAU, OT),
       bs.charm(S, K, R, Q, TAU, OT),
     ),
-    ("volga", m.volga(S, K, R, Q, TAU), bs.vomma(S, K, R, Q, TAU)),
-    (
-      "veta",
-      m.veta(S, K, R, Q, TAU),
-      bs.dvega_dtime(S, K, R, Q, TAU),
-    ),
+    ("volga", m.volga(S, K, R, Q, TAU), bs.volga(S, K, R, Q, TAU)),
+    ("veta", m.veta(S, K, R, Q, TAU), bs.veta(S, K, R, Q, TAU)),
   ];
   for (name, got, want) in cases {
     assert!((got - want).abs() < 1e-10, "{name}: got {got}, want {want}");
   }
 }
 
-/// Merton delta/gamma/vega/theta/rho vs. central finite differences of
-/// the price itself, independent of whether a given Greek is internally a
-/// closed-form series or a finite difference.
-///
-/// `gamma` is checked at a looser `1e-3` (not `1e-4`): its BSM closed form
-/// (`norm_pdf(d1)/(S·v·√τ)`) and a central second-difference of
-/// `BsmPricer::call_put` already disagree by several `1e-4`
-/// *at a single, non-Merton `BsmPricer` in isolation* — confirmed by
-/// checking one term on its own — and the gap does not keep shrinking as
-/// the bump size shrinks over several orders of magnitude the way a
-/// normal `O(h²)` truncation error would. Second-derivative finite
-/// differences are inherently more sensitive to a special function's
-/// numerical approximation error than the function value itself, so this
-/// is read as a pre-existing `norm_cdf`/`norm_pdf` precision
-/// characteristic rather than a defect in either `gamma()`.
+/// The Greeks against central differences of the price; `gamma` at `1e-3`, since a second
+/// difference of one Black-Scholes price is already several `1e-4` from its closed form.
 #[test]
 fn merton_greeks_match_finite_difference() {
   let m = merton(0.5, 0.3, 20);
@@ -103,7 +86,7 @@ fn merton_greeks_match_finite_difference() {
     + bumped_price(&m, -h_s, 0.0, 0.0))
     / (h_s * h_s);
 
-  let h_v = m.v * 1e-4;
+  let h_v = m.sigma * 1e-4;
   let vega_fd = (bumped_price(&m, 0.0, h_v, 0.0) - bumped_price(&m, 0.0, -h_v, 0.0)) / (2.0 * h_v);
 
   let h_t = 1e-5;
@@ -153,8 +136,8 @@ fn merton_greeks_finite_at_m50() {
   for (name, v) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
     assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
   }
-  // `call_put` must survive `m = 50` as well.
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  // The pair must survive `m = 50` as well.
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   assert!(call.is_finite(), "call not finite at m=50: {call}");
   assert!(put.is_finite(), "put not finite at m=50: {put}");
 }
@@ -176,7 +159,7 @@ fn merton_greeks_finite_at_m50() {
 #[test]
 fn merton_price_m10_matches_the_reference_value() {
   let m = merton(0.5, 0.3, 10);
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   let want_call = 4.401_577_413_196_381;
   let want_put = 6.809_118_176_170_799_5;
   assert!(
@@ -213,6 +196,26 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
     m.veta(S, K, R, Q, tiny).is_nan(),
     "veta should be NaN at tau=1e-6"
   );
+}
+
+/// An ordinary model off the strike and a frozen one at its forward: expired, each is worth its
+/// payoff and has no Greek.
+#[test]
+fn zero_tau_prices_the_payoff_and_no_greek() {
+  let frozen = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
+  for (m, k) in [(merton(0.5, 0.4, 10), K), (frozen, S)] {
+    assert_eq!(
+      m.price_call_put(S, k, R, Q, 0.0),
+      CallPut {
+        call: (S - k).max(0.0),
+        put: (k - S).max(0.0)
+      }
+    );
+    let greeks = m.greeks(S, k, R, Q, 0.0, OT).as_array();
+    for (greek, v) in Greeks::COMPONENT_NAMES.iter().zip(greeks) {
+      assert!(v.is_nan(), "k = {k}: {greek} must be NaN, got {v}");
+    }
+  }
 }
 
 /// Under [`BsmCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
@@ -253,12 +256,12 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(v, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
+/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(σ, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
 /// is the Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);
-  let (call, put) = m.call_put(S, K, R, Q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, Q, TAU);
   assert!((call - 4.276118145681529).abs() < TOL, "call {call}");
   assert!((put - 6.68365890865595).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
@@ -302,8 +305,8 @@ fn merton_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(S, K, R, Q, TAU, ot), "rho");
     assert_eq!(g.vanna, m.vanna(S, K, R, Q, TAU), "vanna");
     assert_eq!(g.charm, m.charm(S, K, R, Q, TAU, ot), "charm");
-    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga is vomma");
-    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga");
+    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }
@@ -315,7 +318,7 @@ fn merton_greeks_aggregate_matches_accessors() {
 fn merton_price_put_overrides_vanilla_parity() {
   let m = merton(0.5, 0.4, 10);
   let q = 0.03;
-  let (call, put) = m.call_put(S, K, R, q, TAU);
+  let CallPut { call, put } = m.price_call_put(S, K, R, q, TAU);
   let vanilla = call - S * (-q * TAU).exp() + K * (-R * TAU).exp();
   assert!(
     (put - vanilla).abs() > 1e-3,

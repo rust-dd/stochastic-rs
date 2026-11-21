@@ -5,9 +5,13 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::MultiHestonParams;
 use super::MultiHestonPaths;
+use crate::QuantError;
+use crate::error::check_grid_shape;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> MultiHestonParams<T> {
@@ -18,17 +22,23 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// variance shock to be independent of every price shock. A non-zero Heston
   /// leverage correlation is harmless only when `xi == 0`, because the
   /// variance path is then deterministic.
-  pub fn validate_conditional_malliavin_weights(&self) -> anyhow::Result<()> {
+  pub fn validate_conditional_malliavin_weights(&self) -> Result<(), QuantError> {
     for (asset, params) in self.assets.iter().enumerate() {
-      if !num_traits::Float::is_finite(params.xi) || !num_traits::Float::is_finite(params.rho) {
-        anyhow::bail!("asset {asset} has non-finite xi or rho");
+      let (xi, rho) = (params.xi, params.rho);
+      if !num_traits::Float::is_finite(xi) || !num_traits::Float::is_finite(rho) {
+        return Err(QuantError::invalid(
+          "asset parameters",
+          format!("asset {asset} must have finite xi and rho, got xi = {xi:?}, rho = {rho:?}"),
+        ));
       }
-      if params.xi != T::zero() && params.rho != T::zero() {
-        anyhow::bail!(
-          "asset {asset} has xi={:?} and rho={:?}; exact conditional Malliavin weights require xi == 0 or rho == 0",
-          params.xi,
-          params.rho
-        );
+      if xi != T::zero() && rho != T::zero() {
+        return Err(QuantError::invalid(
+          "asset parameters",
+          format!(
+            "asset {asset} has xi = {xi:?} and rho = {rho:?}; exact conditional Malliavin \
+             weights require xi == 0 or rho == 0"
+          ),
+        ));
       }
     }
     Ok(())
@@ -37,7 +47,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
 
 impl<T: FloatExt> MultiHestonPaths<T> {
   /// Malliavin covariance matrix `gamma_F` of the conditional log-Euler model.
-  pub fn malliavin_cov(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
+  pub fn malliavin_cov(&self, cross_corr: ArrayView2<T>, tau: T) -> Array2<T> {
     assert!(
       self.supports_conditional_malliavin_weights(),
       "conditional Malliavin covariance is not exact for stochastic leverage paths"
@@ -94,58 +104,73 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// treating the anticipating coefficient as an ordinary Itô integrand.
   pub fn try_malliavin_weights(
     &self,
-    gamma_inv: &Array2<T>,
+    gamma_inv: ArrayView2<T>,
     param_asset: usize,
     r: T,
     tau: T,
-    spots: &Array1<T>,
-  ) -> anyhow::Result<Array1<T>> {
+    spots: ArrayView1<T>,
+  ) -> Result<Array1<T>, QuantError> {
     let d = self.n_assets;
     if !self.supports_conditional_malliavin_weights() {
-      anyhow::bail!(
-        "paths do not satisfy the price-noise independence assumption for exact conditional Malliavin weights"
-      );
+      return Err(QuantError::Unsupported {
+        what: "an exact conditional Malliavin weight on paths without price-noise independence",
+      });
     }
-    if self.n_steps < 2 {
-      anyhow::bail!("n_steps must be at least 2");
-    }
-    if self.prices.dim() != (d, self.n_steps) || self.vols.dim() != (d, self.n_steps) {
-      anyhow::bail!("price and variance array shapes must match n_assets and n_steps");
-    }
+    self.check_path_layout()?;
     if !num_traits::Float::is_finite(r) {
-      anyhow::bail!("r must be finite");
+      return Err(QuantError::invalid(
+        "r",
+        format!("must be finite, got {r:?}"),
+      ));
     }
-    if !num_traits::Float::is_finite(tau) || tau <= T::zero() {
-      anyhow::bail!("tau must be finite and positive");
-    }
-    if gamma_inv.shape() != [d, d] {
-      anyhow::bail!(
-        "gamma_inv shape {:?} does not match n_assets={d}",
-        gamma_inv.shape()
-      );
-    }
+    check_tau(tau)?;
+    check_grid_shape(
+      [
+        "gamma_inv rows, one per asset",
+        "gamma_inv columns, one per asset",
+      ],
+      (d, d),
+      gamma_inv.dim(),
+    )?;
     if spots.len() != d {
-      anyhow::bail!("spots length {} does not match n_assets={d}", spots.len());
+      return Err(QuantError::DimensionMismatch {
+        what: "spots, one per asset",
+        expected: d,
+        got: spots.len(),
+      });
     }
     if param_asset >= d {
-      anyhow::bail!("param_asset={param_asset} is out of bounds for n_assets={d}");
+      return Err(QuantError::invalid(
+        "param_asset",
+        format!("must be below n_assets = {d}, got {param_asset}"),
+      ));
     }
-    if !num_traits::Float::is_finite(spots[param_asset]) || spots[param_asset] <= T::zero() {
-      anyhow::bail!("initial spot for asset {param_asset} must be finite and positive");
+    let spot = spots[param_asset];
+    if !num_traits::Float::is_finite(spot) || spot <= T::zero() {
+      return Err(QuantError::invalid(
+        "spots",
+        format!("spot {param_asset} must be finite and positive, got {spot:?}"),
+      ));
     }
-    if self
+    if let Some(((asset, step), price)) = self
       .prices
-      .iter()
-      .any(|price| !num_traits::Float::is_finite(*price) || *price <= T::zero())
+      .indexed_iter()
+      .find(|(_, p)| !num_traits::Float::is_finite(**p) || **p <= T::zero())
     {
-      anyhow::bail!("all prices must be finite and strictly positive");
+      return Err(QuantError::invalid(
+        "path prices",
+        format!("prices[[{asset}, {step}]] must be finite and positive, got {price:?}"),
+      ));
     }
-    if self
+    if let Some(((asset, step), variance)) = self
       .vols
-      .iter()
-      .any(|variance| !num_traits::Float::is_finite(*variance) || *variance < T::zero())
+      .indexed_iter()
+      .find(|(_, v)| !num_traits::Float::is_finite(**v) || **v < T::zero())
     {
-      anyhow::bail!("all variances must be finite and non-negative");
+      return Err(QuantError::invalid(
+        "path variances",
+        format!("vols[[{asset}, {step}]] must be finite and non-negative, got {variance:?}"),
+      ));
     }
 
     let terminal = self.terminal_prices_array();
@@ -171,7 +196,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// use the fallible method and keep the weights as an [`Array1`].
   pub fn malliavin_weights(
     &self,
-    gamma_inv: &Array2<T>,
+    gamma_inv: ArrayView2<T>,
     param_asset: usize,
     r: T,
     tau: T,
@@ -183,45 +208,86 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         param_asset,
         r,
         tau,
-        &Array1::from_iter(spots.iter().copied()),
+        Array1::from_iter(spots.iter().copied()).view(),
       )
-      .expect("invalid conditional Malliavin weight inputs; use try_malliavin_weights")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
   /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
-  pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
+  pub fn gamma_inv(&self, cross_corr: ArrayView2<T>, tau: T) -> Array2<T> {
     self
       .try_gamma_inv(cross_corr, tau)
-      .expect("Malliavin covariance matrix is singular; use try_gamma_inv")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible inverse of the Malliavin covariance matrix.
-  pub fn try_gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> anyhow::Result<Array2<T>> {
+  pub fn try_gamma_inv(&self, cross_corr: ArrayView2<T>, tau: T) -> Result<Array2<T>, QuantError> {
     if !self.supports_conditional_malliavin_weights() {
-      anyhow::bail!("conditional Malliavin covariance is not exact for stochastic leverage paths");
+      return Err(QuantError::Unsupported {
+        what: "the exact conditional Malliavin covariance on stochastic leverage paths",
+      });
     }
-    if self.n_assets == 0 || self.n_steps < 2 {
-      anyhow::bail!("paths require at least one asset and two time points");
+    if self.n_assets == 0 {
+      return Err(QuantError::invalid(
+        "paths",
+        "need at least one asset, got none",
+      ));
     }
-    if self.prices.dim() != (self.n_assets, self.n_steps)
-      || self.vols.dim() != (self.n_assets, self.n_steps)
-    {
-      anyhow::bail!("price and variance array shapes must match n_assets and n_steps");
-    }
-    if cross_corr.shape() != [self.n_assets, self.n_assets] {
-      anyhow::bail!(
-        "cross_corr shape {:?} does not match n_assets={}",
-        cross_corr.shape(),
-        self.n_assets
-      );
-    }
-    if !num_traits::Float::is_finite(tau) || tau <= T::zero() {
-      anyhow::bail!("tau must be finite and positive");
-    }
-    crate::linalg::inverse_t(&self.malliavin_cov(cross_corr, tau))
-      .ok_or_else(|| anyhow::anyhow!("Malliavin covariance matrix is singular"))
+    self.check_path_layout()?;
+    check_grid_shape(
+      [
+        "cross_corr rows, one per asset",
+        "cross_corr columns, one per asset",
+      ],
+      (self.n_assets, self.n_assets),
+      cross_corr.dim(),
+    )?;
+    check_tau(tau)?;
+    crate::linalg::inverse_t(self.malliavin_cov(cross_corr, tau).view()).ok_or_else(|| {
+      QuantError::Numerical {
+        what: "the Malliavin covariance matrix",
+        reason: "it is singular".to_string(),
+      }
+    })
   }
+
+  fn check_path_layout(&self) -> Result<(), QuantError> {
+    if self.n_steps < 2 {
+      return Err(QuantError::InsufficientData {
+        what: "time points in a Malliavin path",
+        needed: 2,
+        got: self.n_steps,
+      });
+    }
+    let shape = (self.n_assets, self.n_steps);
+    check_grid_shape(
+      [
+        "price rows, one per asset",
+        "price columns, one per time point",
+      ],
+      shape,
+      self.prices.dim(),
+    )?;
+    check_grid_shape(
+      [
+        "variance rows, one per asset",
+        "variance columns, one per time point",
+      ],
+      shape,
+      self.vols.dim(),
+    )
+  }
+}
+
+fn check_tau<T: FloatExt>(tau: T) -> Result<(), QuantError> {
+  if !num_traits::Float::is_finite(tau) || tau <= T::zero() {
+    return Err(QuantError::invalid(
+      "tau",
+      format!("must be finite and positive, got {tau:?}"),
+    ));
+  }
+  Ok(())
 }
 
 #[cfg(test)]

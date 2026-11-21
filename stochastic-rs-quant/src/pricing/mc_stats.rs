@@ -1,5 +1,36 @@
 //! Shared standard-error arithmetic for the bespoke Monte Carlo pricers.
 
+use rayon::prelude::*;
+use stochastic_rs_stochastic::mc::McEstimate;
+
+/// Paths per chunk, a constant rather than the thread count, so the bits ignore the pool.
+const CHUNK: usize = 256;
+
+/// The estimate of `n` payoffs: chunks summed in parallel and folded in order, so one seed gives
+/// one value on any pool; `scale` (a discount, a notional) multiplies both moments.
+pub(crate) fn par_estimate(
+  n: usize,
+  scale: f64,
+  payoff: impl Fn(usize) -> f64 + Sync + Send,
+) -> McEstimate<f64> {
+  // −0.0 is the identity of `+`, so a single chunk sums as `Iterator::sum` does.
+  let add = |(sum, sum_sq): (f64, f64), (s, q): (f64, f64)| (sum + s, sum_sq + q);
+  let moments = (0..n.div_ceil(CHUNK))
+    .into_par_iter()
+    .map(|chunk| {
+      (chunk * CHUNK..n.min((chunk + 1) * CHUNK))
+        .map(&payoff)
+        .fold((-0.0, -0.0), |acc, y| add(acc, (y, y * y)))
+    })
+    .collect::<Vec<(f64, f64)>>();
+  let (sum, sum_sq) = moments.into_iter().fold((-0.0, -0.0), add);
+  McEstimate {
+    mean: scale * sum / n as f64,
+    std_err: scale.abs() * std_err_from_sums(sum, sum_sq, n),
+    n_samples: n,
+  }
+}
+
 /// Standard error of a Monte Carlo mean from the running sums a payoff
 /// pass produces: sample variance `(sum_sq - sum²/n) / (n - 1)`, then
 /// `sqrt(var / n)` (Glasserman 2003, §1.1).
@@ -57,5 +88,40 @@ mod tests {
     let sum = 0.1_f64 * 3.0;
     let sum_sq = 0.1_f64 * 0.1 * 3.0;
     assert_eq!(std_err_from_sums(sum, sum_sq, 3), 0.0);
+  }
+
+  #[test]
+  fn the_chunks_fold_in_order_on_every_pool() {
+    let n = 5 * CHUNK + 17;
+    let payoff = |i: usize| (i as f64 * 0.618_033_988_749_895).fract() - 0.25;
+    let (mut sum, mut sum_sq) = (-0.0, -0.0);
+    for start in (0..n).step_by(CHUNK) {
+      let chunk = (start..n.min(start + CHUNK)).map(payoff);
+      let (s, q) = chunk.fold((-0.0, -0.0), |(s, q), y| (s + y, q + y * y));
+      (sum, sum_sq) = (sum + s, sum_sq + q);
+    }
+    let want = (
+      2.0 * sum / n as f64,
+      2.0 * std_err_from_sums(sum, sum_sq, n),
+    );
+    let bits = |e: McEstimate<f64>| (e.mean.to_bits(), e.std_err.to_bits());
+    for threads in [1, 4] {
+      let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .unwrap();
+      let got = pool.install(|| par_estimate(n, 2.0, payoff));
+      assert_eq!(
+        bits(got),
+        (want.0.to_bits(), want.1.to_bits()),
+        "{threads} threads"
+      );
+    }
+    let got = par_estimate(n, 2.0, payoff);
+    assert_eq!(
+      bits(got),
+      (want.0.to_bits(), want.1.to_bits()),
+      "the global pool"
+    );
   }
 }

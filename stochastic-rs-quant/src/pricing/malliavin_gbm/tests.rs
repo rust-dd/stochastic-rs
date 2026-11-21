@@ -23,7 +23,7 @@ const TAU: f64 = 1.0;
 const SEEDS: [u64; 3] = [2718, 999, 42];
 
 fn pricer(seed: u64) -> GbmMalliavinPricer<Deterministic> {
-  GbmMalliavinPricer::new(0.1, 2_000, 128, 0.5, Deterministic::new(seed))
+  GbmMalliavinPricer::new(0.1, 2_000, 128, 0.5).with_seed(Deterministic::new(seed))
 }
 
 /// Finiteness and non-negativity hold on *every* sample and are asserted
@@ -36,7 +36,7 @@ fn malliavin_pricer_returns_finite_non_negative_prices() {
   let mut best_call = f64::INFINITY;
   let mut best_put = f64::INFINITY;
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put(S, K, R, 0.0, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put(S, K, R, 0.0, TAU);
 
     // Basic sanity checks: finite and non-negative prices
     assert!(call.is_finite(), "seed {seed}: call price should be finite");
@@ -69,7 +69,7 @@ fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
   let mut best_call = f64::INFINITY;
   let mut best_put = f64::INFINITY;
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put_localized(S, K, R, 0.0, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put_localized(S, K, R, 0.0, TAU);
 
     // Basic sanity checks: finite and non-negative prices
     assert!(
@@ -104,15 +104,12 @@ fn malliavin_pricer_localized_returns_finite_non_negative_prices() {
   );
 }
 
-/// `price_call` and `price_put` are the two legs of `call_put`, so the
-/// put must satisfy put-call parity **against the call from its own
-/// simulation**, not against some other run's. This is what the trait's
-/// `price_put` default would break: it would run a second, independent
-/// Monte Carlo for its `price_call` term.
+/// The put satisfies put-call parity against the call from its own simulation, which the trait's
+/// parity default, a second independent Monte Carlo, would not.
 #[test]
 fn malliavin_put_is_parity_against_its_own_call() {
   for seed in SEEDS {
-    let (call, put) = pricer(seed).call_put(S, K, R, 0.02, TAU);
+    let CallPut { call, put } = pricer(seed).price_call_put(S, K, R, 0.02, TAU);
     let parity = call - S * (-0.02_f64 * TAU).exp() + K * (-R * TAU).exp();
     assert!(
       (put - parity.max(0.0)).abs() < 1e-12,
@@ -144,7 +141,7 @@ fn malliavin_put_is_never_negative() {
   for seed in SEEDS {
     let p = pricer(seed);
     for &k in &[1.0, 50.0, 99.99, 150.0] {
-      let (call, put) = p.call_put(S, k, R, 0.0, TAU);
+      let CallPut { call, put } = p.price_call_put(S, k, R, 0.0, TAU);
       assert!(
         put >= 0.0,
         "seed {seed}: put at K={k} must be floored, got {put}"
@@ -165,6 +162,15 @@ fn malliavin_put_is_never_negative() {
 #[should_panic(expected = "t_eval must be in (0, T)")]
 fn malliavin_rejects_a_maturity_shorter_than_t_eval() {
   let _ = pricer(SEEDS[0]).price_call(S, K, R, 0.0, 0.25);
+}
+
+/// Read back, never written: a write would skip `new`'s checks.
+#[test]
+fn the_checked_fields_are_read_through_getters() {
+  assert_eq!(
+    (pricer(SEEDS[0]).sigma(), pricer(SEEDS[0]).t_eval()),
+    (0.1, 0.5)
+  );
 }
 
 /// The `l == 0` branch is the Dirac limit, so it has to be the *limit*:
@@ -222,15 +228,15 @@ fn negative_bandwidth_is_rejected() {
 #[test]
 fn an_all_worthless_sample_empties_the_kernel_without_poisoning_the_price() {
   for seed in SEEDS {
-    let p = GbmMalliavinPricer::new(0.1, 200, 32, 0.5, Deterministic::new(seed));
-    let dead = p.call_put_localized(S, 1.0e12, R, 0.0, TAU).0;
+    let p = GbmMalliavinPricer::new(0.1, 200, 32, 0.5).with_seed(Deterministic::new(seed));
+    let dead = p.price_call_put_localized(S, 1.0e12, R, 0.0, TAU).call;
     assert!(
       dead.is_finite() && dead >= 0.0,
       "seed {seed}: unreachable strike must price to a finite floor, got {dead}"
     );
     // The same instance, so the live strike is priced off the same seed —
     // the dead/live comparison is one sample, not two.
-    let live = p.call_put_localized(S, K, R, 0.0, TAU).0;
+    let live = p.price_call_put_localized(S, K, R, 0.0, TAU).call;
     assert!(
       live > dead,
       "seed {seed}: live strike {live} must beat dead strike {dead}"
@@ -267,7 +273,7 @@ fn malliavin_one_model_prices_a_grid() {
   // running max because `f64::max` discards a `NaN` operand, which would
   // turn a poisoned price into a plausible number.
   let sweep = |seed: u64| {
-    let model = GbmMalliavinPricer::new(0.2, 400, 64, 0.25, Deterministic::new(seed));
+    let model = GbmMalliavinPricer::new(0.2, 400, 64, 0.25).with_seed(Deterministic::new(seed));
     let mut worst = f64::NEG_INFINITY;
     for &tau in &[0.5_f64, 1.0] {
       for &k in &[90.0_f64, 100.0, 110.0] {
@@ -329,46 +335,32 @@ fn the_default_seed_strategy_is_unseeded() {
   const fn assert_same(_: GbmMalliavinPricer<Unseeded>) {}
   const fn assert_copy<T: Copy>() {}
   assert_copy::<GbmMalliavinPricer>();
-  let bare: GbmMalliavinPricer = GbmMalliavinPricer::new(0.2, 8, 4, 0.5, Unseeded);
+  let bare: GbmMalliavinPricer = GbmMalliavinPricer::new(0.2, 8, 4, 0.5);
   assert_same(bare);
   assert_eq!(bare.n_paths, 8);
 }
 
-/// `GbmMalliavinPricer::new` validates the estimator's own shape.
-///
-/// `n_paths` and `n_steps` are simulation *counts*, and both degenerate
-/// into a fabricated **0.0** price rather than a complaint: with
-/// `n_paths = 0` there is nothing to average, `call_put_from_conditional`
-/// takes its `count == 0` branch and returns the discounted average of an
-/// empty sample; with `n_steps = 1` the step size `tau / (n_steps - 1)` is
-/// infinite and the same zero comes out the other end. `n_steps = 0` is the
-/// loud one — `n_steps - 1` underflows — so of the three degenerate counts
-/// only one announced itself.
-///
-/// `t_eval` keeps its accessor guard: the constructor can only check the
-/// half of `0 < t_eval < tau` that does not need the query, since `tau`
-/// arrives per call. The two messages are deliberately different — neither
-/// is a substring of the other — so a test anchored on one cannot be
-/// satisfied by the other firing.
+/// `n_paths = 0` and `n_steps = 1` would price a fabricated `0.0`, so `new` rejects them; `t_eval`
+/// keeps a query-time guard too, with a different message, since `tau` arrives per call.
 mod construction_validation {
   use super::*;
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn new_rejects_zero_paths() {
-    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5);
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 1)")]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 2`, got n_steps = 1")]
   fn new_rejects_a_single_time_step() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 1, 0.5);
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_steps must be at least 2 (got 0)")]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 2`, got n_steps = 0")]
   fn new_rejects_zero_time_steps() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 0, 0.5);
   }
 
   /// The Malliavin weight carries `+ σ·t_eval` *linearly*, so unlike the
@@ -376,24 +368,34 @@ mod construction_validation {
   /// it biases the weight and the conditional expectation built on it.
   #[test]
   #[should_panic(
-    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got -0.2)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.2"
   )]
   fn new_rejects_negative_volatility() {
-    let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5);
   }
 
   #[test]
   #[should_panic(
-    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got inf)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
   )]
   fn new_rejects_an_infinite_volatility() {
-    let _ = GbmMalliavinPricer::new(f64::INFINITY, 200, 100, 0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(f64::INFINITY, 200, 100, 0.5);
   }
 
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: t_eval must be strictly positive (got -0.5)")]
+  #[should_panic(
+    expected = "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = -0.5"
+  )]
   fn new_rejects_non_positive_t_eval() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5, Unseeded);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 100, -0.5);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = inf"
+  )]
+  fn new_rejects_an_infinite_t_eval() {
+    let _ = GbmMalliavinPricer::new(0.2, 200, 100, f64::INFINITY);
   }
 
   /// The `t_eval < tau` half is unreachable from the constructor and stays
@@ -401,12 +403,12 @@ mod construction_validation {
   #[test]
   #[should_panic(expected = "t_eval must be in (0, T)")]
   fn the_query_dependent_half_stays_at_the_accessor() {
-    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0, Unseeded).price_call(S, K, R, 0.0, TAU);
+    let _ = GbmMalliavinPricer::new(0.2, 200, 64, 2.0).price_call(S, K, R, 0.0, TAU);
   }
 
   #[test]
   fn the_smallest_usable_grid_stays_constructible() {
-    let m = GbmMalliavinPricer::new(0.0, 1, 2, 1e-12, Unseeded);
+    let m = GbmMalliavinPricer::new(0.0, 1, 2, 1e-12);
     assert_eq!((m.n_paths, m.n_steps), (1, 2));
   }
 
@@ -415,9 +417,9 @@ mod construction_validation {
   /// rather than the seed parameter quietly shifting an argument past
   /// them.
   #[test]
-  #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn the_numeric_guards_still_fire_with_a_pinned_seed() {
-    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Deterministic::new(SEEDS[0]));
+    let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5).with_seed(Deterministic::new(SEEDS[0]));
   }
 }
 
@@ -426,7 +428,7 @@ mod degenerate_queries {
   use super::*;
 
   fn model() -> GbmMalliavinPricer<Deterministic> {
-    GbmMalliavinPricer::new(0.2, 64, 16, 0.5, Deterministic::new(SEEDS[0]))
+    GbmMalliavinPricer::new(0.2, 64, 16, 0.5).with_seed(Deterministic::new(SEEDS[0]))
   }
 
   #[test]
@@ -435,7 +437,10 @@ mod degenerate_queries {
     let put = K * (-R * TAU).exp();
     assert_eq!(p.price_call(0.0, K, R, 0.0, TAU), 0.0);
     assert_eq!(p.price_put(0.0, K, R, 0.0, TAU), put);
-    assert_eq!(p.call_put_localized(0.0, K, R, 0.0, TAU), (0.0, put));
+    assert_eq!(
+      p.price_call_put_localized(0.0, K, R, 0.0, TAU),
+      CallPut { call: 0.0, put }
+    );
     let (s_t, c_t) = p.conditional_call_malliavin(0.0, K, R, 0.0, TAU);
     assert!(s_t.iter().chain(&c_t).all(|x| *x == 0.0));
   }
@@ -443,8 +448,20 @@ mod degenerate_queries {
   #[test]
   fn a_zero_horizon_prices_at_the_intrinsic_value() {
     let p = model();
-    assert_eq!(p.call_put(110.0, 100.0, R, 0.0, 0.0), (10.0, 0.0));
-    assert_eq!(p.call_put_localized(90.0, 100.0, R, 0.0, 0.0), (0.0, 10.0));
+    assert_eq!(
+      p.price_call_put(110.0, 100.0, R, 0.0, 0.0),
+      CallPut {
+        call: 10.0,
+        put: 0.0
+      }
+    );
+    assert_eq!(
+      p.price_call_put_localized(90.0, 100.0, R, 0.0, 0.0),
+      CallPut {
+        call: 0.0,
+        put: 10.0
+      }
+    );
     let (s_t, c_t) = p.conditional_call_malliavin_localized(110.0, 100.0, R, 0.0, 0.0);
     assert!(s_t.iter().all(|x| *x == 110.0) && c_t.iter().all(|x| *x == 10.0));
   }
@@ -461,7 +478,7 @@ mod degenerate_queries {
       (S, R, 0.0, f64::NAN),
     ];
     for (s, r, q, tau) in queries {
-      let (call, put) = p.call_put(s, K, r, q, tau);
+      let CallPut { call, put } = p.price_call_put(s, K, r, q, tau);
       let (s_t, c_t) = p.conditional_call_malliavin(s, K, r, q, tau);
       assert!(
         call.is_nan() && put.is_nan(),

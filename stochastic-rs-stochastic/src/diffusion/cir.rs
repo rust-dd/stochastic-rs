@@ -1,12 +1,10 @@
-//! # Cir
+//! Cox–Ingersoll–Ross square-root diffusion, floored or reflected at zero by its boundary policy.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)\,dt+\sigma\sqrt{X_t}\,dW_t
 //! $$
 //!
-//! Reference: Cox J. C., Ingersoll J. E., Ross S. A. (1985) — *A Theory
-//! of the Term Structure of Interest Rates*, Econometrica 53(2),
-//! 385–407, DOI: 10.2307/1911242.
+//! Reference: Cox, Ingersoll & Ross (1985), Econometrica 53(2), 385–407, DOI 10.2307/1911242
 //!
 
 use ndarray::Array1;
@@ -22,20 +20,17 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 mod transition;
 
-/// Cox-Ingersoll-Ross (Cir) process.
-///
-/// `dX(t) = theta * (mu - X(t)) * dt + sigma * sqrt(X(t)) * dW(t)`
-///
-/// In the SDE notation `dX = κ(θ − X) dt + σ √X dW` the Rust field
-/// [`theta`](Self::theta) corresponds to κ (mean-reversion speed) and
-/// [`mu`](Self::mu) corresponds to θ (long-run mean level).
-#[derive(Clone)]
+/// CIR in this crate's names: [`theta`](Self::theta) is the speed κ and [`mu`](Self::mu) the
+/// long-run level θ of `dX = κ(θ − X) dt + σ √X dW`.
+#[derive(Debug, Clone)]
 pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ in the SDE). Controls how fast `X` is pulled
   /// back toward [`mu`](Self::mu).
@@ -47,25 +42,24 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the CIR path.
   pub n: usize,
-  /// Initial value X₀ of the CIR path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Cir::default().with_theta(3.0).with_sigma(0.3)`. No persisted cache:
-/// `sampler()` builds its Gaussian stream fresh from `self` every call.
+/// Every field has a `with_*` setter (`Cir::default().with_theta(3.0).with_sigma(0.3)`); nothing
+/// is cached, since `sampler()` builds its Gaussian stream from `self` on every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
-  /// A sub-Feller `2·theta·mu < sigma²` is accepted, since the step stays non-negative; under
-  /// [`VarianceBoundary::Floor`] it emits a `log::warn!`, as the floor biases the path there.
+  /// A sub-Feller `2·theta·mu < sigma²` is accepted; it warns under [`VarianceBoundary::Floor`].
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     theta: T,
     mu: T,
@@ -76,27 +70,12 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_theta(theta);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    check_n(n);
+    Self::check_x0(x0);
+    check_t(t);
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
@@ -118,65 +97,99 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       backend: Cpu,
     }
   }
+}
 
-  /// Replace `theta`, all else unchanged.
+impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `theta`; panics unless `theta` is finite.
   pub fn with_theta(mut self, theta: T) -> Self {
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
-  /// Replace `mu`, all else unchanged.
+  /// Replace `mu`; panics unless `mu` is finite.
   pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `boundary`, all else unchanged.
+  /// Replace `boundary`.
   pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
     self.boundary = boundary;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
-  /// Exact transition density to `r_next` after `t` from `r_t`; NaN at `t = 0`, for a negative state or outside the domain.
+  /// Exact transition density to `r_next` after `t` from `r_t`; NaN at `t = 0`, for a negative
+  /// state or outside the domain.
   pub fn transition_pdf(&self, t: T, r_t: T, r_next: T) -> T {
     let [theta, mu, sigma, t, r_t, r_next] =
       [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
     T::from_f64_fast(transition::transition_pdf(theta, mu, sigma, t, r_t, r_next))
   }
 
-  /// One exact transition draw after `t` from `r_t`; the conditional mean once the χ² parameters overflow.
+  /// Logarithm of [`transition_pdf`](Self::transition_pdf), finite where that underflows to `0`;
+  /// NaN where it is NaN, `−∞` into `r_next = 0` when `2θμ > σ²`.
+  pub fn transition_ln_pdf(&self, t: T, r_t: T, r_next: T) -> T {
+    let [theta, mu, sigma, t, r_t, r_next] =
+      [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::transition_ln_pdf(
+      theta, mu, sigma, t, r_t, r_next,
+    ))
+  }
+
+  /// One exact transition draw after `t` from `r_t`; the conditional mean once the χ² parameters
+  /// overflow.
   pub fn sample_transition<S2: SeedExt>(&self, t: T, r_t: T, seed: &S2) -> T {
     let [theta, mu, sigma, t, r_t] =
       [self.theta, self.mu, self.sigma, t, r_t].map(|v| v.to_f64().unwrap());
@@ -185,7 +198,8 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     ))
   }
 
-  /// Stationary density at `r`: Gamma with shape `2θμ/σ²` and rate `2θ/σ²`; NaN for a negative state or outside the domain.
+  /// Stationary density at `r`: Gamma with shape `2θμ/σ²` and rate `2θ/σ²`; NaN for a negative
+  /// state or outside the domain.
   pub fn stationary_pdf(&self, r: T) -> T {
     let [theta, mu, sigma, r] = [self.theta, self.mu, self.sigma, r].map(|v| v.to_f64().unwrap());
     T::from_f64_fast(transition::stationary_pdf(theta, mu, sigma, r))
@@ -193,7 +207,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
 }
 
 /// θ=2.5, μ=0.04, σ=0.2, x₀=0.04 under the floor, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
-/// t=1, n=252, one trading year of daily steps (this crate's `Default` convention).
+/// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -266,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
 
 /// Reusable [`Cir`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CirSampler<T: FloatExt> {
   n: usize,
   x0: T,

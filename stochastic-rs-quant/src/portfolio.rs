@@ -1,10 +1,8 @@
-//! # Portfolio
+//! Portfolio optimization and momentum portfolio construction.
 //!
 //! $$
 //! \sigma_p^2 = \mathbf{w}^\top \Sigma \mathbf{w}
 //! $$
-//!
-//! Portfolio optimization and momentum portfolio construction.
 
 pub mod covariance;
 pub mod data;
@@ -14,5 +12,3 @@ pub mod optimizers;
 pub mod types;
 
 pub use covariance::portfolio_variance;
-pub use covariance::sample_covariance;
-pub use covariance::shrinkage_covariance;

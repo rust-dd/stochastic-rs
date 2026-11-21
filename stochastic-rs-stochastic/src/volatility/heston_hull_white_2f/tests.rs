@@ -22,6 +22,8 @@ fn rho_paper() -> Array2<f64> {
 
 fn paper(n: usize, seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   HestonHullWhite2F::new(
+    1.0,
+    0.2,
     0.8,
     0.2,
     0.2,
@@ -31,10 +33,8 @@ fn paper(n: usize, seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
     0.015,
     0.8,
     rho_paper(),
-    n,
-    Some(1.0),
-    Some(0.2),
     Some(0.03),
+    n,
     Some(1.0),
     Deterministic::new(seed),
   )
@@ -169,6 +169,8 @@ fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
   ];
   let n = 301;
   let model = HestonHullWhite2F::new(
+    100.0,
+    0.02,
     0.5,
     0.05,
     0.3,
@@ -178,10 +180,8 @@ fn one_factor_limit_prices_grzelak_exe13_12_calls_within_monte_carlo_error() {
     0.0,
     1.0,
     rho,
-    n,
-    Some(100.0),
-    Some(0.02),
     Some(0.1),
+    n,
     Some(15.0),
     Deterministic::new(1312),
   )
@@ -218,15 +218,15 @@ fn rejects_n_below_two() {
 }
 
 #[test]
-#[should_panic(
-  expected = "sigma1 must satisfy `sigma1.is_finite() && sigma1 >= T::zero()`, got sigma1 = -0.01"
-)]
+#[should_panic(expected = "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = -0.01")]
 fn rejects_a_negative_rate_volatility() {
   let _ = paper(8, 0).with_sigma1(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "not positive-definite at pivot 2")]
+#[should_panic(
+  expected = "rho must satisfy `every Cholesky pivot of rho > T::zero()`, got pivot 2 ="
+)]
 fn rejects_an_indefinite_correlation_matrix() {
   let rho = array![
     [1.0, 0.9, 0.9, 0.0],

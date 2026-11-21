@@ -16,7 +16,8 @@ accessors plus a `greeks(s, k, r, q, tau, option_type)` aggregate —
 are the in-tree examples); implementing `ModelPricer` does not oblige
 you to add them. Section 1 shows both surfaces.
 
-`GreeksExt`'s accessors return `Option<f64>` and default to `None`, **not**
+`GreeksExt`'s accessors return `Option<McEstimate<f64>>` (the Monte Carlo
+estimate and its standard error) and default to `None`, **not**
 to a finite difference — a pricer that does not override `vega` reports
 `None` (NaN in the `greeks()` aggregate) so a consumer can distinguish "not
 exposed" from a real zero.
@@ -57,15 +58,15 @@ pub struct Greeks {
 // Only `delta` is required; the rest default to `None`, never a finite difference,
 // so "not exposed" stays distinguishable from a real zero.
 pub trait GreeksExt {
-    fn delta(&self) -> Option<f64>;
-    fn gamma(&self) -> Option<f64> { None }
-    fn vega(&self)  -> Option<f64> { None }
-    fn theta(&self) -> Option<f64> { None }
-    fn rho(&self)   -> Option<f64> { None }
-    fn vanna(&self) -> Option<f64> { None }
-    fn charm(&self) -> Option<f64> { None }
-    fn volga(&self) -> Option<f64> { None }
-    fn veta(&self)  -> Option<f64> { None }
+    fn delta(&self) -> Option<McEstimate<f64>>;
+    fn gamma(&self) -> Option<McEstimate<f64>> { None }
+    fn vega(&self)  -> Option<McEstimate<f64>> { None }
+    fn theta(&self) -> Option<McEstimate<f64>> { None }
+    fn rho(&self)   -> Option<McEstimate<f64>> { None }
+    fn vanna(&self) -> Option<McEstimate<f64>> { None }
+    fn charm(&self) -> Option<McEstimate<f64>> { None }
+    fn volga(&self) -> Option<McEstimate<f64>> { None }
+    fn veta(&self)  -> Option<McEstimate<f64>> { None }
 
     // Aggregate. The default calls every accessor (NaN where one is None); the
     // two MC estimators override it so one simulation backs the whole set (section 4).
@@ -298,7 +299,7 @@ A new pricer's inherent `greeks(...)` aggregator must ship at least:
 2. **Put-call parity for delta:** `Δ_call - Δ_put = e^{-qT}`.
 3. **Bumped-NPV consistency:** `(price(S+h) - price(S-h)) / (2h)` agrees
    with `delta()` to the bump precision.
-4. **Single-pass consistency (MC only):** `greeks().delta == delta()`
+4. **Single-pass consistency (MC only):** `greeks().delta == delta().mean`
    within MC tolerance, sourced from the same seed.
 
 Reference: `pricing/bsm/tests.rs`. The MC tests live next to each
@@ -335,7 +336,7 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
 
 - `add-mc-variance-reduction` — explains the Common Random Numbers
   requirement that the single-pass `greeks()` override depends on.
-- `calibration-pattern` — calibrators consume Greeks via the result's
-  `to_model(r, q).greeks(s, k, r, q, tau, option_type)` chain.
+- `calibration-pattern` — calibration results convert to pricers through `to_model()`; only
+  `BsmPricer`, `HestonPricer`, `Merton1976Pricer` and the two digitals carry `greeks`.
 - `release-checklist` — `MIGRATION.md` should note any new Greek
   added to the public surface.

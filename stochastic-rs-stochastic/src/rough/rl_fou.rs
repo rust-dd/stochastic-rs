@@ -1,24 +1,19 @@
-//! # Fractional Ou driven by Riemann–Liouville fBM (RFSV log-volatility)
+//! Fractional Ornstein–Uhlenbeck driven by Riemann–Liouville fractional Brownian motion, `H < 1/2`.
 //!
 //! $$
 //! dX_t = \kappa(\mu - X_t)\,dt + \nu\,dW^H_t,\qquad H \in (0, 1/2)
 //! $$
 //!
-//! The RFSV log-volatility dynamics of Gatheral, Jaisson & Rosenbaum (2018).
-//! The noise is RL-fBM generated non-cumulatively via the Bilokon–Wong
-//! modified fast algorithm; the Ou drift is integrated with the usual Euler
-//! rule on the resulting increments $\delta W^H_n = W^H_{t_{n+1}} - W^H_{t_n}$.
+//! The RFSV log-volatility of Gatheral, Jaisson & Rosenbaum (2018), by Euler on RL-fBM increments.
 //!
-//! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.
-//! Quantitative Finance 16 (2016), 887–904.
+//! Reference: Bayer et al. (2016), Quant. Finance 16, 887–904, DOI 10.1080/14697688.2015.1099717
 
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::markov_lift::MarkovLift;
-use super::rl_fbm::RlFBm;
+use super::rl_fbm::RlFbm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
@@ -27,8 +22,8 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Ornstein–Uhlenbeck driven by RL-fBM noise.
-#[derive(Clone)]
-pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone)]
+pub struct RlFou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fBM.
   pub hurst: T,
   /// Mean-reversion speed $\kappa$.
@@ -39,21 +34,23 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub nu: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Initial value $X_0$.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon $T$.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Quadrature degree passed through to the underlying [`RlFBm`].
+  /// Quadrature degree passed through to the underlying [`RlFbm`].
   pub degree: Option<usize>,
   /// Seed strategy.
   pub seed: S,
-  fbm: RlFBm<T>,
+  fbm: RlFbm<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
+impl<T: FloatExt, S: SeedExt> RlFou<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive
+  /// and finite, and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -102,38 +99,15 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
       t,
       degree,
       seed,
-      fbm: RlFBm::new(hurst, n, t, degree, Unseeded),
+      fbm: RlFbm::new(hurst, n, t, degree, Unseeded),
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RlFOU<T, S, B> {
-  /// Generate $m$ independent RFSV log-volatility paths as an $(m, n)$ array.
-  /// The RL-fBM noise is generated in a single batch via
-  /// [`RlFBm::sample_batch`], then each path is Euler-integrated independently.
-  pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    let fbm = self.fbm.sample_batch_impl(&self.seed.derive(), m);
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let x0 = self.x0.unwrap_or(T::zero());
-    let mut out = Array2::<T>::zeros((m, self.n));
-
-    for p in 0..m {
-      out[[p, 0]] = x0;
-      for i in 1..self.n {
-        let dfbm = fbm[[p, i]] - fbm[[p, i - 1]];
-        out[[p, i]] =
-          out[[p, i - 1]] + self.kappa * (self.mu - out[[p, i - 1]]) * dt + self.nu * dfbm;
-      }
-    }
-    out
-  }
-}
-
-/// The Euler engine's view: the lift the inner fBm carries goes to the device
-/// as its node constants and boundary terms; the family steps the lifted fBm
-/// in its second slot and this process's own recursion in the first.
+/// The Euler engine's view: the inner fBm's lift ships as node constants and boundary terms; the
+/// family steps it in its second slot and this process's own recursion in the first.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for RlFOU<T, S, B>
+  for RlFou<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouvilleOu {
@@ -178,22 +152,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RlFOU<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlFou<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for RlFOU<T, S, B>
+  for RlFou<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for RlFOU<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for RlFou<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = RlFOUSampler<T, S>
+    = RlFouSampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> RlFOUSampler<T, S> {
-    RlFOUSampler {
+  fn sampler(&self) -> RlFouSampler<T, S> {
+    RlFouSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       kappa: self.kappa,
@@ -210,9 +184,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the lift and the recursion run in
-  /// the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and the recursion in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -242,13 +215,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`RlFOU`] sampling state: owns the cloned RL-fBM [`MarkovLift`]
-/// stepper and the Gaussian-increment source, plus the precomputed Euler
-/// scalars. `fill_path` regenerates the RL-fBM driver and Euler-integrates the
-/// Ou drift in place; the owned `Gn` stream advances each call for independent
-/// paths.
+/// Reusable [`RlFou`] sampling state: the cloned RL-fBM [`MarkovLift`] stepper, the
+/// Gaussian-increment source and the Euler scalars; each call advances the owned `Gn` stream.
 #[doc(hidden)]
-pub struct RlFOUSampler<T: FloatExt, S: SeedExt> {
+#[derive(Debug)]
+pub struct RlFouSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   x0: T,
   kappa: T,
@@ -259,7 +230,7 @@ pub struct RlFOUSampler<T: FloatExt, S: SeedExt> {
   markov: MarkovLift<T>,
 }
 
-impl<T: FloatExt, S: SeedExt> RlFOUSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> RlFouSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -280,13 +251,13 @@ impl<T: FloatExt, S: SeedExt> RlFOUSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlFOUSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlFouSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlFouSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("RlFOU output must be contiguous");
+    let slice = out.as_slice_mut().expect("RlFou output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -302,7 +273,7 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
-  use super::RlFOU;
+  use super::RlFou;
   use crate::traits::ProcessExt;
 
   #[test]
@@ -313,7 +284,7 @@ mod tests {
     let x0 = 0.2_f64;
     let t = 1.0_f64;
 
-    let p = RlFOU::<f64>::new(0.3, kappa, mu, 0.0, n, Some(x0), Some(t), None, Unseeded);
+    let p = RlFou::<f64>::new(0.3, kappa, mu, 0.0, n, Some(x0), Some(t), None, Unseeded);
     let x = p.sample();
 
     let dt = t / (n as f64 - 1.0);
@@ -326,7 +297,7 @@ mod tests {
 
   #[test]
   fn finite_output_at_typical_rfsv_parameters() {
-    let p = RlFOU::new(
+    let p = RlFou::new(
       0.1_f64,
       2.0,
       0.15_f64.ln(),
@@ -342,8 +313,7 @@ mod tests {
     assert!(x.iter().all(|v| v.is_finite()));
   }
 
-  /// Guards the field-vs-doc contradiction fixed in A1-b: the module doc
-  /// calls this quantity ν, so the field is `nu`. Larger ν must widen the
+  /// The module doc calls this quantity ν, so the field is `nu`; a larger ν must widen the
   /// simulated dispersion.
   #[test]
   fn rl_fou_nu_drives_dispersion() {
@@ -353,7 +323,7 @@ mod tests {
     let n = 256;
     let t = 1.0_f64;
 
-    let small = RlFOU::new(
+    let small = RlFou::new(
       hurst,
       kappa,
       mu,
@@ -364,7 +334,7 @@ mod tests {
       None,
       Deterministic::new(42),
     );
-    let large = RlFOU::new(
+    let large = RlFou::new(
       hurst,
       kappa,
       mu,

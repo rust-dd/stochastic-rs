@@ -52,11 +52,7 @@ impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S,
   }
 
   fn start(&self) -> (T, T, T) {
-    (
-      self.s0.unwrap_or(T::one()),
-      self.v0.unwrap_or(self.theta),
-      self.r0.unwrap_or(T::zero()),
-    )
+    (self.s0, self.v0, self.r0.unwrap_or(T::zero()))
   }
 }
 

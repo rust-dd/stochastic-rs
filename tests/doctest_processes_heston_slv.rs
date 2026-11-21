@@ -16,8 +16,8 @@ fn heston_slv_two_factor_sample_under_an_expression_leverage() {
   // the vol-of-vol.
   let leverage = (Expr::lit(1.2) - Expr::x() * 0.003).compile().unwrap();
   let p = HestonSlv::<f64, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,

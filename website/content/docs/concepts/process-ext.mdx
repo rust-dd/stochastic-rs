@@ -42,14 +42,15 @@ The device methods are covered in [Sampling backends](/docs/concepts/backends).
 
 `Self::Output` depends on the process family:
 
-| Family                                            | `Output`               |
-|---------------------------------------------------|------------------------|
-| Single-factor (OU, GBM, CIR, Vasicek, …)          | `Array1<T>`            |
-| Multi-state (Heston, SABR, Bergomi, HJM, …)       | `[Array1<T>; N]`       |
-| Matrix rows / sheet (Bgm, Adg, MultiGbm, Fbs)     | `Array2<T>`            |
-| Matrix-valued (Wishart)                           | `Array3<T>`            |
-| Variable-dimension (multivariate Hawkes)          | `Vec<Array1<T>>`       |
-| Complex-state (cfOU)                              | `Array1<Complex<T>>`   |
+| Family                                                                                                         | `Output`                                      |
+|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------|
+| Single-factor (OU, GBM, CIR, Vasicek, …)                                                                       | `Array1<T>`                                   |
+| Multi-state (Heston, SABR, Bergomi, …)                                                                         | `[Array1<T>; N]`                              |
+| Named slots (Hjm, DoubleHeston, HestonStochCorr, Heston2D, MultifactorHeston, CompoundPoisson, CompoundCustom) | a `…Paths` struct (`HjmPaths { r, p, f }`, …) |
+| Matrix rows / sheet (Adg, MultiGbm, Fbs)                                                                       | `Array2<T>`                                   |
+| Matrix-valued (Wishart)                                                                                        | `Array3<T>`                                   |
+| Variable-dimension (multivariate Hawkes)                                                                       | `Vec<Array1<T>>`                              |
+| Complex-state (cfOU)                                                                                           | `Array1<Complex<T>>`                          |
 
 The dimensional marker traits (`OneDimensional`, `TwoDimensional`, `MultiDimensional<N>`, `CurveOutput`, `VariableDimensional`, `ComplexPathOutput`) are implemented automatically from `Output`, so generic code can bound on the shape it expects.
 
@@ -100,9 +101,31 @@ In every mode the seeds handed out are globally unique, so paths never collide o
 
 `Fgn::sample_pair` produces two independent paths from one FFT, half the cost of two `sample()` calls.
 
+### What reproducibility covers
+
+Three questions get confused, and only the first is a promise.
+
+- **Same seed, same `m`, same backend, same build.** Bit-identical on every run, on any machine and under any Rayon thread-pool size, for every process on its default `Cpu` backend. `tests/reproducibility_all_processes.rs` checks every process under `sample` and under `sample_par`, at one and at several paths per chunk. No process is an exception: every implementor draws all of its randomness, jumps included, from its own seed.
+- **Same seed, different backend.** Never identical, by construction. The host draws from the crate's SIMD ziggurat, a device kernel draws its normals from Philox counters, and the fractional pipelines transform their noise in another order again. The two share the *law*, which is what the device-law suite compares: the terminal mean, the spread and the covariance, each against the host's own.
+- **Same seed, different version of the crate.** Not promised. A sampler's stream is an implementation detail, and two things move it: a correctness fix, and a performance change that reorders how draws are assigned to paths. The second kind is named in the release notes with the backend and the processes it touches, so a stored result can be re-blessed deliberately. Within a release nothing moves.
+
+The backends other than `Cpu` carry a weaker, measured contract; [Sampling backends](/docs/concepts/backends#reproducibility-per-backend) tabulates it.
+
+### How the parallel methods stay deterministic
+
+`sample_par` and `sample_map` split `m` paths into `min(m, 64)` chunks, a function of `m` alone and never of the ambient thread pool, and build one sampler per chunk sequentially on the calling thread before any chunk reaches Rayon. `sample_map` folds over each chunk's paths reusing one output buffer; `sample_par` keeps every path and allocates each. The cap of 64 bounds the sequential prologue, since a sampler is not always cheap to build (`Cir2F` evaluates a user-supplied, possibly Python, curve once per grid point), and still saturates any realistic pool.
+
+The rule this places on a process, for contributors: its `sampler()` takes its basis with `self.seed.derive()`, which advances the shared seed state and hash-mixes the result, so every chunk's basis is a distinct, uncorrelated hash output.
+
+- **Never `self.seed.clone()`.** A clone copies the raw counter without advancing or mixing, so adjacent chunks get bases one arithmetic stride apart, close enough to overlap: measured, only 78 of 1000 `Sabr` paths and 67 of 256 `Heston` paths came out distinct.
+- **Never read `&self.seed` per path from inside the sampler.** Every chunk's sampler would then share live access to one atomic and race on it in the parallel region.
+- A sampler may call `.derive()` again on its *own* derived basis, for per-path sub-streams or because a constructor needs an owned seed (`MultifactorSabr` builds two `Gn` generators per path this way): that basis is already unique to its chunk.
+- `advance_chunk_seed` covers the one remaining case, a `sampler()` that clones because the clone feeds a persistent engine built once per chunk and reused across its paths (`CirPlusPlus`). Overriding it to tick the seed gives each chunk's clone a distinct state. It is called once before each chunk's `sampler()` and once *after* a plain `sample()`, so repeated `sample()` calls advance instead of replaying the first path.
+- The default `sample()` routes through `sampler()`, so a sampler must not call back into `ProcessExt::sample` of the same process unless that process overrides `sample` with a real body.
+
 ## Acceleration
 
-The CPU path uses `wide` SIMD (`f32x8` / `f64x8`) where the sampler allows. Every process but `HestonHullWhite2F` also reaches a device backend (`cuda`, `metal`) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
+The CPU path uses `wide` SIMD (`f32x8` / `f64x8`) where the sampler allows. Every process also reaches a device backend (`cuda`, `metal`) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
 
 ## Construction patterns
 
@@ -114,14 +137,14 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
 // auto-seeded
-let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, 100.0, Some(1.0), Unseeded);
 
 // reproducible
 let p = Gbm::<f64, _>::new(
   0.05,
   0.2,
   1_000,
-  Some(100.0),
+  100.0,
   Some(1.0),
   Deterministic::new(42),
 );

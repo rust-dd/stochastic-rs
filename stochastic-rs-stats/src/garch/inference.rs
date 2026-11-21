@@ -1,12 +1,12 @@
-//! Finite-difference Hessian and outer-product-of-scores at the optimum,
-//! combined into the inverse-Hessian and Bollerslev–Wooldridge sandwich
-//! covariances.
+//! The inverse-Hessian and Bollerslev–Wooldridge sandwich covariances at the optimum.
+//!
+//! The Hessian and the per-observation scores are central differences in the natural parameters.
 
 use ndarray::Array2;
+use stochastic_rs_distributions::linalg::inverse;
 
 use super::GarchSpec;
 use super::recursion;
-use crate::linalg::inverse;
 
 pub(super) struct Inference {
   /// $(-H)^{-1}$.
@@ -68,7 +68,8 @@ pub(super) fn sandwich(
   let opg = scores.t().dot(&scores);
 
   let neg_hessian = -&hessian;
-  let covariance = inverse(&neg_hessian).unwrap_or_else(|| Array2::from_elem((k, k), f64::NAN));
+  let covariance =
+    inverse(neg_hessian.view()).unwrap_or_else(|| Array2::from_elem((k, k), f64::NAN));
   let robust_covariance = covariance.dot(&opg).dot(&covariance);
   Inference {
     covariance,

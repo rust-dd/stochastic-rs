@@ -1,4 +1,4 @@
-//! # Levy Diffusion
+//! A constant-drift Brownian motion plus compound-Poisson jumps of any size law `D`.
 //!
 //! $$
 //! dX_t=\mu_tdt+\sigma_t dW_t+dL_t
@@ -20,12 +20,12 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::process::cpoisson::CompoundPoisson;
-use crate::process::poisson::Poisson;
+use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct LevyDiffusion<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -35,51 +35,16 @@ where
   pub gamma: T,
   /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
-  /// Jump (Poisson) intensity λ — arrival rate of the jump component
-  /// `dL_t`. Single source of truth, the same convention
-  /// [`Merton`](crate::jump::merton::Merton)/[`Kou`](crate::jump::kou::Kou)
-  /// use: `sampler()` reads this field directly, not
-  /// `cpoisson.poisson.lambda`. This type has no `with_*` setters, so
-  /// unlike `Merton` there is no setter path that could desync the two —
-  /// [`new`](Self::new) sets both from the same argument and nothing
-  /// mutates either afterward short of direct field assignment.
+  /// Jump (Poisson) intensity λ of `dL_t`, the one rate the sampler and the engine read.
   pub lambda: T,
   /// Number of points sampled along the Lévy-diffusion path.
   pub n: usize,
-  /// Initial value X₀ of the Lévy-diffusion path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Compound-Poisson driver providing the jump component `dL_t`. Fully
-  /// seed-reproducible: [`new`](Self::new) builds it internally from `seed`
-  /// (`seed.clone().derive()` — a hash-mixed child, decorrelated from but a
-  /// deterministic function of the same `seed` the diffusion component
-  /// consults directly — the same shape
-  /// [`Merton`](crate::jump::merton::Merton)'s field of the same name
-  /// uses), and `sampler()` derives a fresh, chunk-local basis off
-  /// `self.cpoisson.seed` for every chunk, mirroring the diffusion
-  /// component's own per-chunk `self.seed`-derived basis.
-  ///
-  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
-  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
-  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
-  /// inert there (`grid_increments` never consults them). That inertness
-  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
-  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
-  /// directly (bypassing `LevyDiffusion` entirely) drives it through
-  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
-  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
-  /// there. Left `pub` for both reasons: a caller can inspect or directly
-  /// `.sample()` the embedded compound-Poisson process as its own
-  /// standalone `ProcessExt`, and can replace it wholesale via direct
-  /// field assignment (which does not update `self.lambda` — assign that
-  /// separately to match, since this type has no `with_cpoisson`-style
-  /// setter to do it automatically).
-  pub cpoisson: CompoundPoisson<T, D, S>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
-  /// directly by the diffusion component; `cpoisson`'s own seed (set at
-  /// construction from this same value — see `cpoisson`'s doc above) drives
-  /// the jump component.
+  jumps: JumpDriver<D, S>,
+  /// The diffusion's seed; the jumps draw from a child of it taken at construction.
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -91,11 +56,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Builds the compound-Poisson jump driver internally from `jump_dist`
-  /// and `lambda`, seeded from `seed` (see `cpoisson`'s field doc) — the
-  /// caller supplies the jump-size distribution and intensity directly
-  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
-  /// threading a third, independent seed through it by hand.
+  /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
+  /// every parameter is finite, `lambda >= 0`, `n >= 2` and a given `t` is positive and finite.
   pub fn new(
     gamma: T,
     sigma: T,
@@ -114,10 +76,7 @@ where
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       x0.is_none_or(|v| v.is_finite()),
@@ -127,11 +86,6 @@ where
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    let cpoisson = CompoundPoisson::new(
-      jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
-      seed.clone().derive(),
-    );
     Self {
       backend: Cpu,
       gamma,
@@ -140,7 +94,7 @@ where
       n,
       x0,
       t,
-      cpoisson,
+      jumps: JumpDriver::new(jump_dist, &seed),
       seed,
     }
   }
@@ -151,6 +105,28 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    Self::check_lambda(lambda);
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace the jump-size law.
+  pub fn with_jump_law(mut self, law: D) -> Self {
+    self.jumps.law = law;
+    self
+  }
+
+  /// The jump-size law.
+  pub fn jump_law(&self) -> &D {
+    &self.jumps.law
+  }
 }
 
 impl<T, D, S: SeedExt, B> LevyDiffusion<T, D, S, B>
@@ -170,7 +146,7 @@ where
   /// The jump-size law as the Euler engine's kernels draw it, `None` for a
   /// distribution they do not carry.
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
-    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+    crate::process::cpoisson::device_jump_sizes(&self.jumps.law)
   }
 }
 
@@ -209,9 +185,8 @@ where
     (self.lambda > T::zero()).then_some(self.lambda)
   }
 
-  /// The size law as the kernels draw it. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// The size law as the kernels draw it. [`ProcessExt::sample`] keeps a law they do not carry on
+  /// the host, so a launch that asks for one here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     if self.lambda <= T::zero() {
       return None;
@@ -233,7 +208,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] LevyDiffusion<T, D, S> { gamma, sigma, lambda, n, x0, t, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] LevyDiffusion<T, D, S> { gamma, sigma, lambda, n, x0, t, jumps, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for LevyDiffusion<T, D, S, B>
@@ -255,16 +230,7 @@ where
     Self: 's;
 
   fn sampler(&self) -> LevyDiffusionSampler<'_, T, D, S> {
-    // The diffusion source is owned and derived from `self.seed`. The jump
-    // driver's distribution/lambda are borrowed straight off `self.cpoisson`
-    // (read-only parameters, safe to share across chunks), but its seed is
-    // captured as an owned, chunk-local `self.cpoisson.seed.derive()` —
-    // never a borrowed `&self.cpoisson`, which would let every chunk's
-    // sampler race on the same shared atomic during the parallel region
-    // (see `ProcessExt`'s "Reproducibility requirement on implementors").
-    // Each path within one chunk still re-derives its own jump sub-stream
-    // from that owned basis exactly as the legacy `sample()` did from the
-    // old (always-`Unseeded`) field, so only the seed *source* changed.
+    // A chunk-local child of the jumps' seed: concurrent chunks would race on the shared one.
     let dt = self.dt();
     LevyDiffusionSampler {
       n: self.n,
@@ -272,16 +238,15 @@ where
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       drift_dt: self.gamma * dt,
-      jump_distribution: &self.cpoisson.distribution,
+      jump_distribution: &self.jumps.law,
       lambda: self.lambda,
-      jump_seed: self.cpoisson.seed.derive(),
+      jump_seed: self.jumps.seed.derive(),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine when the jump-size law is one the device
-  /// kernels draw; any other law keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the device kernels draw the jump-size law; any other law stays
+  /// on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)
@@ -336,18 +301,24 @@ where
     }
   }
 
-  /// What a device runs here: it has no jumps, or its sizes
-  /// follow a law the kernels draw. Anything else samples on the host.
+  /// What a device runs here: no jumps, or sizes under a law the kernels draw at no more than 25
+  /// expected a step. Anything else samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.lambda <= T::zero() || self.device_jump_sizes().is_some()))
       .then_some("a jump-size law the kernels do not draw")
+      .or_else(|| {
+        crate::euler::count_fallback(
+          <Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self),
+          <Self as crate::euler::EulerCoefficients<T>>::time_step(self),
+        )
+      })
   }
 }
 
-/// Reusable [`LevyDiffusion`] sampling state: owns the Gaussian diffusion
-/// source and borrows the compound-Poisson jump driver, so a Monte-Carlo loop
-/// pays the `SimdNormal` setup once.
+/// Reusable [`LevyDiffusion`] sampling state: the Gaussian diffusion source and the borrowed jump
+/// law, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LevyDiffusionSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
@@ -428,10 +399,20 @@ where
 pub struct PyLevyDiffusion {
   inner_f32: Option<LevyDiffusion<f32, crate::traits::CallableDist<f32>>>,
   inner_f64: Option<LevyDiffusion<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32:
-    Option<LevyDiffusion<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64:
-    Option<LevyDiffusion<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
+  seeded_f32: Option<
+    LevyDiffusion<
+      f32,
+      crate::traits::CallableDist<f32>,
+      stochastic_rs_core::simd_rng::Deterministic,
+    >,
+  >,
+  seeded_f64: Option<
+    LevyDiffusion<
+      f64,
+      crate::traits::CallableDist<f64>,
+      stochastic_rs_core::simd_rng::Deterministic,
+    >,
+  >,
 }
 
 #[cfg(feature = "python")]

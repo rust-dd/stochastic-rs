@@ -1,15 +1,10 @@
-//! # Customjt
+//! Renewal jump times: the running sum of inter-arrival draws from a law `D`, not a Poisson clock.
 //!
 //! $$
 //! T_k=\sum_{j=1}^{k}\tau_j,\quad \tau_j\sim D
 //! $$
 //!
-//! Generic renewal-process jump-time generator: cumulative sum of
-//! user-supplied inter-arrival draws `τ_j ~ D`, replacing the fixed-rate
-//! exponential clock of a standard Poisson process. Produces jump *times*
-//! only — no jump sizes and no continuous diffusion; see
-//! [`CompoundCustom`](crate::process::ccustom::CompoundCustom) for the
-//! type that attaches jump sizes on top.
+//! Times only; [`CompoundCustom`](crate::process::ccustom::CompoundCustom) adds the sizes.
 //!
 
 use std::any::Any;
@@ -22,34 +17,27 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct CustomJt<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Optional fixed number of generated events.
-  pub n: Option<usize>,
-  /// Optional horizon for time-based generation.
-  /// Used when `n` is `None`.
-  pub t_max: Option<T>,
+  /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals through the
+  /// first one past `t`.
+  pub horizon: Horizon<T>,
   /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-}
-
-#[inline]
-fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name: &'static str) {
-  if n.is_none() && t_max.is_none() {
-    panic!("{type_name}: n or t_max must be provided");
-  }
 }
 
 impl<T, D, S: SeedExt> CustomJt<T, D, S>
@@ -57,16 +45,12 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D, seed: S) -> Self {
-    assert!(
-      t_max.is_none_or(|v| v.is_finite()),
-      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
-    );
-    validate_n_or_tmax(n, t_max, "CustomJt");
+  /// Panics unless an `Until` horizon is positive and finite.
+  pub fn new(horizon: Horizon<T>, distribution: D, seed: S) -> Self {
+    horizon.assert_valid();
     CustomJt {
       backend: Cpu,
-      n,
-      t_max,
+      horizon,
       distribution,
       seed,
     }
@@ -78,6 +62,12 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
+  pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
+    horizon.assert_valid();
+    self.horizon = horizon;
+    self
+  }
 }
 
 #[cfg(feature = "python")]
@@ -99,26 +89,27 @@ impl PyCustomJt {
     t_max: Option<f64>,
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
-      "f32" => Self {
-        inner_f32: Some(CustomJt::new(
-          n,
-          t_max.map(|v| v as f32),
-          crate::traits::CallableDist::new(distribution),
-          Unseeded,
-        )),
-        inner_f64: None,
-      },
-      _ => Self {
-        inner_f32: None,
-        inner_f64: Some(CustomJt::new(
-          n,
-          t_max,
-          crate::traits::CallableDist::new(distribution),
-          Unseeded,
-        )),
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let horizon = crate::python_params::horizon_from_kwargs(n, t_max)?;
+      Ok(match dtype.unwrap_or("f64") {
+        "f32" => Self {
+          inner_f32: Some(CustomJt::new(
+            crate::python_params::horizon_f32(horizon),
+            crate::traits::CallableDist::new(distribution),
+            Unseeded,
+          )),
+          inner_f64: None,
+        },
+        _ => Self {
+          inner_f32: None,
+          inner_f64: Some(CustomJt::new(
+            horizon,
+            crate::traits::CallableDist::new(distribution),
+            Unseeded,
+          )),
+        },
+      })
+    })?
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
@@ -137,8 +128,8 @@ impl PyCustomJt {
     })
   }
 
-  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
-  /// law runs on rayon workers, one call at a time.
+  /// `m` paths as an `(m, n + 1)` array. The GIL is released while they are generated; the
+  /// Python law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -184,22 +175,16 @@ where
     self.sampler_impl(seed).sample()
   }
 
-  /// Build the reusable sampling state from any seed source, deriving the RNG
-  /// exactly as the legacy `sample_impl` body did per mode.
+  /// The reusable sampling state from any seed source; the RNG is derived per horizon mode.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> CustomJtSampler<'_, T, D> {
-    let mode = if let Some(n) = self.n {
-      CustomJtMode::Count { n }
-    } else if let Some(t_max) = self.t_max {
+    if let Horizon::Until(_) = self.horizon {
       // Horizon mode advanced the seed once more before drawing.
       seed.derive();
-      CustomJtMode::Horizon { t_max }
-    } else {
-      unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
-    };
+    }
     CustomJtSampler {
       distribution: &self.distribution,
       rng: seed.rng(),
-      mode,
+      horizon: self.horizon,
     }
   }
 }
@@ -222,9 +207,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  /// Poisson arrivals at the exponential law's rate. Any other law never
-  /// reaches a launch — [`ProcessExt::sample`] keeps it on the host — so
-  /// asking here is a caller bypassing that guard.
+  /// Poisson arrivals at the exponential law's rate. [`ProcessExt::sample`] keeps any other law
+  /// on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::PoissonArrivals {
       lambda: self.device_intensity().expect(
@@ -240,9 +224,10 @@ where
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .n
-      .expect("the Euler engine describes CustomJt's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.horizon else {
+      panic!("the Euler engine describes CustomJt's count mode; horizon mode has no grid");
+    };
+    n + 1
   }
 
   fn horizon(&self) -> T {
@@ -261,7 +246,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { horizon, distribution, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for CustomJt<T, D, S, B>
@@ -286,9 +271,8 @@ where
     self.sampler_impl(&self.seed)
   }
 
-  /// Through the Euler engine when the arrival count is fixed and the
-  /// inter-arrivals are exponential; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the arrival count is fixed and the inter-arrivals are
+  /// exponential; anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)
@@ -346,20 +330,15 @@ where
   /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — under an exponential inter-arrival law.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.n.is_some() && self.device_intensity().is_some()))
+    (!(matches!(self.horizon, Horizon::Events(_)) && self.device_intensity().is_some()))
       .then_some("the horizon mode's missing grid, or a non-exponential inter-arrival law")
   }
-}
-
-/// Sampling regime: a fixed event count or a time horizon (variable-length).
-enum CustomJtMode<T: FloatExt> {
-  Count { n: usize },
-  Horizon { t_max: T },
 }
 
 /// Reusable [`CustomJt`] sampling state: an owned RNG plus a borrow of the
 /// process's increment distribution (shared, `Sync`), and the sampling regime.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CustomJtSampler<'a, T, D>
 where
   T: FloatExt,
@@ -367,7 +346,7 @@ where
 {
   distribution: &'a D,
   rng: SimdRng,
-  mode: CustomJtMode<T>,
+  horizon: Horizon<T>,
 }
 
 impl<T, D> CustomJtSampler<'_, T, D>
@@ -375,7 +354,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Count-mode fill: `out[0] = 0`, then the running sum of `n - 1` draws.
+  /// Count-mode fill: the origin, then the running sum of one draw per remaining slot.
   fn fill_count(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -416,23 +395,23 @@ where
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    match self.mode {
-      CustomJtMode::Count { .. } => {
+    match self.horizon {
+      Horizon::Events(_) => {
         let slice = out
           .as_slice_mut()
           .expect("CustomJt output must be contiguous");
         self.fill_count(slice);
       }
-      CustomJtMode::Horizon { t_max } => {
+      Horizon::Until(t_max) => {
         *out = self.sample_horizon(t_max);
       }
     }
   }
 
   fn sample(&mut self) -> Array1<T> {
-    match self.mode {
-      CustomJtMode::Count { n } => array1_from_fill(n, |out| self.fill_count(out)),
-      CustomJtMode::Horizon { t_max } => self.sample_horizon(t_max),
+    match self.horizon {
+      Horizon::Events(n) => array1_from_fill(n + 1, |out| self.fill_count(out)),
+      Horizon::Until(t_max) => self.sample_horizon(t_max),
     }
   }
 }

@@ -165,7 +165,7 @@ fn fgn_buffer(
         spec.offset,
         spec.hurst,
         spec.t,
-        seed as u32,
+        crate::euler::philox::key(seed),
         produced,
         ordinal,
       )?;
@@ -182,6 +182,6 @@ fn increments(fractional: Option<&(OutputRental, u32, usize)>) -> Increments<'_>
       streams: *streams,
       row: *row,
     },
-    None => Increments::Hashed,
+    None => Increments::Drawn,
   }
 }

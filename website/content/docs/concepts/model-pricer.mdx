@@ -32,7 +32,7 @@ pub trait ModelPricer {
 
 The struct holds **model parameters only** — `BsmPricer` holds a volatility and a cost-of-carry convention, `HestonPricer` holds $(v_0,\kappa,\theta,\sigma,\rho)$. The contract (spot, strike, rate, dividend yield, maturity) is not baked in; every price query passes its own `(s, k, r, q, tau)`. One model instance therefore prices a whole strike/maturity grid — vol-surface construction, calibration — with no `&dyn` and no `Box<dyn>`.
 
-Many implementors also expose an inherent `call_put(s, k, r, q, tau) -> (f64, f64)` returning both legs from one evaluation.
+A pricer whose one computation yields both legs (`HestonPricer`, `Merton1976Pricer`, `HestonStochCorrPricer`, `GbmMalliavinPricer`) also has an inherent `price_call_put(s, k, r, q, tau) -> CallPut { call, put }`.
 
 ## Override `price_put` unless parity holds
 
@@ -53,7 +53,7 @@ The default `price_put` recomposes the put from the call by **European** put-cal
 ```rust
 pub trait ToModel {
   type Model: ModelPricer;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model;
+  fn to_model(&self) -> Self::Model;
 }
 ```
 
@@ -64,17 +64,17 @@ pub trait ToModel {
 - **Short-rate bonds** (`Vasicek`, `Cir`, `HullWhite`) implement `ShortRatePricer` instead — they price off a short rate and a tenor, not a spot and a strike.
 - **Multi-asset payoffs** (`MargrabePricer`, `KirkSpreadPricer`, `McSpreadPricer`, the basket and rainbow pricers) carry **no** pricing trait: `MargrabePricer` has no strike, `KirkSpreadPricer` strikes against a spread of two forwards, and the basket and rainbow pricers take N legs. Each holds its volatilities and correlation and takes the spots, strike, rate, yields and maturity per call through inherent methods; every Monte Carlo member returns an `McEstimate` — the mean, its standard error and `ci_95()`. `KirkSpreadPricer`'s methods are `spread_call_put` / `spread_call` / `spread_put` with the query `(f1, f2, x, r, tau)`.
 
-The path-dependent family (barriers, lookbacks, cliquets, autocallables, Bermudans, chooser, compound, variance/volatility swaps) has no pricing trait either: each carries its own contract schedule.
+The path-dependent family (barriers, lookbacks, cliquets, autocallables, Bermudans, chooser, compound, variance/volatility swaps) has no pricing trait either: the closed forms hold the model and take a contract from `pricing::exotic` beside the part of the `(s, r, q, tau)` query they read (the cliquet reads no spot, and the complex chooser's contract holds its maturities), the variance and volatility swaps' functions take what they read, and the Monte Carlo pricers carry their own contract schedule.
 
 ## Greeks
 
-A pricer's Greeks follow the same model/query split as its prices: **inherent methods** taking the query. `BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` each expose `greeks(s, k, r, q, tau, option_type) -> Greeks`, one signature across all five, alongside per-Greek accessors of the same shape. `Greeks` is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`), NaN where the pricer exposes nothing.
+A pricer's Greeks follow the same model/query split as its prices: **inherent methods** taking the query. `BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` each expose `greeks(s, k, r, q, tau, option_type) -> Greeks`, one signature across all five, alongside per-Greek accessors of the same shape. `Greeks` is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`), NaN where the pricer exposes nothing. At `tau = 0` these five price the payoff and every field of `Greeks` is NaN: an expired option has a value and no sensitivity.
 
-`GreeksExt` is not that interface. Its accessors take `&self` and nothing else and return `Option<f64>`, so only an estimator that owns its query can implement it: the Monte Carlo Malliavin pair `GbmMalliavinGreeks` and `HestonMalliavinGreeks`, whose `greeks()` runs one simulation so the estimates share their paths. Import it from `stochastic_rs::traits::GreeksExt`; it is not in the prelude.
+`GreeksExt` is not that interface. Its accessors take `&self` and nothing else and return `Option<McEstimate<f64>>`, the estimate with its standard error, so only an estimator that owns its query can implement it: the Monte Carlo Malliavin pair `GbmMalliavinGreeks` and `HestonMalliavinGreeks`, whose `greeks()` runs one simulation so the estimates share their paths. Import it from `stochastic_rs::traits::GreeksExt`; it is not in the prelude.
 
 ## `TimeExt` — dates to `tau`
 
-`ModelPricer` takes `tau` in years. When the contract is given as dates, `TimeExt::tau_or_from_dates()` derives $\tau$ from either an explicit `tau` or an `(eval, expiration)` pair under a day-count convention, and `tau_with_dcc(dcc)` overrides the convention. Convert at the call site, then price.
+`ModelPricer` takes `tau` in years. An instrument holds a `Maturity`, either `Tau(years)` or `Dates { eval, expiry }`; `TimeExt::tau()` resolves it to $\tau$ under the instrument's day count (Actual/365 Fixed by default), and `tau_with_dcc(dcc)` overrides the convention. Convert at the call site, then price.
 
 The instruments `EuropeanOption` and `DigitalOption` implement it; pricers do not, since they hold model state and receive $\tau$ as a query argument.
 

@@ -28,11 +28,8 @@ fn callback_result<R>(operation: impl FnOnce() -> R) -> PyResult<R> {
   })
 }
 
-/// The leverage a Python caller hands over: a callable `L(t, s)`, a
-/// `(spots, times, values)` triple of arrays, or any object carrying those
-/// three as attributes — the quant crate's `LeverageSurface` is one. A
-/// callable runs under the GIL at every step; a grid is interpolated in
-/// Rust.
+/// The leverage from Python: a callable `L(t, s)`, run under the GIL at every step, or a
+/// `(spots, times, values)` triple or an object with those attributes, interpolated in Rust.
 fn leverage_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Fn2D<f64>> {
   if obj.is_callable() {
     return Ok(Fn2D::Py(obj.clone().unbind()));
@@ -106,12 +103,10 @@ pub struct PyHestonSlv {
 
 #[pymethods]
 impl PyHestonSlv {
-  /// `leverage` is `L(t, s)`: a Python callable, a `(spots, times, values)`
-  /// triple of arrays, or an object with those three attributes such as the
-  /// `LeverageSurface` a `HestonSlvCalibrator` returns. `eta` is the mixing
-  /// fraction the vol-of-vol is scaled by.
+  /// `leverage` is `L(t, s)`: a callable, a `(spots, times, values)` triple of arrays, or an
+  /// object with those attributes such as a `LeverageSurface`; `eta` scales the vol-of-vol.
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, eta, leverage, n, s0=None, v0=None, t=None, seed=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, eta, leverage, n, s0, v0, t=None, seed=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -121,8 +116,8 @@ impl PyHestonSlv {
     eta: f64,
     leverage: &Bound<'_, PyAny>,
     n: usize,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     seed: Option<u64>,
   ) -> PyResult<Self> {
@@ -147,9 +142,7 @@ impl PyHestonSlv {
       if !mu.is_finite() {
         return Err(PyValueError::new_err("mu must be finite"));
       }
-      if s0.is_some_and(|s| !(s.is_finite() && s > 0.0))
-        || v0.is_some_and(|v| !(v.is_finite() && v >= 0.0))
-      {
+      if !(s0.is_finite() && s0 > 0.0) || !(v0.is_finite() && v0 >= 0.0) {
         return Err(PyValueError::new_err(
           "s0 must be finite and positive, v0 finite and non-negative",
         ));
@@ -186,11 +179,10 @@ impl PyHestonSlv {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration: from
-  /// Python the leverage is a callable or a grid, neither of which a kernel
-  /// evaluates, so the process samples on the host.
+  /// Why a device kernel cannot carry this configuration: from Python the leverage is a callable
+  /// or a grid, neither of which a kernel evaluates, so the process samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+    py_dispatch_f64!(self, |inner| inner.device_fallback())
   }
 
   fn device_ready(&self) -> bool {
@@ -199,7 +191,7 @@ impl PyHestonSlv {
 
   /// The leverage at `(t, s)`, as the sampler reads it.
   fn leverage(&self, t: f64, s: f64) -> PyResult<f64> {
-    callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.leverage.call(t, s)))
+    callback_result(|| py_dispatch_f64!(self, |inner| inner.leverage.call(t, s)))
   }
 
   /// One path as the pair `(s, v)` of arrays.
@@ -207,7 +199,7 @@ impl PyHestonSlv {
   fn sample<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     stochastic_rs_distributions::python::runtime_error_on_panic(
       || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-        let [s, v] = callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.sample()))?;
+        let [s, v] = callback_result(|| py_dispatch_f64!(self, |inner| inner.sample()))?;
         Ok((
           s.into_pyarray(py).into_py_any(py)?,
           v.into_pyarray(py).into_py_any(py)?,
@@ -216,14 +208,12 @@ impl PyHestonSlv {
     )?
   }
 
-  /// `m` paths as a pair of `(m, n)` arrays. A callable leverage is called
-  /// back under the GIL at every step, so the parallel speed-up is bounded
-  /// by those calls; a grid is interpolated in Rust.
-  /// A failed leverage callback raises `RuntimeError` with its error message.
+  /// `m` paths as a pair of `(m, n)` arrays. A callable leverage runs under the GIL at every step,
+  /// which bounds the parallel speed-up; a failed callback raises `RuntimeError` with its message.
   fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     stochastic_rs_distributions::python::runtime_error_on_panic(
       || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-        crate::py_dispatch_f64!(self, |inner| {
+        py_dispatch_f64!(self, |inner| {
           // The callbacks re-attach to the interpreter from the worker threads, so
           // the GIL must be released here or the parallel sampler deadlocks.
           let samples = callback_result(|| py.detach(|| inner.sample_par(m)))?;

@@ -1,15 +1,15 @@
-//! [`JumpFou`]'s construction, getters and `with_*` setters, which keep the cached fGN driver and
-//! the jump driver in step with the parameters they derive from.
+//! [`JumpFou`]'s construction, getters and `with_*` setters, which keep the cached fGN driver in
+//! step with the parameters it derives from.
 
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::JumpFou;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
-use crate::process::cpoisson::CompoundPoisson;
-use crate::process::poisson::Poisson;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
+use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 
 impl<T, D, S: SeedExt> JumpFou<T, D, S, Cpu>
@@ -17,8 +17,12 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Builds the compound-Poisson jump driver from `jump_dist` and `lambda`, seeded from `seed`
-  /// (see [`cpoisson`](Self::cpoisson)), so no `Poisson`/`CompoundPoisson` pair is built by hand.
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  /// Jumps of law `jump_dist` arrive at rate `lambda`, their seed a child of `seed`. Panics unless
+  /// every parameter is finite, `0 <= hurst <= 1`, `lambda >= 0`, `n >= 2` and a given `t > 0`.
   pub fn new(
     hurst: T,
     theta: T,
@@ -31,35 +35,14 @@ where
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_hurst(hurst);
+    Self::check_theta(theta);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_lambda(lambda);
+    Self::check_x0(x0);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
@@ -70,111 +53,37 @@ where
       x0,
       t,
       lambda,
-      cpoisson: Self::jump_driver(jump_dist, lambda, n, t, &seed),
-      fgn: Self::fgn_for(hurst, n, t),
+      jumps: JumpDriver::new(jump_dist, &seed),
+      fgn: Fgn::for_grid(hurst, n, t),
       seed,
     }
   }
 
-  /// Shared by `new()` and the `with_*` setters so they cannot drift.
-  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
-    Fgn::new(hurst, n - 1, t, Unseeded)
-  }
-
-  /// `jump_dist` arriving at rate `lambda` on the `n`-point grid over `[0, t]`, seeded with a child
-  /// of `seed`; shared by `new()` and the `with_*` setters so they cannot drift.
-  fn jump_driver(
-    jump_dist: D,
-    lambda: T,
-    n: usize,
-    t: Option<T>,
-    seed: &S,
-  ) -> CompoundPoisson<T, D, S> {
-    CompoundPoisson::new(
-      jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
-      seed.clone().derive(),
-    )
-  }
-
-  /// Rebuilds `cpoisson` from `lambda`, `n`, `t` and `seed`, keeping its
-  /// jump-size law.
-  fn rebuild_cpoisson(mut self) -> Self {
-    self.cpoisson = Self::jump_driver(
-      self.cpoisson.distribution,
-      self.lambda,
-      self.n,
-      self.t,
-      &self.seed,
-    );
-    self
-  }
-
-  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
+    Self::check_hurst(hurst);
     self.hurst = hurst;
-    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
   }
 
-  /// Replace `theta`, all else unchanged.
-  pub fn with_theta(mut self, theta: T) -> Self {
-    self.theta = theta;
-    self
-  }
-
-  /// Replace `mu`, all else unchanged.
-  pub fn with_mu(mut self, mu: T) -> Self {
-    self.mu = mu;
-    self
-  }
-
-  /// Replace `sigma`, all else unchanged.
-  pub fn with_sigma(mut self, sigma: T) -> Self {
-    self.sigma = sigma;
-    self
-  }
-
-  /// Replace the jump intensity `lambda`; rebuilds `cpoisson`.
-  pub fn with_lambda(mut self, lambda: T) -> Self {
-    self.lambda = lambda;
-    self.rebuild_cpoisson()
-  }
-
-  /// Replace the jump-size distribution; rebuilds `cpoisson` around it.
-  pub fn with_jump_dist(mut self, jump_dist: D) -> Self {
-    self.cpoisson = Self::jump_driver(jump_dist, self.lambda, self.n, self.t, &self.seed);
-    self
-  }
-
-  /// Replace the number of simulation steps `n`; rebuilds the embedded `fgn` and `cpoisson`.
-  /// Panics if `n < 2`, matching `new()`'s own assertion.
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+  /// Replace `n`; panics unless `n >= 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
-    self.fgn = Self::fgn_for(self.hurst, n, self.t);
-    self.rebuild_cpoisson()
-  }
-
-  /// Replace `x0`, all else unchanged.
-  pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    self.x0 = x0;
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn` and
-  /// `cpoisson`.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
-    self.rebuild_cpoisson()
-  }
-
-  /// Replace the seed; re-derives `cpoisson`'s seed from it as `new()` does, so the result matches
-  /// a fresh construction. The embedded `fgn`'s seed is a never-read dummy and stays untouched.
-  pub fn with_seed(mut self, seed: S) -> Self {
-    self.seed = seed;
-    self.rebuild_cpoisson()
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
+    self
   }
 }
 
@@ -183,6 +92,75 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  /// Replace `theta`; panics unless `theta` is finite.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    Self::check_theta(theta);
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `mu`; panics unless `mu` is finite.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`; panics unless `sigma` is finite.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    Self::check_sigma(sigma);
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `lambda`; panics unless `lambda >= 0` and `lambda` is finite.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    Self::check_lambda(lambda);
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace the jump-size law.
+  pub fn with_jump_law(mut self, law: D) -> Self {
+    self.jumps.law = law;
+    self
+  }
+
+  /// Replace `x0`; panics unless `x0` is finite.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    Self::check_x0(x0);
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the seed, re-deriving the jumps' seed from it as `new` does.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.jumps.seed = seed.clone().derive();
+    self.seed = seed;
+    self
+  }
+
   /// Hurst exponent H of the driving fractional Gaussian noise; H = 0.5 recovers an OU process
   /// with jumps.
   pub fn hurst(&self) -> T {
@@ -222,20 +200,17 @@ where
     self.t
   }
 
-  /// Jump intensity λ, which the sampler reads instead of `cpoisson().poisson.lambda`;
-  /// [`with_lambda`](Self::with_lambda) rebuilds [`cpoisson`](Self::cpoisson) so the two agree.
+  /// Jump intensity λ, the one rate the sampler and the engine read.
   pub fn lambda(&self) -> T {
     self.lambda
   }
 
-  /// Compound-Poisson jump driver, seeded by [`new`](Self::new) with a child of `seed` and rebuilt
-  /// by every setter that feeds it; sampling reads only its jump-size law and `lambda`.
-  pub fn cpoisson(&self) -> &CompoundPoisson<T, D, S> {
-    &self.cpoisson
+  /// The jump-size law.
+  pub fn jump_law(&self) -> &D {
+    &self.jumps.law
   }
 
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`), read by the diffusion component;
-  /// [`cpoisson`](Self::cpoisson)'s seed, a child of it, drives the jumps.
+  /// The diffusion's seed; the jumps draw from a child of it taken at construction.
   pub fn seed(&self) -> &S {
     &self.seed
   }

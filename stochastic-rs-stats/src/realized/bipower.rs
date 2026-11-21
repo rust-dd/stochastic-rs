@@ -1,20 +1,9 @@
-//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen / Shephard jump test.
+//! Bipower variation, MinRV, MedRV and the Barndorff-Nielsen–Shephard jump test.
 //!
-//! Reference: Barndorff-Nielsen, Shephard, "Power and Bipower Variation with
-//! Stochastic Volatility and Jumps", Journal of Financial Econometrics, 2(1),
-//! 1-37 (2004). DOI: 10.1093/jjfinec/nbh001
-//!
-//! Reference: Barndorff-Nielsen, Shephard, "Econometrics of Testing for Jumps
-//! in Financial Economics Using Bipower Variation", Journal of Financial
-//! Econometrics, 4(1), 1-30 (2006). DOI: 10.1093/jjfinec/nbi022
-//!
-//! Reference: Andersen, Dobrev, Schaumburg, "Jump-Robust Volatility Estimation
-//! Using Nearest Neighbor Truncation", Journal of Econometrics, 169(1), 75-93
-//! (2012). DOI: 10.1016/j.jeconom.2012.01.011
-//!
-//! Reference: Huang, Tauchen, "The Relative Contribution of Jumps to Total
-//! Price Variance", Journal of Financial Econometrics, 3(4), 456-499 (2005).
-//! DOI: 10.1093/jjfinec/nbi025
+//! Reference: Barndorff-Nielsen & Shephard (2004), JFEC 2(1), 1-37, DOI: 10.1093/jjfinec/nbh001
+//! Reference: Barndorff-Nielsen & Shephard (2006), JFEC 4(1), 1-30, DOI: 10.1093/jjfinec/nbi022
+//! Reference: Andersen et al. (2012), J. Econom. 169(1), 75-93, DOI: 10.1016/j.jeconom.2012.01.011
+//! Reference: Huang & Tauchen (2005), JFEC 3(4), 456-499, DOI: 10.1093/jjfinec/nbi025
 
 use ndarray::ArrayView1;
 
@@ -23,7 +12,8 @@ use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::reject_constant;
+use crate::input::validate_view;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
@@ -130,14 +120,15 @@ impl crate::traits::HypothesisTest for BnsJumpTest {
   }
 }
 
-/// Barndorff-Nielsen / Shephard jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns,
-/// on a non-finite one or a zero bipower variation, and panics unless `0 < alpha < 1`.
+/// BNS jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns, on a non-finite one, a
+/// constant series or a zero bipower variation, and panics unless `0 < alpha < 1`.
 pub fn bns_jump_test<T: FloatExt>(
   returns: ArrayView1<T>,
   alpha: f64,
 ) -> Result<BnsJumpTest, StatsError> {
   assert_alpha(alpha);
-  validate(&as_slice_or_copy(returns), 3)?;
+  validate_view(returns, 3)?;
+  reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();
@@ -236,9 +227,8 @@ mod tests {
 
   #[test]
   fn jump_test_rejects_a_single_moderate_jump() {
-    // One jump of ~15 sigma in a 256-return window: unmistakable to the eye,
-    // but small enough that a denominator built from non-jump-robust realized
-    // quarticity would swamp it and hide the rejection.
+    // One jump of about 15 sigma in 256 returns: plain to the eye, yet a denominator on a
+    // quarticity that is not jump-robust would swamp it and hide the rejection.
     let mut r = iid_normal(17, 256, 0.005);
     r[128] = 0.077;
     let test = bns_jump_test(r.view(), 0.01).unwrap();
@@ -292,6 +282,16 @@ mod tests {
       bns_jump_test(r.view(), 0.05).unwrap_err(),
       StatsError::DegenerateData("zero bipower variation")
     );
+  }
+
+  #[test]
+  fn constant_and_zero_returns_are_a_constant_series() {
+    for r in [Array1::from_elem(200, 0.001), Array1::<f64>::zeros(200)] {
+      assert_eq!(
+        bns_jump_test(r.view(), 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]

@@ -1,8 +1,8 @@
-use implied_vol::DefaultSpecialFn;
-use implied_vol::ImpliedBlackVolatility;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -47,14 +47,14 @@ pub enum BsmCoc {
 #[derive(Debug, Clone, Copy)]
 pub struct BsmPricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
   /// Cost-of-carry convention
   pub b: BsmCoc,
 }
 
 impl BsmPricer {
-  pub const fn new(v: f64, b: BsmCoc) -> Self {
-    Self { v, b }
+  pub const fn new(sigma: f64, b: BsmCoc) -> Self {
+    Self { sigma, b }
   }
 
   /// Cost of carry $b$ implied by the convention at the query's rates.
@@ -80,39 +80,48 @@ impl BsmPricer {
 
   /// $d_1$, $d_2$ at one query point.
   pub fn d1_d2(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let d1 =
-      (1.0 / (self.v * tau.sqrt())) * ((s / k).ln() + (self.b(r, q) + 0.5 * self.v.powi(2)) * tau);
-    let d2 = d1 - self.v * tau.sqrt();
+    let d1 = (1.0 / (self.sigma * tau.sqrt()))
+      * ((s / k).ln() + (self.b(r, q) + 0.5 * self.sigma.powi(2)) * tau);
+    let d2 = d1 - self.sigma * tau.sqrt();
 
     (d1, d2)
   }
 
-  /// Call and put price at one query point.
+  /// The carried spot `S e^{(b−r)τ}`, the discounted strike and `(d₁, d₂)`, which are `None` at
+  /// `tau = 0` under a finite `sigma`, where a leg is its payoff.
+  fn terms(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64, Option<(f64, f64)>) {
+    let carry = ((self.b(r, q) - r) * tau).exp();
+    let disc = (-r * tau).exp();
+    let at_expiry = tau == 0.0 && self.sigma.is_finite();
+    let d = (!at_expiry).then(|| self.d1_d2(s, k, r, q, tau));
+    (s * carry, k * disc, d)
+  }
+
+  /// One leg from [`terms`](Self::terms): at `tau = 0` the payoff, NaN for a non-finite `sigma`.
   ///
   /// $$
   /// C=Se^{(b-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
   /// P=-Se^{(b-r)\tau}N(-d_1)+Ke^{-r\tau}N(-d_2)
   /// $$
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
-    let carry = ((self.b(r, q) - r) * tau).exp();
-    let disc = (-r * tau).exp();
-
-    let call = s * carry * norm_cdf(d1) - k * disc * norm_cdf(d2);
-    let put = -s * carry * norm_cdf(-d1) + k * disc * norm_cdf(-d2);
-
-    (call, put)
+  fn leg((spot, strike, d): (f64, f64, Option<(f64, f64)>), option_type: OptionType) -> f64 {
+    match (d, option_type) {
+      (None, _) => vanilla_payoff(option_type, spot, strike),
+      (Some((d1, d2)), OptionType::Call) => spot * norm_cdf(d1) - strike * norm_cdf(d2),
+      (Some((d1, d2)), OptionType::Put) => -spot * norm_cdf(-d1) + strike * norm_cdf(-d2),
+    }
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on the cost-of-carry convention ([`b`](Self::b)) but *not* on
-  /// [`v`](Self::v) — it inverts the price for a volatility rather than
-  /// pricing at one, so any instance sharing the convention returns the
-  /// same answer.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Both legs off one `(d₁, d₂)`, each bit for bit what `price_call` and `price_put` answer.
+  pub(crate) fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    let terms = self.terms(s, k, r, q, tau);
+    CallPut {
+      call: Self::leg(terms, OptionType::Call),
+      put: Self::leg(terms, OptionType::Put),
+    }
+  }
+
+  /// Black volatility implied by `c_price` under this convention's carry [`b`](Self::b), whatever
+  /// `sigma` is; NaN for a price outside the no-arbitrage bounds.
   #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,
@@ -126,21 +135,13 @@ impl BsmPricer {
   ) -> f64 {
     let forward = s * (self.b(r, q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for BsmPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    Self::leg(self.terms(s, k, r, q, tau), OptionType::Call)
   }
 
   /// Overrides the trait's vanilla-parity default, which assumes the carry
@@ -151,7 +152,7 @@ impl ModelPricer for BsmPricer {
   /// `q != 0` and for [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`] at
   /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    Self::leg(self.terms(s, k, r, q, tau), OptionType::Put)
   }
 }
 

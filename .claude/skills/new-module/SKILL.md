@@ -12,8 +12,8 @@ Every new module must be **scalable** (trait-based extensibility), **integrated*
 Determine the correct top-level module first. Do NOT create a new top-level module without explicit approval.
 
 Code lives in **sub-crates**, not in the umbrella. The umbrella's own
-`src/` holds exactly three files — `lib.rs`, `traits.rs`, `bridges.rs`
-— and `lib.rs` merely re-exports each sub-crate under a short alias
+`src/` holds exactly two files — `lib.rs` and `traits.rs` — and
+`lib.rs` merely re-exports each sub-crate under a short alias
 (`pub use stochastic_rs_stochastic as stochastic;`). There is no
 `src/stochastic.rs`, `src/quant.rs`, `src/stats.rs`,
 `src/distributions.rs` or `src/copulas.rs`; that was the pre-split
@@ -112,7 +112,7 @@ Before writing code, determine which existing traits the new types should implem
 | Type | Required trait | Effect |
 |---|---|---|
 | Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
-| Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
+| Process with Malliavin support | an inherent `malliavin()` returning `Malliavin<T, O>` (`stochastic-rs-stochastic/src/malliavin.rs`) | The sampled path and `D_t X_T` along it; there is no Malliavin trait |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
 | SIMD-accelerated distribution | `DistributionSampler<T>` (`stochastic-rs-distributions/src/traits/distribution.rs`) | Requires `fill_slice()` + `fork()`; `sample_matrix()` / `sample_n()` are provided |
 
@@ -122,7 +122,7 @@ Before writing code, determine which existing traits the new types should implem
 |---|---|---|
 | Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`. Vol-surface construction additionally requires the `VanillaEuropeanCall` marker (which carries `vanilla_call_forward`); `ModelSurface` blanket-impls over **that**, not over `ModelPricer` |
 | Short-rate / bond model | `ShortRatePricer` | `zero_coupon_price(r0, tau)` / `zero_yield` |
-| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `call_put(...)` / `price_call(...)`. A shared trait would abstract over nothing |
+| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `price_call(...)` / `price_put(...)`. A shared trait would abstract over nothing |
 | Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` **and** `VanillaEuropeanCall`, hence `ModelSurface`, via blanket impls |
 | Calibration result | `ToModel` | Connects to `build_surface_from_calibration()` pipeline |
 | Holiday / business-day calendar | `CalendarExt` | Plugs into `BusinessDayConvention::adjust()` and `ScheduleBuilder` |

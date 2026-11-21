@@ -1,4 +1,4 @@
-//! # Gompertz
+//! Gompertz growth diffusion: a logarithmic pull toward an asymptotic level, multiplicative noise.
 //!
 //! $$
 //! dX_t=aX_t\ln\!\left(\frac{K}{X_t}\right)dt+\sigma X_t dW_t
@@ -21,24 +21,24 @@ use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Growth-rate coefficient a in the drift `X_t(a - b·ln X_t)dt` — together
   /// with `b`, sets the asymptotic level `exp(a/b)`.
   pub a: T,
-  /// Log-growth deceleration coefficient b in the drift — NOT a diffusion
-  /// term despite the field's position; `b` multiplies `ln X_t` inside the
-  /// drift only. Together with `a`, sets the asymptotic level `exp(a/b)`.
+  /// Log-growth deceleration b: it multiplies `ln X_t` in the drift only, not the diffusion, and
+  /// with `a` sets the asymptotic level `exp(a/b)`.
   pub b: T,
   /// Proportional volatility scale σ multiplying `X_t dW_t`.
   pub sigma: T,
   /// Number of points sampled along the Gompertz path.
   pub n: usize,
-  /// Initial population/level X₀ (floored at 1e-12 to keep `ln X_t` finite).
+  /// Initial value; `None` starts at zero.
+  /// Floored at 1e-12, which keeps `ln X_t` finite.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -46,6 +46,7 @@ pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(a: T, b: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       a.is_finite(),
@@ -81,11 +82,8 @@ impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Gompertz<T, S, B> {}
-
-/// The Euler engine's view of the Gompertz process. `X₀` is floored here as
-/// the host sampler floors it, which is what makes the step's own floor the
-/// only guard the coefficients need.
+/// The Euler engine's view. `X₀` is floored here as the host sampler floors it, which makes the
+/// step's own floor the only guard the coefficients need.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Gompertz<T, S, B>
 {
@@ -150,9 +148,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -184,6 +181,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Gompertz`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GompertzSampler<T: FloatExt> {
   n: usize,
   x0: T,

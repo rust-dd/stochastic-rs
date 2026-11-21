@@ -18,7 +18,9 @@
 use std::fmt::Display;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.
@@ -62,16 +64,17 @@ pub struct SurvivalCurve<T: RealExt> {
 }
 
 impl<T: RealExt> SurvivalCurve<T> {
-  /// Build a survival curve from sorted `(time, survival)` nodes.
-  ///
-  /// Nodes are automatically sorted; a `(0, 1)` anchor is inserted if absent.
+  /// A curve through `points` sorted by time, with a `(0, 1)` node first when none is at or before
+  /// `0`; panics unless every time is finite.
   pub fn new(points: Vec<SurvivalPoint<T>>, method: HazardInterpolation) -> Self {
+    if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
+      panic!(
+        "points must satisfy `p.time.is_finite()` for every p, got p.time = {:?}",
+        p.time
+      );
+    }
     let mut pts = points;
-    pts.sort_by(|a, b| {
-      a.time
-        .partial_cmp(&b.time)
-        .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    pts.sort_by(|a, b| ascending(&a.time, &b.time));
     if pts.is_empty() || pts[0].time > T::zero() {
       pts.insert(
         0,
@@ -87,10 +90,11 @@ impl<T: RealExt> SurvivalCurve<T> {
     }
   }
 
-  /// Build from parallel arrays of times and survival probabilities.
+  /// Build from parallel arrays of times and survival probabilities; panics as
+  /// [`new`](Self::new) does.
   pub fn from_survival_probs(
-    times: &Array1<T>,
-    survivals: &Array1<T>,
+    times: ArrayView1<T>,
+    survivals: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let points = times
@@ -104,22 +108,22 @@ impl<T: RealExt> SurvivalCurve<T> {
     Self::new(points, method)
   }
 
-  /// Build from parallel arrays of times and cumulative default probabilities.
+  /// Build from parallel arrays of times and cumulative default probabilities; panics as
+  /// [`new`](Self::new) does.
   pub fn from_default_probs(
-    times: &Array1<T>,
-    defaults: &Array1<T>,
+    times: ArrayView1<T>,
+    defaults: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let survivals: Array1<T> = defaults.mapv(|p| T::one() - p);
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
-  /// Build from parallel arrays of times and piecewise-constant forward hazard
-  /// rates, where `hazards[i]` applies on $[t_{i-1}, t_i)$ (the first entry is
-  /// used on $[0, t_0)$).
+  /// Build from times and piecewise-constant forward hazards, `hazards[i]` on $[t_{i-1}, t_i)$ and
+  /// the first on $[0, t_0)$; panics on unequal lengths and as [`new`](Self::new) does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     assert_eq!(
@@ -136,7 +140,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       survivals[i] = cum_log.exp();
       prev_t = times[i];
     }
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
   /// Number of calibrated points (including the anchor at `t=0`).
@@ -241,12 +245,12 @@ impl<T: RealExt> SurvivalCurve<T> {
   }
 
   /// Survival probabilities at the requested maturities.
-  pub fn survival_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn survival_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.survival_probability(t)))
   }
 
   /// Default probabilities at the requested maturities.
-  pub fn default_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn default_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.default_probability(t)))
   }
 }
@@ -264,10 +268,11 @@ impl<T: RealExt> HazardRateCurve<T> {
     Self { inner: survival }
   }
 
-  /// Build from parallel arrays of times and piecewise-constant hazards.
+  /// Build from parallel arrays of times and piecewise-constant hazards; panics as
+  /// [`SurvivalCurve::from_hazard_rates`] does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     Self::new(SurvivalCurve::from_hazard_rates(times, hazards, method))

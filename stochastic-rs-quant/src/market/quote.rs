@@ -1,9 +1,5 @@
-//! Quote wrappers for reactive market data.
-//!
-//! A [`Quote`] exposes a numeric value and is observable. The primitive
-//! [`SimpleQuote`] is a mutable value with change notifications; the
-//! composite [`DerivedQuote`] / [`CompositeQuote`] types build new quotes
-//! from existing ones and forward notifications.
+//! Observable quotes: [`SimpleQuote`] is a mutable value with change notifications, and
+//! [`DerivedQuote`] and [`CompositeQuote`] build quotes from others and forward notifications.
 
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -14,11 +10,8 @@ use super::observable::ObservableBase;
 use super::observable::Observer;
 use crate::traits::RealExt;
 
-/// Observable numeric market quote.
-///
-/// Typical implementations are [`SimpleQuote`], [`DerivedQuote`], and
-/// [`CompositeQuote`]. Custom implementations can expose yields, vols,
-/// or any scalar that must propagate changes through a pricing graph.
+/// Observable numeric market quote: a yield, a vol or any scalar whose changes must propagate
+/// through a pricing graph.
 pub trait Quote<T: RealExt>: Observable {
   /// Current value of the quote.
   fn value(&self) -> T;
@@ -159,9 +152,8 @@ impl<T: RealExt> Clone for DerivedQuote<T> {
 }
 
 impl<T: RealExt> DerivedQuote<T> {
-  /// Build a derived quote `f(base)`. The returned `Arc<Self>` also serves
-  /// as the observer registered against `base`, so relinking the base quote
-  /// propagates here without further wiring.
+  /// The derived quote `f(base)`; the returned `Arc` is itself the observer registered on
+  /// `base`, so a change of the base propagates with no further wiring.
   pub fn new(base: Arc<dyn Quote<T>>, f: impl Fn(T) -> T + Send + Sync + 'static) -> Arc<Self> {
     let derived = Arc::new(Self {
       base,
@@ -203,10 +195,12 @@ impl<T: RealExt> Quote<T> for DerivedQuote<T> {
   }
 }
 
+type Combine<T> = Arc<dyn Fn(&[T]) -> T + Send + Sync>;
+
 /// Quote computed from a slice of underlying quotes.
 pub struct CompositeQuote<T: RealExt> {
   inputs: Vec<Arc<dyn Quote<T>>>,
-  f: Arc<dyn Fn(&[T]) -> T + Send + Sync>,
+  f: Combine<T>,
   observable: ObservableBase,
 }
 

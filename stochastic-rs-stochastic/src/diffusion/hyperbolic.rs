@@ -1,4 +1,4 @@
-//! # Hyperbolic
+//! A diffusion with the bounded drift `−κ X / √(1 + X²)`; hyperbolic stationary law for `κ > 0`.
 //!
 //! $$
 //! dX_t=-\kappa\frac{X_t}{\sqrt{1+X_t^2}}\,dt+\sigma\,dW_t
@@ -19,21 +19,20 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Nonlinear restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`
-  /// (a bounded, hyperbolic-tangent-like pull toward 0, not a linear
-  /// mean-reversion speed).
+  /// Restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`: a bounded pull toward 0, not a
+  /// linear mean-reversion speed.
   pub kappa: T,
   /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
   /// Number of points sampled along the hyperbolic path.
   pub n: usize,
-  /// Initial value X₀ of the hyperbolic path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -41,6 +40,7 @@ pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -70,8 +70,6 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Hyperbolic<T, S, B> {}
 
 /// The Euler engine's view of the hyperbolic-drift process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -136,9 +134,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -170,6 +167,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Hyperbolic`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HyperbolicSampler<T: FloatExt> {
   n: usize,
   x0: T,

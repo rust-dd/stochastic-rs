@@ -1,4 +1,6 @@
 //! Spectral analysis utilities (periodogram and FFT-based spectrum search).
+//!
+//! A constant signal has a periodogram too: its power sits at 0 Hz, which detrending removes.
 
 use std::f64::consts::PI;
 
@@ -89,7 +91,7 @@ pub struct PeriodogramResult {
   /// FFT size used.
   pub nfft: usize,
   /// Original sample size.
-  pub sample_size: usize,
+  pub nobs: usize,
 }
 
 /// Single spectral peak.
@@ -189,11 +191,11 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
     *x *= w;
     sum_w2 += w * w;
   }
-  sum_w2.max(1e-12)
+  sum_w2
 }
 
-/// FFT periodogram of `signal`; `Err` below 4 points or on a non-finite one, and panics unless
-/// `sampling_rate` is finite and positive and a given `nfft >= signal.len()`.
+/// FFT periodogram of `signal`; `Err` below 4 points, on a non-finite one or an overflowing
+/// spectrum; panics unless `sampling_rate > 0` is finite and a given `nfft >= signal.len()`.
 pub fn periodogram_fft(
   signal: ArrayView1<f64>,
   cfg: PeriodogramConfig,
@@ -234,7 +236,7 @@ pub fn periodogram_fft(
   let mut frequencies = Vec::with_capacity(bins);
   let mut spectrum = Vec::with_capacity(bins);
 
-  let base_scale = (n as f64 * sum_w2).max(1e-12);
+  let base_scale = n as f64 * sum_w2;
   for k in 0..bins {
     let mut p = fft_out[k].norm_sqr() / base_scale;
 
@@ -246,8 +248,13 @@ pub fn periodogram_fft(
       p /= cfg.sampling_rate;
     }
 
+    if !p.is_finite() {
+      return Err(StatsError::Numerical {
+        stage: "periodogram",
+      });
+    }
     frequencies.push(k as f64 * resolution_hz);
-    spectrum.push(p.max(0.0));
+    spectrum.push(p);
   }
 
   Ok(PeriodogramResult {
@@ -255,7 +262,7 @@ pub fn periodogram_fft(
     spectrum,
     resolution_hz,
     nfft,
-    sample_size: n,
+    nobs: n,
   })
 }
 
@@ -362,204 +369,4 @@ pub fn dominant_frequency_fft(
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::ArrayView1;
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_distributions::DistributionSampler;
-  use stochastic_rs_distributions::SimdDistribution;
-  use stochastic_rs_distributions::normal::SimdNormal;
-
-  use super::DetrendMethod;
-  use super::PeriodogramConfig;
-  use super::SpectrumScaling;
-  use super::SpectrumSearchConfig;
-  use super::WindowFunction;
-  use super::dominant_frequency_fft;
-  use super::fft_spectrum_search;
-  use super::periodogram_fft;
-
-  fn sine_wave(freq_hz: f64, sampling_rate: f64, n: usize, amplitude: f64, phase: f64) -> Vec<f64> {
-    (0..n)
-      .map(|i| {
-        let t = i as f64 / sampling_rate;
-        amplitude * (2.0 * std::f64::consts::PI * freq_hz * t + phase).sin()
-      })
-      .collect()
-  }
-
-  #[test]
-  fn periodogram_detects_single_tone_frequency() {
-    let fs = 256.0;
-    let n = 2048;
-    let f0 = 17.5;
-    let x = sine_wave(f0, fs, n, 1.0, 0.3);
-
-    let cfg = PeriodogramConfig {
-      sampling_rate: fs,
-      nfft: Some(n),
-      detrend: DetrendMethod::None,
-      window: WindowFunction::Rectangular,
-      onesided: true,
-      scaling: SpectrumScaling::Power,
-    };
-    let pg = periodogram_fft(ArrayView1::from(&x), cfg).unwrap();
-
-    let (idx, _) = pg
-      .spectrum
-      .iter()
-      .enumerate()
-      .skip(1)
-      .max_by(|a, b| a.1.total_cmp(b.1))
-      .expect("periodogram must contain a peak");
-
-    let f_est = pg.frequencies[idx];
-    assert!(
-      (f_est - f0).abs() <= pg.resolution_hz,
-      "single-tone frequency mismatch: est={f_est}, true={f0}, res={}",
-      pg.resolution_hz
-    );
-  }
-
-  #[test]
-  fn fft_spectrum_search_finds_two_tones() {
-    let fs = 512.0;
-    let n = 4096;
-    let f1 = 12.0;
-    let f2 = 70.0;
-
-    let mut x = sine_wave(f1, fs, n, 1.0, 0.0);
-    let x2 = sine_wave(f2, fs, n, 0.6, 0.4);
-    for (a, b) in x.iter_mut().zip(x2.iter()) {
-      *a += *b;
-    }
-
-    let cfg = SpectrumSearchConfig {
-      periodogram: PeriodogramConfig {
-        sampling_rate: fs,
-        nfft: Some(n),
-        detrend: DetrendMethod::Mean,
-        window: WindowFunction::Hann,
-        onesided: true,
-        scaling: SpectrumScaling::Power,
-      },
-      top_k: 2,
-      min_frequency_hz: Some(1.0),
-      max_frequency_hz: Some(120.0),
-      min_separation_bins: 6,
-      exclude_dc: true,
-    };
-
-    let peaks = fft_spectrum_search(ArrayView1::from(&x), cfg).unwrap();
-    assert_eq!(peaks.len(), 2, "expected 2 peaks, got {peaks:?}");
-
-    let mut freqs = peaks.iter().map(|p| p.frequency_hz).collect::<Vec<_>>();
-    freqs.sort_by(f64::total_cmp);
-
-    let tol = fs / n as f64 * 2.0;
-    assert!(
-      (freqs[0] - f1).abs() <= tol,
-      "first peak mismatch: {freqs:?}"
-    );
-    assert!(
-      (freqs[1] - f2).abs() <= tol,
-      "second peak mismatch: {freqs:?}"
-    );
-  }
-
-  #[test]
-  fn dominant_frequency_on_simd_normal_noise_is_finite() {
-    let fs = 100.0;
-    let n = 2048;
-
-    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(0x5ec7));
-    let mut x = vec![0.0; n];
-    dist.fill_slice(&mut x);
-
-    let cfg = SpectrumSearchConfig {
-      periodogram: PeriodogramConfig {
-        sampling_rate: fs,
-        nfft: Some(2048),
-        detrend: DetrendMethod::Mean,
-        window: WindowFunction::Hann,
-        onesided: true,
-        scaling: SpectrumScaling::Density,
-      },
-      top_k: 1,
-      min_frequency_hz: Some(0.0),
-      max_frequency_hz: Some(fs / 2.0),
-      min_separation_bins: 1,
-      exclude_dc: false,
-    };
-
-    let peak = dominant_frequency_fft(ArrayView1::from(&x), cfg)
-      .unwrap()
-      .expect("expected at least one peak");
-    assert!(peak.frequency_hz.is_finite());
-    assert!(peak.power.is_finite() && peak.power >= 0.0);
-    assert!((0.0..=fs / 2.0).contains(&peak.frequency_hz));
-  }
-
-  #[test]
-  fn sunspot_series_has_about_eleven_year_cycle() {
-    let raw = include_str!("data/sunspot_yearly_silso_v2.txt");
-    let signal: Vec<f64> = raw
-      .lines()
-      .filter_map(|line| {
-        let mut it = line.split_whitespace();
-        let _year = it.next()?;
-        let sn = it.next()?.parse::<f64>().ok()?;
-        Some(sn)
-      })
-      .collect();
-
-    assert!(
-      signal.len() > 200,
-      "unexpectedly short sunspot fixture: n={}",
-      signal.len()
-    );
-
-    let cfg = SpectrumSearchConfig {
-      periodogram: PeriodogramConfig {
-        sampling_rate: 1.0, // annual data => cycles/year
-        nfft: None,
-        detrend: DetrendMethod::Mean,
-        window: WindowFunction::Hann,
-        onesided: true,
-        scaling: SpectrumScaling::Power,
-      },
-      top_k: 6,
-      min_frequency_hz: Some(1.0 / 30.0),
-      max_frequency_hz: Some(1.0 / 5.0),
-      min_separation_bins: 2,
-      exclude_dc: true,
-    };
-
-    let peaks = fft_spectrum_search(ArrayView1::from(&signal), cfg).unwrap();
-    assert!(
-      !peaks.is_empty(),
-      "no spectral peaks found on sunspot series"
-    );
-
-    let has_eleven_year_peak = peaks.iter().any(|p| {
-      let period = 1.0 / p.frequency_hz;
-      (period - 11.0).abs() <= 1.0
-    });
-
-    assert!(
-      has_eleven_year_peak,
-      "expected a peak near 11 years, got peaks={peaks:?}"
-    );
-  }
-
-  #[test]
-  #[should_panic(
-    expected = "nfft must satisfy `nfft >= signal.len()`, got nfft = 8, signal.len() = 10"
-  )]
-  fn an_fft_shorter_than_the_signal_panics() {
-    let cfg = PeriodogramConfig {
-      nfft: Some(8),
-      ..PeriodogramConfig::default()
-    };
-    let _ = periodogram_fft(ndarray::Array1::<f64>::linspace(0.0, 1.0, 10).view(), cfg);
-  }
-}
+mod tests;

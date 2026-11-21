@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::thread::LocalKey;
 
 use metal_oxide::{Device, Module};
 
@@ -12,25 +13,46 @@ pub(crate) mod bindings {}
 type Result<T> = std::result::Result<T, DeviceError>;
 
 pub(crate) struct Context {
+  pub(crate) ordinal: usize,
   pub(crate) device: Device,
   pub(crate) module: Module,
 }
 
 thread_local! {
-  static CONTEXTS: RefCell<Vec<(usize, Rc<Context>)>> = const { RefCell::new(Vec::new()) };
+  static CONTEXTS: RefCell<Vec<Rc<Context>>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(crate) fn context(ordinal: usize) -> Result<Rc<Context>> {
   CONTEXTS.with_borrow_mut(|contexts| {
-    if let Some((_, context)) = contexts.iter().find(|(index, _)| *index == ordinal) {
+    if let Some(context) = contexts.iter().find(|context| context.ordinal == ordinal) {
       return Ok(Rc::clone(context));
     }
     let device = create_device(ordinal)?;
     let module = bindings::module(&device).map_err(device_error)?;
-    let context = Rc::new(Context { device, module });
-    contexts.push((ordinal, Rc::clone(&context)));
+    let context = Rc::new(Context {
+      ordinal,
+      device,
+      module,
+    });
+    contexts.push(Rc::clone(&context));
     Ok(context)
   })
+}
+
+/// Drops the calling thread's context for `ordinal`; it goes once no cache still holds it.
+pub(crate) fn release(ordinal: usize) {
+  CONTEXTS.with_borrow_mut(|contexts| contexts.retain(|context| context.ordinal != ordinal));
+}
+
+pub(crate) fn release_slot<C>(
+  slot: &'static LocalKey<RefCell<Option<(usize, C)>>>,
+  ordinal: usize,
+) {
+  slot.with_borrow_mut(|slot| {
+    if slot.as_ref().is_some_and(|(index, _)| *index == ordinal) {
+      *slot = None;
+    }
+  });
 }
 
 fn create_device(ordinal: usize) -> Result<Device> {

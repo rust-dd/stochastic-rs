@@ -1,18 +1,9 @@
-//! Changepoint detection — CUSUM (Page 1954) and PELT (Killick et al. 2012).
+//! Changepoint detection: Page's two-sided CUSUM for a mean shift, and PELT.
 //!
-//! - **CUSUM** detects mean shifts via cumulative sums of standardised
-//!   deviations and signals when one of two recursive sums exceeds a
-//!   threshold.
-//! - **PELT** finds the global optimum of a penalised likelihood
-//!   objective with at most linear cost in the sample size.
+//! PELT finds the global optimum at a cost at most linear in the sample; a constant has no change.
 //!
-//! Reference: Page, "Continuous Inspection Schemes", Biometrika, 41(1/2),
-//! 100-115 (1954). DOI: 10.2307/2333009
-//!
-//! Reference: Killick, Fearnhead, Eckley, "Optimal Detection of Changepoints
-//! with a Linear Computational Cost", Journal of the American Statistical
-//! Association, 107(500), 1590-1598 (2012).
-//! DOI: 10.1080/01621459.2012.737745
+//! Reference: Page (1954), Biometrika 41(1/2), 100-115, DOI: 10.2307/2333009
+//! Reference: Killick et al. (2012), JASA 107(500), 1590-1598, DOI: 10.1080/01621459.2012.737745
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -21,6 +12,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
@@ -107,7 +99,7 @@ pub fn pelt<T: FloatExt>(
     min_size >= 1,
     "min_size must satisfy `min_size >= 1`, got min_size = {min_size:?}"
   );
-  validate(&as_slice_or_copy(series), 1)?;
+  validate_view(series, 1)?;
   let n = series.len();
   let mut prefix = vec![0.0_f64; n + 1];
   let mut prefix_sq = vec![0.0_f64; n + 1];

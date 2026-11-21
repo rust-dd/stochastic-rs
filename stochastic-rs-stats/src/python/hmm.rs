@@ -40,9 +40,13 @@ impl PyGaussianHmm {
     &self,
     py: Python<'py>,
     observations: PyReadonlyArray1<'py, f64>,
-  ) -> pyo3::Bound<'py, numpy::PyArray1<usize>> {
+  ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<usize>>> {
     use numpy::IntoPyArray;
-    self.inner.viterbi(observations.as_array()).into_pyarray(py)
+    let path = self
+      .inner
+      .viterbi(observations.as_array())
+      .map_err(stats_error)?;
+    Ok(path.into_pyarray(py))
   }
 
   /// Train via Baum-Welch EM and return `(iterations, log_likelihood, converged)`.

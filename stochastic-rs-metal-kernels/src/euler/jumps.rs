@@ -2,102 +2,113 @@
 
 use metal_oxide_device::math;
 
-use super::draws::{normal, open, uniform};
+use super::draws::{cos_accurate, exponential, exponential_accurate, normal, sin_accurate, words};
+use super::philox::{SITE_SIZES, u01_f32};
 
-fn pair(key: u32, term: u32, seed: u32) -> (f32, f32) {
-  let offset = term.wrapping_mul(40_503);
-  (
-    uniform(
-      key,
-      2_654_435_761u32.wrapping_add(offset),
-      seed,
-      2_654_435_761,
-    ),
-    uniform(
-      key,
-      668_265_263u32.wrapping_add(offset),
-      seed,
-      2_654_435_761,
-    ),
-  )
-}
-
-fn exponential(up: f32, uniform: f32, a: f32, b: f32, c: f32) -> f32 {
-  let value = -math::ln(1.0 - uniform);
+fn sized(up: f32, value: f32, a: f32, b: f32, c: f32) -> f32 {
   if up < a { value / b } else { -(value / c) }
 }
 
-pub(crate) fn draw(key: u32, seed: u32, law: u32, a: f32, b: f32, c: f32, count: f32) -> f32 {
-  // Separate return expressions preserve the seeded paths' fast-math rounding.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw(
+  path: u32,
+  step: u32,
+  key: [u32; 2],
+  law: u32,
+  a: f32,
+  b: f32,
+  c: f32,
+  count: f32,
+) -> f32 {
   if law == 1 {
-    let first = open(uniform(key, 1_103_515_245, seed, 2_654_435_761));
-    let second = uniform(key, 1_013_904_223, seed, 2_654_435_761);
-    let z = normal(first, second);
+    let z = normal(words(path, step, SITE_SIZES, 0, key));
     return a * count + b * math::sqrt(count) * z;
   }
   if law == 6 {
-    let first = open(uniform(key, 1_103_515_245, seed, 2_654_435_761));
-    let second = uniform(key, 1_013_904_223, seed, 2_654_435_761);
-    let z = normal(first, second);
+    let z = normal(words(path, step, SITE_SIZES, 0, key));
     return a + b * z;
   }
   if law == 7 {
-    let values = pair(key, 0, seed);
-    return exponential(values.0, values.1, a, b, c);
+    let pair = words(path, step, SITE_SIZES, 0, key);
+    return sized(u01_f32(pair[0]), exponential(pair[2], pair[3]), a, b, c);
   }
   if law == 9 {
-    let first = open(uniform(key, 1_103_515_245, seed, 2_654_435_761));
-    let second = open(uniform(key, 1_013_904_223, seed, 2_654_435_761));
-    let angle = (first - 0.5) * core::f32::consts::PI;
-    let exponential = -math::ln(second);
-    let inverse = 1.0 / a;
-    let mut ratio = math::cos(angle - a * angle) / exponential;
-    if ratio < 1.0e-30 {
-      ratio = 1.0e-30;
-    }
-    let stable = math::sin(a * angle) / math::powf(math::cos(angle), inverse)
-      * math::powf(ratio, (1.0 - a) * inverse);
-    return b * math::powf(count, inverse) * stable;
+    return stable(words(path, step, SITE_SIZES, 0, key), a, b, count);
+  }
+  if law == 12 {
+    let pair = words(path, step, SITE_SIZES, 0, key);
+    return exponential(pair[0], pair[1]) / a;
   }
   match law {
-    2 => compound::<2>(key, seed, a, b, c, count),
-    3 => compound::<3>(key, seed, a, b, c, count),
-    4 => compound::<4>(key, seed, a, b, c, count),
-    5 => compound::<5>(key, seed, a, b, c, count),
-    8 => compound::<8>(key, seed, a, b, c, count),
+    2 => compound::<2>(path, step, key, a, b, c, count),
+    3 => compound::<3>(path, step, key, a, b, c, count),
+    4 => compound::<4>(path, step, key, a, b, c, count),
+    5 => compound::<5>(path, step, key, a, b, c, count),
+    8 => compound::<8>(path, step, key, a, b, c, count),
+    10 => compound::<10>(path, step, key, a, b, c, count),
+    11 => compound::<11>(path, step, key, a, b, c, count),
     _ => 0.0,
   }
 }
 
-fn compound<const LAW: u32>(key: u32, seed: u32, a: f32, b: f32, c: f32, count: f32) -> f32 {
+/// A Chambers–Mallows–Stuck (1976) draw at scale `b·count^{1/a}` on the accurate sine, cosine and
+/// exponential: near their zeros a fast one's absolute error is unbounded in the jump.
+pub(crate) fn stable(pair: [u32; 4], a: f32, b: f32, count: f32) -> f32 {
+  let angle = (u01_f32(pair[0]) - 0.5) * core::f32::consts::PI;
+  let exponential = exponential_accurate(pair[2], pair[3]);
+  let inverse = 1.0 / a;
+  let mut ratio = cos_accurate(angle - a * angle) / exponential;
+  if ratio < 1.0e-30 {
+    ratio = 1.0e-30;
+  }
+  let standard = sin_accurate(a * angle) / math::powf(cos_accurate(angle), inverse)
+    * math::powf(ratio, (1.0 - a) * inverse);
+  b * math::powf(count, inverse) * standard
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compound<const LAW: u32>(
+  path: u32,
+  step: u32,
+  key: [u32; 2],
+  a: f32,
+  b: f32,
+  c: f32,
+  count: f32,
+) -> f32 {
   let mut sum = 0.0;
   let mut product = 1.0;
   for term in 0u32..64 {
     if term as f32 >= count {
       break;
     }
-    let values = pair(key, term, seed);
+    let pair = words(path, step, SITE_SIZES, term, key);
     if LAW == 2 {
-      sum += exponential(values.0, values.1, a, b, c);
+      sum += sized(u01_f32(pair[0]), exponential(pair[2], pair[3]), a, b, c);
     }
     if LAW == 3 {
-      let value = a * math::powf(open(values.0), b);
-      if values.1 <= math::exp(-c * value) {
+      let value = a * math::powf(u01_f32(pair[0]), b);
+      if u01_f32(pair[2]) <= math::exp(-c * value) {
         sum += value;
       }
     }
     if LAW == 4 {
-      let z = normal(open(values.0), values.1);
-      product *= 1.0 + a + b * z;
+      product *= 1.0 + a + b * normal(pair);
     }
     if LAW == 5 {
-      product *= 1.0 + exponential(values.0, values.1, a, b, c);
+      product *= 1.0 + sized(u01_f32(pair[0]), exponential(pair[2], pair[3]), a, b, c);
     }
     if LAW == 8 {
-      sum += if values.0 < 0.5 { a } else { -a };
+      sum += if u01_f32(pair[0]) < 0.5 { a } else { -a };
+    }
+    if LAW == 10 {
+      sum += exponential(pair[0], pair[1]) / a;
+    }
+    if LAW == 11 {
+      product *= 1.0 + exponential(pair[0], pair[1]) / a;
     }
   }
-  if LAW == 4 || LAW == 5 {
+  if LAW == 4 || LAW == 5 || LAW == 11 {
     product - 1.0
   } else {
     sum

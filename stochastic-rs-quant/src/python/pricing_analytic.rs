@@ -1,9 +1,10 @@
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `(v, coc)` only, so the wrapper carries the
+/// The Rust model holds `(sigma, coc)` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query and the option type that the Python-visible
 /// no-argument methods are defined at. Python's constructor signature is
 /// unchanged.
@@ -33,7 +34,7 @@ impl PyBsmPricer {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner = crate::pricing::bsm::BsmPricer::new(v, crate::pricing::bsm::BsmCoc::default());
+      let inner = crate::pricing::bsm::BsmPricer::new(v, crate::pricing::bsm::BsmCoc::Merton1973);
       Ok(Self {
         inner,
         s,
@@ -53,9 +54,14 @@ impl PyBsmPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   fn delta(&self) -> f64 {
@@ -135,7 +141,14 @@ impl PyHestonPricer {
     lambda_: Option<f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner = crate::pricing::heston::HestonPricer::new(v0, rho, kappa, theta, sigma, lambda_);
+      let inner = crate::pricing::heston::HestonPricer::new(HestonParams {
+        v0,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      })
+      .with_vol_risk_premium(lambda_.unwrap_or(0.0));
       Self {
         inner,
         s,
@@ -154,9 +167,10 @@ impl PyHestonPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
+    let pair = self
       .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+      .price_call_put(self.s, self.k, self.r, self.q, self.tau);
+    (pair.call, pair.put)
   }
 }
 
@@ -213,13 +227,18 @@ impl PySabrPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 
-/// The Rust model holds `(v, lambda, gamma, m, coc)` only, so the wrapper
+/// The Rust model holds `(sigma, lambda, gamma, m, coc)` only, so the wrapper
 /// carries the `(s, k, r, q, tau)` query and the option type the
 /// Python-visible no-argument methods are defined at. Python's constructor
 /// signature is unchanged.
@@ -262,7 +281,7 @@ impl PyMerton1976Pricer {
         lambda_,
         gamma,
         m,
-        crate::pricing::bsm::BsmCoc::Bsm1973,
+        crate::pricing::bsm::BsmCoc::Merton1973,
       );
       Ok(Self {
         inner,
@@ -283,9 +302,10 @@ impl PyMerton1976Pricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
+    let pair = self
       .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+      .price_call_put(self.s, self.k, self.r, self.q, self.tau);
+    (pair.call, pair.put)
   }
 }
 
@@ -345,9 +365,14 @@ impl PyQuantoPricer {
 
   /// `(call, put)` in domestic currency.
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   /// Quanto forward `E_p · S · exp((r_f − q − ρ σ_S σ_E) τ)`.
@@ -405,9 +430,14 @@ impl PyBachelierPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 
   /// Forward `S e^{(r − q)τ}` the option is struck on.
@@ -484,11 +514,16 @@ impl PyHestonAdiPricer {
           )));
         }
       };
-      let mut inner =
-        crate::pricing::heston_adi::HestonAdiPricer::new(v0, kappa, theta, sigma, rho)
-          .with_grid(m1, m2, steps)
-          .with_scheme(scheme)
-          .with_damping(damping);
+      let mut inner = crate::pricing::heston_adi::HestonAdiPricer::new(HestonParams {
+        v0,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      })
+      .with_grid(m1, m2, steps)
+      .with_scheme(scheme)
+      .with_damping(damping);
       if let Some(b) = barrier {
         inner = inner.with_barrier(b);
       }
