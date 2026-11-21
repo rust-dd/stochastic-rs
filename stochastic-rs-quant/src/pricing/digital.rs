@@ -418,6 +418,16 @@ pub(crate) fn vanilla_payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
   }
 }
 
+/// The payoff at `tau = 0` under rates that are not NaN, NaN at or past expiry otherwise, and
+/// `None` before expiry.
+pub(crate) fn expired(tau: f64, rates: &[f64], payoff: impl FnOnce() -> f64) -> Option<f64> {
+  if tau > 0.0 {
+    return None;
+  }
+  let defined = tau == 0.0 && rates.iter().all(|rate| !rate.is_nan());
+  Some(if defined { payoff() } else { f64::NAN })
+}
+
 /// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up
 /// because the put's $N(-d)$ differentiates to $-\phi(d)$ where the call's
 /// $N(d)$ gives $+\phi(d)$.

@@ -39,6 +39,7 @@ use stochastic_rs_quant::traits::ModelPricer;
 mod credit_and_rates;
 mod exotic_edges;
 mod exotics;
+mod kemna_vorst;
 
 const R: f64 = 0.05;
 const Q: f64 = 0.01;
