@@ -135,11 +135,8 @@ fn model(
   kappa: f64,
   theta: f64,
   sigma: f64,
-) -> HestonHullWhite2F<
-  f64,
-  stochastic_rs::stochastic::volatility::heston_hull_white_2f::AndersenQe,
-  Deterministic,
-> {
+) -> HestonHullWhite2F<f64, stochastic_rs::stochastic::volatility::heston::AndersenQe, Deterministic>
+{
   let rho = array![
     [1.0, -0.3, 0.35, 0.08],
     [-0.3, 1.0, 0.0, 0.0],

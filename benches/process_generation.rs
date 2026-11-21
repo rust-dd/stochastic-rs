@@ -21,7 +21,7 @@ use stochastic_rs::stochastic::jump::cgmy::Cgmy;
 use stochastic_rs::stochastic::jump::cts::Cts;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::process::bm::Bm;
-use stochastic_rs::stochastic::volatility::heston_hull_white_2f::Euler;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs::traits::ProcessExt;
 use stochastic_rs_core::simd_rng::Deterministic;

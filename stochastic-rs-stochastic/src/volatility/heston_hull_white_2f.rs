@@ -29,12 +29,11 @@ use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
+use crate::volatility::heston::AndersenQe;
+use crate::volatility::heston::Euler;
 
 mod scheme;
 pub use scheme::HybridScheme;
-
-pub use crate::volatility::heston::AndersenQe;
-pub use crate::volatility::heston::Euler;
 
 /// Spot, variance, short rate, auxiliary rate factor and the integrated short rate `∫₀ᵗ r`.
 #[derive(Clone, Debug, PartialEq)]
