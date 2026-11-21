@@ -240,3 +240,33 @@ fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
     }
   }
 }
+
+/// `λ` beside 0 and reflected below it, `μ_J` at the top of its range, `ρ` on its clamp.
+#[test]
+fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
+  use super::params::room_in_box;
+  let base = ndarray::array![0.04, 1.5, 0.04, 0.3, -0.5, 0.5, -0.05, 0.1];
+  let rooms = |j: usize, value: f64| {
+    let mut x = base.clone();
+    x[j] = value;
+    let room = room_in_box(x.view());
+    (room.down[j], room.up[j])
+  };
+  let near = |(down, up): (f64, f64), want: (f64, f64)| {
+    (down - want.0).abs() < 1e-12 && (up - want.1).abs() < 1e-12
+  };
+  for (j, value, want) in [
+    (5, 5e-6, (5e-6, 10.0 - 5e-6)),
+    (5, -5e-6, (10.0 - 5e-6, 5e-6)),
+    (6, 0.4999, (0.9999, 1e-4)),
+    (6, 0.5001, (1e-4, 0.9999)),
+    (4, -0.99995, (0.0, 1.9998)),
+    (4, 0.9995, (1.9994, 4e-4)),
+  ] {
+    assert!(
+      near(rooms(j, value), want),
+      "{j} at {value}: {:?}",
+      rooms(j, value)
+    );
+  }
+}
