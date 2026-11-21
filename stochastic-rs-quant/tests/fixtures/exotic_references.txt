@@ -1,5 +1,4 @@
-# `kind words... | reference`: QuantLib 1.43's analytic engines where they are exact; mpmath at 40 digits for
-# `chc`, `cmp`, `vs`, `dbx` (off QuantLib's domain) and the lookbacks at `r = q`, which QuantLib divides by.
+# `kind words... | reference`; each kind's test in exotic_references.rs names its reference
 dbko call 73.0 100.0 70.0 130.0 0.05 0.02 0.25 0.2493150684931507 | 0.02133462229972842
 dbki call 73.0 100.0 70.0 130.0 0.05 0.02 0.25 0.2493150684931507 | 0.0025056634785512316
 dbko put 73.0 100.0 70.0 130.0 0.05 0.02 0.25 0.2493150684931507 | 4.5931098718306425
