@@ -49,6 +49,17 @@ impl crate::traits::ModelPricer for LevyModel {
       LevyModel::Kou(m) => m.price_call(s, k, r, q, tau),
     }
   }
+
+  /// The member's own put, not parity on the enum's call: the payoff at expiry where its is.
+  fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    match self {
+      LevyModel::VarianceGamma(m) => m.price_put(s, k, r, q, tau),
+      LevyModel::Nig(m) => m.price_put(s, k, r, q, tau),
+      LevyModel::Cgmy(m) => m.price_put(s, k, r, q, tau),
+      LevyModel::MertonJd(m) => m.price_put(s, k, r, q, tau),
+      LevyModel::Kou(m) => m.price_put(s, k, r, q, tau),
+    }
+  }
 }
 
 /// Each variant forwards to a [`FourierModelExt`](crate::pricing::fourier::FourierModelExt)
@@ -99,5 +110,41 @@ impl ToModel for Calibrated<LevyParams> {
 
   fn to_model(&self) -> LevyModel {
     LevyModel::of(self.params.model_type, &self.params.values)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::super::loss::default_params;
+  use super::*;
+  use crate::traits::ModelPricer;
+
+  /// At expiry too, where parity on a call rounds `(0.3, 0.1)`'s payoff of 0 to `-2.8e-17`.
+  #[test]
+  fn a_levy_models_put_is_its_members_to_the_bit() {
+    let types = [
+      LevyModelType::VarianceGamma,
+      LevyModelType::Nig,
+      LevyModelType::Cgmy,
+      LevyModelType::MertonJd,
+      LevyModelType::Kou,
+    ];
+    for model in types.map(|model| LevyModel::of(model, &default_params(model))) {
+      for (s, k, tau) in [(0.3, 0.1, 0.0), (100.0, 110.0, 0.0), (100.0, 110.0, 1.0)] {
+        let member = match &model {
+          LevyModel::VarianceGamma(m) => m.price_put(s, k, 0.05, 0.01, tau),
+          LevyModel::Nig(m) => m.price_put(s, k, 0.05, 0.01, tau),
+          LevyModel::Cgmy(m) => m.price_put(s, k, 0.05, 0.01, tau),
+          LevyModel::MertonJd(m) => m.price_put(s, k, 0.05, 0.01, tau),
+          LevyModel::Kou(m) => m.price_put(s, k, 0.05, 0.01, tau),
+        };
+        let own = model.price_put(s, k, 0.05, 0.01, tau);
+        assert_eq!(
+          own.to_bits(),
+          member.to_bits(),
+          "{model:?} at ({s}, {k}, {tau})"
+        );
+      }
+    }
   }
 }
