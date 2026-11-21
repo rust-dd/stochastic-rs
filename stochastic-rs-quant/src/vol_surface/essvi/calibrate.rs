@@ -157,14 +157,8 @@ fn calibrate_slice(
   Some(calibrated)
 }
 
-/// Calibrates eSSVI slices to `slices` (ascending `maturities`, one per
-/// slice) going forward in maturity, so that every slice is butterfly-free
-/// and every consecutive pair calendar-spread-free by construction. Each
-/// slice is anchored at its data point closest to the money.
-///
-/// # Panics
-/// Panics for invalid quotes or an infeasible fit. Use [`try_calibrate_essvi`]
-/// to handle these failures explicitly.
+/// eSSVI slices fitted forward to ascending `maturities`, butterfly- and calendar-free by
+/// construction; panics on an invalid quote or infeasible fit (see [`try_calibrate_essvi`]).
 pub fn calibrate_essvi<T: RealExt>(slices: &[SsviSlice<T>], maturities: &[T]) -> EssviSurface<T> {
   try_calibrate_essvi(slices, maturities).unwrap_or_else(|e| panic!("{e}"))
 }

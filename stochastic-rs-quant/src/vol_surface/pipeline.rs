@@ -1,7 +1,5 @@
-//! # Volatility Surface Pipeline
-//!
-//! End-to-end pipeline: market prices → implied vol surface → SVI per slice →
-//! SSVI global fit → arbitrage validation → local volatility extraction.
+//! End-to-end volatility-surface pipeline: market prices, implied vols, SVI per slice, a global
+//! SSVI fit, arbitrage checks and local volatility.
 //!
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
@@ -36,35 +34,8 @@ pub struct VolSurfaceResult {
 }
 
 impl VolSurfaceResult {
-  /// Whether the entire surface is arbitrage-free.
-  ///
-  /// - `Some(true)` — every slice was checked and none violates the butterfly
-  ///   or the calendar-spread condition.
-  /// - `Some(false)` — a checked slice violates one of them.
-  /// - `None` — **nothing was checkable**, so there is no answer to give.
-  ///
-  /// The third case is why this is not a `bool`. Both arbitrage checks are
-  /// universal quantifiers over a grid — `check_butterfly_ssvi` seeds
-  /// `min_g` at $+\infty$ and lowers it only where the density evaluates,
-  /// [`SsviSurface::is_calendar_spread_free`](super::ssvi::SsviSurface::is_calendar_spread_free)
-  /// returns early only on a violation — so both are vacuously `true` over an
-  /// empty grid. And the grid *does* go empty:
-  /// [`ImpliedVolSurface::smile_slice`](super::implied::ImpliedVolSurface::smile_slice)
-  /// deliberately drops nodes whose implied vol did not invert, which is
-  /// right in itself but leaves a surface built from out-of-band prices with
-  /// no nodes at all. "No violation found" and "nothing to look at" then
-  /// produce the same `true`, and a caller cannot separate them.
-  ///
-  /// A slice is treated as checked when its `min_g` came back finite: `+inf`
-  /// is the untouched seed, so it is exactly the marker for a slice on which
-  /// the loop body never ran. That also settles the calendar leg, which shares
-  /// the same per-slice log-moneyness grids.
-  ///
-  /// This is the `bool` analogue of case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails): the inputs
-  /// were legitimate, the answer is genuinely undefined here, and `None`
-  /// propagates where a `true` would have been mistaken for a clean bill of
-  /// health.
+  /// `Some(true)` with no butterfly or calendar violation, `Some(false)` with one, and `None` when
+  /// no slice was checkable (`min_g` at its `+∞` seed): an empty grid passes both checks vacuously.
   pub fn is_arbitrage_free(&self) -> Option<bool> {
     let anything_checked = !self.butterfly_checks.is_empty()
       && self
@@ -98,24 +69,8 @@ pub fn build_surface(
   build_surface_from_iv(&iv_surface)
 }
 
-/// Build a complete volatility surface from any calibrated model.
-///
-/// Works with all [`ModelSurface`] implementations: Heston, Bates/SVJ, Lévy
-/// (Vg, Nig, Cgmy, Merton, Kou), HSCM, Sabr, or any custom model.
-///
-/// The bound is [`ModelSurface`] and not
-/// [`ModelPricer`](crate::traits::ModelPricer) because this function inverts
-/// the model's calls through the Black formula — see
-/// [`VanillaEuropeanCall`](crate::traits::VanillaEuropeanCall) for why a
-/// digital or American `ModelPricer` must not reach it.
-///
-/// # Arguments
-/// * `model` - Calibrated model implementing [`ModelSurface`]
-/// * `s` - Spot price
-/// * `r` - Risk-free rate
-/// * `q` - Dividend yield
-/// * `strikes` - Strike prices (ascending)
-/// * `maturities` - Maturities in years (ascending)
+/// The surface of a [`ModelSurface`] at `(s, r, q)` over ascending `strikes` and maturities in
+/// years; a Black inversion has no vol for a digital or American `ModelPricer`, hence this bound.
 pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
   model: &M,
   s: f64,
@@ -175,9 +130,8 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
     .map(|(svi, &tau)| super::analytics::svi_analytics(&svi.params, tau))
     .collect();
 
-  // Union of log-moneyness grids across all maturity slices — used both for
-  // butterfly checks (per slice) and for the full smile-wide calendar-spread
-  // condition (Gatheral & Jacquier 2014 Theorem 4.2).
+  // The union of the slices' log-moneyness grids, for the per-slice butterfly and the smile-wide
+  // calendar check (Gatheral & Jacquier 2014, Theorem 4.2).
   let mut calendar_ks: Vec<f64> = Vec::new();
   let butterfly_checks: Vec<(bool, f64)> = (0..nt)
     .map(|j| {
