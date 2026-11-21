@@ -1,9 +1,14 @@
 //! Reference: Bertsekas, “Projected Newton Methods for Optimization Problems with Simple
-//! Constraints” (1982), eqs. (32), (81)–(84), DOI 10.1137/0320018; its set is held, not stepped.
+//! Constraints” (1982), eqs. (32), (81)–(84), DOI 10.1137/0320018; its set is held till the end.
 
+use basin::Jacobian;
+use basin::Residual;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+
+use super::LeastSquaresProblem;
+use super::Objective;
 
 /// How far each coordinate of the optimiser's point can fall and rise before its value meets a
 /// bound its map folds or clamps at, and `strip`, its stencil step: the paper's `ε`.
@@ -58,9 +63,30 @@ pub(super) fn rest_on_bounds(jacobian: &mut Array2<f64>, held: &[Option<f64>]) {
   }
 }
 
+/// `best` with each held coordinate set on its bound, the projection of (82) taken once, where
+/// that does not raise the cost; `best` otherwise.
+pub(super) fn seated<P: LeastSquaresProblem>(
+  objective: &Objective<P>,
+  best: Array1<f64>,
+) -> Array1<f64> {
+  let cost = |x: &Array1<f64>| Residual::residual(&objective, x).map(|r| r.dot(&r));
+  let flat = objective.flat.get();
+  let at = cost(&best).and_then(|at| Jacobian::jacobian(&objective, &best).map(|_| at));
+  objective.flat.set(flat);
+  let onto = objective.held.borrow().clone();
+  let steps = onto.iter().map(|step| step.unwrap_or(0.0));
+  let seated = &best + &Array1::from_iter(steps);
+  match (at, cost(&seated)) {
+    (Ok(at), Ok(on)) if seated != best && on <= at => {
+      objective.model.borrow_mut().accept();
+      seated
+    }
+    _ => best,
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use super::super::LeastSquaresProblem;
   use super::super::LmOptions;
   use super::super::minimize_in_box;
   use super::*;
@@ -106,15 +132,16 @@ mod tests {
     }
   }
 
-  /// The minimum over `θ₁ ≥ 0` is `(0, 3)`: held within a step of the fold, `θ₂` is fitted there.
+  /// The minimum over `θ₁ ≥ 0` is `(0, 3)`: `θ₁` is held beside the fold, `θ₂` fitted, and the
+  /// held one then set on the fold itself.
   #[test]
-  fn a_coordinate_whose_cost_falls_across_its_bound_is_held_and_the_rest_fitted() {
+  fn a_coordinate_whose_cost_falls_across_its_bound_ends_on_it_with_the_rest_fitted() {
     let (fitted, report) = minimize_in_box(folded([1.0, 0.0], -0.5), LmOptions::default(), outward);
-    let (first, second) = (fitted.x[0].abs(), fitted.x[1]);
     assert!(report.converged, "{report:?}");
     assert!(
-      first < 1e-5 && (second + first - 3.0).abs() < 1e-9,
-      "{first:e}, {second}"
+      fitted.x[0] == 0.0 && (fitted.x[1] - 3.0).abs() < 1e-5,
+      "{}",
+      fitted.x
     );
   }
 

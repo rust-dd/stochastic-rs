@@ -261,6 +261,7 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     evaluations: Cell::new(0),
     rows: RefCell::new(None),
     rooms: None,
+    held: RefCell::new(Vec::new()),
     sizes: RefCell::new(Array1::zeros(2)),
     flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),

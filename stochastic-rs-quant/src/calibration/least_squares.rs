@@ -272,6 +272,8 @@ struct Objective<P> {
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
   rooms: Option<Rooms>,
+  /// `in_box::held` at the last Jacobian.
+  held: RefCell<Vec<Option<f64>>>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
@@ -376,6 +378,7 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
     if let Some(rooms) = &self.rooms {
       let held = held(&jacobian, &residuals, &rooms(x.view()));
       rest_on_bounds(&mut jacobian, &held);
+      *self.held.borrow_mut() = held;
     }
     *rows = Some(residuals);
     Ok(jacobian)
@@ -413,6 +416,7 @@ fn drive<P: LeastSquaresProblem>(
     flat: Cell::new(false),
     regularization: options.regularization.filter(Regularization::is_active),
     rooms,
+    held: RefCell::new(Vec::new()),
   };
   let tolerance = options.tolerance.unwrap_or(30.0 * f64::EPSILON);
   let gradient_tolerance = if options.tolerance.is_some() {
@@ -453,6 +457,10 @@ fn drive<P: LeastSquaresProblem>(
     )
   } else {
     run(&objective, solver, initial, budget, max_iter)
+  };
+  let best = match started && objective.rooms.is_some() {
+    true => seated(&objective, best),
+    false => best,
   };
   let stationarity = match reason == TerminationReason::SolverConverged {
     true => objective.stationarity(&best),
@@ -535,6 +543,7 @@ pub(crate) use in_box::Room;
 use in_box::Rooms;
 use in_box::held;
 use in_box::rest_on_bounds;
+use in_box::seated;
 pub(crate) use trail::Trail;
 
 #[cfg(test)]
