@@ -101,8 +101,8 @@ impl AnalyticBsEngine {
 impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
-  /// The NPV and every Greek are NaN when any market handle is unlinked or the maturity is NaN,
-  /// case 2 of the [failure convention](crate::traits::ModelPricer#how-pricing-fails).
+  /// The NPV and every Greek are NaN when any market handle is unlinked or the maturity is NaN:
+  /// missing data, so a documented `NaN` rather than a panic.
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
     let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
     let ot = opt.option_type;

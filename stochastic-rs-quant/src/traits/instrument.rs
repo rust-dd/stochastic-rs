@@ -25,12 +25,8 @@
 
 use super::pricing::Greeks;
 
-/// A financial contract.
-///
-/// Implementors describe **what** is being priced — payoff, strike, maturity,
-/// barriers, currency of settlement. They do **not** carry a model, market
-/// data, or numerical method. Pair with a [`PricingEngine`] to obtain a
-/// price.
+/// A financial contract, what is priced (payoff, strike, maturity, barriers, settlement currency),
+/// with no model, market data or method; a [`PricingEngine`] prices it.
 pub trait Instrument {
   /// Short, human-readable kind for diagnostics. Default `"Instrument"`.
   fn instrument_kind(&self) -> &'static str {
@@ -38,17 +34,8 @@ pub trait Instrument {
   }
 }
 
-/// A `(model, market, method)` triple that prices an [`Instrument`].
-///
-/// Engines own the dynamic state (spot, vol, rates, calibrated parameters,
-/// MC seed, …) and hold reactive market data through
-/// [`crate::market::Handle`] so price updates automatically follow market
-/// updates. The `Instrument` is borrowed read-only.
-///
-/// `PricingEngine<I>` is generic in the instrument type to support
-/// engine families that price several payoffs from the same trait
-/// implementation (e.g. an `AnalyticBsEngine` impl for both
-/// `EuropeanOption` and `DigitalOption`).
+/// A `(model, market, method)` triple pricing a borrowed [`Instrument`] off market handles; generic
+/// in `I` so one engine prices several payoffs (`AnalyticBsEngine`: European and digital).
 pub trait PricingEngine<I: ?Sized> {
   /// Output container — must report at least an NPV.
   type Result: PricingResult;
@@ -57,12 +44,8 @@ pub trait PricingEngine<I: ?Sized> {
   fn calculate(&self, instrument: &I) -> Self::Result;
 }
 
-/// Output of a pricing engine.
-///
-/// `npv()` is the only required field. Engines that compute Greeks or
-/// MC error estimates expose them via [`greeks`](Self::greeks) and
-/// [`error_estimate`](Self::error_estimate); analytical engines that
-/// don't compute MC error return `None`.
+/// A pricing engine's output: `npv()` always, [`greeks`](Self::greeks) and
+/// [`error_estimate`](Self::error_estimate) when the engine computes them, else `None`.
 pub trait PricingResult {
   /// Net present value.
   fn npv(&self) -> f64;
@@ -79,11 +62,8 @@ pub trait PricingResult {
   }
 }
 
-/// Convenience extension: call `instrument.npv(&engine)` directly.
-///
-/// Blanket-implemented for every [`Instrument`]. Equivalent to
-/// `engine.calculate(&instrument).npv()` but reads naturally at call sites
-/// where the user thinks "price this instrument with this engine".
+/// `instrument.npv(&engine)`, that is `engine.calculate(&instrument).npv()`, for every
+/// [`Instrument`].
 pub trait InstrumentExt: Instrument {
   /// Net present value via `engine`.
   fn npv<E: PricingEngine<Self>>(&self, engine: &E) -> f64
@@ -104,11 +84,8 @@ pub trait InstrumentExt: Instrument {
 
 impl<I: Instrument + ?Sized> InstrumentExt for I {}
 
-/// Bundle holding NPV plus optional Greeks and error estimate.
-///
-/// The default [`PricingResult`] payload — most engines populate this and
-/// return it. Closed-form engines fill `npv` and `greeks`; Monte Carlo
-/// engines populate `error_estimate` as well.
+/// The default [`PricingResult`]: closed-form engines fill `npv` and `greeks`, Monte Carlo engines
+/// `error_estimate` as well.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StandardResult {
   pub npv: f64,

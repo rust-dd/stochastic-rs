@@ -1,12 +1,5 @@
-//! # Quant traits — pricing, time, calibration, model bridging.
-//!
-//! Organised as focused submodules: [`pricing`] (`ModelPricer` /
-//! `VanillaEuropeanCall` / `GreeksExt`), [`time`] (`TimeExt`),
-//! [`short_rate`] (`ShortRatePricer`), and
-//! [`calibration`] (`Calibrator` / `CalibrationResult` / `ToModel` /
-//! `ToShortRateModel`). Upstream traits are re-exported so call-sites can
-//! write `crate::traits::FloatExt` without reaching into the foundation
-//! crates directly.
+//! Quant traits by area: [`pricing`], [`instrument`], [`time`], [`short_rate`] and [`calibration`],
+//! with the foundation crates' `RealExt`, `FloatExt` and `ProcessExt` reachable here.
 
 pub mod calibration;
 pub mod instrument;
