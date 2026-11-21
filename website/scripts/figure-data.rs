@@ -1,16 +1,5 @@
-//! The numbers behind the landing page's figures.
-//!
-//! Not part of the workspace: copy it to `examples/figure_data.rs` at the
-//! repository root and run
-//!
-//! ```text
-//! cargo run --release --example figure_data
-//! ```
-//!
-//! then feed the output through the polyline conversion in
-//! `website/lib/figures.ts`'s header comment. It lives here rather than in
-//! `examples/` because it is a documentation asset with no consumer in the
-//! crate, and an example that nothing runs rots.
+//! The numbers in `website/lib/figures.ts`: copy this file to `examples/figure_data.rs` at the
+//! repository root and run `cargo run --release --example figure_data`.
 
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::vol_surface::svi::SviRawParams;
@@ -45,10 +34,8 @@ fn main() {
     VarianceBoundary::Absorption,
     Deterministic::new(21),
   );
-  // A quantile band from four thousand paths, and a few sample paths over
-  // it: the band is what the model does, the paths are what one draw of it
-  // looks like. No median — it is nearly flat here, and a thick line through
-  // the middle of a fan reads as a path when it is not one.
+  // A quantile band with a few draws over it and no median: nearly flat here, a thick line
+  // through the fan would read as a path.
   let batch = heston.sample_par(4_000);
   let n = 65;
   let step = (batch[0][0].len() - 1) as f64 / (n - 1) as f64;
