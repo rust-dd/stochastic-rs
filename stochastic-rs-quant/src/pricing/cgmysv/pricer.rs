@@ -1,11 +1,7 @@
-//! CGMYSV Monte Carlo pricers for European, American, Asian, and Barrier options.
+//! CGMYSV Monte Carlo pricers: European, American by Longstaff–Schwartz, arithmetic Asian and
+//! discretely monitored barrier, as Kim (2021) §4.1–§4.3.
 //!
-//! - **European**: discounted terminal payoff (Section 4.1)
-//! - **American**: Longstaff–Schwartz LSM with basis $\{1,S,S^2,\sigma,\sigma^2,\sigma S\}$ (Section 4.2)
-//! - **Asian**: arithmetic average payoff (Section 4.3)
-//! - **Barrier**: knock-in / knock-out with discrete monitoring (Section 4.3)
-//!
-//! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Section 4.
+//! Reference: Kim (2021), arXiv:2101.11001, §4
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -140,10 +136,8 @@ impl<S: SeedExt> CgmysvPricer<S> {
     mc_stats(&payoffs, discount)
   }
 
-  /// Price an American option via LSM (Section 4.2).
-  ///
-  /// Uses the regression basis $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$
-  /// following Rachev et al. (2011), Chapter 15.
+  /// An American option by Longstaff–Schwartz (§4.2) on Rachev et al.'s (2011, Ch. 15) basis
+  /// $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$.
   pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
     if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
       return expired;
@@ -378,12 +372,8 @@ mod tests {
     }
   }
 
-  /// Table 4 reference: Lewis call ≈ 19.66 (paper FFT = 19.659).
-  /// Maturity literals (`28.0 / 365.0`, `25.0 / 365.0`) below are the
-  /// published S&P 500 option maturities from Carr-Geman-Madan-Yor &
-  /// Schoutens (CGMYSV) Tables 4-6 reproduced verbatim — keeping them as
-  /// inline literals avoids hiding the paper's calibration days behind a
-  /// helper.
+  /// Table 4: Lewis's call against the paper's FFT `19.659` at `K = 2500`, `T = 28/365`, the
+  /// paper's S&P 500 days kept as literals.
   #[test]
   fn table4_lewis_call() {
     let model = CgmysvModel {
@@ -456,11 +446,8 @@ mod tests {
     );
   }
 
-  /// American put ≥ European put (early exercise premium).
-  ///
-  /// Uses common random numbers: both prices computed on the same path set
-  /// so the comparison is dominated by the LSM exercise policy quality
-  /// rather than cross-method MC noise.
+  /// American put ≥ European put on common random numbers, so the gap is the LSM policy's, not
+  /// cross-method noise.
   #[test]
   fn american_put_geq_european() {
     let pricer = paper_pricer(3000);

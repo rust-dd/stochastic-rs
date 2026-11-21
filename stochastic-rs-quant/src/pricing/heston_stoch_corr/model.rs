@@ -1,6 +1,5 @@
-//! `HestonStochCorrPricer` model struct and its `ModelPricer` impl.
-//! Characteristic-function logic lives in [`super::cf`], Carr-Madan
-//! inversion in [`super::pricer`].
+//! `HestonStochCorrPricer` and its `ModelPricer`; the characteristic function is in [`super::cf`],
+//! the Carr–Madan inversion in [`super::pricer`].
 
 use super::pricer::floor_price;
 use crate::CallPut;
@@ -10,20 +9,8 @@ use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Heston model with stochastic correlation (Teng, Ehrhardt & Günther,
-/// 2016), priced by Carr-Madan dampened Fourier inversion.
-///
-/// The struct holds **model state only** — the four variance-process
-/// parameters, the four correlation-process parameters and the
-/// variance/correlation correlation. Spot, strike, rate, dividend yield and
-/// maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid.
-///
-/// This type absorbed the former `HscmModel`, which held these same nine
-/// fields in the same order and priced through this very struct: once
-/// `HestonStochCorrPricer` stopped bundling market data, the two were the
-/// same struct twice. See the 5b report.
+/// Heston with stochastic correlation (Teng, Ehrhardt & Günther 2016), by Carr–Madan's damped
+/// Fourier inversion; the nine model parameters stay, the query travels as arguments.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::heston_stoch_corr::HestonStochCorrPricer;
@@ -173,8 +160,6 @@ impl ModelPricer for HestonStochCorrPricer {
   }
 }
 
-/// European vanilla call on the forward $Se^{(r-q)\tau}$ — the carry is
-/// $b=r-q$, the same case
-/// [`implied_volatility`](HestonStochCorrPricer::implied_volatility) already
-/// inverts against.
+/// A European vanilla call on `Se^{(r−q)τ}`, the forward
+/// [`implied_volatility`](HestonStochCorrPricer::implied_volatility) inverts against.
 impl VanillaEuropeanCall for HestonStochCorrPricer {}

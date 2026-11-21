@@ -1,18 +1,13 @@
-//! # Rough Bergomi Pricer
-//!
-//! Monte Carlo pricer for the rough Bergomi model implementing [`ModelPricer`].
+//! Monte Carlo pricing of the rough Bergomi model on the calibration module's mSOE simulation,
+//! antithetic pairs optional.
 //!
 //! $$
 //! dS_t = rS_t\,dt + S_t\sqrt{V_t}\bigl(\rho\,dW_t + \sqrt{1-\rho^2}\,dW_t^\perp\bigr),
 //! \quad V_t = \xi_0(t)\exp\!\bigl(\eta\,\hat I_t - \tfrac{\eta^2}{2}t^{2H}\bigr)
 //! $$
 //!
-//! Uses the mSOE (modified Summation of Exponentials) simulation from the
-//! calibration module with optional variance reduction via antithetic sampling.
-//!
-//! Reference:
-//! - Bayer, Friz & Gatheral (2016), Quantitative Finance 16(6), 887–904
-//! - McCrickerd & Pakkanen (2018), DOI: 10.1080/14697688.2018.1459812, arXiv:1708.02563
+//! Reference: Bayer, Friz & Gatheral (2016), Quant. Finance 16(6), 887–904
+//! Reference: McCrickerd & Pakkanen (2018), DOI 10.1080/14697688.2018.1459812, arXiv:1708.02563
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -30,10 +25,8 @@ use crate::traits::ModelPricer;
 use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Monte Carlo pricer for the rough Bergomi model.
-///
-/// Wraps calibrated [`RBergomiParams`] and simulation settings to implement
-/// [`ModelPricer`], enabling integration with the vol-surface pipeline.
+/// Monte Carlo [`ModelPricer`] of calibrated [`RBergomiParams`], so the model reaches the
+/// vol-surface pipeline.
 #[derive(Debug, Clone)]
 pub struct RBergomiPricer<S: SeedExt = Unseeded> {
   /// Calibrated rBergomi parameters (H, rho, eta, xi0).
@@ -205,9 +198,7 @@ mod tests {
       .with_seed(Deterministic::new(42));
     let p_no_div = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     let p_with_div = pricer.price_call(100.0, 100.0, 0.05, 0.05, 1.0);
-    // With shared seed, the only difference between the two MC runs is the q
-    // term in the drift. ATM call must be cheaper with positive q (forward
-    // shift down) — strictly so given fixed seed and 80k paths.
+    // On one seed only `q` moves the drift, so the forward drops and the call with it.
     assert!(
       p_with_div < p_no_div - 0.5,
       "ATM rBergomi call must drop when q > 0: q=0 → {p_no_div:.4}, q=0.05 → {p_with_div:.4}"

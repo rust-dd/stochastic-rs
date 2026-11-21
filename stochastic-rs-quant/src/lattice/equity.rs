@@ -1,8 +1,5 @@
-//! # Equity-option lattice models
-//!
-//! Bridges [`super::tree::BinomialTree`] to [`crate::traits::ModelPricer`]
-//! so Cox-Ross-Rubinstein style trees plug into the vol-surface pipeline
-//! alongside Fourier and SABR pricers.
+//! Cox–Ross–Rubinstein trees as a [`crate::traits::ModelPricer`], so they plug into the vol-surface
+//! pipeline beside the Fourier and SABR pricers.
 
 use ndarray::Array1;
 
@@ -13,10 +10,8 @@ use crate::traits::ModelPricer;
 use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Cox-Ross-Rubinstein binomial-tree model for European and American options.
-///
-/// $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$,
-/// $p = (e^{(r-q)\Delta t} - d)/(u - d)$.
+/// Cox–Ross–Rubinstein binomial model for European and American options, on
+/// $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$ and $p = (e^{(r-q)\Delta t} - d)/(u - d)$.
 #[derive(Debug, Clone, Copy)]
 pub struct CrrModel<T: RealExt> {
   /// Lognormal volatility $\sigma$.
@@ -120,11 +115,8 @@ impl ModelPricer for CrrModel<f64> {
   }
 }
 
-/// [`price_call`](ModelPricer::price_call) routes to the private
-/// `price_european` rollback, not to
-/// [`price_american`](CrrModel::price_american), so the trait's call really
-/// is the European vanilla one on the forward $Se^{(r-q)\tau}$ the lattice
-/// drifts at.
+/// [`price_call`](ModelPricer::price_call) rolls back the European payoff, not
+/// [`price_american`](CrrModel::price_american), so it is the vanilla call on `Se^{(r−q)τ}`.
 impl VanillaEuropeanCall for CrrModel<f64> {}
 
 #[cfg(test)]
@@ -157,10 +149,8 @@ mod tests {
     assert!(parity.abs() < 0.01, "parity residual {parity}");
   }
 
-  /// Merton, R.C. (1973), "Theory of Rational Option Pricing", Bell J.
-  /// Econ. Manag. Sci. 4(1), Theorem 2: early exercise of a call on a
-  /// non-dividend-paying underlying is never optimal, so the American
-  /// rollback must reproduce the European (discounted-expectation) price.
+  /// Without dividends an American call is never exercised early, so it rolls back to the European.
+  /// Reference: Merton (1973), Bell J. Econ. Manag. Sci. 4(1), Theorem 2
   #[test]
   fn crr_american_call_no_dividend_equals_european() {
     let model = CrrModel::new(0.2_f64, 500);
@@ -173,14 +163,8 @@ mod tests {
     );
   }
 
-  /// Complement of [`crr_american_call_no_dividend_equals_european`]: Merton
-  /// (1973)'s "never exercise early" result for calls requires `q = 0`.
-  /// With `q > 0` a call *can* be worth exercising early (the holder gives
-  /// up the dividend stream by continuing to hold), so this is the only
-  /// American-call test in this module where the early-exercise clamp in
-  /// `price_rollback` must actually bind rather than the American value
-  /// merely reproducing the European one. Cross-checked against
-  /// [`BjerksundStensland2002Pricer`]'s closed-form American approximation.
+  /// With `q > 0` early exercise of a call can pay, so `price_rollback`'s clamp binds; checked
+  /// against [`BjerksundStensland2002Pricer`].
   #[test]
   fn crr_american_call_with_dividends_exceeds_european() {
     let (s, k, r, q, sigma, tau) = (100.0, 100.0, 0.03, 0.07, 0.2, 1.0);

@@ -69,10 +69,8 @@ fn calibrator(eta: f64) -> HestonSlvCalibrator<Deterministic> {
     .with_particle_method(method())
 }
 
-/// Gyöngy: under the parameters that generated the surface, with the full
-/// vol-of-vol, the Heston model already reproduces its own Dupire local
-/// volatility, so the leverage is `1` wherever the cloud and the Dupire
-/// stencil are both well resolved — and the cloud reprices the surface.
+/// Gyöngy: under the surface's own Heston at full vol-of-vol the leverage is `1` where the cloud
+/// and the Dupire stencil are resolved, and the cloud reprices the surface.
 #[test]
 fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() {
   let result = calibrator(1.0).calibrate(None).unwrap();
@@ -114,9 +112,8 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
   );
 }
 
-/// The same Gyöngy check through the forward Kolmogorov equation: the
-/// finite-volume leverage is unit in the centre and its marginal reprices
-/// the surface, with no Monte Carlo noise in either.
+/// The same Gyöngy check by the forward Kolmogorov equation: unit leverage in the centre and the
+/// surface repriced, with no Monte Carlo noise in either.
 #[test]
 fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
   let result = calibrator(1.0)
@@ -175,9 +172,8 @@ fn half_mixing_still_reprices_the_surface() {
   );
 }
 
-/// A flat local volatility under a variance that never moves is
-/// Black–Scholes: `L ≡ 1` exactly and the cloud reprices Black calls to its
-/// Monte Carlo error.
+/// Flat local volatility under a frozen variance is Black–Scholes: `L ≡ 1` exactly, and the cloud
+/// reprices Black calls to its Monte Carlo error.
 #[test]
 fn a_supplied_local_vol_bypasses_dupire() {
   let strikes = vec![80.0, 90.0, 100.0, 110.0, 120.0];
@@ -216,11 +212,8 @@ fn a_supplied_local_vol_bypasses_dupire() {
   assert!(result.rmse() < 0.15, "rmse {}", result.rmse());
 }
 
-/// The market route a desk runs: an arbitrage-free SSVI surface fitted to
-/// quotes stands in for the market, its calls are the input and its own
-/// Dupire local volatility is supplied on the grid, so no finite-difference
-/// Dupire is needed. Under a Heston model that does **not** generate this
-/// surface, at half mixing, both leverage routes reprice the SSVI calls.
+/// An SSVI surface stands in for the market with its own Dupire local volatility on the grid; a
+/// Heston that did not generate it, at half mixing, reprices its calls by both leverage routes.
 #[test]
 fn an_ssvi_surface_is_repriced_through_both_leverage_routes() {
   let maturities = vec![0.25, 0.5, 0.75, 1.0];

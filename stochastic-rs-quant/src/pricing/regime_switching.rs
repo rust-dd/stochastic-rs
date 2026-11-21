@@ -1,24 +1,15 @@
-//! # Regime-Switching European Option Pricing
-//!
-//! Implements the regime-switching diffusion model as a [`FourierModelExt`],
-//! enabling pricing via any Fourier pricer (Carr-Madan, Gil-Pelaez, Lewis).
+//! Regime-switching diffusion as a [`FourierModelExt`] for any Fourier pricer, `Z_t` a Markov chain
+//! with generator `Q`, its chf of `ln(S_T/F_T)` a matrix exponential (`μₖ = −σₖ²/2`).
 //!
 //! $$
 //! d\ln S_t = (r - q - \tfrac12\sigma_{Z_t}^2)\,dt + \sigma_{Z_t}\,dW_t
 //! $$
-//!
-//! where $Z_t$ is a continuous-time Markov chain with generator matrix $Q$.
-//!
-//! The characteristic function of $\ln(S_T/F_T)$, with $\mu_k=-\tfrac12\sigma_k^2$, is the
-//! matrix exponential of a state-dependent drift/diffusion matrix:
-//!
 //! $$
 //! \phi_T(\xi) = \mathbf{e}_{z_0}^\top \exp\!\bigl(T\bigl(Q + \mathrm{diag}(
 //! i\xi\mu_k - \tfrac12\sigma_k^2\xi^2)\bigr)\bigr) \mathbf{1}
 //! $$
 //!
-//! Source:
-//! - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+//! Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -141,7 +132,7 @@ impl FourierModelExt for RegimeSwitchingModel {
 impl RegimeSwitchingModel {
   /// `E[(I − c)ᵏ] = k!·B₁,ₖ₊₁1` at the initial state for `k ≤ order`, `B` the first block row of
   /// `exp(A)`, `A` with `tQ` on and `diag(σᵢ²t − c)` above its block diagonal; `c = E[I]` centres.
-  /// Carbonell, Jimenez & Pedroso (2008), J. Comput. Appl. Math. 213(1), 300–305.
+  /// Reference: Carbonell, Jimenez & Pedroso (2008), J. Comput. Appl. Math. 213(1), 300–305
   fn integrated_variance_moments(&self, t: f64, c: f64, order: usize) -> [f64; 4] {
     let (m, blocks) = (self.vols.len(), order + 1);
     let mut block = Array2::<Complex64>::zeros((blocks * m, blocks * m));
@@ -168,13 +159,9 @@ impl RegimeSwitchingModel {
   }
 }
 
-/// COS (Fourier-cosine expansion) pricer for European options under
-/// regime-switching diffusion.
-///
-/// Source:
-/// - Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for
-///   European Options Based on Fourier-Cosine Series Expansions"
-/// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+/// Fang–Oosterlee COS pricer of a European option under the regime-switching diffusion.
+/// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
+/// Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
 #[derive(Debug, Clone)]
 pub struct CosPricer {
   /// Cosine terms, as [`CosEngine`]'s: `None`, the default, follows the chf's decay.
