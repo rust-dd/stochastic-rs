@@ -480,7 +480,9 @@ What does go stale:
    `the other 128 through the Euler engine`, whose list of what the engine covers
    follows it; for a configuration that stays on the host, the matching bullet
    under "What stays on the host". The page carries no family count.
-5. `notebooks/colab_cuda_check.ipynb`, cell index 5 — a prose enumeration with no
+5. `website/lib/facts.ts`: `processes`, `processesOnEngine` and `deviceFamilies` (the
+   `EulerSpec` variant count), which the home page prints.
+6. `notebooks/colab_cuda_check.ipynb`, cell index 5 — a prose enumeration with no
    hard counts; insert the name into the paragraph matching its family. Edit
    through Python, keeping the file's own formatting:
 
@@ -629,6 +631,6 @@ no host-only form — check the nine documented ways round the cap:
 - [ ] Chunk-invariance test extended if the family is fGN-fed
 - [ ] `guard!` line added; that tree's per-directory count and total bumped
 - [ ] Python macro invoked (`device` flag if on the engine) and `add_class` registered
-- [ ] `CLAUDE.md` counts, `python-parity.json`, `gpu-support.mdx` matrix + prose, notebook cell 5 updated
+- [ ] `CLAUDE.md` counts, `python-parity.json`, `gpu-support.mdx` matrix + prose, `facts.ts`, notebook cell 5 updated
 - [ ] Both clippy runs, `cargo doc -D warnings`, `cargo check --workspace --no-default-features`, parity + device-law suites green
 - [ ] Full battery run in a subagent with `CARGO_TARGET_DIR` in the scratchpad
