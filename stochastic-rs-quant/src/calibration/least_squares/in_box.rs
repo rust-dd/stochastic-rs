@@ -121,6 +121,7 @@ impl Bounds {
     cost: f64,
   ) -> Array1<f64> {
     let mut active = self.active.borrow_mut();
+    let folded = objective.at(&best).params();
     let mut seated = best.clone();
     let entering = |j: usize| !active[j] && set[j].is_some();
     for j in (0..set.len()).filter(|j| entering(*j)) {
@@ -136,9 +137,16 @@ impl Bounds {
       }
     }
     let on = |x: &Array1<f64>| Residual::residual(&objective, x).map(|r| r.dot(&r));
-    // Each cost is known to `2‖r‖·ε‖Dx‖`: a seat worse by less than both is (82)'s projection.
-    let rounding = 4.0 * cost.sqrt() * f64::EPSILON * objective.reach.get();
-    let kept = seated == best || on(&seated).is_ok_and(|on| on <= cost + rounding);
+    // An ulp of every folded value moves the cost by `2‖r‖·ε‖Dθ‖`: a seat worse by no more than
+    // twice that is taken, as (82)'s projection onto the bound.
+    let slopes = objective.slopes.borrow();
+    let columns = slopes
+      .iter()
+      .flat_map(|slopes| slopes.columns().into_iter().zip(&folded));
+    let reach = columns.map(|(column, value)| column.dot(&column) * value * value);
+    let allowance = 4.0 * cost.sqrt() * f64::EPSILON * reach.sum::<f64>().sqrt();
+    drop(slopes);
+    let kept = seated == best || on(&seated).is_ok_and(|on| on <= cost + allowance);
     for (j, active) in active.iter_mut().enumerate() {
       *active = set[j].is_some() && (kept || *active);
     }
@@ -461,17 +469,33 @@ mod tests {
     );
   }
 
-  /// One ulp short of a bound the cost falls across, where the cost on the bound reads one ulp of
-  /// its residual higher: the two costs are one to their rounding, and the seat is taken.
+  /// One ulp short of a bound the cost falls across, where the cost on the bound reads `8ε`
+  /// higher, 0.9 of the allowance `4‖r‖·ε‖Dθ‖ = 4√5·ε`: the seat is taken.
   #[test]
   fn a_seat_whose_cost_is_worse_by_its_rounding_alone_is_taken() {
     let rows = |v: &[f64]| {
-      let bit = if v[0] >= 1.0 { f64::EPSILON } else { 0.0 };
+      let bit = if v[0] >= 1.0 { 4.0 * f64::EPSILON } else { 0.0 };
       ndarray::array![2.0 - v[0] + bit, v[1] - 2.0]
     };
     let slopes = |_: &[f64]| ndarray::array![[-1.0, 0.0], [0.0, 1.0]];
     let (fitted, _, _) = capped([1.0 - f64::EPSILON / 2.0, 2.0], [1.0, FREE], rows, slopes);
     assert_eq!(fitted[0], 1.0, "{fitted}");
+  }
+
+  /// The same seat at a rise of `32ε`, 3.6 times the allowance, is refused.
+  #[test]
+  fn a_seat_whose_cost_is_worse_by_a_few_allowances_is_refused() {
+    let rows = |v: &[f64]| {
+      let bit = if v[0] >= 1.0 {
+        16.0 * f64::EPSILON
+      } else {
+        0.0
+      };
+      ndarray::array![2.0 - v[0] + bit, v[1] - 2.0]
+    };
+    let slopes = |_: &[f64]| ndarray::array![[-1.0, 0.0], [0.0, 1.0]];
+    let (fitted, _, _) = capped([1.0 - f64::EPSILON / 2.0, 2.0], [1.0, FREE], rows, slopes);
+    assert!(fitted[0] < 1.0, "{fitted}");
   }
 
   /// The first rests 1e-6 from a bound the cost falls across: its step is 1 and then 2e-7.

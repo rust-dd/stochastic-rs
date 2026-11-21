@@ -270,8 +270,6 @@ struct Objective<P> {
   /// The largest `|xⱼ|` a Jacobian was asked at, the size the flat rule gives each column.
   sizes: RefCell<Array1<f64>>,
   flat: Cell<bool>,
-  /// Moré's `‖Dx‖` at the last Jacobian: `ε` times it is the rounding of a residual row.
-  reach: Cell<f64>,
   /// An active pull only, so a zero-weight one leaves the fit as it is without one.
   regularization: Option<Regularization>,
   bounds: Option<Bounds>,
@@ -378,8 +376,7 @@ impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
         column.dot(&column) * size * size
       });
     let norm = residuals.dot(&residuals).sqrt();
-    self.reach.set(scaled.sum::<f64>().sqrt());
-    if norm > 0.0 && self.reach.get() <= f64::EPSILON * norm {
+    if norm > 0.0 && scaled.sum::<f64>().sqrt() <= f64::EPSILON * norm {
       self.flat.set(true);
       return Err(());
     }
@@ -424,7 +421,6 @@ fn drive<P: LeastSquaresProblem>(
     rows: RefCell::new(None),
     sizes: RefCell::new(Array1::zeros(initial.len())),
     flat: Cell::new(false),
-    reach: Cell::new(0.0),
     regularization: options.regularization.filter(Regularization::is_active),
     bounds: rooms.map(|rooms| Bounds::new(rooms, initial.len())),
     slopes: RefCell::new(None),
