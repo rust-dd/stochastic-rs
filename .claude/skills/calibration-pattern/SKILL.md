@@ -286,8 +286,11 @@ file you are copying from rather than assuming.
   `SabrCalibrator`, `SvjCalibrator`, `DoubleHestonCalibrator`, `HkdeCalibrator`,
   `LevyCalibrator`, `CgmysvCalibrator`, and both vol-surface fits
   (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`), which pass their own
-  `LmOptions`. Heston and CGMYSV call it through `reseat::minimize_reseated`, which
-  restarts a fit stopped on a saturated logistic coordinate.
+  `LmOptions`. Two wrappers drive the same core: Heston and CGMYSV call
+  `reseat::minimize_reseated`, which restarts a fit stopped on a saturated logistic
+  coordinate, and the boxed fits (HKDE, SVJ, Double Heston and Lévy) call
+  `least_squares::minimize_in_box`, which holds a coordinate on a bound its step
+  reaches when the cost falls across it.
   - **The pull.** The core appends `CalibrationOptions::regularization`'s rows
     `√λⱼ(θⱼ − θ⁰ⱼ)` and their Jacobian to every fit; `options.lm(pivoted_qr, n)`
     answers a pull of another length with `DimensionMismatch`. A problem whose
@@ -427,7 +430,8 @@ the class in `stochastic-rs-py/src/lib.rs` with `m.add_class::<PyXyzCalibrator>(
 **directories** under `stochastic-rs-quant/src/calibration/`; `bsm`,
 `heston_stoch_corr`, `cgmysv`, `sabr`, `sabr_caplet`, `hw_swaption` and
 `tree_swaption` are files with a sibling directory for their tests where they have
-one. In increasing complexity:
+one (`tree_swaption/` also holds `g2pp_european`, the G2++ European swaption). In
+increasing complexity:
 
 - `BsmCalibrator` (`calibration/bsm.rs`) — the simplest full example: one
   volatility, vega-weighted residuals, on `least_squares::minimize`.
