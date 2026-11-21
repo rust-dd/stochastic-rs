@@ -135,3 +135,24 @@ fn a_knocked_in_barrier_at_zero_volatility_stays_knocked_in() {
   let closed = BarrierPricer::new(0.0).price(&nan_strike, s, r, q, tau);
   assert!(closed.is_nan());
 }
+
+/// The strike rule does not depend on the volatility: a breached knock-in is its vanilla, NaN
+/// before expiry at a strike that is not positive.
+#[test]
+fn a_knocked_in_barrier_is_nan_at_a_strike_that_is_not_positive_at_any_volatility() {
+  for k in [0.0, -5.0] {
+    let option = BarrierOption {
+      strike: k,
+      barrier: 97.0,
+      rebate: 3.0,
+      barrier_type: BarrierType::UpAndIn,
+      option_type: OptionType::Call,
+    };
+    for sigma in [0.0, 0.2] {
+      let price = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 1.0);
+      assert!(price.is_nan(), "k = {k}, sigma = {sigma}: {price}");
+      let expired = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 0.0);
+      assert_eq!(expired, 100.0 - k, "k = {k}, sigma = {sigma}");
+    }
+  }
+}

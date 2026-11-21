@@ -19,6 +19,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::OptionType;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
+use crate::pricing::digital::not_positive;
 use crate::pricing::digital::vanilla_payoff;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::DoubleBarrierOption;
@@ -79,6 +80,7 @@ impl BarrierPricer {
     };
     match (breached, knock_in) {
       (true, false) => return rebate,
+      (true, true) if tau > 0.0 && not_positive(&[k]) => return f64::NAN,
       (true, true) if self.sigma == 0.0 => return deterministic(option, s, r, q, tau),
       (true, true) => {
         let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
