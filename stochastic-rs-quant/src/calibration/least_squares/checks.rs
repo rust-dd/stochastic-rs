@@ -43,13 +43,13 @@ pub(crate) fn worst_relative_error(a: ArrayView2<f64>, b: ArrayView2<f64>) -> f6
   f64::max_or_nan_fold(a.iter().zip(&b).map(ratio))
 }
 
-/// MINPACK's `chkder` as a test: the worst column's `‖J − D‖/‖D‖` at `x`, `D` the central
-/// difference of the residuals over `step(x_j)`; two zero columns read 0.
-pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
+/// Per column, `‖J − D‖` and `‖D‖` at `x`, `D` the central difference of the residuals over
+/// `step(x_j)`.
+pub(crate) fn jacobian_gaps<P: LeastSquaresProblem>(
   problem: &mut P,
   x: ArrayView1<f64>,
   step: impl Fn(usize, f64) -> f64,
-) -> f64 {
+) -> Vec<(f64, f64)> {
   let mut at = |y: &Array1<f64>| {
     problem.set_params(y.view());
     problem.residuals().expect("residuals beside the point")
@@ -66,11 +66,68 @@ pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
   problem.set_params(x);
   let jacobian = problem.jacobian().expect("a Jacobian at the point");
   let norm = |v: &Array1<f64>| v.dot(v).sqrt();
-  f64::max_or_nan_fold(columns.iter().enumerate().map(|(j, difference)| {
-    let gap = norm(&(&jacobian.column(j) - difference));
-    let scale = norm(difference);
-    if scale == 0.0 { gap } else { gap / scale }
-  }))
+  let columns = columns.iter().enumerate();
+  columns
+    .map(|(j, difference)| (norm(&(&jacobian.column(j) - difference)), norm(difference)))
+    .collect()
+}
+
+/// MINPACK's `chkder` as a test: the worst column's `‖J − D‖/‖D‖` of [`jacobian_gaps`]; two zero
+/// columns read 0.
+pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
+  problem: &mut P,
+  x: ArrayView1<f64>,
+  step: impl Fn(usize, f64) -> f64,
+) -> f64 {
+  let gaps = jacobian_gaps(problem, x, step).into_iter();
+  f64::max_or_nan_fold(gaps.map(|(gap, scale)| if scale == 0.0 { gap } else { gap / scale }))
+}
+
+/// The residuals' rounding at `x` along coordinate `j`: half the largest second difference over
+/// steps of one to six parts in `1e9`, where no curvature shows.
+pub(crate) fn residual_rounding<P: LeastSquaresProblem>(
+  problem: &mut P,
+  x: ArrayView1<f64>,
+  j: usize,
+) -> f64 {
+  let mut at = |offset: f64| {
+    let mut y = x.to_owned();
+    y[j] += offset;
+    problem.set_params(y.view());
+    problem.residuals().expect("residuals beside the point")
+  };
+  let centre = at(0.0);
+  let seconds = (1..=6).map(|k| {
+    let delta = 1e-9 * f64::from(k) * x[j].abs().max(1e-2);
+    let second = at(delta) - 2.0 * &centre + at(-delta);
+    0.5 * f64::max_or_nan_fold(second.iter().map(|v| v.abs()))
+  });
+  f64::max_or_nan_fold(seconds.collect::<Vec<_>>())
+}
+
+/// Each column of [`jacobian_gaps`] within `tolerance` of `‖D‖`, or past it by at most twice the
+/// `(4/h + 1/h_ref)·√m·σ` that the residuals' rounding `σ` explains, `h` the fit's own step.
+pub(crate) fn assert_slope<P: LeastSquaresProblem>(
+  problem: &mut P,
+  label: &str,
+  x: ArrayView1<f64>,
+  reference: impl Fn(usize, f64) -> f64,
+  tolerance: f64,
+) {
+  let gaps = jacobian_gaps(problem, x, &reference);
+  let folded = problem.params();
+  let rows = problem.residuals().expect("residuals at the point").len() as f64;
+  for (j, (gap, scale)) in gaps.into_iter().enumerate() {
+    let width = (4.0 / step(folded[j]) + 1.0 / reference(j, x[j])) * rows.sqrt();
+    let within = gap <= tolerance * scale
+      || gap <= tolerance * scale + 2.0 * width * residual_rounding(problem, x, j);
+    assert!(
+      within,
+      "{label}, column {j}: {:e} of {:e}",
+      gap / scale,
+      tolerance
+    );
+  }
 }
 
 /// `base`, then per coordinate each bound and, where the box reflects, `base`'s mirror image
@@ -115,8 +172,8 @@ pub(crate) fn beside_points(
   points
 }
 
-/// [`jacobian_error`]'s step at a beside point: a tenth of the shared step stays inside the bound,
-/// and never shrinks to where the reference difference is rounding.
+/// [`jacobian_error`]'s step at a beside point: a tenth of the shared step, which stays inside the
+/// bound and never shrinks under `1e-6`.
 pub(crate) fn beside_reference(_: usize, x: f64) -> f64 {
   0.1 * step(x)
 }
