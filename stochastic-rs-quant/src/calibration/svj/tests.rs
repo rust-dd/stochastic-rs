@@ -223,27 +223,30 @@ fn test_svj_calibrate() {
   assert!(result.rmse().is_finite() && !result.history.is_empty());
 }
 
+/// Each column within 2e-2 of `‖D‖` on the box and 1e-2 beside a bound, or within what its
+/// residuals' rounding explains: Heston's `κθ/σ²` terms cancel to `1e-9` at σ ≈ 0.01.
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   use super::loss::SvjProblem;
   use super::params::*;
   use crate::calibration::least_squares::LeastSquaresProblem;
+  use crate::calibration::least_squares::checks::assert_slope;
   use crate::calibration::least_squares::checks::beside_points;
   use crate::calibration::least_squares::checks::beside_reference;
   use crate::calibration::least_squares::checks::box_points;
-  use crate::calibration::least_squares::checks::jacobian_error;
   let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let mut problem = SvjProblem::new(&calibrator, START);
   let bounds = BOX;
   let far = ndarray::array![0.2, 12.0, 0.3, 0.9, 0.6, 4.0, -0.3, 0.5];
+  let on_the_box = |_: usize, x: f64| 2e-3 * x.abs().max(1e-2);
   for base in [problem.params(), far] {
     for (label, point) in box_points(base.view(), &bounds, &[true; 8]) {
-      let error = jacobian_error(&mut problem, point.view(), |_, x| 2e-3 * x.abs().max(1e-2));
-      assert!(error < 2e-2, "{label} of {base}: {error:e}");
+      let label = format!("{label} of {base}");
+      assert_slope(&mut problem, &label, point.view(), on_the_box, 2e-2);
     }
     for (label, point) in beside_points(base.view(), &bounds) {
-      let error = jacobian_error(&mut problem, point.view(), beside_reference);
-      assert!(error < 1e-2, "{label} of {base}: {error:e}");
+      let label = format!("{label} of {base}");
+      assert_slope(&mut problem, &label, point.view(), beside_reference, 1e-2);
     }
   }
 }
