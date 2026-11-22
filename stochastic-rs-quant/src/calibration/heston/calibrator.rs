@@ -16,7 +16,7 @@ use crate::calibration::reseat::minimize_reseated;
 use crate::pricing::heston::HestonParams;
 
 /// Spot and variance series whose NMLE, PMLE or NMLE-CEKF fit starts the calibration.
-/// Wang et al. (2018), Sci. China Inf. Sci. 61, 042202, DOI 10.1007/s11432-017-9215-8.
+/// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61(4), 042202, DOI 10.1007/s11432-017-9215-8
 #[derive(Clone, Debug, Default)]
 pub struct HestonMleSeed {
   pub s: Array1<f64>,
@@ -32,7 +32,8 @@ pub struct HestonMleSeed {
 }
 
 /// Heston fit to vanilla quotes by Levenberg–Marquardt, Cui et al.'s analytic Jacobian by default.
-/// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
+/// Reference: Levenberg (1944), Q. Appl. Math. 2(2), 164–168, DOI 10.1090/qam/10666
+/// Reference: Marquardt (1963), J. Soc. Ind. Appl. Math. 11(2), 431–441, DOI 10.1137/0111030
 #[derive(Clone, Debug)]
 pub struct HestonCalibrator {
   pub(super) s: f64,

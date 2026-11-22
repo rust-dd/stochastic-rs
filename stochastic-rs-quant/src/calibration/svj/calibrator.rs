@@ -16,7 +16,8 @@ pub(super) const THETA_MIN: f64 = 1e-8;
 pub(super) const SIGMA_V_MIN: f64 = 1e-8;
 
 /// Bates (SVJ) fit to vanilla quotes by Levenberg–Marquardt on a central-difference Jacobian.
-/// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
+/// Reference: Levenberg (1944), Q. Appl. Math. 2(2), 164–168, DOI 10.1090/qam/10666
+/// Reference: Marquardt (1963), J. Soc. Ind. Appl. Math. 11(2), 431–441, DOI 10.1137/0111030
 #[derive(Clone, Debug)]
 pub struct SvjCalibrator {
   pub(super) s: f64,
