@@ -39,7 +39,7 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
 }
 ```
 
-`Unseeded` and `Deterministic` are the only implementations; the trait is sealed. A `Deterministic` clone is a snapshot of its state, not a shared handle.
+`Unseeded` and `Deterministic` are its public implementations; the trait is sealed by a hidden supertrait, outside the stability promise. A `Deterministic` clone is a snapshot of its state, not a shared handle.
 
 ## Cloning a process
 
