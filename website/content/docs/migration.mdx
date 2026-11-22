@@ -65,7 +65,7 @@ let model = fit.to_model();
 
 ### Heston SLV calibration
 
-`calibrate_leverage` takes a local-volatility `Grid2D<f64>`, snapshot maturities and a `ParticleMethod`, and returns `Result<ParticleCalibration>`. Use the result's leverage surface in place of the previously returned bare surface. The particle estimator uses the reference kernel and bandwidth, so recalibration can change existing numerical results.
+`calibrate_leverage` takes a local-volatility `Grid2D<f64>`, snapshot maturities and a `ParticleMethod`, and returns `Result<ParticleCalibration, QuantError>`. Use the result's leverage surface in place of the previously returned bare surface. The particle estimator uses the reference kernel and bandwidth, so recalibration can change existing numerical results.
 
 `HestonSlvCalibrator` replaces `calibrate_from_dupire`. Supply spot, rates and the market call grid explicitly; its `method` is a `LeverageMethod` selecting particles or the Fokker–Planck solver. `HestonSlvPricer` reads leverage at each step's start. See [Heston SLV calibration](/docs/quant#heston-slv-leverage-calibration) for the Rust and Python interfaces.
 
