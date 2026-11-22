@@ -48,7 +48,7 @@ def _simulated_puts(seed):
 
 
 def _quantlib_puts():
-    """Finite-difference puts at `RHO_XR`, `0` and `-RHO_XR`, and the exact zero-correlation puts."""
+    """Finite-difference puts at `RHO_XR`, `0` and `-RHO_XR`, and exact zero-correlation puts."""
     today = ql.Date(10, 11, 2026)
     ql.Settings.instance().evaluationDate = today
     dc = ql.Actual365Fixed()

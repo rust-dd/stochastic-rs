@@ -1,4 +1,5 @@
-"""`PyHestonHullWhite2F`: construction, invalid input, path shape, seed reproducibility, `sample_par`."""
+"""`PyHestonHullWhite2F`: construction, invalid input, path shape, seed reproducibility and
+`sample_par`."""
 
 from __future__ import annotations
 
