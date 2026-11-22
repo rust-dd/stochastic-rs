@@ -423,3 +423,20 @@ fn a_strike_for_an_uncomputable_delta_is_nan_not_a_bracket_edge() {
   assert!(strike_for_delta(100.0, 0.02, 0.01, -1.0, params, 0.25, 1.0).is_nan());
   assert!(strike_for_delta(100.0, 0.02, 0.01, 1.0, params, 0.25, 1.0).is_finite());
 }
+
+/// A strangle strike where Hagan's volatility is negative costs NaN, as a parameter set Hagan's
+/// formula refuses does, so a hop that prices replaces it, where its price panicked.
+#[test]
+fn a_negative_hagan_volatility_at_a_strangle_strike_costs_nan() {
+  let problem = objective::SabrSmileProblem {
+    beta: 0.0,
+    sigma_atm: 0.05,
+    sigma_rr: 0.0,
+    sigma_bf: 0.05,
+    ..bounded_problem()
+  };
+  let start = [1.1, 0.9, 1.1, 0.9, 10.0, -0.99];
+  assert!(problem.cost(&start.to_vec()).unwrap().is_nan());
+  let (_, best) = objective::basin_hopping_opt(start, 20, 1.0, &problem);
+  assert!(best.is_finite(), "{best}");
+}
