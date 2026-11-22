@@ -32,7 +32,7 @@ Place new code in the appropriate existing module. Do not create top-level modul
 
 All new structs, traits, and functions in `stochastic-rs-distributions` and `stochastic-rs-stochastic` must be generic over the float type using the existing `FloatExt` trait bound (`T: FloatExt`). Never hardcode `f64` in new code there.
 
-In quant, what implements a pricer or calibrator trait is `f64`; `T: RealExt` stays where it is (curves, rate instruments, risk metrics, SVI, `FmVol`); a custom scalar is a separate decision.
+In quant, what implements a pricer or calibrator trait is `f64`; `T: RealExt` stays where it is (for example curves, rate instruments, risk metrics, SVI, `FmVol`); a custom scalar is a separate decision.
 
 ## 3. Use `ndarray` everywhere
 
