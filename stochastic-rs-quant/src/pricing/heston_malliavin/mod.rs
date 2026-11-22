@@ -1,5 +1,6 @@
 //! Malliavin Monte Carlo Greeks for Heston: the spot score on the Brownian orthogonal to the
 //! variance, exact at `|ρ| < 1`; the `v0` Greek is a bump-gated common-random-number difference.
+//!
 //! Reference: Fournié et al. (1999), Finance Stoch. 3(4), 391–412, DOI 10.1007/s007800050068
 //! Reference: Lord et al. (2010), Quant. Finance 10(2), 177–194, DOI 10.1080/14697680802392496
 

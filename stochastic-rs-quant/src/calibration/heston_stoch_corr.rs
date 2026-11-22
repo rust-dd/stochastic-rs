@@ -1,5 +1,6 @@
 //! Heston stochastic-correlation calibration of `[κ_v, θ_v, σ_v, v₀, κ_r, μ_r, σ_r, ρ₀, ρ₂]` by
 //! bounded SLSQP, the optimiser of the Python reference.
+//!
 //! Reference: Teng et al. (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
 //! Source: <https://github.com/tanasr/HestonStochCorr>
 
