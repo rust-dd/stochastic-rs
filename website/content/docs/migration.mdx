@@ -20,13 +20,14 @@ v3 updates the sampling and pricing APIs without renaming crates. The changes be
 The bundled-market-data trait (`calculate_call_put()`, `calculate_price()`, `implied_volatility()`) is removed. The struct holds model parameters only, and the query travels as arguments through `ModelPricer`:
 
 ```rust
-// v2.6
-let p = HestonPricer::builder().s(100.0).k(100.0).r(0.03).tau(0.5)
-    .v0(0.04).theta(0.04).kappa(2.0).sigma(0.5).rho(-0.7).build();
+// v2.6: HestonPricer::builder(s, v0, k, r, rho, kappa, theta, sigma)
+let p = HestonPricer::builder(100.0, 0.04, 100.0, 0.03, -0.7, 2.0, 0.04, 0.5)
+    .tau(0.5).build();
 let (call, put) = p.calculate_call_put();
 
-// v3: HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)
-let p = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.5, None);
+// v3: Heston's λ, 0 by default, is with_vol_risk_premium(lambda)
+let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.5, rho: -0.7 };
+let p = HestonPricer::new(params);
 let call = p.price_call(100.0, 100.0, 0.03, 0.0, 0.5);
 let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 ```
