@@ -300,9 +300,8 @@ wave ledgers (`A1*_WAVE_LEDGER.md`, `A2_WAVE_LEDGER.md`,
 `DETERMINISTIC_PARALLELISM_LEDGER.md`, …) and
 `docs/VALIDATION_COVERAGE_AUDIT_2026_08_12.md`.
 
-The workspace is on `3.0.0-beta.1` (root `Cargo.toml`,
-`[workspace.package] version`), so the next cut is a v3 beta / rc, not
-another v2 patch. Check the actual version before assuming.
+Read the version from the root `Cargo.toml` (`[workspace.package] version`) before
+assuming which cut comes next.
 
 Each stage is triggered by the user; do not autonomously start a
 release without explicit confirmation. Note the standing preference: an
