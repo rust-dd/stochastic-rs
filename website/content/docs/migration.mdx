@@ -35,7 +35,29 @@ let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 
 ## Calibrators
 
-- `HestonCalibrator`, `SabrCalibrator` and the three swaption calibrators (`HullWhiteSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator`, `G2ppSwaptionCalibrator`) have a public `regularization: Option<Regularization>` field; a struct literal must set it (`None` reproduces v2).
+The vanilla calibrators take their quotes as a `Vec<OptionQuote>`, and every calibrator returns a `Calibrated`:
+
+```rust
+// v2.6
+let c = HestonCalibrator::new(None, prices.into(), spots.into(), strikes.into(),
+    0.03, Some(0.0), 0.5, OptionType::Call, None, None, None, false);
+let fit: HestonCalibrationResult = c.calibrate(None)?;
+let model = fit.to_model(0.03, 0.0);
+
+// v3: HestonCalibrator::new(s, r, q, quotes); HestonParams lives in pricing::heston
+let quotes = strikes.iter().zip(&prices)
+    .map(|(&k, &price)| OptionQuote::new(k, 0.5, price, OptionType::Call))
+    .collect::<Vec<_>>();
+let fit: Calibrated<HestonParams> = HestonCalibrator::new(100.0, 0.03, 0.0, quotes)
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)?;
+let model = fit.to_model();
+```
+
+- `OptionQuote { strike, tau, price, option_type }` (`stochastic_rs::quant::OptionQuote`, built by `OptionQuote::new`) is the one vanilla quote, its `price` a present value, and one list may mix maturities, calls and puts. `BsmCalibrator`, `HestonCalibrator`, `SabrCalibrator`, `SvjCalibrator`, `DoubleHestonCalibrator`, `HkdeCalibrator`, `CgmysvCalibrator` and `HscmCalibrator` are built by `new(s, r, q, quotes)` and `LevyCalibrator` by `new(model_type, s, r, q, quotes)`, with one spot and an `f64` dividend yield. The quotes replace the per-quote `c_market`, `s` and `k` vectors with their single `tau` and `option_type`, and the `MarketSlice` and `MarketOption` types (Python's `MarketSlice` stays). `new` panics unless `s` is finite and positive and `r`, `q` are finite; `calibrate` answers an empty list with `InsufficientData` and a strike, `tau` or price it cannot use with `InvalidQuote { index }`.
+- `calibrate` takes `Option<Params>`, the parameter set the fit returns, since `Calibrator::InitialGuess` is gone: a start is a `CgmysvParams`, `LevyParams`, `HscmParams`, `SabrCapletParams` or `HullWhiteParams` where it was a vector, an array or a tuple. `with_start(params)`, or the `start` that `new` takes, replaces `set_initial_guess` and the `params` and `initial_guess` fields, and `HestonCalibrator`'s `mle_s`, `mle_v` and `mle_r` arguments move to `with_mle_seed(HestonMleSeed { … })`.
+- Every quant calibrator returns `calibration::Calibrated<Params, D = ()>`, whose public fields are `params`, `loss`, `converged`, `iterations`, `message`, `max_error`, `history` and `diagnostics`, `()` but for the SABR smile's strikes and the Heston SLV fit's inner Heston fit, in place of its own `…CalibrationResult`. The trail is the result's `history`, recorded per call, where the calibrator had `history()`; an entry is `{ iteration, params, residuals, loss }`, and `CalibrationHistory::metric` replaces `metric_history`. `Error` is `QuantError` where it was `anyhow::Error`. `to_model()` takes no arguments, the rates travelling with the pricing query, and neither does `to_short_rate_model()`: `HullWhiteParams` carries `initial_rate` and `theta`.
+- `CalibrationOptions { max_iterations, tolerance, patience, record_history, loss_metrics, regularization }`, passed through `with_options`, replaces the per-calibrator `max_iter`, `max_iters`, `sd_tolerance`, `record_history` and `loss_metrics` arguments, fields and setters; `SabrSmileCalibrator` keeps its basin-hopping knobs. A knob a fit cannot read, set away from its default, is `Err(QuantError::Unsupported { what })`.
 - `HestonCalibrationResult` has no `termination` field: 2.6.2's string is `CalibrationResult::message()`, one of `"converged"`, `"evaluation budget exhausted"`, `"no numerical progress"`, `"solver failed"`, `"flat objective"`, `"not stationary"` and `"stopped at the bound of <name>"`, and the private field behind it means the result can no longer be built from a struct literal. The reported `rmse` comes from the pricer that was fitted.
 - `set_feller_projection(true)` lowers σ alone to the largest value with σ² ≤ 2κθ at every point the fit evaluates, so the result passes `HestonParams::satisfies_feller_condition()` exactly, and a surface that violates Feller's condition is fitted on the boundary. `projected_with_feller_condition()` moves σ alone too; 2.6.2's could stop one ulp outside the condition.
 - `SabrCalibrator::new` asserts that strikes and vols have the same length, and the shifted caplet calibrator returns `f64::MAX` residuals instead of `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step does not stall on a non-finite loss.
@@ -51,7 +73,7 @@ let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 
 Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing can produce slightly different estimates because Basin skips curvature updates that fail its numerical threshold. Basin also replaces `levenberg-marquardt` for least-squares calibration, including SVI, SSVI and the AI surrogate; these fits use trust-region damping, with pivoted QR for stochastic-volatility and surrogate fits and Cholesky for the smaller pricing objectives. CGMYSV optimizes in smooth bounded coordinates, as Heston does; parameter and result types are unchanged. The `levenberg_marquardt::LeastSquaresProblem` implementations on the calibrators are removed; use the `Calibrator` trait to run a fit.
 
-`nalgebra` is no longer a direct workspace dependency; it can still appear transitively through dependencies such as `gauss-quad`. The least-squares calibrators (`BsmCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HkdeCalibrator`, `DoubleHestonCalibrator`, `SvjCalibrator`) take their `c_market`, `s` and `k` quotes as `ndarray::Array1<f64>` instead of `nalgebra::DVector<f64>`, and their `From` conversions, `HestonCalibrator::set_residual_weights`, `Regularization`'s row helpers and `CalibrationHistory` follow. A `Vec<f64>` still converts with `.into()`, so call sites that passed `prices.into()` are unchanged; `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and `DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
+`nalgebra` is no longer a direct workspace dependency; it can still appear transitively through dependencies such as `gauss-quad`. The six calibrators that took `c_market`, `s` and `k` as `nalgebra::DVector<f64>` (`BsmCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HkdeCalibrator`, `DoubleHestonCalibrator`, `SvjCalibrator`) take a `Vec<OptionQuote>` (above). The vectors that remain are `ndarray::Array1<f64>`: their parameter sets' `From` conversions, `CalibrationHistory::residuals` and the weights of `HestonCalibrator::with_residual_weights`, which replaces `set_residual_weights` and takes any `Into<Array1<f64>>`, a `Vec<f64>` included. `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and `DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
 
 Tolerance and patience settings keep their relative-tolerance and residual-evaluation-budget meanings. Evaluation counts and termination messages can differ between solvers. An exhausted budget, a failed model evaluation or a numerical stall does not count as convergence; the fit returns the best accepted parameters.
 
