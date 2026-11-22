@@ -15,9 +15,8 @@ pub(crate) use inversion::gaussian_share;
 pub(crate) use inversion::head_floor;
 pub(crate) use inversion::reach_and_scale;
 
-/// Starting panel width. Wide enough that a smooth integrand clears it in one
-/// tanh-sinh pass, narrow enough that the rule's fixed ~350-point budget still
-/// resolves the phase `e^{-iu·ln(K/S)}` at ordinary moneyness.
+/// Starting panel width: a smooth integrand clears it in one tanh-sinh pass, and the ~350-point
+/// budget still resolves the phase `e^{-iu·ln(K/S)}` at ordinary moneyness.
 const INITIAL_WIDTH: f64 = 8.0;
 /// Floor on the panel width, so a pathological integrand cannot drive the walk
 /// to a standstill.
@@ -198,9 +197,8 @@ mod tests {
     assert!(v.is_nan(), "a NaN integrand must exit as NaN, got {v}");
   }
 
-  /// A `NaN` over part of the range poisons the whole integral: once any
-  /// piece of the integrand is undefined there is no integral to return, and
-  /// the swallowed version silently reports the finite piece alone.
+  /// A `NaN` over part of the range poisons the whole integral: dropping it would report the
+  /// finite piece alone as the integral.
   #[test]
   fn a_partially_nan_integrand_is_poisoned_too() {
     let v = integrate_to_convergence(

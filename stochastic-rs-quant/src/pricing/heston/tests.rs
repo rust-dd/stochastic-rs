@@ -86,10 +86,8 @@ fn heston_implied_volatility() {
   assert!(iv.is_finite() && iv > 0.0, "implied vol {iv}");
 }
 
-/// Long-maturity / high-|ρ| regression: the Albrecher-Mayer-Schoutens-Tistaert
-/// (2007) "Little Heston Trap" form must keep the principal-branch logarithm
-/// stable for T = 5y, ρ = -0.9. Original Heston (1993) form develops a
-/// branch-cut discontinuity in this regime; the Trap form does not.
+/// At `T = 5`, `ρ = −0.9` the original Heston (1993) form crosses its logarithm's branch cut; the
+/// Little Heston Trap form of Albrecher et al. (2007) keeps the call finite and positive.
 #[test]
 fn heston_little_trap_long_maturity_high_rho() {
   let heston = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.9));
@@ -120,44 +118,8 @@ fn atm_pricer() -> HestonPricer {
   HestonPricer::new(P)
 }
 
-/// `HestonPricer`'s Greeks vs. `AnalyticHestonEngine::finite_diff_greeks`
-/// on the identical parameter set.
-///
-/// `delta`/`gamma`/`vega` are checked tight (`rel < 1e-6`) at `bump = 1e-4`,
-/// which makes the engine's `h_S = S·bump` and `h_v0 = v0·bump` coincide
-/// exactly with this crate's own `h_S = S·1e-4` / `h_v0 = v0·1e-4` steps —
-/// an apples-to-apples comparison of the same central-difference formula at
-/// the same step, rather than two independently-tuned schemes that merely
-/// converge to the same limit.
-///
-/// `theta` needs two separate checks, because `finite_diff_greeks`'s theta
-/// is a *one-sided backward* difference (`price_at(τ)` and
-/// `price_at(τ - h_τ)` only, no `τ + h_τ` term) — an asymmetric (`O(bump)`,
-/// not this crate's `O(bump²)`) truncation error — even though both paths
-/// agree on the calendar `-∂P/∂τ` sign convention
-/// [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc mandates,
-/// so no single
-/// engine `bump` makes `direct.theta() == engine_theta` to a tight
-/// tolerance while *also* reflecting the engine's real default:
-/// - `theta_tight` (`bump = 1e-7`) verifies `theta` converges to the
-///   analytic `-∂P/∂τ` limit as `bump → 0` — not that it agrees with the
-///   engine's *actual configured* precision. (`bump` below ~`1e-8` stops
-///   helping and then hurts: the underlying `p_j` characteristic-function
-///   integral is itself only converged to a `1e-8` relative tolerance, so a
-///   too-small bump starts differencing quadrature noise instead of
-///   signal.)
-/// - `theta_default` (`bump = 1e-3`, `AnalyticHestonEngine::new`'s own
-///   out-of-the-box default) pins the real-world gap a caller hitting the
-///   engine with its default settings would actually see. Tolerance is
-///   `O(bump)`-derived: a one-sided backward difference has leading error
-///   `≈ (h_τ/2)·|∂²P/∂τ²|`, i.e. relative error `≈ (h_τ/2)·|∂²P/∂τ² / ∂P/∂τ|`.
-///   The curvature ratio `|∂²P/∂τ² / ∂P/∂τ|` is read off empirically from
-///   the `bump = 1e-4` case (h_τ = τ·1e-4 = 1e-5), whose still-`O(h_τ)`
-///   residual against `theta_tight` was ≈ 2.1e-5 relative, giving
-///   `|∂²P/∂τ²/∂P/∂τ| ≈ 2·2.1e-5/1e-5 ≈ 4.2`; at the default `bump = 1e-3`
-///   (`h_τ = τ·1e-3 = 1e-4`, 10× larger), the same-order error should scale
-///   ≈ linearly to ≈ 2.1e-4 — `5e-4` below leaves headroom without hiding a
-///   regression.
+/// `HestonPricer`'s Greeks against `AnalyticHestonEngine`'s bumps: delta, gamma and vega at
+/// `bump = 1e-4`, the same central steps; theta, a backward difference there, at 1e-7 and 1e-3.
 #[test]
 fn heston_greeks_match_engine_bumps() {
   let direct = atm_pricer();
@@ -195,6 +157,7 @@ fn heston_greeks_match_engine_bumps() {
     );
   }
 
+  // Below about 1e-8 the bump differences the integral's own 1e-8 tolerance, not the price.
   engine.bump = 1e-7;
   let theta_tight = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_tight =
@@ -205,6 +168,7 @@ fn heston_greeks_match_engine_bumps() {
     direct.theta(s, k, r, q, tau, ot)
   );
 
+  // At the default `h_τ = 1e-4` the backward difference errs by `(h_τ/2)·|P_ττ/P_τ|` ≈ 2.1e-4.
   engine.bump = 1e-3;
   let theta_default = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_default =
@@ -233,11 +197,8 @@ fn heston_greeks_all_finite() {
   );
 }
 
-/// `vega`/`vanna`/`volga`/`veta` guard `v0 <= 0` (the `σ = √v0` chain rule
-/// they use is undefined there); `theta`/`charm`/`veta` separately guard a
-/// `tau` that is non-finite or not safely larger than `H_TAU`. Both guards
-/// return `NaN` rather than a wrong finite number — this pins that the
-/// guards actually fire, backing the Greeks module doc's claim.
+/// NaN, not a finite number: vega, vanna, volga and veta at `v0 = 0`, where the chain rule of
+/// `σ = √v0` fails, and theta, charm and veta at a `tau` not finite or not clear of `H_TAU`.
 #[test]
 fn heston_greeks_nan_at_degenerate_inputs() {
   let degenerate_v0 = HestonPricer::new(HestonParams::new(0.0, 1.5, 0.04, 0.3, -0.7));
@@ -421,9 +382,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   }
 }
 
-/// The aggregate must be the nine accessors and nothing else — in
-/// particular `volga`/`veta` must not be transposed, which is a mapping
-/// that has no other pin.
+/// The aggregate is the nine accessors and nothing else, and the only pin of `volga` and `veta`
+/// against a transposition.
 #[test]
 fn heston_greeks_aggregate_matches_accessors() {
   let m = atm_pricer();
@@ -443,10 +403,8 @@ fn heston_greeks_aggregate_matches_accessors() {
   }
 }
 
-/// This model's carry factor really is `e^{-qτ}`, so the trait's vanilla
-/// put-call parity is mathematically right here — the override exists only
-/// so the returned put is bit-identical to the closed form the pre-query
-/// `calculate_call_put().1` produced.
+/// The carry factor is `e^{−qτ}`, so the trait's parity holds; the override returns the pair's put,
+/// bit for bit, where the default sums the same terms in another order.
 #[test]
 fn heston_price_put_matches_parity_but_is_the_closed_form() {
   let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
@@ -457,9 +415,7 @@ fn heston_price_put_matches_parity_but_is_the_closed_form() {
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 }
 
-/// Put Greeks became expressible when `option_type` moved into the query.
-/// The two must differ exactly by the derivative of the parity terms:
-/// `delta_P = delta_C - e^{-qτ}` and `gamma_P = gamma_C`.
+/// A put's delta is the call's less `e^{−qτ}`, the derivative of the parity terms.
 #[test]
 fn heston_put_greeks_differ_from_call_by_the_parity_terms() {
   let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
@@ -473,7 +429,7 @@ fn heston_put_greeks_differ_from_call_by_the_parity_terms() {
   assert!(put_delta < 0.0, "put delta must be negative: {put_delta}");
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike and maturity grid, each call falling in the strike.
 #[test]
 fn heston_one_model_prices_a_grid() {
   let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));

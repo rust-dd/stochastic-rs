@@ -102,7 +102,7 @@ impl CarrMadanPricer {
   /// The default grid, with `eta` refined until it spans `|ln s| + truncation_half_width(l_factor)`
   /// either side of `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
   ///
-  /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
+  /// Reference: Lord & Kahl (2010), Math. Finance 20(4), §3.2, DOI 10.1111/j.1467-9965.2010.00416.x
   ///
   /// ```
   /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
@@ -271,9 +271,8 @@ mod tests {
   use crate::pricing::fourier::GilPelaezPricer;
   use crate::pricing::fourier::LewisPricer;
 
-  /// A characteristic function that overflows to `NaN`, standing in for a
-  /// user model blowing up at a parameter corner. Mirrors `cos.rs`'s
-  /// `NanModel`, which pins the same convention for `CosEngine::price`.
+  /// A characteristic function that is `NaN` everywhere, a user model blown up at a parameter
+  /// corner, as `cos.rs`'s `NanModel` is for `CosEngine::price`.
   struct NanChfModel;
 
   impl FourierModelExt for NanChfModel {
@@ -301,10 +300,8 @@ mod tests {
     assert!(price.is_nan(), "NaN strike must price NaN, got {price}");
   }
 
-  /// The FFT carries a `NaN` characteristic function straight through to the
-  /// strike grid; only the floor could lose it. Before the poison-check the
-  /// whole grid came back as exactly `0.0` and the interpolation on top of it
-  /// returned a plausible zero call price.
+  /// The FFT carries a `NaN` characteristic function to every node, and only the floor could lose
+  /// it: a floored grid of `0.0` would price a plausible zero call.
   #[test]
   fn carr_madan_surface_preserves_nan_from_chf_blowup() {
     let pricer = CarrMadanPricer::default();
@@ -362,9 +359,8 @@ mod tests {
     }
   }
 
-  /// The floor and the poison-check must stay separate operations: a negative
-  /// price is round-off and still floors to zero, a `NaN` is undefined and
-  /// travels on.
+  /// The floor and the poison check stay apart: a negative price is round-off and floors to zero,
+  /// a `NaN` is undefined and travels on.
   #[test]
   fn floor_price_separates_the_floor_from_the_poison_check() {
     assert_eq!(floor_price(-1e-12), 0.0);
