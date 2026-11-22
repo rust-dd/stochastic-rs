@@ -1,5 +1,6 @@
 //! Dißmann et al. (2013), Algorithm 3.1: per tree a path (D-vine) or star (C-vine) of largest
 //! Σ|τ̂|, each edge's family by AIC or BIC over ML fits, its h-functions the next tree's data.
+//!
 //! Reference: Dißmann et al. (2013), 59, 52–69, DOI 10.1016/j.csda.2012.08.010.
 //! Reference: Aas et al. (2009), 44(2), 182–198, DOI 10.1016/j.insmatheco.2007.02.001.
 //! Reference: Held, M. & Karp, R. M. (1962), J. SIAM 10(1), 196–210, DOI 10.1137/0110015.
