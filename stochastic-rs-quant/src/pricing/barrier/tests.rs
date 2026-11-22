@@ -176,3 +176,27 @@ fn the_monte_carlo_is_nan_at_an_infinite_tau_and_keeps_a_nan_path() {
   let estimate = mc.price(&unbreached, f64::INFINITY, 0.05, 0.02, 1.0);
   assert!(estimate.mean.is_nan(), "{estimate:?}");
 }
+
+/// An infinite `tau` is NaN inside the corridor and outside it, as on the single barriers, where
+/// the double barrier priced `0`.
+#[test]
+fn a_double_barrier_is_nan_at_an_infinite_tau() {
+  let mut priced = Vec::new();
+  for option_type in [OptionType::Call, OptionType::Put] {
+    let option = DoubleBarrierOption {
+      strike: 100.0,
+      lower: 80.0,
+      upper: 130.0,
+      option_type,
+    };
+    for s in [100.0, 75.0, 140.0, 80.0] {
+      for sigma in [0.2, 0.0] {
+        let price = DoubleBarrierPricer::new(sigma).price(&option, s, 0.05, 0.02, f64::INFINITY);
+        if !price.is_nan() {
+          priced.push(format!("{option:?} at s {s}, sigma {sigma}: {price}"));
+        }
+      }
+    }
+  }
+  assert!(priced.is_empty(), "{priced:#?}");
+}

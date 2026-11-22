@@ -267,7 +267,7 @@ impl DoubleBarrierPricer {
   }
 
   /// Price at `(s, r, q, tau)`: 0 on or outside the corridor, the payoff at `tau = 0`, and NaN for
-  /// a negative or NaN `tau`, a NaN bound or rate, or a spot or `lower` not positive before expiry.
+  /// a `tau` not finite or `< 0`, a NaN bound or rate, or a spot or `lower` `≤ 0` before expiry.
   pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let DoubleBarrierOption {
       strike: k,
@@ -276,8 +276,7 @@ impl DoubleBarrierPricer {
       option_type,
     } = *option;
     if s.is_nan()
-      || tau.is_nan()
-      || tau < 0.0
+      || !(0.0..f64::INFINITY).contains(&tau)
       || l.is_nan()
       || u.is_nan()
       || r.is_nan()
