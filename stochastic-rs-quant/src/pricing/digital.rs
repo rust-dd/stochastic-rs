@@ -411,8 +411,8 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
   }
 }
 
-/// A volatility an engine may read off a market handle: not negative and not infinite; NaN is an
-/// unlinked handle's reading, which prices NaN.
+/// A volatility the engine-built pricers take: finite and `>= 0`, or the NaN `AnalyticBsEngine`
+/// reads off an unlinked handle or a quote off that domain, which prices NaN.
 #[track_caller]
 pub(crate) fn assert_handle_sigma(sigma: f64) {
   assert!(

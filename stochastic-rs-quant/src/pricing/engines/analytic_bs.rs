@@ -71,10 +71,20 @@ impl AnalyticBsEngine {
     handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
+  /// The volatility quote, NaN where it is negative or not finite, as an unlinked handle reads.
+  fn read_volatility(&self) -> f64 {
+    let sigma = Self::read_quote(&self.volatility);
+    if sigma.is_finite() && sigma >= 0.0 {
+      sigma
+    } else {
+      f64::NAN
+    }
+  }
+
   /// The model the handles describe and the `(s, k, r, q, tau)` query `opt` asks for; `tau` is
   /// the instrument's own, through [`TimeExt`].
   fn model_and_query(&self, opt: &EuropeanOption) -> (BsmPricer, (f64, f64, f64, f64, f64)) {
-    let model = BsmPricer::new(Self::read_quote(&self.volatility), self.coc);
+    let model = BsmPricer::new(self.read_volatility(), self.coc);
     let query = (
       Self::read_quote(&self.s),
       opt.strike,
@@ -101,8 +111,8 @@ impl AnalyticBsEngine {
 impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
-  /// The NPV and every Greek are NaN when any market handle is unlinked or the maturity is NaN:
-  /// missing data, so a documented `NaN` rather than a panic.
+  /// The NPV and every Greek are NaN when a market handle is unlinked, the volatility quote is
+  /// negative or not finite, or the maturity is NaN: data, so a documented `NaN`, never a panic.
   fn calculate(&self, opt: &EuropeanOption) -> StandardResult {
     let (model, (s, k, r, q, tau)) = self.model_and_query(opt);
     let ot = opt.option_type;
@@ -114,11 +124,11 @@ impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
 impl PricingEngine<DigitalOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
-  /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN when the maturity is NaN or
-  /// any market handle is unlinked.
+  /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN where the European arm's NPV
+  /// is, for the same handles, volatility quote and maturity.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let (s, k, r, q, tau) = self.digital_query(opt);
-    let sigma = Self::read_quote(&self.volatility);
+    let sigma = self.read_volatility();
     let ot = opt.option_type;
     let npv = match opt.kind {
       DigitalKind::CashOrNothing { cash } => {
@@ -276,6 +286,31 @@ mod tests {
       );
       let d = PricingEngine::<DigitalOption>::calculate(&engine, &digital).npv();
       assert!(d.is_nan(), "handle {missing}: digital npv {d}");
+    }
+  }
+
+  /// A volatility quote is data: negative, infinite or NaN, it prices NaN on both arms at every
+  /// `tau`, as an unlinked handle does, where the pricers' constructors would panic.
+  #[test]
+  fn a_volatility_quote_off_its_domain_prices_nan_on_both_arms() {
+    for tau in [1.0, 0.0] {
+      let call = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(tau));
+      let cash = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 10.0, Maturity::Tau(tau));
+      let asset = DigitalOption::asset_or_nothing(100.0, OptionType::Put, Maturity::Tau(tau));
+      for sigma in [-0.2, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let engine = AnalyticBsEngine::with_constants(110.0, sigma, 0.05, 0.02);
+        let res = engine.calculate(&call);
+        let greeks = res.greeks().unwrap().as_array();
+        assert!(
+          res.npv().is_nan() && greeks.iter().all(|g| g.is_nan()),
+          "{sigma}, {tau}: {} {greeks:?}",
+          res.npv()
+        );
+        for digital in [&cash, &asset] {
+          let npv = PricingEngine::<DigitalOption>::calculate(&engine, digital).npv();
+          assert!(npv.is_nan(), "{sigma}, {tau}: digital {npv}");
+        }
+      }
     }
   }
 
