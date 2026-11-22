@@ -1,7 +1,7 @@
 //! The five Heston parameters every Heston pricer, engine and Fourier model is built from.
 
 /// `dv = κ(θ − v)dt + σ√v dW`, `d⟨W^S, W^v⟩ = ρ dt`, started at `v0`.
-/// Heston, S. L. (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
+/// Reference: Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonParams {
   /// Initial variance (not a volatility).

@@ -1,6 +1,6 @@
 //! Core Fourier coefficient computation for the Fourier-Malliavin volatility method.
 //!
-//! See Sanfelici & Toscano (2024), arXiv:2402.00172, §2 for the mathematical details.
+//! Reference: Sanfelici & Toscano (2024), arXiv:2402.00172, §2
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
