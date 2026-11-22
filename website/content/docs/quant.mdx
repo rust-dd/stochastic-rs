@@ -197,14 +197,15 @@ import numpy as np
 import stochastic_rs as srs
 
 curve = srs.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
-quotes = [(1.0, 2.0, 0.22, 0.5, "payer"), (2.0, 2.0, 0.20, 0.5, "payer")]   # (expiry, tenor, black_vol, accrual, direction)
+# (expiry, tenor, black_vol, accrual, direction)
+quotes = [(1.0, 2.0, 0.22, 0.5, "payer"), (2.0, 2.0, 0.20, 0.5, "payer")]
 
 bk = srs.BlackKarasinskiSwaptionCalibrator(quotes, curve, initial_rate=0.03, long_run_rate=0.03, steps_per_year=8)
 print(bk.calibrate(initial_guess=(0.1, 0.2)))          # (a, sigma, rmse, converged)
 hw = srs.HullWhiteSwaptionCalibrator(quotes, curve, initial_rate=0.03, theta=0.03)
-print(hw.calibrate())                                    # (a, sigma, rmse, converged) via Jamshidian
+print(hw.calibrate())                                  # (a, sigma, rmse, converged) via Jamshidian
 g2 = srs.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, max_iters=200)
-print(g2.calibrate())                                    # (a, b, sigma, eta, rho, rmse, converged)
+print(g2.calibrate())                                  # (a, b, sigma, eta, rho, rmse, converged)
 ```
 </Tab>
 </Tabs>
@@ -229,10 +230,11 @@ maturities = [0.25, 0.5, 1.0, 2.0]
 ssvi = srs.SsviParams(rho=-0.4, eta=0.6, gamma=0.4)
 slices = [(ks, np.array([ssvi.total_variance(k, 0.04 * t) for k in ks]), 0.04 * t) for t in maturities]
 
-surface = srs.EssviSurface.calibrate(maturities, slices)     # (ks, total_variances, theta) per slice
-print(surface.slices())                                      # [(t, theta, rho, psi), ...]
+surface = srs.EssviSurface.calibrate(maturities, slices)  # (ks, total_variances, theta) per slice
+print(surface.slices())                                   # [(t, theta, rho, psi), ...]
 print(surface.is_butterfly_free(), surface.is_calendar_spread_free())
-print(surface.implied_vol(0.1, 0.75))                        # interpolated between the 0.5y and 1y slices
+# interpolated between the 0.5y and 1y slices
+print(surface.implied_vol(0.1, 0.75))
 ```
 </Tab>
 </Tabs>
@@ -328,7 +330,8 @@ index = srs.CdsIndex(names, coupon=0.01, notional=1e7, effective_date="2026-03-2
 print(index.fair_spread("2026-03-20", curve), index.isda_upfront("2026-03-20", curve, quoted_spread=0.012))
 
 equity = srs.CdoTranche(names, attachment=0.0, detachment=0.03, spread=0.05, payment_times=[1, 2, 3, 4, 5], correlation=0.3)
-print(equity.valuation(curve))                            # (protection, annuity, premium, fair_spread, upfront)
+# (protection, annuity, premium, fair_spread, upfront)
+print(equity.valuation(curve))
 print(equity.expected_tranche_loss(5.0), equity.large_pool_expected_tranche_loss(p=1 - np.exp(-0.1), lgd=0.6))
 ```
 </Tab>
