@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::QuantError;
@@ -101,6 +102,7 @@ fn stulz_min_matches_mc() {
     array![[1.0, 0.4], [0.4, 1.0]],
     200_000,
   )
+  .with_seed(Deterministic::new(42))
   .price(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (stulz - mc.mean).abs() / stulz.max(1e-10);
   assert!(rel < 0.03, "stulz={stulz}, mc={mc}, rel={rel}");
@@ -141,19 +143,16 @@ fn mc_call_on_max_above_min() {
     rho[[i, i]] = 1.0;
   }
   let mc_max = McRainbowPricer::new(RainbowPayoff::CallOnMax, sig.clone(), rho.clone(), 50_000)
+    .with_seed(Deterministic::new(42))
     .price(s.view(), 100.0, 0.05, q.view(), 1.0);
-  let mc_min = McRainbowPricer::new(RainbowPayoff::CallOnMin, sig, rho, 50_000).price(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc_min = McRainbowPricer::new(RainbowPayoff::CallOnMin, sig, rho, 50_000)
+    .with_seed(Deterministic::new(42))
+    .price(s.view(), 100.0, 0.05, q.view(), 1.0);
   assert!(mc_max.mean > mc_min.mean);
 }
 
-/// One Monte Carlo instance prices a strike grid, the strikes far enough apart for the order to
-/// survive independent sampling errors.
+/// One Monte Carlo instance prices a strike grid; its pinned seed gives every strike the same
+/// paths, so the order holds path by path.
 #[test]
 fn mc_rainbow_one_model_prices_a_strike_grid() {
   let s = array![100.0, 100.0];
@@ -163,7 +162,8 @@ fn mc_rainbow_one_model_prices_a_strike_grid() {
     array![0.25, 0.30],
     array![[1.0, 0.4], [0.4, 1.0]],
     50_000,
-  );
+  )
+  .with_seed(Deterministic::new(42));
   let prices = [80.0, 100.0, 130.0].map(|k| model.price(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(
     prices[0] > prices[1] && prices[1] > prices[2],

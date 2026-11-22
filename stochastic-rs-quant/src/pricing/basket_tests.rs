@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::QuantError;
@@ -168,13 +169,9 @@ fn levy_vs_mc_arithmetic() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 100_000).price_call(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 100_000)
+    .with_seed(Deterministic::new(42))
+    .price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (levy - mc.mean).abs() / mc.mean;
   assert!(rel < 0.03, "levy={levy}, mc={mc}, rel={rel}");
 }
@@ -190,13 +187,9 @@ fn mc_geometric_matches_closed_form() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer::new(w, BasketAverageType::Geometric, sig, rho, 200_000).price_call(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc = McBasketPricer::new(w, BasketAverageType::Geometric, sig, rho, 200_000)
+    .with_seed(Deterministic::new(42))
+    .price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (cf - mc.mean).abs() / cf;
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
   assert!(
@@ -471,12 +464,13 @@ fn arithmetic_basket_parity() {
   assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
 }
 
-/// One Monte Carlo instance prices a strike grid, both legs, the strikes far enough apart for the
-/// order to survive independent sampling errors.
+/// One Monte Carlo instance prices a strike grid, both legs; its pinned seed gives every strike the
+/// same paths, so the order holds path by path.
 #[test]
 fn mc_basket_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
-  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000);
+  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000)
+    .with_seed(Deterministic::new(42));
   let calls = [80.0, 100.0, 130.0].map(|k| model.price_call(s.view(), k, 0.05, q.view(), 1.0).mean);
   let puts = [80.0, 100.0, 130.0].map(|k| model.price_put(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(

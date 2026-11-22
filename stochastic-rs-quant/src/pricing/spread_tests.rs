@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 
 /// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
@@ -78,11 +80,11 @@ fn margrabe_deep_itm() {
   );
 }
 
-/// One Monte Carlo instance prices a strike grid, both legs, the strikes far enough apart for the
-/// order to survive independent sampling errors.
+/// One Monte Carlo instance prices a strike grid, both legs; its pinned seed gives every strike the
+/// same paths, so the order holds path by path.
 #[test]
 fn mc_spread_one_model_prices_a_strike_grid() {
-  let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000);
+  let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000).with_seed(Deterministic::new(42));
   let calls =
     [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
   let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
@@ -128,7 +130,7 @@ fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
 /// A NaN payoff passes the per-path `max(0)` floor, where a bare floor would zero every path.
 #[test]
 fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
-  let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
+  let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000).with_seed(Deterministic::new(42));
   for (name, got) in [
     (
       "s1",
@@ -262,7 +264,7 @@ mod construction_validation {
 #[test]
 fn margrabe_matches_mc_zero_strike() {
   let m_price = MargrabePricer::new(0.25, 0.20, 0.4).price(110.0, 100.0, 0.0, 0.0, 1.0);
-  let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000);
+  let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000).with_seed(Deterministic::new(42));
   let est = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
   let rel = (m_price - est.mean).abs() / m_price;
   assert!(rel < 0.02, "margrabe={m_price}, mc={est}, rel={rel}");
