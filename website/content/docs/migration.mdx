@@ -75,7 +75,7 @@ Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing can pr
 
 `nalgebra` is no longer a direct workspace dependency; it can still appear transitively through dependencies such as `gauss-quad`. The six calibrators that took `c_market`, `s` and `k` as `nalgebra::DVector<f64>` (`BsmCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HkdeCalibrator`, `DoubleHestonCalibrator`, `SvjCalibrator`) take a `Vec<OptionQuote>` (above). The vectors that remain are `ndarray::Array1<f64>`: their parameter sets' `From` conversions, `CalibrationHistory::residuals` and the weights of `HestonCalibrator::with_residual_weights`, which replaces `set_residual_weights` and takes any `Into<Array1<f64>>`, a `Vec<f64>` included. `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and `DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
 
-Tolerance and patience settings keep their relative-tolerance and residual-evaluation-budget meanings. Evaluation counts and termination messages can differ between solvers. An exhausted budget, a failed model evaluation or a numerical stall does not count as convergence; the fit returns the best accepted parameters.
+The Levenberg–Marquardt tolerance and patience keep their relative-tolerance and residual-evaluation-budget meanings. Evaluation counts and termination messages can differ between solvers. An exhausted budget, a failed model evaluation or a numerical stall does not count as convergence; the fit returns the best accepted parameters.
 
 The workspace requires Rust 1.89 and declares it in `rust-version`. Cargo's edition-2024 resolver uses this minimum when selecting dependencies, which can favour older compatible releases during a fresh resolution.
 
