@@ -242,7 +242,7 @@ maturin build --release --locked --strip
 ```
 
 **Platform coverage is settled — do not re-add Intel macOS.** The macOS
-matrix has a single `macos-14` runner (aarch64) and that is deliberate:
+matrix has a single `macos-15` runner (aarch64; GitHub stopped serving `macos-14` in 2026-11) and that is deliberate:
 Intel-Mac wheels were dropped at v3.0.0-beta.2 (user decision,
 2026-08-28). GitHub has retired the `macos-13` runner, so adding that
 leg back does not fail — it **queues forever with no runner assigned**
