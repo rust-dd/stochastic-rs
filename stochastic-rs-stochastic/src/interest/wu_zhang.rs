@@ -2,11 +2,10 @@
 //!
 //! $$
 //! dv_{i,t}=\beta_i(\alpha_i-v_{i,t})dt+\nu_i\sqrt{v_{i,t}}\,dW_{i,t}^v,\quad
-//! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F
+//! dF_{i,t}=\lambda_i F_{i,t}\sqrt{v_{i,t}}\,dW_{i,t}^F,\quad dW_{i,t}^v\,dW_{i,t}^F = 0
 //! $$
 //!
-//! Each `v_i` is a CIR that always steps by full truncation; the pairs are uncoupled, and `dW^v`
-//! and `dW^F` are independent.
+//! Each `v_i` is a CIR that always steps by full truncation.
 //!
 //! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 

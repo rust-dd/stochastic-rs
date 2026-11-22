@@ -3,11 +3,11 @@
 //! $$
 //! dS = rS\,dt + \sqrt{v}\,S\,dW^S \\
 //! dv = \kappa_v(\mu_v - v)\,dt + \sigma_v\sqrt{v}\,dW^v \\
-//! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X)
+//! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X) \\
+//! dW^S\,dW^v = \rho_t\,dt,\quad dW^v\,dW^\rho = \rho_2\,dt
 //! $$
 //!
-//! The Brownian correlations are Eq. 2.4 with ρ₁ = 0: `dW^S dW^v = ρ_t dt` and `dW^v dW^ρ = ρ₂ dt`.
-//! The variance always steps by full truncation: the carried `ṽ` keeps its sign, `v = ṽ⁺` is read.
+//! Teng's eq. 2.4 at ρ₁ = 0; the variance always steps by full truncation (`ṽ` carried, `ṽ⁺` read).
 //!
 //! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
 //! Reference: Teng et al. (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
