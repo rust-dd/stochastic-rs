@@ -244,6 +244,9 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   *query* with a non-positive strike or spot, a live Black caplet on two negative rates — the
   formula is undefined there. A `0.0` or any other plausible number is never a
   sentinel, and a query argument never panics — only a model parameter does.
+  A price at `tau = 0` is the payoff; at a negative, NaN or infinite `tau` it is NaN, and before
+  expiry so is one at a non-positive spot or strike, a normal model excepted (`SabrPricer` and
+  `SnellEnvelopePricer` are NaN there at `tau = 0` too).
 - **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
   `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
   `Some(f64::NAN)` is "computed, undefined at this point".
