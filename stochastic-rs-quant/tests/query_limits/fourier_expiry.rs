@@ -253,9 +253,18 @@ fn a_fourier_price_is_nan_before_expiry_for_a_rate_that_is_not_finite() {
       ("blanket call", BSM.price_call(s, K, r, q, 1.0)),
       ("blanket put", BSM.price_put(s, K, r, q, 1.0)),
       ("Lewis", LewisPricer::price_call(&BSM, s, K, r, q, 1.0)),
-      ("Gil-Pelaez", GilPelaezPricer::price_call(&BSM, s, K, r, q, 1.0)),
-      ("Carr-Madan call", carr_madan.price_call(&BSM, s, K, r, q, 1.0)),
-      ("Carr-Madan put", carr_madan.price_put(&BSM, s, K, r, q, 1.0)),
+      (
+        "Gil-Pelaez",
+        GilPelaezPricer::price_call(&BSM, s, K, r, q, 1.0),
+      ),
+      (
+        "Carr-Madan call",
+        carr_madan.price_call(&BSM, s, K, r, q, 1.0),
+      ),
+      (
+        "Carr-Madan put",
+        carr_madan.price_put(&BSM, s, K, r, q, 1.0),
+      ),
       ("FRFT call", fractional.price_call(&BSM, s, K, r, q, 1.0)),
       ("FRFT put", fractional.price_put(&BSM, s, K, r, q, 1.0)),
     ];
@@ -263,7 +272,10 @@ fn a_fourier_price_is_nan_before_expiry_for_a_rate_that_is_not_finite() {
       live.push(format!("{name} at ({s}, {r}, {q}): {price}"));
     }
     for (name, (_, surface)) in [
-      ("Carr-Madan", carr_madan.price_call_surface(&BSM, s, r, q, 1.0)),
+      (
+        "Carr-Madan",
+        carr_madan.price_call_surface(&BSM, s, r, q, 1.0),
+      ),
       ("FRFT", fractional.price_call_surface(&BSM, s, r, q, 1.0)),
     ] {
       let nodes = surface.iter().filter(|p| !p.is_nan()).count();

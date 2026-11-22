@@ -246,10 +246,14 @@ fn a_monte_carlo_barrier_is_nan_where_the_closed_form_is() {
     (DownAndOut, [90.0, 105.0, -inf, inf]),
     (DownAndIn, [90.0, 105.0, -inf, inf]),
   ] {
-    for (barrier, option_type) in barriers.into_iter().flat_map(|h| {
-      [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type))
-    }) {
-      for (strike, tau) in [100.0, 0.0, -5.0].into_iter().flat_map(|k| [(k, 1.0), (k, 0.0)]) {
+    for (barrier, option_type) in barriers
+      .into_iter()
+      .flat_map(|h| [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type)))
+    {
+      for (strike, tau) in [100.0, 0.0, -5.0]
+        .into_iter()
+        .flat_map(|k| [(k, 1.0), (k, 0.0)])
+      {
         let option = BarrierOption {
           strike,
           barrier,
@@ -260,7 +264,11 @@ fn a_monte_carlo_barrier_is_nan_where_the_closed_form_is() {
         let closed = BarrierPricer::new(0.2).price(&option, 100.0, R, Q, tau);
         let estimate = mc.price(&option, 100.0, R, Q, tau);
         let nan = estimate.mean.is_nan() && estimate.std_err.is_nan() && estimate.n_samples == 0;
-        let same = if tau == 0.0 { estimate.mean == closed } else { !estimate.mean.is_nan() };
+        let same = if tau == 0.0 {
+          estimate.mean == closed
+        } else {
+          !estimate.mean.is_nan()
+        };
         if !(if closed.is_nan() { nan } else { same }) {
           apart.push(format!("{option:?} at tau {tau}: {closed} vs {estimate:?}"));
         }
