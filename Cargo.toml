@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 rust-version = "1.89"
 
 [workspace.dependencies]
@@ -52,13 +52,13 @@ slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.
 statrs = "0.19.1"
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.4" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.4" }
-stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.4" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.4" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.4" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.4" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.4" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "=3.0.0-rc.5" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "=3.0.0-rc.5" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "=3.0.0-rc.5" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "=3.0.0-rc.5" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "=3.0.0-rc.5" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "=3.0.0-rc.5" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "=3.0.0-rc.5" }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
 wide = "1.6.1"
 
@@ -268,10 +268,8 @@ unstable-dual-stream-rng = [
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 metal = ["stochastic-rs-stochastic/metal"]
-# Plotly-backed HTML plotting: `stochastic-rs-quant`'s SABR-smile plotter and,
-# when `ai` is also enabled, `stochastic-rs-ai`'s fit-plot helper. Uses a weak
-# dependency feature (`stochastic-rs-ai?/viz`) so enabling `viz` alone does
-# not pull in the (heavy, optional) `ai` sub-crate on its own.
+# Plotly HTML plots: quant's SABR smile, and ai's fit plot when `ai` is on; the weak `ai?/viz`
+# keeps `viz` alone from pulling in the ai crate.
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 
 [lib]
@@ -285,6 +283,6 @@ codegen-units = 1
 lto = true
 
 [package.metadata.docs.rs]
-# Avoid `all-features = true`: it pulls in native GPU SDKs (cudarc, metal), which do not build on docs.rs.
+# No `all-features = true`: the GPU SDKs it pulls in (cudarc, metal) do not build on docs.rs.
 features = ["ai", "viz"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

@@ -3326,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "chrono",
  "criterion",
@@ -3349,7 +3349,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-ai"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-copulas"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "anyhow",
  "gauss-quad",
@@ -3384,7 +3384,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-core"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "ndarray",
  "rand 0.10.3",
@@ -3393,7 +3393,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-distributions"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "faer",
  "faer-ext",
@@ -3413,14 +3413,14 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-metal-kernels"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "metal-oxide-device",
 ]
 
 [[package]]
 name = "stochastic-rs-py"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "ndarray",
  "numpy",
@@ -3436,7 +3436,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-quant"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "basin",
  "chrono",
@@ -3465,7 +3465,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-stats"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "basin",
  "linreg",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "stochastic-rs-stochastic"
-version = "3.0.0-rc.4"
+version = "3.0.0-rc.5"
 dependencies = [
  "criterion",
  "cudarc",
