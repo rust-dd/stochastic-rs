@@ -32,7 +32,7 @@ fn variance_gamma_edges(sigma: f64, theta: f64) -> (f64, f64) {
 /// NIG's `(u, v) = (α + β − 0.01, α − β − 1.01)`: `u ≥ 0` and `v ≥ 0` are `α > |β|` and
 /// `α > |β + 1|`, `DOMAIN_MARGIN` inside.
 fn nig_coordinates(alpha: f64, beta: f64) -> (f64, f64) {
-  // Reference: Barndorff-Nielsen (1997), Scand. J. Statist. 24(1), DOI 10.1111/1467-9469.00045.
+  // Reference: Barndorff-Nielsen (1997), Scand. J. Stat. 24(1), 1–13, DOI 10.1111/1467-9469.00045.
   (
     alpha + beta - DOMAIN_MARGIN,
     alpha - beta - 1.0 - DOMAIN_MARGIN,
