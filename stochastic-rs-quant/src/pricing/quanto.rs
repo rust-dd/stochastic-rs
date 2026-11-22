@@ -35,8 +35,8 @@ pub struct QuantoPricer {
 }
 
 impl QuantoPricer {
-  /// Panics unless both volatilities are finite and `>= 0`, `rho ∈ [−1, 1]`, `r_f` is finite and
-  /// `fixed_rate` finite and positive.
+  /// Panics unless both volatilities and `fixed_rate` are finite and `>= 0`, `rho ∈ [−1, 1]` and
+  /// `r_f` finite; a `fixed_rate` of `0` converts the payoff to nothing and prices `0`.
   pub fn new(sigma: f64, sigma_fx: f64, rho: f64, r_f: f64, fixed_rate: f64) -> Self {
     assert_sigma(sigma);
     assert!(
@@ -52,8 +52,8 @@ impl QuantoPricer {
       "r_f must satisfy `r_f.is_finite()`, got r_f = {r_f:?}"
     );
     assert!(
-      fixed_rate.is_finite() && fixed_rate > 0.0,
-      "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate > 0.0`, got fixed_rate = {fixed_rate:?}"
+      fixed_rate.is_finite() && fixed_rate >= 0.0,
+      "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate >= 0.0`, got fixed_rate = {fixed_rate:?}"
     );
     Self {
       sigma,
@@ -227,13 +227,27 @@ mod tests {
     let _ = QuantoPricer::new(0.2, 0.12, 0.3, f64::NAN, 1.5);
   }
 
-  /// `E_p` converts the payoff at a price of domestic per foreign currency, which is positive.
+  /// `E_p` converts the payoff at a price of domestic per foreign currency, which is never negative.
   #[test]
   #[should_panic(
-    expected = "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate > 0.0`, got fixed_rate = 0.0"
+    expected = "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate >= 0.0`, got fixed_rate = -1.5"
   )]
-  fn new_rejects_a_fixed_rate_that_is_not_positive() {
-    let _ = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 0.0);
+  fn new_rejects_a_negative_fixed_rate() {
+    let _ = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, -1.5);
+  }
+
+  /// `E_p = 0` converts the payoff to nothing: a degenerate contract, worth `0` on both legs.
+  #[test]
+  fn a_zero_fixed_rate_prices_zero() {
+    let model = QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 0.0);
+    let (s, k, r, q, tau) = Q;
+    for tau in [tau, 0.0] {
+      let legs = (
+        model.price_call(s, k, r, q, tau),
+        model.price_put(s, k, r, q, tau),
+      );
+      assert_eq!(legs, (0.0, 0.0), "{tau}");
+    }
   }
 
   #[test]
