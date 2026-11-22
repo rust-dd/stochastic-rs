@@ -264,8 +264,8 @@ fn the_natural_jacobian_matches_central_differences() {
   }
 }
 
-/// Kou on the Heston reference ends with `p` and `η₁` held on their bounds from each of four starts
-/// whose raw `p` travels far from its box: each is reported as its bound, not a value beside it.
+/// Kou on the Heston reference from its default start and three that end on `p`'s and `η₁`'s
+/// bounds under both Apple's libm and glibc's: each held parameter is reported as its bound.
 #[test]
 fn a_parameter_held_on_its_bound_is_reported_on_it() {
   let heston = [
@@ -275,37 +275,31 @@ fn a_parameter_held_on_its_bound_is_reported_on_it() {
   let quotes = rows.map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call));
   let quotes = quotes.collect::<Vec<_>>();
   for values in [
-    [
-      1.5767935440736458,
-      13.276424190575751,
-      0.8183937587289225,
-      90.3549764148952,
-      27.053866114332838,
+    default_params(LevyModelType::Kou),
+    vec![
+      0.8017750140506811,
+      8.915867989722884,
+      0.6704299757246529,
+      9.605403898749048,
+      25.686786353841043,
     ],
-    [
-      0.8844471251970201,
-      17.579796032775146,
-      0.4351169653324641,
-      81.63621639006703,
-      90.00716311455719,
+    vec![
+      1.6756961353153987,
+      6.603725777301496,
+      0.6329321150453943,
+      36.26626736821878,
+      77.2608822389938,
     ],
-    [
-      1.7187550496427697,
-      11.626896581418746,
-      0.5306032028774427,
-      48.45412846328533,
-      43.935532907984424,
-    ],
-    [
-      0.5899148680394524,
-      1.087065454968346,
-      0.6662982546558402,
-      89.52557797497677,
-      80.96102786423253,
+    vec![
+      0.6769692410964633,
+      6.06811831591065,
+      0.3954486265557783,
+      35.54301445378511,
+      85.08377283772047,
     ],
   ] {
     let start = LevyParams {
-      values: values.to_vec(),
+      values: values.clone(),
       model_type: LevyModelType::Kou,
     };
     let calibrator = LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.05, 0.0, quotes.clone());
