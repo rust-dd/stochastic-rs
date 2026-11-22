@@ -483,24 +483,6 @@ What does go stale:
    under "What stays on the host". The page carries no family count.
 5. `website/lib/facts.ts`: `processes`, `processesOnEngine` and `deviceFamilies` (the
    `EulerSpec` variant count), which the home page prints.
-6. `notebooks/colab_cuda_check.ipynb`, cell index 5 — a prose enumeration with no
-   hard counts; insert the name into the paragraph matching its family. Edit
-   through Python, keeping the file's own formatting:
-
-```python
-  import json
-  p = "notebooks/colab_cuda_check.ipynb"
-  nb = json.load(open(p))
-  src = nb["cells"][5]["source"]
-  i = next(k for k, line in enumerate(src) if "RoughBergomi" in line)
-  src[i] = src[i].replace("`RoughBergomi`", "`RoughBergomi`, `Foo`")
-  with open(p, "w") as f:
-      json.dump(nb, f, indent=1, ensure_ascii=False)
-      f.write("\n")
-```
-
-`indent=1` and `ensure_ascii=False` are both required — the file uses one-space
-indentation and contains literal `—`, `∏`, `−` characters.
 
 ## 7. Gates before commit
 
@@ -632,6 +614,6 @@ no host-only form — check the nine documented ways round the cap:
 - [ ] Chunk-invariance test extended if the family is fGN-fed
 - [ ] `guard!` line added; that tree's per-directory count and total bumped
 - [ ] Python macro invoked (`device` flag if on the engine) and `add_class` registered
-- [ ] `CLAUDE.md` counts, `python-parity.json`, `gpu-support.mdx` matrix + prose, `facts.ts`, notebook cell 5 updated
+- [ ] `CLAUDE.md` counts, `python-parity.json`, `gpu-support.mdx` matrix + prose, `facts.ts` updated
 - [ ] Both clippy runs, `cargo doc -D warnings`, `cargo check --workspace --no-default-features`, parity + device-law suites green
 - [ ] Full battery run in a subagent with `CARGO_TARGET_DIR` in the scratchpad
