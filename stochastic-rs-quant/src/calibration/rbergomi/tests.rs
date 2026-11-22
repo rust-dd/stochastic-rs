@@ -208,8 +208,8 @@ fn a_zero_path_count_panics() {
   let _ = RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), Vec::new(), config);
 }
 
-/// Reference: `scipy.stats.wasserstein_distance` 1.17, the integral of `|F⁻¹ − G⁻¹|` over the two
-/// empirical quantile functions; for equal sizes it is the module doc's order-statistic mean.
+/// `scipy.stats.wasserstein_distance` 1.17 is the oracle: the integral of `|F⁻¹ − G⁻¹|` over the
+/// two empirical quantile functions, for equal sizes the module doc's order-statistic mean.
 #[test]
 fn wasserstein_1_is_the_distance_between_the_two_empirical_measures() {
   for (x, y, want) in [

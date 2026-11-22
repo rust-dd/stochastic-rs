@@ -108,7 +108,7 @@ mod tests {
   /// aarch64-darwin and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
-  /// Reference: the module's law of `ln G` integrated by mpmath at 50 digits, 3.15336604657145 and
+  /// The module's law of `ln G`, integrated by mpmath at 50 digits, gives 3.15336604657145 and
   /// 7.25938857930441.
   #[test]
   fn asian_matches_the_law_of_the_average_at_the_golden_point() {

@@ -196,9 +196,8 @@ mod tests {
     );
   }
 
-  /// Reference: Bjerksund, P. & Stensland, G. (2002), "Closed Form Valuation
-  /// of American Options", NHH discussion paper 2002/09 — closed-form
-  /// American approximation cross-checked against the CRR rollback.
+  /// Bjerksund–Stensland's closed-form American approximation, cross-checked against the rollback.
+  /// Reference: Bjerksund & Stensland (2002), NHH discussion paper 2002/09
   #[test]
   fn crr_american_put_matches_bjerksund_stensland() {
     let (s, k, r, q, sigma, tau) = (100.0, 110.0, 0.05, 0.0, 0.2, 1.0);
@@ -214,8 +213,8 @@ mod tests {
     );
   }
 
-  /// Reference: `FiniteDifferencePricer` Crank-Nicolson American solve
-  /// (projected max-with-intrinsic clamp per time step).
+  /// Against `FiniteDifferencePricer`'s Crank–Nicolson American solve, which projects each time
+  /// step onto the intrinsic value.
   #[test]
   fn crr_american_put_matches_fd() {
     let (s, k, r, sigma, tau) = (100.0, 110.0, 0.05, 0.2, 1.0);
