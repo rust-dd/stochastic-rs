@@ -238,7 +238,7 @@ print(surface.implied_vol(0.1, 0.75))                        # interpolated betw
 
 ### Regularised calibration
 
-The Heston, SABR and swaption calibrators accept an optional `Regularization`: a Tikhonov pull `Σ λ_j (θ_j − θ_j⁰)²` toward an anchor, entering the Levenberg–Marquardt problems (Heston, SABR) as extra residual rows `√λ_j (θ_j − θ_j⁰)` with matching Jacobian rows and the Nelder–Mead calibrators (Hull–White, Black–Karasinski, G2++, the SABR caplet) as a cost penalty. Weights are in the squared units of each calibrator's residual per parameter²: price² for the Heston, LM SABR and swaption fits, vol² for the SABR caplet; the default `None` leaves the calibrator on its unregularised path, and a weight that is large against the squared price residuals pins its parameter.
+The Levenberg–Marquardt calibrators (BSM, Heston, SABR, SVJ, double Heston, HKDE, Lévy, CGMYSV) and the Nelder–Mead ones (Hull–White, Black–Karasinski, G2++, the SABR caplet) all read `CalibrationOptions::regularization`, an optional `Regularization`: a Tikhonov pull `Σ λ_j (θ_j − θ_j⁰)²` toward an anchor, entering the Levenberg–Marquardt problems as extra residual rows `√λ_j (θ_j − θ_j⁰)` with matching Jacobian rows and the Nelder–Mead costs as a penalty, while the HSCM, rBergomi and Heston SLV fits answer it with `Err(Unsupported)`. Weights are in the squared units of each calibrator's residual per parameter²: price² for the Heston, LM SABR and swaption fits, vol² for the SABR caplet; the default `None` leaves the calibrator on its unregularised path, and a weight that is large against the squared price residuals pins its parameter.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
