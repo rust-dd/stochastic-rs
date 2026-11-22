@@ -47,6 +47,7 @@ When implementing a new model or algorithm, use the **arxiv MCP tool** (`mcp__ar
 Every new module must include:
 - **Comparison test**: validate output against the reference implementation (Python, R, MATLAB, or the original paper's numerical examples)
 - **Criterion benchmark**: add a bench in `benches/` to track performance
+- **Pins**: a value is bit-identical only within one build profile and one target; where it passes through a libm or a fused `sincos`, the test takes a tolerance derived from the method, and an unconverged fit's iteration count is not pinned across them
 
 ## 6. Scientific references
 
