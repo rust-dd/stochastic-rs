@@ -132,7 +132,7 @@ impl FourierModelExt for RegimeSwitchingModel {
 impl RegimeSwitchingModel {
   /// `E[(I − c)ᵏ] = k!·B₁,ₖ₊₁1` at the initial state for `k ≤ order`, `B` the first block row of
   /// `exp(A)`, `A` with `tQ` on and `diag(σᵢ²t − c)` above its block diagonal; `c = E[I]` centres.
-  /// Reference: Carbonell, Jimenez & Pedroso (2008), J. Comput. Appl. Math. 213(1), 300–305
+  /// Reference: Carbonell et al. (2008), J. Comput. Appl. Math. 213, DOI 10.1016/j.cam.2007.01.007
   fn integrated_variance_moments(&self, t: f64, c: f64, order: usize) -> [f64; 4] {
     let (m, blocks) = (self.vols.len(), order + 1);
     let mut block = Array2::<Complex64>::zeros((blocks * m, blocks * m));
