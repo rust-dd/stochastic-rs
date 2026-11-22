@@ -1,12 +1,5 @@
-//! Shared infrastructure for the ten directory-grouped guard submodules
-//! (`autoregressive`, `correlation`, `diffusion`, `interest`, `jump`,
-//! `noise`, `process`, `rough`, `sheet`, `volatility`) — see the crate-root
-//! doc comment in `../reproducibility_all_processes.rs` for the full
-//! rationale, derivation of the 127-type list, and methodology notes.
-//! Split out purely to keep every file under this crate's line-count limit;
-//! all ten submodules plus this one compile into the single
-//! `reproducibility_all_processes` test binary, so `cargo test` still runs
-//! and reports all 124 checks together.
+//! The shared `check`, `guard!` and `ReproBits` of the eleven directory submodules; all compile
+//! into the one `reproducibility_all_processes` test binary.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -14,26 +7,29 @@ use ndarray::Array3;
 use num_complex::Complex;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
+use stochastic_rs_stochastic::interest::hjm::HjmPaths;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
+use stochastic_rs_stochastic::volatility::heston_hull_white_2f::HestonHullWhite2FPaths;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
 
 pub(crate) const SEED: u64 = 42;
-/// A second seed, distinct from [`SEED`], used only by the discrimination
-/// half of [`check`]: it must produce different `.sample()` output than
-/// `SEED` does. Any value different from `SEED` works — `Deterministic`
-/// mixes its state with splitmix64, so adjacent seeds are not adjacent
-/// streams.
+/// A second seed for the discrimination half of [`check`]. Any value other than [`SEED`] works:
+/// `Deterministic` mixes its state with splitmix64, so adjacent seeds are not adjacent streams.
 pub(crate) const OTHER_SEED: u64 = 43;
 /// Steps per path. Small on purpose — this guard is about seed plumbing,
 /// not statistics.
 pub(crate) const N: usize = 24;
-/// Grid size for the tempered-stable jump family (`Cgmy`/`Cts`/`KoBoL`/
+/// Grid size for the tempered-stable jump family (`Cgmy`/`Cts`/`Kobol`/
 /// `Rdts`/`Svcgmy`), a parameter distinct from `N`.
 pub(crate) const J: usize = 8;
-/// Jump intensity for the seven distribution-taking types: high enough that
-/// a jump-component reproducibility bug cannot hide behind a
-/// diffusion-only comparison.
+/// Jump intensity for the distribution-taking types: high enough that a jump-component bug
+/// cannot hide behind a diffusion-only comparison.
 pub(crate) const LAMBDA: f64 = 50.0;
-/// `<= MAX_CHUNKS` (`traits/process.rs`): one path per chunk, the regime
+/// `<= MAX_CHUNKS` (`traits/process/chunks.rs`): one path per chunk, the regime
 /// that cannot expose cross-chunk correlation.
 pub(crate) const M_ONE_PER_CHUNK: usize = 64;
 /// `> MAX_CHUNKS`: several paths share a chunk, the regime
@@ -50,9 +46,8 @@ pub(crate) fn fn2d_a(_t: f64, _u: f64) -> f64 {
   0.01
 }
 
-/// Flattens a sampled path/output into its raw bit pattern, so `assert_eq!`
-/// compares exact IEEE-754 representations rather than relying on
-/// `PartialEq` semantics that could mask a `NaN`-producing divergence.
+/// Flattens an output into its raw bits, so `assert_eq!` compares IEEE-754 representations and
+/// a `NaN` cannot mask a divergence through `PartialEq`.
 pub(crate) trait ReproBits {
   fn repro_bits(&self) -> Vec<u64>;
 }
@@ -96,10 +91,64 @@ impl<const K: usize> ReproBits for [Array1<f64>; K] {
   }
 }
 
-impl<const K: usize> ReproBits for (Array1<f64>, [Array1<f64>; K]) {
+impl ReproBits for HestonStochCorrPaths<f64> {
   fn repro_bits(&self) -> Vec<u64> {
-    let mut bits = self.0.repro_bits();
-    bits.extend(self.1.repro_bits());
+    [&self.s, &self.v, &self.rho]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for DoubleHestonPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.s, &self.v1, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for HjmPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.r, &self.p, &self.f]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for CompoundPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.arrivals, &self.cumulative, &self.jumps]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for Heston2DPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.x1, &self.v1, &self.x2, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for HestonHullWhite2FPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.s, &self.v, &self.r, &self.u, &self.integrated_rate]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl<const K: usize> ReproBits for MultifactorHestonPaths<f64, K> {
+  fn repro_bits(&self) -> Vec<u64> {
+    let mut bits = self.s.repro_bits();
+    bits.extend(self.v.repro_bits());
     bits
   }
 }
@@ -111,20 +160,8 @@ pub(crate) fn pool(num_threads: usize) -> rayon::ThreadPool {
     .expect("failed to build rayon thread pool")
 }
 
-/// The guard's four assertions, run once per process type: (a) two fresh,
-/// identically-`Deterministic`-seeded instances agree bit-for-bit on
-/// `.sample()`; (b) a fresh instance built from [`OTHER_SEED`] disagrees
-/// with (a) — the discriminating half, without which (a) alone cannot tell
-/// a correctly-seeded type from one whose `self.seed` is a dead field: two
-/// builds that both ignore the seed still agree with each other on (a), so
-/// (a) alone is satisfied by either a correct implementation or a broken
-/// one that ignores `seed` entirely (see the `Cir2F` case this assertion
-/// was added for, in the crate-root doc comment); (c)/(d) `sample_par`
-/// agrees bit-for-bit across two rayon pool sizes, both at `m <=
-/// MAX_CHUNKS` and at `m > MAX_CHUNKS`. GPU backends are never reached
-/// here — every backend-generic constructor called from the submodules
-/// below goes through the inherent `Cpu`-only `new()`, so there is no way
-/// to build a GPU-backed instance through this function at all.
+/// Per type: two fresh instances with one seed agree to the bit; [`OTHER_SEED`] differs, since a
+/// dead `seed` field passes the first; `sample_par` agrees across pool sizes around `MAX_CHUNKS`.
 pub(crate) fn check<P, F>(name: &str, make: F)
 where
   F: Fn(Deterministic) -> P + Sync,
@@ -173,9 +210,7 @@ where
   }
 }
 
-/// One `#[test]` per invocation, named `$test_fn`, checking `$display`
-/// built by the seed-taking closure/expr `$make` — see the crate-root doc
-/// comment for how the full 124-entry list was derived.
+/// One `#[test]` named `$test_fn` that checks `$display`, built by the seed-taking `$make`.
 macro_rules! guard {
   ($test_fn:ident, $display:literal, $make:expr) => {
     #[test]
@@ -185,3 +220,15 @@ macro_rules! guard {
   };
 }
 pub(crate) use guard;
+
+/// A `guard!` for a configuration its process's own guard leaves out; another name keeps the
+/// `guard!` lines one per process, as `CLAUDE.md` counts them.
+macro_rules! variant {
+  ($test_fn:ident, $display:literal, $make:expr) => {
+    #[test]
+    fn $test_fn() {
+      crate::common::check($display, $make);
+    }
+  };
+}
+pub(crate) use variant;

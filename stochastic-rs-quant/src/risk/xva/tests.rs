@@ -4,6 +4,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
@@ -14,23 +16,23 @@ use crate::curves::InterpolationMethod;
 
 fn flat_discount(r: f64) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![r; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![r; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
 
 fn flat_hazard(h: f64) -> SurvivalCurve<f64> {
   SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![h, h, h]),
+    Array1::from_vec(vec![1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![h, h, h]).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   )
 }
 
 /// Brownian MtM `V_t = σ W_t` on the dates `times`, `paths` rows, pinned seed.
 fn brownian_mtm(sigma: f64, times: &[f64], paths: usize, seed: u64) -> Array2<f64> {
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
   let mut z = vec![0.0; paths * times.len()];
   normal.fill_slice(&mut z);
   let mut mtm = Array2::<f64>::zeros((paths, times.len()));
@@ -52,7 +54,7 @@ const TIMES: [f64; 4] = [0.5, 1.0, 1.5, 2.0];
 fn nonfinite_mtm_is_rejected_instead_of_becoming_zero_exposure() {
   for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
     let mtm = Array2::from_shape_vec((2, 1), vec![100.0, invalid]).unwrap();
-    let error = ExposureProfile::try_from_mtm(&mtm, vec![1.0], 0.95).unwrap_err();
+    let error = ExposureProfile::try_from_mtm(mtm.view(), vec![1.0], 0.95).unwrap_err();
     assert!(error.to_string().contains("MtM values must be finite"));
   }
 }
@@ -60,7 +62,7 @@ fn nonfinite_mtm_is_rejected_instead_of_becoming_zero_exposure() {
 #[test]
 fn nonfinite_exposure_dates_are_rejected() {
   let mtm = Array2::zeros((1, 1));
-  assert!(ExposureProfile::try_from_mtm(&mtm, vec![f64::INFINITY], 0.95).is_err());
+  assert!(ExposureProfile::try_from_mtm(mtm.view(), vec![f64::INFINITY], 0.95).is_err());
 }
 
 /// `E[max(σW_t, 0)] = σ√t / √(2π)` and the PFE quantile is `σ√t Φ⁻¹(q)`.
@@ -71,7 +73,7 @@ fn brownian_profile_matches_the_closed_forms() {
     .into_iter()
     .map(|seed| {
       let profile = ExposureProfile::from_mtm(
-        &brownian_mtm(sigma, &TIMES, 40_000, seed),
+        brownian_mtm(sigma, &TIMES, 40_000, seed).view(),
         TIMES.to_vec(),
         0.95,
       );
@@ -89,9 +91,8 @@ fn brownian_profile_matches_the_closed_forms() {
   assert!(best < 0.03, "worst relative deviation {best}");
 }
 
-/// CVA with flat hazard and flat discounting against the analytic EPE plugged
-/// into the same rectangle rule; DVA mirrors it and the funding adjustments
-/// cancel for a symmetric exposure.
+/// CVA at a flat hazard and flat discounting against the analytic EPE in the same rectangle
+/// rule; DVA mirrors it and the funding adjustments cancel on a symmetric exposure.
 #[test]
 fn adjustments_match_their_closed_forms_on_a_symmetric_exposure() {
   let (sigma, h, r, lgd) = (10.0, 0.02, 0.03, 0.6);
@@ -144,7 +145,7 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
     swap.value_at(&curve, 0.0, 0.03).abs() < 1e-6 * swap.notional,
     "par swap at inception"
   );
-  let profile = swap.profile(&curve, 4_000, 0.95, Deterministic::new(5));
+  let profile = swap.profile(&curve, 4_000, 0.95, &Deterministic::new(5));
   assert!(profile.epe[0] > 0.0 && profile.epe[1] > profile.epe[0] * 0.5);
   assert_eq!(profile.epe[4], 0.0);
   assert!(profile.pfe[1] >= profile.epe[1]);
@@ -152,12 +153,99 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
   let low = cva(&profile, &flat_hazard(0.01), &discount, 0.6);
   let high = cva(&profile, &flat_hazard(0.05), &discount, 0.6);
   assert!(low > 0.0 && high > low, "cva {low} -> {high}");
-  let again = swap.profile(&curve, 4_000, 0.95, Deterministic::new(5));
+  let again = swap.profile(&curve, 4_000, 0.95, &Deterministic::new(5));
   assert_eq!(profile, again);
 }
 
 #[test]
-#[should_panic(expected = "one MtM column per exposure date")]
+fn a_fresh_seed_replays_the_exposure_and_a_shared_one_advances() {
+  let curve = flat_discount(0.03);
+  let swap = HullWhiteSwapExposure::new(0.1, 0.01, 1_000_000.0, 0.03, vec![1.0, 2.0, 3.0], 1.0)
+    .with_steps_per_year(12);
+  let profile = |seed: &Deterministic| swap.profile(&curve, 500, 0.95, seed);
+  assert_eq!(
+    profile(&Deterministic::new(5)),
+    profile(&Deterministic::new(5))
+  );
+  let shared = Deterministic::new(5);
+  assert_ne!(profile(&shared), profile(&shared));
+  let mtm = || swap.mtm_matrix(&curve, 500, &Deterministic::new(5));
+  assert_eq!(mtm(), mtm());
+}
+
+#[test]
+#[should_panic(expected = "MtM columns, one per exposure date")]
 fn rejects_mismatched_dates() {
-  let _ = ExposureProfile::from_mtm(&Array2::<f64>::zeros((3, 2)), vec![1.0, 2.0, 3.0], 0.95);
+  let _ = ExposureProfile::from_mtm(
+    Array2::<f64>::zeros((3, 2)).view(),
+    vec![1.0, 2.0, 3.0],
+    0.95,
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion > 0.0`, got mean_reversion = 0.0"
+)]
+fn a_swap_exposure_without_mean_reversion_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.0, 0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.01"
+)]
+fn a_swap_exposure_with_a_negative_volatility_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, -0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got payment_times[0] = None"
+)]
+fn a_swap_exposure_without_a_payment_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[i] < payment_times[i + 1]` for every i, got payment_times[1] = 2.0 and payment_times[2] = 2.0"
+)]
+fn a_swap_exposure_with_a_repeated_payment_time_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "steps_per_year must satisfy `steps_per_year >= 1`, got steps_per_year = 0"
+)]
+fn a_swap_exposure_without_a_step_is_a_precondition() {
+  let _ =
+    HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0], 1.0).with_steps_per_year(0);
+}
+
+#[test]
+#[should_panic(
+  expected = "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got payment_times[0] = Some(inf)"
+)]
+fn a_swap_exposure_paying_at_infinity_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![f64::INFINITY], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "notional must satisfy `notional.is_finite()`, got notional = NaN")]
+fn a_swap_exposure_with_a_nan_notional_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, f64::NAN, 0.03, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "fixed_rate must satisfy `fixed_rate.is_finite()`, got fixed_rate = inf")]
+fn a_swap_exposure_with_an_infinite_fixed_rate_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, f64::INFINITY, vec![1.0, 2.0], 1.0);
+}
+
+#[test]
+#[should_panic(expected = "accrual must satisfy `accrual.is_finite()`, got accrual = NaN")]
+fn a_swap_exposure_with_a_nan_accrual_is_a_precondition() {
+  HullWhiteSwapExposure::new(0.1, 0.01, 1.0, 0.03, vec![1.0, 2.0], f64::NAN);
 }

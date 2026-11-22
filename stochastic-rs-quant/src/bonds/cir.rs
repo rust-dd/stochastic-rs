@@ -1,31 +1,22 @@
-//! # CIR
+//! CIR zero-coupon bond: `theta` is the mean-reversion speed and `mu` the long-run mean (κ and θ
+//! in the reference).
 //!
 //! $$
 //! dr_t=\theta(\mu-r_t)dt+\sigma\sqrt{r_t}\,dW_t
 //! $$
 //!
-//! Field-name convention matches the SDE above and the workspace convention
-//! shared with [`Vasicek`](super::vasicek::Vasicek):
-//! - `theta` is the **mean-reversion speed** (κ in Brigo §3.2.3).
-//! - `mu` is the **long-run mean** (θ in Brigo §3.2.3) — the level `r_t` reverts to.
-//!
-//! Brigo & Mercurio (2007), *Interest Rate Models*, §3.2.3.
+//! Reference: Brigo & Mercurio (2007), "Interest Rate Models: Theory and Practice", §3.2.3
 use crate::traits::ShortRatePricer;
 
-/// CIR model for zero-coupon bond pricing.
-///
-/// `dR(t) = θ(μ − R(t)) dt + σ √R(t) dW(t)` where `R(t)` is the short rate.
-///
-/// Holds only the model parameters — the short rate and maturity are the
-/// query, passed to [`ShortRatePricer::zero_coupon_price`], so one `Cir`
-/// prices an entire maturity grid instead of one struct per maturity.
+/// CIR parameters of `dR = θ(μ − R) dt + σ √R dW`; the short rate and the maturity are the query
+/// of [`ShortRatePricer::zero_coupon_price`], so one `Cir` prices a maturity grid.
 #[derive(Default, Debug)]
 pub struct Cir {
   /// Mean-reversion speed (κ in the Brigo SDE).
   pub theta: f64,
   /// Long-run mean of the short rate (the level `r_t` reverts to; θ in Brigo).
   pub mu: f64,
-  /// Volatility.
+  /// Volatility σ of the square-root diffusion term `σ√r dW`.
   pub sigma: f64,
 }
 

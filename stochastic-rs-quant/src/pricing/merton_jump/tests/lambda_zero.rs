@@ -1,42 +1,34 @@
-//! `lambda = 0` is the no-jump state, and the model there **is**
-//! Black-Scholes at the total volatility `v`.
-//!
-//! The Poisson weights are `1, 0, 0, …`, so only the `n = 0` term survives,
-//! and with no jumps the whole variance is diffusive: `d² = v² - λz² = v²`.
-//! The Greeks have always answered that way. The price did not — it read
-//! the per-jump size `z = √(v²γ/λ)` first, which is `∞` at `gamma > 0` and
-//! `NaN` at `gamma = 0`, and `λz²` then became `0·∞ = NaN`. Only the jump
-//! *variance rate* `λz²` ever enters the model, and that is `0` here
-//! whatever the size of a jump that never happens would have been.
-//!
-//! `lambda = 0` is a value at a point rather than a limit, and the tests
-//! below pin that distinction as well as the value.
+//! At `lambda = 0` the model is Black-Scholes at `sigma`: only the jump variance rate `λz² = σ²γ`
+//! enters, `0` here, so the price never forms `0·∞`; a value at the point, not the `λ → 0⁺` limit.
 
 use super::*;
 
-/// The defect: every `lambda = 0` price was `NaN`, for every `gamma` —
-/// including `gamma = 0`, where the model has no jump component to
-/// parameterise at all.
+/// A `lambda = 0` price is finite for every `gamma`, including `gamma = 0`.
 #[test]
 fn merton_price_lambda_zero_equals_bs() {
-  let bs = BSMPricer::new(0.2, BSMCoc::Bsm1973);
-  let want = bs.call_put(S, K, R, Q, TAU);
+  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973);
+  let want = CallPut {
+    call: bs.price_call(S, K, R, Q, TAU),
+    put: bs.price_put(S, K, R, Q, TAU),
+  };
   for &gamma in &[0.0, 0.4, 1.0] {
     let m = merton(0.0, gamma, 20);
-    assert_eq!(m.call_put(S, K, R, Q, TAU), want, "gamma={gamma}");
-    assert_eq!(m.price_call(S, K, R, Q, TAU), want.0, "gamma={gamma} call");
-    assert_eq!(m.price_put(S, K, R, Q, TAU), want.1, "gamma={gamma} put");
+    assert_eq!(m.price_call_put(S, K, R, Q, TAU), want, "gamma={gamma}");
+    assert_eq!(
+      m.price_call(S, K, R, Q, TAU),
+      want.call,
+      "gamma={gamma} call"
+    );
+    assert_eq!(m.price_put(S, K, R, Q, TAU), want.put, "gamma={gamma} put");
   }
 }
 
-/// Price and Greeks reach the Black-Scholes limit by different routes —
-/// the price through the series, the Greeks through
-/// `greek_series`'s `λ ≤ 0` branch — so this asserts they agree, which is
-/// the property that was broken rather than either value on its own.
+/// The price (through the series) and the Greeks (through `greek_series`'s `λ ≤ 0` branch) agree on
+/// the Black-Scholes value at `lambda = 0`.
 #[test]
 fn merton_price_and_greeks_agree_at_lambda_zero() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BSMPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.sigma, m.b);
   assert_eq!(
     m.price_call(S, K, R, Q, TAU),
     bs.price_call(S, K, R, Q, TAU)
@@ -57,30 +49,18 @@ fn merton_price_and_greeks_agree_at_lambda_zero() {
   );
 }
 
-/// The limit is **not** the value, and that is a property of the
-/// parameterisation rather than of the model.
-///
-/// `gamma` is the share of the *total* variance carried by jumps, so
-/// holding it fixed while `lambda → 0⁺` sets `z² = γv²/λ → ∞`: the jumps
-/// get rarer and larger at once, keeping their share of the variance the
-/// whole way down. Every one of those models has diffusive volatility
-/// `v√(1-γ)`, and the surviving `n ≥ 1` terms carry weight `O(λ)`, so the
-/// price converges to Black-Scholes at `v√(1-γ)` — `3.3205` here, against
-/// `4.5817` at `lambda = 0` itself.
-///
-/// At `gamma = 0` there is no jump variance to strand and the two coincide,
-/// which is the second half of the pin: the discontinuity is exactly the
-/// variance the limit leaves behind.
+/// At fixed `gamma` the `λ → 0⁺` limit is Black-Scholes at `σ√(1 − γ)` (`z² = γσ²/λ → ∞`), not the
+/// value at `lambda = 0`; the two coincide only at `gamma = 0`.
 #[test]
 fn the_lambda_zero_limit_is_discontinuous_in_gamma() {
   let at_zero = |gamma: f64| merton(0.0, gamma, 20).price_call(S, K, R, Q, TAU);
   let approaching = |gamma: f64, lambda: f64| merton(lambda, gamma, 40).price_call(S, K, R, Q, TAU);
 
   let diffusive_only =
-    BSMPricer::new(0.2 * (1.0 - 0.4_f64).sqrt(), BSMCoc::Bsm1973).price_call(S, K, R, Q, TAU);
+    BsmPricer::new(0.2 * (1.0 - 0.4_f64).sqrt(), BsmCoc::Bsm1973).price_call(S, K, R, Q, TAU);
   assert!(
     (approaching(0.4, 1e-8) - diffusive_only).abs() < 1e-5,
-    "limit {} should be Black-Scholes at v*sqrt(1-gamma) = {diffusive_only}",
+    "limit {} should be Black-Scholes at sigma*sqrt(1-gamma) = {diffusive_only}",
     approaching(0.4, 1e-8)
   );
   assert!(

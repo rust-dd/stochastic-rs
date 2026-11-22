@@ -1,21 +1,12 @@
-//! Bermudan swaption pricing on a Hull-White trinomial lattice.
+//! Bermudan swaption on a short-rate trinomial lattice, the swap reduced to zero-coupon bonds:
 //!
-//! Early exercise is evaluated at a user-specified subset of tree levels. The
-//! underlying swap cashflows are reduced to zero-coupon bond prices via the
-//! identity
 //! $$
 //! V_{\mathrm{float}}(t)=N\,\bigl[1-P(t,T_N)\bigr],\qquad
 //! V_{\mathrm{fixed}}(t)=N\,K\,\sum_{T_i>t}\delta_i\,P(t,T_i)
 //! $$
-//! so that $V_{\mathrm{swap}}(t)=V_{\mathrm{float}}(t)\pm V_{\mathrm{fixed}}(t)$
-//! can be computed at every node by backward induction once $P$ and the
-//! discounted coupon strip are accumulated on the lattice.
-//!
-//! Reference: Hull & White, "Numerical Procedures for Implementing Term
-//! Structure Models I: Single-Factor Models", Journal of Derivatives 2(1), 1994.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §13.
+//! so `V_swap = V_float ± V_fixed` at every node by backward induction, exercise at chosen levels.
+//! Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, DOI 10.3905/jod.1994.407902
+//! Reference: Brigo & Mercurio (2006), 2nd ed., §13, DOI 10.1007/978-3-540-34604-3
 
 use chrono::NaiveDate;
 use ndarray::Array1;
@@ -27,14 +18,13 @@ use super::types::SwaptionDirection;
 use super::types::TreeCouponSchedule;
 use crate::calendar::DayCountConvention;
 use crate::lattice::G2ppTree;
-use crate::lattice::HullWhiteTree;
 use crate::lattice::OneFactorShortRateModel;
 use crate::lattice::TrinomialTree;
 use crate::lattice::TwoFactorShortRateModel;
 use crate::lattice::short_rate::correlated_joint_probabilities;
 use crate::traits::RealExt;
 
-/// Bermudan swaption priced on a Hull-White trinomial tree.
+/// Bermudan swaption on tree-level schedules, priced on any [`BermudanTree`].
 #[derive(Debug, Clone)]
 pub struct BermudanSwaption<T: RealExt> {
   /// Payoff direction.
@@ -67,84 +57,72 @@ impl<T: RealExt> BermudanSwaption<T> {
     }
   }
 
-  /// Valuation on a Hull-White trinomial tree.
-  pub fn valuation_on(&self, tree: &HullWhiteTree<T>) -> BermudanSwaptionValuation<T> {
-    let npv = self.price_on_tree(&tree.tree, &tree.model);
-    BermudanSwaptionValuation {
-      npv,
-      exercise_count: self.exercise_schedule.levels.len(),
-    }
+  pub fn valuation(&self, tree: &impl BermudanTree<T>) -> BermudanSwaptionValuation<T> {
+    tree.bermudan_valuation(self)
   }
 
-  /// Price on a Hull-White trinomial tree.
-  pub fn price_on(&self, tree: &HullWhiteTree<T>) -> T {
-    self.valuation_on(tree).npv
+  pub fn npv(&self, tree: &impl BermudanTree<T>) -> T {
+    self.valuation(tree).npv
   }
 
-  /// Price on any one-factor trinomial short-rate tree.
-  pub fn price_on_tree<M: OneFactorShortRateModel<T>>(
-    &self,
-    tree: &TrinomialTree<T>,
-    model: &M,
-  ) -> T {
-    price_on_one_factor_tree(
-      tree,
-      model,
-      self.direction,
-      self.strike,
-      self.notional,
-      &self.exercise_schedule,
-      &self.coupon_schedule,
-    )
-  }
-
-  /// Price on a G2++ two-factor trinomial tree via joint $(x,y)$ backward
-  /// induction with correlated branches.
-  pub fn price_on_g2pp(&self, tree: &G2ppTree<T>) -> T {
-    price_on_two_factor_tree(
-      tree,
-      self.direction,
-      self.strike,
-      self.notional,
-      &self.exercise_schedule,
-      &self.coupon_schedule,
-    )
-  }
-
-  /// Valuation summary on a G2++ tree.
-  pub fn valuation_on_g2pp(&self, tree: &G2ppTree<T>) -> BermudanSwaptionValuation<T> {
-    BermudanSwaptionValuation {
-      npv: self.price_on_g2pp(tree),
-      exercise_count: self.exercise_schedule.levels.len(),
-    }
-  }
-
-  /// Build a Bermudan swaption from calendar exercise and coupon dates.
-  ///
-  /// Each date is snapped to the nearest tree level based on `valuation_date`,
-  /// `day_count`, and the tree step size `dt`. The `accrual_factors` are paired
-  /// positionally with `coupon_dates`.
-  #[allow(clippy::too_many_arguments)]
-  pub fn from_calendar(
+  /// Snaps each date to the nearest level of a tree stepping by `dt` years from the valuation
+  /// date; panics unless `coupon_dates` and `accrual_factors` have one length.
+  pub fn from_dates(
     direction: SwaptionDirection,
     strike: T,
     notional: T,
-    valuation_date: NaiveDate,
-    day_count: DayCountConvention,
+    dates: &BermudanDates<T>,
     dt: T,
-    exercise_dates: &[NaiveDate],
-    coupon_dates: &[NaiveDate],
-    accrual_factors: &[T],
   ) -> Self {
-    let exercise_levels = snap_to_levels(valuation_date, day_count, dt, exercise_dates);
-    let coupon_levels = snap_to_levels(valuation_date, day_count, dt, coupon_dates);
+    let levels = |of: &[NaiveDate]| snap_to_levels(dates.valuation_date, dates.day_count, dt, of);
     Self::new(
       direction,
       strike,
       notional,
-      ExerciseSchedule::new(exercise_levels),
-      TreeCouponSchedule::new(coupon_levels, accrual_factors.to_vec()),
+      ExerciseSchedule::new(levels(&dates.exercise_dates)),
+      TreeCouponSchedule::new(levels(&dates.coupon_dates), dates.accrual_factors.clone()),
     )
+  }
+}
+
+/// Calendar form of a Bermudan swaption's exercise and coupon schedule.
+#[derive(Debug, Clone)]
+pub struct BermudanDates<T: RealExt> {
+  pub valuation_date: NaiveDate,
+  /// Converts each date to a year fraction from `valuation_date`.
+  pub day_count: DayCountConvention,
+  pub exercise_dates: Vec<NaiveDate>,
+  pub coupon_dates: Vec<NaiveDate>,
+  /// One accrual factor per coupon date, in the same order.
+  pub accrual_factors: Vec<T>,
+}
+
+/// A lattice a [`BermudanSwaption`] prices on by backward induction; a custom one-factor tree
+/// answers with [`one_factor_valuation`].
+pub trait BermudanTree<T: RealExt> {
+  fn bermudan_valuation(&self, swaption: &BermudanSwaption<T>) -> BermudanSwaptionValuation<T>;
+}
+
+/// Backward induction on any one-factor trinomial short-rate tree.
+pub fn one_factor_valuation<T: RealExt, M: OneFactorShortRateModel<T>>(
+  swaption: &BermudanSwaption<T>,
+  tree: &TrinomialTree<T>,
+  model: &M,
+) -> BermudanSwaptionValuation<T> {
+  BermudanSwaptionValuation {
+    npv: price_on_one_factor_tree(swaption, tree, model),
+    exercise_count: swaption.exercise_schedule.levels.len(),
+  }
+}
+
+/// Joint `(x, y)` backward induction on a G2++ tree with correlated branches.
+pub(crate) fn g2pp_valuation<T: RealExt>(
+  swaption: &BermudanSwaption<T>,
+  tree: &G2ppTree<T>,
+) -> BermudanSwaptionValuation<T> {
+  BermudanSwaptionValuation {
+    npv: price_on_two_factor_tree(swaption, tree),
+    exercise_count: swaption.exercise_schedule.levels.len(),
   }
 }
 
@@ -165,14 +143,18 @@ fn snap_to_levels<T: RealExt>(
 }
 
 fn price_on_one_factor_tree<T: RealExt, M: OneFactorShortRateModel<T>>(
+  swaption: &BermudanSwaption<T>,
   tree: &TrinomialTree<T>,
   model: &M,
-  direction: SwaptionDirection,
-  strike: T,
-  notional: T,
-  exercise_schedule: &ExerciseSchedule,
-  coupon_schedule: &TreeCouponSchedule<T>,
 ) -> T {
+  let BermudanSwaption {
+    direction,
+    strike,
+    notional,
+    exercise_schedule,
+    coupon_schedule,
+  } = swaption;
+  let (direction, strike, notional) = (*direction, *strike, *notional);
   let n_levels = tree.states.len();
   assert!(n_levels > 0, "tree must contain at least one level");
   let terminal = n_levels - 1;
@@ -320,14 +302,15 @@ fn backward_expectation_with_injection<T: RealExt, M: OneFactorShortRateModel<T>
   storage
 }
 
-fn price_on_two_factor_tree<T: RealExt>(
-  tree: &G2ppTree<T>,
-  direction: SwaptionDirection,
-  strike: T,
-  notional: T,
-  exercise_schedule: &ExerciseSchedule,
-  coupon_schedule: &TreeCouponSchedule<T>,
-) -> T {
+fn price_on_two_factor_tree<T: RealExt>(swaption: &BermudanSwaption<T>, tree: &G2ppTree<T>) -> T {
+  let BermudanSwaption {
+    direction,
+    strike,
+    notional,
+    exercise_schedule,
+    coupon_schedule,
+  } = swaption;
+  let (direction, strike, notional) = (*direction, *strike, *notional);
   let n_levels = tree.x_tree.states.len();
   assert!(n_levels > 0, "G2++ tree must contain at least one level");
   let terminal = n_levels - 1;

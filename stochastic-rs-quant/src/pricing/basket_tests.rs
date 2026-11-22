@@ -1,6 +1,8 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::QuantError;
 
 fn iid_basket(
   n: usize,
@@ -24,15 +26,12 @@ fn iid_basket(
   (s, w, sig, q, rho_m)
 }
 
-/// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last bit
-/// is a hostage to FMA contraction and libm differences between the
-/// aarch64-darwin dev machine and CI's ubuntu x86_64.
+/// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
+/// aarch64-darwin and CI's ubuntu x86_64.
 const TOL: f64 = 1e-12;
 
-/// An asymmetric basket: distinct weights, spots, volatilities and dividend
-/// yields, an indefinite-looking off-diagonal correlation, a non-round
-/// strike and a non-unit maturity. Nothing here can survive a query field
-/// left behind on the struct by coinciding with a default.
+/// Distinct weights, spots, volatilities and yields, a non-round strike and a non-unit maturity,
+/// so no query value left on the struct can pass by matching a default.
 fn asymmetric_basket() -> (
   Array1<f64>,
   Array1<f64>,
@@ -49,9 +48,7 @@ fn asymmetric_basket() -> (
   )
 }
 
-/// Values captured from the bundled-market-data `GeometricBasketPricer`
-/// **before** the model/query reshape. The reshape is an API change only,
-/// so these must not move.
+/// Regression goldens for the geometric basket, one asset and several.
 #[test]
 fn geometric_basket_matches_pre_refactor_goldens() {
   let single = GeometricBasketPricer::new(array![1.0], array![0.2], array![[1.0]]);
@@ -70,9 +67,8 @@ fn geometric_basket_matches_pre_refactor_goldens() {
   assert!((put - 7.226225240544302).abs() < TOL, "asym put {put}");
 }
 
-/// One model instance prices a whole strike and maturity grid — the point
-/// of the split. A strike or maturity cached at construction would return
-/// the same number three times.
+/// One instance prices a strike and maturity grid, which a strike or maturity cached at
+/// construction would answer with one number.
 #[test]
 fn geometric_basket_one_model_prices_a_grid() {
   let (s, w, sig, q, rho) = asymmetric_basket();
@@ -127,9 +123,7 @@ fn geometric_below_arithmetic() {
   assert!(geo < ari, "geo={geo} should be < ari={ari}");
 }
 
-/// Values captured from the bundled-market-data
-/// `ArithmeticBasketLevyPricer` **before** the model/query reshape. The
-/// reshape is an API change only, so these must not move.
+/// Regression goldens for the Levy basket at the asymmetric query.
 #[test]
 fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   let (s, w, sig, q, rho) = asymmetric_basket();
@@ -147,7 +141,7 @@ fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   assert!((put - 7.44011942297468).abs() < TOL, "iid put {put}");
 }
 
-/// One model instance prices a whole strike grid — the point of the split.
+/// One model instance prices a whole strike grid.
 #[test]
 fn arithmetic_basket_levy_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = asymmetric_basket();
@@ -175,13 +169,9 @@ fn levy_vs_mc_arithmetic() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 100_000).price_call(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 100_000)
+    .with_seed(Deterministic::new(42))
+    .price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (levy - mc.mean).abs() / mc.mean;
   assert!(rel < 0.03, "levy={levy}, mc={mc}, rel={rel}");
 }
@@ -197,13 +187,9 @@ fn mc_geometric_matches_closed_form() {
     q.view(),
     1.0,
   );
-  let mc = McBasketPricer::new(w, BasketAverageType::Geometric, sig, rho, 200_000).price_call(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc = McBasketPricer::new(w, BasketAverageType::Geometric, sig, rho, 200_000)
+    .with_seed(Deterministic::new(42))
+    .price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (cf - mc.mean).abs() / cf;
   assert!(rel < 0.02, "cf={cf}, mc={mc}");
   assert!(
@@ -212,15 +198,8 @@ fn mc_geometric_matches_closed_form() {
   );
 }
 
-/// The two closed-form basket constructors now reject a shape mismatch, a
-/// negative volatility and an out-of-range correlation entry; the Monte
-/// Carlo one rejects only the volatilities and the path count.
-///
-/// The shape check is the one with the sharpest evidence, and it comes
-/// from the Levy pricer: it has no dimension assertion anywhere, and its
-/// moment loops run over the *query*'s asset count while indexing the
-/// model's vectors, so a surplus model entry is silently discarded and a
-/// short one silently truncates the basket.
+/// The closed forms refuse a shape mismatch, a negative volatility and a correlation off `[−1, 1]`
+/// (Levy's loops would drop or truncate an asset); the Monte Carlo one the volatilities and paths.
 mod construction_validation {
   use super::*;
 
@@ -228,7 +207,7 @@ mod construction_validation {
   /// with the third volatility silently ignored.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: weights, sigma and rho must agree on the asset count"
+    expected = "weights must satisfy `weights.len() == sigma.len()`, got weights.len() = 2"
   )]
   fn levy_rejects_a_surplus_volatility() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -242,7 +221,7 @@ mod construction_validation {
   /// the top-left block and nothing else.
   #[test]
   #[should_panic(
-    expected = "GeometricBasketPricer::new: weights, sigma and rho must agree on the asset count"
+    expected = "rho must satisfy `rho.dim() == (sigma.len(), sigma.len())`, got rho.dim() = (3, 3)"
   )]
   fn geometric_rejects_a_correlation_of_the_wrong_size() {
     let _ = GeometricBasketPricer::new(array![0.5, 0.5], array![0.20, 0.30], Array2::<f64>::eye(3));
@@ -251,7 +230,7 @@ mod construction_validation {
   /// `8.487146` against `10.894912`.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+    expected = "sigma[0] must satisfy `sigma[0].is_finite() && sigma[0] >= 0.0`, got sigma[0] = -0.2"
   )]
   fn levy_rejects_a_negative_volatility() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -264,7 +243,7 @@ mod construction_validation {
   /// `6.946344` against `10.224832`.
   #[test]
   #[should_panic(
-    expected = "GeometricBasketPricer::new: sigma[0] must be a non-negative volatility (got -0.2)"
+    expected = "sigma[0] must satisfy `sigma[0].is_finite() && sigma[0] >= 0.0`, got sigma[0] = -0.2"
   )]
   fn geometric_rejects_a_negative_volatility() {
     let _ = GeometricBasketPricer::new(
@@ -274,11 +253,11 @@ mod construction_validation {
     );
   }
 
-  /// The `sigma_g_sq.max(0.0)` floor swallows a negative basket variance
-  /// and the geometric call comes back **`0.0`** — the `f64::max` trap
-  /// again, this time on a model parameter rather than a price.
+  /// A `rho` of −5 makes the basket variance negative, which its `max(0)` floor priced at `0.0`.
   #[test]
-  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][1] must be in [-1, 1] (got -5)")]
+  #[should_panic(
+    expected = "rho[0][1] must satisfy `(-1.0..=1.0).contains(&rho[0][1])`, got rho[0][1] = -5.0"
+  )]
   fn geometric_rejects_a_correlation_below_minus_one() {
     let _ = GeometricBasketPricer::new(
       array![0.5, 0.5],
@@ -287,11 +266,10 @@ mod construction_validation {
     );
   }
 
-  /// `4.877058` — the basket's zero-volatility intrinsic, the same number
-  /// a `NaN` `sigma` produced before the Levy variance floor was split.
+  /// A `rho` of −5 would price at `4.877058`, the basket's zero-volatility intrinsic.
   #[test]
   #[should_panic(
-    expected = "ArithmeticBasketLevyPricer::new: rho[0][1] must be in [-1, 1] (got -5)"
+    expected = "rho[0][1] must satisfy `(-1.0..=1.0).contains(&rho[0][1])`, got rho[0][1] = -5.0"
   )]
   fn levy_rejects_a_correlation_below_minus_one() {
     let _ = ArithmeticBasketLevyPricer::new(
@@ -301,11 +279,12 @@ mod construction_validation {
     );
   }
 
-  /// The range test covers the diagonal, so a matrix carrying variances
-  /// instead of correlations is caught by the same check: `16.837128`
-  /// against `10.224832`.
+  /// The range check covers the diagonal, so variances passed as `rho` (`16.837128` against
+  /// `10.224832`) are refused.
   #[test]
-  #[should_panic(expected = "GeometricBasketPricer::new: rho[0][0] must be in [-1, 1] (got 3)")]
+  #[should_panic(
+    expected = "rho[0][0] must satisfy `(-1.0..=1.0).contains(&rho[0][0])`, got rho[0][0] = 3.0"
+  )]
   fn geometric_rejects_a_correlation_diagonal_that_is_not_one() {
     let _ = GeometricBasketPricer::new(
       array![0.5, 0.5],
@@ -316,7 +295,7 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "McBasketPricer::new: sigma[1] must be a non-negative volatility (got -0.3)"
+    expected = "sigma[1] must satisfy `sigma[1].is_finite() && sigma[1] >= 0.0`, got sigma[1] = -0.3"
   )]
   fn mc_basket_rejects_a_negative_volatility() {
     let _ = McBasketPricer::new(
@@ -329,7 +308,7 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "McBasketPricer::new: n_paths must be at least 1 (got 0)")]
+  #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn mc_basket_rejects_a_zero_path_count() {
     let _ = McBasketPricer::new(
       array![0.5, 0.5],
@@ -340,19 +319,8 @@ mod construction_validation {
     );
   }
 
-  /// The deliberate omissions, pinned so they cannot drift.
-  ///
-  /// The **weight sum** is free on both closed forms: a long/short basket
-  /// is a real product, and `w = [-1, 2]` prices at `29.444371` /
-  /// `22.810134` rather than at nonsense.
-  ///
-  /// **Symmetry** of `rho` is free, because an exact-equality test would
-  /// reject an estimator's round-off-symmetric matrix. The residual is
-  /// asserted rather than described: the geometric basket symmetrises an
-  /// asymmetric `rho` *bit-identically*, and the Levy basket does not.
-  ///
-  /// `McBasketPricer` leaves `rho` and the shapes to `try_price`, which
-  /// `mc_basket_try_price_reports_a_query_dimension_mismatch` needs.
+  /// A long/short weight sum and an asymmetric `rho` build (geometric symmetrises it bit for bit,
+  /// Levy does not); `McBasketPricer` leaves `rho` and the shapes to `try_price`.
   #[test]
   fn the_deliberate_omissions_stay_constructible() {
     let s = array![100.0, 100.0];
@@ -403,12 +371,10 @@ mod construction_validation {
     );
   }
 
-  /// The accessor guards stay, because the fields are `pub` and so the
-  /// constructor is a front door and not a wall. A query whose asset count
-  /// disagrees with an internally consistent model is still the accessor's
-  /// to catch, and its message is not a substring of the constructor's.
+  /// The fields are `pub`, so the constructor is a front door and not a wall: the accessor checks
+  /// the query's asset count against the model's, and names the query's vector.
   #[test]
-  #[should_panic(expected = "assertion `left == right` failed")]
+  #[should_panic(expected = "s must satisfy `s.len() == sigma.len()`, got s.len() = 3")]
   fn the_query_length_check_stays_at_the_accessor() {
     let model = GeometricBasketPricer::new(
       array![0.5, 0.5],
@@ -421,32 +387,15 @@ mod construction_validation {
   }
 }
 
-/// A `NaN` *model* parameter used to price at the basket's **zero-volatility
-/// intrinsic**, which is the sharpest form this trap takes anywhere in the
-/// crate: nothing in the query is wrong and the answer is a plausible ATM
-/// call.
-///
-/// `(m2 / m1²).ln().max(1e-14)` turned the `NaN` log-ratio into `1e-14`, so
-/// `sigma_eff ~ 1e-7` and the Levy approximation collapsed onto the
-/// deterministic-basket value. The measurement that identifies it: the
-/// poisoned call and a genuinely zero-volatility basket at the same query
-/// return the *same* number, `4.877057549928611`, against `10.894912…` for
-/// the healthy model.
-///
-/// Both poisoned parameters are written straight to the `pub` fields
-/// rather than passed to the constructor, so this stays a statement about
-/// the estimator rather than about what `new` accepts.
-///
-/// The sibling [`GeometricBasketPricer`] is clean under the same probe —
-/// it has no such floor — and is checked here so the fix is not read as
-/// something the whole file needed.
+/// A NaN model parameter, written past the constructor, prices NaN instead of collapsing onto the
+/// zero-volatility intrinsic `4.877057549928611`; the geometric sibling is checked alongside.
 #[test]
 fn arithmetic_basket_levy_does_not_launder_a_nan_into_the_zero_vol_intrinsic() {
   let (s, w, sig, q, rho) = iid_basket(2, 0.20, 0.4);
   let healthy = ArithmeticBasketLevyPricer::new(w.clone(), sig.clone(), rho.clone());
   let live = healthy.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
 
-  // The number the poisoned model used to impersonate.
+  // The zero-volatility value a NaN parameter must not reproduce.
   let frozen = ArithmeticBasketLevyPricer::new(w.clone(), Array1::zeros(2), rho.clone());
   let intrinsic = frozen.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
   assert!(
@@ -515,13 +464,13 @@ fn arithmetic_basket_parity() {
   assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
 }
 
-/// One Monte Carlo model instance prices a whole strike grid, both legs.
-/// The strikes are far enough apart that the ordering survives the sampling
-/// error of independent simulations.
+/// One Monte Carlo instance prices a strike grid, both legs; its pinned seed gives every strike the
+/// same paths, so the order holds path by path.
 #[test]
 fn mc_basket_one_model_prices_a_strike_grid() {
   let (s, w, sig, q, rho) = iid_basket(3, 0.25, 0.4);
-  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000);
+  let model = McBasketPricer::new(w, BasketAverageType::Arithmetic, sig, rho, 50_000)
+    .with_seed(Deterministic::new(42));
   let calls = [80.0, 100.0, 130.0].map(|k| model.price_call(s.view(), k, 0.05, q.view(), 1.0).mean);
   let puts = [80.0, 100.0, 130.0].map(|k| model.price_put(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(
@@ -534,9 +483,8 @@ fn mc_basket_one_model_prices_a_strike_grid() {
   );
 }
 
-/// The model and the weights fix how many assets there are; a query that
-/// disagrees is reported by `try_price` as an `Err`, not a panic. Pinned
-/// because that is the reason the check did not move to the constructor.
+/// A query whose asset count disagrees with the model's is `try_price`'s `Err`, not a panic, which
+/// is why the check stays out of the constructor.
 #[test]
 fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
   let (_, w, sig, _, rho) = iid_basket(3, 0.25, 0.4);
@@ -546,8 +494,12 @@ fn mc_basket_try_price_reports_a_query_dimension_mismatch() {
   let err = model
     .try_price(s.view(), 100.0, 0.05, q.view(), 1.0, OptionType::Call)
     .expect_err("a two-asset query against a three-asset model is not priceable");
-  assert!(
-    err.to_string().contains("does not match n_assets=2"),
-    "{err}"
+  assert_eq!(
+    err,
+    QuantError::DimensionMismatch {
+      what: "rho rows, one per asset",
+      expected: 2,
+      got: 3,
+    }
   );
 }

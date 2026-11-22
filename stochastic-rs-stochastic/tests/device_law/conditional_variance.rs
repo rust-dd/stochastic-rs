@@ -1,18 +1,15 @@
-//! The discrete-time conditional-variance models. Their series starts at
-//! `σ₀ z₀`, so the launch steps before writing its first point, and the
-//! variance recursion reads back exactly one lag, which is the order the
-//! engine's state slots bound. What the cases pin is the terminal variance of
-//! the series, which is what the recursion is for.
+//! The discrete-time conditional-variance models: the series starts at `σ₀ z₀`, so the launch
+//! steps before its first point, and the recursion reads one lag. The cases pin the variance.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
-use stochastic_rs_stochastic::autoregressive::ar::ARp;
+use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
+use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::autoregressive::arch::Arch;
 use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
-use stochastic_rs_stochastic::autoregressive::ma::MAq;
-use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::ma::Ma;
 use stochastic_rs_stochastic::noise::cgns::Cgns;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
@@ -26,9 +23,8 @@ use super::common::terminal_mean;
 
 const N: usize = 253;
 
-/// The sample variance of the whole ensemble's last point. A
-/// conditional-variance model is driftless, so this is the statistic its
-/// parameters set.
+/// The sample variance of the ensemble's last point: a conditional-variance model is driftless,
+/// so this is the statistic its parameters set.
 fn terminal_variance(paths: &[Array1<f32>]) -> f64 {
   let last = paths[0].len() - 1;
   let mean = paths.iter().map(|p| p[last] as f64).sum::<f64>() / paths.len() as f64;
@@ -73,9 +69,8 @@ fn garch_agrees_with_the_cpu_law() {
   );
 }
 
-/// The threshold term enters only after a negative return, so a path that has
-/// seen one is more volatile than one that has not; the ensemble variance
-/// carries that asymmetry.
+/// The threshold term enters only after a negative return, so a path that has seen one is more
+/// volatile; the ensemble variance carries that asymmetry.
 #[test]
 fn gjr_garch_agrees_with_the_cpu_law() {
   let build = || {
@@ -121,9 +116,8 @@ fn asymmetric_garch_agrees_with_the_cpu_law() {
   );
 }
 
-/// EGARCH runs its variance recursion in log space and reads back the
-/// previous standardised residual, which the device recovers from the state
-/// rather than keeping a third series.
+/// EGARCH runs its variance recursion in log space and reads back the previous standardised
+/// residual, which the device recovers from the state instead of keeping a third series.
 #[test]
 fn exponential_garch_agrees_with_the_cpu_law() {
   let build = || {
@@ -146,9 +140,8 @@ fn exponential_garch_agrees_with_the_cpu_law() {
   );
 }
 
-/// White noise has no recursion: every grid point is one draw, so the launch
-/// steps before writing the first and the ensemble's variance is the one the
-/// process was given.
+/// White noise has no recursion: every grid point is one draw, so the launch steps before
+/// writing the first, and the ensemble's variance is the one the process was given.
 #[test]
 fn white_noise_agrees_with_the_cpu_law() {
   let build = || Wn::<f32, _>::new(N, Some(0.01), Some(0.2), Deterministic::new(173));
@@ -203,7 +196,7 @@ fn correlated_gaussian_noise_agrees_with_the_cpu_law() {
 #[test]
 fn autoregression_agrees_with_the_cpu_law() {
   let build = || {
-    ARp::<f32, _>::new(
+    Ar::<f32, _>::new(
       Array1::from(vec![0.6]),
       0.2,
       N,
@@ -228,7 +221,7 @@ fn autoregression_agrees_with_the_cpu_law() {
 /// the terminal variance is `σ²(1 + θ²)`.
 #[test]
 fn moving_average_agrees_with_the_cpu_law() {
-  let build = || MAq::<f32, _>::new(Array1::from(vec![0.4]), 0.2, N, Deterministic::new(193));
+  let build = || Ma::<f32, _>::new(Array1::from(vec![0.4]), 0.2, N, Deterministic::new(193));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "moving average");
   agrees(
@@ -245,13 +238,24 @@ fn moving_average_agrees_with_the_cpu_law() {
   );
 }
 
-/// An order the engine's state slots do not carry — two autoregressive lags,
-/// two GARCH lags — keeps the process on the host on any backend: the device
-/// build says so through `device_ready()` and is the host build to the bit.
+/// A `sigma` written past `new` is refused before a launch, with the message the host gives.
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_past_new_never_reaches_a_launch() {
+  let mut ma =
+    Ma::<f32, _>::new(Array1::from(vec![0.4]), 0.2, 64, Deterministic::new(193)).on::<Device>();
+  ma.sigma = f32::NAN;
+  let _ = ma.sample();
+}
+
+/// An order the state slots do not carry (two autoregressive or two GARCH lags) keeps the
+/// process on the host: `device_ready()` is false and the device build is the host's to the bit.
 #[test]
 fn a_higher_order_keeps_the_lag_models_on_the_host() {
   let ar = || {
-    ARp::<f32, _>::new(
+    Ar::<f32, _>::new(
       Array1::from(vec![0.5, 0.2]),
       0.2,
       64,

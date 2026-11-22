@@ -13,7 +13,7 @@ fn reseed_replays_deterministic_new_exactly() {
   // Replay reproducible paths, one per seed, with zero re-allocation.
   let mut last = None;
   for s in 1..=5u64 {
-    fbm.seed.reseed(s);
+    fbm.seed().reseed(s);
     let path = fbm.sample();
     last = Some((s, path));
   }

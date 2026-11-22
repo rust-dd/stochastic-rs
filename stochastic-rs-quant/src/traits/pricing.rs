@@ -1,16 +1,11 @@
-//! Pricing traits — `ModelPricer`, `GreeksExt`.
+//! Pricing traits `ModelPricer`, `VanillaEuropeanCall` and `GreeksExt`, and the `Greeks` struct.
+
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
 
-/// Aggregate Greek values — the return type shared by the pricers' inherent
-/// `greeks(s, k, r, q, tau, option_type)` aggregators and by
-/// [`GreeksExt::greeks`].
-///
-/// Members default to [`f64::NAN`] so consumers can identify Greeks the
-/// pricer does not expose. First-order: [`delta`](Self::delta),
-/// [`vega`](Self::vega), [`theta`](Self::theta), [`rho`](Self::rho).
-/// Second-order: [`gamma`](Self::gamma), [`vanna`](Self::vanna),
-/// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
+/// Returned by the pricers' `greeks(…)` and [`GreeksExt::greeks`]: NaN for a Greek a pricer does
+/// not expose, and for every Greek at `tau = 0`, where an expired option has a value only.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Greeks {
   pub delta: f64,
@@ -46,9 +41,8 @@ impl Greeks {
     }
   }
 
-  /// Component index order used by the [`as_array`](Self::as_array)
-  /// accessor. Stable so downstream callers can hard-code positional
-  /// access (`out[0] == delta` etc).
+  /// Component order of [`as_array`](Self::as_array), stable for positional access (`out[0]` is
+  /// delta).
   pub const COMPONENT_NAMES: [&'static str; 9] = [
     "delta", "gamma", "vega", "theta", "rho", "vanna", "charm", "volga", "veta",
   ];
@@ -63,79 +57,15 @@ impl Greeks {
   }
 }
 
-/// Trait for models that can price a single-underlying call or put at
-/// arbitrary (K, T) points.
-///
-/// The struct holds model parameters; the query travels as arguments. That
-/// separation is what enables vectorized pricing across strike/maturity
-/// grids for calibration and vol surface construction — the retired
-/// `PricerExt` bundled market data and strike into the pricer instead, so
-/// a second query point meant a second pricer.
-///
-/// Exercise style is the **implementor's** choice, not the trait's: most
-/// members price European exercise, but the American approximations
-/// (`BjerksundStensland2002Pricer`, `SnellEnvelopePricer`,
-/// `FiniteDifferencePricer` at [`OptionStyle::American`](crate::OptionStyle))
-/// implement it too, and each says so on its own type. What the trait fixes
-/// is the *query* shape — one spot, one strike, one rate, one dividend
-/// yield, one maturity — not the exercise right.
-///
-/// # How pricing fails
-///
-/// This is the crate-wide convention for every pricer, Greek accessor and
-/// surface builder, stated here once. Individual methods say *when* they hit
-/// one of these cases; they do not restate the rule.
-///
-/// Pricing deliberately does **not** return [`Result`]. Threading `?` through
-/// a strike/maturity grid would cost more than it buys, so the three failure
-/// modes are separated by kind instead:
-///
-/// 1. **Invalid parameter — panic**, with a message naming the parameter and
-///    its value (`"strike k must be strictly positive (got -1)"`). A
-///    non-positive strike or a negative variance is programmer error, not a
-///    market state, and there is no answer to return. `hagan_implied_vol` and
-///    `SnellEnvelopePricer::validate_query` set the message style. A method
-///    that can panic carries a `# Panics` section.
-/// 2. **Not computable at this point — [`f64::NAN`], documented.** The inputs
-///    are legitimate but the quantity is genuinely undefined *here*: a strike
-///    outside a Fourier pricer's truncation grid, a second derivative at a
-///    grid boundary, a central difference in $\tau$ that would step past
-///    expiry, a yield at $\tau = 0$, a Greek this pricer does not expose. Any
-///    method that can return `NaN` says so in its own doc.
-/// 3. **Calibration did not converge — [`Result::Err`].** Calibration is the
-///    one part of the crate with a fallible return channel, and it keeps it.
-///
-/// What the convention rules out is the fourth option: a **plausible-looking
-/// sentinel**. Returning `0.0` from a failed volatility inversion hands the
-/// caller a number that flows into an intrinsic-value price with nothing to
-/// distinguish it from a real one, and `f64::max` will quietly discard a `NaN`
-/// operand in favour of a finite one, so a clamp has to test for `NaN`
-/// explicitly before it applies. `NaN` propagates; a zero does not.
-///
-/// Callers that need to *avoid* the `NaN` rather than detect it after the
-/// fact should test first — `CarrMadanPricer::strike_in_grid` is the pattern.
+/// Prices a call or put at any `(s, k, r, q, tau)` query with the model on the struct; exercise is
+/// the implementor's. A bad parameter panics, an off-domain query is `NaN`, never a sentinel `0.0`.
 pub trait ModelPricer {
-  /// Price a call option.
+  /// Price a call option; test the query first to avoid an off-domain `NaN` rather than detect it
+  /// (`CarrMadanPricer::strike_in_grid` is the pattern).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64;
 
-  /// Price a put via European put-call parity.
-  ///
-  /// **Override this** unless the model's carry factor is literally
-  /// $e^{-q\tau}$ and its exercise is European — the default silently
-  /// returns a plausible wrong number otherwise. See `BSMPricer`
-  /// (cost-of-carry conventions) and `BjerksundStensland2002Pricer`
-  /// (American early exercise) for the two failure modes.
-  ///
-  /// This default is the one place the trait itself can produce the
-  /// plausible-looking sentinel [the failure
-  /// convention](ModelPricer#how-pricing-fails) otherwise rules out, and it
-  /// cannot detect the mismatch: parity is
-  /// arithmetic on a call price, so a wrong carry yields a finite,
-  /// well-scaled, wrong put with no `NaN` to propagate and nothing to assert
-  /// on. It stays a default because most implementors *are* European with
-  /// carry $e^{-q\tau}$ — but a new implementor must decide, not inherit.
-  /// `SuperSharePricer` shows the third option: override to return a
-  /// documented `NaN` when the payoff has no put analogue at all.
+  /// Put by European parity; override unless the carry is `e^{−qτ}` and exercise European, as the
+  /// default's finite, wrong put is undetectable (an override may be `NaN`, as `SuperSharePricer`).
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let call = self.price_call(s, k, r, q, tau);
     call - s * (-q * tau).exp() + k * (-r * tau).exp()
@@ -150,189 +80,89 @@ pub trait ModelPricer {
   }
 }
 
-/// Asserts that a [`ModelPricer`]'s [`price_call`](ModelPricer::price_call)
-/// really is a **European vanilla call**: payoff $(S_T - K)^+$ struck at the
-/// query's `k`, exercisable only at `tau`, on an underlying whose forward is
-/// [`vanilla_call_forward`](Self::vanilla_call_forward).
-///
-/// [`ModelPricer`] fixes the *query* shape and nothing else. Its own doc says
-/// exercise style is the implementor's choice; the payoff is no more fixed
-/// than the exercise, so a cash-or-nothing digital and an American put are as
-/// much `ModelPricer`s as a Heston call is. This trait is the separate
-/// statement that a type is the vanilla case, and nothing infers it.
-///
-/// It exists because one consumer needs that guarantee and cannot check it.
-/// [`ModelSurface::vol_surface`] prices a call grid and inverts every price
-/// through the Black formula, which has an answer for a European vanilla call
-/// and for nothing else — but the inversion does not *fail* on other payoffs.
-/// It returns whatever volatility reproduces the number, and a digital with a
-/// realistic payout prices inside the no-arbitrage band, so the answer comes
-/// back finite. That is the plausible-looking sentinel [the failure
-/// convention](ModelPricer#how-pricing-fails) rules out, arriving through a
-/// trait bound rather than a return value. Gating the surface on this trait
-/// makes the call a compile error instead.
-///
-/// The rule for adding an implementation is the trait's own sentence above,
-/// applied to *every* instance and *every* query the type accepts: if some
-/// configuration prices something other than a European vanilla call, either
-/// the type does not carry this trait at all or
-/// [`vanilla_call_forward`](Self::vanilla_call_forward) reports the
-/// configurations it cannot describe. The compile-checked inventory of who
-/// carries it lives in `stochastic-rs-quant/tests/pricer_registry.rs`, which
-/// also records why each abstainer abstains.
-///
-/// [`ModelSurface::vol_surface`]: crate::vol_surface::ModelSurface::vol_surface
+/// Marks `price_call`, at every instance and query, as a European vanilla `(S_T − K)⁺`, which
+/// `ModelSurface`'s Black inversion needs: any other payoff inverts to a finite, wrong vol.
 pub trait VanillaEuropeanCall: ModelPricer {
-  /// Forward price of the underlying that
-  /// [`price_call`](ModelPricer::price_call)'s call is struck on, at this
-  /// query.
-  ///
-  /// The default $S e^{(r-q)\tau}$ is correct whenever the model's cost of
-  /// carry is $b = r - q$. **Override it** when the carry is anything else:
-  /// [`BSMPricer`](crate::pricing::bsm::BSMPricer) under
-  /// [`BSMCoc::Black1976`](crate::pricing::bsm::BSMCoc::Black1976) carries at
-  /// $b = 0$, so its forward is $S$. The surface inverts against this value,
-  /// and inverting a *correct* price at the wrong forward fabricates a smile
-  /// out of a flat-volatility model — every price is in the no-arbitrage
-  /// band, so every implied vol comes back finite and wrong.
-  ///
-  /// Returns [`f64::NAN`] when *this instance* is not a European vanilla call
-  /// at this query even though the type sometimes is;
-  /// [`FiniteDifferencePricer`](crate::pricing::finite_difference::FiniteDifferencePricer)
-  /// at [`OptionStyle::American`](crate::OptionStyle) is the in-tree case.
-  /// That is case 2 of [the failure
-  /// convention](ModelPricer#how-pricing-fails), and the surface propagates
-  /// the `NaN` across the whole slice rather than pushing an American price
-  /// through a European inversion.
+  /// Forward `price_call` is struck on; override unless `Se^{(r−q)τ}` (`Black1976`: `S`), and give
+  /// `NaN` where an instance is no European vanilla (American `FiniteDifferencePricer`).
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     s * ((r - q) * tau).exp()
   }
 }
 
-/// Greeks for an estimator that has already fixed its query.
-///
-/// Every accessor takes `&self` and nothing else, so an implementor must
-/// carry the spot, strike, rate and maturity on the struct. That is the
-/// bundled shape the rest of the crate retired with `PricerExt`, and this
-/// trait keeps it for the one family where it is not a wart: the Monte Carlo
-/// Malliavin estimators
-/// ([`GbmMalliavinGreeks`](crate::pricing::malliavin_greeks::GbmMalliavinGreeks),
-/// [`HestonMalliavinGreeks`](crate::pricing::malliavin_greeks::HestonMalliavinGreeks)),
-/// which own a simulation rather than a closed form. Their
-/// [`greeks`](Self::greeks) override runs **one** pass and returns
-/// estimators drawn from the same paths; a query-taking signature would
-/// re-simulate per accessor and mix disjoint draws, which is exactly what
-/// the override exists to prevent.
-///
-/// **The analytic pricers deliberately do not implement it, and cannot.**
-/// Five of them aggregate through an inherent
-/// `greeks(&self, s, k, r, q, tau, option_type) -> Greeks` —
-/// [`BSMPricer`](crate::pricing::bsm::BSMPricer),
-/// [`HestonPricer`](crate::pricing::heston::HestonPricer),
-/// [`Merton1976Pricer`](crate::pricing::merton_jump::Merton1976Pricer),
-/// [`CashOrNothingPricer`](crate::pricing::digital::CashOrNothingPricer) and
-/// [`AssetOrNothingPricer`](crate::pricing::digital::AssetOrNothingPricer),
-/// one identical signature across all five — because they hold model state
-/// only and price a whole grid from a single instance, the same split
-/// [`ModelPricer`] makes. No no-argument accessor can express that. This
-/// trait is therefore *not* the crate's Greeks interface and does not aim to
-/// be: for a pricer, call the inherent method.
-///
-/// It is kept out of `stochastic_rs::prelude` on that basis — a default
-/// import that offered a no-argument Greeks trait beside a query-taking
-/// [`ModelPricer`] advertised a symmetry the crate does not have. Reach it as
-/// `stochastic_rs::traits::GreeksExt` (or `crate::traits::GreeksExt` in-tree).
-///
-/// Only [`delta`](Self::delta) is required; an implementor that does not
-/// compute a higher-order Greek inherits [`f64::NAN`] from the default impl.
-/// Those defaults are case 2 of [the failure
-/// convention](ModelPricer#how-pricing-fails), and the reason they are `NAN`
-/// rather than `0.0` is that a Greek genuinely *is* zero sometimes — the vega
-/// of a deep in-the-money digital, the gamma of a forward. A zero default
-/// would make "this estimator does not expose vega" indistinguishable from
-/// "vega is zero here", and the two call for opposite responses.
-///
-/// First-order: [`delta`](Self::delta), [`vega`](Self::vega),
-/// [`theta`](Self::theta), [`rho`](Self::rho).
-/// Second-order: [`gamma`](Self::gamma), [`vanna`](Self::vanna),
-/// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
+/// No-argument Greeks of the Monte Carlo Malliavin estimators, one pass for all (pricers use their
+/// inherent `greeks(…)`); only `delta` is required, an uncomputed one is `None`, `NaN` in `greeks`.
 pub trait GreeksExt {
   /// Delta — $\partial V / \partial S$.
-  fn delta(&self) -> f64;
+  fn delta(&self) -> Option<McEstimate<f64>>;
 
-  /// Gamma — $\partial^2 V / \partial S^2$. Defaults to NaN when not implemented.
-  fn gamma(&self) -> f64 {
-    f64::NAN
+  /// Gamma — $\partial^2 V / \partial S^2$; `None` when the estimator does not expose it.
+  fn gamma(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Vega — $\partial V / \partial \sigma$. Defaults to NaN when not implemented.
-  fn vega(&self) -> f64 {
-    f64::NAN
+  /// Vega — $\partial V / \partial \sigma$; `None` when not exposed.
+  fn vega(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Theta — $\partial V / \partial t$. Defaults to NaN when not implemented.
-  fn theta(&self) -> f64 {
-    f64::NAN
+  /// Theta — $\partial V / \partial t$; `None` when not exposed.
+  fn theta(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Rho — $\partial V / \partial r$. Defaults to NaN when not implemented.
-  fn rho(&self) -> f64 {
-    f64::NAN
+  /// Rho — $\partial V / \partial r$; `None` when not exposed.
+  fn rho(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Vanna — $\partial^2 V / \partial S \partial \sigma$ (DvegaDspot).
-  /// Defaults to NaN when not implemented.
-  fn vanna(&self) -> f64 {
-    f64::NAN
+  /// Vanna — $\partial^2 V / \partial S \partial \sigma$; `None` when not exposed.
+  fn vanna(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Charm — $\partial^2 V / \partial S \partial t$ (delta decay).
-  /// Defaults to NaN when not implemented.
-  fn charm(&self) -> f64 {
-    f64::NAN
+  /// Charm — $\partial^2 V / \partial S \partial t$; `None` when not exposed.
+  fn charm(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Volga / vomma — $\partial^2 V / \partial \sigma^2$ (vega convexity).
-  /// Defaults to NaN when not implemented.
-  fn volga(&self) -> f64 {
-    f64::NAN
+  /// Volga — $\partial^2 V / \partial \sigma^2$; `None` when not exposed.
+  fn volga(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Veta — $\partial^2 V / \partial \sigma \partial t$ (vega decay).
-  /// Defaults to NaN when not implemented.
-  fn veta(&self) -> f64 {
-    f64::NAN
+  /// Veta — $\partial^2 V / \partial \sigma \partial t$; `None` when not exposed.
+  fn veta(&self) -> Option<McEstimate<f64>> {
+    None
   }
 
-  /// Aggregate every Greek into a single [`Greeks`] struct.
-  ///
-  /// The default impl simply calls every accessor — fine for analytical
-  /// pricers where each method is deterministic. **Monte Carlo pricers
-  /// must override this method**, because calling each Greek individually
-  /// would run a fresh independent simulation and produce a [`Greeks`]
-  /// struct that mixes estimators from disjoint sample paths
-  /// (mathematically inconsistent — e.g. delta/gamma sourced from different
-  /// random draws). MC pricers should compute every Greek that can share
-  /// paths in a single pass; see [`crate::pricing::malliavin_greeks`] for
-  /// a worked example.
+  /// Every Greek's mean in one [`Greeks`], NaN where an accessor is `None`. A Monte Carlo estimator
+  /// overrides this to draw all of them from one simulation instead of one per accessor.
   fn greeks(&self) -> Greeks {
     Greeks {
-      delta: self.delta(),
-      gamma: self.gamma(),
-      vega: self.vega(),
-      theta: self.theta(),
-      rho: self.rho(),
-      vanna: self.vanna(),
-      charm: self.charm(),
-      volga: self.volga(),
-      veta: self.veta(),
+      delta: mean_or_nan(self.delta()),
+      gamma: mean_or_nan(self.gamma()),
+      vega: mean_or_nan(self.vega()),
+      theta: mean_or_nan(self.theta()),
+      rho: mean_or_nan(self.rho()),
+      vanna: mean_or_nan(self.vanna()),
+      charm: mean_or_nan(self.charm()),
+      volga: mean_or_nan(self.volga()),
+      veta: mean_or_nan(self.veta()),
     }
   }
 }
 
+fn mean_or_nan(estimate: Option<McEstimate<f64>>) -> f64 {
+  estimate.map_or(f64::NAN, |e| e.mean)
+}
+
 #[cfg(test)]
 mod greeks_array_tests {
+  use stochastic_rs_stochastic::mc::McEstimate;
+
   use super::Greeks;
+  use super::GreeksExt;
 
   #[test]
   fn as_array_matches_component_names_order() {
@@ -351,5 +181,27 @@ mod greeks_array_tests {
     assert_eq!(arr.len(), Greeks::COMPONENT_NAMES.len());
     assert_eq!(arr[0], g.delta);
     assert_eq!(arr[8], g.veta);
+  }
+
+  struct DeltaOnly;
+
+  impl GreeksExt for DeltaOnly {
+    fn delta(&self) -> Option<McEstimate<f64>> {
+      Some(McEstimate {
+        mean: 0.5,
+        std_err: 0.01,
+        n_samples: 100,
+      })
+    }
+  }
+
+  #[test]
+  fn an_unexposed_greek_is_none_and_nan_in_the_aggregate() {
+    let g = DeltaOnly;
+    assert_eq!(g.delta().map(|e| e.mean), Some(0.5));
+    assert_eq!(g.vega(), None);
+    let all = g.greeks();
+    assert_eq!(all.delta, 0.5);
+    assert!(all.vega.is_nan());
   }
 }

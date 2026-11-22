@@ -3,6 +3,8 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::params::Drift;
+use crate::params::VarianceBoundary;
 use crate::traits::Grid2D;
 use crate::volatility::heston_log::HestonLog;
 
@@ -10,8 +12,8 @@ const N: usize = 64;
 
 fn slv<S: SeedExt>(eta: f64, leverage: impl Into<Fn2D<f64>>, seed: S) -> HestonSlv<f64, S> {
   HestonSlv::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -29,26 +31,27 @@ fn affine_leverage(_t: f64, s: f64) -> f64 {
   0.8 + 0.002 * s
 }
 
-/// Under full mixing and unit leverage the recursion is `HestonLog`'s, and
-/// the two Gaussian streams are built the same way, so the two processes
-/// agree to the bit at the same seed.
+/// Under full mixing and unit leverage the recursion and the two Gaussian streams are
+/// `HestonLog`'s, so the two processes agree to the bit at the same seed.
 #[test]
 fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
-  let [s, v] = slv(1.0, Expr::lit(1.0), Deterministic::new(42)).sample();
+  let [s, v] = slv(
+    1.0,
+    Expr::lit(1.0).compile().unwrap(),
+    Deterministic::new(42),
+  )
+  .sample();
   let [s_log, v_log] = HestonLog::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     2.0,
     0.04,
     0.3,
     -0.7,
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::FullTruncation,
     Deterministic::new(42),
   )
   .sample();
@@ -58,16 +61,23 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
 
 #[test]
 fn seeded_is_deterministic_and_the_seed_matters() {
-  let a = slv(0.7, Expr::lit(0.9), Deterministic::new(7));
+  let a = slv(
+    0.7,
+    Expr::lit(0.9).compile().unwrap(),
+    Deterministic::new(7),
+  );
   let b = a.clone();
   assert_eq!(a.sample(), b.sample());
-  let c = slv(0.7, Expr::lit(0.9), Deterministic::new(8));
+  let c = slv(
+    0.7,
+    Expr::lit(0.9).compile().unwrap(),
+    Deterministic::new(8),
+  );
   assert_ne!(a.sample(), c.sample());
 }
 
-/// A grid that tabulates an affine leverage reproduces it by bilinear
-/// interpolation, so the two coefficients drive the same path up to
-/// rounding.
+/// A grid that tabulates an affine leverage reproduces it by bilinear interpolation, so both
+/// drive the same path up to rounding.
 #[test]
 fn a_grid_leverage_matches_the_closure_it_tabulates() {
   let spots = Array1::linspace(1.0, 400.0, 400);
@@ -91,14 +101,19 @@ fn a_grid_leverage_matches_the_closure_it_tabulates() {
 /// it stays there, so the spot is a local-volatility model at `L sqrt(v0)`.
 #[test]
 fn eta_zero_freezes_the_variance_at_the_long_run_level() {
-  let [s, v] = slv(0.0, Expr::lit(1.5), Deterministic::new(11)).sample();
+  let [s, v] = slv(
+    0.0,
+    Expr::lit(1.5).compile().unwrap(),
+    Deterministic::new(11),
+  )
+  .sample();
   assert!(v.iter().all(|&x| x == 0.04));
   assert!(s.iter().all(|&x| x.is_finite() && x > 0.0));
 }
 
 #[test]
 fn only_an_expression_leverage_is_device_ready() {
-  assert!(slv(1.0, Expr::lit(1.0), Unseeded).device_ready());
+  assert!(slv(1.0, Expr::lit(1.0).compile().unwrap(), Unseeded).device_ready());
   let closure = slv(1.0, affine_leverage as fn(f64, f64) -> f64, Unseeded);
   assert_eq!(
     closure.device_fallback(),
@@ -119,10 +134,7 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
     (p.kappa, p.theta, p.sigma, p.rho, p.mu, p.eta),
     (2.0, 0.04, 0.3, -0.7, 0.05, 1.0)
   );
-  assert_eq!(
-    (p.n, p.t, p.s0, p.v0),
-    (252, Some(1.0), Some(100.0), Some(0.04))
-  );
+  assert_eq!((p.n, p.t, p.s0, p.v0), (252, Some(1.0), 100.0, 0.04));
   assert!(p.device_ready(), "the default leverage is an expression");
   assert_eq!(p.leverage.call(0.3, 120.0), 1.0);
   let [s, v] = p.sample();
@@ -131,18 +143,18 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = HestonSlv::<f64, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
     -0.7,
     0.05,
     1.0,
-    Expr::lit(1.0),
+    Expr::lit(1.0).compile().unwrap(),
     1,
     Some(1.0),
     Unseeded,
@@ -150,7 +162,7 @@ fn rejects_n_below_two() {
 }
 
 #[test]
-#[should_panic(expected = "eta must be non-negative")]
+#[should_panic(expected = "eta must satisfy `eta >= T::zero()`, got eta = -0.5")]
 fn rejects_a_negative_mixing_fraction() {
-  let _ = slv(-0.5, Expr::lit(1.0), Unseeded);
+  let _ = slv(-0.5, Expr::lit(1.0).compile().unwrap(), Unseeded);
 }

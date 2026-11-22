@@ -1,31 +1,31 @@
-//! Geweke-Porter-Hudak (1983) log-periodogram regression.
+//! Geweke–Porter-Hudak (1983) log-periodogram regression for the fractional integration `d`.
 //!
-//! Procedure:
-//! 1. (Optional) First-difference the input series so the regression
-//!    operates on an FGN-like (zero-mean stationary) input.
-//! 2. Compute the periodogram `I(λⱼ) = |Σₜ Z_t e^{-iλⱼt}|² / (2πn)`
-//!    at the Fourier frequencies `λⱼ = 2πj/n`.
-//! 3. Take the first `m = ⌊n^α⌋` frequencies (default `α = 0.6`).
-//! 4. Regress `log I(λⱼ) = c - d · log(4 sin²(λⱼ/2)) + εⱼ`; the
-//!    coefficient `d` is the fractional integration parameter.
-//! 5. Map to Hurst: `H = d + ½`.
+//! $$
+//! I(\lambda_j) = \frac{1}{2\pi n}\Bigl|\sum_t Z_t e^{-i\lambda_j t}\Bigr|^2,\quad
+//! \lambda_j = \frac{2\pi j}{n},\qquad
+//! \log I(\lambda_j) = c - d \log\bigl(4\sin^2(\lambda_j/2)\bigr) + \varepsilon_j,\quad
+//! j \le m = \lfloor n^\alpha \rfloor
+//! $$
 //!
-//! Asymptotic standard error: `SE(d̂) = π / √(24m)` (Hurvich-Deo).
+//! $$
+//! H = d + \tfrac12,\qquad \mathrm{SE}(\hat d) = \frac{\pi}{\sqrt{24 m}}
+//! $$
 //!
-//! Reference: Geweke J. & Porter-Hudak S. (1983) — *The estimation and
-//! application of long memory time series models*, J. Time Series
-//! Analysis 4(4), 221–238.
+//! The first `m` frequencies enter, `α = 0.6` by default; the standard error is Hurvich–Deo's.
+//!
+//! Reference: Geweke & Porter-Hudak (1983), JTSA 4(4), 221–238, 10.1111/j.1467-9892.1983.tb00371.x
 
 use std::f64::consts::PI;
 
 use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// GPH log-periodogram Hurst estimator.
@@ -33,9 +33,8 @@ use crate::traits::FloatExt;
 pub struct Gph {
   /// Bandwidth exponent for `m = ⌊n^α⌋`; typical `α ∈ [0.5, 0.8]`.
   pub bandwidth_alpha: f64,
-  /// When `true`, first-difference the input before estimation (use
-  /// when the input is an FBM-like walk; leave `false` when it is
-  /// already FGN-like noise).
+  /// First-difference the input before estimation: `true` for an FBM-like walk, `false` for a
+  /// series that is already FGN-like noise.
   pub take_differences: bool,
 }
 
@@ -56,22 +55,24 @@ impl Gph {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Gph {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     if !(0.1..1.0).contains(&self.bandwidth_alpha) {
-      return Err(HurstError::InvalidParameter(
-        "bandwidth_alpha",
-        self.bandwidth_alpha,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "bandwidth_alpha",
+        value: self.bandwidth_alpha,
+        constraint: "0.1 <= bandwidth_alpha < 1.0",
+      });
     }
-    let n_obs = x.len();
-    if n_obs < 64 {
-      return Err(HurstError::TooFewObservations {
-        got: n_obs,
-        required: 64,
+    let nobs = x.len();
+    if nobs < 64 {
+      return Err(StatsError::InsufficientData {
+        needed: 64,
+        got: nobs,
       });
     }
 
     let xs = to_f64_vec::<T>(x);
+    reject_constant(&xs, "constant series")?;
     let series: Vec<f64> = if self.take_differences {
       xs.windows(2).map(|w| w[1] - w[0]).collect()
     } else {
@@ -79,10 +80,7 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
     };
     let n = series.len();
     if n < 32 {
-      return Err(HurstError::TooFewObservations {
-        got: n,
-        required: 32,
-      });
+      return Err(StatsError::InsufficientData { needed: 32, got: n });
     }
     let mean = series.iter().sum::<f64>() / n as f64;
     let demeaned: Vec<f64> = series.iter().map(|v| *v - mean).collect();
@@ -91,7 +89,9 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
       .max(8)
       .min(n / 2);
     if m < 4 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData(
+        "fewer than four valid frequencies",
+      ));
     }
 
     let mut log_freq = Vec::with_capacity(m);
@@ -115,23 +115,25 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
       log_periodogram.push(i_lambda.ln());
     }
     if log_freq.len() < 4 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData(
+        "fewer than four valid frequencies",
+      ));
     }
 
     let m_used = log_freq.len();
-    let (slope, intercept, r_squared) =
-      weighted_linreg(&log_freq, &log_periodogram, None).ok_or(HurstError::RegressionFailed)?;
+    let (slope, intercept, r_squared) = weighted_linreg(&log_freq, &log_periodogram, None)
+      .ok_or(StatsError::Singular("log-log regression"))?;
     if !slope.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
     let d = -slope;
     let h = d + 0.5;
     let std_err = PI / (24.0 * m_used as f64).sqrt();
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(h),
       std_err: Some(T::from_f64_fast(std_err)),
-      n_obs,
+      nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
         intercept: T::from_f64_fast(intercept),
@@ -182,6 +184,6 @@ mod tests {
   fn gph_rejects_too_short() {
     let path = ndarray::Array1::<f64>::zeros(32);
     let r = Gph::default().estimate(path.view());
-    assert!(matches!(r, Err(HurstError::TooFewObservations { .. })));
+    assert!(matches!(r, Err(StatsError::InsufficientData { .. })));
   }
 }

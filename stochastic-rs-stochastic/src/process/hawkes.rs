@@ -1,17 +1,10 @@
-//! # Hawkes
-//!
-//! Self-exciting point process with exponential kernel (Hawkes, 1971).
+//! Self-exciting point process with exponential kernel (Hawkes, 1971), sampled by Ogata thinning.
 //!
 //! $$
 //! \lambda(t) = \mu + \sum_{t_i < t} \alpha \, e^{-\beta(t - t_i)}
 //! $$
 //!
-//! where $\mu > 0$ is the baseline intensity, $\alpha \ge 0$ the excitation
-//! magnitude, and $\beta > 0$ the exponential decay rate. Stationarity
-//! requires $\alpha / \beta < 1$ (branching ratio strictly less than one).
-//!
-//! Simulated via Ogata's thinning algorithm with the recursive intensity
-//! update that exploits the exponential kernel's Markov property.
+//! Baseline `mu > 0`, excitation `alpha >= 0`, decay `beta > 0`; stationary if `alpha / beta < 1`.
 //!
 
 use ndarray::Array1;
@@ -20,21 +13,13 @@ use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Univariate Hawkes process with exponential kernel.
-///
-/// # Sampling modes
-///
-/// | field   | meaning |
-/// |---------|---------|
-/// | `n`     | fixed event count (including $t_0 = 0$) |
-/// | `t_max` | time-horizon — all events in $[0, T]$ |
-///
-/// Exactly one of `n` or `t_max` must be `Some`.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Baseline intensity (immigration rate).
   pub mu: T,
@@ -42,50 +27,72 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Exponential decay rate of excitation.
   pub beta: T,
-  /// Optional fixed number of sampled events (including $t_0 = 0$).
-  pub n: Option<usize>,
-  /// Optional terminal time for horizon-based sampling.
-  pub t_max: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// `Events(n)`: the origin and the `n` event times after it; `Until(t)`: the events before `t`.
+  pub horizon: Horizon<T>,
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-#[inline]
-fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name: &'static str) {
-  if n.is_none() && t_max.is_none() {
-    panic!("{type_name}: n or t_max must be provided");
-  }
-}
-
 impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
-  pub fn new(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
-    validate_n_or_tmax(n, t_max, "Hawkes");
-    Hawkes {
+  /// Panics unless `mu > 0`, `0 ≤ alpha < beta`, all three are finite and an `Until` horizon is
+  /// positive and finite.
+  pub fn new(mu: T, alpha: T, beta: T, horizon: Horizon<T>, seed: S) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    horizon.assert_valid();
+    let hawkes = Hawkes {
       backend: Cpu,
       mu,
       alpha,
       beta,
-      n,
-      t_max,
+      horizon,
       seed,
-    }
+    };
+    hawkes.assert_parameters();
+    hawkes
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B> Hawkes<T, S, B> {
-  /// The parameter contract every sampler, host or device, holds the process
-  /// to: a positive baseline, non-negative excitation that decays faster than
-  /// it builds.
-  fn validate(&self) {
-    assert!(self.mu > T::zero(), "baseline intensity μ must be positive");
-    assert!(self.alpha >= T::zero(), "excitation α must be non-negative");
-    assert!(self.beta > T::zero(), "decay rate β must be positive");
+  /// Replace `horizon`; panics unless an `Until` horizon is positive and finite.
+  pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
+    horizon.assert_valid();
+    self.horizon = horizon;
+    self
+  }
+
+  /// Checked in `new` and again where a sampler runs, since the fields stay public.
+  #[track_caller]
+  fn assert_parameters(&self) {
+    let (mu, alpha, beta) = (self.mu, self.alpha, self.beta);
     assert!(
-      self.alpha < self.beta,
-      "stationarity requires α < β (branching ratio α/β < 1)"
+      mu > T::zero(),
+      "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
+    );
+    assert!(
+      alpha >= T::zero(),
+      "alpha must satisfy `alpha >= T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      alpha < beta,
+      "alpha must satisfy `alpha < beta`, got alpha = {alpha:?}, beta = {beta:?}"
     );
   }
 }
@@ -94,7 +101,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Hawkes<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    self.validate();
+    self.assert_parameters();
     crate::euler::EulerSpec::HawkesEvents {
       mu: self.mu,
       alpha: self.alpha,
@@ -108,9 +115,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .n
-      .expect("the Euler engine describes Hawkes's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.horizon else {
+      panic!("the Euler engine describes Hawkes's count mode; horizon mode has no grid");
+    };
+    n + 1
   }
 
   /// One step is one event, so the grid has no horizon of its own; the waits
@@ -131,7 +139,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Hawkes<T, S> { mu, alpha, beta, n, t_max, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Hawkes<T, S> { mu, alpha, beta, horizon, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hawkes<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hawkes<T, S, B> {
   type Output = Array1<T>;
@@ -140,30 +153,28 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Builds the Ogata-thinning sampler. Validation of `μ`, `α`, `β` happens
-  /// here so a reused sampler pays it once.
+  /// Builds the Ogata-thinning sampler; the parameter check runs here, so a reused sampler pays it
+  /// once.
   fn sampler(&self) -> HawkesSampler<T> {
-    self.validate();
+    self.assert_parameters();
 
-    let mode = if let Some(n) = self.n {
-      HawkesMode::Count { n }
-    } else if let Some(t_max) = self.t_max {
-      // Expected number of events: μ·T / (1 − α/β)
-      let expected = if t_max > T::zero() {
-        (self.mu * t_max / (T::one() - self.alpha / self.beta))
-          .to_f64()
-          .unwrap_or(0.0)
-      } else {
-        0.0
-      };
-      let cap = if expected.is_finite() && expected > 0.0 {
-        (expected.ceil() as usize).saturating_add(1)
-      } else {
-        1
-      };
-      HawkesMode::Horizon { t_max, cap }
-    } else {
-      unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
+    let cap = match self.horizon {
+      Horizon::Events(_) => 0,
+      Horizon::Until(t_max) => {
+        // Expected number of events: μ·T / (1 − α/β)
+        let expected = if t_max > T::zero() {
+          (self.mu * t_max / (T::one() - self.alpha / self.beta))
+            .to_f64()
+            .unwrap_or(0.0)
+        } else {
+          0.0
+        };
+        if expected.is_finite() && expected > 0.0 {
+          (expected.ceil() as usize).saturating_add(1)
+        } else {
+          1
+        }
+      }
     };
 
     HawkesSampler {
@@ -171,13 +182,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       alpha: self.alpha,
       beta: self.beta,
       rng: self.seed.rng(),
-      mode,
+      horizon: self.horizon,
+      cap,
     }
   }
 
-  /// Through the Euler engine in count mode, where every step is one event;
-  /// the horizon mode has a random length and keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine in count mode, where every step is one event; horizon mode has a
+  /// random length and stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -235,29 +246,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// What a device runs here: a fixed number of events — the
   /// horizon mode's length is itself random and has no grid.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.n.is_some())).then_some("the horizon mode, whose own length is random and has no grid")
+    matches!(self.horizon, Horizon::Until(_))
+      .then_some("the horizon mode, whose own length is random and has no grid")
   }
 }
 
-/// Sampling regime: a fixed event count or a time horizon.
-enum HawkesMode<T: FloatExt> {
-  Count { n: usize },
-  Horizon { t_max: T, cap: usize },
-}
-
-/// Reusable [`Hawkes`] sampling state: the owned RNG driving Ogata's thinning
-/// and the precomputed sampling regime.
-///
-/// Between events the intensity is monotone-decreasing, so the upper bound
-/// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event) is
-/// tight and acceptance is efficient.
+/// Reusable [`Hawkes`] sampling state: the RNG of Ogata's thinning and the sampling regime. The
+/// intensity falls between events, so the bound $\bar\lambda = \mu + S$ after the last is tight.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HawkesSampler<T: FloatExt> {
   mu: T,
   alpha: T,
   beta: T,
   rng: SimdRng,
-  mode: HawkesMode<T>,
+  horizon: Horizon<T>,
+  cap: usize,
 }
 
 impl<T: FloatExt> HawkesSampler<T> {
@@ -268,13 +272,9 @@ impl<T: FloatExt> HawkesSampler<T> {
     let mut s = T::zero();
     let mut t = T::zero();
 
-    let mut events = Vec::with_capacity(n);
+    let mut events = Vec::with_capacity(n + 1);
     events.push(T::zero());
-    if n <= 1 {
-      return Array1::from(events);
-    }
-
-    while events.len() < n {
+    while events.len() <= n {
       let lambda_bar = mu + s;
       // Exp(λ̄) via inverse transform: −ln(U) / λ̄, U ∈ (0,1]
       let u = T::one() - T::sample_uniform_simd(&mut self.rng);
@@ -335,6 +335,8 @@ impl<T: FloatExt> HawkesSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for HawkesSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for HawkesSampler<T> {
   type Output = Array1<T>;
 
@@ -343,18 +345,19 @@ impl<T: FloatExt> PathSampler<T> for HawkesSampler<T> {
   }
 
   fn sample(&mut self) -> Array1<T> {
-    match self.mode {
-      HawkesMode::Count { n } => self.sample_count(n),
-      HawkesMode::Horizon { t_max, cap } => self.sample_horizon(t_max, cap),
+    match self.horizon {
+      Horizon::Events(n) => self.sample_count(n),
+      Horizon::Until(t_max) => self.sample_horizon(t_max, self.cap),
     }
   }
 }
 
-py_process_1d!(PyHawkes, Hawkes,
-  sig: (mu, alpha, beta, n=None, t_max=None, seed=None, dtype=None),
-  params: (mu: f64, alpha: f64, beta: f64, n: Option<usize>, t_max: Option<f64>),
-  device
-);
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyHawkes;
 
 #[cfg(test)]
 mod tests {
@@ -364,9 +367,9 @@ mod tests {
 
   #[test]
   fn hawkes_n_mode() {
-    let h = Hawkes::new(0.5, 0.3, 1.0, Some(50), None, Deterministic::new(42));
+    let h = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(50), Deterministic::new(42));
     let events = h.sample();
-    assert_eq!(events.len(), 50);
+    assert_eq!(events.len(), 51);
     // Arrival times must be non-decreasing
     for i in 1..events.len() {
       assert!(events[i] >= events[i - 1]);
@@ -377,7 +380,7 @@ mod tests {
 
   #[test]
   fn hawkes_t_max_mode() {
-    let h = Hawkes::new(0.5, 0.3, 1.0, None, Some(100.0), Deterministic::new(42));
+    let h = Hawkes::new(0.5, 0.3, 1.0, Horizon::Until(100.0), Deterministic::new(42));
     let events = h.sample();
     // Must have at least t₀ = 0
     assert!(!events.is_empty());
@@ -394,17 +397,16 @@ mod tests {
 
   #[test]
   fn hawkes_deterministic() {
-    // Inter-instance reproducibility: two separately built instances with the
-    // same seed produce the same first path. Intra-instance, successive
-    // `.sample()` calls advance the seed and yield different paths.
-    let h1 = Hawkes::new(0.5, 0.3, 1.0, Some(20), None, Deterministic::new(123));
-    let h2 = Hawkes::new(0.5, 0.3, 1.0, Some(20), None, Deterministic::new(123));
+    // Two instances built with one seed produce the same first path; on one instance successive
+    // `.sample()` calls advance the seed and differ.
+    let h1 = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(20), Deterministic::new(123));
+    let h2 = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(20), Deterministic::new(123));
     assert_eq!(h1.sample(), h2.sample());
   }
 
   #[test]
   fn hawkes_sample_par() {
-    let h = Hawkes::new(0.5, 0.3, 1.0, None, Some(50.0), Unseeded);
+    let h = Hawkes::new(0.5, 0.3, 1.0, Horizon::Until(50.0), Unseeded);
     let paths = h.sample_par(10);
     assert_eq!(paths.len(), 10);
     for p in &paths {
@@ -414,9 +416,10 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "stationarity")]
-  fn hawkes_rejects_supercritical() {
-    let h = Hawkes::<f64>::new(0.5, 2.0, 1.0, Some(10), None, Unseeded);
+  #[should_panic(expected = "alpha must satisfy `alpha < beta`, got alpha = 2.0, beta = 2.0")]
+  fn a_field_written_after_new_is_checked_where_the_sampler_runs() {
+    let mut h = Hawkes::<f64>::new(0.5, 0.3, 2.0, Horizon::Events(10), Unseeded);
+    h.alpha = 2.0;
     h.sample();
   }
 
@@ -424,7 +427,7 @@ mod tests {
   fn hawkes_clustering() {
     // With self-excitation, inter-arrival times should cluster
     // (more events bunch together compared to Poisson)
-    let h = Hawkes::new(0.5, 0.8, 1.0, None, Some(1000.0), Deterministic::new(7));
+    let h = Hawkes::new(0.5, 0.8, 1.0, Horizon::Until(1000.0), Deterministic::new(7));
     let events = h.sample();
     let n = events.len();
     assert!(n > 1);

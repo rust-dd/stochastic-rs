@@ -3,10 +3,11 @@ use std::f64::consts::PI;
 use ndarray::ArrayView1;
 
 use super::LogRealizedVarianceParameters;
-use super::LogRealizedVarianceQmlError;
 use super::math::measurement_moments;
+use super::math::parameters_admissible;
 use super::math::validate_observations;
 use super::math::validate_parameters;
+use crate::StatsError;
 
 /// Causal Kalman filter outputs at fixed state-space parameters.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,19 +26,17 @@ pub struct LogRealizedVarianceFilterResult {
   pub log_likelihood: f64,
 }
 
-/// Runs a causal fixed-parameter scalar filter over positive annualised RV.
-///
-/// Each input must be a non-overlapping block estimate whose effective
-/// chi-square degrees of freedom equal `block_degrees_of_freedom`.
+/// Causal Kalman filter over `block_degrees_of_freedom`-return RV; `Err` on an empty, non-finite or
+/// non-positive RV or a breakdown; panics unless that size is positive and `parameters` admissible.
 pub fn filter_log_realized_variance(
   realized_variance: ArrayView1<f64>,
   block_degrees_of_freedom: usize,
   parameters: LogRealizedVarianceParameters,
-) -> Result<LogRealizedVarianceFilterResult, LogRealizedVarianceQmlError> {
+) -> Result<LogRealizedVarianceFilterResult, StatsError> {
+  validate_parameters(parameters);
+  let measurement = measurement_moments(block_degrees_of_freedom);
   let realized_variance = realized_variance.to_vec();
   validate_observations(&realized_variance, 1)?;
-  validate_parameters(parameters)?;
-  let measurement = measurement_moments(block_degrees_of_freedom)?;
   let observations = realized_variance
     .iter()
     .map(|value| value.ln() - measurement.log_bias)
@@ -49,16 +48,16 @@ pub(super) fn filter_centered_log_observations(
   observations: &[f64],
   measurement_variance: f64,
   parameters: LogRealizedVarianceParameters,
-) -> Result<LogRealizedVarianceFilterResult, LogRealizedVarianceQmlError> {
-  validate_parameters(parameters)?;
-  if !(measurement_variance.is_finite() && measurement_variance > 0.0) {
-    return Err(LogRealizedVarianceQmlError::InvalidConfig {
-      field: "log_measurement_variance",
-    });
+) -> Result<LogRealizedVarianceFilterResult, StatsError> {
+  if !(parameters_admissible(parameters)
+    && measurement_variance.is_finite()
+    && measurement_variance > 0.0)
+  {
+    return Err(StatsError::Numerical { stage: "filter" });
   }
   let stationary_covariance = parameters.q / (1.0 - parameters.phi * parameters.phi);
   if !(stationary_covariance.is_finite() && stationary_covariance > 0.0) {
-    return Err(LogRealizedVarianceQmlError::InvalidParameter { field: "phi_or_q" });
+    return Err(StatsError::Numerical { stage: "filter" });
   }
 
   let mut filtered_log_variance_path = Vec::with_capacity(observations.len());
@@ -70,13 +69,12 @@ pub(super) fn filter_centered_log_observations(
   let mut squared_innovations = 0.0;
   let mut log_likelihood = 0.0;
 
-  for (index, observation) in observations.iter().copied().enumerate() {
+  for observation in observations.iter().copied() {
     let innovation = observation - predicted_mean;
     let innovation_variance = predicted_covariance + measurement_variance;
     if !(innovation.is_finite() && innovation_variance.is_finite() && innovation_variance > 0.0) {
-      return Err(LogRealizedVarianceQmlError::NumericalFailure {
+      return Err(StatsError::Numerical {
         stage: "innovation",
-        index,
       });
     }
     let gain = predicted_covariance / innovation_variance;
@@ -84,9 +82,8 @@ pub(super) fn filter_centered_log_observations(
     let filtered_covariance = predicted_covariance * measurement_variance / innovation_variance;
     if !(filtered_mean.is_finite() && filtered_covariance.is_finite() && filtered_covariance > 0.0)
     {
-      return Err(LogRealizedVarianceQmlError::NumericalFailure {
+      return Err(StatsError::Numerical {
         stage: "filter update",
-        index,
       });
     }
     filtered_log_variance_path.push(filtered_mean);
@@ -103,9 +100,8 @@ pub(super) fn filter_centered_log_observations(
   }
   let innovation_rmse = (squared_innovations / observations.len() as f64).sqrt();
   if !(innovation_rmse.is_finite() && log_likelihood.is_finite()) {
-    return Err(LogRealizedVarianceQmlError::NumericalFailure {
+    return Err(StatsError::Numerical {
       stage: "likelihood accumulation",
-      index: observations.len().saturating_sub(1),
     });
   }
   Ok(LogRealizedVarianceFilterResult {

@@ -1,43 +1,32 @@
 #![doc = include_str!("../README.md")]
-// Defaults to `warn`, which is how 7 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// Deny, not rustdoc's default warn, so a broken link fails the build.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::needless_range_loop)]
 
-#[macro_use]
-mod linalg;
-mod macros;
+mod input;
 
+pub mod error;
 pub mod traits;
 
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_stochastic as stochastic;
+pub use error::StatsError;
 
 pub mod acf;
 pub mod bayesian_diffusion;
-pub mod cir;
+pub mod critical_values;
 pub mod distfit;
-pub mod double_exp;
 pub mod econometrics;
 pub mod evt;
 pub mod filtering;
-pub mod fou_estimator;
+pub mod fou;
 pub mod fractal_dim;
 pub mod garch;
-pub mod gaussian_kde;
 pub mod gmm_cir;
 pub mod goodness_of_fit;
 pub mod heston_mle;
-pub mod heston_nml_cekf;
+pub mod heston_nmle_cekf;
 pub mod hurst;
-pub mod leverage;
+pub mod kde;
 pub mod log_realized_variance_qml;
 pub mod mle;
-pub use stochastic_rs_distributions::non_central_chi_squared;
 pub mod normality;
 pub(crate) mod optim;
 pub mod particle_mle;
@@ -45,9 +34,9 @@ pub mod qmle;
 pub mod realized;
 pub mod spectral;
 pub mod stationarity;
-pub mod tail_index;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;
 
 #[cfg(test)]
@@ -58,6 +47,6 @@ mod tests {
     use crate::stationarity::cusum::*;
     // Both names must be nameable in one scope.
     fn _a(_x: ChangepointCusumResult) {}
-    fn _b(_x: CusumResult) {}
+    fn _b(_x: CusumTest) {}
   }
 }

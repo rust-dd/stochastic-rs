@@ -1,4 +1,4 @@
-//! Malliavin–Thalmaier Greeks computation engine.
+//! The engine computing Malliavin–Thalmaier Greeks from simulated multi-asset paths.
 //!
 //! See Kohatsu-Higa & Yasuda (2008), §6 (Theorem 6.1).
 

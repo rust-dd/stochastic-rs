@@ -1,22 +1,14 @@
-//! Interest-rate options — caps, floors, collars, and swaptions.
+//! Caps, floors, collars and swaptions under Black-76, Bachelier and SABR vols, and Bermudan
+//! swaptions on the Hull–White trinomial lattice.
 //!
 //! $$
 //! \mathrm{Caplet}=N\,\alpha\,P(t,t_p)\,[F\Phi(d_1)-K\Phi(d_2)],\quad
 //! V_{\mathrm{swpn}}=A\,[s\Phi(d_1)-K\Phi(d_2)]
 //! $$
 //!
-//! Closed-form Black-76, Bachelier, and Sabr caplet/floorlet formulae with
-//! European cap, floor, collar, and swaption wrappers on top of the library
-//! curve and swap stack; Bermudan swaptions priced on the Hull-White trinomial
-//! lattice from `quant::lattice`.
-//!
-//! Reference: P. S. Hagan et al., "Managing Smile Risk", Wilmott (2002).
-//!
-//! Reference: D. Brigo & F. Mercurio, "Interest Rate Models — Theory and
-//! Practice", Springer 2nd ed. (2006), §1.5, §6.7, §13.
-//!
-//! Reference: J. Hull, "Options, Futures, and Other Derivatives", 11th ed.
-//! (2021), §29.
+//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5, §6.7, §13
+//! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §29
 
 pub mod bermudan;
 pub mod cap;
@@ -27,7 +19,9 @@ pub mod swaption;
 pub mod types;
 pub mod volatility;
 
+pub use bermudan::BermudanDates;
 pub use bermudan::BermudanSwaption;
+pub use bermudan::BermudanTree;
 pub use cap::Cap;
 pub use cap::Collar;
 pub use cap::Floor;
@@ -38,6 +32,7 @@ pub use caplet::black_forward_floorlet;
 pub use caplet::caplet_price;
 pub use cms::CmsCaplet;
 pub use cms::CmsFloorlet;
+pub use cms::CmsValuation;
 pub use cms::hagan_linear_tsr_convexity_adjustment;
 pub use jamshidian::JamshidianHullWhiteSwaption;
 pub use jamshidian::price_jamshidian_hull_white;
@@ -45,7 +40,6 @@ pub use swaption::EuropeanSwaption;
 pub use types::BermudanSwaptionValuation;
 pub use types::CapFloorValuation;
 pub use types::CollarValuation;
-pub use types::ExerciseDate;
 pub use types::ExerciseSchedule;
 pub use types::InterestRateOptionKind;
 pub use types::SwaptionDirection;

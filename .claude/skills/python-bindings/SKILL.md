@@ -33,8 +33,8 @@ distribution's source file**, e.g. `stochastic-rs-distributions/src/normal.rs`:
 
 ```rust
 py_distribution!(PyNormal, SimdNormal,
-  sig: (mean, std_dev, seed=None, dtype=None),
-  params: (mean: f64, std_dev: f64)
+  sig: (mu, sigma, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64)
 );
 ```
 
@@ -43,12 +43,13 @@ dtype=None`; `params` lists only the distribution parameters — the macro
 appends `seed` and `dtype` itself.
 
 What you get:
-- `PyNormal` `#[pyclass(unsendable)]` — note that `py_distribution!`
-  **does** emit `unsendable`, while the `py_process_*!` macros do not.
-- Two inner slots, `inner_f32` / `inner_f64`. Unlike the process macros
-  there are no separate `seeded_*` slots: the seed is folded straight
-  into the constructor as `&Deterministic::new(sd)` (or `&Unseeded`).
-- `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,
+- `PyNormal` holds `Mutex<Seeded<SimdNormal<_>>>` and is a plain `#[pyclass]`. `sample` / `sample_par` take the lock
+  only inside `py.detach` and convert to NumPy after re-attaching: a caller blocked on the lock while attached deadlocks
+  with a holder that needs the interpreter (NumPy's first import, a free-threaded GC pause). Concurrent callers
+  serialise on the lock. The `py_process_*!` macros are unchanged.
+- Two inner slots, `inner_f32` / `inner_f64`; the seed is folded into the constructor as
+  `.seeded(&Deterministic::new(sd))` (or `&Unseeded`).
+- `__new__(mu, sigma, seed=None, dtype=None)` — `seed: Option<u64>`,
   `dtype: Option<&str>` ∈ {"f32", "f64"}, default f64
 - `sample(n)` returning `numpy.ndarray`
 - `sample_par(m, n)` returning `numpy.ndarray` (parallel matrix)
@@ -72,7 +73,7 @@ shape:
 | Macro | Output shape | Examples |
 |---|---|---|
 | `py_process_1d!` | `Array1<T>` (single 1-D path) | `Gbm`, `Ou`, `Fou`, `Fbm`, `Cir` |
-| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `HestonLog`, `DuffieKan`, `Cgns`, `Cbms` |
+| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `Svcgmy`, `DuffieKan`, `Cgns`, `Cbms` |
 | `py_process_2d!` | `Array2<T>` (correlated multi-asset) | `Cfou`, `Fbs` (`sheet/fbs.rs`) |
 
 Not every two-component process uses the macro: `Heston` itself has a
@@ -80,15 +81,23 @@ Not every two-component process uses the macro: `Heston` itself has a
 (whose jump distribution crosses the boundary as a `CallableDist`).
 Reach for a hand-written wrapper when the constructor takes something
 the macro cannot express — a Python callable, or a third type parameter
-like `Heston`'s scheme selector.
+like `Heston`'s scheme selector. Such a wrapper carries `#[doc(hidden)]` on the
+line above its `#[pyclass]` (and above a `pub use python::…` re-export of it);
+`tests/python_surface_hidden.rs` enforces both. A hand-written class on the macros'
+slots (`inner_f32`, `inner_f64`, `seeded_f32`, `seeded_f64`, and `device` for
+`py_device_dispatch`) writes only its `#[new]`, inside
+`py_process_methods!(PyX, <shape>, <dispatch>, { #[new] … })`
+(`array1`, `array2` or `pair`; `py_dispatch` or `py_device_dispatch`), which adds
+`sample`, `sample_par`, `device_fallback` and `device_ready` — see
+`process/poisson/python.rs`.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:
 
 ```rust
 py_process_1d!(PyGbm, Gbm,
-  sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  sig: (mu, sigma, n, x0, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: f64, t: Option<f64>)
 );
 ```
 
@@ -116,14 +125,14 @@ behind `#[cfg(feature = "python")]` (whole file). Pattern:
 
 ```rust
 #[pyclass(name = "BSMPricer", unsendable)]
-pub struct PyBSMPricer {
-  inner: crate::pricing::bsm::BSMPricer,
+pub struct PyBsmPricer {
+  inner: crate::pricing::bsm::BsmPricer,
 }
 
 #[pymethods]
-impl PyBSMPricer {
+impl PyBsmPricer {
   #[new]
-  // Since 3.0 the Rust pricer holds MODEL parameters only — `BSMPricer`
+  // Since 3.0 the Rust pricer holds MODEL parameters only — `BsmPricer`
   // is `{ v, b }`. Spot, strike, rates and maturity are query arguments.
   #[pyo3(signature = (sigma,))]
   fn new(sigma: f64) -> PyResult<Self> {
@@ -131,7 +140,7 @@ impl PyBSMPricer {
       return Err(PyValueError::new_err("sigma must be > 0"));
     }
     Ok(Self {
-      inner: crate::pricing::bsm::BSMPricer::new(sigma, BSMCoc::Merton1973),
+      inner: crate::pricing::bsm::BsmPricer::new(sigma, BsmCoc::Merton1973),
     })
   }
 
@@ -189,12 +198,12 @@ Every wrapped type **must** be registered explicitly. The cdylib's
 #[pymodule]
 fn stochastic_rs(_py: Python, m: &PyModule) -> PyResult<()> {
   // 1. Imports — alphabetised within each producer crate's section.
-  use stochastic_rs_quant::python::PyBSMPricer;
-  use stochastic_rs_quant::python::PyNigFourier;     // new in rc.2
+  use stochastic_rs_quant::python::PyBsmPricer;
+  use stochastic_rs_quant::python::PyNigFourier;
   // ...
 
   // 2. Registration — group by domain (pricer, calibrator, vol_surface, ...).
-  m.add_class::<PyBSMPricer>()?;
+  m.add_class::<PyBsmPricer>()?;
   m.add_class::<PyNigFourier>()?;
   // ...
 
@@ -222,8 +231,7 @@ pip install maturin pytest numpy
 maturin develop --release
 
 # Smoke test:
-python -c "from stochastic_rs import PyBSMPricer; \
-  p = PyBSMPricer(100, 100, 0.05, 0.0, 0.2, 1.0); print(p.price())"
+python -c "import stochastic_rs as sr; print(sr.BSMPricer(100.0, 0.2, 100.0, 0.05, 1.0).price())"
 ```
 
 `pyproject.toml` has `[tool.maturin] manifest-path = ".../Cargo.toml"`
@@ -254,14 +262,16 @@ Python smoke is on the maturin path under
 
 PyO3 `#[pyclass]` wrappers default to `Send + Sync`. For `unsendable` types
 (those holding `Rc<RefCell<...>>`, `RefCell<...>`, or non-`Send` external
-handles like `YahooConnector`), add `unsendable`:
+handles), add `unsendable`:
 
 ```rust
-#[pyclass(name = "RBergomiCalibrator", unsendable)]
+#[pyclass(name = "Xyz", unsendable)] // its inner type holds an Rc<RefCell<…>>
 ```
 
 Forgetting `unsendable` on a non-`Send` type triggers a compile error
-("the trait `Send` is not implemented for `Rc<...>`").
+("the trait `Send` is not implemented for `Rc<...>`"). Every quant calibrator is
+`Send + Sync` (`stochastic-rs-quant/tests/calibration_errors.rs` asserts it), so
+its wrapper needs no `unsendable`.
 
 ### 5.2. Numpy interop
 
@@ -337,7 +347,7 @@ When wrapping a distribution, confirm:
 - [ ] `#[pyo3(signature = (...))]` lists every parameter
 - [ ] Constructors validate inputs and return `PyResult<Self>` with
       `PyValueError::new_err`
-- [ ] Calibrators map inner `anyhow::Error` to `PyValueError`
+- [ ] Calibrators map the inner `QuantError` to `PyValueError` with its `Display` text
 - [ ] `m.add_class::<PyXxx>()` registered
 - [ ] Smoke test: construct + 1-2 method calls
 - [ ] Round-trip test where applicable (e.g. price → IV → price)

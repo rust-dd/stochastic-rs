@@ -1,21 +1,12 @@
-//! # Execution-cost-adjusted pricing
-//!
-//! Bridges [`crate::microstructure`] with the option-pricing layer: applies
-//! the Almgren-Chriss expected execution cost as an add-on to a model price,
-//! reflecting the cost of unwinding a delta-hedge under finite liquidity.
-//!
-//! Use when comparing model fair value to executable mid-quotes — pure
-//! Black-Scholes / Heston / Bates prices ignore liquidation friction and
-//! over-state realisable PnL on illiquid books.
+//! Execution-cost-adjusted pricing: a model price plus the Almgren–Chriss cost of unwinding its
+//! delta hedge, to compare fair value with executable quotes on illiquid books.
 
 use crate::microstructure::AlmgrenChrissParams;
 use crate::microstructure::optimal_execution;
 use crate::traits::RealExt;
 
-/// Add the Almgren-Chriss expected execution cost to a model price.
-///
-/// Returns `model_price + plan.expected_cost`, with optional weighting on
-/// the variance term via `lambda` for risk-adjusted execution cost.
+/// `model_price` plus the Almgren–Chriss plan's risk-adjusted cost, `lambda` weighting its
+/// variance.
 pub fn execution_adjusted_price<T: RealExt>(
   model_price: T,
   execution: &AlmgrenChrissParams<T>,
@@ -28,15 +19,15 @@ pub fn execution_adjusted_price<T: RealExt>(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::microstructure::ExecutionDirection;
+  use crate::order_book::Side;
 
   #[test]
   fn execution_cost_increases_price() {
     let exec = AlmgrenChrissParams {
+      side: Side::Sell,
       total_shares: 1_000.0,
       horizon: 1.0,
       n_intervals: 10,
-      direction: ExecutionDirection::Sell,
       volatility: 0.2,
       gamma: 1e-6,
       eta: 1e-3,

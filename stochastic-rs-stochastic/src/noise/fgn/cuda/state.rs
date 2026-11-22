@@ -7,8 +7,7 @@ use parking_lot::Mutex;
 
 use super::kernels::EXTRACT_F32;
 use super::kernels::EXTRACT_F64;
-use super::kernels::GEN_SCALE_F32;
-use super::kernels::GEN_SCALE_F64;
+use super::kernels::gen_scale_source;
 use crate::device::DeviceError;
 
 type Result<T> = std::result::Result<T, DeviceError>;
@@ -16,6 +15,7 @@ type Result<T> = std::result::Result<T, DeviceError>;
 pub(super) const CUFFT_FORWARD: i32 = -1;
 
 /// Persistent GPU state: compiled kernels and stream (survives param changes).
+#[derive(Clone)]
 pub(super) struct GpuKernels {
   pub(super) ordinal: usize,
   pub(super) stream: Arc<CudaStream>,
@@ -30,16 +30,8 @@ unsafe impl Send for GpuKernels {}
 
 pub(super) static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
 
-/// Cacheable page-locked host buffer for fast device→host transfers.
-///
-/// Allocated via the low-level driver with flags = 0 (cacheable). We avoid
-/// [`cudarc::driver::CudaContext::alloc_pinned`], which uses
-/// `CU_MEMHOSTALLOC_WRITECOMBINED`: write-combined memory is fast for host
-/// *writes* but very slow for the host *reads* we do when materialising the
-/// output `Array2`. Page-locking lets the driver DMA the result at full PCIe
-/// bandwidth instead of staging a pageable copy through a bounce buffer
-/// (~3.6 GB/s → ~20 GB/s on PCIe 4.0). Cached in the sized context so the
-/// (expensive) pinning happens once per parameter set, not per call.
+/// Cacheable page-locked host buffer, allocated with flags = 0: `alloc_pinned`'s write-combined
+/// memory is slow for the host reads done here. Cached per sized context, so pinning happens once.
 pub(crate) struct PinnedHost<T> {
   pub(crate) ptr: *mut T,
   pub(super) len: usize,
@@ -51,9 +43,8 @@ impl<T> PinnedHost<T> {
     self.len
   }
 
-  /// The first `len` elements, which the caller must have written or copied
-  /// into. `len` is not checked against the allocation: every caller sizes
-  /// the buffer through [`alloc`](Self::alloc) first.
+  /// The first `len` elements, which the caller must have written; `len` is not checked, since
+  /// every caller sizes the buffer through [`alloc`](Self::alloc) first.
   ///
   /// # Safety
   ///
@@ -92,15 +83,60 @@ impl<T> Drop for PinnedHost<T> {
 
 unsafe impl<T: Send> Send for PinnedHost<T> {}
 
-pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
-  let mut g = GPU.lock();
-  if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    return Ok(());
+/// A sized context's page-locked staging buffer, allocated by the first transfer that needs it.
+pub(super) fn staging<T>(slot: &mut Option<PinnedHost<T>>, len: usize) -> Result<&PinnedHost<T>> {
+  if slot.is_none() {
+    *slot = Some(PinnedHost::alloc(len)?);
   }
-  // A new context invalidates the per-size buffers and plans of the old one.
-  *g = None;
+  Ok(slot.as_ref().expect("allocated above"))
+}
+
+/// Drops the fGN kernels, cuFFT plans and buffers cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut gpu = GPU.lock();
+  if frees(gpu.as_ref().map(|k| k.ordinal), ordinal) {
+    invalidate(&mut gpu);
+  }
+}
+
+/// Whether a release for `ordinal` empties a cache of `cached`'s kernels; with none cached it does,
+/// since a launch racing an earlier release may have left per-size states behind.
+pub(crate) fn frees(cached: Option<usize>, ordinal: usize) -> bool {
+  cached.is_none_or(|cached| cached == ordinal)
+}
+
+/// Empties the cache: the per-size buffers and plans belong to the context that built them.
+fn invalidate(gpu: &mut Option<GpuKernels>) {
+  *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(super) fn cached_sizes() -> usize {
+  SIZED_F32.lock().len() + SIZED_F64.lock().len()
+}
+
+#[cfg(test)]
+pub(super) fn forget_kernels() {
+  *GPU.lock() = None;
+}
+
+#[cfg(test)]
+pub(super) fn cached_context() -> Option<std::sync::Weak<CudaContext>> {
+  GPU
+    .lock()
+    .as_ref()
+    .map(|k| Arc::downgrade(k.stream.context()))
+}
+
+/// The kernels and stream of the device at `ordinal`, opened if need be and cloned under one lock.
+pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<GpuKernels> {
+  let mut g = GPU.lock();
+  if let Some(k) = g.as_ref().filter(|k| k.ordinal == ordinal) {
+    return Ok(k.clone());
+  }
+  invalidate(&mut g);
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
@@ -118,15 +154,16 @@ pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
       .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
   };
 
-  *g = Some(GpuKernels {
+  let kernels = GpuKernels {
     ordinal,
-    gen_scale_f32: load(GEN_SCALE_F32, "gen_scale_f32")?,
+    gen_scale_f32: load(&gen_scale_source("float"), "gen_scale_float")?,
     extract_f32: load(EXTRACT_F32, "extract_f32")?,
-    gen_scale_f64: load(GEN_SCALE_F64, "gen_scale_f64")?,
+    gen_scale_f64: load(&gen_scale_source("double"), "gen_scale_double")?,
     extract_f64: load(EXTRACT_F64, "extract_f64")?,
     stream,
-  });
-  Ok(())
+  };
+  *g = Some(kernels.clone());
+  Ok(kernels)
 }
 
 /// Per-precision GPU state: FFT plan and device buffers, re-created on param change.
@@ -135,7 +172,7 @@ pub(super) struct SizedCtxF32 {
   pub(super) d_eigs: CudaSlice<f32>,
   pub(super) d_data: CudaSlice<f32>,
   pub(super) d_out: CudaSlice<f32>,
-  pub(super) host_pinned: PinnedHost<f32>,
+  pub(super) host_pinned: Option<PinnedHost<f32>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,
@@ -156,7 +193,7 @@ pub(super) struct SizedCtxF64 {
   pub(super) d_eigs: CudaSlice<f64>,
   pub(super) d_data: CudaSlice<f64>,
   pub(super) d_out: CudaSlice<f64>,
-  pub(super) host_pinned: PinnedHost<f64>,
+  pub(super) host_pinned: Option<PinnedHost<f64>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,
@@ -175,6 +212,7 @@ impl Drop for SizedCtxF64 {
 unsafe impl Send for SizedCtxF32 {}
 unsafe impl Send for SizedCtxF64 {}
 
-/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first; a launch reuses one
+/// only on the stream that built it, which its plan runs on.
 pub(super) static SIZED_F32: Mutex<Vec<SizedCtxF32>> = Mutex::new(Vec::new());
 pub(super) static SIZED_F64: Mutex<Vec<SizedCtxF64>> = Mutex::new(Vec::new());

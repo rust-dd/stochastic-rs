@@ -1,38 +1,16 @@
-//! # Model-Generated Implied Volatility Surfaces
-//!
-//! Any calibrated model implementing [`VanillaEuropeanCall`] automatically
-//! gets [`ModelSurface::vol_surface()`] via a blanket implementation that
-//! prices a grid of European calls and inverts to implied volatility.
-//!
-//! [`ModelPricer`](crate::traits::ModelPricer) alone is deliberately not
-//! enough. The inversion is a European Black inversion, so it is only
-//! meaningful for a European vanilla call, and `ModelPricer` covers digital,
-//! Asian and American payoffs too — [`VanillaEuropeanCall`] is the narrower
-//! bound that says the inversion applies. See that trait for what widening
-//! this bound silently produces.
-//!
-//! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
-//! Kou, Hkde) get both traits via blanket impls in `fourier/mod.rs`.
-//! Non-Fourier models ([`SabrPricer`](crate::pricing::sabr::SabrPricer),
-//! [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer))
-//! have explicit impls.
+//! Implied-volatility surfaces by Black inversion of a [`VanillaEuropeanCall`]'s calls, not of any
+//! `ModelPricer`'s, whose digital, Asian or American prices would invert to finite, wrong vols.
 
 use ndarray::Array2;
 
 use super::implied::ImpliedVolSurface;
+use crate::OptionType;
 use crate::pricing::fourier::CarrMadanPricer;
 use crate::pricing::fourier::FourierModelExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Trait for generating an implied vol surface from a calibrated model.
-///
-/// Every [`VanillaEuropeanCall`] gets this via a blanket implementation. The
-/// default prices calls across the (strike, maturity) grid and inverts each
-/// through the Black formula. Models like Sabr can override for efficiency.
-///
-/// The supertrait is the whole point of the bound. A
-/// [`ModelPricer`](crate::traits::ModelPricer) that is *not* a European
-/// vanilla call has no method here at all:
+/// An implied-vol surface for every [`VanillaEuropeanCall`]; a `ModelPricer` that is not one has
+/// no `vol_surface` (the first example), and one that is compiles (the second).
 ///
 /// ```compile_fail,E0599
 /// use stochastic_rs_quant::pricing::CashOrNothingPricer;
@@ -42,27 +20,17 @@ use crate::traits::VanillaEuropeanCall;
 /// let _ = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// ```
 ///
-/// The same call on a model that *is* one compiles, so the failure above is
-/// the bound and not a typo:
-///
 /// ```
-/// use stochastic_rs_quant::pricing::fourier::BSMFourier;
+/// use stochastic_rs_quant::pricing::fourier::BsmFourier;
 /// use stochastic_rs_quant::vol_surface::ModelSurface;
 ///
-/// let model = BSMFourier { sigma: 0.35, r: 0.05, q: 0.0 };
+/// let model = BsmFourier { sigma: 0.35 };
 /// let surface = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
 /// ```
 pub trait ModelSurface: VanillaEuropeanCall {
-  /// Generate an implied vol surface on the given grid.
-  ///
-  /// Each maturity's slice is inverted against
-  /// [`vanilla_call_forward`](VanillaEuropeanCall::vanilla_call_forward)
-  /// rather than an assumed $Se^{(r-q)\tau}$, so a model that carries at
-  /// something else inverts against its own forward. An implementor that
-  /// reports [`f64::NAN`] there — it is not a European vanilla call at that
-  /// query — leaves the whole slice `NaN`, including
-  /// [`log_moneyness`](ImpliedVolSurface::log_moneyness).
+  /// The surface inverted against [`VanillaEuropeanCall::vanilla_call_forward`], not an assumed
+  /// `Se^{(r−q)τ}`; a NaN forward leaves its slice NaN, `log_moneyness` included.
   fn vol_surface(
     &self,
     s: f64,
@@ -93,27 +61,18 @@ pub trait ModelSurface: VanillaEuropeanCall {
       strikes.to_vec(),
       maturities.to_vec(),
       forwards,
-      &prices,
-      true,
+      prices.view(),
+      OptionType::Call,
     )
   }
 }
 
-/// Blanket: every [`VanillaEuropeanCall`] gets [`ModelSurface`] for free.
-///
-/// This was `impl<T: ModelPricer + ?Sized>` until the pricer population grew
-/// past European vanillas; [`VanillaEuropeanCall`] records what the wider
-/// bound had been asserting without saying so.
+/// Every [`VanillaEuropeanCall`] gets [`ModelSurface`]; only a European vanilla call has a Black
+/// implied volatility to invert.
 impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T {}
 
-/// Generate an implied vol surface using Carr-Madan FFT for faster pricing
-/// with the default `(N_pow2 = 12, alpha = 0.75)` damping settings.
-///
-/// For large grids, FFT is significantly faster than per-strike Gil-Pelaez
-/// quadrature since it prices all log-strikes simultaneously.
-///
-/// To override the FFT grid size or damping factor, use
-/// [`fourier_model_surface_fft_with`] which exposes both as parameters.
+/// The surface by Carr–Madan's FFT at `(N_pow2 = 12, alpha = 0.75)`, one transform per maturity
+/// where `vol_surface` integrates each strike; [`fourier_model_surface_fft_with`] takes both.
 pub fn fourier_model_surface_fft(
   model: &impl FourierModelExt,
   s: f64,
@@ -125,17 +84,8 @@ pub fn fourier_model_surface_fft(
   fourier_model_surface_fft_with(model, s, r, q, strikes, maturities, 12, 0.75)
 }
 
-/// Generate an implied vol surface using Carr-Madan FFT with caller-supplied
-/// FFT settings.
-///
-/// - `n_pow2`: FFT grid is `2^n_pow2` log-strike points. Higher gives a denser
-///   strike grid and a wider strike range (so deep wings hit-the-grid less
-///   often) at the cost of an O(N log N) FFT. Typical: 12 (4096) or 13 (8192).
-/// - `alpha`: Carr-Madan damping factor. Must be > 0. Lower values reduce
-///   the integrand's contribution near `u=0`; higher values pull the
-///   integration tail in. Typical: 0.75 (the Lord-Kahl 2010 sweet spot for
-///   moderate-vol equity smiles); use 0.25-0.5 for low-vol smiles, 1.0-1.5
-///   for high-skew rough-vol surfaces.
+/// [`fourier_model_surface_fft`] on `2^n_pow2` log-strikes (12 or 13 typical), damped by `alpha`
+/// `> 0`: 0.75 (Lord–Kahl 2010) for equity smiles, 0.25–0.5 for low vol, 1.0–1.5 for rough skew.
 pub fn fourier_model_surface_fft_with(
   model: &impl FourierModelExt,
   s: f64,
@@ -160,7 +110,7 @@ pub fn fourier_model_surface_fft_with(
   for (j, &t) in maturities.iter().enumerate() {
     let df = (-r * t).exp();
     for (i, &k) in strikes.iter().enumerate() {
-      let call = cm.price_call(model, s, k, r, t);
+      let call = cm.price_call(model, s, k, r, q, t);
       let undiscounted = if df > 0.0 { call / df } else { call };
       prices[[j, i]] = undiscounted;
     }
@@ -170,8 +120,8 @@ pub fn fourier_model_surface_fft_with(
     strikes.to_vec(),
     maturities.to_vec(),
     forwards,
-    &prices,
-    true,
+    prices.view(),
+    OptionType::Call,
   )
 }
 
@@ -179,31 +129,33 @@ pub fn fourier_model_surface_fft_with(
 mod tests {
   use super::*;
   use crate::OptionStyle;
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
   use crate::pricing::finite_difference::FiniteDifferenceMethod;
   use crate::pricing::finite_difference::FiniteDifferencePricer;
   use crate::pricing::fourier::BatesFourier;
   use crate::pricing::fourier::DoubleHestonFourier;
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::pricing::fourier::VarianceGammaFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
+  use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
+  use crate::total_order::ascending;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
   const GRID_T: [f64; 2] = [0.25, 1.0];
 
   #[test]
   fn heston_via_model_surface() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -226,7 +178,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -237,15 +189,13 @@ mod tests {
 
   #[test]
   fn fft_surface_matches_the_quadrature_surface() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
     let fft = fourier_model_surface_fft(&model, 100.0, 0.05, 0.0, &GRID_K, &GRID_T);
     let quadrature = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
     let worst = fft
@@ -259,12 +209,12 @@ mod tests {
 
   #[test]
   fn sabr_via_model_surface() {
-    let model = SabrPricer {
+    let model = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -287,8 +237,6 @@ mod tests {
       sigma: 0.12,
       theta: -0.14,
       nu: 0.2,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -310,20 +258,22 @@ mod tests {
 
   #[test]
   fn double_heston_via_model_surface() {
-    let model = DoubleHestonFourier {
-      v1_0: 0.02,
-      kappa1: 3.0,
-      theta1: 0.02,
-      sigma1: 0.4,
-      rho1: -0.6,
-      v2_0: 0.02,
-      kappa2: 0.5,
-      theta2: 0.03,
-      sigma2: 0.2,
-      rho2: -0.3,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = DoubleHestonFourier::new(
+      HestonParams {
+        v0: 0.02,
+        kappa: 3.0,
+        theta: 0.02,
+        sigma: 0.4,
+        rho: -0.6,
+      },
+      HestonParams {
+        v0: 0.02,
+        kappa: 0.5,
+        theta: 0.03,
+        sigma: 0.2,
+        rho: -0.3,
+      },
+    );
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -346,7 +296,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -357,18 +307,16 @@ mod tests {
 
   #[test]
   fn bates_via_model_surface() {
-    let model = BatesFourier {
+    let model = BatesFourier::new(SvjParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
-      sigma_v: 0.3,
+      sigma: 0.3,
       rho: -0.7,
       lambda: 0.5,
       mu_j: -0.1,
       sigma_j: 0.15,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -416,21 +364,19 @@ mod tests {
 
   #[test]
   fn model_surface_then_ssvi_fit() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
+    });
 
     let strikes: Vec<f64> = (80..=120).step_by(2).map(|k| k as f64).collect();
     let maturities = vec![0.25, 0.5, 1.0, 2.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    let ssvi = surface.fit_ssvi(None);
+    let ssvi = surface.fit_ssvi(None).params;
     let ks: Vec<f64> = (-3..=3).map(|i| i as f64 * 0.5).collect();
     assert!(ssvi.is_calendar_spread_free(&ks));
 
@@ -443,28 +389,23 @@ mod tests {
     );
   }
 
-  /// The default forward is the literal expression `vol_surface` used to
-  /// inline, so every model that does not override the hook keeps the
-  /// surface it had. `assert_eq!` on `f64` is the point: "equal to within a
-  /// tolerance" would not distinguish a re-association that moves an ulp
-  /// from the expression itself.
+  /// The default forward is bit-identical to `s·e^{(r−q)t}`, which only `assert_eq!` can show: a
+  /// tolerance would let a re-association move an ulp.
   #[test]
   fn default_forward_is_bit_identical_to_the_inlined_expression() {
-    let heston = HestonFourier {
+    let heston = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
-    };
-    let sabr = SabrPricer {
+    });
+    let sabr = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     for &(s, r, q) in &[
       (100.0, 0.05, 0.0),
@@ -478,9 +419,9 @@ mod tests {
         assert_eq!(sabr.vanilla_call_forward(s, r, q, t), expected);
         // The two cost-of-carry conventions with `b = r - q` must land on
         // the same expression rather than merely near it.
-        for coc in [BSMCoc::Merton1973, BSMCoc::GarmanKohlhagen1983] {
+        for coc in [BsmCoc::Merton1973, BsmCoc::GarmanKohlhagen1983] {
           assert_eq!(
-            BSMPricer::new(0.2, coc).vanilla_call_forward(s, r, q, t),
+            BsmPricer::new(0.2, coc).vanilla_call_forward(s, r, q, t),
             expected
           );
         }
@@ -488,17 +429,12 @@ mod tests {
     }
   }
 
-  /// A flat-volatility model must invert to a flat surface. Under
-  /// [`BSMCoc::Black1976`] the carry is `b = 0`, so the forward is `s` — and
-  /// against the default `s * exp((r - q) * tau)` these same *correct* prices
-  /// invert to a smile running 0.080 to 0.150 across this grid, every point
-  /// finite and none of them 0.20. That is what
-  /// [`BSMPricer::vanilla_call_forward`] exists to prevent, and deleting the
-  /// override fails this test rather than degrading it.
+  /// Under `Black1976` the forward is `s`; against `se^{(r−q)τ}` the same prices inverted to a
+  /// 0.080–0.150 smile, which deleting [`BsmPricer::vanilla_call_forward`] would bring back.
   #[test]
   fn futures_carry_surface_recovers_the_models_flat_vol() {
-    for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
-      let model = BSMPricer::new(0.20, coc);
+    for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
+      let model = BsmPricer::new(0.20, coc);
       let surface = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
 
       for (j, &t) in GRID_T.iter().enumerate() {
@@ -514,14 +450,11 @@ mod tests {
     }
   }
 
-  /// The same failure with the dividend yield rather than the carry
-  /// convention: [`BSMCoc::Bsm1973`] carries at `b = r` and ignores `q`, so a
-  /// surface asked for at `q = 0.03` must still invert flat. Against the
-  /// default forward it produces a 0.274-to-0.233 skew out of a model that
-  /// has none.
+  /// `Bsm1973` carries at `b = r` and ignores `q`, so at `q = 0.03` it inverts flat, where the
+  /// default forward gave a 0.274-to-0.233 skew.
   #[test]
   fn dividend_ignoring_carry_surface_recovers_the_models_flat_vol() {
-    let model = BSMPricer::new(0.20, BSMCoc::Bsm1973);
+    let model = BsmPricer::new(0.20, BsmCoc::Bsm1973);
     let surface = model.vol_surface(100.0, 0.05, 0.03, &GRID_K, &GRID_T);
 
     for (j, &t) in GRID_T.iter().enumerate() {
@@ -535,14 +468,8 @@ mod tests {
     }
   }
 
-  /// [`FiniteDifferencePricer`] is the one implementor whose exercise style
-  /// is a field, so it is the one that has to answer per instance. At
-  /// [`OptionStyle::American`] the whole surface must be `NaN`.
-  ///
-  /// Without the `NaN` this grid comes back 10/10 finite, every point within
-  /// 0.008 of the model's own `v` — an American price pushed through a
-  /// European inversion looks like a slightly noisy European one, which is
-  /// exactly why a `NaN` and not a warning.
+  /// At [`OptionStyle::American`] the surface is all NaN, where it came back 10/10 finite within
+  /// 0.008 of `sigma`: an American price through a European inversion passes for a European one.
   #[test]
   fn american_finite_difference_surface_is_all_nan() {
     let model = FiniteDifferencePricer::new(
@@ -568,9 +495,7 @@ mod tests {
     }
   }
 
-  /// Control for `american_finite_difference_surface_is_all_nan`: the same
-  /// solver at [`OptionStyle::European`] still produces a surface, so the
-  /// `NaN` above is the exercise style and not the type.
+  /// The same solver at [`OptionStyle::European`] gives a surface, so the NaN above is the style.
   #[test]
   fn european_finite_difference_surface_is_finite() {
     let model = FiniteDifferencePricer::new(
@@ -588,7 +513,7 @@ mod tests {
         let iv = surface.ivs[[j, i]];
         assert!(
           (iv - 0.25).abs() < 5e-3,
-          "European FD should recover its own v: iv={iv} at T={t}, K={k}"
+          "European FD should recover its own sigma: iv={iv} at T={t}, K={k}"
         );
       }
     }

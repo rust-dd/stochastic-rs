@@ -1,43 +1,13 @@
-//! # Gaussian polynomial volatility
+//! A volatility that is a polynomial of a Gaussian Volterra process; the price leg is not included.
 //!
 //! $$
 //! X_t = \int_0^t K(t-s)\,dW_s, \qquad \sigma_t = p(X_t) = \sum_{k=0}^{d} c_k X_t^k
 //! $$
 //!
-//! Volatility as a polynomial of a *Gaussian Volterra process* — a stochastic
-//! convolution of a kernel against a Brownian motion. The family is the one
-//! behind the strongest published results on the joint SPX/VIX calibration
-//! problem, long considered the hardest fitting exercise in volatility
-//! modelling:
+//! An `ExponentialKernel` makes $X$ the quintic model's exact OU process.
 //!
-//! - **Abi Jaber, Illand & Li (2022)**, *Joint SPX-VIX calibration with
-//!   Gaussian polynomial volatility models*, arXiv:2212.08297.
-//! - **Abi Jaber, Illand & Li (2022)**, *The quintic Ornstein-Uhlenbeck
-//!   volatility model that jointly calibrates SPX & VIX smiles*,
-//!   arXiv:2212.10917 — the degree-five case over a single fast-mean-reverting
-//!   OU process.
-//!
-//! ## Why this is cheap to have here
-//!
-//! Setting $b\equiv 0$ and $\sigma\equiv 1$ in
-//! [`VolterraSde`](super::sve::VolterraSde) already produces the Gaussian
-//! Volterra process $X$, and the lift makes it $O(n N')$ rather than
-//! $O(n^2)$. Everything this type adds on top is a polynomial evaluated
-//! pointwise, so the whole family costs one Horner loop over an existing
-//! primitive.
-//!
-//! Choosing [`ExponentialKernel`](super::kernel::ExponentialKernel) makes $X$
-//! an Ornstein–Uhlenbeck process **exactly** — the exponential kernel is
-//! represented by a single mode with no approximation error — which is the
-//! quintic model's own setting.
-//!
-//! ## Scope
-//!
-//! This type is the **volatility** process $\sigma_t$. The price leg
-//! $dS_t = \sigma_t S_t\,dW^S_t$ with $d\langle W, W^S\rangle = \rho\,dt$ is
-//! not included; a correlated two-dimensional output is a separate piece of
-//! work, and stating that plainly is better than shipping half of it under a
-//! name that implies the whole model.
+//! Reference: Abi Jaber, Illand & Li (2022), arXiv:2212.08297, joint SPX-VIX calibration
+//! Reference: Abi Jaber, Illand & Li (2022), arXiv:2212.10917, the quintic OU model
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -46,7 +16,9 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
-use crate::rough::markov_lift::RoughSimd;
+use crate::precondition::assert_entries;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -54,6 +26,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volatility as a polynomial of a Gaussian Volterra process.
+#[derive(Clone, Debug)]
 pub struct GaussianPolynomialVolatility<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -65,52 +38,29 @@ where
   pub coefficients: Array1<T>,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Simulation horizon $[0, t]$ (defaults to $1$ when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
-  /// The Markov lift of `kernel` at the grid spacing: the host sampler steps
-  /// it and a device replays it node by node, so both run one object. The
-  /// grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
+  /// The Markov lift of `kernel` at the grid spacing, which the host steps and a device replays
+  /// node by node. The grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
   pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, K, S: SeedExt> Clone for GaussianPolynomialVolatility<T, K, S>
-where
-  K: VolterraKernel<T> + Send + Sync,
-  S: Clone,
-{
-  /// Snapshot semantics, matching every other process in this crate.
-  fn clone(&self) -> Self {
-    Self {
-      backend: Cpu,
-      kernel: self.kernel.clone(),
-      coefficients: self.coefficients.clone(),
-      n: self.n,
-      t: self.t,
-      seed: self.seed.clone(),
-      lift: self.lift.clone(),
-    }
-  }
-}
-
 impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatility<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// # Panics
-  /// - if `n < 2`
-  /// - if `coefficients` is empty (a polynomial needs at least a constant term)
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and `coefficients` is non-empty
+  /// with every entry finite.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(
-      !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
-    );
+    check_t(t);
+    check_n(n);
+    Self::check_coefficients(&coefficients);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -123,31 +73,10 @@ where
     }
   }
 
-  /// The quintic parameterisation of arXiv:2212.10917.
-  ///
-  /// The model's polynomial is **sparse**, not a general quintic: the paper
-  /// fixes the quadratic and quartic terms at zero, so
+  /// The sparse quintic of arXiv:2212.10917, degrees 2 and 4 at zero; panics as [`new`](Self::new),
+  /// which takes a dense polynomial, a model the paper's results do not cover.
   ///
   /// $$ p(x) = \alpha_0 + \alpha_1 x + \alpha_3 x^3 + \alpha_5 x^5 . $$
-  ///
-  /// This constructor therefore takes those four coefficients and fills
-  /// degrees 2 and 4 with zero, rather than accepting six free values —
-  /// passing a dense six-coefficient polynomial would produce a strictly
-  /// larger family than the one the citation names. (The paper's "six
-  /// parameters" are $\{\rho, H, \alpha_0, \alpha_1, \alpha_3, \alpha_5\}$,
-  /// counting the correlation and Hurst exponent, neither of which lives on
-  /// this type — see the scope note in the module docs.)
-  ///
-  /// The calibrated instance in the paper's Figure 1 is
-  /// $(\alpha_0, \alpha_1, \alpha_3, \alpha_5) = (0.5907, 1, 0.2893, 0.0549)$
-  /// at $\rho = -0.6843$, $H = -0.0358$.
-  ///
-  /// Use [`new`](Self::new) directly for an unrestricted degree-five
-  /// polynomial; it is a different model and this crate does not claim the
-  /// paper's results for it.
-  ///
-  /// # Panics
-  /// - under the same conditions as [`new`](Self::new)
   #[must_use]
   pub fn quintic(
     kernel: K,
@@ -168,53 +97,54 @@ impl<T: FloatExt, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Replace the polynomial, all else unchanged.
-  ///
-  /// # Panics
-  /// - if `coefficients` is empty
-  #[must_use]
-  pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+  fn check_coefficients(coefficients: &Array1<T>) {
+    assert_entries(
+      "coefficients",
+      "coefficients[i].is_finite()",
+      coefficients,
+      |v| v.is_finite(),
+    );
     assert!(
       !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
+  }
+
+  /// Replace the polynomial; panics unless `coefficients` is non-empty with every entry finite.
+  #[must_use]
+  pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+    Self::check_coefficients(&coefficients);
     self.coefficients = coefficients;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  ///
-  /// # Panics
-  /// - if `n < 2`
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   #[must_use]
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
   }
 
-  /// Replace the horizon, all else unchanged.
+  /// Replace `t`; panics unless `t`, when given, is positive and finite.
   #[must_use]
-  pub fn with_horizon(mut self, t: T) -> Self {
-    self.t = Some(t);
-    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
+    self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
   }
 
-  /// Replace the seed strategy, all else unchanged.
+  /// Replace the seed strategy.
   #[must_use]
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 
-  /// Evaluate $p(x)$ by Horner's rule.
-  ///
-  /// Horner rather than a naive power sum because the quintic case raises $x$
-  /// to the fifth, and a fast-mean-reverting driver with large vol-of-vol —
-  /// the regime arXiv:2212.10917 calibrates in — makes $|x|$ large enough for
-  /// the cancellation to matter.
+  /// $p(x)$ by Horner's rule: in the regime arXiv:2212.10917 calibrates in, $|x|$ is large enough
+  /// for a naive power sum's cancellation to matter at the fifth power.
   #[must_use]
   pub fn evaluate_polynomial(&self, x: T) -> T {
     let mut acc = T::zero();
@@ -232,16 +162,15 @@ fn grid_spacing<T: FloatExt>(n: usize, t: Option<T>) -> T {
 
 /// The most coefficients a device evaluates: the kernels unroll Horner's
 /// rule over this many slots, and a longer polynomial samples on the host.
-pub const DEVICE_COEFFICIENTS: usize = 8;
+pub(crate) const DEVICE_COEFFICIENTS: usize = 8;
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// The coefficients in rising order, padded with zeros to the kernels'
-  /// slots. A longer polynomial never reaches a launch — [`ProcessExt::sample`]
-  /// keeps it on the host — so asking here is a caller bypassing that guard.
+  /// The coefficients in rising order, zero-padded to the kernels' slots. [`ProcessExt::sample`]
+  /// keeps a longer polynomial on the host, so a launch that asks here bypassed that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.device_ready(),
@@ -302,9 +231,16 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] GaussianPolynomialVolatility<T, K, S> { kernel, coefficients, n, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
+backend_switch!([T: FloatExt, K, S: SeedExt] GaussianPolynomialVolatility<T, K, S> { kernel, coefficients, n, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GaussianPolynomialVolatility<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -329,9 +265,8 @@ where
     }
   }
 
-  /// Through the Euler engine when the polynomial fits the kernels'
-  /// coefficient slots; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the polynomial fits the kernels' coefficient slots; anything
+  /// else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_sample(&self.backend, self)
@@ -396,7 +331,8 @@ where
 
 /// Reusable [`GaussianPolynomialVolatility`] sampling state.
 #[doc(hidden)]
-pub struct GaussianPolynomialVolatilitySampler<T: FloatExt + RoughSimd, K, S: SeedExt>
+#[derive(Debug)]
+pub struct GaussianPolynomialVolatilitySampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -406,7 +342,7 @@ where
   gn: Gn<T, S>,
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> GaussianPolynomialVolatilitySampler<T, K, S>
+impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatilitySampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -434,8 +370,14 @@ where
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T>
+impl<T: FloatExt, K, S: SeedExt> crate::traits::Sealed
   for GaussianPolynomialVolatilitySampler<T, K, S>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt> PathSampler<T> for GaussianPolynomialVolatilitySampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -455,5 +397,4 @@ where
 }
 
 #[cfg(test)]
-#[path = "gaussian_polynomial_tests.rs"]
 mod tests;

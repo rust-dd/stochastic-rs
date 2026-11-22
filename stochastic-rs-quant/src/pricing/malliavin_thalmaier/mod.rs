@@ -1,47 +1,21 @@
-//! Malliavin–Thalmaier multi-dimensional Greeks.
+//! Malliavin–Thalmaier multi-dimensional Greeks: the Poisson kernel `Q_d` turns `d` nested Skorohod
+//! integrals into one, whatever the dimension.
 //!
 //! $$
 //! \frac{\partial}{\partial\mu_k}\mathbb E[f(F^\mu)]
 //! =\sum_{i,j}^d\mathbb E\!\bigl[g^h_{i,j}(F^\mu)\,H_{(i)}\!\bigl(F^\mu;\tfrac{\partial F^\mu_j}{\partial\mu_k}\bigr)\bigr]
 //! $$
 //!
-//! The classical Malliavin integration-by-parts formula (Nualart, Prop. 2.1.5)
-//! uses *d* nested Skorohod integrals for a *d*-dimensional density, which is
-//! exponentially expensive and numerically unstable. Malliavin and Thalmaier
-//! (2006, Theorem 4.23) replace the nested integrals with the **Poisson kernel**
-//! `Q_d`, the fundamental solution of the Laplace equation, reducing it to a
-//! **single** Skorohod integral regardless of dimension.
+//! $$
+//! Q_2(x) = \tfrac{1}{2\pi}\ln|x|,\qquad Q_d(x) = -\frac{|x|^{2-d}}{(d-2)\,a_d},\qquad
+//! a_d = \frac{2\pi^{d/2}}{\Gamma(d/2)}
+//! $$
 //!
-//! The Poisson kernel `Q_d`:
-//! - `d = 2`: `Q₂(x) = (1/2π) ln|x|`
-//! - `d ≥ 3`: `Q_d(x) = −1 / ((d−2) · a_d) · |x|^{2−d}`
-//!
-//! where `a_d = 2π^{d/2} / Γ(d/2)` is the surface area of the unit sphere.
-//!
-//! The singular kernel is regularised numerically at a positive `h`. The
-//! resulting bias/variance trade-off depends on the payoff, model and chosen
-//! localization; the true Greek is recovered only in the appropriate
-//! `h → 0` limit.
-//!
-//! This implementation provides exact conditional integration-by-parts
-//! weights when every stochastic variance path is independent of its price
-//! Brownian motion (`rho = 0`), including the constant-volatility case
-//! (`xi = 0`). [`MtGreeks::try_delta`](engine::MtGreeks::try_delta) and
-//! [`MtGreeks::try_all_deltas`](engine::MtGreeks::try_all_deltas) reject
-//! correlated stochastic-volatility parameters because those require the full
-//! Malliavin derivative and Skorohod-divergence correction. Cross-gamma and
-//! vega helpers are common-random-number finite differences, not M-T weights.
-//!
-//! # References
-//!
-//! - Malliavin, P. & Thalmaier, A. (2006). *Stochastic Calculus of Variations
-//!   in Mathematical Finance*. Springer. Theorem 4.23.
-//! - Kohatsu-Higa, A. & Yasuda, K. (2008). *Estimating Multi-dimensional
-//!   Density Functions through the Malliavin-Thalmaier Formula and Its
-//!   Application to Finance*. RIMS Kôkyûroku 1580, 124–135.
-//! - Bally, V. & Caramellino, L. *Lower bounds for the density of Itô
-//!   processes under weak regularity assumptions*. Preprint.
-//! <https://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1580-11.pdf>
+//! Reference: Malliavin & Thalmaier (2006), Springer, Theorem 4.23
+//! Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580, 124–135
+//! Reference: Nualart, The Malliavin Calculus and Related Topics, Prop. 2.1.5
+//! Reference: Bally & Caramellino, Lower bounds for the density of Itô processes (preprint)
+//! Source: <https://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1580-11.pdf>
 
 pub mod engine;
 pub mod heston;

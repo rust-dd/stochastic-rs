@@ -1,4 +1,4 @@
-//! # WN
+//! White noise: `n` independent normal draws of mean `mu` and deviation `sigma`, on no time grid.
 //!
 //! $$
 //! \xi_i\stackrel{iid}{\sim}\mathcal N(0,1)
@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -16,15 +19,15 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of i.i.d. noise samples generated.
   pub n: usize,
-  /// Target mean level for generated noise samples.
-  pub mean: Option<T>,
+  /// Mean `mu` of each draw, zero when `None`.
+  pub mu: Option<T>,
   /// Standard deviation of generated noise samples.
-  pub std_dev: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub sigma: Option<T>,
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -32,18 +35,42 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
-  pub fn new(n: usize, mean: Option<T>, std_dev: Option<T>, seed: S) -> Self {
+  /// Panics unless `n >= 1`, a given `sigma` is non-negative and every parameter is finite.
+  pub fn new(n: usize, mu: Option<T>, sigma: Option<T>, seed: S) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      mu.is_none_or(|v| v.is_finite()),
+      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_none_or(|v| v.is_finite()),
+      "sigma must satisfy `sigma.is_none_or(|v| v.is_finite())`, got sigma = {sigma:?}"
+    );
+    assert!(
+      sigma.is_none_or(|s| s >= T::zero()),
+      "sigma must satisfy `sigma.is_none_or(|s| s >= T::zero())`, got sigma = {sigma:?}"
+    );
     Wn {
       backend: Cpu,
       n,
-      mean,
-      std_dev,
+      mu,
+      sigma,
       seed,
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {
+  /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma.unwrap_or(T::one());
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 /// The Euler engine's view of white noise: every grid point is one draw.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -51,8 +78,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::Innovation {
-      mean: self.mean.unwrap_or(T::zero()),
-      sd: self.std_dev.unwrap_or(T::one()),
+      mean: self.mu.unwrap_or(T::zero()),
+      sd: self.checked_sigma(),
     }
   }
 
@@ -89,7 +116,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mean, std_dev, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mu, sigma, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Wn<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wn<T, S, B> {
   type Output = Array1<T>;
@@ -99,17 +131,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> WnSampler<T> {
-    let mean = self.mean.unwrap_or(T::zero());
-    let std_dev = self.std_dev.unwrap_or(T::one());
+    let mu = self.mu.unwrap_or(T::zero());
+    let sigma = self.checked_sigma();
     WnSampler {
       n: self.n,
-      normal: SimdNormal::<T>::new(mean, std_dev, &self.seed),
+      mu,
+      normal: (sigma != T::zero()).then(|| SimdNormal::<T>::new(mu, sigma).seeded(&self.seed)),
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws in its kernel, the host runs this process's own
+  /// sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -139,12 +171,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Wn`] sampling state: the owned Gaussian source. Each path is `n`
-/// i.i.d. `N(mean, std_dev^2)` draws.
+/// Reusable [`Wn`] sampling state: the owned Gaussian source, `None` at a zero
+/// deviation, where every draw is the mean.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WnSampler<T: FloatExt> {
   n: usize,
-  normal: SimdNormal<T>,
+  mu: T,
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> WnSampler<T> {
@@ -153,9 +187,14 @@ impl<T: FloatExt> WnSampler<T> {
     if len == 0 {
       return;
     }
-    self.normal.fill_slice(&mut out[..len]);
+    match &mut self.normal {
+      Some(normal) => normal.fill_slice(&mut out[..len]),
+      None => out[..len].fill(self.mu),
+    }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for WnSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
   type Output = Array1<T>;
@@ -172,7 +211,7 @@ impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
 }
 
 py_process_1d!(PyWn, Wn,
-  sig: (n, mean=None, std_dev=None, seed=None, dtype=None),
-  params: (n: usize, mean: Option<f64>, std_dev: Option<f64>),
+  sig: (n, mu=None, sigma=None, seed=None, dtype=None),
+  params: (n: usize, mu: Option<f64>, sigma: Option<f64>),
   device
 );

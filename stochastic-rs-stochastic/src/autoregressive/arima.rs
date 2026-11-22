@@ -1,4 +1,4 @@
-//! # Arima
+//! ARIMA(p, d, q): an ARMA recursion on Gaussian noise, integrated `d` times.
 //!
 //! $$
 //! \phi(B)(1-B)^dX_t=\theta(B)\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
@@ -8,21 +8,20 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an Arima(p, d, q) process using explicit backshift notation:
-///
-/// \[
-///   \phi(B)\,(1 - B)^d X_t = \theta(B)\,\epsilon_t,
-/// \]
-/// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
-/// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
+/// ARIMA(p, d, q) in backshift form: `ar_coefs` and `ma_coefs` are the polynomials $\phi(B)$
+/// and $\theta(B)$, and `d` the number of differences $(1 - B)$.
 #[derive(Debug, Clone)]
 pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
@@ -35,7 +34,7 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Final length of time series
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -43,7 +42,8 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arima<T, S> {
-  /// Create a new Arima model with the given parameters.
+  /// ARIMA(p, d, q). Panics unless `n >= 1`, `sigma >= 0`, and `sigma` and every coefficient are
+  /// finite.
   pub fn new(
     ar_coefs: Array1<T>,
     ma_coefs: Array1<T>,
@@ -52,7 +52,21 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(sigma > T::zero(), "Arima requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("ar_coefs", "ar_coefs[i].is_finite()", &ar_coefs, |v| {
+      v.is_finite()
+    });
+    assert_entries("ma_coefs", "ma_coefs[i].is_finite()", &ma_coefs, |v| {
+      v.is_finite()
+    });
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       ar_coefs,
@@ -65,13 +79,25 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {
+  /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Arima<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::MovingAverageFilter { sigma: self.sigma }
+    crate::euler::EulerSpec::MovingAverageFilter {
+      sigma: self.checked_sigma(),
+    }
   }
 
   fn initial_value(&self) -> T {
@@ -117,6 +143,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Arima<T, S> { ar_coefs, ma_coefs, d, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Arima<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Arima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -125,18 +156,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> ArimaSampler<T> {
+    let sigma = self.checked_sigma();
     ArimaSampler {
       n: self.n,
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 
-  /// Through the Euler engine when the series fits the kernels'
-  /// per-path history; a longer series keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the series fits the kernels' per-path history; a longer
+  /// series stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -202,31 +234,30 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Arima`] sampling state: owns the Gaussian innovation source and
 /// the ARMA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ArimaSampler<T: FloatExt> {
   n: usize,
   ar_coefs: Array1<T>,
   ma_coefs: Array1<T>,
   d: usize,
-  normal: SimdNormal<T>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> ArimaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
     let result = arima_filter(&noise, &self.ar_coefs, &self.ma_coefs, self.d);
     out.copy_from_slice(result.as_slice().expect("contiguous"));
   }
 }
 
-/// The ARIMA(p, d, q) recursion as a linear filter of its innovations: the
-/// single-pass ARMA(p, q) recursion with shared noise, then `d` inverse
-/// differences. Linear in `noise`, so run on a unit impulse it yields the
-/// impulse response a device convolves the innovations with.
+/// The ARIMA recursion as a linear filter: one ARMA(p, q) pass on shared noise, then `d` inverse
+/// differences. Run on a unit impulse it gives the response a device convolves innovations with.
 pub(crate) fn arima_filter<T: FloatExt>(
   noise: &Array1<T>,
   ar_coefs: &Array1<T>,
@@ -278,6 +309,8 @@ pub(crate) fn impulse_response<T: FloatExt>(
   }
   filter(&unit).to_vec()
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ArimaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ArimaSampler<T> {
   type Output = Array1<T>;

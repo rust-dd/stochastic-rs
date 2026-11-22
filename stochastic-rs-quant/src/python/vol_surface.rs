@@ -70,7 +70,8 @@ pub struct PyImpliedVolSurface {
 
 #[pymethods]
 impl PyImpliedVolSurface {
-  /// Build from a Heston Fourier model + grid via Carr-Madan FFT.
+  /// Heston Fourier model and grid by Carr-Madan FFT; `ValueError` unless both axes strictly
+  /// ascend.
   #[staticmethod]
   fn from_heston(
     model: &PyHestonFourier,
@@ -79,8 +80,8 @@ impl PyImpliedVolSurface {
     q: f64,
     strikes: Vec<f64>,
     maturities: Vec<f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
         &model.inner,
         s,
@@ -89,10 +90,10 @@ impl PyImpliedVolSurface {
         &strikes,
         &maturities,
       ),
-    }
+    })
   }
 
-  /// Build from a Bates Fourier model + grid via Carr-Madan FFT.
+  /// Bates Fourier model and grid by Carr-Madan FFT; `ValueError` unless both axes strictly ascend.
   #[staticmethod]
   fn from_bates(
     model: &PyBatesFourier,
@@ -101,8 +102,8 @@ impl PyImpliedVolSurface {
     q: f64,
     strikes: Vec<f64>,
     maturities: Vec<f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
         &model.inner,
         s,
@@ -111,7 +112,7 @@ impl PyImpliedVolSurface {
         &strikes,
         &maturities,
       ),
-    }
+    })
   }
 
   fn strikes(&self) -> Vec<f64> {
@@ -133,7 +134,7 @@ impl PyImpliedVolSurface {
 /// `SviRawParams` to a `(log_moneyness, total_variance)` slice).
 #[pyclass(name = "SviCalibrator", unsendable)]
 pub struct PySviCalibrator {
-  fitted: crate::vol_surface::svi::SviRawParams<f64>,
+  fit: crate::calibration::Calibrated<crate::vol_surface::svi::SviRawParams<f64>>,
 }
 
 #[pymethods]
@@ -141,29 +142,43 @@ impl PySviCalibrator {
   #[new]
   fn new(log_moneyness: Vec<f64>, total_variance: Vec<f64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      fitted: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None),
+      fit: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None),
     })
   }
 
   /// `(a, b, rho, m, sigma)`.
   fn params(&self) -> (f64, f64, f64, f64, f64) {
-    let p = &self.fitted;
+    let p = &self.fit.params;
     (p.a, p.b, p.rho, p.m, p.sigma)
   }
 
+  /// The Levenberg–Marquardt stop's verdict, `False` too where the projection moved a parameter.
+  fn converged(&self) -> bool {
+    self.fit.converged
+  }
+
+  fn message(&self) -> Option<String> {
+    self.fit.message.clone()
+  }
+
+  /// Root mean square error in total variance.
+  fn rmse(&self) -> f64 {
+    crate::traits::CalibrationResult::rmse(&self.fit)
+  }
+
   fn implied_vol(&self, k: f64, t: f64) -> f64 {
-    self.fitted.implied_vol(k, t)
+    self.fit.params.implied_vol(k, t)
   }
 
   fn total_variance(&self, k: f64) -> f64 {
-    self.fitted.total_variance(k)
+    self.fit.params.total_variance(k)
   }
 }
 
 /// Standalone SSVI joint multi-slice calibrator.
 #[pyclass(name = "SsviCalibrator", unsendable)]
 pub struct PySsviCalibrator {
-  fitted: crate::vol_surface::ssvi::SsviParams<f64>,
+  fit: crate::calibration::Calibrated<crate::vol_surface::ssvi::SsviParams<f64>>,
 }
 
 #[pymethods]
@@ -183,25 +198,38 @@ impl PySsviCalibrator {
         )
         .collect();
       Self {
-        fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
+        fit: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
       }
     })
   }
 
   /// `(rho, eta, gamma)`.
   fn params(&self) -> (f64, f64, f64) {
-    let p = &self.fitted;
+    let p = &self.fit.params;
     (p.rho, p.eta, p.gamma)
   }
 
+  /// The Levenberg–Marquardt stop's verdict, `False` too where the projection moved a parameter.
+  fn converged(&self) -> bool {
+    self.fit.converged
+  }
+
+  fn message(&self) -> Option<String> {
+    self.fit.message.clone()
+  }
+
+  /// Root mean square error in total variance over every slice.
+  fn rmse(&self) -> f64 {
+    crate::traits::CalibrationResult::rmse(&self.fit)
+  }
+
   fn implied_vol(&self, k: f64, theta: f64, t: f64) -> f64 {
-    self.fitted.implied_vol(k, theta, t)
+    self.fit.params.implied_vol(k, theta, t)
   }
 }
 
-/// Extended SSVI surface: per-maturity `(θ, ρ, ψ)` slices calibrated going
-/// forward within the butterfly and calendar-spread bounds, interpolated
-/// linearly in `(θ, ψ, ρψ)` between maturities.
+/// Extended SSVI: `(θ, ρ, ψ)` slices calibrated forward within the butterfly and calendar bounds,
+/// linear in `(θ, ψ, ρψ)` between maturities.
 #[pyclass(name = "EssviSurface", unsendable)]
 pub struct PyEssviSurface {
   inner: crate::vol_surface::essvi::EssviSurface<f64>,

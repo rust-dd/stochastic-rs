@@ -1,4 +1,4 @@
-//! Business day adjustment conventions.
+//! Business-day conventions that roll a date falling on a holiday or a weekend.
 //!
 //! Reference: ISDA 2006 Definitions, Section 4.12
 
@@ -46,11 +46,7 @@ impl std::fmt::Display for BusinessDayConvention {
 }
 
 impl BusinessDayConvention {
-  /// Adjust a date according to this convention and any calendar that
-  /// implements [`CalendarExt`].
-  ///
-  /// Works with the built-in [`super::Calendar`] as well as user-defined
-  /// types that implement [`CalendarExt`].
+  /// `date` adjusted under this convention on any [`CalendarExt`] calendar.
   pub fn adjust(&self, date: NaiveDate, calendar: &(impl CalendarExt + ?Sized)) -> NaiveDate {
     match self {
       Self::Unadjusted => date,
@@ -176,10 +172,8 @@ mod tests {
 
   #[test]
   fn nearest_breaks_tie_with_following() {
-    // Manufacture a tie: pick a holiday with business days both sides
-    // exactly 1 day away. 2024-01-15 (Mon) = MLK Day, US calendar.
-    // Bwd: Fri Jan-12 (3 days), Fwd: Tue Jan-16 (1 day). Not a tie.
-    // For a true 1-1 tie we need a Wed holiday: use a custom calendar.
+    // A tie needs business days exactly one day away on both sides: a Wednesday holiday on a
+    // custom calendar.
     let mut cal = Calendar::new(HolidayCalendar::UnitedStates);
     let wed = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
     cal.add_holiday(wed);

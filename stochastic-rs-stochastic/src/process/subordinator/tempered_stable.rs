@@ -1,6 +1,9 @@
+//! Tempered-stable subordinator: stable large jumps thinned exponentially, small jumps as a drift.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -11,12 +14,9 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Classical tempered-stable subordinator approximation.
-///
-/// Uses truncated-stable large jumps with exponential thinning and
-/// deterministic small-jump drift:
-/// `nu(dx) = c * exp(-mu x) * x^{-1-alpha} dx`, `x > 0`, `alpha in (0,1)`.
-#[derive(Clone)]
+/// Tempered-stable subordinator with Lévy density `nu(dx) = c exp(-mu x) x^{-1-alpha} dx`,
+/// `alpha in (0,1)`: truncated-stable large jumps thinned exponentially, small jumps as a drift.
+#[derive(Debug, Clone)]
 pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stable index in `(0,1)`.
   pub alpha: T,
@@ -28,11 +28,11 @@ pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cp
   pub epsilon: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -40,6 +40,8 @@ pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cp
 }
 
 impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `0 < alpha < 1`, `c > 0`,
+  /// `mu > 0`, `epsilon > 0`, and every parameter is finite.
   pub fn new(
     alpha: T,
     c: T,
@@ -51,12 +53,46 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(mu > T::zero(), "mu must be positive");
-    assert!(epsilon > T::zero(), "epsilon must be positive");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      epsilon.is_finite(),
+      "epsilon must satisfy `epsilon.is_finite()`, got epsilon = {epsilon:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero() && alpha < T::one(),
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      mu > T::zero(),
+      "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
+    );
+    assert!(
+      epsilon > T::zero(),
+      "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
+    );
     Self {
       backend: Cpu,
       alpha,
@@ -71,12 +107,8 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TemperedStableSubordinator<T, S, B> {}
-
-/// The Euler engine's view of the tempered-stable subordinator. Every jump
-/// below the truncation contributes a deterministic drift, which is folded
-/// here; above it, the step reads the kernel's own sum over the candidates it
-/// kept.
+/// The Euler engine's view. Every jump below the truncation adds a deterministic drift, folded
+/// here; above it, the step reads the kernel's sum over the candidates it kept.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for TemperedStableSubordinator<T, S, B>
 {
@@ -127,6 +159,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TemperedStableSubordinator<T, S> { alpha, c, mu, epsilon, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for TemperedStableSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for TemperedStableSubordinator<T, S, B>
 {
@@ -156,20 +193,27 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       mu,
       eps,
       small_jump_drift,
-      poisson: SimdPoisson::<u32>::new(lambda0 * dt, &self.seed),
-      uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
+      poisson: SimdPoisson::<u32>::new(lambda0 * dt).seeded(&self.seed),
+      uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the candidates are drawn and
-  /// thinned in the kernel, on the host devices it is this process's own
-  /// sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws and thins the candidates in its kernel, the host
+  /// runs this process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
-    self.backend.euler_sample(self)
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      <Self as crate::euler::EulerCoefficients<T>>::host_sample(self)
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    self.backend.euler_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_map_view<R: Send>(
@@ -177,26 +221,50 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.euler_paths_map_view(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map_view(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    self.backend.euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    self.backend.try_sample(self)
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    self.backend.try_euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// A step expecting more than 25 jumps samples on the host, past the kernels' 64-event count.
+  fn device_fallback(&self) -> Option<&'static str> {
+    crate::euler::count_fallback(
+      <Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self),
+      <Self as crate::euler::EulerCoefficients<T>>::time_step(self),
+    )
   }
 }
 
-/// Reusable [`TemperedStableSubordinator`] sampling state: the owned Poisson
-/// driver for candidate counts, the uniform source for jump sizes / thinning,
-/// and precomputed scalars.
+/// Reusable [`TemperedStableSubordinator`] sampling state: the Poisson driver of the candidate
+/// counts, the uniform source of the sizes and the thinning, and the precomputed scalars.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct TemperedStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -204,8 +272,8 @@ pub struct TemperedStableSubordinatorSampler<T: FloatExt> {
   mu: f64,
   eps: f64,
   small_jump_drift: f64,
-  poisson: SimdPoisson<u32>,
-  uniform: SimdUniform<f64>,
+  poisson: Seeded<SimdPoisson<u32>>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
@@ -219,12 +287,12 @@ impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      let n_candidates = self.poisson.sample_fast() as usize;
+      let n_candidates = self.poisson.sample() as usize;
       let mut jump_sum = 0.0f64;
       for _ in 0..n_candidates {
-        let u = clamp_open01(self.uniform.sample_fast());
+        let u = clamp_open01(self.uniform.sample());
         let xj = self.eps * u.powf(-1.0 / self.alpha);
-        let accept = self.uniform.sample_fast() <= (-self.mu * xj).exp();
+        let accept = self.uniform.sample() <= (-self.mu * xj).exp();
         if accept {
           jump_sum += xj;
         }
@@ -234,6 +302,8 @@ impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for TemperedStableSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for TemperedStableSubordinatorSampler<T> {
   type Output = Array1<T>;

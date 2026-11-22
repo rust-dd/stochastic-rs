@@ -1,17 +1,12 @@
-//! European swaption pricing via Black-76 and Bachelier on the forward swap rate.
+//! European swaptions under Black-76 and Bachelier on the forward swap rate `s`; `s` and the
+//! annuity `A = Σ_j D(t_j) δ_j N_j` come from the underlying swap's valuation.
 //!
 //! $$
 //! V_{\mathrm{payer}} = A\,\bigl[s\,\Phi(d_1) - K\,\Phi(d_2)\bigr],\qquad
 //! V_{\mathrm{receiver}} = A\,\bigl[K\,\Phi(-d_2) - s\,\Phi(-d_1)\bigr]
 //! $$
 //!
-//! The forward swap rate $s$ and the fixed-leg annuity $A = \sum_j D(t_j)\,
-//! \delta_j\,N_j$ are both read off the existing curve stack via the
-//! [`crate::instruments::VanillaInterestRateSwap`] valuation routine, so
-//! the Black measure collapses the discounting into $A$.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer 2nd ed. (2006), §6.7.
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §6.7
 
 use chrono::NaiveDate;
 
@@ -85,6 +80,7 @@ impl<T: RealExt, V: VolatilityModel<T>> EuropeanSwaption<T, V> {
       sigma,
       self.direction,
       self.vol.quote_kind(),
+      self.vol.displacement(),
     );
     let npv = annuity * forward_value;
 
@@ -119,19 +115,100 @@ fn compute_forward_value<T: RealExt>(
   sigma: T,
   direction: SwaptionDirection,
   quote: VolatilityQuoteKind,
+  shift: T,
 ) -> T {
   match (quote, direction) {
     (VolatilityQuoteKind::Lognormal, SwaptionDirection::Payer) => {
-      black_forward_caplet(forward, strike, tau, sigma)
+      black_forward_caplet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Lognormal, SwaptionDirection::Receiver) => {
-      black_forward_floorlet(forward, strike, tau, sigma)
+      black_forward_floorlet(forward + shift, strike + shift, tau, sigma)
     }
     (VolatilityQuoteKind::Normal, SwaptionDirection::Payer) => {
       bachelier_forward_caplet(forward, strike, tau, sigma)
     }
     (VolatilityQuoteKind::Normal, SwaptionDirection::Receiver) => {
       bachelier_forward_floorlet(forward, strike, tau, sigma)
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+  use crate::calendar::Frequency;
+  use crate::calendar::ScheduleBuilder;
+  use crate::cashflows::FloatingIndex;
+  use crate::cashflows::IborIndex;
+  use crate::cashflows::RateTenor;
+  use crate::curves::DiscountCurve;
+  use crate::curves::InterpolationMethod;
+  use crate::curves::MultiCurve;
+  use crate::instruments::option::volatility::ShiftedSabrVolatility;
+
+  fn d(y: i32, m: u32, day: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, day).unwrap()
+  }
+
+  /// A 1y × 2y swaption on flat 3 % curves: Black-76 on the forward and strike displaced by `d`,
+  /// the forward values by mpmath with Hagan's A.69a written out.
+  #[test]
+  fn a_shifted_sabr_vol_prices_the_swaption_on_the_displaced_rates() {
+    let flat = || {
+      DiscountCurve::from_zero_rates(
+        array![0.5, 1.0, 2.0, 5.0].view(),
+        array![0.03, 0.03, 0.03, 0.03].view(),
+        InterpolationMethod::LogLinearOnDiscountFactors,
+      )
+    };
+    let mut curves = MultiCurve::new(flat());
+    curves.add_forecast(RateTenor::ThreeMonths, flat());
+    let schedule = |frequency| {
+      ScheduleBuilder::new(d(2025, 1, 15), d(2027, 1, 15))
+        .frequency(frequency)
+        .build()
+    };
+    let index = IborIndex::new(
+      "IBOR-3M",
+      RateTenor::ThreeMonths,
+      DayCountConvention::Actual360,
+    );
+    let swap = VanillaInterestRateSwap::new(
+      SwaptionDirection::Payer,
+      &schedule(Frequency::SemiAnnual),
+      &schedule(Frequency::Quarterly),
+      1e6,
+      0.03,
+      DayCountConvention::Thirty360,
+      FloatingIndex::Ibor(index),
+      0.0,
+      DayCountConvention::Actual360,
+    );
+    let vol = ShiftedSabrVolatility::new(0.03_f64, 0.5, -0.2, 0.4, 0.03);
+    for (direction, want) in [
+      (SwaptionDirection::Payer, 0.00332035121800069),
+      (SwaptionDirection::Receiver, 0.00267471982503446),
+    ] {
+      let swaption = EuropeanSwaption::new(direction, 0.03, d(2025, 1, 15), swap.clone(), vol);
+      let v = swaption.valuation(
+        d(2024, 1, 15),
+        DayCountConvention::Actual365Fixed,
+        DayCountConvention::Actual365Fixed,
+        &curves,
+      );
+      let black = match direction {
+        SwaptionDirection::Payer => black_forward_caplet::<f64>,
+        SwaptionDirection::Receiver => black_forward_floorlet::<f64>,
+      };
+      let shifted = black(v.forward_swap_rate + 0.03, 0.06, v.tau, v.volatility);
+      assert_eq!(v.npv, v.annuity * shifted, "{direction}");
+      let forward_value = v.npv / v.annuity;
+      assert!(
+        (forward_value - want).abs() <= 1e-12 * want,
+        "{direction}: {forward_value}"
+      );
     }
   }
 }

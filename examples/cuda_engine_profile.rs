@@ -1,32 +1,9 @@
-//! What the Euler engine costs on a CUDA device, and why.
+//! The Euler engine's cost on a CUDA device: the kernel's registers and occupancy, steps per second
+//! against the host in both precisions, and the fGN pipeline for contrast, each the best of five.
 //!
 //! ```text
 //! cargo run --release --example cuda_engine_profile --features cuda
 //! ```
-//!
-//! Prints three things, in the order they answer the question *is the GPU
-//! worth using for this engine*:
-//!
-//! 1. **The kernel's own shape** — registers and local memory per thread, and
-//!    the share of a multiprocessor's thread slots that leaves the launch.
-//!    The engine renders one kernel per launch shape, carrying that family's
-//!    step alone, so a low occupancy here would mean the specialisation did
-//!    not reach this family. The denominator is read from the device: a
-//!    multiprocessor holds 1024 threads on Turing and 2048 on most other
-//!    generations, and assuming either reports the other's full
-//!    multiprocessor at half or double what it is.
-//! 2. **Throughput against the host**, in steps per second, over a few batch
-//!    shapes and both precisions. On an Apple M4 Max the same measurement now
-//!    gives 5–10 G steps/s on Metal against 2.3–2.7 on the CPU, where before
-//!    the per-family kernels and the kept output buffer it gave 0.7–1.3.
-//! 3. **The fractional pipeline for contrast** — fGN is FFT-shaped rather
-//!    than recursion-shaped, and it is where the GPU already wins.
-//!
-//! Every timing is the best of five runs: a single run on a shared machine
-//! measures the neighbours as much as the kernel. The throughput rows map
-//! with [`ProcessExt::sample_map_view`], whose callback borrows the row: the
-//! owning form copies every path out of the launch buffer first, which is a
-//! second traversal of the whole batch and worth 1.2-1.6x on Metal.
 
 use std::time::Instant;
 
@@ -41,7 +18,7 @@ use stochastic_rs::traits::ProcessExt;
 /// Threads per block the engine launches with.
 const BLOCK: u32 = 256;
 
-/// The best of `reps` runs, in seconds.
+/// The best of `reps` runs, in seconds: one run on a shared machine times its neighbours too.
 fn best<T>(reps: usize, mut run: impl FnMut() -> T) -> f64 {
   let mut best = f64::MAX;
   for _ in 0..reps {
@@ -68,10 +45,8 @@ fn main() {
 
   println!("kernel as the driver sees it, at {BLOCK} threads per block");
   for real in ["float", "double"] {
-    // The same ordinal every benchmark below runs on, not a hardcoded zero:
-    // `kernel_profile` rebinds the process-wide kernel cache to the ordinal
-    // it is given, so asking about device 0 while the batches run on device 1
-    // would both answer the wrong question and throw away their buffers.
+    // The benchmarks' own ordinal: `kernel_profile` rebinds the process-wide kernel cache to it, so
+    // device 0, with the batches on 1, would profile the wrong card and drop the batches' buffers.
     match kernel_profile(Cuda::default().ordinal, real, BLOCK) {
       Ok(p) => println!(
         "  {real:6}  {:4} registers/thread  {:6} B local/thread  {:5} B shared  \
@@ -96,8 +71,7 @@ fn main() {
   for (m, n) in [(10_000usize, 1_024usize), (50_000, 1_024), (10_000, 4_096)] {
     let cells = (m * n) as f64;
 
-    let build32 =
-      || Gbm::<f32, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
+    let build32 = || Gbm::<f32, _>::new(0.05, 0.2, n, 100.0, Some(1.0), Deterministic::new(7));
     let _ = build32().on::<Cuda>().sample_par(8);
     let host = best(5, || {
       build32().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])
@@ -117,11 +91,9 @@ fn main() {
       host / device
     );
 
-    // NVIDIA has native double precision, so the engine renders a `double`
-    // kernel too — the ratio between the two says how much of the card's
-    // f64 rate this workload actually uses.
-    let build64 =
-      || Gbm::<f64, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
+    // NVIDIA has native f64, so the engine renders a `double` kernel too; the f32/f64 ratio shows
+    // how much of the card's f64 rate this workload uses.
+    let build64 = || Gbm::<f64, _>::new(0.05, 0.2, n, 100.0, Some(1.0), Deterministic::new(7));
     let _ = build64().on::<Cuda>().sample_par(8);
     let host = best(5, || {
       build64().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])

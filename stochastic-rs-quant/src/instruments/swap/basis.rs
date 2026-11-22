@@ -1,3 +1,5 @@
+//! Same-currency basis swaps, one floating leg against another.
+
 use chrono::NaiveDate;
 
 use super::shared::floating_leg_spread_annuity;
@@ -18,14 +20,16 @@ pub struct BasisSwap<T: RealExt> {
   pub pay_spread: T,
   /// Receive-leg spread.
   pub receive_spread: T,
-  /// Pay leg.
+  /// Floating leg the holder pays.
   pub pay_leg: Leg<T>,
-  /// Receive leg.
+  /// Floating leg the holder receives.
   pub receive_leg: Leg<T>,
 }
 
 impl<T: RealExt> BasisSwap<T> {
   /// Build a basis swap from two floating legs.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     pay_schedule: &Schedule,
     receive_schedule: &Schedule,

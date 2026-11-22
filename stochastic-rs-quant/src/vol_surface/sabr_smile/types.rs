@@ -1,4 +1,4 @@
-use crate::calibration::sabr::SabrParams;
+use crate::QuantError;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrSmileQuotes {
@@ -12,21 +12,65 @@ pub struct SabrSmileQuotes {
   pub sigma_bf: f64,
 }
 
+impl SabrSmileQuotes {
+  /// `InvalidInput` unless `tau` and `sigma_atm` are finite and positive, both spreads finite and
+  /// the strangle's quoting vol `sigma_atm + sigma_bf` positive.
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
+    let Self {
+      tau,
+      sigma_atm,
+      sigma_rr,
+      sigma_bf,
+    } = *self;
+    let reason = if !(tau.is_finite() && tau > 0.0) {
+      format!("tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}")
+    } else if !(sigma_atm.is_finite() && sigma_atm > 0.0) {
+      format!(
+        "sigma_atm must satisfy `sigma_atm.is_finite() && sigma_atm > 0.0`, got sigma_atm = \
+         {sigma_atm:?}"
+      )
+    } else if !sigma_rr.is_finite() {
+      format!("sigma_rr must satisfy `sigma_rr.is_finite()`, got sigma_rr = {sigma_rr:?}")
+    } else if !sigma_bf.is_finite() {
+      format!("sigma_bf must satisfy `sigma_bf.is_finite()`, got sigma_bf = {sigma_bf:?}")
+    } else if sigma_atm + sigma_bf <= 0.0 {
+      format!(
+        "sigma_atm + sigma_bf must satisfy `sigma_atm + sigma_bf > 0.0`, got sigma_atm + sigma_bf = \
+         {:?}",
+        sigma_atm + sigma_bf
+      )
+    } else {
+      return Ok(());
+    };
+    Err(QuantError::invalid("smile quotes", reason))
+  }
+}
+
+/// The strikes a smile fit solves for: ATM (the forward) and the 25-delta risk-reversal and
+/// butterfly call/put pairs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SmileStrikes {
+  pub k_atm: f64,
+  pub k_rr_call: f64,
+  pub k_rr_put: f64,
+  pub k_bf_call: f64,
+  pub k_bf_put: f64,
+}
+
 #[derive(Clone, Debug)]
 pub struct SabrSmileCalibrator {
   /// Spot FX rate.
-  pub s: f64,
+  pub(super) s: f64,
   /// Domestic rate r_d
-  pub r_d: f64,
+  pub(super) r_d: f64,
   /// Foreign rate r_f
-  pub r_f: f64,
+  pub(super) r_f: f64,
   /// Cev exponent (0 = normal, 1 = lognormal)
   pub beta: f64,
   /// Quotes for one tenor
   pub quotes: SabrSmileQuotes,
-  /// Tau threshold below which the calibrator uses extra basin-hopping
-  /// iterations. The Hagan expansion is steeper near zero-tau, so short
-  /// tenors need a longer search. Default: `7/365` (~1 trading week).
+  /// `tau` below which the calibrator runs extra basin-hopping iterations, as Hagan's expansion
+  /// steepens near `tau = 0`; `7/365` by default.
   pub short_tenor_threshold: f64,
   /// Basin-hopping iterations when `tau < short_tenor_threshold`.
   /// Default: 1000.
@@ -34,24 +78,35 @@ pub struct SabrSmileCalibrator {
   /// Basin-hopping iterations when `tau >= short_tenor_threshold`.
   /// Default: 100.
   pub long_tenor_iters: usize,
-  /// Minimum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
-  /// `s * 0.5`. Override via [`Self::with_strike_bounds`] for low-spot
-  /// underlyings (penny FX) where `s * 0.5` is too tight, or for non-FX
-  /// underlyings (equity / commodity) where the FX-style multiplicative
-  /// bounds are wrong.
+  /// Lower bound of `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`, `s · 0.5` by default; see
+  /// [`Self::with_strike_bounds`] for penny FX or a non-FX underlying.
   pub strike_lo: f64,
   /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
   /// `s * 2.0`.
   pub strike_hi: f64,
-  /// Tolerance on the final objective for [`SabrSmileResult::success`] to be
-  /// `true`. Default: `1e-3`. The previous "is finite" predicate marked
-  /// nonsense fits as successful — use this threshold to surface real
-  /// non-convergence to callers.
+  /// `converged` holds when the final objective is below this; default `1e-3`.
   pub success_tol: f64,
 }
 
 impl SabrSmileCalibrator {
+  /// Panics unless `s` is finite and positive, `r_d` and `r_f` are finite and `beta ∈ [0, 1]`.
   pub fn new(s: f64, r_d: f64, r_f: f64, beta: f64, quotes: SabrSmileQuotes) -> Self {
+    assert!(
+      s.is_finite() && s > 0.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+    );
+    assert!(
+      r_d.is_finite(),
+      "r_d must satisfy `r_d.is_finite()`, got r_d = {r_d:?}"
+    );
+    assert!(
+      r_f.is_finite(),
+      "r_f must satisfy `r_f.is_finite()`, got r_f = {r_f:?}"
+    );
+    assert!(
+      (0.0..=1.0).contains(&beta),
+      "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = {beta:?}"
+    );
     Self {
       s,
       r_d,
@@ -67,6 +122,18 @@ impl SabrSmileCalibrator {
     }
   }
 
+  pub fn s(&self) -> f64 {
+    self.s
+  }
+
+  pub fn r_d(&self) -> f64 {
+    self.r_d
+  }
+
+  pub fn r_f(&self) -> f64 {
+    self.r_f
+  }
+
   /// Override the short-tenor cutoff (in years).
   pub fn with_short_tenor_threshold(mut self, threshold: f64) -> Self {
     self.short_tenor_threshold = threshold;
@@ -80,10 +147,8 @@ impl SabrSmileCalibrator {
     self
   }
 
-  /// Override the per-strike bounds for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`.
-  /// The defaults `(s * 0.5, s * 2.0)` work for typical equity / FX with a
-  /// well-defined spot. For penny FX, deep-OTM commodities, or any
-  /// non-multiplicative regime, supply explicit bounds.
+  /// Bounds for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]` in place of `(s · 0.5, s · 2.0)`, for penny FX,
+  /// deep out-of-the-money commodities or any non-multiplicative regime.
   pub fn with_strike_bounds(mut self, lo: f64, hi: f64) -> Self {
     assert!(
       lo > 0.0 && hi > lo,
@@ -100,24 +165,4 @@ impl SabrSmileCalibrator {
     self.success_tol = tol;
     self
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct SabrSmileResult {
-  /// ATM strike (= forward).
-  pub k_atm: f64,
-  /// Call strike corresponding to risk-reversal quote.
-  pub k_rr_call: f64,
-  /// Put strike corresponding to risk-reversal quote.
-  pub k_rr_put: f64,
-  /// Call strike corresponding to butterfly quote.
-  pub k_bf_call: f64,
-  /// Put strike corresponding to butterfly quote.
-  pub k_bf_put: f64,
-  /// Model parameter set (calibrated output).
-  pub params: SabrParams,
-  /// Final objective-function value.
-  pub objective: f64,
-  /// Indicates whether optimization converged successfully.
-  pub success: bool,
 }

@@ -1,25 +1,20 @@
-//! # Autocallable
+//! Autocallable, phoenix and athena notes on one asset: an autocall redeems at par plus the accrued
+//! coupon, else the coupon barrier is checked; at maturity, below the knock-in, par is at risk.
 //!
-//! Auto-callable / phoenix / athena structured note. Observation grid
-//! $t_1 < t_2 < \cdots < t_M = T$. Each observation date checks an upper
-//! "autocall" barrier; if breached the note redeems early at par plus the
-//! accrued coupon. Otherwise a coupon may be paid (phoenix) or skipped, and
-//! at maturity the principal is at risk via a knock-in barrier on a worst-of
-//! basket (here single underlying).
-//!
-//! Source:
-//! - Bouzoubaa, M. & Osseiran, A. (2010), "Exotic Options and Hybrids", §11
-//! - Kuklinski, J., Papaioannou, P. & Tyloo, K. (2016), "Pricing Weakly
-//!   Model Dependent Barrier Products", arXiv:1608.00280
-//! - Cibrario, F. et al. (2025), "Autocallable Options Pricing with
-//!   Integration-Based Exponential Amplitude Loading", arXiv:2507.19039
-//!
-use ndarray::Array1;
-use rayon::prelude::*;
+//! Reference: Bouzoubaa & Osseiran (2010), "Exotic Options and Hybrids", §11
+//! Reference: Kuklinski et al. (2016), arXiv:1608.00280
+//! Reference: Cibrario et al. (2025), arXiv:2507.19039
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
-use crate::mc::McEstimate;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::pricing::exotic::AutocallableNote;
+use crate::pricing::exotic::assert_sigma;
+use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
 
 /// Barrier observation style for the knock-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,59 +28,73 @@ pub enum KnockInStyle {
   Continuous,
 }
 
-/// Autocallable / phoenix / athena structured note. All barriers are
-/// expressed as a fraction of the initial spot $S_0$.
-#[derive(Debug, Clone)]
-pub struct AutocallablePricer {
-  /// Spot price.
-  pub s: f64,
-  /// Notional.
-  pub notional: f64,
-  /// Observation times $t_1, \ldots, t_M$ (years from now).
-  pub observation_times: Array1<f64>,
-  /// Autocall barrier (e.g. 1.0 = par level).
-  pub autocall_barrier: f64,
-  /// Coupon barrier (lower than autocall, e.g. 0.7). Pays the coupon when
-  /// the underlying is at or above this level on the observation date.
-  pub coupon_barrier: f64,
-  /// Per-period coupon (already scaled to the period length, e.g. 0.04 for
-  /// a 4% periodic coupon).
-  pub coupon: f64,
-  /// Knock-in barrier on principal (e.g. 0.6 — below this at maturity the
-  /// holder takes a linear loss).
-  pub knock_in_barrier: f64,
-  /// Knock-in observation style.
-  pub knock_in_style: KnockInStyle,
-  /// Memory effect (athena): missed coupons accumulate and are paid when
-  /// the next coupon barrier is met. False = phoenix without memory.
-  pub memory: bool,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
-  /// Volatility.
-  pub sigma: f64,
-  /// Number of MC paths.
-  pub n_paths: usize,
-  /// Time-steps per observation period when monitoring continuous KI.
-  pub steps_per_period: usize,
+/// Monte Carlo price of an [`AutocallableNote`] on Gbm paths; continuous knock-in monitoring
+/// takes `steps_per_period` steps between observation dates, the other styles one.
+#[derive(Debug, Clone, Copy)]
+pub struct AutocallablePricer<S: SeedExt = Unseeded> {
+  /// Annualised Black–Scholes volatility.
+  sigma: f64,
+  n_paths: usize,
+  steps_per_period: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl AutocallablePricer {
-  pub fn price(&self) -> McEstimate<f64> {
-    let n_obs = self.observation_times.len();
-    assert!(n_obs > 0, "need at least one observation date");
-    let auto_b = self.autocall_barrier * self.s;
-    let coup_b = self.coupon_barrier * self.s;
-    let ki_b = self.knock_in_barrier * self.s;
-    let times = self.observation_times.clone();
-    let style = self.knock_in_style;
-    let memory = self.memory;
-    let coupon = self.coupon;
-    let s0 = self.s;
-    let notional = self.notional;
+  /// Panics unless `sigma` is finite and `>= 0`, `n_paths >= 1` and `steps_per_period >= 1`.
+  pub fn new(sigma: f64, n_paths: usize, steps_per_period: usize) -> Self {
+    assert_sigma(sigma);
+    assert!(
+      n_paths >= 1,
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
+    );
+    assert!(
+      steps_per_period >= 1,
+      "steps_per_period must satisfy `steps_per_period >= 1`, got steps_per_period = \
+       {steps_per_period:?}"
+    );
+    Self {
+      sigma,
+      n_paths,
+      steps_per_period,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> AutocallablePricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> AutocallablePricer<S2> {
+    AutocallablePricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      steps_per_period: self.steps_per_period,
+      seed,
+    }
+  }
+
+  /// Present value at spot `s`, the level the note's barriers are fractions of: NaN for a NaN
+  /// query or a spot not positive. Panics on a note with no observation date.
+  pub fn price(&self, note: &AutocallableNote, s: f64, r: f64, q: f64) -> McEstimate<f64> {
+    let n_obs = note.observation_times.len();
+    assert!(
+      n_obs > 0,
+      "observation_times must satisfy `observation_times.len() > 0`, got observation_times.len() \
+       = 0"
+    );
+    if s.is_nan() || s <= 0.0 || r.is_nan() || q.is_nan() {
+      return pathless(f64::NAN);
+    }
+    let auto_b = note.autocall_barrier * s;
+    let coup_b = note.coupon_barrier * s;
+    let ki_b = note.knock_in_barrier * s;
+    let times = &note.observation_times;
+    let style = note.knock_in_style;
+    let memory = note.memory;
+    let coupon = note.coupon;
+    let s0 = s;
+    let notional = note.notional;
     let n_paths = self.n_paths;
-    let steps_per_period = self.steps_per_period.max(1);
+    let steps_per_period = self.steps_per_period;
 
     // Worst-case normals required per path: every observation period uses
     // either one big step or `steps_per_period` substeps (continuous KI).
@@ -94,7 +103,10 @@ impl AutocallablePricer {
       _ => n_obs,
     };
     let mut all_z = vec![0.0_f64; n_paths * max_normals_per_path];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       {
@@ -105,7 +117,6 @@ impl AutocallablePricer {
         let mut pv: f64 = 0.0;
         let mut missed_coupons: f64 = 0.0;
         let mut autocalled = false;
-        let mut autocall_time = 0.0;
         let mut breached_ki = false;
         let mut s_at_t: f64 = 0.0;
 
@@ -118,7 +129,7 @@ impl AutocallablePricer {
             _ => 1,
           };
           let dt_sub = dt / sub_steps as f64;
-          let drift = (self.r - self.q - 0.5 * self.sigma * self.sigma) * dt_sub;
+          let drift = (r - q - 0.5 * self.sigma * self.sigma) * dt_sub;
           let vol = self.sigma * dt_sub.sqrt();
           let mut s_curr = s_prev;
           for _ in 0..sub_steps {
@@ -136,15 +147,14 @@ impl AutocallablePricer {
           // Autocall check
           if s_curr >= auto_b {
             let cf = notional * (1.0 + coupon + missed_coupons);
-            pv += cf * (-self.r * t_i).exp();
+            pv += cf * (-r * t_i).exp();
             autocalled = true;
-            autocall_time = t_i;
             break;
           }
           // Coupon barrier
           if s_curr >= coup_b {
             let cf = notional * (coupon + if memory { missed_coupons } else { 0.0 });
-            pv += cf * (-self.r * t_i).exp();
+            pv += cf * (-r * t_i).exp();
             missed_coupons = 0.0;
           } else if memory {
             missed_coupons += coupon;
@@ -162,32 +172,20 @@ impl AutocallablePricer {
           } else {
             notional
           };
-          pv += principal * (-self.r * t_mat).exp();
+          pv += principal * (-r * t_mat).exp();
         }
-        let _ = autocall_time;
         pv
       }
     };
-    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    McEstimate {
-      mean: sum / n_paths as f64,
-      std_err: std_err_from_sums(sum, sum_sq, n_paths),
-      n_samples: n_paths,
-    }
+    par_estimate(n_paths, 1.0, payoff_of)
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -196,28 +194,27 @@ mod tests {
     Array1::from_iter((1..=n).map(|i| i as f64 * dt))
   }
 
-  /// With autocall barrier far below spot the note redeems at the first
-  /// observation. Price approximately equals $\notional \cdot (1 + c) \cdot
-  /// e^{-r t_1}$.
-  #[test]
-  fn deep_in_autocall_redeems_first_period() {
-    let p = AutocallablePricer {
-      s: 100.0,
+  fn note(observation_times: Array1<f64>, autocall_barrier: f64, coupon: f64) -> AutocallableNote {
+    AutocallableNote {
       notional: 100.0,
-      observation_times: array![0.25, 0.5, 0.75, 1.0],
-      autocall_barrier: 0.5, // 50% of spot
+      observation_times,
+      autocall_barrier,
       coupon_barrier: 0.7,
-      coupon: 0.04,
+      coupon,
       knock_in_barrier: 0.6,
       knock_in_style: KnockInStyle::EuropeanAtMaturity,
       memory: false,
-      r: 0.03,
-      q: 0.0,
-      sigma: 0.20,
-      n_paths: 20_000,
-      steps_per_period: 4,
-    };
-    let price = p.price().mean;
+    }
+  }
+
+  /// An autocall barrier far below the spot redeems at the first date, `N (1 + c) e^{-r t_1}`.
+  #[test]
+  fn deep_in_autocall_redeems_first_period() {
+    let note = note(array![0.25, 0.5, 0.75, 1.0], 0.5, 0.04);
+    let price = AutocallablePricer::new(0.20, 20_000, 4)
+      .with_seed(Deterministic::new(42))
+      .price(&note, 100.0, 0.03, 0.0)
+      .mean;
     let expected = 100.0 * 1.04 * (-0.03_f64 * 0.25).exp();
     let rel = (price - expected).abs() / expected;
     assert!(rel < 0.01, "price={price}, expected={expected}, rel={rel}");
@@ -227,82 +224,50 @@ mod tests {
   /// (no-memory).
   #[test]
   fn memory_premium_over_phoenix() {
-    let base = AutocallablePricer {
-      s: 100.0,
-      notional: 100.0,
-      observation_times: quarterly_obs(2.0, 8),
-      autocall_barrier: 1.0,
+    let phoenix = AutocallableNote {
       coupon_barrier: 0.75,
-      coupon: 0.025,
       knock_in_barrier: 0.65,
-      knock_in_style: KnockInStyle::EuropeanAtMaturity,
-      memory: false,
-      r: 0.03,
-      q: 0.01,
-      sigma: 0.30,
-      n_paths: 30_000,
-      steps_per_period: 4,
+      ..note(quarterly_obs(2.0, 8), 1.0, 0.025)
     };
-    let phoenix = base.clone();
-    let athena = AutocallablePricer {
+    let athena = AutocallableNote {
       memory: true,
-      ..base
+      ..phoenix.clone()
     };
-    assert!(athena.price().mean >= phoenix.price().mean - 1e-3);
+    let pricer = AutocallablePricer::new(0.30, 30_000, 4).with_seed(Deterministic::new(42));
+    let price = |n: &AutocallableNote| pricer.price(n, 100.0, 0.03, 0.01).mean;
+    assert!(price(&athena) >= price(&phoenix) - 1e-3);
   }
 
   /// Continuous knock-in monitoring should give a price below or equal to
   /// the European-at-maturity knock-in (more chances to breach).
   #[test]
   fn continuous_ki_below_european_ki() {
-    let base = AutocallablePricer {
-      s: 100.0,
-      notional: 100.0,
-      observation_times: quarterly_obs(1.0, 4),
-      autocall_barrier: 1.05,
-      coupon_barrier: 0.70,
-      coupon: 0.03,
+    let euro = AutocallableNote {
       knock_in_barrier: 0.65,
-      knock_in_style: KnockInStyle::EuropeanAtMaturity,
-      memory: false,
-      r: 0.03,
-      q: 0.0,
-      sigma: 0.30,
-      n_paths: 50_000,
-      steps_per_period: 8,
+      ..note(quarterly_obs(1.0, 4), 1.05, 0.03)
     };
-    let euro = base.clone();
-    let cont = AutocallablePricer {
+    let cont = AutocallableNote {
       knock_in_style: KnockInStyle::Continuous,
-      ..base
+      ..euro.clone()
     };
-    assert!(cont.price().mean <= euro.price().mean + 1e-2);
+    let pricer = AutocallablePricer::new(0.30, 50_000, 8).with_seed(Deterministic::new(42));
+    let price = |n: &AutocallableNote| pricer.price(n, 100.0, 0.03, 0.0).mean;
+    assert!(price(&cont) <= price(&euro) + 1e-2);
   }
 
   /// At near-zero volatility, with spot strictly above the autocall barrier,
   /// all paths must redeem at the first observation date.
   #[test]
   fn zero_vol_spot_above_autocall() {
-    let p = AutocallablePricer {
-      s: 120.0,
-      notional: 100.0,
-      observation_times: array![0.5, 1.0],
-      autocall_barrier: 1.0, // 1.0 * 120 = 120 — spot exactly at barrier
+    let note = AutocallableNote {
       coupon_barrier: 0.5,
-      coupon: 0.05,
       knock_in_barrier: 0.4,
-      knock_in_style: KnockInStyle::EuropeanAtMaturity,
-      memory: false,
-      r: 0.0,
-      q: 0.0,
-      sigma: 1e-6,
-      n_paths: 5_000,
-      steps_per_period: 1,
+      ..note(array![0.5, 1.0], 0.95, 0.05)
     };
-    // Use a barrier slightly below spot so all paths trigger.
-    let mut p = p;
-    p.autocall_barrier = 0.95;
-    let price = p.price().mean;
+    let price = AutocallablePricer::new(1e-6, 5_000, 1)
+      .with_seed(Deterministic::new(42))
+      .price(&note, 120.0, 0.0, 0.0)
+      .mean;
     let expected = 100.0 * 1.05;
     let rel = (price - expected).abs() / expected;
     assert!(rel < 0.005, "price={price}");

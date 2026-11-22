@@ -1,10 +1,11 @@
-//! Python surface of the surrogates and the surrogate calibration
-//! (`--features ai` builds only; the published wheels leave it out because
-//! candle is heavy).
+//! Python surface of the surrogates and their calibration, in `--features ai` builds only: the
+//! published wheels leave candle out.
 
+use ndarray::Array2;
+use ndarray::Ix2;
 use numpy::IntoPyArray;
-use numpy::PyReadonlyArray1;
 use numpy::PyReadonlyArray2;
+use numpy::PyReadonlyArrayDyn;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -12,12 +13,13 @@ use pyo3::types::PyDict;
 use crate::calibration::SurrogateCalibrationResult;
 use crate::calibration::SurrogateCalibrator;
 use crate::calibration::SurrogateModel;
+use crate::volatility::common::StochVolModelSpec;
 use crate::volatility::common::StochVolNn;
 use crate::volatility::common::TrainConfig;
 use crate::volatility::common::TrainReport;
 
 fn err(e: anyhow::Error) -> PyErr {
-  PyValueError::new_err(e.to_string())
+  PyValueError::new_err(format!("{e:#}"))
 }
 
 fn report_dict<'py>(py: Python<'py>, report: &TrainReport) -> PyResult<Bound<'py, PyDict>> {
@@ -54,16 +56,16 @@ macro_rules! py_surrogate {
 
     #[pymethods]
     impl $py_name {
-      /// A fresh network on the best available device (`hidden_dim` widens
-      /// the three hidden layers; the paper's width is 30).
+      /// A fresh network on the best available device; `seed` fixes the initial weights (the split
+      /// and shuffle seed is `train`'s), `hidden_dim` widens the hidden layers (the paper's is 30).
       #[new]
-      #[pyo3(signature = (hidden_dim=None))]
-      fn new(hidden_dim: Option<usize>) -> PyResult<Self> {
+      #[pyo3(signature = (hidden_dim=None, seed=42))]
+      fn new(hidden_dim: Option<usize>, seed: u64) -> PyResult<Self> {
         stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
           let device = crate::device::best_available().map_err(err)?;
           let inner = match hidden_dim {
-            Some(h) => <$inner>::with_hidden(&device, h),
-            None => <$inner>::new(&device),
+            Some(h) => <$inner>::with_hidden(&device, h, seed),
+            None => <$inner>::new(&device, seed),
           }
           .map_err(err)?;
           Ok(Self { inner })
@@ -98,7 +100,8 @@ macro_rules! py_surrogate {
         report_dict(py, &report)
       }
 
-      /// Implied-volatility surface (flat, row-major maturities × strikes) at `params`.
+      /// Implied-vol surface at `params`, flat and maturity-major on the model's grid
+      /// (`strikes` x `maturities`).
       fn predict_surface<'py>(&self, py: Python<'py>, params: Vec<f64>) -> PyResult<Bound<'py, numpy::PyArray1<f64>>> {
         let p: Vec<f32> = params.iter().map(|&v| v as f32).collect();
         let out = SurrogateModel::nn(&self.inner).predict_surface(&p).map_err(err)?;
@@ -142,13 +145,23 @@ macro_rules! py_surrogate {
       }
 
       #[getter]
+      fn strikes(&self) -> Vec<f64> {
+        SurrogateModel::nn(&self.inner).spec().strikes.clone()
+      }
+
+      #[getter]
+      fn maturities(&self) -> Vec<f64> {
+        SurrogateModel::nn(&self.inner).spec().maturities.clone()
+      }
+
+      #[getter]
       fn input_dim(&self) -> usize {
-        SurrogateModel::nn(&self.inner).spec().input_dim
+        SurrogateModel::nn(&self.inner).spec().input_dim()
       }
 
       #[getter]
       fn output_dim(&self) -> usize {
-        SurrogateModel::nn(&self.inner).spec().output_dim
+        SurrogateModel::nn(&self.inner).spec().output_dim()
       }
     }
   };
@@ -181,75 +194,127 @@ fn result_dict<'py>(
   Ok(out)
 }
 
-fn run_calibration<'py>(
-  py: Python<'py>,
+/// The market and weights in the network's flat order: as given without axes, else the ascending
+/// grid checked against `spec` and reordered, the weights in the grid's row-major layout.
+fn network_market(
+  spec: &StochVolModelSpec,
+  market: PyReadonlyArrayDyn<'_, f64>,
+  weights: Option<Vec<f64>>,
+  axes: Option<(Vec<f64>, Vec<f64>, f64)>,
+) -> PyResult<(Vec<f64>, Option<Vec<f64>>)> {
+  let market = market.as_array();
+  let Some((strikes, maturities, spot)) = axes else {
+    if market.ndim() != 1 {
+      return Err(PyValueError::new_err(format!(
+        "market has shape {:?}: pass strikes, maturities and spot with a grid",
+        market.shape()
+      )));
+    }
+    return Ok((market.iter().copied().collect(), weights));
+  };
+  let grid = market.into_dimensionality::<Ix2>().map_err(|_| {
+    PyValueError::new_err("with strikes, maturities and spot, market is a 2-d grid")
+  })?;
+  let dim = grid.dim();
+  let market = spec
+    .network_order(&strikes, &maturities, grid, spot)
+    .map_err(err)?;
+  let weights = match weights {
+    Some(w) => {
+      let w = Array2::from_shape_vec(dim, w)
+        .map_err(|_| PyValueError::new_err(format!("weights do not fill the {dim:?} grid")))?;
+      Some(
+        spec
+          .network_order(&strikes, &maturities, w.view(), spot)
+          .map_err(err)?,
+      )
+    }
+    None => None,
+  };
+  Ok((market, weights))
+}
+
+fn fit_surrogate(
   nn: &StochVolNn,
-  market: PyReadonlyArray1<'py, f64>,
+  market: PyReadonlyArrayDyn<'_, f64>,
+  axes: Option<(Vec<f64>, Vec<f64>, f64)>,
   initial: Option<Vec<f64>>,
   weights: Option<Vec<f64>>,
   tolerance: f64,
   patience: usize,
-) -> PyResult<Bound<'py, PyDict>> {
-  let mut calibrator = SurrogateCalibrator::new(nn, market.as_array().to_vec()).map_err(err)?;
+) -> PyResult<SurrogateCalibrationResult> {
+  let (market, weights) = network_market(nn.spec(), market, weights, axes)?;
+  let mut calibrator = SurrogateCalibrator::new(nn, market).map_err(err)?;
   if let Some(w) = weights {
     calibrator = calibrator.with_weights(w).map_err(err)?;
   }
   let calibrator = calibrator.with_tolerance(tolerance).with_patience(patience);
-  let fit = calibrator.run(initial).map_err(err)?;
-  result_dict(py, &fit)
+  calibrator.run(initial).map_err(err)
 }
 
-/// Levenberg–Marquardt calibration of a surrogate (`HestonNn`, `RBergomiNn`
-/// or `OneFactorNn`) to a market surface on its grid; returns a dict with the
-/// parameters in the surrogate's input order plus the fit diagnostics.
+/// Levenberg–Marquardt fit to `market`, flat in the network's order or, given `strikes`,
+/// `maturities` and `spot`, the ascending grid `weights` then share; returns the fit as a dict.
 #[pyfunction]
-#[pyo3(signature = (model, market, initial=None, weights=None, tolerance=1e-10, patience=200))]
+#[pyo3(signature = (model, market, initial=None, weights=None, tolerance=1e-10, patience=200, strikes=None, maturities=None, spot=None))]
+#[allow(clippy::too_many_arguments)]
 pub fn calibrate_surrogate<'py>(
   py: Python<'py>,
   model: &Bound<'py, PyAny>,
-  market: PyReadonlyArray1<'py, f64>,
+  market: PyReadonlyArrayDyn<'py, f64>,
   initial: Option<Vec<f64>>,
   weights: Option<Vec<f64>>,
   tolerance: f64,
   patience: usize,
+  strikes: Option<Vec<f64>>,
+  maturities: Option<Vec<f64>>,
+  spot: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-  if let Ok(m) = model.cast::<PyHestonNn>() {
+  let axes = match (strikes, maturities, spot) {
+    (None, None, None) => None,
+    (Some(strikes), Some(maturities), Some(spot)) => Some((strikes, maturities, spot)),
+    _ => {
+      return Err(PyValueError::new_err(
+        "strikes, maturities and spot are given together or not at all",
+      ));
+    }
+  };
+  let fit = if let Ok(m) = model.cast::<PyHestonNn>() {
     let m = m.borrow();
-    return run_calibration(
-      py,
+    fit_surrogate(
       SurrogateModel::nn(&m.inner),
       market,
+      axes,
       initial,
       weights,
       tolerance,
       patience,
-    );
-  }
-  if let Ok(m) = model.cast::<PyRBergomiNn>() {
+    )
+  } else if let Ok(m) = model.cast::<PyRBergomiNn>() {
     let m = m.borrow();
-    return run_calibration(
-      py,
+    fit_surrogate(
       SurrogateModel::nn(&m.inner),
       market,
+      axes,
       initial,
       weights,
       tolerance,
       patience,
-    );
-  }
-  if let Ok(m) = model.cast::<PyOneFactorNn>() {
+    )
+  } else if let Ok(m) = model.cast::<PyOneFactorNn>() {
     let m = m.borrow();
-    return run_calibration(
-      py,
+    fit_surrogate(
       SurrogateModel::nn(&m.inner),
       market,
+      axes,
       initial,
       weights,
       tolerance,
       patience,
-    );
-  }
-  Err(PyValueError::new_err(
-    "model must be a HestonNn, RBergomiNn or OneFactorNn",
-  ))
+    )
+  } else {
+    return Err(PyValueError::new_err(
+      "model must be a HestonNn, RBergomiNn or OneFactorNn",
+    ));
+  }?;
+  result_dict(py, &fit)
 }

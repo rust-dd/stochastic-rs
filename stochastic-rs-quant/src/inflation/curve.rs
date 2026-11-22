@@ -1,21 +1,10 @@
-//! # Curve
+//! Inflation curves: zero-coupon breakevens from ZCIIS quotes, with `I(0, T)` the forward CPI,
+//! and year-on-year breakevens from YYIIS quotes.
 //!
-//! Two flavours of inflation curve.
-//!
-//! **Zero-coupon (ZC) breakeven curve.** Quotes on
-//! zero-coupon-inflation-linked swaps (ZCIIS) imply forward CPI ratios via
 //! $$
-//! \big(1 + b_{\text{ZC}}(T)\big)^T = \frac{I(0, T)}{I(0)}
+//! \big(1 + b_{\text{ZC}}(T)\big)^T = \frac{I(0, T)}{I(0)},\qquad
+//! 1 + b_{\text{YoY}}(T_{i-1}, T_i) = E^{\mathbb Q_{T_i}}\!\big[I(T_i)/I(T_{i-1})\big]
 //! $$
-//! where $b_{\text{ZC}}(T)$ is the par breakeven rate for maturity $T$ and
-//! $I(0,T)$ is the forward CPI at maturity $T$ projected from today.
-//!
-//! **Year-on-year (YoY) curve.** Quotes on YYIIS imply year-by-year
-//! breakeven ratios
-//! $$
-//! 1 + b_{\text{YoY}}(T_{i-1}, T_i) = E^{\mathbb Q_{T_i}}\!\big[I(T_i)/I(T_{i-1})\big].
-//! $$
-//!
 use std::fmt::Debug;
 
 use ndarray::Array1;
@@ -30,11 +19,11 @@ pub trait InflationCurve<T: RealExt>: Debug + Send + Sync {
   fn forward_index_ratio(&self, t: T) -> T;
 
   /// Annualised zero-coupon breakeven rate $b_{\text{ZC}}(T)$ such that
-  /// $(1 + b_{\text{ZC}}(T))^T = I(0,T)/I(0)$.
+  /// $(1 + b_{\text{ZC}}(T))^T = I(0,T)/I(0)$; NaN at a non-positive (or sub-epsilon) `t`.
   fn breakeven_rate(&self, t: T) -> T {
     let ratio = self.forward_index_ratio(t);
     if t <= T::epsilon() {
-      return T::zero();
+      return T::nan();
     }
     ratio.powf(T::one() / t) - T::one()
   }
@@ -102,9 +91,8 @@ impl<T: RealExt> InflationCurve<T> for ZeroCouponInflationCurve<T> {
 /// year-on-year breakeven rates for each interval $[T_{i-1}, T_i]$.
 #[derive(Debug, Clone)]
 pub struct YoyInflationCurve<T: RealExt> {
-  /// Tenor end-points (years), strictly increasing, starting from a value
-  /// $> 0$. The first interval is $[0, t_1]$, the second is $[t_1, t_2]$,
-  /// etc.
+  /// Tenor end points in years, positive and strictly increasing: the intervals are $[0, t_1]$,
+  /// $[t_1, t_2]$, and so on.
   pub end_points: Array1<T>,
   /// Annualised breakeven rates for each interval.
   pub yoy_breakevens: Array1<T>,

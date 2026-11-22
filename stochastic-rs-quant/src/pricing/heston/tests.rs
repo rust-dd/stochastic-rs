@@ -1,84 +1,84 @@
 use super::*;
+use crate::calendar::Maturity;
 use crate::instruments::equity::EuropeanOption;
 use crate::pricing::engines::AnalyticHestonEngine;
-use crate::pricing::engines::HestonStaticParams;
 use crate::traits::Greeks;
 use crate::traits::PricingEngine;
 use crate::traits::PricingResult;
 
+const P: HestonParams = HestonParams {
+  v0: 0.04,
+  kappa: 1.5,
+  theta: 0.04,
+  sigma: 0.3,
+  rho: -0.7,
+};
+
 fn price(v0: f64, k: f64, sigma: f64, tau: f64) -> f64 {
   // Long-run variance θ = v0 for these references.
-  HestonPricer::new(v0, -0.7, 1.5, v0, sigma, Some(0.0)).price_call(100.0, k, 0.05, 0.0, tau)
+  HestonPricer::new(HestonParams::new(v0, 1.5, v0, sigma, -0.7))
+    .price_call(100.0, k, 0.05, 0.0, tau)
 }
 
-/// Short-dated / low-variance options must match the converged Fourier
-/// integral. The former fixed `φ_max = 50` truncated a tail that only
-/// decays past `φ ~ 1/√(vτ)`, under-pricing these by 15-35%. Converged
-/// references are from a `scipy.integrate.quad` inversion to `∞`, validated
-/// against the repo's own long-dated `HESTON_REF`. The τ=1 case pins that
-/// the already-accurate long-dated regime is unchanged.
+/// 30-digit mpmath inversions of the same integrand to `∞`; the tail only decays past
+/// `φ ~ 1/√(vτ)`, so a fixed upper limit under-prices the short-dated rows by 15-35%.
 #[test]
 fn short_dated_matches_converged_reference() {
   // (v0, K, σ, τ, converged call)
   let cases = [
-    (0.04, 100.0, 0.30, 0.02, 1.177515),
-    (0.01, 100.0, 0.20, 0.03, 0.768268),
-    (0.04, 100.0, 0.30, 1.00, 10.361856),
+    (0.04, 100.0, 0.30, 0.02, 1.1775156238),
+    (0.01, 100.0, 0.20, 0.03, 0.7682676476),
+    (0.04, 100.0, 0.30, 1.00, 10.361869021),
   ];
   for (v0, k, sigma, tau, expected) in cases {
     let c = price(v0, k, sigma, tau);
     assert!(
-      (c - expected).abs() < 2e-3,
+      (c - expected).abs() < 1e-9,
       "Heston call at v0={v0}, K={k}, σ={sigma}, τ={tau}: got {c}, converged {expected}"
     );
   }
 }
 
-/// Deep-OTM short-dated calls must be non-negative and ~0, not the negative
-/// (arbitrage-violating) or spuriously-positive values the fixed integration
-/// bound produced. Pre-fix: τ=0.1/K=150 → −0.0347, τ=0.01/K=110 → +0.062.
-/// This exercises `HestonPricer` directly (no `.max(0.0)` clamp), so it pins
-/// the integral itself, not a downstream floor — the root cause behind the
-/// negative model prices in calibration issue #14.
+/// `HestonPricer` applies no floor, so a truncated integral shows as a negative price here; the
+/// exact calls are `8.2e-14` and `9.89e-9`.
 #[test]
-fn deep_otm_short_dated_non_negative() {
+fn deep_otm_short_dated_stays_within_the_quadrature_tolerance_of_zero() {
   for (v0, k, sigma, tau) in [(0.04, 150.0, 0.50, 0.10), (0.04, 110.0, 0.30, 0.01)] {
     let c = price(v0, k, sigma, tau);
     assert!(
-      c > -1e-3 && c < 1e-2,
-      "deep-OTM call at K={k}, τ={tau} must be non-negative and ~0, got {c}"
+      c > -1e-8 && c < 1e-7,
+      "deep-OTM call at K={k}, τ={tau}: {c}"
     );
   }
 }
 
 #[test]
 fn heston_single_price() {
-  let heston = HestonPricer::new(0.05, -0.8, 5.0, 0.05, 0.5, Some(0.0));
-  let (call, put) = heston.call_put(100.0, 90.0, 0.03, 0.02, 0.5);
+  let heston = HestonPricer::new(HestonParams::new(0.05, 5.0, 0.05, 0.5, -0.8));
+  let CallPut { call, put } = heston.price_call_put(100.0, 90.0, 0.03, 0.02, 0.5);
   assert!(call.is_finite() && call > 0.0);
   assert!(put.is_finite() && put > 0.0);
 }
 
 #[test]
 fn analytic_initial_variance_vega_matches_a_resolved_centered_difference() {
-  let pricer = HestonPricer::new(0.05, -0.8, 5.0, 0.1, 0.5, Some(0.0));
+  let pricer = HestonPricer::new(HestonParams::new(0.05, 5.0, 0.1, 0.5, -0.8));
   let (s, k, r, q, tau) = (100.0, 90.0, 0.03, 0.02, 0.5);
   let bump = 1e-3;
   let mut up = pricer;
-  up.v0 += bump;
+  up.params.v0 += bump;
   let mut down = pricer;
-  down.v0 -= bump;
+  down.params.v0 -= bump;
   let finite_difference =
     (up.price_call(s, k, r, q, tau) - down.price_call(s, k, r, q, tau)) / (2.0 * bump);
-  let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
+  let vega = pricer.initial_variance_vega(s, k, r, q, tau);
 
-  assert!((call - finite_difference).abs() < 1e-4);
-  assert_eq!(call, put);
+  assert!((vega - finite_difference).abs() < 1e-4);
 }
 
 #[test]
 fn heston_implied_volatility() {
-  let heston = HestonPricer::new(0.05, -0.8, 5.0, 0.05, 0.5, Some(0.0));
+  let heston = HestonPricer::new(HestonParams::new(0.05, 5.0, 0.05, 0.5, -0.8));
   let (s, k, r, q, tau) = (100.0, 90.0, 0.03, 0.02, 1.0);
 
   let call = heston.price_call(s, k, r, q, tau);
@@ -86,15 +86,13 @@ fn heston_implied_volatility() {
   assert!(iv.is_finite() && iv > 0.0, "implied vol {iv}");
 }
 
-/// Long-maturity / high-|ρ| regression: the Albrecher-Mayer-Schoutens-Tistaert
-/// (2007) "Little Heston Trap" form must keep the principal-branch logarithm
-/// stable for T = 5y, ρ = -0.9. Original Heston (1993) form develops a
-/// branch-cut discontinuity in this regime; the Trap form does not.
+/// At `T = 5`, `ρ = −0.9` the original Heston (1993) form crosses its logarithm's branch cut; the
+/// Little Heston Trap form of Albrecher et al. (2007) keeps the call finite and positive.
 #[test]
 fn heston_little_trap_long_maturity_high_rho() {
-  let heston = HestonPricer::new(0.04, -0.9, 2.0, 0.04, 0.3, Some(0.0));
+  let heston = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.9));
 
-  let (call, put) = heston.call_put(100.0, 100.0, 0.05, 0.0, 5.0);
+  let CallPut { call, put } = heston.price_call_put(100.0, 100.0, 0.05, 0.0, 5.0);
   assert!(
     call.is_finite() && call > 0.0,
     "Heston Trap form should give finite positive call at T=5y, ρ=-0.9: {call}"
@@ -117,56 +115,18 @@ const ATM_TAU: f64 = 0.1;
 const ATM_QUERY: (f64, f64, f64, f64, f64) = (100.0, 100.0, 0.05, 0.0, ATM_TAU);
 
 fn atm_pricer() -> HestonPricer {
-  HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None)
+  HestonPricer::new(P)
 }
 
-/// `HestonPricer`'s Greeks vs. `AnalyticHestonEngine::finite_diff_greeks`
-/// on the identical parameter set.
-///
-/// `delta`/`gamma`/`vega` are checked tight (`rel < 1e-6`) at `bump = 1e-4`,
-/// which makes the engine's `h_S = S·bump` and `h_v0 = v0·bump` coincide
-/// exactly with this crate's own `h_S = S·1e-4` / `h_v0 = v0·1e-4` steps —
-/// an apples-to-apples comparison of the same central-difference formula at
-/// the same step, rather than two independently-tuned schemes that merely
-/// converge to the same limit.
-///
-/// `theta` needs two separate checks, because `finite_diff_greeks`'s theta
-/// is a *one-sided backward* difference (`price_at(τ)` and
-/// `price_at(τ - h_τ)` only, no `τ + h_τ` term) — an asymmetric (`O(bump)`,
-/// not this crate's `O(bump²)`) truncation error — even though both paths
-/// now agree on the calendar `-∂P/∂τ` sign convention
-/// [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc mandates
-/// ([`HestonPricer::theta`] and
-/// [`AnalyticHestonEngine::finite_diff_greeks`] used to disagree in sign;
-/// the engine's raw output has since been flipped to match), so no single
-/// engine `bump` makes `direct.theta() == engine_theta` to a tight
-/// tolerance while *also* reflecting the engine's real default:
-/// - `theta_tight` (`bump = 1e-7`) verifies `theta` converges to the
-///   analytic `-∂P/∂τ` limit as `bump → 0` — not that it agrees with the
-///   engine's *actual configured* precision. (`bump` below ~`1e-8` stops
-///   helping and then hurts: the underlying `p_j` characteristic-function
-///   integral is itself only converged to a `1e-8` relative tolerance, so a
-///   too-small bump starts differencing quadrature noise instead of
-///   signal.)
-/// - `theta_default` (`bump = 1e-3`, `AnalyticHestonEngine::new`'s own
-///   out-of-the-box default) pins the real-world gap a caller hitting the
-///   engine with its default settings would actually see. Tolerance is
-///   `O(bump)`-derived: a one-sided backward difference has leading error
-///   `≈ (h_τ/2)·|∂²P/∂τ²|`, i.e. relative error `≈ (h_τ/2)·|∂²P/∂τ² / ∂P/∂τ|`.
-///   The curvature ratio `|∂²P/∂τ² / ∂P/∂τ|` is read off empirically from
-///   the `bump = 1e-4` case (h_τ = τ·1e-4 = 1e-5), whose still-`O(h_τ)`
-///   residual against `theta_tight` was ≈ 2.1e-5 relative, giving
-///   `|∂²P/∂τ²/∂P/∂τ| ≈ 2·2.1e-5/1e-5 ≈ 4.2`; at the default `bump = 1e-3`
-///   (`h_τ = τ·1e-3 = 1e-4`, 10× larger), the same-order error should scale
-///   ≈ linearly to ≈ 2.1e-4 — `5e-4` below leaves headroom without hiding a
-///   regression.
+/// `HestonPricer`'s Greeks against `AnalyticHestonEngine`'s bumps: delta, gamma and vega at
+/// `bump = 1e-4`, the same central steps; theta, a backward difference there, at 1e-7 and 1e-3.
 #[test]
 fn heston_greeks_match_engine_bumps() {
   let direct = atm_pricer();
   let (s, k, r, q, tau) = ATM_QUERY;
   let ot = OptionType::Call;
-  let opt = EuropeanOption::new_tau(100.0, ot, ATM_TAU);
-  let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+  let opt = EuropeanOption::new(100.0, ot, Maturity::Tau(ATM_TAU));
+  let params = P;
   let mut engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
 
   engine.bump = 1e-4;
@@ -197,6 +157,7 @@ fn heston_greeks_match_engine_bumps() {
     );
   }
 
+  // Below about 1e-8 the bump differences the integral's own 1e-8 tolerance, not the price.
   engine.bump = 1e-7;
   let theta_tight = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_tight =
@@ -207,6 +168,7 @@ fn heston_greeks_match_engine_bumps() {
     direct.theta(s, k, r, q, tau, ot)
   );
 
+  // At the default `h_τ = 1e-4` the backward difference errs by `(h_τ/2)·|P_ττ/P_τ|` ≈ 2.1e-4.
   engine.bump = 1e-3;
   let theta_default = engine.calculate(&opt).greeks().unwrap().theta;
   let rel_default =
@@ -235,14 +197,11 @@ fn heston_greeks_all_finite() {
   );
 }
 
-/// `vega`/`vanna`/`volga`/`veta` guard `v0 <= 0` (the `σ = √v0` chain rule
-/// they use is undefined there); `theta`/`charm`/`veta` separately guard a
-/// `tau` that is non-finite or not safely larger than `H_TAU`. Both guards
-/// return `NaN` rather than a wrong finite number — this pins that the
-/// guards actually fire, backing the Greeks module doc's claim.
+/// NaN, not a finite number: vega, vanna, volga and veta at `v0 = 0`, where the chain rule of
+/// `σ = √v0` fails, and theta, charm and veta at a `tau` not finite or not clear of `H_TAU`.
 #[test]
 fn heston_greeks_nan_at_degenerate_inputs() {
-  let degenerate_v0 = HestonPricer::new(0.0, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+  let degenerate_v0 = HestonPricer::new(HestonParams::new(0.0, 1.5, 0.04, 0.3, -0.7));
   let (s, k, r, q) = (100.0, 100.0, 0.05, 0.0);
   assert!(
     degenerate_v0.vega(s, k, r, q, 1.0).is_nan(),
@@ -261,7 +220,7 @@ fn heston_greeks_nan_at_degenerate_inputs() {
     "veta must be NaN at v0 = 0"
   );
 
-  let ok_v0 = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+  let ok_v0 = HestonPricer::new(P);
   let ot = OptionType::Call;
   assert!(
     ok_v0.theta(s, k, r, q, 0.0, ot).is_nan(),
@@ -277,246 +236,140 @@ fn heston_greeks_nan_at_degenerate_inputs() {
   );
 }
 
-/// A *negative* `v0` is invalid input, not a degenerate-but-admissible
-/// state, so the four volatility-space Greeks panic on it rather than
-/// returning the `NaN` that `v0 == 0` earns. Pinned per accessor because each
-/// guards independently; the `expected` anchor is on the parameter name and
-/// value, so an unrelated panic (an index slip, an arithmetic overflow) fails
-/// the test instead of silently satisfying it.
-///
-/// `heston_greeks_nan_at_degenerate_inputs` pins the `v0 == 0` half and is
-/// deliberately unchanged by this split.
-///
-/// The helper builds the struct literally rather than through
-/// [`HestonPricer::new`], which now rejects a negative `v0` at construction:
-/// the fields are `pub`, so the literal is the back door the accessor guard
-/// still has to cover, and routing through it keeps these five tests
-/// exercising the accessor rather than the constructor. The two guards carry
-/// deliberately different messages — neither is a substring of the other —
-/// so the `expected` anchors below cannot be satisfied by the constructor
-/// firing instead. `construction_validation` covers the front door.
-mod negative_v0_panics {
-  use super::*;
+/// The NaN edges the docs give, at `τ = 1`: `E_j[∫v]` is `2.6e147` at `λ = −350` and `5.5e151` at
+/// `−360` for the price, `1.8e145` at `−345` and `1.9e148` at `−352` for the vega.
+#[test]
+fn a_far_negative_mean_reversion_turns_nan_where_the_docs_say() {
+  let at = |lambda: f64| HestonPricer::new(P).with_vol_risk_premium(lambda);
+  let price = |lambda: f64| at(lambda).price_call_put(100.0, 100.0, 0.05, 0.0, 1.0);
+  let vega = |lambda: f64| at(lambda).initial_variance_vega(100.0, 100.0, 0.05, 0.0, 1.0);
+  assert!((price(-350.0).call - 100.0).abs() < 1e-10 && price(-350.0).put.is_finite());
+  assert!(price(-360.0).call.is_nan() && price(-360.0).put.is_nan());
+  assert!(vega(-345.0).is_finite() && vega(-352.0).is_nan());
+}
 
-  fn negative_v0() -> HestonPricer {
-    HestonPricer {
-      v0: -0.01,
-      rho: -0.7,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      lambda: Some(0.0),
-    }
-  }
+/// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
+/// and a violated Feller condition.
+mod construction_validation;
+mod evaluation_counts;
 
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn vega_rejects_negative_v0() {
-    negative_v0().vega(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn vanna_rejects_negative_v0() {
-    negative_v0().vanna(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn volga_rejects_negative_v0() {
-    negative_v0().volga(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn veta_rejects_negative_v0() {
-    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  /// The `v0` guard runs before the `tau` guard, so a negative `v0` panics
-  /// even at a `tau` that would independently have returned `NaN`. Without
-  /// this, a caller could mask invalid input behind a degenerate maturity.
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn veta_rejects_negative_v0_before_degenerate_tau() {
-    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 0.0);
-  }
-
-  /// Greeks that do not route through the `σ = √v0` chain rule keep working
-  /// at a negative `v0` exactly as before — the split must not widen into a
-  /// blanket model-parameter check.
-  #[test]
-  fn delta_and_rho_are_unaffected_by_the_guard() {
-    let m = negative_v0();
-    let ot = OptionType::Call;
-    assert!(m.delta(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
-    assert!(m.rho(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
+/// `E₂[∫₀^τ v] = τ(v0·ℓ + κθτ·s)` against mpmath at 40 digits across `|x| = 1e-3`, `x = κτ`:
+/// `ℓ = (1 − e⁻ˣ)/x` alone at `θ = 0`, `s = (x − 1 + e⁻ˣ)/x²` alone at `v0 = 0`.
+#[test]
+fn the_integrated_variance_mean_holds_its_digits_at_any_b_tau() {
+  // (x, ℓ(x), s(x))
+  let cases = [
+    (1e-6, 0.9999995000001667, 0.499999833333375),
+    (9.9e-5, 0.9999505016334596, 0.4999835004083669),
+    (1.0225e-3, 0.9994889242065078, 0.4998296268871867),
+    (-1.1e-3, 1.0005502017221373, 0.5001833837610937),
+    (1e-2, 0.9950166250831947, 0.49833749168053576),
+    (-1e-5, 1.0000050000166667, 0.5000016666708333),
+    (-0.5, 1.2974425414002564, 0.5948850828005126),
+    (2.0, 0.43233235838169365, 0.28383382080915315),
+    // The scan's worst: 4.23e-13 with macOS's expm1, 1.6e-14 with glibc's. Past the switch an ulp
+    // of expm1 moves `s` by 4.2e-13 relative, so the band admits any expm1 within two ulps.
+    (-1.0114e-3, 1.0005058705314434, 0.5001686092973714),
+  ];
+  for (x, level, slope) in cases {
+    // `b₂ = κ + λ` takes the sign of `x`; `κ` stays positive, so `κθ ≥ 0`.
+    let b = 1.5_f64.copysign(x);
+    let tau = x / b;
+    let mean = |v0: f64, theta: f64| {
+      HestonPricer::new(HestonParams::new(v0, 1.5, theta, 0.3, -0.7))
+        .with_vol_risk_premium(b - 1.5)
+        .mean_integrated_variance(2, tau)
+    };
+    let got_level = mean(1.0, 0.0) / tau;
+    let got_slope = mean(0.0, 1.0) / (1.5 * tau * tau);
+    assert!(
+      (got_level / level - 1.0).abs() < 1e-12,
+      "x = {x}: level {got_level} vs {level}"
+    );
+    assert!(
+      (got_slope / slope - 1.0).abs() < 1e-12,
+      "x = {x}: slope {got_slope} vs {slope}"
+    );
   }
 }
 
-/// `HestonPricer::new` validates its model parameters, so one invalid value
-/// gets **one** response instead of two opposite ones chosen by which method
-/// the caller reaches for. Before this, `new(-0.01, …)` built happily and
-/// then `price_call` returned a finite number off a negative variance while
-/// `vega` panicked.
-///
-/// The boundary cases matter as much as the rejections: `v0 == 0` and
-/// `theta == 0` are admissible Heston states, `|rho| == 1` is a degenerate
-/// but real correlation, and the Feller condition `2κθ ≥ σ²` is a warning
-/// condition in this crate — none of them may be rejected here.
-mod construction_validation {
-  use super::*;
-
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got -0.01)")]
-  fn new_rejects_negative_v0() {
-    let _ = HestonPricer::new(-0.01, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+/// The control variance is the model's own `−2c₁`, one function for both, bit for bit.
+#[test]
+fn the_control_variance_is_minus_twice_the_first_cumulant() {
+  for (kappa, tau) in [
+    (1.5, 1e-6),
+    (1.5, 0.3),
+    (1.5, 2.0),
+    (0.5, 1e-3),
+    (-0.4, 3.0),
+  ] {
+    let theta = if kappa < 0.0 { 0.0 } else { 0.09 };
+    let params = HestonParams::new(0.04, kappa, theta, 0.3, -0.7);
+    let control = HestonPricer::new(params).mean_integrated_variance(2, tau);
+    let c1 = crate::pricing::fourier::heston_cumulants(&params, tau).c1;
+    assert_eq!(control, -2.0 * c1, "kappa = {kappa}, tau = {tau}");
   }
+}
 
-  /// `NaN >= 0.0` is `false`, so the same assert catches a poisoned `v0`
-  /// before it reaches a price that would come back `NaN` with no origin.
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got NaN)")]
-  fn new_rejects_nan_v0() {
-    let _ = HestonPricer::new(f64::NAN, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+/// `P₂`'s `D` is the chf's `factor_cd` at `φ` bit for bit, and `P₁`'s at `φ − i` to rounding: one
+/// Riccati exponent behind both.
+#[test]
+fn the_integrand_shares_the_chf_riccati_exponent() {
+  let params = HestonParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+  let pricer = HestonPricer::new(params);
+  let factor_d = |xi: Complex64| crate::pricing::fourier::factor_cd(&params, 0.75, xi).1;
+  for phi in [1e-8, 0.3, 7.0, 150.0] {
+    let (_, d2) = pricer.f_and_d(2, phi, 0.75);
+    assert_eq!(d2, factor_d(Complex64::new(phi, 0.0)), "phi = {phi}");
   }
-
-  /// `theta` is a variance for the same reason `v0` is, so it earns the same
-  /// check — leaving it out would have replaced the old asymmetry with a new
-  /// one.
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: theta must be a non-negative variance (got -0.04)")]
-  fn new_rejects_negative_theta() {
-    let _ = HestonPricer::new(0.04, -0.7, 1.5, -0.04, 0.3, Some(0.0));
-  }
-
-  /// The characteristic function divides by `σ²`, so `sigma == 0` is not a
-  /// degenerate-but-priceable state here — it is `inf · 0` inside `C`, which
-  /// reaches the caller as a `NaN` price with nothing naming the cause.
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got 0)")]
-  fn new_rejects_zero_sigma() {
-    let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.0, Some(0.0));
-  }
-
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got -0.3)")]
-  fn new_rejects_negative_sigma() {
-    let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, -0.3, Some(0.0));
-  }
-
-  #[test]
-  #[should_panic(expected = "HestonPricer::new: rho must be in [-1, 1] (got -1.5)")]
-  fn new_rejects_out_of_range_rho() {
-    let _ = HestonPricer::new(0.04, -1.5, 1.5, 0.04, 0.3, Some(0.0));
-  }
-
-  /// The admissible edges the validation must not swallow. `v0 == 0` is
-  /// separately relied on by `heston_greeks_nan_at_degenerate_inputs`.
-  #[test]
-  fn new_accepts_the_admissible_edges() {
-    let zero_variances = HestonPricer::new(0.0, -1.0, 1.5, 0.0, 1e-12, None);
-    assert_eq!(zero_variances.v0, 0.0);
-    assert_eq!(zero_variances.theta, 0.0);
-    assert_eq!(zero_variances.rho, -1.0);
-    assert_eq!(HestonPricer::new(0.04, 1.0, 1.5, 0.04, 0.3, None).rho, 1.0);
-  }
-
-  /// Feller stays a warning condition: `2κθ = 0.04` against `σ² = 2.25`
-  /// violates it, and the model must still construct and price.
-  #[test]
-  fn new_does_not_enforce_feller() {
-    let m = HestonPricer::new(0.04, -0.7, 0.5, 0.04, 1.5, None);
-    let feller = 2.0 * m.kappa * m.theta;
-    assert!(feller < m.sigma * m.sigma, "not a Feller violation");
-    assert!(m.price_call(100.0, 100.0, 0.05, 0.0, 1.0).is_finite());
-  }
-
-  /// `kappa` is deliberately unchecked: a non-positive mean-reversion rate
-  /// is a non-stationary but well-defined affine model, not invalid input,
-  /// and the calibrator's `P_KAPPA` floor is a search box rather than a
-  /// validity claim.
-  #[test]
-  fn new_does_not_constrain_kappa() {
-    let m = HestonPricer::new(0.04, -0.7, -1.5, 0.04, 0.3, None);
-    assert_eq!(m.kappa, -1.5);
+  for phi in [0.3, 7.0, 150.0] {
+    let (_, d1) = pricer.f_and_d(1, phi, 0.75);
+    let want = factor_d(Complex64::new(phi, -1.0));
+    assert!(
+      (d1 - want).norm() <= 1e-14 * want.norm(),
+      "phi = {phi}: {d1} vs {want}"
+    );
   }
 }
 
 const TOL: f64 = 1e-12;
 
-/// Captured from `PricerExt::calculate_call_put()`, `implied_volatility`,
-/// `calculate_call_put_initial_variance_vega` and the `GreeksExt`
-/// aggregate **before** the `ModelPricer` reshape, at
-/// `(s, k, r, q, tau) = (100, 105, 0.05, 0.02, 0.75)` and
-/// `(v0, rho, kappa, theta, sigma, lambda) = (0.04, -0.7, 2, 0.04, 0.3,
-/// None)`. The reshape is an API change only, so none of these move.
+/// Goldens at `(s, k, r, q, τ) = (100, 105, 0.05, 0.02, 0.75)` and
+/// `HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7)`.
 #[test]
 fn heston_model_pricer_matches_pre_refactor_goldens() {
-  let m = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+  let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
   let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
   let ot = OptionType::Call;
 
-  let (call, put) = m.call_put(s, k, r, q, tau);
-  assert!((call - 5.229917528523217).abs() < TOL, "call {call}");
-  assert!((put - 7.854137428903243).abs() < TOL, "put {put}");
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
+  assert!((call - 5.229927051858397).abs() < TOL, "call {call}");
+  assert!((put - 7.854146952238423).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
-  // Moved by the `integrate_to_convergence` rewrite, and adjudicated: an
-  // independent reference — the textbook Heston `P_j` integrand under
-  // adaptive Gauss-Kronrod instead of tanh-sinh panels, at this pricer's own
-  // `phi = 1e-5` lower limit — gives `44.210172705014323`. The old golden
-  // missed it by `-5.68e-12`, this one by `-5.33e-13`, so the value moved
-  // 10.6× closer. Nothing else in this test moved; the call, put, implied
-  // vol and all nine Greeks still hold at `1e-12`.
-  let v0_vega = m.call_put_initial_variance_vega(s, k, r, q, tau).0;
+  // From `φ = 0`, as mpmath gives it at 30 digits: `44.2102926490`.
+  let v0_vega = m.initial_variance_vega(s, k, r, q, tau);
   assert!(
-    (v0_vega - 44.21017270501379).abs() < TOL,
+    (v0_vega - 44.2102926489992).abs() < TOL,
     "v0 vega {v0_vega}"
   );
 
   let want = [
-    0.5179826481178651,
-    0.0253545923811771,
-    17.684069082005518,
-    -5.490187207612961,
-    34.926261530188185,
-    0.18739775236397804,
-    -0.13335162307726023,
-    45.78493484996492,
-    2.6285888232280286,
+    0.5179825268957217,
+    0.025354655903697676,
+    17.684117059600023,
+    -5.490198593349759,
+    34.92624529677357,
+    0.18739798181670153,
+    -0.13335185400364935,
+    45.78517474306364,
+    2.628564235038766,
   ];
-  // Eight of the nine Greeks are finite differences of the price, so each
-  // divides a cancellation by its own step and inherits the price's last
-  // bits amplified. The `integrate_to_convergence` rewrite moved the price
-  // by ~1e-14 — two orders below the `TOL` the price itself is still pinned
-  // at, three lines above — and five of them moved with it:
-  //
-  // | component | stencil | amplification | move |
-  // |---|---|---|---|
-  // | `gamma` | 2nd difference in `S` | `1/h² = 1e4` | 2.13e-10 |
-  // | `theta` | central in `τ` | `1/2h = 5e4` | 1.78e-9 |
-  // | `rho` | central in `r` | `1/2h = 5e4` | 7.11e-10 |
-  // | `vanna` | central in `S` of `v0_vega` | `1/2h = 50` | 3.69e-12 |
-  // | `charm` | cross `S × τ` | `1/(4·h_s·h_τ) = 2.5e6` | 1.78e-8 |
-  //
-  // **None of the five values is updated, because none can be shown to have
-  // improved.** Recomputing each stencil on independent adaptive
-  // Gauss-Kronrod prices puts the reference *between* the old and new
-  // values: closer to the old one for `gamma`, `theta` and `rho`, closer to
-  // the new one for `vanna` and `charm`, every gap a few ulp of the stencil.
-  // The reference is no more determinate — its own `gamma` shifts by
-  // 2.13e-10, the whole of the disputed move, when nothing changes but its
-  // quadrature tolerance. So `f64` does not fix these components to `TOL`,
-  // the shared pin was latently over-tight, and what is widened here is the
-  // band, not the values.
-  //
-  // `vega` is the exception and keeps `TOL`: it is not a finite difference
-  // but `2√v0` times the analytic `v0_vega` integral, so it *is* determinate,
-  // and its value is updated above against the reference that adjudicates it.
+  // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent
+  // reference moves as much, so every Greek but the analytic `vega` gets the wider band.
   let got = m.greeks(s, k, r, q, tau, ot).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
     let tol = if *name == "vega" { TOL } else { 1e-7 };
@@ -529,9 +382,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   }
 }
 
-/// The aggregate must be the nine accessors and nothing else — in
-/// particular `volga`/`veta` must not be transposed, which is a mapping
-/// that has no other pin.
+/// The aggregate is the nine accessors and nothing else, and the only pin of `volga` and `veta`
+/// against a transposition.
 #[test]
 fn heston_greeks_aggregate_matches_accessors() {
   let m = atm_pricer();
@@ -545,32 +397,28 @@ fn heston_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(s, k, r, q, tau, ot), "rho");
     assert_eq!(g.vanna, m.vanna(s, k, r, q, tau), "vanna");
     assert_eq!(g.charm, m.charm(s, k, r, q, tau, ot), "charm");
-    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga is vomma");
-    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga");
+    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }
 
-/// This model's carry factor really is `e^{-qτ}`, so the trait's vanilla
-/// put-call parity is mathematically right here — the override exists only
-/// so the returned put is bit-identical to the closed form the pre-query
-/// `calculate_call_put().1` produced.
+/// The carry factor is `e^{−qτ}`, so the trait's parity holds; the override returns the pair's put,
+/// bit for bit, where the default sums the same terms in another order.
 #[test]
 fn heston_price_put_matches_parity_but_is_the_closed_form() {
-  let m = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+  let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
   let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
-  let (call, put) = m.call_put(s, k, r, q, tau);
+  let CallPut { call, put } = m.price_call_put(s, k, r, q, tau);
   let parity = call - s * (-q * tau).exp() + k * (-r * tau).exp();
   assert!((put - parity).abs() < TOL, "put {put} vs parity {parity}");
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 }
 
-/// Put Greeks became expressible when `option_type` moved into the query.
-/// The two must differ exactly by the derivative of the parity terms:
-/// `delta_P = delta_C - e^{-qτ}` and `gamma_P = gamma_C`.
+/// A put's delta is the call's less `e^{−qτ}`, the derivative of the parity terms.
 #[test]
 fn heston_put_greeks_differ_from_call_by_the_parity_terms() {
-  let m = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+  let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
   let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
   let call_delta = m.delta(s, k, r, q, tau, OptionType::Call);
   let put_delta = m.delta(s, k, r, q, tau, OptionType::Put);
@@ -581,10 +429,10 @@ fn heston_put_greeks_differ_from_call_by_the_parity_terms() {
   assert!(put_delta < 0.0, "put delta must be negative: {put_delta}");
 }
 
-/// The capability the reshape exists for: one model, a whole grid.
+/// One model prices a whole strike and maturity grid, each call falling in the strike.
 #[test]
 fn heston_one_model_prices_a_grid() {
-  let m = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+  let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));
   for &tau in &[0.25, 0.5, 1.0] {
     let mut prev = f64::INFINITY;
     for &k in &[90.0, 100.0, 110.0] {

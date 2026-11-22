@@ -4,8 +4,10 @@ use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovC
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
 use super::SimdExp;
-use super::SimdExpZig;
+use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt as _;
+use crate::traits::DistributionSampler;
+use crate::traits::SimdDistribution;
 
 const SEEDS: [u64; 3] = [2718, 999, 42];
 
@@ -13,14 +15,8 @@ fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-/// KS against the sampler's own `cdf` (Kolmogorov 1933 / Smirnov 1948 /
-/// Massey 1951 critical values, alpha=0.05 — see
-/// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
-/// doc), best-of-three pinned seeds (see [`SEEDS`]): a correct test
-/// still rejects a true null at rate alpha, and the SIMD stream differs
-/// across platforms, so one seed cannot be trusted to be lucky
-/// everywhere. Replaces this file's former `ks_critical = 2.0/sqrt(N)`
-/// bound, which implied an undeclared alpha of roughly 0.0007.
+/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every
+/// platform.
 fn best_ks_p_value(
   n: usize,
   make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
@@ -35,7 +31,9 @@ fn best_ks_p_value(
         cdf,
         KolmogorovSmirnovConfig::default(),
       )
+      .unwrap()
       .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }
@@ -46,7 +44,7 @@ fn simd_exp_matches_theoretical_distribution() {
   let lambda = 1.8_f64;
   let mean_target = 1.0 / lambda;
 
-  let dist = SimdExp::<f64>::new(lambda, &Deterministic::new(0x5115));
+  let mut dist = SimdExp::<f64>::new(lambda).seeded(&Deterministic::new(0x5115));
   let mut samples = vec![0.0_f64; N];
   dist.fill_slice(&mut samples);
 
@@ -63,10 +61,12 @@ fn simd_exp_matches_theoretical_distribution() {
   );
 
   let best_p = best_ks_p_value(N, |seed| {
-    let dist = SimdExp::<f64>::new(lambda, &Deterministic::new(seed));
+    let dist = SimdExp::<f64>::new(lambda);
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
-    (samples, Box::new(move |x| dist.cdf(x)))
+    dist
+      .seeded(&Deterministic::new(seed))
+      .fill_slice(&mut samples);
+    (samples, Box::new(move |x| dist.cdf(x).unwrap()))
   });
   assert!(
     best_p > 0.01,
@@ -76,17 +76,21 @@ fn simd_exp_matches_theoretical_distribution() {
 
 /// The dual-engine pair path interleaves batches from engines A and B —
 /// every lane (including B's) must still be Exp(λ).
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 #[test]
-fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
+fn simd_exp_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;
   let lambda = 0.9_f64;
   let best_p = best_ks_p_value(N, |seed| {
-    let dist = crate::SimdExpZigDual::<f64>::new(lambda, &Deterministic::new(seed));
+    let dist = SimdExp::<f64>::new(lambda);
+    let mut stream = crate::Seeded::<_, stochastic_rs_core::simd_rng_dual::SimdRngDual>::new(
+      dist,
+      &Deterministic::new(seed),
+    );
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
+    stream.fill_slice(&mut samples);
     assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
-    (samples, Box::new(move |x| dist.cdf(x)))
+    (samples, Box::new(move |x| dist.cdf(x).unwrap()))
   });
   assert!(
     best_p > 0.01,
@@ -94,20 +98,10 @@ fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
   );
 }
 
+/// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
 #[test]
-fn simd_exp_zig_fill_slice_matches_theoretical_distribution() {
-  const N: usize = 32_000;
-  let lambda = 0.65_f64;
-
-  let best_p = best_ks_p_value(N, |seed| {
-    let dist = SimdExpZig::<f64>::new(lambda, &Deterministic::new(seed));
-    let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
-    assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
-    (samples, Box::new(move |x| dist.cdf(x)))
-  });
-  assert!(
-    best_p > 0.01,
-    "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
-  );
+fn scalar_sample_matches_cdf() {
+  let d = SimdExp::<f64>::new(1.8);
+  let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+  assert!(best > 0.01, "best p = {best}");
 }

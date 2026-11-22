@@ -4,15 +4,12 @@ use super::*;
 fn zero_jump_variance_matches_black_scholes_near_zero_volatility() {
   for v in [1e-10, 1e-8, 5e-7, 1e-6, 1e-5, 0.2] {
     let m = merton_at(v, 0.5, 0.0, 50);
-    let bs = BSMPricer::new(v, BSMCoc::Bsm1973);
+    let bs = BsmPricer::new(v, BsmCoc::Bsm1973);
     let cases = [
       (m.vega(S, S, 0.0, 0.0, 1.0), bs.vega(S, S, 0.0, 0.0, 1.0)),
       (m.vanna(S, S, 0.0, 0.0, 1.0), bs.vanna(S, S, 0.0, 0.0, 1.0)),
-      (m.volga(S, S, 0.0, 0.0, 1.0), bs.vomma(S, S, 0.0, 0.0, 1.0)),
-      (
-        m.veta(S, S, 0.0, 0.0, 1.0),
-        bs.dvega_dtime(S, S, 0.0, 0.0, 1.0),
-      ),
+      (m.volga(S, S, 0.0, 0.0, 1.0), bs.volga(S, S, 0.0, 0.0, 1.0)),
+      (m.veta(S, S, 0.0, 0.0, 1.0), bs.veta(S, S, 0.0, 0.0, 1.0)),
     ];
     for (actual, expected) in cases {
       assert!(

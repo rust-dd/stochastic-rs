@@ -1,15 +1,19 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::pricing::heston::HestonParams;
 
 fn params() -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta: 1.0,
   }
 }
@@ -24,11 +28,11 @@ fn unit_leverage() -> LeverageSurface {
   )
 }
 
-fn tune(pricer: HestonSlvPricer) -> HestonSlvPricer {
+fn tune(pricer: HestonSlvPricer) -> HestonSlvPricer<Deterministic> {
   pricer
     .with_paths(4_000)
     .with_steps_per_year(48)
-    .with_seed(7)
+    .with_seed(Deterministic::new(7))
 }
 
 #[test]
@@ -64,30 +68,26 @@ fn calibrated_pricer_accepts_its_own_rates() {
 }
 
 #[test]
-#[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.1, q=0")]
-fn calibrated_pricer_rejects_rate_mismatch() {
+fn calibrated_pricer_answers_nan_at_another_rate() {
   let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
-  pricer.price_call(100.0, 100.0, 0.1, 0.0, 0.5);
+  assert!(pricer.price_call(100.0, 100.0, 0.1, 0.0, 0.5).is_nan());
+  let estimate = pricer.price_call_estimate(100.0, 100.0, 0.1, 0.0, 0.5);
+  assert!(estimate.mean.is_nan() && estimate.std_err.is_nan() && estimate.n_samples == 0);
 }
 
 #[test]
-#[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.05, q=0.02")]
-fn calibrated_pricer_rejects_dividend_mismatch() {
+fn calibrated_pricer_answers_nan_at_another_dividend_yield() {
   let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
-  pricer.price_call(100.0, 100.0, 0.05, 0.02, 0.5);
+  assert!(pricer.price_call(100.0, 100.0, 0.05, 0.02, 0.5).is_nan());
 }
 
 #[test]
-#[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.02, q=0")]
-fn calibrated_pricer_rejects_mismatch_through_price_put() {
+fn calibrated_pricer_answers_nan_at_another_rate_through_price_put() {
   let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
-  pricer.price_put(100.0, 100.0, 0.02, 0.0, 0.5);
+  assert!(pricer.price_put(100.0, 100.0, 0.02, 0.0, 0.5).is_nan());
 }
 
-/// `unit_leverage` spans `50 ..= 150` out to `tau = 1`. Every query below is
-/// outside that box, and every one of them returned a finite, plausible,
-/// in-band number before the gate: `69.01` at `s = 1000`, `0.345` at
-/// `s = 5`, `29.05` at `tau = 5`.
+/// `unit_leverage` spans `50 ..= 150` out to `tau = 1`; a query outside that box prices `NaN`.
 #[test]
 fn price_call_above_the_spot_grid_is_nan() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -109,9 +109,8 @@ fn price_call_beyond_the_horizon_is_nan() {
   assert!(c.is_nan(), "tau = 5 is past the 1.0 horizon, got {c}");
 }
 
-/// The gate is a bound and not a "spot must equal `s0`" equality: a strike
-/// ladder around the calibration spot is what the type is for, and the grid
-/// edges themselves are inside.
+/// The gate is the grid's extent, not `s == s0`: a strike ladder around the calibration spot and
+/// the grid edges themselves price.
 #[test]
 fn price_call_on_the_grid_boundary_still_prices() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -135,9 +134,8 @@ fn price_put_propagates_the_out_of_grid_nan() {
   assert!(p.is_nan(), "parity carries the NaN through, got {p}");
 }
 
-/// `x = ln(s)` is `NaN` for a negative spot and `(NaN - k).max(0.0)` is
-/// `0.0`, so this used to price at a confident zero. The extent gate catches
-/// it on the way in, because no leverage grid starts at or below zero.
+/// A spot that is negative or NaN has no price before expiry: `x = ln(s)` would be NaN on every
+/// path.
 #[test]
 fn a_negative_spot_no_longer_prices_as_zero() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -150,8 +148,7 @@ fn a_negative_spot_no_longer_prices_as_zero() {
   );
 }
 
-/// Same laundering on the other axis: `sqrt(dt)` is `NaN` for a negative
-/// `tau`, and the `.max(0.0)` payoff floor turned that into `0.0` too.
+/// A negative maturity is past expiry, where every query is NaN.
 #[test]
 fn a_negative_maturity_no_longer_prices_as_zero() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -159,8 +156,7 @@ fn a_negative_maturity_no_longer_prices_as_zero() {
   assert!(c.is_nan(), "a negative maturity must not price, got {c}");
 }
 
-/// `tau = 0` is the genuine expiry limit, not an edge: it is inside the
-/// covered box and still returns intrinsic value.
+/// `tau = 0` is expiry, which pays the intrinsic value without a path.
 #[test]
 fn zero_maturity_stays_the_intrinsic_limit() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -171,20 +167,49 @@ fn zero_maturity_stays_the_intrinsic_limit() {
   );
 }
 
-/// A query wrong on both counts panics rather than returning `NaN`: a rate
-/// the pricer never agreed to is a wiring error, not a surface edge.
+/// Before expiry a strike that is not positive has no price, a NaN one included; at `tau = 0` the
+/// payoff stands at any spot and rate, off the leverage grid as on it.
 #[test]
-#[should_panic(expected = "calibrated at r=0.05, q=0 but queried at r=0.2, q=0")]
-fn the_rate_guard_outranks_the_extent_guard() {
-  let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
-  pricer.price_call(1000.0, 1000.0, 0.2, 0.0, 5.0);
+fn a_strike_that_is_not_positive_is_nan_and_an_expired_query_its_payoff() {
+  let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
+  let mut apart = Vec::new();
+  for k in [0.0, -5.0, f64::NAN] {
+    let estimate = pricer.price_call_estimate(100.0, k, 0.05, 0.02, 0.5);
+    let put = pricer.price_put(100.0, k, 0.05, 0.02, 0.5);
+    let empty = estimate.std_err.is_nan() && estimate.n_samples == 0;
+    if !(estimate.mean.is_nan() && empty && put.is_nan()) {
+      apart.push(format!("k = {k}: {estimate:?}, put {put}"));
+    }
+  }
+  for (s, k, call) in [
+    (0.0, 100.0, 0.0),
+    (-5.0, 100.0, 0.0),
+    (200.0, 100.0, 100.0),
+    (100.0, 90.0, 10.0),
+    (100.0, 100.0, 0.0),
+  ] {
+    let got = pricer.price_call(s, k, 0.05, 0.02, 0.0);
+    if got != call {
+      apart.push(format!("tau = 0, s = {s}, k = {k}: {got}, not {call}"));
+    }
+  }
+  let anchored = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+  let got = anchored.price_call(110.0, 100.0, 0.2, 0.0, 0.0);
+  if got != 10.0 {
+    apart.push(format!("tau = 0 at another rate: {got}, not 10"));
+  }
+  assert!(apart.is_empty(), "{apart:#?}");
 }
 
-/// `L ≡ 1` under the full vol-of-vol is the Heston model, so the Monte Carlo
-/// price has to land on the closed form: within three standard errors, plus
-/// the weak-order-one bias of the Euler scheme at 250 steps a year (Lord,
-/// Koekkoek & van Dijk 2010 put the absorption scheme's bias at this step
-/// size in the low cents for these parameters).
+#[test]
+fn a_query_wrong_on_both_counts_is_nan() {
+  let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+  assert!(pricer.price_call(1000.0, 1000.0, 0.2, 0.0, 5.0).is_nan());
+}
+
+/// `L ≡ 1` is Heston, so the Monte Carlo price lands on the closed form within three standard
+/// errors plus the Euler scheme's bias at 250 steps a year.
+/// Reference: Lord et al. (2010), Quant. Finance 10(2), 177–194
 #[test]
 fn unit_leverage_reprices_the_closed_form_heston_call() {
   use crate::pricing::heston::HestonPricer;
@@ -192,11 +217,10 @@ fn unit_leverage_reprices_the_closed_form_heston_call() {
   let pricer = HestonSlvPricer::unanchored(p, unit_leverage())
     .with_paths(60_000)
     .with_steps_per_year(250)
-    .with_seed(99);
+    .with_seed(Deterministic::new(99));
   let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.01, 0.5);
   let estimate = pricer.price_call_estimate(s, k, r, q, tau);
-  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0))
-    .price_call(s, k, r, q, tau);
+  let exact = HestonPricer::new(p.heston).price_call(s, k, r, q, tau);
   let band = 3.0 * estimate.std_err + 0.03;
   assert!(
     (estimate.mean - exact).abs() < band,

@@ -1,13 +1,5 @@
-//! # Strategies
-//!
-//! Trading strategies parameterised by a [`Strategy`](crate::strategies::Strategy)
-//! trait. A strategy consumes a per-bar [`MarketBar`](crate::strategies::MarketBar)
-//! and emits a [`StrategyAction`](crate::strategies::StrategyAction) (target
-//! position, optional rebalance cost). A minimal
-//! [`Backtest`](crate::strategies::Backtest) driver iterates through a
-//! `&[MarketBar]` and returns a
-//! [`BacktestResult`](crate::strategies::BacktestResult) with per-bar PnL,
-//! cumulative equity, and a flat position-vs-time vector.
+//! A [`Strategy`] maps a [`MarketBar`] to a `StrategyAction`; [`Backtest`] runs it to a
+//! `BacktestResult`.
 //!
 //! $$
 //! V_0=\mathbb E^{\mathbb Q}\!\left[e^{-\int_0^T r_tdt}\,\Pi(X_T)\right]
@@ -24,20 +16,16 @@ pub struct MarketBar {
   pub price: f64,
 }
 
-/// Action returned by [`Strategy::on_bar`]. `target_position` is the
-/// **signed** number of units the strategy wants to hold *after* this
-/// bar; the [`Backtest`] driver computes the trade as
-/// `target_position - current_position`. `signal` is an optional
-/// human-readable tag for telemetry / plotting.
+/// What [`Strategy::on_bar`] returns: `target_position` is the signed units to hold after the
+/// bar (the [`Backtest`] trades the difference), and `signal` an optional tag for telemetry.
 #[derive(Debug, Clone)]
 pub struct StrategyAction {
   pub target_position: f64,
   pub signal: Option<String>,
 }
 
-/// Trading strategy interface. Implementors maintain whatever internal
-/// state they need (rolling stats, prior signals, fitted params) and
-/// emit one [`StrategyAction`] per bar.
+/// Trading strategy: it keeps its own state (rolling statistics, prior signals, fitted
+/// parameters) and emits one [`StrategyAction`] per bar.
 pub trait Strategy {
   /// Friendly name (telemetry / logging).
   fn name(&self) -> &'static str;
@@ -48,9 +36,8 @@ pub trait Strategy {
   fn on_bar(&mut self, bar: MarketBar) -> StrategyAction;
 }
 
-/// Result of running a [`Backtest`]. `equity` is the running
-/// cumulative cash + position×price valuation; `positions` is the
-/// signed position held after each bar.
+/// Result of a [`Backtest`]: `equity` is the running cash plus position × price, and
+/// `positions` the signed position held after each bar.
 #[derive(Debug, Clone)]
 pub struct BacktestResult {
   pub equity: Vec<f64>,
@@ -58,11 +45,8 @@ pub struct BacktestResult {
   pub trades: Vec<f64>,
 }
 
-/// Minimal backtest driver: walks a strategy across a price series
-/// with a flat per-trade cost (`cost_per_unit`, e.g. brokerage + 1bp
-/// slippage on the *change* in position). No financing cost, no margin
-/// model — kept intentionally small; users wanting realistic execution
-/// modelling should layer this on top of `microstructure::almgren_chriss`.
+/// Minimal backtest driver: a strategy walked over a price series with a flat `cost_per_unit`
+/// on each change of position; no financing cost and no margin model.
 pub struct Backtest {
   pub cost_per_unit: f64,
 }

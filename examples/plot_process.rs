@@ -1,6 +1,4 @@
-//! Plot a stochastic process: five GBM sample paths overlaid on one chart.
-//!
-//! Writes a Plotly HTML chart to `target/plot_process_gbm.html`. Run with
+//! Five GBM sample paths on one chart, as Plotly HTML in `target/plot_process_gbm.html`:
 //! `cargo run --release --example plot_process`.
 use plotly::Layout;
 use plotly::Plot;
@@ -25,7 +23,7 @@ fn main() {
   let mut plot = Plot::new();
 
   for seed in 1..=n_paths {
-    let gbm = Gbm::<f64, _>::new(mu, sigma, n, Some(x0), Some(1.0), Deterministic::new(seed));
+    let gbm = Gbm::<f64, _>::new(mu, sigma, n, x0, Some(1.0), Deterministic::new(seed));
     let path = gbm.sample();
     plot.add_trace(
       Scatter::new(xs.clone(), path.to_vec())

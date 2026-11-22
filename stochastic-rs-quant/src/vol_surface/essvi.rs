@@ -1,33 +1,16 @@
-//! # eSSVI — extended SSVI slices
+//! eSSVI: SSVI slices whose correlation varies with maturity, each with its own `(θ_t, ρ_t, ψ_t)`.
 //!
 //! $$
 //! w_t(k) = \frac{\theta_t}{2}\left(1 + \rho_t\varphi_t k + \sqrt{(\varphi_t k + \rho_t)^2 + 1 - \rho_t^2}\right),\qquad \psi_t := \theta_t\varphi_t
 //! $$
 //!
-//! The extended SSVI surface lets the correlation vary with maturity: every
-//! slice carries its own `(θ_t, ρ_t, ψ_t)`. Calibration follows the anchored
-//! scheme of Corbetta, Cohort, Laachir & Martini: a slice is pinned to its
-//! data point closest to the money, `(k*, θ*)`, through `θ = θ* − ρ ψ k*`,
-//! which leaves `(ρ, ψ)` free; the Gatheral–Jacquier butterfly bounds become
-//! the cap `ψ ≤ min(ψ₊(ρ, k*, θ*), 4 / (1 + |ρ|))`, and the Hendriks–Martini
-//! calendar-spread conditions add a floor on `ψ` and an upper bound that
-//! keeps `φ = ψ / θ` non-increasing. Equal-variance slices preserve `ρψ`. Slices
-//! are calibrated going forward in maturity, each by a bounded
-//! one-dimensional search in `ρ` (coarse grid, then golden-section
-//! refinement) with the best admissible `ψ` found by a golden-section search
-//! inside its bounds — the note only states that one Brent search suffices;
-//! the nesting is this crate's choice. Between slices the parameters
-//! `(θ, ψ, ρψ)` are interpolated linearly in maturity, which the note shows
-//! keeps the surface free of calendar-spread arbitrage.
+//! $$\theta = \theta^* - \rho\psi k^*,\qquad \psi \le \min\bigl(\psi_+(\rho, k^*, \theta^*),\ 4/(1+|\rho|)\bigr)$$
 //!
-//! References: Corbetta, J., Cohort, P., Laachir, I. & Martini, C. (2019),
-//! *Robust calibration and arbitrage-free interpolation of SSVI slices*,
-//! arXiv:1804.04924; Hendriks, S. & Martini, C. (2019), *The extended SSVI
-//! volatility surface*, Journal of Computational Finance 22(5); Gatheral, J.
-//! & Jacquier, A. (2014), *Arbitrage-free SVI volatility surfaces*,
-//! Quantitative Finance 14(1), 59–71. Calendar conditions include the
-//! correction in Pasquazzi (2023), *eSSVI Surface Calibration*, Proposition
-//! 4.14 and Section 2.1, arXiv:2304.02106.
+//! Fitted forward from the nearest-the-money `(k*, θ*)`, `ψ/θ` non-increasing, `(θ, ψ, ρψ)` linear.
+//! Reference: Corbetta et al. (2019), Decis. Econ. Finance 42(2), 665–677, arXiv:1804.04924
+//! Reference: Hendriks & Martini (2019), J. Comput. Finance 22(5)
+//! Reference: Gatheral & Jacquier (2014), Quant. Finance 14(1), 59–71
+//! Reference: Pasquazzi (2023), arXiv:2304.02106, Proposition 4.14, §2.1
 
 mod calibrate;
 
@@ -82,9 +65,8 @@ impl<T: RealExt> EssviSlice<T> {
     }
   }
 
-  /// Gatheral–Jacquier sufficient no-butterfly conditions
-  /// `θφ ≤ 4/(1+|ρ|)` and `θφ² ≤ 4/(1+|ρ|)`, i.e. `ψ ≤ 4/(1+|ρ|)` and
-  /// `ψ² ≤ 4θ/(1+|ρ|)`.
+  /// Gatheral–Jacquier's sufficient no-butterfly conditions `θφ, θφ² ≤ 4/(1+|ρ|)`, i.e.
+  /// `ψ ≤ 4/(1+|ρ|)` and `ψ² ≤ 4θ/(1+|ρ|)`.
   pub fn is_butterfly_free(&self) -> bool {
     let cap = T::from_f64_fast(4.0) / (T::one() + self.rho.abs());
     let tol = T::from_f64_fast(1e-12);
@@ -133,9 +115,8 @@ impl<T: RealExt> EssviSurface<T> {
     Self { slices }
   }
 
-  /// Slice parameters at `t`: linear in `(θ, ψ, ρψ)` between neighbouring
-  /// slices, from the origin `(0, 0, 0)` before the first one, flat after
-  /// the last.
+  /// Slice parameters at `t`: linear in `(θ, ψ, ρψ)` between slices, from `(0, 0, 0)` before the
+  /// first, flat after the last.
   pub fn slice_at(&self, t: T) -> EssviSlice<T> {
     let last = self.slices.last().expect("non-empty");
     if t >= last.maturity {

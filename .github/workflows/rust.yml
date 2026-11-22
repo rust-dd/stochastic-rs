@@ -16,11 +16,10 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.89.0
       - name: Cargo check (MSRV)
-        run: cargo check --workspace --no-default-features --all-targets
+        run: cargo check --workspace --no-default-features --all-targets --locked
 
-  # Quick check: every sub-crate compiles independently with default features.
-  # This catches broken inter-crate boundaries before the heavier coverage job
-  # exercises the full umbrella.
+  # Every sub-crate compiles on its own with no default features, which catches a broken
+  # inter-crate boundary before the umbrella jobs see it.
   check_subcrates:
     runs-on: ubuntu-latest
     strategy:
@@ -38,11 +37,10 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (${{ matrix.crate }})
-        run: cargo check -p ${{ matrix.crate }} --no-default-features
+        run: cargo check -p ${{ matrix.crate }} --no-default-features --locked
 
   # Umbrella + features matrix. Covers feature combinations that exercise
-  # cross-crate cfg-gated code (notably the python+gpu Array2 overlap caught
-  # by the 2026-05-07 audit §4.1).
+  # cross-crate cfg-gated code.
   check_umbrella:
     runs-on: ubuntu-latest
     strategy:
@@ -51,18 +49,18 @@ jobs:
         features:
           - "" # default
           - "ai"
-          - "yahoo"
-          - "python"
-          - "ai,yahoo"
+          - "viz"
+          - "ai,viz"
+          - "unstable-dual-stream-rng"
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (features=${{ matrix.features }})
         run: |
           if [ -z "${{ matrix.features }}" ]; then
-            cargo check -p stochastic-rs --all-targets
+            cargo check -p stochastic-rs --all-targets --locked
           else
-            cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}"
+            cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}" --locked
           fi
 
   # Lint + format gates. Catches drift independently of the feature matrix.
@@ -75,34 +73,52 @@ jobs:
           components: clippy, rustfmt
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
+      - name: Embedded Metal kernel sources
+        run: cargo check -p stochastic-rs-stochastic --features metal --locked
+        env:
+          METAL_OXIDE_ARTIFACTS: locked
       - name: cargo clippy (workspace)
-        run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
-      # All six library crates deny `rustdoc::broken_intra_doc_links` at their
-      # crate root, but nothing else in this workflow runs rustdoc — the doctest
-      # gate does not exercise the lint, so 171 broken links once accumulated
-      # unnoticed. This step is what makes the deny bite.
+        run: cargo clippy --workspace --no-default-features --all-targets --locked -- -D warnings
+      # The library crates deny `rustdoc::broken_intra_doc_links`, and this is the one step that
+      # runs rustdoc: the doctest gate does not exercise that lint.
       - name: cargo doc (intra-doc links, deny warnings)
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Cargo check (stochastic-rs-py, features=ai)
-        run: cargo check -p stochastic-rs-py --features ai
+        run: cargo check -p stochastic-rs-py --features ai --locked
 
-  # metal + accelerate only compile on macOS, so no linux job can lint them;
-  # this is the one arm of the CI that runs on a mac. Check-only: the point
-  # is that the gated code keeps compiling, not to run the GPU.
+  # The one macOS job: the Apple back-ends compile only there, so it checks that they keep
+  # compiling, without running the GPU.
   check_macos_backends:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate)
-        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets
+        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
+      - name: Cargo check (python + metal + accelerate)
+        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets --locked
+      - name: Device handle environment contract (metal)
+        run: cargo test -p stochastic-rs-stochastic --features metal --test device_handle_env --locked
 
-  # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
-  # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
-  # missing nvcc). Check-only: the kernels run on the maintainer's CUDA box.
+  # Off macOS the Apple back-ends are inert: their features compile the crates without them.
+  check_apple_features_inert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check (metal + accelerate on Linux)
+        run: cargo check -p stochastic-rs --features metal,accelerate --all-targets --locked
+      - name: Cargo check (stochastic, metal + accelerate on Linux)
+        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
+      - name: Cargo check (python + metal + accelerate on Linux)
+        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets --locked
+
+  # cudarc loads libcuda at run time, so the CUDA back-end compiles without a GPU or toolkit (the
+  # cuda-12080 pin stands in for nvcc); cuda.yml runs the kernels on the GPU runner.
   check_cuda:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -112,16 +128,16 @@ jobs:
         with:
           components: clippy
       - name: Cargo check (cuda)
-        run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets
+        run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets --locked
       - name: Clippy (cuda)
-        run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets -- -D warnings
+        run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets --locked -- -D warnings
+      - name: Cargo check (python + cuda)
+        run: cargo check -p stochastic-rs-py --features cuda --all-targets --locked
+      - name: Device handle environment contract (cuda)
+        run: cargo test -p stochastic-rs-stochastic --features cuda --test device_handle_env --locked
 
-  # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
-  # includes rather than hand-copied text, so there is nothing to diff for
-  # divergence — the page renders the literal file the `test` job already
-  # compiles and runs. This job is what catches a dangling/renamed path and
-  # proves the MDX build actually resolves every one of them, since neither
-  # `test` nor `lint` above ever looks inside `website/`.
+  # The MDX pages render `tests/doctest_*.rs` by path; this build catches a dangling or renamed one
+  # and is the only job that looks inside `website/`.
   docs_website:
     runs-on: ubuntu-latest
     defaults:
@@ -137,46 +153,37 @@ jobs:
       - name: Full site build (resolves every RustExample and internal link)
         run: bun run build
 
-  # In-process Python smoke test (audit §7.9): builds the cdylib via
-  # `maturin develop` and exercises the 5 main API surfaces (distributions,
-  # stochastic, copulas, stats, quant) including seed-determinism for the
-  # samplers that accept a `seed=` keyword.
+  # Builds the cdylib with `maturin develop` and exercises the five API surfaces, the seeded
+  # samplers' determinism included.
   python_smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      # `maturin develop` requires an active virtualenv on Linux; the
-      # ubuntu-latest runner does not have one by default. Create one and
-      # invoke maturin / python via the venv's binaries (no `source` so
-      # each `run:` block — which is its own shell — still picks it up).
+      # `maturin develop` needs a virtualenv, which the runner lacks; each step calls the venv's
+      # binaries directly, since a `source` would not outlive its own `run:` shell.
       - name: Set up venv + install build deps
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install maturin numpy pytest scipy
       - name: maturin develop
-        run: .venv/bin/maturin develop --release
+        run: .venv/bin/maturin develop --release --locked
       - name: Run python_smoke.py
-        # `-u` flushes prints so the last `[OK]`/`[FAIL]` line before any
-        # crash shows up in the log; `-X faulthandler` prints a C+Python
-        # traceback on SIGSEGV, pinning the crashing native call.
+        # `-u` flushes the last `[OK]`/`[FAIL]` line before a crash into the log; `-X faulthandler`
+        # prints the C and Python traceback of a SIGSEGV.
         run: .venv/bin/python -X faulthandler -u stochastic-rs-py/python_smoke.py
       - name: Run pytest suite
-        # The pytest suite (stochastic-rs-py/tests/) covers all five API
-        # surfaces beyond the smoke script; conftest.py skips with a clear
-        # message if the extension is somehow not importable.
+        # The pytest suite covers the five API surfaces beyond the smoke script; conftest.py skips
+        # with a message if the extension does not import.
         run: .venv/bin/python -m pytest stochastic-rs-py/tests/ -v
 
-  # Fast correctness gate: the whole workspace test-suite via cargo-nextest
-  # (no coverage instrumentation), so a failing/flaky test surfaces in minutes
-  # instead of only inside the multi-hour coverage job. The `ci` nextest
-  # profile prints one line per finished test with a running `(N/total)`
-  # counter, so the log shows which test is executing and how far along the
-  # run is.
+  # The fast gate: the workspace suite under nextest without instrumentation, so a failing test
+  # shows in minutes; the `ci` profile prints a running `(N/total)`.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -188,17 +195,22 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      # `--release` because the heavy Monte-Carlo tests (Malliavin, rBergomi,
-      # Fourier-Malliavin) are unusably slow unoptimised; `--exclude
-      # stochastic-rs-py` because the cdylib is exercised by pytest in the
-      # python_smoke job. Mirrors the coverage job's feature set for parity.
+      # A debug build on the coverage job's features, which the tests' wall-clock bounds are sized
+      # for; `stochastic-rs-py` is left to the python_smoke job's pytest.
       - name: cargo nextest run (workspace)
-        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci
-      # nextest does not run doctests; this gates the crates' doc examples
-      # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
-      # test` used to cover. `--release` reuses the artifacts built above.
+        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
+      # The workspace run leaves quant and viz off; they gate the ai crate's
+      # calibration, Heston-pin and plot tests.
+      - name: cargo nextest run (ai surrogates, quant and viz)
+        run: cargo nextest run -p stochastic-rs-ai --features quant,viz --profile ci --locked
+      # `unstable-dual-stream-rng` is off in the workspace run; with it the pinning test covers the
+      # ziggurats' 16-lane step and the dual engine's uninit stores.
+      - name: cargo nextest run (fill pinning test, dual-stream engine)
+        run: cargo nextest run -p stochastic-rs-distributions --features unstable-dual-stream-rng --test fill_writes_every_element --profile ci --locked
+      # nextest runs no doctests, so this step gates the crates' doc examples, the README quickstart
+      # rendered on docs.rs included.
       - name: cargo test --doc (workspace)
-        run: cargo test --release --workspace --exclude stochastic-rs-py --doc
+        run: cargo test --release --workspace --exclude stochastic-rs-py --doc --locked
 
   # Full test run with coverage. Heavyweight + instrumented, so it
   # only runs on pushes to main; the fast `test` job gates pull requests.
@@ -210,11 +222,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Pinned rather than tracking `@nightly`: nightly-2026-07-25
-      # (rustc da86f4d07) ICEs in rustc_codegen_ssa compiling `tokio` under
-      # `-C instrument-coverage`, which takes down this job and only this job.
-      # nightly-2026-07-22 (rustc 0e29c21d9) is the last known-good toolchain.
-      # Bump once the upstream codegen fix lands.
+      # nightly-2026-07-25 (rustc da86f4d07) ICEs in rustc_codegen_ssa on `tokio` under coverage, so
+      # this pins the last good one, nightly-2026-07-22, until upstream fixes it.
       - uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: nightly-2026-07-22
@@ -242,11 +251,10 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG: "1"
           RUSTFLAGS: "-C instrument-coverage"
           LLVM_PROFILE_FILE: "coverage-%p-%m.profraw"
-        # nextest runs each test in its own process (one profraw per test, kept
-        # unique by the %p pid above) and the `ci-coverage` profile prints the
-        # running (N/total) counter; grcov then merges every profraw as before.
+        # nextest runs each test in its own process, one profraw each, kept unique by `%p` above;
+        # grcov merges them all.
         run: |
-          cargo nextest run --release --workspace --exclude stochastic-rs-py --profile ci-coverage
+          cargo nextest run --release --workspace --exclude stochastic-rs-py --profile ci-coverage --locked
 
       - name: Generate coverage report
         run: |
@@ -258,10 +266,8 @@ jobs:
             --ignore-not-existing \
             --llvm \
             -o lcov.info
-          # nextest writes one profraw per test (~1300 files, >1 GB total).
-          # grcov has merged them into lcov.info above, so delete them — else
-          # the Codecov upload sweeps up a gigabyte of raw profiling data
-          # instead of the single lcov report, which Codecov cannot parse.
+          # grcov has merged the ~1300 profraw files (over 1 GB) into lcov.info, and the Codecov
+          # upload would otherwise sweep them up instead of the one report it can parse.
           find . -name '*.profraw' -delete
 
       - name: Upload coverage to Codecov

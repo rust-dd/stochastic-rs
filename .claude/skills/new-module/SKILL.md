@@ -12,8 +12,8 @@ Every new module must be **scalable** (trait-based extensibility), **integrated*
 Determine the correct top-level module first. Do NOT create a new top-level module without explicit approval.
 
 Code lives in **sub-crates**, not in the umbrella. The umbrella's own
-`src/` holds exactly three files — `lib.rs`, `traits.rs`, `bridges.rs`
-— and `lib.rs` merely re-exports each sub-crate under a short alias
+`src/` holds exactly two files — `lib.rs` and `traits.rs` — and
+`lib.rs` merely re-exports each sub-crate under a short alias
 (`pub use stochastic_rs_stochastic as stochastic;`). There is no
 `src/stochastic.rs`, `src/quant.rs`, `src/stats.rs`,
 `src/distributions.rs` or `src/copulas.rs`; that was the pre-split
@@ -22,7 +22,7 @@ layout.
 | Domain | Public path | Crate you edit | Registration file | Examples |
 |---|---|---|---|---|
 | Stochastic processes (diffusion, jump, volatility, noise, interest, autoregressive) | `stochastic_rs::stochastic::…` | `stochastic-rs-stochastic/src/` | that crate's `src/lib.rs` | Gbm, Heston, Cir, Fbm |
-| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol_surface) | `stochastic_rs::quant::…` | `stochastic-rs-quant/src/` | that crate's `src/lib.rs` | BSMPricer, schedule builder, FX forward |
+| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol_surface) | `stochastic_rs::quant::…` | `stochastic-rs-quant/src/` | that crate's `src/lib.rs` | BsmPricer, schedule builder, FX forward |
 | Statistical estimators & tests (MLE, KDE, stationarity, normality, spectral) | `stochastic_rs::stats::…` | `stochastic-rs-stats/src/` | that crate's `src/lib.rs` | Gaussian KDE, ADF test, Hurst estimators |
 | Probability distributions | `stochastic_rs::distributions::…` | `stochastic-rs-distributions/src/` | that crate's `src/lib.rs` | SimdNormal, SimdAlphaStable |
 | Copula models | `stochastic_rs::copulas::…` | `stochastic-rs-copulas/src/` | that crate's `src/lib.rs` | Clayton, GaussianCopula, TCopula |
@@ -111,8 +111,8 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
-| Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
+| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
+| Process with Malliavin support | an inherent `malliavin()` returning `Malliavin<T, O>` (`stochastic-rs-stochastic/src/malliavin.rs`) | The sampled path and `D_t X_T` along it; there is no Malliavin trait |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
 | SIMD-accelerated distribution | `DistributionSampler<T>` (`stochastic-rs-distributions/src/traits/distribution.rs`) | Requires `fill_slice()` + `fork()`; `sample_matrix()` / `sample_n()` are provided |
 
@@ -122,7 +122,7 @@ Before writing code, determine which existing traits the new types should implem
 |---|---|---|
 | Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`. Vol-surface construction additionally requires the `VanillaEuropeanCall` marker (which carries `vanilla_call_forward`); `ModelSurface` blanket-impls over **that**, not over `ModelPricer` |
 | Short-rate / bond model | `ShortRatePricer` | `zero_coupon_price(r0, tau)` / `zero_yield` |
-| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `call_put(...)` / `price_call(...)`. A shared trait would abstract over nothing |
+| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `price_call(...)` / `price_put(...)`. A shared trait would abstract over nothing |
 | Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` **and** `VanillaEuropeanCall`, hence `ModelSurface`, via blanket impls |
 | Calibration result | `ToModel` | Connects to `build_surface_from_calibration()` pipeline |
 | Holiday / business-day calendar | `CalendarExt` | Plugs into `BusinessDayConvention::adjust()` and `ScheduleBuilder` |
@@ -132,7 +132,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Bivariate copula | `BivariateExt` | 11 required methods; `sample()` / `fit()` / inversion are defaulted. Tau is `tau()` / `set_tau()` accessors, not a `kendall_tau()` method. See `copula-bivariate` |
+| Bivariate copula | `BivariateExt` | 10 required methods, `tau_from_theta` / `theta_from_tau` among them; `sample()` / `fit()` / `tau()` / inversion are defaulted. See `copula-bivariate` |
 | Multivariate copula | `MultivariateExt` | `sample()`, `fit()`, `pdf()`, `cdf()` |
 
 ### Blanket-impl chains (do NOT duplicate by hand)
@@ -184,7 +184,7 @@ Every new `pub struct` and `pub enum` must have:
 
 | Rule | Detail |
 |---|---|
-| Generic float | All numerical structs/functions use `T: FloatExt`. Never hardcode `f64`. Use `T::from_f64_fast()` for constants. |
+| Generic float | In `stochastic-rs-distributions` and `stochastic-rs-stochastic`, numerical structs and functions use `T: FloatExt`, never a hardcoded `f64`, and `T::from_f64_fast()` for constants. In quant, what implements a pricer or calibrator trait is `f64`, and `T: RealExt` stays where it is (dev-rules §2). |
 | Arrays | Use `ndarray::Array1<T>`, `Array2<T>`. Never `Vec<T>` for numerical data. |
 | Day fractions | Use `DayCountConvention::year_fraction()` or `TimeExt::tau_with_dcc()`. Never hardcode `/365.0` or `/360.0`. |
 | Annualisation | Accept the factor as a parameter. Never hardcode `252.0` or `365.0`. |
@@ -273,7 +273,7 @@ Before marking a new module as done:
 - [ ] Placed in the correct **sub-crate** (`stochastic-rs-stochastic`, `-quant`, `-stats`, `-distributions`, `-copulas`, `-core`, `-ai`) — see §1; the umbrella `src/` is not where code goes
 - [ ] Module root has LaTeX doc header and re-exports
 - [ ] Registered in the parent module's `.rs` file (alphabetical order)
-- [ ] All numerical code generic over `FloatExt`, arrays use `ndarray`
+- [ ] Numerical code in distributions and stochastic generic over `FloatExt` (quant's pricer and calibrator layer is `f64`), arrays use `ndarray`
 - [ ] Correct domain traits implemented (see §2 trait integration map)
 - [ ] Extensibility points use traits, not concrete types (see §3)
 - [ ] `Debug`, `Clone`, `Display`, `Default` derives on public types

@@ -1,23 +1,9 @@
-//! The diffusions whose state lives on an interval or a half-line, against
-//! the stationary laws their coefficients imply.
-//!
-//! A one-dimensional diffusion `dX = b(x)dt + s(x)dW` that has a stationary
-//! law at all has this one:
+//! The diffusions on an interval or a half-line against the stationary laws their coefficients
+//! imply: for `dX = b(x)dt + s(x)dW` every closed form below comes from the density
 //!
 //! ```text
 //! p(x) ∝ s(x)^{-2} exp ∫ 2b(u)/s(u)² du
 //! ```
-//!
-//! which is where every closed form below comes from — a Beta for the
-//! Jacobi, a gamma for the logistic, an inverse gamma for the 3/2 model, a
-//! lognormal for the Gompertz. Each case names the family, then holds the
-//! sampler to its first two moments and to the shape statistic that
-//! distinguishes it from a normal law with the same ones.
-//!
-//! As in [`super::short_rate`], the samplers step Euler-Maruyama, so the band
-//! carries the scheme's own bias where it is not negligible, and every case
-//! keeps its coefficients well inside the region where the boundaries are
-//! unattainable — a clamped path is the scheme's law, not the model's.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
@@ -34,9 +20,8 @@ use super::common::holds;
 use super::common::mean;
 use super::common::variance;
 
-/// The horizon every case runs to, as in the short-rate wave: long enough for
-/// the burn-in prefix to be several mean-reversion times, short enough that
-/// the step stays small against every rate below.
+/// The horizon every case runs to: the burn-in prefix is several mean-reversion times, and the
+/// step stays small against every rate below.
 const HORIZON: f64 = 64.0;
 
 /// The time step the horizon and the grid imply.
@@ -51,11 +36,9 @@ fn skewness(x: &[f64]) -> f64 {
   x.iter().map(|s| (s - m).powi(3)).sum::<f64>() / x.len() as f64 / v.powf(1.5)
 }
 
-/// Jacobi: `dX = (α − βX)dt + σ√(X(1−X))dW` is the Wright-Fisher diffusion,
-/// whose stationary law is `Beta(2α/σ², 2(β−α)/σ²)` (Karlin & Taylor 1981,
-/// §15.2). Its mean is `α/β` and its variance `θ(1−θ)/(1 + 2β/σ²)`, and both
-/// shape parameters here exceed one, so neither boundary is attainable and
-/// the sampler's clamp never fires.
+/// Jacobi, the Wright-Fisher diffusion `dX = (α − βX)dt + σ√(X(1−X))dW`: stationary law
+/// `Beta(2α/σ², 2(β−α)/σ²)`. Both shapes exceed one here, so the sampler's clamp never fires.
+/// Reference: Karlin & Taylor (1981), §15.2
 #[test]
 fn jacobi_stationary_law_is_the_beta_its_coefficients_name() {
   let (alpha, beta, sigma) = (0.9, 3.0, 0.5);
@@ -97,10 +80,9 @@ fn jacobi_stationary_law_is_the_beta_its_coefficients_name() {
   );
 }
 
-/// The stochastic logistic `dX = X(1 − aX)dt + bX dW`: the density above
-/// gives `Gamma(2/b² − 1, b²/(2a))` (Goel & Richter-Dyn 1974, §3.3 — the
-/// deterministic carrying capacity `1/a` is *not* the stochastic mean, which
-/// sits `b²/2` of it lower).
+/// The stochastic logistic `dX = X(1 − aX)dt + bX dW`: stationary law `Gamma(2/b² − 1, b²/(2a))`,
+/// whose mean sits `b²/2` below the deterministic carrying capacity `1/a`.
+/// Reference: Goel & Richter-Dyn (1974), §3.3
 #[test]
 fn logistic_stationary_law_is_the_gamma_its_noise_shifts() {
   let (a, b) = (2.0, 0.4);
@@ -142,11 +124,9 @@ fn logistic_stationary_law_is_the_gamma_its_noise_shifts() {
   );
 }
 
-/// Pearson: `dX = κ(μ − X)dt + √(2κ(aX² + bX + c))dW`. Whatever family the
-/// quadratic puts it in, stationarity forces `Var = (aμ² + bμ + c)/(1 − a)` —
-/// multiply the generator's action on `(x − μ)²` out and set it to zero
-/// (Forman & Sørensen 2008, §2). The case below takes `a > 0`, which is the
-/// heavy-tailed (Student) branch, so the identity is doing real work.
+/// Pearson, `dX = κ(μ − X)dt + √(2κ(aX² + bX + c))dW`: stationarity forces
+/// `Var = (aμ² + bμ + c)/(1 − a)` in every family. The case takes `a > 0`, the Student branch.
+/// Reference: Forman & Sørensen (2008), §2, DOI 10.1111/j.1467-9469.2007.00592.x
 #[test]
 fn pearson_stationary_variance_follows_from_its_quadratic() {
   let (kappa, mu, a, b, c) = (2.0, 0.5, 0.05, 0.0, 0.02);
@@ -171,10 +151,10 @@ fn pearson_stationary_variance_follows_from_its_quadratic() {
   );
 }
 
-/// Gompertz: `dX = (a − b ln X)X dt + σX dW`, so `ln X` is an
-/// Ornstein-Uhlenbeck with rate `b` and long-run mean `(a − σ²/2)/b` — the
-/// Itô correction is the whole point, and a sampler that dropped it would sit
-/// `σ²/(2b)` too high (Gompertz 1825; the stochastic form, Lo 2007, §2).
+/// Gompertz, `dX = (a − b ln X)X dt + σX dW`: `ln X` is an Ornstein-Uhlenbeck with rate `b` and
+/// mean `(a − σ²/2)/b`; a sampler without the Itô correction would sit `σ²/(2b)` too high.
+/// Reference: Gompertz (1825), DOI 10.1098/rstl.1825.0026
+/// Reference: Lo (2007), §2 (the stochastic form)
 #[test]
 fn gompertz_log_state_is_an_ornstein_uhlenbeck_with_the_ito_shift() {
   let (a, b, sigma) = (0.6, 1.5, 0.35);
@@ -210,10 +190,9 @@ fn gompertz_log_state_is_an_ornstein_uhlenbeck_with_the_ito_shift() {
   );
 }
 
-/// The 3/2 model `dV = κV(μ − V)dt + σV^{3/2}dW`: the density above gives an
-/// inverse gamma with shape `2 + 2κ/σ²` and scale `2κμ/σ²` (Lewis 2000,
-/// §2.2), whose mean is `2κμ/(2κ + σ²)` — below `μ`, where a square-root
-/// model would sit at `μ` exactly. That gap is what the case pins.
+/// The 3/2 model `dV = κV(μ − V)dt + σV^{3/2}dW`: an inverse gamma with shape `2 + 2κ/σ²` and
+/// scale `2κμ/σ²`, whose mean `2κμ/(2κ + σ²)` is below the `μ` of a square-root model.
+/// Reference: Lewis (2000), §2.2
 #[test]
 fn three_half_stationary_law_is_the_inverse_gamma() {
   let (kappa, mu, sigma) = (4.0, 0.09, 0.8);

@@ -1,42 +1,44 @@
-//! # Heston Model with Stochastic Correlation (HSCM)
-//!
-//! Teng, Ehrhardt & Günther (2016), "On the Heston model with stochastic
-//! correlation", Int. J. Theor. Appl. Finance 19(6).
+//! Heston with stochastic correlation (HSCM): the price–variance correlation is a diffusion.
 //!
 //! $$
 //! dS = rS\,dt + \sqrt{v}\,S\,dW^S \\
 //! dv = \kappa_v(\mu_v - v)\,dt + \sigma_v\sqrt{v}\,dW^v \\
-//! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X)
+//! d\rho = \kappa_r(\mu_r - \tanh(X))\,dt + \sigma_r\,dW^\rho,\quad \rho=\tanh(X) \\
+//! dW^S\,dW^v = \rho_t\,dt,\quad dW^v\,dW^\rho = \rho_2\,dt
 //! $$
 //!
-//! With correlations (Eq. 2.4, ρ₁ = 0 assumption):
-//!   dW^S·dW^v = ρ_t dt,    dW^v·dW^ρ = ρ₂ dt
+//! Teng's eq. 2.4 at ρ₁ = 0; the variance always steps by full truncation (`ṽ` carried, `ṽ⁺` read).
 //!
-//! Returns `[S, v, ρ]` — three paths.
+//! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496
+//! Reference: Teng et al. (2016), Int. J. Theor. Appl. Finance 19(6), DOI 10.1142/S0219024916500333
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Single-asset Heston model with stochastic price-vol correlation.
+/// Single-asset Heston whose price-variance correlation $\rho_t$ is the modified OU of Eq. 2.10;
+/// the log-price is the Cholesky split of Eq. 2.7 with $\rho_1 = 0$.
 ///
-/// The correlation ρ_t between the asset log-return and variance
-/// innovations follows a modified Ou process (Eq. 2.10):
+/// $$
+/// d\rho_t = (1-\rho_t^2)\bigl[\kappa_r(\mu_r-\rho_t)-\sigma_r^2\rho_t\bigr]dt +
+///   (1-\rho_t^2)\sigma_r\,dW^\rho
+/// $$
 ///
-/// dρ_t = (1−ρ²)\[κ_r(μ_r−ρ_t)−σ_r²ρ_t\]dt + (1−ρ²)σ_r dW^ρ
-///
-/// The log-price Cholesky decomposition (Eq. 2.7 with ρ₁=0):
-///
-/// dx = (r−½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `HestonStochCorr::new(..).with_kappa_v(2.5).with_rho2(-0.4)`.
+/// $$
+/// dx = (r-\tfrac12 v)\,dt + \rho_t\sqrt{v}\,d\tilde W^\nu + \rho_2\sqrt{v}\,d\tilde W^\rho +
+///   \sqrt{1-\rho_t^2-\rho_2^2}\,\sqrt{v}\,d\tilde W^x
+/// $$
 #[derive(Debug, Clone)]
 pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   // Market
@@ -68,10 +70,9 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant correlation between dW^v and dW^ρ.
   pub rho2: T,
 
-  /// Number of points sampled along each of the `[S, v, ρ]` paths.
+  /// Number of points sampled along each of the three paths.
   pub n: usize,
-  /// Simulation horizon [0, t] shared by all three paths (defaults to 1
-  /// when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
@@ -80,8 +81,23 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
+/// The three paths of a Heston model with stochastic correlation.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct HestonStochCorrPaths<T> {
+  pub s: Array1<T>,
+  pub v: Array1<T>,
+  pub rho: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for HestonStochCorrPaths<T> {
+  fn from([s, v, rho]: [Array1<T>; 3]) -> Self {
+    Self { s, v, rho }
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
-  #[allow(clippy::too_many_arguments)]
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     r: T,
     s0: T,
@@ -98,6 +114,19 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    Self::check_r(r);
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_kappa_v(kappa_v);
+    Self::check_mu_v(mu_v);
+    Self::check_sigma_v(sigma_v);
+    Self::check_rho0(rho0);
+    Self::check_kappa_r(kappa_r);
+    Self::check_mu_r(mu_r);
+    Self::check_sigma_r(sigma_r);
+    Self::check_rho2(rho2);
+    check_n(n);
+    check_t(t);
     Self {
       backend: Cpu,
       r,
@@ -119,95 +148,150 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
-  /// Replace `r`, all else unchanged.
+  fn check_r(r: T) {
+    require!(r.is_finite(), r);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_kappa_v(kappa_v: T) {
+    require!(kappa_v.is_finite(), kappa_v);
+  }
+
+  fn check_mu_v(mu_v: T) {
+    require!(mu_v.is_finite(), mu_v);
+  }
+
+  fn check_sigma_v(sigma_v: T) {
+    require!(sigma_v.is_finite(), sigma_v);
+  }
+
+  fn check_rho0(rho0: T) {
+    require!(rho0.is_finite(), rho0);
+  }
+
+  fn check_kappa_r(kappa_r: T) {
+    require!(kappa_r.is_finite(), kappa_r);
+  }
+
+  fn check_mu_r(mu_r: T) {
+    require!(mu_r.is_finite(), mu_r);
+  }
+
+  fn check_sigma_r(sigma_r: T) {
+    require!(sigma_r.is_finite(), sigma_r);
+  }
+
+  fn check_rho2(rho2: T) {
+    require!(rho2.is_finite(), rho2);
+  }
+
+  /// Replace `r`; panics unless `r` is finite.
   pub fn with_r(mut self, r: T) -> Self {
+    Self::check_r(r);
     self.r = r;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
+  /// Replace `s0`; panics unless `s0` is finite.
   pub fn with_s0(mut self, s0: T) -> Self {
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
+  /// Replace `v0`; panics unless `v0` is finite.
   pub fn with_v0(mut self, v0: T) -> Self {
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `kappa_v`, all else unchanged.
+  /// Replace `kappa_v`; panics unless `kappa_v` is finite.
   pub fn with_kappa_v(mut self, kappa_v: T) -> Self {
+    Self::check_kappa_v(kappa_v);
     self.kappa_v = kappa_v;
     self
   }
 
-  /// Replace `mu_v`, all else unchanged.
+  /// Replace `mu_v`; panics unless `mu_v` is finite.
   pub fn with_mu_v(mut self, mu_v: T) -> Self {
+    Self::check_mu_v(mu_v);
     self.mu_v = mu_v;
     self
   }
 
-  /// Replace `sigma_v`, all else unchanged.
+  /// Replace `sigma_v`; panics unless `sigma_v` is finite.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
+    Self::check_sigma_v(sigma_v);
     self.sigma_v = sigma_v;
     self
   }
 
-  /// Replace `rho0`, all else unchanged.
+  /// Replace `rho0`; panics unless `rho0` is finite.
   pub fn with_rho0(mut self, rho0: T) -> Self {
+    Self::check_rho0(rho0);
     self.rho0 = rho0;
     self
   }
 
-  /// Replace `kappa_r`, all else unchanged.
+  /// Replace `kappa_r`; panics unless `kappa_r` is finite.
   pub fn with_kappa_r(mut self, kappa_r: T) -> Self {
+    Self::check_kappa_r(kappa_r);
     self.kappa_r = kappa_r;
     self
   }
 
-  /// Replace `mu_r`, all else unchanged.
+  /// Replace `mu_r`; panics unless `mu_r` is finite.
   pub fn with_mu_r(mut self, mu_r: T) -> Self {
+    Self::check_mu_r(mu_r);
     self.mu_r = mu_r;
     self
   }
 
-  /// Replace `sigma_r`, all else unchanged.
+  /// Replace `sigma_r`; panics unless `sigma_r` is finite.
   pub fn with_sigma_r(mut self, sigma_r: T) -> Self {
+    Self::check_sigma_r(sigma_r);
     self.sigma_r = sigma_r;
     self
   }
 
-  /// Replace `rho2`, all else unchanged.
+  /// Replace `rho2`; panics unless `rho2` is finite.
   pub fn with_rho2(mut self, rho2: T) -> Self {
+    Self::check_rho2(rho2);
     self.rho2 = rho2;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// The Euler engine's view of the stochastic-correlation Heston model. The
-/// correlation is stepped on the unbounded variable it lives on, so `ρ₀`
-/// enters as its inverse transform and the reported value is transformed
-/// back.
+/// The Euler engine's view: the correlation is stepped on the unbounded variable it lives on, so
+/// `ρ₀` enters as its inverse transform and the reported value is transformed back.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
   for HestonStochCorr<T, S, B>
 {
@@ -248,7 +332,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> HestonStochCorrPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -257,19 +341,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HestonStochCorr<T, S> { r, s0, v0, kappa_v, mu_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HestonStochCorr<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonStochCorr<T, S, B>
 {
-  type Output = [Array1<T>; 3]; // [S, v, rho]
+  type Output = HestonStochCorrPaths<T>;
   type Sampler<'s>
     = HestonStochCorrSampler<T, S>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> HestonStochCorrSampler<T, S> {
     HestonStochCorrSampler {
       r: self.r,
@@ -289,35 +376,40 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
+  fn sample(&self) -> HestonStochCorrPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(&HestonStochCorrPaths<T>) -> R + Sync,
+  ) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<HestonStochCorrPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<HestonStochCorrPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<HestonStochCorrPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
 
-/// Reusable [`HestonStochCorr`] sampling state: owns the seed source so a
-/// Monte-Carlo loop reuses all three output buffers. The three Gaussian streams
-/// are rebuilt per call from the (derived) seed, exactly as the legacy `sample`
-/// body did.
+/// Reusable [`HestonStochCorr`] sampling state: it owns the seed source and rebuilds the three
+/// Gaussian streams from the derived seed on every call.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {
   r: T,
   s0: T,
@@ -351,7 +443,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     let gen_noise = |seed: &S| -> Array1<T> {
       let mut gn = Array1::<T>::zeros(n_steps);
       if let Some(slice) = gn.as_slice_mut() {
-        let normal = SimdNormal::<T>::new(zero, sqrt_dt, seed);
+        let mut normal = SimdNormal::<T>::new(zero, sqrt_dt).seeded(seed);
         normal.fill_slice(slice);
       }
       gn
@@ -366,7 +458,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     }
 
     s_path[0] = self.s0;
-    v_path[0] = self.v0;
+    v_path[0] = self.v0.max(T::zero());
 
     // Correlation: work in X-space, X₀ = atanh(ρ₀)
     let mut x_corr = self
@@ -375,6 +467,8 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
       .atanh();
     rho_path[0] = x_corr.tanh();
 
+    let boundary = VarianceBoundary::FullTruncation;
+    let mut carried = self.v0;
     for i in 1..self.n {
       // Correlation dynamics (modified Ou in X-space)
       let corr_drift = self.kappa_r * (self.mu_r - x_corr.tanh());
@@ -383,11 +477,11 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
       rho_path[i] = rho_t;
 
       // Variance dynamics (Cir)
-      let v_prev = v_path[i - 1].max(zero);
-      v_path[i] = (v_prev
+      let v_prev = boundary.observed(carried);
+      carried = carried
         + self.kappa_v * (self.mu_v - v_prev) * dt
-        + self.sigma_v * v_prev.sqrt() * dw_v[i - 1])
-        .max(zero);
+        + self.sigma_v * v_prev.sqrt() * dw_v[i - 1];
+      v_path[i] = boundary.observed(carried);
 
       // Log-price dynamics (Cholesky, Eq. 2.7 with ρ₁=0)
       // dx = (r − ½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
@@ -405,11 +499,13 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
-  type Output = [Array1<T>; 3];
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HestonStochCorrSampler<T, S> {}
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
-    let [s, v, rho] = out;
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
+  type Output = HestonStochCorrPaths<T>;
+
+  fn sample_into(&mut self, out: &mut HestonStochCorrPaths<T>) {
+    let HestonStochCorrPaths { s, v, rho } = out;
     self.fill_paths(
       s.as_slice_mut()
         .expect("HestonStochCorr output must be contiguous"),
@@ -421,7 +517,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
     );
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> HestonStochCorrPaths<T> {
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
     let mut rho = Array1::<T>::zeros(self.n);
@@ -430,103 +526,9 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
       v.as_slice_mut().expect("contiguous"),
       rho.as_slice_mut().expect("contiguous"),
     );
-    [s, v, rho]
+    HestonStochCorrPaths { s, v, rho }
   }
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  #[test]
-  fn produces_valid_paths() {
-    // Parameters from Table 2 in the paper
-    let model = HestonStochCorr::new(
-      0.0_f64,                // r
-      100.0,                  // s0
-      0.02,                   // v0
-      2.1,                    // kappa_v
-      0.03,                   // mu_v
-      0.2,                    // sigma_v
-      -0.4,                   // rho0
-      3.4,                    // kappa_r
-      -0.6,                   // mu_r
-      0.1,                    // sigma_r
-      0.4,                    // rho2
-      500,                    // n
-      Some(1.0),              // t
-      Deterministic::new(42), // seed
-    );
-    let [s, v, rho] = model.sample();
-    assert_eq!(s.len(), 500);
-    assert!(
-      s.iter().all(|x| x.is_finite() && *x > 0.0),
-      "prices must be positive"
-    );
-    assert!(
-      v.iter().all(|x| x.is_finite() && *x >= 0.0),
-      "variance must be non-negative"
-    );
-    assert!(
-      rho.iter().all(|&r| r > -1.0 && r < 1.0),
-      "correlation must be in (-1,1)"
-    );
-  }
-
-  #[test]
-  fn seeded_is_deterministic() {
-    let mk = || {
-      HestonStochCorr::new(
-        0.03_f64,
-        100.0,
-        0.04,
-        2.0,
-        0.04,
-        0.3,
-        -0.7,
-        5.0,
-        -0.5,
-        0.2,
-        0.3,
-        200,
-        Some(0.5),
-        Deterministic::new(99),
-      )
-    };
-    let [s1, _, _] = mk().sample();
-    let [s2, _, _] = mk().sample();
-    for i in 0..200 {
-      assert!((s1[i] - s2[i]).abs() < 1e-14, "paths diverged at i={i}");
-    }
-  }
-
-  #[test]
-  fn constant_corr_when_sigma_r_zero() {
-    let model = HestonStochCorr::new(
-      0.0_f64,
-      100.0,
-      0.04,
-      2.0,
-      0.04,
-      0.3,
-      -0.7,
-      5.0,
-      -0.7,
-      1e-15,
-      0.0,
-      300,
-      Some(1.0),
-      Deterministic::new(55),
-    );
-    let [_, _, rho] = model.sample();
-    // With σ_r ≈ 0, correlation should stay near ρ₀ = -0.7
-    for &r in rho.iter() {
-      assert!(
-        (r - (-0.7)).abs() < 0.05,
-        "expected constant correlation near -0.7, got {r}"
-      );
-    }
-  }
-}
+mod tests;

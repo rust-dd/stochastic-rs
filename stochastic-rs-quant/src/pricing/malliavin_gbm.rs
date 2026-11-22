@@ -1,9 +1,9 @@
-//! # Malliavin Gbm
+//! European prices on Gbm paths from the Malliavin conditional expectation, plain or localised.
 //!
 //! $$
 //! \Delta=\mathbb E\!\left[e^{-rT}\Phi(S_T)\,\frac{W_T}{S_0\sigma T}\right]
 //! $$
-//!
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
@@ -11,50 +11,16 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
+use crate::CallPut;
 use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Laplace localisation kernel of bandwidth `l`, and its cdf.
-///
-/// `l == 0` is the degenerate — but reachable — bandwidth, and the `0.0` /
-/// step-function pair returned there is the $l \to 0$ **Dirac limit**, not a
-/// silent sentinel: the density concentrates to a point mass, so its value
-/// away from the atom is genuinely zero, and
-/// $\tfrac12(1 + \operatorname{sgn} x\,(1 - e^{-|x|/l}))$ tends to exactly
-/// the Heaviside step the caller compares it against. That is what keeps the
-/// two consistent — the localisation weight
-/// `pdf + (H - cdf)·t2` collapses to `0 + 0·t2`, not to a half-evaluated
-/// mixture.
-///
-/// At the atom $x = 0$ the limit is not the step: the symmetric Laplace cdf
-/// is $\tfrac12$ there for **every** $l > 0$, so the right-continuous
-/// $F(0) = 1$ this branch returns is a choice, not a limit. The choice is
-/// the one that makes the collapse exact — the caller's Heaviside is also
-/// $1$ at a tie, so `H - cdf` cancels rather than leaving half the term —
-/// and it reaches exactly one entry of the $M^2$ double loop, the diagonal
-/// $j = i$ where `diff` is identically zero.
-///
-/// The one caller that reaches `l == 0` is
-/// [`conditional_call_malliavin_localized`](GbmMalliavinPricer::conditional_call_malliavin_localized),
-/// whose `lf` scale is `0.0` exactly when every simulated payoff is zero —
-/// every path finished out of the money. The emptied localisation sum then
-/// multiplies an identically-zero payoff vector, so the conditional price it
-/// produces is `0.0` because the option really is worthless on that sample,
-/// not because the kernel vanished. The companion `l1` scale is strictly
-/// positive by construction and never lands here.
-///
-/// # Panics
-/// Panics on a negative bandwidth. That is not reachable from either scale
-/// above — `lf` is a square root or `0.0`, `l1` is positive or `1e-8` — so
-/// the assert states the invariant rather than handling a case: a negative
-/// bandwidth has no limit interpretation at all, and the old `l <= 0.0`
-/// guard would have folded it in with the well-defined `l == 0`.
+/// Laplace kernel of bandwidth `l`; `l = 0` is the Dirac limit (zero density, right-continuous step
+/// cdf), so the localisation weight collapses exactly. Panics on `l < 0`.
 fn laplace_pdf(x: f64, l: f64) -> f64 {
-  assert!(
-    l >= 0.0,
-    "laplace bandwidth l must be non-negative (got {l})"
-  );
+  assert!(l >= 0.0, "l must satisfy `l >= 0.0`, got l = {l:?}");
   if l == 0.0 {
     return 0.0;
   }
@@ -65,10 +31,7 @@ fn laplace_pdf(x: f64, l: f64) -> f64 {
 /// Cdf of [`laplace_pdf`] — see its doc for the `l == 0` Dirac limit and the
 /// negative-bandwidth panic, which this shares.
 fn laplace_cdf(x: f64, l: f64) -> f64 {
-  assert!(
-    l >= 0.0,
-    "laplace bandwidth l must be non-negative (got {l})"
-  );
+  assert!(l >= 0.0, "l must satisfy `l >= 0.0`, got l = {l:?}");
   if l == 0.0 {
     return if x < 0.0 { 0.0 } else { 1.0 };
   }
@@ -76,154 +39,159 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
   0.5 * (1.0 + x.signum() * (1.0 - (-(x.abs()) / l).exp()))
 }
 
-/// Vanilla call/put pricer using Gbm paths and a Malliavin-based conditional estimator.
-///
-/// The idea:
-/// - Simulate Gbm paths S_t on [0, T] using the existing Gbm module.
-/// - Reconstruct the Brownian paths W_t from S_t.
-/// - Use the Malliavin weight (coef) to estimate the conditional call price
-///   C(t, S_t^{(i)}) for each path i.
-/// - Then use the tower property to get the time-0 call price:
-///   C(0) = E[ e^{-r t} C(t, S_t) ]
-/// - Put price is recovered from put-call parity.
-///
-/// The struct holds **model and method state only** — the volatility, the
-/// Monte Carlo path/step counts, the intermediate time `t_eval` at
-/// which the conditional price is estimated, and the seed strategy the
-/// paths are drawn from. Spot, strike, rate, dividend
-/// yield and maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`].
-///
-/// # Seeding
-/// `S` is the compile-time seed strategy of the underlying
-/// [`Gbm`], and it is the *last* constructor argument for the same reason
-/// it is the last argument of [`Gbm::new`]: this pricer is a thin Monte
-/// Carlo estimator over that process, so the two take a seed the same way.
-/// [`Unseeded`] is the default type parameter, so
-/// `GbmMalliavinPricer::new(v, n_paths, n_steps, t_eval, Unseeded)` keeps
-/// the pre-3.0 behaviour of a fresh stream per run, while
-/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) makes
-/// the estimator a *function* of its query.
-///
-/// The seed reaches the Gaussian stream through the constructor chain
-/// `Gbm::new(…, seed) → SimdNormal::new(…, &seed)` and never through an
-/// `Rng` argument, which the workspace's SIMD distributions accept and
-/// ignore.
-///
-/// `sample_paths` hands the process a **clone** of
-/// this seed rather than a derived child, so the pricer's own state does
-/// not advance across calls: two identical queries against a
-/// `Deterministic` instance return the same price. A pricer that advanced
-/// its seed could not be pinned by a test that prices twice.
-///
-/// # Panics
-/// Every pricing method asserts `0 < t_eval < tau`. `t_eval` is an
-/// *absolute* time, not a fraction of the maturity, so one instance can
-/// only price maturities strictly longer than its `t_eval` — a real
-/// constraint on the strike/maturity grids this model can cover, and the
-/// reason `t_eval` is a construction parameter rather than a query one.
-/// The struct is `Clone`, so a shorter maturity means a second instance.
-/// It is `Copy` only where the seed strategy is — `Unseeded` is a unit
-/// struct, `Deterministic` carries an `AtomicU64` and is `Clone` alone.
+/// A query no path is simulated for: the payoff at a zero horizon, the certain path at `sigma = 0`,
+/// and NaN for a non-finite query, a spot or strike that is not positive, or `tau <= t_eval`.
+enum Degenerate {
+  OffDomain,
+  ZeroHorizon,
+  Certain {
+    r: f64,
+    q: f64,
+    tau: f64,
+    t_eval: f64,
+  },
+}
+
+impl Degenerate {
+  fn of(s: f64, k: f64, r: f64, q: f64, tau: f64, t_eval: f64, sigma: f64) -> Option<Self> {
+    let finite = [s, k, r, q, tau].iter().all(|x| x.is_finite());
+    if !finite || tau < 0.0 {
+      Some(Self::OffDomain)
+    } else if tau == 0.0 {
+      Some(Self::ZeroHorizon)
+    } else if s <= 0.0 || k <= 0.0 || tau <= t_eval {
+      Some(Self::OffDomain)
+    } else if sigma == 0.0 {
+      Some(Self::Certain { r, q, tau, t_eval })
+    } else {
+      None
+    }
+  }
+
+  fn price_call_put(&self, s: f64, k: f64) -> CallPut {
+    let (call, put) = match *self {
+      Self::OffDomain => (f64::NAN, f64::NAN),
+      Self::ZeroHorizon => ((s - k).max_or_nan(0.0), (k - s).max_or_nan(0.0)),
+      Self::Certain { r, q, tau, .. } => {
+        let (forward, discount) = (s * ((r - q) * tau).exp(), (-r * tau).exp());
+        let call = discount * (forward - k).max_or_nan(0.0);
+        (call, discount * (k - forward).max_or_nan(0.0))
+      }
+    };
+    CallPut { call, put }
+  }
+
+  /// The spot at `t_eval` and the conditional call there, on each of `m` paths.
+  fn conditional(&self, s: f64, k: f64, m: usize) -> (Array1<f64>, Array1<f64>) {
+    let (s_t, c_t) = match *self {
+      Self::OffDomain => (f64::NAN, f64::NAN),
+      Self::ZeroHorizon => (s, (s - k).max_or_nan(0.0)),
+      Self::Certain { r, q, tau, t_eval } => {
+        let payoff = (s * ((r - q) * tau).exp() - k).max_or_nan(0.0);
+        (
+          s * ((r - q) * t_eval).exp(),
+          (-r * (tau - t_eval)).exp() * payoff,
+        )
+      }
+    };
+    (Array1::from_elem(m, s_t), Array1::from_elem(m, c_t))
+  }
+}
+
+/// Malliavin conditional-expectation pricer on [`Gbm`] paths, `C(0) = E[e^{−rt} C(t, S_t)]`; a
+/// `Deterministic` seed makes the price a function of the query, NaN for `0 < tau <= t_eval`.
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
-  pub v: f64,
+  sigma: f64,
   /// Number of Monte Carlo paths (M)
-  pub n_paths: usize,
+  n_paths: usize,
   /// Number of time steps (N)
-  pub n_steps: usize,
+  n_steps: usize,
   /// Intermediate time t where the Malliavin conditional price C(t, S_t) is estimated
   /// (0 < t_eval < tau)
-  pub t_eval: f64,
+  t_eval: f64,
   /// Seed strategy handed to the underlying [`Gbm`].
   pub seed: S,
 }
 
 impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default for two reasons. The
-  /// arithmetic is the same put-call parity — this is a Gbm model, so the
-  /// carry factor really is $e^{-q\tau}$ — but the default would run a
-  /// **second, independent** Monte Carlo for its `price_call` term, so the
-  /// returned put would be derived from a different sample than any call
-  /// the caller had already obtained. It also drops the `max(0)` floor the
-  /// pre-query `calculate_call_put` applied. This routes through
-  /// [`call_put`](Self::call_put), which does one simulation and floors
-  /// both legs.
+  /// The pair's put, floored at zero and from the call's own simulation, which the parity default
+  /// would not give.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 
-/// European vanilla call: the Malliavin conditional estimator targets the
-/// vanilla call under Gbm, whose carry is $b=r-q$. A surface built from it
-/// carries the estimator's Monte Carlo error into every implied vol, and
-/// [`t_eval`](GbmMalliavinPricer::t_eval) still bounds which maturities the
-/// grid may contain.
+/// European vanilla call under Gbm's carry `b = r − q`; a surface inherits the Monte Carlo error,
+/// and each maturity of its grid must exceed [`t_eval`](GbmMalliavinPricer::t_eval()).
 impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
-impl<S: SeedExt> GbmMalliavinPricer<S> {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. Unlike the squared-only uses elsewhere
-  ///   in this crate, the Malliavin weight carries `+ sigma * t_eval`
-  ///   *linearly*, so a negative volatility is not absorbed — it biases the
-  ///   weight and every conditional expectation built on it.
-  /// - if `n_paths` is `0` — there is nothing to average, and
-  ///   `call_put_from_conditional` takes its `count == 0` branch and
-  ///   returns a fabricated `0.0` price.
-  /// - if `n_steps` is below `2` — the step size is `tau / (n_steps - 1)`,
-  ///   which is infinite at `1` (fabricating the same `0.0`) and underflows
-  ///   at `0`.
-  /// - if `t_eval` is not strictly positive, or `NaN`.
-  ///
-  /// Only the query-independent half of `0 < t_eval < tau` is checkable
-  /// here, since `tau` arrives per call; the upper half stays where it was,
-  /// with its own distinct wording, so an `expected` anchor on one cannot
-  /// be satisfied by the other.
-  ///
-  /// `seed` is unvalidated — it is a type, not a number, so there is no
-  /// invalid value to reject. See the type-level [Seeding](Self#seeding)
-  /// note for why it is the last parameter.
-  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
+impl GbmMalliavinPricer {
+  /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
+  /// `n_paths >= 1`, `n_steps >= 2` and `t_eval` is finite and `> 0`; `t_eval < tau` is per query.
+  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64) -> Self {
     assert!(
-      v >= 0.0,
-      "GbmMalliavinPricer::new: v must be a non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       n_paths >= 1,
-      "GbmMalliavinPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     assert!(
       n_steps >= 2,
-      "GbmMalliavinPricer::new: n_steps must be at least 2 (got {n_steps})"
+      "n_steps must satisfy `n_steps >= 2`, got n_steps = {n_steps:?}"
     );
     assert!(
-      t_eval > 0.0,
-      "GbmMalliavinPricer::new: t_eval must be strictly positive (got {t_eval})"
+      t_eval.is_finite() && t_eval > 0.0,
+      "t_eval must satisfy `t_eval.is_finite() && t_eval > 0.0`, got t_eval = {t_eval:?}"
     );
     Self {
-      v,
+      sigma,
       n_paths,
       n_steps,
       t_eval,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> GbmMalliavinPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> GbmMalliavinPricer<S2> {
+    GbmMalliavinPricer {
+      sigma: self.sigma,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      t_eval: self.t_eval,
       seed,
     }
   }
 
-  /// Call and put price from a single Monte Carlo simulation, using the
-  /// plain (unlocalized) Malliavin conditional estimator.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+  pub fn sigma(&self) -> f64 {
+    self.sigma
   }
 
-  fn call_put_from_conditional(
+  /// The time `t` of `C(t, S_t)`, which each queried `tau` must exceed.
+  pub fn t_eval(&self) -> f64 {
+    self.t_eval
+  }
+
+  /// Call and put from one simulation of the plain estimator, or none at `tau = 0` or `sigma = 0`,
+  /// where the path is certain; NaN off the domain, at `tau <= t_eval` or with no finite estimate.
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
+      return limit.price_call_put(s, k);
+    }
+    let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
+  }
+
+  fn price_call_put_from_conditional(
     &self,
     s: f64,
     k: f64,
@@ -231,14 +199,11 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
     c_t: &Array1<f64>,
-  ) -> (f64, f64) {
+  ) -> CallPut {
     let t_eval = self.t_eval;
-    assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
-    // Time-0 call price via tower property:
-    //   C(0) = E[ e^{-r t} C(t, S_t) ]
-    // Here we approximate E[ C(t, S_t) ] with the Monte Carlo average,
-    // but ignore non-finite pathwise estimates and enforce non-negativity.
+    // The tower property `C(0) = E[e^{−rt} C(t, S_t)]` over the finite pathwise estimates, NaN with
+    // none, floored at zero.
     let disc_0t = (-r * t_eval).exp();
 
     let mut sum = 0.0_f64;
@@ -249,7 +214,11 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
         count += 1;
       }
     }
-    let avg_c_t = if count > 0 { sum / count as f64 } else { 0.0 };
+    let avg_c_t = if count > 0 {
+      sum / count as f64
+    } else {
+      f64::NAN
+    };
 
     let mut call_0 = disc_0t * avg_c_t;
     if call_0 < 0.0 {
@@ -265,35 +234,33 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       put_0 = 0.0;
     }
 
-    (call_0, put_0)
+    CallPut {
+      call: call_0,
+      put: put_0,
+    }
   }
 
-  /// Call/put prices using the localized Malliavin estimator.
-  pub fn call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Call and put from one simulation of the localized estimator, at
+  /// [`price_call_put`](Self::price_call_put)'s limits.
+  pub fn price_call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
+      return limit.price_call_put(s, k);
+    }
     let (_s_t, c_t) = self.conditional_call_malliavin_localized(s, k, r, q, tau);
-    self.call_put_from_conditional(s, k, r, q, tau, &c_t)
+    self.price_call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
 
-  /// Simulate Gbm paths S_t using the existing Gbm<f64> module.
-  ///
-  /// Returns:
-  ///   S: shape (M, N), with S[i, k] = S^{(i)}_{t_k}
-  ///
-  /// The process is handed a clone of [`self.seed`](Self#structfield.seed),
-  /// so the pricer's own seed state is unchanged by pricing and the whole
-  /// `M x N` block is reproducible from the constructor argument alone.
-  /// Each of the `M` `sample()` calls draws its own stream from that
-  /// clone, so the paths are independent of one another and still
-  /// identical run to run.
+  /// The `(M, N)` Gbm paths `S[i, k] = S^{(i)}_{t_k}`, each its own stream of a clone of the seed,
+  /// so they are independent, replay from the constructor argument and leave the seed alone.
   fn sample_paths(&self, s: f64, r: f64, q: f64, tau: f64) -> Array2<f64> {
     let mu = r - q;
 
     // Construct a Gbm process with Euler discretization on [0, T].
     let gbm = Gbm::new(
       mu,
-      self.v,
+      self.sigma,
       self.n_steps,
-      Some(s),
+      s,
       Some(tau),
       self.seed.clone(),
     );
@@ -312,21 +279,12 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 }
 
 impl<S: SeedExt> GbmMalliavinPricer<S> {
-  /// Malliavin-based conditional CALL prices C^M(t, S_t^{(i)}) for each path i.
-  ///
-  /// Returns:
-  ///   - S_t: shape (M,)
-  ///   - C^M(t, S_t^{(i)}): shape (M,)
-  ///
-  /// The estimator is:
-  ///   C^M(t, x) ≈ e^{-r(T-t)} * [ Σ_j φ(S_T^{(j)}) H(S_t^{(j)} - x) coef^{(j)} ] /
-  ///                                   [ Σ_j H(S_t^{(j)} - x) coef^{(j)} ],
-  /// where H is the Heaviside step function and coef^{(j)} is the Malliavin weight.
-  ///
-  /// An entry is `NaN` where that path's denominator collapses to ~0 — no
-  /// sampled path lands above `S_t^{(i)}` with appreciable weight, so the
-  /// conditional expectation has nothing to average and is undefined at that
-  /// point rather than zero. Raise `n_paths` if entries come back `NaN`.
+  /// Each path's `S_t` and Malliavin conditional call (`H` the Heaviside step, `w` the weight); NaN
+  /// where the denominator collapses, as no path lands above `S_t^{(i)}` (raise `n_paths`):
+  /// $$
+  /// C^M(t,x)\approx e^{-r(T-t)}\,
+  /// \frac{\sum_j \varphi(S_T^{(j)})\,H(S_t^{(j)}-x)\,w^{(j)}}{\sum_j H(S_t^{(j)}-x)\,w^{(j)}}
+  /// $$
   pub fn conditional_call_malliavin(
     &self,
     s: f64,
@@ -335,8 +293,10 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
+      return limit.conditional(s, k, self.n_paths);
+    }
     let t_eval = self.t_eval;
-    assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
     let mu = r - q;
     let dt = tau / (self.n_steps - 1) as f64;
@@ -346,13 +306,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     let m = paths.nrows();
     let n = paths.ncols();
 
-    // Reconstruct Brownian paths W from S:
-    //
-    // Gbm Euler step:
-    //   S_k = S_{k-1} + μ S_{k-1} dt + σ S_{k-1} dW_{k-1}
-    // => dW_{k-1} = (S_k - S_{k-1} - μ S_{k-1} dt) / (σ S_{k-1})
-    //
-    // Then W_k = Σ_{j=0}^{k-1} dW_j.
+    // The Euler step `S_k = S_{k−1}(1 + μ dt + σ dW_{k−1})` inverted for `dW`, then summed to `W`.
     let w_paths = self.reconstruct_brownian(&paths, mu, dt);
 
     // Discrete index corresponding to t_eval
@@ -366,19 +320,15 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // Payoff φ(S_T) = (S_T - K)^+
     let payoff: Array1<f64> = s_final.iter().map(|&x_t| (x_t - k).max(0.0)).collect();
 
-    // Malliavin-weight (coef) for Gbm:
-    //
-    //   coef^{(i)} = ((T W_t^{(i)} - t_eval W_T^{(i)}) / (T - t_eval) + σ t_eval) / S_t^{(i)}
-    //
-    // This is the weight that appears after the Malliavin integration by parts
-    // when rewriting the conditional expectation with a Dirac delta as a ratio of expectations.
+    // The weight left by integrating the conditional's Dirac delta by parts:
+    // `w^{(i)} = ((T W_t^{(i)} − t W_T^{(i)})/(T − t) + σt) / S_t^{(i)}`, `t = t_eval`.
     let mut coef = Array1::<f64>::zeros(m);
     for i in 0..m {
       let st = s_t[i];
       if st.abs() < 1e-14 {
         coef[i] = 0.0;
       } else {
-        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.v * t_eval;
+        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.sigma * t_eval;
         coef[i] = num / st;
       }
     }
@@ -411,17 +361,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     (s_t, c_hat)
   }
 
-  /// Malliavin-based conditional CALL prices C^M(t, S_t^{(i)}) with localization
-  /// based on a Laplace kernel, following the reference implementation.
-  ///
-  /// Returns:
-  ///   - S_t: shape (M,)
-  ///   - Localized C^M(t, S_t^{(i)}): shape (M,)
-  ///
-  /// An entry is `NaN` where that path's localised denominator collapses to
-  /// ~0, for the same reason as
-  /// [`conditional_call_malliavin`](Self::conditional_call_malliavin) — the
-  /// Laplace kernel put no appreciable mass near `S_t^{(i)}`.
+  /// [`Self::conditional_call_malliavin`] localised by a Laplace kernel, as the reference
+  /// implementation does; NaN where its width is not finite or it puts no mass near `S_t^{(i)}`.
   pub fn conditional_call_malliavin_localized(
     &self,
     s: f64,
@@ -430,8 +371,10 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
+      return limit.conditional(s, k, self.n_paths);
+    }
     let t_eval = self.t_eval;
-    assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
     let mu = r - q;
     let dt = tau / (self.n_steps - 1) as f64;
@@ -460,7 +403,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // DeltaW = (T * W_t - t_eval * W_T) + (T - t_eval) * t_eval * σ
     let mut delta_w = Array1::<f64>::zeros(m);
     for i in 0..m {
-      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.v;
+      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.sigma;
     }
 
     // den_loc = payoff^2
@@ -468,7 +411,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 
     // t2 = DeltaW / (t_eval * (T - t_eval) * σ * S_t)
     let mut t2 = Array1::<f64>::zeros(m);
-    let denom_scalar = t_eval * (tau - t_eval) * self.v;
+    let denom_scalar = t_eval * (tau - t_eval) * self.sigma;
     for i in 0..m {
       let st = s_t[i];
       if st.abs() > 1e-14 && denom_scalar.abs() > 1e-14 {
@@ -493,7 +436,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     };
 
     // l1 scale
-    let sigma2 = self.v * self.v;
+    let sigma2 = self.sigma * self.sigma;
     let h = mu - 0.5 * sigma2;
     let t = t_eval;
     let numer_l = tau + sigma2 * t * (tau - t);
@@ -505,6 +448,10 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     } else {
       1e-8
     };
+    // An overflowing `payoff²` makes `lf = √(∞/∞)`, which the kernel's assert must never see.
+    if !(lf.is_finite() && l1.is_finite()) {
+      return (s_t, Array1::from_elem(m, f64::NAN));
+    }
 
     let discount_tt = (-r * (tau - t_eval)).exp();
     let mut c_hat_loc = Array1::<f64>::zeros(m);
@@ -556,7 +503,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
         let s_curr = paths[[i, step]];
 
         let dw = if s_prev.abs() > 1e-14 {
-          (s_curr - s_prev - mu * s_prev * dt) / (self.v * s_prev)
+          (s_curr - s_prev - mu * s_prev * dt) / (self.sigma * s_prev)
         } else {
           0.0
         };

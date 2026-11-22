@@ -1,19 +1,7 @@
-//! Callable and puttable coupon bonds on the one-factor short-rate trees.
-//!
-//! Backward induction through the trinomial lattice with the bond's coupons
-//! as intermediate cash flows and the embedded options exercised at their
-//! decision nodes: the issuer calls when the ex-coupon continuation value
-//! exceeds the call price (`V ← min(V, K_call)`), the holder puts when it
-//! falls below the put price (`V ← max(V, K_put)`), and the coupon due at
-//! that date is added afterwards. Exercise prices are clean. Coupon and
-//! exercise times snap to the nearest tree level, so the step count should
-//! make the grid spacing divide the coupon period.
-//!
-//! References: Hull, J. C. (2018), *Options, Futures, and Other Derivatives*,
-//! 10th ed., Pearson, §31.5–31.6 (Hull–White trees, bonds with embedded
-//! options); Hull, J. & White, A. (1994), *Numerical Procedures for
-//! Implementing Term Structure Models I: Single-Factor Models*, Journal of
-//! Derivatives 2(1), 7–16.
+//! Callable and puttable coupon bonds by backward induction on the short-rate trees, calls capping
+//! and puts flooring the ex-coupon value at clean prices; dates snap to the nearest tree level.
+//! Reference: Hull (2018), Options, Futures, and Other Derivatives, 10th ed., §31.5–31.6
+//! Reference: Hull & White (1994), J. Deriv. 2(1), 7–16, DOI 10.3905/jod.1994.407902
 
 use ndarray::Array1;
 
@@ -76,10 +64,8 @@ impl<T: RealExt> CallableBondSpec<T> {
   }
 }
 
-/// Bond prices with and without the embedded options. `call_value` is the
-/// straight price minus the price with the calls alone, `put_value` the price
-/// with the puts alone minus the straight price; `price` carries both
-/// schedules.
+/// Prices with and without the options: `call_value` is straight minus calls-only, `put_value`
+/// puts-only minus straight, and `price` carries both schedules.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CallableBondPrice<T> {
   pub price: T,
@@ -188,21 +174,26 @@ fn sweep<T: RealExt, M: OneFactorShortRateModel<T>>(
 mod tests {
   use super::*;
   use crate::bonds::Vasicek;
+  use crate::calibration::HullWhiteParams;
   use crate::lattice::short_rate::HullWhiteTree;
   use crate::lattice::short_rate::HullWhiteTreeModel;
   use crate::traits::ShortRatePricer;
 
   fn model() -> HullWhiteTreeModel<f64> {
-    HullWhiteTreeModel::new(0.04, 0.3, 0.04, 0.01)
+    HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: 0.3,
+      sigma: 0.01,
+      initial_rate: 0.04,
+      theta: 0.04,
+    })
   }
 
   fn annual_bond(years: usize, coupon: f64) -> CallableBondSpec<f64> {
     CallableBondSpec::new(100.0, coupon, (1..=years).map(|i| i as f64).collect())
   }
 
-  /// Without options the sweep is linear in the cash flows, so the price is
-  /// the coupon-weighted sum of the tree's own zero-coupon bonds — trees
-  /// sharing `Δt` share their nodes and branch probabilities.
+  /// Without options the price is the coupon-weighted sum of the tree's own zero-coupon bonds, as
+  /// trees sharing `Δt` share nodes and branch probabilities.
   #[test]
   fn straight_bond_is_the_sum_of_tree_zero_coupon_bonds() {
     let tree = HullWhiteTree::new(model(), 3.0, 36);
@@ -235,7 +226,7 @@ mod tests {
       .map(|i| 5.0 * vasicek.zero_coupon_price(0.04, i as f64))
       .sum::<f64>()
       + 100.0 * vasicek.zero_coupon_price(0.04, 3.0);
-    assert!((price - want).abs() / want < 3e-3, "{price} vs {want}");
+    assert!((price - want).abs() / want < 1e-6, "{price} vs {want}");
   }
 
   #[test]
@@ -264,18 +255,22 @@ mod tests {
     assert_eq!(far.price, s);
   }
 
-  /// With a vanishing volatility and θ = r₀ the short rate is flat at 2 %, so
-  /// a 5 % coupon trades above par and is called at par on the first call
-  /// date: the holder receives the coupon plus par at `t = 1`.
+  /// At vanishing vol and `θ = r₀` the rate stays at 2 %, so a 5 % coupon is called at par on the
+  /// first call date: the holder gets the coupon plus par at `t = 1`.
   #[test]
   fn deterministic_rates_call_the_premium_bond_at_the_first_date() {
-    let model = HullWhiteTreeModel::new(0.02, 0.3, 0.02, 1e-9);
+    let model = HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: 0.3,
+      sigma: 1e-9,
+      initial_rate: 0.02,
+      theta: 0.02,
+    });
     let tree = HullWhiteTree::new(model.clone(), 3.0, 36);
     let spec = annual_bond(3, 0.05).with_calls(vec![(1.0, 100.0), (2.0, 100.0)]);
     let priced = price_callable_bond(&tree.tree, &model, &spec);
     let want = 105.0 * (-0.02_f64).exp();
     assert!(
-      (priced.price - want).abs() < 1e-6,
+      (priced.price - want).abs() < 1e-12,
       "{} vs {want}",
       priced.price
     );

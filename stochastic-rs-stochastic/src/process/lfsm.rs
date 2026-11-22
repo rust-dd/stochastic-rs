@@ -1,13 +1,18 @@
-//! # Lfsm
+//! Linear fractional stable motion: a fractionally weighted moving average of α-stable draws.
 //!
 //! $$
-//! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
+//! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)
+//! \,dL_u^{\alpha}
 //! $$
 //!
+//! Reference: Stoev & Taqqu (2004), Fractals 12, 95–121, DOI 10.1142/S0218348X04002379
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
 use crate::buffer::array1_from_fill;
@@ -16,15 +21,9 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Linear fractional stable motion (Lfsm), also commonly referred to as
-/// Levy fractional stable motion in discretized form.
-///
-/// The implementation uses a one-sided moving-average discretization with
-/// alpha-stable innovations:
-///
-/// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
-/// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-#[derive(Clone)]
+/// Linear (Lévy) fractional stable motion by a one-sided moving average of α-stable innovations:
+/// `X_i = X_{i-1} + Σ_{k<i} w_k ξ_{i-1-k}`, `w_k = dt^d ((k+1)^d − k^d)`, `d = H − 1/α`.
+#[derive(Debug, Clone)]
 pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
@@ -40,11 +39,11 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub scale: T,
   /// Number of grid points along the path.
   pub n: usize,
-  /// Initial process value.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total simulated time horizon (defaults to `1` if `None`).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -52,6 +51,8 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
+  /// Panics unless `0 < alpha <= 2`, `-1 <= beta <= 1`, `scale > 0`, `1/alpha < hurst < 1`,
+  /// `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -62,6 +63,31 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      scale.is_finite(),
+      "scale must satisfy `scale.is_finite()`, got scale = {scale:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(
       alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
       "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
@@ -76,7 +102,7 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
     );
     assert!(
       hurst > T::one() / alpha && hurst < T::one(),
-      "Lfsm requires 1/alpha < hurst < 1 for this discretization"
+      "hurst must satisfy `hurst > T::one() / alpha && hurst < T::one()`, got hurst = {hurst:?}, alpha = {alpha:?}"
     );
     Self {
       backend: Cpu,
@@ -92,12 +118,28 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
+  }
+
+  /// The weights `dt^d ((k + 1)^d − k^d)` of lags `0..len`, `d = H − 1/α`, formed in `f64`, where
+  /// the difference of nearly equal powers keeps its digits.
+  fn kernel_weights(&self, len: usize) -> Vec<T> {
+    let d = self.hurst.to_f64().unwrap() - 1.0 / self.alpha.to_f64().unwrap();
+    let kernel_scale = self.dt().to_f64().unwrap().powf(d);
+    (0..len)
+      .map(|k| {
+        let kf = k as f64;
+        T::from_f64_fast(kernel_scale * ((kf + 1.0).powf(d) - kf.powf(d)))
+      })
+      .collect()
+  }
+
+  fn innovation_scale(&self) -> T {
+    let dt = self.dt().to_f64().unwrap();
+    T::from_f64_fast(self.scale.to_f64().unwrap() * dt.powf(1.0 / self.alpha.to_f64().unwrap()))
   }
 }
 
@@ -116,7 +158,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       inv_alpha: T::one() / self.alpha,
       tail_exp: (T::one() - self.alpha) / self.alpha,
       b: beta_tan.atan() / self.alpha,
-      scale_s: self.scale * self.dt().powf(T::one() / self.alpha) * s,
+      scale_s: self.innovation_scale() * s,
       pi,
       half_pi: pi / two,
     }
@@ -141,17 +183,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The moving-average weights `dt^d ((k + 1)^d − k^d)`, `d = H − 1/α`, one
   /// per lag, exactly as the host tabulates them.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
-    let dt = self.dt();
-    let d = self.hurst - T::one() / self.alpha;
-    let kernel_scale = dt.powf(d);
-    Some(vec![
-      (0..self.n)
-        .map(|k| {
-          let kf = T::from_usize_(k);
-          kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d))
-        })
-        .collect(),
-    ])
+    Some(vec![self.kernel_weights(self.n)])
   }
 
   fn device_seed(&self) -> u64 {
@@ -167,6 +199,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Lfsm<T, S> { alpha, beta, hurst, scale, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Lfsm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lfsm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -175,39 +212,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> LfsmSampler<T> {
-    let dt = self.dt();
-    let d = self.hurst - T::one() / self.alpha;
-    let kernel_scale = dt.powf(d);
-    let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
-
-    let stable = SimdAlphaStable::<T>::new(
-      self.alpha,
-      self.beta,
-      innovation_scale,
-      T::zero(),
-      &self.seed,
-    );
-
-    // Moving-average weights `w_k = dt^d ((k+1)^d - k^d)` are deterministic,
-    // so they are computed once and reused across samples.
-    let weight_len = self.n.saturating_sub(1);
-    let mut weights = Array1::<T>::zeros(weight_len);
-    for k in 0..weight_len {
-      let kf = T::from_usize_(k);
-      weights[k] = kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d));
-    }
-
+    let stable =
+      SimdAlphaStable::<T>::new(self.alpha, self.beta, self.innovation_scale(), T::zero())
+        .seeded(&self.seed);
     LfsmSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       stable,
-      weights,
+      weights: Array1::from(self.kernel_weights(self.n.saturating_sub(1))),
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels'
-  /// per-path history and `α ≠ 1`; a longer grid keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path history and `α ≠ 1`;
+  /// anything else stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -262,10 +279,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// What a device runs here: the grid fits the kernels'
-  /// per-path history and the stability index is not one, whose
-  /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
-  /// carry. Anything else samples on the host.
+  /// What a device runs: a grid that fits the kernels' per-path history and `α ≠ 1`, since the
+  /// Chambers–Mallows–Stuck draw at `α = 1` is a formula the kernels do not carry.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()))
       .then_some("a grid past the kernels' per-path history, or a unit stability index")
@@ -275,10 +290,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Lfsm`] sampling state: the owned alpha-stable innovation source
 /// and the precomputed fractional moving-average weights.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LfsmSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  stable: SimdAlphaStable<T>,
+  stable: Seeded<SimdAlphaStable<T>>,
   weights: Array1<T>,
 }
 
@@ -287,8 +303,8 @@ impl<T: FloatExt> LfsmSampler<T> {
     if out.is_empty() {
       return;
     }
-    // Legacy behaviour: the degenerate `n <= 1` path returns zeros without
-    // writing `x0` (the `if n <= 1` guard preceded the `x[0] = x0` line).
+    // A one-point path is zero, not `x0`; `new` asserts `n >= 2`, so only a write to the public
+    // `n` reaches this.
     if out.len() == 1 {
       out[0] = T::zero();
       return;
@@ -309,6 +325,8 @@ impl<T: FloatExt> LfsmSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for LfsmSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for LfsmSampler<T> {
   type Output = Array1<T>;
@@ -340,5 +358,24 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn the_kernel_weights_keep_their_digits_in_single_precision() {
+    let p = Lfsm::<f32, Unseeded>::new(1.5, 0.0, 0.7, 1.0, 1025, None, Some(1.0), Unseeded);
+    let w = p.kernel_weights(1001);
+    let exact = [
+      (1usize, 0.018_551_870_37_f64),
+      (50, 5.970_818_98e-4),
+      (500, 6.502_967_821e-5),
+      (1000, 3.329_090_422e-5),
+    ];
+    for (k, e) in exact {
+      assert!(
+        (w[k] as f64 / e - 1.0).abs() < 1e-6,
+        "k = {k}: got {}, exact {e}",
+        w[k]
+      );
+    }
   }
 }

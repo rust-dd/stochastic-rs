@@ -1,5 +1,6 @@
 use super::*;
 
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCirPlusPlus {
   inner: Option<CirPlusPlus<f64>>,
@@ -11,7 +12,7 @@ pub struct PyCirPlusPlus {
 #[pyo3::prelude::pymethods]
 impl PyCirPlusPlus {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, use_sym=None, seed=None, device=None))]
+  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, boundary=None, seed=None, device=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -20,10 +21,11 @@ impl PyCirPlusPlus {
     n: usize,
     x0: Option<f64>,
     t: Option<f64>,
-    use_sym: Option<bool>,
+    boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
+    let boundary = crate::python_params::boundary(boundary);
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, "f64")?;
       Ok(match seed {
@@ -38,7 +40,7 @@ impl PyCirPlusPlus {
             n,
             x0,
             t,
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(s),
           )),
         },
@@ -52,7 +54,7 @@ impl PyCirPlusPlus {
             n,
             x0,
             t,
-            use_sym,
+            boundary,
             Unseeded,
           )),
           seeded: None,
@@ -61,13 +63,11 @@ impl PyCirPlusPlus {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+    py_dispatch_f64!(self, |inner| inner.device_fallback())
   }
 
   /// Whether this configuration runs on a device kernel: the absence of a
@@ -90,10 +90,8 @@ impl PyCirPlusPlus {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every callable coefficient
-  /// re-acquires it, so a Python function is called from rayon workers one
-  /// at a time.
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is released meanwhile; a
+  /// callable coefficient re-acquires it, so rayon workers call a Python function one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

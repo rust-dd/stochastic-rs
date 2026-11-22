@@ -1,19 +1,12 @@
-//! `process/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
-//! `CompoundPoisson` and `CustomJt` are two of the eight named
-//! distribution-taking types; `CompoundCustom` is the ninth,
-//! unnamed-by-the-usual-count case mentioned there — it takes two
-//! distributions (`D1`, `D2`) plus a nested `CustomJt<T, D2>`, whose own
-//! `Unseeded` seed field is inert (its sampler drives it through an
-//! *externally* supplied seed instead, exactly like `CompoundPoisson`'s
-//! nested `Poisson` below). `Fbm` is one of the ten backend-generic types.
+//! The `process/` slice of the reproducibility guard. `CompoundCustom` takes two distributions and
+//! a nested `CustomJt`, whose own `Unseeded` field is inert: an outer seed drives its sampler.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
 use stochastic_rs_stochastic::process::cbms::Cbms;
@@ -31,12 +24,10 @@ use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
-use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::InverseAlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
-use stochastic_rs_stochastic::process::volterra::Volterra;
-use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 
 use crate::common::LAMBDA;
 use crate::common::N;
@@ -57,11 +48,8 @@ guard!(cbms, "Cbms", |s| Cbms::new(0.3, N, Some(1.0), s));
 
 guard!(compound_custom, "CompoundCustom", |s| {
   CompoundCustom::new(
-    Some(N),
-    None,
-    ScalarNormal::new(0.0, 0.1),
-    ScalarExp::new(2.0),
-    CustomJt::new(Some(N), None, ScalarExp::new(2.0), Unseeded),
+    SimdNormal::new(0.0, 0.1),
+    CustomJt::new(Horizon::Events(N - 1), SimdExp::new(2.0), Unseeded),
     s,
   )
 });
@@ -70,16 +58,15 @@ guard!(cfbms, "Cfbms", |s| Cfbms::new(0.7, 0.3, N, Some(1.0), s));
 
 guard!(compound_poisson, "CompoundPoisson", |s| {
   CompoundPoisson::new(
-    ScalarNormal::new(0.0, 0.1),
-    Poisson::new(LAMBDA, Some(N), Some(1.0), Unseeded),
+    SimdNormal::new(0.0, 0.1),
+    Poisson::new(LAMBDA, Horizon::Events(N - 1), Unseeded),
     s,
   )
 });
 
 guard!(custom_jt, "CustomJt", |s| CustomJt::new(
-  Some(N),
-  None,
-  ScalarExp::new(2.0),
+  Horizon::Events(N - 1),
+  SimdExp::new(2.0),
   s
 ));
 
@@ -89,8 +76,7 @@ guard!(hawkes, "Hawkes", |s| Hawkes::new(
   0.5,
   0.3,
   1.0,
-  Some(N),
-  None,
+  Horizon::Events(N - 1),
   s
 ));
 
@@ -110,15 +96,14 @@ guard!(multivariate_hawkes, "MultivariateHawkes", |s| {
     Array1::from(vec![0.1, 0.1]),
     Array2::from_shape_vec((2, 2), vec![0.05, 0.02, 0.02, 0.05]).unwrap(),
     Array2::from_shape_vec((2, 2), vec![1.0, 1.0, 1.0, 1.0]).unwrap(),
-    5.0,
+    Horizon::Until(5.0),
     s,
   )
 });
 
 guard!(poisson, "Poisson", |s| Poisson::new(
   2.0,
-  Some(N),
-  Some(1.0),
+  Horizon::Events(N - 1),
   s
 ));
 
@@ -142,7 +127,7 @@ guard!(gamma_subordinator, "GammaSubordinator", |s| {
   GammaSubordinator::new(1.0, 1.0, N, Some(0.0), Some(1.0), s)
 });
 
-guard!(ig_subordinator, "IGSubordinator", |s| IGSubordinator::new(
+guard!(ig_subordinator, "IgSubordinator", |s| IgSubordinator::new(
   1.0,
   1.0,
   N,
@@ -161,24 +146,10 @@ guard!(poisson_subordinator, "PoissonSubordinator", |s| {
   PoissonSubordinator::new(2.0, N, Some(0.0), Some(1.0), s)
 });
 
-// `c = 1.0, mu = 1.0` gives a large-jump arrival rate (`lambda0 * dt`) of
-// ~0.12/step with an acceptance probability at the minimum jump size
-// (`exp(-mu * epsilon)`) of only ~0.61, so over `N` steps this process's
-// accepted-jump count is 0 for a non-negligible fraction of seeds —
-// measured: seeds 42 and 43 both realized zero accepted jumps, making
-// `sample()` exactly the deterministic small-jump drift term for both,
-// bit-identical regardless of seed. `c = 5.0, mu = 0.3` raises the
-// candidate rate roughly fivefold and the minimum-jump acceptance to
-// ~0.86, making an empty path negligibly unlikely.
+// `c = 1.0, mu = 1.0` gives about 0.12 arrivals per step at 0.61 acceptance: seeds 42 and 43 both
+// realised zero jumps and the same drift-only path. `c = 5.0, mu = 0.3` makes that negligible.
 guard!(
   tempered_stable_subordinator,
   "TemperedStableSubordinator",
   |s| TemperedStableSubordinator::new(0.5, 5.0, 0.3, 0.5, N, Some(0.0), Some(1.0), s)
 );
-
-guard!(volterra, "Volterra", |s| Volterra::new(
-  VolterraKernelSpec::FractionalBM { h: 0.7 },
-  N,
-  Some(1.0),
-  s
-));

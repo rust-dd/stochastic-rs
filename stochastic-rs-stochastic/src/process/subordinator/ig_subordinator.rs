@@ -1,6 +1,10 @@
+//! Inverse-Gaussian subordinator in the BNS parameterization: scale `delta`, shape `gamma`.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 
 use crate::buffer::array1_from_fill;
@@ -11,29 +15,54 @@ use crate::traits::ProcessExt;
 
 /// Inverse-Gaussian subordinator with BNS parameterization:
 /// `phi(lambda) = delta (sqrt(gamma^2 + 2 lambda) - gamma)`.
-#[derive(Clone)]
-pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone)]
+pub struct IgSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Scale `delta`.
   pub delta: T,
   /// Shape `gamma`.
   pub gamma: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> IGSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt> IgSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `delta > 0`, `gamma > 0`, and
+  /// every parameter is finite.
   pub fn new(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(delta > T::zero(), "delta must be positive");
-    assert!(gamma > T::zero(), "gamma must be positive");
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     Self {
       backend: Cpu,
       delta,
@@ -46,11 +75,9 @@ impl<T: FloatExt, S: SeedExt> IGSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> IGSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the inverse-Gaussian subordinator.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for IGSubordinator<T, S, B>
+  for IgSubordinator<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_f64_fast(2.0);
@@ -87,33 +114,37 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] IGSubordinator<T, S> { delta, gamma, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] IgSubordinator<T, S> { delta, gamma, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for IgSubordinator<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for IGSubordinator<T, S, B>
+  for IgSubordinator<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = IGSubordinatorSampler<T>
+    = IgSubordinatorSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> IGSubordinatorSampler<T> {
+  fn sampler(&self) -> IgSubordinatorSampler<T> {
     let x0 = self.x0.unwrap_or(T::zero());
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     let mu = (self.delta * dt) / self.gamma;
     let lambda = (self.delta * dt).powi(2);
-    IGSubordinatorSampler {
+    IgSubordinatorSampler {
       n: self.n,
       x0,
-      ig: SimdInverseGauss::<T>::new(mu, lambda, &self.seed),
+      ig: SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -143,16 +174,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`IGSubordinator`] sampling state: the owned inverse-Gaussian
+/// Reusable [`IgSubordinator`] sampling state: the owned inverse-Gaussian
 /// increment source. The path is `x0` followed by the running sum.
 #[doc(hidden)]
-pub struct IGSubordinatorSampler<T: FloatExt> {
+#[derive(Debug)]
+pub struct IgSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  ig: SimdInverseGauss<T>,
+  ig: Seeded<SimdInverseGauss<T>>,
 }
 
-impl<T: FloatExt> IGSubordinatorSampler<T> {
+impl<T: FloatExt> IgSubordinatorSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -171,13 +203,15 @@ impl<T: FloatExt> IGSubordinatorSampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for IGSubordinatorSampler<T> {
+impl<T: FloatExt> crate::traits::Sealed for IgSubordinatorSampler<T> {}
+
+impl<T: FloatExt> PathSampler<T> for IgSubordinatorSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("IGSubordinator output must be contiguous");
+      .expect("IgSubordinator output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -187,8 +221,46 @@ impl<T: FloatExt> PathSampler<T> for IGSubordinatorSampler<T> {
   }
 }
 
-py_process_1d!(PyIGSubordinator, IGSubordinator,
+/// The inverse-Gaussian process of mean `δt` and shape `(δt)²` is this subordinator at `gamma = 1`.
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::jump::ig::Ig;
+/// ```
+#[cfg(doctest)]
+pub struct IgIsTheUnitSubordinator;
+
+py_process_1d!(PyIGSubordinator, IgSubordinator,
   sig: (delta, gamma_, n, x0=None, t=None, seed=None, dtype=None),
   params: (delta: f64, gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// The first eight points `Ig::new(2.0, 65, None, None, Deterministic::new(3))` sampled.
+  const IG_GAMMA_TWO: [u64; 8] = [
+    0,
+    4587770068631316187,
+    4588072030184553316,
+    4588144219662092651,
+    4588253019380183630,
+    4590203735888847721,
+    4590223691370515422,
+    4590258516375784657,
+  ];
+
+  #[test]
+  fn delta_gamma_with_unit_gamma_is_the_inverse_gaussian_process_bit_for_bit() {
+    let path = IgSubordinator::new(2.0_f64, 1.0, 65, None, None, Deterministic::new(3)).sample();
+    let bits = path
+      .iter()
+      .take(8)
+      .map(|x| x.to_bits())
+      .collect::<Vec<u64>>();
+    assert_eq!(bits, IG_GAMMA_TWO);
+  }
+}

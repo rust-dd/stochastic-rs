@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::pricing::malliavin_thalmaier::AssetParams;
@@ -42,7 +43,10 @@ fn stochastic_leverage_is_a_recoverable_error() {
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-  let error = engine.try_delta_with_seed(&payoff, 0, 42).unwrap_err();
+  let error = engine
+    .with_seed(Deterministic::new(42))
+    .try_delta(&payoff, 0)
+    .unwrap_err();
 
   assert!(
     error.to_string().contains("xi == 0 or rho == 0"),
@@ -60,5 +64,10 @@ fn deterministic_variance_allows_irrelevant_leverage_parameter() {
     strikes: [100.0, 100.0],
   };
 
-  assert!(engine.try_all_deltas_with_seed(&payoff, 42).is_ok());
+  assert!(
+    engine
+      .with_seed(Deterministic::new(42))
+      .try_all_deltas(&payoff)
+      .is_ok()
+  );
 }

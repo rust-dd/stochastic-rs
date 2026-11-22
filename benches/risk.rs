@@ -1,11 +1,5 @@
-//! Benchmarks for the risk-metrics module.
-//!
-//! Hot paths measured:
-//! - Gaussian / historical VaR on a 100k-sample PnL series.
-//! - Expected Shortfall on the same series.
-//! - Max drawdown on a 100k-observation equity series.
-//! - Bucket DV01 on a 10-pillar discount curve.
-//! - Stress-test engine running 8 curve / spot scenarios.
+//! Risk-metrics benches: Gaussian / historical VaR, ES and max drawdown on 100k observations,
+//! bucket DV01 on a 10-pillar curve, and a stress-test engine over 8 curve / spot scenarios.
 
 use criterion::Criterion;
 use criterion::criterion_group;
@@ -60,11 +54,11 @@ fn bench_var(c: &mut Criterion) {
   let pnl = pnl_samples(100_000, 0.0002, 0.01);
 
   c.bench_function("risk_gaussian_var_100k", |b| {
-    b.iter(|| std::hint::black_box(gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl)));
+    b.iter(|| std::hint::black_box(gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl).unwrap()));
   });
 
   c.bench_function("risk_historical_var_100k", |b| {
-    b.iter(|| std::hint::black_box(historical_var(pnl.view(), 0.99, PnlOrLoss::Pnl)));
+    b.iter(|| std::hint::black_box(historical_var(pnl.view(), 0.99, PnlOrLoss::Pnl).unwrap()));
   });
 }
 
@@ -72,7 +66,7 @@ fn bench_es(c: &mut Criterion) {
   let pnl = pnl_samples(100_000, 0.0002, 0.01);
 
   c.bench_function("risk_gaussian_es_100k", |b| {
-    b.iter(|| std::hint::black_box(gaussian_es(pnl.view(), 0.975, PnlOrLoss::Pnl)));
+    b.iter(|| std::hint::black_box(gaussian_es(pnl.view(), 0.975, PnlOrLoss::Pnl).unwrap()));
   });
 }
 
@@ -91,8 +85,8 @@ fn bench_bucket_dv01(c: &mut Criterion) {
     0.03_f64, 0.03, 0.03, 0.035, 0.035, 0.04, 0.04, 0.04, 0.045, 0.045
   ];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 
@@ -115,8 +109,8 @@ fn bench_stress_test(c: &mut Criterion) {
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03];
   let base_curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 

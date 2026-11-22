@@ -1,28 +1,21 @@
-//! # Fractional Black–Scholes
+//! Fractional Black–Scholes in closed form, applied pointwise to an [`RlFbm`] path: no Euler step.
 //!
 //! $$
 //! S_t = S_0\,\exp\!\left(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t\right)
 //! $$
 //!
-//! Closed-form pathwise solution of the fractional Black–Scholes SDE
-//! $dS_t = rS_t\,dt + \sigma S_t\,dW^H_t$ under Wick–Itô–Skorokhod integration
-//! (Hu & Øksendal 2003). The fBM path is generated non-cumulatively via
-//! [`RlFBm`], then the log-price formula is applied pointwise — no Euler
-//! step, no drift discretisation.
+//! Solves `dS = rS dt + σS dW^H` under Wick–Itô–Skorokhod integration (Hu & Øksendal 2003).
 //!
-//! Reference: Bilokon & Wong (2026) §5.1; Hu Y., Øksendal B. *Fractional
-//! white noise calculus and applications to finance*, IDAQP 6 (2003), 1–32;
-//! Necula C. *Option pricing in a fractional Brownian motion environment*,
-//! Working Paper (2008).
+//! Reference: Bilokon & Wong (2026), §5.1
+//! Reference: Hu & Øksendal (2003), IDAQP 6, 1–32, DOI 10.1142/S0219025703001110
+//! Reference: Necula (2008), DOI 10.2139/ssrn.1286833
 
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::markov_lift::MarkovLift;
-use super::markov_lift::RoughSimd;
-use super::rl_fbm::RlFBm;
+use super::rl_fbm::RlFbm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
@@ -31,7 +24,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Black–Scholes asset path driven by RL-fBM.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
@@ -43,19 +36,21 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Simulation horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree.
   pub degree: Option<usize>,
   /// Seed strategy.
   pub seed: S,
-  fbm: RlFBm<T>,
+  fbm: RlFbm<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
+  /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `s0 > 0`, `sigma >= 0`, `n >= 2`,
+  /// a given `t` is positive and finite, and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -67,9 +62,35 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(s0 > T::zero(), "s0 must be positive");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       hurst,
@@ -80,42 +101,15 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
       t,
       degree,
       seed,
-      fbm: RlFBm::new(hurst, n, t, degree, Unseeded),
+      fbm: RlFbm::new(hurst, n, t, degree, Unseeded),
     }
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlBlackScholes<T, S, B> {
-  /// Generate $m$ independent fractional Black–Scholes asset paths.
-  /// Each path is $S_0 \exp(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t)$
-  /// applied pointwise to a batch of RL-fBM paths.
-  pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    let fbm = self.fbm.sample_batch_impl(&self.seed.derive(), m);
-
-    let horizon = self.t.unwrap_or(T::one());
-    let dt = horizon / T::from_usize_(self.n - 1);
-    let two_h = T::from_f64_fast(2.0) * self.hurst;
-    let half_sigma_sq = T::from_f64_fast(0.5) * self.sigma * self.sigma;
-
-    let mut spots = Array2::<T>::zeros((m, self.n));
-    for p in 0..m {
-      spots[[p, 0]] = self.s0;
-      for i in 1..self.n {
-        let t_i = dt * T::from_usize_(i);
-        let log_s = self.r * t_i - half_sigma_sq * t_i.powf(two_h) + self.sigma * fbm[[p, i]];
-        spots[[p, i]] = self.s0 * log_s.exp();
-      }
-    }
-    spots
-  }
-}
-
-/// The Euler engine's view: the lift the inner fBm carries goes to the device
-/// as its node constants and boundary terms; the family steps the lifted fBm
-/// in its second slot and the closed-form spot in the first, with the
-/// deterministic exponent tabulated as a curve.
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for RlBlackScholes<T, S, B>
+/// The Euler engine's view: the inner fBm's lift ships as node constants and boundary terms; the
+/// family steps it in its second slot, the closed-form spot in the first, the exponent as a curve.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for RlBlackScholes<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouvilleBlackScholes {
@@ -175,9 +169,14 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlBlackScholes<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlBlackScholes<T, S, B>
 {
   type Output = Array1<T>;
@@ -206,9 +205,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
     }
   }
 
-  /// Through the Euler engine: on a device the lift and the closed form run
-  /// in the kernel, on the host devices it is this process's own sampler,
-  /// chunked exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the lift and the closed form in its kernel, the host
+  /// runs this process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -238,12 +236,10 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
   }
 }
 
-/// Reusable [`RlBlackScholes`] sampling state: owns the cloned RL-fBM
-/// [`MarkovLift`] stepper and the Gaussian-increment source, plus the
-/// precomputed log-price scalars. `fill_path` regenerates the RL-fBM driver and
-/// applies the closed-form fractional Black–Scholes log-price pointwise; the
-/// owned `Gn` stream advances each call for independent paths.
+/// Reusable [`RlBlackScholes`] sampling state: the cloned RL-fBM [`MarkovLift`] stepper, the
+/// Gaussian-increment source and the log-price scalars; each call advances the owned `Gn` stream.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,
@@ -256,7 +252,7 @@ pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {
   markov: MarkovLift<T>,
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> RlBlackScholesSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -278,7 +274,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlBlackScholesSampler<T, S> {}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

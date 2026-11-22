@@ -1,9 +1,5 @@
-//! A/B bench: production `SimdNormal` vs experimental `SimdNormalDual`.
-//! Same workload, same iteration counts, criterion-managed sampling.
-//!
-//! Also benches the raw uniform fill paths
-//! (`SimdRng::fill_uniform_f64` vs `SimdRngDual::fill_uniform_f64`) so we can
-//! attribute the speedup to RNG ILP vs Ziggurat unrolling.
+//! A/B bench: a `SimdNormal` stream on `SimdRng` vs the experimental `SimdRngDual`, plus their raw
+//! `fill_uniform_f64` paths to split the speedup between RNG ILP and Ziggurat unrolling.
 
 use std::hint::black_box;
 use std::time::Duration;
@@ -12,7 +8,9 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use stochastic_rs::distributions::SimdNormalDual;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::Seeded;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -35,7 +33,7 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     let mut buf = vec![0.0_f64; n];
 
     group.bench_with_input(BenchmarkId::new("single_stream", label), &n, |b, _| {
-      let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0, &Unseeded);
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
       b.iter(|| {
         dist.fill_slice(&mut buf);
         black_box(&buf);
@@ -43,7 +41,8 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     });
 
     group.bench_with_input(BenchmarkId::new("dual_stream", label), &n, |b, _| {
-      let dist: SimdNormalDual<f64> = SimdNormalDual::new(0.0, 1.0, &Unseeded);
+      let mut dist =
+        Seeded::<SimdNormal<f64>, SimdRngDual>::new(SimdNormal::new(0.0, 1.0), &Unseeded);
       b.iter(|| {
         dist.fill_slice(&mut buf);
         black_box(&buf);

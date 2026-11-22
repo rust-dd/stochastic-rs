@@ -1,15 +1,6 @@
-//! # Volatility
+//! Stochastic-volatility models: an asset or forward driven by a positive variance or volatility
+//! factor. The Heston and SABR families, Bergomi-style variance, jump variants and rough lifts.
 //!
-//! Two-factor stochastic-volatility models: an asset (or forward) factor
-//! driven by a second, strictly-positive variance/volatility factor with
-//! its own mean-reverting or log-normal dynamics, correlated with the
-//! asset through an instantaneous ρ or a shared driving noise. Covers the
-//! Heston family (square-root variance), SABR family (log-normal
-//! volatility, CEV-elastic forward), Bergomi-style log-normal variance,
-//! jump-augmented variants (Bates, HKDE), and rough/fractional lifts.
-//! Each module's own header states its concrete SDE pair.
-//!
-pub mod bates_svj;
 pub mod bergomi;
 pub mod bns;
 pub mod double_heston;
@@ -17,12 +8,13 @@ pub mod fbates_svj;
 pub mod fheston;
 pub mod heston;
 pub mod heston2d;
+pub mod heston_hull_white_2f;
 pub mod heston_log;
 pub mod heston_slv;
 pub mod hkde;
 pub mod multifactor_heston;
 pub mod multifactor_sabr;
-pub mod rbergomi;
+pub mod rough_bergomi;
 pub mod sabr;
 pub mod svcgmy;
 

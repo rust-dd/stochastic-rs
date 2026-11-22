@@ -1,8 +1,5 @@
-//! # Equity-option lattice models
-//!
-//! Bridges [`super::tree::BinomialTree`] to [`crate::traits::ModelPricer`]
-//! so Cox-Ross-Rubinstein style trees plug into the vol-surface pipeline
-//! alongside Fourier and SABR pricers.
+//! Cox–Ross–Rubinstein trees as a [`crate::traits::ModelPricer`], so they plug into the vol-surface
+//! pipeline beside the Fourier and SABR pricers.
 
 use ndarray::Array1;
 
@@ -13,10 +10,8 @@ use crate::traits::ModelPricer;
 use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Cox-Ross-Rubinstein binomial-tree model for European and American options.
-///
-/// $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$,
-/// $p = (e^{(r-q)\Delta t} - d)/(u - d)$.
+/// Cox–Ross–Rubinstein binomial model for European and American options, on
+/// $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$ and $p = (e^{(r-q)\Delta t} - d)/(u - d)$.
 #[derive(Debug, Clone, Copy)]
 pub struct CrrModel<T: RealExt> {
   /// Lognormal volatility $\sigma$.
@@ -26,19 +21,27 @@ pub struct CrrModel<T: RealExt> {
 }
 
 impl<T: RealExt> CrrModel<T> {
-  /// Construct a CRR model.
+  /// Panics unless `sigma` is finite and `>= 0` and `steps >= 1`.
   pub fn new(sigma: T, steps: usize) -> Self {
-    assert!(steps >= 1, "steps must be positive");
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps:?}"
+    );
     Self { sigma, steps }
   }
 
-  /// Backward-induction rollback shared by the European and American paths.
+  /// The rollback of both styles: the payoff at `tau = 0`; NaN past expiry, for a NaN query, a
+  /// spot or strike that is not positive, and where `p` leaves `[0, 1]`, as it does at `sigma = 0`.
   ///
-  /// European nodes hold the discounted continuation value
-  /// $V_{\text{node}} = e^{-r\Delta t}(p\,V_{\text{up}} + (1-p)\,V_{\text{down}})$.
-  /// American nodes additionally clamp against immediate exercise:
-  /// $V_{\text{node}} = \max\!\big(e^{-r\Delta t}(p\,V_{\text{up}}+(1-p)V_{\text{down}}),\ \text{intrinsic}(S_{\text{node}})\big)$,
-  /// where intrinsic is $(S-K)^+$ for calls and $(K-S)^+$ for puts.
+  /// $$
+  /// V=e^{-r\Delta t}\bigl(pV_u+(1-p)V_d\bigr),\qquad
+  /// V^{\mathrm{Am}}=\max\bigl(V,\ \text{intrinsic}\bigr),\qquad
+  /// p=\frac{e^{(r-q)\Delta t}-d}{u-d}
+  /// $$
   fn price_rollback(
     &self,
     s: T,
@@ -49,18 +52,25 @@ impl<T: RealExt> CrrModel<T> {
     option_type: OptionType,
     option_style: OptionStyle,
   ) -> T {
+    let intrinsic = |state: T| match option_type {
+      OptionType::Call => (state - k).max_or_nan(T::zero()),
+      OptionType::Put => (k - state).max_or_nan(T::zero()),
+    };
+    if tau == T::zero() && !(r.is_nan() || q.is_nan()) {
+      return intrinsic(s);
+    }
     let dt = tau / T::from_usize_(self.steps);
     let sqrt_dt = dt.sqrt();
     let up = (self.sigma * sqrt_dt).exp();
     let down = T::one() / up;
     let drift = ((r - q) * dt).exp();
     let p = (drift - down) / (up - down);
+    let positive = s > T::zero() && k > T::zero();
+    if !(tau > T::zero() && positive && p >= T::zero() && p <= T::one()) {
+      return T::nan();
+    }
     let tree = BinomialTree::from_crr(s, up, down, p, self.steps, dt);
     let discount = (-r * dt).exp();
-    let intrinsic = |state: T| match option_type {
-      OptionType::Call => (state - k).max(T::zero()),
-      OptionType::Put => (k - state).max(T::zero()),
-    };
 
     let terminal_states = tree.states.last().expect("tree has at least one level");
     let mut values = Array1::from_iter(terminal_states.iter().map(|&state| intrinsic(state)));
@@ -74,7 +84,7 @@ impl<T: RealExt> CrrModel<T> {
         let continuation =
           discount * (p_node * values[node + 1] + (T::one() - p_node) * values[node]);
         step_values[node] = match option_style {
-          OptionStyle::American => continuation.max(intrinsic(states[node])),
+          OptionStyle::American => continuation.max_or_nan(intrinsic(states[node])),
           OptionStyle::European => continuation,
         };
       }
@@ -87,12 +97,9 @@ impl<T: RealExt> CrrModel<T> {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::European)
   }
 
-  /// Price an American option via backward induction with early exercise.
+  /// American price by comparing continuation with exercise at every node.
   ///
-  /// Reference: Cox, Ross & Rubinstein, "Option Pricing: A Simplified
-  /// Approach", Journal of Financial Economics 7(3) (1979), §4 (extension to
-  /// American puts by comparing continuation value against intrinsic value
-  /// at every node during the backward pass).
+  /// Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
   pub fn price_american(&self, s: T, k: T, r: T, q: T, tau: T, option_type: OptionType) -> T {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::American)
   }
@@ -108,11 +115,8 @@ impl ModelPricer for CrrModel<f64> {
   }
 }
 
-/// [`price_call`](ModelPricer::price_call) routes to the private
-/// `price_european` rollback, not to
-/// [`price_american`](CrrModel::price_american), so the trait's call really
-/// is the European vanilla one on the forward $Se^{(r-q)\tau}$ the lattice
-/// drifts at.
+/// [`price_call`](ModelPricer::price_call) rolls back the European payoff, not
+/// [`price_american`](CrrModel::price_american), so it is the vanilla call on `Se^{(r−q)τ}`.
 impl VanillaEuropeanCall for CrrModel<f64> {}
 
 #[cfg(test)]
@@ -145,10 +149,8 @@ mod tests {
     assert!(parity.abs() < 0.01, "parity residual {parity}");
   }
 
-  /// Merton, R.C. (1973), "Theory of Rational Option Pricing", Bell J.
-  /// Econ. Manag. Sci. 4(1), Theorem 2: early exercise of a call on a
-  /// non-dividend-paying underlying is never optimal, so the American
-  /// rollback must reproduce the European (discounted-expectation) price.
+  /// Without dividends an American call is never exercised early, so it rolls back to the European.
+  /// Reference: Merton (1973), Bell J. Econ. Manag. Sci. 4(1), Theorem 2
   #[test]
   fn crr_american_call_no_dividend_equals_european() {
     let model = CrrModel::new(0.2_f64, 500);
@@ -161,14 +163,8 @@ mod tests {
     );
   }
 
-  /// Complement of [`crr_american_call_no_dividend_equals_european`]: Merton
-  /// (1973)'s "never exercise early" result for calls requires `q = 0`.
-  /// With `q > 0` a call *can* be worth exercising early (the holder gives
-  /// up the dividend stream by continuing to hold), so this is the only
-  /// American-call test in this module where the early-exercise clamp in
-  /// `price_rollback` must actually bind rather than the American value
-  /// merely reproducing the European one. Cross-checked against
-  /// [`BjerksundStensland2002Pricer`]'s closed-form American approximation.
+  /// With `q > 0` early exercise of a call can pay, so `price_rollback`'s clamp binds; checked
+  /// against [`BjerksundStensland2002Pricer`].
   #[test]
   fn crr_american_call_with_dividends_exceeds_european() {
     let (s, k, r, q, sigma, tau) = (100.0, 100.0, 0.03, 0.07, 0.2, 1.0);
@@ -200,9 +196,8 @@ mod tests {
     );
   }
 
-  /// Reference: Bjerksund, P. & Stensland, G. (2002), "Closed Form Valuation
-  /// of American Options", NHH discussion paper 2002/09 — closed-form
-  /// American approximation cross-checked against the CRR rollback.
+  /// Bjerksund–Stensland's closed-form American approximation, cross-checked against the rollback.
+  /// Reference: Bjerksund & Stensland (2002), NHH discussion paper 2002/09
   #[test]
   fn crr_american_put_matches_bjerksund_stensland() {
     let (s, k, r, q, sigma, tau) = (100.0, 110.0, 0.05, 0.0, 0.2, 1.0);
@@ -218,8 +213,8 @@ mod tests {
     );
   }
 
-  /// Reference: `FiniteDifferencePricer` Crank-Nicolson American solve
-  /// (projected max-with-intrinsic clamp per time step).
+  /// Against `FiniteDifferencePricer`'s Crank–Nicolson American solve, which projects each time
+  /// step onto the intrinsic value.
   #[test]
   fn crr_american_put_matches_fd() {
     let (s, k, r, sigma, tau) = (100.0, 110.0, 0.05, 0.2, 1.0);

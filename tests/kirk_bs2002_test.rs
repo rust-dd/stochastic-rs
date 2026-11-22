@@ -1,8 +1,7 @@
-//! Comparison tests for Kirk's spread option and Bjerksund-Stensland 2002.
-//!
-//! Reference values taken from Haug's "The Complete Guide to Option Pricing
-//! Formulas" and the Python notebook by arawn10 (Kaggle, 2023).
+//! Comparison tests for Kirk's spread option and Bjerksund-Stensland 2002, with values from Haug's
+//! "The Complete Guide to Option Pricing Formulas" and arawn10's Python notebook (Kaggle, 2023).
 
+use stochastic_rs::quant::CallPut;
 use stochastic_rs::quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
 use stochastic_rs::quant::pricing::kirk::KirkSpreadPricer;
 use stochastic_rs::traits::ModelPricer;
@@ -15,8 +14,8 @@ fn assert_close(a: f64, b: f64, tol: f64) {
   );
 }
 
-// Kirk's spread option tests.
-// Reference: Python GBS library (kirks_76) validated against published values.
+// Kirk's spread option, against the GBS notebook's `kirks_76`, validated against published values.
+// Reference: GBS.ipynb, https://github.com/dedwards25/Python_Option_Pricing
 
 #[test]
 fn kirk_spread_call_atm() {
@@ -26,7 +25,7 @@ fn kirk_spread_call_atm() {
     0.35, // v2
     0.90, // corr
   );
-  let (call, put) = pricer.spread_call_put(
+  let CallPut { call, put } = pricer.spread_call_put(
     35.0, // f1 (electricity)
     34.0, // f2 (gas * heat rate)
     3.0,  // x (VOM)
@@ -48,7 +47,7 @@ fn kirk_spread_put_call_parity() {
   let tau = 0.5;
 
   let pricer = KirkSpreadPricer::new(0.30, 0.25, 0.7);
-  let (call, put) = pricer.spread_call_put(f1, f2, x, r, tau);
+  let CallPut { call, put } = pricer.spread_call_put(f1, f2, x, r, tau);
 
   let parity_diff = call - put;
   let expected = (f1 - f2 - x) * (-r * tau).exp();
@@ -58,7 +57,7 @@ fn kirk_spread_put_call_parity() {
 #[test]
 fn kirk_spread_zero_correlation() {
   let pricer = KirkSpreadPricer::new(0.20, 0.20, 0.0);
-  let (call, _put) = pricer.spread_call_put(100.0, 95.0, 5.0, 0.05, 1.0);
+  let call = pricer.spread_call(100.0, 95.0, 5.0, 0.05, 1.0);
   assert!(call > 0.0);
 }
 
@@ -67,17 +66,16 @@ fn kirk_spread_high_correlation() {
   // High correlation reduces spread volatility → lower option price
   let low_corr = KirkSpreadPricer::new(0.30, 0.30, 0.3);
   let high_corr = KirkSpreadPricer::new(0.30, 0.30, 0.95);
-  let (c_low, _) = low_corr.spread_call_put(100.0, 95.0, 5.0, 0.05, 1.0);
-  let (c_high, _) = high_corr.spread_call_put(100.0, 95.0, 5.0, 0.05, 1.0);
+  let c_low = low_corr.spread_call(100.0, 95.0, 5.0, 0.05, 1.0);
+  let c_high = high_corr.spread_call(100.0, 95.0, 5.0, 0.05, 1.0);
   assert!(
     c_high < c_low,
     "higher correlation should reduce spread option value"
   );
 }
 
-// Bjerksund-Stensland 2002 tests.
-// Reference values from Haug's book, reproduced in the Python notebook.
-// The notebook uses b=0 (Black-76 style), so q = r for equivalent.
+// Bjerksund-Stensland 2002 values from Haug's book, reproduced in the notebook; the notebook uses
+// b=0 (Black-76 style), so q = r is the equivalent.
 
 #[test]
 fn bs2002_call_otm() {
@@ -124,9 +122,8 @@ fn bs2002_put_otm() {
 
 #[test]
 fn bs2002_symmetric_at_zero_rate() {
-  // When r=0, b=0: C(S,X) == P(X,S) by symmetry
-  // "Testing that American valuation works for integer inputs"
-  // c(100, 100, T=1, r=0, b=0, v=0.35) → 13.892
+  // When r=0, b=0: C(S,X) == P(X,S) by symmetry; the notebook's "Testing that American valuation
+  // works for integer inputs" gives c(100, 100, T=1, r=0, b=0, v=0.35) → 13.892
   let call_price = BjerksundStensland2002Pricer::new(0.35).price_call(100.0, 100.0, 0.0, 0.0, 1.0);
   let put_price = BjerksundStensland2002Pricer::new(0.35).price_put(100.0, 100.0, 0.0, 0.0, 1.0);
   assert_close(call_price, 13.892, 0.01);
@@ -136,11 +133,11 @@ fn bs2002_symmetric_at_zero_rate() {
 #[test]
 fn bs2002_exceeds_european_value() {
   // American option value should always be >= European value
-  use stochastic_rs::quant::pricing::bsm::BSMCoc;
-  use stochastic_rs::quant::pricing::bsm::BSMPricer;
+  use stochastic_rs::quant::pricing::bsm::BsmCoc;
+  use stochastic_rs::quant::pricing::bsm::BsmPricer;
 
   let am_price = BjerksundStensland2002Pricer::new(0.30).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
-  let eu_price = BSMPricer::new(0.30, BSMCoc::Merton1973).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
+  let eu_price = BsmPricer::new(0.30, BsmCoc::Merton1973).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
   assert!(
     am_price >= eu_price - 0.001,
     "American put ({am_price}) must be >= European put ({eu_price})"

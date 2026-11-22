@@ -1,21 +1,10 @@
-//! Named rate indices and fixing history.
+//! Named overnight and IBOR benchmarks (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor) with their
+//! day-count and calendar conventions, and the shared [`FixingHistory`] their coupons read.
 //!
-//! Factory functions for the standard overnight and IBOR-style benchmarks
-//! (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor, USD Libor), with canonical
-//! day-count and calendar conventions attached to each. Historical fixings
-//! are stored in an observable [`FixingHistory`] so downstream coupons can
-//! pick up realised rates without rebuilding the index object.
-//!
-//! Reference: ISDA 2006 Definitions — standard floating rate options.
-//!
-//! Reference: ARRC, "SOFR Floating Rate Notes Conventions Matrix"
-//! (2019) — SOFR / USD OIS conventions.
-//!
-//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013) — Euribor /
-//! LIBOR canonical conventions and curve tagging.
-//!
-//! Reference: Gellert & Schlögl, arXiv:2101.04308 (2021) — SOFR dynamics
-//! and fixing history treatment.
+//! Reference: ISDA 2006 Definitions, standard floating rate options
+//! Reference: ARRC (2019), "SOFR Floating Rate Notes Conventions Matrix"
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, Euribor conventions and curve tagging
+//! Reference: Gellert & Schlögl (2021), arXiv:2101.04308, SOFR dynamics and fixing history
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -30,6 +19,7 @@ use super::observable::Observer;
 use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
 use crate::calendar::HolidayCalendar;
+use crate::calendar::SharedCalendar;
 use crate::cashflows::IborIndex;
 use crate::cashflows::OvernightIndex;
 use crate::cashflows::RateTenor;
@@ -42,10 +32,10 @@ struct FixingInner<T: RealExt> {
   observable: ObservableBase,
 }
 
-/// Observable, append-mostly map of realised fixings keyed by fixing date.
-///
-/// Cheap to clone (shared `Arc` interior). Used by coupons that need past
-/// fixings and by any pricer that must refresh when new fixings arrive.
+type DatedFixing<T> = (NaiveDate, T);
+
+/// Observable map of realised fixings by fixing date, cheap to clone (a shared `Arc`); coupons
+/// read past fixings from it and pricers refresh when one arrives.
 pub struct FixingHistory<T: RealExt> {
   inner: Arc<FixingInner<T>>,
 }
@@ -107,8 +97,8 @@ impl<T: RealExt> FixingHistory<T> {
     changed
   }
 
-  /// Look up a fixing by date.
-  pub fn fixing(&self, date: NaiveDate) -> Option<T> {
+  /// The fixing on `date`, if one is stored.
+  pub fn get(&self, date: NaiveDate) -> Option<T> {
     self
       .inner
       .fixings
@@ -119,7 +109,7 @@ impl<T: RealExt> FixingHistory<T> {
   }
 
   /// Most recent fixing at or before `date`.
-  pub fn latest_before(&self, date: NaiveDate) -> Option<(NaiveDate, T)> {
+  pub fn last_before(&self, date: NaiveDate) -> Option<(NaiveDate, T)> {
     self
       .inner
       .fixings
@@ -128,6 +118,17 @@ impl<T: RealExt> FixingHistory<T> {
       .range(..=date)
       .next_back()
       .map(|(d, v)| (*d, *v))
+  }
+
+  /// The fixings at or before `date` and at or after it, read under one lock.
+  pub(crate) fn bracket(
+    &self,
+    date: NaiveDate,
+  ) -> (Option<DatedFixing<T>>, Option<DatedFixing<T>>) {
+    let map = self.inner.fixings.read().expect("fixings poisoned");
+    let before = map.range(..=date).next_back().map(|(d, v)| (*d, *v));
+    let after = map.range(date..).next().map(|(d, v)| (*d, *v));
+    (before, after)
   }
 
   /// Number of fixings stored.
@@ -177,7 +178,7 @@ pub struct NamedIborIndex<T: RealExt> {
   /// Currency the rate is expressed in.
   pub currency: Currency,
   /// Fixing calendar.
-  pub calendar: Calendar,
+  pub calendar: SharedCalendar,
   /// Spot lag in business days between fixing and value date.
   pub spot_lag: u32,
   /// Realised fixing store.
@@ -186,7 +187,12 @@ pub struct NamedIborIndex<T: RealExt> {
 
 impl<T: RealExt> NamedIborIndex<T> {
   /// Construct from raw parts — typically via a factory in [`ibor`].
-  pub fn new(index: IborIndex<T>, currency: Currency, calendar: Calendar, spot_lag: u32) -> Self {
+  pub fn new(
+    index: IborIndex<T>,
+    currency: Currency,
+    calendar: SharedCalendar,
+    spot_lag: u32,
+  ) -> Self {
     Self {
       index,
       currency,
@@ -206,14 +212,14 @@ pub struct NamedOvernightIndex<T: RealExt> {
   /// Currency the rate is expressed in.
   pub currency: Currency,
   /// Fixing calendar.
-  pub calendar: Calendar,
+  pub calendar: SharedCalendar,
   /// Realised fixing store (indexed by business-day fixing date).
   pub fixings: FixingHistory<T>,
 }
 
 impl<T: RealExt> NamedOvernightIndex<T> {
   /// Construct from raw parts — typically via a factory in [`overnight`].
-  pub fn new(index: OvernightIndex<T>, currency: Currency, calendar: Calendar) -> Self {
+  pub fn new(index: OvernightIndex<T>, currency: Currency, calendar: SharedCalendar) -> Self {
     Self {
       index,
       currency,
@@ -223,19 +229,19 @@ impl<T: RealExt> NamedOvernightIndex<T> {
   }
 }
 
-/// Named IBOR-style index factories.
+/// Factories for named IBOR-style indices (Euribor and the like) with their conventions.
 pub mod ibor {
   use super::*;
 
   /// Euribor with arbitrary tenor (months). Uses Actual/360 and the TARGET2
   /// calendar with 2 business day spot lag. See EMMI Euribor rulebook.
   pub fn euribor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
-    let name = format!("EURIBOR{}", tenor.curve_key());
+    let name = format!("EURIBOR{tenor}");
     let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
     NamedIborIndex::new(
       index,
       currency::EUR,
-      Calendar::new(HolidayCalendar::Target),
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
       2,
     )
   }
@@ -249,46 +255,20 @@ pub mod ibor {
   pub fn euribor_6m<T: RealExt>() -> NamedIborIndex<T> {
     euribor(RateTenor::SixMonths)
   }
-
-  /// USD Libor with arbitrary tenor. Actual/360, US+UK joint calendar,
-  /// 2 business day spot lag. Retained for legacy trades.
-  pub fn usd_libor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
-    let name = format!("USD-LIBOR-{}", tenor.curve_key());
-    let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
-    NamedIborIndex::new(
-      index,
-      currency::USD,
-      Calendar::joint([
-        HolidayCalendar::UnitedStates,
-        HolidayCalendar::UnitedKingdom,
-      ]),
-      2,
-    )
-  }
-
-  /// Three-month USD Libor.
-  pub fn usd_libor_3m<T: RealExt>() -> NamedIborIndex<T> {
-    usd_libor(RateTenor::ThreeMonths)
-  }
-
-  /// Six-month USD Libor.
-  pub fn usd_libor_6m<T: RealExt>() -> NamedIborIndex<T> {
-    usd_libor(RateTenor::SixMonths)
-  }
 }
 
-/// Named overnight-index factories.
+/// Factories for named overnight indices (SOFR, ESTR, SONIA, TONAR, Fed Funds).
 pub mod overnight {
   use super::*;
 
   /// SOFR — Secured Overnight Financing Rate (USD). Actual/360, US calendar.
-  /// Reference: ARRC SOFR conventions (2019).
+  /// Reference: ARRC (2019), SOFR conventions
   pub fn sofr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("SOFR", DayCountConvention::Actual360);
     NamedOvernightIndex::new(
       index,
       currency::USD,
-      Calendar::new(HolidayCalendar::UnitedStates),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedStates)),
     )
   }
 
@@ -298,14 +278,18 @@ pub mod overnight {
     NamedOvernightIndex::new(
       index,
       currency::USD,
-      Calendar::new(HolidayCalendar::UnitedStates),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedStates)),
     )
   }
 
   /// ESTR — Euro Short-Term Rate. Actual/360, TARGET2 calendar.
   pub fn estr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("ESTR", DayCountConvention::Actual360);
-    NamedOvernightIndex::new(index, currency::EUR, Calendar::new(HolidayCalendar::Target))
+    NamedOvernightIndex::new(
+      index,
+      currency::EUR,
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
+    )
   }
 
   /// SONIA — Sterling Overnight Index Average. Actual/365 fixed, UK calendar.
@@ -314,7 +298,7 @@ pub mod overnight {
     NamedOvernightIndex::new(
       index,
       currency::GBP,
-      Calendar::new(HolidayCalendar::UnitedKingdom),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedKingdom)),
     )
   }
 
@@ -322,7 +306,11 @@ pub mod overnight {
   /// Tokyo calendar.
   pub fn tonar<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("TONAR", DayCountConvention::Actual365Fixed);
-    NamedOvernightIndex::new(index, currency::JPY, Calendar::new(HolidayCalendar::Tokyo))
+    NamedOvernightIndex::new(
+      index,
+      currency::JPY,
+      Arc::new(Calendar::new(HolidayCalendar::Tokyo)),
+    )
   }
 }
 
@@ -339,9 +327,13 @@ mod tests {
     hist.add_fixing(d1, 0.053);
     hist.add_fixing(d2, 0.052);
     hist.add_fixing(d3, 0.051);
-    assert_eq!(hist.fixing(d2), Some(0.052));
+    assert_eq!(hist.get(d2), Some(0.052));
+    assert_eq!(
+      hist.get(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()),
+      None
+    );
     let (d, v) = hist
-      .latest_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
+      .last_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
       .unwrap();
     assert_eq!(d, d2);
     assert!((v - 0.052).abs() < 1e-12);

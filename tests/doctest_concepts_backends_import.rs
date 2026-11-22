@@ -1,11 +1,8 @@
 // docs: concepts/backends#the-backend-trait
-//! Backs the always-available-marker import example on the backends
-//! concept page: every marker is a [`Backend`] (the bare device marker),
-//! and every marker shipped today also carries the [`FgnBackend`] fGN
-//! sampling capability — for the scalar its kernels compute in: the host
-//! for `f64` and `f32`, an Apple GPU for `f32` alone.
+//! Backs the always-available-marker import example on the backends concept page: every marker is a
+//! [`Backend`] and carries [`FgnBackend`] for its scalar (`f64`/`f32` host, `f32` Apple GPU).
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::traits::Backend;
 use stochastic_rs::traits::Cpu;
@@ -19,8 +16,8 @@ fn cpu_marker_is_a_backend_with_the_fgn_capability() {
   assert_marker::<Cpu>();
   assert_fgn_f64::<Cpu>();
   assert_fgn_f32::<Cpu>();
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   assert_marker::<Metal>();
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   assert_fgn_f32::<Metal>();
 }

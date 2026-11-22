@@ -2,7 +2,6 @@
 /target
 # Any sibling CARGO_TARGET_DIR a parallel build or a subagent points here.
 /target-*
-/Cargo.lock
 flamegraph.svg
 
 # Editor / IDE
@@ -63,9 +62,8 @@ website/.env*.local
 # yet, so keep it out of git rather than let it go stale unreviewed.
 website/public/python-parity.json
 
-# The top-level LaTeX/audit scratch directory (see the two blocks above).
-# Anchored: unanchored `docs` is a basename match, equivalent to `**/docs`,
-# and it also blanketed website/app/docs/ and website/content/docs/.
+# The top-level LaTeX and audit scratch directory; anchored, since a bare `docs` matches any
+# `docs` directory, website/app/docs/ and website/content/docs/ included.
 /docs/
 *.tsbuildinfo
 

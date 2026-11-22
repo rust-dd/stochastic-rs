@@ -15,8 +15,8 @@ fn rho_default<T: FloatExt>() -> [T; 6] {
 }
 
 struct ValidInputs {
-  x0: [Option<f64>; 2],
-  v0: [Option<f64>; 2],
+  x0: [f64; 2],
+  v0: [f64; 2],
   mu: [f64; 2],
   theta: [f64; 2],
   kappa: [f64; 2],
@@ -28,8 +28,8 @@ struct ValidInputs {
 impl Default for ValidInputs {
   fn default() -> Self {
     Self {
-      x0: [Some(0.0), Some(0.0)],
-      v0: [Some(0.4), Some(0.4)],
+      x0: [0.0, 0.0],
+      v0: [0.4, 0.4],
       mu: [0.0, 0.0],
       theta: [0.4, 0.4],
       kappa: [2.0, 2.0],
@@ -52,17 +52,17 @@ impl ValidInputs {
       self.rho,
       16,
       self.t,
-      Some(false),
+      VarianceBoundary::Absorption,
       Deterministic::new(17),
     )
   }
 }
 
 #[test]
-fn shapes_match_n() {
+fn the_output_names_its_slots() {
   let h = Heston2D::<f64, _>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.4, 0.4],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],
@@ -70,10 +70,10 @@ fn shapes_match_n() {
     rho_default(),
     512,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   );
-  let [x1, v1, x2, v2] = h.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = h.sample();
   assert_eq!(x1.len(), 512);
   assert_eq!(v1.len(), 512);
   assert_eq!(x2.len(), 512);
@@ -86,8 +86,8 @@ fn shapes_match_n() {
 fn seeded_is_deterministic() {
   let mk = || {
     Heston2D::<f64, Deterministic>::new(
-      [Some(0.0), Some(0.0)],
-      [Some(0.4), Some(0.4)],
+      [0.0, 0.0],
+      [0.4, 0.4],
       [0.0, 0.0],
       [0.4, 0.4],
       [2.0, 2.0],
@@ -95,12 +95,12 @@ fn seeded_is_deterministic() {
       rho_default(),
       128,
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Absorption,
       Deterministic::new(42),
     )
   };
-  let [a, _, b, _] = mk().sample();
-  let [c, _, d, _] = mk().sample();
+  let Heston2DPaths { x1: a, x2: b, .. } = mk().sample();
+  let Heston2DPaths { x1: c, x2: d, .. } = mk().sample();
   for i in 0..a.len() {
     assert!((a[i] - c[i]).abs() < 1e-12);
     assert!((b[i] - d[i]).abs() < 1e-12);
@@ -113,8 +113,8 @@ fn cross_correlation_matches_rho() {
   let rho_w1w2 = 0.8_f64;
   let rho = [0.0, 0.0, 0.0, 0.0, 0.0, rho_w1w2];
   let h = Heston2D::<f64, Deterministic>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.4, 0.4],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],
@@ -122,10 +122,10 @@ fn cross_correlation_matches_rho() {
     rho,
     20_000,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(7),
   );
-  let [x1, _, x2, _] = h.sample();
+  let Heston2DPaths { x1, x2, .. } = h.sample();
   let r1 = Array1::from_iter((1..x1.len()).map(|i| x1[i] - x1[i - 1]));
   let r2 = Array1::from_iter((1..x2.len()).map(|i| x2[i] - x2[i - 1]));
   let n = r1.len() as f64;
@@ -151,8 +151,8 @@ fn cross_correlation_matches_rho() {
 fn rejects_non_psd_correlation() {
   let bad = [0.99, 0.99, 0.99, 0.99, 0.99, -0.99];
   let _ = Heston2D::<f64, _>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.4, 0.4],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],
@@ -160,7 +160,7 @@ fn rejects_non_psd_correlation() {
     bad,
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(3),
   );
 }
@@ -182,13 +182,15 @@ fn accepts_consistent_zero_cholesky_pivot() {
     ..ValidInputs::default()
   };
   let model = inputs.build();
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
 }
 
 #[test]
-#[should_panic(expected = "t must be positive")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(-1.0)"
+)]
 fn rejects_negative_time_horizon() {
   let inputs = ValidInputs {
     t: Some(-1.0),
@@ -198,7 +200,9 @@ fn rejects_negative_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "t must be positive")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(0.0)"
+)]
 fn rejects_zero_time_horizon() {
   let inputs = ValidInputs {
     t: Some(0.0),
@@ -208,7 +212,9 @@ fn rejects_zero_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "t must be finite")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(NaN)"
+)]
 fn rejects_non_finite_time_horizon() {
   let inputs = ValidInputs {
     t: Some(f64::NAN),
@@ -218,27 +224,27 @@ fn rejects_non_finite_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "x0[0] must be finite")]
+#[should_panic(expected = "x0[0] must satisfy `x0[i].is_finite()`, got x0[0] = inf")]
 fn rejects_non_finite_initial_log_price() {
   let inputs = ValidInputs {
-    x0: [Some(f64::INFINITY), Some(0.0)],
+    x0: [f64::INFINITY, 0.0],
     ..ValidInputs::default()
   };
   let _ = inputs.build();
 }
 
 #[test]
-#[should_panic(expected = "v0[1] must be finite")]
+#[should_panic(expected = "v0[1] must satisfy `v0[i].is_finite()`, got v0[1] = NaN")]
 fn rejects_non_finite_initial_variance() {
   let inputs = ValidInputs {
-    v0: [Some(0.4), Some(f64::NAN)],
+    v0: [0.4, f64::NAN],
     ..ValidInputs::default()
   };
   let _ = inputs.build();
 }
 
 #[test]
-#[should_panic(expected = "mu[1] must be finite")]
+#[should_panic(expected = "mu[1] must satisfy `mu[i].is_finite()`, got mu[1] = -inf")]
 fn rejects_non_finite_drift() {
   let inputs = ValidInputs {
     mu: [0.0, f64::NEG_INFINITY],
@@ -248,7 +254,7 @@ fn rejects_non_finite_drift() {
 }
 
 #[test]
-#[should_panic(expected = "theta[0] must be finite")]
+#[should_panic(expected = "theta[0] must satisfy `theta[i].is_finite()`, got theta[0] = NaN")]
 fn rejects_non_finite_long_run_variance() {
   let inputs = ValidInputs {
     theta: [f64::NAN, 0.4],
@@ -258,7 +264,7 @@ fn rejects_non_finite_long_run_variance() {
 }
 
 #[test]
-#[should_panic(expected = "kappa[1] must be finite")]
+#[should_panic(expected = "kappa[1] must satisfy `kappa[i].is_finite()`, got kappa[1] = inf")]
 fn rejects_non_finite_mean_reversion() {
   let inputs = ValidInputs {
     kappa: [2.0, f64::INFINITY],
@@ -268,7 +274,7 @@ fn rejects_non_finite_mean_reversion() {
 }
 
 #[test]
-#[should_panic(expected = "sigma[0] must be finite")]
+#[should_panic(expected = "sigma[0] must satisfy `sigma[i].is_finite()`, got sigma[0] = NaN")]
 fn rejects_non_finite_volatility_of_volatility() {
   let inputs = ValidInputs {
     sigma: [f64::NAN, 1.0],
@@ -278,7 +284,7 @@ fn rejects_non_finite_volatility_of_volatility() {
 }
 
 #[test]
-#[should_panic(expected = "rho[4] must be finite")]
+#[should_panic(expected = "rho[4] must satisfy `rho[k].is_finite()`, got rho[4] = NaN")]
 fn rejects_non_finite_correlation() {
   let inputs = ValidInputs {
     rho: [0.5, -0.5, 0.0, 0.0, f64::NAN, 0.5],
@@ -287,15 +293,13 @@ fn rejects_non_finite_correlation() {
   let _ = inputs.build();
 }
 
-/// Reference: FSDA `Heston2D.m` case with `2*kappa*theta - sigma^2 < 0` for
-/// asset 0. `Cir`/`Fcir`-style contract: sub-Feller parameters are accepted
-/// (not rejected) as long as the Euler variance step stays finite —
-/// `use_sym = Some(true)` is the documented mitigation.
+/// FSDA `Heston2D.m`'s sub-Feller asset 0, `2·kappa·theta < sigma²`: accepted, as by `Cir`, and the
+/// reflected variance stays finite and non-negative.
 #[test]
-fn accepts_matlab_feller_violation_with_use_sym() {
+fn accepts_matlab_feller_violation_under_reflection() {
   let model = Heston2D::<f64, _>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.4, 0.4],
     [0.0, 0.0],
     [0.04, 0.4],
     [1.0, 2.0],
@@ -303,24 +307,21 @@ fn accepts_matlab_feller_violation_with_use_sym() {
     rho_default(),
     16,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(5),
   );
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
   assert!(v1.iter().all(|x| *x >= 0.0));
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
-/// The default (floor-at-zero) scheme must also accept the same
-/// sub-Feller parameters without panicking — only the diagnostic warning
-/// differs, mirroring the equivalent `Cir` / `Fcir` tests.
 #[test]
-fn accepts_matlab_feller_violation_without_use_sym() {
+fn accepts_matlab_feller_violation_under_absorption() {
   let model = Heston2D::<f64, _>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.4), Some(0.4)],
+    [0.0, 0.0],
+    [0.4, 0.4],
     [0.0, 0.0],
     [0.04, 0.4],
     [1.0, 2.0],
@@ -328,23 +329,23 @@ fn accepts_matlab_feller_violation_without_use_sym() {
     rho_default(),
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(5),
   );
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
   assert!(v1.iter().all(|x| *x >= 0.0));
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
-/// Reference: FSDA `Heston2D.m` requires both initial variances to be positive.
+/// FSDA's `Heston2D.m` requires both initial variances to be positive.
 #[test]
-#[should_panic(expected = "v0[0] must be positive")]
+#[should_panic(expected = "v0[0] must satisfy `v0[i] > T::zero()`, got v0[0] = 0.0")]
 fn rejects_zero_initial_variance_like_matlab() {
   let _ = Heston2D::<f64, _>::new(
-    [Some(0.0), Some(0.0)],
-    [Some(0.0), Some(0.4)],
+    [0.0, 0.0],
+    [0.0, 0.4],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],
@@ -352,17 +353,7 @@ fn rejects_zero_initial_variance_like_matlab() {
     rho_default(),
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(11),
   );
-}
-
-#[test]
-#[should_panic(expected = "both initial variances v0 must be specified")]
-fn rejects_missing_initial_variance_like_matlab() {
-  let inputs = ValidInputs {
-    v0: [None, Some(0.4)],
-    ..ValidInputs::default()
-  };
-  let _ = inputs.build();
 }

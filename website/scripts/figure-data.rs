@@ -1,22 +1,13 @@
-//! The numbers behind the landing page's figures.
-//!
-//! Not part of the workspace: copy it to `examples/figure_data.rs` at the
-//! repository root and run
-//!
-//! ```text
-//! cargo run --release --example figure_data
-//! ```
-//!
-//! then feed the output through the polyline conversion in
-//! `website/lib/figures.ts`'s header comment. It lives here rather than in
-//! `examples/` because it is a documentation asset with no consumer in the
-//! crate, and an example that nothing runs rots.
+//! The numbers in `website/lib/figures.ts`, a docs asset rather than an example: copy this file to
+//! `examples/figure_data.rs` and run `cargo run --release --example figure_data`.
 
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::vol_surface::svi::SviRawParams;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 
 /// A path thinned to `k` points and rounded, so the SVG stays small.
@@ -29,9 +20,9 @@ fn thin(path: &[f64], k: usize, digits: i32) -> Vec<f64> {
 }
 
 fn main() {
-  let heston = Heston::<f64, _>::new(
-    Some(100.0),
-    Some(0.04),
+  let heston = Heston::<f64, Euler, _>::new(
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -40,13 +31,11 @@ fn main() {
     512,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(21),
   );
-  // A quantile band from four thousand paths, and a few sample paths over
-  // it: the band is what the model does, the paths are what one draw of it
-  // looks like. No median — it is nearly flat here, and a thick line through
-  // the middle of a fan reads as a path when it is not one.
+  // A quantile band with a few draws over it and no median: nearly flat here, a thick line
+  // through the fan would read as a path.
   let batch = heston.sample_par(4_000);
   let n = 65;
   let step = (batch[0][0].len() - 1) as f64 / (n - 1) as f64;

@@ -27,21 +27,17 @@ impl PyVasicekBond {
   }
 }
 
-/// CIR zero-coupon bond pricer. **Field naming convention** (matches the
-/// workspace SDE `dR = theta·(mu - R)·dt + sigma·sqrt(R)·dW`):
-/// - `theta`: mean-reversion **speed** (κ in Brigo §3.2.3).
-/// - `mu`: **long-run mean** of the short rate (θ in Brigo).
-/// Calibrators that follow Brigo's symbols (e.g. `kappa`, `theta`) need to
-/// rename `kappa` → `theta` and `theta` → `mu` when constructing a `CIRBond`.
+/// CIR zero-coupon bond pricer on `dR = theta·(mu − R)·dt + sigma·√R·dW`: `theta` is the reversion
+/// speed (Brigo's κ, §3.2.3) and `mu` the long-run mean (Brigo's θ).
 #[pyclass(name = "CIRBond", unsendable)]
-pub struct PyCIRBond {
+pub struct PyCirBond {
   inner: crate::bonds::cir::Cir,
   r_t: f64,
   tau: f64,
 }
 
 #[pymethods]
-impl PyCIRBond {
+impl PyCirBond {
   /// Construct CIR ZCB pricer. `theta` is the mean-reversion speed; `mu`
   /// is the long-run mean. See struct doc for the naming convention.
   #[new]
@@ -58,10 +54,8 @@ impl PyCIRBond {
   }
 }
 
-/// Hull-White (1990) ZCB closed-form pricer projected onto a calibrated
-/// `DiscountCurve`. Use `HullWhiteBond.from_curve(curve, ...)` to drop in
-/// the market discount curve; or build directly by passing the projected
-/// $P^M(0,t)$ / $P^M(0,T)$ / $f^M(0,t)$ values via `__init__`.
+/// Hull-White (1990) zero-coupon bond on a market curve: `HullWhiteBond.from_curve(curve, ...)`, or
+/// `__init__` with the projected `P^M(0, t)`, `P^M(0, T)` and `f^M(0, t)`.
 #[pyclass(name = "HullWhiteBond", unsendable)]
 pub struct PyHullWhiteBond {
   inner: crate::bonds::hull_white::HullWhite,
@@ -110,9 +104,8 @@ impl PyHullWhiteBond {
     })?
   }
 
-  /// Build by projecting a calibrated [`DiscountCurve`] onto the time
-  /// points the closed form needs. The instantaneous forward
-  /// $f^M(0, t)$ is estimated via centered finite differences.
+  /// Projects a calibrated [`DiscountCurve`] onto the closed form's time points, the instantaneous
+  /// forward `f^M(0, t)` by central differences.
   #[staticmethod]
   #[pyo3(signature = (curve, r_t, alpha, sigma, t, tau))]
   fn from_curve(

@@ -1,14 +1,40 @@
 //! Optimization helpers shared by the estimator modules.
 //!
-//! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) minimise
-//! a smooth 3-parameter objective in log-space and the GARCH fitter a
-//! `p + q + 2`-parameter one; a compact Nelder-Mead simplex is enough for
-//! both, so the fixed-size entry point is a thin wrapper over the
-//! any-dimension one.
+//! One Nelder–Mead simplex: the three-parameter entry wraps the any-dimension one GARCH uses.
+
+use std::cmp::Ordering;
 
 use basin::MoreThuente;
+use basin::TerminationReason;
 
-/// Moré–Thuente settings retained from the previous L-BFGS integrations.
+/// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
+pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
+  a.is_nan().cmp(&b.is_nan()).then(a.total_cmp(&b))
+}
+
+/// The start with the lowest objective; a NaN objective loses to every number.
+pub(crate) fn best_start<P: AsRef<[f64]>>(
+  starts: impl IntoIterator<Item = P>,
+  objective: impl Fn(&[f64]) -> f64,
+) -> Option<P> {
+  starts
+    .into_iter()
+    .map(|start| (objective(start.as_ref()), start))
+    .min_by(|a, b| nan_last(a.0, b.0))
+    .map(|(_, start)| start)
+}
+
+/// Whether a basin search stopped on one of its tolerances, not on a budget or a failure.
+pub(crate) fn stopped_on_tolerance(reason: TerminationReason) -> bool {
+  matches!(
+    reason,
+    TerminationReason::CostTolerance
+      | TerminationReason::ProjectedGradientTolerance
+      | TerminationReason::SolverConverged
+  )
+}
+
+/// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.
 pub(crate) fn more_thuente() -> MoreThuente<f64> {
   MoreThuente::new()
     .with_sufficient_decrease_coefficient(1e-4)
@@ -18,17 +44,8 @@ pub(crate) fn more_thuente() -> MoreThuente<f64> {
     .stpmax(f64::INFINITY)
 }
 
-/// Nelder-Mead simplex minimiser for a 3-parameter objective.
-///
-/// Returns `(argmin, iterations, converged)`. The caller is responsible
-/// for any parameter reparameterisation (e.g. carrying log-parameters so
-/// the search stays in the positive orthant).
-///
-/// `max_iter` caps the simplex iterations: a smooth analytic objective
-/// (GMM / QMLE) converges in tens of iterations to the `1e-10` tolerance,
-/// but a Monte-Carlo objective with small resampling-induced kinks (the
-/// particle-filter likelihood) never hits that tolerance and should be
-/// capped at a few hundred iterations to bound runtime.
+/// Nelder–Mead minimiser of a three-parameter objective: `(argmin, iterations, converged)`.
+/// `max_iter` bounds a Monte-Carlo objective, whose resampling kinks never reach the tolerance.
 pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   start: [f64; 3],
   max_iter: usize,
@@ -38,10 +55,8 @@ pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
   ([p[0], p[1], p[2]], iters, converged)
 }
 
-/// Nelder-Mead simplex minimiser for an objective of any dimension, under
-/// the same reflection / expansion / contraction / shrink coefficients and
-/// `1e-10` spread tolerance as [`nelder_mead`]; the initial simplex offsets
-/// each coordinate by `0.1`.
+/// Nelder–Mead minimiser in any dimension, with [`nelder_mead`]'s coefficients and `1e-10` spread
+/// tolerance; the initial simplex offsets each coordinate by `0.1`.
 pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   start: &[f64],
   max_iter: usize,
@@ -64,7 +79,7 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   while iters < max_iter {
     iters += 1;
     let mut order: Vec<usize> = (0..=n).collect();
-    order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());
+    order.sort_by(|&a, &b| nan_last(fvals[a], fvals[b]));
     let best = order[0];
     let worst = order[n];
     let second_worst = order[n - 1];
@@ -113,12 +128,9 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
       }
     }
   }
-  let mut best = 0;
-  for i in 1..=n {
-    if fvals[i] < fvals[best] {
-      best = i;
-    }
-  }
+  let best = (0..=n)
+    .min_by(|&a, &b| nan_last(fvals[a], fvals[b]))
+    .expect("a simplex has n + 1 vertices");
   (simplex[best].clone(), iters, false)
 }
 
@@ -136,4 +148,38 @@ fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64
       }
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Arithmetic leaves a NaN's sign unspecified (x86 sets it), so both signs must lose.
+  #[test]
+  fn a_nan_objective_never_wins_the_start_search() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let objective = |p: &[f64]| if p[0] == 1.0 { 3.0 } else { nan };
+      assert_eq!(best_start([[0.0], [1.0], [2.0]], objective), Some([1.0]));
+      assert_eq!(
+        nan_last(nan, f64::NEG_INFINITY),
+        std::cmp::Ordering::Greater
+      );
+    }
+  }
+
+  /// A NaN vertex ranks worst, so the simplex reflects away from it instead of shrinking onto it.
+  #[test]
+  fn the_simplex_leaves_a_nan_vertex() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let objective = |p: &[f64]| {
+        if p[0] < 0.05 {
+          nan
+        } else {
+          (p[0] - 1.0).powi(2)
+        }
+      };
+      let (argmin, _, converged) = nelder_mead_vec(&[0.0], 500, objective);
+      assert!(converged && objective(&argmin) < 0.02, "{nan}: {argmin:?}");
+    }
+  }
 }

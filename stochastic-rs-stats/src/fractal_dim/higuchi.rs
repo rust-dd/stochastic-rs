@@ -1,17 +1,23 @@
-//! Higuchi (1988) curve-length fractal dimension.
+//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`.
 //!
-//! Reference: Higuchi T. (1988) — *Approach to an irregular time series on
-//! the basis of the fractal theory*, Physica D 31(2), 277–283,
-//! DOI: 10.1016/0167-2789(88)90081-4.
+//! $$
+//! L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
+//!          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
+//! \quad
+//! L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k).
+//! $$
+//! Reference: Higuchi (1988), Physica D 31(2), 277–283. DOI: 10.1016/0167-2789(88)90081-4
 
 use linreg::linear_regression;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::FdDiagnostic;
-use super::FdError;
-use super::FdResult;
+use super::FdFit;
 use super::FractalDimEstimator;
+use crate::StatsError;
+use crate::hurst::to_f64_vec;
+use crate::input::reject_constant;
 use crate::traits::FloatExt;
 
 /// Higuchi fractal-dimension estimator.
@@ -35,14 +41,14 @@ impl Higuchi {
 }
 
 impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, FdError> {
-    let n_obs = x.len();
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError> {
+    let nobs = x.len();
     let (d, intercept, r_squared, log_scales, log_stats) =
       compute_with_diagnostic::<T>(x, self.kmax)?;
-    Ok(FdResult {
+    Ok(FdFit {
       // Higuchi's `D` is the regression slope itself.
       d: T::from_f64_fast(d),
-      n_obs,
+      nobs,
       diagnostic: FdDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(d),
         intercept: T::from_f64_fast(intercept),
@@ -54,44 +60,29 @@ impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   }
 }
 
-/// Compute the Higuchi fractal dimension of `x`.
-///
-/// $$
-/// L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
-///          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
-/// \quad
-/// L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k),
-/// $$
-///
-/// and the dimension is the slope of `log L(k)` against `log(1/k)`.
-///
-/// Returns `Err(FdError::PathTooShort)` for `< 3` points,
-/// `Err(FdError::KmaxTooSmall)` for `kmax < 2`,
-/// `Err(FdError::NotEnoughScales)` when fewer than two valid scales
-/// survive the finiteness filter, and `Err(FdError::RegressionFailed)`
-/// if the underlying linear regression cannot be solved.
-pub fn compute<T: FloatExt>(x: ArrayView1<T>, kmax: usize) -> Result<T, FdError> {
-  let (d, _, _, _, _) = compute_with_diagnostic::<T>(x, kmax)?;
-  Ok(T::from_f64_fast(d))
-}
+type LogLogFit = (f64, f64, f64, Vec<f64>, Vec<f64>);
 
-/// Same as [`compute`] but also returns the log-log regression
-/// diagnostics `(d, intercept, r_squared, log_scales, log_stats)`.
-/// For Higuchi `d == slope`.
-pub(crate) fn compute_with_diagnostic<T: FloatExt>(
+/// The log-log fit `(d, intercept, r_squared, log_scales, log_stats)`, `d` its slope; `Err` below
+/// 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
+fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   kmax: usize,
-) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), FdError> {
+) -> Result<LogLogFit, StatsError> {
   let n_times = x.len();
   if n_times < 3 {
-    return Err(FdError::PathTooShort {
+    return Err(StatsError::InsufficientData {
+      needed: 3,
       got: n_times,
-      required: 3,
     });
   }
   if kmax < 2 {
-    return Err(FdError::KmaxTooSmall(kmax));
+    return Err(StatsError::InvalidParameter {
+      name: "kmax",
+      value: kmax as f64,
+      constraint: "kmax >= 2",
+    });
   }
+  reject_constant(&to_f64_vec(x), "constant series")?;
 
   let k_upper = kmax.min(n_times - 1);
   let mut x_reg = Array1::<f64>::zeros(k_upper);
@@ -110,8 +101,8 @@ pub(crate) fn compute_with_diagnostic<T: FloatExt>(
 
       let mut ll = 0.0_f64;
       for j in 1..=n_max {
-        let a = x[m + j * k].to_f64().unwrap_or(f64::NAN);
-        let b = x[m + (j - 1) * k].to_f64().unwrap_or(f64::NAN);
+        let a = x[m + j * k].to_f64().unwrap();
+        let b = x[m + (j - 1) * k].to_f64().unwrap();
         ll += (a - b).abs();
       }
 
@@ -134,12 +125,12 @@ pub(crate) fn compute_with_diagnostic<T: FloatExt>(
   }
 
   if used < 2 {
-    return Err(FdError::NotEnoughScales);
+    return Err(StatsError::DegenerateData("fewer than two valid scales"));
   }
   let x_slice = &x_reg.as_slice().unwrap()[..used];
   let y_slice = &y_reg.as_slice().unwrap()[..used];
   let (slope, intercept) =
-    linear_regression(x_slice, y_slice).map_err(|_| FdError::RegressionFailed)?;
+    linear_regression(x_slice, y_slice).map_err(|_| StatsError::Singular("log-log regression"))?;
 
   let log_scales: Vec<f64> = x_slice.to_vec();
   let log_stats: Vec<f64> = y_slice.to_vec();

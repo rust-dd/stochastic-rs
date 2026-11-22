@@ -3,6 +3,7 @@ use super::H_MAX;
 use super::H_MIN;
 use super::RHO_BOUND;
 use super::XI0_MIN;
+use crate::QuantError;
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -122,34 +123,49 @@ impl RBergomiXi0 {
     }
   }
 
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
     match self {
       Self::Constant(level) => {
         if !level.is_finite() || *level <= 0.0 {
-          return Err("RBergomiXi0::Constant must be finite and positive".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::Constant",
+            format!("must be finite and positive, got {level}"),
+          ));
         }
       }
       Self::PiecewiseConstant { maturities, values } => {
+        const WHAT: &str = "RBergomiXi0::PiecewiseConstant";
         if maturities.len() < 2 {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant requires at least two maturity pillars".to_string(),
-          );
+          return Err(QuantError::invalid(
+            WHAT,
+            format!(
+              "requires at least two maturity pillars, got {}",
+              maturities.len()
+            ),
+          ));
         }
         if values.len() + 1 != maturities.len() {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant requires values.len() + 1 == maturities.len()"
-              .to_string(),
-          );
+          return Err(QuantError::DimensionMismatch {
+            what: "RBergomiXi0::PiecewiseConstant values, one per maturity interval",
+            expected: maturities.len() - 1,
+            got: values.len(),
+          });
         }
         if !maturities.windows(2).all(|w| w[0] < w[1]) {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant maturities must be strictly increasing".to_string(),
-          );
+          return Err(QuantError::invalid(
+            WHAT,
+            format!("maturities must be strictly increasing, got {maturities:?}"),
+          ));
         }
-        if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant values must be finite and positive".to_string(),
-          );
+        if let Some((i, v)) = values
+          .iter()
+          .enumerate()
+          .find(|(_, v)| !v.is_finite() || **v <= 0.0)
+        {
+          return Err(QuantError::invalid(
+            WHAT,
+            format!("value {i} must be finite and positive, got {v}"),
+          ));
         }
       }
       Self::NelsonSiegel {
@@ -159,10 +175,19 @@ impl RBergomiXi0 {
         tau,
       } => {
         if !beta0.is_finite() || !beta1.is_finite() || !beta2.is_finite() || !tau.is_finite() {
-          return Err("RBergomiXi0::NelsonSiegel parameters must be finite".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::NelsonSiegel",
+            format!(
+              "parameters must be finite, got beta0 = {beta0}, beta1 = {beta1}, beta2 = {beta2}, \
+               tau = {tau}"
+            ),
+          ));
         }
         if *tau <= 0.0 {
-          return Err("RBergomiXi0::NelsonSiegel tau must be positive".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::NelsonSiegel",
+            format!("tau must be positive, got {tau}"),
+          ));
         }
       }
     }
@@ -183,15 +208,9 @@ pub struct RBergomiParams {
 }
 
 impl RBergomiParams {
-  /// Seed from a fractional OU estimate.
-  ///
-  /// Bridges [`stochastic_rs_stats::fou_estimator::FouEstimateResult`] (Hurst,
-  /// sigma, mu, theta) into an `RBergomiParams` initial guess. Only the
-  /// Hurst exponent transfers directly; `rho` defaults to `-0.7`, `eta` is
-  /// taken as the FOU `sigma`, and `xi0` is filled with a flat constant
-  /// derived from `mu` (long-run variance proxy). Use as a starting point for
-  /// the Levenberg-Marquardt solver.
-  pub fn seed_from_fou(fou: stochastic_rs_stats::fou_estimator::FouEstimateResult) -> Self {
+  /// A start for the projected Adam fit from a fractional-OU fit: the Hurst exponent transfers,
+  /// `eta` is `|sigma|`, `xi0` a flat `|mu|` (a long-run variance proxy) and `rho` is `-0.7`.
+  pub fn seed_from_fou(fou: stochastic_rs_stats::fou::FouFit) -> Self {
     Self {
       hurst: fou.hurst.clamp(H_MIN, H_MAX),
       rho: -0.7,
@@ -238,15 +257,24 @@ impl RBergomiParams {
     self.xi0.assign_from_flattened(values, &mut offset);
   }
 
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
     if !self.hurst.is_finite() || self.hurst <= 0.0 || self.hurst >= 0.5 {
-      return Err("RBergomiParams.hurst must be finite and in (0, 0.5)".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.hurst",
+        format!("must be finite and in (0, 0.5), got {}", self.hurst),
+      ));
     }
     if !self.rho.is_finite() || self.rho.abs() > 1.0 {
-      return Err("RBergomiParams.rho must be finite and in [-1, 1]".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.rho",
+        format!("must be finite and in [-1, 1], got {}", self.rho),
+      ));
     }
     if !self.eta.is_finite() || self.eta <= 0.0 {
-      return Err("RBergomiParams.eta must be finite and positive".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.eta",
+        format!("must be finite and positive, got {}", self.eta),
+      ));
     }
     self.xi0.validate()
   }
@@ -261,15 +289,32 @@ pub struct RBergomiMarketSlice {
 }
 
 impl RBergomiMarketSlice {
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self, index: usize) -> Result<(), QuantError> {
     if !self.tau.is_finite() || self.tau <= 0.0 {
-      return Err("RBergomiMarketSlice.tau must be finite and positive".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.tau",
+        format!(
+          "slice {index}: must be finite and positive, got {}",
+          self.tau
+        ),
+      ));
     }
     if self.terminal_samples.is_empty() {
-      return Err("RBergomiMarketSlice.terminal_samples cannot be empty".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.terminal_samples",
+        format!("slice {index}: cannot be empty"),
+      ));
     }
-    if self.terminal_samples.iter().any(|x| !x.is_finite()) {
-      return Err("RBergomiMarketSlice.terminal_samples must be finite".to_string());
+    if let Some((m, x)) = self
+      .terminal_samples
+      .iter()
+      .enumerate()
+      .find(|(_, x)| !x.is_finite())
+    {
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.terminal_samples",
+        format!("slice {index}: sample {m} must be finite, got {x}"),
+      ));
     }
     Ok(())
   }
@@ -283,8 +328,6 @@ pub struct RBergomiCalibrationConfig {
   pub steps_per_year: usize,
   /// Number of exponentials in mSOE kernel approximation.
   pub msoe_terms: usize,
-  /// Max number of optimizer iterations.
-  pub max_iters: usize,
   /// Base learning rate for projected Adam.
   pub learning_rate: f64,
   /// Relative finite-difference bump for numeric gradient.
@@ -295,8 +338,6 @@ pub struct RBergomiCalibrationConfig {
   pub adam_beta2: f64,
   /// Adam numerical epsilon.
   pub adam_eps: f64,
-  /// Common-random-number seed used in objective evaluations.
-  pub random_seed: u64,
   /// Optional target tolerance (e.g. bid-ask derived) for early stop.
   pub stop_loss: Option<f64>,
   /// Stop if absolute loss improvement drops below this threshold.
@@ -309,25 +350,13 @@ impl Default for RBergomiCalibrationConfig {
       paths: 1_024,
       steps_per_year: 128,
       msoe_terms: 12,
-      max_iters: 60,
       learning_rate: 0.05,
       finite_diff_eps: 1e-3,
       adam_beta1: 0.9,
       adam_beta2: 0.999,
       adam_eps: 1e-8,
-      random_seed: 42,
       stop_loss: None,
       improvement_tol: 1e-6,
     }
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct RBergomiCalibrationHistory {
-  pub iteration: usize,
-  pub params: RBergomiParams,
-  /// Pairs of `(maturity, W1)` for this iteration.
-  pub maturity_losses: Vec<(f64, f64)>,
-  /// Average Wasserstein loss across maturities.
-  pub loss: f64,
 }

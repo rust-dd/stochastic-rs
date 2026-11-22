@@ -1,4 +1,4 @@
-//! # Ar
+//! AR(p): a linear recursion on the last `p` values, driven by Gaussian noise.
 //!
 //! $$
 //! X_t=\sum_{k=1}^p \phi_k X_{t-k}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
@@ -8,30 +8,29 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements an AR(p) model:
+/// A type name spells an acronym as one word: the AR(p) process is [`Ar`].
 ///
-/// \[
-///   X_t = \phi_1 X_{t-1} + \phi_2 X_{t-2} + \dots + \phi_p X_{t-p}
-///         + \epsilon_t,
-///   \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2).
-/// \]
-///
-/// # Fields
-/// - `phi`: Vector of AR coefficients (\(\phi_1, \ldots, \phi_p\)).
-/// - `sigma`: Standard deviation of the noise \(\epsilon_t\).
-/// - `n`: Length of the time series.
-/// - `m`: Optional batch size (for parallel sampling).
-/// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::autoregressive::ar::ARp;
+/// ```
+#[cfg(doctest)]
+pub struct AcronymsAreOneWord;
+
+/// AR(p) on Gaussian noise; `x0`, when given, holds the first `phi.len()` values of the path.
 #[derive(Debug, Clone)]
-pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -40,24 +39,36 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Optional initial conditions
   pub x0: Option<Array1<T>>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> ARp<T, S> {
-  /// Create a new AR process with given coefficients and noise standard deviation.
+impl<T: FloatExt, S: SeedExt> Ar<T, S> {
+  /// AR(p). Panics unless `n >= 1`, `sigma >= 0`, `sigma` and every entry of `phi` and `x0` are
+  /// finite, and `x0.len() >= phi.len().min(n)`.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
-    assert!(sigma > T::zero(), "ARp requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("phi", "phi[i].is_finite()", &phi, |v| v.is_finite());
+    if let Some(x0) = &x0 {
+      assert_entries("x0", "x0[i].is_finite()", x0, |v| v.is_finite());
+    }
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     if let Some(init) = &x0 {
       let required = phi.len().min(n);
       assert!(
         init.len() >= required,
-        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
-        init.len(),
-        required
+        "x0.len() must satisfy `x0.len() >= phi.len().min(n)`, got x0.len() = {:?}, phi.len().min(n) = {required:?}",
+        init.len()
       );
     }
     Self {
@@ -71,17 +82,15 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> ARp<T, S, B> {}
-
 /// The Euler engine's view of an autoregression. Higher orders read back more
 /// than one lag, which the engine's four state slots do not bound.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for ARp<T, S, B>
+  for Ar<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.phi.len() == 1,
-      "ARp: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
+      "Ar: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
     );
     crate::euler::EulerSpec::Autoregressive {
       phi: self.phi[0],
@@ -129,28 +138,32 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Ar<T, S> { phi, sigma, n, x0, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for ARp<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Ar<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ar<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = ARpSampler<T>
+    = ArSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> ARpSampler<T> {
-    ARpSampler {
+  fn sampler(&self) -> ArSampler<T> {
+    ArSampler {
       n: self.n,
       phi: self.phi.clone(),
       x0: self.x0.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
-  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  /// What a device runs: order one, since the family carries one lag; a higher order stays on
+  /// the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.phi.len() == 1)).then_some("an order above one: the family carries a single lag")
   }
@@ -212,17 +225,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`ARp`] sampling state: owns the Gaussian innovation source and the
+/// Reusable [`Ar`] sampling state: owns the Gaussian innovation source and the
 /// model coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct ARpSampler<T: FloatExt> {
+#[derive(Debug)]
+pub struct ArSampler<T: FloatExt> {
   n: usize,
   phi: Array1<T>,
   x0: Option<Array1<T>>,
-  normal: SimdNormal<T>,
+  sigma: T,
+  normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> ARpSampler<T> {
+impl<T: FloatExt> ArSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let p = self.phi.len();
@@ -251,16 +266,18 @@ impl<T: FloatExt> ARpSampler<T> {
           val += self.phi[k - 1] * out[t - k];
         }
       }
-      out[t] = val + noise[t];
+      out[t] = val + self.sigma * noise[t];
     }
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
+impl<T: FloatExt> crate::traits::Sealed for ArSampler<T> {}
+
+impl<T: FloatExt> PathSampler<T> for ArSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("ARp output must be contiguous");
+    let slice = out.as_slice_mut().expect("Ar output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -270,7 +287,7 @@ impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
   }
 }
 
-py_process_1d!(PyARp, ARp,
+py_process_1d!(PyARp, Ar,
   sig: (phi, sigma, n, x0=None, seed=None, dtype=None),
   params: (phi: Vec<f64>, sigma: f64, n: usize, x0: Option<Vec<f64>>),
   device

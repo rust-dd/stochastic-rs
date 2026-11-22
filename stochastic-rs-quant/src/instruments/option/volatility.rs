@@ -1,4 +1,5 @@
-//! Volatility models plugged into caplet, cap, floor, and swaption pricing.
+//! Volatility models for caplets, caps, floors and swaptions: a forward and a strike in, a
+//! Black-76 or Bachelier vol out, where `ModelPricer` takes a spot, rates and a dividend yield.
 //!
 //! $$
 //! \sigma_{\mathrm{Black}}(F,K,\tau),\qquad
@@ -6,40 +7,27 @@
 //! \sigma_{\mathrm{Sabr}}(F,K,\tau)
 //! $$
 //!
-//! ## Why a separate trait from [`ModelPricer`](crate::traits::ModelPricer)?
-//!
-//! [`ModelPricer`](crate::traits::ModelPricer) is the canonical pricing trait for
-//! *equity* options:
-//! `price_call(s, k, r, q, tau)` consumes spot, strike, rates, and dividend
-//! yield and returns an option price. [`VolatilityModel`] sits one layer
-//! lower for *interest-rate* options: given a forward $F$ (e.g. forward
-//! Libor / SOFR rate or swap rate) and strike $K$, it returns the implied
-//! volatility (Black-76 lognormal or Bachelier normal) — the actual
-//! caplet / cap / floor / swaption pricer then consumes that volatility
-//! together with its own day-count and discount machinery.
-//!
-//! These are intentionally parallel traits: the rates pipeline uses forwards
-//! and tenor structure, the equity pipeline uses spots and dividend yields.
-//! Unifying them would require collapsing fundamentally different inputs
-//! into a single signature.
-//!
-//! Reference: Hagan, Kumar, Lesniewski, Woodward, "Managing Smile Risk",
-//! Wilmott Magazine (2002).
+//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine
+//! Reference: Rubinstein (1983), J. Finance 38(1), 213–217, DOI: 10.1111/j.1540-6261.1983.tb03636.x
 
 use super::types::VolatilityQuoteKind;
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::hagan_implied_vol;
 use crate::traits::RealExt;
 
-/// Pluggable volatility model used by caplet, cap, floor, and swaption pricers.
-///
-/// Implementations return the volatility appropriate for their quote family:
-/// a lognormal (Black-76) vol or a normal (Bachelier) vol.
+/// Volatility model of the caplet, cap, floor and swaption pricers; it returns a lognormal
+/// (Black-76) or a normal (Bachelier) vol, according to its quote family.
 pub trait VolatilityModel<T: RealExt>: Send + Sync {
   /// Implied volatility at forward $F$, strike $K$, and expiry $\tau$.
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T;
 
   /// Quote family of the returned volatility.
   fn quote_kind(&self) -> VolatilityQuoteKind;
+
+  /// The shift `d` of a displaced lognormal vol: Black-76 prices the rates `F + d` and `K + d`.
+  fn displacement(&self) -> T {
+    T::zero()
+  }
 }
 
 /// Constant lognormal (Black-76) volatility.
@@ -98,20 +86,20 @@ pub struct SabrVolatility<T: RealExt> {
   pub alpha: T,
   /// Sabr Cev exponent $\beta$ ($\beta=0$ normal, $\beta=1$ lognormal).
   pub beta: T,
-  /// Sabr volatility of volatility $\nu$.
-  pub nu: T,
   /// Sabr correlation $\rho$.
   pub rho: T,
+  /// Sabr volatility of volatility $\nu$.
+  pub nu: T,
 }
 
 impl<T: RealExt> SabrVolatility<T> {
   /// Build a Sabr implied-volatility surface.
-  pub fn new(alpha: T, beta: T, nu: T, rho: T) -> Self {
+  pub fn new(alpha: T, beta: T, rho: T, nu: T) -> Self {
     Self {
       alpha,
       beta,
-      nu,
       rho,
+      nu,
     }
   }
 }
@@ -122,10 +110,7 @@ impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
       strike.to_f64().unwrap_or(f64::NAN),
       forward.to_f64().unwrap_or(f64::NAN),
       tau.to_f64().unwrap_or(f64::NAN),
-      self.alpha.to_f64().unwrap_or(f64::NAN),
-      self.beta.to_f64().unwrap_or(f64::NAN),
-      self.nu.to_f64().unwrap_or(f64::NAN),
-      self.rho.to_f64().unwrap_or(f64::NAN),
+      &sabr_params(self.alpha, self.beta, self.rho, self.nu),
     );
     T::from_f64_fast(sigma)
   }
@@ -135,38 +120,32 @@ impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
   }
 }
 
-/// Shifted Sabr for negative or near-zero rates.
+/// Shifted SABR for negative or near-zero rates: the displacement is added to the forward and
+/// the strike, so a call on $F$ at $K$ is a call on $F + s$ at $K + s$.
 ///
-/// The displacement $s$ is added to both forward and strike so that the
-/// underlying Hagan expansion sees a positive shifted forward
-/// $F_s = F + s$ and shifted strike $K_s = K + s$. Under this convention, a
-/// call on $F$ with strike $K$ equals a call on $F_s$ with strike $K_s$, so the
-/// pricing formulae stay identical after the substitution.
-///
-/// Reference: Oblój, "Fine-tune your smile: Correction to Hagan et al.",
-/// Wilmott Magazine (2008).
+/// Reference: Oblój (2008), "Fine-tune your smile: Correction to Hagan et al.", Wilmott Magazine
 #[derive(Debug, Clone, Copy)]
 pub struct ShiftedSabrVolatility<T: RealExt> {
   /// Sabr level parameter $\alpha$ in the shifted coordinates.
   pub alpha: T,
   /// Sabr Cev exponent $\beta$.
   pub beta: T,
-  /// Sabr volatility of volatility $\nu$.
-  pub nu: T,
   /// Sabr correlation $\rho$.
   pub rho: T,
+  /// Sabr volatility of volatility $\nu$.
+  pub nu: T,
   /// Displacement $s$ so that $F_s = F + s$ and $K_s = K + s$.
   pub shift: T,
 }
 
 impl<T: RealExt> ShiftedSabrVolatility<T> {
   /// Build a shifted Sabr volatility surface with displacement `shift`.
-  pub fn new(alpha: T, beta: T, nu: T, rho: T, shift: T) -> Self {
+  pub fn new(alpha: T, beta: T, rho: T, nu: T, shift: T) -> Self {
     Self {
       alpha,
       beta,
-      nu,
       rho,
+      nu,
       shift,
     }
   }
@@ -178,15 +157,25 @@ impl<T: RealExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
       (strike + self.shift).to_f64().unwrap_or(f64::NAN),
       (forward + self.shift).to_f64().unwrap_or(f64::NAN),
       tau.to_f64().unwrap_or(f64::NAN),
-      self.alpha.to_f64().unwrap_or(f64::NAN),
-      self.beta.to_f64().unwrap_or(f64::NAN),
-      self.nu.to_f64().unwrap_or(f64::NAN),
-      self.rho.to_f64().unwrap_or(f64::NAN),
+      &sabr_params(self.alpha, self.beta, self.rho, self.nu),
     );
     T::from_f64_fast(sigma)
   }
 
   fn quote_kind(&self) -> VolatilityQuoteKind {
     VolatilityQuoteKind::Lognormal
+  }
+
+  fn displacement(&self) -> T {
+    self.shift
+  }
+}
+
+fn sabr_params<T: RealExt>(alpha: T, beta: T, rho: T, nu: T) -> SabrParams {
+  SabrParams {
+    alpha: alpha.to_f64().unwrap_or(f64::NAN),
+    beta: beta.to_f64().unwrap_or(f64::NAN),
+    rho: rho.to_f64().unwrap_or(f64::NAN),
+    nu: nu.to_f64().unwrap_or(f64::NAN),
   }
 }

@@ -1,22 +1,27 @@
-//! Heterogeneous Autoregressive model of Realized Volatility (HAR-RV).
+//! Heterogeneous autoregressive model of realized volatility (HAR-RV).
 //!
 //! $$
-//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} + \omega_{t+1},
+//! RV_{t+1}^{(d)} = c + \beta_d RV_t^{(d)} + \beta_w RV_t^{(w)} + \beta_m RV_t^{(m)} +
+//! \omega_{t+1},
 //! $$
-//! with $RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)}$ and
-//! $RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}$.
 //!
-//! Reference: Corsi, "A Simple Approximate Long-Memory Model of Realized
-//! Volatility", Journal of Financial Econometrics, 7(2), 174-196 (2009).
-//! DOI: 10.1093/jjfinec/nbp001
+//! $$
+//! RV_t^{(w)} = \tfrac{1}{5}\sum_{i=0}^{4} RV_{t-i}^{(d)},\qquad
+//! RV_t^{(m)} = \tfrac{1}{22}\sum_{i=0}^{21} RV_{t-i}^{(d)}
+//! $$
 //!
-//! The OLS least-squares fit runs on the pure-Rust `faer`.
+//! Reference: Corsi (2009), JFEC 7(2), 174-196, DOI: 10.1093/jjfinec/nbp001
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
-use crate::linalg::lstsq;
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Daily horizon for the HAR weekly component.
@@ -39,7 +44,7 @@ pub struct HarFit {
   pub rss: f64,
   /// Sample size used by the regression.
   pub nobs: usize,
-  /// Coefficient of determination on the training window.
+  /// Coefficient of determination on the training window; NaN for a constant target (`0/0`).
   pub r_squared: f64,
 }
 
@@ -52,19 +57,25 @@ pub struct HarRv {
 }
 
 impl HarRv {
-  /// Fit HAR-RV from a daily realized-variance history.
-  ///
-  /// `daily_rv` must contain at least `MONTHLY_LAGS + 2` observations so that
-  /// at least one regression row can be formed.
-  pub fn fit<T: FloatExt>(daily_rv: ArrayView1<T>) -> Self {
+  /// HAR-RV by least squares on a daily realized-variance history; `Err` below `MONTHLY_LAGS + 6`
+  /// observations (more rows than the four regressors), on a non-finite one or a constant series.
+  pub fn fit<T: FloatExt>(daily_rv: ArrayView1<T>) -> Result<Self, StatsError> {
+    let rv = as_slice_or_copy(daily_rv);
+    validate(&rv, MONTHLY_LAGS + 6)?;
+    reject_constant(&rv, "constant series")?;
     let (x, y) = build_design_matrix(daily_rv);
     let beta = ols(&x, &y);
     let resid = residuals(&x, &y, &beta);
     let rss: f64 = resid.iter().map(|v| v * v).sum();
     let mean_y = y.iter().sum::<f64>() / y.len() as f64;
     let tss: f64 = y.iter().map(|v| (v - mean_y).powi(2)).sum();
-    let r_squared = if tss > 0.0 { 1.0 - rss / tss } else { 0.0 };
-    Self {
+    // Exact: a rounded mean can leave a constant target a positive `tss`.
+    let r_squared = if y.iter().all(|&v| v == y[0]) {
+      f64::NAN
+    } else {
+      1.0 - rss / tss
+    };
+    Ok(Self {
       fit: HarFit {
         intercept: beta[0],
         beta_d: beta[1],
@@ -74,40 +85,29 @@ impl HarRv {
         nobs: y.len(),
         r_squared,
       },
-    }
+    })
   }
 
-  /// One-step-ahead point forecast given the most recent daily-RV history of
-  /// length at least [`MONTHLY_LAGS`].
-  pub fn forecast<T: FloatExt>(&self, recent_daily_rv: ArrayView1<T>) -> f64 {
+  /// One-step-ahead forecast from the latest daily RVs; `Err` below [`MONTHLY_LAGS`] observations
+  /// or on a non-finite one.
+  pub fn forecast<T: FloatExt>(&self, recent_daily_rv: ArrayView1<T>) -> Result<f64, StatsError> {
+    validate_view(recent_daily_rv, MONTHLY_LAGS)?;
     let n = recent_daily_rv.len();
-    assert!(
-      n >= MONTHLY_LAGS,
-      "need at least {MONTHLY_LAGS} recent daily-RV observations"
-    );
     let last = recent_daily_rv[n - 1].to_f64().unwrap();
     let weekly = avg_last(recent_daily_rv, WEEKLY_LAGS);
     let monthly = avg_last(recent_daily_rv, MONTHLY_LAGS);
-    self.fit.intercept
-      + self.fit.beta_d * last
-      + self.fit.beta_w * weekly
-      + self.fit.beta_m * monthly
+    Ok(
+      self.fit.intercept
+        + self.fit.beta_d * last
+        + self.fit.beta_w * weekly
+        + self.fit.beta_m * monthly,
+    )
   }
 }
 
-/// Build the HAR design matrix $X = [1, RV^{(d)}, RV^{(w)}, RV^{(m)}]$ and the
-/// next-day target vector $y = RV_{t+1}^{(d)}$ from a daily-RV history.
-pub fn har_features<T: FloatExt>(daily_rv: ArrayView1<T>) -> (Array2<f64>, Array1<f64>) {
-  build_design_matrix(daily_rv)
-}
-
+/// The design `[1, RV(d), RV(w), RV(m)]` and next-day target of a daily RV history.
 fn build_design_matrix<T: FloatExt>(daily_rv: ArrayView1<T>) -> (Array2<f64>, Array1<f64>) {
   let n = daily_rv.len();
-  assert!(
-    n >= MONTHLY_LAGS + 2,
-    "need at least {} observations to fit HAR",
-    MONTHLY_LAGS + 2
-  );
   let rows = n - MONTHLY_LAGS - 1;
   let mut x = Array2::<f64>::zeros((rows, 4));
   let mut y = Array1::<f64>::zeros(rows);
@@ -144,7 +144,7 @@ fn avg_last<T: FloatExt>(v: ArrayView1<T>, window: usize) -> f64 {
 }
 
 fn ols(x: &Array2<f64>, y: &Array1<f64>) -> Array1<f64> {
-  lstsq(x, y)
+  lstsq(x.view(), y.view())
 }
 
 fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64> {
@@ -156,12 +156,14 @@ fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   fn simulate_har_path(n: usize, c: f64, bd: f64, bw: f64, bm: f64, seed: u64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut shocks = vec![0.0_f64; n];
     dist.fill_slice(&mut shocks);
     let mut rv = Array1::<f64>::from_elem(n, c / (1.0 - bd - bw - bm).max(1e-3));
@@ -182,7 +184,7 @@ mod tests {
     let bw = 0.30;
     let bm = 0.20;
     let rv = simulate_har_path(2_000, c, bd, bw, bm, 17);
-    let model = HarRv::fit(rv.view());
+    let model = HarRv::fit(rv.view()).unwrap();
     assert!((model.fit.beta_d - bd).abs() < 0.05);
     assert!((model.fit.beta_w - bw).abs() < 0.10);
     assert!((model.fit.beta_m - bm).abs() < 0.15);
@@ -192,9 +194,9 @@ mod tests {
   #[test]
   fn har_forecast_matches_one_step_design_row() {
     let rv = simulate_har_path(500, 0.0001, 0.40, 0.30, 0.20, 23);
-    let model = HarRv::fit(rv.view());
+    let model = HarRv::fit(rv.view()).unwrap();
     let recent = rv.slice(ndarray::s![rv.len() - MONTHLY_LAGS..]).to_owned();
-    let f = model.forecast(recent.view());
+    let f = model.forecast(recent.view()).unwrap();
     let last = recent[MONTHLY_LAGS - 1];
     let w: f64 = (1..=WEEKLY_LAGS)
       .map(|i| recent[MONTHLY_LAGS - i])
@@ -207,5 +209,36 @@ mod tests {
     let expected =
       model.fit.intercept + model.fit.beta_d * last + model.fit.beta_w * w + model.fit.beta_m * m;
     assert!((f - expected).abs() < 1e-12);
+  }
+
+  /// The regression rows must outnumber the four regressors.
+  #[test]
+  fn too_short_histories_are_insufficient_data() {
+    let rv = Array1::from_iter((0..MONTHLY_LAGS + 6).map(|t| 1.0 + 0.5 * (t as f64 * 0.7).sin()));
+    assert_eq!(
+      HarRv::fit(rv.slice(ndarray::s![..MONTHLY_LAGS + 5])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 28,
+        got: 27
+      }
+    );
+    assert_eq!(HarRv::fit(rv.view()).unwrap().fit.nobs, 5);
+    let model = HarRv::fit(simulate_har_path(200, 0.0001, 0.4, 0.3, 0.2, 29).view()).unwrap();
+    assert_eq!(
+      model.forecast(rv.slice(ndarray::s![..5])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: MONTHLY_LAGS,
+        got: 5
+      }
+    );
+  }
+
+  /// `1 − RSS/TSS` is `0/0` when every target equals the first.
+  #[test]
+  fn r_squared_is_nan_for_a_constant_target() {
+    let mut rv =
+      Array1::from_iter((0..MONTHLY_LAGS + 8).map(|t| 1.0 + 0.5 * (t as f64 * 0.7).sin()));
+    rv.slice_mut(ndarray::s![MONTHLY_LAGS + 1..]).fill(0.75);
+    assert!(HarRv::fit(rv.view()).unwrap().fit.r_squared.is_nan());
   }
 }

@@ -1,24 +1,20 @@
-//! Survival probability curves and piecewise-constant hazard rates.
+//! Survival curves and piecewise-constant hazard rates: the risk-neutral survival `Q(t)` and the
+//! forward hazard `h(t₁, t₂)` between grid times `t₁ < t₂`.
 //!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006), Chapter 22.
+//! $$
+//! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),\qquad
+//! h(t_1,t_2)=-\frac{\ln Q(t_2)-\ln Q(t_1)}{t_2-t_1}
+//! $$
 //!
-//! Reference: O'Kane & Turnbull, "Valuation of Credit Default Swaps",
-//! Lehman Brothers Quantitative Credit Research Quarterly (2003).
-//!
-//! The risk-neutral survival probability is related to the hazard rate by
-//! $$
-//! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),
-//! $$
-//! and the instantaneous forward hazard between two grid times $t_1<t_2$ is
-//! $$
-//! h(t_1,t_2)=-\frac{\ln Q(t_2)-\ln Q(t_1)}{t_2-t_1}.
-//! $$
+//! Reference: Brigo & Mercurio (2006), 2nd ed., Ch. 22, DOI 10.1007/978-3-540-34604-3
+//! Reference: O'Kane & Turnbull (2003), Lehman Brothers Quant. Credit Res. Q.
 
 use std::fmt::Display;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.
@@ -54,24 +50,24 @@ pub struct SurvivalPoint<T: RealExt> {
 /// Calibrated survival curve $Q(t)=\mathbb{P}(\tau>t)$.
 #[derive(Debug, Clone)]
 pub struct SurvivalCurve<T: RealExt> {
-  /// **Invariant:** `points` is never empty. [`Self::new`] inserts the
-  /// $(0, 1)$ anchor if absent, so every interior method can assume
-  /// `points.first()` and `points.last()` succeed.
+  /// Never empty: [`Self::new`] inserts the `(0, 1)` anchor if absent, so `points.first()` and
+  /// `points.last()` always succeed.
   points: Vec<SurvivalPoint<T>>,
   method: HazardInterpolation,
 }
 
 impl<T: RealExt> SurvivalCurve<T> {
-  /// Build a survival curve from sorted `(time, survival)` nodes.
-  ///
-  /// Nodes are automatically sorted; a `(0, 1)` anchor is inserted if absent.
+  /// A curve through `points` sorted by time, with a `(0, 1)` node first when none is at or before
+  /// `0`; panics unless every time is finite.
   pub fn new(points: Vec<SurvivalPoint<T>>, method: HazardInterpolation) -> Self {
+    if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
+      panic!(
+        "points must satisfy `p.time.is_finite()` for every p, got p.time = {:?}",
+        p.time
+      );
+    }
     let mut pts = points;
-    pts.sort_by(|a, b| {
-      a.time
-        .partial_cmp(&b.time)
-        .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    pts.sort_by(|a, b| ascending(&a.time, &b.time));
     if pts.is_empty() || pts[0].time > T::zero() {
       pts.insert(
         0,
@@ -87,10 +83,11 @@ impl<T: RealExt> SurvivalCurve<T> {
     }
   }
 
-  /// Build from parallel arrays of times and survival probabilities.
+  /// Build from parallel arrays of times and survival probabilities; panics as
+  /// [`new`](Self::new) does.
   pub fn from_survival_probs(
-    times: &Array1<T>,
-    survivals: &Array1<T>,
+    times: ArrayView1<T>,
+    survivals: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let points = times
@@ -104,22 +101,22 @@ impl<T: RealExt> SurvivalCurve<T> {
     Self::new(points, method)
   }
 
-  /// Build from parallel arrays of times and cumulative default probabilities.
+  /// Build from parallel arrays of times and cumulative default probabilities; panics as
+  /// [`new`](Self::new) does.
   pub fn from_default_probs(
-    times: &Array1<T>,
-    defaults: &Array1<T>,
+    times: ArrayView1<T>,
+    defaults: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     let survivals: Array1<T> = defaults.mapv(|p| T::one() - p);
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
-  /// Build from parallel arrays of times and piecewise-constant forward hazard
-  /// rates, where `hazards[i]` applies on $[t_{i-1}, t_i)$ (the first entry is
-  /// used on $[0, t_0)$).
+  /// Build from times and piecewise-constant forward hazards, `hazards[i]` on $[t_{i-1}, t_i)$ and
+  /// the first on $[0, t_0)$; panics on unequal lengths and as [`new`](Self::new) does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     assert_eq!(
@@ -136,7 +133,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       survivals[i] = cum_log.exp();
       prev_t = times[i];
     }
-    Self::from_survival_probs(times, &survivals, method)
+    Self::from_survival_probs(times, survivals.view(), method)
   }
 
   /// Number of calibrated points (including the anchor at `t=0`).
@@ -165,9 +162,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       return T::one();
     }
 
-    // Constructor invariant: `points` always contains the $(0, 1)$ anchor,
-    // so `last()` is `Some`. Falling back to `T::one()` is a defensive
-    // no-op for any future refactor that breaks the invariant.
+    // `new`'s `(0, 1)` anchor makes `last()` `Some`; `T::one()` only guards a broken invariant.
     let Some(last) = self.points.last() else {
       return T::one();
     };
@@ -241,12 +236,12 @@ impl<T: RealExt> SurvivalCurve<T> {
   }
 
   /// Survival probabilities at the requested maturities.
-  pub fn survival_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn survival_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.survival_probability(t)))
   }
 
   /// Default probabilities at the requested maturities.
-  pub fn default_probabilities(&self, maturities: &Array1<T>) -> Array1<T> {
+  pub fn default_probabilities(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_iter(maturities.iter().map(|&t| self.default_probability(t)))
   }
 }
@@ -264,10 +259,11 @@ impl<T: RealExt> HazardRateCurve<T> {
     Self { inner: survival }
   }
 
-  /// Build from parallel arrays of times and piecewise-constant hazards.
+  /// Build from parallel arrays of times and piecewise-constant hazards; panics as
+  /// [`SurvivalCurve::from_hazard_rates`] does.
   pub fn from_hazard_rates(
-    times: &Array1<T>,
-    hazards: &Array1<T>,
+    times: ArrayView1<T>,
+    hazards: ArrayView1<T>,
     method: HazardInterpolation,
   ) -> Self {
     Self::new(SurvivalCurve::from_hazard_rates(times, hazards, method))

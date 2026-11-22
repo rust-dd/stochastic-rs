@@ -1,18 +1,17 @@
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::sabr::SabrParams;
+use crate::traits::ModelPricer;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
   s * ((r_d - r_f) * tau).exp()
 }
 
-/// Hagan et al. (2002) Sabr implied-vol approximation for general β.
-///
-/// Implements Eq. A.69a from:
-/// P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
-/// *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
+/// Reference: Hagan et al. (2002), Wilmott Mag., 84–108, eq. A.69a (general β)
 ///
 /// $$
 /// \sigma(K)\approx
@@ -24,35 +23,26 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 /// +\tfrac{(2-3\rho^2)\nu^2}{24}\Bigr)\tau\Bigr]
 /// $$
 ///
-/// # Panics
-/// - if `k`, `f` or `alpha` is not strictly positive
-/// - if `rho` is not strictly inside $(-1, 1)$ — the $x(z)$ denominator
-///   carries a $1-\rho$ factor, so $\rho = 1$ produces `NaN` and $\rho = -1$
-///   is only conditionally finite
-///
-/// These were previously silent: invalid input returned `0.0`, and
-/// $\rho = 1$ returned `NaN`. A zero implied vol is a *plausible-looking*
-/// number — [`bs_price_fx`] will happily turn it into an intrinsic-value
-/// price with no indication that the vol computation failed — which is the
-/// silent-fallback class this crate has removed elsewhere. Both in-tree
-/// callers are unaffected: the calibrators clamp $\rho$ to $\pm 0.99$ and the
-/// smile plot floors its strike grid at `1e-6`.
-pub fn hagan_implied_vol(
-  k: f64,
-  f: f64,
-  tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-) -> f64 {
-  assert!(k > 0.0, "strike k must be strictly positive (got {k})");
-  assert!(f > 0.0, "forward f must be strictly positive (got {f})");
-  assert!(alpha > 0.0, "alpha must be strictly positive (got {alpha})");
+/// NaN for `k ≤ 0`, `f ≤ 0` or a negative or non-finite `tau` (`tau = 0` is the leading order);
+/// panics unless `alpha` is finite and positive and `rho ∈ (−1, 1)` (`x(z)` divides by `1 − ρ`).
+pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
+  let SabrParams {
+    alpha,
+    beta,
+    rho,
+    nu,
+  } = *params;
+  assert!(
+    alpha.is_finite() && alpha > 0.0,
+    "alpha must satisfy `alpha.is_finite() && alpha > 0.0`, got alpha = {alpha:?}"
+  );
   assert!(
     rho > -1.0 && rho < 1.0,
-    "rho must lie strictly inside (-1, 1) (got {rho})"
+    "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = {rho:?}"
   );
+  if !(k > 0.0 && f > 0.0 && tau.is_finite() && tau >= 0.0) {
+    return f64::NAN;
+  }
 
   let eps = 1e-07;
   let logfk = (f / k).ln();
@@ -77,14 +67,8 @@ pub fn hagan_implied_vol(
   }
 }
 
-/// Convenience wrapper: Hagan (2002) with β = 1.
-#[inline]
-pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rho: f64) -> f64 {
-  hagan_implied_vol(k, f, tau, alpha, 1.0, nu, rho)
-}
-
-/// Compute Sabr α from an ATM lognormal vol by solving the Hagan (2002) ATM
-/// condition (Eq. A.69b) as a cubic polynomial in α (quadratic when β = 1).
+/// Hagan et al. (2002) eq. A.69b: α, the cubic's smallest positive root if it reprices `v_atm` to a
+/// relative `√ε`, else NaN as at `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `|rho| < 1`.
 ///
 /// $$
 /// \frac{(1-\beta)^2 f_*^3}{24}\,\tau\;\alpha^3
@@ -92,55 +76,52 @@ pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rh
 /// +\bigl(1+\tfrac{(2-3\rho^2)\nu^2}{24}\,\tau\bigr)\,f_*\;\alpha
 /// -\sigma_{ATM}=0, \quad f_*=F^{\beta-1}
 /// $$
-///
-/// # Root selection
-///
-/// This cubic can have up to three real roots (two when β = 1, since the
-/// α³ term vanishes and it degenerates to a quadratic). α is a volatility
-/// level, so only the root near the zeroth-order estimate
-/// `α₀ = σ_ATM · F^{1−β}` is economically meaningful: at ρ = 0, ν = 0 the
-/// bracketed correction term vanishes and `α₀` is the *exact* root, and
-/// that root drifts continuously away from `α₀` as ρ, ν move away from
-/// zero. Any other real root is an artifact of the polynomial's degree
-/// with no connection to that unperturbed solution — e.g. the first
-/// `alpha_from_atm_vol_reference` case in `tests.rs` (β = 1, ρ = −0.3,
-/// ν = 0.5, τ = 1, σ_ATM = 0.20) has a second positive root at α ≈ 26.9
-/// that [`hagan_implied_vol`] round-trips back to 0.20 exactly as validly
-/// as the correct α ≈ 0.198, since both are genuine algebraic roots of
-/// the same equation.
-///
-/// The solver below is Newton's method seeded at exactly `α₀`, which
-/// converges to the near-`α₀` root in every case this crate tests,
-/// including a close-roots case where the two positive real roots are
-/// within 5% of each other (`alpha_from_atm_vol_close_roots_reference` in
-/// `tests.rs`). Newton is *not proven* to stay in that basin for
-/// arbitrary (β, ρ, ν, τ) — there is no post-hoc check on which root was
-/// found, so parameters far outside what this crate tests could in
-/// principle converge elsewhere.
-///
-/// # Panics
-/// - if `f` or `v_atm` is not strictly positive
-/// - if `rho` is not strictly inside $(-1, 1)$
 pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu: f64) -> f64 {
-  assert!(f > 0.0, "forward f must be strictly positive (got {f})");
-  assert!(v_atm > 0.0, "v_atm must be strictly positive (got {v_atm})");
   assert!(
     rho > -1.0 && rho < 1.0,
-    "rho must lie strictly inside (-1, 1) (got {rho})"
+    "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = {rho:?}"
   );
+  if !(f > 0.0 && v_atm > 0.0 && tau.is_finite() && tau >= 0.0) {
+    return f64::NAN;
+  }
 
   let f_ = f.powf(beta - 1.0);
   let p3 = tau * f_.powi(3) * (1.0 - beta).powi(2) / 24.0;
   let p2 = tau * f_.powi(2) * rho * beta * nu / 4.0;
   let p1 = (1.0 + tau * nu * nu * (2.0 - 3.0 * rho * rho) / 24.0) * f_;
-  let p0 = -v_atm;
+  let alpha = smallest_positive_root([p3, p2, p1, -v_atm], v_atm * f.powf(1.0 - beta));
+  if !(alpha.is_finite() && alpha > 0.0) {
+    return f64::NAN;
+  }
+  // Far above α₀ the cubic's terms cancel to σ_ATM only within rounding, so its root may miss it.
+  let params = SabrParams {
+    alpha,
+    beta,
+    rho,
+    nu,
+  };
+  let atm = hagan_implied_vol(f, f, tau, &params);
+  if (atm - v_atm).abs() <= f64::EPSILON.sqrt() * v_atm {
+    alpha
+  } else {
+    f64::NAN
+  }
+}
 
-  // Newton's method from initial guess α ≈ σ_ATM · F^{1−β} — see the
-  // "Root selection" doc section above for why this is the economically
-  // meaningful branch.
-  let mut x = v_atm * f.powf(1.0 - beta);
+/// The smallest positive root of `p3 x³ + p2 x² + p1 x + p0` (`p3 ≥ 0 > p0`), Newton's from `seed`
+/// where it reaches that root and Brent's on a bracket from 0 where not; NaN with none.
+fn smallest_positive_root([p3, p2, p1, p0]: [f64; 4], seed: f64) -> f64 {
+  let cubic = |x: f64| p3 * x * x * x + p2 * x * x + p1 * x + p0;
+  // Rising from `p0 < 0` at 0, the cubic crosses 0 below its first peak when that peak is ≥ 0.
+  let disc = p2 * p2 - 3.0 * p3 * p1;
+  let hump = (p2 < 0.0 && p1 > 0.0 && disc >= 0.0)
+    .then(|| p1 / (disc.sqrt() - p2))
+    .filter(|&peak| cubic(peak) >= 0.0);
+
+  let mut x = seed;
+  let mut converged = false;
   for _ in 0..100 {
-    let fx = p3 * x * x * x + p2 * x * x + p1 * x + p0;
+    let fx = cubic(x);
     let dfx = 3.0 * p3 * x * x + 2.0 * p2 * x + p1;
     if dfx.abs() < 1e-15 {
       break;
@@ -148,17 +129,46 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
     let dx = fx / dfx;
     x -= dx;
     if dx.abs() < 1e-12 * x.abs().max(1e-12) {
+      converged = true;
       break;
     }
   }
-  x.max(1e-8)
+  if converged && x > 0.0 && hump.is_none_or(|peak| x <= peak) {
+    return x;
+  }
+
+  let (lo, hi) = match hump {
+    Some(peak) => (0.0, peak),
+    // Past the hump at most one positive root is left, and a positive lead coefficient has one.
+    None if p3 > 0.0 || p2 > 0.0 || (p2 == 0.0 && p1 > 0.0) => {
+      let (mut lo, mut hi) = (0.0, seed.max(f64::MIN_POSITIVE));
+      loop {
+        if !hi.is_finite() {
+          return f64::NAN;
+        }
+        if cubic(hi) > 0.0 {
+          break (lo, hi);
+        }
+        (lo, hi) = (hi, 2.0 * hi);
+      }
+    }
+    None => return f64::NAN,
+  };
+  brent::zero(lo, hi, f64::MIN_POSITIVE, cubic).unwrap_or(f64::NAN)
 }
 
-/// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BSMPricer.
+/// Garman–Kohlhagen `(call, put)` at `sigma`, NaN for a `sigma` that is negative or not finite.
 pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
+  if !(sigma.is_finite() && sigma >= 0.0) {
+    return (f64::NAN, f64::NAN);
+  }
   // Garman-Kohlhagen puts the foreign rate in the model's dividend slot,
   // so the query's `(r, q)` pair is `(r_d, r_f)`.
-  BSMPricer::new(sigma, BSMCoc::GarmanKohlhagen1983).call_put(s, k, r_d, r_f, tau)
+  let bsm = BsmPricer::new(sigma, BsmCoc::GarmanKohlhagen1983);
+  (
+    bsm.price_call(s, k, r_d, r_f, tau),
+    bsm.price_put(s, k, r_d, r_f, tau),
+  )
 }
 
 /// Delta on forward with premium included
@@ -168,35 +178,20 @@ pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi
   phi * (-r_f * tau).exp() * (k / f) * nd2
 }
 
-/// Model price computed by plugging Hagan approx vol (β = 1) into BS(GK)
+/// Garman–Kohlhagen `(call, put)` at the Hagan vol of `params` against the forward of `s`; NaN
+/// unless that vol is finite and `> 0`, as [`SabrPricer`](super::SabrPricer)'s price is.
 pub fn model_price_hagan(
   s: f64,
   k: f64,
   r_d: f64,
   r_f: f64,
   tau: f64,
-  alpha: f64,
-  nu: f64,
-  rho: f64,
+  params: &SabrParams,
 ) -> (f64, f64) {
   let fwd = forward_fx(s, tau, r_d, r_f);
-  let sigma = hagan_implied_vol_beta1(k, fwd, tau, alpha, nu, rho);
-  bs_price_fx(s, k, r_d, r_f, tau, sigma)
-}
-
-/// Model price computed by plugging the general-β Hagan vol into BS(GK)
-pub fn model_price_hagan_general(
-  s: f64,
-  k: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-) -> (f64, f64) {
-  let fwd = forward_fx(s, tau, r_d, r_f);
-  let sigma = hagan_implied_vol(k, fwd, tau, alpha, beta, nu, rho);
+  let sigma = hagan_implied_vol(k, fwd, tau, params);
+  if !(sigma.is_finite() && sigma > 0.0) {
+    return (f64::NAN, f64::NAN);
+  }
   bs_price_fx(s, k, r_d, r_f, tau, sigma)
 }

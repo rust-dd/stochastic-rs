@@ -1,34 +1,27 @@
-//! # Bermudan
-//!
-//! Bermudan option pricer via Longstaff-Schwartz Monte Carlo. The holder
-//! may exercise on a finite set of pre-specified exercise dates inside
-//! $[0, T]$.
+//! Bermudan options by Longstaff–Schwartz Monte Carlo, exercisable on a finite set of dates in
+//! `[0, T]`:
 //!
 //! $$
 //! V_0 = \sup_{\tau \in \mathcal T} E^{\mathbb Q}\!\big[e^{-r\tau} h(S_\tau)\big],
 //! \qquad \mathcal T = \{t_{e_1}, \ldots, t_{e_K}\}
 //! $$
 //!
-//! Source:
-//! - Longstaff, F. & Schwartz, E. (2001), "Valuing American Options by Simulation:
-//!   A Simple Least-Squares Approach", DOI: 10.1093/rfs/14.1.113
-//! - Glasserman, P. (2004), "Monte Carlo Methods in Financial Engineering", §8
-//!
+//! Reference: Longstaff & Schwartz (2001), Rev. Financ. Stud. 14, 113–147, DOI 10.1093/rfs/14.1.113
+//! Reference: Glasserman (2004), Monte Carlo Methods in Financial Engineering, §8
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Unseeded;
+use ndarray::ArrayView2;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::linalg::lstsq;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::mc::McEstimate;
+use stochastic_rs_stochastic::params::Drift;
 
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 
-/// Bermudan pricer driven by a path matrix and a set of exercise indices.
-///
-/// `paths` has shape `(n_paths, n_steps + 1)` with column 0 the initial
-/// price. `exercise_steps` are the column indices at which the holder may
-/// exercise; they must be strictly increasing and the last one is typically
-/// `n_steps` (maturity).
+/// Bermudan pricer on a `(n_paths, n_steps + 1)` path matrix (column 0 the initial price),
+/// exercised at the strictly increasing columns `exercise_steps`, typically ending at `n_steps`.
 #[derive(Debug, Clone)]
 pub struct BermudanLsmPricer {
   /// Risk-free rate (constant).
@@ -40,8 +33,12 @@ pub struct BermudanLsmPricer {
 }
 
 impl BermudanLsmPricer {
+  /// Panics unless `n_basis >= 2`, the constant and at least one power of the spot.
   pub fn new(r: f64, tau: f64, n_basis: usize) -> Self {
-    assert!(n_basis >= 2, "need at least 2 basis functions");
+    assert!(
+      n_basis >= 2,
+      "n_basis must satisfy `n_basis >= 2`, got n_basis = {n_basis:?}"
+    );
     Self { r, tau, n_basis }
   }
 
@@ -49,7 +46,7 @@ impl BermudanLsmPricer {
   /// in `paths` at which the holder may exercise.
   pub fn price<F>(
     &self,
-    paths: &Array2<f64>,
+    paths: ArrayView2<f64>,
     exercise_steps: &[usize],
     payoff: F,
   ) -> McEstimate<f64>
@@ -100,7 +97,7 @@ impl BermudanLsmPricer {
       });
       let b_vec = Array1::from_vec(y_vals);
 
-      let beta = crate::linalg::lstsq(&a_mat, &b_vec);
+      let beta = lstsq(a_mat.view(), b_vec.view());
       for &idx in &itm {
         let s = paths[[idx, step]];
         let continuation: f64 = (0..n_b).map(|j| beta[j] * s.powi(j as i32)).sum();
@@ -128,10 +125,9 @@ impl BermudanLsmPricer {
   }
 }
 
-/// Generate `n_paths` independent Gbm paths on a uniform time grid using
-/// the project's [`GbmLog`] process (log-Euler scheme). Returns an
-/// `(n_paths, n_steps + 1)` matrix where column `0` is the spot and column
-/// `n_steps` the terminal value.
+/// `n_paths` [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column `0`, drawn
+/// from a child of `seed`, which advances; panics if `n_steps` is zero.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_gbm_paths(
   s0: f64,
   r: f64,
@@ -140,18 +136,20 @@ pub fn generate_gbm_paths(
   t: f64,
   n_paths: usize,
   n_steps: usize,
+  seed: &impl SeedExt,
 ) -> Array2<f64> {
+  assert!(
+    n_steps >= 1,
+    "n_steps must satisfy `n_steps >= 1`, got n_steps = {n_steps:?}"
+  );
   let b = r - q;
-  let process = GbmLog::<f64>::new(
-    None,
-    Some(b),
-    None,
-    None,
+  let process = GbmLog::<f64, _>::new(
+    Drift::CostOfCarry(b),
     sigma,
     n_steps + 1,
-    Some(s0),
+    s0,
     Some(t),
-    Unseeded,
+    seed.derive(),
   );
   let samples = process.sample_par(n_paths);
   let mut paths = Array2::<f64>::zeros((n_paths, n_steps + 1));
@@ -163,6 +161,9 @@ pub fn generate_gbm_paths(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::*;
 
   /// Bermudan put on the *full* exercise grid (every step) should match an
@@ -177,11 +178,12 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 50;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm_price = bermudan.price(&paths, &exercise, payoff).mean;
+    let berm_price = bermudan.price(paths.view(), &exercise, payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {
@@ -208,7 +210,8 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 60;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let seed = Deterministic::new(11);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
 
@@ -216,7 +219,7 @@ mod tests {
     for n_exercise in [2usize, 4, 12, 30, 60] {
       let stride = n_steps / n_exercise;
       let exercise: Vec<usize> = (1..=n_exercise).map(|i| i * stride).collect();
-      let p = bermudan.price(&paths, &exercise, payoff).mean;
+      let p = bermudan.price(paths.view(), &exercise, payoff).mean;
       assert!(
         p >= prev - 0.05,
         "n_exercise={n_exercise} gives {p}, prev={prev}"
@@ -236,10 +239,11 @@ mod tests {
     let n_paths = 50_000;
     let n_steps = 30;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm = bermudan.price(&paths, &[n_steps], payoff).mean;
+    let berm = bermudan.price(paths.view(), &[n_steps], payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {
@@ -248,5 +252,17 @@ mod tests {
     let eu = eu_sum / n_paths as f64 * (-r * t).exp();
     let diff = (berm - eu).abs();
     assert!(diff < 1e-9, "berm={berm}, eu={eu}");
+  }
+
+  #[test]
+  #[should_panic(expected = "n_basis must satisfy `n_basis >= 2`, got n_basis = 1")]
+  fn a_regression_on_one_basis_function_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, 1.0, 1);
+  }
+
+  #[test]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 1`, got n_steps = 0")]
+  fn a_grid_of_no_steps_is_refused() {
+    let _ = generate_gbm_paths(100.0, 0.05, 0.0, 0.2, 1.0, 8, 0, &Unseeded);
   }
 }

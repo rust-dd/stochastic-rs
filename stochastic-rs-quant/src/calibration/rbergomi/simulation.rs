@@ -2,6 +2,10 @@ use std::sync::Arc;
 
 use ndarray::Array2;
 use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::gamma_li;
 
@@ -65,12 +69,8 @@ impl MsoeEngine {
   }
 }
 
-/// Simulates terminal prices under the rBergomi model with an mSOE approximation
-/// for the Volterra kernel history term.
-///
-/// The log-stock drift is `(r - q - 0.5·V_t) dt`. The `q` argument is the
-/// continuously-compounded dividend yield (or foreign rate for FX); callers
-/// who don't pay dividends should pass `0.0`.
+/// Terminal prices by the mSOE kernel under the log drift `(r − q − V_t/2) dt`: `s0` at zero
+/// maturity, NaN for a NaN or negative one, a NaN rate or a spot not positive; panics on no path.
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_rbergomi_terminal_samples(
   params: &RBergomiParams,
@@ -81,14 +81,65 @@ pub fn simulate_rbergomi_terminal_samples(
   paths: usize,
   steps_per_year: usize,
   msoe_terms: usize,
-  seed: u64,
+  seed: &impl SeedExt,
 ) -> Vec<f64> {
-  assert!(
-    maturity.is_finite() && maturity > 0.0,
-    "maturity must be > 0"
+  let query = (s0, r, q, maturity);
+  let mirrored = simulate_mirrored(
+    params,
+    query,
+    paths,
+    steps_per_year,
+    msoe_terms,
+    seed,
+    [1.0],
   );
-  assert!(paths > 0, "paths must be > 0");
-  assert!(steps_per_year > 0, "steps_per_year must be > 0");
+  mirrored.into_iter().map(|[s]| s).collect()
+}
+
+/// Antithetic pairs of terminal prices: each path's second leg runs on its first leg's normals
+/// negated, the Volterra driver's and the orthogonal Brownian's alike.
+pub(crate) fn simulate_rbergomi_antithetic_pairs(
+  params: &RBergomiParams,
+  query: (f64, f64, f64, f64),
+  paths: usize,
+  steps_per_year: usize,
+  msoe_terms: usize,
+  seed: &impl SeedExt,
+) -> Vec<[f64; 2]> {
+  simulate_mirrored(
+    params,
+    query,
+    paths,
+    steps_per_year,
+    msoe_terms,
+    seed,
+    [1.0, -1.0],
+  )
+}
+
+/// One terminal price per sign for each path, every leg of a path on the same normals times its
+/// sign; the query is `(s0, r, q, maturity)`.
+fn simulate_mirrored<const N: usize>(
+  params: &RBergomiParams,
+  (s0, r, q, maturity): (f64, f64, f64, f64),
+  paths: usize,
+  steps_per_year: usize,
+  msoe_terms: usize,
+  seed: &impl SeedExt,
+  signs: [f64; N],
+) -> Vec<[f64; N]> {
+  assert!(
+    paths > 0,
+    "paths must satisfy `paths > 0`, got paths = {paths:?}"
+  );
+  assert!(
+    steps_per_year > 0,
+    "steps_per_year must satisfy `steps_per_year > 0`, got steps_per_year = {steps_per_year:?}"
+  );
+  let defined = s0 > 0.0 && maturity >= 0.0 && maturity.is_finite() && (r - q).is_finite();
+  if !defined || maturity == 0.0 {
+    return vec![[if defined { s0 } else { f64::NAN }; N]; paths];
+  }
 
   let params = params.clone().projected();
   let steps = ((maturity * steps_per_year as f64).ceil() as usize).max(2);
@@ -104,50 +155,51 @@ pub fn simulate_rbergomi_terminal_samples(
   ));
   let rho = params.rho;
   let rho_orth = (1.0 - rho * rho).max(0.0).sqrt();
+  let seed = seed.next_seed();
+  let xi0_start = params.xi0.value(0.0).max(XI0_MIN);
 
   (0..paths)
     .into_par_iter()
     .map(|path_idx| {
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
-      let seed_ext = crate::simd_rng::Deterministic::new(path_seed);
-      let normal = crate::distributions::normal::SimdNormal::<f64>::new(0.0, 1.0, &seed_ext);
+      let seed_ext = Deterministic::new(path_seed);
+      let mut normal =
+        stochastic_rs_distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
       let dim = engine.dim();
       let mut z = vec![0.0_f64; dim];
       let mut xi = vec![0.0_f64; dim];
-      let mut history = vec![0.0_f64; engine.terms()];
-
-      let mut s = s0.max(1e-12);
-      let mut v_prev = params.xi0.value(0.0).max(XI0_MIN);
+      let mut history = [(); N].map(|_| vec![0.0_f64; engine.terms()]);
+      let mut s = [s0; N];
+      let mut v_prev = [xi0_start; N];
 
       for step in 1..=steps {
         for zi in z.iter_mut() {
-          *zi = normal.sample_fast();
+          *zi = normal.sample();
         }
         engine.transform(&z, &mut xi);
-
-        let d_w = xi[0];
-        let d_w_perp = normal.sample_fast() * sqrt_dt;
-
-        let drift = (r - q - 0.5 * v_prev) * dt;
-        let diffusion = v_prev.sqrt() * (rho * d_w + rho_orth * d_w_perp);
-        s *= (drift + diffusion).exp();
-
-        let mut past_sum = 0.0;
-        for (idx, item) in history.iter().enumerate().take(engine.terms()) {
-          past_sum += engine.weights[idx] * item;
-        }
-
-        let i_hat = xi[dim - 1] + (2.0 * engine.h).sqrt() * past_sum;
+        let d_w_perp = normal.sample() * sqrt_dt;
         let t = step as f64 * engine.dt;
         let forward_var = params.xi0.value(t).max(XI0_MIN);
         let second_moment = engine.second_moment[step - 1].max(1e-14);
-        let v_new =
-          forward_var * (params.eta * i_hat - 0.5 * params.eta * params.eta * second_moment).exp();
-        v_prev = v_new.max(XI0_MIN);
 
-        for k in 0..engine.terms() {
-          history[k] = engine.decay[k] * (history[k] + xi[1 + k]);
+        for (leg, &sign) in signs.iter().enumerate() {
+          let drift = (r - q - 0.5 * v_prev[leg]) * dt;
+          let shock = rho * (sign * xi[0]) + rho_orth * (sign * d_w_perp);
+          s[leg] *= (drift + v_prev[leg].sqrt() * shock).exp();
+
+          let mut past_sum = 0.0;
+          for (idx, item) in history[leg].iter().enumerate().take(engine.terms()) {
+            past_sum += engine.weights[idx] * item;
+          }
+          let i_hat = sign * xi[dim - 1] + (2.0 * engine.h).sqrt() * past_sum;
+          let v_new = forward_var
+            * (params.eta * i_hat - 0.5 * params.eta * params.eta * second_moment).exp();
+          v_prev[leg] = v_new.max(XI0_MIN);
+
+          for k in 0..engine.terms() {
+            history[leg][k] = engine.decay[k] * (history[leg][k] + sign * xi[1 + k]);
+          }
         }
       }
 
@@ -225,7 +277,7 @@ fn cholesky_lower_with_jitter(mut sigma: Array2<f64>) -> Array2<f64> {
   let dim = sigma.nrows();
   let mut jitter = 1e-12;
   for _ in 0..8 {
-    if let Some(lower) = crate::linalg::spd_cholesky_lower(&sigma) {
+    if let Some(lower) = spd_cholesky_lower(sigma.view()) {
       return lower;
     }
     for i in 0..dim {

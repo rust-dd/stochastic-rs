@@ -4,9 +4,9 @@
 
 # stochastic-rs-stochastic
 
-**Stochastic process simulation — 132 processes**
+**Stochastic process simulation — 130 processes**
 
-The simulation engine: 132 processes behind one `ProcessExt<T>` trait,
+The simulation engine: 130 processes behind one `ProcessExt<T>` trait,
 generic over `f32` / `f64`, each of which samples on CUDA, Metal or Apple
 Accelerate as well as on the CPU.
 
@@ -24,7 +24,7 @@ Accelerate as well as on the CPU.
 - **Interest rates** — Vasicek, Hull-White (1F/2F), Ho-Lee, CIR (1F/2F),
   HJM, LMM with drift coupling, Duffie-Kan, Wu-Zhang, ADG.
 - **Monte Carlo** — antithetic, control variates, stratified sampling,
-  importance sampling, Halton and Sobol sequences, Longstaff-Schwartz, MLMC.
+  importance sampling, MLMC.
 - **Backends** — CPU SIMD by default; CUDA, Metal and Accelerate for every
   process via `.on::<B>()`.
 
@@ -48,7 +48,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.4"
+stochastic-rs = "3.0.0-rc.5"
 ```
 
 Depend on `stochastic-rs-stochastic` directly only when you want this slice and nothing else.

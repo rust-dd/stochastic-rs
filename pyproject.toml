@@ -1,15 +1,21 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin>=1.9.4,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "stochastic-rs"
 description = "Quantitative finance for Python, powered by Rust: 130+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — numpy-in / numpy-out."
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dynamic = ["version"]
 dependencies = ["numpy"]
 readme = "stochastic-rs-py/README.md"
 license = {text = "MIT"}
+license-files = [
+  "LICENSE",
+  "stochastic-rs-distributions/LICENSE-THIRD-PARTY",
+  "stochastic-rs-distributions/src/qmc/JOE_KUO_LICENSE",
+  "stochastic-rs-quant/LICENSE-THIRD-PARTY",
+]
 keywords = [
   "quantitative-finance",
   "option-pricing",
@@ -35,11 +41,10 @@ classifiers = [
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Rust",
   "Topic :: Office/Business :: Financial",
@@ -64,13 +69,10 @@ testpaths = ["stochastic-rs-py/tests"]
 python_files = "test_*.py"
 addopts = "-q"
 
-# The Python module is produced by the `stochastic-rs-py` cdylib crate (see
-# stochastic-rs-py/Cargo.toml), not by the workspace umbrella `stochastic-rs`
-# (which is a regular `lib`). `manifest-path` redirects maturin to the right
-# crate so `maturin build` / `maturin develop` work from the workspace root.
+# The module comes from the `stochastic-rs-py` cdylib, not the umbrella `lib`; `manifest-path`
+# points maturin at it, so `maturin build` and `maturin develop` run from the workspace root.
 [tool.maturin]
 manifest-path = "stochastic-rs-py/Cargo.toml"
 module-name = "stochastic_rs"
-# `features` is intentionally NOT pinned here. Linear algebra is pure Rust
-# (`faer`), so wheels build identically on every platform with no
-# platform-specific feature flags and no system BLAS.
+# No `features` pinned: the linear algebra is pure Rust (`faer`), so every platform builds the same
+# wheel with no feature flags and no system BLAS.

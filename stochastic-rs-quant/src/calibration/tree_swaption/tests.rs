@@ -5,15 +5,16 @@ use ndarray::Array1;
 use stochastic_rs_distributions::special::ndtri;
 
 use super::*;
+use crate::CalibrationLossScore;
 use crate::curves::InterpolationMethod;
 use crate::instruments::option::types::SwaptionDirection;
+use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
-use crate::traits::ToShortRateModel;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -21,8 +22,8 @@ fn flat_curve() -> DiscountCurve<f64> {
 fn grid(pairs: &[(f64, f64)]) -> Vec<SwaptionQuote> {
   pairs
     .iter()
-    .map(|&(expiry, tenor)| SwaptionQuote {
-      expiry,
+    .map(|&(tau, tenor)| SwaptionQuote {
+      tau,
       tenor,
       black_vol: 0.0,
       fixed_accrual: 0.5,
@@ -36,12 +37,11 @@ fn grid(pairs: &[(f64, f64)]) -> Vec<SwaptionQuote> {
 /// F (2Φ(σ√T/2) − 1)`.
 fn atm_black_vol(price: f64, quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
   let market = market_swaption(quote, curve, 1.0);
-  let payments = (quote.tenor / market.accrual).round() as usize;
-  let annuity: f64 = (1..=payments)
-    .map(|k| curve.discount_factor(quote.expiry + market.accrual * k as f64) * market.accrual)
+  let annuity: f64 = (market.coupon_times.iter())
+    .map(|&t| curve.discount_factor(t) * market.accrual)
     .sum();
   let ratio = price / (annuity * market.fair_rate);
-  2.0 * ndtri((ratio + 1.0) / 2.0) / quote.expiry.sqrt()
+  2.0 * ndtri((ratio + 1.0) / 2.0) / quote.tau.sqrt()
 }
 
 /// Quotes generated on the tree at the true parameters are recovered by
@@ -50,27 +50,85 @@ fn atm_black_vol(price: f64, quote: &SwaptionQuote, curve: &DiscountCurve<f64>) 
 fn black_karasinski_recovers_synthetic_parameters() {
   let curve = flat_curve();
   let mut quotes = grid(&[(1.0, 2.0), (1.0, 4.0), (2.0, 3.0), (3.0, 3.0)]);
-  let truth = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03, 8);
-  let (model_prices, _) = truth.cost().price_series(0.15, 0.25);
+  let start = BlackKarasinskiParams {
+    mean_reversion: 0.05,
+    sigma: 0.1,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let truth = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, start);
+  let (_, model_prices) = truth.cost(&start, None).price_series(0.15, 0.25);
   for (quote, price) in quotes.iter_mut().zip(model_prices) {
     quote.black_vol = atm_black_vol(price, quote, &curve);
     assert!(quote.black_vol.is_finite() && quote.black_vol > 0.0);
   }
-  let calibrator = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03, 8);
-  let result = calibrator
-    .calibrate(Some((0.05, 0.1)))
-    .expect("calibration runs");
+  let calibrator = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, start);
+  let result = calibrator.calibrate(None).expect("calibration runs");
+  let p = result.params;
   assert!(result.converged);
-  assert!(result.rmse < 1e-7, "rmse {}", result.rmse);
+  assert!(result.rmse() < 1e-7, "rmse {}", result.rmse());
   assert!(
-    (result.mean_reversion - 0.15).abs() < 1e-2,
+    (p.mean_reversion - 0.15).abs() < 1e-2,
     "a {}",
-    result.mean_reversion
+    p.mean_reversion
   );
-  assert!((result.sigma - 0.25).abs() < 5e-3, "sigma {}", result.sigma);
-  let model = ToShortRateModel::to_short_rate_model(&result, 0.03, 0.03);
-  assert_eq!(model.sigma, result.sigma);
-  assert_eq!(model.mean_reversion, result.mean_reversion);
+  assert!((p.sigma - 0.25).abs() < 5e-3, "sigma {}", p.sigma);
+  let model = result.to_short_rate_model();
+  assert_eq!(model.sigma, p.sigma);
+  assert_eq!(model.mean_reversion, p.mean_reversion);
+  assert_eq!(model.initial_rate, 0.03);
+}
+
+/// Distinct rates, so a bridge that swapped `initial_rate` and `long_run_rate` would fail.
+#[test]
+fn black_karasinski_bridge_keeps_the_two_rates_apart() {
+  let params = BlackKarasinskiParams {
+    mean_reversion: 0.15,
+    sigma: 0.25,
+    initial_rate: 0.02,
+    long_run_rate: 0.05,
+  };
+  let model = Calibrated::new(params, CalibrationLossScore::default(), true).to_short_rate_model();
+  assert_eq!(model.initial_rate, 0.02);
+  assert_eq!(model.theta_log, 0.05_f64.ln());
+}
+
+/// The forward turns negative past three years, so the 2y × 3y swap rate is about −3 %: Black-76
+/// prices no such quote, and neither tree fit starts.
+#[test]
+fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
+  let curve = DiscountCurve::from_zero_rates(
+    Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+    Array1::from_vec(vec![0.02, 0.02, -0.01]).view(),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 3.0)]);
+  for quote in &mut quotes {
+    quote.black_vol = 0.2;
+  }
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let bk =
+    BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start).calibrate(None);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).calibrate(None);
+  for err in [bk.unwrap_err(), g2.unwrap_err()] {
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
 }
 
 /// Five G2++ parameters from four quotes are not identifiable one by one,
@@ -79,31 +137,192 @@ fn black_karasinski_recovers_synthetic_parameters() {
 fn g2pp_reprices_synthetic_quotes() {
   let curve = flat_curve();
   let mut quotes = grid(&[(1.0, 2.0), (1.0, 3.0), (2.0, 2.0), (2.0, 4.0)]);
-  let truth = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 4);
   let true_params = G2ppParams {
     mean_reversion_x: 0.5,
     mean_reversion_y: 0.05,
     sigma_x: 0.01,
     sigma_y: 0.006,
     rho: -0.7,
+    phi: 0.03,
   };
-  let (model_prices, _) = truth.cost().price_series(&true_params);
+  let truth = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, true_params);
+  let (_, model_prices) = truth.cost(0.03, None).price_series(&true_params);
+  let scale = model_prices.iter().sum::<f64>() / model_prices.len() as f64;
   for (quote, price) in quotes.iter_mut().zip(model_prices) {
     quote.black_vol = atm_black_vol(price, quote, &curve);
     assert!(quote.black_vol.is_finite() && quote.black_vol > 0.0);
   }
-  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 4).with_max_iters(300);
-  let result = calibrator
-    .calibrate(Some([0.4, 0.08, 0.012, 0.005, -0.5]))
-    .expect("calibration runs");
-  let scale = result.market_prices.iter().sum::<f64>() / result.market_prices.len() as f64;
+  let start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.0072,
+    rho: -0.9,
+    phi: 0.03,
+  };
+  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, start);
+  let result = calibrator.calibrate(None).expect("calibration runs");
+  let (rmse, worst) = (result.rmse() / scale, result.max_error.unwrap() / scale);
+  assert!(result.converged, "{:?}", result.message);
   assert!(
-    result.rmse / scale < 2e-2,
-    "relative rmse {}",
-    result.rmse / scale
+    rmse < 1e-4 && worst < 1e-4,
+    "relative rmse {rmse}, worst {worst}"
   );
-  let model = ToShortRateModel::to_short_rate_model(&result, 0.03, 0.0);
+  let model = result.to_short_rate_model();
   assert_eq!(model.phi, 0.03);
   assert_eq!(model.rho, result.params.rho);
   assert!(result.params.rho.abs() < 1.0);
+}
+
+/// The exact European at the truth from a first-principles quadrature, at two correlations.
+#[test]
+fn g2pp_prices_each_quote_by_the_exact_european() {
+  let curve = flat_curve();
+  let quotes = grid(&[(1.0, 2.0), (1.0, 3.0), (2.0, 2.0), (2.0, 4.0)]);
+  for (rho, exact) in [
+    (
+      -0.7,
+      [
+        0.0031236220647256406,
+        0.004316990382190504,
+        0.004111127640411084,
+        0.007567375148371866,
+      ],
+    ),
+    (
+      -0.99,
+      [
+        0.0008601245844779512,
+        0.0017501570863531332,
+        0.0019255111106666286,
+        0.005096947261395691,
+      ],
+    ),
+  ] {
+    let truth = G2ppParams {
+      mean_reversion_x: 0.5,
+      mean_reversion_y: 0.05,
+      sigma_x: 0.01,
+      sigma_y: 0.006,
+      rho,
+      phi: 0.03,
+    };
+    let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, truth);
+    let (_, model) = calibrator.cost(0.03, None).price_series(&truth);
+    for (got, want) in model.iter().zip(exact) {
+      assert!(
+        (got / want - 1.0).abs() < 1e-11,
+        "rho {rho}: {got} against {want}"
+      );
+    }
+  }
+}
+
+/// The weights shape the objective only; `rmse()` and `max_error` are price errors as quoted.
+#[test]
+fn the_tree_calibrators_report_unweighted_errors() {
+  let curve = flat_curve();
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 2.0), (1.0, 3.0)]);
+  for (quote, (weight, vol)) in quotes
+    .iter_mut()
+    .zip([(4.0, 0.22), (0.25, 0.2), (1.0, 0.21)])
+  {
+    quote.weight = Some(weight);
+    quote.black_vol = vol;
+  }
+  let plain: Vec<_> = quotes
+    .iter()
+    .map(|quote| SwaptionQuote {
+      weight: None,
+      ..quote.clone()
+    })
+    .collect();
+  let options = CalibrationOptions::default().with_max_iterations(60);
+  let unweighted = |market: &[f64], model: &[f64]| {
+    let worst = market.iter().zip(model).map(|(m, q)| (m - q).abs());
+    (crate::loss::rmse(market, model), worst.fold(0.0, f64::max))
+  };
+
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let bk = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start)
+    .with_options(options.clone());
+  let fit = bk.calibrate(None).unwrap();
+  let (market, model) = BlackKarasinskiSwaptionCalibrator::new(&plain, &curve, 1.0, 8, bk_start)
+    .cost(&bk_start, None)
+    .price_series(fit.params.mean_reversion, fit.params.sigma);
+  let (rmse, worst) = unweighted(&market, &model);
+  assert_eq!((fit.rmse(), fit.max_error), (rmse, Some(worst)));
+
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).with_options(options);
+  let fit = g2.calibrate(None).unwrap();
+  let (market, model) = G2ppSwaptionCalibrator::new(&plain, &curve, 1.0, g2_start)
+    .cost(0.03, None)
+    .price_series(&fit.params);
+  let (rmse, worst) = unweighted(&market, &model);
+  assert_eq!((fit.rmse(), fit.max_error), (rmse, Some(worst)));
+}
+
+#[test]
+fn the_tree_calibrators_refuse_patience() {
+  let curve = flat_curve();
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 2.0)]);
+  for quote in &mut quotes {
+    quote.black_vol = 0.2;
+  }
+  let options = CalibrationOptions::default()
+    .with_max_iterations(5)
+    .with_patience(5);
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let bk = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start)
+    .with_options(options.clone());
+  let refused = QuantError::Unsupported { what: "patience" };
+  assert_eq!(bk.calibrate(None).unwrap_err(), refused);
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, g2_start).with_options(options);
+  assert_eq!(g2.calibrate(None).unwrap_err(), refused);
+}
+
+/// A simplex vertex past `|ρ| = 0.999` prices at its mirror image, not on a flat face.
+#[test]
+fn g2pp_reflects_a_correlation_past_its_bound() {
+  let curve = flat_curve();
+  let quotes = grid(&[(1.0, 2.0)]);
+  let start = G2ppParams {
+    mean_reversion_x: 0.5,
+    mean_reversion_y: 0.05,
+    sigma_x: 0.01,
+    sigma_y: 0.006,
+    rho: -0.7,
+    phi: 0.03,
+  };
+  let cost = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, start).cost(0.03, None);
+  let rho = |x: f64| cost.params(&[0.5, 0.05, 0.01, 0.006, x]).rho;
+  assert_eq!(rho(-0.7), -0.7);
+  assert!((rho(-1.2) + 0.798).abs() < 1e-15 && (rho(1.2) - 0.798).abs() < 1e-15);
+  assert!(rho(-1.2) != rho(-1.3));
 }

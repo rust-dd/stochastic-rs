@@ -2,8 +2,6 @@
 
 use std::fmt::Display;
 
-use chrono::NaiveDate;
-
 use crate::traits::RealExt;
 
 /// Rate option payoff family.
@@ -25,7 +23,7 @@ impl Display for InterestRateOptionKind {
   }
 }
 
-/// Swaption payoff direction.
+/// Payer or receiver of a swap, and of a swaption on one.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SwaptionDirection {
   /// Pay fixed, receive floating — call on the forward swap rate.
@@ -158,13 +156,4 @@ impl<T: RealExt> TreeCouponSchedule<T> {
       accrual_factors,
     }
   }
-}
-
-/// Discrete exercise date paired with a tree level index.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExerciseDate {
-  /// Calendar exercise date.
-  pub date: NaiveDate,
-  /// Tree level at which the holder may exercise.
-  pub level: usize,
 }

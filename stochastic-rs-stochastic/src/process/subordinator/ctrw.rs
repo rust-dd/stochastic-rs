@@ -1,6 +1,9 @@
+//! Continuous-time random walk: jumps at renewal waiting times, read off on a fixed output grid.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
@@ -17,6 +20,7 @@ use crate::traits::ProcessExt;
 
 /// Waiting-time distribution for Ctrw.
 #[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum CtrwWaitingLaw<T: FloatExt> {
   Exponential { rate: T },
   Gamma { shape: T, rate: T },
@@ -26,13 +30,70 @@ pub enum CtrwWaitingLaw<T: FloatExt> {
 
 /// Jump-size distribution for Ctrw.
 #[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum CtrwJumpLaw<T: FloatExt> {
   Normal { mean: T, std: T },
   SymmetricStable { alpha: T, scale: T },
   Rademacher { scale: T },
 }
 
+impl<T: FloatExt> CtrwWaitingLaw<T> {
+  #[track_caller]
+  fn assert_valid(&self) {
+    match *self {
+      CtrwWaitingLaw::Exponential { rate } => assert_positive("rate", rate),
+      CtrwWaitingLaw::Gamma { shape, rate } => {
+        assert_positive("shape", shape);
+        assert_positive("rate", rate);
+      }
+      CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
+        assert_positive("mu", mu);
+        assert_positive("lambda", lambda);
+      }
+      CtrwWaitingLaw::PositiveStable { alpha, scale } => {
+        assert!(
+          alpha > T::zero() && alpha < T::one(),
+          "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+        );
+        assert_positive("scale", scale);
+      }
+    }
+  }
+}
+
+impl<T: FloatExt> CtrwJumpLaw<T> {
+  #[track_caller]
+  fn assert_valid(&self) {
+    match *self {
+      CtrwJumpLaw::Normal { mean, std } => {
+        assert!(
+          mean.is_finite(),
+          "mean must satisfy `mean.is_finite()`, got mean = {mean:?}"
+        );
+        assert_positive("std", std);
+      }
+      CtrwJumpLaw::SymmetricStable { alpha, scale } => {
+        assert!(
+          alpha > T::zero() && alpha <= T::from_usize_(2),
+          "alpha must satisfy `alpha > T::zero() && alpha <= T::from_usize_(2)`, got alpha = {alpha:?}"
+        );
+        assert_positive("scale", scale);
+      }
+      CtrwJumpLaw::Rademacher { scale } => assert_positive("scale", scale),
+    }
+  }
+}
+
+#[track_caller]
+fn assert_positive<T: FloatExt>(name: &str, value: T) {
+  assert!(
+    value > T::zero() && value.is_finite(),
+    "{name} must satisfy `{name} > T::zero() && {name}.is_finite()`, got {name} = {value:?}"
+  );
+}
+
 /// Continuous-time random walk sampled on a fixed output grid.
+#[derive(Debug, Clone)]
 pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inter-arrival-time (waiting-time) distribution between jumps.
   pub waiting: CtrwWaitingLaw<T>,
@@ -41,12 +102,11 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of points sampled along the fixed output grid (the CTRW's own
   /// jump times are continuous and generally fall between grid points).
   pub n: usize,
-  /// Initial value X₀ of the CTRW path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] the output grid spans (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -54,6 +114,8 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `x0` and a jump `mean` are finite,
+  /// every other law parameter is positive and finite, a wait's `alpha < 1`, a jump's `alpha <= 2`.
   pub fn new(
     waiting: CtrwWaitingLaw<T>,
     jumps: CtrwJumpLaw<T>,
@@ -62,6 +124,17 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    waiting.assert_valid();
+    jumps.assert_valid();
     Self {
       backend: Cpu,
       waiting,
@@ -74,18 +147,18 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
-
+#[derive(Debug)]
 enum WaitingSampler<T: FloatExt> {
-  Exp(SimdExp<T>),
-  Gamma(SimdGamma<T>),
-  Ig(SimdInverseGauss<T>),
+  Exp(Seeded<SimdExp<T>>),
+  Gamma(Seeded<SimdGamma<T>>),
+  Ig(Seeded<SimdInverseGauss<T>>),
   PosStable { alpha: f64, log_scale: f64 },
 }
 
+#[derive(Debug)]
 enum JumpSampler<T: FloatExt> {
-  Normal(SimdNormal<T>),
-  Stable(SimdAlphaStable<T>),
+  Normal(Seeded<SimdNormal<T>>),
+  Stable(Seeded<SimdAlphaStable<T>>),
   Rademacher(T),
 }
 
@@ -125,10 +198,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.dt()
   }
 
-  /// The exponential waits' rate: the arrivals in a cell of width `dt` are
-  /// Poisson with mean `rate · dt`. Any other waiting law never reaches a
-  /// launch — [`ProcessExt::sample`] keeps it on the host — so asking here is
-  /// a caller bypassing that guard.
+  /// The exponential waits' rate: arrivals in a cell of width `dt` are Poisson with mean
+  /// `rate · dt`. [`ProcessExt::sample`] keeps any other waiting law on the host.
   fn jump_intensity(&self) -> Option<T> {
     match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => Some(rate),
@@ -162,6 +233,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Ctrw<T, S> { waiting, jumps, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Ctrw<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ctrw<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -175,65 +251,35 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let dt = t_max / n_increments as f64;
 
+    self.waiting.assert_valid();
+    self.jumps.assert_valid();
     let waiting = match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => {
-        assert!(
-          rate > T::zero(),
-          "Ctrw Exponential waiting requires rate > 0"
-        );
-        WaitingSampler::Exp(SimdExp::new(rate, &self.seed))
+        WaitingSampler::Exp(SimdExp::new(rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
-        assert!(
-          shape > T::zero() && rate > T::zero(),
-          "Ctrw Gamma waiting requires shape > 0 and rate > 0"
-        );
-        WaitingSampler::Gamma(SimdGamma::<T>::new(shape, T::one() / rate, &self.seed))
+        WaitingSampler::Gamma(SimdGamma::<T>::new(shape, T::one() / rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
-        assert!(
-          mu > T::zero() && lambda > T::zero(),
-          "Ctrw Ig waiting requires mu > 0 and lambda > 0"
-        );
-        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda, &self.seed))
+        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed))
       }
-      CtrwWaitingLaw::PositiveStable { alpha, scale } => {
-        assert!(
-          alpha > T::zero() && alpha < T::one() && scale > T::zero(),
-          "Ctrw positive-stable waiting requires alpha in (0,1) and scale > 0"
-        );
-        WaitingSampler::PosStable {
-          alpha: alpha.to_f64().unwrap(),
-          log_scale: scale.to_f64().unwrap().ln(),
-        }
-      }
+      CtrwWaitingLaw::PositiveStable { alpha, scale } => WaitingSampler::PosStable {
+        alpha: alpha.to_f64().unwrap(),
+        log_scale: scale.to_f64().unwrap().ln(),
+      },
     };
 
     let jumps = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
-        assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::new(mean, std, &self.seed))
+        JumpSampler::Normal(SimdNormal::new(mean, std).seeded(&self.seed))
       }
-      CtrwJumpLaw::SymmetricStable { alpha, scale } => {
-        assert!(
-          alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
-          "Ctrw stable jumps require alpha in (0,2] and scale > 0"
-        );
-        JumpSampler::Stable(SimdAlphaStable::<T>::new(
-          alpha,
-          T::zero(),
-          scale,
-          T::zero(),
-          &self.seed,
-        ))
-      }
-      CtrwJumpLaw::Rademacher { scale } => {
-        assert!(scale > T::zero(), "Ctrw rademacher jumps require scale > 0");
-        JumpSampler::Rademacher(scale)
-      }
+      CtrwJumpLaw::SymmetricStable { alpha, scale } => JumpSampler::Stable(
+        SimdAlphaStable::<T>::new(alpha, T::zero(), scale, T::zero()).seeded(&self.seed),
+      ),
+      CtrwJumpLaw::Rademacher { scale } => JumpSampler::Rademacher(scale),
     };
 
-    let uniform = SimdUniform::<f64>::new(0.0, 1.0, &self.seed);
+    let uniform = SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed);
 
     CtrwSampler {
       n: self.n,
@@ -301,48 +347,47 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// What a device runs here: exponential waiting times, whose
-  /// arrivals per grid cell are the Poisson count the kernels draw. The
-  /// gamma, inverse-Gaussian and stable waits are not memoryless and stay on
-  /// the host; every jump law the process offers has a kernel draw.
+  /// Exponential waits run on a device while a step expects at most 25 events, below the kernels'
+  /// 64-event count; the other waiting laws are not memoryless and stay on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!(matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })))
-      .then_some("a waiting law that is not memoryless")
+    match self.waiting {
+      CtrwWaitingLaw::Exponential { rate } => crate::euler::count_fallback(Some(rate), self.dt()),
+      _ => Some("a waiting law that is not memoryless"),
+    }
   }
 }
 
-/// Reusable [`Ctrw`] sampling state: the owned waiting-time and jump-size
-/// distribution drivers plus the shared uniform source (used for positive-
-/// stable waiting times and Rademacher jumps).
+/// Reusable [`Ctrw`] sampling state: the waiting-time and jump-size drivers and the shared
+/// uniform source of the positive-stable waits and the Rademacher jumps.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CtrwSampler<T: FloatExt> {
   n: usize,
   x0: T,
   dt: f64,
   waiting: WaitingSampler<T>,
   jumps: JumpSampler<T>,
-  uniform: SimdUniform<f64>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> CtrwSampler<T> {
-  fn draw_wait(&self) -> f64 {
-    match &self.waiting {
-      WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
+  fn draw_wait(&mut self) -> f64 {
+    match &mut self.waiting {
+      WaitingSampler::Exp(d) => d.sample().to_f64().unwrap(),
+      WaitingSampler::Gamma(d) => d.sample().to_f64().unwrap(),
+      WaitingSampler::Ig(d) => d.sample().to_f64().unwrap(),
       WaitingSampler::PosStable { alpha, log_scale } => {
-        sample_positive_stable(*alpha, *log_scale, &self.uniform)
+        sample_positive_stable(*alpha, *log_scale, &mut self.uniform)
       }
     }
-    .max(1e-12)
   }
 
-  fn draw_jump(&self) -> f64 {
-    match &self.jumps {
-      JumpSampler::Normal(d) => d.sample_fast().to_f64().unwrap(),
-      JumpSampler::Stable(d) => d.sample_fast().to_f64().unwrap(),
+  fn draw_jump(&mut self) -> f64 {
+    match &mut self.jumps {
+      JumpSampler::Normal(d) => d.sample().to_f64().unwrap(),
+      JumpSampler::Stable(d) => d.sample().to_f64().unwrap(),
       JumpSampler::Rademacher(scale) => {
-        if self.uniform.sample_fast() < 0.5 {
+        if self.uniform.sample() < 0.5 {
           scale.to_f64().unwrap()
         } else {
           -scale.to_f64().unwrap()
@@ -351,6 +396,8 @@ impl<T: FloatExt> CtrwSampler<T> {
     }
   }
 
+  /// Every event up to each grid time is added, with no cap: a law with very many events per step
+  /// takes that long rather than returning a truncated path.
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -365,19 +412,16 @@ impl<T: FloatExt> CtrwSampler<T> {
 
     for i in 1..out.len() {
       let t_i = i as f64 * self.dt;
-      let mut safety = 0usize;
       while next_event <= t_i {
         x += self.draw_jump();
         next_event += self.draw_wait();
-        safety += 1;
-        if safety > 1_000_000 {
-          break;
-        }
       }
       out[i] = T::from_f64_fast(x);
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for CtrwSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for CtrwSampler<T> {
   type Output = Array1<T>;
@@ -394,179 +438,8 @@ impl<T: FloatExt> PathSampler<T> for CtrwSampler<T> {
 }
 
 #[cfg(feature = "python")]
-#[pyo3::prelude::pyclass]
-pub struct PyCtrw {
-  inner_f32: Option<Ctrw<f32>>,
-  inner_f64: Option<Ctrw<f64>>,
-}
+mod python;
 
 #[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyCtrw {
-  #[new]
-  #[pyo3(signature = (
-    waiting_law,
-    waiting_p1,
-    waiting_p2=None,
-    jump_law="normal",
-    jump_p1=0.0,
-    jump_p2=None,
-    n=1000,
-    x0=None,
-    t=None,
-    dtype=None
-  ))]
-  fn new(
-    waiting_law: &str,
-    waiting_p1: f64,
-    waiting_p2: Option<f64>,
-    jump_law: &str,
-    jump_p1: f64,
-    jump_p2: Option<f64>,
-    n: usize,
-    x0: Option<f64>,
-    t: Option<f64>,
-    dtype: Option<&str>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let waiting_f64 = match waiting_law.to_ascii_lowercase().as_str() {
-        "exp" | "exponential" => CtrwWaitingLaw::Exponential { rate: waiting_p1 },
-        "gamma" => CtrwWaitingLaw::Gamma {
-          shape: waiting_p1,
-          rate: waiting_p2.unwrap_or(1.0),
-        },
-        "ig" | "inverse_gaussian" | "inversegaussian" => CtrwWaitingLaw::InverseGaussian {
-          mu: waiting_p1,
-          lambda: waiting_p2.unwrap_or(1.0),
-        },
-        "stable" | "positive_stable" | "positivestable" => CtrwWaitingLaw::PositiveStable {
-          alpha: waiting_p1,
-          scale: waiting_p2.unwrap_or(1.0),
-        },
-        _ => panic!(
-          "PyCtrw: invalid waiting_law '{}' — expected one of 'exponential' | 'gamma' | 'inverse_gaussian' | 'inversegaussian' | 'ig' | 'stable' | 'positive_stable' | 'positivestable'",
-          waiting_law
-        ),
-      };
-
-      let jumps_f64 = match jump_law.to_ascii_lowercase().as_str() {
-        "normal" => CtrwJumpLaw::Normal {
-          mean: jump_p1,
-          std: jump_p2.unwrap_or(1.0),
-        },
-        "stable" | "symmetric_stable" | "symmetricstable" => CtrwJumpLaw::SymmetricStable {
-          alpha: jump_p1,
-          scale: jump_p2.unwrap_or(1.0),
-        },
-        "rademacher" => CtrwJumpLaw::Rademacher {
-          scale: jump_p1.abs(),
-        },
-        _ => panic!(
-          "PyCtrw: invalid jump_law '{}' — expected one of 'normal' | 'symmetric_stable' | 'symmetricstable' | 'stable' | 'rademacher'",
-          jump_law
-        ),
-      };
-
-      match dtype.unwrap_or("f64") {
-        "f32" => {
-          let waiting_f32 = match waiting_f64 {
-            CtrwWaitingLaw::Exponential { rate } => {
-              CtrwWaitingLaw::Exponential { rate: rate as f32 }
-            }
-            CtrwWaitingLaw::Gamma { shape, rate } => CtrwWaitingLaw::Gamma {
-              shape: shape as f32,
-              rate: rate as f32,
-            },
-            CtrwWaitingLaw::InverseGaussian { mu, lambda } => CtrwWaitingLaw::InverseGaussian {
-              mu: mu as f32,
-              lambda: lambda as f32,
-            },
-            CtrwWaitingLaw::PositiveStable { alpha, scale } => CtrwWaitingLaw::PositiveStable {
-              alpha: alpha as f32,
-              scale: scale as f32,
-            },
-          };
-          let jumps_f32 = match jumps_f64 {
-            CtrwJumpLaw::Normal { mean, std } => CtrwJumpLaw::Normal {
-              mean: mean as f32,
-              std: std as f32,
-            },
-            CtrwJumpLaw::SymmetricStable { alpha, scale } => CtrwJumpLaw::SymmetricStable {
-              alpha: alpha as f32,
-              scale: scale as f32,
-            },
-            CtrwJumpLaw::Rademacher { scale } => CtrwJumpLaw::Rademacher {
-              scale: scale as f32,
-            },
-          };
-          Self {
-            inner_f32: Some(Ctrw::new(
-              waiting_f32,
-              jumps_f32,
-              n,
-              x0.map(|v| v as f32),
-              t.map(|v| v as f32),
-              Unseeded,
-            )),
-            inner_f64: None,
-          }
-        }
-        _ => Self {
-          inner_f32: None,
-          inner_f64: Some(Ctrw::new(waiting_f64, jumps_f64, n, x0, t, Unseeded)),
-        },
-      }
-    })
-  }
-
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-
-      if let Some(ref inner) = self.inner_f64 {
-        inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-      } else if let Some(ref inner) = self.inner_f32 {
-        inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-      } else {
-        unreachable!()
-      }
-    })
-  }
-
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use numpy::ndarray::Array2;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-
-      if let Some(ref inner) = self.inner_f64 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
-        let mut result = Array2::<f64>::zeros((m, n));
-        for (i, path) in paths.iter().enumerate() {
-          result.row_mut(i).assign(path);
-        }
-        result.into_pyarray(py).into_py_any(py).unwrap()
-      } else if let Some(ref inner) = self.inner_f32 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
-        let mut result = Array2::<f32>::zeros((m, n));
-        for (i, path) in paths.iter().enumerate() {
-          result.row_mut(i).assign(path);
-        }
-        result.into_pyarray(py).into_py_any(py).unwrap()
-      } else {
-        unreachable!()
-      }
-    })
-  }
-}
+#[doc(hidden)]
+pub use python::PyCtrw;

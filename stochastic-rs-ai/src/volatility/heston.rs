@@ -1,29 +1,7 @@
-//! Neural-network surrogate for the Heston volatility model.
+//! Heston implied-volatility surrogate (`Heston/NNHeston.ipynb`). Inputs `[xi0, rho, sigma, theta,
+//! kappa]`: initial variance, correlation, vol-of-vol, long-run variance, mean-reversion speed.
 //!
-//! The architecture and scaling conventions follow:
-//! - 3 hidden ELU layers (width 30), linear output (88 nodes).
-//! - Parameter scaling to `[-1, 1]` with fixed lower/upper bounds.
-//! - Output (IV surface) standardization with train-set mean/std.
-//!
-//! Source:
-//! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
-//! - `Heston/NNHeston.ipynb`
-//!
-//! # Parameter ordering
-//!
-//! The 5-element input vector is, in order:
-//! `[v0, rho, sigma, theta, kappa]` — initial variance, spot-vol
-//! correlation, vol-of-vol, long-run variance, mean-reversion speed.
-//!
-//! Provenance: [`PARAM_LB`]/[`PARAM_UB`] are copied verbatim from the
-//! notebook's `lb`/`ub` arrays, whose index→name binding is implicit
-//! there too. The assignment above is the only coherent reading of the
-//! intervals — `[-0.95, -0.1]` can only be an equity correlation,
-//! `[1, 10]` only a mean-reversion speed, `[0.0001, 0.04]` a spot
-//! variance (1%–20% vol), `[0.01, 0.2]` a long-run variance, leaving
-//! `[0.01, 1.0]` as the vol-of-vol. A training-set generator must feed
-//! parameters in this order; nothing in the network itself can detect a
-//! permuted input.
+//! Source: <https://github.com/amuguruza/NN-StochVol-Calibrations>
 
 use std::path::Path;
 
@@ -35,34 +13,39 @@ use super::common::StochVolModelSpec;
 use super::common::StochVolNn;
 use super::common::TrainConfig;
 use super::common::TrainReport;
+use super::grid;
 
 pub const MODEL_ID: &str = "heston";
 pub const INPUT_DIM: usize = 5;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
+
+/// `K / S0` of output column `i`, descending: the shipped set is indexed by inverse moneyness
+/// `S0 / K`, so these are the reciprocals of [`grid::MONEYNESS`].
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS);
 
 pub struct HestonNn {
   inner: StochVolNn,
 }
 
 impl HestonNn {
-  pub fn new(device: &Device) -> Result<Self> {
-    Self::with_hidden(device, DEFAULT_HIDDEN_DIM)
+  pub fn new(device: &Device, seed: u64) -> Result<Self> {
+    Self::with_hidden(device, DEFAULT_HIDDEN_DIM, seed)
   }
 
-  pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
+  pub fn with_hidden(device: &Device, hidden_dim: usize, seed: u64) -> Result<Self> {
     let spec = StochVolModelSpec::new(
       MODEL_ID,
-      INPUT_DIM,
-      OUTPUT_DIM,
       hidden_dim,
       PARAM_LB.to_vec(),
       PARAM_UB.to_vec(),
+      STRIKES.to_vec(),
+      grid::MATURITIES.to_vec(),
     )?;
     Ok(Self {
-      inner: StochVolNn::new(spec, device)?,
+      inner: StochVolNn::new(spec, device, seed)?,
     })
   }
 
@@ -75,14 +58,8 @@ impl HestonNn {
     self.inner.train(params, surfaces, config)
   }
 
-  /// Predict an implied-volatility surface for the given parameter vector.
-  ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
-  /// (maturity-major). To bridge into the rest of the library, feed the
-  /// result directly into
-  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
-  /// together with the strike / maturity / forward grid the model was
-  /// trained on.
+  /// The flat surface, [`OUTPUT_DIM`] long and maturity-major, with columns in [`STRIKES`] order
+  /// (descending); `predict_implied_vol_surface` sorts them ascending.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -91,22 +68,18 @@ impl HestonNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// Bridge to `stochastic-rs-quant`: predict and package as
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
-  ///
-  /// `strikes`, `maturities`, `forwards` describe the grid the network was
-  /// trained on. Available with the `quant` cargo feature.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) at `spot` on the
+  /// training grid: strikes [`STRIKES`] times `spot`, ascending; one forward per maturity.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
     params: &[f32; INPUT_DIM],
-    strikes: Vec<f64>,
-    maturities: Vec<f64>,
-    forwards: Vec<f64>,
+    spot: f64,
+    forwards: &[f64],
   ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
     self
       .inner
-      .predict_implied_vol_surface(params, strikes, maturities, forwards)
+      .predict_implied_vol_surface(params, spot, forwards)
   }
 
   pub fn save<P: AsRef<Path>>(&self, dir: P) -> Result<()> {
@@ -114,9 +87,9 @@ impl HestonNn {
   }
 
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self {
-      inner: StochVolNn::load(MODEL_ID, dir, device)?,
-    })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 
@@ -130,23 +103,15 @@ impl crate::calibration::SurrogateModel for HestonNn {
 #[cfg(test)]
 mod tests {
   use std::fs;
-  #[cfg(feature = "viz")]
-  use std::path::Path;
 
   use super::*;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::load_trainset_gzip_npy;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::rmse_1d;
   use crate::volatility::common::synthetic_surface_dataset;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::write_surface_fit_plot_html;
 
   #[test]
   fn train_save_load_roundtrip() -> Result<()> {
     let device = Device::Cpu;
     let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 192, OUTPUT_DIM, 7);
-    let mut model = HestonNn::new(&device)?;
+    let mut model = HestonNn::new(&device, 7)?;
     let cfg = TrainConfig {
       test_ratio: 0.2,
       batch_size: 32,
@@ -183,7 +148,8 @@ mod tests {
       .iter()
       .zip(p2.iter())
       .map(|(a, b)| (a - b).abs())
-      .fold(0.0_f32, f32::max);
+      .max_by(f32::total_cmp)
+      .unwrap();
     assert!(max_diff < 1e-4);
 
     let _ = fs::remove_dir_all(&save_dir);
@@ -195,17 +161,13 @@ mod tests {
   fn predict_implied_vol_surface_roundtrip() -> Result<()> {
     let device = Device::Cpu;
     let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 64, OUTPUT_DIM, 11);
-    let mut model = HestonNn::new(&device)?;
+    let mut model = HestonNn::new(&device, 7)?;
     let cfg = TrainConfig {
       epochs: 5,
       ..TrainConfig::default()
     };
     model.train(&params, &surfaces, &cfg)?;
 
-    // 8 maturities × 11 strikes = OUTPUT_DIM 88.
-    let strikes: Vec<f64> = (0..11).map(|i| 0.5 + 0.1 * i as f64).collect();
-    let maturities: Vec<f64> = vec![0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
-    let forwards = vec![1.0; maturities.len()];
     let sample = [
       params[[0, 0]],
       params[[0, 1]],
@@ -213,70 +175,50 @@ mod tests {
       params[[0, 3]],
       params[[0, 4]],
     ];
-
-    let surface =
-      model.predict_implied_vol_surface(&sample, strikes.clone(), maturities.clone(), forwards)?;
-    assert_eq!(surface.ivs.dim(), (maturities.len(), strikes.len()));
-    assert_eq!(surface.strikes.len(), strikes.len());
-    assert_eq!(surface.maturities.len(), maturities.len());
+    let flat = model.predict_surface(&sample)?;
+    let n_t = grid::MATURITIES.len();
+    let surface = model.predict_implied_vol_surface(&sample, 1.0, &vec![1.0; n_t])?;
+    assert_eq!(surface.ivs.dim(), (n_t, STRIKES.len()));
+    assert!(surface.strikes.windows(2).all(|w| w[0] < w[1]));
+    for t in 0..n_t {
+      for i in 0..STRIKES.len() {
+        let col = STRIKES.len() - 1 - i;
+        assert_eq!(
+          surface.ivs[[t, col]],
+          f64::from(flat[t * STRIKES.len() + i])
+        );
+      }
+    }
     Ok(())
   }
 
-  #[cfg(feature = "viz")]
   #[test]
-  fn real_trainset_fit_plot() -> Result<()> {
-    let trainset_path = Path::new("src/ai/volatility/HestonTrainSet.txt.gz");
-    if !trainset_path.exists() {
-      return Ok(());
-    }
-
-    let device = Device::Cpu;
-    let (params, surfaces) =
-      load_trainset_gzip_npy(trainset_path, INPUT_DIM, OUTPUT_DIM, Some(8_000))?;
-
-    let mut model = HestonNn::new(&device)?;
-    let cfg = TrainConfig {
-      test_ratio: 0.15,
-      batch_size: 64,
-      epochs: 30,
-      learning_rate: 1e-3,
-      random_seed: 42,
-      shuffle: true,
-    };
-    let report = model.train(&params, &surfaces, &cfg)?;
-    let sample_idx = surfaces.nrows() / 3;
-    let sample = [
-      params[[sample_idx, 0]],
-      params[[sample_idx, 1]],
-      params[[sample_idx, 2]],
-      params[[sample_idx, 3]],
-      params[[sample_idx, 4]],
-    ];
-    let pred = model.predict_surface(&sample)?;
-    let actual = surfaces.row(sample_idx).to_vec();
-    let fit_rmse = rmse_1d(&actual, &pred)?;
-
-    let out = Path::new("target/nn_fit_plots/heston_fit.html");
-    let strikes = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
-    let maturities = [0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
-    write_surface_fit_plot_html(
-      out,
-      &format!(
-        "Heston NN Fit - sample {} - RMSE {:.5}",
-        sample_idx, fit_rmse
-      ),
-      &strikes,
-      &maturities,
-      &actual,
-      &pred,
+  fn load_rejects_a_directory_whose_grid_is_not_the_shipped_one() -> Result<()> {
+    let spec = StochVolModelSpec::new(
+      MODEL_ID,
+      8,
+      PARAM_LB.to_vec(),
+      PARAM_UB.to_vec(),
+      grid::MONEYNESS.to_vec(),
+      grid::MATURITIES.to_vec(),
     )?;
-    println!(
-      "Heston fit plot written to {} (sample_rmse={:.6}, final_val_rmse={:.6})",
-      out.display(),
-      fit_rmse,
-      report.epochs.last().map(|e| e.val_rmse).unwrap_or(f32::NAN)
+    let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 32, OUTPUT_DIM, 3);
+    let mut nn = StochVolNn::new(spec, &Device::Cpu, 7)?;
+    let cfg = TrainConfig {
+      epochs: 1,
+      ..TrainConfig::default()
+    };
+    nn.train(&params, &surfaces, &cfg)?;
+    let dir =
+      std::env::temp_dir().join(format!("stochastic_rs_heston_grid_{}", std::process::id()));
+    nn.save(&dir)?;
+    let result = HestonNn::load(&dir, &Device::Cpu);
+    let _ = fs::remove_dir_all(&dir);
+    let message = format!("{:#}", result.err().expect("a foreign grid must not load"));
+    assert!(
+      message.contains("strikes[0]") && message.contains("0.5") && message.contains("2.0"),
+      "{message}"
     );
-    assert!(out.exists());
     Ok(())
   }
 }

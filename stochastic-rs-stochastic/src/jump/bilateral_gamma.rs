@@ -1,13 +1,17 @@
-//! # BilateralGamma
+//! Bilateral gamma: the difference of two gamma processes, alone or beside a Brownian motion.
 //!
 //! $$
-//! X_t=\Gamma^+_t-\Gamma^-_t,\quad \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
+//! X_t=\Gamma^+_t-\Gamma^-_t,\quad
+//! \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
 //! $$
 //!
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -17,16 +21,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Bilateral Gamma process.
-///
-/// Decomposes log-returns into independent positive and negative gamma jump
-/// components, each with its own shape and rate parameter.
-///
-/// Characteristic exponent:
+/// The difference of two independent gamma processes, with characteristic exponent
 /// $$
-/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
+/// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}
+/// +\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape parameter for positive jumps.
   pub alpha_p: T,
@@ -38,9 +38,9 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda_m: T,
   /// Number of points sampled along the bilateral-gamma path.
   pub n: usize,
-  /// Initial value X₀ of the bilateral-gamma path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -50,6 +50,8 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     alpha_p: T,
     lambda_p: T,
@@ -60,10 +62,47 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
+    assert!(
+      alpha_p.is_finite(),
+      "alpha_p must satisfy `alpha_p.is_finite()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p.is_finite(),
+      "lambda_p must satisfy `lambda_p.is_finite()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m.is_finite(),
+      "alpha_m must satisfy `alpha_m.is_finite()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m.is_finite(),
+      "lambda_m must satisfy `lambda_m.is_finite()`, got lambda_m = {lambda_m:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha_p > T::zero(),
+      "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p > T::zero(),
+      "lambda_p must satisfy `lambda_p > T::zero()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m > T::zero(),
+      "alpha_m must satisfy `alpha_m > T::zero()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m > T::zero(),
+      "lambda_m must satisfy `lambda_m > T::zero()`, got lambda_m = {lambda_m:?}"
+    );
     Self {
       backend: Cpu,
       alpha_p,
@@ -78,12 +117,10 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -134,6 +171,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGamma<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGamma<T, S, B>
 {
@@ -144,21 +186,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaSampler<T> {
-    // Positive and negative gamma sources are derived from `self.seed` in the
-    // same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; both owned sources advance on reuse for independent paths.
+    // The positive, then the negative gamma source are derived from `self.seed`, an order the
+    // pinned streams depend on; reuse advances both for independent paths.
     let dt = self.dt();
     BilateralGammaSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
-      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
-      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p).seeded(&self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -191,11 +231,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGamma`] sampling state: owns the positive- and
 /// negative-side gamma sources so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  gamma_p: SimdGamma<T>,
-  gamma_m: SimdGamma<T>,
+  gamma_p: Seeded<SimdGamma<T>>,
+  gamma_m: Seeded<SimdGamma<T>>,
 }
 
 impl<T: FloatExt> BilateralGammaSampler<T> {
@@ -219,6 +260,8 @@ impl<T: FloatExt> BilateralGammaSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
   type Output = Array1<T>;
 
@@ -241,7 +284,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
 /// $$
 /// X_t=\sigma W_t+\Gamma^+_t-\Gamma^-_t
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion coefficient of the Brownian component.
   pub sigma: T,
@@ -255,9 +298,9 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda_m: T,
   /// Number of points sampled along the bilateral-gamma-motion path.
   pub n: usize,
-  /// Initial value X₀ of the bilateral-gamma-motion path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -267,6 +310,8 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha_p > 0`, `lambda_p > 0`,
+  /// `alpha_m > 0`, `lambda_m > 0`, and every parameter is finite.
   pub fn new(
     sigma: T,
     alpha_p: T,
@@ -278,10 +323,51 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      alpha_p.is_finite(),
+      "alpha_p must satisfy `alpha_p.is_finite()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p.is_finite(),
+      "lambda_p must satisfy `lambda_p.is_finite()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m.is_finite(),
+      "alpha_m must satisfy `alpha_m.is_finite()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m.is_finite(),
+      "lambda_m must satisfy `lambda_m.is_finite()`, got lambda_m = {lambda_m:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha_p > T::zero(),
+      "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p > T::zero(),
+      "lambda_p must satisfy `lambda_p > T::zero()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m > T::zero(),
+      "alpha_m must satisfy `alpha_m > T::zero()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m > T::zero(),
+      "lambda_m must satisfy `lambda_m > T::zero()`, got lambda_m = {lambda_m:?}"
+    );
     Self {
       backend: Cpu,
       sigma,
@@ -297,12 +383,10 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -353,6 +437,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGammaMotion<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGammaMotion<T, S, B>
 {
@@ -363,24 +452,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     Self: 's;
 
   fn sampler(&self) -> BilateralGammaMotionSampler<T> {
-    // Gamma sources then the Gaussian source are derived from `self.seed` in
-    // the same order as the legacy `sample()`, so the first fill matches
-    // bit-for-bit; all owned sources advance on reuse for independent paths.
+    // The gamma sources, then the Gaussian one are derived from `self.seed`, an order the pinned
+    // streams depend on; reuse advances all of them for independent paths.
     let dt = self.dt();
     BilateralGammaMotionSampler {
       n: self.n,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
       sqrt_dt: dt.sqrt(),
-      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
-      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p).seeded(&self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -413,14 +500,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGammaMotion`] sampling state: owns both gamma sources
 /// and the Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaMotionSampler<T: FloatExt> {
   n: usize,
   sigma: T,
   x0: T,
   sqrt_dt: T,
-  gamma_p: SimdGamma<T>,
-  gamma_m: SimdGamma<T>,
-  normal: SimdNormal<T>,
+  gamma_p: Seeded<SimdGamma<T>>,
+  gamma_m: Seeded<SimdGamma<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BilateralGammaMotionSampler<T> {
@@ -446,6 +534,8 @@ impl<T: FloatExt> BilateralGammaMotionSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaMotionSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
   type Output = Array1<T>;
 
@@ -464,71 +554,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn bg_n_eq_1_keeps_initial_value() {
-    let p = BilateralGamma::new(1.0_f64, 2.0, 1.5, 2.5, 1, Some(3.0), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 3.0);
-  }
-
-  #[test]
-  fn bgm_n_eq_1_keeps_initial_value() {
-    let p = BilateralGammaMotion::new(
-      0.2_f64,
-      1.0,
-      2.0,
-      1.5,
-      2.5,
-      1,
-      Some(3.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 3.0);
-  }
-
-  #[test]
-  fn bg_seeded_correct_length() {
-    let p = BilateralGamma::new(
-      1.0_f64,
-      2.0,
-      1.5,
-      2.5,
-      100,
-      None,
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 100);
-  }
-
-  #[test]
-  fn bgm_seeded_correct_length() {
-    let p = BilateralGammaMotion::new(
-      0.2_f64,
-      1.0,
-      2.0,
-      1.5,
-      2.5,
-      100,
-      None,
-      Some(1.0),
-      Deterministic::new(42),
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 100);
-  }
-}
+mod tests;
 
 py_process_1d!(PyBilateralGamma, BilateralGamma,
   sig: (alpha_p, lambda_p, alpha_m, lambda_m, n, x0=None, t=None, seed=None, dtype=None),

@@ -1,9 +1,5 @@
-//! Python bindings for the calendar layer: day-count conventions, business-day
-//! conventions, holiday calendars, and schedule builders.
-//!
-//! All native Rust enum variants are mapped to Python via string-based
-//! constructors so the user-facing API stays free of foreign-typed
-//! enum imports.
+//! Python bindings for day counts, business-day conventions, holiday calendars and schedules; every
+//! Rust enum is chosen by a string, so Python imports no foreign enum type.
 
 use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
@@ -28,23 +24,33 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "Thirty360" | "30/360" => Ok(DayCountConvention::Thirty360),
     "Thirty360E" | "Thirty360European" | "30E/360" => Ok(DayCountConvention::Thirty360European),
     "Thirty360EIsda" | "Thirty360EuropeanISDA" | "30E/360 ISDA" => {
-      Ok(DayCountConvention::Thirty360EuropeanISDA)
+      Ok(DayCountConvention::Thirty360EuropeanIsda)
     }
-    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => Ok(DayCountConvention::ActualActualISDA),
-    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => Ok(DayCountConvention::ActualActualAFB),
+    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => Ok(DayCountConvention::ActualActualIsda),
+    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => Ok(DayCountConvention::ActualActualAfb),
     "ActActIcma" | "ActualActualICMA" | "ACT/ACT ICMA" | "ActualActualISMA" => {
       Ok(DayCountConvention::ActualActualIcma)
     }
-    "Bus252" | "Business252" | "BUS/252" => Ok(DayCountConvention::Business252),
     "Act364" | "Actual364" | "ACT/364" => Ok(DayCountConvention::Actual364),
     "NoLeap365" | "NL/365" => Ok(DayCountConvention::NoLeap365),
     "Act365L" | "Actual365Leap" | "ACT/365L" => Ok(DayCountConvention::Actual365Leap),
-    other => Err(PyValueError::new_err(format!("unknown DayCount: {other}"))),
+    other => {
+      let unknown = || PyValueError::new_err(format!("unknown DayCount: {other}"));
+      let prefix = ["Business252", "Bus252", "BUS/252"]
+        .into_iter()
+        .find(|prefix| other.starts_with(prefix))
+        .ok_or_else(unknown)?;
+      let calendar = match &other[prefix.len()..] {
+        "" => HolidayCalendar::Brazil,
+        rest => parse_holiday_calendar(rest.strip_prefix('/').ok_or_else(unknown)?)?,
+      };
+      Ok(DayCountConvention::Business252(calendar))
+    }
   }
 }
 
 #[pyclass(module = "stochastic_rs", name = "DayCount", from_py_object)]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyDayCount {
   inner: DayCountConvention,
 }
@@ -92,7 +98,7 @@ fn parse_bdc(name: &str) -> PyResult<BusinessDayConvention> {
   name = "BusinessDayConvention",
   from_py_object
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyBusinessDayConvention {
   inner: BusinessDayConvention,
 }
@@ -126,6 +132,7 @@ fn parse_holiday_calendar(name: &str) -> PyResult<HolidayCalendar> {
     "Hkex" | "HKEX" => Ok(HolidayCalendar::Hkex),
     "Asx" | "ASX" => Ok(HolidayCalendar::Asx),
     "Sgx" | "SGX" => Ok(HolidayCalendar::Sgx),
+    "Brazil" => Ok(HolidayCalendar::Brazil),
     "B3" => Ok(HolidayCalendar::B3),
     other => Err(PyValueError::new_err(format!(
       "unknown HolidayCalendar: {other}"
@@ -208,6 +215,13 @@ impl PyCalendar {
   }
 
   #[staticmethod]
+  fn brazil() -> Self {
+    Self {
+      inner: Calendar::new(HolidayCalendar::Brazil),
+    }
+  }
+
+  #[staticmethod]
   fn b3() -> Self {
     Self {
       inner: Calendar::new(HolidayCalendar::B3),
@@ -285,6 +299,8 @@ fn parse_stub(name: &str) -> PyResult<StubConvention> {
 #[pyclass(module = "stochastic_rs", name = "ScheduleBuilder")]
 pub struct PyScheduleBuilder {
   inner: Option<ScheduleBuilder>,
+  direction: DateGenerationRule,
+  imm: bool,
 }
 
 #[pymethods]
@@ -293,6 +309,8 @@ impl PyScheduleBuilder {
   fn new(effective: NaiveDate, termination: NaiveDate) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: Some(ScheduleBuilder::new(effective, termination)),
+      direction: DateGenerationRule::Backward,
+      imm: false,
     })
   }
 
@@ -310,7 +328,7 @@ impl PyScheduleBuilder {
       .inner
       .take()
       .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.calendar(calendar.inner));
+    self.inner = Some(b.calendar(std::sync::Arc::new(calendar.inner)));
     Ok(())
   }
 
@@ -342,38 +360,47 @@ impl PyScheduleBuilder {
   }
 
   fn forward(&mut self) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.forward());
+    self.live()?;
+    self.direction = DateGenerationRule::Forward;
     Ok(())
   }
 
   fn backward(&mut self) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.backward());
+    self.live()?;
+    self.direction = DateGenerationRule::Backward;
     Ok(())
   }
 
   fn imm(&mut self, flag: bool) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.imm(flag));
+    self.live()?;
+    self.imm = flag;
     Ok(())
   }
 
   fn build(&mut self) -> PyResult<PySchedule> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    Ok(PySchedule { inner: b.build() })
+    self.live()?;
+    let rule = match (self.imm, self.direction) {
+      (true, DateGenerationRule::Forward) => {
+        return Err(PyValueError::new_err(
+          "IMM schedules generate backward: drop forward() or imm(True)",
+        ));
+      }
+      (true, _) => DateGenerationRule::Imm,
+      (false, direction) => direction,
+    };
+    let b = self.inner.take().expect("live builder");
+    Ok(PySchedule {
+      inner: b.rule(rule).build(),
+    })
+  }
+}
+
+impl PyScheduleBuilder {
+  fn live(&self) -> PyResult<()> {
+    match self.inner {
+      Some(_) => Ok(()),
+      None => Err(PyValueError::new_err("ScheduleBuilder already consumed")),
+    }
   }
 }
 
@@ -416,9 +443,3 @@ pub fn py_easter_sunday(year: i32) -> NaiveDate {
 pub fn py_imm_date(year: i32, quarter_month: u32) -> NaiveDate {
   crate::calendar::date_math::imm_date(year, quarter_month)
 }
-
-// Marker so the `DateGenerationRule` import lights up for downstream
-// consumers when we later add forward/backward enum exposure on the
-// builder; for now the builder methods cover the same surface.
-#[allow(dead_code)]
-type _DateGenerationRuleAlias = DateGenerationRule;

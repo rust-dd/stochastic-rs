@@ -1,27 +1,43 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "HestonMLE", unsendable)]
 pub struct PyHestonMLE {
-  inner: crate::heston_mle::HestonMleResult,
+  inner: crate::heston_mle::HestonMleFit,
 }
 
 #[pymethods]
 impl PyHestonMLE {
   /// NMLE (Wang et al., 2018) closed-form Heston estimator.
   #[staticmethod]
-  fn nmle<'py>(s: PyReadonlyArray1<'py, f64>, v: PyReadonlyArray1<'py, f64>, r: f64) -> Self {
-    Self {
-      inner: crate::heston_mle::nmle_heston(s.as_array(), v.as_array(), r),
-    }
+  fn nmle<'py>(
+    s: PyReadonlyArray1<'py, f64>,
+    v: PyReadonlyArray1<'py, f64>,
+    r: f64,
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::heston_mle::fit_heston_nmle(s.as_array(), v.as_array(), r)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// PMLE (penalised) Heston estimator.
   #[staticmethod]
-  fn pmle<'py>(s: PyReadonlyArray1<'py, f64>, v: PyReadonlyArray1<'py, f64>, r: f64) -> Self {
-    Self {
-      inner: crate::heston_mle::pmle_heston(s.as_array(), v.as_array(), r),
-    }
+  fn pmle<'py>(
+    s: PyReadonlyArray1<'py, f64>,
+    v: PyReadonlyArray1<'py, f64>,
+    r: f64,
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::heston_mle::fit_heston_pmle(s.as_array(), v.as_array(), r)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -52,7 +68,7 @@ impl PyHestonMLE {
 
 #[pyclass(name = "HestonNMLECEKF", unsendable)]
 pub struct PyHestonNMLECEKF {
-  inner: crate::heston_nml_cekf::HestonNmleCekfResult,
+  inner: crate::heston_nmle_cekf::HestonNmleCekfFit,
 }
 
 #[pymethods]
@@ -66,19 +82,19 @@ impl PyHestonNMLECEKF {
     delta: Option<f64>,
     max_iters: usize,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let default_cfg = crate::heston_nml_cekf::HestonNmleCekfConfig::default();
-      let cfg = crate::heston_nml_cekf::HestonNmleCekfConfig {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let default_cfg = crate::heston_nmle_cekf::HestonNmleCekfConfig::default();
+      let cfg = crate::heston_nmle_cekf::HestonNmleCekfConfig {
         r,
         delta: delta.unwrap_or(default_cfg.delta),
         max_iters,
         ..default_cfg
       };
       let arr = s.as_array();
-      Self {
-        inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
-      }
-    })
+      Ok(Self {
+        inner: crate::heston_nmle_cekf::fit_heston_nmle_cekf(arr, cfg).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]

@@ -1,24 +1,11 @@
-//! Reproducibility tests for Task 1 of the zero-exception-reproducibility
-//! wave: `Merton`, `Kou`, `LevyDiffusion` absorb their compound-Poisson jump
-//! driver's construction into `new()`, threading the constructor's own
-//! `seed: S` into it (`seed.clone().derive()`) instead of hard-wiring
-//! `cpoisson: CompoundPoisson<T, D>` to `Unseeded` in the public field type.
-//! All three are now fully seed-reproducible — no exception to
-//! `ProcessExt`'s reproducibility guarantee. See `traits/process.rs`'s
-//! trait-level reproducibility section.
-//!
-//! Before this fix (see this file's prior revision / the RED-phase probe in
-//! the task report), two identically-`Deterministic`-seeded objects
-//! diverged under any nonzero jump intensity, because `cpoisson`'s own seed
-//! field was structurally pinned to `Unseeded` regardless of the outer
-//! `S`. `lambda = 50` below makes jumps dominate the path, so a
-//! reproducibility failure in the jump component cannot hide behind a
-//! diffusion-only comparison.
+//! `Merton`, `Kou` and `LevyDiffusion` draw their jumps from a child of their seed, so identically
+//! seeded processes agree at any thread count; `lambda = 50` makes the jumps dominate each path.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -28,13 +15,13 @@ const SEED: u64 = 42;
 const N: usize = 128;
 const LAMBDA: f64 = 50.0;
 
-fn merton_with_jumps(seed: u64) -> Merton<f64, ScalarNormal<f64>, Deterministic> {
+fn merton_with_jumps(seed: u64) -> Merton<f64, SimdNormal<f64>, Deterministic> {
   Merton::new(
     0.03,
     0.2,
     LAMBDA,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(0.0),
     Some(1.0),
@@ -42,13 +29,13 @@ fn merton_with_jumps(seed: u64) -> Merton<f64, ScalarNormal<f64>, Deterministic>
   )
 }
 
-fn kou_with_jumps(seed: u64) -> Kou<f64, ScalarNormal<f64>, Deterministic> {
+fn kou_with_jumps(seed: u64) -> Kou<f64, SimdNormal<f64>, Deterministic> {
   Kou::new(
     0.03,
     0.2,
     LAMBDA,
     0.0,
-    ScalarNormal::new(0.0, 0.12),
+    SimdNormal::new(0.0, 0.12),
     N,
     Some(0.0),
     Some(1.0),
@@ -56,12 +43,12 @@ fn kou_with_jumps(seed: u64) -> Kou<f64, ScalarNormal<f64>, Deterministic> {
   )
 }
 
-fn levy_diffusion_with_jumps(seed: u64) -> LevyDiffusion<f64, ScalarNormal<f64>, Deterministic> {
+fn levy_diffusion_with_jumps(seed: u64) -> LevyDiffusion<f64, SimdNormal<f64>, Deterministic> {
   LevyDiffusion::new(
     0.01,
     0.2,
     LAMBDA,
-    ScalarNormal::new(0.0, 0.08),
+    SimdNormal::new(0.0, 0.08),
     N,
     Some(0.0),
     Some(1.0),
@@ -226,25 +213,18 @@ fn levy_diffusion_sample_par_paths_are_distinct() {
   );
 }
 
-/// Guards the single-source-of-truth invariant a Task 1 review caught
-/// broken on `Merton` (`with_cpoisson` silently dropping the driver's
-/// lambda — see `with_setters_merton.rs`'s dedicated regression tests):
-/// `self.lambda` and the otherwise-cosmetic mirror `cpoisson.poisson.lambda`
-/// must agree right out of `new()`, for all three types, including
-/// `LevyDiffusion`, which gained its own top-level `lambda` field as part
-/// of that same fix (previously `self.lambda` did not exist on
-/// `LevyDiffusion` at all).
+/// The host and the engine read one rate.
 #[test]
 fn jump_family_lambda_is_single_sourced_at_construction() {
   let m = merton_with_jumps(SEED);
   assert_eq!(m.lambda, LAMBDA);
-  assert_eq!(m.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&m), Some(LAMBDA));
 
   let k = kou_with_jumps(SEED);
   assert_eq!(k.lambda, LAMBDA);
-  assert_eq!(k.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&k), Some(LAMBDA));
 
   let l = levy_diffusion_with_jumps(SEED);
   assert_eq!(l.lambda, LAMBDA);
-  assert_eq!(l.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&l), Some(LAMBDA));
 }

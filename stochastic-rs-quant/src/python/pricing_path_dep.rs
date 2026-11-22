@@ -4,9 +4,7 @@ use pyo3::prelude::*;
 use super::parse_option_type;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `v` only, so the wrapper carries the
-/// `(s, k, r, q, tau)` query the Python-visible no-argument methods are
-/// defined at. Python's constructor signature is unchanged.
+/// Asian option prices at the stored `(s, k, r, q, tau)`, which the Rust model takes per query.
 #[pyclass(name = "AsianPricer", unsendable)]
 pub struct PyAsianPricer {
   inner: crate::pricing::asian::AsianPricer,
@@ -39,115 +37,18 @@ impl PyAsianPricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 
-#[pyclass(name = "BarrierPricer", unsendable)]
-pub struct PyBarrierPricer {
-  inner: crate::pricing::barrier::BarrierPricer,
-}
-
-#[pymethods]
-impl PyBarrierPricer {
-  /// `barrier_type`: one of "up_in", "up_out", "down_in", "down_out".
-  #[new]
-  #[pyo3(signature = (s, k, h, r, q, sigma, t, barrier_type, option_type="call", rebate=0.0))]
-  fn new(
-    s: f64,
-    k: f64,
-    h: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    t: f64,
-    barrier_type: &str,
-    option_type: &str,
-    rebate: f64,
-  ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      use crate::pricing::barrier::BarrierType;
-      let bt = match barrier_type.to_ascii_lowercase().as_str() {
-        "up_in" | "ui" | "upandin" => BarrierType::UpAndIn,
-        "up_out" | "uo" | "upandout" => BarrierType::UpAndOut,
-        "down_in" | "di" | "downandin" => BarrierType::DownAndIn,
-        "down_out" | "do" | "downandout" => BarrierType::DownAndOut,
-        o => {
-          return Err(PyValueError::new_err(format!(
-            "barrier_type must be one of up_in/up_out/down_in/down_out, got '{o}'"
-          )));
-        }
-      };
-      let ot = parse_option_type(option_type)?;
-      Ok(Self {
-        inner: crate::pricing::barrier::BarrierPricer {
-          s,
-          k,
-          h,
-          r,
-          q,
-          sigma,
-          tau: t,
-          rebate,
-          barrier_type: bt,
-          option_type: ot,
-        },
-      })
-    })?
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-#[pyclass(name = "FloatingLookbackPricer", unsendable)]
-pub struct PyFloatingLookbackPricer {
-  inner: crate::pricing::lookback::FloatingLookbackPricer,
-}
-
-#[pymethods]
-impl PyFloatingLookbackPricer {
-  #[new]
-  #[pyo3(signature = (s, r, q, sigma, t, option_type="call", s_min=None, s_max=None))]
-  fn new(
-    s: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    t: f64,
-    option_type: &str,
-    s_min: Option<f64>,
-    s_max: Option<f64>,
-  ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      Ok(Self {
-        inner: crate::pricing::lookback::FloatingLookbackPricer {
-          s,
-          s_min,
-          s_max,
-          r,
-          q,
-          sigma,
-          tau: t,
-          option_type: ot,
-        },
-      })
-    })?
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-/// The Rust model holds `v` only, so the wrapper carries the
-/// `(s, k, r, q, tau)` query and the option type the Python-visible
-/// no-argument methods are defined at. Python's constructor signature is
-/// unchanged.
+/// Bjerksund-Stensland (2002) American prices at the stored `(s, k, r, q, tau)` and option type.
 #[pyclass(name = "BjerksundStensland2002Pricer", unsendable)]
 pub struct PyBjerksundStensland2002Pricer {
   inner: crate::pricing::bjerksund_stensland::BjerksundStensland2002Pricer,
@@ -193,250 +94,14 @@ impl PyBjerksundStensland2002Pricer {
   }
 
   fn call_put(&self) -> (f64, f64) {
-    self
-      .inner
-      .call_put(self.s, self.k, self.r, self.q, self.tau)
-  }
-}
-
-#[pyclass(name = "VarianceSwapPricer", unsendable)]
-pub struct PyVarianceSwapPricer {
-  inner: crate::pricing::variance_swap::VarianceSwapPricer,
-}
-
-#[pymethods]
-impl PyVarianceSwapPricer {
-  #[new]
-  fn new(s: f64, r: f64, q: f64, t: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::variance_swap::VarianceSwapPricer { s, r, q, tau: t },
-    })
-  }
-
-  fn forward(&self) -> f64 {
-    self.inner.forward()
-  }
-
-  /// BSM fair-strike (`σ²`).
-  fn fair_strike_bsm(&self, sigma: f64) -> f64 {
-    self.inner.fair_strike_bsm(sigma)
-  }
-
-  /// Heston closed-form fair-variance strike (Brockhaus-Long 2000).
-  fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
-    self.inner.fair_strike_heston(v0, kappa, theta)
-  }
-
-  /// Demeterfi-Derman-Kamal-Zou static-replication fair strike.
-  fn fair_strike_replication(&self, strikes: Vec<f64>, otm_prices: Vec<f64>) -> f64 {
-    self.inner.fair_strike_replication(&strikes, &otm_prices)
-  }
-}
-
-#[pyclass(name = "CompoundPricer", unsendable)]
-pub struct PyCompoundPricer {
-  inner: crate::pricing::compound::CompoundPricer,
-}
-
-#[pymethods]
-impl PyCompoundPricer {
-  /// `compound_type`: one of "call_on_call" / "call_on_put" / "put_on_call" / "put_on_put".
-  #[new]
-  fn new(
-    s: f64,
-    k1: f64,
-    k2: f64,
-    t1: f64,
-    t2: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    compound_type: &str,
-  ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      use crate::pricing::compound::CompoundType;
-      let ct = match compound_type.to_ascii_lowercase().as_str() {
-        "call_on_call" | "coc" => CompoundType::CallOnCall,
-        "call_on_put" | "cop" => CompoundType::CallOnPut,
-        "put_on_call" | "poc" => CompoundType::PutOnCall,
-        "put_on_put" | "pop" => CompoundType::PutOnPut,
-        o => {
-          return Err(PyValueError::new_err(format!(
-            "compound_type must be one of call_on_call/call_on_put/put_on_call/put_on_put, got '{o}'"
-          )));
-        }
-      };
-      Ok(Self {
-        inner: crate::pricing::compound::CompoundPricer {
-          s,
-          k1,
-          k2,
-          t1,
-          t2,
-          r,
-          q,
-          sigma,
-          compound_type: ct,
-        },
-      })
-    })?
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-#[pyclass(name = "SimpleChooserPricer", unsendable)]
-pub struct PySimpleChooserPricer {
-  inner: crate::pricing::chooser::SimpleChooserPricer,
-}
-
-#[pymethods]
-impl PySimpleChooserPricer {
-  #[new]
-  fn new(s: f64, k: f64, r: f64, q: f64, sigma: f64, t1: f64, t: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::chooser::SimpleChooserPricer {
-        s,
-        k,
-        r,
-        q,
-        sigma,
-        t1,
-        tau: t,
-      },
-    })
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-#[pyclass(name = "CliquetPricer", unsendable)]
-pub struct PyCliquetPricer {
-  inner: crate::pricing::cliquet::CliquetPricer,
-}
-
-#[pymethods]
-impl PyCliquetPricer {
-  #[new]
-  #[pyo3(signature = (s, notional, m, t, r, q, sigma, local_floor=None, local_cap=None))]
-  fn new(
-    s: f64,
-    notional: f64,
-    m: usize,
-    t: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    local_floor: Option<f64>,
-    local_cap: Option<f64>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::cliquet::CliquetPricer {
-        s,
-        notional,
-        m,
-        tau: t,
-        r,
-        q,
-        sigma,
-        local_floor,
-        local_cap,
-      },
-    })
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-#[pyclass(name = "FixedLookbackPricer", unsendable)]
-pub struct PyFixedLookbackPricer {
-  inner: crate::pricing::lookback::FixedLookbackPricer,
-}
-
-#[pymethods]
-impl PyFixedLookbackPricer {
-  #[new]
-  #[pyo3(signature = (s, k, r, q, sigma, t, option_type="call", s_min=None, s_max=None))]
-  fn new(
-    s: f64,
-    k: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    t: f64,
-    option_type: &str,
-    s_min: Option<f64>,
-    s_max: Option<f64>,
-  ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      Ok(Self {
-        inner: crate::pricing::lookback::FixedLookbackPricer {
-          s,
-          k,
-          s_min,
-          s_max,
-          r,
-          q,
-          sigma,
-          tau: t,
-          option_type: ot,
-        },
-      })
-    })?
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
-  }
-}
-
-#[pyclass(name = "DoubleBarrierPricer", unsendable)]
-pub struct PyDoubleBarrierPricer {
-  inner: crate::pricing::barrier::DoubleBarrierPricer,
-}
-
-#[pymethods]
-impl PyDoubleBarrierPricer {
-  #[new]
-  #[pyo3(signature = (s, k, h_upper, h_lower, r, q, sigma, t, option_type="call"))]
-  fn new(
-    s: f64,
-    k: f64,
-    h_upper: f64,
-    h_lower: f64,
-    r: f64,
-    q: f64,
-    sigma: f64,
-    t: f64,
-    option_type: &str,
-  ) -> PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      Ok(Self {
-        inner: crate::pricing::barrier::DoubleBarrierPricer {
-          s,
-          k,
-          h_upper,
-          h_lower,
-          r,
-          q,
-          sigma,
-          tau: t,
-          option_type: ot,
-        },
-      })
-    })?
-  }
-
-  fn price(&self) -> f64 {
-    self.inner.price()
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
   }
 }
 
@@ -485,23 +150,32 @@ impl PyMcEstimate {
   }
 }
 
+/// The Rust model holds `sigma`, which Python passes to `price`, so the wrapper keeps the counts
+/// and the seed, `None` drawing fresh paths at every call.
 #[pyclass(name = "MCBarrierPricer", unsendable)]
-pub struct PyMCBarrierPricer {
-  inner: crate::pricing::barrier::MCBarrierPricer,
+pub struct PyMcBarrierPricer {
+  n_paths: usize,
+  n_steps: usize,
+  seed: Option<u64>,
 }
 
 #[pymethods]
-impl PyMCBarrierPricer {
+impl PyMcBarrierPricer {
   #[new]
-  #[pyo3(signature = (n_paths=10000, n_steps=252))]
-  fn new(n_paths: usize, n_steps: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::barrier::MCBarrierPricer { n_paths, n_steps },
+  #[pyo3(signature = (n_paths=10000, n_steps=252, seed=None))]
+  fn new(n_paths: usize, n_steps: usize, seed: Option<u64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      crate::pricing::barrier::McBarrierPricer::new(0.0, n_paths, n_steps);
+      Self {
+        n_paths,
+        n_steps,
+        seed,
+      }
     })
   }
 
   /// `barrier_type`: one of "up_in" / "up_out" / "down_in" / "down_out".
-  #[pyo3(signature = (s, k, h, r, sigma, t, barrier_type, option_type="call"))]
+  #[pyo3(signature = (s, k, h, r, sigma, t, barrier_type, option_type="call", q=0.0))]
   fn price(
     &self,
     s: f64,
@@ -512,9 +186,10 @@ impl PyMCBarrierPricer {
     t: f64,
     barrier_type: &str,
     option_type: &str,
+    q: f64,
   ) -> PyResult<PyMcEstimate> {
     use crate::pricing::barrier::BarrierType;
-    let bt = match barrier_type.to_ascii_lowercase().as_str() {
+    let barrier_type = match barrier_type.to_ascii_lowercase().as_str() {
       "up_in" | "ui" => BarrierType::UpAndIn,
       "up_out" | "uo" => BarrierType::UpAndOut,
       "down_in" | "di" => BarrierType::DownAndIn,
@@ -525,14 +200,28 @@ impl PyMCBarrierPricer {
         )));
       }
     };
-    let ot = parse_option_type(option_type)?;
-    Ok(self.inner.price(s, k, h, r, sigma, t, bt, ot).into())
+    let option = crate::pricing::exotic::BarrierOption {
+      strike: k,
+      barrier: h,
+      rebate: 0.0,
+      barrier_type,
+      option_type: parse_option_type(option_type)?,
+    };
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let pricer = crate::pricing::barrier::McBarrierPricer::new(sigma, self.n_paths, self.n_steps);
+      match self.seed {
+        Some(seed) => pricer
+          .with_seed(stochastic_rs_core::simd_rng::Deterministic::new(seed))
+          .price(&option, s, r, q, t),
+        None => pricer.price(&option, s, r, q, t),
+      }
+      .into()
+    })
   }
 }
 
-/// The Rust model holds `(v1, v2, corr)` only, so the wrapper carries the
-/// `(f1, f2, x, r, tau)` query the Python-visible no-argument methods are
-/// defined at. Python's constructor signature is unchanged.
+/// The Rust model holds `(sigma1, sigma2, corr)`, so the wrapper carries the `(f1, f2, x, r, tau)`
+/// query its no-argument `price()` reads.
 #[pyclass(name = "KirkSpreadPricer", unsendable)]
 pub struct PyKirkSpreadPricer {
   inner: crate::pricing::kirk::KirkSpreadPricer,

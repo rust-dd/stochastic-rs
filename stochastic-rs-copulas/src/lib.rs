@@ -1,20 +1,14 @@
 #![doc = include_str!("../README.md")]
-// Defaults to `warn`, which is how 4 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
 
-#[macro_use]
-mod macros;
 mod optim;
+mod student_t;
 
+pub mod error;
 pub mod traits;
 
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-
+pub use crate::error::CopulaError;
 pub use crate::traits::BivariateExt;
 pub use crate::traits::MultivariateExt;
 pub use crate::traits::TailDependence;
@@ -28,4 +22,5 @@ pub mod process_coupling;
 pub mod univariate;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;

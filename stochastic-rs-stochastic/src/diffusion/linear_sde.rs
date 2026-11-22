@@ -1,4 +1,4 @@
-//! # LinearSDE
+//! Linear SDE with the affine drift `a + bX` and the multiplicative noise `cX`.
 //!
 //! $$
 //! dX_t=(a+bX_t)\,dt+cX_t\,dW_t
@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -16,8 +19,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
-pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+#[derive(Debug, Clone, Copy)]
+pub struct LinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift intercept a in `(a + bX_t)dt`.
   pub a: T,
   /// Drift slope b (linear mean-reversion-like coefficient) in
@@ -27,9 +30,9 @@ pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub c: T,
   /// Number of points sampled along the linear-SDE path.
   pub n: usize,
-  /// Initial value X₀ of the linear-SDE path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -38,8 +41,30 @@ pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
+impl<T: FloatExt, S: SeedExt> LinearSde<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      b.is_finite(),
+      "b must satisfy `b.is_finite()`, got b = {b:?}"
+    );
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       a,
@@ -53,11 +78,9 @@ impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> LinearSDE<T, S, B> {}
-
 /// The Euler engine's view of the linear scalar SDE.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for LinearSDE<T, S, B>
+  for LinearSde<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::LinearSde {
@@ -90,34 +113,38 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] LinearSDE<T, S> { a, b, c, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] LinearSde<T, S> { a, b, c, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for LinearSde<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for LinearSDE<T, S, B>
+  for LinearSde<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = LinearSDESampler<T>
+    = LinearSdeSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> LinearSDESampler<T> {
+  fn sampler(&self) -> LinearSdeSampler<T> {
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    LinearSDESampler {
+    LinearSdeSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       a: self.a,
       b: self.b,
       c: self.c,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -147,19 +174,20 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`LinearSDE`] sampling state.
+/// Reusable [`LinearSde`] sampling state.
 #[doc(hidden)]
-pub struct LinearSDESampler<T: FloatExt> {
+#[derive(Debug)]
+pub struct LinearSdeSampler<T: FloatExt> {
   n: usize,
   x0: T,
   dt: T,
   a: T,
   b: T,
   c: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> LinearSDESampler<T> {
+impl<T: FloatExt> LinearSdeSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -179,13 +207,15 @@ impl<T: FloatExt> LinearSDESampler<T> {
   }
 }
 
-impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
+impl<T: FloatExt> crate::traits::Sealed for LinearSdeSampler<T> {}
+
+impl<T: FloatExt> PathSampler<T> for LinearSdeSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("LinearSDE output must be contiguous");
+      .expect("LinearSde output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -195,7 +225,7 @@ impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
   }
 }
 
-py_process_1d!(PyLinearSDE, LinearSDE,
+py_process_1d!(PyLinearSDE, LinearSde,
   sig: (a, b, c, n, x0=None, t=None, seed=None, dtype=None),
   params: (a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

@@ -1,7 +1,5 @@
-//! Benchmarks for the reactive market-data framework.
-//!
-//! Measures the end-to-end hot path: updating a quote → helpers reflect
-//! the new market data → bootstrap produces a refreshed discount curve.
+//! Benchmarks for the reactive market-data framework: a quote update, the helpers reflecting it and
+//! the bootstrap producing a refreshed discount curve.
 
 use std::sync::Arc;
 
@@ -93,13 +91,15 @@ fn bench_reactive_bootstrap(c: &mut Criterion) {
   c.bench_function("market_reactive_bootstrap_7_instruments", |b| {
     let mut tick: f64 = 0.0;
     b.iter(|| {
-      tick += 1e-5;
+      // The quote walks 10 bp and starts over: one that kept rising would leave no curve to build.
+      tick = (tick + 1e-5) % 1e-3;
       q_swap_10y.set_value(0.042 + tick);
       let curve = build_curve(
         &helpers,
         val_date,
         InterpolationMethod::LogLinearOnDiscountFactors,
-      );
+      )
+      .unwrap();
       std::hint::black_box(curve.discount_factor(5.0))
     });
   });

@@ -1,26 +1,16 @@
-//! `HestonStochCorrPricer` model struct and its `ModelPricer` impl.
-//! Characteristic-function logic lives in [`super::cf`], Carr-Madan
-//! inversion in [`super::pricer`].
+//! `HestonStochCorrPricer` and its `ModelPricer`; the characteristic function is in [`super::cf`],
+//! the Carr–Madan inversion in [`super::pricer`].
 
 use super::pricer::floor_price;
+use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Heston model with stochastic correlation (Teng, Ehrhardt & Günther,
-/// 2016), priced by Carr-Madan dampened Fourier inversion.
-///
-/// The struct holds **model state only** — the four variance-process
-/// parameters, the four correlation-process parameters and the
-/// variance/correlation correlation. Spot, strike, rate, dividend yield and
-/// maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid.
-///
-/// This type absorbed the former `HscmModel`, which held these same nine
-/// fields in the same order and priced through this very struct: once
-/// `HestonStochCorrPricer` stopped bundling market data, the two were the
-/// same struct twice. See the 5b report.
+/// Heston with stochastic correlation (Teng, Ehrhardt & Günther 2016), by Carr–Madan's damped
+/// Fourier inversion; the nine model parameters stay, the query travels as arguments.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::heston_stoch_corr::HestonStochCorrPricer;
@@ -58,34 +48,8 @@ pub struct HestonStochCorrPricer {
 }
 
 impl HestonStochCorrPricer {
-  /// Validating constructor.
-  ///
-  /// Nothing here announced itself before: every invalid value below
-  /// produced a finite, plausible Carr-Madan price. A `rho2` of `-1.5` came
-  /// within `0.03` of the correct answer, which is the whole problem — it
-  /// is indistinguishable from a small modelling difference.
-  ///
-  /// # Panics
-  /// - if `v0` or `theta_v` is negative or `NaN` — a variance cannot be either
-  /// - if `sigma_v` or `sigma_r` is negative or `NaN` — a volatility cannot be
-  /// - if `rho0`, `mu_r` or `rho2` is outside `[-1, 1]` or `NaN`. All three
-  ///   are correlations: the initial level, the level it mean-reverts to
-  ///   and the correlation between the two driving Brownians. Leaving any
-  ///   one out would put an out-of-range number into the same expansion the
-  ///   other two are protected from.
-  ///
-  /// `sigma_v == 0` is **accepted**, unlike on
-  /// [`HestonPricer::new`](crate::pricing::HestonPricer). The reason is the
-  /// characteristic function: Heston's closed form divides by $\sigma^2$,
-  /// while this model integrates a Riccati system by Rk4 in which
-  /// `sigma_v` only ever multiplies, so a zero vol-of-vol is the
-  /// deterministic-variance limit rather than a division by zero.
-  ///
-  /// `kappa_v` and `kappa_r` are unconstrained, matching
-  /// [`HestonPricer`](crate::pricing::HestonPricer)'s treatment of
-  /// `kappa`. The calibrator's
-  /// `BOUNDS` box lies strictly inside every check above, so no legal
-  /// calibration iterate can trip this.
+  /// Panics unless `v0`, `theta_v`, `sigma_v`, `sigma_r` are finite and `≥ 0`, the `kappa`s finite,
+  /// `κ_v θ_v ≥ 0` and each correlation in `[−1, 1]`; `sigma_v = 0` is the deterministic variance.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     v0: f64,
@@ -99,32 +63,44 @@ impl HestonStochCorrPricer {
     rho2: f64,
   ) -> Self {
     assert!(
-      v0 >= 0.0,
-      "HestonStochCorrPricer::new: v0 must be a non-negative variance (got {v0})"
+      v0.is_finite() && v0 >= 0.0,
+      "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = {v0:?}"
     );
     assert!(
-      theta_v >= 0.0,
-      "HestonStochCorrPricer::new: theta_v must be a non-negative variance (got {theta_v})"
+      kappa_v.is_finite(),
+      "kappa_v must satisfy `kappa_v.is_finite()`, got kappa_v = {kappa_v:?}"
     );
     assert!(
-      sigma_v >= 0.0,
-      "HestonStochCorrPricer::new: sigma_v must be a non-negative volatility (got {sigma_v})"
+      theta_v.is_finite() && theta_v >= 0.0,
+      "theta_v must satisfy `theta_v.is_finite() && theta_v >= 0.0`, got theta_v = {theta_v:?}"
     );
     assert!(
-      sigma_r >= 0.0,
-      "HestonStochCorrPricer::new: sigma_r must be a non-negative volatility (got {sigma_r})"
+      kappa_v * theta_v >= 0.0,
+      "kappa_v must satisfy `kappa_v * theta_v >= 0.0`, got kappa_v = {kappa_v:?}"
+    );
+    assert!(
+      sigma_v.is_finite() && sigma_v >= 0.0,
+      "sigma_v must satisfy `sigma_v.is_finite() && sigma_v >= 0.0`, got sigma_v = {sigma_v:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho0),
-      "HestonStochCorrPricer::new: rho0 must be in [-1, 1] (got {rho0})"
+      "rho0 must satisfy `(-1.0..=1.0).contains(&rho0)`, got rho0 = {rho0:?}"
+    );
+    assert!(
+      kappa_r.is_finite(),
+      "kappa_r must satisfy `kappa_r.is_finite()`, got kappa_r = {kappa_r:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&mu_r),
-      "HestonStochCorrPricer::new: mu_r must be in [-1, 1] (got {mu_r})"
+      "mu_r must satisfy `(-1.0..=1.0).contains(&mu_r)`, got mu_r = {mu_r:?}"
+    );
+    assert!(
+      sigma_r.is_finite() && sigma_r >= 0.0,
+      "sigma_r must satisfy `sigma_r.is_finite() && sigma_r >= 0.0`, got sigma_r = {sigma_r:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho2),
-      "HestonStochCorrPricer::new: rho2 must be in [-1, 1] (got {rho2})"
+      "rho2 must satisfy `(-1.0..=1.0).contains(&rho2)`, got rho2 = {rho2:?}"
     );
     Self {
       v0,
@@ -139,30 +115,24 @@ impl HestonStochCorrPricer {
     }
   }
 
-  /// Call and put price at one query point. Both legs are floored at zero:
-  /// the Carr-Madan inversion is a numerical quadrature and can return a
-  /// small negative value deep out of the money.
-  ///
-  /// Returns `(NaN, NaN)` when any of `s`, `k`, `r`, `q` or `tau` is
-  /// non-finite. The floor tests for `NaN` before it clamps — see
-  /// `floor_price` in [`super::pricer`] — because `f64::max` would otherwise
-  /// turn an undefined price into a plausible zero.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  /// Call and put from one Carr-Madan inversion, each floored at zero; the payoffs at `tau = 0`;
+  /// NaN past expiry and for a non-finite `s`, `k`, `r`, `q` or `tau`.
+  pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
+    let payoff = |leg| expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
+    if let (Some(call), Some(put)) = (payoff(OptionType::Call), payoff(OptionType::Put)) {
+      return CallPut { call, put };
+    }
     let call = self.price_call_carr_madan(s, k, r, q, tau);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
-    (floor_price(call), floor_price(put))
+    CallPut {
+      call: floor_price(call),
+      put: floor_price(put),
+    }
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on none of this model's own parameters — it inverts a price
-  /// for a volatility rather than pricing at one — but is kept here as the
-  /// inverse of [`call_put`](Self::call_put), sharing its `b = r - q` carry
-  /// convention.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the model's
+  /// parameters; NaN for a price outside the no-arbitrage bounds.
   pub fn implied_volatility(
     &self,
     c_price: f64,
@@ -173,42 +143,23 @@ impl HestonStochCorrPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    use implied_vol::DefaultSpecialFn;
-    use implied_vol::ImpliedBlackVolatility;
-
     let forward = s * ((r - q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(undiscounted_price, forward, k, tau, option_type)
   }
 }
 
 impl ModelPricer for HestonStochCorrPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    self.price_call_put(s, k, r, q, tau).call
   }
 
-  /// Overrides the trait's vanilla-parity default. The arithmetic *is*
-  /// parity — this model's carry factor really is $e^{-q\tau}$ — but the
-  /// default drops the `max(0)` floor that
-  /// [`call_put`](HestonStochCorrPricer::call_put) applies to both legs,
-  /// and associates the three terms in a different order from the
-  /// pre-query `calculate_call_put`. Routing through `call_put` keeps both.
-  /// See `hscm_put_is_parity_and_is_floored_at_zero`.
+  /// The pair's put, floored at zero, which the parity default is not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    self.price_call_put(s, k, r, q, tau).put
   }
 }
 
-/// European vanilla call on the forward $Se^{(r-q)\tau}$ — the carry is
-/// $b=r-q$, the same case
-/// [`implied_volatility`](HestonStochCorrPricer::implied_volatility) already
-/// inverts against.
+/// A European vanilla call on `Se^{(r−q)τ}`, the forward
+/// [`implied_volatility`](HestonStochCorrPricer::implied_volatility) inverts against.
 impl VanillaEuropeanCall for HestonStochCorrPricer {}

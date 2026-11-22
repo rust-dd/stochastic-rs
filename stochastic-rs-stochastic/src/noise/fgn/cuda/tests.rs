@@ -55,9 +55,9 @@ fn cuda_non_power_of_two_n() {
 #[test]
 fn cuda_eigenvalues_structural() {
   let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0), Unseeded);
-  let eigs = &*fgn.sqrt_eigenvalues;
+  let eigs = fgn.sqrt_eigenvalues();
 
-  assert_eq!(eigs.len(), 2 * fgn.n);
+  assert_eq!(eigs.len(), 2 * fgn.padded_n);
   assert!(eigs.iter().all(|&v| v >= 0.0));
 
   for i in 1..eigs.len() / 2 {
@@ -84,7 +84,7 @@ fn cuda_scale_matches_cpu() {
     let fgn = Fgn::<f64>::new(0.7, n, Some(2.0), Unseeded);
     let cpu_scale = fgn.scale;
 
-    let out_size = fgn.n - fgn.offset;
+    let out_size = fgn.padded_n - fgn.offset;
     let scale_steps = out_size.max(1);
     let cuda_scale = (scale_steps as f64).powf(-0.7) * 2.0_f64.powf(0.7);
 
@@ -162,9 +162,8 @@ fn cuda_covariance_structure_matches_cpu() {
   );
 }
 
-/// Two `Fgn`s from the same `Deterministic` seed agree bit for bit even when
-/// an unrelated device draw happens between them: the Philox offset is a
-/// function of the seed, not of the process's launch history.
+/// Two `Fgn`s from the same `Deterministic` seed agree bit for bit even when an unrelated device
+/// draw happens between them: Philox keys on the launch seed and counts the cell, not the history.
 #[test]
 fn cuda_same_seed_same_paths_regardless_of_history() {
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -218,9 +217,8 @@ fn cuda_chunks_are_bit_identical_to_one_launch() {
   assert_ne!(whole64.row(0), whole64.row(1));
 }
 
-/// A wrapper's own seed drives its device paths: two `Fbm`s built from the
-/// same `Deterministic` seed agree, a different seed differs, and the inner
-/// `Unseeded` fGN never enters.
+/// A wrapper's own seed drives its device paths: two `Fbm`s with one `Deterministic` seed agree,
+/// another seed differs, and the inner `Unseeded` fGN never enters.
 #[test]
 fn cuda_fbm_honours_its_own_seed() {
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -233,4 +231,237 @@ fn cuda_fbm_honours_its_own_seed() {
   assert_eq!(fbm(3).sample_par(3), fbm(3).sample_par(3));
   assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
   assert_eq!(fbm(3).sample(), fbm(3).sample());
+}
+
+/// The `int` work-buffer cap at `4n` values a path stops a launch exactly there, charges a
+/// two-stream row twice, keeps a fitting budget, and lets one oversized path reach the launch.
+#[test]
+fn cuda_index_rows_keep_the_work_buffer_inside_int() {
+  use super::sampler::index_rows;
+
+  let limit = i32::MAX as usize;
+  assert_eq!(index_rows(usize::MAX, 1, 1024), limit / 4096);
+  assert_eq!(index_rows(usize::MAX, 2, 1024), limit / 8192);
+  assert_eq!(index_rows(5, 1, 1024), 5);
+  assert_eq!(index_rows(5, 1, 1 << 30), 1);
+}
+
+/// A transfer under the staging threshold copies straight out, so it pins no host buffer.
+#[test]
+fn a_small_batch_pins_no_staging_buffer() {
+  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
+  fgn
+    .sample_cuda_impl(3, &Unseeded, &Cuda::default())
+    .expect("a small batch");
+  let sized = super::state::SIZED_F32.lock();
+  assert!(sized.iter().any(|s| s.m == 3));
+  assert!(
+    sized
+      .iter()
+      .filter(|s| s.m == 3)
+      .all(|s| s.host_pinned.is_none())
+  );
+}
+
+/// A batch of at least 32 MiB lands through the staging buffer it pins, and matches the same batch
+/// copied straight out by launches under that size.
+#[test]
+fn a_staged_batch_pins_its_buffer_and_matches_direct_copies() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  let fgn = Fgn::<f32>::new(0.7, 4096, Some(1.0), Unseeded);
+  let staged = fgn
+    .sample_cuda_impl(2048, &Deterministic::new(5), &Cuda::default())
+    .expect("one staged launch");
+  let pinned = |m: usize| {
+    let sized = super::state::SIZED_F32.lock();
+    sized
+      .iter()
+      .find(|s| s.m == m)
+      .map(|s| s.host_pinned.is_some())
+  };
+  assert_eq!(pinned(2048), Some(true));
+  let direct = Cuda::default().with_batch_budget(1024 * (4 * 4096 + 4096) * 4);
+  let copied = fgn
+    .sample_cuda_impl(2048, &Deterministic::new(5), &direct)
+    .expect("two direct launches");
+  assert_eq!(pinned(1024), Some(false));
+  assert_eq!(staged, copied);
+}
+
+/// A release drops every cache that holds the device, and the context each one opened goes with it;
+/// releasing another ordinal leaves them alone.
+#[test]
+fn a_release_frees_every_cache_holding_the_device() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Cuda>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Cuda>()
+    .sample();
+  let contexts = [
+    crate::euler::cuda::cached_context(),
+    super::state::cached_context(),
+    crate::sheet::fbs::cuda::cached_context(),
+  ]
+  .map(|context| context.expect("the batches opened the device"));
+  Cuda::new(1).release();
+  assert!(
+    contexts.iter().all(|c| c.upgrade().is_some()),
+    "another ordinal's release kept them"
+  );
+  Cuda::default().release();
+  assert!(
+    contexts.iter().all(|c| c.upgrade().is_none()),
+    "a cache still holds the device"
+  );
+}
+
+/// A release racing launches on another thread fails a launch or lets it finish, never panics it,
+/// and a batch that finishes is the one the call draws with no release around.
+#[test]
+fn a_release_racing_launches_never_panics_them() {
+  use std::sync::atomic::AtomicBool;
+  use std::sync::atomic::Ordering;
+
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::device::DeviceError;
+  use crate::diffusion::gbm::Gbm;
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  fn unharmed<R: PartialEq + std::fmt::Debug>(launch: Result<R, DeviceError>, alone: &R) {
+    if let Ok(batch) = launch {
+      assert_eq!(
+        &batch, alone,
+        "a launch the release let finish drew another batch"
+      );
+    }
+  }
+
+  let gbm = |device: &Cuda| {
+    Gbm::<f32, _>::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(9))
+      .with_backend(device.clone())
+  };
+  // Three paths a chunk send eight through the two-stream pipeline.
+  let piped = Cuda::default().with_batch_budget(64 * 4 * 3);
+  let fbm = || Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5)).on::<Cuda>();
+  let fbs = || Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19)).on::<Cuda>();
+  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
+  let fgn_batch = || fgn.sample_cuda_impl(8, &Deterministic::new(5), &Cuda::default());
+  let single = gbm(&Cuda::default()).try_sample_par(8).expect("CUDA");
+  let pipelined = gbm(&piped).try_sample_par(8).expect("CUDA");
+  let fractional = fbm().try_sample_par(4).expect("CUDA");
+  let sheets = fbs().try_sample_par(2).expect("CUDA");
+  let noise = fgn_batch().expect("CUDA");
+  let stop = AtomicBool::new(false);
+  std::thread::scope(|scope| {
+    let releaser = scope.spawn(|| {
+      while !stop.load(Ordering::Relaxed) {
+        Cuda::default().release();
+      }
+    });
+    let launcher = scope.spawn(|| {
+      for _ in 0..8 {
+        unharmed(gbm(&Cuda::default()).try_sample_par(8), &single);
+        unharmed(gbm(&piped).try_sample_par(8), &pipelined);
+        unharmed(fbm().try_sample_par(4), &fractional);
+        unharmed(fbs().try_sample_par(2), &sheets);
+        unharmed(fgn_batch(), &noise);
+      }
+    });
+    let launched = launcher.join();
+    stop.store(true, Ordering::Relaxed);
+    releaser.join().expect("a release never panics");
+    launched.expect("a launch never panics");
+  });
+  assert_eq!(
+    gbm(&Cuda::default())
+      .try_sample_par(8)
+      .expect("a launch with no release around"),
+    single
+  );
+}
+
+/// A release empties a cache holding its own device's kernels, or none: a launch racing an earlier
+/// release can leave per-size states behind with no kernels cached.
+#[test]
+fn a_release_frees_a_cache_of_its_ordinal_or_of_none() {
+  assert!(super::frees(Some(0), 0) && super::frees(None, 0) && super::frees(None, 3));
+  assert!(!super::frees(Some(1), 0));
+}
+
+/// The race's outcome, reproduced: per-size states with no kernels cached. A release frees them.
+#[test]
+fn a_release_frees_per_size_states_left_with_no_kernels_cached() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Cuda>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Cuda>()
+    .sample();
+  super::state::forget_kernels();
+  crate::sheet::fbs::cuda::forget_kernels();
+  let sizes = || {
+    (
+      super::state::cached_sizes(),
+      crate::sheet::fbs::cuda::cached_sizes(),
+    )
+  };
+  assert!(
+    sizes().0 > 0 && sizes().1 > 0,
+    "the batches cached their sizes"
+  );
+  Cuda::default().release();
+  assert_eq!(sizes(), (0, 0), "a per-size state outlived the release");
+}
+
+/// The fGN and sheet kernels draw each normal from the Euler kernels' Philox source on the
+/// batch-global cell under a site of their own, in both precisions, with no generator of their own.
+#[test]
+fn the_fgn_and_sheet_kernels_draw_from_the_shared_philox() {
+  for real in ["float", "double"] {
+    let fgn = super::kernels::gen_scale_source(real);
+    let sheet = crate::sheet::fbs::cuda::kernel_source(real);
+    for (name, source, sites) in [
+      ("fGN", &fgn, &["site_fgn"][..]),
+      (
+        "sheet",
+        &sheet,
+        &["site_sheet,", "site_sheet_correction"][..],
+      ),
+    ] {
+      assert!(
+        source.contains("__device__ __forceinline__ void stoch_philox("),
+        "{name} {real}: the Philox prelude is missing"
+      );
+      for site in sites {
+        for which in ["0u", "1u"] {
+          let call = format!("(unsigned int)(cell >> 32), {which}, {site}");
+          let correction = format!("(unsigned int)(global >> 32), {which}, {site}");
+          assert!(
+            source.contains(&call) || source.contains(&correction),
+            "{name} {real}: no {which} draw under {site}"
+          );
+        }
+      }
+      for gone in ["0xD2511F53u * lo", "2.3283064365386963e-10", "philox_pair"] {
+        assert!(!source.contains(gone), "{name} {real}: {gone} is left");
+      }
+    }
+  }
 }

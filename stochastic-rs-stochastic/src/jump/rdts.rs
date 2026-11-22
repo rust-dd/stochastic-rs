@@ -1,41 +1,47 @@
-//! # Rdts
+//! Kim, Rachev, Bianchi & Fabozzi's standard rapidly decreasing tempered stable process, mean zero
+//! and unit variance per unit time, by a shot-noise series stopped at `j` terms (less at α > 1).
 //!
 //! $$
-//! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
+//! \nu(dx)=C\left(e^{-\lambda_+^2x^2/2}\mathbf 1_{x>0}+e^{-\lambda_-^2x^2/2}\mathbf 1_{x<0}\right)
+//! |x|^{-1-\alpha}dx,\quad
+//! C=\left(2^{-\alpha/2}\Gamma(1-\alpha/2)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\right)^{-1}
 //! $$
 //!
+//! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 
 use ndarray::Array1;
-use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Rdts process (Rapidly Decreasing Tempered Stable process)
-/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: T, // G
-  /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: T, // M
+  /// Gaussian tempering parameter λ₊ of the positive jumps.
+  pub lambda_plus: T,
+  /// Gaussian tempering parameter λ₋ of the negative jumps.
+  pub lambda_minus: T,
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Jumps
+  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
   pub j: usize,
-  /// Initial value
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total time horizon
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -45,7 +51,8 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
-  /// Create a new Rdts process
+  /// Panics unless `lambda_plus > 0`, `lambda_minus > 0`, `0 < alpha < 2`, `alpha != 1` (a pole of
+  /// `Γ((1 − α)/2)`), `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -56,11 +63,42 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
+    );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
+    );
+    assert!(
+      alpha != T::one(),
+      "alpha must satisfy `alpha != T::one()`, got alpha = {alpha:?}"
     );
 
     Self {
@@ -77,8 +115,6 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {
@@ -90,11 +126,12 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// The scale `C = (Γ(2 - α) (λ₊^{α-2} + λ₋^{α-2}))^{-1}` that normalises
-  /// the law's variance to one.
+  /// The standard RDTS's scale `C = (2^{-α/2} Γ(1 - α/2) (λ₊^{α-2} + λ₋^{α-2}))^{-1}`, under which
+  /// `X_1` has variance one.
   fn tempering_constant(&self) -> T {
-    let g = gamma(2.0 - self.alpha.to_f64().unwrap());
-    (T::from_f64_fast(g)
+    let g = gamma(1.0 - self.alpha.to_f64().unwrap() / 2.0);
+    (T::from_usize_(2).powf(-self.alpha / T::from_usize_(2))
+      * T::from_f64_fast(g)
       * (self.lambda_plus.powf(self.alpha - T::from_usize_(2))
         + self.lambda_minus.powf(self.alpha - T::from_usize_(2))))
     .powi(-1)
@@ -114,15 +151,14 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Rdts<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate `α / (2 C T)`,
-  /// the exponential draw entering as `√E / 2` — the rapidly decreasing law's
-  /// Gaussian-tempered size — and the two sides equally likely.
+  /// The series constants, folded once: the arrival rate `α / (2 C T)`, the exponential draw
+  /// entering as `√(2E)` (the law's Gaussian-tempered size), and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
       rate: self.alpha / (T::from_usize_(2) * self.tempering_constant() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
-      e_scale: T::from_f64_fast(0.5),
+      e_scale: T::from_f64_fast(std::f64::consts::SQRT_2),
       e_pow: T::from_f64_fast(0.5),
       w_plus: T::from_f64_fast(0.5),
       lambda_plus: self.lambda_plus,
@@ -164,6 +200,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Rdts<T, S> { lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Rdts<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Rdts<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -172,13 +213,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> RdtsSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // scale `C` and drift `b_t` are precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
     let t_max = self.t_max();
     let dt = self.dt();
-    let C = self.tempering_constant();
+    let c = self.tempering_constant();
     let b_t = self.drift_rate();
 
     RdtsSampler {
@@ -190,17 +229,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       x0: self.x0.unwrap_or(T::zero()),
       t_max,
       dt,
-      c: C,
+      c,
       b_t,
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      exp: SimdExp::<T>::new(T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -263,14 +301,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Rdts`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Rdts`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RdtsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
@@ -282,8 +316,8 @@ pub struct RdtsSampler<T: FloatExt, S: SeedExt> {
   dt: T,
   c: T,
   b_t: T,
-  uniform: SimdUniform<T>,
-  exp: SimdExp<T>,
+  uniform: Seeded<SimdUniform<T>>,
+  exp: Seeded<SimdExp<T>>,
   seed: S,
 }
 
@@ -295,16 +329,16 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
 
     let t_max = self.t_max;
     let dt = self.dt;
-    let C = self.c;
+    let c = self.c;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 is reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 is reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -312,20 +346,21 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus
       };
 
-      let divisor = T::from_usize_(2) * C * t_max;
-      let numerator = self.alpha * P[j];
+      let divisor = T::from_usize_(2) * c * t_max;
+      let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
 
-      // Rdts: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
-      let term2 =
-        T::from_f64_fast(0.5) * E[j].powf(T::from_f64_fast(0.5)) * U[j].powf(T::one() / self.alpha)
-          / v_j.abs();
+      // `P(√(2E) > λx) = e^{−λ²x²/2}`: the minimum tempers the stable size as `ν` does.
+      let term2 = T::from_f64_fast(std::f64::consts::SQRT_2)
+        * e[j].powf(T::from_f64_fast(0.5))
+        * u[j].powf(T::one() / self.alpha)
+        / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
@@ -352,11 +387,12 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
         k += 1;
       }
 
-      // direkt formula: x(t_i) = x0 + sum_{tau_j<=t_i} jump_j + b_t * t_i
       out[i] = self.x0 + cum_jumps + b_t * t_i;
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RdtsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RdtsSampler<T, S> {
   type Output = Array1<T>;

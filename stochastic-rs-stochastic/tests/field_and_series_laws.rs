@@ -1,15 +1,9 @@
-//! Closed-form laws two samplers are held to, from the papers they implement.
-//!
-//! The fractional Brownian field of Stein (2002) has, for any two points of
-//! the unit disk, `E[(X(s) − X(t))²] = 2‖s − t‖^α` with `α = 2H` — Kroese &
-//! Botev (2015, §4.4, eq. 16) — and Gaussian increments. The standard
-//! classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi has
-//! variance `T` at horizon `T` by construction of its scale, and Rosiński's
-//! (2007) series reproduces it once the arrival bound carries the total mass
-//! of the Lévy measure over the horizon, `2 C T`.
+//! Stein's (2002) field has `E[(X(s) − X(t))²] = 2‖s − t‖^α`, `α = 2H`, on the unit disk (Kroese &
+//! Botev 2015, §4.4, eq. 16); the CTS has variance `T` by Rosiński's (2007) series at `2 C T`.
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
@@ -60,9 +54,8 @@ fn the_fractional_brownian_field_has_the_variogram_of_its_paper() {
   }
 }
 
-/// The standard CTS has variance one per unit of time by the construction of
-/// its scale `C`; the truncated Rosiński series reproduces it at `T = 1` and
-/// scales it with the horizon at `T = 2`.
+/// The standard CTS has variance one per unit of time by its scale `C`; the truncated Rosiński
+/// series reproduces it at `T = 1` and scales it with the horizon at `T = 2`.
 #[test]
 fn the_standard_tempered_stable_series_has_the_variance_of_its_scale() {
   const PATHS: usize = 20_000;
@@ -94,9 +87,8 @@ fn the_standard_tempered_stable_series_has_the_variance_of_its_scale() {
   );
 }
 
-/// The CGMY variance `C Γ(2 − Y)(G^{Y−2} + M^{Y−2}) T` (Carr, Geman, Madan &
-/// Yor 2002), which the sibling series with the same `2CT` arrival bound
-/// reproduces.
+/// The CGMY variance `C Γ(2 − Y)(G^{Y−2} + M^{Y−2}) T` (Carr, Geman, Madan & Yor 2002), which
+/// the sibling series with the same `2CT` arrival bound reproduces.
 #[test]
 fn the_cgmy_series_has_the_variance_of_its_levy_measure() {
   const PATHS: usize = 20_000;
@@ -116,7 +108,7 @@ fn the_cgmy_series_has_the_variance_of_its_levy_measure() {
   let last: Vec<f64> = paths.iter().map(|p| p[p.len() - 1]).collect();
   let mean = last.iter().sum::<f64>() / PATHS as f64;
   let variance = last.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / PATHS as f64;
-  let expected = c * scilib::math::basic::gamma(2.0 - y) * (g.powf(y - 2.0) + m.powf(y - 2.0)) * t;
+  let expected = c * gamma(2.0 - y) * (g.powf(y - 2.0) + m.powf(y - 2.0)) * t;
   assert!(
     (variance / expected - 1.0).abs() < 0.06,
     "CGMY variance over T = {t}: {variance}, closed form {expected}"

@@ -13,9 +13,8 @@ function priorityFor(url: string): number {
 }
 
 /**
- * `lastModified` is the last commit that touched the page's MDX, and is left
- * out when git cannot say (see `lib/git-last-modified.ts`): a date that moves
- * on every build teaches crawlers to ignore the field.
+ * `lastModified` is left out when git cannot say (`lib/git-last-modified.ts`): a date
+ * that moves on every build teaches crawlers to ignore the field.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const pages = source.getPages().map((page) => ({

@@ -12,15 +12,17 @@ from here.
 ## What is in it
 
 - **`SimdRng`** — a xoshiro-based generator with SIMD bulk fills
-  (`fill_uniform_f64`, `fill_ziggurat`, …). Implements `rand::RngCore`, so it
-  drops into anything expecting an `Rng`.
+  (`fill_uniform_f64`, `fill_ziggurat`, …). Implements
+  `rand::TryRng<Error = Infallible>`, hence `rand::Rng` and `rand::RngExt`, so
+  it drops into anything expecting an `Rng`.
 - **`SeedExt`** — the workspace seeding contract. Two implementations:
   `Unseeded` (a fresh, globally unique stream per construction, zero
   overhead) and `Deterministic::new(seed)` (reproducible, `AtomicU64`-backed
   so `derive()` can fan out independent child streams from one source).
 - **`SimdRngDual`** — an experimental two-engine variant behind the
-  `dual-stream-rng` feature. Roughly 5–11% faster on ziggurat-based bulk
-  fills on Apple Silicon; its stream is *not* bit-compatible with `SimdRng`.
+  `unstable-dual-stream-rng` feature. About 2–6% faster on bulk Normal fills
+  (Exp at parity) on Apple Silicon; its stream is *not* bit-compatible with
+  `SimdRng`.
 
 ## Usage
 
@@ -49,7 +51,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.4"
+stochastic-rs = "3.0.0-rc.5"
 ```
 
 Depend on `stochastic-rs-core` directly only when you want this slice and nothing else.

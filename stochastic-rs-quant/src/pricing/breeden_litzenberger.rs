@@ -1,9 +1,12 @@
-//! # Breeden Litzenberger
+//! Breeden–Litzenberger risk-neutral density from the second strike derivative of calls:
 //!
 //! $$
 //! f_{\mathbb Q}(K)=e^{rT}\frac{\partial^2 C(K,T)}{\partial K^2}
 //! $$
 //!
+
+use crate::QuantError;
+
 #[derive(Clone, Debug)]
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)
@@ -14,7 +17,8 @@ pub struct BreedenLitzenberger {
   pub r: f64,
   /// Time to maturity in years.
   pub tau: f64,
-  /// Optional pre-calculated second derivative ∂²C/∂K² at each strike (overrides finite-difference computation)
+  /// Optional pre-calculated second derivative ∂²C/∂K² at each strike (overrides finite-difference
+  /// computation)
   pub d2c_dk2: Option<Vec<f64>>,
 }
 
@@ -37,11 +41,8 @@ impl BreedenLitzenberger {
 }
 
 impl BreedenLitzenberger {
-  /// Compute risk–neutral density across strikes using finite differences on a (possibly non-uniform) grid.
-  ///
-  /// Returns a Vec of length strikes.len() with the estimated density at each strike.
-  /// Endpoints (i = 0 and i = n-1) are set to NaN as second derivatives are ill-defined there with 3-point stencils.
-  /// With fewer than three strikes every entry is NaN.
+  /// Risk-neutral density at each strike by finite differences on a possibly non-uniform grid;
+  /// `NaN` at both endpoints (no 3-point stencil fits) and everywhere below 3 strikes.
   #[must_use]
   pub fn density(&self) -> Vec<f64> {
     assert!(
@@ -72,30 +73,32 @@ impl BreedenLitzenberger {
     dens
   }
 
-  /// Compute risk–neutral density using pre-calculated second derivatives ∂²C/∂K².
-  /// Requires `d2c_dk2` field to be populated.
-  ///
-  /// Returns a Vec of length strikes.len() with the estimated density at each strike.
-  ///
-  /// Panics if `d2c_dk2` is `None` or has the wrong length — for a non-panicking
-  /// variant use [`Self::try_density_from_custom_derivatives`].
+  /// The density from the supplied `∂²C/∂K²`; panics if `d2c_dk2` is `None` or of the wrong length
+  /// (see [`Self::try_density_from_custom_derivatives`]).
   #[must_use]
   pub fn density_from_custom_derivatives(&self) -> Vec<f64> {
     self
       .try_density_from_custom_derivatives()
-      .expect("density_from_custom_derivatives requires d2c_dk2 populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::density_from_custom_derivatives`].
   /// Returns an error if `d2c_dk2` is `None` or its length does not match `strikes`.
-  pub fn try_density_from_custom_derivatives(&self) -> anyhow::Result<Vec<f64>> {
+  pub fn try_density_from_custom_derivatives(&self) -> Result<Vec<f64>, QuantError> {
     let d2c = self
       .d2c_dk2
       .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
+      .ok_or_else(|| QuantError::MissingInput {
+        what: "d2c_dk2",
+        detail: "the custom-derivative density reads it".to_string(),
+      })?;
     let n = self.strikes.len();
     if d2c.len() != n {
-      anyhow::bail!("d2c_dk2 length {} must equal strikes.len()={n}", d2c.len());
+      return Err(QuantError::DimensionMismatch {
+        what: "d2c_dk2, one per strike",
+        expected: n,
+        got: d2c.len(),
+      });
     }
 
     Ok(d2c.iter().map(|d| (self.r * self.tau).exp() * d).collect())

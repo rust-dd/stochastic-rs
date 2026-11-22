@@ -1,13 +1,5 @@
-//! Semi-discrete Heston operator `U' = A U + b(t)` of in 't Hout & Foulon
-//! (2008), §2.2, split as `A = A0 + A1 + A2` (§2.4): `A0` the mixed
-//! derivative, `A1` the `s`-direction terms, `A2` the `v`-direction terms,
-//! with the reaction term `−r_d u` shared evenly between `A1` and `A2`.
-//!
-//! Unknowns live on `G = {(s_i, v_j): 1 ≤ i ≤ m1, 0 ≤ j ≤ m2 − 1}`, stored
-//! row-major in `j` (`index = j · m1 + (i − 1)`). The Dirichlet data at
-//! `s = s_0` (zero), the Neumann data `u_s(S) = e^{−r_f t}` and the Dirichlet
-//! data `u(s, V) = (s − s_0) e^{−r_f t}` all scale with `e^{−r_f t}`, so every
-//! boundary vector is stored once and multiplied by that factor per step.
+//! In 't Hout & Foulon's (2010, §2.2, §2.4) `U' = AU + b(t)` as `A0` (mixed), `A1` (`s`), `A2`
+//! (`v`), sharing `−r_d u`; unknowns at `j·m1 + i − 1`, boundary vectors scaled by `e^{−r_f t}`.
 
 use super::grid::backward_first;
 use super::grid::central_first;
@@ -47,7 +39,8 @@ pub(super) struct Operators {
   a1: Vec<Stencil>,
   /// `A2` rows: stencil along `j` (offsets in `j`).
   a2: Vec<Stencil>,
-  /// `A0` rows: the nine mixed-derivative weights on `(i+k, j+l)`, `k, l ∈ {−1, 0, 1}`, row-major in `k`.
+  /// `A0` rows: the nine mixed-derivative weights on `(i+k, j+l)`, `k, l ∈ {−1, 0, 1}`, row-major
+  /// in `k`.
   a0: Vec<[f64; 9]>,
   /// Boundary vectors per split part, to be scaled by `e^{−r_f t}`.
   b0: Vec<f64>,
@@ -58,7 +51,7 @@ pub(super) struct Operators {
 impl Operators {
   /// Assembles the split operator on the meshes `s` (`s_0` = lower
   /// boundary, `s_{m1}` = `S`) and `v` (`v_0 = 0`, `v_{m2} = V`).
-  pub fn new(s: Vec<f64>, v: Vec<f64>, c: HestonCoefficients) -> Self {
+  pub(crate) fn new(s: Vec<f64>, v: Vec<f64>, c: HestonCoefficients) -> Self {
     let m1 = s.len() - 1;
     let m2 = v.len() - 1;
     let n = m1 * m2;
@@ -134,11 +127,8 @@ impl Operators {
               ],
               extra: None,
             };
-            // The second-derivative coupling to j + 1 is kept explicit in the
-            // boundary vector only when j + 1 is the Dirichlet boundary; the
-            // upwind rows sit strictly inside (v_j > 1 < V), where j + 1 < m2
-            // holds for every practical mesh — that coupling is folded into
-            // the `a0`-free diagonal part below through `extra_upper`.
+            // The `j + 1` coupling goes to the boundary vector only at the Dirichlet row; upwind
+            // rows sit inside (`v_j > 1`, `j + 1 < m2` on any practical mesh), via `extra_upper`.
             extra_upper(&mut a2[row], vol_diffusion * d_p);
           } else {
             a2[row] = Stencil {
@@ -203,7 +193,7 @@ impl Operators {
     }
   }
 
-  pub fn len(&self) -> usize {
+  pub(crate) fn len(&self) -> usize {
     self.m1 * self.m2
   }
 
@@ -212,7 +202,7 @@ impl Operators {
   }
 
   /// `F_0(t, u) = A0 u + b0(t)`.
-  pub fn f0(&self, t: f64, u: &[f64]) -> Vec<f64> {
+  pub(crate) fn f0(&self, t: f64, u: &[f64]) -> Vec<f64> {
     let scale = (-self.r_f * t).exp();
     let mut out = vec![0.0; u.len()];
     for j in 1..self.m2 {
@@ -240,7 +230,7 @@ impl Operators {
   }
 
   /// `F_1(t, u) = A1 u + b1(t)`.
-  pub fn f1(&self, t: f64, u: &[f64]) -> Vec<f64> {
+  pub(crate) fn f1(&self, t: f64, u: &[f64]) -> Vec<f64> {
     let scale = (-self.r_f * t).exp();
     let mut out = vec![0.0; u.len()];
     for j in 0..self.m2 {
@@ -264,7 +254,7 @@ impl Operators {
   }
 
   /// `F_2(t, u) = A2 u + b2(t)`.
-  pub fn f2(&self, t: f64, u: &[f64]) -> Vec<f64> {
+  pub(crate) fn f2(&self, t: f64, u: &[f64]) -> Vec<f64> {
     let scale = (-self.r_f * t).exp();
     let mut out = vec![0.0; u.len()];
     for j in 0..self.m2 {
@@ -294,18 +284,18 @@ impl Operators {
   }
 
   /// Boundary vectors of the split parts at time `t`.
-  pub fn b1_at(&self, t: f64) -> Vec<f64> {
+  pub(crate) fn b1_at(&self, t: f64) -> Vec<f64> {
     let scale = (-self.r_f * t).exp();
     self.b1.iter().map(|b| b * scale).collect()
   }
 
-  pub fn b2_at(&self, t: f64) -> Vec<f64> {
+  pub(crate) fn b2_at(&self, t: f64) -> Vec<f64> {
     let scale = (-self.r_f * t).exp();
     self.b2.iter().map(|b| b * scale).collect()
   }
 
   /// `F(t, u) = F_0 + F_1 + F_2`.
-  pub fn f(&self, t: f64, u: &[f64]) -> Vec<f64> {
+  pub(crate) fn f(&self, t: f64, u: &[f64]) -> Vec<f64> {
     let (f0, f1, f2) = (self.f0(t, u), self.f1(t, u), self.f2(t, u));
     f0.iter()
       .zip(&f1)
@@ -315,7 +305,7 @@ impl Operators {
   }
 
   /// Solves `(I − c A1) x = rhs` line by line along `i` (tridiagonal).
-  pub fn solve_a1(&self, c: f64, rhs: &[f64]) -> Vec<f64> {
+  pub(crate) fn solve_a1(&self, c: f64, rhs: &[f64]) -> Vec<f64> {
     let mut x = vec![0.0; rhs.len()];
     let n = self.m1;
     let (mut lo, mut di, mut up, mut d) = (vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n]);
@@ -346,7 +336,7 @@ impl Operators {
   }
 
   /// Solves `(I − c A2) x = rhs` line by line along `j` (bandwidth two).
-  pub fn solve_a2(&self, c: f64, rhs: &[f64]) -> Vec<f64> {
+  pub(crate) fn solve_a2(&self, c: f64, rhs: &[f64]) -> Vec<f64> {
     let mut x = vec![0.0; rhs.len()];
     let n = self.m2;
     let (mut lo2, mut lo, mut di, mut up, mut up2, mut d) = (
@@ -390,7 +380,7 @@ impl Operators {
 
   /// Bilinear interpolation of a grid vector at `(s, v)`; `top_scale` is
   /// `e^{−r_f t}` for the Dirichlet row at `v = V`.
-  pub fn interpolate(&self, u: &[f64], s: f64, v: f64, top_scale: f64) -> f64 {
+  pub(crate) fn interpolate(&self, u: &[f64], s: f64, v: f64, top_scale: f64) -> f64 {
     if !(self.s[0]..=self.s[self.m1]).contains(&s) || !(self.v[0]..=self.v[self.m2]).contains(&v) {
       return f64::NAN;
     }
@@ -442,9 +432,8 @@ fn extra_upper(stencil: &mut Stencil, coefficient: f64) {
   stencil.extra = Some((1, coefficient));
 }
 
-/// Gaussian elimination without pivoting on a banded system with lower and
-/// upper bandwidth two (the outer bands optional); the `A1`/`A2` systems are
-/// diagonally dominant for the step sizes of interest.
+/// Gaussian elimination without pivoting on a bandwidth-two system (outer bands optional); `A1` and
+/// `A2` are diagonally dominant at the step sizes used.
 pub(super) fn solve_banded(
   lo: &[f64],
   di: &[f64],

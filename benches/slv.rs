@@ -3,22 +3,26 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::FokkerPlanckMethod;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
 use stochastic_rs::quant::pricing::slv::ParticleMethod;
 use stochastic_rs::quant::pricing::slv::calibrate_leverage;
 use stochastic_rs::quant::pricing::slv::calibrate_leverage_fokker_planck;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::Grid2D;
 use stochastic_rs::traits::ModelPricer;
 
 fn params() -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta: 1.0,
   }
 }
@@ -39,7 +43,7 @@ fn bench_calibrate_leverage(c: &mut Criterion) {
     let method = ParticleMethod::default()
       .with_particles(n)
       .with_steps_per_year(100)
-      .with_seed(42);
+      .with_seed(Deterministic::new(42));
     group.bench_with_input(criterion::BenchmarkId::from_parameter(n), &n, |b, _| {
       b.iter(|| calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.25, 0.5], &method).unwrap())
     });
@@ -53,12 +57,12 @@ fn bench_slv_price_call(c: &mut Criterion) {
   let method = ParticleMethod::default()
     .with_particles(2_000)
     .with_steps_per_year(100)
-    .with_seed(42);
+    .with_seed(Deterministic::new(42));
   let run = calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.25, 0.5], &method).unwrap();
   let pricer = HestonSlvPricer::new(params, run.leverage, 0.05, 0.0)
     .with_paths(10_000)
     .with_steps_per_year(100)
-    .with_seed(42);
+    .with_seed(Deterministic::new(42));
 
   c.bench_function("slv_price_call_10k_paths", |b| {
     b.iter(|| pricer.price_call(100.0, 100.0, 0.05, 0.0, 0.5))

@@ -38,13 +38,8 @@ fn checked(times: &[f64], values: &[f64], what: &str) -> PyResult<()> {
   Ok(())
 }
 
-/// Term structure of survival probabilities: piecewise-constant hazard or
-/// linear survival interpolation between the pillars, flat hazard
-/// extrapolation beyond the last one. A `(0, 1)` anchor is always present,
-/// so `len`, `times()` and `pillars()` count one more entry than the
-/// constructor received unless a `t = 0` pillar was given. Accepted
-/// anywhere a flat hazard rate is — `ExposureProfile.cva`, `CdsIndex`,
-/// `CdoTranche`.
+/// Survival curve, piecewise-constant hazard or linear survival between pillars, flat hazard past
+/// the last; a `(0, 1)` anchor adds one entry unless a `t = 0` pillar was given.
 #[pyclass(module = "stochastic_rs", name = "SurvivalCurve", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PySurvivalCurve {
@@ -64,8 +59,8 @@ impl PySurvivalCurve {
       }
       Ok(Self {
         inner: SurvivalCurve::from_hazard_rates(
-          &Array1::from_vec(times),
-          &Array1::from_vec(hazard_rates),
+          Array1::from_vec(times).view(),
+          Array1::from_vec(hazard_rates).view(),
           interpolation(method)?,
         ),
       })
@@ -99,8 +94,8 @@ impl PySurvivalCurve {
     }
     Ok(Self {
       inner: SurvivalCurve::from_survival_probs(
-        &Array1::from_vec(times),
-        &Array1::from_vec(survival_probs),
+        Array1::from_vec(times).view(),
+        Array1::from_vec(survival_probs).view(),
         interpolation(method)?,
       ),
     })
@@ -116,8 +111,8 @@ impl PySurvivalCurve {
     }
     Ok(Self {
       inner: SurvivalCurve::from_default_probs(
-        &Array1::from_vec(times),
-        &Array1::from_vec(default_probs),
+        Array1::from_vec(times).view(),
+        Array1::from_vec(default_probs).view(),
         interpolation(method)?,
       ),
     })
@@ -149,14 +144,14 @@ impl PySurvivalCurve {
   fn survival_probabilities(&self, times: Vec<f64>) -> Vec<f64> {
     self
       .inner
-      .survival_probabilities(&Array1::from_vec(times))
+      .survival_probabilities(Array1::from_vec(times).view())
       .to_vec()
   }
 
   fn default_probabilities(&self, times: Vec<f64>) -> Vec<f64> {
     self
       .inner
-      .default_probabilities(&Array1::from_vec(times))
+      .default_probabilities(Array1::from_vec(times).view())
       .to_vec()
   }
 

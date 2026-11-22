@@ -4,9 +4,8 @@ use super::curves::PyDiscountCurve;
 use super::survival::survival_input;
 use crate::risk::xva;
 
-/// Exposure profile (EPE / ENE / PFE on a date grid) with the valuation
-/// adjustments integrated against a discount curve; every `hazard_rate`
-/// argument takes a flat rate or a `SurvivalCurve`.
+/// Exposure profile (EPE, ENE and PFE on a date grid) with its adjustments against a discount
+/// curve; each `hazard_rate` takes a flat rate or a `SurvivalCurve`.
 #[pyclass(name = "ExposureProfile", unsendable)]
 pub struct PyExposureProfile {
   inner: xva::ExposureProfile,
@@ -23,7 +22,7 @@ impl PyExposureProfile {
     quantile: f64,
   ) -> PyResult<Self> {
     Ok(Self {
-      inner: xva::ExposureProfile::try_from_mtm(&mtm.as_array().to_owned(), times, quantile)
+      inner: xva::ExposureProfile::try_from_mtm(mtm.as_array(), times, quantile)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
     })
   }
@@ -117,6 +116,8 @@ impl PyExposureProfile {
 #[pyclass(name = "HullWhiteSwapExposure", unsendable)]
 pub struct PyHullWhiteSwapExposure {
   inner: xva::irs::HullWhiteSwapExposure,
+  /// No `fixed_rate` was given, so `profile` sets the swap at par on its curve.
+  at_par: bool,
 }
 
 #[pymethods]
@@ -138,11 +139,12 @@ impl PyHullWhiteSwapExposure {
         mean_reversion,
         sigma,
         notional,
-        fixed_rate.unwrap_or(f64::NAN),
+        fixed_rate.unwrap_or(0.0),
         payment_times,
         accrual,
       )
       .with_steps_per_year(steps_per_year),
+      at_par: fixed_rate.is_none(),
     })
   }
 
@@ -152,7 +154,7 @@ impl PyHullWhiteSwapExposure {
   }
 
   /// Exposure profile on the payment dates from `paths` simulated short-rate
-  /// paths; a `NaN` fixed rate is replaced by the par rate on `curve`.
+  /// paths; a swap built without a fixed rate takes the par rate on `curve`.
   #[pyo3(signature = (curve, paths=10_000, quantile=0.95, seed=None))]
   fn profile(
     &self,
@@ -162,7 +164,7 @@ impl PyHullWhiteSwapExposure {
     seed: Option<u64>,
   ) -> PyExposureProfile {
     let mut swap = self.inner.clone();
-    if swap.fixed_rate.is_nan() {
+    if self.at_par {
       swap.fixed_rate = swap.par_rate(&curve.inner);
     }
     let inner = match seed {
@@ -170,13 +172,13 @@ impl PyHullWhiteSwapExposure {
         &curve.inner,
         paths,
         quantile,
-        stochastic_rs_core::simd_rng::Deterministic::new(s),
+        &stochastic_rs_core::simd_rng::Deterministic::new(s),
       ),
       None => swap.profile(
         &curve.inner,
         paths,
         quantile,
-        stochastic_rs_core::simd_rng::Unseeded,
+        &stochastic_rs_core::simd_rng::Unseeded,
       ),
     };
     PyExposureProfile { inner }

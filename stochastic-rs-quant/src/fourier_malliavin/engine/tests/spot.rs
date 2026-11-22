@@ -5,12 +5,12 @@ use ndarray::Array1;
 use super::fixtures::HESTON_RHO;
 use super::fixtures::HESTON_SIGMA_V;
 use super::fixtures::heston_paths;
-use crate::fourier_malliavin::FMVol;
+use crate::fourier_malliavin::FmVol;
 
 #[test]
 fn spot_variance_tracks_heston_path() {
   let (log_prices, variance, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let count = 21usize;
   let tau = Array1::linspace(0.0, 1.0, count);
   let spot = engine.spot_variance(tau.as_slice().unwrap(), None);
@@ -26,7 +26,7 @@ fn spot_variance_tracks_heston_path() {
 #[test]
 fn spot_self_covariance_tracks_spot_variance() {
   let (log_prices, _, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let tau = Array1::linspace(0.0, 1.0, 11);
   let variance = engine.spot_variance(tau.as_slice().unwrap(), None);
   let covariance = engine.spot_covariance(&engine, tau.as_slice().unwrap(), None);
@@ -42,7 +42,7 @@ fn spot_self_covariance_tracks_spot_variance() {
 #[test]
 fn spot_leverage_mean_tracks_heston_reference() {
   let (log_prices, variance, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let count = 11usize;
   let tau = Array1::linspace(0.0, 1.0, count);
   let spot = engine.spot_leverage(tau.as_slice().unwrap(), None, None);
@@ -61,7 +61,7 @@ fn spot_leverage_mean_tracks_heston_reference() {
 #[test]
 fn raw_spot_volvol_mean_is_within_finite_sample_envelope() {
   let (log_prices, variance, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let count = 11usize;
   let tau = Array1::linspace(0.0, 1.0, count);
   let spot = engine.spot_volvol(tau.as_slice().unwrap(), None, None);
@@ -78,7 +78,7 @@ fn raw_spot_volvol_mean_is_within_finite_sample_envelope() {
 #[test]
 fn corrected_spot_volvol_mean_tracks_heston_reference() {
   let (log_prices, variance, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let count = 11usize;
   let tau = Array1::linspace(0.0, 1.0, count);
   let spot = engine.spot_volvol_bias_corrected(tau.as_slice().unwrap(), None, None);
@@ -97,7 +97,7 @@ fn corrected_spot_volvol_mean_tracks_heston_reference() {
 #[test]
 fn spot_quarticity_mean_is_positive() {
   let (log_prices, _, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let tau = Array1::linspace(0.0, 1.0, 11);
   let spot = engine.spot_quarticity(tau.as_slice().unwrap(), None, None);
 
@@ -109,7 +109,7 @@ fn spot_variance_supports_f32() {
   let (prices_f64, _, _) = heston_paths();
   let prices = prices_f64.mapv(|value| value as f32);
   let tau = Array1::linspace(0.0_f32, 1.0, 11);
-  let engine = FMVol::new_uniform(prices.as_slice().unwrap(), 1.0_f32);
+  let engine = FmVol::new_uniform(prices.as_slice().unwrap(), 1.0_f32);
   let spot = engine.spot_variance(tau.as_slice().unwrap(), None);
   let mean = spot.sum() / spot.len() as f32;
 
@@ -119,7 +119,7 @@ fn spot_variance_supports_f32() {
 #[test]
 fn fe_and_fm_spot_windows_track_heston_path() {
   let (log_prices, variance, _) = heston_paths();
-  let engine = FMVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
+  let engine = FmVol::new_uniform(log_prices.as_slice().unwrap(), 1.0);
   let tau = Array1::linspace(0.0, 1.0, 11);
   let fm = engine.spot_variance(tau.as_slice().unwrap(), None);
   let fe = engine.spot_variance_fe(tau.as_slice().unwrap(), None);

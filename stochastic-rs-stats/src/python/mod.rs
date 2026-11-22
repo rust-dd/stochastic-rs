@@ -1,13 +1,12 @@
 //! PyO3 wrappers for `stochastic-rs-stats`.
 //!
-//! Hypothesis tests (Jarque-Bera, Anderson-Darling, Shapiro-Francia, ADF, KPSS),
-//! Hurst-exponent estimators (Fukasawa, fOU v1/v2), Heston MLE, and the realised
-//! variance / bipower-variation / jump tests, all exposed as `#[pyclass]` types
-//! that take a numpy array and return a result object with the test statistic
-//! and either a p-value or boolean rejection flag.
+//! Each class takes numpy arrays and answers a result object: a test's decision or an estimate.
 
 #![cfg(feature = "python")]
-#![allow(clippy::too_many_arguments)]
+#![allow(
+  clippy::too_many_arguments,
+  reason = "a constructor's arguments are its Python keyword signature"
+)]
 
 mod changepoint;
 mod cointegration;
@@ -56,8 +55,6 @@ pub use hurst::PyWavelet;
 pub use hurst::PyWhittle;
 pub use mcmc::random_walk_metropolis;
 pub use misc::PyGaussianKDE;
-pub use misc::PyLeverage;
-pub use misc::PyTailIndex;
 pub use mle::PyHestonMLE;
 pub use mle::PyHestonNMLECEKF;
 pub use normality::PyAndersonDarling;
@@ -77,3 +74,8 @@ pub use stationarity::PyERSTest;
 pub use stationarity::PyKPSSTest;
 pub use stationarity::PyLeybourneMcCabeTest;
 pub use stationarity::PyPhillipsPerronTest;
+
+/// A `StatsError` as the `ValueError` the wrappers raise.
+pub(crate) fn stats_error(e: crate::StatsError) -> pyo3::PyErr {
+  pyo3::exceptions::PyValueError::new_err(e.to_string())
+}

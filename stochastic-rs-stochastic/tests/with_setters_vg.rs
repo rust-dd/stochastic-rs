@@ -1,7 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Vg`
-//! (`jump/vg.rs`). No persisted cache: `sampler()` builds its gamma
-//! subordinator and Gaussian source fresh from `self.{nu,n,t,seed}` on
-//! every call. `new()`'s one assert (`nu > 0`) is replicated in `with_nu`.
+//! `with_*` setters on `Vg` (`jump/vg.rs`), which caches nothing: `sampler()` builds its gamma
+//! subordinator and Gaussian source per call. `with_nu` repeats `new()`'s `nu > 0`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -53,11 +51,11 @@ plain_test!(vg_with_mu_round_trip, with_mu, mu, 0.05);
 plain_test!(vg_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(vg_with_nu_round_trip, with_nu, nu, 0.25);
 plain_test!(vg_with_x0_round_trip, with_x0, x0, Some(1.0));
-plain_test!(vg_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(vg_with_points_round_trip, with_points, n, 64usize);
 plain_test!(vg_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]
-#[should_panic(expected = "nu must be positive")]
+#[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
 fn vg_with_nu_rejects_non_positive() {
   let _ = Vg::<f64>::default().with_nu(0.0);
 }

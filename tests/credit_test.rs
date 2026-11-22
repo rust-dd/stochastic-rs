@@ -1,13 +1,5 @@
-//! Integration tests for the credit module.
-//!
-//! Validates:
-//! - Merton structural model against closed-form reference values.
-//! - Survival curve against the hazard-rate → survival identity.
-//! - CDS valuation against a flat-hazard closed-form approximation.
-//! - Hazard bootstrap repricing consistency (each CDS reprices to par).
-//! - Continuous-time generator → transition matrix via matrix exponential
-//!   against a 2-state analytic solution, and Moody's S&P-style one-year
-//!   transition matrix invariants.
+//! Credit tests: Merton against closed forms, survival and CDS against hazard-rate identities,
+//! bootstrap repricing to par, the generator's matrix exponential against a 2-state solution.
 
 use chrono::NaiveDate;
 use ndarray::Array1;
@@ -35,8 +27,8 @@ fn flat_discount_curve(rate: f64) -> DiscountCurve<f64> {
   let times = array![0.25_f64, 1.0, 3.0, 5.0, 10.0, 30.0];
   let rates = array![rate, rate, rate, rate, rate, rate];
   DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -74,8 +66,8 @@ fn survival_curve_reconstructs_hazard_input() {
   let times = array![1.0_f64, 3.0, 5.0];
   let hazards = array![0.01_f64, 0.02, 0.03];
   let curve = SurvivalCurve::from_hazard_rates(
-    &times,
-    &hazards,
+    times.view(),
+    hazards.view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
 
@@ -94,8 +86,8 @@ fn hazard_rate_curve_matches_underlying_survival() {
   let times = array![1.0_f64, 3.0];
   let hazards = array![0.02_f64, 0.02];
   let hcurve = HazardRateCurve::from_hazard_rates(
-    &times,
-    &hazards,
+    times.view(),
+    hazards.view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
   assert!((hcurve.average_hazard(1.0) - 0.02).abs() < 1e-12);
@@ -115,8 +107,8 @@ fn cds_fair_spread_reproduces_hazard_times_loss_given_default() {
   let times = Array1::from_vec(vec![5.0_f64]);
   let hazards = Array1::from_vec(vec![hazard]);
   let survival = SurvivalCurve::from_hazard_rates(
-    &times,
-    &hazards,
+    times.view(),
+    hazards.view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
 
@@ -157,8 +149,8 @@ fn cds_at_par_spread_has_zero_npv() {
   let times = Array1::from_vec(vec![5.0_f64]);
   let hazards = Array1::from_vec(vec![hazard]);
   let survival = SurvivalCurve::from_hazard_rates(
-    &times,
-    &hazards,
+    times.view(),
+    hazards.view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
 
@@ -221,7 +213,8 @@ fn bootstrap_hazard_reprices_quotes_at_par() {
     recovery,
     &discount,
     DayCountConvention::Actual365Fixed,
-  );
+  )
+  .unwrap();
 
   for quote in &quotes {
     let cds = CreditDefaultSwap::vanilla(
@@ -241,7 +234,7 @@ fn bootstrap_hazard_reprices_quotes_at_par() {
       &survival,
     );
     assert!(
-      (v.fair_spread - quote.spread).abs() < 1e-6,
+      (v.fair_spread - quote.spread).abs() < 1e-10,
       "bootstrap fair {} vs quote {} at {:?}",
       v.fair_spread,
       quote.spread,

@@ -1,7 +1,4 @@
-//! # Bjerksund-Stensland 2002 American Option Approximation
-//!
-//! Analytical approximation for American call and put options using a
-//! flat early-exercise boundary split at $t_1=\tfrac12(\sqrt5-1)T$:
+//! American options by Bjerksund & Stensland's (2002) flat boundary split at `t₁ = (√5 − 1)T/2`.
 //!
 //! $$
 //! C_{\mathrm{am}}=\alpha_2 F^{\beta}
@@ -13,26 +10,21 @@
 //!   +\cdots
 //! $$
 //!
-//! Put values use the Bjerksund-Stensland symmetry relation.
-//!
-//! Reference: Bjerksund, P. & Stensland, G. (2002). "Closed Form Valuation
-//! of American Options." Discussion paper 2002/09, NHH.
-//! <https://www.researchgate.net/publication/228801918>
+//! Puts by their symmetry relation.
+//! Reference: Bjerksund & Stensland (2002), NHH 2002/09, researchgate.net/publication/228801918
 
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 
-/// Bjerksund-Stensland 2002 pricer for American options.
-///
-/// The struct holds **model state only** — the volatility. Spot, strike,
-/// rate, dividend yield and maturity are the pricing *query* and travel as
-/// arguments to [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid.
-///
-/// Falls back to the GBS (European) value when early exercise is never
-/// optimal (i.e. when `b >= r` for calls).
+/// Bjerksund–Stensland (2002) American pricer holding the volatility; the GBS European value where
+/// early exercise is never optimal (`b >= r` for a call).
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
@@ -46,26 +38,18 @@ use crate::traits::ModelPricer;
 #[derive(Debug, Clone, Copy)]
 pub struct BjerksundStensland2002Pricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
 }
 
 impl BjerksundStensland2002Pricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. A negative volatility does not announce
-  ///   itself here — the approximation returns exactly the option's
-  ///   intrinsic value, an ordinary answer for a deep-in-the-money American
-  ///   call with nothing marking it as wrong. Case 1 of the crate's
-  ///   [failure convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// `v == 0` is accepted as the deterministic limit.
-  pub fn new(v: f64) -> Self {
+  /// Panics unless `sigma` is finite and `>= 0`, as a negative one prices the intrinsic value
+  /// unmarked; `sigma == 0` is the deterministic limit.
+  pub fn new(sigma: f64) -> Self {
     assert!(
-      v >= 0.0,
-      "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    Self { v }
+    Self { sigma }
   }
 
   /// Cost of carry: b = r - q
@@ -189,39 +173,37 @@ impl BjerksundStensland2002Pricer {
       - x * self.psi(fs, t2, 0.0, i1, i2, i1, t1, r, b, v)
       + x * self.psi(fs, t2, 0.0, x, i2, i1, t1, r, b, v);
 
-    // Ensure at least the European value
-    f64::max(value, e_value)
+    value.max_or_nan(e_value)
   }
+}
 
-  /// American call and put price at one query point.
-  pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let b = Self::b(r, q);
-
-    // Call: direct BS2002
-    let call = self.bs2002_call(s, k, tau, r, b, self.v);
-
-    // Put: use the Bjerksund-Stensland symmetry relation
-    // P(S, X, T, r, b, v) = C(X, S, T, r-b, -b, v)
-    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.v);
-    let put = f64::max(put_as_call, self.gbs_put(s, k, tau, r, b, self.v));
-
-    (call, put)
+/// The payoff, which is the exercise value, at `tau = 0`; NaN past expiry, for an infinite `tau`
+/// or a NaN query and, before expiry, for a spot or strike that is not positive.
+fn off_the_formula(s: f64, k: f64, r: f64, q: f64, tau: f64, leg: OptionType) -> Option<f64> {
+  if s.is_nan() || k.is_nan() {
+    return Some(f64::NAN);
   }
+  let past = expired(tau, &[r, q], || vanilla_payoff(leg, s, k));
+  past.or_else(|| (r.is_nan() || q.is_nan() || not_positive(&[s, k])).then_some(f64::NAN))
 }
 
 impl ModelPricer for BjerksundStensland2002Pricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).0
+    if let Some(value) = off_the_formula(s, k, r, q, tau, OptionType::Call) {
+      return value;
+    }
+    self.bs2002_call(s, k, tau, r, Self::b(r, q), self.sigma)
   }
 
-  /// Overrides the trait's vanilla-parity default. Put-call parity holds
-  /// for European options only; an American put carries an early-exercise
-  /// premium the call does not, so the default would understate it. This
-  /// returns the Bjerksund-Stensland symmetry value
-  /// $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$, floored at the European put — see
-  /// `bs2002_price_put_overrides_vanilla_parity`.
+  /// The symmetry value $P(S,X,T,r,b,v)=C(X,S,T,r-b,-b,v)$ floored at the European put, not the
+  /// parity default: an American put carries an early-exercise premium the call does not.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.call_put(s, k, r, q, tau).1
+    if let Some(value) = off_the_formula(s, k, r, q, tau, OptionType::Put) {
+      return value;
+    }
+    let b = Self::b(r, q);
+    let put_as_call = self.bs2002_call(k, s, tau, r - b, -b, self.sigma);
+    put_as_call.max_or_nan(self.gbs_put(s, k, tau, r, b, self.sigma))
   }
 }
 
@@ -236,30 +218,32 @@ mod tests {
   const TAU: f64 = 0.75;
   const V: f64 = 0.25;
 
-  /// Cross-arch tolerance: the goldens route through `norm_cdf` and
-  /// `biv_norm`, whose last bits differ between aarch64-darwin and CI's
-  /// ubuntu x86_64 under FMA contraction.
+  /// The goldens' last bits are `norm_cdf`'s and `biv_norm`'s, which FMA contraction moves between
+  /// aarch64-darwin and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
-  /// Captured from `PricerExt::calculate_call_put()` **before** the
-  /// `ModelPricer` reshape. The reshape is an API change only.
+  /// Regression goldens for the call and the put at one asymmetric query.
   #[test]
   fn bs2002_model_pricer_matches_pre_refactor_goldens() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     assert!((call - 7.35628449811837).abs() < TOL, "call {call}");
     assert!((put - 10.292928328280922).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
     assert_eq!(model.price_put(S, K, R, Q, TAU), put);
   }
 
-  /// American puts carry an early-exercise premium the call does not, so
-  /// European put-call parity — the trait's `price_put` default — is not
-  /// merely imprecise here, it is the wrong model.
+  /// The put exceeds European parity, the trait's default, by its early-exercise premium.
   #[test]
   fn bs2002_price_put_overrides_vanilla_parity() {
     let model = BjerksundStensland2002Pricer::new(V);
-    let (call, put) = model.call_put(S, K, R, Q, TAU);
+    let (call, put) = (
+      model.price_call(S, K, R, Q, TAU),
+      model.price_put(S, K, R, Q, TAU),
+    );
     let vanilla = call - S * (-Q * TAU).exp() + K * (-R * TAU).exp();
     assert!(
       put > vanilla + 1e-3,
@@ -267,7 +251,7 @@ mod tests {
     );
   }
 
-  /// The capability the reshape exists for: one model, a whole grid.
+  /// One model prices a strike and maturity grid.
   #[test]
   fn bs2002_one_model_prices_a_grid() {
     let model = BjerksundStensland2002Pricer::new(V);
@@ -281,13 +265,11 @@ mod tests {
     }
   }
 
-  /// A negative volatility does not announce itself here — it returns
-  /// exactly the intrinsic value (`2.0` at `S = 42, K = 40`), which is a
-  /// perfectly ordinary answer for a deep-in-the-money American call and
-  /// nothing marks it as wrong. The reference at `σ = +0.35` is `5.2869`.
+  /// `σ = −0.35` priced the intrinsic `2.0` at `S = 42`, `K = 40`, a plausible deep-in-the-money
+  /// American call, against `5.2869` at `σ = +0.35`.
   #[test]
   #[should_panic(
-    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got -0.35)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.35"
   )]
   fn new_rejects_negative_volatility() {
     let _ = BjerksundStensland2002Pricer::new(-0.35);
@@ -295,14 +277,22 @@ mod tests {
 
   #[test]
   #[should_panic(
-    expected = "BjerksundStensland2002Pricer::new: v must be a non-negative volatility (got NaN)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
   )]
   fn new_rejects_nan_volatility() {
     let _ = BjerksundStensland2002Pricer::new(f64::NAN);
   }
 
   #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = BjerksundStensland2002Pricer::new(f64::INFINITY);
+  }
+
+  #[test]
   fn new_accepts_the_zero_volatility_limit() {
-    assert_eq!(BjerksundStensland2002Pricer::new(0.0).v, 0.0);
+    assert_eq!(BjerksundStensland2002Pricer::new(0.0).sigma, 0.0);
   }
 }

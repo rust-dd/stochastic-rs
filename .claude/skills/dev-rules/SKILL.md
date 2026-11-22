@@ -8,24 +8,31 @@ description: Development rules for stochastic-rs — enforces project convention
 ## 1. Follow folder structure
 
 ```
-src/
-  stochastic/       — stochastic processes (diffusion, volatility, jump, noise, interest, autoregressive, correlation, malliavin, sheet)
-  quant/            — quantitative finance (pricing, bonds, portfolio, strategies, calendar, fx, order_book, loss)
-  stats/            — statistical estimators and tests (stationarity, normality, spectral, MLE, KDE)
-  distributions/    — probability distributions
-  copulas/          — copula models (bivariate, multivariate, univariate, empirical, correlation)
-  ai/               — neural network based models (volatility calibration)
-  traits.rs         — core traits (FloatExt, ProcessExt, MalliavinExt, etc.)
-  macros.rs         — helper macros
-benches/            — criterion benchmarks
-tests/              — integration & comparison tests
+stochastic-rs/                        (workspace root + umbrella: re-exports, benches/, tests/)
+├── stochastic-rs-core/               — simd_rng (foundation)
+├── stochastic-rs-distributions/      — FloatExt/SimdFloatExt + distributions + qmc (Sobol/Halton)
+├── stochastic-rs-stochastic/         — ProcessExt + the processes (diffusion, volatility, jump, noise, interest, …)
+├── stochastic-rs-copulas/            — BivariateExt + copulas
+├── stochastic-rs-stats/              — estimators and tests
+├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
+├── stochastic-rs-ai/                 — experimental neural surrogates (feature-gated upstream)
+└── stochastic-rs-py/                 — pyo3 cdylib, built via `maturin`
 ```
+
+Each sub-crate keeps its traits in its own `src/traits.rs` (`FloatExt` in distributions, `ProcessExt` in
+stochastic) and the umbrella's `src/traits.rs` mirrors them; a Malliavin derivative is the plain struct
+`Malliavin<T, O>` a process's inherent `malliavin()` returns, not a trait.
+
+A source file stays at or under 600 lines; the two ruled exceptions are
+`stochastic-rs-stochastic/src/euler/spec.rs` (one enum) and `src/euler/spec/encode.rs` (one `match`).
 
 Place new code in the appropriate existing module. Do not create top-level modules without explicit approval.
 
 ## 2. Generic over float
 
-All new structs, traits, and functions must be generic over the float type using the existing `FloatExt` trait bound (`T: FloatExt`). Never hardcode `f64` in new code.
+All new structs, traits, and functions in `stochastic-rs-distributions` and `stochastic-rs-stochastic` must be generic over the float type using the existing `FloatExt` trait bound (`T: FloatExt`). Never hardcode `f64` in new code there.
+
+In quant, what implements a pricer or calibrator trait is `f64`; `T: RealExt` stays where it is (for example curves, rate instruments, risk metrics, SVI, `FmVol`); a custom scalar is a separate decision.
 
 ## 3. Use `ndarray` everywhere
 
@@ -40,6 +47,7 @@ When implementing a new model or algorithm, use the **arxiv MCP tool** (`mcp__ar
 Every new module must include:
 - **Comparison test**: validate output against the reference implementation (Python, R, MATLAB, or the original paper's numerical examples)
 - **Criterion benchmark**: add a bench in `benches/` to track performance
+- **Pins**: a value is bit-identical only within one build profile and one target; where it passes through a libm or a fused `sincos`, the test takes a tolerance derived from the method, and an unconverged fit's iteration count is not pinned across them
 
 ## 6. Scientific references
 
@@ -50,70 +58,105 @@ Every new module must cite its source. Add a doc comment at the top of the file 
 
 ## 7. Prefer maintained libraries over raw implementations
 
-Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `roots`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
+Do not rewrite algorithms that already exist in well-maintained crates (e.g., `faer`, `basin`, `ndrustfft`). Use existing crate implementations and only write custom code when no suitable crate exists.
 
 Randomness is the standing exception — see §7a.
 
-## 7a. `rand` and `rand_distr` belong to benchmarks only
+## 7a. `rand::rng()` and `rand_distr` belong to benchmarks only
 
 Library code, tests and examples draw randomness from the workspace's own
-RNG and distributions. `rand::rng()`, `rand::thread_rng()` and every
-concrete `rand_distr` distribution (`Normal`, `Exp`, `Gamma`, `Poisson`,
-`StandardNormal`, …) are reserved for `benches/` and the `src/tests/bench_*`
-plot harnesses, where `rand_distr` is the *baseline being measured* and
-must stay.
+RNG and distributions. `rand::rng()` and every concrete `rand_distr`
+distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
+reserved for `benches/`, where `rand_distr` is the umbrella's
+dev-dependency (the only crate that declares it) and the
+*baseline being measured*. The one exception outside `benches/` is the
+umbrella's `tests/rand_distr_jump_law.rs`, whose `rand_distr::Normal` in a
+jump-size slot proves the dev-dependency pairs with the library's `rand`.
+The `rand` crate itself stays a dependency for its traits (`Rng`, `RngExt`,
+`rand::distr::Distribution`, `rand::seq::SliceRandom`).
 
 | Need | Use |
 |------|-----|
 | A raw RNG | `SimdRng::new()`, or `SimdRng::from_seed(s)` when reproducible |
 | Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
-| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | `ScalarNormal`, `ScalarExp` from `stochastic_rs_distributions::scalar` |
+| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | the stateless `SimdNormal`, `SimdExp`, ... themselves |
 
-The last row is not a style preference. `Simd*` distributions own an
-`UnsafeCell` sample buffer, so they are `!Sync` by construction and cannot
-satisfy the `Send + Sync` bound that `ProcessExt` propagates into the
-jump-size slot of `CompoundPoisson`, `Bates1996`, `LevyDiffusion` and
-`JumpFOUCustom`. The stateless `Scalar*` types sample from the caller's
-RNG and exist precisely for that slot.
+A process's jump-size slot takes any scalar continuous `Simd*` law except `SimdNonCentralChiSquared` (its noncentrality
+is a per-draw argument): it holds parameters only, so it is `Send + Sync`, and `Distribution::sample(&mut rng)` draws
+from the generator the process passes. A `Seeded` stream is not a law.
 
 Two traps worth naming:
 
-- **`fill_slice(out)` takes no RNG at all.** Every `Simd*` bulk fill is
-  `pub fn fill_slice(&self, out: &mut [T])` — one argument. The type
-  draws from its own internal stream, seeded at construction, so there
-  is nowhere to hand an external `StdRng`; the seed must go to the
-  constructor (`SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42))`).
-  Older notes describing a two-argument `fill_slice(_rng, out)` that
-  ignored its first parameter, or a `fill_slice_fast` companion, are
-  stale: neither exists.
-- **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
-  types implement it, so `use rand_distr::Distribution;` is still how
-  `.sample()` resolves. Removing those impls would break downstream users;
-  only the concrete `rand_distr` *distributions* are out.
+- **The stream lives in `Seeded`.** A ported `Simd*` law holds parameters
+  only; `.seeded(&Deterministic::new(42))` binds it to a stream, and
+  `sample` / `fill_slice` / `sample_n` / `sample_matrix` then run on
+  `&mut self` (`SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42))`).
+  `fill_slice(out)` takes no RNG: the seed goes to `.seeded`, never to a
+  draw; a bulk fill driven by an external rng is `fill_with(&mut rng, out)`.
+- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is
+  not a dependency of any library crate (only a dev-dependency of the
+  umbrella), so library code cannot import it; our own `Simd*` types
+  implement the same trait, which is how `.sample()` resolves. Removing
+  those impls would break downstream users.
 
 ## 8. Latest dependency versions
 
 When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
 
-## 9. Comment rules
-Always follow the Rust inline comment or Rust inline documentation pattern. Never use large ugly separators like
+## 9. Comments
+
+The rule, verbatim:
+
+> Max 1-2 lines, anywhere, in any repo — including `///` doc comments and new public API.
+> Write one only when it carries something the code does not: a non-obvious constraint, a
+> why. Never restate the code, never narrate edit history.
+
+A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
+code, public API, tests, benches and examples. A line past 100 columns counts as its
+wrapped length. Write one only for what the code cannot say: a non-obvious constraint, a
+reason, a unit or a convention. A literature citation takes one `Reference:` line per
+source, with its locator and its DOI or ISBN, beside those two. That line fits 100 columns:
+drop the title, abbreviate the journal (ISO 4), write "et al." beyond two authors, never
+drop the locator or the DOI. Doc-test code does not count.
+A `$$ … $$` math display in a doc comment is exempt from the cap, for mathematics only; the
+prose around it is not. A module doc opens on a summary line without TeX, since rustdoc
+shows that line as the module-list row. Longer explanations belong in the PR body.
+
+Never:
+
+- restate the code (`/// Volatility.` on `pub sigma`, `// loop over the paths`);
+- narrate history (`previously`, `now uses`, `renamed from`, `legacy`, `kept for
+  backward compatibility`, `since the refactor`): the code as it stands is the subject;
+- cite plan, task, wave, audit or ruling IDs (`Task 3`, `W6.7`, `A1-c`, `D1`), or
+  release numbers (§11);
+- use separator banners such as
+
 ```
 // --- ... ---
-
-or 
 
 ###############
 # ....        #
 ###############
-
-or 
 
 // ---------------------------------------------------------------------------
 // free-text
 // ---------------------------------------------------------------------------
 ```
 
-or similar. Keep the project clean and dont use ugly AI style comments.
+Rewrites of three typical offenders (a history-laden note on draw order, a field doc
+that restates the field, a long method essay):
+
+```rust
+// Drawn before the jump times so the diffusion stream matches the λ = 0 path.
+let z = normal.sample();
+
+/// Annualised Black volatility of the underlying.
+pub sigma: f64,
+
+/// COS price of a European payoff from the log-price characteristic function.
+/// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848, DOI 10.1137/080718061
+pub fn price(/* … */) -> f64 { /* … */ }
+```
 
 ## 10. Turbofish over explicit binding-type annotation
 
@@ -150,7 +193,7 @@ Doc comments describe what the module / item *does*, not which release ships it.
 //! In v2.3.0 we ship only the closed-form path; the refinement lands in v2.4.
 ```
 
-Version history belongs in `MIGRATION.md` (the repo root breaking-changes record — there is no `CHANGELOG.md` here) / git log / `docs/V*_UPDATE.md`, not in `///` or `//!` blocks. To record a genuine limitation near the code, describe **what is not supported and why** without the release number (e.g. "Nested-Clayton sampling is not yet implemented — needs Devroye double-rejection"), or use a `// TODO:` with a short rationale. When porting prose from a `V*_UPDATE.md` planning doc into a module header, strip the version prefix.
+Version history belongs in `MIGRATION.md` (the repo root breaking-changes record — there is no `CHANGELOG.md` here) / git log / `docs/V*_UPDATE.md`, not in `///` or `//!` blocks. To record a genuine limitation near the code, describe **what is not supported and why** without the release number (e.g. "Free-form regular vines are not implemented — only the path (D) and star (C) structures, which need no structure matrix"), or use a `// TODO:` with a short rationale. When porting prose from a `V*_UPDATE.md` planning doc into a module header, strip the version prefix.
 
 ## 12. One blank line between items
 
@@ -171,3 +214,42 @@ impl Foo for Bar {
   }
 }
 ```
+
+## 13. Library diagnostics go through `log`
+
+Library code reports through the `log` facade (`log::warn!`, `log::trace!`), never `eprintln!`, and never installs a subscriber; binaries, benches and tests do.
+
+## 14. Error policy — one channel per cause, in every crate
+
+- **A parameter precondition broken in a constructor or setter → panic**, one `assert!` per
+  argument, the predicate spelled in the message and the value last:
+  ``assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");``
+  Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
+  In `stochastic-rs-stochastic` a field with a setter states its checks once, in `fn check_<field>`
+  built of `require!(pred, field)` (that `assert!`); `new` and the setter both call it. The grid's
+  `check_n` (`n >= 2`) and `check_t` live once in `precondition.rs`; a process with another bound
+  (`Gn`, `Cfgns`: `n >= 1`) keeps its own.
+  A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
+  `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
+  In copulas `new` panics, while `try_new` and `from_tau` return `Result<_, CopulaError>` for the
+  same preconditions.
+- **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
+  too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
+  `converged() == false`, never `Err`. quant returns `QuantError`, ai `anyhow::Error`, copulas
+  `CopulaError`, the devices `DeviceError`;
+  `Calibrator::Error: Debug + Display + Send + Sync + 'static`. A short VaR sample is
+  `Err(InsufficientData)` and a non-finite one `Err(InvalidInput)` — it is data; the confidence
+  level beside it is a parameter, and panics.
+- **A numerical evaluation outside its domain or an inversion with no root → documented `NaN`**:
+  a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
+  *query* with a non-positive strike or spot, a live Black caplet on two negative rates — the
+  formula is undefined there. A `0.0` or any other plausible number is never a
+  sentinel, and a query argument never panics — only a model parameter does.
+  A price at `tau = 0` is the payoff; at a negative, NaN or infinite `tau` it is NaN, and before
+  expiry so is one at a non-positive spot or strike, a normal model excepted (`SabrPricer` and
+  `SnellEnvelopePricer` are NaN there at `tau = 0` too).
+- **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
+  `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
+  `Some(f64::NAN)` is "computed, undefined at this point".
+- **A reduction never drops a NaN.** `f64::max`/`min` skip a NaN operand; a slice takes
+  `RealExt::max_or_nan_fold`/`min_or_nan_fold` (−∞/+∞ if empty), a pair `max_or_nan`/`min_or_nan`.

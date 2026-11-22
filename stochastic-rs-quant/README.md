@@ -20,8 +20,10 @@ surfaces, curves, instruments and risk.
   (Hull-White, Black-Karasinski, G2++), Bermudan LSM, Snell envelope,
   Heston SLV, autocallables, baskets.
 - **Greeks** — first and second order from each pricer's inherent
-  `greeks(s, k, r, q, tau, option_type)`, plus Malliavin Greeks
-  (Thalmaier and El Khatib schemes, which expose `GreeksExt`) and a
+  `greeks(s, k, r, q, tau, option_type)`, plus Malliavin Greeks by
+  Monte Carlo (the GBM and Heston estimators behind `GreeksExt`, whose
+  every Greek is an `McEstimate` with its standard error, El Khatib's
+  Heston delta and the multi-asset Malliavin–Thalmaier engine) and a
   Fourier-Malliavin volatility estimator.
 - **Calibration** — Heston (Cui analytic Jacobian), SABR, SVJ, Lévy, rough
   Bergomi, double Heston, HKDE, Hull-White swaption grids, BSM.
@@ -40,12 +42,15 @@ surfaces, curves, instruments and risk.
 ## Usage
 
 ```rust
+use stochastic_rs_quant::CallPut;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::heston::HestonPricer;
 
 // The struct holds the model; the query travels as arguments, so one
 // instance prices a whole strike/maturity grid.
-let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.3, Some(0.0));
-let (call, put) = model.call_put(100.0, 100.0, 0.03, 0.0, 1.0);
+let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5 };
+let model = HestonPricer::new(params);
+let CallPut { call, put } = model.price_call_put(100.0, 100.0, 0.03, 0.0, 1.0);
 ```
 
 ## Part of stochastic-rs
@@ -56,7 +61,7 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.4"
+stochastic-rs = "3.0.0-rc.5"
 ```
 
 Depend on `stochastic-rs-quant` directly only when you want this slice and nothing else.

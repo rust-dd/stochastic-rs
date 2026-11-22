@@ -1,26 +1,14 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `RoughBergomi`
-//! (`volatility/rbergomi.rs`). Cache: private `cgns: Cgns<T>` keyed on
-//! `(rho, n, t)`, same shape as the previous wave's `BatesSvj`/`Hkde`/etc.
+//! The `with_*` setters of `RoughBergomi`, whose private `cgns` cache is keyed on `(rho, n, t)`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 
 fn rb_base_seeded<S: SeedExt>(seed: S) -> RoughBergomi<f64, S> {
-  RoughBergomi::new(
-    0.1,
-    0.4,
-    Some(0.2),
-    Some(100.0),
-    0.01,
-    -0.6,
-    64,
-    Some(1.0),
-    seed,
-  )
+  RoughBergomi::new(0.1, 0.4, 0.2, 100.0, 0.01, -0.6, 64, Some(1.0), seed)
 }
 
 fn rb_base() -> RoughBergomi<f64> {
@@ -31,8 +19,8 @@ fn rb_base() -> RoughBergomi<f64> {
 struct RbFields {
   hurst: f64,
   nu: f64,
-  v0: Option<f64>,
-  s0: Option<f64>,
+  v0: f64,
+  s0: f64,
   r: f64,
   rho: f64,
   n: usize,
@@ -72,8 +60,8 @@ macro_rules! plain_test {
 
 plain_test!(rb_with_hurst_round_trip, with_hurst, hurst, 0.3);
 plain_test!(rb_with_nu_round_trip, with_nu, nu, 0.6);
-plain_test!(rb_with_v0_round_trip, with_v0, v0, Some(0.3));
-plain_test!(rb_with_s0_round_trip, with_s0, s0, Some(90.0));
+plain_test!(rb_with_v0_round_trip, with_v0, v0, 0.3);
+plain_test!(rb_with_s0_round_trip, with_s0, s0, 90.0);
 plain_test!(rb_with_r_round_trip, with_r, r, 0.02);
 
 #[test]
@@ -87,8 +75,8 @@ fn rb_with_rho_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.2,
     64,
@@ -103,10 +91,10 @@ fn rb_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn rb_with_steps_rebuilds_cgns_cache() {
+fn rb_with_points_rebuilds_cgns_cache() {
   let mut expected = rb_base();
   expected.n = 128;
-  let got = rb_base().with_steps(128);
+  let got = rb_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
@@ -114,8 +102,8 @@ fn rb_with_steps_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     128,
@@ -124,7 +112,7 @@ fn rb_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = rb_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }
@@ -140,8 +128,8 @@ fn rb_with_horizon_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     64,
@@ -164,14 +152,8 @@ fn rb_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `rb_base()` helper the bit-exact `cgns`-rebuild tests above need (those
-/// require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly). Compares via the `RbFields` mirror,
-/// not a `RoughBergomi { .., ..RoughBergomi::default() }` struct-update
-/// literal: `RoughBergomi` has a private `cgns` cache field, so that literal
-/// wouldn't even compile from this external test crate.
+/// A `Default`-rooted `with_hurst` round-trip. It compares through the `RbFields` mirror:
+/// `RoughBergomi` has a private `cgns` cache, so a struct-update literal would not compile here.
 #[test]
 fn rb_default_with_hurst_round_trip() {
   let base = RoughBergomi::<f64>::default();

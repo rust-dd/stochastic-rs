@@ -1,11 +1,9 @@
-//! Comparison tests for the cashflow engine.
-//!
-//! Fixed-leg PV and CMS forwards are verified against direct discounted-cashflow
-//! formulas. Floating coupon projection is verified against the multicurve
-//! forward-rate identity.
+//! Comparison tests for the cashflow engine: fixed-leg PV and CMS forwards against
+//! discounted-cashflow formulas, floating coupons against the multicurve forward identity.
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -29,7 +27,11 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn approx(a: f64, b: f64, tol: f64) {
@@ -45,7 +47,7 @@ fn fixed_rate_leg_npv_matches_manual_discounting() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::fixed_rate(
     &schedule,
@@ -81,7 +83,7 @@ fn floating_coupon_uses_multicurve_forecast_curve() {
   let maturity = d(2024, 4, 15);
   let schedule = ScheduleBuilder::new(valuation, maturity)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::floating_rate(
     &schedule,
@@ -98,7 +100,7 @@ fn floating_coupon_uses_multicurve_forecast_curve() {
   let discount_curve = flat_curve(0.02, 0.5);
   let forecast_curve = flat_curve(0.04, 0.5);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", forecast_curve);
+  curves.add_forecast(RateTenor::ThreeMonths, forecast_curve);
 
   let coupon = &leg.cashflows()[0];
   let delta: f64 = DayCountConvention::Actual365Fixed.year_fraction(valuation, maturity);
@@ -113,7 +115,7 @@ fn cms_coupon_matches_forward_swap_rate_under_flat_curve() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2024, 7, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::cms(
     &schedule,
@@ -123,7 +125,7 @@ fn cms_coupon_matches_forward_swap_rate_under_flat_curve() {
       24,
       Frequency::SemiAnnual,
       DayCountConvention::Actual365Fixed,
-      "CMS",
+      RateTenor::SixMonths,
     ),
     0.0,
     DayCountConvention::Actual365Fixed,
@@ -160,7 +162,7 @@ fn accrued_interest_matches_partial_fixed_period() {
   let end = d(2024, 7, 15);
   let schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::fixed_rate(
     &schedule,

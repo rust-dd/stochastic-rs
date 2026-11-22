@@ -1,77 +1,30 @@
-//! # One-sample Kolmogorov-Smirnov goodness-of-fit test
+//! One-sample Kolmogorov–Smirnov test against a fully specified CDF, with the asymptotic p-value.
 //!
-//! Tests whether a continuous sample was drawn from a **fully specified**
-//! distribution — every parameter of the null CDF `F` is fixed in advance,
-//! not fitted from `sample` itself (see "Known vs. estimated parameters"
-//! below for why that distinction changes which critical values apply).
+//! $$
+//! D_n = \sup_x \left| F_n(x) - F(x) \right| = \max_i \max\!\left(
+//! \left|\tfrac{i+1}{n} - F(x_{(i)})\right|,\ \left|F(x_{(i)}) - \tfrac{i}{n}\right| \right)
+//! $$
 //!
-//! $$ D_n = \sup_x \left| F_n(x) - F(x) \right| $$
+//! $$
+//! \Pr(\sqrt n D_n > \lambda) \to Q(\lambda) = 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2},
+//! \qquad D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad Q(c(\alpha)) = \alpha
+//! $$
 //!
-//! where `F_n` is the sample's empirical CDF. Computed exactly (no
-//! discretisation) via the standard sorted-sample identity: with
-//! `x_{(0)} \le \dots \le x_{(n-1)}`,
+//! Nothing is fitted, so a constant sample tests as any; `F` must not come from it (Lilliefors).
 //!
-//! $$ D_n = \max_i \max\!\left( \left|\tfrac{i+1}{n} - F(x_{(i)})\right|,\ \left|F(x_{(i)}) - \tfrac{i}{n}\right| \right). $$
-//!
-//! ## Asymptotic null distribution and critical value
-//!
-//! Under `H0`, `\sqrt n D_n` converges to the Kolmogorov distribution
-//! (Kolmogorov 1933), tabulated for practical use by Smirnov (1948) and
-//! by Massey (1951) — the source of the `c(\alpha)` critical-value
-//! constants and their large-`n` critical-value formula used below:
-//!
-//! $$ \Pr(\sqrt n D_n \le \lambda) \to 1 - 2\sum_{k=1}^{\infty} (-1)^{k-1} e^{-2k^2\lambda^2}, \qquad D_{n,\alpha} = \frac{c(\alpha)}{\sqrt n},\quad c(\alpha) = \sqrt{-\tfrac12 \ln(\alpha/2)}. $$
-//!
-//! `c(\alpha)` at the common levels — `c(0.10) = 1.224`, `c(0.05) =
-//! 1.358`, `c(0.025) = 1.48`, `c(0.01) = 1.628` — and the closed form
-//! above are Massey's (1951) large-sample approximation to the exact
-//! finite-sample table; [`ks_critical_value`]'s own tests pin these
-//! constants. No finite-sample correction (e.g. Stephens 1974's
-//! `\sqrt n \to \sqrt n + 0.12 + 0.11/\sqrt n`) is applied, so
-//! [`KolmogorovSmirnovResult::critical_value`] and
-//! [`KolmogorovSmirnovResult::p_value`] stay defined by the *same*
-//! uncorrected asymptotic formula and therefore always agree on
-//! rejection at the sample sizes this crate's own callers use (tens of
-//! thousands) — mixing a corrected p-value with an uncorrected critical
-//! value would let the two disagree at the margin.
-//!
-//! ## Known vs. estimated parameters — why the plain table applies here
-//!
-//! The critical values above are only valid when `F` is fully specified
-//! *before* looking at `sample` — if any parameter of `F` was fitted
-//! *from* `sample` (e.g. plugging in the sample's own mean/variance as
-//! a Normal's `μ`/`σ`), the true null distribution of `D_n` shifts left
-//! (the fitted CDF hugs the empirical one more closely than the truly
-//! fixed one would), so the standard table over-states how surprising a
-//! given `D_n` is and under-rejects. Lilliefors (1967) derived the
-//! (smaller, distribution-specific) corrected critical values for
-//! exactly that fitted-parameter case. This test does not implement the
-//! Lilliefors correction, and does not need to: every caller in this
-//! workspace constructs the candidate distribution with parameters
-//! chosen *before* sampling (e.g. `SimdGamma::new(2.5, 1.5, seed)`) and
-//! tests the resulting draws against that same, already-fixed `cdf` —
-//! the parameters are never re-estimated from the sample under test, so
-//! the plain (non-Lilliefors) table is the correct one. A future caller
-//! that instead fits parameters to data before calling this function
-//! would need the Lilliefors correction, not this one.
-//!
-//! References:
-//! - Kolmogorov, A.N. (1933), "Sulla determinazione empirica di una
-//!   legge di distribuzione", *Giornale dell'Istituto Italiano degli
-//!   Attuari* 4, 83-91.
-//! - Smirnov, N.V. (1948), "Table for estimating the goodness of fit of
-//!   empirical distributions", *Annals of Mathematical Statistics*
-//!   19(2), 279-281.
-//! - Massey, F.J. (1951), "The Kolmogorov-Smirnov Test for Goodness of
-//!   Fit", *Journal of the American Statistical Association* 46(253),
-//!   68-78.
-//! - Lilliefors, H.W. (1967), "On the Kolmogorov-Smirnov test for
-//!   normality with mean and variance unknown", *Journal of the
-//!   American Statistical Association* 62(318), 399-402.
+//! Reference: Kolmogorov (1933), Giornale dell'Istituto Italiano degli Attuari 4, 83-91
+//! Reference: Smirnov (1948), Ann. Math. Stat. 19(2), 279-281, DOI: 10.1214/aoms/1177730256
+//! Reference: Massey (1951), JASA 46(253), 68-78, DOI: 10.1080/01621459.1951.10500769
+//! Reference: Lilliefors (1967), JASA 62(318), 399-402, DOI: 10.1080/01621459.1967.10482916
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::traits::HypothesisTest;
+use crate::traits::RealExt;
 
 /// Configuration for [`kolmogorov_smirnov_test`].
 #[derive(Debug, Clone, Copy)]
@@ -86,56 +39,59 @@ impl Default for KolmogorovSmirnovConfig {
   }
 }
 
-/// Result of a one-sample Kolmogorov-Smirnov goodness-of-fit test.
-#[derive(Debug, Clone, Copy)]
-pub struct KolmogorovSmirnovResult {
+/// One-sample Kolmogorov–Smirnov test (null: the given continuous `cdf`), decided by its p-value.
+#[derive(Debug, Clone)]
+pub struct KolmogorovSmirnovTest {
   /// The `D_n` statistic.
   pub statistic: f64,
-  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` — reject when `statistic` exceeds this.
-  pub critical_value: f64,
-  /// Asymptotic p-value from the Kolmogorov distribution's survival
-  /// function at `\sqrt n \cdot` `statistic` (uncorrected, see module doc).
-  pub p_value: f64,
-  /// Sample size `n`.
-  pub n: usize,
+  /// Asymptotic p-value, Kolmogorov's survival function $Q$ at $\sqrt n$ times `statistic`
+  /// (uncorrected, see module doc).
+  pub p_value: Option<f64>,
+  /// $D_{n,\alpha} = c(\alpha)/\sqrt n$ at the `alpha` the test was run with.
+  pub critical_values: Option<CriticalValues>,
   /// Whether the null (sample ~ the given `cdf`) is rejected at `alpha`.
-  pub reject: bool,
+  pub rejects_null: bool,
+  /// Sample size `n`.
+  pub nobs: usize,
 }
 
-impl HypothesisTest for KolmogorovSmirnovResult {
+impl HypothesisTest for KolmogorovSmirnovTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject)
+    Some(self.rejects_null)
   }
 }
 
-/// Massey's (1951) large-`n` critical-value constant `c(\alpha) =
-/// \sqrt{-\tfrac12 \ln(\alpha/2)}`, solving `Q(c(\alpha)) = \alpha` for
-/// the Kolmogorov survival function `Q` (see module doc). Matches the
-/// tabulated `c(0.10)=1.224`, `c(0.05)=1.358`, `c(0.025)=1.48`,
-/// `c(0.01)=1.628` (cross-checked in this module's own tests).
+/// $c(\alpha)$ with $Q(c) = \alpha$, bisected below Massey's (1951) one-term
+/// $\sqrt{-\tfrac12 \ln(\alpha/2)}$, where the terms of $Q$ past its first sum to less than zero.
 fn ks_c_alpha(alpha: f64) -> f64 {
-  (-0.5 * (alpha / 2.0).ln()).sqrt()
+  let (mut low, mut high) = (0.0_f64, (-0.5 * (alpha / 2.0).ln()).sqrt());
+  loop {
+    let mid = 0.5 * (low + high);
+    if mid <= low || mid >= high {
+      return high;
+    }
+    if kolmogorov_survival(mid) > alpha {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
 }
 
-/// The two-sided asymptotic Kolmogorov-Smirnov critical value
-/// `D_{n,\alpha} = c(\alpha)/\sqrt n` (Massey 1951; see module doc).
+/// The two-sided asymptotic critical value $D_{n,\alpha} = c(\alpha)/\sqrt n$, where the p-value
+/// meets `alpha`; panics unless `0 < alpha < 1` and `n >= 1`.
 pub fn ks_critical_value(alpha: f64, n: usize) -> f64 {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
-  assert!(n >= 1, "n must be at least 1");
+  assert_alpha(alpha);
+  assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
   ks_c_alpha(alpha) / (n as f64).sqrt()
 }
 
-/// Kolmogorov's asymptotic survival function `Q(\lambda) = \Pr(\sqrt n
-/// D_n > \lambda)`, i.e. `2 \sum_{k=1}^{\infty} (-1)^{k-1}
-/// e^{-2k^2\lambda^2}` (Kolmogorov 1933). The series is absolutely
-/// convergent for every `\lambda > 0` (terms shrink as `e^{-2k^2
-/// \lambda^2}`); truncating once a term is negligible relative to the
-/// partial sum bounds the remaining alternating-series error by that
-/// same negligible term.
+/// Kolmogorov's survival function $Q(\lambda) = 2 \sum_{k \ge 1} (-1)^{k-1} e^{-2k^2\lambda^2}$,
+/// summed until a term falls below `1e-12`, which bounds the alternating rest.
 fn kolmogorov_survival(lambda: f64) -> f64 {
   if lambda <= 0.0 {
     return 1.0;
@@ -153,51 +109,62 @@ fn kolmogorov_survival(lambda: f64) -> f64 {
   (2.0 * sum).clamp(0.0, 1.0)
 }
 
-/// One-sample Kolmogorov-Smirnov goodness-of-fit test against a fully
-/// specified continuous `cdf`.
-///
-/// # Panics
-/// Panics if `sample` has fewer than 2 observations, contains
-/// non-finite values, or `cfg.alpha` is not in `(0, 1)`.
+/// One-sample Kolmogorov–Smirnov test against a fully specified continuous `cdf`; `Err` below 2
+/// points, on a non-finite one or a `cdf` value NaN or off `[0, 1]`; panics unless `0 < alpha < 1`.
 pub fn kolmogorov_smirnov_test(
   sample: ArrayView1<f64>,
   mut cdf: impl FnMut(f64) -> f64,
   cfg: KolmogorovSmirnovConfig,
-) -> KolmogorovSmirnovResult {
-  assert!(
-    sample.len() >= 2,
-    "KS test requires at least 2 observations"
-  );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "KS test requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+) -> Result<KolmogorovSmirnovTest, StatsError> {
+  assert_alpha(cfg.alpha);
   let mut sorted = sample.to_vec();
+  validate(&sorted, 2)?;
   sorted.sort_by(f64::total_cmp);
   let n = sorted.len();
   let n_f = n as f64;
 
   let mut d = 0.0_f64;
+  let mut off = Vec::new();
   for (i, &x) in sorted.iter().enumerate() {
-    let f = cdf(x).clamp(0.0, 1.0);
+    let f = cdf(x);
+    if !(0.0..=1.0).contains(&f) {
+      off.push(x);
+      continue;
+    }
     let i_f = i as f64;
     let d_plus = ((i_f + 1.0) / n_f - f).abs();
     let d_minus = (f - i_f / n_f).abs();
-    d = d.max(d_plus.max(d_minus));
+    d = d.max_or_nan(d_plus.max_or_nan(d_minus));
+  }
+  if !off.is_empty() {
+    return Err(off_the_unit_interval(sample, &off));
   }
 
   let p_value = kolmogorov_survival(n_f.sqrt() * d);
-  KolmogorovSmirnovResult {
+  Ok(KolmogorovSmirnovTest {
     statistic: d,
-    critical_value: ks_critical_value(cfg.alpha, n),
-    p_value,
-    n,
-    reject: p_value < cfg.alpha,
+    p_value: Some(p_value),
+    critical_values: Some(CriticalValues::new([(
+      cfg.alpha,
+      ks_critical_value(cfg.alpha, n),
+    )])),
+    rejects_null: p_value < cfg.alpha,
+    nobs: n,
+  })
+}
+
+/// `InvalidObservation` at the first observation of `sample` in `off`, sorted: those whose `cdf`
+/// left `[0, 1]`.
+fn off_the_unit_interval(sample: ArrayView1<f64>, off: &[f64]) -> StatsError {
+  let (index, &value) = sample
+    .iter()
+    .enumerate()
+    .find(|(_, v)| off.binary_search_by(|o| o.total_cmp(v)).is_ok())
+    .expect("every point of `off` is drawn from the sample");
+  StatsError::InvalidObservation {
+    index,
+    value,
+    constraint: "0 <= cdf(x) <= 1",
   }
 }
 
@@ -206,15 +173,19 @@ mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 
   use super::KolmogorovSmirnovConfig;
   use super::kolmogorov_smirnov_test;
+  use super::kolmogorov_survival;
   use super::ks_critical_value;
+  use crate::StatsError;
 
-  /// Massey (1951) / Smirnov (1948) tabulated `c(\alpha)` constants —
-  /// `ks_critical_value(alpha, 1)` returns `c(\alpha)` unscaled.
+  /// Massey (1951) / Smirnov (1948) tabulated $c(\alpha)$ constants —
+  /// `ks_critical_value(alpha, 1)` returns $c(\alpha)$ unscaled.
   #[test]
   fn critical_value_matches_massey_table() {
     let table = [(0.10, 1.224), (0.05, 1.358), (0.025, 1.48), (0.01, 1.628)];
@@ -234,25 +205,39 @@ mod tests {
     assert!((d_100 - c / 10.0).abs() < 1e-12);
   }
 
-  /// A true normal sample must not reject at `alpha = 0.05` — run three
-  /// pinned seeds and require the *best* (largest) p-value to still
-  /// clear `alpha`, per this workspace's multi-seed mandate for
-  /// statistical assertions (a correct test still rejects a true null at
-  /// rate `alpha`, and the SIMD stream differs across platforms).
+  /// The critical value is the edge of the region `p < alpha` that `rejects_null` reads: a hair
+  /// past it rejects and a hair short of it does not.
+  #[test]
+  fn the_critical_value_is_where_the_p_value_crosses_alpha() {
+    for alpha in [0.001, 0.01, 0.05, 0.10, 0.25, 0.5, 0.9] {
+      let c = ks_critical_value(alpha, 1);
+      let past = kolmogorov_survival(c * (1.0 + 1e-9));
+      let short = kolmogorov_survival(c * (1.0 - 1e-9));
+      assert!(
+        past < alpha && short > alpha,
+        "alpha {alpha}: Q = {past} past {c} and {short} short of it"
+      );
+    }
+  }
+
+  /// A true normal sample is not rejected at `alpha = 0.05`: the largest p-value of three pinned
+  /// seeds clears it, as a correct test rejects a true null at rate `alpha` on any one seed.
   #[test]
   fn accepts_true_normal_sample() {
     let best_p = [42u64, 999, 2718]
       .into_iter()
       .map(|seed| {
-        let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let dist = SimdNormal::<f64>::new(0.0, 1.0);
         let mut x = vec![0.0; 5_000];
-        dist.fill_slice(&mut x);
+        dist.seeded(&Deterministic::new(seed)).fill_slice(&mut x);
         kolmogorov_smirnov_test(
           ArrayView1::from(&x),
-          |v| dist.cdf(v),
+          |v| dist.cdf(v).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -264,16 +249,51 @@ mod tests {
   /// A uniform sample tested against a standard normal CDF must reject.
   #[test]
   fn rejects_uniform_against_normal_cdf() {
-    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(1));
+    let mut dist = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(1));
     let mut x = vec![0.0; 2_000];
     dist.fill_slice(&mut x);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
     let res = kolmogorov_smirnov_test(
       ArrayView1::from(&x),
-      |v| normal.cdf(v),
+      |v| normal.cdf(v).unwrap(),
       KolmogorovSmirnovConfig::default(),
+    )
+    .unwrap();
+    assert!(res.rejects_null, "expected rejection, got {res:?}");
+    assert!(res.statistic > res.critical_values.as_ref().unwrap().at(0.05).unwrap());
+  }
+
+  /// A `cdf` NaN at one point, NaN everywhere or above 1 is refused at the first such observation
+  /// of the sample, not dropped from the supremum or clamped into it.
+  #[test]
+  fn a_cdf_off_the_unit_interval_is_invalid_observation() {
+    let x = [0.3, -0.5, 0.9, -0.5, 0.1];
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
+    let cfg = KolmogorovSmirnovConfig::default();
+    let refused = |index: usize, value: f64| StatsError::InvalidObservation {
+      index,
+      value,
+      constraint: "0 <= cdf(x) <= 1",
+    };
+    let nan_at_one = |v: f64| {
+      if v < 0.0 {
+        f64::NAN
+      } else {
+        normal.cdf(v).unwrap()
+      }
+    };
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), nan_at_one, cfg).unwrap_err(),
+      refused(1, -0.5)
     );
-    assert!(res.reject, "expected rejection, got {res:?}");
-    assert!(res.statistic > res.critical_value);
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), |_| f64::NAN, cfg).unwrap_err(),
+      refused(0, 0.3)
+    );
+    let above_one = |v: f64| if v > 0.5 { 1.5 } else { normal.cdf(v).unwrap() };
+    assert_eq!(
+      kolmogorov_smirnov_test(ArrayView1::from(&x), above_one, cfg).unwrap_err(),
+      refused(2, 0.9)
+    );
   }
 }

@@ -1,11 +1,9 @@
-//! Cap, floor, and collar comparison tests.
-//!
-//! Verifies that cap NPVs equal the sum of constituent caplet prices, and
-//! that cap minus floor equals the intrinsic value of the underlying forward
-//! swap (the Black-76 put-call parity in caplet form).
+//! Cap, floor and collar comparison tests: a cap NPV equals the sum of its caplets, and cap minus
+//! floor equals the intrinsic value of the forward swap (Black-76 put-call parity in caplet form).
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -30,7 +28,11 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn approx(a: f64, b: f64, tol: f64) {
@@ -49,7 +51,7 @@ fn floating_leg(
 ) -> Leg<f64> {
   let schedule = ScheduleBuilder::new(valuation, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let periods = schedule.adjusted_dates.len() - 1;
   let index = FloatingIndex::Ibor(IborIndex::new(

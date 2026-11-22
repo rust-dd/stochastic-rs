@@ -1,10 +1,10 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Cir`
-//! (`diffusion/cir.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! stream fresh from `self.{theta,sigma,n,t,seed}` on every call.
+//! `with_*` setters on `Cir` (`diffusion/cir.rs`), which caches nothing: `sampler()` builds its
+//! Gaussian stream from `self.{theta,sigma,n,t,seed}` on every call.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 #[derive(Debug, PartialEq)]
@@ -15,7 +15,7 @@ struct CirFields {
   n: usize,
   x0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn fields(x: &Cir<f64>) -> CirFields {
@@ -26,7 +26,7 @@ fn fields(x: &Cir<f64>) -> CirFields {
     n: x.n,
     x0: x.x0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -55,12 +55,12 @@ plain_test!(cir_with_mu_round_trip, with_mu, mu, 0.05);
 plain_test!(cir_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(cir_with_x0_round_trip, with_x0, x0, Some(0.05));
 plain_test!(
-  cir_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  cir_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
-plain_test!(cir_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(cir_with_points_round_trip, with_points, n, 64usize);
 plain_test!(cir_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]
@@ -72,7 +72,7 @@ fn cir_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(13),
   )
   .sample();
@@ -83,7 +83,7 @@ fn cir_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(1),
   )
   .with_seed(Deterministic::new(13))

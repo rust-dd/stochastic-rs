@@ -1,38 +1,17 @@
-//! # Bergomi
+//! Single-factor log-normal Bergomi; `rough_bergomi::RoughBergomi` is the rough model.
 //!
 //! $$
 //! dS_t=S_t\sqrt{v_t}\,dW_t^1,\quad v_t = v_0^2\,\exp\!\bigl(\nu\,W_t^2 - \tfrac12\nu^2 t\bigr)
 //! $$
 //!
-//! **Scope (single-factor log-normal Bergomi, NOT the full Bergomi 2009
-//! one-factor model).** This implementation evolves the spot variance as
+//! Not Bergomi's (2009) one-factor model: `H = ½`, no mean reversion (`κ = 0`), flat `ξ_0 ≡ v_0²`.
 //!
 //! ```text
 //! v(t_i) = v_0² · exp(ν · Σ_{j<i} cgn2_j  −  ½ ν² t_i)
 //! ```
 //!
-//! where `cgn2_j` is a step of the correlated Gaussian noise process and
-//! `Σ_{j<i} cgn2_j` is the discrete Brownian motion `W_{t_i}^2`. Compared
-//! with the canonical Bergomi (2009) one-factor model
-//! `v_t = ξ_0(t) exp(η X_t − ½ η² t^{2H})` with mean-reverting OU driver
-//! `dX_t = -κ X_t dt + ν dW_t^2`, this implementation hard-codes:
-//!
-//! - **`H = ½`** (no roughness — the variance martingale correction is
-//!   `½ η² t`, not `½ η² t^{2H}`).
-//! - **`κ = 0`** (no mean-reversion of the variance driver — `X_t` reduces
-//!   to a Brownian motion).
-//! - **`ξ_0(t) ≡ v_0²`** (flat initial variance term-structure; no
-//!   forward-variance curve input).
-//!
-//! Use this type for log-normal-vol smoke tests, GBM-with-stochastic-vol
-//! sanity checks, or as a baseline for educational comparison. For a
-//! genuine rough Bergomi (Volterra integral driver, `H < ½`) see
-//! [`crate::volatility::rbergomi::RoughBergomi`] (hybrid-scheme Volterra
-//! simulation — see its module doc) or build a simulator on top of
-//! [`crate::rough::MarkovLift`] or [`crate::process::volterra::Volterra`].
-//!
-//! Reference: Bergomi, "Smile Dynamics II", Risk 18(10), 67-73 (2005);
-//! Bergomi, "Stochastic Volatility Modeling" (2016) §7.
+//! Reference: Bergomi (2005), "Smile Dynamics II", Risk 18(10), 67-73
+//! Reference: Bergomi (2016), "Stochastic Volatility Modeling", §7, DOI 10.1201/b19649
 
 use ndarray::Array1;
 use ndarray::s;
@@ -41,19 +20,20 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
-  /// Initial variance level v₀ (variance, not volatility — squared inside
-  /// the sampler to seed `v(t_0) = v_0²`).
-  pub v0: Option<T>,
-  /// Initial asset price S₀.
-  pub s0: Option<T>,
+  /// Initial volatility; the variance starts at `v0²`.
+  pub v0: T,
+  /// Initial spot.
+  pub s0: T,
   /// Constant proportional drift rate of the asset (a GBM-style drift, not
   /// a correlation — that role belongs to `rho`).
   pub r: T,
@@ -62,9 +42,9 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of points sampled along the Bergomi path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -75,16 +55,16 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
-  pub fn new(
-    nu: T,
-    v0: Option<T>,
-    s0: Option<T>,
-    r: T,
-    rho: T,
-    n: usize,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  /// Panics unless `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and finite, and every
+  /// parameter is finite.
+  pub fn new(nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
+    Self::check_nu(nu);
+    Self::check_v0(v0);
+    Self::check_s0(s0);
+    Self::check_r(r);
+    Self::check_rho(rho);
+    check_n(n);
+    check_t(t);
     Self {
       backend: Cpu,
       nu,
@@ -101,72 +81,96 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
-  /// Replace `nu`, all else unchanged.
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_r(r: T) {
+    require!(r.is_finite(), r);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  /// Replace `nu`; panics unless `nu` is finite.
   pub fn with_nu(mut self, nu: T) -> Self {
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
-  /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  /// Replace `v0`; panics unless `v0` is finite.
+  pub fn with_v0(mut self, v0: T) -> Self {
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
-  /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  /// Replace `s0`; panics unless `s0` is finite.
+  pub fn with_s0(mut self, s0: T) -> Self {
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
-  /// Replace `r`, all else unchanged.
+  /// Replace `r`; panics unless `r` is finite.
   pub fn with_r(mut self, r: T) -> Self {
+    Self::check_r(r);
     self.r = r;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
+  /// reads; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`; panics unless `n >= 2`.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the simulation horizon `t`; rebuilds the cached correlated-Gaussian generator's step
+  /// size, which derives from `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged.
+  /// Replace the seed strategy's value.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
   }
 }
 
-/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6 — a textbook Bergomi
-/// parameterization. t=1, n=252 — one trading year of daily steps (this
-/// crate's `Default` convention).
+/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6, a textbook Bergomi; t=1, 252 points, a trading year of
+/// daily closes.
 impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   fn default() -> Self {
     Self::new(
       T::from_f64_fast(0.4),
-      Some(T::from_f64_fast(0.2)),
-      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(0.2),
+      T::from_f64_fast(100.0),
       T::from_f64_fast(0.01),
       T::from_f64_fast(-0.6),
       252,
@@ -176,10 +180,8 @@ impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of the Bergomi model. The variance is a function
-/// of the running sum of the correlated increments, so that sum and the
-/// elapsed time are stepped as two further state components; the process
-/// returns only the two it reports.
+/// The Euler engine's view: the variance is a function of the running sum of the correlated
+/// increments, so that sum and the elapsed time are two further state components, not reported.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for Bergomi<T, S, B>
 {
@@ -188,18 +190,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       r: self.r,
       nu: self.nu,
       half_nu_sq: T::from_f64_fast(0.5) * self.nu * self.nu,
-      v0_sq: self.v0.unwrap_or(T::one()) * self.v0.unwrap_or(T::one()),
+      v0_sq: self.v0 * self.v0,
       rho: self.rho,
     }
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::from_usize_(100)),
-      self.v0.unwrap_or(T::one()) * self.v0.unwrap_or(T::one()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0 * self.v0, T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -229,6 +226,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Bergomi<T, S> { nu, v0, s0, r, rho, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bergomi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bergomi<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -236,16 +238,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> BergomiSampler<T, S> {
     BergomiSampler {
       n: self.n,
       nu: self.nu,
-      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
-      s0: self.s0.unwrap_or(T::from_usize_(100)),
+      v0_sq: self.v0.powi(2),
+      s0: self.s0,
       r: self.r,
       dt: self.cgns.dt(),
       cgns: self.cgns,
@@ -253,9 +253,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device every component steps in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device steps every component in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
     self.backend.system_sample(self)
   }
@@ -277,10 +276,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Bergomi`] sampling state: owns the correlated-Gaussian generator
-/// and the seed source so a Monte-Carlo loop reuses both output buffers and the
-/// noise setup.
+/// Reusable [`Bergomi`] sampling state: the correlated-Gaussian generator and the seed source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BergomiSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   nu: T,
@@ -313,6 +311,8 @@ impl<T: FloatExt, S: SeedExt> BergomiSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BergomiSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -337,6 +337,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBergomi {
   inner_f32: Option<Bergomi<f32>>,
@@ -351,14 +352,14 @@ pub struct PyBergomi {
 #[pyo3::prelude::pymethods]
 impl PyBergomi {
   #[new]
-  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (nu, r, rho, n, v0, s0, t=None, seed=None, dtype=None, device=None))]
   fn new(
     nu: f64,
     r: f64,
     rho: f64,
     n: usize,
-    v0: Option<f64>,
-    s0: Option<f64>,
+    v0: f64,
+    s0: f64,
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
@@ -377,8 +378,8 @@ impl PyBergomi {
         (Some(sd), "f32") => {
           s.seeded_f32 = Some(Bergomi::new(
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,
@@ -401,8 +402,8 @@ impl PyBergomi {
         (None, "f32") => {
           s.inner_f32 = Some(Bergomi::new(
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,
@@ -418,13 +419,11 @@ impl PyBergomi {
     })?
   }
 
-  /// The reason a device kernel cannot carry this configuration, if there is
-  /// one: the engine states what it cannot do rather than doing it quietly on
-  /// the host. The question is about the configuration, not the handle, so
-  /// the answer is the same whatever `device=` was passed.
+  /// Why a device kernel cannot carry this configuration, if it cannot; the answer depends on
+  /// the configuration alone, whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch!(self, |inner| inner.device_fallback())
+    py_dispatch!(self, |inner| inner.device_fallback())
   }
 
   /// Whether this configuration runs on a device kernel: the absence of a

@@ -1,4 +1,4 @@
-//! # Kimura
+//! Kimura / Wright–Fisher diffusion of a frequency on [0, 1], with selection drift `a X (1 − X)`.
 //!
 //! $$
 //! dX_t=aX_t(1-X_t)\,dt+\sigma\sqrt{X_t(1-X_t)}\,dW_t
@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -18,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift-rate coefficient a (Wright–Fisher selection/growth rate) in
   /// `aX_t(1-X_t)dt`.
@@ -27,11 +30,11 @@ pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the Wright–Fisher path.
   pub n: usize,
-  /// Initial allele frequency X₀ ∈ [0, 1].
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -39,7 +42,25 @@ pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Kimura<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(a: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       a,
@@ -51,8 +72,6 @@ impl<T: FloatExt, S: SeedExt> Kimura<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Kimura<T, S, B> {}
 
 /// The Euler engine's view of the Kimura diffusion.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -90,6 +109,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Kimura<T, S> { a, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Kimura<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Kimura<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -106,13 +130,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       dt,
       a: self.a,
       diff_scale: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -144,13 +167,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Kimura`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct KimuraSampler<T: FloatExt> {
   n: usize,
   x0: T,
   dt: T,
   a: T,
   diff_scale: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> KimuraSampler<T> {
@@ -178,6 +202,8 @@ impl<T: FloatExt> KimuraSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for KimuraSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for KimuraSampler<T> {
   type Output = Array1<T>;

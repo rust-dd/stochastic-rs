@@ -1,16 +1,13 @@
-//! Principal-component factor extraction via singular-value decomposition.
+//! Principal-component factors from the SVD `X = UΣVᵀ` of a centred `T × N` returns matrix:
+//! explained-variance ratios, loadings `V` and factor scores `UΣ`.
 //!
-//! Given a centred returns matrix $X \in \mathbb R^{T\times N}$, decompose
-//! $X = U\Sigma V^\top$ and report explained-variance ratios, factor loadings
-//! ($V$) and time-series factor scores ($U\Sigma$).
-//!
-//! Reference: Jolliffe, "Principal Component Analysis", 2nd ed., Springer
-//! (2002). DOI: 10.1007/b98835
+//! Reference: Jolliffe (2002), "Principal Component Analysis", 2nd ed., DOI 10.1007/b98835
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
+use crate::QuantError;
 use crate::linalg::svd_thin;
 use crate::traits::RealExt;
 
@@ -31,28 +28,30 @@ pub struct PcaResult {
   pub means: Array1<f64>,
 }
 
-/// PCA decomposition retaining the top `k` factors. If `k == 0` retains
-/// every factor.
-///
-/// Panics if the underlying SVD fails (rank-deficient input, non-finite
-/// values). Use [`try_pca_decompose`] for a falliable variant.
+/// PCA retaining the top `k` factors (`k == 0` keeps all); panics where [`try_pca_decompose`] errs.
 pub fn pca_decompose<T: RealExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
-  try_pca_decompose(returns, k)
-    .expect("pca_decompose: SVD failed; use try_pca_decompose for falliable variant")
+  try_pca_decompose(returns, k).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Falliable variant of [`pca_decompose`]. Returns
-/// [`crate::factors::FactorsError::SvdFailed`] when the underlying SVD does
-/// not converge (typical cause: rank-deficient or non-finite input).
+/// [`pca_decompose`] with `InsufficientData` below two observations, `InvalidInput` without an
+/// asset, and `Numerical` when the SVD does not converge (rank-deficient or non-finite input).
 pub fn try_pca_decompose<T: RealExt>(
   returns: ArrayView2<T>,
   k: usize,
-) -> Result<PcaResult, crate::factors::FactorsError> {
+) -> Result<PcaResult, QuantError> {
   let (t, p) = returns.dim();
-  if t < 2 || p < 1 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least two observations and one asset; got ({t}, {p})"
-    )));
+  if t < 2 {
+    return Err(QuantError::InsufficientData {
+      what: "observations in a PCA decomposition",
+      needed: 2,
+      got: t,
+    });
+  }
+  if p < 1 {
+    return Err(QuantError::invalid(
+      "returns",
+      "need at least one asset column, got none",
+    ));
   }
   let mut means = Array1::<f64>::zeros(p);
   let mut centred = Array2::<f64>::zeros((t, p));
@@ -71,8 +70,10 @@ pub fn try_pca_decompose<T: RealExt>(
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
     }
   }
-  let (u, sigma, vt) = svd_thin(&centred)
-    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("SVD did not converge".into()))?;
+  let (u, sigma, vt) = svd_thin(centred.view()).ok_or_else(|| QuantError::Numerical {
+    what: "svd",
+    reason: "the decomposition of the centred returns did not converge".to_string(),
+  })?;
   let v = vt.t().to_owned();
   let r = sigma.len();
   let kk = if k == 0 { r } else { k.min(r) };
@@ -116,6 +117,8 @@ pub fn try_pca_decompose<T: RealExt>(
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -126,7 +129,7 @@ mod tests {
 
   #[test]
   fn pca_recovers_single_factor_in_collinear_data() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
     let mut z = vec![0.0_f64; 200];
     dist.fill_slice(&mut z);
     let mut x = Array2::<f64>::zeros((200, 3));
@@ -142,7 +145,7 @@ mod tests {
 
   #[test]
   fn pca_explained_variance_sums_to_one() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(9));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(9));
     let mut buf = vec![0.0_f64; 200 * 4];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((200, 4), buf).unwrap();
@@ -153,7 +156,7 @@ mod tests {
 
   #[test]
   fn pca_loadings_unit_norm() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
     let mut buf = vec![0.0_f64; 100 * 3];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((100, 3), buf).unwrap();

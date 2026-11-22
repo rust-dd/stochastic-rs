@@ -10,11 +10,7 @@ const LINKS: [string, string][] = [
   ['Python bindings', '/docs/python'],
 ];
 
-/**
- * A 404 that points somewhere. Readers and assistants alike arrive here from
- * guessed URLs (`/docs/processes/heston`), so it names the pages they were
- * most likely after, plus the index of every page.
- */
+/** Guessed URLs such as `/docs/processes/heston` land here, so it names the likeliest pages. */
 export default function NotFound() {
   return (
     <HomeLayout {...baseOptions}>

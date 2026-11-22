@@ -4,15 +4,16 @@
 #
 # Usage:
 #   ./publish.sh                 # publish for real (runs gate: fmt + clippy + tests)
-#   ./publish.sh --dry-run       # validate without uploading (still runs gate)
+#   ./publish.sh --dry-run       # each crate's dry run, without uploading (still runs gate)
 #   ./publish.sh --allow-dirty   # publish with uncommitted changes
 #   ./publish.sh --skip-gate     # bypass fmt/clippy/test gate (NOT recommended)
 #
 # Notes:
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
 #   Cargo.toml — it is a maturin-built cdylib for PyPI, not a crates.io
-#   crate). 210 PyO3 entries across distributions/stochastic/quant/copulas/
-#   stats; release via `.github/workflows/pypi.yml`.
+#   crate); release via `.github/workflows/pypi.yml`.
+# - `--dry-run` verifies each crate against its siblings on crates.io, so after a version bump it
+#   stops at the second crate; `cargo publish --workspace --dry-run --locked` checks them together.
 # - Crates already published at the current local version are skipped, so the
 #   script is safe to re-run if a publish fails partway through.
 # - Modern cargo (>=1.66) waits for the registry index to sync after each
@@ -29,15 +30,13 @@ for arg in "$@"; do
     --allow-dirty) ALLOW_DIRTY=(--allow-dirty) ;;
     --skip-gate)   SKIP_GATE=1 ;;
     -h|--help)
-      sed -n '2,20p' "$0"; exit 0 ;;
+      sed -n '2,/^$/p' "$0"; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 1 ;;
   esac
 done
 
-# Pre-publish gate: clippy + workspace test (excluding the cdylib-only py
-# crate). Catches the kinds of regressions audit §5.3 flagged. Skip with
-# `--skip-gate` if you really must (e.g., re-running after a transient
-# crates.io upload failure on a known-good commit).
+# Pre-publish gate: fmt, clippy and the workspace tests without the py cdylib; `--skip-gate` is
+# for a re-run after a transient crates.io failure on a known-good commit.
 if [[ $SKIP_GATE -eq 0 ]]; then
   echo "==> pre-publish gate: cargo fmt --check"
   cargo fmt --all -- --check
@@ -46,9 +45,8 @@ if [[ $SKIP_GATE -eq 0 ]]; then
   cargo clippy --workspace --no-default-features --all-targets -- -D warnings
 
   echo "==> pre-publish gate: cargo test --workspace --exclude stochastic-rs-py"
-  # Default features only — keeps the gate tractable on CI / local dev.
-  # The `ai` / `yahoo` combinations are exercised by the GitHub
-  # Actions workflow before tagging.
+  # No default features, to keep the gate tractable; CI covers the `ai` and `viz` combinations
+  # before tagging.
   cargo test --workspace --exclude stochastic-rs-py --no-default-features
 else
   echo "==> WARNING: --skip-gate is set; skipping clippy + workspace test"
@@ -61,15 +59,14 @@ PUBLISH_ORDER=(
   "stochastic-rs-stochastic"      # core, distributions
   "stochastic-rs-stats"           # core, distributions, stochastic
   "stochastic-rs-copulas"         # core, distributions
-  "stochastic-rs-quant"           # core, distributions, stochastic, stats, copulas
+  "stochastic-rs-quant"           # core, distributions, stochastic, stats
   "stochastic-rs-ai"              # core, distributions, stochastic, quant
   "stochastic-rs"                 # umbrella — last
 )
 
 local_version() {
-  # Resolved version of a workspace member. The sub-crates use
-  # `version.workspace = true`, so a plain Cargo.toml grep finds nothing —
-  # cargo metadata resolves the inherited workspace version instead.
+  # A member's resolved version: the sub-crates inherit `version.workspace = true`, which a grep of
+  # their Cargo.toml cannot see, so cargo metadata resolves it.
   local crate="$1"
   cargo metadata --no-deps --format-version 1 2>/dev/null \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(next((p['version'] for p in d['packages'] if p['name']=='$crate'), ''))" \
@@ -77,9 +74,8 @@ local_version() {
 }
 
 registry_has_version() {
-  # "yes" if $crate@$version is already on the crates.io index, else "no".
-  # crates.io rejects requests without a User-Agent — omitting it made the
-  # check always report unpublished and try to re-publish an existing version.
+  # "yes" if $crate@$version is already on the crates.io index, else "no"; crates.io refuses a
+  # request without a User-Agent, which would read as unpublished.
   local crate="$1" version="$2"
   curl -fsS -H "User-Agent: stochastic-rs publish.sh (dancixx@gmail.com)" \
     "https://crates.io/api/v1/crates/$crate/versions" 2>/dev/null \

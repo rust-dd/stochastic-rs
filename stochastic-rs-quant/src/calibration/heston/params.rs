@@ -1,47 +1,38 @@
 use ndarray::Array1;
 use num_complex::Complex64;
-use stochastic_rs_stats::heston_mle::HestonMleResult;
+use stochastic_rs_stats::heston_mle::HestonMleFit;
 
 use super::super::periodic_map;
+use crate::pricing::heston::HestonParams;
 
-pub(super) const EPS: f64 = 1e-8;
-pub(super) const RHO_BOUND: f64 = 0.9999;
-pub(super) const KAPPA_MIN: f64 = 1e-3;
-pub(super) const THETA_MIN: f64 = 1e-8;
-pub(super) const SIGMA_MIN: f64 = 1e-8;
+pub(crate) const EPS: f64 = 1e-8;
+pub(crate) const RHO_BOUND: f64 = 0.9999;
+pub(crate) const KAPPA_MIN: f64 = 1e-3;
+pub(crate) const THETA_MIN: f64 = 1e-8;
+pub(crate) const SIGMA_MIN: f64 = 1e-8;
 
-pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
-pub(super) const P_THETA: (f64, f64) = (0.001, 0.4);
+pub(crate) const P_KAPPA: (f64, f64) = (0.1, 20.0);
+pub(crate) const P_THETA: (f64, f64) = (0.001, 0.4);
 pub(super) const P_SIGMA: (f64, f64) = (0.01, 3.0);
-pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
+pub(crate) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-/// Jacobian strategy used by the Heston least-squares calibration.
-///
-/// Source:
-/// - Cui et al. (2017), analytic Heston calibration Jacobian
-///   <https://doi.org/10.1016/j.ejor.2017.05.018>
+/// Jacobian strategy of the Heston least-squares calibration.
+/// Reference: Cui et al. (2017), Eur. J. Oper. Res. 263(2), 625–638, DOI 10.1016/j.ejor.2017.05.018
 #[non_exhaustive]
 pub enum HestonJacobianMethod {
   /// Central finite-difference Jacobian.
   NumericFiniteDiff,
-  /// Closed-form analytic Jacobian for Heston calibration integrals.
-  ///
-  /// Source:
-  /// - Cui et al. (2017)
-  ///   <https://doi.org/10.1016/j.ejor.2017.05.018>
+  /// Closed-form analytic Jacobian of the calibration integrals, after Cui et al. (2017).
   #[default]
   CuiAnalytic,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-/// Seed estimators for Heston calibration from historical time series.
-///
-/// Source:
-/// - Wang et al. (2018), NMLE/PMLE/NMLE-CEKF
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
+/// Seed estimators for Heston calibration from historical time series (NMLE, PMLE, NMLE-CEKF).
+/// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61, 042202, DOI 10.1007/s11432-017-9215-8
+/// Source: <http://scis.scichina.com/en/2018/042202.pdf>
 #[non_exhaustive]
 pub enum HestonMleSeedMethod {
   #[default]
@@ -53,61 +44,30 @@ pub enum HestonMleSeedMethod {
   NmleCekf,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct HestonParams {
-  /// Initial variance v0 (not volatility) in Heston model
-  pub v0: f64,
-  /// Mean reversion speed
-  pub kappa: f64,
-  /// Long-run variance
-  pub theta: f64,
-  /// Volatility of variance
-  pub sigma: f64,
-  /// Correlation between price and variance Brownian motions
-  pub rho: f64,
-}
-
-impl HestonParams {
-  /// Convert to a [`HestonFourier`](crate::pricing::fourier::HestonFourier) model for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::HestonFourier {
-    crate::pricing::fourier::HestonFourier {
-      v0: self.v0,
-      kappa: self.kappa,
-      theta: self.theta,
-      sigma: self.sigma,
-      rho: self.rho,
-      r,
-      q,
-    }
-  }
-}
-
 impl crate::traits::ToModel for HestonParams {
   type Model = crate::pricing::fourier::HestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    HestonParams::to_model(self, r, q)
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::fourier::HestonFourier::new(*self)
   }
 }
 
 impl HestonParams {
-  /// Project parameters into finite positive calibration ranges.
-  ///
-  /// The Feller condition is deliberately not imposed here. It is sufficient
-  /// for strict positivity of the CIR variance process, but it is not required
-  /// for Heston Fourier pricing and is frequently violated by market fits.
+  /// Project into the calibration box without Feller's condition, which Fourier pricing does not
+  /// need and market fits often violate.
   pub fn project_in_place(&mut self) {
-    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
-    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1);
-    self.sigma = periodic_map(self.sigma, P_SIGMA.0, P_SIGMA.1).abs();
-    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1);
-    self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1);
+    self.project_box(P_V0, P_SIGMA);
+  }
 
-    self.v0 = self.v0.max(0.0);
-    self.kappa = self.kappa.max(KAPPA_MIN);
-    self.theta = self.theta.max(THETA_MIN);
-    self.sigma = self.sigma.abs().max(SIGMA_MIN);
-    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
+  /// Wrap each value into its range, `v0` and `sigma` into the ones given, and floor it at its
+  /// minimum; the double-Heston factors share it with their own two ranges.
+  pub(crate) fn project_box(&mut self, v0: (f64, f64), sigma: (f64, f64)) {
+    self.v0 = periodic_map(self.v0, v0.0, v0.1).max(0.0);
+    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
+    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
+    self.sigma = periodic_map(self.sigma, sigma.0, sigma.1)
+      .abs()
+      .max(SIGMA_MIN);
+    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
   }
 
   /// Whether the CIR variance process stays strictly positive under Feller's condition.
@@ -115,19 +75,11 @@ impl HestonParams {
     2.0 * self.kappa * self.theta >= self.sigma * self.sigma
   }
 
-  /// Apply box projection and then explicitly impose the Feller condition.
+  /// Box-projects, then lowers σ alone to the largest [`Self::satisfies_feller_condition`] accepts;
+  /// idempotent, and the box keeps √(2κθ) ≥ √(2·0.1·0.001) above σ's floor of 0.01.
   pub fn project_feller_in_place(&mut self) {
     self.project_in_place();
-
-    if !self.satisfies_feller_condition() {
-      let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
-      if sigma_star >= P_SIGMA.0 {
-        self.sigma = sigma_star.min(P_SIGMA.1);
-      } else {
-        let theta_star = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
-        self.theta = theta_star.min(P_THETA.1);
-      }
-    }
+    self.sigma = self.sigma.min(feller_sigma_cap(self.kappa, self.theta));
   }
 
   pub fn projected(mut self) -> Self {
@@ -142,8 +94,19 @@ impl HestonParams {
   }
 }
 
-impl From<HestonMleResult> for HestonParams {
-  fn from(mle: HestonMleResult) -> Self {
+/// The largest σ with `σ * σ <= 2.0 * kappa * theta` in `f64`; `√(2κθ)` itself can square one ulp
+/// past the bound.
+pub(crate) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
+  let bound = 2.0 * kappa * theta;
+  let mut cap = bound.sqrt();
+  while cap * cap > bound {
+    cap = cap.next_down();
+  }
+  cap
+}
+
+impl From<HestonMleFit> for HestonParams {
+  fn from(mle: HestonMleFit) -> Self {
     HestonParams {
       v0: mle.v0,
       kappa: mle.kappa,

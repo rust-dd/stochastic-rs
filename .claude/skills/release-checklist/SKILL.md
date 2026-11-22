@@ -33,19 +33,22 @@ cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
 cargo check --workspace --no-default-features                # baseline build still works
+
+# 1.3 CUDA tests on the T4 runner (billed), by dispatch, never by toggling the `cuda` label
+gh workflow run cuda.yml --ref <branch>
 ```
 
 If any of those fail, **stop**. Do not bump versions on a broken HEAD —
 the rc.1 → rc.2 cycle exists exactly because we caught issues post-bump
 and had to revert.
 
-The `stochastic-rs-py` crate is excluded from `cargo test` because it is
-a `cdylib` requiring a Python extension-module link (handled by maturin,
-not cargo). It is built and tested in stage 7.
+The `stochastic-rs-py` crate is excluded from `cargo test`: it has no Rust
+tests, its pytest suite runs in the `python_smoke` job, and its wheels are
+built and smoke-tested in stage 7.
 
-## Stage 2 — version bumps (9 crates)
+## Stage 2 — version bumps (10 crates)
 
-The workspace has 9 crates that all share a version number. Bump them
+The workspace has 10 crates that all share a version number. Bump them
 together:
 
 ```
@@ -57,14 +60,17 @@ stochastic-rs-copulas
 stochastic-rs-stats
 stochastic-rs-quant
 stochastic-rs-ai
-stochastic-rs-py
+stochastic-rs-metal-kernels    (publish = false)
+stochastic-rs-py               (publish = false)
 ```
 
 **One-pass approach** (preferred): edit `Cargo.toml` `[workspace.package]`
-`version = "X.Y.Z"`, then in `[workspace.dependencies]` update every
-`stochastic-rs-*` line's `version` field. Sub-crates inherit the
-workspace-package version via `version.workspace = true` already, so this
-is the only file that needs editing for version itself.
+`version = "X.Y.Z"`, then in `[workspace.dependencies]` pin every
+`stochastic-rs-*` line exactly, `version = "=X.Y.Z"` (the user's ruling,
+2026-11-21): a caret requirement on an rc also matches the next rc, so a
+fresh resolve of an older release would mix sub-crate versions. Sub-crates
+inherit the workspace-package version via `version.workspace = true`
+already, so this is the only file that needs editing for version itself.
 
 Cross-checks after editing:
 
@@ -75,11 +81,24 @@ with a dirty-tree error that `git status` will not show you. `git add -f`
 any new or modified skill files before stage 4.
 
 ```bash
-# 2.1 No leftover old-version literals
-grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
+# 2.1 No leftover old-version literals: the READMEs, the website and CITATION.cff carry them too;
+#     every hit left must be history
+git grep -n -F "<previous version>" -- . ':!Cargo.lock'
 
 # 2.2 Workspace re-resolves
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
+
+# 2.3 After the bump, `cargo update --workspace` rewrites the 10 workspace versions in the
+#     committed Cargo.lock; commit it with the bump, or the umbrella `cargo publish` aborts
+cargo update --workspace
+git add Cargo.lock
+
+# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes):
+#     regenerate it per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
+PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
+  cargo check -p stochastic-rs-stochastic --features metal --locked
+METAL_OXIDE_ARTIFACTS=locked cargo check -p stochastic-rs-stochastic --features metal --locked
+git add stochastic-rs-stochastic/metal/src/device/metal.rs/bindings-fast
 ```
 
 ## Stage 3 — `MIGRATION.md` and `CITATION.cff`
@@ -112,14 +131,16 @@ version DOI is only known after stage 5.5.
 ## Stage 4 — local publish dry run
 
 ```bash
-# 4.1 Dry-run publish.sh: runs `cargo publish --dry-run` on each
-# sub-crate in dependency order (core → distributions → stochastic →
-# copulas → stats → quant → ai → umbrella).
-./publish.sh --dry-run
+# 4.1 Package and verify the published crates together, in dependency order (core → distributions
+# → copulas → stochastic → stats → quant → ai → umbrella), against a local registry of the siblings.
+cargo publish --workspace --dry-run --locked
 ```
 
-`publish.sh` runs its **own** fmt + clippy + test gate before
-publishing anything, so stage 1 and this stage overlap deliberately.
+Not `./publish.sh --dry-run`: it verifies each crate against its siblings
+on crates.io, so after a version bump it fails at the second crate.
+
+`publish.sh` (stage 6) runs its **own** fmt + clippy + test gate before
+publishing anything, so stage 1 and stage 6 overlap deliberately.
 Its other flags: `--allow-dirty` (publish with uncommitted changes) and
 `--skip-gate` (bypass the fmt/clippy/test gate — not recommended). It
 skips `stochastic-rs-py` entirely (`publish = false`; it is a
@@ -186,6 +207,10 @@ fix the cause and simply re-run `./publish.sh`: already-published
 versions are detected and skipped, so a resume needs no version
 surgery.
 
+`cargo publish --workspace` does it in one command and verifies all
+eight crates before the first upload; a resume after a failed upload
+needs `--exclude` for the crates already published.
+
 ## Stage 7 — build & publish PyPI wheels
 
 **This stage is automatic.** `.github/workflows/pypi.yml` (there is no
@@ -203,20 +228,21 @@ Windows and sdist legs and then publishes them itself:
 
 So there is no `twine`, no TestPyPI hop, and nothing to run locally.
 Every leg builds with the default feature set — the linalg stack is the
-pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that the
-`stochastic-rs-py` crate has no `python` feature: it forces
-`pyo3/extension-module` unconditionally, which is exactly why
-`cargo test --workspace` needs `--exclude stochastic-rs-py`.
+pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that
+`stochastic-rs-py` has no `python` feature: it enables the library crates'
+internal `python` features itself, and maturin (>= 1.9.4) sets
+`PYO3_BUILD_EXTENSION_MODULE` for its cargo call.
 
-A local wheel for debugging one platform:
+A local wheel for debugging one platform, from the repo root as CI does
+(the root `pyproject.toml` carries `manifest-path`, `module-name` and
+`license-files`):
 
 ```bash
-cd stochastic-rs-py
-maturin build --release --strip
+maturin build --release --locked --strip
 ```
 
 **Platform coverage is settled — do not re-add Intel macOS.** The macOS
-matrix has a single `macos-14` runner (aarch64) and that is deliberate:
+matrix has a single `macos-15` runner (aarch64; GitHub stopped serving `macos-14` in 2026-11) and that is deliberate:
 Intel-Mac wheels were dropped at v3.0.0-beta.2 (user decision,
 2026-08-28). GitHub has retired the `macos-13` runner, so adding that
 leg back does not fail — it **queues forever with no runner assigned**
@@ -229,6 +255,7 @@ revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 ```bash
 # 8.1 Bump main to next-dev version (open the next rc / patch cycle)
 # (manual edit Cargo.toml workspace.package.version → "X.Y.Z+1-dev" or "X.Y+1.0-dev")
+cargo update --workspace && git add Cargo.lock
 
 # 8.2 Verify docs.rs picked up the build (auto-triggered on crates.io publish)
 open https://docs.rs/stochastic-rs/X.Y.Z/
@@ -273,9 +300,8 @@ wave ledgers (`A1*_WAVE_LEDGER.md`, `A2_WAVE_LEDGER.md`,
 `DETERMINISTIC_PARALLELISM_LEDGER.md`, …) and
 `docs/VALIDATION_COVERAGE_AUDIT_2026_08_12.md`.
 
-The workspace is on `3.0.0-beta.1` (root `Cargo.toml`,
-`[workspace.package] version`), so the next cut is a v3 beta / rc, not
-another v2 patch. Check the actual version before assuming.
+Read the version from the root `Cargo.toml` (`[workspace.package] version`) before
+assuming which cut comes next.
 
 Each stage is triggered by the user; do not autonomously start a
 release without explicit confirmation. Note the standing preference: an

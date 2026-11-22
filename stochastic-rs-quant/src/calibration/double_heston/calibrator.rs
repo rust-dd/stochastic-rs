@@ -1,252 +1,129 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use ndarray::Array1;
-use ndarray::Array2;
-
-use super::loss::double_heston_call_price;
+use super::loss::DoubleHestonProblem;
 use super::params::DoubleHestonParams;
-use super::result::DoubleHestonCalibrationResult;
-use crate::CalibrationLossScore;
-use crate::LossMetric;
-use crate::OptionType;
-use crate::calibration::CalibrationHistory;
-use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
-use crate::calibration::least_squares::minimize;
+use super::params::room_in_box;
+use crate::OptionQuote;
+use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
+use crate::calibration::least_squares::minimize_in_box;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::validate_quotes;
+use crate::pricing::heston::HestonParams;
 
-/// Double Heston least-squares calibrator using Levenberg-Marquardt.
-#[derive(Clone)]
+/// Double-Heston fit to vanilla quotes by Levenberg–Marquardt on a central-difference Jacobian.
+#[derive(Clone, Debug)]
 pub struct DoubleHestonCalibrator {
-  pub params: Option<DoubleHestonParams>,
-  pub c_market: Array1<f64>,
-  pub s: Array1<f64>,
-  pub k: Array1<f64>,
-  pub r: f64,
-  pub q: Option<f64>,
-  pub flat_t: Vec<f64>,
-  pub option_type: OptionType,
-  pub record_history: bool,
-  pub loss_metrics: &'static [LossMetric],
-  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<DoubleHestonParams>>>>,
+  pub(super) s: f64,
+  pub(super) r: f64,
+  pub(super) q: f64,
+  pub quotes: Vec<OptionQuote>,
+  /// `None` starts from a fast factor (0.02, 3, 0.02, 0.3, −0.6) and a slow one
+  /// (0.02, 0.5, 0.02, 0.15, −0.3), projected.
+  pub start: Option<DoubleHestonParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls the first factor's `(v0, κ, θ, σ, ρ)`, then
+  /// the second's.
+  pub options: CalibrationOptions,
 }
 
 impl DoubleHestonCalibrator {
-  /// Create a calibrator for a single maturity slice.
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    params: Option<DoubleHestonParams>,
-    c_market: Array1<f64>,
-    s: Array1<f64>,
-    k: Array1<f64>,
-    r: f64,
-    q: Option<f64>,
-    tau: f64,
-    option_type: OptionType,
-    record_history: bool,
-  ) -> Self {
-    let n = c_market.len();
-    assert_eq!(n, s.len(), "c_market and s must have the same length");
-    assert_eq!(n, k.len(), "c_market and k must have the same length");
-    assert!(
-      tau.is_finite() && tau > 0.0,
-      "tau must be a finite positive value"
-    );
-
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
-      params,
-      c_market,
       s,
-      k,
       r,
       q,
-      flat_t: vec![tau; n],
-      option_type,
-      record_history,
-      loss_metrics: &LossMetric::ALL,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Create a calibrator from multiple maturity slices for joint surface calibration.
-  pub fn from_slices(
-    params: Option<DoubleHestonParams>,
-    slices: &[super::super::levy::MarketSlice],
-    s: f64,
-    r: f64,
-    q: Option<f64>,
-    option_type: OptionType,
-    record_history: bool,
-  ) -> Self {
-    let mut flat_prices = Vec::new();
-    let mut flat_strikes = Vec::new();
-    let mut flat_t = Vec::new();
-    let mut flat_s = Vec::new();
+  pub fn s(&self) -> f64 {
+    self.s
+  }
 
-    for slice in slices {
-      for i in 0..slice.strikes.len() {
-        flat_prices.push(slice.prices[i]);
-        flat_strikes.push(slice.strikes[i]);
-        flat_t.push(slice.tau);
-        flat_s.push(s);
-      }
+  pub fn r(&self) -> f64 {
+    self.r
+  }
+
+  pub fn q(&self) -> f64 {
+    self.q
+  }
+
+  /// Panics, naming the factor, unless both pass [`HestonParams::new`]; the fit starts from the
+  /// start's projection onto the calibration box.
+  pub fn with_start(mut self, start: DoubleHestonParams) -> Self {
+    if let Some(reason) = start_violation(&start) {
+      panic!("{reason}");
     }
-
-    Self {
-      params,
-      c_market: Array1::from_vec(flat_prices),
-      s: Array1::from_vec(flat_s),
-      k: Array1::from_vec(flat_strikes),
-      r,
-      q,
-      flat_t,
-      option_type,
-      record_history,
-      loss_metrics: &LossMetric::ALL,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
-    }
+    self.start = Some(start);
+    self
   }
 
-  pub(super) fn solve(
-    &self,
-    initial_params: Option<DoubleHestonParams>,
-  ) -> DoubleHestonCalibrationResult {
-    let mut problem = self.clone();
-    if let Some(p) = initial_params {
-      problem.params = Some(p.projected());
-    }
-    problem.ensure_initial_guess();
-
-    let (result, report) = minimize(problem, LmOptions::default());
-
-    let p = result.effective_params();
-    let c_model = result.compute_model_prices_for(&p);
-    let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_standard_layout().as_slice().unwrap(),
-      c_model.as_slice().unwrap(),
-      result.loss_metrics,
-    );
-
-    DoubleHestonCalibrationResult {
-      v1_0: p.v1_0,
-      kappa1: p.kappa1,
-      theta1: p.theta1,
-      sigma1: p.sigma1,
-      rho1: p.rho1,
-      v2_0: p.v2_0,
-      kappa2: p.kappa2,
-      theta2: p.theta2,
-      sigma2: p.sigma2,
-      rho2: p.rho2,
-      loss,
-      converged: report.converged,
-    }
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
   }
 
-  pub fn set_initial_guess(&mut self, params: DoubleHestonParams) {
-    self.params = Some(params.projected());
-  }
-
-  pub fn set_record_history(&mut self, record: bool) {
-    self.record_history = record;
-  }
-
-  pub fn history(&self) -> Vec<CalibrationHistory<DoubleHestonParams>> {
-    self.calibration_history.borrow().clone()
-  }
-
-  /// Fallback: a fast-and-slow factor split centred around realistic
-  /// equity-index values (fast factor mean-reverts in ≈ 4 months, slow factor
-  /// in ≈ 2 years).
   pub(super) fn fallback_params() -> DoubleHestonParams {
     DoubleHestonParams {
-      v1_0: 0.02,
-      kappa1: 3.0,
-      theta1: 0.02,
-      sigma1: 0.3,
-      rho1: -0.6,
-      v2_0: 0.02,
-      kappa2: 0.5,
-      theta2: 0.02,
-      sigma2: 0.15,
-      rho2: -0.3,
+      first: HestonParams {
+        v0: 0.02,
+        kappa: 3.0,
+        theta: 0.02,
+        sigma: 0.3,
+        rho: -0.6,
+      },
+      second: HestonParams {
+        v0: 0.02,
+        kappa: 0.5,
+        theta: 0.02,
+        sigma: 0.15,
+        rho: -0.3,
+      },
     }
     .projected()
   }
+}
 
-  pub(super) fn ensure_initial_guess(&mut self) {
-    if self.params.is_none() {
-      self.params = Some(Self::fallback_params());
-    }
-  }
-
-  pub(super) fn effective_params(&self) -> DoubleHestonParams {
-    if let Some(p) = &self.params {
-      return (*p).projected();
-    }
-    Self::fallback_params()
-  }
+/// The first factor outside the Heston domain, named, in `HestonParams::new`'s words.
+fn start_violation(start: &DoubleHestonParams) -> Option<String> {
+  [("first", start.first), ("second", start.second)]
+    .into_iter()
+    .find_map(|(factor, params)| {
+      params
+        .violation()
+        .map(|reason| format!("{factor} factor: {reason}"))
+    })
 }
 
 impl crate::traits::Calibrator for DoubleHestonCalibrator {
-  type InitialGuess = DoubleHestonParams;
   type Params = DoubleHestonParams;
-  type Output = DoubleHestonCalibrationResult;
-  type Error = anyhow::Error;
+  type Output = Calibrated<DoubleHestonParams>;
+  type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    Ok(self.solve(initial))
-  }
-}
-
-impl LeastSquaresProblem for DoubleHestonCalibrator {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    let p = DoubleHestonParams::from(params.clone()).projected();
-    self.params = Some(p);
-  }
-
-  fn params(&self) -> Array1<f64> {
-    self.effective_params().into()
-  }
-
-  fn residuals(&self) -> Option<Array1<f64>> {
-    let params_eff = self.effective_params();
-    let c_model = self.compute_model_prices_for(&params_eff);
-
-    if self.record_history {
-      let q_val = self.q.unwrap_or(0.0);
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
-          call_put: self
-            .c_market
-            .iter()
-            .enumerate()
-            .map(|(idx, _)| {
-              let tau = self.flat_t[idx];
-              let call =
-                double_heston_call_price(&params_eff, self.s[idx], self.k[idx], self.r, q_val, tau);
-              let put =
-                call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-              (call.max(0.0), put.max(0.0))
-            })
-            .collect::<Vec<(f64, f64)>>()
-            .into(),
-          params: params_eff,
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_standard_layout().as_slice().unwrap(),
-            c_model.as_slice().unwrap(),
-            self.loss_metrics,
-          ),
-        });
+  /// A start replaces `self.start`; `InvalidInput` unless its factors pass `HestonParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
+  fn calibrate(
+    &self,
+    initial: Option<DoubleHestonParams>,
+  ) -> Result<Calibrated<DoubleHestonParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
+    if let Some(reason) = start_violation(&start) {
+      return Err(QuantError::invalid("start", reason));
     }
-
-    Some(self.c_market.clone() - c_model)
-  }
-
-  fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.numeric_jacobian(&self.effective_params()))
+    let lm = self.options.lm(true, 10)?;
+    let (fitted, report) = minimize_in_box(DoubleHestonProblem::new(self, start), lm, room_in_box);
+    let params = fitted.effective_params();
+    let model = fitted.compute_model_prices_for(&params);
+    report.calibrated(
+      params,
+      &fitted.market,
+      &model,
+      self.options.loss_metrics,
+      fitted.trail.into_entries(),
+    )
   }
 }

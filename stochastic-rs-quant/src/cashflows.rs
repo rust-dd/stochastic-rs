@@ -1,17 +1,12 @@
-//! # Cash Flow Engine
+//! Coupons, legs and present value for fixed-income cash flows.
 //!
 //! $$
 //! \mathrm{PV}=\sum_{i=1}^{n} D(t_i)\,C_i,\qquad
 //! C_i=N_i\,\alpha_i\,L_i
 //! $$
 //!
-//! Coupon, leg, and present-value machinery for fixed-income cash flows.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006). DOI: 10.1007/978-3-540-34604-3
-//!
-//! Reference: Henrard, "The Irony in the Derivation of the Standard Multicurve
-//! Framework", arXiv:1304.4474 (2013).
+//! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
+//! Reference: Henrard (2013), arXiv:1304.4474
 
 use crate::curves::DiscountCurve;
 use crate::curves::MultiCurve;
@@ -45,7 +40,7 @@ pub trait CurveProvider<T: RealExt>: Send + Sync {
   fn discount_curve(&self) -> &DiscountCurve<T>;
 
   /// Optional tenor-specific forecast curve.
-  fn forecast_curve(&self, key: &str) -> Option<&DiscountCurve<T>>;
+  fn forecast_curve(&self, tenor: RateTenor) -> Option<&DiscountCurve<T>>;
 }
 
 impl<T: RealExt> CurveProvider<T> for DiscountCurve<T> {
@@ -53,7 +48,7 @@ impl<T: RealExt> CurveProvider<T> for DiscountCurve<T> {
     self
   }
 
-  fn forecast_curve(&self, _key: &str) -> Option<&DiscountCurve<T>> {
+  fn forecast_curve(&self, _tenor: RateTenor) -> Option<&DiscountCurve<T>> {
     Some(self)
   }
 }
@@ -63,15 +58,15 @@ impl<T: RealExt> CurveProvider<T> for MultiCurve<T> {
     &self.discount
   }
 
-  fn forecast_curve(&self, key: &str) -> Option<&DiscountCurve<T>> {
-    self.forecast(key).or(Some(&self.discount))
+  fn forecast_curve(&self, tenor: RateTenor) -> Option<&DiscountCurve<T>> {
+    self.forecast(tenor).or(Some(&self.discount))
   }
 }
 
 /// Extensibility point for rate indices used by floating coupons.
 pub trait RateIndex<T: RealExt>: Clone + Send + Sync {
-  /// Curve label used to request the forecast curve.
-  fn curve_key(&self) -> &str;
+  /// The tenor whose forecast curve the index reads.
+  fn tenor(&self) -> RateTenor;
 
   /// Forecast the coupon rate over an accrual period.
   fn forward_rate(

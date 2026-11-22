@@ -1,17 +1,24 @@
 //! Monte Carlo basket pricer and the average it is struck against.
-//!
-//! Split out of `basket.rs` when the file crossed the 600-line cap; a pure
-//! move, with the public paths preserved by the `pub use` in the parent.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
-use crate::mc::McEstimate;
-use crate::pricing::mc_stats::std_err_from_sums;
-use crate::traits::FloatExt;
+use crate::QuantError;
+use crate::error::check_grid_shape;
+use crate::pricing::mc_stats::off_domain;
+use crate::pricing::mc_stats::par_estimate;
+use crate::pricing::mc_stats::pathless;
+use crate::pricing::rainbow::assert_volatilities;
+use crate::traits::RealExt;
 
 /// Which average the basket is struck against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,58 +29,27 @@ pub enum BasketAverageType {
   Geometric,
 }
 
-/// Monte Carlo basket option pricer. Supports arithmetic and geometric
-/// payoffs. Uses a Cholesky factorization for the correlation factor and
-/// runs on the pure-Rust `faer`, in every build.
-///
-/// The struct holds **model, contract and method state only** — the
-/// per-asset volatilities and their correlation, the basket weights and
-/// which average they are applied to, and the Monte Carlo path count. The
-/// spot vector, the strike, the rate, the dividend-yield vector and the
-/// maturity are the pricing *query* and travel as arguments.
-///
-/// [`BasketAverageType`] sits beside the weights because it is the same kind
-/// of thing: both say what the option is written on, and neither moves when
-/// the market does.
-///
-/// `n_paths` is neither model, contract nor query but a convergence control,
-/// and it sits on the struct for the same reason
-/// `GbmMalliavinPricer` keeps its own path and step counts there.
-///
-/// The dimension and positive-definiteness checks stay in
-/// [`try_price`](Self::try_price) rather than moving to [`new`](Self::new):
-/// `try_price` is the only advertised way to surface either as an `Err`, and
-/// a constructor that panicked on them first would leave it nothing to
-/// report.
+/// Monte Carlo arithmetic or geometric basket on a Cholesky factor of `rho`; the shape and
+/// positive-definiteness checks stay in [`try_price`](Self::try_price), its only way to an `Err`.
 #[derive(Debug, Clone)]
-pub struct McBasketPricer {
+pub struct McBasketPricer<S: SeedExt = Unseeded> {
   /// Weights — a term of the contract, not a market quote.
   pub weights: Array1<f64>,
   /// Average type — likewise a term of the contract.
   pub avg_type: BasketAverageType,
-  /// Volatilities.
-  pub sigma: Array1<f64>,
+  /// Annualised Black–Scholes volatility of each asset.
+  sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,
   /// Number of MC paths.
-  pub n_paths: usize,
+  n_paths: usize,
+  /// Each call draws from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
 impl McBasketPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if any `sigma[i]` is negative or `NaN` — not a volatility
-  /// - if `n_paths` is `0`
-  ///
-  /// `rho`, the weights and the dimensions are **deliberately unchecked
-  /// here**, for the reason given on
-  /// [`McRainbowPricer::new`](crate::pricing::rainbow::McRainbowPricer::new):
-  /// [`try_price`](Self::try_price) is the only advertised way to surface
-  /// a non-SPD correlation or a dimension mismatch as an `Err`, and a
-  /// panicking constructor would leave it nothing to report. The two
-  /// closed-form basket pricers, which have no `try_price`, do get the
-  /// correlation range check and the shape check.
+  /// Panics unless every `sigma[i]` is finite and `>= 0` and `n_paths >= 1`; `rho`, the weights
+  /// and the dimensions are data, which [`try_price`](Self::try_price) reports as an `Err`.
   pub fn new(
     weights: Array1<f64>,
     avg_type: BasketAverageType,
@@ -81,15 +57,10 @@ impl McBasketPricer {
     rho: Array2<f64>,
     n_paths: usize,
   ) -> Self {
-    for (i, &v) in sigma.iter().enumerate() {
-      assert!(
-        v >= 0.0,
-        "McBasketPricer::new: sigma[{i}] must be a non-negative volatility (got {v})"
-      );
-    }
+    assert_volatilities(&sigma);
     assert!(
       n_paths >= 1,
-      "McBasketPricer::new: n_paths must be at least 1 (got {n_paths})"
+      "n_paths must satisfy `n_paths >= 1`, got n_paths = {n_paths:?}"
     );
     Self {
       weights,
@@ -97,6 +68,20 @@ impl McBasketPricer {
       sigma,
       rho,
       n_paths,
+      seed: Unseeded,
+    }
+  }
+}
+
+impl<S: SeedExt> McBasketPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> McBasketPricer<S2> {
+    McBasketPricer {
+      weights: self.weights,
+      avg_type: self.avg_type,
+      sigma: self.sigma,
+      rho: self.rho,
+      n_paths: self.n_paths,
+      seed,
     }
   }
 
@@ -110,33 +95,36 @@ impl McBasketPricer {
     q: ArrayView1<'_, f64>,
     tau: f64,
     option_type: OptionType,
-  ) -> anyhow::Result<McEstimate<f64>> {
+  ) -> Result<McEstimate<f64>, QuantError> {
     let n_assets = s.len();
-    if self.rho.shape() != [n_assets, n_assets] {
-      anyhow::bail!(
-        "rho shape {:?} does not match n_assets={n_assets}",
-        self.rho.shape()
-      );
+    check_grid_shape(
+      ["rho rows, one per asset", "rho columns, one per asset"],
+      (n_assets, n_assets),
+      self.rho.dim(),
+    )?;
+    for (what, got) in [
+      ("weights, one per asset", self.weights.len()),
+      ("sigma, one per asset", self.sigma.len()),
+      ("q, one per asset", q.len()),
+    ] {
+      if got != n_assets {
+        return Err(QuantError::DimensionMismatch {
+          what,
+          expected: n_assets,
+          got,
+        });
+      }
     }
-    if self.weights.len() != n_assets || self.sigma.len() != n_assets || q.len() != n_assets {
-      anyhow::bail!(
-        "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
-        self.weights.len(),
-        self.sigma.len(),
-        q.len()
-      );
-    }
-    if !crate::linalg::is_spd_t(&self.rho) {
-      anyhow::bail!("correlation matrix is not positive definite");
+    if !crate::linalg::is_spd_t(self.rho.view()) {
+      return Err(QuantError::NotPositiveDefinite {
+        what: "the correlation matrix rho",
+      });
     }
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }
 
-  /// Price either leg at one query point with a single simulation.
-  ///
-  /// # Panics
-  /// If the correlation matrix is not positive definite — call
-  /// [`try_price`](Self::try_price) to handle that gracefully.
+  /// One simulation for either leg: NaN for a NaN query, `tau < 0` or, before expiry, a spot or
+  /// (unless an arithmetic weight is negative) a strike not positive; a non-SPD `rho` panics.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,
@@ -146,8 +134,22 @@ impl McBasketPricer {
     tau: f64,
     option_type: OptionType,
   ) -> McEstimate<f64> {
+    let mut positive = s.iter().copied().collect::<Vec<f64>>();
+    let mut others = q.iter().copied().chain([r]).collect::<Vec<f64>>();
+    // A negative weight lets the arithmetic basket end below zero, so its strike is a spread's.
+    let free_strike =
+      self.avg_type == BasketAverageType::Arithmetic && self.weights.iter().any(|&w| w < 0.0);
+    if free_strike {
+      &mut others
+    } else {
+      &mut positive
+    }
+    .push(k);
+    if off_domain(&positive, &others, tau) {
+      return pathless(f64::NAN);
+    }
     let n_assets = s.len();
-    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
+    let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
@@ -160,10 +162,11 @@ impl McBasketPricer {
     };
     let n_paths = self.n_paths;
 
-    // Generate one big block of standard normals using the project's
-    // SIMD ziggurat path, then map paths in parallel.
     let mut all_z = vec![0.0_f64; n_paths * n_assets];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut all_z);
+    let seed = self.seed.clone();
+    SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(&seed)
+      .fill_slice(&mut all_z);
 
     let payoff_of = |p: usize| -> f64 {
       let z = &all_z[p * n_assets..(p + 1) * n_assets];
@@ -190,23 +193,9 @@ impl McBasketPricer {
           log_g.exp()
         }
       };
-      (phi * (basket - k)).max(0.0)
+      (phi * (basket - k)).max_or_nan(0.0)
     };
-    let sum: f64 = (0..n_paths).into_par_iter().map(&payoff_of).sum();
-    let sum_sq: f64 = (0..n_paths)
-      .into_par_iter()
-      .map(|p| {
-        let y = payoff_of(p);
-        y * y
-      })
-      .sum();
-
-    let discount = (-r * tau).exp();
-    McEstimate {
-      mean: discount * sum / n_paths as f64,
-      std_err: discount * std_err_from_sums(sum, sum_sq, n_paths),
-      n_samples: n_paths,
-    }
+    par_estimate(n_paths, (-r * tau).exp(), payoff_of)
   }
 
   /// Price the basket call at one query point.

@@ -1,24 +1,5 @@
-//! `Fgn`/`Fbm` override `ProcessExt::sample_par` to reach the batched
-//! backend path (`Backend::generate_batch`) instead of the trait default's
-//! `chunked_samplers` — Task 1's fix (`deterministic_parallelism.rs`) never
-//! touched them, and a reviewer found an independent instance of the same
-//! nondeterminism class there: `Cpu::generate_batch` used to do
-//! `(0..m).into_par_iter().map(|_| fgn.sample_cpu())`, and `sample_cpu`
-//! reads `&self.seed` — a shared `Deterministic` atomic — fresh, from
-//! *inside* the parallel region, once per path. Which of the `m` parallel
-//! iterations claimed which tick of that atomic depended on rayon's
-//! scheduling, which depends on thread-pool size.
-//!
-//! `Fbm::sample_par` carried a second, deeper bug the thread-count-only
-//! framing above does not capture: it drove the batch through
-//! `self.fgn.noise_batch(m)`, where `self.fgn: Fgn<T, Unseeded, B>` is
-//! *always* `Unseeded` by construction (see `Fbm`'s own doc) — so the
-//! batch never read `Fbm`'s own `self.seed` at all, seeded or not. A
-//! `Deterministic`-seeded `Fbm::sample_par` used to draw fresh randomness on
-//! every single call. `fbm_sample_par_is_seed_reproducible` below is the
-//! test that catches this specifically (thread-count independence alone
-//! would not: a function that ignores its seed is trivially "independent"
-//! of thread count too).
+//! `Fgn` and `Fbm` override `sample_par` with the batched backend call, outside the trait
+//! default's chunked samplers: every basis is derived before the parallel region, from their seed.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
@@ -67,12 +48,8 @@ fn fgn_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Fgn sample_par diverged between 1 and 8 threads");
 }
 
-/// Same guarantee at a larger `m`. Note this does *not* exercise a "several
-/// paths share one chunk" regime the way the generic `ProcessExt`-default
-/// path's own `MAX_CHUNKS`-boundary tests do: `Fgn`'s `Cpu::generate_batch`
-/// derives one basis per **path**, uncapped (see that impl's own doc for
-/// why — chunking regressed perf here), so there is no chunk-count concept
-/// to cross at any `m`. Kept as a plain larger-`m` sanity check instead.
+/// The same guarantee at a larger `m`. `Cpu::generate_batch` derives one basis per path,
+/// uncapped, so there is no chunk boundary to cross here: a plain larger-`m` check.
 #[test]
 fn fgn_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;
@@ -103,9 +80,8 @@ fn fbm_sample_par_is_thread_count_independent() {
   assert_eq!(r1, r8, "Fbm sample_par diverged between 1 and 8 threads");
 }
 
-/// Same larger-`m` sanity check as `fgn_sample_par_is_thread_count_independent_beyond_max_chunks`
-/// above — `Fbm::sample_par` reaches the identical uncapped, per-path
-/// `Cpu::generate_batch` mechanism.
+/// The same larger-`m` check for `Fbm::sample_par`, which reaches the same per-path
+/// `Cpu::generate_batch`.
 #[test]
 fn fbm_sample_par_is_thread_count_independent_beyond_max_chunks() {
   let m = 256;
@@ -121,12 +97,8 @@ fn fbm_sample_par_is_thread_count_independent_beyond_max_chunks() {
   );
 }
 
-/// The bug specific to `Fbm`: its embedded `fgn` is hard-wired `Unseeded`,
-/// so `sample_par` used to draw fresh randomness on every call regardless of
-/// `self.seed`. Two identically-`Deterministic`-seeded `Fbm`s must now
-/// agree, proving the batch actually consults the real seed — thread-count
-/// independence alone cannot show this (an `Unseeded`-driven batch is
-/// trivially "independent" of thread count too, just never reproducible).
+/// `Fbm`'s embedded `fgn` is `Unseeded`, so the batch must read `Fbm`'s own seed: two identically
+/// seeded `Fbm`s agree. Thread-count independence cannot show it: ignoring the seed passes that.
 #[test]
 fn fbm_sample_par_is_seed_reproducible() {
   let m = 32;
@@ -138,9 +110,7 @@ fn fbm_sample_par_is_seed_reproducible() {
   );
 }
 
-/// Same proof for `Fgn`, whose batch already read the correct seed source
-/// (the race, not the seed source, was `Fgn`'s bug) — kept for symmetry and
-/// to guard against a future regression conflating the two.
+/// The same proof for `Fgn`, whose batch reads its own seed.
 #[test]
 fn fgn_sample_par_is_seed_reproducible() {
   let m = 32;
@@ -152,9 +122,8 @@ fn fgn_sample_par_is_seed_reproducible() {
   );
 }
 
-/// `m = 16`: no two `Fgn` paths identical. A chunking bug that let two
-/// chunks reuse the same basis would collapse chunk 0's paths onto chunk
-/// 1's.
+/// `m = 16`: no two `Fgn` paths identical; two chunks reusing one basis would collapse chunk
+/// 0's paths onto chunk 1's.
 #[test]
 fn fgn_sample_par_paths_are_distinct() {
   let m = 16;

@@ -1,12 +1,32 @@
 use ndarray::aview1;
 
 use super::*;
+use crate::StatsError;
 
 #[test]
 fn five_return_block_has_known_log_chi_square_moments() {
-  let moments = log_chi_square_moments(5).unwrap();
+  let moments = log_chi_square_moments(5);
   assert!((moments.log_bias - -0.213_134_091_228_911_8).abs() < 1e-13);
   assert!((moments.log_variance - 0.490_357_756_100_234_9).abs() < 1e-13);
+}
+
+/// Within 2 ulp of mpmath's correctly rounded `ψ(m/2) − ln(m/2)` at 50 digits, at the block sizes
+/// where the difference does not cancel.
+#[test]
+fn small_block_log_bias_holds_two_ulp_of_mpmath() {
+  for (m, want) in [
+    (1, -1.2703628454614782),
+    (2, -0.5772156649015329),
+    (3, -0.3689751341295879),
+    (4, -0.27036284546147815),
+    (5, -0.2131340912289119),
+  ] {
+    let got = log_chi_square_moments(m).log_bias;
+    assert!(
+      got.to_bits().abs_diff(f64::to_bits(want)) <= 2,
+      "log_bias({m}) = {got}, want {want}"
+    );
+  }
 }
 
 #[test]
@@ -17,112 +37,154 @@ fn observation_validation_is_typed_and_fail_closed() {
   };
   assert_eq!(
     fit_log_realized_variance_qml(aview1(&[0.01, 0.02, 0.03]), config).unwrap_err(),
-    LogRealizedVarianceQmlError::InsufficientObservations {
-      actual: 3,
-      minimum: 4,
-    }
+    StatsError::InsufficientData { needed: 4, got: 3 }
   );
   assert_eq!(
     fit_log_realized_variance_qml(aview1(&[0.01, 0.0, 0.03, 0.04]), config).unwrap_err(),
-    LogRealizedVarianceQmlError::NonPositiveObservation { index: 1 }
+    StatsError::InvalidObservation {
+      index: 1,
+      value: 0.0,
+      constraint: "> 0"
+    }
   );
-  assert_eq!(
+  assert!(matches!(
     fit_log_realized_variance_qml(aview1(&[0.01, f64::NAN, 0.03, 0.04]), config).unwrap_err(),
-    LogRealizedVarianceQmlError::NonFiniteObservation { index: 1 }
-  );
+    StatsError::InvalidObservation {
+      index: 1,
+      constraint: "finite",
+      ..
+    }
+  ));
   assert_eq!(
     fit_log_realized_variance_qml(aview1(&[0.01, 0.02, f64::INFINITY, 0.04]), config).unwrap_err(),
-    LogRealizedVarianceQmlError::NonFiniteObservation { index: 2 }
+    StatsError::InvalidObservation {
+      index: 2,
+      value: f64::INFINITY,
+      constraint: "finite"
+    }
   );
 }
 
-#[test]
-fn invalid_configs_and_parameters_return_errors() {
-  let observations = [0.01, 0.02, 0.03, 0.04];
-  for (config, field) in [
-    (
-      LogRealizedVarianceQmlConfig {
-        block_degrees_of_freedom: 0,
-        minimum_observations: 4,
-        ..LogRealizedVarianceQmlConfig::default()
-      },
-      "block_degrees_of_freedom",
-    ),
-    (
-      LogRealizedVarianceQmlConfig {
-        minimum_observations: 3,
-        ..LogRealizedVarianceQmlConfig::default()
-      },
-      "minimum_observations",
-    ),
-    (
-      LogRealizedVarianceQmlConfig {
-        minimum_observations: 4,
-        max_iterations_per_start: 0,
-        ..LogRealizedVarianceQmlConfig::default()
-      },
-      "max_iterations_per_start",
-    ),
-    (
-      LogRealizedVarianceQmlConfig {
-        minimum_observations: 4,
-        bounds: LogRealizedVarianceQmlBounds {
-          min_phi: -1.0,
-          ..LogRealizedVarianceQmlBounds::default()
-        },
-        ..LogRealizedVarianceQmlConfig::default()
-      },
-      "phi_bounds",
-    ),
-    (
-      LogRealizedVarianceQmlConfig {
-        minimum_observations: 4,
-        bounds: LogRealizedVarianceQmlBounds {
-          min_q: 0.0,
-          ..LogRealizedVarianceQmlBounds::default()
-        },
-        ..LogRealizedVarianceQmlConfig::default()
-      },
-      "q_bounds",
-    ),
-  ] {
-    assert_eq!(
-      fit_log_realized_variance_qml(aview1(&observations), config).unwrap_err(),
-      LogRealizedVarianceQmlError::InvalidConfig { field }
-    );
-  }
+fn fit_four_observations(config: LogRealizedVarianceQmlConfig) {
+  let _ = fit_log_realized_variance_qml(aview1(&[0.01, 0.02, 0.03, 0.04]), config);
+}
 
-  for (parameters, field) in [
-    (
-      LogRealizedVarianceParameters {
-        mu: f64::NAN,
-        phi: 0.8,
-        q: 0.02,
-      },
-      "mu",
-    ),
-    (
-      LogRealizedVarianceParameters {
-        mu: -3.0,
-        phi: 1.0,
-        q: 0.02,
-      },
-      "phi",
-    ),
-    (
-      LogRealizedVarianceParameters {
-        mu: -3.0,
-        phi: 0.8,
-        q: 0.0,
-      },
-      "q",
-    ),
-  ] {
-    assert_eq!(
-      filter_log_realized_variance(aview1(&observations), 5, parameters).unwrap_err(),
-      LogRealizedVarianceQmlError::InvalidParameter { field }
-    );
-  }
+fn filter_four_observations(parameters: LogRealizedVarianceParameters) {
+  let _ = filter_log_realized_variance(aview1(&[0.01, 0.02, 0.03, 0.04]), 5, parameters);
+}
+
+#[test]
+#[should_panic(
+  expected = "block_degrees_of_freedom must satisfy `block_degrees_of_freedom > 0`, got block_degrees_of_freedom = 0"
+)]
+fn a_zero_block_size_config_panics() {
+  fit_four_observations(LogRealizedVarianceQmlConfig {
+    block_degrees_of_freedom: 0,
+    minimum_observations: 4,
+    ..LogRealizedVarianceQmlConfig::default()
+  });
+}
+
+#[test]
+#[should_panic(
+  expected = "minimum_observations must satisfy `minimum_observations >= 4`, got minimum_observations = 3"
+)]
+fn a_minimum_below_four_observations_panics() {
+  fit_four_observations(LogRealizedVarianceQmlConfig {
+    minimum_observations: 3,
+    ..LogRealizedVarianceQmlConfig::default()
+  });
+}
+
+#[test]
+#[should_panic(expected = "max_iterations_per_start must satisfy `max_iterations_per_start > 0`")]
+fn zero_iterations_per_start_panics() {
+  fit_four_observations(LogRealizedVarianceQmlConfig {
+    minimum_observations: 4,
+    max_iterations_per_start: 0,
+    ..LogRealizedVarianceQmlConfig::default()
+  });
+}
+
+#[test]
+#[should_panic(
+  expected = "min_phi must satisfy `-1.0 < min_phi < max_phi < 1.0`, got min_phi = -1.0"
+)]
+fn a_phi_bound_on_the_unit_root_panics() {
+  fit_four_observations(LogRealizedVarianceQmlConfig {
+    minimum_observations: 4,
+    bounds: LogRealizedVarianceQmlBounds {
+      min_phi: -1.0,
+      ..LogRealizedVarianceQmlBounds::default()
+    },
+    ..LogRealizedVarianceQmlConfig::default()
+  });
+}
+
+#[test]
+#[should_panic(expected = "min_q must satisfy `0.0 < min_q < max_q < inf`, got min_q = 0.0")]
+fn a_zero_q_bound_panics() {
+  fit_four_observations(LogRealizedVarianceQmlConfig {
+    minimum_observations: 4,
+    bounds: LogRealizedVarianceQmlBounds {
+      min_q: 0.0,
+      ..LogRealizedVarianceQmlBounds::default()
+    },
+    ..LogRealizedVarianceQmlConfig::default()
+  });
+}
+
+#[test]
+#[should_panic(expected = "mu must satisfy `mu.is_finite()`, got mu = NaN")]
+fn a_nan_mu_panics() {
+  filter_four_observations(LogRealizedVarianceParameters {
+    mu: f64::NAN,
+    phi: 0.8,
+    q: 0.02,
+  });
+}
+
+#[test]
+#[should_panic(expected = "phi must satisfy `-1.0 < phi < 1.0`, got phi = 1.0")]
+fn a_unit_root_phi_panics() {
+  filter_four_observations(LogRealizedVarianceParameters {
+    mu: -3.0,
+    phi: 1.0,
+    q: 0.02,
+  });
+}
+
+#[test]
+#[should_panic(expected = "q must satisfy `q > 0.0`, got q = 0.0")]
+fn a_zero_q_panics() {
+  filter_four_observations(LogRealizedVarianceParameters {
+    mu: -3.0,
+    phi: 0.8,
+    q: 0.0,
+  });
+}
+
+#[test]
+#[should_panic(expected = "q must satisfy `q.is_finite()`, got q = inf")]
+fn an_infinite_q_fails_the_finiteness_check_first() {
+  filter_four_observations(LogRealizedVarianceParameters {
+    mu: -3.0,
+    phi: 0.8,
+    q: f64::INFINITY,
+  });
+}
+
+#[test]
+fn the_objective_filter_answers_err_on_inadmissible_parameters() {
+  let parameters = LogRealizedVarianceParameters {
+    mu: f64::NAN,
+    phi: 0.8,
+    q: 0.02,
+  };
+  assert_eq!(
+    filter::filter_centered_log_observations(&[0.0; 4], 0.5, parameters),
+    Err(StatsError::Numerical { stage: "filter" })
+  );
 }
 
 #[test]
@@ -426,7 +488,7 @@ fn simulated_realized_variance(
   parameters: LogRealizedVarianceParameters,
   seed: u64,
 ) -> Vec<f64> {
-  let measurement = log_chi_square_moments(block_degrees_of_freedom).unwrap();
+  let measurement = log_chi_square_moments(block_degrees_of_freedom);
   let mut rng = TestRng::new(seed);
   let stationary_standard_deviation =
     (parameters.q / (1.0 - parameters.phi * parameters.phi)).sqrt();

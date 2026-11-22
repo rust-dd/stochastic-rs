@@ -3,6 +3,7 @@
 use std::convert::Infallible;
 
 use basin::CostFunction;
+use ndarray::ArrayView1;
 
 use super::OptimizerConfig;
 use super::helpers::dot;
@@ -11,36 +12,32 @@ use super::helpers::portfolio_vol_from_returns;
 use super::helpers::softmax;
 use super::helpers::tanh_weights;
 use super::run_nelder_mead;
+use crate::QuantError;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
+use crate::risk::expected_shortfall::tail_mean;
+use crate::risk::input::validate_samples;
+use crate::total_order::ascending;
 
-/// Empirical CVaR (Conditional Value-at-Risk).
-///
-/// **Convention:** `alpha` is the **tail proportion** to average — `0.05`
-/// means "average the worst 5% of returns". This is the **opposite** of the
-/// confidence-level convention used by [`crate::risk::var::value_at_risk`]
-/// and [`crate::risk::expected_shortfall::expected_shortfall`], where
-/// `confidence = 0.95` selects the worst 5%. Translation:
-/// `cvar_tail_proportion = 1 - confidence`. The runtime assertion below
-/// makes accidentally passing a confidence-level value (e.g. `0.95`) panic
-/// loudly rather than silently averaging nearly the whole distribution.
-pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
-  if returns.is_empty() {
-    return 0.0;
-  }
+/// Tail mean of the losses `−returns` over their worst `alpha` share (not a confidence level);
+/// `InsufficientData` if empty, `InvalidInput` if not finite; panics unless `0 < alpha < 0.5`.
+pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> Result<f64, QuantError> {
   assert!(
     alpha > 0.0 && alpha < 0.5,
-    "empirical_cvar `alpha` is the tail proportion (typical values 0.01–0.10), \
-     not a confidence level. Got {alpha}. If you meant a confidence c (e.g. 0.95), \
-     pass `1.0 - c` instead."
+    "alpha must satisfy `alpha > 0.0 && alpha < 0.5`, a tail proportion, not a confidence level, got alpha = {alpha:?}"
   );
+  validate_samples(ArrayView1::from(&*returns), "empirical CVaR", 1)?;
+  returns.sort_by(ascending);
+  let w = returns.len() as f64 * alpha;
+  Ok(tail_mean(returns.iter().map(|&r| -r), w))
+}
 
-  returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-  let cutoff = ((returns.len() as f64) * alpha).ceil() as usize;
-  let cutoff = cutoff.max(1).min(returns.len());
-  let tail_mean: f64 = returns[..cutoff].iter().sum::<f64>() / cutoff as f64;
-
-  -tail_mean
+/// The period count, `None` for no period or a non-finite return: the data `empirical_cvar`
+/// refuses, checked once so the objective cannot meet it.
+fn usable_periods(aligned_returns: &[Vec<f64>]) -> Option<usize> {
+  let n_periods = aligned_returns.first().map(|r| r.len()).unwrap_or(0);
+  let finite = aligned_returns.iter().flatten().all(|r| r.is_finite());
+  (n_periods > 0 && finite).then_some(n_periods)
 }
 
 /// Mean-CVaR optimizer on simplex (long-only).
@@ -57,10 +54,9 @@ pub fn optimize_mean_cvar(
     return empty_result();
   }
 
-  let n_periods = aligned_returns.first().map(|r| r.len()).unwrap_or(0);
-  if n_periods == 0 {
+  let Some(n_periods) = usable_periods(aligned_returns) else {
     return empty_result();
-  }
+  };
 
   struct CVaRCost {
     mu: Vec<f64>,
@@ -87,7 +83,7 @@ pub fn optimize_mean_cvar(
             .sum()
         })
         .collect();
-      let cvar = empirical_cvar(&mut port_returns, self.alpha);
+      let cvar = empirical_cvar(&mut port_returns, self.alpha).expect("returns validated above");
       let ann_cvar = cvar * self.periods_per_year_sqrt;
       let port_ret = dot(&w, &self.mu);
       let ret_penalty = (port_ret - self.target_return).powi(2);
@@ -148,10 +144,9 @@ pub fn optimize_mean_cvar_long_short(
     return empty_result();
   }
 
-  let n_periods = aligned_returns.first().map(|r| r.len()).unwrap_or(0);
-  if n_periods == 0 {
+  let Some(n_periods) = usable_periods(aligned_returns) else {
     return empty_result();
-  }
+  };
 
   struct CVaRLSCost {
     mu: Vec<f64>,
@@ -178,7 +173,7 @@ pub fn optimize_mean_cvar_long_short(
             .sum()
         })
         .collect();
-      let cvar = empirical_cvar(&mut port_returns, self.alpha);
+      let cvar = empirical_cvar(&mut port_returns, self.alpha).expect("returns validated above");
       let ann_cvar = cvar * self.periods_per_year_sqrt;
       let port_ret = dot(&w, &self.mu);
       let ret_penalty = (port_ret - self.target_return).powi(2);

@@ -1,11 +1,11 @@
-//! # Complex fOU
+//! Complex fractional Ornstein–Uhlenbeck: decay `lambda`, rotation `omega`, on a complex fBM.
 //!
 //! $$
 //! dZ_t=-(\lambda-i\omega)Z_t\,dt+\sqrt{a}\,d\zeta_t,\qquad
 //! \zeta_t=\frac{B_t^{(1)}+iB_t^{(2)}}{\sqrt{2}}
 //! $$
 //!
-//! Equivalent real-imaginary form used in this implementation:
+//! The real-imaginary form this implementation steps:
 //! $$
 //! \begin{aligned}
 //! dX_1(t)&=-(\lambda X_1(t)+\omega X_2(t))\,dt+\sqrt{a/2}\,dB_t^{(1)},\\
@@ -13,9 +13,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! Reference: Alazemi F., Alsenafi A., Chen Y., Zhou H. (2024) —
-//! *Parameter Estimation for the Complex Fractional Ornstein-Uhlenbeck
-//! Processes with Hurst Parameter H ∈ (0, 1/2)*, arXiv:2406.18004.
+//! Reference: Alazemi, Alsenafi, Chen & Zhou (2024), arXiv:2406.18004
 use ndarray::Array1;
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -25,38 +23,42 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Complex fractional Ornstein-Uhlenbeck process.
+/// Complex fractional Ornstein-Uhlenbeck process. Fields are private, since the fGN driver caches
+/// a spectrum of `hurst`, `n` and `t`: read them through getters, change them through `with_*`.
 ///
-/// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004
-/// (see the module docs for the full citation).
-#[derive(Clone)]
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::cfou::Cfou;
+/// let mut p = Cfou::<f64>::new(0.7, 1.0, 0.5, 0.2, 10, None, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
+#[derive(Debug, Clone)]
 pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent of the driving fractional Brownian motion.
-  pub hurst: T,
-  /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
-  pub lambda: T,
-  /// Imaginary-frequency part of the complex mean-reversion coefficient.
-  pub omega: T,
-  /// Noise intensity parameter in `sqrt(a) d\zeta_t` (`a > 0`).
-  pub a: T,
-  /// Number of points sampled along the complex fOU path.
-  pub n: usize,
-  /// Initial value of the real part `X_1(0)`.
-  pub x1_0: Option<T>,
-  /// Initial value of the imaginary part `X_2(0)`.
-  pub x2_0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  lambda: T,
+  omega: T,
+  a: T,
+  n: usize,
+  x1_0: Option<T>,
+  x2_0: Option<T>,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  /// Panics unless `0 <= hurst <= 1`, `lambda > 0`, `a > 0`, `n >= 2`, a given `t` is positive and
+  /// finite, and every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -69,9 +71,14 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(lambda > T::zero(), "lambda must be positive");
-    assert!(a > T::zero(), "a must be positive");
+    Self::check_hurst(hurst);
+    Self::check_lambda(lambda);
+    Self::check_omega(omega);
+    Self::check_a(a);
+    Self::check_x1_0(x1_0);
+    Self::check_x2_0(x2_0);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
@@ -83,22 +90,158 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
       x2_0,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Fgn::for_grid(hurst, n, t),
     }
+  }
+
+  /// Replace `hurst` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `0 <= hurst <= 1`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    Self::check_hurst(hurst);
+    self.hurst = hurst;
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `n`; panics unless `n >= 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    check_n(n);
+    self.n = n;
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    check_t(t);
+    self.t = t;
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
+    self
   }
 }
 
-/// The Euler engine's view of the complex fOU: the real and imaginary parts
-/// are the family's two components, driven by the pair of streams the one
-/// embedding produces. `ProcessExt` reassembles them into the complex path
-/// the process reports.
-/// The complex path's two real rows as a process in their own right. The
-/// engine speaks in `[Array1<T>; 2]` and [`Cfou`] reports `Array1<Complex<T>>`,
-/// so this view is what carries the launch; [`Cfou`] rejoins the planes it
-/// returns. It borrows rather than owns, so the seed it advances is the
-/// process's own.
+impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda > T::zero(), lambda);
+  }
+
+  fn check_omega(omega: T) {
+    require!(omega.is_finite(), omega);
+  }
+
+  fn check_a(a: T) {
+    require!(a.is_finite(), a);
+    require!(a > T::zero(), a);
+  }
+
+  fn check_x1_0(x1_0: Option<T>) {
+    require!(x1_0.is_none_or(|v| v.is_finite()), x1_0);
+  }
+
+  fn check_x2_0(x2_0: Option<T>) {
+    require!(x2_0.is_none_or(|v| v.is_finite()), x2_0);
+  }
+
+  /// Replace `lambda`; panics unless `lambda > 0` and finite.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    Self::check_lambda(lambda);
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `omega`; panics unless `omega` is finite.
+  pub fn with_omega(mut self, omega: T) -> Self {
+    Self::check_omega(omega);
+    self.omega = omega;
+    self
+  }
+
+  /// Replace `a`; panics unless `a > 0` and finite.
+  pub fn with_a(mut self, a: T) -> Self {
+    Self::check_a(a);
+    self.a = a;
+    self
+  }
+
+  /// Replace `x1_0`; panics unless `x1_0` is finite.
+  pub fn with_x1_0(mut self, x1_0: Option<T>) -> Self {
+    Self::check_x1_0(x1_0);
+    self.x1_0 = x1_0;
+    self
+  }
+
+  /// Replace `x2_0`; panics unless `x2_0` is finite.
+  pub fn with_x2_0(mut self, x2_0: Option<T>) -> Self {
+    Self::check_x2_0(x2_0);
+    self.x2_0 = x2_0;
+    self
+  }
+
+  /// Replace the seed strategy's value; `fgn`'s own seed is a never-read dummy and is not touched.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+
+  /// Hurst exponent of the driving fractional Brownian motion.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
+  pub fn lambda(&self) -> T {
+    self.lambda
+  }
+
+  /// Imaginary-frequency part of the complex mean-reversion coefficient.
+  pub fn omega(&self) -> T {
+    self.omega
+  }
+
+  /// Noise intensity parameter in `sqrt(a) d\zeta_t` (`a > 0`).
+  pub fn a(&self) -> T {
+    self.a
+  }
+
+  /// Number of points sampled along the complex fOU path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value of the real part `X_1(0)`.
+  pub fn x1_0(&self) -> Option<T> {
+    self.x1_0
+  }
+
+  /// Initial value of the imaginary part `X_2(0)`.
+  pub fn x2_0(&self) -> Option<T> {
+    self.x2_0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
+
+/// The complex path's two real rows as a process of their own: the engine speaks in
+/// `[Array1<T>; 2]` and [`Cfou`] rejoins the planes. It borrows, so it advances the process's seed.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct CfouParts<'a, T: FloatExt, S: SeedExt, B>(&'a Cfou<T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for CfouParts<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for CfouParts<'_, T, S, B>
@@ -121,7 +264,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// [`CfouParts`]'s sampler: the process's own complex sampler, split into the
 /// two real rows as each path comes off it.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfouPartsSampler<'a, T: FloatExt, S: SeedExt, B>(CfouSampler<'a, T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for CfouPartsSampler<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouPartsSampler<'_, T, S, B> {
   type Output = [Array1<T>; 2];
@@ -177,19 +326,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
     crate::euler::draw_seed(&self.0.seed)
   }
 
-  /// The real and imaginary noises are the two independent halves of one
-  /// complex fractional increment, so they come out of a single embedding:
-  /// the pipeline draws `2 · m` paths in one batched call and the step reads
-  /// its second stream from the buffer's next `paths` rows.
+  /// The real and imaginary noises are the two halves of one complex fractional increment: one
+  /// embedding draws `2 · m` paths, and the step reads its second stream `paths` rows further on.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.0.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.0.fgn.n,
-      offset: self.0.fgn.offset,
-      hurst: self.0.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.0.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 2,
-    })
+    Some(self.0.fgn.fgn_spec(2))
   }
 
   fn host_sample(&self) -> [Array1<T>; 2] {
@@ -223,6 +363,11 @@ fn join_complex<T: FloatExt>([x1, x2]: [Array1<T>; 2]) -> Array1<Complex<T>> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn euler);
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Cfou<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cfou<T, S, B>
 {
@@ -232,17 +377,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at construction.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart. `fill_path` then uses this
-  /// owned seed *directly* (no further derive) — exactly one derive from
-  /// `self.seed` per chunk, matching what the legacy per-call `derive()`
-  /// consumed, so the first path reproduces the legacy stream bit-for-bit.
-  /// Repeat calls on one sampler advance the same owned seed further, for
-  /// an independent path each time.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once:
+  /// one derive from `self.seed` per chunk, and each call advances the owned seed to a new path.
   fn sampler(&self) -> CfouSampler<'_, T, S, B> {
     CfouSampler {
       cfou: self,
@@ -250,11 +386,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine: on a device the whole complex recursion runs
-  /// in the kernel over the increments the fractional pipeline wrote to that
-  /// same device, and the two real planes are rejoined here; on the host
-  /// devices it is this process's own sampler, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device runs the complex recursion in its kernel on the fGN
+  /// increments written there, and the planes are rejoined here; the host runs its own sampler.
   fn sample(&self) -> Array1<Complex<T>> {
     join_complex(crate::euler::EulerBackend::system_sample(
       &self.fgn.backend,
@@ -290,13 +423,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Cfou`] sampling state: borrows the process for its inner [`Fgn`]
-/// and owns a seed derived once at construction. The path is the complex
-/// Euler step `Z_{k+1} = Z_k - (lambda - i omega) Z_k dt + sqrt(a) Δζ_k`,
-/// with `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / sqrt(2)`.
-///
-/// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004.
+/// Reusable [`Cfou`] sampling state on the process's [`Fgn`] and a seed derived once. The step is
+/// `Z_{k+1} = Z_k − (λ − iω) Z_k dt + √a Δζ_k`, `Δζ_k = (ΔB_k^{(1)} + i ΔB_k^{(2)}) / √2`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfou: &'a Cfou<T, S, B>,
   seed: S,
@@ -331,6 +461,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfouSampler<'_, T, S, B> {
       .unwrap_or_else(crate::device::device_panic)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for CfouSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouSampler<'_, T, S, B> {
   type Output = Array1<Complex<T>>;
@@ -374,48 +506,4 @@ py_process_2d!(PyCfou, Cfou,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Unseeded;
-
-  use super::Cfou;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn cfou_sample_is_complex_and_finite() {
-    let p = Cfou::<f64>::new(
-      0.7,
-      1.2,
-      3.0,
-      0.4,
-      256,
-      Some(0.0),
-      Some(0.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let z = p.sample();
-
-    assert_eq!(z.len(), 256);
-    assert!(z.iter().all(|v| v.re.is_finite() && v.im.is_finite()));
-  }
-
-  #[test]
-  fn cfou_components_are_finite() {
-    let p = Cfou::<f64>::new(
-      0.65,
-      0.9,
-      2.5,
-      0.6,
-      128,
-      Some(0.1),
-      Some(-0.1),
-      Some(1.0),
-      Unseeded,
-    );
-    let [x1, x2] = p.sample_components();
-    assert_eq!(x1.len(), 128);
-    assert_eq!(x2.len(), 128);
-    assert!(x1.iter().all(|v| v.is_finite()));
-    assert!(x2.iter().all(|v| v.is_finite()));
-  }
-}
+mod tests;

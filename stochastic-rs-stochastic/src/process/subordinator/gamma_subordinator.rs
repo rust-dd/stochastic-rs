@@ -1,6 +1,10 @@
+//! Gamma subordinator: the running sum of independent Gamma increments from `x0`.
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use crate::buffer::array1_from_fill;
@@ -10,7 +14,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape intensity `nu`.
   pub nu: T,
@@ -18,11 +22,11 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rate: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -30,9 +34,34 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `nu > 0`, `rate > 0`, and every
+  /// parameter is finite.
   pub fn new(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
-    assert!(rate > T::zero(), "rate must be positive");
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      rate.is_finite(),
+      "rate must satisfy `rate.is_finite()`, got rate = {rate:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      rate > T::zero(),
+      "rate must satisfy `rate > T::zero()`, got rate = {rate:?}"
+    );
     Self {
       backend: Cpu,
       nu,
@@ -44,8 +73,6 @@ impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> GammaSubordinator<T, S, B> {}
 
 /// The Euler engine's view of the gamma subordinator.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -89,6 +116,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] GammaSubordinator<T, S> { nu, rate, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GammaSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GammaSubordinator<T, S, B>
 {
@@ -107,13 +139,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     GammaSubordinatorSampler {
       n: self.n,
       x0,
-      gamma: SimdGamma::<T>::new(shape, scale, &self.seed),
+      gamma: SimdGamma::<T>::new(shape, scale).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the increment is drawn in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws the increment in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -146,10 +177,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`GammaSubordinator`] sampling state: the owned Gamma increment
 /// source. The path is `x0` followed by the running sum of the increments.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GammaSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  gamma: SimdGamma<T>,
+  gamma: Seeded<SimdGamma<T>>,
 }
 
 impl<T: FloatExt> GammaSubordinatorSampler<T> {
@@ -170,6 +202,8 @@ impl<T: FloatExt> GammaSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GammaSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GammaSubordinatorSampler<T> {
   type Output = Array1<T>;

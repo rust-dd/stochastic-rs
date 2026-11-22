@@ -6,11 +6,7 @@ export const OG_SIZE = { width: 1200, height: 630 };
 /** Band reserved at the very bottom edge, clear of the footer baseline. */
 const PATH_HEIGHT = 74;
 
-/**
- * Deterministic fractional-ish walk used as the card's background motif. A
- * fixed LCG keeps the rendered PNG byte-identical across builds, which stops
- * social platforms from re-fetching a "changed" image on every deploy.
- */
+/** A fixed LCG keeps the PNG byte-identical, so platforms do not re-fetch it on each deploy. */
 function samplePath(): string {
   const points = 120;
   const width = 1200;

@@ -1,30 +1,11 @@
-//! # Heston ADI
+//! The Heston PDE with correlation by in 't Hout & Foulon's ADI: sinh meshes (§2.2), the Douglas,
+//! Craig–Sneyd, MCS (the default, at `θ = ⅓`) and HV steps with Rannacher damping (§2.4–§2.6).
 //!
 //! $$
 //! u_t = \tfrac12 s^2 v\,u_{ss} + \rho\sigma s v\,u_{sv} + \tfrac12\sigma^2 v\,u_{vv} + (r_d - r_f)\,s\,u_s + \kappa(\eta - v)\,u_v - r_d u
 //! $$
 //!
-//! Finite-difference solution of the Heston PDE with correlation by the
-//! Alternating Direction Implicit schemes of in 't Hout & Foulon (2008):
-//! sinh-stretched meshes clustering at the strike and at `v = 0` (§2.2,
-//! `S ≥ 8K`, `V ≥ 5`, `c = K/5`, `d = V/500`), second-order central
-//! stencils with upwinding of `u_v` where the `v`-flow points outward, the
-//! call boundary conditions `u(0, v) = 0`, `u_s(S, v) = e^{−r_f t}`,
-//! `u(s, V) = s e^{−r_f t}`, and the Douglas, Craig–Sneyd, Modified
-//! Craig–Sneyd and Hundsdorfer–Verwer time steppers of §2.4 with the
-//! Rannacher damping of §2.5. The default is the paper's recommendation:
-//! MCS at `θ = ⅓` with damping. A down-and-out barrier moves the lower
-//! `s` boundary to the barrier (§2.6).
-//!
-//! The struct holds model and method state; the query `(s, k, r, q, τ)`
-//! travels as arguments with `r = r_d` and `q = r_f`, and the price is read
-//! off the grid by bilinear interpolation at `(s, v₀)`. The upper boundaries
-//! expand to at least twice the queried spot and initial variance.
-//!
-//! Reference: in 't Hout, K. J. & Foulon, S. (2010), *ADI finite difference
-//! schemes for option pricing in the Heston model with correlation*,
-//! International Journal of Numerical Analysis and Modeling 7(2), 303–320;
-//! arXiv:0811.3427.
+//! Reference: in 't Hout & Foulon (2010), Int. J. Numer. Anal. Model. 7, 303–320, arXiv:0811.3427
 
 mod grid;
 mod operators;
@@ -36,58 +17,51 @@ use self::grid::origin_centred_mesh;
 use self::grid::strike_centred_mesh;
 use self::operators::HestonCoefficients;
 use self::operators::Operators;
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Upper `v` boundary of the computational domain (`V = 5` in the paper).
+/// Upper `v` boundary, the paper's `V = 5`; the mesh reaches at least twice the initial variance.
 const VARIANCE_CAP: f64 = 5.0;
-/// Upper `s` boundary as a multiple of the strike (`S = 8K`).
+/// Upper `s` boundary as a multiple of the strike, the paper's `S = 8K`; at least twice the spot.
 const SPOT_CAP_STRIKES: f64 = 8.0;
 
-/// Heston ADI finite-difference pricer.
+/// Heston ADI finite-difference pricer; the query's `r` and `q` are the paper's `r_d` and `r_f`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonAdiPricer {
-  /// Initial variance `v₀`.
-  pub v0: f64,
-  /// Mean reversion `κ`.
-  pub kappa: f64,
-  /// Long-run variance (`η` in the paper).
-  pub theta: f64,
-  /// Volatility of variance `σ`.
-  pub sigma: f64,
-  /// Correlation `ρ`.
-  pub rho: f64,
-  /// Mesh intervals in `s`.
-  pub m1: usize,
-  /// Mesh intervals in `v`.
-  pub m2: usize,
-  /// Time steps.
-  pub steps: usize,
+  /// `theta` is the paper's long-run variance `η`.
+  params: HestonParams,
+  m1: usize,
+  m2: usize,
+  steps: usize,
   /// Splitting scheme.
   pub scheme: AdiScheme,
   /// Scheme parameter `θ`; `None` takes the scheme's recommended value.
   pub adi_theta: Option<f64>,
   /// Rannacher start-up damping.
   pub damping: bool,
-  /// Down-and-out barrier on the spot, if any.
-  pub barrier: Option<f64>,
+  barrier: Option<f64>,
 }
 
 impl HestonAdiPricer {
-  /// Pricer with the paper's default numerics: `m1 = 100`, `m2 = 50`,
-  /// 50 time steps, MCS at `θ = ⅓` with damping.
-  pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
+  /// In 't Hout & Foulon's mesh (`m1 = 100`, `m2 = 50`, 50 damped MCS steps at `θ = ⅓`); panics
+  /// unless `params` is valid with `kappa, theta > 0`. Their Feller assumption is not imposed.
+  pub fn new(params: HestonParams) -> Self {
+    let params = params.checked();
+    let HestonParams { kappa, theta, .. } = params;
     assert!(
-      v0 >= 0.0 && kappa > 0.0 && theta > 0.0 && sigma > 0.0,
-      "Heston parameters must be positive"
+      kappa > 0.0,
+      "kappa must satisfy `kappa > 0.0`, got kappa = {kappa:?}"
     );
-    assert!(rho.abs() <= 1.0, "rho must lie in [-1, 1]");
+    assert!(
+      theta > 0.0,
+      "theta must satisfy `theta > 0.0`, got theta = {theta:?}"
+    );
     Self {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
+      params,
       m1: 100,
       m2: 50,
       steps: 50,
@@ -98,11 +72,27 @@ impl HestonAdiPricer {
     }
   }
 
-  /// Mesh intervals and time steps.
+  pub fn params(&self) -> HestonParams {
+    self.params
+  }
+
+  /// Mesh intervals in `s` and in `v`, and time steps.
+  pub fn grid(&self) -> (usize, usize, usize) {
+    (self.m1, self.m2, self.steps)
+  }
+
+  /// The down-and-out barrier on the spot, if any.
+  pub fn barrier(&self) -> Option<f64> {
+    self.barrier
+  }
+
+  /// Mesh intervals and time steps; panics unless `m1 >= 4`, `m2 >= 4` and `steps >= 1`.
   pub fn with_grid(mut self, m1: usize, m2: usize, steps: usize) -> Self {
+    assert!(m1 >= 4, "m1 must satisfy `m1 >= 4`, got m1 = {m1}");
+    assert!(m2 >= 4, "m2 must satisfy `m2 >= 4`, got m2 = {m2}");
     assert!(
-      m1 >= 4 && m2 >= 4 && steps >= 1,
-      "grid needs at least four intervals per direction and one step"
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps}"
     );
     self.m1 = m1;
     self.m2 = m2;
@@ -128,10 +118,13 @@ impl HestonAdiPricer {
     self
   }
 
-  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B`
-  /// with `u(B, v, t) = 0` and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6).
+  /// Down-and-out barrier `B ∈ (0, K)`: the lower `s` boundary moves to `B` with `u(B, v, t) = 0`,
+  /// and `u(s, V, t) = (s − B) e^{−r_f t}` (§2.6); panics unless `B` is finite and positive.
   pub fn with_barrier(mut self, barrier: f64) -> Self {
-    assert!(barrier > 0.0, "barrier must be positive");
+    assert!(
+      barrier.is_finite() && barrier > 0.0,
+      "barrier must satisfy `barrier.is_finite() && barrier > 0.0`, got barrier = {barrier:?}"
+    );
     self.barrier = Some(barrier);
     self
   }
@@ -143,12 +136,17 @@ impl HestonAdiPricer {
       .unwrap_or_else(|| self.scheme.default_theta())
   }
 
-  /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`.
+  /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`; at `tau = 0` the
+  /// payoff, zero at or below a barrier, and NaN past expiry.
   fn solve_call(&self, s: f64, k: f64, r_d: f64, r_f: f64, tau: f64) -> f64 {
-    if !(s > 0.0 && k > 0.0 && tau > 0.0 && self.v0 >= 0.0)
-      || [s, k, tau, r_d, r_f, self.v0]
-        .iter()
-        .any(|v| !v.is_finite())
+    let p = self.params;
+    let alive = self.barrier.is_none_or(|barrier| s > barrier);
+    let call = || vanilla_payoff(OptionType::Call, if alive || s.is_nan() { s } else { k }, k);
+    if let Some(value) = expired(tau, &[r_d, r_f], call) {
+      return value;
+    }
+    if !(s > 0.0 && k > 0.0 && tau > 0.0 && p.v0 >= 0.0)
+      || [s, k, tau, r_d, r_f, p.v0].iter().any(|v| !v.is_finite())
     {
       return f64::NAN;
     }
@@ -157,7 +155,7 @@ impl HestonAdiPricer {
       return if s <= lower { 0.0 } else { f64::NAN };
     }
     let spot_cap = (SPOT_CAP_STRIKES * k).max(2.0 * s);
-    let variance_cap = VARIANCE_CAP.max(2.0 * self.v0);
+    let variance_cap = VARIANCE_CAP.max(2.0 * p.v0);
     if !spot_cap.is_finite() || !variance_cap.is_finite() {
       return f64::NAN;
     }
@@ -167,10 +165,10 @@ impl HestonAdiPricer {
       s_mesh,
       v_mesh,
       HestonCoefficients {
-        kappa: self.kappa,
-        eta: self.theta,
-        sigma: self.sigma,
-        rho: self.rho,
+        kappa: p.kappa,
+        eta: p.theta,
+        sigma: p.sigma,
+        rho: p.rho,
         r_d,
         r_f,
       },
@@ -190,7 +188,7 @@ impl HestonAdiPricer {
       tau,
       u0,
     );
-    ops.interpolate(&u, s, self.v0, (-r_f * tau).exp())
+    ops.interpolate(&u, s, p.v0, (-r_f * tau).exp())
   }
 }
 
@@ -199,9 +197,8 @@ impl ModelPricer for HestonAdiPricer {
     self.solve_call(s, k, r, q, tau)
   }
 
-  /// Vanilla puts come from European put-call parity, which is exact here
-  /// (carry `r − q`, European exercise); a down-and-out put has no parity
-  /// relation with the down-and-out call and returns `NaN`.
+  /// European put-call parity, exact at carry `r − q`; NaN with a barrier, as a down-and-out put
+  /// has no parity with the down-and-out call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if self.barrier.is_some() {
       return f64::NAN;
@@ -210,9 +207,8 @@ impl ModelPricer for HestonAdiPricer {
   }
 }
 
-/// A European vanilla call at the default forward without a barrier; with a
-/// barrier the instance prices a down-and-out call and reports `NaN`, case
-/// 2 of the failure convention.
+/// A European vanilla call on the default forward without a barrier; with one the instance prices a
+/// down-and-out call, so its forward is NaN.
 impl VanillaEuropeanCall for HestonAdiPricer {
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     if self.barrier.is_some() {

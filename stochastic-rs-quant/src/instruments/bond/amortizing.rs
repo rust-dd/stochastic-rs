@@ -1,3 +1,5 @@
+//! Fixed-rate amortizing bonds on an explicit outstanding-notional schedule.
+
 use chrono::NaiveDate;
 
 use super::shared::accrued_interest_for_deterministic_leg;
@@ -105,12 +107,13 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
     price_deterministic_leg_from_curve(&self.leg, valuation_date, discount_day_count, curves)
   }
 
-  /// Accrued interest at settlement.
+  /// Coupon accrued from the last coupon date to `settlement_date`.
   pub fn accrued_interest(&self, settlement_date: NaiveDate) -> T {
     accrued_interest_for_deterministic_leg(&self.leg, settlement_date)
   }
 
-  /// Full analytics implied by the current curve stack.
+  /// Analytics implied by the curve stack; the yield, durations and convexity are `NaN` when the
+  /// curve price is not positive and finite or no yield in the search bracket reproduces it.
   pub fn analytics_from_curve(
     &self,
     valuation_date: NaiveDate,
@@ -147,7 +150,8 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
     )
   }
 
-  /// Solve the Z-spread implied by a dirty market price.
+  /// Z-spread implied by a dirty market price; `NaN` when the price is not positive and finite or
+  /// no spread in the expanded search bracket reproduces it.
   pub fn z_spread_from_dirty_price(
     &self,
     valuation_date: NaiveDate,

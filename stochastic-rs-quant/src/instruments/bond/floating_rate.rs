@@ -1,3 +1,5 @@
+//! Floating-rate notes: a floating coupon leg plus redemption.
+
 use chrono::NaiveDate;
 
 use super::types::BondPrice;
@@ -14,7 +16,7 @@ use crate::traits::RealExt;
 pub struct FloatingRateBond<T: RealExt> {
   /// Face amount redeemed at maturity.
   pub face_value: T,
-  /// Floating index.
+  /// Index whose fixings set each coupon.
   pub index: FloatingIndex<T>,
   /// Quoted spread over the index.
   pub spread: T,

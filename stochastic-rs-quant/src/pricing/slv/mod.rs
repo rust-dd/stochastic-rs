@@ -1,25 +1,20 @@
-//! Heston Stochastic Local Volatility (SLV) model.
+//! Heston stochastic-local volatility: Heston with a leverage `L(S, t)` on the spot's diffusion.
 //!
 //! $$
 //! \frac{dS_t}{S_t} = (r-q)\,dt + L(S_t,t)\,\sqrt{V_t}\,dW_t^S,\qquad
 //! dV_t = \kappa(\theta-V_t)\,dt + \eta\sigma\sqrt{V_t}\,dW_t^V
 //! $$
 //!
-//! The leverage function $L(S,t)$ is calibrated so that the model
-//! reproduces the Dupire local-volatility surface:
+//! `L` is calibrated by Guyon–Henry-Labordère's particle method so the model reproduces Dupire's:
 //!
 //! $$
 //! L^2(K,t) = \frac{\sigma_{\text{LV}}^2(K,t)}{\mathbb{E}[V_t \mid S_t = K]}
 //! $$
 //!
-//! Calibration uses the Guyon–Labordère particle method with
-//! Nadaraya–Watson kernel regression for the conditional expectation.
-//!
-//! Reference: Guyon & Henry-Labordère, "Being particular about
-//! calibration", *Risk*, 2012.
-//! See also: arXiv 2208.09986 (Djete, McKean–Vlasov existence),
-//! arXiv 2406.14074 (Mustapha, strong well-posedness),
-//! arXiv 1701.06001 (Cozma et al., control-variate particle method).
+//! Reference: Guyon & Henry-Labordère (2012), Risk 25(1), 88–93
+//! Reference: Djete (2022), arXiv:2208.09986
+//! Reference: Mustapha (2024), arXiv:2406.14074
+//! Reference: Cozma et al. (2017), arXiv:1701.06001
 
 pub mod calibration;
 pub mod fokker_planck;
@@ -40,19 +35,12 @@ use stochastic_rs_distributions::traits::FloatExt;
 use stochastic_rs_distributions::traits::Fn2D;
 use stochastic_rs_distributions::traits::Grid2D;
 
+use crate::pricing::heston::HestonParams;
+
 /// Heston model parameters augmented with the SLV mixing factor.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonSlvParams {
-  /// Mean-reversion speed.
-  pub kappa: f64,
-  /// Long-run variance.
-  pub theta: f64,
-  /// Vol-of-vol of the base Heston model.
-  pub sigma: f64,
-  /// Spot–variance correlation.
-  pub rho: f64,
-  /// Initial variance.
-  pub v0: f64,
+  pub heston: HestonParams,
   /// Mixing factor in $\left[0,1\right]$. $\eta=0$: pure local vol,
   /// $\eta=1$: full stochastic vol.
   pub eta: f64,
@@ -61,66 +49,28 @@ pub struct HestonSlvParams {
 impl HestonSlvParams {
   /// Effective vol-of-vol after mixing: $\sigma_{\text{mix}} = \eta\,\sigma$.
   pub fn sigma_mixed(&self) -> f64 {
-    self.eta * self.sigma
+    self.eta * self.heston.sigma
   }
 }
 
-/// The calibrated leverage function $L(S,t)$ on a `(spot, time)` grid, read
-/// back by bilinear interpolation.
-///
-/// A newtype over [`Grid2D`] with the spot-first argument order the pricer
-/// speaks: the grid is indexed by **absolute spot**, not by moneyness, so
-/// the span it holds calibrated values for is exactly
-/// `spots[0] ..= spots[last]` — [`spot_range`](Self::spot_range) — out to
-/// the last calibrated maturity [`horizon`](Self::horizon).
-/// [`interpolate`](Self::interpolate) answers every query, in-grid or not,
-/// by holding the nearest edge value flat. [`covers`](Self::covers) is the
-/// separate statement of which of those answers carry calibrated
-/// information.
-///
-/// `From<LeverageSurface> for Fn2D` hands the same table to a process as
-/// its leverage coefficient — [`HestonSlv`] takes it that way — evaluated
-/// there in the `(t, S)` order every [`Fn2D`] uses.
-///
-/// [`HestonSlv`]: stochastic_rs_stochastic::volatility::heston_slv::HestonSlv
+/// Calibrated leverage `L(S, t)` on an absolute-spot × time [`Grid2D`], held flat past its edges
+/// ([`covers`](Self::covers) bounds the calibrated box); as an [`Fn2D`] it reads `(t, S)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LeverageSurface {
   grid: Grid2D<f64>,
 }
 
 impl LeverageSurface {
-  /// Build from pre-computed grid values. `values` has shape
-  /// `(times.len(), spots.len())`.
-  ///
-  /// # Panics
-  ///
-  /// When either axis is empty or not strictly ascending, or when `values`
-  /// has another shape — [`Grid2D::new`]'s own conditions.
+  /// Panics unless both axes are non-empty and strictly ascending and `values` has the shape
+  /// `(times.len(), spots.len())`, [`Grid2D::new`]'s conditions.
   pub fn new(spots: Array1<f64>, times: Array1<f64>, values: Array2<f64>) -> Self {
     Self {
       grid: Grid2D::new(times, spots, values),
     }
   }
 
-  /// Bilinear interpolation of $L(S,t)$, clamped at the grid boundary.
-  ///
-  /// "Clamped" is a **flat hold of the nearest edge**, not a linear
-  /// extrapolation and not a `NaN`: on a grid spanning `80 ..= 120` that
-  /// carries $L(120,t)=1.9$, this returns `1.9` at `S = 120.001`, at
-  /// `S = 500` and at `S = 1e9` alike, and does the same past `times[last]`
-  /// on the time axis. Two surfaces that agree on their edge columns are
-  /// therefore *bit-identical* everywhere past the edge, however far apart
-  /// their interiors are.
-  ///
-  /// That is the right behaviour here — [`calibrate_leverage`]'s particle
-  /// cloud legitimately wanders off its own eval grid and still has to be
-  /// given a leverage to move under, and the same hold is what carries the
-  /// first calibrated row back to `t = 0`. It is also why a *query* must not
-  /// rely on it: see [`covers`](Self::covers).
-  ///
-  /// A `NaN` coordinate is held to an edge value too rather than propagating,
-  /// which is the other reason [`covers`](Self::covers) tests the query
-  /// before this runs.
+  /// Bilinear `L(s, t)`, holding the nearest edge flat past the grid and at a `NaN` coordinate, as
+  /// the wandering particle cloud needs; a query checks [`covers`](Self::covers) first.
   pub fn interpolate(&self, s: f64, t: f64) -> f64 {
     self.grid.eval(t, s)
   }
@@ -156,25 +106,8 @@ impl LeverageSurface {
     self.grid.t_range().1
   }
 
-  /// Whether a `(spot, maturity)` query lands inside the box this surface
-  /// holds calibrated values for: [`spot_range`](Self::spot_range) inclusive,
-  /// and a maturity in $\left[0, \text{horizon}\right]$, also inclusive.
-  ///
-  /// The bound is the **grid's own extent**, not a tolerance around the `s0`
-  /// [`calibrate_leverage`] was run at. `s0` is not recorded on the surface
-  /// and does not need to be: what makes a query answerable is whether the
-  /// surface has a value at it, and a strike ladder run around the
-  /// calibration spot — the whole point of the type — never leaves the grid.
-  ///
-  /// The lower maturity bound is `0` rather than `times[0]` on purpose. The
-  /// first row *is* the $t = 0$ slice — [`calibrate_leverage`] sets it from
-  /// the initial variance — so holding it back to `t = 0` is the intended
-  /// reading of the grid. Holding the last row *forward* past the horizon is
-  /// not: nothing was calibrated there.
-  ///
-  /// A `NaN` in either coordinate compares false against both bounds and so
-  /// reports `false`, which is what keeps
-  /// [`interpolate`](Self::interpolate) from laundering it into an edge value.
+  /// Whether `(s, tau)` lies in [`spot_range`](Self::spot_range) by `[0, horizon]`, inclusive (the
+  /// first row is the `t = 0` slice); `false` at a `NaN` coordinate.
   pub fn covers(&self, s: f64, tau: f64) -> bool {
     let (lo, hi) = self.spot_range();
     s >= lo && s <= hi && tau >= 0.0 && tau <= self.horizon()
@@ -254,9 +187,8 @@ mod tests {
     assert!(s.interpolate(100.0, f64::NAN).is_finite());
   }
 
-  /// The measurement the pricer's `NaN` gate rests on: past the edge the
-  /// answer is a function of the boundary alone, so a surface's calibrated
-  /// interior contributes exactly nothing out there.
+  /// Past the edge the answer depends on the boundary alone, which the pricer's `NaN` gate rests
+  /// on.
   #[test]
   fn surfaces_that_agree_on_the_edge_are_bit_identical_past_it() {
     let spots = Array1::from_vec(vec![70.0, 100.0, 130.0]);

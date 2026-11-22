@@ -1,14 +1,7 @@
-//! The acceptance proof for the `RealExt` / `FloatExt` split: a scalar that
-//! implements **only** `RealExt` — no SIMD lanes, no RNG fills, so it could
-//! never implement `FloatExt` — flows through the generic analytic pricing
-//! path and reproduces `f64` bit-for-bit.
-//!
-//! `R64` is a plain delegating newtype over `f64`. Its point is what it does
-//! *not* implement: `SimdFloatExt` and `FloatExt` are absent, so every call
-//! below compiles only because the code under test is bounded on `RealExt`
-//! alone. An AAD dual number or a higher-precision scalar takes exactly this
-//! route in.
+//! A scalar with only `RealExt` (`R64`, a delegating newtype with no SIMD or RNG, so never
+//! `FloatExt`) flows through the generic analytic pricing path and reproduces `f64` bit for bit.
 
+use std::cell::Cell;
 use std::iter::Sum;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -30,11 +23,28 @@ use num_traits::Signed;
 use num_traits::ToPrimitive;
 use num_traits::Zero;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::calendar::Frequency;
+use stochastic_rs_quant::curves::BootstrapInstrument;
+use stochastic_rs_quant::curves::BootstrapSpec;
+use stochastic_rs_quant::curves::CurvePoint;
+use stochastic_rs_quant::curves::DiscountCurve;
+use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::bootstrap;
 use stochastic_rs_quant::lattice::equity::CrrModel;
 use stochastic_rs_quant::traits::RealExt;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 struct R64(f64);
+
+thread_local! {
+  /// Calls to `exp` and `ln` on this thread: a computation's cost, counted without a clock.
+  static TRANSCENDENTALS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn counted(x: f64) -> R64 {
+  TRANSCENDENTALS.with(|n| n.set(n.get() + 1));
+  R64(x)
+}
 
 macro_rules! delegate_binop {
   ($($trait_:ident :: $method:ident),* $(,)?) => {
@@ -182,9 +192,17 @@ impl Float for R64 {
   );
 
   delegate_unary!(
-    floor, ceil, round, trunc, fract, abs, signum, recip, sqrt, exp, exp2, ln, log2, log10, cbrt,
-    sin, cos, tan, asin, acos, atan, exp_m1, ln_1p, sinh, cosh, tanh, asinh, acosh, atanh,
+    floor, ceil, round, trunc, fract, abs, signum, recip, sqrt, exp2, log2, log10, cbrt, sin, cos,
+    tan, asin, acos, atan, exp_m1, ln_1p, sinh, cosh, tanh, asinh, acosh, atanh,
   );
+
+  fn exp(self) -> Self {
+    counted(self.0.exp())
+  }
+
+  fn ln(self) -> Self {
+    counted(self.0.ln())
+  }
 
   fn is_nan(self) -> bool {
     self.0.is_nan()
@@ -311,9 +329,8 @@ impl RealExt for R64 {
   }
 }
 
-/// The CRR binomial rollback is a genuine pricer that is generic over the
-/// scalar, so it is the door: if `R64` prices it, any `RealExt`-only scalar
-/// can. Delegation is exact, so the two runs must agree to the bit.
+/// The CRR rollback is generic over the scalar, so `R64` pricing it opens the door to any
+/// `RealExt`-only scalar; delegation is exact, so the runs agree to the bit.
 #[test]
 fn a_realext_only_scalar_prices_the_crr_lattice_bit_for_bit() {
   let queries = [
@@ -334,4 +351,112 @@ fn a_realext_only_scalar_prices_the_crr_lattice_bit_for_bit() {
     );
     assert!(via_f64 > 0.0, "degenerate query, price = {via_f64}");
   }
+}
+
+/// The `market` bench's seven quotes at their day-count year fractions; the swaps pay past the
+/// last pillar.
+fn bench_ladder<T: RealExt>() -> Vec<BootstrapInstrument<T>> {
+  let c = T::from_f64_fast;
+  let swap = |days: f64, rate: f64| BootstrapInstrument::Swap {
+    maturity: c(days / 365.0),
+    rate: c(rate),
+    frequency: Frequency::SemiAnnual,
+  };
+  vec![
+    BootstrapInstrument::Deposit {
+      maturity: c(31.0 / 360.0),
+      rate: c(0.03),
+    },
+    BootstrapInstrument::Fra {
+      start: c(31.0 / 360.0),
+      end: c(181.0 / 360.0),
+      rate: c(0.032),
+    },
+    BootstrapInstrument::Fra {
+      start: c(181.0 / 360.0),
+      end: c(365.0 / 360.0),
+      rate: c(0.035),
+    },
+    swap(730.0, 0.038),
+    swap(1826.0, 0.04),
+    swap(3652.0, 0.042),
+    swap(10957.0, 0.043),
+  ]
+}
+
+fn assert_same_pillars(via_f64: &DiscountCurve<f64>, via_r64: &DiscountCurve<R64>) {
+  for (a, b) in via_f64.points().iter().zip(via_r64.points()) {
+    assert!(
+      a.discount_factor.to_bits() == b.discount_factor.0.to_bits(),
+      "t = {}: {} vs {}",
+      a.time,
+      a.discount_factor,
+      b.discount_factor.0
+    );
+  }
+}
+
+/// `f64`'s curve bit for bit, its four gapped swaps solved in a few reads of their payments past
+/// the last pillar: 439 calls to `exp` and `ln` in all.
+#[test]
+fn a_realext_only_scalar_bootstraps_the_bench_ladder_in_a_few_hundred_exp_and_ln_calls() {
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let via_f64 = bootstrap(BootstrapSpec::new(&bench_ladder::<f64>(), method)).unwrap();
+  TRANSCENDENTALS.with(|n| n.set(0));
+  let via_r64 = bootstrap(BootstrapSpec::new(&bench_ladder::<R64>(), method)).unwrap();
+  let calls = TRANSCENDENTALS.with(Cell::get);
+  assert_same_pillars(&via_f64, &via_r64);
+  assert!(calls <= 500, "{calls} calls to exp and ln");
+}
+
+/// A 3M forecast curve 50 bp over a flat 2 % OIS curve, a few trial curves per swap: 870 calls to
+/// `exp` and `ln` in all.
+#[test]
+fn a_realext_only_scalar_bootstraps_a_forecast_curve_in_a_few_trial_curves_per_swap() {
+  fn ois<T: RealExt>() -> DiscountCurve<T> {
+    let points = [0.25, 1.0, 5.0, 10.0]
+      .map(|t: f64| CurvePoint {
+        time: T::from_f64_fast(t),
+        discount_factor: T::from_f64_fast((-0.02 * t).exp()),
+      })
+      .to_vec();
+    DiscountCurve::new(points, InterpolationMethod::LogLinearOnDiscountFactors)
+  }
+  fn quotes<T: RealExt>() -> Vec<BootstrapInstrument<T>> {
+    let (c, ois, tenor) = (
+      T::from_f64_fast,
+      |t: f64| (-0.02 * t).exp(),
+      |t: f64| (-0.025 * t).exp(),
+    );
+    let mut quotes = vec![BootstrapInstrument::Deposit {
+      maturity: c(0.25),
+      rate: c((1.0 / tenor(0.25) - 1.0) / 0.25),
+    }];
+    for years in [1_usize, 2, 3, 5] {
+      let float: Vec<f64> = (1..=4 * years).map(|i| 0.25 * i as f64).collect();
+      let (mut floating, mut prev) = (0.0, 0.0);
+      for &t in &float {
+        floating += ois(t) * (tenor(prev) / tenor(t) - 1.0);
+        prev = t;
+      }
+      let annuity: f64 = (1..=years).map(|i| ois(i as f64)).sum();
+      quotes.push(BootstrapInstrument::SwapWithSchedule {
+        rate: c(floating / annuity),
+        fixed_times: (1..=years).map(|i| c(i as f64)).collect(),
+        float_times: float.into_iter().map(c).collect(),
+      });
+    }
+    quotes
+  }
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let (ois_f64, ois_r64) = (ois::<f64>(), ois::<R64>());
+  let (f64_quotes, r64_quotes) = (quotes::<f64>(), quotes::<R64>());
+  let via_f64 =
+    bootstrap(BootstrapSpec::new(&f64_quotes, method).discounting_with(&ois_f64)).unwrap();
+  TRANSCENDENTALS.with(|n| n.set(0));
+  let via_r64 =
+    bootstrap(BootstrapSpec::new(&r64_quotes, method).discounting_with(&ois_r64)).unwrap();
+  let calls = TRANSCENDENTALS.with(Cell::get);
+  assert_same_pillars(&via_f64, &via_r64);
+  assert!(calls <= 1000, "{calls} calls to exp and ln");
 }

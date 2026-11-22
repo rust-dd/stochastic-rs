@@ -1,32 +1,25 @@
-//! The pure-jump processes, against the characteristic and Laplace
-//! transforms their source papers state.
-//!
-//! A transform is the right statistic here for two reasons. It is bounded,
-//! so the sample's own spread is a standard error even where the process has
-//! no finite mean — an α-stable subordinator has none, and no moment test
-//! can reach it. And it is the *whole* law rather than a summary: a
-//! parameterisation off by a factor moves `φ(u)` at every `u`, where a mean
-//! and a variance can both be right by accident.
-//!
-//! Each case sets `t` to `n − 1` so one grid step is one unit of time, which
-//! is where the published formulas are written, and pools every increment of
-//! every path — a Lévy process has independent increments, so those are that
-//! many draws of the same law.
+//! The pure-jump processes against their sources' characteristic and Laplace transforms, which
+//! are bounded and state the whole law. `t = n − 1` makes a grid step one unit of time.
 
 use ndarray::Array1;
 use num_complex::Complex64;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
-use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
+use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::characteristic_function_holds;
+use super::common::holds_on_one_of;
 use super::common::increments;
+use super::common::over_paths;
+use super::common::spread_over_paths;
+use super::common::terminals;
 use super::common::transform_holds;
 
 /// Grid points per path. One more than the unit steps each path contributes.
@@ -41,9 +34,8 @@ fn unit_horizon() -> f64 {
   (STEPS - 1) as f64
 }
 
-/// The frequencies every characteristic function is checked at. Small enough
-/// that `φ` has not decayed into its own standard error, spread enough that a
-/// wrong exponent cannot agree at all of them.
+/// The frequencies every characteristic function is checked at: small enough that `φ` has not
+/// decayed into its standard error, spread enough that a wrong exponent cannot agree at all.
 const FREQUENCIES: [f64; 4] = [0.3, 0.7, 1.5, 2.5];
 
 /// Variance gamma: `φ(u) = (1 − iuθν + σ²νu²/2)^{−t/ν}`, Brownian motion
@@ -68,10 +60,9 @@ fn variance_gamma_matches_the_madan_carr_chang_transform() {
   }
 }
 
-/// Normal inverse Gaussian: `φ(u) = exp((t/κ)(1 − √(1 − 2iuθκ + σ²u²κ)))`,
-/// Brownian motion with drift `θ` under an inverse-Gaussian clock
-/// (Barndorff-Nielsen 1997, §3, in the `(θ, σ, κ)` parameterisation this
-/// crate's constructor takes).
+/// Normal inverse Gaussian, `φ(u) = exp((t/κ)(1 − √(1 − 2iuθκ + σ²u²κ)))`: Brownian motion with
+/// drift `θ` under an inverse-Gaussian clock, in the constructor's `(θ, σ, κ)` parameters.
+/// Reference: Barndorff-Nielsen & Shephard (2002), Theory Probab. Math. Statist. 65, 1–20
 #[test]
 fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
   let (theta, sigma, kappa) = (0.15, 0.5, 0.4);
@@ -96,10 +87,9 @@ fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
   }
 }
 
-/// Bilateral gamma: the difference of two independent gamma subordinators,
-/// so `φ(u) = (1 − iu/λ₊)^{−α₊t}(1 + iu/λ₋)^{−α₋t}` (Küchler & Tappe 2008,
-/// §2). The two shoulders are deliberately unequal here — a symmetric choice
-/// would let a sign error in the negative leg pass.
+/// Bilateral gamma, the difference of two gamma subordinators:
+/// `φ(u) = (1 − iu/λ₊)^{−α₊t}(1 + iu/λ₋)^{−α₋t}`. Unequal sides, so a sign error cannot pass.
+/// Reference: Küchler & Tappe (2008), §2, DOI 10.1016/j.spa.2007.04.006
 #[test]
 fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
   let (alpha_p, lambda_p, alpha_m, lambda_m) = (1.2, 3.0, 0.8, 5.0);
@@ -122,15 +112,40 @@ fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
   }
 }
 
-/// The inverse-Gaussian subordinator, through the transform that suits a
-/// positive law: `E[e^{−uX_t}] = exp(γt(1 − √(1 + 2u)))`, the
-/// inverse-Gaussian moment generating function at `IG(γt, (γt)²)`
-/// (Chhikara & Folks 1989, §2.2, the shape this crate's `Ig` fixes).
+/// The standard RDTS of Kim, Rachev, Bianchi & Fabozzi (2010): mean 0 by the drift, variance 1
+/// by the scale `C`. At `α < 1` the terms past 256 shift both by under a tenth of a standard error.
+#[test]
+fn rapidly_decreasing_tempered_stable_has_the_standard_mean_and_variance() {
+  for (alpha, lambda_plus, lambda_minus) in [(0.5, 2.0, 3.0), (0.3, 1.5, 4.0)] {
+    let x1 = [2718, 999, 42].map(|seed| {
+      let rdts = Rdts::<f64, _>::new(
+        lambda_plus,
+        lambda_minus,
+        alpha,
+        2,
+        256,
+        None,
+        None,
+        Deterministic::new(seed),
+      );
+      terminals(&rdts.sample_par(4_096))
+    });
+    let at = format!("RDTS at α = {alpha}, λ = ({lambda_plus}, {lambda_minus})");
+    let means = x1.each_ref().map(|x| over_paths(x));
+    holds_on_one_of(&means, 0.0, &format!("{at}: mean"));
+    let variances = x1.each_ref().map(|x| spread_over_paths(x));
+    holds_on_one_of(&variances, 1.0, &format!("{at}: variance"));
+  }
+}
+
+/// `E[e^{−uX_t}] = exp(δt(1 − √(1 + 2u)))`, the Laplace transform of `IG(δt, (δt)²)`, the law at
+/// `gamma = 1` (Chhikara & Folks 1989, §2.2).
 #[test]
 fn inverse_gaussian_subordinator_matches_its_laplace_transform() {
-  let gamma = 1.4;
-  let paths = Ig::<f64, _>::new(
-    gamma,
+  let delta = 1.4;
+  let paths = IgSubordinator::<f64, _>::new(
+    delta,
+    1.0,
     STEPS,
     None,
     Some(unit_horizon()),
@@ -146,7 +161,7 @@ fn inverse_gaussian_subordinator_matches_its_laplace_transform() {
     transform_holds(
       &sample,
       |x| (-u * x).exp(),
-      (gamma * (1.0 - (1.0 + 2.0 * u).sqrt())).exp(),
+      (delta * (1.0 - (1.0 + 2.0 * u).sqrt())).exp(),
       &format!("inverse Gaussian subordinator at u = {u}"),
     );
   }
@@ -177,12 +192,10 @@ fn gamma_subordinator_matches_its_laplace_transform() {
   }
 }
 
-/// The α-stable subordinator, whose Laplace exponent `φ(λ) = cλ^α` *is* its
-/// definition: `E[e^{−uX_t}] = exp(−ctu^α)` (Bertoin 1996, §III.1). At
-/// `α = 0.7` the law has no finite mean, so a transform is not merely the
-/// sharper statistic — it is the only one with a standard error at all, and
-/// the sampler's own positive-stable draw (Chambers, Mallows & Stuck 1976)
-/// is what it checks.
+/// The α-stable subordinator, `E[e^{−uX_t}] = exp(−ctu^α)`. At `α = 0.7` it has no finite mean,
+/// so only a transform has a standard error; this checks the sampler's positive-stable draw.
+/// Reference: Bertoin (1996), §III.1
+/// Reference: Chambers, Mallows & Stuck (1976), DOI 10.1080/01621459.1976.10480344
 #[test]
 fn alpha_stable_subordinator_matches_its_laplace_exponent() {
   let (alpha, c) = (0.7, 0.8);
@@ -210,10 +223,9 @@ fn alpha_stable_subordinator_matches_its_laplace_exponent() {
   }
 }
 
-/// The Poisson subordinator: a unit step counts `Poisson(λ)` events, so the
-/// mean and the variance are both `λ`, the probability of an empty step is
-/// `e^{−λ}`, and the characteristic function is `exp(λ(e^{iu} − 1))`
-/// (Cont & Tankov 2004, §3.1).
+/// The Poisson subordinator: a unit step counts `Poisson(λ)` events, so mean and variance are
+/// `λ`, an empty step has probability `e^{−λ}`, and `φ(u) = exp(λ(e^{iu} − 1))`.
+/// Reference: Cont & Tankov (2004), §3.1, DOI 10.1201/9780203485217
 #[test]
 fn poisson_subordinator_counts_match_the_poisson_law() {
   let lambda = 2.3;
@@ -277,8 +289,9 @@ fn every_levy_path_stays_in_the_reals() {
       .sample(),
     ),
     (
-      "Ig",
-      Ig::<f64, _>::new(1.0, 1_024, Some(2.0), None, Deterministic::new(7)).sample(),
+      "IgSubordinator",
+      IgSubordinator::<f64, _>::new(1.0, 1.0, 1_024, Some(2.0), None, Deterministic::new(7))
+        .sample(),
     ),
     (
       "GammaSubordinator",

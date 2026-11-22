@@ -7,14 +7,16 @@ description: How to add a neural-network volatility surrogate to stochastic-rs-a
 
 `stochastic-rs-ai` hosts neural-network surrogates for stochastic-vol
 models — calibration-time replacements for expensive Heston / rBergomi
-pricers. The crate is feature-gated upstream (`--features ai` on the
-umbrella).
+pricers. The crate is experimental, outside the stability promise, and
+feature-gated upstream (`--features ai` on the umbrella).
 
 The whole crate is small and worth reading end to end before adding a
 surrogate: `stochastic-rs-ai/src/volatility/` is four reusable modules
 under `common/` plus **three** thin model wrappers (`heston.rs`,
 `one_factor.rs`, `rbergomi.rs`). A new surrogate is a fourth wrapper —
-you almost certainly write no new network code at all.
+you almost certainly write no new network code at all. The strike-maturity
+grid is `volatility/grid.rs`; a wrapper's `OUTPUT_DIM` is `grid::LEN` and it
+exports `STRIKES`, which it hands to the spec with `grid::MATURITIES`.
 
 ## 1. Architecture: one shared engine, thin per-model wrappers
 
@@ -22,12 +24,15 @@ you almost certainly write no new network code at all.
 volatility/common/
   spec.rs      StochVolModelSpec, TrainConfig, TrainReport, EpochMetrics
   model.rs     StochVolNn            <- the engine; everything goes through it
+  init.rs      seed_weights          <- pub(super); candle-nn's init laws from a seed
   network.rs   FeedForwardNet        <- pub(super); you do not touch this
   scaler.rs    BoundedScaler, StandardScaler   <- pub(super)
   dataset.rs   load_trainset_gzip_npy, rmse_1d
   metadata.rs  save/load metadata serialisation
   plot.rs      write_surface_fit_plot_html     <- #[cfg(feature = "viz")]
+volatility/grid.rs     MONEYNESS, MATURITIES, LEN (shared grid)
 volatility/heston.rs | one_factor.rs | rbergomi.rs   <- the wrappers
+stochastic-rs-ai/tests/  real_trainsets.rs, saved_model_compat.rs, reproducible_training.rs, data/ (fixtures; excluded from the package)
 ```
 
 `FeedForwardNet` is `pub(super)` and fixed: **3 hidden ELU layers of
@@ -46,33 +51,33 @@ There is no `StochVolMLP` type. The engine is `StochVolNn`.
 #[derive(Clone, Debug)]
 pub struct StochVolModelSpec {
   pub model_id: String,      // "heston", "rbergomi", … — checked on load
-  pub input_dim: usize,      // number of model parameters
-  pub output_dim: usize,     // flat surface length = n_maturities × n_strikes
   pub hidden_dim: usize,     // uniform width of all 3 hidden layers
-  pub param_lb: Vec<f32>,    // per-parameter lower bounds, len == input_dim
-  pub param_ub: Vec<f32>,    // per-parameter upper bounds, len == input_dim
+  pub param_lb: Vec<f32>,    // per-parameter lower bounds; len = input_dim()
+  pub param_ub: Vec<f32>,    // per-parameter upper bounds, same length
+  pub strikes: Vec<f64>,     // K / S0 in the network's column order
+  pub maturities: Vec<f64>,  // years, strictly ascending
 }
 
 impl StochVolModelSpec {
   pub fn new(
     model_id: impl Into<String>,
-    input_dim: usize, output_dim: usize, hidden_dim: usize,
-    param_lb: Vec<f32>, param_ub: Vec<f32>,
+    hidden_dim: usize, param_lb: Vec<f32>, param_ub: Vec<f32>,
+    strikes: Vec<f64>, maturities: Vec<f64>,
   ) -> Result<Self>    // anyhow::Result — bails, does NOT panic
+  pub fn input_dim(&self) -> usize   // param_lb.len()
+  pub fn output_dim(&self) -> usize  // strikes.len() * maturities.len()
 }
 ```
 
-Everything is `f32`, not `f64`. There are no `param_names`, no `k_grid`,
-no `t_grid` fields: the spec knows only how many parameters go in and
-how many numbers come out. The strike / maturity grid is supplied by the
-**caller** at `predict_implied_vol_surface` time, and keeping the two
-consistent is the caller's job — the spec cannot check it for you
-beyond `output_dim == n_k × n_t`.
+The bounds are `f32`, the grid `f64`. The spec carries the grid, so
+`input_dim()` and `output_dim()` are derived and the spec cannot disagree
+with itself; there are no `param_names` fields.
 
-`new` returns `Result` and `bail!`s on: any zero dimension, a
-`param_lb` / `param_ub` length that does not match `input_dim`, a
-non-finite bound, or `param_ub[i] <= param_lb[i]`. Propagate the
-`Result`; do not `unwrap` it in a wrapper's constructor.
+`new` returns `Result` and `bail!`s on: a zero `hidden_dim`, empty or
+unequal bounds, a non-finite bound, `param_ub[i] <= param_lb[i]`, an empty,
+non-positive or repeated strike, or empty, non-positive or non-ascending
+maturities. Propagate the `Result`; do not `unwrap` it in a wrapper's
+constructor.
 
 ## 3. The wrapper pattern
 
@@ -82,26 +87,28 @@ Copy `heston.rs`. A wrapper is public constants + a newtype over
 ```rust
 pub const MODEL_ID: &str = "heston";
 pub const INPUT_DIM: usize = 5;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
+// The Heston set is indexed by S0 / K; the Bergomi sets take `grid::MONEYNESS` as is.
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS);
 
 pub struct HestonNn {
   inner: StochVolNn,
 }
 
 impl HestonNn {
-  pub fn new(device: &Device) -> Result<Self> {
-    Self::with_hidden(device, DEFAULT_HIDDEN_DIM)
+  pub fn new(device: &Device, seed: u64) -> Result<Self> {
+    Self::with_hidden(device, DEFAULT_HIDDEN_DIM, seed)
   }
 
-  pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
+  pub fn with_hidden(device: &Device, hidden_dim: usize, seed: u64) -> Result<Self> {
     let spec = StochVolModelSpec::new(
-      MODEL_ID, INPUT_DIM, OUTPUT_DIM, hidden_dim,
-      PARAM_LB.to_vec(), PARAM_UB.to_vec(),
+      MODEL_ID, hidden_dim, PARAM_LB.to_vec(), PARAM_UB.to_vec(),
+      STRIKES.to_vec(), grid::MATURITIES.to_vec(),
     )?;
-    Ok(Self { inner: StochVolNn::new(spec, device)? })
+    Ok(Self { inner: StochVolNn::new(spec, device, seed)? })
   }
 
   pub fn train(&mut self, params: &Array2<f32>, surfaces: &Array2<f32>,
@@ -117,18 +124,20 @@ impl HestonNn {
     self.inner.save(dir)
   }
 
-  /// Note the arity: the wrapper supplies `MODEL_ID` itself, so callers
-  /// pass only `(dir, device)`. The engine's own `load` takes the
-  /// expected id first.
+  /// Loads a saved model; unlike the engine's `load`, this supplies `MODEL_ID` itself.
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self { inner: StochVolNn::load(MODEL_ID, dir, device)? })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 ```
 
 Also delegate `predict_surfaces(&Array2<f32>)` and — behind
 `#[cfg(feature = "quant")]` — `predict_implied_vol_surface`, both
-taking `&[f32; INPUT_DIM]` on the wrapper.
+taking `&[f32; INPUT_DIM]` on the wrapper. Under the same gate, implement
+`crate::calibration::SurrogateModel` (`fn nn(&self) -> &StochVolNn { &self.inner }`)
+as the three wrappers do: it is the bound `SurrogateCalibrator` takes.
 
 Exporting `INPUT_DIM` / `OUTPUT_DIM` / `PARAM_LB` / `PARAM_UB` as `pub
 const` is the convention — downstream code sizes its arrays off them,
@@ -185,18 +194,22 @@ you, and the BoundedScaler will silently scale the wrong parameter by
 the wrong bounds. Pin the generator's column order in the wrapper's
 module doc.
 
+The shipped sets are upstream copies in `stochastic-rs-ai/tests/data` (MIT).
+The Heston set is indexed by inverse moneyness `S0 / K`, not `K / S0`. A new
+set must state its strike axis and be pinned against a pricer, the way
+`heston_set_is_the_fourier_surface_on_inverse_strikes` pins Heston.
+
 ## 6. Prediction and the `ImpliedVolSurface` bridge
 
 Two methods, and the second is feature-gated:
 
 ```rust
-// always available — flat Vec<f32> of length spec.output_dim
+// always available — flat Vec<f32> of length spec.output_dim()
 pub fn predict_surface(&self, params: &[f32]) -> Result<Vec<f32>>
 
 // #[cfg(feature = "quant")] on stochastic-rs-ai
 pub fn predict_implied_vol_surface(
-  &self, params: &[f32],
-  strikes: Vec<f64>, maturities: Vec<f64>, forwards: Vec<f64>,
+  &self, params: &[f32], spot: f64, forwards: &[f64],
 ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface>
 ```
 
@@ -205,11 +218,11 @@ for a batch.
 
 **Layout.** The flat prediction is `(N_T, N_K)` row-major —
 **maturity-major, strike-minor**. `predict_implied_vol_surface` checks
-`forwards.len() == maturities.len()` and `spec.output_dim == n_k × n_t`,
-then reshapes. A transpose bug here silently rotates the surface and the
-calibrator fits the wrong vol; the shape check catches a *wrong count*,
-not a *wrong order*, so verify the order on a deliberately non-square
-grid.
+`forwards.len() == spec.maturities.len()`, takes the strikes as
+`spec.strikes[k] * spot`, sorts them ascending and permutes the columns
+along. A transpose bug here silently rotates the surface and the
+calibrator fits the wrong vol, so verify the order on a deliberately
+non-square grid with a shuffled strike axis.
 
 The `quant` feature on `stochastic-rs-ai` is a bridge feature
 (`quant = ["dep:stochastic-rs-quant"]`) and the umbrella's `ai` feature
@@ -234,13 +247,17 @@ engine's `load` takes the **expected `model_id` first** and `bail!`s if
 the metadata disagrees — that is the guard against loading a Heston
 checkpoint into an rBergomi wrapper, and it is why each wrapper hard-codes
 its own `MODEL_ID` at the call site instead of exposing the argument.
+Format 2 metadata carries the grid (`strikes=`, `maturities=`) and a
+`version`; `load` reads only the current format and errors on any other.
+A wrapper's `load` then calls `spec().ensure_grid(&STRIKES, &grid::MATURITIES)`
+so a directory with a foreign grid is rejected.
 
 ## 8. Mandatory test: `train_save_load_roundtrip`
 
 All three existing wrappers carry a test of exactly this name; yours
 must too. The shape (see `heston.rs`'s test module):
 
-1. Build the model on `Device::Cpu` (`HestonNn::new(&device)?`).
+1. Build the model on `Device::Cpu` (`HestonNn::new(&device, 7)?`); two trainings with one seed agree on the CPU.
 2. Generate a small synthetic set with
    `synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, samples, OUTPUT_DIM, seed)`
    — `pub(crate)`, re-exported only under `#[cfg(test)]`, which is
@@ -267,16 +284,20 @@ rather than relying on the default.
 `#[cfg(feature = "viz")]` and writes HTML — never `.show()`. Use it to
 eyeball training-target IV against surrogate prediction. If the wings
 diverge, the training set is too small or the network too narrow
-(`hidden_dim` is your only architectural dial).
+(`hidden_dim` is your only architectural dial). The helper is covered by unit
+tests in `plot.rs`.
 
 ## 10. Anti-patterns
 
 - **Do not** `unwrap()` `StochVolModelSpec::new`. It returns
   `anyhow::Result` and bails; propagate it.
-- **Do not** reach for `f64`. The whole crate is `f32` end to end; the
-  loader casts down at the boundary on purpose.
-- **Do not** invent spec fields (`param_names`, `k_grid`, `t_grid`).
-  The grid travels as arguments to `predict_implied_vol_surface`.
+- **Do not** reach for `f64` in the network or the parameter bounds. They
+  are `f32`; the loader casts down at the boundary on purpose. Only the
+  grid (`strikes`, `maturities`) is `f64`.
+- **Do not** invent spec fields (`param_names`).
+- **Do not** pass a grid to `predict_implied_vol_surface`. It reads
+  `spec.strikes` and `spec.maturities`; the caller gives the spot and the
+  forwards.
 - **Do not** pass a file path to `save` / `load`. They take a directory.
 - **Do not** assume strike-major flattening. It is maturity-major.
 - **Do not** ship a surrogate without `train_save_load_roundtrip`.
@@ -296,5 +317,6 @@ diverge, the training set is too small or the network too narrow
 - `add-fractional-process` — the data-generating process behind an
   rBergomi-class training set.
 - `feature-flag-management` — `ai` / `quant` / `viz` propagation.
-- `python-bindings` — AI bindings are **not** shipped (deferred past
-  2.x); there is no `PyHestonNn`.
+- `python-bindings` — the ai classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
+  `calibrate_surrogate`) live in `stochastic-rs-ai/src/python.rs` behind the
+  py crate's `ai` feature; the published wheels leave them out.

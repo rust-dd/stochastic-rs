@@ -1,10 +1,8 @@
-//! # Portfolio Optimizers
+//! Long-only and long-short portfolio allocation optimizers on a penalised objective:
 //!
 //! $$
 //! \min_{\mathbf{w}} \ \mathcal{L}(\mathbf{w}) + \lambda(\mu_p-r^\*)^2
 //! $$
-//!
-//! Collection of long-only and long-short allocation optimizers.
 
 use std::convert::Infallible;
 
@@ -25,7 +23,7 @@ pub(super) fn run_nelder_mead<P>(
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
-  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance).0
+  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance, false).best
 }
 
 pub use cvar::empirical_cvar;
@@ -43,16 +41,8 @@ use crate::portfolio::types::OptimizerMethod;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
-/// Configuration for portfolio optimizer entry points.
-///
-/// `periods_per_year`: annualization factor for returns (252 = trading days,
-/// 252 = daily; 52 = weekly; 12 = monthly; 365 = calendar daily; 24*365 = hourly).
-/// Default 252.
-///
-/// `lambda`: target-return penalty coefficient in mean-variance / mean-CVaR
-/// objectives (`min Var + λ·(R − R*)²`). Default 10. Higher values pull the
-/// portfolio toward `target_return` more aggressively; lower values let the
-/// risk term dominate.
+/// Optimizer configuration: `periods_per_year` annualises returns (default 252; 52 weekly, 12
+/// monthly, 365 calendar, 8760 hourly), `lambda` (default 10) weights the target term `λ(R − R*)²`.
 #[derive(Clone, Debug)]
 pub struct OptimizerConfig {
   pub periods_per_year: f64,
@@ -68,12 +58,8 @@ impl Default for OptimizerConfig {
   }
 }
 
-/// Dispatch to selected optimizer with common configuration inputs.
-///
-/// `config` controls annualization (`periods_per_year`, default 252) and the
-/// target-return penalty coefficient (`lambda`, default 10) for mean-variance
-/// / mean-CVaR objectives. Pass `&OptimizerConfig::default()` to keep the
-/// rc.0/rc.1 behaviour, or tune for non-daily frequency portfolios.
+/// Runs the selected optimizer; `config` sets annualization (`periods_per_year`, default 252) and
+/// the mean-variance / mean-CVaR target-return penalty `lambda` (default 10).
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],
@@ -98,7 +84,7 @@ pub fn optimize_with_method(
         optimize_markowitz(mu, cov, target_return, risk_free, config.lambda)
       }
     }
-    OptimizerMethod::MeanCVaR => {
+    OptimizerMethod::MeanCvar => {
       if let Some(rets) = aligned_returns {
         if allow_short {
           optimize_mean_cvar_long_short(mu, rets, target_return, risk_free, cvar_alpha, config)
@@ -113,7 +99,7 @@ pub fn optimize_with_method(
     }
     OptimizerMethod::InverseVol => optimize_inverse_vol(mu, cov, risk_free),
     OptimizerMethod::RiskParity => optimize_risk_parity(mu, cov, risk_free),
-    OptimizerMethod::HRP => {
+    OptimizerMethod::Hrp => {
       let corr_mat: Vec<Vec<f64>> = corr.map(|x| x.to_vec()).unwrap_or_else(|| {
         let n = cov.len();
         let mut m = ndarray::Array2::<f64>::zeros((n, n));

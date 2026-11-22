@@ -1,27 +1,27 @@
-//! CGMYSV Monte Carlo pricers for European, American, Asian, and Barrier options.
+//! CGMYSV Monte Carlo pricers: European, American by Longstaff–Schwartz, arithmetic Asian and
+//! discretely monitored barrier, as Kim (2021) §4.1–§4.3.
 //!
-//! - **European**: discounted terminal payoff (Section 4.1)
-//! - **American**: Longstaff–Schwartz LSM with basis $\{1,S,S^2,\sigma,\sigma^2,\sigma S\}$ (Section 4.2)
-//! - **Asian**: arithmetic average payoff (Section 4.3)
-//! - **Barrier**: knock-in / knock-out with discrete monitoring (Section 4.3)
-//!
-//! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Section 4.
+//! Reference: Kim (2021), arXiv:2101.11001, §4
 
 use ndarray::Array1;
 use ndarray::Array2;
-use rayon::prelude::*;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::model::CgmysvParams;
 use crate::OptionType;
-use crate::mc::McEstimate;
 use crate::pricing::barrier::BarrierType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::off_domain;
+use crate::pricing::mc_stats::pathless;
 use crate::traits::ProcessExt;
 
 /// Monte Carlo pricer for the CGMYSV model.
 #[derive(Debug, Clone)]
-pub struct CgmysvPricer {
+pub struct CgmysvPricer<S: SeedExt = Unseeded> {
   /// CGMYSV model parameters.
   pub params: CgmysvParams,
   /// Spot price.
@@ -36,9 +36,24 @@ pub struct CgmysvPricer {
   pub n_steps: usize,
   /// Truncation terms for the jump series ($J$).
   pub n_jumps: usize,
+  /// Each call samples from a clone, so a `Deterministic` seed replays.
+  pub seed: S,
 }
 
-impl CgmysvPricer {
+impl<S: SeedExt> CgmysvPricer<S> {
+  pub fn with_seed<S2: SeedExt>(self, seed: S2) -> CgmysvPricer<S2> {
+    CgmysvPricer {
+      params: self.params,
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      n_paths: self.n_paths,
+      n_steps: self.n_steps,
+      n_jumps: self.n_jumps,
+      seed,
+    }
+  }
+
   /// Generate risk-neutral price paths $S_{n,m}$ and variance paths $v_{n,m}$.
   ///
   /// $S_{n,m} = S_0\exp\!\bigl((r-q)\,t_m + L_{n,m} - \omega(t_m)\bigr)$
@@ -57,15 +72,12 @@ impl CgmysvPricer {
       n,
       self.n_jumps,
       Some(p.rho * p.v0),
-      Some(p.v0),
+      p.v0,
       Some(tau),
-      Unseeded,
+      self.seed.clone(),
     );
 
-    let results: Vec<[ndarray::Array1<f64>; 2]> = (0..self.n_paths)
-      .into_par_iter()
-      .map(|_| process.sample())
-      .collect();
+    let results = process.sample_par(self.n_paths);
 
     let dt = tau / self.n_steps as f64;
     let mut omega = vec![0.0_f64; n];
@@ -87,8 +99,21 @@ impl CgmysvPricer {
     (s_paths, v_paths)
   }
 
-  /// Price a European option via Monte Carlo (Section 4.1).
+  /// The estimate off the simulation: `payoff` at `tau = 0`; NaN past expiry, for a NaN query and,
+  /// before expiry, for a non-finite one or a spot or strike that is not positive.
+  fn off_paths(&self, k: f64, tau: f64, payoff: impl FnOnce() -> f64) -> Option<McEstimate<f64>> {
+    let finite = [self.s, k, self.r, self.q].iter().all(|x| x.is_finite());
+    let off = || !finite || off_domain(&[self.s, k], &[self.r, self.q], tau);
+    let value = expired(tau, &[self.r, self.q], payoff).or_else(|| off().then_some(f64::NAN));
+    value.map(pathless)
+  }
+
+  /// Price a European option via Monte Carlo (Section 4.1); its payoff at `tau = 0`, NaN for a
+  /// NaN query or, before expiry, a spot or strike that is not positive, as the three below.
   pub fn price_european(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
+      return expired;
+    }
     let (s_paths, _) = self.generate_price_paths(tau);
     self.european_on_paths(&s_paths, k, tau, option_type)
   }
@@ -104,21 +129,19 @@ impl CgmysvPricer {
     let payoffs: Vec<f64> = (0..self.n_paths)
       .map(|i| {
         let s_t = s_paths[[i, self.n_steps]];
-        match option_type {
-          OptionType::Call => (s_t - k).max(0.0),
-          OptionType::Put => (k - s_t).max(0.0),
-        }
+        vanilla_payoff(option_type, s_t, k)
       })
       .collect();
 
     mc_stats(&payoffs, discount)
   }
 
-  /// Price an American option via LSM (Section 4.2).
-  ///
-  /// Uses the regression basis $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$
-  /// following Rachev et al. (2011), Chapter 15.
+  /// An American option by Longstaff–Schwartz (§4.2) on Rachev et al.'s (2011, Ch. 15) basis
+  /// $\{1,\,S_t,\,S_t^2,\,\sigma_t,\,\sigma_t^2,\,\sigma_t S_t\}$.
   pub fn price_american(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
+      return expired;
+    }
     let (s_paths, v_paths) = self.generate_price_paths(tau);
     self.american_on_paths(&s_paths, &v_paths, k, tau, option_type)
   }
@@ -133,10 +156,7 @@ impl CgmysvPricer {
   ) -> McEstimate<f64> {
     let dt = tau / self.n_steps as f64;
 
-    let payoff = |s: f64| match option_type {
-      OptionType::Call => (s - k).max(0.0),
-      OptionType::Put => (k - s).max(0.0),
-    };
+    let payoff = |s: f64| vanilla_payoff(option_type, s, k);
 
     let n = self.n_paths;
     let mut cf = vec![0.0_f64; n];
@@ -184,7 +204,9 @@ impl CgmysvPricer {
 
       let x_mat = Array2::from_shape_vec((n_itm, n_basis), x_data)
         .expect("design matrix holds n_itm * n_basis entries");
-      let Some(beta) = crate::linalg::lstsq_svd(&x_mat, &Array1::from_vec(y_vec), 1e-10) else {
+      let Some(beta) =
+        crate::linalg::lstsq_svd(x_mat.view(), Array1::from_vec(y_vec).view(), 1e-10)
+      else {
         continue;
       };
 
@@ -214,8 +236,12 @@ impl CgmysvPricer {
     }
   }
 
-  /// Price an Asian option (arithmetic average) via Monte Carlo (Section 4.3).
+  /// Price an Asian option (arithmetic average) via Monte Carlo (Section 4.3); at `tau = 0` the
+  /// payoff on the spot.
   pub fn price_asian(&self, k: f64, tau: f64, option_type: OptionType) -> McEstimate<f64> {
+    if let Some(expired) = self.off_paths(k, tau, || vanilla_payoff(option_type, self.s, k)) {
+      return expired;
+    }
     let (s_paths, _) = self.generate_price_paths(tau);
     let discount = (-self.r * tau).exp();
 
@@ -223,17 +249,15 @@ impl CgmysvPricer {
       .map(|i| {
         let avg: f64 =
           (1..=self.n_steps).map(|m| s_paths[[i, m]]).sum::<f64>() / self.n_steps as f64;
-        match option_type {
-          OptionType::Call => (avg - k).max(0.0),
-          OptionType::Put => (k - avg).max(0.0),
-        }
+        vanilla_payoff(option_type, avg, k)
       })
       .collect();
 
     mc_stats(&payoffs, discount)
   }
 
-  /// Price a barrier option via Monte Carlo (Section 4.3).
+  /// Price a barrier option via Monte Carlo (Section 4.3); at `tau = 0` the payoff of an option
+  /// the spot leaves alive.
   pub fn price_barrier(
     &self,
     k: f64,
@@ -242,6 +266,24 @@ impl CgmysvPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
   ) -> McEstimate<f64> {
+    let knocked = match barrier_type {
+      BarrierType::DownAndOut | BarrierType::DownAndIn => self.s <= barrier,
+      BarrierType::UpAndOut | BarrierType::UpAndIn => self.s >= barrier,
+    };
+    let knock_in = matches!(barrier_type, BarrierType::DownAndIn | BarrierType::UpAndIn);
+    let at_expiry = || {
+      if barrier.is_nan() || self.s.is_nan() || k.is_nan() {
+        return f64::NAN;
+      }
+      let payoff = vanilla_payoff(option_type, self.s, k);
+      if knocked == knock_in { payoff } else { 0.0 }
+    };
+    if let Some(expired) = self.off_paths(k, tau, at_expiry) {
+      return expired;
+    }
+    if barrier.is_nan() {
+      return pathless(f64::NAN);
+    }
     let (s_paths, _) = self.generate_price_paths(tau);
     let discount = (-self.r * tau).exp();
 
@@ -273,10 +315,7 @@ impl CgmysvPricer {
 
         if alive {
           let s_t = s_paths[[i, self.n_steps]];
-          match option_type {
-            OptionType::Call => (s_t - k).max(0.0),
-            OptionType::Put => (k - s_t).max(0.0),
-          }
+          vanilla_payoff(option_type, s_t, k)
         } else {
           0.0
         }
@@ -329,21 +368,16 @@ mod tests {
       n_paths,
       n_steps: 100,
       n_jumps: 1024,
+      seed: Unseeded,
     }
   }
 
-  /// Table 4 reference: Lewis call ≈ 19.66 (paper FFT = 19.659).
-  /// Maturity literals (`28.0 / 365.0`, `25.0 / 365.0`) below are the
-  /// published S&P 500 option maturities from Carr-Geman-Madan-Yor &
-  /// Schoutens (CGMYSV) Tables 4-6 reproduced verbatim — keeping them as
-  /// inline literals avoids hiding the paper's calibration days behind a
-  /// helper.
+  /// Table 4: Lewis's call against the paper's FFT `19.659` at `K = 2500`; the maturities are
+  /// Tables 4–6's S&P 500 days, kept as literals.
   #[test]
   fn table4_lewis_call() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let call = LewisPricer::price_call(&model, 2488.11, 2500.0, 0.01213, 0.01884, 28.0 / 365.0);
     println!("Table 4 — European call (K=2500, T=28d)");
@@ -412,11 +446,8 @@ mod tests {
     );
   }
 
-  /// American put ≥ European put (early exercise premium).
-  ///
-  /// Uses common random numbers: both prices computed on the same path set
-  /// so the comparison is dominated by the LSM exercise policy quality
-  /// rather than cross-method MC noise.
+  /// American put ≥ European put on common random numbers, so the gap is the LSM policy's, not
+  /// cross-method noise.
   #[test]
   fn american_put_geq_european() {
     let pricer = paper_pricer(3000);
@@ -434,22 +465,19 @@ mod tests {
     assert!(am.mean > 0.0, "American put positive: {am}");
   }
 
-  /// φ(0) = 1, φ(-i) = exp((r-q)T).
+  /// φ(0) = 1 and, the chf being drift-free, φ(-i) = E[e^X] = 1.
   #[test]
   fn chf_sanity() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let tau = 28.0 / 365.0;
     let phi0 = model.chf(tau, num_complex::Complex64::new(0.0, 0.0));
     let phi_ni = model.chf(tau, num_complex::Complex64::new(0.0, -1.0));
-    let expected = ((0.01213 - 0.01884) * tau).exp();
     println!("ChF sanity");
     println!("  φ(0)  = {:.10} (expected 1.0)", phi0.norm());
-    println!("  φ(-i) = {:.10} (expected {expected:.10})", phi_ni.re);
+    println!("  φ(-i) = {:.10} (expected 1.0)", phi_ni.re);
     assert!((phi0.norm() - 1.0).abs() < 1e-10, "φ(0) = {phi0}");
-    assert!((phi_ni.re - expected).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
+    assert!((phi_ni.re - 1.0).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
   }
 }

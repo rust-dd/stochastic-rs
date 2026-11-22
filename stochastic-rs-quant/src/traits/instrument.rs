@@ -1,32 +1,23 @@
-//! Instrument / PricingEngine decouple — the split of a payoff
-//! (`Instrument`) from the model+market+method that values it
-//! (`PricingEngine`).
-//!
-//! The pair is deliberately small: two instruments
-//! ([`crate::instruments::equity::EuropeanOption`],
-//! [`crate::instruments::equity::DigitalOption`]) and two engines, three
-//! engine×instrument pairings in all. Its role is cross-engine validation —
-//! price the same contract under Black-Scholes and under Heston and compare
-//! — not a third pricing layer: the crate's two load-bearing layers are
-//! [`crate::traits::ModelPricer`] (model struct + spot/strike query) and the
-//! curve-valued instruments. The four traits here are reachable via
-//! `traits::*` and are deliberately not in the umbrella prelude.
+//! A payoff (`Instrument`) apart from the model, market and method that value it (`PricingEngine`):
+//! two instruments and two engines, a cross-engine check rather than a third pricing layer.
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::calendar::Maturity;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
-//! use stochastic_rs_quant::pricing::engines::{AnalyticBSEngine, AnalyticHestonEngine, HestonStaticParams};
+//! use stochastic_rs_quant::pricing::engines::{AnalyticBsEngine, AnalyticHestonEngine};
+//! use stochastic_rs_quant::pricing::heston::HestonParams;
 //! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
-//! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-//! let bs  = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+//! let opt = EuropeanOption::new(100.0, OptionType::Call, Maturity::Tau(1.0));
+//! let bs  = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r   = bs.calculate(&opt);
 //! if let Some(g) = r.greeks() {
 //!     println!("NPV = {}, Δ = {}", r.npv(), g.delta);
 //! }
 //!
 //! // Swap engines without touching the instrument:
-//! let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.6);
+//! let params = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
 //! let heston = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
 //! let r2 = heston.calculate(&opt);
 //! assert!(r2.npv() > 0.0);
@@ -34,12 +25,8 @@
 
 use super::pricing::Greeks;
 
-/// A financial contract.
-///
-/// Implementors describe **what** is being priced — payoff, strike, maturity,
-/// barriers, currency of settlement. They do **not** carry a model, market
-/// data, or numerical method. Pair with a [`PricingEngine`] to obtain a
-/// price.
+/// A financial contract, what is priced (payoff, strike, maturity, barriers, settlement currency),
+/// with no model, market data or method; a [`PricingEngine`] prices it.
 pub trait Instrument {
   /// Short, human-readable kind for diagnostics. Default `"Instrument"`.
   fn instrument_kind(&self) -> &'static str {
@@ -47,17 +34,8 @@ pub trait Instrument {
   }
 }
 
-/// A `(model, market, method)` triple that prices an [`Instrument`].
-///
-/// Engines own the dynamic state (spot, vol, rates, calibrated parameters,
-/// MC seed, …) and hold reactive market data through
-/// [`crate::market::Handle`] so price updates automatically follow market
-/// updates. The `Instrument` is borrowed read-only.
-///
-/// `PricingEngine<I>` is generic in the instrument type to support
-/// engine families that price several payoffs from the same trait
-/// implementation (e.g. an `AnalyticBSEngine` impl for both
-/// `EuropeanOption` and `DigitalOption`).
+/// A `(model, market, method)` triple pricing a borrowed [`Instrument`] off market handles; generic
+/// in `I` so one engine prices several payoffs (`AnalyticBsEngine`: European and digital).
 pub trait PricingEngine<I: ?Sized> {
   /// Output container — must report at least an NPV.
   type Result: PricingResult;
@@ -66,12 +44,8 @@ pub trait PricingEngine<I: ?Sized> {
   fn calculate(&self, instrument: &I) -> Self::Result;
 }
 
-/// Output of a pricing engine.
-///
-/// `npv()` is the only required field. Engines that compute Greeks or
-/// MC error estimates expose them via [`greeks`](Self::greeks) and
-/// [`error_estimate`](Self::error_estimate); analytical engines that
-/// don't compute MC error return `None`.
+/// A pricing engine's output: `npv()` always, [`greeks`](Self::greeks) and
+/// [`error_estimate`](Self::error_estimate) when the engine computes them, else `None`.
 pub trait PricingResult {
   /// Net present value.
   fn npv(&self) -> f64;
@@ -88,11 +62,8 @@ pub trait PricingResult {
   }
 }
 
-/// Convenience extension: call `instrument.npv(&engine)` directly.
-///
-/// Blanket-implemented for every [`Instrument`]. Equivalent to
-/// `engine.calculate(&instrument).npv()` but reads naturally at call sites
-/// where the user thinks "price this instrument with this engine".
+/// `instrument.npv(&engine)`, that is `engine.calculate(&instrument).npv()`, for every
+/// [`Instrument`].
 pub trait InstrumentExt: Instrument {
   /// Net present value via `engine`.
   fn npv<E: PricingEngine<Self>>(&self, engine: &E) -> f64
@@ -113,11 +84,8 @@ pub trait InstrumentExt: Instrument {
 
 impl<I: Instrument + ?Sized> InstrumentExt for I {}
 
-/// Bundle holding NPV plus optional Greeks and error estimate.
-///
-/// The default [`PricingResult`] payload — most engines populate this and
-/// return it. Closed-form engines fill `npv` and `greeks`; Monte Carlo
-/// engines populate `error_estimate` as well.
+/// The default [`PricingResult`]: closed-form engines fill `npv` and `greeks`, Monte Carlo engines
+/// `error_estimate` as well.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StandardResult {
   pub npv: f64,

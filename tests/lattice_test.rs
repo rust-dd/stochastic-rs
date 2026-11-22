@@ -1,9 +1,10 @@
-//! Comparison tests for the lattice framework.
-//!
-//! Binomial pricing is verified against Black-Scholes. Short-rate trees are
-//! checked against analytic Gaussian-model bond prices or deterministic limits.
+//! Comparison tests for the lattice framework: binomial pricing against Black-Scholes, short-rate
+//! trees against analytic Gaussian-model bond prices or deterministic limits.
 
 use ndarray::Array1;
+use stochastic_rs::quant::calibration::BlackKarasinskiParams;
+use stochastic_rs::quant::calibration::G2ppParams;
+use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::lattice::BinomialTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTreeModel;
@@ -11,8 +12,8 @@ use stochastic_rs::quant::lattice::G2ppTree;
 use stochastic_rs::quant::lattice::G2ppTreeModel;
 use stochastic_rs::quant::lattice::HullWhiteTree;
 use stochastic_rs::quant::lattice::HullWhiteTreeModel;
-use stochastic_rs::quant::pricing::BSMCoc;
-use stochastic_rs::quant::pricing::BSMPricer;
+use stochastic_rs::quant::pricing::BsmCoc;
+use stochastic_rs::quant::pricing::BsmPricer;
 use stochastic_rs::traits::ModelPricer;
 
 fn approx(a: f64, b: f64, tol: f64) {
@@ -47,7 +48,7 @@ fn crr_binomial_tree_matches_black_scholes_call() {
   );
   let lattice_price = tree.backward_induct(terminal, |_level, _node, _state| (-r * dt).exp());
 
-  let bsm = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(s0, k, r, 0.0, tau);
+  let bsm = BsmPricer::new(sigma, BsmCoc::Merton1973).price_call(s0, k, r, 0.0, tau);
 
   approx(lattice_price, bsm, 2e-2);
 }
@@ -59,7 +60,16 @@ fn hull_white_tree_matches_vasicek_zero_coupon_formula() {
   let theta: f64 = 0.05;
   let sigma: f64 = 0.02;
   let maturity: f64 = 5.0;
-  let tree = HullWhiteTree::new(HullWhiteTreeModel::new(r0, a, theta, sigma), maturity, 400);
+  let tree = HullWhiteTree::new(
+    HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: a,
+      sigma,
+      initial_rate: r0,
+      theta,
+    }),
+    maturity,
+    400,
+  );
 
   let lattice_price = tree.zero_coupon_bond_price();
   let b = (1.0 - (-a * maturity).exp()) / a;
@@ -68,7 +78,8 @@ fn hull_white_tree_matches_vasicek_zero_coupon_formula() {
     .exp();
   let reference = a_term * (-b * r0).exp();
 
-  approx(lattice_price, reference, 6e-3);
+  // The tree discounts at each step's start, a first-order error: `+8.3e-5` at 400 steps.
+  approx(lattice_price, reference, 1e-4);
 }
 
 #[test]
@@ -79,7 +90,12 @@ fn black_karasinski_tree_matches_low_vol_deterministic_limit() {
   let sigma: f64 = 1e-6;
   let maturity: f64 = 3.0;
   let tree = BlackKarasinskiTree::new(
-    BlackKarasinskiTreeModel::new(r0, mean_reversion, long_run_rate, sigma),
+    BlackKarasinskiTreeModel::new(BlackKarasinskiParams {
+      mean_reversion,
+      sigma,
+      initial_rate: r0,
+      long_run_rate,
+    }),
     maturity,
     240,
   );
@@ -88,23 +104,36 @@ fn black_karasinski_tree_matches_low_vol_deterministic_limit() {
 
   let theta_log = long_run_rate.ln();
   let x0 = r0.ln();
+  let log_rate = |t: f64| theta_log + (x0 - theta_log) * (-mean_reversion * t).exp();
   let n = 20_000;
   let dt = maturity / n as f64;
-  let mut integral = 0.0;
-  for i in 0..n {
-    let t = (i as f64 + 0.5) * dt;
-    let x_t = theta_log + (x0 - theta_log) * (-mean_reversion * t).exp();
-    integral += x_t.exp() * dt;
-  }
-  let reference = (-integral).exp();
-
-  approx(lattice_price, reference, 3e-3);
+  let integral = (0..n)
+    .map(|i| log_rate((i as f64 + 0.5) * dt).exp() * dt)
+    .sum::<f64>();
+  approx(lattice_price, (-integral).exp(), 1e-4);
+  // Each level sits on the log-rate's exact mean, so at σ → 0 the tree is that mean's left sum.
+  let step = maturity / 240.0;
+  let left = (0..240)
+    .map(|i| log_rate(i as f64 * step).exp() * step)
+    .sum::<f64>();
+  approx(lattice_price, (-left).exp(), 1e-12);
 }
 
 #[test]
 fn g2pp_tree_matches_independent_factor_reference_when_rho_zero() {
   let maturity = 4.0;
-  let model = G2ppTreeModel::new(0.01, 0.015, 0.005, 0.4, 0.8, 0.02, 0.015, 0.0);
+  let model = G2ppTreeModel::new(
+    0.01,
+    0.015,
+    G2ppParams {
+      mean_reversion_x: 0.4,
+      mean_reversion_y: 0.8,
+      sigma_x: 0.02,
+      sigma_y: 0.015,
+      rho: 0.0,
+      phi: 0.005,
+    },
+  );
   let tree = G2ppTree::new(model.clone(), maturity, 240);
   let lattice_price = tree.zero_coupon_bond_price();
 
@@ -124,7 +153,7 @@ fn g2pp_tree_matches_independent_factor_reference_when_rho_zero() {
   );
   let reference = (-model.phi * maturity).exp() * ref_x * ref_y;
 
-  approx(lattice_price, reference, 8e-3);
+  approx(lattice_price, reference, 2.5e-4);
 }
 
 fn vasicek_bond_price(r0: f64, theta: f64, a: f64, sigma: f64, maturity: f64) -> f64 {

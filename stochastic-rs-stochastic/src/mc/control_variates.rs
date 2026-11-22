@@ -1,40 +1,45 @@
-//! # Control Variates
+//! Control variates: a payoff corrected by a control of known mean on the same normal draws.
 //!
 //! $$
 //! W = Y + c^*\bigl(V - \mathbb{E}\[V\]\bigr),\quad
 //! c^* = -\frac{\operatorname{Cov}(Y,V)}{\operatorname{Var}(V)}
 //! $$
 //!
-//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §4.1.
-//! DOI: 10.1007/978-0-387-21617-1
+//! Reference: Glasserman (2003), Springer, §4.1, DOI 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::McEstimate;
+use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
-/// Single control-variate MC estimate.
-///
-/// `payoff(z)` is the quantity to estimate. `control(z)` is a correlated
-/// quantity whose expectation `control_mean` is known analytically.
-/// The optimal coefficient `c*` is estimated from the sample.
-pub fn estimate<T, F, G>(
+/// `payoff` corrected by a `control` of known mean `control_mean` on the same normals from `seed`;
+/// `c*` comes from the same sample, an `O(1/n)` bias.
+pub fn estimate<T, F, G, S>(
   n_paths: usize,
   dim: usize,
   payoff: F,
   control: G,
   control_mean: T,
+  seed: &S,
 ) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T,
   G: Fn(&Array1<T>) -> T,
+  S: SeedExt,
 {
   let mut ys = Array1::<T>::zeros(n_paths);
   let mut vs = Array1::<T>::zeros(n_paths);
 
+  let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
+  let mut z = Array1::<T>::zeros(dim);
   for i in 0..n_paths {
-    let z = T::normal_array(dim, T::zero(), T::one());
+    normal.fill_slice(z.as_slice_mut().expect("contiguous"));
     ys[i] = payoff(&z);
     vs[i] = control(&z);
   }
@@ -63,19 +68,14 @@ where
 
   // Adjusted estimator: W_i = Y_i + c*(V_i − E[V])
   let adjusted = &ys + &(&vs - control_mean) * c_star;
-  let adj_mean = adjusted.sum() / n;
-  let adj_var = adjusted.mapv(|x| (x - adj_mean) * (x - adj_mean)).sum() / n;
-  let std_err = (adj_var / n).sqrt();
 
-  McEstimate {
-    mean: adj_mean,
-    std_err,
-    n_samples: n_paths,
-  }
+  estimate_from_samples(adjusted)
 }
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   /// Use Z² (known mean = 1) as control variate for E[exp(Z)] = e^{1/2}.
@@ -87,7 +87,14 @@ mod tests {
     let control = |z: &Array1<f64>| z[0] * z[0];
     let control_mean = 1.0;
 
-    let cv = estimate(n, dim, payoff, control, control_mean);
+    let cv = estimate(
+      n,
+      dim,
+      payoff,
+      control,
+      control_mean,
+      &Deterministic::new(3),
+    );
     let expected = (0.5_f64).exp();
 
     assert!(

@@ -1,19 +1,25 @@
+use pyo3::exceptions::PyTypeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use super::parse_option_type;
+use crate::pricing::fourier::FourierModelExt;
+use crate::pricing::fourier::HkdeParams;
+use crate::pricing::fourier::SvjParams;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 #[pyclass(name = "BSMFourier", unsendable)]
-pub struct PyBSMFourier {
-  pub inner: crate::pricing::fourier::BSMFourier,
+pub struct PyBsmFourier {
+  pub inner: crate::pricing::fourier::BsmFourier,
 }
 
 #[pymethods]
-impl PyBSMFourier {
+impl PyBsmFourier {
   #[new]
-  fn new(sigma: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+  fn new(sigma: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::BSMFourier { sigma, r, q },
+      inner: crate::pricing::fourier::BsmFourier { sigma },
     })
   }
 
@@ -30,25 +36,15 @@ pub struct PyHestonFourier {
 #[pymethods]
 impl PyHestonFourier {
   #[new]
-  fn new(
-    v0: f64,
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    rho: f64,
-    r: f64,
-    q: f64,
-  ) -> pyo3::PyResult<Self> {
+  fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::HestonFourier {
+      inner: crate::pricing::fourier::HestonFourier::new(HestonParams {
         v0,
         kappa,
         theta,
         sigma,
         rho,
-        r,
-        q,
-      },
+      }),
     })
   }
 
@@ -65,15 +61,9 @@ pub struct PyVarianceGammaFourier {
 #[pymethods]
 impl PyVarianceGammaFourier {
   #[new]
-  fn new(sigma: f64, theta: f64, nu: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+  fn new(sigma: f64, theta: f64, nu: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::VarianceGammaFourier {
-        sigma,
-        theta,
-        nu,
-        r,
-        q,
-      },
+      inner: crate::pricing::fourier::VarianceGammaFourier { sigma, theta, nu },
     })
   }
 
@@ -83,16 +73,16 @@ impl PyVarianceGammaFourier {
 }
 
 #[pyclass(name = "CGMYFourier", unsendable)]
-pub struct PyCGMYFourier {
-  pub inner: crate::pricing::fourier::CGMYFourier,
+pub struct PyCgmyFourier {
+  pub inner: crate::pricing::fourier::CgmyFourier,
 }
 
 #[pymethods]
-impl PyCGMYFourier {
+impl PyCgmyFourier {
   #[new]
-  fn new(c: f64, g: f64, m: f64, y: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+  fn new(c: f64, g: f64, m: f64, y: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::CGMYFourier { c, g, m, y, r, q },
+      inner: crate::pricing::fourier::CgmyFourier { c, g, m, y },
     })
   }
 
@@ -102,22 +92,20 @@ impl PyCGMYFourier {
 }
 
 #[pyclass(name = "MertonJDFourier", unsendable)]
-pub struct PyMertonJDFourier {
-  pub inner: crate::pricing::fourier::MertonJDFourier,
+pub struct PyMertonJdFourier {
+  pub inner: crate::pricing::fourier::MertonJdFourier,
 }
 
 #[pymethods]
-impl PyMertonJDFourier {
+impl PyMertonJdFourier {
   #[new]
-  fn new(sigma: f64, lambda: f64, mu_j: f64, sigma_j: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+  fn new(sigma: f64, lambda: f64, mu_j: f64, sigma_j: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::MertonJDFourier {
+      inner: crate::pricing::fourier::MertonJdFourier {
         sigma,
         lambda,
         mu_j,
         sigma_j,
-        r,
-        q,
       },
     })
   }
@@ -135,15 +123,7 @@ pub struct PyKouFourier {
 #[pymethods]
 impl PyKouFourier {
   #[new]
-  fn new(
-    sigma: f64,
-    lambda: f64,
-    p_up: f64,
-    eta1: f64,
-    eta2: f64,
-    r: f64,
-    q: f64,
-  ) -> pyo3::PyResult<Self> {
+  fn new(sigma: f64, lambda: f64, p_up: f64, eta1: f64, eta2: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::KouFourier {
         sigma,
@@ -151,8 +131,6 @@ impl PyKouFourier {
         p_up,
         eta1,
         eta2,
-        r,
-        q,
       },
     })
   }
@@ -179,22 +157,18 @@ impl PyBatesFourier {
     lambda: f64,
     mu_j: f64,
     sigma_j: f64,
-    r: f64,
-    q: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::BatesFourier {
+      inner: crate::pricing::fourier::BatesFourier::new(SvjParams {
         v0,
         kappa,
         theta,
-        sigma_v,
+        sigma: sigma_v,
         rho,
         lambda,
         mu_j,
         sigma_j,
-        r,
-        q,
-      },
+      }),
     })
   }
 
@@ -218,48 +192,55 @@ impl PyCarrMadanPricer {
     })
   }
 
-  /// Price a Heston call.
-  ///
-  /// **Out-of-grid strikes return `nan`** (changed from `0.0` in v2.0.0-rc.1).
-  /// Detect via `math.isnan()` and either widen the FFT grid (larger `n`) or
-  /// pre-check the strike with `strike_in_grid_heston(...)`.
-  fn price_heston_call(&self, model: &PyHestonFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
-    self.inner.price_call(&model.inner, s, k, r, tau)
+  /// Heston call price; `nan` for a strike outside the FFT grid (widen it with a larger `n`, or
+  /// test the strike with `strike_in_grid_heston`).
+  fn price_heston_call(
+    &self,
+    model: &PyHestonFourier,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> f64 {
+    self.inner.price_call(&model.inner, s, k, r, q, tau)
   }
 
   /// Price a Bates call. See `price_heston_call` for the NaN convention.
-  fn price_bates_call(&self, model: &PyBatesFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
-    self.inner.price_call(&model.inner, s, k, r, tau)
+  fn price_bates_call(
+    &self,
+    model: &PyBatesFourier,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> f64 {
+    self.inner.price_call(&model.inner, s, k, r, q, tau)
   }
 
   /// Price a Kou call. See `price_heston_call` for the NaN convention.
-  fn price_kou_call(&self, model: &PyKouFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
-    self.inner.price_call(&model.inner, s, k, r, tau)
+  fn price_kou_call(&self, model: &PyKouFourier, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    self.inner.price_call(&model.inner, s, k, r, q, tau)
   }
 
-  /// Returns true iff strike `k` is within the FFT log-strike grid for the
-  /// supplied Heston model and market state. Use to detect / widen the grid
-  /// before calling `price_heston_call` rather than handling NaN downstream.
+  /// Whether `k` lies in the FFT log-strike grid for this Heston model and market, to widen the
+  /// grid before `price_heston_call` instead of meeting `NaN`.
   fn strike_in_grid_heston(
     &self,
     model: &PyHestonFourier,
     s: f64,
     k: f64,
     r: f64,
+    q: f64,
     tau: f64,
   ) -> bool {
-    self.inner.strike_in_grid(&model.inner, s, k, r, tau)
+    self.inner.strike_in_grid(&model.inner, s, k, r, q, tau)
   }
 }
 
-/// NIG (Normal Inverse Gaussian) Lévy model for Fourier pricing.
-///
-/// Parameters:
-/// - `alpha > 0`: tail heaviness
-/// - `beta`: skewness, must satisfy `|beta| < alpha`
-/// - `delta > 0`: scale
-/// - `r`: risk-free rate
-/// - `q`: dividend yield (default 0)
+/// NIG (Normal Inverse Gaussian) Lévy model for Fourier pricing: tail heaviness `alpha > 0`,
+/// skewness `|beta| < alpha` and scale `delta > 0`.
 #[pyclass(name = "NigFourier", from_py_object, unsendable)]
 #[derive(Clone)]
 pub struct PyNigFourier {
@@ -269,8 +250,7 @@ pub struct PyNigFourier {
 #[pymethods]
 impl PyNigFourier {
   #[new]
-  #[pyo3(signature = (alpha, beta, delta, r, q=0.0))]
-  fn new(alpha: f64, beta: f64, delta: f64, r: f64, q: f64) -> PyResult<Self> {
+  fn new(alpha: f64, beta: f64, delta: f64) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       if alpha <= 0.0 {
         return Err(PyValueError::new_err("alpha must be > 0"));
@@ -282,13 +262,7 @@ impl PyNigFourier {
         return Err(PyValueError::new_err("delta must be > 0"));
       }
       Ok(Self {
-        inner: crate::pricing::fourier::NigFourier {
-          alpha,
-          beta,
-          delta,
-          r,
-          q,
-        },
+        inner: crate::pricing::fourier::NigFourier { alpha, beta, delta },
       })
     })?
   }
@@ -313,24 +287,24 @@ impl PyDoubleHestonFourier {
     theta2: f64,
     sigma2: f64,
     rho2: f64,
-    r: f64,
-    q: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::DoubleHestonFourier {
-        v1_0,
-        kappa1,
-        theta1,
-        sigma1,
-        rho1,
-        v2_0,
-        kappa2,
-        theta2,
-        sigma2,
-        rho2,
-        r,
-        q,
-      },
+      inner: crate::pricing::fourier::DoubleHestonFourier::new(
+        HestonParams {
+          v0: v1_0,
+          kappa: kappa1,
+          theta: theta1,
+          sigma: sigma1,
+          rho: rho1,
+        },
+        HestonParams {
+          v0: v2_0,
+          kappa: kappa2,
+          theta: theta2,
+          sigma: sigma2,
+          rho: rho2,
+        },
+      ),
     })
   }
 
@@ -340,12 +314,12 @@ impl PyDoubleHestonFourier {
 }
 
 #[pyclass(name = "HKDEFourier", unsendable)]
-pub struct PyHKDEFourier {
-  pub inner: crate::pricing::fourier::HKDEFourier,
+pub struct PyHkdeFourier {
+  pub inner: crate::pricing::fourier::HkdeFourier,
 }
 
 #[pymethods]
-impl PyHKDEFourier {
+impl PyHkdeFourier {
   #[new]
   fn new(
     v0: f64,
@@ -353,31 +327,132 @@ impl PyHKDEFourier {
     theta: f64,
     sigma_v: f64,
     rho: f64,
-    r: f64,
-    q: f64,
     lam: f64,
     p_up: f64,
     eta1: f64,
     eta2: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::HKDEFourier {
+      inner: crate::pricing::fourier::HkdeFourier::new(HkdeParams {
         v0,
         kappa,
         theta,
-        sigma_v,
+        sigma: sigma_v,
         rho,
-        r,
-        q,
-        lam,
+        lambda: lam,
         p_up,
         eta1,
         eta2,
-      },
+      }),
     })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
+  }
+}
+
+fn fourier_model(model: &Bound<'_, PyAny>) -> PyResult<Box<dyn FourierModelExt>> {
+  macro_rules! model_of {
+    ($($wrapper:ty),+ $(,)?) => {{
+      $(
+        if let Ok(wrapper) = model.extract::<PyRef<'_, $wrapper>>() {
+          return Ok(Box::new(wrapper.inner.clone()));
+        }
+      )+
+      [$(<$wrapper as pyo3::PyClass>::NAME),+]
+    }};
+  }
+  let names = model_of!(
+    PyBsmFourier,
+    PyHestonFourier,
+    PyDoubleHestonFourier,
+    PyBatesFourier,
+    PyHkdeFourier,
+    PyVarianceGammaFourier,
+    PyCgmyFourier,
+    PyMertonJdFourier,
+    PyKouFourier,
+    PyNigFourier,
+  );
+  Err(PyTypeError::new_err(format!(
+    "model must be one of the Fourier models ({}), got {}",
+    names.join(", "),
+    model.get_type().name()?
+  )))
+}
+
+/// Fang-Oosterlee (2008) COS pricer; `n=None`, the default, adds terms until the chf has decayed.
+/// `l` is their L: the range spans `l` cumulant standard deviations either side, 10 by default.
+#[pyclass(name = "CosEngine", unsendable)]
+pub struct PyCosEngine {
+  inner: crate::pricing::fourier::CosEngine,
+}
+
+#[pymethods]
+impl PyCosEngine {
+  #[new]
+  #[pyo3(signature = (n=None, l=10.0))]
+  fn new(n: Option<usize>, l: f64) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: match n {
+        Some(n) => crate::pricing::fourier::CosEngine::new(n, l),
+        None => crate::pricing::fourier::CosEngine::adaptive(l),
+      },
+    })
+  }
+
+  /// European call or put: the payoff at `tau = 0`; `nan` past expiry and, before it, for a rate
+  /// not finite or an `s` or `k` that is not finite and positive.
+  #[pyo3(signature = (model, s, k, r, q, tau, option_type="call"))]
+  fn price(
+    &self,
+    model: &Bound<'_, PyAny>,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: &str,
+  ) -> PyResult<f64> {
+    let model = fourier_model(model)?;
+    let option_type = parse_option_type(option_type)?;
+    Ok(
+      self
+        .inner
+        .price(model.as_ref(), s, k, r, q, tau, option_type),
+    )
+  }
+
+  /// `price` at each strike of an array, bit for bit, on one pass over the characteristic function.
+  #[pyo3(signature = (model, s, strikes, r, q, tau, option_type="call"))]
+  fn price_strikes<'py>(
+    &self,
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    s: f64,
+    strikes: numpy::PyReadonlyArray1<'py, f64>,
+    r: f64,
+    q: f64,
+    tau: f64,
+    option_type: &str,
+  ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<f64>>> {
+    use numpy::IntoPyArray;
+    let model = fourier_model(model)?;
+    let option_type = parse_option_type(option_type)?;
+    Ok(
+      self
+        .inner
+        .price_strikes(
+          model.as_ref(),
+          s,
+          strikes.as_array(),
+          r,
+          q,
+          tau,
+          option_type,
+        )
+        .into_pyarray(py),
+    )
   }
 }

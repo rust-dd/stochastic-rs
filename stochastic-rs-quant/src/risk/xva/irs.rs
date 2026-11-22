@@ -1,13 +1,12 @@
-//! Exposure of a payer interest-rate swap under Hull–White, produced with
-//! the crate's own stack: the short rate is simulated as `r_t = x_t + α(t)`
-//! with `x` the zero-mean Ornstein–Uhlenbeck factor (`dx = −a x dt + σ dW`)
-//! and `α(t) = f(0, t) + σ²(1 − e^{−at})² / (2a²)` the deterministic shift
-//! that reproduces the initial curve (Brigo & Mercurio 2006, eq. 3.36), and
-//! the swap is revalued on its own payment dates from the Hull–White
-//! zero-coupon bond formula, `V = N[1 − P(t, T_n) − K Σ_{T_i > t} δ_i P(t, T_i)]`.
+//! Exposure of a payer swap under Hull–White: `r_t = x_t + α(t)` with `dx = −a x dt + σ dW`,
+//! revalued on its payment dates by `V = N[1 − P(t, T_n) − K Σ_{T_i > t} δ_i P(t, T_i)]`.
 //!
-//! Reference: Brigo, D. & Mercurio, F. (2006), *Interest Rate Models —
-//! Theory and Practice*, 2nd ed., Springer, §3.3; Gregory (2015), Ch. 7.
+//! $$
+//! \alpha(t) = f(0, t) + \frac{\sigma^2}{2a^2}\left(1 - e^{-at}\right)^2
+//! $$
+//!
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §3.3, eq. 3.36
+//! Reference: Gregory (2015), "The xVA Challenge", Ch. 7
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -26,11 +25,11 @@ fn zero_drift(_t: f64) -> f64 {
 /// Payer swap exposure under a Hull–White short rate calibrated to `curve`.
 #[derive(Clone, Debug)]
 pub struct HullWhiteSwapExposure {
-  /// Mean reversion `a`.
+  /// Hull–White mean-reversion speed `a`.
   pub mean_reversion: f64,
   /// Short-rate volatility `σ`.
   pub sigma: f64,
-  /// Notional.
+  /// Notional of the payer swap.
   pub notional: f64,
   /// Fixed rate `K`.
   pub fixed_rate: f64,
@@ -43,6 +42,8 @@ pub struct HullWhiteSwapExposure {
 }
 
 impl HullWhiteSwapExposure {
+  /// Panics unless every float is finite, `mean_reversion > 0`, `sigma >= 0` and `payment_times`
+  /// is positive and strictly increasing.
   pub fn new(
     mean_reversion: f64,
     sigma: f64,
@@ -52,15 +53,42 @@ impl HullWhiteSwapExposure {
     accrual: f64,
   ) -> Self {
     assert!(
-      mean_reversion > 0.0 && sigma >= 0.0,
-      "Hull-White needs a > 0 and σ ≥ 0"
+      mean_reversion.is_finite() && mean_reversion > 0.0,
+      "mean_reversion must satisfy `mean_reversion.is_finite() && mean_reversion > 0.0`, got \
+       mean_reversion = {mean_reversion:?}"
     );
     assert!(
-      !payment_times.is_empty()
-        && payment_times.windows(2).all(|w| w[0] < w[1])
-        && payment_times[0] > 0.0,
-      "payment times must be positive and increasing"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
+    assert!(
+      notional.is_finite(),
+      "notional must satisfy `notional.is_finite()`, got notional = {notional:?}"
+    );
+    assert!(
+      fixed_rate.is_finite(),
+      "fixed_rate must satisfy `fixed_rate.is_finite()`, got fixed_rate = {fixed_rate:?}"
+    );
+    assert!(
+      accrual.is_finite(),
+      "accrual must satisfy `accrual.is_finite()`, got accrual = {accrual:?}"
+    );
+    let first = payment_times.first().copied();
+    assert!(
+      first.is_some_and(|t| t.is_finite() && t > 0.0),
+      "payment_times must satisfy `payment_times[0].is_finite() && payment_times[0] > 0.0`, got \
+       payment_times[0] = {first:?}"
+    );
+    for (i, w) in payment_times.windows(2).enumerate() {
+      assert!(
+        w[0] < w[1] && w[1].is_finite(),
+        "payment_times must satisfy `payment_times[i] < payment_times[i + 1]` for every i, got \
+         payment_times[{i}] = {:?} and payment_times[{}] = {:?}",
+        w[0],
+        i + 1,
+        w[1]
+      );
+    }
     Self {
       mean_reversion,
       sigma,
@@ -72,9 +100,12 @@ impl HullWhiteSwapExposure {
     }
   }
 
-  /// Simulation resolution of the short rate.
+  /// Simulation resolution of the short rate; panics unless `steps_per_year >= 1`.
   pub fn with_steps_per_year(mut self, steps_per_year: usize) -> Self {
-    assert!(steps_per_year >= 1, "at least one step per year");
+    assert!(
+      steps_per_year >= 1,
+      "steps_per_year must satisfy `steps_per_year >= 1`, got steps_per_year = {steps_per_year:?}"
+    );
     self.steps_per_year = steps_per_year;
     self
   }
@@ -91,10 +122,8 @@ impl HullWhiteSwapExposure {
     let Some(&maturity) = remaining.last() else {
       return 0.0;
     };
-    // At inception the bonds are the curve itself; later dates use the
-    // Hull–White reconstruction from the simulated short rate. (The curve is
-    // flat below its first knot, so P(0, ·) must not go through the formula's
-    // P(0, t) normalisation at t = 0.)
+    // At inception the bonds are the curve itself: it is flat below its first knot, so P(0, ·)
+    // must not go through the formula's P(0, t) normalisation at t = 0.
     let bond = |tau: f64| {
       if t <= 0.0 {
         curve.discount_factor(tau)
@@ -120,13 +149,13 @@ impl HullWhiteSwapExposure {
     (1.0 - curve.discount_factor(*self.payment_times.last().expect("non-empty"))) / annuity
   }
 
-  /// Mark-to-market matrix (paths × payment dates) from `paths` simulated
-  /// short-rate paths seeded by `seed`.
+  /// Mark-to-market matrix (paths × payment dates) of `paths` short-rate paths drawn from a child
+  /// of `seed`, which advances.
   pub fn mtm_matrix<S: SeedExt>(
     &self,
     curve: &DiscountCurve<f64>,
     paths: usize,
-    seed: S,
+    seed: &S,
   ) -> Array2<f64> {
     let maturity = *self.payment_times.last().expect("non-empty");
     let steps = ((maturity * self.steps_per_year as f64).round() as usize).max(1);
@@ -138,7 +167,7 @@ impl HullWhiteSwapExposure {
       steps + 1,
       Some(0.0),
       Some(maturity),
-      seed,
+      seed.derive(),
     );
     let factor_paths = process.sample_par(paths);
     let a = self.mean_reversion;
@@ -163,10 +192,10 @@ impl HullWhiteSwapExposure {
     curve: &DiscountCurve<f64>,
     paths: usize,
     quantile: f64,
-    seed: S,
+    seed: &S,
   ) -> ExposureProfile {
     ExposureProfile::from_mtm(
-      &self.mtm_matrix(curve, paths, seed),
+      self.mtm_matrix(curve, paths, seed).view(),
       self.payment_times.clone(),
       quantile,
     )

@@ -3,27 +3,21 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use rand::distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
-use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
 use stochastic_rs::stats::filtering::UkfState;
+use stochastic_rs::stats::filtering::UkfTuning;
 use stochastic_rs::stats::filtering::random_walk_metropolis;
 use stochastic_rs::stats::filtering::unscented_kalman_step;
 
 #[test]
 fn particle_filter_with_systematic_resampling_runs_to_completion() {
-  let init_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
-  let init_fn = move |_rng: &mut SimdRng| {
-    let mut a = [0.0_f64];
-    init_dist.fill_slice(&mut a);
-    Array1::from(vec![a[0]])
-  };
-  let trans_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2));
-  let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
-    let mut a = [0.0_f64];
-    trans_dist.fill_slice(&mut a);
-    Array1::from(vec![prev[0] + a[0]])
+  let init_fn =
+    move |rng: &mut SimdRng| Array1::from(vec![SimdNormal::<f64>::new(0.0, 1.0).sample(rng)]);
+  let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
+    Array1::from(vec![prev[0] + SimdNormal::<f64>::new(0.0, 1.0).sample(rng)])
   };
   let log_obs = |x: ArrayView1<f64>, y: ArrayView1<f64>| {
     let z = (y[0] - x[0]) / 0.5;
@@ -47,7 +41,8 @@ fn metropolis_chain_concentrates_around_mode_of_skewed_target() {
     -0.5 * ((x[0] - m) / 0.5).powi(2)
   };
   let scale = Array1::from(vec![0.7_f64]);
-  let res = random_walk_metropolis(init.view(), log_target, scale.view(), 10_000, 1_000, 23);
+  let res =
+    random_walk_metropolis(init.view(), log_target, scale.view(), 10_000, 1_000, 23).unwrap();
   let mean = res.samples.column(0).iter().sum::<f64>() / 10_000.0;
   assert!((mean - 2.5).abs() < 0.1);
 }
@@ -71,10 +66,9 @@ fn ukf_remains_finite_under_long_run() {
       q.view(),
       r.view(),
       y.view(),
-      0.001,
-      2.0,
-      0.0,
-    );
+      UkfTuning::default(),
+    )
+    .unwrap();
     assert!(state.mean.iter().all(|v| v.is_finite()));
     assert!(state.covariance.iter().all(|v| v.is_finite()));
   }

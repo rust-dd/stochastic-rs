@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "Cusum", unsendable)]
 pub struct PyCusum {
   inner: crate::econometrics::changepoint::ChangepointCusumResult,
@@ -12,9 +14,12 @@ impl PyCusum {
   /// SD units) and threshold `h`.
   #[new]
   fn new<'py>(series: PyReadonlyArray1<'py, f64>, k: f64, h: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::changepoint::cusum(series.as_array(), k, h),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::changepoint::cusum(series.as_array(), k, h)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   fn upper<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -49,9 +54,12 @@ impl PyPelt {
     penalty: f64,
     min_size: usize,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::changepoint::pelt(series.as_array(), penalty, min_size),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::changepoint::pelt(series.as_array(), penalty, min_size)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -77,15 +85,15 @@ impl PyPeriodogramFFT {
   #[new]
   #[pyo3(signature = (signal, sampling_rate=1.0))]
   fn new<'py>(signal: PyReadonlyArray1<'py, f64>, sampling_rate: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let cfg = crate::spectral::PeriodogramConfig {
         sampling_rate,
         ..crate::spectral::PeriodogramConfig::default()
       };
-      Self {
-        inner: crate::spectral::periodogram_fft(signal.as_array(), cfg),
-      }
-    })
+      Ok(Self {
+        inner: crate::spectral::periodogram_fft(signal.as_array(), cfg).map_err(stats_error)?,
+      })
+    })?
   }
 
   fn frequencies(&self) -> Vec<f64> {

@@ -1,5 +1,4 @@
-//! Tests of the Cheyette state dynamics against the Hull–White limit and the
-//! bond-reconstruction martingale identity.
+//! The Cheyette state against the Hull–White limit and the bond-reconstruction martingale identity.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 
@@ -155,7 +154,7 @@ fn deterministic_seed_reproduces_and_consecutive_paths_differ() {
 }
 
 #[test]
-#[should_panic(expected = "kappa must be positive")]
+#[should_panic(expected = "kappa must satisfy `kappa > T::zero()`, got kappa = 0.0")]
 fn rejects_a_non_positive_mean_reversion() {
   let _ = Cheyette::new(
     flat_forward as fn(f64) -> f64,

@@ -4,6 +4,7 @@ use ndarray::Array2;
 use super::*;
 use crate::volatility::common::TrainConfig;
 use crate::volatility::common::synthetic_surface_dataset;
+use crate::volatility::grid;
 use crate::volatility::heston;
 use crate::volatility::rbergomi;
 
@@ -15,7 +16,7 @@ fn trained_heston(seed: u64) -> HestonNn {
     heston::OUTPUT_DIM,
     seed,
   );
-  let mut model = HestonNn::new(&Device::Cpu).unwrap();
+  let mut model = HestonNn::new(&Device::Cpu, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 30,
     random_seed: seed,
@@ -76,9 +77,7 @@ fn network_jacobian_matches_finite_differences() {
   }
 }
 
-/// Calibrating the surrogate to its own surface at a known parameter point
-/// recovers that point: the Jacobian, the coordinate transform and the
-/// optimiser are consistent.
+/// Fitting the surrogate to its own surface at a known parameter point recovers that point.
 #[test]
 fn self_consistent_calibration_recovers_the_parameters() {
   let model = trained_heston(5);
@@ -112,6 +111,62 @@ fn self_consistent_calibration_recovers_the_parameters() {
   assert!(result.evaluations > 0);
 }
 
+/// A tolerance of 1e3 has Levenberg–Marquardt report convergence after its first trial, with a
+/// descent step still open.
+#[test]
+fn a_surrogate_fit_stopped_short_of_a_stationary_point_is_not_converged() {
+  let model = trained_heston(5);
+  let truth = box_point(
+    &heston::PARAM_LB,
+    &heston::PARAM_UB,
+    &[0.35, 0.55, 0.6, 0.4, 0.65],
+  );
+  let truth32: Vec<f32> = truth.iter().map(|&v| v as f32).collect();
+  let target: Vec<f64> = model
+    .nn()
+    .predict_surface(&truth32)
+    .unwrap()
+    .iter()
+    .map(|&v| v as f64)
+    .collect();
+  let calibrator = SurrogateCalibrator::new(&model, target)
+    .unwrap()
+    .with_tolerance(1e3);
+  let result = calibrator.calibrate(None).unwrap();
+  assert!(result.rmse > 1e-4, "rmse {}", result.rmse);
+  assert_eq!(
+    (result.converged, result.message.as_str()),
+    (false, "not stationary")
+  );
+}
+
+/// An exact fit rests on the f32 network's rounding, about `7e-8` of the surface, and that
+/// noise's angle to the Jacobian fails the first-order check.
+#[test]
+fn an_exact_surrogate_fit_is_converged_on_the_networks_rounding_noise() {
+  for seed in [5, 7, 8] {
+    let model = trained_heston(seed);
+    let truth = box_point(&heston::PARAM_LB, &heston::PARAM_UB, &[0.4; 5]);
+    let truth32: Vec<f32> = truth.iter().map(|&v| v as f32).collect();
+    let target: Vec<f64> = model
+      .nn()
+      .predict_surface(&truth32)
+      .unwrap()
+      .iter()
+      .map(|&v| v as f64)
+      .collect();
+    let calibrator = SurrogateCalibrator::new(&model, target).unwrap();
+    let result = calibrator.calibrate(None).unwrap();
+    assert!(result.rmse < 1e-7, "seed {seed}: rmse {}", result.rmse);
+    assert_eq!(
+      (result.converged, result.message()),
+      (true, Some("converged")),
+      "seed {seed}: rmse {}",
+      result.rmse
+    );
+  }
+}
+
 /// The typed Heston bridge maps the surrogate order `[v0, ρ, σ, θ, κ]` onto
 /// `HestonParams` and hands the fitted parameters to the Fourier pricer.
 #[test]
@@ -135,12 +190,40 @@ fn heston_bridge_maps_the_parameter_order_and_builds_the_pricer() {
     .map(|&v| v as f64)
     .collect();
   let calibrator = HestonSurrogateCalibrator::new(&model, target).unwrap();
-  let result = calibrator.calibrate(Some(truth.clone())).unwrap();
+  let result = calibrator.calibrate(Some(truth)).unwrap();
   assert!(result.converged() && result.rmse() < 1e-6);
   assert!((result.params().kappa - 3.0).abs() < 0.05);
-  let pricer = result.to_model(0.01, 0.0);
-  assert!((pricer.kappa - result.params.kappa).abs() < 1e-12);
-  assert!((pricer.rho - result.params.rho).abs() < 1e-12);
+  assert_eq!(result.to_model().params(), result.params);
+}
+
+/// A fit past the training box's floor answers `Err` naming the parameter, where its `to_model`
+/// would panic.
+#[test]
+fn a_heston_fit_outside_the_domain_is_an_err_naming_the_parameter() {
+  let fit = |v: Vec<f64>| SurrogateCalibrationResult {
+    params: v,
+    rmse: 0.0,
+    max_error: 0.0,
+    converged: true,
+    in_bounds: false,
+    evaluations: 1,
+    message: String::new(),
+  };
+  let ok = fitted_heston_params(&fit(vec![0.02, -0.6, 0.4, 0.05, 3.0])).unwrap();
+  assert_eq!(ok.kappa, 3.0);
+  for (v, name) in [
+    (vec![-0.001, -0.6, 0.4, 0.05, 3.0], "v0"),
+    (vec![0.02, -1.2, 0.4, 0.05, 3.0], "rho"),
+    (vec![0.02, -0.6, -0.1, 0.05, 3.0], "sigma"),
+    (vec![0.02, -0.6, 0.4, -0.01, 3.0], "theta"),
+    (vec![0.02, -0.6, 0.4, 0.05, f64::NAN], "kappa"),
+  ] {
+    let err = fitted_heston_params(&fit(v)).unwrap_err().to_string();
+    assert!(
+      err.contains(&format!("{name} must satisfy")),
+      "{name}: {err}"
+    );
+  }
 }
 
 /// The rough Bergomi bridge maps `[ξ₀, η, ρ, H]` onto a flat-ξ₀
@@ -167,7 +250,7 @@ fn rbergomi_bridge_round_trips_the_parameter_order() {
     rbergomi::OUTPUT_DIM,
     2,
   );
-  let mut model = RBergomiNn::new(&Device::Cpu).unwrap();
+  let mut model = RBergomiNn::new(&Device::Cpu, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 5,
     ..TrainConfig::default()
@@ -180,12 +263,118 @@ fn rbergomi_bridge_round_trips_the_parameter_order() {
     .iter()
     .map(|&x| x as f64)
     .collect();
+  let theta: [f32; rbergomi::INPUT_DIM] = std::array::from_fn(|j| v[j] as f32);
+  let surface = model
+    .predict_implied_vol_surface(&theta, 1.0, &[1.0; grid::MATURITIES.len()])
+    .unwrap();
+  let from_surface = RBergomiSurrogateCalibrator::from_surface(&model, &surface, 1.0).unwrap();
+  assert_eq!(
+    from_surface.inner.market, target,
+    "ascending columns need no reordering"
+  );
   let result = RBergomiSurrogateCalibrator::new(&model, target)
     .unwrap()
     .calibrate(Some(params))
     .unwrap();
   assert!(result.rmse() < 1e-5, "{}", result.rmse());
-  let _pricer: RBergomiPricer = result.to_model(0.0, 0.0);
+  let _pricer: RBergomiPricer = result.to_model();
+}
+
+/// The Heston network's columns descend in strike, so its ascending surface recovers θ only through
+/// `from_surface`; the same grid read as a flat vector calibrates to the mirrored smile.
+#[test]
+fn an_ascending_surface_recovers_theta_and_its_flat_reading_does_not() {
+  let model = trained_heston(5);
+  let truth = box_point(
+    &heston::PARAM_LB,
+    &heston::PARAM_UB,
+    &[0.35, 0.55, 0.6, 0.4, 0.65],
+  );
+  let theta: [f32; heston::INPUT_DIM] = std::array::from_fn(|j| truth[j] as f32);
+  let forwards = [100.0; grid::MATURITIES.len()];
+  let surface = model
+    .predict_implied_vol_surface(&theta, 100.0, &forwards)
+    .unwrap();
+  let calibrator = HestonSurrogateCalibrator::from_surface(&model, &surface, 100.0).unwrap();
+  let network: Vec<f64> = model
+    .predict_surface(&theta)
+    .unwrap()
+    .iter()
+    .map(|&v| f64::from(v))
+    .collect();
+  assert_eq!(calibrator.inner.market, network);
+  let recovered =
+    |params: &[f64]| {
+      params.iter().zip(&truth).enumerate().all(|(j, (p, t))| {
+        (p - t).abs() < 2e-3 * (heston::PARAM_UB[j] - heston::PARAM_LB[j]) as f64
+      })
+    };
+  let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.converged() && fit.rmse() < 1e-6, "rmse {}", fit.rmse());
+  assert!(
+    recovered(&heston_params_to_surrogate(&fit.params)),
+    "{:?}",
+    fit.params
+  );
+  let flat = surface.ivs.iter().copied().collect::<Vec<f64>>();
+  let misread = SurrogateCalibrator::new(&model, flat)
+    .unwrap()
+    .calibrate(None)
+    .unwrap();
+  assert!(!recovered(&misread.params), "{:?}", misread.params);
+}
+
+#[test]
+fn a_surface_off_the_grid_names_the_axis_the_index_and_both_values() {
+  let model = HestonNn::new(&Device::Cpu, 7).unwrap();
+  let maturities = grid::MATURITIES.to_vec();
+  let strikes: Vec<f64> = heston::STRIKES.iter().rev().map(|k| k * 100.0).collect();
+  let surface = |strikes: Vec<f64>, maturities: Vec<f64>| {
+    let shape = (maturities.len(), strikes.len());
+    ImpliedVolSurface::from_iv_grid(
+      strikes,
+      maturities,
+      vec![100.0; shape.0],
+      Array2::from_elem(shape, 0.2),
+    )
+  };
+  let on_grid =
+    SurrogateCalibrator::from_surface(&model, &surface(strikes.clone(), maturities.clone()), 100.0);
+  assert!(on_grid.is_ok());
+  let mut wrong_strikes = strikes.clone();
+  wrong_strikes[2] *= 1.01;
+  let mut wrong_maturities = maturities.clone();
+  wrong_maturities[5] = 1.6;
+  for (bad, axis, got, want) in [
+    (
+      surface(wrong_strikes.clone(), maturities.clone()),
+      "strikes[2]",
+      wrong_strikes[2],
+      strikes[2],
+    ),
+    (
+      surface(strikes.clone(), wrong_maturities),
+      "maturities[5]",
+      1.6,
+      1.5,
+    ),
+  ] {
+    let message = format!(
+      "{:#}",
+      SurrogateCalibrator::from_surface(&model, &bad, 100.0)
+        .err()
+        .unwrap()
+    );
+    assert!(
+      message.contains(axis)
+        && message.contains(&format!("{got:?}"))
+        && message.contains(&format!("{want:?}")),
+      "{message}"
+    );
+  }
+  assert!(
+    SurrogateCalibrator::from_surface(&model, &surface(strikes, maturities), f64::NAN).is_err()
+  );
 }
 
 #[test]

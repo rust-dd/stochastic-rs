@@ -1,9 +1,5 @@
-//! Integration tests for the risk-metrics module.
-//!
-//! Validates VaR / ES against analytical Gaussian references, drawdown and
-//! performance metrics against hand-computed tables, curve shifts against
-//! elementary algebra, and bucket DV01 against closed-form zero-coupon bond
-//! duration.
+//! Risk-metrics tests: VaR / ES against Gaussian closed forms, drawdown and performance metrics
+//! against hand-computed tables, curve shifts against algebra, DV01 against zero-coupon duration.
 
 use ndarray::Array1;
 use ndarray::array;
@@ -54,7 +50,7 @@ fn synthetic_pnl(n: usize, mean: f64, sigma: f64, seed: u64) -> Array1<f64> {
 #[test]
 fn gaussian_var_matches_closed_form() {
   let pnl = synthetic_pnl(20_000, 0.0, 0.02, 1);
-  let var = gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl);
+  let var = gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl).unwrap();
   // Expected Gaussian VaR with μ ≈ 0, σ ≈ 0.02 and Φ⁻¹(0.99) ≈ 2.3263
   assert!(
     (var - 0.02 * 2.326).abs() < 2e-3,
@@ -65,21 +61,21 @@ fn gaussian_var_matches_closed_form() {
 #[test]
 fn historical_and_gaussian_var_agree_for_normal_samples() {
   let pnl = synthetic_pnl(50_000, 0.001, 0.01, 42);
-  let g = gaussian_var(pnl.view(), 0.95, PnlOrLoss::Pnl);
-  let h = historical_var(pnl.view(), 0.95, PnlOrLoss::Pnl);
+  let g = gaussian_var(pnl.view(), 0.95, PnlOrLoss::Pnl).unwrap();
+  let h = historical_var(pnl.view(), 0.95, PnlOrLoss::Pnl).unwrap();
   assert!(
     (g - h).abs() < 1e-3,
     "Gaussian VaR {g} vs historical VaR {h}"
   );
-  let dispatched = value_at_risk(pnl.view(), 0.95, PnlOrLoss::Pnl, VarMethod::Historical);
+  let dispatched = value_at_risk(pnl.view(), 0.95, PnlOrLoss::Pnl, VarMethod::Historical).unwrap();
   assert_eq!(dispatched, h);
 }
 
 #[test]
 fn gaussian_es_exceeds_var_and_matches_formula() {
   let pnl = synthetic_pnl(20_000, 0.0, 0.02, 7);
-  let var = gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl);
-  let es = gaussian_es(pnl.view(), 0.99, PnlOrLoss::Pnl);
+  let var = gaussian_var(pnl.view(), 0.99, PnlOrLoss::Pnl).unwrap();
+  let es = gaussian_es(pnl.view(), 0.99, PnlOrLoss::Pnl).unwrap();
   // Closed-form: ES = μ + σ * φ(Φ⁻¹(0.99)) / (1 − 0.99).
   // φ(2.326) ≈ 0.02665, so ES ≈ 0.02 * 0.02665 / 0.01 ≈ 0.0533.
   assert!(es > var, "ES = {es} must exceed VaR = {var}");
@@ -91,7 +87,8 @@ fn expected_shortfall_dispatcher_matches_method_outputs() {
   let loss = array![
     0.01_f64, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10
   ];
-  let dispatched = expected_shortfall(loss.view(), 0.9, PnlOrLoss::Loss, VarMethod::Historical);
+  let dispatched =
+    expected_shortfall(loss.view(), 0.9, PnlOrLoss::Loss, VarMethod::Historical).unwrap();
   // Top 10% of 10 losses is just {0.10}; ES = 0.10.
   assert!(
     (dispatched - 0.10).abs() < 1e-10,
@@ -107,7 +104,7 @@ fn max_drawdown_matches_hand_calculation() {
   let mdd = max_drawdown(equity.view());
   assert!((mdd + 0.25).abs() < 1e-12, "MDD = {mdd}");
 
-  let stats = DrawdownStats::from_equity(equity.view());
+  let stats = DrawdownStats::from_equity(equity.view()).unwrap();
   assert_eq!(stats.max_index, 2);
   assert!(stats.longest_duration >= 1);
   assert!(stats.average < 0.0);
@@ -116,27 +113,27 @@ fn max_drawdown_matches_hand_calculation() {
 #[test]
 fn sharpe_sortino_and_information_ratio_sanity() {
   let returns = array![0.01_f64, 0.02, -0.005, 0.015, 0.008, -0.002, 0.012, 0.007];
-  let sharpe = sharpe_ratio(returns.view(), 0.0, 252.0);
+  let sharpe = sharpe_ratio(returns.view(), 0.0, 252.0).unwrap();
   assert!(
     sharpe > 0.0,
     "positive-drift series should have positive Sharpe"
   );
 
-  let sortino = sortino_ratio(returns.view(), 0.0, 252.0);
+  let sortino = sortino_ratio(returns.view(), 0.0, 252.0).unwrap();
   assert!(
     sortino > sharpe,
     "Sortino > Sharpe for upward-skewed series"
   );
 
   let benchmark = array![0.005_f64, 0.01, 0.000, 0.005, 0.005, 0.000, 0.005, 0.005];
-  let ir = information_ratio(returns.view(), benchmark.view(), 252.0);
+  let ir = information_ratio(returns.view(), benchmark.view(), 252.0).unwrap();
   assert!(ir > 0.0);
 }
 
 #[test]
 fn calmar_ratio_uses_max_drawdown() {
   let returns = array![0.01_f64, 0.02, -0.10, 0.05, 0.03];
-  let calmar = calmar_ratio(returns.view(), 252.0);
+  let calmar = calmar_ratio(returns.view(), 252.0).unwrap();
   assert!(calmar.is_finite());
   assert!(calmar > 0.0);
 }
@@ -146,8 +143,8 @@ fn parallel_shift_adds_constant_to_every_zero_rate() {
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.02_f64, 0.025, 0.03, 0.035];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let shifted = CurveShift::Parallel(0.01_f64).apply(&curve);
@@ -160,14 +157,13 @@ fn parallel_shift_adds_constant_to_every_zero_rate() {
 
 #[test]
 fn bucket_dv01_matches_zero_coupon_bond_duration() {
-  // A 5-year zero-coupon bond priced off the curve has PV = exp(-5r).
-  // dPV / dr at r = 0.03, for a 1 bp bump, should equal approximately
-  // -5 * exp(-0.15) * 1e-4 = -4.3 bp in dollar terms for a $1 notional.
+  // A 5-year zero-coupon bond has PV = exp(-5r), so a 1 bp bump at r = 0.03 moves it by about
+  // -5 * exp(-0.15) * 1e-4 = -4.3 bp per $1 notional.
   let times = array![1.0_f64, 3.0, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03, 0.03];
   let curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 
@@ -204,8 +200,8 @@ fn stress_test_applies_scenarios_and_collects_pnl() {
   let times = array![1.0_f64, 5.0, 10.0];
   let rates = array![0.03_f64, 0.03, 0.03];
   let base_curve = DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
 

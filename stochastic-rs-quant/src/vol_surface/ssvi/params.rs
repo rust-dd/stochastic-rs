@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::traits::RealExt;
 
@@ -73,7 +74,7 @@ impl<T: RealExt> SsviParams<T> {
     half * theta * phi * phi * one_m_rho2 / (r * r * r)
   }
 
-  /// Derivative of the power-law mixing function: $\varphi'(\theta) = -\varphi(\theta)\bigl[\gamma/\theta + (1-\gamma)/(1+\theta)\bigr]$.
+  /// `φ'(θ) = −φ(θ)(γ/θ + (1 − γ)/(1 + θ))`, the power-law mixing function's derivative.
   #[inline]
   pub fn phi_prime(&self, theta: T) -> T {
     if theta <= T::zero() {
@@ -103,25 +104,15 @@ impl<T: RealExt> SsviParams<T> {
     w / theta + half * theta * phi_p * k * (self.rho + u / r)
   }
 
-  /// Check the sufficient no-butterfly-arbitrage condition from
-  /// Gatheral & Jacquier (2012), Theorem 4.1:
-  ///
-  /// $\eta(1+|\rho|) \leq 2$
+  /// Gatheral & Jacquier's (2012) sufficient no-butterfly condition `η(1 + |ρ|) ≤ 2`, Theorem 4.1.
   pub fn satisfies_no_butterfly_condition(&self) -> bool {
     let two = T::from_f64_fast(2.0);
     let one = T::one();
     self.eta * (one + self.rho.abs()) <= two
   }
 
-  /// Project parameters to satisfy admissibility.
-  ///
-  /// Enforces the **butterfly bound** $\eta (1 + |\rho|) \leq 2$ (Gatheral &
-  /// Jacquier 2012, Theorem 4.1). This is necessary but **not sufficient**
-  /// for full GJ 2014 Theorem 4.2 calendar-spread-free admissibility, which
-  /// requires $\partial_T w(k, T) \geq 0$ for every $k$ — the cross-slice
-  /// constraint depends on the realised $\theta_t$ schedule and cannot be
-  /// expressed in $(\rho, \eta, \gamma)$ alone. Use
-  /// [`Self::project_with_theta_range`] when a $\theta$ range is known.
+  /// Projects onto the butterfly bound `η(1 + |ρ|) ≤ 2` (2012, Thm 4.1), not calendar-freedom
+  /// (2014, Thm 4.2), which needs the `θ_t` schedule: see [`Self::project_with_theta_range`].
   pub fn project(&mut self) {
     let zero = T::zero();
     let one = T::one();
@@ -137,22 +128,13 @@ impl<T: RealExt> SsviParams<T> {
     self.eta = self.eta.min(max_eta);
   }
 
-  /// Project parameters to satisfy admissibility **plus** the GJ 2014 power-law
-  /// SSVI calendar-spread-free condition over a known $\theta$ range.
-  ///
-  /// In addition to butterfly admissibility, enforces the sufficient condition
-  /// (Gatheral & Jacquier 2014, equation 4.4):
+  /// [`Self::project`] plus the power-law calendar condition up to `theta_max` (2014, eq. 4.4):
   ///
   /// $$
   /// \frac{1}{4} \, \eta\, \theta_{max}^{-\gamma} \, (1 + |\rho|) \leq 1
   /// $$
   ///
-  /// which guarantees $\partial_\theta w(k, \theta) \geq 0$ for all $k$ and
-  /// all $\theta \in [\theta_{min}, \theta_{max}]$. The constraint is dominated
-  /// by the largest $\theta$ in the surface.
-  ///
-  /// `theta_max` is the largest ATM total variance across the surface. Pass
-  /// the maximum of `SsviSurface::thetas` (or a conservative upper bound).
+  /// so `∂_θ w ≥ 0` for every `k`; `theta_max` is the surface's largest θ, or a bound on it.
   pub fn project_with_theta_range(&mut self, theta_max: T) {
     self.project();
     if theta_max <= T::zero() || !theta_max.is_finite() {
@@ -181,7 +163,7 @@ impl SsviParams<f64> {
     Array1::from_vec(vec![self.rho, self.eta, self.gamma])
   }
 
-  pub(super) fn from_dvector(v: &Array1<f64>) -> Self {
+  pub(super) fn from_dvector(v: ArrayView1<f64>) -> Self {
     SsviParams {
       rho: v[0],
       eta: v[1],

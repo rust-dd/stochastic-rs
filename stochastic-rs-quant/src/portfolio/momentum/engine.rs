@@ -1,7 +1,5 @@
-//! Momentum portfolio engine.
-//!
-//! Rank-based and optimizer-based long/short builders that consume
-//! [`MomentumScore`] inputs and emit [`MomentumPortfolio`] outputs.
+//! Rank-based and optimizer-based long/short builders from [`MomentumScore`] inputs to
+//! [`MomentumPortfolio`] outputs.
 
 use super::super::data::align_return_series;
 use super::super::data::correlation_matrix;
@@ -15,8 +13,10 @@ use super::types::MomentumScore;
 use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
+use crate::total_order::descending;
 
-/// Build rank-based long/short momentum portfolio.
+/// Build rank-based long/short momentum portfolio, best score first; a NaN score is in neither
+/// leg.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -24,17 +24,13 @@ pub fn build_portfolio(
   scheme: WeightScheme,
   corr: Option<&[Vec<f64>]>,
 ) -> MomentumPortfolio {
-  if scores.is_empty() {
+  let mut order = (0..scores.len())
+    .filter(|&i| !scores[i].momentum_score.is_nan())
+    .collect::<Vec<_>>();
+  if order.is_empty() {
     return MomentumPortfolio::default();
   }
-
-  let mut order: Vec<usize> = (0..scores.len()).collect();
-  order.sort_by(|&a, &b| {
-    scores[b]
-      .momentum_score
-      .partial_cmp(&scores[a].momentum_score)
-      .unwrap_or(std::cmp::Ordering::Equal)
-  });
+  order.sort_by(|&a, &b| descending(&scores[a].momentum_score, &scores[b].momentum_score));
 
   let long_count = long_n.min(order.len());
   let long_slice = &order[..long_count];
@@ -128,6 +124,8 @@ pub fn build_portfolio_target_with_corr(
 }
 
 /// Internal target-return momentum builder shared by engine and public wrappers.
+// The engine's configuration and the wrappers' inputs, forwarded as they are.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_portfolio_target_internal(
   scores: &[MomentumScore],
   target_return: f64,

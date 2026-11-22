@@ -1,4 +1,4 @@
-//! # Jacobi
+//! Jacobi diffusion: mean-reverting on [0, 1], its diffusion vanishing at both ends.
 //!
 //! $$
 //! dX_t=\kappa(\theta-X_t)dt+\sigma\sqrt{X_t(1-X_t)}\,dW_t
@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -16,12 +19,10 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Linear-drift intercept (κθ combined) in the reparametrized drift
-  /// `alpha - beta·X`, equivalent to `κ(θ-X)` with `alpha = κθ`. Must be
-  /// less than `beta` so the implied θ = alpha/beta stays in (0, 1), the
-  /// Jacobi boundary requirement.
+  /// Drift intercept `alpha = κθ` in `alpha - beta·X`, i.e. `κ(θ-X)`; it must be less than
+  /// `beta` so that θ = alpha/beta stays in (0, 1), the Jacobi boundary requirement.
   pub alpha: T,
   /// Linear-drift slope (mean-reversion speed κ) in `alpha - beta·X`.
   pub beta: T,
@@ -29,11 +30,11 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the Jacobi path.
   pub n: usize,
-  /// Initial value X₀ of the Jacobi path (clamped into [0, 1]).
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -41,11 +42,46 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, `alpha > 0`, `beta > 0`,
+  /// `sigma > 0`, `alpha < beta`, and every parameter is finite.
   pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(sigma > T::zero(), "sigma must be positive");
-    assert!(alpha < beta, "alpha must be less than beta");
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      alpha < beta,
+      "alpha must satisfy `alpha < beta`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
 
     Self {
       backend: Cpu,
@@ -59,8 +95,6 @@ impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Jacobi<T, S, B> {}
 
 /// The Euler engine's view of the Jacobi diffusion.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -99,6 +133,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Jacobi<T, S> { alpha, beta, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Jacobi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Jacobi<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -116,13 +155,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       alpha: self.alpha,
       beta: self.beta,
       diff_scale: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -154,6 +192,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Jacobi`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct JacobiSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -161,7 +200,7 @@ pub struct JacobiSampler<T: FloatExt> {
   alpha: T,
   beta: T,
   diff_scale: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> JacobiSampler<T> {
@@ -191,6 +230,8 @@ impl<T: FloatExt> JacobiSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for JacobiSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for JacobiSampler<T> {
   type Output = Array1<T>;

@@ -1,6 +1,8 @@
 //! Vertex-centred mesh and quadrature for the forward Kolmogorov equation.
 //! Reference: Wyns & Du Toit (2016), §2 and §4, arXiv:1611.02961.
 
+use crate::traits::RealExt;
+
 /// The `(x, v)` mesh with its cell widths: `wx[i] = (Δx_i + Δx_{i+1}) / 2`,
 /// the width of the cell around node `i`, `Δx_1 = Δx_{m1+1} = 0`.
 pub(super) struct Mesh {
@@ -14,12 +16,9 @@ pub(super) struct Mesh {
 }
 
 impl Mesh {
-  /// A log-spot mesh clustered at `x0` by `x = x0 + c sinh(ξ)` on a uniform
-  /// `ξ`, `x0` a node (`m1` is made odd). The variance mesh is uniform on
-  /// `[0, v0]` and stretched by `v = v0 + d sinh(ξ)` above it, resolving
-  /// both the attainable boundary and the Dirac start as required by
-  /// Wyns & Du Toit (2016), §4. Both `0` and `v0` are exact nodes.
-  pub fn new(
+  /// Log-spot mesh `x0 + c sinh(ξ)` with `x0` a node (`m1` odd); variance uniform on `[0, v0]` and
+  /// `v0 + d sinh(ξ)` above, so `0` and `v0` are exact nodes (Wyns & Du Toit (2016), §4).
+  pub(crate) fn new(
     x0: f64,
     x_half_width: f64,
     x_stretch: f64,
@@ -70,27 +69,27 @@ impl Mesh {
     }
   }
 
-  pub fn m1(&self) -> usize {
+  pub(crate) fn m1(&self) -> usize {
     self.x.len()
   }
 
-  pub fn m2(&self) -> usize {
+  pub(crate) fn m2(&self) -> usize {
     self.v.len()
   }
 
-  pub fn len(&self) -> usize {
+  pub(crate) fn len(&self) -> usize {
     self.x.len() * self.v.len()
   }
 
   /// The cell-average Dirac at `(x0, v0)`: `1 / |Ω_{i0, j0}|` on that node.
-  pub fn dirac(&self) -> Vec<f64> {
+  pub(crate) fn dirac(&self) -> Vec<f64> {
     let mut p = vec![0.0; self.len()];
     p[self.j0 * self.m1() + self.i0] = 1.0 / (self.wx[self.i0] * self.wv[self.j0]);
     p
   }
 
   /// `Σ_{i,j} ω_i ω'_j P_{i,j}`.
-  pub fn mass(&self, p: &[f64]) -> f64 {
+  pub(crate) fn mass(&self, p: &[f64]) -> f64 {
     let m1 = self.m1();
     self
       .wv
@@ -108,7 +107,7 @@ impl Mesh {
   }
 
   /// The marginal density of the log-spot, `Σ_j ω'_j P_{i,j}` per node.
-  pub fn marginal(&self, p: &[f64]) -> Vec<f64> {
+  pub(crate) fn marginal(&self, p: &[f64]) -> Vec<f64> {
     let m1 = self.m1();
     (0..m1)
       .map(|i| {
@@ -124,7 +123,7 @@ impl Mesh {
 
   /// `Σ_{i,j} ω_i ω'_j v_j P_{i,j}`, the mean of the variance under the
   /// (unnormalised) density.
-  pub fn variance_mean(&self, p: &[f64]) -> f64 {
+  pub(crate) fn variance_mean(&self, p: &[f64]) -> f64 {
     let m1 = self.m1();
     self
       .wv
@@ -143,10 +142,9 @@ impl Mesh {
       .sum()
   }
 
-  /// Wyns & Du Toit's (4.5): the trapezoid `Σ_j v_j |P_{i,j}| ω'_j /
-  /// Σ_j |P_{i,j}| ω'_j` per log-spot node, `None` where the column carries
-  /// no mass beyond round-off — below `threshold` of the heaviest column.
-  pub fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
+  /// Wyns & Du Toit's (4.5), `Σ_j v_j |P_{i,j}| ω'_j / Σ_j |P_{i,j}| ω'_j` per log-spot node;
+  /// `None` where the column's mass is below `threshold` of the heaviest column's.
+  pub(crate) fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
     let m1 = self.m1();
     let sums = (0..m1)
       .map(|i| {
@@ -159,7 +157,7 @@ impl Mesh {
         (num, den)
       })
       .collect::<Vec<_>>();
-    let heaviest = sums.iter().map(|(_, den)| *den).fold(0.0, f64::max);
+    let heaviest = f64::max_or_nan_fold(sums.iter().map(|(_, den)| *den)).max_or_nan(0.0);
     sums
       .into_iter()
       .map(|(num, den)| (den > threshold * heaviest && den > 0.0).then(|| num / den))

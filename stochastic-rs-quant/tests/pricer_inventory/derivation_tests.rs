@@ -1,11 +1,5 @@
-//! Pins what the scan in the parent module extracts.
-//!
-//! The guard in `pricer_registry.rs` is only as good as this derivation, so
-//! the derivation gets its own fixture rather than being trusted because it
-//! agrees with the registry today. Every shape below is one a line-based
-//! inventory gets wrong: a decoy inside a string literal or a doc comment, a
-//! `*PricerBuilder` helper, a `*EngineConfig`, a `#[cfg(test)]` module, a
-//! blanket impl, and an impl nested inside a function body.
+//! Pins what the scan extracts, on the shapes a line-based inventory gets wrong: decoys in strings
+//! and docs, `*PricerBuilder`, `*EngineConfig`, `#[cfg(test)]`, blanket and fn-nested impls.
 
 use std::collections::BTreeSet;
 
@@ -206,9 +200,8 @@ fn crate_scan_skips_the_python_wrappers_and_finds_the_real_tree() {
   );
 }
 
-/// A crate small enough to hand-check, holding one properly registered pricer,
-/// one that carries a trait under a model's name, and one orphan that carries
-/// nothing at all — the three shapes the audit has to react to differently.
+/// A crate small enough to check by hand: a registered pricer, one with a trait under a model's
+/// name, and an orphan carrying nothing, the three shapes the audit treats differently.
 const AUDIT_FIXTURE: &str = r#"
 pub struct RegisteredPricer;
 impl ModelPricer for RegisteredPricer {}

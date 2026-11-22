@@ -1,4 +1,4 @@
-//! # Cpoisson
+//! Compound Poisson: jump sizes from any law `D`, summed at the arrivals of a Poisson clock.
 //!
 //! $$
 //! X_t=\sum_{k=1}^{N_t}Y_k,\quad N_t\sim\mathrm{Poisson}(\lambda t)
@@ -10,20 +10,23 @@ use std::any::Any;
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
+use super::CompoundPaths;
 use super::poisson::Poisson;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -31,9 +34,10 @@ where
 {
   /// Distribution of per-jump sizes `Y_k`.
   pub distribution: D,
-  /// Poisson driver defining jump arrival intensity and timeline.
+  /// Poisson driver defining jump arrival intensity and timeline; under `Events(n)` the rows hold
+  /// the origin and the `n` jumps after it.
   pub poisson: Poisson<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -62,57 +66,49 @@ where
 {
 }
 
-/// The Euler engine's description of `distribution`, when it is one of the
-/// size laws the device kernels draw: the scalar normal ([`ScalarNormal`])
-/// and the scalar exponential ([`ScalarExp`]), the latter as the
-/// double-exponential law that only ever jumps up. The SIMD laws are not
-/// among them: they hold thread-local buffers and are not `Sync`, so a
-/// process cannot carry them as its `D`. The type is inspected at runtime
-/// through [`Any`] — which is why a process on the engine asks `'static` of
-/// its `D` — and that is what lets it stay generic over `D: Distribution<T>`
-/// on the host and still hand a recognised law to the device; a closure, a
-/// Python callable or any other law returns `None`, and the process samples
-/// on the host.
+/// The Euler engine's description of `distribution` when it is a law the kernels draw:
+/// `SimdNormal`, or `SimdExp` as the exponential size law; any other law stays on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {
   let any: &dyn Any = distribution;
-  if let Some(normal) = any.downcast_ref::<ScalarNormal<T>>() {
+  if let Some(normal) = any.downcast_ref::<SimdNormal<T>>() {
     return Some(crate::euler::JumpSizes::Normal {
-      mean: normal.mean(),
-      sd: normal.std_dev(),
+      mean: normal.mu(),
+      sd: normal.sigma(),
     });
   }
-  device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {
-    // Every draw takes the up branch: the kernels compare a uniform in
-    // `[0, 1)` against `p_up`, and `2` — not `1`, which a uniform rounded up
-    // to `1.0` in single precision would fail — is "always".
-    p_up: T::from_f64_fast(2.0),
-    eta_up: rate,
-    eta_down: rate,
-  })
+  device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::Exponential { rate })
 }
 
-/// The rate of `distribution` when it is the scalar exponential law
-/// [`device_jump_sizes`] recognises: what makes a user-supplied inter-arrival
-/// law a Poisson arrival stream the kernels draw. `None` for any other type.
+/// The rate of `distribution` when it is the `SimdExp` law [`device_jump_sizes`] recognises,
+/// which makes an inter-arrival law a Poisson arrival stream the kernels draw.
 pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Option<T> {
   (distribution as &dyn Any)
-    .downcast_ref::<ScalarExp<T>>()
+    .downcast_ref::<SimdExp<T>>()
     .map(|exp| exp.lambda())
 }
 
-/// Core of [`CompoundPoisson::sample_grid_increments`], parameterized
-/// explicitly over `lambda`/`distribution`/`seed` instead of reading them
-/// off `&self`. Exists so a caller that must supply a fresh, chunk-local
-/// seed rather than a shared `self.seed` — e.g. a jump-diffusion
-/// `sampler()` that pre-derives one basis per chunk to stay reproducible
-/// under `sample_par` without racing other chunks on a shared atomic (see
-/// [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou),
-/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion)) — can
-/// drive the identical computation without owning a whole
-/// [`CompoundPoisson`]. Behavior-identical to, and the sole body of,
-/// [`CompoundPoisson::sample_grid_increments`].
+/// The jumps of a jump-diffusion: their size law and the seed their arrivals derive from, at the
+/// process's own `lambda`; it holds no `Poisson`, so a zero rate draws zero increments.
+#[derive(Clone, Debug)]
+pub(crate) struct JumpDriver<D, S> {
+  pub(crate) law: D,
+  pub(crate) seed: S,
+}
+
+impl<D, S: SeedExt> JumpDriver<D, S> {
+  /// `law`, its arrivals seeded from a child of `seed`.
+  pub(crate) fn new(law: D, seed: &S) -> Self {
+    Self {
+      law,
+      seed: seed.clone().derive(),
+    }
+  }
+}
+
+/// `n` grid increments, the first zero: per step, the sum of a `Poisson(lambda·dt)` count of
+/// `distribution`'s draws; no draw at all where `lambda·dt` is zero.
 pub(crate) fn grid_increments<T, D, S>(
   distribution: &D,
   lambda: T,
@@ -141,10 +137,10 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     let mut jump_sum = T::zero();
     for _ in 0..jump_count {
       jump_sum += distribution.sample(&mut rng);
@@ -160,18 +156,14 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Draw compound-Poisson jump increments on a fixed simulation grid.
-  ///
-  /// The returned array has length `n`, with `increments[0] = 0` and
-  /// `increments[i]` holding the sum of jump sizes over `((i-1)dt, i*dt]`.
+  /// Compound-Poisson jump increments on a grid of `n` points: `increments[0] = 0` and
+  /// `increments[i]` is the sum of the jump sizes over `((i-1)dt, i*dt]`.
   pub fn sample_grid_increments(&self, n: usize, dt: T) -> Array1<T> {
     grid_increments(&self.distribution, self.poisson.lambda, &self.seed, n, dt)
   }
 
-  /// Draw multiplicative jump increments on a fixed simulation grid.
-  ///
-  /// If the per-jump return is `Y`, then for each interval this returns
-  /// `prod_k(1 + Y_k) - 1`, preserving multiple jumps in one `dt` step.
+  /// Multiplicative jump increments on a grid: with per-jump return `Y`, each interval holds
+  /// `prod_k(1 + Y_k) - 1`, which keeps several jumps in one `dt` step.
   pub fn sample_grid_relative_increments(&self, n: usize, dt: T) -> Array1<T> {
     grid_relative_increments(&self.distribution, self.poisson.lambda, &self.seed, n, dt)
   }
@@ -192,15 +184,8 @@ where
   factor - T::one()
 }
 
-/// Core of [`CompoundPoisson::sample_grid_relative_increments`], parameterized
-/// explicitly over `lambda`/`distribution`/`seed` instead of reading them off
-/// `&self` — the multiplicative-jump counterpart of [`grid_increments`]
-/// above, for the same reason: a caller such as
-/// [`Bates1996`](crate::jump::bates::Bates1996)'s `sampler()` must drive this
-/// computation from its own single-source-of-truth `self.lambda` and a
-/// pre-derived, chunk-local seed rather than `self.poisson.lambda`/a shared
-/// `&self.cpoisson`. Behavior-identical to, and the sole body of,
-/// [`CompoundPoisson::sample_grid_relative_increments`].
+/// [`grid_increments`] for relative jumps `Y`: per step `∏(1 + Y_k) − 1` over its count, the
+/// sizes drawn from a stream one seed draw past the counts'.
 pub(crate) fn grid_relative_increments<T, D, S>(
   distribution: &D,
   lambda: T,
@@ -229,11 +214,11 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   seed.derive(); // skip one to differ from grid_increments
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     increments[i] = relative_jump_from_count(distribution, jump_count, &mut rng);
   }
 
@@ -269,10 +254,10 @@ where
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .poisson
-      .n
-      .expect("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.poisson.horizon else {
+      panic!("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid");
+    };
+    n + 1
   }
 
   /// One step is one arrival, so the grid has no horizon of its own; the
@@ -281,10 +266,8 @@ where
     T::one()
   }
 
-  /// One size per step under the kernels' law; the count an intensity would
-  /// draw is never read, so none is declared. A law they do not carry never
-  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
-  /// host — so asking for one here is a caller bypassing that guard.
+  /// One size per step under the kernels' law; no count is declared, since none is read.
+  /// [`ProcessExt::sample`] keeps any other law on the host, so asking here bypassed that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     Some(self.device_jump_sizes().expect(
       "CompoundPoisson: the jump-size distribution is not a law the Euler engine draws on a \
@@ -296,7 +279,7 @@ where
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> CompoundPaths<T> {
     let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
@@ -306,22 +289,28 @@ where
 
 backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CompoundPoisson<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CompoundPoisson<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
   type Sampler<'s>
     = CompoundPoissonSampler<'s, T, D, S>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
+  /// Derives `self.seed` into the sampler, never clones it: the mixed next tick hash-scrambles
+  /// chunk `i`'s basis against chunk `i+1`'s, where a raw snapshot leaves them one stride apart.
   fn sampler(&self) -> CompoundPoissonSampler<'_, T, D, S> {
     CompoundPoissonSampler {
       distribution: &self.distribution,
@@ -330,10 +319,9 @@ where
     }
   }
 
-  /// Through the Euler engine when the arrival count is fixed and the
-  /// jump-size law is one the device kernels draw; anything else keeps the process on the host,
-  /// chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  /// Through the Euler engine when the arrival count is fixed and the jump-size law is one the
+  /// kernels draw; anything else stays on the host, chunked as [`ProcessExt`] chunks.
+  fn sample(&self) -> CompoundPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
     } else {
@@ -343,7 +331,7 @@ where
     }
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&CompoundPaths<T>) -> R + Sync) -> Vec<R> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
     } else {
@@ -351,7 +339,7 @@ where
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<CompoundPaths<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths(&self.backend, self, m)
     } else {
@@ -359,7 +347,7 @@ where
     }
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<CompoundPaths<T>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_sample(&self.backend, self)
     } else {
@@ -367,7 +355,7 @@ where
     }
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<CompoundPaths<T>>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
     } else {
@@ -378,16 +366,15 @@ where
   /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — and sizes under a law the kernels draw.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.poisson.n.is_some() && self.device_jump_sizes().is_some()))
+    (!(matches!(self.poisson.horizon, Horizon::Events(_)) && self.device_jump_sizes().is_some()))
       .then_some("the horizon mode's missing grid, or a size law the kernels do not draw")
   }
 }
 
-/// Reusable [`CompoundPoisson`] sampling state: borrows the (non-`Clone`) jump
-/// distribution and Poisson driver and owns the seed source. The per-call output
-/// length is event-count-dependent, so the three buffers are reallocated each
-/// call; the seed advances exactly as the legacy `sample` body did.
+/// Reusable [`CompoundPoisson`] sampling state: it borrows the jump law and the Poisson driver
+/// and owns the seed source. The three buffers are reallocated per call, as the count varies.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CompoundPoissonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
@@ -403,7 +390,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  fn sample_inner(&mut self) -> [Array1<T>; 3] {
+  fn sample_inner(&mut self) -> CompoundPaths<T> {
     let poisson = self.poisson.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(poisson.len());
     self.seed.derive(); // skip one so `rng` differs from `poisson`'s stream
@@ -415,8 +402,19 @@ where
     let mut cum_jupms = jumps.clone();
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
-    [poisson, cum_jupms, jumps]
+    CompoundPaths {
+      arrivals: poisson,
+      cumulative: cum_jupms,
+      jumps,
+    }
   }
+}
+
+impl<T, D, S: SeedExt> crate::traits::Sealed for CompoundPoissonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D, S: SeedExt> PathSampler<T> for CompoundPoissonSampler<'_, T, D, S>
@@ -424,133 +422,23 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+  fn sample_into(&mut self, out: &mut CompoundPaths<T>) {
     *out = self.sample_inner();
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> CompoundPaths<T> {
     self.sample_inner()
   }
 }
 
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyCompoundPoisson;
+
 #[cfg(test)]
-mod tests {
-  use rand_distr::Distribution;
-
-  use super::*;
-
-  #[derive(Clone, Copy)]
-  struct ConstJump<T: FloatExt>(T);
-
-  impl<T: FloatExt> Distribution<T> for ConstJump<T> {
-    fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
-      self.0
-    }
-  }
-
-  #[test]
-  fn grid_increments_zero_for_zero_intensity() {
-    let cp = CompoundPoisson::new(
-      ConstJump(1.0f64),
-      Poisson::new(0.0, Some(16), Some(1.0), Unseeded),
-      Unseeded,
-    );
-    let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
-    assert_eq!(inc.len(), 16);
-    assert!(inc.iter().all(|&x| x == 0.0));
-  }
-
-  #[test]
-  fn grid_increments_start_at_zero() {
-    let cp = CompoundPoisson::new(
-      ConstJump(1.0f64),
-      Poisson::new(2.0, Some(16), Some(1.0), Unseeded),
-      Unseeded,
-    );
-    let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
-    assert_eq!(inc[0], 0.0);
-  }
-
-  #[test]
-  fn relative_increment_compounds_multiple_jumps() {
-    let mut rng = crate::simd_rng::rng();
-    let rel = relative_jump_from_count(&ConstJump(0.1f64), 3, &mut rng);
-    let expected = 1.1f64.powi(3) - 1.0;
-    assert!((rel - expected).abs() < 1e-12);
-  }
-}
-
-#[cfg(feature = "python")]
-#[pyo3::prelude::pyclass]
-pub struct PyCompoundPoisson {
-  inner_f32: Option<CompoundPoisson<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<CompoundPoisson<f64, crate::traits::CallableDist<f64>>>,
-}
-
-#[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyCompoundPoisson {
-  #[new]
-  #[pyo3(signature = (distribution, lambda_, n=None, t_max=None, dtype=None))]
-  fn new(
-    distribution: pyo3::Py<pyo3::PyAny>,
-    lambda_: f64,
-    n: Option<usize>,
-    t_max: Option<f64>,
-    dtype: Option<&str>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
-      "f32" => Self {
-        inner_f32: Some(CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, n, t_max.map(|v| v as f32), Unseeded),
-          Unseeded,
-        )),
-        inner_f64: None,
-      },
-      _ => Self {
-        inner_f32: None,
-        inner_f64: Some(CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, n, t_max, Unseeded),
-          Unseeded,
-        )),
-      },
-    })
-  }
-
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      if let Some(ref inner) = self.inner_f64 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      } else if let Some(ref inner) = self.inner_f32 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      } else {
-        unreachable!()
-      }
-    })
-  }
-}
+mod tests;

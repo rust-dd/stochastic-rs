@@ -1,7 +1,6 @@
 //! Generic recombining binomial and trinomial trees.
 //!
-//! Reference: Cox, Ross & Rubinstein, "Option Pricing: A Simplified Approach",
-//! Journal of Financial Economics 7(3) (1979).
+//! Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
 
 use ndarray::Array1;
 
@@ -19,7 +18,7 @@ pub struct BinomialTree<T: RealExt> {
 }
 
 impl<T: RealExt> BinomialTree<T> {
-  /// Construct a binomial tree from explicit levels and up probabilities.
+  /// Panics unless level `i` holds `i + 1` states and every up probability is in `[0, 1]`.
   pub fn new(dt: T, states: Vec<Array1<T>>, up_probabilities: Vec<Array1<T>>) -> Self {
     assert_eq!(
       states.len(),
@@ -41,6 +40,13 @@ impl<T: RealExt> BinomialTree<T> {
         "probability level {level} must contain {} entries",
         level + 1
       );
+      for (node, &p) in probs.iter().enumerate() {
+        assert!(
+          p.is_finite() && p >= T::zero() && p <= T::one(),
+          "up_probabilities[{level}][{node}] must satisfy `p.is_finite() && p >= T::zero() && p <= \
+           T::one()`, got up_probabilities[{level}][{node}] = {p:?}"
+        );
+      }
     }
     Self {
       dt,
@@ -49,7 +55,7 @@ impl<T: RealExt> BinomialTree<T> {
     }
   }
 
-  /// Cox-Ross-Rubinstein stock-price tree.
+  /// Cox-Ross-Rubinstein stock-price tree; panics unless `probability` is in `[0, 1]`.
   pub fn from_crr(spot: T, up: T, down: T, probability: T, steps: usize, dt: T) -> Self {
     let states = (0..=steps)
       .map(|level| {
@@ -96,11 +102,11 @@ impl<T: RealExt> BinomialTree<T> {
 pub struct TrinomialBranch<T: RealExt> {
   /// Index of the middle child on the next level.
   pub center_index: usize,
-  /// Down probability.
+  /// Probability of moving to the child below `center_index`.
   pub down_probability: T,
-  /// Middle probability.
+  /// Probability of moving to the child at `center_index`.
   pub middle_probability: T,
-  /// Up probability.
+  /// Probability of moving to the child above `center_index`.
   pub up_probability: T,
 }
 
@@ -127,7 +133,8 @@ pub struct TrinomialTree<T: RealExt> {
 }
 
 impl<T: RealExt> TrinomialTree<T> {
-  /// Construct a trinomial tree from explicit levels and branches.
+  /// Levels `2i + 1` wide; panics unless every branch's three probabilities are finite and `≥ 0`
+  /// and sum to 1 within `8ε`.
   pub fn new(dt: T, states: Vec<Array1<T>>, branches: Vec<Vec<TrinomialBranch<T>>>) -> Self {
     assert_eq!(
       states.len(),
@@ -150,11 +157,12 @@ impl<T: RealExt> TrinomialTree<T> {
         "branch level {level} must contain {expected} nodes"
       );
       let next_width = 2 * (level + 1) + 1;
-      for branch in step_branches {
+      for (node, branch) in step_branches.iter().enumerate() {
         assert!(
           branch.center_index > 0 && branch.center_index + 1 < next_width,
           "branch center must leave room for down and up children"
         );
+        check_probabilities(level, node, branch);
       }
     }
     Self {
@@ -190,4 +198,25 @@ impl<T: RealExt> TrinomialTree<T> {
     }
     values[0]
   }
+}
+
+fn check_probabilities<T: RealExt>(level: usize, node: usize, branch: &TrinomialBranch<T>) {
+  let fields = [
+    ("down_probability", branch.down_probability),
+    ("middle_probability", branch.middle_probability),
+    ("up_probability", branch.up_probability),
+  ];
+  for (name, p) in fields {
+    assert!(
+      p.is_finite() && p >= T::zero(),
+      "branches[{level}][{node}].{name} must satisfy `{name}.is_finite() && {name} >= T::zero()`, \
+       got branches[{level}][{node}].{name} = {p:?}"
+    );
+  }
+  let total = branch.down_probability + branch.middle_probability + branch.up_probability;
+  assert!(
+    (total - T::one()).abs() <= T::from_f64_fast(8.0) * T::epsilon(),
+    "branches[{level}][{node}] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::epsilon()`, \
+     got down + middle + up = {total:?}"
+  );
 }

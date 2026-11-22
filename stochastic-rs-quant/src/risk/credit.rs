@@ -1,10 +1,5 @@
-//! # Credit-aware risk metrics
-//!
-//! Bridges [`crate::credit`] with [`crate::risk`]: combines a survival curve
-//! with portfolio loss simulation so default probability shows up alongside
-//! market VaR.
-//!
-//! # Example
+//! Credit-aware risk metrics: a survival curve from [`crate::credit`] beside the portfolio
+//! loss measures of [`crate::risk`].
 //!
 //! ```
 //! use stochastic_rs_quant::credit::survival_curve::{
@@ -30,10 +25,8 @@
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::traits::RealExt;
 
-/// Expected credit loss over the horizon `t` years.
-///
-/// $\mathrm{ECL} = (1 - Q(t)) \cdot \mathrm{LGD} \cdot \mathrm{exposure}$,
-/// where $Q$ is the survival probability and LGD = 1 − recovery.
+/// Expected credit loss $(1 - Q(t)) \cdot \mathrm{LGD} \cdot \mathrm{exposure}$ over `t` years,
+/// with $Q$ the survival probability and LGD = 1 − recovery.
 pub fn expected_credit_loss<T: RealExt>(curve: &SurvivalCurve<T>, t: T, lgd: T, exposure: T) -> T {
   let q = curve.survival_probability(t);
   (T::one() - q) * lgd * exposure
@@ -55,8 +48,8 @@ mod tests {
     let times = Array1::from(vec![1.0_f64, 5.0]);
     let hazards = Array1::from(vec![0.01_f64, 0.01]);
     let curve = SurvivalCurve::<f64>::from_hazard_rates(
-      &times,
-      &hazards,
+      times.view(),
+      hazards.view(),
       HazardInterpolation::PiecewiseConstantHazard,
     );
     let ecl_short = expected_credit_loss(&curve, 1.0, 0.6, 1_000.0);

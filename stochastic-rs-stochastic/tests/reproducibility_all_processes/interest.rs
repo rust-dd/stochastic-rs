@@ -1,39 +1,35 @@
-//! `interest/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes. Seven of
-//! these types (`Adg`, `BlackKarasinski`, `Cheyette`, `Cir2F`'s own `phi`, `CirPlusPlus`,
-//! `Hjm`, `HullWhite`, `HullWhite2F`) take an `impl Into<Fn1D<T>>`/
-//! `Fn2D<T>` curve parameter; a bare closure does not coerce to that bound
-//! on its own, so every one is passed as a named function cast explicitly
-//! to a function pointer (`fn1d_a as fn(f64) -> f64`), the same pattern
-//! this crate's own `with_setters_*` tests use for the same reason.
+//! The `interest/` slice of the reproducibility guard. A curve parameter (`impl Into<Fn1D<T>>` or
+//! `Fn2D<T>`) is passed as a named function cast to a pointer: a bare closure does not coerce.
 
 use ndarray::Array1;
+use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 // `Cir2F` needs two full `Cir<T, S>` sub-processes — the crate's most
 // constructor-heavy type — pulled in from the diffusion family.
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::interest::adg::Adg;
-use stochastic_rs_stochastic::interest::bgm::Bgm;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::cheyette::Cheyette;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
-use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::interest::fvasicek::Fvasicek;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
-use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::interest::wu_zhang::WuZhang;
+use stochastic_rs_stochastic::params::HoLeeDrift;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
 use crate::common::fn1d_a;
 use crate::common::fn2d_a;
 use crate::common::guard;
+use crate::common::variant;
 
 guard!(adg, "Adg", |s| Adg::new(
   fn1d_a as fn(f64) -> f64,
@@ -49,15 +45,6 @@ guard!(adg, "Adg", |s| Adg::new(
   s
 ));
 
-guard!(bgm, "Bgm", |s| Bgm::new(
-  Array1::from(vec![0.2, 0.2, 0.2]),
-  Array1::from(vec![0.03, 0.03, 0.03]),
-  3,
-  Some(1.0),
-  N,
-  s
-));
-
 guard!(black_karasinski, "BlackKarasinski", |s| {
   BlackKarasinski::new(
     fn1d_a as fn(f64) -> f64,
@@ -70,15 +57,8 @@ guard!(black_karasinski, "BlackKarasinski", |s| {
   )
 });
 
-// Sub-`Cir` seeds are fixed (7/8 — the pair `cir_2f.rs`'s own
-// `outer_seed_is_authoritative_over_sub_seeds` test uses), never derived
-// from `s`. `Cir2F::new` overwrites both anyway (see its doc), so their
-// as-constructed value is inert when the type is correct — but deriving
-// them from `s` here would route the outer seed into the sub-processes
-// independently of `Cir2F::new`'s own logic, so `check`'s discrimination
-// assertion would keep passing even if `Cir2F::new` regressed to ignoring
-// `seed` entirely. Fixed sub-seeds make that assertion depend only on
-// `Cir2F::new`'s own forwarding, which is the thing under test.
+// The sub-`Cir` seeds are fixed (7 and 8), never derived from `s`: `Cir2F::new` overwrites them,
+// and deriving them from `s` would pass `check`'s other-seed half without that forwarding.
 guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
   Cir::new(
     1.0,
@@ -87,7 +67,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.03),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(7)
   ),
   Cir::new(
@@ -97,7 +77,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.02),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(8)
   ),
   fn1d_a as fn(f64) -> f64,
@@ -112,7 +92,7 @@ guard!(cir_plus_plus, "CirPlusPlus", |s| CirPlusPlus::new(
   N,
   Some(0.03),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Absorption,
   s
 ));
 
@@ -160,7 +140,7 @@ guard!(duffie_kan_jump_exp, "DuffieKanJumpExp", |s| {
   )
 });
 
-guard!(f_vasicek, "FVasicek", |s| FVasicek::new(
+guard!(f_vasicek, "Fvasicek", |s| Fvasicek::new(
   0.7,
   1.0,
   0.03,
@@ -188,8 +168,7 @@ guard!(hjm, "Hjm", |s| Hjm::new(
 ));
 
 guard!(ho_lee, "HoLee", |s| HoLee::new(
-  None,
-  Some(0.02),
+  HoLeeDrift::Constant(0.02),
   0.01,
   N,
   Some(1.0),
@@ -228,6 +207,22 @@ guard!(lmm, "Lmm", |s| Lmm::new(
   s
 ));
 
+// The correlated spot drift, which the guard above, with no correlation, never runs.
+variant!(lmm_correlated, "LmmCorrelated", |s| Lmm::new(
+  Array1::from(vec![0.0, 0.5, 1.0, 1.5, 2.0]),
+  Array1::from(vec![0.03, 0.035, 0.04, 0.045]),
+  Array1::from(vec![0.20, 0.20, 0.20, 0.20]),
+  N,
+  Some(2.0),
+  s
+)
+.with_correlation(array![
+  [1.0, 0.7, 0.4, 0.2],
+  [0.7, 1.0, 0.7, 0.4],
+  [0.4, 0.7, 1.0, 0.7],
+  [0.2, 0.4, 0.7, 1.0]
+]));
+
 guard!(vasicek, "Vasicek", |s| Vasicek::new(
   3.0,
   0.03,
@@ -238,7 +233,7 @@ guard!(vasicek, "Vasicek", |s| Vasicek::new(
   s
 ));
 
-guard!(wu_zhang, "WuZhangD", |s| WuZhangD::new(
+guard!(wu_zhang, "WuZhang", |s| WuZhang::new(
   Array1::from(vec![0.1, 0.1]),
   Array1::from(vec![0.1, 0.1]),
   Array1::from(vec![0.2, 0.2]),

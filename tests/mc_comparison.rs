@@ -1,22 +1,18 @@
-//! Comparison tests for the `stochastic::mc` module.
-//!
-//! Validates each Monte Carlo method against analytical or published reference
-//! values. Run with:
-//!
-//! ```bash
-//! cargo test --release mc_comparison -- --nocapture --test-threads=1
-//! ```
+//! The `stochastic::mc` estimators, the QMC sequences and quant's `BermudanLsmPricer` against
+//! analytical or published values.
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::distributions::qmc::HaltonSeq;
+use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::distributions::special::norm_cdf;
+use stochastic_rs::quant::pricing::BermudanLsmPricer;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc;
-use stochastic_rs::stochastic::mc::halton::HaltonSeq;
-use stochastic_rs::stochastic::mc::lsm::Lsm;
 use stochastic_rs::stochastic::mc::mlmc::Mlmc;
-use stochastic_rs::stochastic::mc::sobol::SobolSeq;
 use stochastic_rs::traits::FloatExt;
 
 /// Black-Scholes call price (analytical reference).
@@ -33,9 +29,8 @@ fn bs_put(s: f64, k: f64, r: f64, sigma: f64, tau: f64) -> f64 {
   k * (-r * tau).exp() * norm_cdf(-d2) - s * norm_cdf(-d1)
 }
 
-/// Build a Gbm payoff closure: generate a Gbm terminal price from standard
-/// normals `z` (single time step, exact solution) and return the discounted
-/// call payoff.
+/// Gbm payoff closure: a single-step exact terminal price from standard normals `z`, returning the
+/// discounted call payoff.
 fn gbm_call_payoff(s0: f64, k: f64, r: f64, sigma: f64, tau: f64) -> impl Fn(&Array1<f64>) -> f64 {
   move |z: &Array1<f64>| {
     let s_t = s0 * ((r - 0.5 * sigma * sigma) * tau + sigma * tau.sqrt() * z[0]).exp();
@@ -49,22 +44,11 @@ fn plain_mc(
   dim: usize,
   payoff: &dyn Fn(&Array1<f64>) -> f64,
 ) -> mc::McEstimate<f64> {
-  let mut sum = 0.0;
-  let mut sum_sq = 0.0;
+  let mut acc = mc::Welford::default();
   for _ in 0..n_paths {
-    let z = f64::normal_array(dim, 0.0, 1.0);
-    let y = payoff(&z);
-    sum += y;
-    sum_sq += y * y;
+    acc.push(payoff(&f64::normal_array(dim, 0.0, 1.0)));
   }
-  let n = n_paths as f64;
-  let mean = sum / n;
-  let var = sum_sq / n - mean * mean;
-  mc::McEstimate {
-    mean,
-    std_err: (var / n).sqrt(),
-    n_samples: n_paths,
-  }
+  mc::McEstimate::from(&acc)
 }
 
 // 1. Variance reduction vs BS analytical
@@ -82,7 +66,7 @@ fn antithetic_vs_bs_call() {
   let bs = bs_call(S0, K, R, SIGMA, TAU);
   let payoff = gbm_call_payoff(S0, K, R, SIGMA, TAU);
 
-  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff);
+  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff, &Deterministic::new(11));
   let plain = plain_mc(N_PATHS, 1, &payoff);
 
   let err = (av.mean - bs).abs();
@@ -119,7 +103,14 @@ fn control_variate_vs_bs_call() {
   };
   let control_mean = S0; // E[e^{-rT} S_T] = S_0 under risk-neutral measure
 
-  let cv = mc::control_variates::estimate(N_PATHS, 1, payoff, control, control_mean);
+  let cv = mc::control_variates::estimate(
+    N_PATHS,
+    1,
+    payoff,
+    control,
+    control_mean,
+    &Deterministic::new(12),
+  );
   let plain = plain_mc(N_PATHS, 1, &gbm_call_payoff(S0, K, R, SIGMA, TAU));
 
   let err = (cv.mean - bs).abs();
@@ -152,7 +143,7 @@ fn importance_sampling_vs_bs_call() {
 
   // Modest shift towards positive tail for an ATM call
   let shift = Array1::from_vec(vec![0.5]);
-  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift);
+  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift, &Deterministic::new(13));
 
   let err = (is.mean - bs).abs();
   println!(
@@ -168,11 +159,8 @@ fn importance_sampling_vs_bs_call() {
   );
 }
 
-/// Stratified sampling: price matches BS with higher accuracy than plain MC.
-///
-/// Note: stratified samples are not i.i.d., so the naive sample-variance SE
-/// over-estimates the true SE. We compare estimation accuracy (|mean − BS|)
-/// rather than reported SE.
+/// Stratified sampling matches BS more accurately than plain MC; its samples are not i.i.d., so the
+/// naive SE over-estimates and the test compares |mean − BS| instead.
 #[test]
 fn stratified_vs_bs_call() {
   let bs = bs_call(S0, K, R, SIGMA, TAU);
@@ -184,8 +172,9 @@ fn stratified_vs_bs_call() {
   let mut strat_errors = Vec::new();
   let mut plain_errors = Vec::new();
 
+  let reps_seed = Deterministic::new(14);
   for _ in 0..n_reps {
-    let s = mc::stratified::estimate(n_per_rep, 1, &payoff);
+    let s = mc::stratified::estimate(n_per_rep, 1, &payoff, &reps_seed);
     let p = plain_mc(n_per_rep, 1, &payoff);
     strat_errors.push((s.mean - bs).abs());
     plain_errors.push((p.mean - bs).abs());
@@ -203,7 +192,7 @@ fn stratified_vs_bs_call() {
   );
 
   // Single full run should match BS
-  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff);
+  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff, &Deterministic::new(15));
   let err = (strat.mean - bs).abs();
   println!(
     "Strat full: mean={:.4}, err={:.4}, BS={bs:.4}",
@@ -219,13 +208,8 @@ fn stratified_vs_bs_call() {
 
 // 2. QMC: convergence rate faster than MC
 
-/// Integrate f(x) = prod_i (4x_i − 2) over [0,1]^d.
-///
-/// Analytical integral = 0 for d > 1 (each factor integrates to 0), but for
-/// d = 1 the integral = ∫(4x − 2)dx = [2x² − 2x]₀¹ = 0 as well.
-///
-/// Instead we use f(x) = exp(-sum x_i²) whose integral has a closed form.
-/// For d = 1: ∫₀¹ exp(-x²) dx = √π/2 · erf(1) ≈ 0.74682.
+/// Integrate f(x) = exp(-sum x_i²) over [0,1]^d, which has a closed form; for d = 1,
+/// ∫₀¹ exp(-x²) dx = √π/2 · erf(1) ≈ 0.74682.
 fn exp_neg_x_sq_integral_1d() -> f64 {
   std::f64::consts::PI.sqrt() / 2.0 * stochastic_rs::distributions::special::erf(1.0)
 }
@@ -313,9 +297,8 @@ fn sobol_exactness_power_of_two() {
 
 // 3. MLMC: convergence rates α ≈ 1, β ≈ 1 for Euler Gbm
 
-/// Least-squares slope of `log2 |v[l]|` against `l` over `lo..=hi`, negated so
-/// a decaying sequence yields a positive rate. `floor` guards the logarithm
-/// against a level whose estimate lands on zero.
+/// Least-squares slope of `log2 |v[l]|` against `l` over `lo..=hi`, negated so a decaying sequence
+/// yields a positive rate; `floor` guards the logarithm against a zero estimate.
 fn neg_log2_slope(v: &[f64], lo: usize, hi: usize, floor: f64) -> f64 {
   let xs = (lo..=hi).map(|l| l as f64).collect::<Vec<_>>();
   let ys = (lo..=hi)
@@ -344,11 +327,9 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   let tau = 1.0;
   let bs = bs_call(s0, k, r, sigma, tau);
 
-  // Fixed-level sampling to measure α and β. The stream is seeded through the
-  // distribution constructor because `fill_slice` discards any `Rng` handed to
-  // it — an unseeded stream made the rate estimates below a fresh coin flip on
-  // every run.
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2718));
+  // Fixed-level sampling to measure α and β, seeded: an unseeded stream made the rate estimates a
+  // coin flip.
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(2718));
   let n_per_level = 20_000;
   let max_level = 6;
   let mut level_means = Vec::new();
@@ -393,13 +374,8 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     level_vars.push(var);
   }
 
-  // |E[Y_l]| ≈ C · 2^{-α·l} and Var[Y_l] ≈ C · 2^{-β·l}, so α and β are the
-  // negated slopes of log2 of each quantity against the level index. Giles
-  // (2015) §2.1 estimates them by least squares across all levels rather than
-  // by averaging consecutive log-ratios: at high levels the correction term is
-  // small enough that Monte Carlo noise dominates the denominator, and the
-  // pairwise estimator amplifies it. Across six seeds the pairwise α spanned
-  // 0.60 to 2.02 while the regression stayed inside 1.02 to 1.58.
+  // α, β: |E[Y_l]| ≈ C·2^{-α·l}, Var[Y_l] ≈ C·2^{-β·l}, fitted by least squares over all levels
+  // (Giles 2015, §2.1) since pairwise ratios amplify noise (six seeds: α 0.60–2.02 vs 1.02–1.58).
   let alpha_avg = neg_log2_slope(&level_means, 1, max_level, 1e-15);
   let beta_avg = neg_log2_slope(&level_vars, 1, max_level, 1e-30);
 
@@ -431,6 +407,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
 
   // Full MLMC estimate vs BS
   let mlmc = Mlmc::new(0.5, 2, 8, 2000);
+  let normals = std::cell::RefCell::new(normals);
   let sampler = |level: usize, n: usize| -> Array1<f64> {
     let m_fine = 2usize.pow(level as u32 + 1);
     let dt_fine = tau / m_fine as f64;
@@ -440,7 +417,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let mut z = vec![0.0_f64; m_fine];
 
     for i in 0..n {
-      normals.fill_slice(&mut z);
+      normals.borrow_mut().fill_slice(&mut z);
       let mut s_f = s0;
       for &zj in z.iter() {
         s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;
@@ -504,10 +481,8 @@ fn generate_gbm_paths(
   paths
 }
 
-/// Longstaff-Schwartz 2001 Table 1 benchmark (σ = 0.2, T = 1).
-///
-/// Finite-difference American put benchmarks:
-///   S=36 → 4.478,  S=38 → 3.250,  S=40 → 2.314,  S=42 → 1.617,  S=44 → 1.110
+/// Longstaff-Schwartz 2001 Table 1 benchmark (σ = 0.2, T = 1): finite-difference American put
+/// values S=36 → 4.478, 38 → 3.250, 40 → 2.314, 42 → 1.617, 44 → 1.110.
 ///
 /// Reference: Longstaff & Schwartz (2001), DOI: 10.1093/rfs/14.1.113, Table 1.
 #[test]
@@ -533,8 +508,10 @@ fn lsm_vs_longstaff_schwartz_table1() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(paths.view(), &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();
@@ -574,8 +551,10 @@ fn lsm_vs_ls2001_high_vol() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(paths.view(), &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();

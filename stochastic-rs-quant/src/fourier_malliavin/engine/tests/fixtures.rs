@@ -3,9 +3,11 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 
 use crate::traits::ProcessExt;
 
@@ -16,8 +18,8 @@ pub(super) fn heston_paths() -> (Array1<f64>, Array1<f64>, Array1<f64>) {
   let n = 23401_usize;
   let horizon = 1.0_f64;
   let heston = Heston::new(
-    Some(100.0),
-    Some(0.4),
+    100.0,
+    0.4,
     2.0,
     0.4,
     HESTON_SIGMA_V,
@@ -26,7 +28,7 @@ pub(super) fn heston_paths() -> (Array1<f64>, Array1<f64>, Array1<f64>) {
     n,
     Some(horizon),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
   let [prices, variance] = heston.sample();
@@ -50,18 +52,12 @@ pub(super) fn true_integrated_volvol(variance: ArrayView1<'_, f64>, dt: f64) -> 
 }
 
 /// Bivariate path matching the FSDA `Heston2D.m` parameter convention.
-pub(super) fn heston2d_paths() -> (
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-) {
+pub(super) fn heston2d_paths() -> [Array1<f64>; 5] {
   let n = 23401_usize;
   let horizon = 1.0_f64;
   let heston = Heston2D::<f64, _>::new(
-    [Some(0.0_f64), Some(0.0_f64)],
-    [Some(0.4_f64), Some(0.4_f64)],
+    [0.0_f64, 0.0_f64],
+    [0.4_f64, 0.4_f64],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],
@@ -69,11 +65,11 @@ pub(super) fn heston2d_paths() -> (
     [0.5, -0.5, 0.0, 0.0, -0.5, 0.5],
     n,
     Some(horizon),
-    Some(false),
+    VarianceBoundary::Absorption,
     Deterministic::new(42),
   );
-  let [x1, v1, x2, v2] = heston.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = heston.sample();
   let dt = horizon / (n as f64 - 1.0);
   let times = (0..n).map(|index| index as f64 * dt).collect::<Array1<_>>();
-  (x1, x2, times, v1, v2)
+  [x1, x2, times, v1, v2]
 }

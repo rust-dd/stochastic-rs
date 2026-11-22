@@ -1,4 +1,4 @@
-//! # Logistic
+//! Stochastic logistic growth: the drift `X(1 − aX)` under the multiplicative noise `bX`.
 //!
 //! $$
 //! dX_t=X_t(1-aX_t)\,dt+bX_t\,dW_t
@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -16,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse carrying-capacity a (equilibrium level is 1/a) in the drift
   /// `X_t(1-aX_t)`.
@@ -26,11 +29,11 @@ pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub b: T,
   /// Number of points sampled along the logistic path.
   pub n: usize,
-  /// Initial value X₀ of the logistic path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -38,7 +41,25 @@ pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Logistic<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(a: T, b: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      b.is_finite(),
+      "b must satisfy `b.is_finite()`, got b = {b:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       a,
@@ -50,8 +71,6 @@ impl<T: FloatExt, S: SeedExt> Logistic<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Logistic<T, S, B> {}
 
 /// The Euler engine's view of logistic growth.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -89,6 +108,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Logistic<T, S> { a, b, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Logistic<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Logistic<T, S, B>
 {
@@ -107,13 +131,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       dt,
       a: self.a,
       b: self.b,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel,
-  /// on the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device runs the recursion in its kernel, the host runs this
+  /// process's own sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -145,13 +168,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Logistic`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LogisticSampler<T: FloatExt> {
   n: usize,
   x0: T,
   dt: T,
   a: T,
   b: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> LogisticSampler<T> {
@@ -173,6 +197,8 @@ impl<T: FloatExt> LogisticSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for LogisticSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for LogisticSampler<T> {
   type Output = Array1<T>;

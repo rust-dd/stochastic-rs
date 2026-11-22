@@ -1,15 +1,15 @@
-//! Comparison tests for the calendar module.
-//!
-//! Day count values verified against ISDA 2006 worked examples and QuantLib.
-//! Holiday dates verified against published exchange calendars.
+//! Comparison tests for the calendar module: day counts against ISDA 2006 worked examples and
+//! QuantLib, holiday dates against published exchange calendars.
 
 use chrono::Datelike;
 use chrono::NaiveDate;
 use stochastic_rs::quant::calendar::CalendarExt;
+use stochastic_rs::quant::calendar::Maturity;
 use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
 use stochastic_rs::quant::calendar::holiday::Calendar;
 use stochastic_rs::quant::calendar::holiday::HolidayCalendar;
+use stochastic_rs::quant::calendar::schedule::DateGenerationRule;
 use stochastic_rs::quant::calendar::schedule::Frequency;
 use stochastic_rs::quant::calendar::schedule::ScheduleBuilder;
 
@@ -33,9 +33,8 @@ fn act_365_year_fraction() {
 
 #[test]
 fn thirty360_year_fraction() {
-  // QuantLib: 30/360 Bond Basis, 2024-01-31 to 2024-07-31
-  // d1=31→30, d2=31 and d1==30 → d2=30
-  // 360*(0) + 30*(6) + (30-30) = 180 → 180/360 = 0.5
+  // QuantLib 30/360 Bond Basis, 2024-01-31 to 2024-07-31: d1=31→30, d2=31 and d1==30 → d2=30,
+  // so 360*0 + 30*6 + (30-30) = 180 → 180/360 = 0.5.
   let yf: f64 = DayCountConvention::Thirty360.year_fraction(d(2024, 1, 31), d(2024, 7, 31));
   assert!((yf - 0.5).abs() < 1e-12);
 }
@@ -59,25 +58,23 @@ fn thirty360_european() {
 #[test]
 fn act_act_isda_same_year() {
   // 2024 is a leap year (366 days)
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2024, 1, 1), d(2024, 7, 1));
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2024, 1, 1), d(2024, 7, 1));
   // 182 days in 2024 (leap) = 182/366
   assert!((yf - 182.0 / 366.0).abs() < 1e-12);
 }
 
 #[test]
 fn act_act_isda_cross_year() {
-  // 2023 (non-leap) to 2024 (leap)
-  // 2023-11-01 to 2024-05-01
-  // 2023 portion: Nov 1 to Jan 1 = 61 days / 365
-  // 2024 portion: Jan 1 to May 1 = 121 days / 366
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2023, 11, 1), d(2024, 5, 1));
+  // 2023-11-01 to 2024-05-01 crosses into a leap year: 61 days of 2023 (Nov 1 to Jan 1) over 365
+  // plus 121 days of 2024 (Jan 1 to May 1) over 366.
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2023, 11, 1), d(2024, 5, 1));
   let expected = 61.0 / 365.0 + 121.0 / 366.0;
   assert!((yf - expected).abs() < 1e-12);
 }
 
 #[test]
 fn act_act_isda_two_full_years() {
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2023, 1, 1), d(2025, 1, 1));
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2023, 1, 1), d(2025, 1, 1));
   // 2023: 365 days / 365 = 1.0, 2024: 366 days / 366 = 1.0
   assert!((yf - 2.0).abs() < 1e-12);
 }
@@ -233,7 +230,7 @@ fn unadjusted_returns_same_date() {
 fn semi_annual_backward_schedule() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2026, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .backward()
+    .rule(DateGenerationRule::Backward)
     .build();
   // Expected: 2024-01-15, 2024-07-15, 2025-01-15, 2025-07-15, 2026-01-15
   assert_eq!(schedule.dates.len(), 5);
@@ -246,7 +243,7 @@ fn semi_annual_backward_schedule() {
 fn quarterly_forward_schedule() {
   let schedule = ScheduleBuilder::new(d(2024, 3, 1), d(2025, 3, 1))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Expected: 2024-03-01, 2024-06-01, 2024-09-01, 2024-12-01, 2025-03-01
   assert_eq!(schedule.dates.len(), 5);
@@ -259,9 +256,9 @@ fn schedule_with_business_day_adjustment() {
   let cal = Calendar::new(HolidayCalendar::Target);
   let schedule = ScheduleBuilder::new(d(2024, 1, 1), d(2025, 1, 1))
     .frequency(Frequency::Quarterly)
-    .calendar(cal)
+    .calendar(std::sync::Arc::new(cal))
     .convention(BusinessDayConvention::ModifiedFollowing)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Jan 1 is a TARGET holiday → adjusted to Jan 2 (Tue)
   assert_eq!(schedule.adjusted_dates[0], d(2024, 1, 2));
@@ -272,7 +269,7 @@ fn schedule_end_of_month() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 31), d(2024, 7, 31))
     .frequency(Frequency::Monthly)
     .end_of_month(true)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Feb should be 29 (2024 is leap), Apr 30, Jun 30
   assert_eq!(schedule.dates[1], d(2024, 2, 29));
@@ -284,7 +281,7 @@ fn schedule_end_of_month() {
 fn schedule_year_fractions() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2025, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let yfs: Vec<f64> = schedule.year_fractions(DayCountConvention::Actual360);
   assert_eq!(yfs.len(), 2);
@@ -304,9 +301,8 @@ fn business_days_between() {
 #[test]
 fn advance_business_days() {
   let cal = Calendar::new(HolidayCalendar::UnitedStates);
-  // Advance 5 biz days from Friday Jan 12, 2024
-  // Sat 13 skip, Sun 14 skip, Mon 15 MLK skip, Tue 16 (1), Wed 17 (2),
-  // Thu 18 (3), Fri 19 (4), Sat 20 skip, Sun 21 skip, Mon 22 (5)
+  // Advance 5 business days from Fri 2024-01-12: the weekends and Mon 15 (MLK) are skipped, so Tue
+  // 16 is day 1 and Mon 22 is day 5.
   let result = cal.advance(d(2024, 1, 12), 5);
   assert_eq!(result, d(2024, 1, 22));
 }
@@ -356,6 +352,7 @@ fn joint_calendar_from_array() {
   assert!(cal.is_business_day(d(2024, 7, 16))); // Tue, not Marine Day
 }
 
+#[derive(Debug)]
 struct WeekdaysOnly;
 
 impl CalendarExt for WeekdaysOnly {
@@ -381,22 +378,22 @@ fn calendar_ext_trait_object() {
   assert_eq!(adjusted, d(2024, 1, 2));
 }
 
-struct MockPricer {
+struct DatedContract {
   eval: NaiveDate,
-  expiration: NaiveDate,
+  expiry: NaiveDate,
+  dcc: DayCountConvention,
 }
 
-impl stochastic_rs::traits::TimeExt for MockPricer {
-  fn tau(&self) -> Option<f64> {
-    None
+impl stochastic_rs::traits::TimeExt for DatedContract {
+  fn maturity(&self) -> Maturity {
+    Maturity::Dates {
+      eval: self.eval,
+      expiry: self.expiry,
+    }
   }
 
-  fn eval(&self) -> Option<NaiveDate> {
-    Some(self.eval)
-  }
-
-  fn expiration(&self) -> Option<NaiveDate> {
-    Some(self.expiration)
+  fn dcc(&self) -> DayCountConvention {
+    self.dcc
   }
 }
 
@@ -404,14 +401,15 @@ impl stochastic_rs::traits::TimeExt for MockPricer {
 fn time_ext_tau_with_dcc() {
   use stochastic_rs::traits::TimeExt;
 
-  let pricer = MockPricer {
+  let contract = DatedContract {
     eval: d(2024, 1, 15),
-    expiration: d(2024, 7, 15),
+    expiry: d(2024, 7, 15),
+    dcc: DayCountConvention::Actual365Fixed,
   };
 
-  let tau_365: f64 = pricer.tau_or_from_dates();
-  let tau_360: f64 = pricer.tau_with_dcc(DayCountConvention::Actual360);
-  let tau_act: f64 = pricer.tau_with_dcc(DayCountConvention::ActualActualISDA);
+  let tau_365: f64 = contract.tau();
+  let tau_360: f64 = contract.tau_with_dcc(DayCountConvention::Actual360);
+  let tau_act: f64 = contract.tau_with_dcc(DayCountConvention::ActualActualIsda);
 
   // 182 days: ACT/365 = 182/365 ≈ 0.4986
   assert!((tau_365 - 182.0 / 365.0).abs() < 1e-10);
@@ -423,65 +421,25 @@ fn time_ext_tau_with_dcc() {
   assert!(tau_360 > tau_365);
 }
 
-struct MockPricerWithDcc {
-  tau: Option<f64>,
-  eval: NaiveDate,
-  expiration: NaiveDate,
-  dcc: Option<DayCountConvention>,
-}
-
-impl stochastic_rs::traits::TimeExt for MockPricerWithDcc {
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn eval(&self) -> Option<NaiveDate> {
-    Some(self.eval)
-  }
-
-  fn expiration(&self) -> Option<NaiveDate> {
-    Some(self.expiration)
-  }
-
-  fn dcc(&self) -> Option<DayCountConvention> {
-    self.dcc
-  }
-}
-
 #[test]
-fn time_ext_dcc_override_switches_tau_or_from_dates() {
+fn time_ext_tau_reads_the_instruments_own_day_count() {
   use stochastic_rs::traits::TimeExt;
 
-  // Same dates, default vs Actual/360 override on a non-leap span.
-  let eval = d(2025, 1, 15);
-  let expiration = d(2025, 7, 15); // 181 days
-  let default = MockPricerWithDcc {
-    tau: None,
-    eval,
-    expiration,
-    dcc: None,
+  // 2025-01-15 → 2025-07-15 is 181 days.
+  let act360 = DatedContract {
+    eval: d(2025, 1, 15),
+    expiry: d(2025, 7, 15),
+    dcc: DayCountConvention::Actual360,
   };
-  let act360 = MockPricerWithDcc {
-    tau: None,
-    eval,
-    expiration,
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!(
-    (default.tau_or_from_dates() - 181.0 / 365.0).abs() < 1e-12,
-    "dcc() == None must fall back to Actual/365 Fixed"
-  );
-  assert!(
-    (act360.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12,
-    "dcc() == Some(Actual360) must be used by tau_or_from_dates"
-  );
+  assert!((act360.tau() - 181.0 / 360.0).abs() < 1e-12);
+  assert!((act360.tau_with_dcc(DayCountConvention::Actual365Fixed) - 181.0 / 365.0).abs() < 1e-12);
 }
 
 #[test]
 fn display_impls() {
   assert_eq!(format!("{}", DayCountConvention::Actual360), "ACT/360");
   assert_eq!(
-    format!("{}", DayCountConvention::ActualActualISDA),
+    format!("{}", DayCountConvention::ActualActualIsda),
     "ACT/ACT ISDA"
   );
   assert_eq!(
@@ -505,39 +463,27 @@ fn default_impls() {
   assert_eq!(Frequency::default(), Frequency::SemiAnnual);
 }
 
-/// `TimeExt::tau_or_from_dates` short-circuits on an explicit `tau`: the
-/// `(eval, expiration)` pair and the `dcc` override are both skipped, not
-/// merged. Pins the precedence branch of the trait default at
-/// `traits/time.rs`, which governs every `TimeExt` implementor in the
-/// workspace — including `EuropeanOption`, whose engine relies on it.
+/// A year-fraction maturity is returned as given, whatever day count the instrument or the caller
+/// names.
 #[test]
-fn time_ext_explicit_tau_wins_over_dates_and_dcc() {
+fn time_ext_a_year_fraction_ignores_every_day_count() {
   use stochastic_rs::traits::TimeExt;
 
-  // Dates and dcc chosen so that *either* date-derived tau (181/365 or
-  // 181/360) is far from the explicit 0.5 — a merged or ignored `tau`
-  // could not land on 0.5 by accident.
-  let pricer = MockPricerWithDcc {
-    tau: Some(0.5),
-    eval: d(2025, 1, 15),
-    expiration: d(2025, 7, 15),
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!(
-    (pricer.tau_or_from_dates() - 0.5).abs() < 1e-12,
-    "explicit tau must win over the date pair and the dcc override"
+  struct HalfYear;
+
+  impl TimeExt for HalfYear {
+    fn maturity(&self) -> Maturity {
+      Maturity::Tau(0.5)
+    }
+
+    fn dcc(&self) -> DayCountConvention {
+      DayCountConvention::Actual360
+    }
+  }
+
+  assert_eq!(HalfYear.tau(), 0.5);
+  assert_eq!(
+    HalfYear.tau_with_dcc(DayCountConvention::ActualActualIsda),
+    0.5
   );
-  assert!(
-    (pricer.tau_with_dcc(DayCountConvention::ActualActualISDA) - 0.5).abs() < 1e-12,
-    "explicit tau must win over an explicitly requested dcc too"
-  );
-  // The same mock without `tau` does use the dates, so the assertion above
-  // is about precedence and not about the mock being inert.
-  let dated = MockPricerWithDcc {
-    tau: None,
-    eval: d(2025, 1, 15),
-    expiration: d(2025, 7, 15),
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!((dated.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12);
 }

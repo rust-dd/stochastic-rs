@@ -5,6 +5,7 @@ use stochastic_rs_distributions::traits::Fn2D;
 use stochastic_rs_distributions::traits::Grid2D;
 
 use super::*;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::ModelPricer;
 
@@ -14,11 +15,13 @@ const Q: f64 = 0.01;
 
 fn params(eta: f64) -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.4,
-    rho: -0.6,
-    v0: 0.05,
+    heston: HestonParams {
+      v0: 0.05,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.4,
+      rho: -0.6,
+    },
     eta,
   }
 }
@@ -30,18 +33,17 @@ fn method() -> FokkerPlanckMethod {
 }
 
 fn unit_leverage() -> Fn2D<f64> {
-  Expr::lit(1.0).into()
+  Expr::lit(1.0).compile().unwrap().into()
 }
 
-/// Under a unit leverage the model is Heston, whose calls have a closed
-/// form: the scheme's marginal has to reprice them within two cents on a
-/// spot of 100, on a 121×60 mesh with 100 time steps per year.
+/// Under unit leverage the marginal reprices Heston's closed-form calls within two cents at spot
+/// 100, on a 121×60 mesh with 100 steps a year.
 #[test]
 fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   let p = params(1.0);
   let density =
     heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.25, 1.0], &method()).unwrap();
-  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0));
+  let exact = HestonPricer::new(p.heston);
   for (index, tau) in [(0, 0.25), (1, 1.0)] {
     for k in [80.0, 90.0, 100.0, 110.0, 120.0] {
       let fv = density.call_price(index, k, R, tau);
@@ -54,9 +56,8 @@ fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   }
 }
 
-/// Every boundary flux is zero, so the mass never moves; the log-spot
-/// marginal's mean is the forward and the variance's mean the CIR mean, the
-/// two first moments the exact density carries.
+/// Mass is conserved, the log-spot marginal's mean is the forward and the variance's mean the CIR
+/// mean.
 #[test]
 fn the_density_keeps_its_mass_and_its_first_moments() {
   let p = params(0.7);
@@ -72,7 +73,7 @@ fn the_density_keeps_its_mass_and_its_first_moments() {
       (mean / forward - 1.0).abs() < 2e-3,
       "spot mean {mean} vs forward {forward} at tau = {tau}"
     );
-    let cir = p.theta + (p.v0 - p.theta) * (-p.kappa * tau).exp();
+    let cir = p.heston.theta + (p.heston.v0 - p.heston.theta) * (-p.heston.kappa * tau).exp();
     let v_mean = density.variance_means[index];
     assert!(
       (v_mean - cir).abs() < 2e-3 * cir.max(xi * xi),
@@ -82,14 +83,13 @@ fn the_density_keeps_its_mass_and_its_first_moments() {
   }
 }
 
-/// A leverage that varies with the spot enters the scheme through the
-/// advection, the diffusion and the mixed flux: the call prices move away
-/// from the unit-leverage ones in the direction a lower volatility implies.
+/// A spot-dependent leverage moves the call prices off the unit-leverage ones in the direction its
+/// lower volatility implies.
 #[test]
 fn a_smaller_leverage_lowers_the_option_value() {
   let p = params(1.0);
   let unit = heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.5], &method()).unwrap();
-  let damped: Fn2D<f64> = Expr::lit(0.8).into();
+  let damped: Fn2D<f64> = Expr::lit(0.8).compile().unwrap().into();
   let low = heston_slv_density(&p, S0, R, Q, &damped, &[0.5], &method()).unwrap();
   let (c_unit, c_low) = (
     unit.call_price(0, 100.0, R, 0.5),
@@ -111,10 +111,8 @@ fn smiling_local_vol() -> Grid2D<f64> {
   Grid2D::new(ts, ks, values)
 }
 
-/// The calibrated surface is laid on the log-spot mesh with the spot a node,
-/// starts at `t = 0` with the first full time step's row as the reference
-/// prescribes, stays finite and positive, and the calibration's own
-/// marginal reprices the local-volatility model's forward.
+/// The calibrated surface sits on the log-spot mesh with the spot a node, starts with the first
+/// full step's row, stays finite and positive, and its marginal reprices the local-vol forward.
 #[test]
 fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   let p = params(0.6);
@@ -147,22 +145,24 @@ fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   }
 }
 
-/// Under `eta = 0` the variance is deterministic and the calibration
-/// condition is the closed form `L = sigma_LV / sqrt(V_t)`, which the route
-/// takes directly at every node and every level, `t = 0` included; the
-/// density still marches under it and keeps its mass.
+/// At `eta = 0` the route uses `L = sigma_LV / sqrt(V_t)` at every node and level, `t = 0`
+/// included, and the density still marches under it and keeps its mass.
 #[test]
 fn eta_zero_takes_the_closed_form_exactly() {
+  let base = params(0.0);
   let p = HestonSlvParams {
-    v0: 0.03,
-    theta: 0.05,
-    ..params(0.0)
+    heston: HestonParams {
+      v0: 0.03,
+      theta: 0.05,
+      ..base.heston
+    },
+    ..base
   };
   let grid = smiling_local_vol();
   let run = calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[0.5], &method()).unwrap();
   let lev = &run.leverage;
   for (j, &t) in lev.times().iter().enumerate() {
-    let variance = p.theta + (p.v0 - p.theta) * (-p.kappa * t).exp();
+    let variance = p.heston.theta + (p.heston.v0 - p.heston.theta) * (-p.heston.kappa * t).exp();
     for (i, &s) in lev.spots().iter().enumerate() {
       let expected = grid.eval(t, s) / variance.sqrt();
       let got = lev.values()[[j, i]];
@@ -191,33 +191,33 @@ fn bad_settings_are_errors() {
   assert!(calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[], &method()).is_err());
 }
 
-/// The reference's Heston sets C (Feller satisfied, a vol-of-vol of 0.9)
-/// and D (Feller violated, the density piles up at `v = 0`), under a unit
-/// leverage against the closed-form calls at the default mesh: the worst
-/// errors must stay below 0.015 and 0.022 on a spot of 100, and mass must be
-/// conserved in both. The Feller-violating set
-/// converges at a lower order, as the reference reports, but converges.
+/// The reference's sets C (Feller holds) and D (Feller fails) at unit leverage: worst call errors
+/// under 0.015 and 0.022 at spot 100, mass conserved in both.
 #[test]
 fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {
   let sets = [
     (
       HestonSlvParams {
-        kappa: 5.0,
-        theta: 0.16,
-        sigma: 0.9,
-        rho: 0.1,
-        v0: 0.0625,
+        heston: HestonParams {
+          v0: 0.0625,
+          kappa: 5.0,
+          theta: 0.16,
+          sigma: 0.9,
+          rho: 0.1,
+        },
         eta: 1.0,
       },
       0.015,
     ),
     (
       HestonSlvParams {
-        kappa: 1.15,
-        theta: 0.0348,
-        sigma: 0.39,
-        rho: -0.64,
-        v0: 0.0348,
+        heston: HestonParams {
+          v0: 0.0348,
+          kappa: 1.15,
+          theta: 0.0348,
+          sigma: 0.39,
+          rho: -0.64,
+        },
         eta: 1.0,
       },
       0.022,
@@ -225,10 +225,10 @@ fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {
   ];
   for (p, bound) in sets {
     assert!(
-      (2.0 * p.kappa * p.theta >= p.sigma * p.sigma) == (bound < 0.02),
+      (2.0 * p.heston.kappa * p.heston.theta >= p.heston.sigma * p.heston.sigma) == (bound < 0.02),
       "the tighter bound belongs to the Feller-satisfying set"
     );
-    let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0));
+    let exact = HestonPricer::new(p.heston);
     let density = heston_slv_density(
       &p,
       S0,
@@ -251,7 +251,7 @@ fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {
         assert!(
           (fv - closed).abs() < bound,
           "kappa = {}, tau = {tau}, K = {k}: finite volume {fv}, closed form {closed}",
-          p.kappa
+          p.heston.kappa
         );
       }
     }

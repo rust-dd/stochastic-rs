@@ -6,9 +6,9 @@
 # stochastic-rs for Python
 
 **Quantitative finance for Python, powered by Rust.** stochastic-rs is an
-open-source quantitative-finance library: it simulates 132 stochastic
+open-source quantitative-finance library: it simulates 130 stochastic
 processes, prices and calibrates option models, builds volatility surfaces
-and estimates model parameters from data. The Python module has 308
+and estimates model parameters from data. The Python module has 307
 entries, takes and returns NumPy arrays, and ships prebuilt wheels for
 Linux, macOS and Windows — the same code the
 [Rust crate](https://crates.io/crates/stochastic-rs) runs.
@@ -21,7 +21,7 @@ Linux, macOS and Windows — the same code the
 pip install stochastic-rs
 ```
 
-Python 3.9 or newer. NumPy is the only dependency.
+Python 3.11 or newer. NumPy is the only dependency.
 
 ## Quickstart
 
@@ -55,7 +55,8 @@ path and `sample_par(m)` for `m` paths in parallel.
 | Area | Examples |
 |---|---|
 | Stochastic processes | `PyGbm`, `PyHeston`, `PyRoughBergomi`, `PyFbm`, `PyCir`, `PyHullWhite`, `PyMerton`, `PyHawkes` |
-| Option pricing | `BSMPricer`, `HestonPricer`, `SabrPricer`, `Merton1976Pricer`, Fourier pricers (`HestonFourier`, `CGMYFourier`, …) |
+| Option pricing | `BSMPricer`, `HestonPricer`, `SabrPricer`, `Merton1976Pricer`, Fourier models (`HestonFourier`, `CGMYFourier`, …) priced by quadrature or by `CosEngine` on a strike array |
+| Yield curves | `NelsonSiegel`, `Svensson` |
 | Calibration | `HestonCalibrator`, `SabrCalibrator`, `SviCalibrator`, `SsviCalibrator`, `RBergomiCalibrator` |
 | Estimation | `FukasawaHurst`, `RescaledRange`, `GarchFit`, `HestonMLE` |
 | Distributions | `PyNormal`, `PyAlphaStable`, `PyNig`, `PyVarianceGamma` |
@@ -74,7 +75,7 @@ The wheels run on the CPU. Device-capable classes take a `device=` argument
 (`"cuda"`, `"metal"`), which needs a source build with that back-end:
 
 ```bash
-pip install maturin
+pip install "maturin>=1.9.4"
 maturin develop --release --features metal   # or: --features cuda
 ```
 

@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 25 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 27 items in six groups for day-to-day use. What is in the prelude and what is kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -10,15 +10,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **25 items in 6 groups** — re-derive with
-`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
-`src/lib.rs` any time an item is added or removed; this count has drifted
-before (it read "20 items" for several releases after `VolterraKernel`
-joined the fifth group without a sixth being added for `Backend`/`Cpu`/
-`PathSampler`). The six lists below are name groupings for reference, not
-standalone Rust statements — see
-[Importing concrete types](#importing-concrete-types) for a compiled,
-runnable example.
+Brings **27 items in 6 groups**. The lists below are name groupings; [Importing concrete types](#importing-concrete-types) has a runnable example.
 
 ## Trait core (9)
 
@@ -29,10 +21,7 @@ DistributionExt, DistributionSampler,
 TimeExt
 ```
 
-These are the bounds you write on generic functions. Code that simulates
-carries `T: FloatExt` (the full SIMD + RNG surface, so `f32`/`f64` only);
-analytic pricing code carries the looser `T: RealExt` (scalar arithmetic
-only), which a custom scalar such as an AAD dual number can implement.
+These are the bounds you write on generic functions. Code that simulates carries `T: FloatExt` (the full SIMD + RNG surface, so `f32`/`f64` only); analytic pricing code carries the looser `T: RealExt` (scalar arithmetic only), which a custom scalar such as an AAD dual number can implement.
 
 ## Pricing (1)
 
@@ -40,14 +29,7 @@ only), which a custom scalar such as an AAD dual number can implement.
 ModelPricer
 ```
 
-[`ModelPricer`](/docs/concepts/model-pricer) is the concrete-typed pricing
-surface (no `&dyn`). The date-aware `PricerExt` that used to sit here was
-removed in 3.0 — `ShortRatePricer` and the multi-asset family's inherent
-methods absorbed the implementors that `ModelPricer` did not, and neither is
-in the prelude. `GreeksExt` left this group in `3.0.0-beta`: a pricer's
-Greeks are an inherent `greeks(s, k, r, q, tau, option_type)` method, so the
-no-argument trait beside a query-taking `ModelPricer` advertised a symmetry
-the crate does not have.
+[`ModelPricer`](/docs/concepts/model-pricer) is the concrete-typed pricing surface (no `&dyn`). A pricer's Greeks are an inherent `greeks(s, k, r, q, tau, option_type)` method, not a prelude trait.
 
 ## Calibration (3)
 
@@ -55,8 +37,7 @@ the crate does not have.
 Calibrator, CalibrationResult, ToModel
 ```
 
-`ToModel` is the bridge that lets a `Calibrator` produce a concrete
-pricer instance via the associated type — no boxed-trait gymnastics.
+`ToModel` turns a calibration result into a concrete pricer through an associated type.
 
 ## Option types (3)
 
@@ -64,25 +45,17 @@ pricer instance via the associated type — no boxed-trait gymnastics.
 Moneyness, OptionStyle, OptionType
 ```
 
-The three enums that cover ~all option specs in the library. `Moneyness`
-ATM / ITM / OTM; `OptionStyle` European / American / Bermudan; `OptionType`
-Call / Put.
+`Moneyness` (deep ITM / ITM / ATM / OTM / deep OTM), `OptionStyle` (European / American), `OptionType` (Call / Put).
 
-## Backend / sampling (4)
+## Backend / sampling (6)
 
 ```
 Backend, Cpu,
-PathSampler, VolterraKernel
+VolterraKernel,
+Seeded, SimdDistribution, SimdKernel
 ```
 
-`Backend` is the compute-backend dispatch trait behind `Fgn`/`Fbm`'s
-`.on::<B>()`; `Cpu` is its default (zero-sized) implementor — every other
-backend (`Cuda`, `Metal`, `Accelerate`) is feature-gated
-and reached via `stochastic_rs::stochastic::device` instead. `PathSampler`
-is the `sample()`/`sample_into()` abstraction `ProcessExt::sampler()`
-returns. `VolterraKernel` is the nodes/weights/evaluate trait behind the
-Markovian-lift rough-process family (`RlKernel`, `ExponentialKernel`,
-`GammaKernel`, `SumOfExponentials`).
+`Backend` is the device marker behind every process's `.on::<B>()`; `Cpu` is its default (zero-sized) implementor, and the other backends (`Cuda`, `Metal`, `Accelerate`) are feature-gated and live in `stochastic_rs::stochastic::device`. `VolterraKernel` is the nodes/weights/evaluate trait behind the Markovian-lift rough processes (`RlKernel`, `ExponentialKernel`, `GammaKernel`, `SumOfExponentials`). `SimdDistribution` makes `.seeded(&seed)` resolve on a stateless law such as `SimdNormal`, binding it to a `Seeded` stream whose draws take `&mut self`; `SimdKernel` adds `fill_with(&mut rng, out)`, a bulk fill driven by any `rand` rng.
 
 ## Estimation (5)
 
@@ -92,60 +65,22 @@ HypothesisTest, DiffusionModel,
 TailDependence
 ```
 
-The stats and copula trait surface. Without these in scope a first
-`.estimate()` call does not compile at all, which is why they were added —
-`HurstEstimator` covers the eight Hurst estimators, `FractalDimEstimator`
-the fractal-dimension family, `HypothesisTest` all fifteen result types (`grep -rc 'impl.*HypothesisTest for' stochastic-rs-stats/src`)
-across stationarity, structural-break, random-walk, functional-form,
-normality and autocorrelation testing, `DiffusionModel` the parametric-SDE
-estimators, and `TailDependence` the upper/lower tail coefficients on
-bivariate copulas.
+Without these in scope an `.estimate()` call does not compile. `HurstEstimator` covers the eight Hurst estimators, `FractalDimEstimator` the fractal-dimension family, `HypothesisTest` the sixteen test-result types (stationarity, structural break, random walk, functional form, normality, goodness of fit — Kolmogorov-Smirnov, chi-square, the copula `GofResult` — and autocorrelation), `DiffusionModel` the parametric-SDE estimators, and `TailDependence` the upper/lower tail coefficients of bivariate copulas.
 
-## What is *not* in the prelude (and why)
+## What is *not* in the prelude
 
-- `CallableDist` — `python`-only; same reason.
-- `ShortRatePricer` — the short-rate half of the pricing pair. Its query is
-  a yield curve and a drift offset rather than a spot and a strike, so it
-  answers a different question from `ModelPricer` and does not belong beside
-  it in a default import. Reach via `traits::*`.
-- `VanillaEuropeanCall` / `ToShortRateModel` — markers you implement rather
-  than call: the first asserts a `ModelPricer` really is a European vanilla
-  call so `vol_surface` can invert it, the second bridges a short-rate
-  calibration to its model. Reach via `traits::*`.
-- `GreeksExt` — two implementors, both Monte Carlo Malliavin estimators that
-  bundle their query by necessity, and no generic consumer in the workspace.
-  The five analytic pricers that aggregate Greeks do it through an inherent
-  query-taking method they could not put behind a no-argument trait. Reach
-  via `traits::*`.
-- `FgnBackend` — the fGN-sampling capability subtrait of `Backend`. The
-  prelude's `Backend` is the bare device marker; the capability is named
-  only in generic code over backends. Reach via `traits::*`.
-- `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — the
-  cross-engine comparison harness: two instruments and two engines (three
-  engine×instrument pairings) that exist to validate models against each
-  other on the same contract.
-  That is a useful tool, not a third pricing layer — the crate's two layers
-  are `ModelPricer` (spot/strike query) and the instruments'
-  `.valuation(curve)` — and keeping the four in a default import made the
-  harness look like the architecture. Reach via `traits::*`.
+All of these are reachable through `stochastic_rs::traits::*`:
 
-These are intentionally left out so the prelude is feature-flag-free —
-`use stochastic_rs::prelude::*;` works on every supported feature
-combination without surprises.
+- `ShortRatePricer` / `ToShortRateModel` — the short-rate family. Its query is a yield curve and a drift offset rather than a spot and a strike, so it answers a different question from `ModelPricer`. `ToShortRateModel` builds the lattice model from a short-rate calibration result alone.
+- `VanillaEuropeanCall` — a marker you implement: it asserts a `ModelPricer` really is a European vanilla call so `vol_surface` can invert it.
+- `GreeksExt` — implemented only by the two Monte Carlo Malliavin estimators; the analytic pricers expose Greeks through an inherent method.
+- `FgnBackend`, `SheetBackend`, `EulerBackend`, `HostBackend` — the capability subtraits of `Backend`, named only in generic code over backends.
+- `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — a cross-engine comparison harness: two instruments and two engines for validating models against each other on the same contract. The crate's two pricing layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`.
 
-"Reach via `traits::*`" is a promise the hub has to keep, so
-`tests/prelude_completeness.rs` names every trait on this list and fails to
-compile if `stochastic_rs::traits` drops one.
+The prelude needs no feature flag: `use stochastic_rs::prelude::*;` works on every supported feature combination.
 
 ## Importing concrete types
 
-The prelude ships traits, option-type enums, and one zero-sized backend
-marker (`Cpu`, needed to name the default backend explicitly in generic
-code). Every other concrete type — every process, pricer, calibrator — you
-name yourself:
+The prelude ships traits, the option-type enums and one zero-sized backend marker (`Cpu`, to name the default backend in generic code). Concrete types — processes, pricers, calibrators — you import yourself:
 
 <RustExample path="tests/doctest_concepts_prelude_concrete_imports.rs" />
-
-This is a deliberate trade-off: a prelude that ships every concrete type
-would be a 200+-line dump every editor has to autocomplete through. Keeping
-concrete-type imports explicit also makes grep-able code (`grep -r 'Ou::'`).

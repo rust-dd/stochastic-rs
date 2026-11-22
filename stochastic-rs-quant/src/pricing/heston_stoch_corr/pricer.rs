@@ -5,16 +5,28 @@ use std::f64::consts::FRAC_1_PI;
 use num_complex::Complex64;
 
 use super::model::HestonStochCorrPricer;
+use crate::OptionType;
 use crate::pricing::cf_quadrature::integrate_to_convergence;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
 
 impl HestonStochCorrPricer {
-  /// Price a call option using the Carr-Madan dampened Fourier transform.
+  /// The call by Carr and Madan's damped transform at `α = 1.25`: the payoff at `tau = 0`; NaN
+  /// past expiry and, before it, for a spot or strike that is not positive.
   ///
-  /// C(K) = exp(−α·ln K) / π · ∫₀^∞ Re\[e^{−iu·ln K} · e^{−rτ} · φ(u−(α+1)i)
-  ///        / (α² + α − u² + i(2α+1)u)\] du
-  ///
-  /// where α = 1.25 is the damping factor.
+  /// $$
+  /// C(K)=\frac{e^{-\alpha\ln K}}{\pi}\int_0^\infty\operatorname{Re}\!\left[
+  /// \frac{e^{-iu\ln K}\,e^{-r\tau}\,\varphi\bigl(u-(\alpha+1)i\bigr)}
+  /// {\alpha^2+\alpha-u^2+i(2\alpha+1)u}\right]du
+  /// $$
   pub fn price_call_carr_madan(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if let Some(value) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return value;
+    }
+    if not_positive(&[s, k]) {
+      return f64::NAN;
+    }
     let alpha = 1.25_f64;
     let log_k = k.ln();
 
@@ -36,21 +48,8 @@ impl HestonStochCorrPricer {
   }
 }
 
-/// Floor a price at zero **without** swallowing a `NaN`.
-///
-/// A floor and a poison-check are different operations, and `f64::max` runs
-/// them together into one wrong answer: it returns the non-`NaN` operand, so
-/// `f64::NAN.max(0.0)` is `0.0`. The deep-wing inversion really can come back
-/// a few ulp below zero and that value should floor; a `NaN` has no price to
-/// floor and travels on, as [the failure
-/// convention](crate::traits::ModelPricer#how-pricing-fails) requires.
-///
-/// Every non-finite market input poisons this model's characteristic
-/// function — `tau` through the Rk4 step size, `s` through `ln S`, `r` and
-/// `q` through the drift — and `tau` arrives as `NaN` legitimately from
-/// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt). Same shape as
-/// `pricing/fourier/pricer.rs`'s floor of the same name and
-/// `VarianceSwapPricer::fair_strike_replication`'s.
+/// Floors inversion round-off below zero at zero and lets a NaN through, which `f64::max`
+/// would turn into a plausible `0.0`.
 #[inline]
 pub(super) fn floor_price(x: f64) -> f64 {
   if x.is_nan() { x } else { x.max(0.0) }

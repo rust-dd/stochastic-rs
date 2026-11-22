@@ -1,25 +1,17 @@
-//! `jump/` slice of the exhaustive reproducibility guard — see
-//! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
-//! `Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
-//! the eight distribution-taking types named there, driven at `LAMBDA = 50`
-//! so a jump-component reproducibility bug cannot hide behind a
-//! diffusion-only comparison; `JumpFOUCustom` is the sixth (its jump
-//! timing/size draws use two independent `ScalarExp` distributions instead
-//! of one `ScalarNormal`) and one of the ten backend-generic types besides.
+//! The `jump/` slice of the reproducibility guard. The distribution-taking types run at
+//! `LAMBDA = 50`; `JumpFouCustom` draws its timing and sizes from two independent `SimdExp` laws.
 
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
-use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
-use stochastic_rs_stochastic::jump::ig::Ig;
+use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJd;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
-use stochastic_rs_stochastic::jump::kobol::KoBoL;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
+use stochastic_rs_stochastic::jump::kobol::Kobol;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -27,29 +19,28 @@ use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::J;
 use crate::common::LAMBDA;
 use crate::common::N;
 use crate::common::guard;
 
-guard!(bates1996, "Bates1996", |s| Bates1996::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+guard!(bates, "Bates", |s| Bates::new(
+  Drift::Mu(0.05),
   LAMBDA,
   0.0,
   0.04,
   1.5,
   0.3,
   -0.6,
-  ScalarNormal::new(0.0, 0.05),
+  SimdNormal::new(0.0, 0.05),
   N,
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   Some(1.0),
-  Some(false),
+  VarianceBoundary::FullTruncation,
   s
 ));
 
@@ -84,7 +75,7 @@ guard!(cts, "Cts", |s| Cts::new(
   s
 ));
 
-guard!(hawkes_jd, "HawkesJD", |s| HawkesJD::new(
+guard!(hawkes_jd, "HawkesJd", |s| HawkesJd::new(
   0.05,
   0.2,
   0.5,
@@ -98,23 +89,21 @@ guard!(hawkes_jd, "HawkesJD", |s| HawkesJD::new(
   s
 ));
 
-guard!(ig, "Ig", |s| Ig::new(1.0, N, Some(0.0), Some(1.0), s));
-
 guard!(jump_fou, "JumpFou", |s| JumpFou::new(
   0.65,
   1.5,
   0.0,
   0.2,
   LAMBDA,
-  ScalarNormal::new(0.0, 0.05),
+  SimdNormal::new(0.0, 0.05),
   N,
   Some(0.0),
   Some(1.0),
   s
 ));
 
-guard!(jump_fou_custom, "JumpFOUCustom", |s| {
-  JumpFOUCustom::new(
+guard!(jump_fou_custom, "JumpFouCustom", |s| {
+  JumpFouCustom::new(
     0.65,
     1.5,
     0.0,
@@ -122,13 +111,13 @@ guard!(jump_fou_custom, "JumpFOUCustom", |s| {
     N,
     Some(0.0),
     Some(1.0),
-    ScalarExp::new(20.0),
-    ScalarExp::new(5.0),
+    SimdExp::new(20.0),
+    SimdExp::new(5.0),
     s,
   )
 });
 
-guard!(kobol, "KoBoL", |s| KoBoL::new(
+guard!(kobol, "Kobol", |s| Kobol::new(
   1.0,
   1.0,
   1.0,
@@ -147,7 +136,7 @@ guard!(kou, "Kou", |s| Kou::new(
   0.2,
   LAMBDA,
   0.0,
-  ScalarNormal::new(0.0, 0.12),
+  SimdNormal::new(0.0, 0.12),
   N,
   Some(0.0),
   Some(1.0),
@@ -158,7 +147,7 @@ guard!(levy_diffusion, "LevyDiffusion", |s| LevyDiffusion::new(
   0.01,
   0.2,
   LAMBDA,
-  ScalarNormal::new(0.0, 0.08),
+  SimdNormal::new(0.0, 0.08),
   N,
   Some(0.0),
   Some(1.0),
@@ -170,7 +159,7 @@ guard!(merton, "Merton", |s| Merton::new(
   0.2,
   LAMBDA,
   0.0,
-  ScalarNormal::new(0.0, 0.1),
+  SimdNormal::new(0.0, 0.1),
   N,
   Some(0.0),
   Some(1.0),
@@ -178,16 +167,13 @@ guard!(merton, "Merton", |s| Merton::new(
 ));
 
 guard!(mjd_log, "MjdLog", |s| MjdLog::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   0.2,
   1.0,
   0.0,
   0.1,
   N,
-  Some(100.0),
+  100.0,
   Some(1.0),
   s
 ));

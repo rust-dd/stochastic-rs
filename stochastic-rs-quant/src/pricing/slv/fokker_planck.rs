@@ -1,19 +1,13 @@
-//! Leverage calibration by the forward Kolmogorov (Fokker–Planck) equation
-//! of the Heston SLV model, after Wyns & Du Toit (2016).
-//!
-//! The joint density $p(t, x, v)$ of the log-spot and the variance satisfies
+//! Leverage calibration by the forward Kolmogorov (Fokker–Planck) equation of the Heston SLV model:
 //!
 //! $$
-//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr)
-//!   + \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr)
-//!   + \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr)
-//!   - \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr)
-//!   - \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
-//! \qquad p(0, \cdot) = \delta_{(x_0, v_0)},
+//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr) +
+//!   \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr) +
+//!   \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr) -
+//!   \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr) -
+//!   \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
+//! \qquad p(0, \cdot) = \delta_{(x_0, v_0)},\quad \xi = \eta\sigma,\quad L = L(t, e^x),
 //! $$
-//!
-//! with $\xi = \eta\sigma$ the mixed vol-of-vol and $L = L(t, e^x)$ the
-//! leverage, and the calibration condition
 //!
 //! $$
 //! L^2(t, x) = \frac{\sigma_{\text{LV}}^2(t, e^x)}{\mathbb{E}[V_t \mid X_t = x]},
@@ -21,43 +15,12 @@
 //! \mathbb{E}[V_t \mid X_t = x] = \frac{\int_0^\infty v\, p(t, x, v)\, dv}{\int_0^\infty p(t, x, v)\, dv},
 //! $$
 //!
-//! makes the PDE non-linear. The equation is discretised on a vertex-centred
-//! `(x, v)` mesh by the finite-volume scheme of the reference's §2 — central
-//! advection fluxes, the conservative diffusion flux, the four-corner mixed
-//! flux with ghost values and a first-order forward flux on the corner row
-//! above the attainable boundary `v = 0`, every boundary flux zero so the
-//! numerical mass is conserved — and marched by the Hundsdorfer–Verwer ADI
-//! scheme of its §3 at $\theta = \tfrac12 + \tfrac{\sqrt3}{6}$, the first two
-//! steps replaced by four fully implicit Euler half-steps (Rannacher),
-//! solved by sparse LU, including the mixed derivative. The
-//! non-linearity is handled by the inner iteration of its §4: at each step
-//! the conditional expectation (4.5) is read off the current approximation
-//! of the new density by the trapezoid rule on $|P|$, the leverage row (4.4)
-//! is rebuilt from it, and the step is redone, `Q` times. A column carrying
-//! no mass keeps the previous row's expectation, and the $t = 0$ row is
-//! replaced by the row at the first full time step, as the reference does. Under
-//! $\eta = 0$ the variance is deterministic and the condition has the closed
-//! form $L = \sigma_{\text{LV}} / \sqrt{V_t}$, which is used directly: the
-//! central advection flux would otherwise leak a delta in the variance into
-//! its neighbouring cells, and there is nothing to estimate. The density
-//! starts as the cell average of the Dirac mass on the node `(x_0, v_0)`, so
-//! both are exact nodes of the meshes. The variance mesh resolves `[0, v0]`
-//! uniformly and stretches above `v0`, so the zero boundary is also resolved.
-//!
-//! References: Wyns, M. & Du Toit, J. (2016), *A finite volume – alternating
-//! direction implicit approach for the calibration of stochastic local
-//! volatility models*, Int. J. Comput. Math. 94(11), 2239–2267,
-//! arXiv:1611.02961; Ren, Y., Madan, D. & Qian, M. Q. (2007), *Calibrating
-//! and pricing with embedded local volatility models*, Risk 20(9), 138–143;
-//! Tian, Y., Zhu, Z., Lee, G., Klebaner, F. & Hamza, K. (2015), *Calibrating
-//! and pricing with a stochastic-local volatility model*, J. Derivatives
-//! 22(3), 21–39; in 't Hout, K. J. & Foulon, S. (2010), *ADI finite
-//! difference schemes for option pricing in the Heston model with
-//! correlation*, Int. J. Numer. Anal. Model. 7(2), 303–320 (the meshes and
-//! the ADI schemes).
+//! Finite volumes (§2), Hundsdorfer–Verwer ADI from a Rannacher start (§3), `Q` passes of §4 (4.4).
+//! Reference: Wyns & Du Toit (2016), arXiv:1611.02961; Int. J. Comput. Math. 94 (2017), 2239–2267
+//! Reference: Ren et al. (2007), Risk 20(9), 138–143
+//! Reference: Tian et al. (2015), J. Deriv. 22(3), 21–39
+//! Reference: in 't Hout & Foulon (2010), Int. J. Numer. Anal. Model. 7(2), 303–320
 
-use anyhow::Result;
-use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::traits::Fn2D;
@@ -74,6 +37,7 @@ use super::calibration::CONDITIONAL_VARIANCE_FLOOR;
 use super::calibration::clamp_leverage;
 use super::calibration::time_grid;
 use super::calibration::validate;
+use crate::QuantError;
 
 mod mesh;
 mod solver;
@@ -92,7 +56,7 @@ const DEFAULT_LOG_SPOT_HALF_WIDTH: f64 = 3.401_197_381_662_155_4;
 pub struct FokkerPlanckMethod {
   /// Log-spot nodes; made odd so the spot is a node.
   pub log_spot_nodes: usize,
-  /// Variance nodes.
+  /// Nodes of the variance mesh, uniform on `[0, v0]` and stretched above it.
   pub variance_nodes: usize,
   /// Time steps per year; every snapshot maturity is a step boundary.
   pub steps_per_year: usize,
@@ -178,43 +142,61 @@ impl FokkerPlanckMethod {
     self
   }
 
-  fn validate(&self, params: &HestonSlvParams) -> Result<()> {
-    if self.log_spot_nodes < 3 || self.variance_nodes < 3 {
-      bail!("the Fokker–Planck mesh needs at least three nodes per axis");
+  fn validate(&self, params: &HestonSlvParams) -> Result<(), QuantError> {
+    let (nx, nv) = (self.log_spot_nodes, self.variance_nodes);
+    if nx < 3 || nv < 3 {
+      return Err(QuantError::invalid(
+        "Fokker–Planck mesh",
+        format!("needs at least three nodes per axis, got {nx} log-spot and {nv} variance nodes"),
+      ));
     }
-    if self.steps_per_year == 0 || self.inner_iterations == 0 {
-      bail!("steps_per_year and inner_iterations must be positive");
+    let (steps, inner) = (self.steps_per_year, self.inner_iterations);
+    if steps == 0 || inner == 0 {
+      return Err(QuantError::invalid(
+        "steps_per_year and inner_iterations",
+        format!("must be positive, got {steps} and {inner}"),
+      ));
     }
     if !(self.theta.is_finite() && self.theta > 0.0) {
-      bail!("theta must be finite and positive, got {}", self.theta);
+      return Err(QuantError::invalid(
+        "theta",
+        format!("must be finite and positive, got {}", self.theta),
+      ));
     }
-    if !(self.x_stretch.is_finite() && self.x_stretch > 0.0)
-      || !(self.v_stretch.is_finite() && self.v_stretch > 0.0)
-    {
-      bail!("the mesh stretches must be finite and positive");
+    let (x_stretch, v_stretch) = (self.x_stretch, self.v_stretch);
+    if !(x_stretch.is_finite() && x_stretch > 0.0) || !(v_stretch.is_finite() && v_stretch > 0.0) {
+      return Err(QuantError::invalid(
+        "mesh stretches",
+        format!(
+          "must be finite and positive, got x_stretch = {x_stretch}, v_stretch = {v_stretch}"
+        ),
+      ));
     }
-    if self
-      .x_half_width
-      .is_some_and(|w| !(w.is_finite() && w > 0.0))
-    {
-      bail!("x_half_width must be finite and positive");
+    if let Some(w) = self.x_half_width.filter(|w| !(w.is_finite() && *w > 0.0)) {
+      return Err(QuantError::invalid(
+        "x_half_width",
+        format!("must be finite and positive, got {w}"),
+      ));
     }
-    let v_scale = params.v0.max(params.theta);
-    if self.v_max.is_some_and(|v| !(v.is_finite() && v > v_scale)) {
-      bail!("v_max must be finite and above both v0 and theta");
+    let v_scale = params.heston.v0.max(params.heston.theta);
+    if let Some(v) = self.v_max.filter(|v| !(v.is_finite() && *v > v_scale)) {
+      return Err(QuantError::invalid(
+        "v_max",
+        format!("must be finite and above both v0 and theta ({v_scale}), got {v}"),
+      ));
     }
     Ok(())
   }
 
   fn mesh(&self, params: &HestonSlvParams, s0: f64) -> Mesh {
-    let v_scale = params.v0.max(params.theta).max(1e-6);
+    let v_scale = params.heston.v0.max(params.heston.theta).max(1e-6);
     let v_max = self.v_max.unwrap_or((15.0 * v_scale).max(0.5));
     Mesh::new(
       s0.ln(),
       self.x_half_width.unwrap_or(DEFAULT_LOG_SPOT_HALF_WIDTH),
       self.x_stretch,
       self.log_spot_nodes,
-      params.v0.max(0.0),
+      params.heston.v0.max(0.0),
       v_max,
       self.v_stretch * v_scale,
       self.variance_nodes,
@@ -222,9 +204,8 @@ impl FokkerPlanckMethod {
   }
 }
 
-/// The density of the log-spot at the snapshot maturities, and the mass and
-/// the variance mean the solver carried there — the diagnostics the
-/// reference judges the scheme by.
+/// The log-spot density at the snapshot maturities, with the mass and variance mean carried there:
+/// the diagnostics the reference judges the scheme by.
 #[derive(Clone, Debug)]
 pub struct FokkerPlanckDensity {
   /// The log-spot nodes.
@@ -283,9 +264,8 @@ enum Source<'a> {
     local_vol: &'a Grid2D<f64>,
     previous: Vec<f64>,
   },
-  /// Under `η = 0` the variance is the deterministic
-  /// `V_t = θ + (v₀ − θ) e^{−κt}`, so the calibration condition has the
-  /// closed form `L = σ_LV / √V_t` and no density is needed to read it.
+  /// At `η = 0` the variance is `V_t = θ + (v₀ − θ)e^{−κt}`, so `L = σ_LV / √V_t` needs no density,
+  /// whose central advection flux would leak that variance delta into its neighbour cells.
   Deterministic {
     local_vol: &'a Grid2D<f64>,
     kappa: f64,
@@ -294,10 +274,8 @@ enum Source<'a> {
   },
 }
 
-/// Calibrate the leverage surface by the forward Kolmogorov equation — the
-/// module doc has the scheme. Takes what
-/// [`calibrate_leverage`](super::calibrate_leverage) takes, the method aside,
-/// and is anchored to `(r, q)` the same way.
+/// The leverage by the forward Kolmogorov equation from [`super::calibrate_leverage`]'s inputs and
+/// anchored to `(r, q)` alike; the `t = 0` row is the first full step's, as in the reference.
 pub fn calibrate_leverage_fokker_planck(
   params: &HestonSlvParams,
   s0: f64,
@@ -306,11 +284,11 @@ pub fn calibrate_leverage_fokker_planck(
   local_vol: &Grid2D<f64>,
   snapshot_maturities: &[f64],
   method: &FokkerPlanckMethod,
-) -> Result<FokkerPlanckCalibration> {
+) -> Result<FokkerPlanckCalibration, QuantError> {
   validate(params, s0, r, q, local_vol, snapshot_maturities)?;
   method.validate(params)?;
   let mesh = method.mesh(params, s0);
-  let sqrt_v0 = params.v0.max(CONDITIONAL_VARIANCE_FLOOR).sqrt();
+  let sqrt_v0 = params.heston.v0.max(CONDITIONAL_VARIANCE_FLOOR).sqrt();
   let first_row = mesh
     .x
     .iter()
@@ -320,14 +298,14 @@ pub fn calibrate_leverage_fokker_planck(
   let source = if deterministic {
     Source::Deterministic {
       local_vol,
-      kappa: params.kappa,
-      theta: params.theta,
-      v0: params.v0.max(0.0),
+      kappa: params.heston.kappa,
+      theta: params.heston.theta,
+      v0: params.heston.v0.max(0.0),
     }
   } else {
     Source::Calibrated {
       local_vol,
-      previous: vec![params.v0.max(0.0); mesh.m1()],
+      previous: vec![params.heston.v0.max(0.0); mesh.m1()],
     }
   };
   let (rows, density) = march(
@@ -357,11 +335,8 @@ pub fn calibrate_leverage_fokker_planck(
   })
 }
 
-/// The density of the Heston SLV model under a **given** leverage — a
-/// calibrated surface, or `1` for the Heston model itself — by the same
-/// finite-volume scheme, without the calibration loop. Useful to price the
-/// vanilla grid of a calibrated model without Monte Carlo noise, and to
-/// check the scheme against closed forms.
+/// The Heston SLV density under a given leverage (`1` for Heston), by the same scheme without the
+/// calibration loop: vanilla prices without Monte Carlo noise, and a check against closed forms.
 pub fn heston_slv_density(
   params: &HestonSlvParams,
   s0: f64,
@@ -370,7 +345,7 @@ pub fn heston_slv_density(
   leverage: &Fn2D<f64>,
   snapshot_maturities: &[f64],
   method: &FokkerPlanckMethod,
-) -> Result<FokkerPlanckDensity> {
+) -> Result<FokkerPlanckDensity, QuantError> {
   let unit = Grid2D::new(
     Array1::from_vec(vec![0.0]),
     Array1::from_vec(vec![1.0]),
@@ -406,8 +381,13 @@ fn march(
   method: &FokkerPlanckMethod,
   first_row: Vec<f64>,
   mut source: Source<'_>,
-) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity)> {
-  let (rho, xi, kappa, theta) = (params.rho, params.sigma_mixed(), params.kappa, params.theta);
+) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity), QuantError> {
+  let (rho, xi, kappa, theta) = (
+    params.heston.rho,
+    params.sigma_mixed(),
+    params.heston.kappa,
+    params.heston.theta,
+  );
   let attainable = 2.0 * kappa * theta < xi * xi;
   let along_v = Direction::along_v(mesh, kappa, theta, xi);
   let mut buffers = StepBuffers::new(mesh.len());

@@ -5,18 +5,21 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::econometrics::EngleGrangerConfig;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
-use stochastic_rs::stats::econometrics::granger_causality;
+use stochastic_rs::stats::econometrics::fit_vecm;
+use stochastic_rs::stats::econometrics::granger_causality_test;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
-use stochastic_rs::stats::econometrics::vecm_fit;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
@@ -27,7 +30,7 @@ fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
 }
 
 fn iid_normal(seed: u64, n: usize) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
   let mut buf = vec![0.0_f64; n];
   dist.fill_slice(&mut buf);
   Array1::from(buf)
@@ -36,16 +39,16 @@ fn iid_normal(seed: u64, n: usize) -> Array1<f64> {
 fn bench_changepoint(c: &mut Criterion) {
   let s = iid_normal(7, 5_000);
   c.bench_function("cusum_5k", |b| {
-    b.iter(|| std::hint::black_box(cusum(s.view(), 0.5, 5.0)));
+    b.iter(|| std::hint::black_box(cusum(s.view(), 0.5, 5.0).unwrap()));
   });
   c.bench_function("pelt_5k", |b| {
-    b.iter(|| std::hint::black_box(pelt(s.view(), 5.0, 10)));
+    b.iter(|| std::hint::black_box(pelt(s.view(), 5.0, 10).unwrap()));
   });
 }
 
 fn bench_cointegration(c: &mut Criterion) {
   let x = random_walk(11, 1_000, 1.0);
-  let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(13));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.05).seeded(&Deterministic::new(13));
   let mut eps = vec![0.0_f64; 1_000];
   dist.fill_slice(&mut eps);
   let y: Array1<f64> = (0..1_000)
@@ -53,7 +56,11 @@ fn bench_cointegration(c: &mut Criterion) {
     .collect::<Vec<_>>()
     .into();
   c.bench_function("engle_granger_1k", |b| {
-    b.iter(|| std::hint::black_box(engle_granger_test(y.view(), x.view())));
+    b.iter(|| {
+      std::hint::black_box(
+        engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap(),
+      )
+    });
   });
   let mut s = Array2::<f64>::zeros((500, 3));
   for i in 0..500 {
@@ -62,10 +69,10 @@ fn bench_cointegration(c: &mut Criterion) {
     s[[i, 2]] = random_walk(17, 500, 1.0)[i];
   }
   c.bench_function("johansen_500x3", |b| {
-    b.iter(|| std::hint::black_box(johansen_test(s.view(), 2)));
+    b.iter(|| std::hint::black_box(johansen_test(s.view(), 2).unwrap()));
   });
   c.bench_function("vecm_500x3_rank1", |b| {
-    b.iter(|| std::hint::black_box(vecm_fit(s.view(), 2, 1)));
+    b.iter(|| std::hint::black_box(fit_vecm(s.view(), 2, 1).unwrap()));
   });
 }
 
@@ -73,12 +80,12 @@ fn bench_granger(c: &mut Criterion) {
   let x = iid_normal(21, 2_000);
   let y = iid_normal(23, 2_000);
   c.bench_function("granger_2k_lag4", |b| {
-    b.iter(|| std::hint::black_box(granger_causality(y.view(), x.view(), 4, 0.05)));
+    b.iter(|| std::hint::black_box(granger_causality_test(y.view(), x.view(), 4, 0.05).unwrap()));
   });
 }
 
 fn bench_hmm(c: &mut Criterion) {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(31));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(31));
   let mut buf = vec![0.0_f64; 1_000];
   dist.fill_slice(&mut buf);
   let obs = Array1::from(buf);
@@ -90,7 +97,7 @@ fn bench_hmm(c: &mut Criterion) {
         Array1::from(vec![-1.0, 1.0]),
         Array1::from(vec![1.0, 1.0]),
       );
-      std::hint::black_box(hmm.baum_welch(obs.view(), 20, 1e-6))
+      std::hint::black_box(hmm.baum_welch(obs.view(), 20, 1e-6).unwrap())
     });
   });
 }

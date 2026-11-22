@@ -1,19 +1,12 @@
-//! Value at Risk: parametric (Gaussian), historical simulation, and Monte-Carlo.
+//! Value at Risk, parametric, historical and Monte Carlo, loss-positive: the smallest loss
+//! threshold exceeded with probability at most `1 − α`. PnL samples take `PnlOrLoss::Pnl`.
 //!
-//! Reference: Jorion, "Value at Risk: The New Benchmark for Managing Financial
-//! Risk", 3rd ed., McGraw-Hill (2007).
-//!
-//! Reference: Basel Committee on Banking Supervision, "International Convergence
-//! of Capital Measurement and Capital Standards: A Revised Framework" (2006).
-//!
-//! The library adopts the standard *loss-positive* convention: VaR at level
-//! $\alpha\in(0,1)$ is the smallest threshold $\ell$ such that the probability
-//! of a loss larger than $\ell$ does not exceed $1-\alpha$:
 //! $$
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell\in\mathbb{R}:\mathbb{P}(L>\ell)\le 1-\alpha\}.
 //! $$
-//! When inputs are PnL samples (profit positive), pass `PnlOrLoss::Pnl` to
-//! automatically negate before ranking.
+//!
+//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill
+//! Reference: Basel Committee on Banking Supervision (2006), "A Revised Framework" (Basel II)
 
 use std::fmt::Display;
 
@@ -21,6 +14,10 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
 
+use super::input::finite;
+use super::input::validate_samples;
+use crate::QuantError;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpretation of the input sample.
@@ -49,10 +46,9 @@ pub enum VarMethod {
   /// Parametric Gaussian VaR using the sample mean and standard deviation.
   #[default]
   Gaussian,
-  /// Historical simulation: empirical quantile of losses.
+  /// Historical simulation: the losses' type-7 quantile (Hyndman & Fan 1996, numpy's default).
   Historical,
-  /// Monte Carlo: empirical quantile of simulated losses (interface mirrors
-  /// `Historical` but documents intent separately).
+  /// Monte Carlo: the `Historical` quantile of simulated losses.
   MonteCarlo,
 }
 
@@ -66,23 +62,23 @@ impl Display for VarMethod {
   }
 }
 
-/// Compute VaR for the given sample using the chosen method.
+/// VaR by `method`, with that method's errors; panics unless `0 < confidence < 1`.
 pub fn value_at_risk<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
   method: VarMethod,
-) -> T {
+) -> Result<T, QuantError> {
   assert_confidence(confidence);
   match method {
     VarMethod::Gaussian => gaussian_var(samples, confidence, orientation),
-    VarMethod::Historical | VarMethod::MonteCarlo => {
-      historical_var(samples, confidence, orientation)
-    }
+    VarMethod::Historical => historical_var(samples, confidence, orientation),
+    VarMethod::MonteCarlo => monte_carlo_var(samples, confidence, orientation),
   }
 }
 
-/// Parametric Gaussian VaR using the sample moments.
+/// Gaussian VaR from the sample moments; `InsufficientData` below two samples, `InvalidInput`
+/// for a non-finite one, `Numerical` if a moment overflows; panics unless `0 < confidence < 1`.
 ///
 /// $$
 /// \mathrm{VaR}_{\alpha}=-\hat\mu+\hat\sigma\,\Phi^{-1}(\alpha).
@@ -91,70 +87,102 @@ pub fn gaussian_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
-) -> T {
+) -> Result<T, QuantError> {
   assert_confidence(confidence);
-  let losses = losses_from_samples(samples, orientation);
-  let n = losses.len();
-  assert!(n >= 2, "need at least two observations for Gaussian VaR");
-  let mean = losses.iter().fold(T::zero(), |acc, &v| acc + v) / T::from_usize_(n);
-  let var = losses
-    .iter()
-    .fold(T::zero(), |acc, &v| acc + (v - mean).powi(2))
-    / T::from_usize_(n - 1);
-  let sigma = var.sqrt();
+  let (mean, sigma) = loss_moments(samples, orientation, "gaussian VaR")?;
   let z = T::from_f64_fast(standard_normal_quantile(confidence.to_f64().unwrap()));
-  mean + sigma * z
+  Ok(mean + sigma * z)
 }
 
-/// Historical-simulation VaR (empirical loss quantile).
+/// Historical VaR, the losses' type-7 quantile (Hyndman & Fan 1996); `InsufficientData` for no
+/// sample, `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
 pub fn historical_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
-) -> T {
-  assert_confidence(confidence);
-  let losses = losses_from_samples(samples, orientation);
-  let n = losses.len();
-  assert!(n >= 1, "need at least one observation for historical VaR");
-  let mut sorted = losses.to_vec();
-  sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-  sample_quantile(&sorted, confidence)
+) -> Result<T, QuantError> {
+  empirical_var(samples, confidence, orientation, "historical VaR")
 }
 
-/// Monte-Carlo VaR (alias of [`historical_var`] — kept as a separate function
-/// for clarity of intent in client code).
+/// Monte Carlo VaR: [`historical_var`] over simulated samples.
 pub fn monte_carlo_var<T: RealExt>(
   simulated_samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
-) -> T {
-  historical_var(simulated_samples, confidence, orientation)
+) -> Result<T, QuantError> {
+  empirical_var(
+    simulated_samples,
+    confidence,
+    orientation,
+    "Monte Carlo VaR",
+  )
 }
 
-/// Monte-Carlo VaR with an injected sampler.
-///
-/// Bridges [`crate::traits::DistributionSampler`] (re-exported via
-/// `stochastic_rs_distributions`) into the VaR pipeline so users can replace
-/// the implicit Gaussian assumption with heavy-tailed alternatives such as
-/// `SimdStudentT`, `SimdAlphaStable`, or `SimdParetoTail`.
-///
-/// # Arguments
-/// * `sampler` — any type implementing `DistributionSampler<T>`
-/// * `n_samples` — number of MC draws
-/// * `confidence` — VaR confidence level
-/// * `orientation` — input is PnL or Loss
+/// [`monte_carlo_var`] over `n_samples` draws that continue `sampler`'s stream, so a heavy-tailed
+/// law (`SimdStudentT`, `SimdAlphaStable`, `SimdGpd`) can replace the Gaussian assumption.
 pub fn monte_carlo_var_with_sampler<T, D>(
-  sampler: &D,
+  sampler: &mut D,
   n_samples: usize,
   confidence: T,
   orientation: PnlOrLoss,
-) -> T
+) -> Result<T, QuantError>
 where
   T: RealExt,
   D: stochastic_rs_distributions::traits::DistributionSampler<T>,
 {
   let samples = sampler.sample_n(n_samples);
   monte_carlo_var(samples.view(), confidence, orientation)
+}
+
+fn empirical_var<T: RealExt>(
+  samples: ArrayView1<T>,
+  confidence: T,
+  orientation: PnlOrLoss,
+  what: &'static str,
+) -> Result<T, QuantError> {
+  assert_confidence(confidence);
+  let sorted = sorted_losses(samples, orientation, what)?;
+  Ok(sample_quantile(&sorted, confidence))
+}
+
+/// The losses sorted by [`ascending`], which puts NaN last and ±∞ at the ends, so the samples are
+/// scanned for a non-finite one only when an end is not finite.
+pub(crate) fn sorted_losses<T: RealExt>(
+  samples: ArrayView1<T>,
+  orientation: PnlOrLoss,
+  what: &'static str,
+) -> Result<Vec<T>, QuantError> {
+  let mut sorted = match orientation {
+    PnlOrLoss::Pnl => samples.iter().map(|&v| -v).collect::<Vec<_>>(),
+    PnlOrLoss::Loss => samples.to_vec(),
+  };
+  sorted.sort_by(ascending);
+  let finite_end = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
+  if !(finite_end(sorted.first()) && finite_end(sorted.last())) {
+    validate_samples(samples, what, 1)?;
+  }
+  Ok(sorted)
+}
+
+/// Mean and Bessel-corrected deviation of the losses, `Numerical` if either overflows; the sum is
+/// non-finite whenever a sample is, so only then are the samples scanned.
+pub(crate) fn loss_moments<T: RealExt>(
+  samples: ArrayView1<T>,
+  orientation: PnlOrLoss,
+  what: &'static str,
+) -> Result<(T, T), QuantError> {
+  let losses = losses_from_samples(samples, orientation);
+  let n = losses.len();
+  let sum = losses.iter().fold(T::zero(), |acc, &v| acc + v);
+  if n < 2 || !sum.is_finite() {
+    validate_samples(samples, what, 2)?;
+  }
+  let mean = finite(sum, what, "the sum")? / T::from_usize_(n);
+  let var = losses
+    .iter()
+    .fold(T::zero(), |acc, &v| acc + (v - mean).powi(2))
+    / T::from_usize_(n - 1);
+  Ok((mean, finite(var, what, "the variance")?.sqrt()))
 }
 
 pub(crate) fn losses_from_samples<T: RealExt>(
@@ -169,7 +197,6 @@ pub(crate) fn losses_from_samples<T: RealExt>(
 
 pub(crate) fn sample_quantile<T: RealExt>(sorted: &[T], confidence: T) -> T {
   let n = sorted.len();
-  assert!(n >= 1, "empty sample");
   let idx = (confidence * T::from_usize_(n - 1)).to_f64().unwrap_or(0.0);
   let lo = idx.floor() as usize;
   let hi = idx.ceil() as usize;
@@ -181,9 +208,11 @@ pub(crate) fn sample_quantile<T: RealExt>(sorted: &[T], confidence: T) -> T {
   }
 }
 
-pub(crate) fn assert_confidence<T: RealExt>(c: T) {
-  let v = c.to_f64().unwrap_or(0.0);
-  assert!(v > 0.0 && v < 1.0, "confidence must lie in (0, 1); got {v}");
+pub(crate) fn assert_confidence<T: RealExt>(confidence: T) {
+  assert!(
+    confidence > T::zero() && confidence < T::one(),
+    "confidence must satisfy `confidence > 0.0 && confidence < 1.0`, got confidence = {confidence:?}"
+  );
 }
 
 fn standard_normal_quantile(p: f64) -> f64 {

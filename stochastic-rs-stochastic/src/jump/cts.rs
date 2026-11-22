@@ -1,69 +1,61 @@
-//! # Cts
-//!
-//! The standard classical tempered stable process of Kim, Rachev, Bianchi &
-//! Fabozzi: one scale `C` on both sides,
+//! The standard classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi: one scale
+//! `C`, set for unit variance per unit time. The series stops at `J` terms; `2CT` is its Lévy mass.
 //!
 //! $$
-//! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}+e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,
+//! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
+//! +e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx,\quad
+//! C=\left(\Gamma(2-\alpha)(\lambda_+^{\alpha-2}+\lambda_-^{\alpha-2})\right)^{-1}
 //! $$
-//!
-//! with `C = (Γ(2 − α)(λ₊^{α−2} + λ₋^{α−2}))^{-1}` so that the variance over
-//! a unit of time is one. Sampled by Rosiński's (2007, Thm 5.1) shot-noise
-//! series on `[0, T]`, truncated at `J` terms:
 //!
 //! $$
 //! X_t=\sum_{j=1}^{J}\Big(\Big(\frac{\alpha\Gamma_j}{2CT}\Big)^{-1/\alpha}\wedge
 //! E_j\,U_j^{1/\alpha}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,
 //! $$
 //!
-//! `Γ_j` the arrivals of a unit Poisson process, `E_j` unit exponentials,
-//! `U_j` and `τ_j/T` uniforms, `V_j ∈ {λ₊, −λ₋}` with probability one half
-//! each. The arrival bound divides by the total mass of the Lévy measure over
-//! the horizon, `(C + C) T = 2CT`, as Rosiński's theorem does through
-//! `H(Γ_j / T, V_j)` — the constant `Cgmy`, `KoBoL` and `Rdts` carry too.
+//! $$
+//! \Gamma_j-\Gamma_{j-1},\,E_j\sim\mathrm{Exp}(1),\quad U_j,\,\tau_j/T\sim U(0,1),\quad
+//! P(V_j=\lambda_+)=P(V_j=-\lambda_-)=\tfrac12
+//! $$
 //!
-//! References: Rosiński, J. (2007), *Tempering stable processes*, Stoch.
-//! Proc. Appl. 117(6), 677–707; Kim, Y. S., Rachev, S. T., Bianchi, M. L. &
-//! Fabozzi, F. J. (2010), *Tempered stable and tempered infinitely divisible
-//! GARCH models*, J. Banking & Finance 34(9), 2096–2109; Bianchi, M. L.,
-//! Rachev, S. T., Kim, Y. S. & Fabozzi, F. J. (2010), *Tempered stable
-//! distributions and processes in finance: numerical analysis*, in
-//! Mathematical and Statistical Methods for Actuarial Sciences and Finance,
-//! Springer.
+//! Reference: Rosiński (2007), Thm 5.1, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
+//! Reference: Bianchi et al. (2010), Springer, 33–42, DOI 10.1007/978-88-470-1481-7_4
 //!
 
 use ndarray::Array1;
-use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Cts process (Classical Tempered Stable process)
-/// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-///
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Positive jump rate lambda_plus (corresponds to G)
-  pub lambda_plus: T, // G
-  /// Negative jump rate lambda_minus (corresponds to M)
-  pub lambda_minus: T, // M
+  /// Tempering rate λ₊ of the positive jumps, CGMY's M.
+  pub lambda_plus: T,
+  /// Tempering rate λ₋ of the negative jumps, CGMY's G.
+  pub lambda_minus: T,
   /// Jump activity parameter alpha (corresponds to Y), with 0 < alpha < 2
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Jumps
+  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
   pub j: usize,
-  /// Initial value
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total time horizon
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -73,7 +65,8 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cts<T, S> {
-  /// Create a new Cts process
+  /// Panics unless `lambda_plus > 0`, `lambda_minus > 0`, `0 < alpha < 2`, `alpha != 1` (a pole of
+  /// `Γ(1 − α)`), `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -84,11 +77,42 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
+    );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
+    );
+    assert!(
+      alpha != T::one(),
+      "alpha must satisfy `alpha != T::one()`, got alpha = {alpha:?}"
     );
 
     Self {
@@ -104,8 +128,6 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {
   /// The horizon, one when omitted.
@@ -141,9 +163,8 @@ impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Cts<T, S, B>
 {
-  /// The series constants folded once: the arrival bound's rate `α / (2 C T)`, as
-  /// the host divides by the scale alone, the exponential draw entering
-  /// plainly, and the two sides equally likely.
+  /// The series constants, folded once: the arrival rate `α / (2 C T)`, as the host divides by the
+  /// scale alone, the exponential draw entering plainly, and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
@@ -191,6 +212,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Cts<T, S> { lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cts<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cts<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -199,13 +225,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> CtsSampler<T, S> {
-    // Uniform and Exp(1) sources are derived from `self.seed` in the same
-    // order as the legacy `sample()`, so the first fill reproduces it
-    // bit-for-bit; both owned sources advance on reuse. The seed-independent
-    // scale `C` and drift `b_t` are precomputed here.
+    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
+    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
     let t_max = self.t_max();
     let dt = self.dt();
-    let C = self.tempering_constant();
+    let c = self.tempering_constant();
     let b_t = self.drift_rate();
 
     CtsSampler {
@@ -217,17 +241,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       x0: self.x0.unwrap_or(T::zero()),
       t_max,
       dt,
-      c: C,
+      c,
       b_t,
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      exp: SimdExp::<T>::new(T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
     }
   }
 
-  /// Through the Euler engine when the grid fits the kernels' per-path
-  /// series cells; a longer grid keeps the process on the host, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine when the grid fits the kernels' per-path series cells; a longer
+  /// grid stays on the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -290,14 +313,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cts`] sampling state: owns the uniform and exponential sources
-/// driving the truncated Rosiński series so a Monte-Carlo loop pays their
-/// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
-/// series (`P`, below) — derived once more per fill so `P` is reproducible
-/// under a `Deterministic` seed and distinct path-to-path, rather than
-/// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
-/// per path inside `fill_path`.
+/// Reusable [`Cts`] sampling state: the uniform and exponential sources of the Rosiński series,
+/// and a seed derived once more per fill for the Gamma arrival times `P`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CtsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
@@ -309,8 +328,8 @@ pub struct CtsSampler<T: FloatExt, S: SeedExt> {
   dt: T,
   c: T,
   b_t: T,
-  uniform: SimdUniform<T>,
-  exp: SimdExp<T>,
+  uniform: Seeded<SimdUniform<T>>,
+  exp: Seeded<SimdExp<T>>,
   seed: S,
 }
 
@@ -322,16 +341,16 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
 
     let t_max = self.t_max;
     let dt = self.dt;
-    let C = self.c;
+    let c = self.c;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 is reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 is reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -339,7 +358,7 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus
@@ -347,10 +366,10 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
 
       // The arrival bound over the total mass of the measure on [0, T]: both
       // sides carry `C`, so `2 C T` (Rosiński 2007, Thm 5.1).
-      let divisor = T::from_usize_(2) * C * t_max;
-      let numerator = self.alpha * P[j];
+      let divisor = T::from_usize_(2) * c * t_max;
+      let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
 
@@ -381,6 +400,8 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for CtsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for CtsSampler<T, S> {
   type Output = Array1<T>;

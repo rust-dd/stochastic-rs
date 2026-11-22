@@ -1,107 +1,116 @@
-//! Convergence-controlled quadrature for characteristic-function inversion.
-//!
-//! The Heston, Gil-Pelaez, Lewis and Carr-Madan pricers all invert a
-//! characteristic function by integrating an oscillatory-but-decaying integrand
-//! over `[a, ∞)`. The integrand's envelope only becomes negligible once `φ` is
-//! past its decay length, which grows like `1/√(v·τ)` as the maturity `τ` or
-//! the variance `v` shrink. A hardcoded finite upper limit therefore truncates
-//! a non-negligible tail for short-dated or low-variance options, which
-//! under-prices them by 15-35% and can even return arbitrage-violating negative
-//! call prices.
-//!
-//! [`integrate_to_convergence`] replaces the fixed bound: it accumulates
-//! tanh-sinh panels, refines each one until the rule's own error estimate is
-//! met, and stops once the integrand's envelope can no longer move the answer,
-//! so the effective upper limit adapts to the actual decay length for any
-//! `(τ, v, moneyness)`.
+//! Quadrature for characteristic-function inversion over `[a, ∞)`: tanh-sinh panels, walked until
+//! the integrand's envelope can no longer move the answer, since a fixed upper limit truncates it.
 
 use std::cell::Cell;
 
-use quadrature::double_exponential;
+mod inversion;
+mod nodes;
+mod ooura;
+mod tanh_sinh;
 
-/// Starting panel width. Wide enough that a smooth integrand clears it in one
-/// tanh-sinh pass, narrow enough that the rule's fixed ~350-point budget still
-/// resolves the phase `e^{-iu·ln(K/S)}` at ordinary moneyness.
+pub(crate) use inversion::CONTROL_VARIANCE_CAP;
+pub(crate) use inversion::Inversion;
+pub(crate) use inversion::Rule;
+pub(crate) use inversion::gaussian_share;
+pub(crate) use inversion::head_floor;
+pub(crate) use inversion::reach_and_scale;
+
+/// Starting panel width: a smooth integrand clears it in one tanh-sinh pass, and the ~350-point
+/// budget still resolves the phase `e^{-iu·ln(K/S)}` at ordinary moneyness.
 const INITIAL_WIDTH: f64 = 8.0;
 /// Floor on the panel width, so a pathological integrand cannot drive the walk
 /// to a standstill.
 const MIN_WIDTH: f64 = 1.0 / 64.0;
-/// Ceiling on the panel width. The old walk grew panels geometrically without
-/// one, and a width-800 panel is where this integrator used to fail: the
-/// tanh-sinh rule's point budget is fixed, so a wide panel is not integrated
-/// more coarsely — it is not integrated at all, and the `(b−a)/2` rescaling
-/// then multiplies the noise by 400.
+/// Ceiling on the panel width: the tanh-sinh point budget is fixed, so a wider panel is not
+/// integrated at all and the `(b−a)/2` rescaling amplifies its noise.
 const MAX_WIDTH: f64 = 64.0;
 /// Backstop on the number of panels. The envelope test below terminates long
 /// before this in every in-tree caller.
 const MAX_PANELS: usize = 128;
 /// Backstop on bisection depth, i.e. at most 64 sub-panels per panel.
 const MAX_DEPTH: u32 = 6;
+/// A bound, as measured, on the share of a panel's `∫|f|` that the rounding of its ~350 samples
+/// leaves in a level difference: bisecting cannot lower it, so no panel is held to a tighter one.
+const ROUNDING: f64 = 256.0 * f64::EPSILON;
 
-/// Integrate one panel, bisecting until the tanh-sinh rule's own error
-/// estimate meets `target`.
-///
-/// `double_exponential::integrate` reports an `error_estimate` scaled to the
-/// panel, so it is directly comparable to an absolute target. Discarding it —
-/// which is what this module did before — is what let a panel contribute
-/// `8761.8` to an integral whose true value was `0.95` while reporting an
-/// error estimate of `6716`.
-///
-/// The target is halved at each level so the budget summed over the sub-panels
-/// is still `target`.
-fn refine<F>(f: &F, lo: f64, hi: f64, target: f64, depth: u32) -> (f64, u32)
+/// The pieces `(lo, hi, levels)` one walk integrated: a fixed rule, so integrands that share it
+/// differ smoothly where a walk of each could stop at different panels.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Panels(Vec<(f64, f64, usize)>);
+
+/// How an integral runs: adaptively, recording each walk's rule, or on recorded rules in order.
+pub(crate) enum Walk<'a, P> {
+  Adaptive,
+  Record(&'a mut Vec<P>),
+  Replay(std::slice::Iter<'a, P>),
+}
+
+impl<P> Walk<'_, P> {
+  /// `adaptive`, given a rule to fill when recording, or `replay` on the next recorded rule.
+  pub(crate) fn run<R>(
+    &mut self,
+    adaptive: impl FnOnce(Option<&mut P>) -> R,
+    replay: impl FnOnce(&P) -> R,
+  ) -> R
+  where
+    P: Default,
+  {
+    match self {
+      Walk::Adaptive => adaptive(None),
+      Walk::Record(rules) => {
+        let mut rule = P::default();
+        let value = adaptive(Some(&mut rule));
+        rules.push(rule);
+        value
+      }
+      Walk::Replay(rules) => {
+        let rule = rules.next();
+        // A record shorter than its replay is a caller's slip; a release build walks instead.
+        debug_assert!(rule.is_some(), "a replay outran its recorded rules");
+        rule.map_or_else(|| adaptive(None), replay)
+      }
+    }
+  }
+}
+
+/// One panel, bisected until the rule's last level difference meets `target`, which halves with
+/// each bisection so the sub-panels' budget still sums to it; also the bisection depth used.
+fn refine<F>(
+  f: &F,
+  lo: f64,
+  hi: f64,
+  target: f64,
+  depth: u32,
+  leaves: &mut Option<&mut Panels>,
+) -> (f64, u32)
 where
   F: Fn(f64) -> f64,
 {
-  let out = double_exponential::integrate(f, lo, hi, target);
-  if out.error_estimate <= target || depth == 0 {
-    return (out.integral, 0);
+  let (integral, difference, levels, size) = tanh_sinh::integrate(f, lo, hi, target);
+  if difference <= target.max(ROUNDING * size) || depth == 0 {
+    if let Some(leaves) = leaves {
+      leaves.0.push((lo, hi, levels));
+    }
+    return (integral, 0);
   }
   let mid = 0.5 * (lo + hi);
-  let (left, dl) = refine(f, lo, mid, 0.5 * target, depth - 1);
-  let (right, dr) = refine(f, mid, hi, 0.5 * target, depth - 1);
+  let (left, dl) = refine(f, lo, mid, 0.5 * target, depth - 1, leaves);
+  let (right, dr) = refine(f, mid, hi, 0.5 * target, depth - 1, leaves);
   (left + right, 1 + dl.max(dr))
 }
 
-/// Integrate `f` over `[a, ∞)` to a relative tolerance `tol`.
-///
-/// Panels of bounded width are summed, each refined by [`refine`] until the
-/// rule's own error estimate is below `tol`, until the remaining tail cannot
-/// move the answer by `tol` relative.
-///
-/// # Why the tail test reads the envelope
-///
-/// The stopping rule tracks `env`, the largest `|f|` at any point the rule
-/// actually evaluated on the panel, and the rate at which `env` is decaying
-/// panel over panel. A tail decaying at rate `λ` contributes at most `env/λ`,
-/// which is the quantity compared against `tol`.
-///
-/// Testing the *signed* panel contribution instead — the previous rule — asks
-/// whether the last panel happened to cancel, not whether the integrand has
-/// gone away. Both are small for an oscillatory integrand, and only one of
-/// them means the walk is finished. Requiring two consecutive small panels did
-/// not close the gap, because the panels were growing geometrically: two
-/// cancelling panels in a row simply meant the next one was 800 wide.
-///
-/// # Returns
-///
-/// [`f64::NAN`] if the integrand is `NaN` anywhere the rule evaluates it. That
-/// check has to live here because the third-party
-/// `double_exponential::integrate` rewrites every non-finite sample to `0.0`
-/// before the rule sees it, which silently turns an undefined integrand into a
-/// well-scaled number: a wholly-`NaN` integrand integrated to exactly `0.0`,
-/// so `GilPelaezPricer` returned `2.438528774964297` and `LewisPricer` the
-/// spot for a characteristic function that had blown up. That is the
-/// plausible-looking sentinel the [failure
-/// convention](crate::traits::ModelPricer#how-pricing-fails) rules out, and
-/// this wrapper is the only place in the path the crate owns.
-///
-/// `±∞` keeps the third-party behaviour deliberately. An overflowing
-/// integrand is a different case from an undefined one, and the crate's own
-/// Lévy loss integrand reaches `∞` transiently on unprojected calibration
-/// iterates, where poisoning the loss would abort a run that currently
-/// recovers.
+/// `∫_a^∞ f` to relative `tol`, until the decay of the evaluated `max |f|` bounds the tail; a NaN
+/// sample makes it NaN, a `±∞` one counts as zero (Lévy losses overflow on unprojected iterates).
 pub(crate) fn integrate_to_convergence<F>(f: F, a: f64, tol: f64) -> f64
+where
+  F: Fn(f64) -> f64,
+{
+  walk(f, a, tol, f64::INFINITY, None).0
+}
+
+/// `(∫, end)` from `a`: until the envelope bounds the tail or, given a finite `reach`, to it
+/// whatever the envelope says, so that a price's panels move only with `reach`.
+fn walk<F>(f: F, a: f64, tol: f64, reach: f64, mut leaves: Option<&mut Panels>) -> (f64, f64)
 where
   F: Fn(f64) -> f64,
 {
@@ -113,7 +122,7 @@ where
       poisoned.set(true);
     }
     let magnitude = v.abs();
-    if magnitude > peak.get() {
+    if magnitude.is_finite() && magnitude > peak.get() {
       peak.set(magnitude);
     }
     v
@@ -126,18 +135,23 @@ where
   let mut prev_env = f64::INFINITY;
 
   for panel_index in 0..MAX_PANELS {
+    if lo >= reach {
+      break;
+    }
     peak.set(0.0);
-    let (panel, depth_used) = refine(&watched, lo, lo + width, tol, MAX_DEPTH);
+    // A panel run past the reach holds turns of phase its levels pass without resolving.
+    let hi = (lo + width).min(reach);
+    let (panel, depth_used) = refine(&watched, lo, hi, tol, MAX_DEPTH, &mut leaves);
     if poisoned.get() {
-      return f64::NAN;
+      return (f64::NAN, lo);
     }
     total += panel;
-    lo += width;
+    lo = hi;
 
     let env = peak.get();
     scale = scale.max(env);
 
-    if panel_index > 0 && env <= tol * scale {
+    if reach.is_infinite() && panel_index > 0 && env <= tol * scale {
       let decay = (prev_env / env).ln() / width;
       if decay > 0.0 && env / decay <= tol * total.abs().max(1.0) {
         break;
@@ -152,29 +166,39 @@ where
     };
   }
 
-  total
+  (total, lo)
+}
+
+/// `∫ f` on recorded panels, each at the levels its walk took; NaN as the walk would give it.
+fn integrate_on<F>(f: &F, panels: &Panels) -> f64
+where
+  F: Fn(f64) -> f64,
+{
+  let poisoned = Cell::new(false);
+  let watched = |u: f64| -> f64 {
+    let v = f(u);
+    poisoned.set(poisoned.get() || v.is_nan());
+    v
+  };
+  let total = panels.0.iter().fold(0.0, |total, &(lo, hi, levels)| {
+    total + tanh_sinh::integrate_levels(&watched, lo, hi, levels)
+  });
+  if poisoned.get() { f64::NAN } else { total }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  /// The third-party `double_exponential::integrate` rewrites every
-  /// non-finite sample to `0.0` before the rule ever sees it, so an
-  /// integrand that is `NaN` everywhere integrates to exactly `0.0` — a
-  /// plausible number carrying no trace of the undefined input that produced
-  /// it. That is the [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails)'s fourth
-  /// option, and this wrapper is the only place the crate controls.
+  /// The rule counts a non-finite sample as zero, so the walk is what reports a NaN integrand.
   #[test]
   fn a_nan_integrand_does_not_integrate_to_zero() {
     let v = integrate_to_convergence(|_| f64::NAN, 1e-8, 1e-8);
     assert!(v.is_nan(), "a NaN integrand must exit as NaN, got {v}");
   }
 
-  /// A `NaN` over part of the range poisons the whole integral: once any
-  /// piece of the integrand is undefined there is no integral to return, and
-  /// the swallowed version silently reports the finite piece alone.
+  /// A `NaN` over part of the range poisons the whole integral: dropping it would report the
+  /// finite piece alone as the integral.
   #[test]
   fn a_partially_nan_integrand_is_poisoned_too() {
     let v = integrate_to_convergence(
@@ -188,11 +212,95 @@ mod tests {
     );
   }
 
+  /// One panel of a walk, `[24, 56]`: the square of its level difference would pass it 1.5e-5 off.
+  #[test]
+  fn a_panel_is_not_accepted_on_a_squared_level_difference() {
+    let (w, a, phase) = (0.454_f64, 0.2_f64, 1.0_f64);
+    let primitive = |x: f64| {
+      (-a * x).exp() * (w * (w * x + phase).sin() - a * (w * x + phase).cos()) / (a * a + w * w)
+    };
+    let f = |x: f64| (w * x + phase).cos() * (-a * x).exp();
+    let (got, _) = refine(&f, 24.0, 56.0, 1e-10, MAX_DEPTH, &mut None);
+    let want = primitive(56.0) - primitive(24.0);
+    assert!((got - want).abs() < 1e-10, "{got} vs {want}");
+  }
+
   /// The poison check must leave an integrand that was never poisoned alone.
   /// $\int_0^\infty e^{-x}\,dx = 1$.
   #[test]
   fn a_finite_integrand_is_unchanged_by_the_poison_check() {
     let v = integrate_to_convergence(|x: f64| (-x).exp(), 0.0, 1e-10);
     assert!((v - 1.0).abs() < 1e-9, "expected 1, got {v}");
+  }
+
+  /// An `∞` sample counts as zero and does not end the walk; `∞` on `[0, 1)` leaves `∫_1^∞ e^{-x}`.
+  #[test]
+  fn an_infinite_sample_counts_as_zero() {
+    let v = integrate_to_convergence(
+      |u: f64| if u < 1.0 { f64::INFINITY } else { (-u).exp() },
+      0.0,
+      1e-10,
+    );
+    let expected = (-1.0_f64).exp();
+    assert!((v - expected).abs() < 1e-9, "expected {expected}, got {v}");
+  }
+
+  /// The same over a slow tail, which an infinite envelope would cut short: `∫_1^∞ e^{-x/20} dx`.
+  #[test]
+  fn an_infinite_sample_does_not_truncate_a_slow_tail() {
+    let v = integrate_to_convergence(
+      |u: f64| {
+        if u < 1.0 {
+          f64::INFINITY
+        } else {
+          (-u / 20.0).exp()
+        }
+      },
+      0.0,
+      1e-10,
+    );
+    let expected = 20.0 * (-0.05_f64).exp();
+    assert!(
+      (v - expected).abs() < 1e-9 * expected,
+      "expected {expected}, got {v}"
+    );
+  }
+
+  /// `walk` run as `mode` says, the record and replay an inversion's body takes.
+  fn walked(f: impl Fn(f64) -> f64, mode: &mut Walk<'_, Panels>) -> f64 {
+    mode.run(
+      |leaves| walk(&f, 0.0, 1e-8, f64::INFINITY, leaves).0,
+      |panels| integrate_on(&f, panels),
+    )
+  }
+
+  #[cfg(debug_assertions)]
+  #[test]
+  #[should_panic(expected = "a replay outran its recorded rules")]
+  fn a_replay_past_its_record_panics_where_debug_assertions_run() {
+    walked(|u: f64| (-u).exp(), &mut Walk::Replay([].iter()));
+  }
+
+  /// Recorded on one integrand, the rule integrates a shifted one as a fixed rule: the same value
+  /// at the point, and a difference across the walk's stop that moves only with the integrand.
+  #[test]
+  fn a_recorded_rule_replays_the_walk_and_holds_across_its_stop() {
+    let f = |c: f64| move |u: f64| (-c * u).exp() * (u * 1.3).cos() / (1.0 + u * u);
+    let mut rules = Vec::new();
+    let recorded = walked(f(0.05), &mut Walk::Record(&mut rules));
+    assert_eq!(recorded, integrate_to_convergence(f(0.05), 0.0, 1e-8));
+    let replayed = walked(f(0.05), &mut Walk::Replay(rules.iter()));
+    assert!(
+      (replayed - recorded).abs() < 1e-15,
+      "{replayed} vs {recorded}"
+    );
+    let h = 1e-6;
+    let on_rule = |c: f64| walked(f(c), &mut Walk::Replay(rules.iter()));
+    let slope = (on_rule(0.05 + h) - on_rule(0.05 - h)) / (2.0 * h);
+    let wide = (on_rule(0.05 + 1e3 * h) - on_rule(0.05 - 1e3 * h)) / (2e3 * h);
+    assert!(
+      (slope - wide).abs() < 1e-6 * wide.abs(),
+      "{slope} vs {wide}"
+    );
   }
 }

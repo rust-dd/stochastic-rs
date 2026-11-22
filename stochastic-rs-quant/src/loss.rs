@@ -1,4 +1,4 @@
-//! # Loss
+//! Absolute, squared and relative error means between market and model values.
 //!
 //! $$
 //! L=\frac1n\sum_{i=1}^n \ell(y_i,\hat y_i)
@@ -29,13 +29,8 @@ pub fn rmse(market: &[f64], model: &[f64]) -> f64 {
   mse(market, model).sqrt()
 }
 
-/// Mean Percentage Error (in %): MPE = (100/N) Σ[(market_i - model_i) / market_i]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero — this
-/// previously returned `0.0` for that term, which silently masked
-/// zero-strike inputs (typical of malformed option chains). Filter or
-/// clip near-zero markets at the caller side if you want a finite
-/// result on degenerate inputs.
+/// Mean percentage error `(100/N) Σ (market_i − model_i) / market_i`, NaN when any `market_i` is
+/// near zero.
 pub fn mpe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -51,10 +46,8 @@ pub fn mpe(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Mean Relative Error: MRE = (1/N) Σ[(model_i - market_i) / market_i]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// Mean relative error `(1/N) Σ (model_i − market_i) / market_i`, NaN when any `market_i` is
+/// near zero.
 pub fn mre(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -76,10 +69,8 @@ pub fn mrpe(market: &[f64], model: &[f64]) -> f64 {
   mre(market, model) * 100.0
 }
 
-/// Mean Absolute Percentage Error (in %): MAPE = (100/N) Σ[|market_i - model_i| / |market_i|]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// Mean absolute percentage error `(100/N) Σ |market_i − model_i| / |market_i|`, NaN when any
+/// `market_i` is near zero.
 pub fn mape(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -95,10 +86,8 @@ pub fn mape(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Mean Squared Percentage Error (in %): MSPE = (100/N) Σ[((market_i - model_i) / market_i)²]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// `(100/N) Σ ((market_i − model_i)/market_i)²`, a hundred times the mean squared relative error
+/// and so in neither % nor %²; NaN when any `market_i` is near zero.
 pub fn mspe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -114,7 +103,18 @@ pub fn mspe(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Root Mean Squared Percentage Error (in %): RMSPE = √MSPE
+/// Root mean squared percentage error (in %): `100·√((1/N) Σ ((market_i − model_i)/market_i)²)`,
+/// NaN when any `market_i` is near zero.
 pub fn rmspe(market: &[f64], model: &[f64]) -> f64 {
-  mspe(market, model).sqrt()
+  (100.0 * mspe(market, model)).sqrt()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn two_prices_each_missed_by_one_percent_read_one() {
+    assert_eq!(rmspe(&[100.0, 200.0], &[101.0, 198.0]), 1.0);
+  }
 }

@@ -1,16 +1,18 @@
-//! Johnson SU maximum likelihood in $(\gamma, \log\delta, \xi, \log\lambda)$.
+//! Johnson SU maximum likelihood in `(γ, ln δ, ξ, ln λ)`.
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs_distributions::traits::DistributionExt;
 
+use super::Sample;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use crate::evt::gpd_fit::information_inverse;
+use crate::StatsError;
+use crate::evt::gpd::fit_in_data_units;
+use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
 /// Johnson SU maximum-likelihood fit.
@@ -26,7 +28,7 @@ pub struct JohnsonSuFit {
   pub lambda: f64,
   /// Standard errors of `[gamma, delta, xi, lambda]`.
   pub std_errors: Array1<f64>,
-  /// Inverse observed information for `[gamma, delta, xi, lambda]`.
+  /// Inverse observed information for `[gamma, delta, xi, lambda]`, `±∞` past the double range.
   pub covariance: Array2<f64>,
   /// Maximised log-likelihood.
   pub log_likelihood: f64,
@@ -38,7 +40,7 @@ pub struct JohnsonSuFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// Whether the simplex met its tolerance.
+  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
 }
 
@@ -46,18 +48,16 @@ fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
   if !(delta > 0.0 && lambda > 0.0 && delta.is_finite() && lambda.is_finite()) {
     return 1e300;
   }
-  let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda, &Deterministic::new(0));
-  negative_log_likelihood(x, |v| d.pdf(v).ln())
+  let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda);
+  negative_log_likelihood(x, |v| {
+    d.pdf(v).expect("SimdJohnsonSu has a closed-form pdf").ln()
+  })
 }
 
-/// Johnson SU maximum-likelihood fit of `data`.
-///
-/// # Panics
-///
-/// If there are fewer than 10 observations, any is non-finite, or they are
-/// constant.
-pub fn johnson_su_fit<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
-  let (x, mean, sd) = sample(data, 10);
+/// Johnson SU maximum likelihood of `data` at unit scale; `Err` below 10 observations, on a
+/// non-finite one, a constant sample or an estimate past the double range.
+pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> Result<JohnsonSuFit, StatsError> {
+  let Sample { x, mean, sd, unit } = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), p[2], p[3].exp());
   let mut starts = Vec::new();
   for gamma0 in [-1.0, 0.0, 1.0] {
@@ -70,20 +70,28 @@ pub fn johnson_su_fit<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
   let log_likelihood = -log_density(&x, natural[0], natural[1], natural[2], natural[3]);
   let nll = |p: &[f64]| log_density(&x, p[0], p[1], p[2], p[3]);
   let covariance = information_inverse(&nll, &natural, &[1.0, natural[1], sd, natural[3]]);
-  let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
-  let n = x.len() as f64;
-  JohnsonSuFit {
-    gamma: natural[0],
-    delta: natural[1],
-    xi: natural[2],
-    lambda: natural[3],
-    std_errors,
-    covariance,
+  let fit = fit_in_data_units(
+    natural,
+    &covariance,
     log_likelihood,
-    aic: 8.0 - 2.0 * log_likelihood,
-    bic: 4.0 * n.ln() - 2.0 * log_likelihood,
+    x.len(),
+    unit,
+    [0, 0, 1, 1],
+  )?;
+  let [gamma, delta, xi, lambda] = fit.params;
+  let n = x.len() as f64;
+  Ok(JohnsonSuFit {
+    gamma,
+    delta,
+    xi,
+    lambda,
+    std_errors: fit.std_errors,
+    covariance: fit.covariance,
+    log_likelihood: fit.log_likelihood,
+    aic: 8.0 - 2.0 * fit.log_likelihood,
+    bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
     iterations,
     converged,
-  }
+  })
 }

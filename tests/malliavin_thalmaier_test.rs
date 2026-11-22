@@ -6,6 +6,7 @@ use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
 use stochastic_rs::quant::pricing::malliavin_thalmaier::g_digital_put_2d;
+use stochastic_rs::simd_rng::Deterministic;
 
 fn paper_params() -> MultiHestonParams<f64> {
   let first = AssetParams {
@@ -70,19 +71,17 @@ fn black_scholes_digital_cross_gamma(
     / (spot[0] * spot[1] * sigma[0] * sigma[1] * tau * root_one_minus_rho_sq)
 }
 
-/// Reference: Kohatsu-Higa and Yasuda, "Estimating Multi-dimensional Density
-/// Functions through the Malliavin-Thalmaier Formula and Its Application to
-/// Finance", RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1), with
-/// `(sigma1,sigma2)=(0.25,0.20)`, price correlation `0.2`, `r=0`, `tau=1`,
-/// and eight Euler intervals. The exact bivariate Black--Scholes Deltas are
-/// `-0.008399800188218226` and `-0.010770732373919333`.
+/// Setup `(sigma1,sigma2)=(0.25,0.20)`, correlation `0.2`, `r=0`, `tau=1`, eight Euler intervals;
+/// exact Black--Scholes Deltas `-0.008399800188218226` and `-0.010770732373919333`.
+/// Reference: Kohatsu-Higa and Yasuda, RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1).
 #[test]
 fn paper_digital_put_deltas_match_exact_values() {
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
   let deltas = MtGreeks::new(paper_params(), 0.01, 25_000)
-    .try_all_deltas_with_seed(&payoff, 0x1580_0011)
+    .with_seed(Deterministic::new(0x1580_0011))
+    .try_all_deltas(&payoff)
     .unwrap();
   let expected = [-0.008399800188218226, -0.010770732373919333];
 
@@ -97,18 +96,18 @@ fn paper_digital_put_deltas_match_exact_values() {
   }
 }
 
-/// Reference: Black--Scholes vega for an ATM call with volatility `0.25` is
-/// `39.583768694474955`; `dP/dv0 = (dP/dsigma)/(2 sigma)`.
+/// The Black--Scholes vega of an ATM call at volatility `0.25` is `39.583768694474955`, and
+/// `dP/dv0 = (dP/dsigma)/(2 sigma)`.
 #[test]
 fn public_vega_uses_volatility_units() {
   let payoff = MtPayoff::Call {
     asset: 0,
     strike: 100.0,
   };
-  let engine = MtGreeks::new(vega_params(), 0.01, 30_000);
-  let seed = 0x5e6a_0001;
-  let sigma_vega = engine.vega_with_seed(&payoff, 0, seed);
-  let variance_vega = engine.vega_v0_with_seed(&payoff, 0, seed);
+  let engine =
+    MtGreeks::new(vega_params(), 0.01, 30_000).with_seed(Deterministic::new(0x5e6a_0001));
+  let sigma_vega = engine.vega(&payoff, 0);
+  let variance_vega = engine.vega_v0(&payoff, 0);
   let expected = black_scholes_vega(100.0, 100.0, 0.25, 0.0, 1.0);
 
   assert!(
@@ -126,21 +125,22 @@ fn public_vega_uses_volatility_units() {
   );
 }
 
-/// Reference: differentiating the bivariate Black--Scholes digital-put price
-/// twice gives the mixed spot derivative used here as the golden value.
+/// The golden value differentiates the bivariate Black--Scholes digital-put price twice, to the
+/// mixed spot derivative.
 #[test]
 fn public_cross_gamma_is_seeded_and_matches_black_scholes() {
   let payoff = MtPayoff::DigitalPut2D {
     strikes: [100.0, 100.0],
   };
-  let seed = 0xc205_5a11;
+  let seed = || Deterministic::new(0xc205_5a11);
   let expected =
     black_scholes_digital_cross_gamma([100.0, 100.0], [100.0, 100.0], [0.25, 0.20], 0.2, 0.0, 1.0);
-  let estimate =
-    MtGreeks::new(paper_params(), 0.01, 30_000).cross_gamma_with_seed(&payoff, 0, 1, seed);
-  let reproducibility_engine = MtGreeks::new(paper_params(), 0.01, 128);
-  let first = reproducibility_engine.cross_gamma_with_seed(&payoff, 0, 1, seed);
-  let second = reproducibility_engine.cross_gamma_with_seed(&payoff, 0, 1, seed);
+  let estimate = MtGreeks::new(paper_params(), 0.01, 30_000)
+    .with_seed(seed())
+    .cross_gamma(&payoff, 0, 1);
+  let reproducibility_engine = MtGreeks::new(paper_params(), 0.01, 128).with_seed(seed());
+  let first = reproducibility_engine.cross_gamma(&payoff, 0, 1);
+  let second = reproducibility_engine.cross_gamma(&payoff, 0, 1);
 
   assert_eq!(first.to_bits(), second.to_bits());
   assert!(
@@ -159,7 +159,8 @@ fn stochastic_leverage_is_reported_as_unsupported() {
     strikes: [100.0, 100.0],
   };
   let error = engine
-    .try_delta_with_seed(&payoff, 0, 0xc077_e1a7)
+    .with_seed(Deterministic::new(0xc077_e1a7))
+    .try_delta(&payoff, 0)
     .unwrap_err();
 
   assert!(

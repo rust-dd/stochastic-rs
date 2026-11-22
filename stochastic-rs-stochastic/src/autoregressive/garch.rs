@@ -1,45 +1,29 @@
-//! # Garch
+//! GARCH(p, q): the variance loads on past squared observations and on its own past values.
 //!
 //! $$
-//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,\qquad X_t=\sigma_t z_t
+//! \sigma_t^2=\omega+\sum_{i=1}^p\alpha_iX_{t-i}^2+\sum_{j=1}^q\beta_j\sigma_{t-j}^2,
+//! \qquad X_t=\sigma_t z_t
 //! $$
 //!
-//! Reference: Bollerslev T. (1986) — *Generalized Autoregressive
-//! Conditional Heteroskedasticity*, Journal of Econometrics 31(3),
-//! 307–327, DOI: 10.1016/0304-4076(86)90063-1.
-//!
+//! Reference: Bollerslev (1986), J. Econometrics 31(3), 307–327, DOI 10.1016/0304-4076(86)90063-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Implements a general Garch(p,q) model.
-///
-/// \[
-///   \sigma_t^2
-///     = \omega
-///       + \sum_{i=1}^p \alpha_i \, X_{t-i}^2
-///       + \sum_{j=1}^q \beta_j \, \sigma_{t-j}^2,
-///   \quad X_t = \sigma_t \, z_t, \quad z_t \sim \mathcal{N}(0,1).
-/// \]
-///
-/// # Parameters
-/// - `omega`: Constant term (\(\omega\)) in the Garch variance equation.
-/// - `alpha`: Array \(\{\alpha_1, \ldots, \alpha_p\}\) for past squared observations.
-/// - `beta`:  Array \(\{\beta_1, \ldots, \beta_q\}\) for past variances.
-/// - `n`:     Length of the time series.
-/// - `m`:     Optional batch size (unused by default).
-///
-/// # Notes
-/// 1. Stationarity typically requires \(\sum \alpha_i + \sum \beta_j < 1\).
-/// 2. We initialize with an unconditional variance approximation for \(\sigma_0^2\).
+/// GARCH(p, q), started at its unconditional variance `omega / (1 − Σα − Σβ)`; `new` enforces
+/// the stationarity `Σα + Σβ < 1` that makes it finite.
 #[derive(Debug, Clone)]
 pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
@@ -50,7 +34,7 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: Array1<T>,
   /// Length of the generated time series.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed: [`Unseeded`] or a [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -58,8 +42,21 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
+  /// Bollerslev's (1986) GARCH(p, q). Panics unless every value is finite, `n >= 1`, `omega > 0`,
+  /// `alpha[i] >= 0` and `beta[j] >= 0` (his eq. (2)), and `Σα + Σβ < 1` (his Theorem 1).
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
-    assert!(omega > T::zero(), "Garch requires omega > 0");
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
+    variance_denominator(&alpha, &beta);
     Garch {
       backend: Cpu,
       omega,
@@ -71,7 +68,23 @@ impl<T: FloatExt, S: SeedExt> Garch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Garch<T, S, B> {}
+/// The positivity conditions `α ≥ 0`, `β ≥ 0`, then the unconditional variance's denominator
+/// `1 − Σα − Σβ > 0`; one check for `new` and the samplers, which a field written later reaches.
+#[track_caller]
+fn variance_denominator<T: FloatExt>(alpha: &Array1<T>, beta: &Array1<T>) -> T {
+  assert_entries("alpha", "alpha[i] >= T::zero()", alpha, |v| v >= T::zero());
+  assert_entries("beta", "beta[i] >= T::zero()", beta, |v| v >= T::zero());
+  let sum_alpha: T = alpha.iter().cloned().sum();
+  let sum_beta: T = beta.iter().cloned().sum();
+  let denom = T::one() - sum_alpha - sum_beta;
+  assert!(
+    denom > T::zero(),
+    "alpha must satisfy `1 - alpha.sum() - beta.sum() > 0`, got alpha = {:?}, beta = {:?}",
+    alpha.to_vec(),
+    beta.to_vec()
+  );
+  denom
+}
 
 /// The Euler engine's view of GARCH(1,1).
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -93,11 +106,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     T::zero()
   }
 
-  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
-  /// first point: the state it starts from is the seed variance and the
-  /// not-yet-warm marker, not a value the path reports.
+  /// The series starts at `σ₀ z₀`, so the launch steps before it writes its first point: the
+  /// initial state is the seed variance and the not-yet-warm marker, not a reported value.
   fn initial_state(&self) -> [T; 4] {
-    let denom = T::one() - self.alpha[0] - self.beta[0];
+    let denom = variance_denominator(&self.alpha, &self.beta);
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -132,6 +144,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Garch<T, S> { omega, alpha, beta, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Garch<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Garch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -145,14 +162,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       omega: self.omega,
       alpha: self.alpha.clone(),
       beta: self.beta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
-  /// Through the Euler engine: on a device the conditional variance and the
-  /// series step together in the kernel, on the host devices it is this
-  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  /// What a device runs: order (1, 1), since the family carries one lag of each; a higher order
+  /// stays on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.alpha.len() == 1 && self.beta.len() == 1))
       .then_some("an order above (1, 1): the family carries one lag of each")
@@ -215,16 +230,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Garch`] sampling state: owns the standard-normal innovation source
-/// and the variance coefficients so a Monte-Carlo loop pays the `SimdNormal`
-/// setup once.
+/// Reusable [`Garch`] sampling state: it owns the innovation source and the coefficients, so a
+/// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GarchSampler<T: FloatExt> {
   n: usize,
   omega: T,
   alpha: Array1<T>,
   beta: Array1<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> GarchSampler<T> {
@@ -244,14 +259,7 @@ impl<T: FloatExt> GarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_beta = self.beta.iter().cloned().sum();
-    let denom = T::one() - sum_alpha - sum_beta;
-    assert!(
-      denom > T::zero(),
-      "Garch requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
-    );
+    let denom = variance_denominator(&self.alpha, &self.beta);
 
     for t in 0..n {
       if t == 0 {
@@ -273,16 +281,13 @@ impl<T: FloatExt> GarchSampler<T> {
         }
         sigma2[t] = var_t;
       }
-      assert!(
-        sigma2[t].is_finite() && sigma2[t] > T::zero(),
-        "Garch produced non-positive or non-finite conditional variance at t={}",
-        t
-      );
       // X_t = sigma_t * z[t]
       out[t] = sigma2[t].max(var_floor).sqrt() * z[t];
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GarchSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GarchSampler<T> {
   type Output = Array1<T>;
