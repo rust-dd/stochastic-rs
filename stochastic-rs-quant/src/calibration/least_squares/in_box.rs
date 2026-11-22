@@ -1,5 +1,7 @@
-//! Reference: Bertsekas, “Projected Newton Methods for Optimization Problems with Simple
-//! Constraints” (1982), eqs. (32), (81)–(84), DOI 10.1137/0320018; a restart stands for its step.
+//! The bounds side of `minimize_in_box`: the set a fit holds on its bounds through each solve,
+//! after Bertsekas's projected Newton method, a restart standing for its step.
+//!
+//! Reference: Bertsekas (1982), SIAM J. Control Optim., eqs. (32), (81)–(84), DOI 10.1137/0320018
 
 use std::cell::Cell;
 use std::cell::RefCell;

@@ -14,9 +14,8 @@ use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
 use crate::traits::ToModel;
 
-// Reference Heston (v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
-// S=100, r=0.05, q=0, T=1.0. A double Heston with v1_0+v2_0 = 0.04 and
-// factor-1 degenerate (v1_0 ≈ 0) collapses onto the single Heston answer.
+// Heston (v0 0.04, κ 1.5, θ 0.04, σ 0.3, ρ −0.7) at S = 100, r = 0.05, q = 0, T = 1, which a
+// double Heston reprices once its first factor has vanished (v1_0 ≈ 0, v1_0 + v2_0 = 0.04).
 const HESTON_REF: [f64; 9] = [
   25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
 ];
@@ -53,9 +52,8 @@ fn double_heston_reduces_to_heston_when_one_factor_vanishes() {
 
 #[test]
 fn double_heston_two_factors_produces_sensible_smile() {
-  // Standard Christoffersen 2-factor split: one fast-mean-reverting factor,
-  // one slow-mean-reverting factor. Prices should be positive, finite,
-  // monotonic in strike, and satisfy basic bounds.
+  // Christoffersen's split, one fast and one slow mean-reverting factor: the prices are positive,
+  // finite, falling in the strike and inside the no-arbitrage bounds.
   let p = DoubleHestonParams {
     first: HestonParams {
       v0: 0.02,

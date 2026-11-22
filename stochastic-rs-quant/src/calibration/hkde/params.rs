@@ -18,11 +18,8 @@ pub(super) const SIGMA_V_MIN: f64 = 1e-8;
 pub(super) const ETA1_MIN: f64 = 1.0 + 1e-3;
 pub(super) const ETA2_MIN: f64 = 1e-3;
 
-/// Box ranges used by the periodic projection.
-///
-/// The upper bounds were chosen to encompass the calibrated parameter sets
-/// reported by Agazzotti et al. (2025), Table 1, which routinely produce
-/// $\theta$ values above $0.4$ on single-name equities (e.g. SHOP: $\theta=0.728$).
+/// The periodic projection's box, wide enough for every set in Agazzotti et al. (2025), Table 1,
+/// whose single-name `θ` passes 0.4 (SHOP's is 0.728).
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
 pub(super) const P_THETA: (f64, f64) = (0.001, 1.0);
@@ -45,11 +42,7 @@ pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
 }
 
 impl HkdeParams {
-  /// Project the parameter vector onto the admissible set.
-  ///
-  /// The projection enforces the box bounds, the Feller condition
-  /// $2\kappa\theta\ge\sigma^2$ and the Kou finiteness requirement
-  /// $\eta_1>1$.
+  /// Projects onto the admissible set: the box, Feller's `2κθ ≥ σ²` and Kou's `η₁ > 1`.
   pub fn project_in_place(&mut self) {
     self.project_box();
     self.project_feller();

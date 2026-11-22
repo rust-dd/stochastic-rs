@@ -5,15 +5,30 @@ use crate::traits::ToModel;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LevyModelType {
-  /// Variance Gamma: $\psi(\xi)=-\frac{1}{\nu}\ln\!\bigl(1-i\theta\nu\xi+\tfrac12\sigma^2\nu\xi^2\bigr)$
+  /// Variance Gamma:
+  /// $$
+  /// \psi(\xi)=-\frac{1}{\nu}\ln\!\bigl(1-i\theta\nu\xi+\tfrac12\sigma^2\nu\xi^2\bigr)
+  /// $$
   VarianceGamma,
-  /// Normal Inverse Gaussian: $\psi(\xi)=\delta\bigl(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+i\xi)^2}\bigr)$
+  /// Normal Inverse Gaussian:
+  /// $$
+  /// \psi(\xi)=\delta\bigl(\sqrt{\alpha^2-\beta^2}-\sqrt{\alpha^2-(\beta+i\xi)^2}\bigr)
+  /// $$
   Nig,
-  /// Cgmy: $\psi(\xi)=C\,\Gamma(-Y)\bigl[(M-i\xi)^Y-M^Y+(G+i\xi)^Y-G^Y\bigr]$
+  /// Cgmy:
+  /// $$
+  /// \psi(\xi)=C\,\Gamma(-Y)\bigl[(M-i\xi)^Y-M^Y+(G+i\xi)^Y-G^Y\bigr]
+  /// $$
   Cgmy,
-  /// Merton Jump-Diffusion: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)$
+  /// Merton Jump-Diffusion:
+  /// $$
+  /// \psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)
+  /// $$
   MertonJd,
-  /// Kou Double-Exponential: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(\frac{p\eta_1}{\eta_1-i\xi}+\frac{(1-p)\eta_2}{\eta_2+i\xi}-1\bigr)$
+  /// Kou Double-Exponential:
+  /// $$
+  /// \psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(\frac{p\eta_1}{\eta_1-i\xi}+\frac{(1-p)\eta_2}{\eta_2+i\xi}-1\bigr)
+  /// $$
   Kou,
 }
 
@@ -62,9 +77,8 @@ impl crate::traits::ModelPricer for LevyModel {
   }
 }
 
-/// Each variant forwards to a [`FourierModelExt`](crate::pricing::fourier::FourierModelExt)
-/// model, so the enum is a European vanilla call pricer exactly as its
-/// members are.
+/// Each variant is a [`FourierModelExt`](crate::pricing::fourier::FourierModelExt) model, so the
+/// enum is a European vanilla call pricer as its members are.
 impl crate::traits::VanillaEuropeanCall for LevyModel {}
 
 impl LevyModel {

@@ -1,9 +1,7 @@
-//! Adapts stateful calibration objectives to basin's residual and Jacobian callbacks.
+//! Adapts stateful calibration objectives to basin's residual and Jacobian callbacks, solving
+//! `min ½‖r(x)‖²` by trust-region LM, pivoted QR for the larger fits and Cholesky for the others.
 //!
-//! Solves $\min_x \frac12\|r(x)\|^2$ with basin's trust-region LM.
-//! Uses pivoted QR for the larger fits and Cholesky for the smaller pricing objectives.
-//! Reference: J. J. Moré, “The Levenberg-Marquardt Algorithm: Implementation
-//! and Theory” (1978), DOI: 10.1007/BFb0067700.
+//! Reference: Moré (1978), Lect. Notes Math., 105–116, DOI 10.1007/BFb0067700
 
 use std::cell::Cell;
 use std::cell::RefCell;
