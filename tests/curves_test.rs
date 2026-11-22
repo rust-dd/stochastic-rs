@@ -144,7 +144,7 @@ fn zero_rate_to_discount_factor_identity() {
 }
 
 // Nelson-Siegel model
-// Reference: luphord/nelson_siegel_svensson Python library
+// Reference: the Python library at https://github.com/luphord/nelson_siegel_svensson
 
 #[test]
 fn nelson_siegel_zero_rates_match_python_reference() {
@@ -202,7 +202,7 @@ fn nelson_siegel_discount_factor_consistency() {
 }
 
 // Bootstrapping from deposits and swaps
-// Reference: CFA / AnalystPrep worked examples + analytic formulas
+// Values from CFA / AnalystPrep worked examples and the analytic formulas.
 
 #[test]
 fn bootstrap_deposits_simple_compounding() {

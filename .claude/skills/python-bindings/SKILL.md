@@ -199,7 +199,7 @@ Every wrapped type **must** be registered explicitly. The cdylib's
 fn stochastic_rs(_py: Python, m: &PyModule) -> PyResult<()> {
   // 1. Imports — alphabetised within each producer crate's section.
   use stochastic_rs_quant::python::PyBsmPricer;
-  use stochastic_rs_quant::python::PyNigFourier;     // new in rc.2
+  use stochastic_rs_quant::python::PyNigFourier;
   // ...
 
   // 2. Registration — group by domain (pricer, calibrator, vol_surface, ...).

@@ -1,11 +1,9 @@
-//! Survival curves and piecewise-constant hazard rates, the risk-neutral survival being
+//! Survival curves and piecewise-constant hazard rates: the risk-neutral survival `Q(t)` and the
+//! forward hazard `h(t₁, t₂)` between grid times `t₁ < t₂`.
 //!
 //! $$
-//! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),
-//! $$
-//! and the forward hazard between grid times `t₁ < t₂`
-//! $$
-//! h(t_1,t_2)=-\frac{\ln Q(t_2)-\ln Q(t_1)}{t_2-t_1}.
+//! Q(t)=\mathbb{P}(\tau>t)=\exp\!\left(-\int_0^t h(s)\,ds\right),\qquad
+//! h(t_1,t_2)=-\frac{\ln Q(t_2)-\ln Q(t_1)}{t_2-t_1}
 //! $$
 //!
 //! Reference: Brigo & Mercurio (2006), 2nd ed., Ch. 22, DOI 10.1007/978-3-540-34604-3

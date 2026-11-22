@@ -1,5 +1,5 @@
-//! Portfolio 99 % VaR of two equity returns coupled by a Clayton copula, against the i.i.d. Gaussian baseline that
-//! ignores its lower-tail dependence: `cargo run --release --example copula_var_demo`.
+//! The 99 % VaR of two equity returns under a Clayton copula against the i.i.d. Gaussian baseline,
+//! which ignores the lower-tail dependence: `cargo run --release --example copula_var_demo`.
 
 use ndarray::Array1;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;

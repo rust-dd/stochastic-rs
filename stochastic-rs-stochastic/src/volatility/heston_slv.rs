@@ -8,13 +8,12 @@
 //! \end{aligned}
 //! $$
 //!
-//! $L(t, S)$ is read at the step's start and the variance always steps by full truncation, with
-//! $V_n^+ = \max(\tilde V_n, 0)$ reported; `HestonLog` and quant's calibration run this scheme:
+//! It always steps by full truncation, reporting `V⁺`; `HestonLog` and quant's calibration run it:
 //!
 //! $$
 //! S_{n+1} = S_n \exp\bigl((\mu - \tfrac12 L^2 V_n^+)\Delta t + L\sqrt{V_n^+}\,\Delta W\bigr),\quad
 //! \tilde V_{n+1} = \tilde V_n + \kappa(\theta - V_n^+)\Delta t +
-//! \eta\sigma\sqrt{V_n^+}\,\Delta B
+//! \eta\sigma\sqrt{V_n^+}\,\Delta B,\quad L = L(t_n, S_n),\quad V_n^+ = \max(\tilde V_n, 0)
 //! $$
 //!
 //! Reference: Lord, Koekkoek & van Dijk (2010), 10(2), 177–194, DOI 10.1080/14697680802392496

@@ -96,7 +96,8 @@ impl<T: SimdFloatExt> SimdFoo<T> {
     /// The scalar algorithm on any `rand` rng; composites reuse it.
     pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T { /* ... */ }
 
-    fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) { /* writes every slot once, reads none */ }
+    /// Writes every slot once and reads none.
+    fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) { /* … */ }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdFoo<T> {}
@@ -148,14 +149,15 @@ algorithm.
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdFoo<T> {
   /// `Option<f64>` throughout, the trait being `f64`-only: `Some` for a closed form, the default
   /// `None` without one, never `Some(0.0)` for a gap.
-  fn pdf(&self, x: f64) -> Option<f64> { /* derive from scratch, special functions from `crate::special` */ }
+  fn pdf(&self, x: f64) -> Option<f64> { /* from scratch, with `crate::special`'s functions */ }
 
-  fn cdf(&self, x: f64) -> Option<f64> { /* erf / regularised incomplete gamma or beta from `crate::special` */ }
+  fn cdf(&self, x: f64) -> Option<f64> { /* erf or the regularised incomplete gamma or beta */ }
 
-  /// Characteristic function from the canonical paper (NIG: Barndorff-Nielsen 1997 eq. 3; CGMY: Carr-Geman-Madan-Yor 2002 eq. 3.4).
+  /// From the canonical paper (NIG: Barndorff-Nielsen 1997 eq. 3; CGMY: Carr-Geman-Madan-Yor 2002
+  /// eq. 3.4).
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> { /* … */ }
 
-  fn quantile(&self, p: f64) -> Option<f64> { /* the inverse cdf, or leave the default when there is none */ }
+  fn quantile(&self, p: f64) -> Option<f64> { /* the inverse cdf, or the default if none exists */ }
 
   fn mean(&self) -> Option<f64> { /* … */ }
 

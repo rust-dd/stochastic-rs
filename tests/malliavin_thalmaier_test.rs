@@ -71,9 +71,9 @@ fn black_scholes_digital_cross_gamma(
     / (spot[0] * spot[1] * sigma[0] * sigma[1] * tau * root_one_minus_rho_sq)
 }
 
-/// Reference: Kohatsu-Higa and Yasuda, RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1).
 /// Setup `(sigma1,sigma2)=(0.25,0.20)`, correlation `0.2`, `r=0`, `tau=1`, eight Euler intervals;
 /// exact Black--Scholes Deltas `-0.008399800188218226` and `-0.010770732373919333`.
+/// Reference: Kohatsu-Higa and Yasuda, RIMS Kokyuroku 1580 (2008), Section 7, equation (7.1).
 #[test]
 fn paper_digital_put_deltas_match_exact_values() {
   let payoff = MtPayoff::DigitalPut2D {
@@ -96,8 +96,8 @@ fn paper_digital_put_deltas_match_exact_values() {
   }
 }
 
-/// Reference: Black--Scholes vega for an ATM call with volatility `0.25` is
-/// `39.583768694474955`; `dP/dv0 = (dP/dsigma)/(2 sigma)`.
+/// The Black--Scholes vega of an ATM call at volatility `0.25` is `39.583768694474955`, and
+/// `dP/dv0 = (dP/dsigma)/(2 sigma)`.
 #[test]
 fn public_vega_uses_volatility_units() {
   let payoff = MtPayoff::Call {
@@ -125,8 +125,8 @@ fn public_vega_uses_volatility_units() {
   );
 }
 
-/// Reference: differentiating the bivariate Black--Scholes digital-put price
-/// twice gives the mixed spot derivative used here as the golden value.
+/// The golden value differentiates the bivariate Black--Scholes digital-put price twice, to the
+/// mixed spot derivative.
 #[test]
 fn public_cross_gamma_is_seeded_and_matches_black_scholes() {
   let payoff = MtPayoff::DigitalPut2D {

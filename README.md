@@ -106,8 +106,9 @@ fn main() {
 ```python
 import stochastic_rs as srs
 
-# Mean-reverting OU path: PyOu(theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None)
-path = srs.PyOu(2.0, 0.0, 1.0, 1000, x0=0.0, t=1.0, seed=42).sample()   # numpy.ndarray, shape (1000,)
+# PyOu(theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None): a mean-reverting
+# OU path, here a numpy.ndarray of shape (1000,).
+path = srs.PyOu(2.0, 0.0, 1.0, 1000, x0=0.0, t=1.0, seed=42).sample()
 
 # Heston European option, closed form
 pricer = srs.HestonPricer(

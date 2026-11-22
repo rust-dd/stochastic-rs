@@ -19,7 +19,7 @@
 //!
 //! Reference: Rosiński (2007), Thm 5.1, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
 //! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
-//! Reference: Bianchi et al. (2010), Math. Stat. Methods for Actuarial Sci. and Finance, Springer
+//! Reference: Bianchi et al. (2010), Springer, 33–42, DOI 10.1007/978-88-470-1481-7_4
 //!
 
 use ndarray::Array1;

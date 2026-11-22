@@ -13,10 +13,7 @@ Doc comments describe **what the code does**, not which release introduced or wi
 
 ```rust
 //! ## v2.3.0 design choice — XYZ
-//! ## v2.4 deferred — ABC
-//!
-//! In v2.3.0 we ship only the closed-form path; the iterative refinement
-//! lands in v2.4 alongside the structure-selection algorithm.
+//! In v2.3.0 we ship only the closed-form path; the iterative refinement lands in v2.4.
 ```
 
 The reader hitting `cargo doc` doesn't have the version landscape. They have the code in front of them, and they need to know what it does, what the math is, and what its preconditions are. Versions move on; the prose stays.

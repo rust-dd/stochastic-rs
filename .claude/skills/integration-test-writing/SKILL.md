@@ -287,8 +287,8 @@ If a test compares to a Python / R reference, embed the exact command
 in the doc comment:
 
 ```rust
-/// Reference: `scipy.linalg.expm(np.array([[-0.1, 0.1], [0.05, -0.05]]))`
-/// = `[[0.90713, 0.09287], [0.04643, 0.95357]]`.
+/// `scipy.linalg.expm(np.array([[-0.1, 0.1], [0.05, -0.05]]))` is
+/// `[[0.90713, 0.09287], [0.04643, 0.95357]]`.
 #[test]
 fn expm_matches_scipy() { /* ... */ }
 ```

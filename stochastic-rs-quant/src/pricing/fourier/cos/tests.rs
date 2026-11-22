@@ -414,9 +414,9 @@ const TABLE_6: [f64; 21] = [
   0.019788382207635565,
 ];
 
-/// Reference: Fang & Oosterlee (2008) Tables 4–6: `TABLE_6`, and `T = 10` at `K = 100`.
 /// The default engine is within 3e-8 of mpmath and the printed 5.785155450 is 1.6e-8 high; 4,096
 /// terms over 16 deviations hold 1e-12, and at `T = 10` Table 5's 22.318945791 stands to 1e-9.
+/// Reference: Fang & Oosterlee (2008) Tables 4–6: `TABLE_6`, and `T = 10` at `K = 100`.
 #[test]
 fn price_strikes_holds_the_heston_references_of_fang_oosterlee() {
   let model = fang_oosterlee_heston();

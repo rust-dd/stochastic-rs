@@ -13,7 +13,7 @@ fn theta_r(_t: f64) -> f64 {
 
 #[test]
 fn heston_hull_white_2f_sample() {
-  // Drivers in the order (x, v, r, u): equity-variance −0.3, equity-rate 0.35 and 0.08, rate-rate −0.4.
+  // Drivers (x, v, r, u): equity-variance −0.3, equity-rate 0.35 and 0.08, rate-rate −0.4.
   let rho = array![
     [1.0, -0.3, 0.35, 0.08],
     [-0.3, 1.0, 0.0, 0.0],

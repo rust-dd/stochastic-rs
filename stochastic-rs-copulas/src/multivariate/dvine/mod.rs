@@ -1,5 +1,6 @@
 //! D-vine: tree `T_j` joins `i` and `i + j` given `i + 1, …, i + j − 1`; Aas et al. Alg. 2 samples,
 //! Alg. 4 evaluates (density (8), printed 1-based indices), an edge's ends in either order.
+//!
 //! Reference: Aas et al. (2009), 44(2), 182–198, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use ndarray::Array1;

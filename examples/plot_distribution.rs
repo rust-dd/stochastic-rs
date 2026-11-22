@@ -1,8 +1,5 @@
-//! Plot a distribution: Gamma-sampled histogram with the closed-form pdf
-//! overlaid, showing the sampler and `DistributionExt` agree.
-//!
-//! Writes a Plotly HTML chart to `target/plot_distribution_gamma.html`. Run
-//! with `cargo run --release --example plot_distribution`.
+//! A Gamma-sampled histogram under `DistributionExt`'s pdf, as Plotly HTML in
+//! `target/plot_distribution_gamma.html`: `cargo run --release --example plot_distribution`.
 use plotly::Histogram;
 use plotly::Layout;
 use plotly::Plot;

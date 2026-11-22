@@ -74,12 +74,8 @@ fn bsm_demo() {
   assert!(max_repricing_err < 1e-3);
 }
 
-/// Heston: synthesise a multi-maturity IV surface from a known parameter set,
-/// calibrate jointly across maturities, recover.
-///
-/// Multi-maturity is important: with a single maturity Heston is weakly
-/// identified (different (v0, κ, θ, σ, ρ) tuples can fit the same smile).
-/// Adding maturities lets the term-structure pin down κ and θ.
+/// Heston recovered from a synthetic multi-maturity IV surface: one maturity identifies it weakly
+/// (several `(v0, κ, θ, σ, ρ)` fit one smile), and the term structure pins down κ and θ.
 fn heston_demo() {
   println!("[Heston] joint multi-maturity surface calibration");
 

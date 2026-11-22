@@ -15,12 +15,14 @@ exclude = ["tests/**"]
 
 [features]
 default = []
-# Enables predict_implied_vol_surface and the calibration module (SurrogateModel, the surrogate calibrators).
+# Enables predict_implied_vol_surface and the calibration module (SurrogateModel, the surrogate
+# calibrators).
 quant = ["dep:stochastic-rs-quant"]
 # Gates write_surface_fit_plot_html so a train/predict-only build compiles no plotting stack.
 viz = ["dep:plotly"]
 python = ["quant", "dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python"]
-# candle's Metal back-end; CUDA stays in the consumer's manifest (candle-kernels needs the toolkit at build time).
+# candle's Metal back-end; CUDA stays in the consumer's manifest, since candle-kernels needs the
+# toolkit at build time.
 metal = ["candle-core/metal", "candle-nn/metal"]
 
 [dependencies]

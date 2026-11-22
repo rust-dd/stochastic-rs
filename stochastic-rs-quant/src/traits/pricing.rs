@@ -1,4 +1,4 @@
-//! Pricing traits — `ModelPricer`, `GreeksExt`.
+//! Pricing traits `ModelPricer`, `VanillaEuropeanCall` and `GreeksExt`, and the `Greeks` struct.
 
 use stochastic_rs_stochastic::mc::McEstimate;
 

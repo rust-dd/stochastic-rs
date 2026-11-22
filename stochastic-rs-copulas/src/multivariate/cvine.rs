@@ -1,5 +1,6 @@
 //! C-vine: tree `T_j` joins root `j` to each `j + i` given `1, …, j − 1`; Aas et al. Alg. 1
 //! samples, Alg. 3 evaluates (density (9), printed 1-based indices), edge ends in either order.
+//!
 //! Reference: Aas et al. (2009), 44(2), 182–198, DOI 10.1016/j.insmatheco.2007.02.001.
 
 use ndarray::Array1;

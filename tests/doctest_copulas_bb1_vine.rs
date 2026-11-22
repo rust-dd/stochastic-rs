@@ -18,8 +18,9 @@ fn bb1_fit_gof_and_vine_selection() {
   let truth = Bb1::new(0.8, 1.6);
   let tails = truth.tail_dependence().unwrap();
   assert!(tails.lower > 0.5 && tails.upper > 0.4 && tails.lower != tails.upper);
-  // Every fit and test runs on pseudo-observations (normalised ranks), as with real data.
-  let uv = pseudo_observations(truth.sample(2_000, &Deterministic::new(42)).unwrap().view()); // shape (2_000, 2)
+  // Every fit and test runs on pseudo-observations (normalised ranks), as with real data; `uv` is
+  // `(2_000, 2)`.
+  let uv = pseudo_observations(truth.sample(2_000, &Deterministic::new(42)).unwrap().view());
 
   // Maximum-likelihood fit of (θ, δ) recovers the generating pair.
   let mut fitted = Bb1::default();

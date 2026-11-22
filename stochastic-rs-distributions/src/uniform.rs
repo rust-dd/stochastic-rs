@@ -32,8 +32,7 @@ pub struct SimdUniform<T> {
 }
 
 impl<T: SimdFloatExt> SimdUniform<T> {
-  /// # Panics
-  /// `high <= low` or a bound that is not finite.
+  /// `U(low, high)`; panics unless both bounds are finite and `low < high`.
   pub fn new(low: T, high: T) -> Self {
     assert!(
       low.is_finite(),

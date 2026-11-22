@@ -167,7 +167,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
 /// \pi(\rho) \propto (1-\rho^2)^{-1/2}, \qquad
 /// \ln\pi(q) = q - \theta\Delta - \tfrac12\ln\left(1 - e^{-2\theta\Delta}\right)
 /// $$
-/// Reference: Lee (2005), as above.
+/// Reference: Lee (2005), J. Korean Data & Information Science Society 16(1), 71-78, Lemma.
 fn speed_log_prior(ln_theta: f64, dt: f64) -> f64 {
   let rate = ln_theta.exp() * dt;
   if rate == 0.0 {

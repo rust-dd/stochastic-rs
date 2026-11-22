@@ -13,7 +13,7 @@
 //!
 //! Constant `σ` is Hull–White; Euler-stepped from `x_0 = y_0 = 0`, `σ` at the left grid point.
 //!
-//! Reference: Cheyette (1992), "Markov Representation of the Heath–Jarrow–Morton Model", BARRA
+//! Reference: Cheyette (1992), BARRA working paper, DOI 10.2139/ssrn.6073
 //! Reference: Andersen & Piterbarg (2010), "Interest Rate Modeling", Vol. II, Ch. 13
 //! Reference: Gairat, Gorovoy & Shcherbakov (2025), arXiv:2506.23876, §2, eqs. (1)–(3)
 

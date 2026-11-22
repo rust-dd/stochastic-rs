@@ -10,7 +10,7 @@
 //! $J_t$ is Kou's double-exponential jump and $N_t$ a Poisson process of intensity $\lambda$:
 //! $$ \ln(1+J) \sim p\,\mathrm{Exp}(\eta_1) + (1-p)\,(-\mathrm{Exp}(\eta_2)) $$
 //!
-//! Reference: Kirkby, PROJ_Option_Pricing_Matlab
+//! Reference: Kirkby, <https://github.com/jkirkby3/PROJ_Option_Pricing_Matlab>
 //! Reference: Kou (2002), DOI 10.1287/mnsc.48.8.1086.166
 //!
 

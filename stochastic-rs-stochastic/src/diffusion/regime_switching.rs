@@ -4,7 +4,7 @@
 //! dS_t = (r-q)S_t\,dt + \sigma_{Z_t}\,S_t\,dW_t
 //! $$
 //!
-//! Source: Kirkby, PROJ_Option_Pricing_Matlab
+//! Source: Kirkby, <https://github.com/jkirkby3/PROJ_Option_Pricing_Matlab>
 //! Reference: Hamilton (1989), Econometrica 57(2), 357–384, DOI 10.2307/1912559
 //!
 
