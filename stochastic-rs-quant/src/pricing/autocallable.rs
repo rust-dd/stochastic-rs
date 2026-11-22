@@ -1,5 +1,5 @@
 //! Autocallable, phoenix and athena notes on one asset: an autocall redeems at par plus the accrued
-//! coupon, else the coupon barrier is checked; below the knock-in the principal is at risk.
+//! coupon, else the coupon barrier is checked; at maturity, below the knock-in, par is at risk.
 //!
 //! Reference: Bouzoubaa & Osseiran (2010), "Exotic Options and Hybrids", §11
 //! Reference: Kuklinski et al. (2016), arXiv:1608.00280
