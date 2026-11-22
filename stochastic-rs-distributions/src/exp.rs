@@ -258,8 +258,7 @@ pub struct SimdExp<T> {
 }
 
 impl<T: SimdFloatExt> SimdExp<T> {
-  /// # Panics
-  /// `lambda <= 0`.
+  /// Rate `lambda` (mean `1/λ`); panics unless it is finite and positive.
   pub fn new(lambda: T) -> Self {
     assert!(
       lambda.is_finite(),

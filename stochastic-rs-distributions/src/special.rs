@@ -1,5 +1,6 @@
 //! Special functions for the closed forms: Lanczos `gamma` and `ln_gamma`, Acklam's `ndtri`,
 //! `libm`'s `erf` and `erfc`, Mills' ratio, the incomplete gamma and beta, Bessel `I` and `K`.
+//!
 //! Reference: NIST DLMF, eq. 7.9.3, <https://dlmf.nist.gov/7.9.3>.
 //! Reference: NIST DLMF, eqs. 5.11.8 and 5.11.13, <https://dlmf.nist.gov/5.11.8>.
 //! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal CDF".

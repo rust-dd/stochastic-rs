@@ -22,8 +22,7 @@
 //! \mu_4 = \beta^4\mu_4(W) + 6\beta^2(\mu_3(W) + \mathbb E W\,\mathrm{Var}\,W) + 3\,\mathbb E W^2.
 //! $$
 //!
-//! The NIG at `λ = −½`, the hyperbolic at `λ = 1`, the VG as `δ → 0` for `λ > 0`; no closed cdf or
-//! quantile.
+//! NIG at `λ = −½`, hyperbolic at `λ = 1`, VG as `δ → 0` for `λ > 0`; no closed cdf or quantile.
 //!
 //! Reference: Barndorff-Nielsen (1977), Proc. R. Soc. A 353, 401-419, DOI 10.1098/rspa.1977.0041.
 //! Reference: Eberlein, E., Keller, U. (1995), Bernoulli 1(3), 281-299, DOI 10.2307/3318481.
