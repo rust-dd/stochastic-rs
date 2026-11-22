@@ -238,8 +238,8 @@ fn a_zero_volatility_prices_the_certain_path() {
   assert!(inside.call.is_nan() && inside.put.is_nan(), "{inside:?}");
 }
 
-/// A spot of `1e300` overflows `payoff²`, so the localised bandwidth `lf = √(∞/∞)` is NaN: the price
-/// is NaN, as the plain estimator's is, and the kernel's assert is never reached.
+/// A spot of `1e300` overflows `payoff²`, so the localised bandwidth `lf = √(∞/∞)` is NaN: the
+/// price is NaN, as the plain estimator's is, and the kernel's assert is never reached.
 #[test]
 fn a_bandwidth_that_is_not_finite_prices_nan() {
   let p = GbmMalliavinPricer::new(0.2, 64, 16, 0.5).with_seed(Deterministic::new(7));

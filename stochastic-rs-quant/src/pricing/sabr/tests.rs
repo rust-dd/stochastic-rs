@@ -538,8 +538,8 @@ mod construction_validation {
   }
 }
 
-/// Hagan's volatility is negative at `α 0.2, β 1, ρ −0.9, ν 3` and `τ = 10`, so the price is NaN, as
-/// `SabrPricer`'s is, where `BsmPricer::new` panicked; `bs_price_fx` reads its `sigma` as BSM does.
+/// Hagan's volatility is negative at `α 0.2, β 1, ρ −0.9, ν 3` and `τ = 10`, so the price is NaN,
+/// as `SabrPricer`'s is, where `BsmPricer::new` panicked; `bs_price_fx` reads `sigma` as BSM does.
 #[test]
 fn a_negative_hagan_volatility_prices_nan_not_a_panic() {
   let params = SabrParams {
