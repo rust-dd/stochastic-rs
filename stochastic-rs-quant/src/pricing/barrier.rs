@@ -97,7 +97,12 @@ impl BarrierPricer {
     }
     let sigma = self.sigma;
     if sigma == 0.0 {
-      return deterministic(option, s, r, q, tau);
+      // An unbreached option reads its rebate, as the formula's `e` and `f` do, off the path too.
+      return if rebate.is_nan() {
+        f64::NAN
+      } else {
+        deterministic(option, s, r, q, tau)
+      };
     }
 
     let sigma2 = sigma * sigma;
@@ -217,9 +222,6 @@ fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f6
     barrier_type,
     option_type,
   } = *option;
-  if k.is_nan() || rebate.is_nan() {
-    return f64::NAN;
-  }
   let terminal = s * ((r - q) * tau).exp();
   let hit = match barrier_type {
     BarrierType::DownAndIn | BarrierType::DownAndOut => s.min(terminal) <= h,

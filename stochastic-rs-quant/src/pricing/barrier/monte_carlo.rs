@@ -60,8 +60,8 @@ impl<S: SeedExt> McBarrierPricer<S> {
     }
   }
 
-  /// Discounted estimate under the drift `(r − q − σ²/2) dt`, a knocked-out rebate at any strike;
-  /// NaN for a NaN query or term and wherever [`BarrierPricer`](super::BarrierPricer) is NaN.
+  /// Discounted estimate under the drift `(r − q − σ²/2) dt`; NaN from no path for a NaN query and
+  /// wherever [`BarrierPricer`](super::BarrierPricer) is, which reads a strike or rebate it pays.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
     let BarrierOption {
       strike: k,
@@ -73,9 +73,19 @@ impl<S: SeedExt> McBarrierPricer<S> {
     let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
     let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
     let breached = |x: f64| if up { x >= h } else { x <= h };
-    let undefined = [s, r, q, k, rebate].iter().any(|x| x.is_nan()) || !h.is_finite();
-    let unread = tau > 0.0 && (s <= 0.0 || (not_positive(&[k]) && (knock_in || !breached(s))));
-    if undefined || !(0.0..f64::INFINITY).contains(&tau) || unread {
+    let (knocked, expiring) = (breached(s), tau == 0.0);
+    // A knocked-out option pays only its rebate and a knocked-in one its payoff; an unbreached one
+    // may pay either before expiry, and at it a knock-out its payoff and a knock-in its rebate.
+    let live = !knocked && !expiring;
+    let (pays_payoff, pays_rebate) = (knocked == knock_in || live, knocked != knock_in || live);
+    let strike_off = k.is_nan() || (!expiring && not_positive(&[k]));
+    let undefined = [s, r, q].iter().any(|x| x.is_nan()) || !h.is_finite();
+    if undefined
+      || !(0.0..f64::INFINITY).contains(&tau)
+      || (!expiring && s <= 0.0)
+      || (pays_payoff && strike_off)
+      || (pays_rebate && rebate.is_nan())
+    {
       return McEstimate {
         mean: f64::NAN,
         std_err: f64::NAN,

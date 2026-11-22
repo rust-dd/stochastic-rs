@@ -232,45 +232,54 @@ fn a_barrier_that_is_not_finite_is_nan() {
   }
 }
 
-/// The Monte Carlo estimate is NaN from no path exactly where the closed form is NaN, a knocked-out
-/// rebate included, and pays the closed form's payoff or rebate at expiry.
+/// The Monte Carlo estimate is NaN from no path exactly where the closed form is NaN, at either
+/// volatility, an infinite `tau` and a NaN strike or rebate included, and pays its value at expiry.
 #[test]
 fn a_monte_carlo_barrier_is_nan_where_the_closed_form_is() {
   use BarrierType::*;
-  let (inf, mc) = (f64::INFINITY, McBarrierPricer::new(0.2, 64, 8));
-  let mc = mc.with_seed(Deterministic::new(7));
+  let (inf, nan) = (f64::INFINITY, f64::NAN);
   let mut apart = Vec::new();
-  for (barrier_type, barriers) in [
-    (UpAndOut, [110.0, 95.0, inf, -inf]),
-    (UpAndIn, [110.0, 95.0, inf, -inf]),
-    (DownAndOut, [90.0, 105.0, -inf, inf]),
-    (DownAndIn, [90.0, 105.0, -inf, inf]),
-  ] {
-    for (barrier, option_type) in barriers
-      .into_iter()
-      .flat_map(|h| [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type)))
-    {
-      for (strike, tau) in [100.0, 0.0, -5.0]
+  for sigma in [0.2, 0.0] {
+    let mc = McBarrierPricer::new(sigma, 64, 8).with_seed(Deterministic::new(7));
+    for (barrier_type, barriers) in [
+      (UpAndOut, [110.0, 95.0, inf, -inf]),
+      (UpAndIn, [110.0, 95.0, inf, -inf]),
+      (DownAndOut, [90.0, 105.0, -inf, inf]),
+      (DownAndIn, [90.0, 105.0, -inf, inf]),
+    ] {
+      for (barrier, option_type) in barriers
         .into_iter()
-        .flat_map(|k| [(k, 1.0), (k, 0.0)])
+        .flat_map(|h| [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type)))
       {
-        let option = BarrierOption {
-          strike,
-          barrier,
-          rebate: 3.0,
-          barrier_type,
-          option_type,
-        };
-        let closed = BarrierPricer::new(0.2).price(&option, 100.0, R, Q, tau);
-        let estimate = mc.price(&option, 100.0, R, Q, tau);
-        let nan = estimate.mean.is_nan() && estimate.std_err.is_nan() && estimate.n_samples == 0;
-        let same = if tau == 0.0 {
-          estimate.mean == closed
-        } else {
-          !estimate.mean.is_nan()
-        };
-        if !(if closed.is_nan() { nan } else { same }) {
-          apart.push(format!("{option:?} at tau {tau}: {closed} vs {estimate:?}"));
+        for strike in [100.0, 0.0, -5.0, nan] {
+          for rebate in [3.0, nan] {
+            for tau in [1.0, 0.0, inf] {
+              let option = BarrierOption {
+                strike,
+                barrier,
+                rebate,
+                barrier_type,
+                option_type,
+              };
+              let closed = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, tau);
+              let estimate = mc.price(&option, 100.0, R, Q, tau);
+              let none = estimate.mean.is_nan() && estimate.std_err.is_nan();
+              let same = if tau == 0.0 {
+                estimate.mean == closed
+              } else {
+                !estimate.mean.is_nan()
+              };
+              if !(if closed.is_nan() {
+                none && estimate.n_samples == 0
+              } else {
+                same
+              }) {
+                apart.push(format!(
+                  "{option:?} at {sigma}, tau {tau}: {closed} vs {estimate:?}"
+                ));
+              }
+            }
+          }
         }
       }
     }
