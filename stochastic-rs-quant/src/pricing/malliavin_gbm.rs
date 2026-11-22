@@ -362,7 +362,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   }
 
   /// [`Self::conditional_call_malliavin`] localised by a Laplace kernel, as the reference
-  /// implementation does; NaN where the kernel puts no mass near `S_t^{(i)}`.
+  /// implementation does; NaN where its width is not finite or it puts no mass near `S_t^{(i)}`.
   pub fn conditional_call_malliavin_localized(
     &self,
     s: f64,
@@ -448,6 +448,10 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     } else {
       1e-8
     };
+    // An overflowing `payoff²` makes `lf = √(∞/∞)`, which the kernel's assert must never see.
+    if !(lf.is_finite() && l1.is_finite()) {
+      return (s_t, Array1::from_elem(m, f64::NAN));
+    }
 
     let discount_tt = (-r * (tau - t_eval)).exp();
     let mut c_hat_loc = Array1::<f64>::zeros(m);
