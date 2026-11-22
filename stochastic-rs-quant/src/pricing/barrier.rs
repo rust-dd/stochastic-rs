@@ -58,7 +58,7 @@ impl BarrierPricer {
   }
 
   /// On or past the barrier its rebate (any strike) or knocked-in vanilla, at `tau = 0` its payoff;
-  /// NaN for a NaN query, a barrier not finite, `tau < 0`, or a spot or strike `≤ 0` before expiry.
+  /// NaN for a NaN query, a barrier or `tau` not finite, `tau < 0`, or `s, k ≤ 0` before expiry.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let BarrierOption {
       strike: k,
@@ -67,7 +67,12 @@ impl BarrierPricer {
       barrier_type,
       option_type,
     } = *option;
-    if s.is_nan() || tau.is_nan() || tau < 0.0 || !h.is_finite() || r.is_nan() || q.is_nan() {
+    if s.is_nan()
+      || !(0.0..f64::INFINITY).contains(&tau)
+      || !h.is_finite()
+      || r.is_nan()
+      || q.is_nan()
+    {
       return f64::NAN;
     }
     if tau > 0.0 && s <= 0.0 {

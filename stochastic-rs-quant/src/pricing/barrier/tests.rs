@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 
 // BSM vanilla call: S=100,K=100,r=0.05,q=0,sigma=0.2,T=1 → 10.4506
@@ -104,4 +106,73 @@ fn double_barrier_wide_converges_to_vanilla() {
 )]
 fn a_closed_form_barrier_refuses_a_negative_sigma() {
   let _ = BarrierPricer::new(-0.25);
+}
+
+/// The four barriers, each unbreached and breached by the spot `100`.
+const BARRIERS: [(BarrierType, [f64; 2]); 4] = [
+  (BarrierType::UpAndOut, [110.0, 95.0]),
+  (BarrierType::UpAndIn, [110.0, 95.0]),
+  (BarrierType::DownAndOut, [90.0, 105.0]),
+  (BarrierType::DownAndIn, [90.0, 105.0]),
+];
+
+/// An infinite `tau` is NaN on every arm, a knocked-out rebate included, where that paid out.
+#[test]
+fn an_infinite_tau_is_nan_on_every_arm() {
+  let mut priced = Vec::new();
+  for (barrier_type, barriers) in BARRIERS {
+    for barrier in barriers {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        let option = BarrierOption {
+          strike: 100.0,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        for sigma in [0.2, 0.0] {
+          let price = BarrierPricer::new(sigma).price(&option, 100.0, 0.05, 0.02, f64::INFINITY);
+          if !price.is_nan() {
+            priced.push(format!("{option:?} at sigma {sigma}: {price}"));
+          }
+        }
+      }
+    }
+  }
+  assert!(priced.is_empty(), "{priced:#?}");
+}
+
+/// The Monte Carlo is NaN from no path at an infinite `tau`, where a NaN path under its zero
+/// discount read `0.0 ± 0.0`, and a path whose payoff is `∞ − ∞` keeps the estimate NaN.
+#[test]
+fn the_monte_carlo_is_nan_at_an_infinite_tau_and_keeps_a_nan_path() {
+  let mc = McBarrierPricer::new(0.2, 64, 8).with_seed(Deterministic::new(7));
+  let mut priced = Vec::new();
+  for (barrier_type, barriers) in BARRIERS {
+    for barrier in barriers {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        let option = BarrierOption {
+          strike: 100.0,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        let estimate = mc.price(&option, 100.0, 0.05, 0.02, f64::INFINITY);
+        if !(estimate.mean.is_nan() && estimate.std_err.is_nan() && estimate.n_samples == 0) {
+          priced.push(format!("{option:?}: {estimate:?}"));
+        }
+      }
+    }
+  }
+  assert!(priced.is_empty(), "{priced:#?}");
+  let unbreached = BarrierOption {
+    strike: f64::INFINITY,
+    barrier: 90.0,
+    rebate: 3.0,
+    barrier_type: BarrierType::DownAndOut,
+    option_type: OptionType::Call,
+  };
+  let estimate = mc.price(&unbreached, f64::INFINITY, 0.05, 0.02, 1.0);
+  assert!(estimate.mean.is_nan(), "{estimate:?}");
 }
