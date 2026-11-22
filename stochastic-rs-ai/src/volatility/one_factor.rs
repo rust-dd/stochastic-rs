@@ -1,5 +1,6 @@
 //! Surrogate of the one-factor Bergomi surface with flat forward variance (`NN1Factor.ipynb`);
 //! inputs `[xi0, nu, beta, rho]`: forward variance, vol-of-vol, mean-reversion speed, correlation.
+//!
 //! Source: <https://github.com/amuguruza/NN-StochVol-Calibrations>, `1Factor/Flat Forward Variance`
 
 use std::path::Path;
