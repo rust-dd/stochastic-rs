@@ -32,7 +32,7 @@ Place new code in the appropriate existing module. Do not create top-level modul
 
 All new structs, traits, and functions in `stochastic-rs-distributions` and `stochastic-rs-stochastic` must be generic over the float type using the existing `FloatExt` trait bound (`T: FloatExt`). Never hardcode `f64` in new code there.
 
-In quant, what implements a pricer or calibrator trait is `f64`; `T: RealExt` stays where it is (curves, rate instruments, risk metrics, SVI, `FmVol`); a custom scalar is a separate decision.
+In quant, what implements a pricer or calibrator trait is `f64`; `T: RealExt` stays where it is (for example curves, rate instruments, risk metrics, SVI, `FmVol`); a custom scalar is a separate decision.
 
 ## 3. Use `ndarray` everywhere
 
@@ -47,6 +47,7 @@ When implementing a new model or algorithm, use the **arxiv MCP tool** (`mcp__ar
 Every new module must include:
 - **Comparison test**: validate output against the reference implementation (Python, R, MATLAB, or the original paper's numerical examples)
 - **Criterion benchmark**: add a bench in `benches/` to track performance
+- **Pins**: a value is bit-identical only within one build profile and one target; where it passes through a libm or a fused `sincos`, the test takes a tolerance derived from the method, and an unconverged fit's iteration count is not pinned across them
 
 ## 6. Scientific references
 
@@ -244,6 +245,9 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   *query* with a non-positive strike or spot, a live Black caplet on two negative rates — the
   formula is undefined there. A `0.0` or any other plausible number is never a
   sentinel, and a query argument never panics — only a model parameter does.
+  A price at `tau = 0` is the payoff; at a negative, NaN or infinite `tau` it is NaN, and before
+  expiry so is one at a non-positive spot or strike, a normal model excepted (`SabrPricer` and
+  `SnellEnvelopePricer` are NaN there at `tau = 0` too).
 - **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
   `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
   `Some(f64::NAN)` is "computed, undefined at this point".
