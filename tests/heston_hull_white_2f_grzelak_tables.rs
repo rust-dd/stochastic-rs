@@ -26,7 +26,7 @@ const STEPS_PER_YEAR: usize = 12;
 const PATHS: usize = 20_000;
 /// Each table is asserted on the best of these seeds.
 const SEEDS: [u64; 3] = [2011_1647, 1434829, 42];
-/// Standard errors of the difference a cell may be off by, the paper's and this run's in quadrature.
+/// Standard errors a cell's difference may reach, the paper's and this run's in quadrature.
 const Z_MAX: f64 = 3.0;
 
 /// Table 3's five-year row from its second strike on is not asserted: it falls from 45.07 to

@@ -14,8 +14,8 @@ fn assert_close(a: f64, b: f64, tol: f64) {
   );
 }
 
-// Kirk's spread option tests.
-// Reference: Python GBS library (kirks_76) validated against published values.
+// Kirk's spread option, against the GBS notebook's `kirks_76`, validated against published values.
+// Reference: GBS.ipynb, https://github.com/dedwards25/Python_Option_Pricing
 
 #[test]
 fn kirk_spread_call_atm() {
