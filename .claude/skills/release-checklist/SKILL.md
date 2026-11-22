@@ -35,7 +35,8 @@ cargo check --workspace --all-features                       # catches the §4.1
 cargo check --workspace --no-default-features                # baseline build still works
 
 # 1.3 CUDA tests on the GPU runner (billed); wait for green, re-run = remove and re-add the label
-gh pr edit <release-pr> --add-label cuda   # or, once cuda.yml is on main: gh workflow run cuda.yml --ref <branch>
+# or, once cuda.yml is on main: gh workflow run cuda.yml --ref <branch>
+gh pr edit <release-pr> --add-label cuda
 ```
 
 If any of those fail, **stop**. Do not bump versions on a broken HEAD —
@@ -120,9 +121,8 @@ version DOI is only known after stage 5.5.
 ## Stage 4 — local publish dry run
 
 ```bash
-# 4.1 Package and verify every published crate together, in dependency
-# order (core → distributions → copulas → stochastic → stats → quant →
-# ai → umbrella), against a local registry of the packaged siblings.
+# 4.1 Package and verify the published crates together, in dependency order (core → distributions
+# → copulas → stochastic → stats → quant → ai → umbrella), against a local registry of the siblings.
 cargo publish --workspace --dry-run --locked
 ```
 

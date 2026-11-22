@@ -35,12 +35,13 @@ fn theta(&self) -> Option<f64>;          // shape parameter, None until fit/set
 fn set_theta(&mut self, theta: f64);     // panics unless validate_theta admits theta
 fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
-fn tau_from_theta(&self, theta: f64) -> f64;                      // Kendall's τ of the family at θ
-fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;   // Err outside the reachable τ range
+fn tau_from_theta(&self, theta: f64) -> f64;                    // Kendall's τ of the family at θ
+fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>; // Err outside the reachable τ range
 fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
-fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>; // h(u | v) = ∂_v C
+// h(u | v) = ∂_v C
+fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
 
 Two shape facts that catch every first attempt:

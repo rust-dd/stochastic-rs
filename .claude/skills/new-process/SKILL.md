@@ -354,7 +354,8 @@ not statistics; the fallback must be bit-identical to the plain host build
 nothing until it has been made to fail:
 
 ```bash
-  F=stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs  # the chunk that declares it
+  # the chunk that declares it
+  F=stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs
   cp $F /tmp/families.bak
   # in the new family scale one term by `lit(3.0)`, literal on the RIGHT:
   #   `sigma * dz`  ->  `sigma * dz * lit(3.0)`

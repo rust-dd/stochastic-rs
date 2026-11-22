@@ -252,7 +252,8 @@ variance of the difference, often by a factor of 100×.
 #[test]
 fn antithetic_reduces_variance() {
     let plain = plain_mc_estimate(10_000, dim, &payoff, &Deterministic::new(1));
-    let anti  = antithetic::estimate(5_000, dim, &payoff, &Deterministic::new(2));  // same draw budget
+    // same draw budget
+    let anti  = antithetic::estimate(5_000, dim, &payoff, &Deterministic::new(2));
     let factor = plain.std_err / anti.std_err;              // no vr_factor method
     assert!(
         factor > 1.5,
