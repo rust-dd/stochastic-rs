@@ -1,9 +1,9 @@
-//! # Finite Difference
+//! Explicit, implicit and Crank–Nicolson finite differences on the Black–Scholes PDE.
 //!
 //! $$
 //! \partial_t V+\tfrac12\sigma^2S^2\partial_{SS}V+(r-q)S\partial_SV-rV=0
 //! $$
-//!
+
 use ndarray::Array1;
 use ndarray::s;
 
@@ -24,16 +24,8 @@ pub enum FiniteDifferenceMethod {
   CrankNicolson,
 }
 
-/// Black-Scholes PDE solver on a uniform spot/time grid.
-///
-/// The struct holds **model and method state only** — the volatility, the
-/// grid sizes, the exercise style and the time-stepping scheme. Spot,
-/// strike, rate, dividend yield, maturity and the option direction are the
-/// pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid. The grid itself (`s_max = 3 max(s, k)`, `dt = tau / t_n`)
-/// is rebuilt inside every call from the query, so nothing derived from a
-/// spot or a maturity is cached across queries.
+/// Black–Scholes PDE solver on a uniform grid, `s_max = 3 max(s, k)` and `dt = tau / t_n`, which
+/// each query rebuilds, so nothing a spot or maturity sets is cached.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
@@ -122,33 +114,17 @@ impl ModelPricer for FiniteDifferencePricer {
     self.price(s, k, r, q, tau, OptionType::Call)
   }
 
-  /// Overrides the trait's vanilla-parity default: this solver prices the
-  /// put by solving the same PDE against the put payoff, which is what the
-  /// pre-query `calculate_price()` did. Parity would be wrong outright at
-  /// [`OptionStyle::American`] (the put's early-exercise premium), and even
-  /// at `European` it would return the *call's* discretisation error
-  /// reflected rather than the put's own. See
-  /// `fd_price_put_overrides_vanilla_parity`.
+  /// The put by its own PDE solve, not parity, which is wrong at [`OptionStyle::American`] and, at
+  /// European, reflects the call's discretisation error (`fd_price_put_overrides_vanilla_parity`).
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price(s, k, r, q, tau, OptionType::Put)
   }
 }
 
-/// A European vanilla call **only at** [`OptionStyle::European`]; the same
-/// solver at [`OptionStyle::American`] returns an American price, which the
-/// Black inversion has no volatility to offer. The exercise style is a field
-/// rather than a type parameter, so this is the one in-tree implementor whose
-/// answer depends on the instance.
+/// A European vanilla call at [`OptionStyle::European`] only, the exercise style being a field.
 impl VanillaEuropeanCall for FiniteDifferencePricer {
-  /// $Se^{(r-q)\tau}$ at [`OptionStyle::European`], and [`f64::NAN`] at
-  /// [`OptionStyle::American`] — case 2 of [the failure
-  /// convention](ModelPricer#how-pricing-fails).
-  ///
-  /// Without the `NaN` an American surface is not merely approximate but
-  /// convincing: at `q = 0.06` every point on a 5x2 grid inverts to a finite
-  /// vol within 0.008 of the model's own `sigma`, so nothing in the output marks
-  /// it as an American price pushed through a European formula. See
-  /// `american_finite_difference_surface_is_all_nan`.
+  /// `Se^{(r−q)τ}` at [`OptionStyle::European`]; NaN at American, whose prices would invert to
+  /// finite vols within 0.008 of `sigma` (`american_finite_difference_surface_is_all_nan`).
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     match self.option_style {
       OptionStyle::European => s * ((r - q) * tau).exp(),

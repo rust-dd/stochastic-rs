@@ -1,7 +1,6 @@
 //! Curve-fitted Hull-White trinomial-tree engine.
 //!
-//! Reference: Hull & White, "Using Hull-White Interest Rate Trees",
-//! Journal of Derivatives 3(3), 26-36 (1996).
+//! Reference: Hull & White (1996), "Using Hull-White Interest Rate Trees", J. Deriv. 3(3), 26–36
 
 use ndarray::Array1;
 
@@ -47,8 +46,7 @@ impl<T: RealExt> OneFactorShortRateModel<T> for CurveFittedHullWhiteModel<T> {
 
 /// Curve-fitted Hull-White trinomial tree engine.
 ///
-/// Reference: Hull & White, "Using Hull-White Interest Rate Trees",
-/// Journal of Derivatives 3(3), 26-36 (1996).
+/// Reference: Hull & White (1996), "Using Hull-White Interest Rate Trees", J. Deriv. 3(3), 26–36
 #[derive(Debug, Clone)]
 pub struct CurveFittedHullWhiteTree<T: RealExt> {
   /// Calibrated model.

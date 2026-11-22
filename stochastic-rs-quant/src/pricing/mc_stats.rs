@@ -31,11 +31,11 @@ pub(crate) fn par_estimate(
   }
 }
 
-/// Whether a Monte Carlo query has no price: a NaN coordinate, `tau < 0`, or a spot that is not
-/// positive before expiry.
-pub(crate) fn off_domain(spots: &[f64], others: &[f64], tau: f64) -> bool {
-  let nan = spots.iter().chain(others).any(|x| x.is_nan()) || tau.is_nan();
-  nan || tau < 0.0 || (tau > 0.0 && spots.iter().any(|&s| s <= 0.0))
+/// Whether a Monte Carlo query has no price: a NaN coordinate, `tau < 0`, or one of `positive` (the
+/// spots, and a strike the payoff needs positive) that is not positive before expiry.
+pub(crate) fn off_domain(positive: &[f64], others: &[f64], tau: f64) -> bool {
+  let nan = positive.iter().chain(others).any(|x| x.is_nan()) || tau.is_nan();
+  nan || tau < 0.0 || (tau > 0.0 && positive.iter().any(|&x| x <= 0.0))
 }
 
 /// The estimate of a query no path is simulated for: exact for a number, NaN for a NaN.
@@ -47,15 +47,8 @@ pub(crate) fn pathless(mean: f64) -> McEstimate<f64> {
   }
 }
 
-/// Standard error of a Monte Carlo mean from the running sums a payoff
-/// pass produces: sample variance `(sum_sq - sum²/n) / (n - 1)`, then
-/// `sqrt(var / n)` (Glasserman 2003, §1.1).
-///
-/// Undiscounted — the caller multiplies by the same factor its mean uses.
-/// A poisoned accumulator (`NaN` in either sum) comes back as `NaN`, never
-/// as a small plausible number; a tiny negative variance from cancellation
-/// floors at zero; fewer than two samples have no variance estimate and
-/// return `NaN`.
+/// Undiscounted `sqrt(((sum_sq − sum²/n)/(n − 1))/n)` (Glasserman 2003, §1.1): NaN for a NaN sum or
+/// `n < 2`, a cancellation's tiny negative variance floored at zero.
 pub(crate) fn std_err_from_sums(sum: f64, sum_sq: f64, n: usize) -> f64 {
   if n < 2 {
     return f64::NAN;

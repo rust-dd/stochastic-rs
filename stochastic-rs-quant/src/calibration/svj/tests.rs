@@ -72,10 +72,8 @@ fn svj_calibrate_recovers_heston_prices() {
   );
 }
 
-/// Long-maturity / high-|ρ| regression: `bates_cf` must use the
-/// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form
-/// (`g̃ = 1/g_original`, `exp(-d·τ)`). Original Heston (1993) form develops a
-/// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
+/// At `T = 5`, `ρ = −0.9` the original Heston (1993) form crosses its logarithm's branch cut; the
+/// Little Heston Trap form of Albrecher et al. (2007) keeps the SVJ call finite and bounded.
 #[test]
 fn svj_bates_little_trap_long_maturity_high_rho() {
   let p = SvjParams {
@@ -102,7 +100,11 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
   let quotes = heston_ref_quotes();
   let fit = SvjCalibrator::new(100.0, 0.05, 0.0, quotes.clone())
     .with_start(START)
-    .with_options(CalibrationOptions::default().with_record_history(true))
+    .with_options(
+      CalibrationOptions::default()
+        .with_record_history(true)
+        .with_max_iterations(8),
+    )
     .calibrate(None)
     .unwrap();
   assert!(fit.history.len() > 1, "{} entries", fit.history.len());

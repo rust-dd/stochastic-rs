@@ -108,9 +108,7 @@ impl<S: SeedExt> GbmMalliavinGreeks<S> {
       let path = gbm.sample();
       let n = path.len();
 
-      // Reconstruct W_T from the Gbm path:
-      //   dW_k = (S_{k+1} - S_k - mu * S_k * dt) / (sigma * S_k)
-      //   W_T  = sum of all dW_k
+      // `W_T = Σ dW_k`, each `dW_k = (S_{k+1} − S_k − μS_k dt)/(σS_k)` from the Euler step.
       let mut w = 0.0;
       for k in 0..(n - 1) {
         let s_prev = path[k];
@@ -210,9 +208,7 @@ impl<S: SeedExt> GbmMalliavinGreeks<S> {
       sum_rho += disc_payoff * w_rho;
     }
 
-    // theta and the four second-order Greeks stay NaN: this estimator has no
-    // Malliavin weight for them, and NaN is how the crate says "not exposed"
-    // — see `crate::traits::GreeksExt`.
+    // Theta, vanna, charm, volga and veta have no Malliavin weight here, so they stay NaN.
     crate::traits::Greeks {
       delta: sum_delta / m,
       gamma: sum_gamma / m,

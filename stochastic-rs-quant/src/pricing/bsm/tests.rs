@@ -466,3 +466,28 @@ fn ultima_is_finite_where_d2_vanishes() {
   assert!(d2.abs() < 1e-14, "{d2}");
   assert!(model.ultima(s, k, r, q, tau).is_finite());
 }
+
+/// A negative `sigma` flips `d₁` into a finite wrong price, `−6.33` for the call at `σ = −0.2`.
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`, got sigma = -0.2"
+)]
+fn new_rejects_a_negative_volatility() {
+  let _ = BsmPricer::new(-0.2, BsmCoc::Merton1973);
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`, got sigma = inf"
+)]
+fn new_rejects_an_infinite_volatility() {
+  let _ = BsmPricer::new(f64::INFINITY, BsmCoc::Merton1973);
+}
+
+/// An unlinked engine handle reads NaN, which prices NaN; `sigma = 0` is the deterministic forward.
+#[test]
+fn a_nan_or_zero_volatility_stays_constructible() {
+  let unlinked = BsmPricer::new(f64::NAN, BsmCoc::Merton1973);
+  assert!(unlinked.price_call(100.0, 105.0, 0.05, 0.02, 0.75).is_nan());
+  assert_eq!(BsmPricer::new(0.0, BsmCoc::Bsm1973).sigma, 0.0);
+}

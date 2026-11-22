@@ -1,5 +1,6 @@
-//! Fully implicit Euler start-up for Wyns & Du Toit (2016), §3,
-//! arXiv:1611.02961. Sparse LU solves all three spatial operators together.
+//! Fully implicit Euler start-up: sparse LU solves all three spatial operators together.
+//!
+//! Reference: Wyns & Du Toit (2016), §3, arXiv:1611.02961
 
 use faer::Mat;
 use faer::linalg::solvers::Solve;

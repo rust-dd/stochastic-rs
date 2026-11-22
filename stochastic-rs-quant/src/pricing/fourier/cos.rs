@@ -13,6 +13,7 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 use crate::pricing::digital::expired;
+use crate::pricing::digital::in_log_domain;
 use crate::pricing::digital::vanilla_payoff;
 
 /// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1)
@@ -72,7 +73,7 @@ impl CosEngine {
     if let Some(value) = expired(t, &[r, q], || vanilla_payoff(option_type, s0, k)) {
       return value;
     }
-    if !(priceable(s0) && priceable(k) && r.is_finite() && q.is_finite()) {
+    if !in_log_domain(&[s0, k], &[r, q]) {
       return f64::NAN;
     }
     let Some((lower, bma)) = self.range(model, t) else {
@@ -96,10 +97,10 @@ impl CosEngine {
     option_type: OptionType,
   ) -> Array1<f64> {
     let summed = expired(t, &[r, q], || f64::NAN).is_none();
-    if !(summed && priceable(s0) && r.is_finite() && q.is_finite()) {
+    if !summed || !in_log_domain(&[s0], &[r, q]) {
       return strikes.mapv(|k| self.price(model, s0, k, r, q, t, option_type));
     }
-    let live = strikes.iter().any(|&k| priceable(k));
+    let live = strikes.iter().any(|&k| in_log_domain(&[k], &[]));
     let Some((lower, bma)) = self.range(model, t).filter(|_| live) else {
       return Array1::from_elem(strikes.len(), f64::NAN);
     };
@@ -173,7 +174,7 @@ impl PutSeries {
   fn new(a: f64, bma: f64, strike: f64) -> Self {
     let d = (a + bma).min(0.0);
     Self {
-      live: priceable(strike),
+      live: in_log_domain(&[strike], &[]),
       // A NaN `a` stays in the sum, so its price is NaN.
       inside: a < 0.0 || a.is_nan(),
       exp_a: a.exp(),
@@ -198,11 +199,6 @@ impl PutSeries {
     };
     self.scale * (psi - chi)
   }
-}
-
-/// A spot or strike whose `ln` is finite, the only kind COS prices before expiry.
-fn priceable(x: f64) -> bool {
-  x.is_finite() && x > 0.0
 }
 
 /// The call's coefficients grow like `e^b`, the put's stay below `K`, so a call is the put and

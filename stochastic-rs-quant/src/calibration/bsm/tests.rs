@@ -150,8 +150,8 @@ fn the_trail_has_the_start_and_one_entry_per_iteration() {
   }
 }
 
-/// The box on the write path, and the number it prevents: a negative `sigma` prices a finite,
-/// here negative, call, so the second assertion tests the projection rather than `abs`.
+/// The box on the write path, and the number it prevents: a negative `sigma`, built past `new`'s
+/// check, prices a finite negative call, so the second assertion tests the projection, not `abs`.
 #[test]
 fn sigma_is_reflected_not_clamped() {
   let cal = synthetic(0.2);
@@ -162,7 +162,10 @@ fn sigma_is_reflected_not_clamped() {
     "a negative step must reflect, not clamp"
   );
 
-  let bsm = |v: f64| BsmPricer::new(v, BsmCoc::Merton1973).price_call(100.0, 100.0, 0.03, 0.0, 0.5);
+  let bsm = |sigma: f64| {
+    let b = BsmCoc::Merton1973;
+    BsmPricer { sigma, b }.price_call(100.0, 100.0, 0.03, 0.0, 0.5)
+  };
   assert!(
     bsm(-0.3).is_finite() && (bsm(0.3) - bsm(-0.3)).abs() > 1.0,
     "an unprojected -0.3 prices {} against {} at +0.3",

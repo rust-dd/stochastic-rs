@@ -33,8 +33,12 @@ pub struct BermudanLsmPricer {
 }
 
 impl BermudanLsmPricer {
+  /// Panics unless `n_basis >= 2`, the constant and at least one power of the spot.
   pub fn new(r: f64, tau: f64, n_basis: usize) -> Self {
-    assert!(n_basis >= 2, "need at least 2 basis functions");
+    assert!(
+      n_basis >= 2,
+      "n_basis must satisfy `n_basis >= 2`, got n_basis = {n_basis:?}"
+    );
     Self { r, tau, n_basis }
   }
 
@@ -157,6 +161,7 @@ pub fn generate_gbm_paths(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
@@ -173,7 +178,8 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 50;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
@@ -204,7 +210,8 @@ mod tests {
     let n_paths = 20_000;
     let n_steps = 60;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(11);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
 
@@ -232,7 +239,8 @@ mod tests {
     let n_paths = 50_000;
     let n_steps = 30;
 
-    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &Unseeded);
+    let seed = Deterministic::new(42);
+    let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps, &seed);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
     let berm = bermudan.price(paths.view(), &[n_steps], payoff).mean;
@@ -244,6 +252,12 @@ mod tests {
     let eu = eu_sum / n_paths as f64 * (-r * t).exp();
     let diff = (berm - eu).abs();
     assert!(diff < 1e-9, "berm={berm}, eu={eu}");
+  }
+
+  #[test]
+  #[should_panic(expected = "n_basis must satisfy `n_basis >= 2`, got n_basis = 1")]
+  fn a_regression_on_one_basis_function_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, 1.0, 1);
   }
 
   #[test]

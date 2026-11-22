@@ -537,3 +537,32 @@ mod construction_validation {
     }
   }
 }
+
+/// Hagan's volatility is negative at `α 0.2, β 1, ρ −0.9, ν 3` and `τ = 10`, so the price is NaN,
+/// as `SabrPricer`'s is, where `BsmPricer::new` panicked; `bs_price_fx` reads `sigma` as BSM does.
+#[test]
+fn a_negative_hagan_volatility_prices_nan_not_a_panic() {
+  let params = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.9,
+    nu: 3.0,
+  };
+  let (call, put) = model_price_hagan(100.0, 100.0, 0.05, 0.0, 10.0, &params);
+  assert!(call.is_nan() && put.is_nan(), "({call}, {put})");
+  let pricer = SabrPricer::new(params);
+  assert!(pricer.price_call(100.0, 100.0, 0.05, 0.0, 10.0).is_nan());
+  for sigma in [
+    -1.3502217069673441,
+    f64::INFINITY,
+    f64::NEG_INFINITY,
+    f64::NAN,
+  ] {
+    let (call, put) = bs_price_fx(100.0, 100.0, 0.05, 0.0, 10.0, sigma);
+    assert!(call.is_nan() && put.is_nan(), "{sigma}: ({call}, {put})");
+  }
+  let (call, put) = bs_price_fx(100.0, 100.0, 0.05, 0.0, 10.0, 0.0);
+  assert!((call - (100.0 - 100.0 * (-0.5_f64).exp())).abs() < 1e-12 && put == 0.0);
+  let (call, put) = model_price_hagan(100.0, 100.0, 0.05, 0.0, 1.0, &params);
+  assert!(call > 0.0 && put > 0.0, "({call}, {put})");
+}

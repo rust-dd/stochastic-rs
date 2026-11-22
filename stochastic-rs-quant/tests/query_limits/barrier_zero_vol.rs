@@ -1,5 +1,6 @@
 //! `BarrierPricer` on the deterministic path of a zero volatility.
 
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::pricing::barrier::BarrierPricer;
 use stochastic_rs_quant::pricing::barrier::BarrierType;
@@ -155,4 +156,133 @@ fn a_knocked_in_barrier_is_nan_at_a_strike_that_is_not_positive_at_any_volatilit
       assert_eq!(expired, 100.0 - k, "k = {k}, sigma = {sigma}");
     }
   }
+}
+
+/// An unbreached barrier reads its strike, so it is NaN before expiry at a strike that is not
+/// positive at any volatility; at expiry it pays out, and a knocked-out one pays its rebate.
+#[test]
+fn an_unbreached_barrier_is_nan_before_expiry_at_a_strike_that_is_not_positive() {
+  use BarrierType::*;
+  for (barrier_type, barrier) in [
+    (UpAndOut, 110.0),
+    (UpAndIn, 110.0),
+    (DownAndOut, 90.0),
+    (DownAndIn, 90.0),
+  ] {
+    for option_type in [OptionType::Call, OptionType::Put] {
+      for k in [0.0, -5.0] {
+        let option = BarrierOption {
+          strike: k,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        let knock_in = matches!(barrier_type, UpAndIn | DownAndIn);
+        let payoff = match option_type {
+          OptionType::Call => 100.0 - k,
+          OptionType::Put => 0.0,
+        };
+        for sigma in [0.0, 0.2] {
+          let price = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 1.0);
+          assert!(price.is_nan(), "{option:?}, sigma = {sigma}: {price}");
+          let expired = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, 0.0);
+          let want = if knock_in { 3.0 } else { payoff };
+          assert_eq!(expired, want, "{option:?}, sigma = {sigma}");
+        }
+      }
+    }
+  }
+  let knocked_out = BarrierOption {
+    strike: 0.0,
+    barrier: 95.0,
+    rebate: 3.0,
+    barrier_type: UpAndOut,
+    option_type: OptionType::Call,
+  };
+  assert_eq!(
+    BarrierPricer::new(0.2).price(&knocked_out, 100.0, R, Q, 1.0),
+    3.0
+  );
+}
+
+/// An infinite barrier is NaN, as a NaN one is, at and before expiry.
+#[test]
+fn a_barrier_that_is_not_finite_is_nan() {
+  use BarrierType::*;
+  for barrier in [f64::INFINITY, f64::NEG_INFINITY] {
+    for barrier_type in [UpAndOut, UpAndIn, DownAndOut, DownAndIn] {
+      for option_type in [OptionType::Call, OptionType::Put] {
+        let option = BarrierOption {
+          strike: 100.0,
+          barrier,
+          rebate: 3.0,
+          barrier_type,
+          option_type,
+        };
+        for (sigma, tau) in [(0.0, 1.0), (0.2, 1.0), (0.2, 0.0)] {
+          let price = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, tau);
+          assert!(
+            price.is_nan(),
+            "{option:?}, sigma = {sigma}, tau = {tau}: {price}"
+          );
+        }
+      }
+    }
+  }
+}
+
+/// The Monte Carlo estimate is NaN from no path exactly where the closed form is NaN, at either
+/// volatility, an infinite `tau` and a NaN strike or rebate included, and pays its value at expiry.
+#[test]
+fn a_monte_carlo_barrier_is_nan_where_the_closed_form_is() {
+  use BarrierType::*;
+  let (inf, nan) = (f64::INFINITY, f64::NAN);
+  let mut apart = Vec::new();
+  for sigma in [0.2, 0.0] {
+    let mc = McBarrierPricer::new(sigma, 64, 8).with_seed(Deterministic::new(7));
+    for (barrier_type, barriers) in [
+      (UpAndOut, [110.0, 95.0, inf, -inf]),
+      (UpAndIn, [110.0, 95.0, inf, -inf]),
+      (DownAndOut, [90.0, 105.0, -inf, inf]),
+      (DownAndIn, [90.0, 105.0, -inf, inf]),
+    ] {
+      for (barrier, option_type) in barriers
+        .into_iter()
+        .flat_map(|h| [OptionType::Call, OptionType::Put].map(|option_type| (h, option_type)))
+      {
+        for strike in [100.0, 0.0, -5.0, nan] {
+          for rebate in [3.0, nan] {
+            for tau in [1.0, 0.0, inf] {
+              let option = BarrierOption {
+                strike,
+                barrier,
+                rebate,
+                barrier_type,
+                option_type,
+              };
+              let closed = BarrierPricer::new(sigma).price(&option, 100.0, R, Q, tau);
+              let estimate = mc.price(&option, 100.0, R, Q, tau);
+              let none = estimate.mean.is_nan() && estimate.std_err.is_nan();
+              let same = if tau == 0.0 {
+                estimate.mean == closed
+              } else {
+                !estimate.mean.is_nan()
+              };
+              if !(if closed.is_nan() {
+                none && estimate.n_samples == 0
+              } else {
+                same
+              }) {
+                apart.push(format!(
+                  "{option:?} at {sigma}, tau {tau}: {closed} vs {estimate:?}"
+                ));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  assert!(apart.is_empty(), "{apart:#?}");
 }

@@ -1,19 +1,9 @@
-//! # Autocallable
+//! Autocallable, phoenix and athena notes on one asset: an autocall redeems at par plus the accrued
+//! coupon, else the coupon barrier is checked; at maturity, below the knock-in, par is at risk.
 //!
-//! Auto-callable / phoenix / athena structured note. Observation grid
-//! $t_1 < t_2 < \cdots < t_M = T$. Each observation date checks an upper
-//! "autocall" barrier; if breached the note redeems early at par plus the
-//! accrued coupon. Otherwise a coupon may be paid (phoenix) or skipped, and
-//! at maturity the principal is at risk via a knock-in barrier on a worst-of
-//! basket (here single underlying).
-//!
-//! Source:
-//! - Bouzoubaa, M. & Osseiran, A. (2010), "Exotic Options and Hybrids", §11
-//! - Kuklinski, J., Papaioannou, P. & Tyloo, K. (2016), "Pricing Weakly
-//!   Model Dependent Barrier Products", arXiv:1608.00280
-//! - Cibrario, F. et al. (2025), "Autocallable Options Pricing with
-//!   Integration-Based Exponential Amplitude Loading", arXiv:2507.19039
-//!
+//! Reference: Bouzoubaa & Osseiran (2010), "Exotic Options and Hybrids", §11
+//! Reference: Kuklinski et al. (2016), arXiv:1608.00280
+//! Reference: Cibrario et al. (2025), arXiv:2507.19039
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -195,6 +185,7 @@ impl<S: SeedExt> AutocallablePricer<S> {
 mod tests {
   use ndarray::Array1;
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -221,6 +212,7 @@ mod tests {
   fn deep_in_autocall_redeems_first_period() {
     let note = note(array![0.25, 0.5, 0.75, 1.0], 0.5, 0.04);
     let price = AutocallablePricer::new(0.20, 20_000, 4)
+      .with_seed(Deterministic::new(42))
       .price(&note, 100.0, 0.03, 0.0)
       .mean;
     let expected = 100.0 * 1.04 * (-0.03_f64 * 0.25).exp();
@@ -241,7 +233,7 @@ mod tests {
       memory: true,
       ..phoenix.clone()
     };
-    let pricer = AutocallablePricer::new(0.30, 30_000, 4);
+    let pricer = AutocallablePricer::new(0.30, 30_000, 4).with_seed(Deterministic::new(42));
     let price = |n: &AutocallableNote| pricer.price(n, 100.0, 0.03, 0.01).mean;
     assert!(price(&athena) >= price(&phoenix) - 1e-3);
   }
@@ -258,7 +250,7 @@ mod tests {
       knock_in_style: KnockInStyle::Continuous,
       ..euro.clone()
     };
-    let pricer = AutocallablePricer::new(0.30, 50_000, 8);
+    let pricer = AutocallablePricer::new(0.30, 50_000, 8).with_seed(Deterministic::new(42));
     let price = |n: &AutocallableNote| pricer.price(n, 100.0, 0.03, 0.0).mean;
     assert!(price(&cont) <= price(&euro) + 1e-2);
   }
@@ -273,6 +265,7 @@ mod tests {
       ..note(array![0.5, 1.0], 0.95, 0.05)
     };
     let price = AutocallablePricer::new(1e-6, 5_000, 1)
+      .with_seed(Deterministic::new(42))
       .price(&note, 120.0, 0.0, 0.0)
       .mean;
     let expected = 100.0 * 1.05;

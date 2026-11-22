@@ -60,7 +60,7 @@ fn the_lambda_zero_limit_is_discontinuous_in_gamma() {
     BsmPricer::new(0.2 * (1.0 - 0.4_f64).sqrt(), BsmCoc::Bsm1973).price_call(S, K, R, Q, TAU);
   assert!(
     (approaching(0.4, 1e-8) - diffusive_only).abs() < 1e-5,
-    "limit {} should be Black-Scholes at v*sqrt(1-gamma) = {diffusive_only}",
+    "limit {} should be Black-Scholes at sigma*sqrt(1-gamma) = {diffusive_only}",
     approaching(0.4, 1e-8)
   );
   assert!(

@@ -144,8 +144,12 @@ impl Merton1976Pricer {
     BsmPricer::new(self.sigma, self.b)
   }
 
+  /// Built past `BsmPricer::new`: `σ_n` comes from the query and overflows to `+∞` as `τ → 0⁺`.
   fn term_bsm(&self, n: usize, tau: f64) -> BsmPricer {
-    BsmPricer::new(self.term_vol(n, tau), self.b)
+    BsmPricer {
+      sigma: self.term_vol(n, tau),
+      b: self.b,
+    }
   }
 
   /// Classifies a term's query ([`TermRegime`]); a query failing `0 < tau < ∞`, `s > 0` or `k > 0`

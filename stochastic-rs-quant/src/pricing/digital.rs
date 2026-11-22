@@ -1,29 +1,15 @@
-//! # Digital
+//! Cash-or-nothing, asset-or-nothing, gap and supershare digitals under Black–Scholes.
 //!
 //! $$
 //! C_{\text{CoN}}=Qe^{-rT}N(d_2),\quad C_{\text{AoN}}=Se^{(b-r)T}N(d_1),\quad
 //! d_{1,2}=\frac{\ln(S/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
-//! Every pricer here holds **model and contract state only** — the
-//! volatility, plus whatever the payoff itself fixes (the cash payout, the
-//! second strike, the upper band). Spot, strike, rate, dividend yield and
-//! maturity are the pricing *query* and travel as arguments to
-//! [`ModelPricer::price_call`] and to every Greek below, so one instance
-//! prices a whole strike/maturity grid.
-//!
-//! The cost of carry $b$ is deliberately **not** a field. These four all use
-//! $b = r - q$ (Merton's 1973 convention), recomputed from the query's own
-//! rates on every call. A `b` fixed at construction would be a market
-//! quantity frozen at one $(r, q)$ and then silently reused at another —
-//! plausible in range, wrong in value, and invisible to any assertion on the
-//! price alone.
-//!
-//! Source:
-//! - Reiner, E. & Rubinstein, M. (1991), "Unscrambling the Binary Code"
-//! - Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", 2nd ed., Ch. 4
-//! - Hull, J. (2018), "Options, Futures, and Other Derivatives", 10th ed., §26.9
-//!
+//! The carry `b = r − q` is each query's own (Merton 1973), never a field frozen at one `(r, q)`.
+//! Reference: Reiner & Rubinstein (1991), "Unscrambling the Binary Code"
+//! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, Ch. 4, ISBN 0071389970
+//! Reference: Hull (2018), Options, Futures, and Other Derivatives, 10th ed., §26.9
+
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -50,9 +36,7 @@ use crate::traits::RealExt;
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct CashOrNothingPricer {
-  /// Cash payout $Q$ — a term of the contract, not a market quote, so it
-  /// stays on the struct next to the volatility rather than travelling
-  /// with the query.
+  /// Cash payout `Q`, a term of the contract.
   pub cash: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
@@ -62,7 +46,7 @@ impl CashOrNothingPricer {
   /// Panics for a negative or infinite `sigma` (a negative one flips `d1` into a finite wrong
   /// price) and an infinite `cash`; a NaN is kept, as an unlinked engine handle must price NaN.
   pub fn new(cash: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       !cash.is_infinite(),
       "cash must satisfy `!cash.is_infinite()`, got cash = {cash:?}"
@@ -144,9 +128,7 @@ impl ModelPricer for CashOrNothingPricer {
     self.cash * disc * norm_cdf(d2)
   }
 
-  /// Overrides the trait's vanilla-parity default: here
-  /// $C_{\text{CoN}} + P_{\text{CoN}} = Qe^{-rT}$, not
-  /// $C - Se^{-qT} + Ke^{-rT}$ — see `cash_call_put_parity`.
+  /// The cash-or-nothing parity `C + P = Qe^{−rT}`, not the vanilla one (`cash_call_put_parity`).
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let disc = (-r * tau).exp();
     if tau == 0.0 && self.sigma.is_finite() {
@@ -183,14 +165,12 @@ pub struct AssetOrNothingPricer {
 impl AssetOrNothingPricer {
   /// Panics for a negative or infinite `sigma`; a NaN is kept, as on [`CashOrNothingPricer::new`].
   pub fn new(sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     Self { sigma }
   }
 
-  /// Every Greek this pricer exposes at one query point; the eight it does
-  /// not expose stay [`f64::NAN`]. See
-  /// [`CashOrNothingPricer::greeks`] for why this is an inherent method
-  /// rather than a [`GreeksExt`](crate::traits::GreeksExt) impl.
+  /// Every Greek this pricer exposes at one query point, in a [`Greeks`] aggregate; the eight it
+  /// does not expose stay [`f64::NAN`].
   pub fn greeks(
     &self,
     s: f64,
@@ -241,9 +221,7 @@ impl ModelPricer for AssetOrNothingPricer {
     s * coc * norm_cdf(d1)
   }
 
-  /// Overrides the trait's vanilla-parity default: here
-  /// $C_{\text{AoN}} + P_{\text{AoN}} = Se^{(b-r)T}$ — see
-  /// `aon_call_put_parity` — not vanilla put-call parity.
+  /// The asset-or-nothing parity `C + P = Se^{(b−r)T}`, not vanilla parity (`aon_call_put_parity`).
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
     let coc = ((b - r) * tau).exp();
@@ -275,9 +253,7 @@ impl ModelPricer for AssetOrNothingPricer {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct GapPricer {
-  /// Payoff strike $K_2$ — a term of the contract. The *trigger* strike
-  /// $K_1$ is the query's `k`, since it is $K_1$ that sets the moneyness
-  /// boundary and so enters $d_1$.
+  /// Payoff strike `K₂`, a term of the contract; the query's `k` is the trigger `K₁` in `d₁`.
   pub k2: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
@@ -287,7 +263,7 @@ impl GapPricer {
   /// Panics for a negative or infinite `sigma` and an infinite `k2`; a NaN is kept, as on
   /// [`CashOrNothingPricer::new`]. The payoff strike `k2` is a contract term of either sign.
   pub fn new(k2: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       !k2.is_infinite(),
       "k2 must satisfy `!k2.is_infinite()`, got k2 = {k2:?}"
@@ -297,10 +273,8 @@ impl GapPricer {
 }
 
 impl ModelPricer for GapPricer {
-  /// $K_1$ (the moneyness trigger) is the query strike `k`; $K_2$ (the
-  /// payoff strike) and `sigma` stay model state on `self.k2`/`self.sigma`
-  /// — reduces to a vanilla call when `self.k2 == k`, see
-  /// `gap_reduces_to_vanilla`.
+  /// The query's `k` is the trigger `K₁` and `self.k2` the payoff strike `K₂`; at `k2 == k` a
+  /// vanilla call (`gap_reduces_to_vanilla`).
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
     let coc = ((b - r) * tau).exp();
@@ -346,10 +320,8 @@ impl ModelPricer for GapPricer {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct SuperSharePricer {
-  /// Upper trigger $X_H$ — a term of the contract. The *lower* trigger
-  /// $X_L$ is the query's `k`: it is the band edge the payoff is struck
-  /// and divided by, so it is the one of the pair that behaves like a
-  /// strike.
+  /// Upper trigger `X_H`, a term of the contract; the query's `k` is `X_L`, the band edge the
+  /// payoff is struck at and divided by.
   pub x_high: f64,
   /// Annualised Black–Scholes volatility.
   pub sigma: f64,
@@ -359,7 +331,7 @@ impl SuperSharePricer {
   /// Panics for a negative or infinite `sigma` (NaN stays, as on [`CashOrNothingPricer::new`]) and
   /// unless `x_high` is finite and `> 0`; a band inverted against the query's `k` prices negative.
   pub fn new(x_high: f64, sigma: f64) -> Self {
-    assert_digital_sigma(sigma);
+    assert_handle_sigma(sigma);
     assert!(
       x_high.is_finite() && x_high > 0.0,
       "x_high must satisfy `x_high.is_finite() && x_high > 0.0`, got x_high = {x_high:?}"
@@ -369,9 +341,7 @@ impl SuperSharePricer {
 }
 
 impl ModelPricer for SuperSharePricer {
-  /// $X_L$ (the lower trigger, also the payoff divisor) is the query
-  /// strike `k`; $X_H$ and `sigma` stay model state on `self.x_high`/
-  /// `self.sigma`.
+  /// The query's `k` is the lower trigger and payoff divisor `X_L`; `self.x_high` is `X_H`.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
     let coc = ((b - r) * tau).exp();
@@ -384,10 +354,8 @@ impl ModelPricer for SuperSharePricer {
     s / k * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 
-  /// A supershare has no put analogue — Haug (2007) defines only the
-  /// payoff above — so this returns `NaN` rather than the trait's
-  /// vanilla-parity default, which would silently return a number with no
-  /// corresponding instrument.
+  /// NaN: a supershare has no put (Haug 2007 defines the payoff above only), and the parity default
+  /// would price an instrument that does not exist.
   fn price_put(&self, _s: f64, _k: f64, _r: f64, _q: f64, _tau: f64) -> f64 {
     f64::NAN
   }
@@ -429,9 +397,13 @@ pub(crate) fn not_positive(values: &[f64]) -> bool {
   !values.iter().all(|&x| x > 0.0)
 }
 
-/// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up
-/// because the put's $N(-d)$ differentiates to $-\phi(d)$ where the call's
-/// $N(d)$ gives $+\phi(d)$.
+/// Whether a formula that reads `ln s`, `ln k` and `e^{−rτ}` has a value: each of `positives`, the
+/// spots and strikes, finite and `> 0`, and each of `rates` finite.
+pub(crate) fn in_log_domain(positives: &[f64], rates: &[f64]) -> bool {
+  !not_positive(positives) && positives.iter().chain(rates).all(|x| x.is_finite())
+}
+
+/// `+1` for a call and `−1` for a put: the put's `N(−d)` differentiates to `−φ(d)`.
 const fn call_put_sign(option_type: OptionType) -> f64 {
   match option_type {
     OptionType::Call => 1.0,
@@ -439,9 +411,10 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
   }
 }
 
-/// A digital's volatility: not negative and not infinite; NaN is the unlinked handle's reading.
+/// A volatility the engine-built pricers take: finite and `>= 0`, or the NaN `AnalyticBsEngine`
+/// reads off an unlinked handle or a quote off that domain, which prices NaN.
 #[track_caller]
-fn assert_digital_sigma(sigma: f64) {
+pub(crate) fn assert_handle_sigma(sigma: f64) {
   assert!(
     sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0),
     "sigma must satisfy `sigma.is_nan() || (sigma.is_finite() && sigma >= 0.0)`, got sigma = {sigma:?}"

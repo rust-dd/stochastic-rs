@@ -1,24 +1,12 @@
-//! # Bachelier
+//! Bachelier's normal model, `dF = σ_N dW` with `σ_N` in price units, which prices negative strikes
+//! and forwards; [`normal_implied_volatility`] inverts a forward price on the same formula.
 //!
 //! $$
 //! c = e^{-r\tau}\left[(F - K)\,\Phi(d) + \sigma_N\sqrt{\tau}\,\varphi(d)\right],\qquad d = \frac{F - K}{\sigma_N\sqrt{\tau}},\qquad F = S e^{(r-q)\tau}
 //! $$
 //!
-//! Normal (arithmetic Brownian) model for a spot underlying: the forward
-//! diffuses as `dF = σ_N dW` with a volatility quoted in price units, so the
-//! price is well defined at negative strikes and forwards and the smile is
-//! flat in normal rather than lognormal volatility. `σ_N` is the model
-//! state; the query `(s, k, r, q, τ)` travels as arguments like every
-//! [`ModelPricer`]. [`normal_implied_volatility`] inverts an undiscounted
-//! forward price on the same formula with a safeguarded Newton iteration,
-//! which the pricer's [`BachelierPricer::implied_volatility`] wraps for a
-//! spot quote; the forward-space functions are the ones the interest-rate
-//! caplet/floorlet code already prices with.
-//!
-//! References: Bachelier, L. (1900), *Théorie de la spéculation*, Annales
-//! scientifiques de l'É.N.S. 3(17), 21–86; Schachermayer, W. & Teichmann, J.
-//! (2008), *How close are the option pricing formulas of Bachelier and
-//! Black–Merton–Scholes?*, Mathematical Finance 18(1), 155–170.
+//! Reference: Bachelier (1900), Ann. Sci. Éc. Norm. Supér. 3(17), 21–86
+//! Reference: Schachermayer & Teichmann (2008), Math. Finance 18(1), 155–170
 
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -27,6 +15,7 @@ use crate::instruments::option::caplet::bachelier_forward_caplet;
 use crate::instruments::option::caplet::bachelier_forward_floorlet;
 use crate::pricing::digital::expired;
 use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::exotic::assert_sigma;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -39,7 +28,10 @@ pub struct BachelierPricer {
 }
 
 impl BachelierPricer {
-  pub const fn new(sigma: f64) -> Self {
+  /// Panics unless `sigma` is finite and `>= 0`; at `0` the forward is certain and the price is
+  /// its discounted intrinsic value.
+  pub fn new(sigma: f64) -> Self {
+    assert_sigma(sigma);
     Self { sigma }
   }
 
@@ -95,16 +87,12 @@ impl ModelPricer for BachelierPricer {
   }
 }
 
-/// A European vanilla call on `S` with the default forward `S e^{(r − q)τ}`,
-/// so a Black inversion of its prices is meaningful: it converts the normal
-/// volatility into the lognormal one strike by strike.
+/// A European vanilla call on the default forward `Se^{(r − q)τ}`, so a Black inversion turns its
+/// normal volatility into the lognormal one strike by strike.
 impl VanillaEuropeanCall for BachelierPricer {}
 
-/// Normal volatility implied by an **undiscounted forward** option price on
-/// forward `forward` and strike `strike`: safeguarded Newton on the
-/// monotone Bachelier price, bisection-bracketed, to a relative tolerance
-/// of `1e-14`. Returns `NaN` below intrinsic value, at `tau ≤ 0`, or for a
-/// non-finite price.
+/// Normal volatility of an undiscounted forward price by bracketed Newton on the monotone price, to
+/// `1e-14` relative; NaN below intrinsic value, at `tau ≤ 0` or for a non-finite price.
 pub fn normal_implied_volatility(
   price: f64,
   forward: f64,
@@ -131,9 +119,7 @@ pub fn normal_implied_volatility(
     OptionType::Call => bachelier_forward_caplet(forward, strike, tau, sigma),
     OptionType::Put => bachelier_forward_floorlet(forward, strike, tau, sigma),
   };
-  // At the money the time value is σ√τ/√(2π); this seeds the iteration and
-  // is a lower bound on σ everywhere else, since the time value falls as the
-  // strike moves away from the forward at fixed σ.
+  // `σ√τ/√(2π)`, the time value at the money, seeds the iteration and bounds `σ` below elsewhere.
   let mut lo = time_value * (2.0 * std::f64::consts::PI).sqrt() / sqrt_tau;
   let mut hi = lo;
   while value(hi) < price {
@@ -174,10 +160,8 @@ mod tests {
 
   const Q: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 
-  /// Reference: scipy 1.x, `F = 100 e^{0.0225}`, `d = (F − 105) / (20 √0.75)`,
-  /// `call = e^{−0.0375} ((F − 105) Φ(d) + 20 √0.75 φ(d))` = 5.425620481357,
-  /// `put = e^{−0.0375} ((105 − F) Φ(−d) + 20 √0.75 φ(d))` = 8.049840381737.
-  /// The tolerance is the references' own twelve-decimal rounding.
+  /// scipy 1.x at `F = 100e^{0.0225}`, `d = (F − 105)/(20√0.75)`: call `5.425620481357` and put
+  /// `8.049840381737` by the closed form, to the references' twelve decimals.
   #[test]
   fn matches_the_scipy_reference() {
     let (s, k, r, q, tau) = Q;
@@ -220,11 +204,8 @@ mod tests {
     assert!(model.vega(s, k, r, q, tau) > 0.0);
   }
 
-  /// Round trip across strikes placed at `m σ√τ` from the forward (`|d| ≤ 4`,
-  /// so the time value stays resolvable in double precision; at `σ = 60`
-  /// the far strikes are negative), for both option types. Beyond that
-  /// band the time value falls below machine precision and no volatility
-  /// is identifiable from the price.
+  /// Both types round-trip at strikes `mσ√τ` from the forward, `|d| ≤ 4` (negative at `σ = 60`);
+  /// past that the time value is below machine precision and identifies no volatility.
   #[test]
   fn implied_normal_volatility_round_trips() {
     let (s, _, r, q, tau) = Q;
@@ -261,5 +242,38 @@ mod tests {
       normal_implied_volatility(5.0, 105.0, 100.0, 1.0, OptionType::Call),
       0.0
     );
+  }
+
+  /// At `σ_N = 0` the forward is certain, so the call is its discounted intrinsic value.
+  #[test]
+  fn a_zero_normal_volatility_prices_the_discounted_intrinsic() {
+    let (s, _, r, q, tau) = Q;
+    let model = BachelierPricer::new(0.0);
+    let want = (-r * tau).exp() * (model.forward(s, r, q, tau) - 95.0);
+    assert_eq!(model.price_call(s, 95.0, r, q, tau), want);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -20.0"
+  )]
+  fn new_rejects_a_negative_normal_volatility() {
+    let _ = BachelierPricer::new(-20.0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
+  )]
+  fn new_rejects_an_infinite_normal_volatility() {
+    let _ = BachelierPricer::new(f64::INFINITY);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = NaN"
+  )]
+  fn new_rejects_a_nan_normal_volatility() {
+    let _ = BachelierPricer::new(f64::NAN);
   }
 }

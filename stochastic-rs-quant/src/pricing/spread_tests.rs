@@ -1,13 +1,12 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 
-/// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last
-/// bit is a hostage to FMA contraction and libm differences between the
-/// aarch64-darwin dev machine and CI's ubuntu x86_64.
+/// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
+/// aarch64-darwin and CI's ubuntu x86_64.
 const TOL: f64 = 1e-12;
 
-/// Values captured from the bundled-market-data `MargrabePricer` **before**
-/// the model/query reshape. The reshape is an API change only, so these
-/// must not move.
+/// Regression goldens for Margrabe's price and deltas at and in the money.
 #[test]
 fn margrabe_matches_pre_refactor_goldens() {
   let atm = MargrabePricer::new(0.20, 0.20, 0.0);
@@ -31,7 +30,7 @@ fn margrabe_matches_pre_refactor_goldens() {
   assert!((d2 + 0.28856103581454673).abs() < TOL, "delta2 {d2}");
 }
 
-/// One model instance prices a whole query grid — the point of the split.
+/// One model instance prices a whole query grid.
 #[test]
 fn margrabe_one_model_prices_a_spot_grid() {
   let model = MargrabePricer::new(0.25, 0.20, 0.4);
@@ -42,9 +41,8 @@ fn margrabe_one_model_prices_a_spot_grid() {
   );
 }
 
-/// The maturity is a query argument, so one instance covers a term
-/// structure. A stale `tau` cached at construction would return the same
-/// number three times.
+/// One instance covers a term structure, which a `tau` cached at construction would answer with
+/// one number.
 #[test]
 fn margrabe_one_model_prices_a_maturity_grid() {
   let model = MargrabePricer::new(0.25, 0.20, 0.4);
@@ -63,10 +61,7 @@ fn margrabe_perfect_correlation_equal_vol() {
   assert!(price.abs() < 1e-8, "perfect-corr Margrabe={price}");
 }
 
-/// Margrabe at-the-money with zero correlation, equal vols.
-/// $S_1 = S_2 = 100$, $\sigma_1 = \sigma_2 = 0.20$, $\rho = 0$, $T = 1$
-/// → $\sigma_M = \sqrt{0.08} \approx 0.2828$
-/// → V = 100 * (2N(σ_M/2) - 1) ≈ 11.246
+/// At the money, `ρ = 0` and both vols `0.2`: `σ_M = √0.08`, `V = 100(2N(σ_M/2) − 1) ≈ 11.246`.
 #[test]
 fn margrabe_atm_zero_corr() {
   let price = MargrabePricer::new(0.20, 0.20, 0.0).price(100.0, 100.0, 0.0, 0.0, 1.0);
@@ -85,12 +80,11 @@ fn margrabe_deep_itm() {
   );
 }
 
-/// One Monte Carlo model instance prices a whole strike grid, both legs.
-/// The strikes are far enough apart that the ordering survives the
-/// sampling error of independent simulations.
+/// One Monte Carlo instance prices a strike grid, both legs; its pinned seed gives every strike the
+/// same paths, so the order holds path by path.
 #[test]
 fn mc_spread_one_model_prices_a_strike_grid() {
-  let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000);
+  let model = McSpreadPricer::new(0.30, 0.25, 0.3, 100_000).with_seed(Deterministic::new(42));
   let calls =
     [0.0, 10.0, 25.0].map(|k| model.price_call(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
   let puts = [0.0, 10.0, 25.0].map(|k| model.price_put(110.0, 100.0, k, 0.03, 0.0, 0.0, 1.0).mean);
@@ -136,7 +130,7 @@ fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
 /// A NaN payoff passes the per-path `max(0)` floor, where a bare floor would zero every path.
 #[test]
 fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
-  let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000);
+  let model = McSpreadPricer::new(0.25, 0.20, 0.4, 2_000).with_seed(Deterministic::new(42));
   for (name, got) in [
     (
       "s1",
@@ -176,25 +170,12 @@ fn mc_spread_does_not_launder_a_nan_into_a_zero_price() {
   );
 }
 
-/// Both constructors now reject a parameter that is not a volatility or
-/// not a correlation.
-///
-/// The correlation is the one worth spelling out. `MargrabePricer`'s
-/// combined variance goes *negative* at `rho > 1`, which trips the
-/// degenerate-branch test rather than a square root, so the exchange
-/// option prices as its discounted intrinsic — a plausible number, not a
-/// `NaN`. `McSpreadPricer`'s `sqrt((1 - rho²).max(0.0))` absorbs the same
-/// input on the other side, leaving the second asset driven by `rho·z1`
-/// alone.
-///
-/// Every measured pre-guard value is in the panic-test doc it belongs to,
-/// against `Margrabe = 16.190433` and `McSpread ~ 10.69` at the same query.
+/// Both constructors refuse a volatility or correlation off its domain: past `rho = 1` Margrabe
+/// priced its discounted intrinsic, and `McSpreadPricer`'s `(1 − ρ²).max(0)` dropped `z₂`.
 mod construction_validation {
   use super::*;
 
-  /// `rho = 5` drives the combined variance negative, and the
-  /// degenerate branch turns that into the discounted intrinsic: `10.0`
-  /// against `16.190433`.
+  /// `rho = 5` priced the discounted intrinsic, `10.0` against `16.190433`.
   #[test]
   #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 5.0")]
   fn margrabe_rejects_a_correlation_above_one() {
@@ -256,29 +237,22 @@ mod construction_validation {
     let _ = McSpreadPricer::new(0.25, -0.20, 0.4, 1_000);
   }
 
-  /// The one guard here that does not close a wrong number: the empty
-  /// average is already `NaN`. It is refused where the path count is
-  /// supplied instead.
+  /// No path averages to NaN already; the count is refused where it is supplied.
   #[test]
   #[should_panic(expected = "n_paths must satisfy `n_paths >= 1`, got n_paths = 0")]
   fn mc_spread_rejects_a_zero_path_count() {
     let _ = McSpreadPricer::new(0.25, 0.20, 0.4, 0);
   }
 
-  /// The admissible edges the validation must not swallow: perfect
-  /// correlation either way, and a zero-volatility leg. `sigma1 ==
-  /// sigma2` at `rho == 1` is exactly Margrabe's degenerate branch,
-  /// which is a limit and not an error — `margrabe_perfect_correlation_equal_vol`
-  /// prices it.
+  /// Perfect correlation either way and a zero-volatility leg build; equal vols at `rho == 1` are
+  /// Margrabe's degenerate limit (`margrabe_perfect_correlation_equal_vol`).
   #[test]
   fn the_admissible_edges_stay_constructible() {
     assert_eq!(MargrabePricer::new(0.2, 0.2, 1.0).rho, 1.0);
     assert_eq!(MargrabePricer::new(0.2, 0.2, -1.0).rho, -1.0);
     assert_eq!(MargrabePricer::new(0.0, 0.35, 0.4).sigma1, 0.0);
     assert_eq!(McSpreadPricer::new(0.0, 0.35, -1.0, 1).n_paths, 1);
-    // And the fields stay `pub`, so the constructor is a front door and
-    // not a wall — this is how the `NaN` tests above reach the
-    // estimator.
+    // Inside the crate a field can still be set past `new`'s checks.
     let mut p = McSpreadPricer::new(0.25, 0.20, 0.4, 16);
     p.rho = 5.0;
     assert_eq!(p.rho, 5.0);
@@ -290,7 +264,7 @@ mod construction_validation {
 #[test]
 fn margrabe_matches_mc_zero_strike() {
   let m_price = MargrabePricer::new(0.25, 0.20, 0.4).price(110.0, 100.0, 0.0, 0.0, 1.0);
-  let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000);
+  let mc = McSpreadPricer::new(0.25, 0.20, 0.4, 100_000).with_seed(Deterministic::new(42));
   let est = mc.price_call(110.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
   let rel = (m_price - est.mean).abs() / m_price;
   assert!(rel < 0.02, "margrabe={m_price}, mc={est}, rel={rel}");

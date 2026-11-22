@@ -395,8 +395,8 @@ fn hscm_one_model_prices_a_grid() {
   }
 }
 
-/// `new` refuses a negative or NaN variance or volatility and a correlation off `[−1, 1]`; it takes
-/// `sigma_v = 0` (the RK4 Riccati system only multiplies by it) and any `kappa_v` and `kappa_r`.
+/// `new` refuses a variance or volatility not finite and `≥ 0`, a `kappa` not finite, `κ_v θ_v < 0`
+/// and a correlation off `[−1, 1]`; `sigma_v = 0` builds, as RK4's Riccati system only multiplies.
 mod construction_validation {
   use super::*;
 
@@ -408,8 +408,20 @@ mod construction_validation {
     HestonStochCorrPricer::new(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8])
   }
 
+  /// The message `new` panics with on `p`.
+  fn refusal(p: [f64; 9]) -> String {
+    let err = std::panic::catch_unwind(move || build(p)).expect_err("must reject");
+    err.downcast_ref::<String>().cloned().unwrap_or_else(|| {
+      err
+        .downcast_ref::<&str>()
+        .copied()
+        .unwrap_or("")
+        .to_string()
+    })
+  }
+
   #[test]
-  #[should_panic(expected = "v0 must satisfy `v0 >= 0.0`, got v0 = -0.04")]
+  #[should_panic(expected = "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = -0.04")]
   fn new_rejects_negative_v0() {
     let mut p = ok();
     p[0] = -0.04;
@@ -417,7 +429,9 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "theta_v must satisfy `theta_v >= 0.0`, got theta_v = -0.04")]
+  #[should_panic(
+    expected = "theta_v must satisfy `theta_v.is_finite() && theta_v >= 0.0`, got theta_v = -0.04"
+  )]
   fn new_rejects_negative_long_run_variance() {
     let mut p = ok();
     p[2] = -0.04;
@@ -425,7 +439,9 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "sigma_v must satisfy `sigma_v >= 0.0`, got sigma_v = -0.3")]
+  #[should_panic(
+    expected = "sigma_v must satisfy `sigma_v.is_finite() && sigma_v >= 0.0`, got sigma_v = -0.3"
+  )]
   fn new_rejects_negative_vol_of_vol() {
     let mut p = ok();
     p[3] = -0.3;
@@ -433,7 +449,9 @@ mod construction_validation {
   }
 
   #[test]
-  #[should_panic(expected = "sigma_r must satisfy `sigma_r >= 0.0`, got sigma_r = -0.2")]
+  #[should_panic(
+    expected = "sigma_r must satisfy `sigma_r.is_finite() && sigma_r >= 0.0`, got sigma_r = -0.2"
+  )]
   fn new_rejects_negative_correlation_volatility() {
     let mut p = ok();
     p[7] = -0.2;
@@ -448,21 +466,9 @@ mod construction_validation {
       for bad in [-1.5_f64, 1.5] {
         let mut p = ok();
         p[idx] = bad;
-        let err = std::panic::catch_unwind(move || build(p)).expect_err("must reject");
-        let msg = err.downcast_ref::<String>().cloned().unwrap_or_else(|| {
-          err
-            .downcast_ref::<&str>()
-            .copied()
-            .unwrap_or("")
-            .to_string()
-        });
-        assert!(
-          msg
-            == format!(
-              "{name} must satisfy `(-1.0..=1.0).contains(&{name})`, got {name} = {bad:?}"
-            ),
-          "{name} at {bad}: wrong message {msg}"
-        );
+        let want =
+          format!("{name} must satisfy `(-1.0..=1.0).contains(&{name})`, got {name} = {bad:?}");
+        assert_eq!(refusal(p), want, "{name} at {bad}");
       }
     }
   }
@@ -479,9 +485,47 @@ mod construction_validation {
     let deterministic = build([0.04, 2.0, 0.0, 0.0, -1.0, 5.0, 1.0, 0.0, -1.0]);
     assert_eq!(deterministic.sigma_v, 0.0);
     assert_eq!(deterministic.theta_v, 0.0);
+    let negative_speeds = build([0.04, -2.0, 0.0, 0.3, -0.7, -5.0, -0.5, 0.2, 0.3]);
     assert_eq!(
-      build([0.04, -2.0, 0.04, 0.3, -0.7, -5.0, -0.5, 0.2, 0.3]).kappa_v,
-      -2.0
+      (negative_speeds.kappa_v, negative_speeds.kappa_r),
+      (-2.0, -5.0)
     );
+  }
+
+  #[test]
+  fn every_variance_and_volatility_is_finite() {
+    for (idx, name) in [
+      (0_usize, "v0"),
+      (2, "theta_v"),
+      (3, "sigma_v"),
+      (7, "sigma_r"),
+    ] {
+      let mut p = ok();
+      p[idx] = f64::INFINITY;
+      let want =
+        format!("{name} must satisfy `{name}.is_finite() && {name} >= 0.0`, got {name} = inf");
+      assert_eq!(refusal(p), want, "{name}");
+    }
+  }
+
+  #[test]
+  fn every_mean_reversion_speed_is_finite() {
+    for (idx, name) in [(1_usize, "kappa_v"), (5, "kappa_r")] {
+      for bad in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let mut p = ok();
+        p[idx] = bad;
+        let want = format!("{name} must satisfy `{name}.is_finite()`, got {name} = {bad:?}");
+        assert_eq!(refusal(p), want, "{name} at {bad}");
+      }
+    }
+  }
+
+  /// `κ_v θ_v` is the variance's drift at `v = 0`, as in `HestonParams::new`.
+  #[test]
+  #[should_panic(expected = "kappa_v must satisfy `kappa_v * theta_v >= 0.0`, got kappa_v = -2.0")]
+  fn new_rejects_a_variance_drifting_below_zero() {
+    let mut p = ok();
+    p[1] = -2.0;
+    let _ = build(p);
   }
 }

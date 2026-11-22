@@ -1,15 +1,14 @@
-//! # Fourier
+//! Characteristic-function pricing of any [`FourierModelExt`]: Carr–Madan, Lewis, Gil–Pelaez, COS
+//! and the fractional FFT.
 //!
 //! $$
 //! C(K)=\frac{e^{-\alpha k}}{\pi}\int_0^\infty e^{-ivk}\,\psi_T(v)\,dv,\quad
 //! \psi_T(v)=\frac{e^{-rT}\,\phi_T(v-(1+\alpha)i)}{\alpha^2+\alpha-v^2+i(2\alpha+1)v}
 //! $$
 //!
-//! Source:
-//! - Carr, P. & Madan, D. (1999), "Option valuation using the fast Fourier transform"
-//! - Lewis, A. (2001), "A Simple Option Formula for General Jump-Diffusion and Other
-//!   Exponential Lévy Processes"
-//! - Gil-Pelaez, J. (1951), "Note on the inversion theorem"
+//! Reference: Carr & Madan (1999), J. Comput. Finance 2(4), 61–73
+//! Reference: Lewis (2001), SSRN 282110, DOI 10.2139/ssrn.282110
+//! Reference: Gil-Pelaez (1951), Biometrika 38(3–4), 481–482, DOI 10.1093/biomet/38.3-4.481
 
 use num_complex::Complex64;
 

@@ -1,7 +1,6 @@
 //! Conditional Malliavin weights for the multi-asset log-Euler scheme.
 //!
-//! Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580,
-//! Theorem 6.1 and equation (6.2).
+//! Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580, Thm. 6.1 and eq. (6.2)
 
 use ndarray::Array1;
 use ndarray::Array2;

@@ -77,7 +77,7 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
     }
     LevyModelType::Cgmy => {
       // `E[e^X]` is finite for `M > 1`, the compensator's `(M − 1)^Y`.
-      // Reference: Carr, Geman, Madan & Yor (2002), DOI 10.1086/338705.
+      // Reference: Carr et al. (2002), J. Bus. 75(2), Thm. 1 and eq. (13), DOI 10.1086/338705.
       let m = (1.0 + DOMAIN_MARGIN, 50.0);
       vec![(0.001, 10.0), (0.01, 50.0), m, (-1.0, 1.999)]
     }

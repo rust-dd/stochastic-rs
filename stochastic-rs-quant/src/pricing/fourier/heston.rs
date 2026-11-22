@@ -24,7 +24,7 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
 
 /// `(C, D)` solving `C' = κθD`, `D' = ½σ²D² − βD − ½m` from zero: the Little-Trap form with `g̃`
 /// multiplied out by its denominator `β + d`, which is 0 at `ξ = −i` when `ρσ > κ`.
-/// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+/// Reference: Albrecher et al. (2007), "The Little Heston Trap", Wilmott, 83–92
 pub(crate) fn riccati_cd(
   beta: Complex64,
   moment: Complex64,
@@ -104,8 +104,8 @@ impl FourierModelExt for HestonFourier {
 /// \end{aligned}
 /// $$
 ///
-/// Reference: Christoffersen, P., Heston, S. & Jacobs, K. (2009), "The Shape and Term Structure of the Index Option Smirk: Why Multifactor Stochastic Volatility Models Work So Well", Management Science 55(12), 1914–1932, DOI 10.1287/mnsc.1090.1065
-/// Reference: Mehrdoust, F., Noorani, I. & Hamdi, A. (2021), "Calibration of the double Heston model and an analytical formula in pricing American put option", J. Comput. Appl. Math. 392, 113422, DOI 10.1016/j.cam.2021.113422
+/// Reference: Christoffersen et al. (2009), Manag. Sci. 55, 1914–1932, DOI 10.1287/mnsc.1090.1065
+/// Reference: Mehrdoust et al. (2021), J. Comput. Appl. Math. 392, DOI 10.1016/j.cam.2021.113422
 #[derive(Debug, Clone)]
 pub struct DoubleHestonFourier {
   first: HestonParams,
@@ -154,15 +154,8 @@ mod tests {
     model.chf(t, Complex64::new(u, 0.0)).ln()
   }
 
-  /// `c1 = -i \cdot f'(0)`, `c2 = -f''(0)` for `f(u) = \ln\varphi(u)`, the
-  /// standard relation between a characteristic function's log and the
-  /// cumulants of the distribution it belongs to (`\varphi(u) = E[e^{iuX}]`
-  /// is the moment generating function evaluated at `iu`, so
-  /// `d^n/du^n \ln\varphi(u)|_0 = i^n \kappa_n`). Central differences at
-  /// `h=1e-3`: small enough that `O(h^2)` truncation error is negligible
-  /// against the `1e-6` relative tolerance these tests require, large
-  /// enough that the second-difference's `O(\epsilon_{mach}/h^2)`
-  /// cancellation noise stays far below it too.
+  /// `c1 = −i f′(0)` and `c2 = −f″(0)` of `f = ln φ` by central differences at `h = 1e-3`, whose
+  /// `O(h²)` truncation and `O(ε/h²)` cancellation both sit far below the `1e-6` tolerance.
   fn fd_c1_c2(model: &HestonFourier, t: f64) -> (f64, f64) {
     let h = 1e-3;
     let f0 = ln_chf(model, t, 0.0);

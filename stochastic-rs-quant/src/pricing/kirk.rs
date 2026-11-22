@@ -1,22 +1,16 @@
-//! # Kirk's Spread Option Approximation
-//!
-//! Approximate closed-form valuation for European spread options on two
-//! commodity (futures-style) underlyings:
+//! Kirk's (1995) closed-form approximation of a European spread option on two futures-style
+//! underlyings, with the combined volatility `V`.
 //!
 //! $$
 //! C=(F_2+X)\bigl[F\,e^{-rT}N(d_1)-e^{-rT}N(d_2)\bigr],\quad
 //! F=\frac{F_1}{F_2+X}
 //! $$
-//!
-//! with combined volatility
-//!
 //! $$
 //! V=\sqrt{\sigma_1^2+\Bigl(\sigma_2\frac{F_2}{F_2+X}\Bigr)^2
 //!          -2\rho\,\sigma_1\sigma_2\frac{F_2}{F_2+X}}
 //! $$
 //!
-//! Reference: Kirk, E. (1995). "Correlation in the Energy Markets."
-//! In *Managing Energy Price Risk*, Risk Publications, pp. 71-78.
+//! Reference: Kirk (1995), "Correlation in the Energy Markets", Managing Energy Price Risk, 71–78
 
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -127,9 +121,8 @@ impl KirkSpreadPricer {
 mod tests {
   use super::*;
 
-  /// Cross-arch tolerance: these goldens come from `norm_cdf`, whose last
-  /// bit is a hostage to FMA contraction and libm differences between the
-  /// aarch64-darwin dev machine and CI's ubuntu x86_64.
+  /// The goldens' last bit is `norm_cdf`'s, which FMA contraction and libm move between
+  /// aarch64-darwin and CI's ubuntu x86_64.
   const TOL: f64 = 1e-12;
 
   /// Two pinned spread pairs: a change of call shape must not move a price.
@@ -172,7 +165,7 @@ mod tests {
     );
   }
 
-  /// One model instance prices a whole query grid — the point of the split.
+  /// One model instance prices a whole query grid.
   #[test]
   fn kirk_one_model_prices_a_strike_grid() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
@@ -183,13 +176,8 @@ mod tests {
     );
   }
 
-  /// Kirk's combined volatility is
-  /// `√(σ₁² + (σ₂w)² - 2ρσ₁σ₂w)`, so a correlation outside `[-1, 1]` is not
-  /// caught by the square root unless it happens to drive the radicand
-  /// negative. At `ρ = -5` it does not: the spread call comes back
-  /// `14.0959` against the correct `1.2691` — an order of magnitude out and
-  /// entirely plausible. (`ρ = +5` does turn the radicand negative and
-  /// yields `NaN`, so only one side of the invalid range announced itself.)
+  /// `ρ = −5` keeps Kirk's radicand positive and priced `14.0959` against `1.2691`; `ρ = +5` gave
+  /// NaN, so only one side of the range showed.
   #[test]
   #[should_panic(expected = "corr must satisfy `(-1.0..=1.0).contains(&corr)`, got corr = -5.0")]
   fn new_rejects_correlation_below_minus_one() {

@@ -112,7 +112,8 @@ impl HkdeParams {
   }
 }
 
-/// Heston + Kou Double-Exponential jump model (Hkde) for Fourier pricing.
+/// Heston plus Kou double-exponential jumps (HKDE) for Fourier pricing, `J_t` Kou with up and down
+/// rates `η₁`, `η₂` and up probability `p`.
 ///
 /// $$
 /// dS_t = (r-q)S_t\,dt + \sqrt{v_t}\,S_t\,dW_t^S + J_t\,S_t\,dN_t
@@ -121,11 +122,7 @@ impl HkdeParams {
 /// dv_t = \kappa(\theta-v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v
 /// $$
 ///
-/// where $J_t$ follows a Kou double-exponential distribution with upward jump rate $\eta_1$,
-/// downward jump rate $\eta_2$, and probability of upward jump $p$.
-///
-/// Source:
-/// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
+/// Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
 #[derive(Debug, Clone)]
 pub struct HkdeFourier {
   params: HkdeParams,

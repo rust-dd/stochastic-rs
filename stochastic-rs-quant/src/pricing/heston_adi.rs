@@ -1,30 +1,11 @@
-//! # Heston ADI
+//! The Heston PDE with correlation by in 't Hout & Foulon's ADI: sinh meshes (§2.2), the Douglas,
+//! Craig–Sneyd, MCS (the default, at `θ = ⅓`) and HV steps with Rannacher damping (§2.4–§2.6).
 //!
 //! $$
 //! u_t = \tfrac12 s^2 v\,u_{ss} + \rho\sigma s v\,u_{sv} + \tfrac12\sigma^2 v\,u_{vv} + (r_d - r_f)\,s\,u_s + \kappa(\eta - v)\,u_v - r_d u
 //! $$
 //!
-//! Finite-difference solution of the Heston PDE with correlation by the
-//! Alternating Direction Implicit schemes of in 't Hout & Foulon (2008):
-//! sinh-stretched meshes clustering at the strike and at `v = 0` (§2.2,
-//! `S ≥ 8K`, `V ≥ 5`, `c = K/5`, `d = V/500`), second-order central
-//! stencils with upwinding of `u_v` where the `v`-flow points outward, the
-//! call boundary conditions `u(0, v) = 0`, `u_s(S, v) = e^{−r_f t}`,
-//! `u(s, V) = s e^{−r_f t}`, and the Douglas, Craig–Sneyd, Modified
-//! Craig–Sneyd and Hundsdorfer–Verwer time steppers of §2.4 with the
-//! Rannacher damping of §2.5. The default is the paper's recommendation:
-//! MCS at `θ = ⅓` with damping. A down-and-out barrier moves the lower
-//! `s` boundary to the barrier (§2.6).
-//!
-//! The struct holds model and method state; the query `(s, k, r, q, τ)`
-//! travels as arguments with `r = r_d` and `q = r_f`, and the price is read
-//! off the grid by bilinear interpolation at `(s, v₀)`. The upper boundaries
-//! expand to at least twice the queried spot and initial variance.
-//!
-//! Reference: in 't Hout, K. J. & Foulon, S. (2010), *ADI finite difference
-//! schemes for option pricing in the Heston model with correlation*,
-//! International Journal of Numerical Analysis and Modeling 7(2), 303–320;
-//! arXiv:0811.3427.
+//! Reference: in 't Hout & Foulon (2010), Int. J. Numer. Anal. Model. 7, 303–320, arXiv:0811.3427
 
 mod grid;
 mod operators;
@@ -43,12 +24,12 @@ use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
-/// Upper `v` boundary of the computational domain (`V = 5` in the paper).
+/// Upper `v` boundary, the paper's `V = 5`; the mesh reaches at least twice the initial variance.
 const VARIANCE_CAP: f64 = 5.0;
-/// Upper `s` boundary as a multiple of the strike (`S = 8K`).
+/// Upper `s` boundary as a multiple of the strike, the paper's `S = 8K`; at least twice the spot.
 const SPOT_CAP_STRIKES: f64 = 8.0;
 
-/// Heston ADI finite-difference pricer.
+/// Heston ADI finite-difference pricer; the query's `r` and `q` are the paper's `r_d` and `r_f`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonAdiPricer {
   /// `theta` is the paper's long-run variance `η`.
@@ -216,9 +197,8 @@ impl ModelPricer for HestonAdiPricer {
     self.solve_call(s, k, r, q, tau)
   }
 
-  /// Vanilla puts come from European put-call parity, which is exact here
-  /// (carry `r − q`, European exercise); a down-and-out put has no parity
-  /// relation with the down-and-out call and returns `NaN`.
+  /// European put-call parity, exact at carry `r − q`; NaN with a barrier, as a down-and-out put
+  /// has no parity with the down-and-out call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if self.barrier.is_some() {
       return f64::NAN;
@@ -227,9 +207,8 @@ impl ModelPricer for HestonAdiPricer {
   }
 }
 
-/// A European vanilla call at the default forward without a barrier; with a
-/// barrier the instance prices a down-and-out call and reports `NaN`, case
-/// 2 of the failure convention.
+/// A European vanilla call on the default forward without a barrier; with one the instance prices a
+/// down-and-out call, so its forward is NaN.
 impl VanillaEuropeanCall for HestonAdiPricer {
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     if self.barrier.is_some() {

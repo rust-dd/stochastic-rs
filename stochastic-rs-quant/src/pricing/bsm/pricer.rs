@@ -2,6 +2,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::CallPut;
 use crate::OptionType;
+use crate::pricing::digital::assert_handle_sigma;
 use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
@@ -27,13 +28,8 @@ pub enum BsmCoc {
   GarmanKohlhagen1983,
 }
 
-/// Black-Scholes-Merton generalised-cost-of-carry model.
-///
-/// The struct holds **model state only** — the volatility and the
-/// cost-of-carry convention. Spot, strike, rate, dividend yield and
-/// maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`] and to every Greek below, so one instance
-/// prices a whole strike/maturity grid.
+/// Black–Scholes–Merton with a generalised cost of carry, holding the volatility and the [`BsmCoc`]
+/// convention; the query travels as arguments to every price and Greek.
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
@@ -53,23 +49,15 @@ pub struct BsmPricer {
 }
 
 impl BsmPricer {
-  pub const fn new(sigma: f64, b: BsmCoc) -> Self {
+  /// Panics for a negative or infinite `sigma`, a negative one flipping `d₁` into a wrong price; a
+  /// NaN is kept, as `AnalyticBsEngine` reads one off an unlinked handle and must price NaN.
+  pub fn new(sigma: f64, b: BsmCoc) -> Self {
+    assert_handle_sigma(sigma);
     Self { sigma, b }
   }
 
-  /// Cost of carry $b$ implied by the convention at the query's rates.
-  ///
-  /// The query's `(r, q)` pair carries both roles the pre-query struct
-  /// spread across four rate fields: under
-  /// [`BsmCoc::GarmanKohlhagen1983`] they are the *domestic* and *foreign*
-  /// rates, so $b = r_d - r_f$ is Garman-Kohlhagen's conventional
-  /// Black-Scholes embedding (foreign rate in the dividend slot) rather
-  /// than an approximation of it.
-  ///
-  /// [`BsmCoc::Asay1982`] returns the same `0.0` as
-  /// [`BsmCoc::Black1976`] and discounts at the same `exp(-r * tau)`;
-  /// margined-futures' zero discounting is *not* modelled here and never
-  /// was.
+  /// The carry `b` at the query's rates, `(r, q)` domestic and foreign under Garman–Kohlhagen;
+  /// [`BsmCoc::Asay1982`] is Black 1976's `b = 0` and `e^{−rτ}` discount, margining unmodelled.
   pub fn b(&self, r: f64, q: f64) -> f64 {
     match self.b {
       BsmCoc::Bsm1973 => r,
@@ -147,13 +135,8 @@ impl ModelPricer for BsmPricer {
     Self::leg(self.terms(s, k, r, q, tau), OptionType::Call)
   }
 
-  /// Overrides the trait's vanilla-parity default, which assumes the carry
-  /// factor is $e^{-q\tau}$. Here it is $e^{(b-r)\tau}$, so parity reads
-  /// $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$ and the two agree only when
-  /// $b=r-q$ — true for [`BsmCoc::Merton1973`] and
-  /// [`BsmCoc::GarmanKohlhagen1983`], false for [`BsmCoc::Bsm1973`] at
-  /// `q != 0` and for [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`] at
-  /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
+  /// Parity on this carry, `C − P = Se^{(b−r)τ} − Ke^{−rτ}`, which the default `e^{−qτ}` matches
+  /// only where `b = r − q` (`bsm_price_put_overrides_vanilla_parity`).
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     Self::leg(self.terms(s, k, r, q, tau), OptionType::Put)
   }
@@ -162,23 +145,8 @@ impl ModelPricer for BsmPricer {
 /// European vanilla call — but **not** always on $Se^{(r-q)\tau}$, which is
 /// why this overrides the default forward.
 impl VanillaEuropeanCall for BsmPricer {
-  /// $Se^{b\tau}$ at this pricer's own cost of carry, which is
-  /// [`b(r, q)`](BsmPricer::b) and equals $r - q$ for only two of the five
-  /// [`BsmCoc`] conventions.
-  ///
-  /// The default $Se^{(r-q)\tau}$ would be the *futures price grown at the
-  /// risk-free rate* under [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`],
-  /// where $b = 0$ and the forward is just $S$; under [`BsmCoc::Bsm1973`] at
-  /// `q != 0` it would discount a dividend the price never paid. Both leave
-  /// every price inside the no-arbitrage band, so the surface inverts them
-  /// into a full smile — see
-  /// `futures_carry_surface_recovers_the_models_flat_vol` and
-  /// `dividend_ignoring_carry_surface_recovers_the_models_flat_vol`, both of
-  /// which fail against the default. [`BsmCoc::Merton1973`] and
-  /// [`BsmCoc::GarmanKohlhagen1983`] have $b = r - q$ and so land on the
-  /// default's exact expression, bit for bit.
-  ///
-  /// [`BsmCoc`]: crate::pricing::bsm::BsmCoc
+  /// `Se^{bτ}` at [`BsmPricer::b`]; the default `Se^{(r−q)τ}` would invert a `Bsm1973` surface at
+  /// `q ≠ 0`, or a Black 1976 or Asay one at `q ≠ r`, into a smile (the `carry_surface` tests).
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     s * (self.b(r, q) * tau).exp()
   }

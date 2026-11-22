@@ -1,5 +1,6 @@
 //! Discount curve on calibrated `(t, D)` pairs: interpolated `D(t)`, zero rates `−ln D(t)/t`,
 //! forwards `−(ln D(t₂) − ln D(t₁))/(t₂ − t₁)` and par rates.
+//!
 //! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
 
 use crate::calendar::Frequency;

@@ -7,8 +7,7 @@
 //! Reference: Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers", *Risk* 4(8), 28–35
 //! Reference: Haug, E. G. (2007), "The Complete Guide to Option Pricing Formulas", ISBN 0071389970
 //! Reference: Vector Risk (2017), "Single Barrier Option", v8.0.7905, p. 2: Haug's §4.17.1, p. 152
-//! Reference: Kunitomo & Ikeda (1992), "Pricing Options With Curved Boundaries", Math. Finance
-//! 2(4), 275–298, DOI 10.1111/j.1467-9965.1992.tb00033.x
+//! Reference: Kunitomo & Ikeda (1992), Math. Finance 2(4), DOI 10.1111/j.1467-9965.1992.tb00033.x
 //! Reference: Vector Risk (2017), "Double Barrier Option", v8.0.7970, p. 2: Haug (1998), p. 72
 //! Reference: QuantLib 1.43, `analyticdoublebarrierengine.cpp`; its header: Haug (2007), p. 156
 //!
@@ -57,8 +56,8 @@ impl BarrierPricer {
     Self { sigma }
   }
 
-  /// Reiner–Rubinstein; on or past the barrier, its rebate or the knocked-in vanilla; at `tau = 0`
-  /// its payoff; NaN for a NaN query or barrier, `tau < 0` or a spot not positive before expiry.
+  /// On or past the barrier its rebate (any strike) or knocked-in vanilla, at `tau = 0` its payoff;
+  /// NaN for a NaN query, a barrier or `tau` not finite, `tau < 0`, or `s, k ≤ 0` before expiry.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let BarrierOption {
       strike: k,
@@ -67,7 +66,12 @@ impl BarrierPricer {
       barrier_type,
       option_type,
     } = *option;
-    if s.is_nan() || tau.is_nan() || tau < 0.0 || h.is_nan() || r.is_nan() || q.is_nan() {
+    if s.is_nan()
+      || !(0.0..f64::INFINITY).contains(&tau)
+      || !h.is_finite()
+      || r.is_nan()
+      || q.is_nan()
+    {
       return f64::NAN;
     }
     if tau > 0.0 && s <= 0.0 {
@@ -80,19 +84,24 @@ impl BarrierPricer {
     };
     match (breached, knock_in) {
       (true, false) => return rebate,
-      (true, true) if tau > 0.0 && not_positive(&[k]) => return f64::NAN,
+      (false, false) if tau == 0.0 => return vanilla_payoff(option_type, s, k),
+      (false, true) if tau == 0.0 => return rebate,
+      _ if tau > 0.0 && not_positive(&[k]) => return f64::NAN,
       (true, true) if self.sigma == 0.0 => return deterministic(option, s, r, q, tau),
       (true, true) => {
         let vanilla = BsmPricer::new(self.sigma, BsmCoc::Merton1973);
         return vanilla.price_option(s, k, r, q, tau, option_type);
       }
-      (false, false) if tau == 0.0 => return vanilla_payoff(option_type, s, k),
-      (false, true) if tau == 0.0 => return rebate,
       _ => {}
     }
     let sigma = self.sigma;
     if sigma == 0.0 {
-      return deterministic(option, s, r, q, tau);
+      // An unbreached option reads its rebate, as the formula's `e` and `f` do, off the path too.
+      return if rebate.is_nan() {
+        f64::NAN
+      } else {
+        deterministic(option, s, r, q, tau)
+      };
     }
 
     let sigma2 = sigma * sigma;
@@ -212,9 +221,6 @@ fn deterministic(option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f6
     barrier_type,
     option_type,
   } = *option;
-  if k.is_nan() || rebate.is_nan() {
-    return f64::NAN;
-  }
   let terminal = s * ((r - q) * tau).exp();
   let hit = match barrier_type {
     BarrierType::DownAndIn | BarrierType::DownAndOut => s.min(terminal) <= h,
@@ -261,7 +267,7 @@ impl DoubleBarrierPricer {
   }
 
   /// Price at `(s, r, q, tau)`: 0 on or outside the corridor, the payoff at `tau = 0`, and NaN for
-  /// a negative or NaN `tau`, a NaN bound or rate, or a spot or `lower` not positive before expiry.
+  /// a `tau` not finite or `< 0`, a NaN bound or rate, or a spot or `lower` `≤ 0` before expiry.
   pub fn price(&self, option: &DoubleBarrierOption, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     let DoubleBarrierOption {
       strike: k,
@@ -270,8 +276,7 @@ impl DoubleBarrierPricer {
       option_type,
     } = *option;
     if s.is_nan()
-      || tau.is_nan()
-      || tau < 0.0
+      || !(0.0..f64::INFINITY).contains(&tau)
       || l.is_nan()
       || u.is_nan()
       || r.is_nan()

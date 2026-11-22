@@ -231,3 +231,58 @@ fn a_fourier_price_is_nan_before_expiry_for_a_spot_or_strike_that_is_not_positiv
   assert_eq!(BSM.price_call(110.0, -5.0, R, Q, 0.0), 115.0);
   assert_eq!(BSM.price_put(-5.0, K, R, Q, 0.0), 105.0);
 }
+
+/// Before expiry a rate or yield that is not finite has no price, as in COS, and an infinite spot
+/// no surface.
+#[test]
+fn a_fourier_price_is_nan_before_expiry_for_a_rate_that_is_not_finite() {
+  let carr_madan = CarrMadanPricer::new(4096, 1.5);
+  let fractional = FrftCarrMadanPricer::new(512, 1.5, 0.25, 0.01);
+  let (inf, nan) = (f64::INFINITY, f64::NAN);
+  let mut live = Vec::new();
+  for (s, r, q) in [
+    (110.0, inf, Q),
+    (110.0, -inf, Q),
+    (110.0, nan, Q),
+    (110.0, R, inf),
+    (110.0, R, -inf),
+    (110.0, R, nan),
+    (inf, R, Q),
+  ] {
+    let prices = [
+      ("blanket call", BSM.price_call(s, K, r, q, 1.0)),
+      ("blanket put", BSM.price_put(s, K, r, q, 1.0)),
+      ("Lewis", LewisPricer::price_call(&BSM, s, K, r, q, 1.0)),
+      (
+        "Gil-Pelaez",
+        GilPelaezPricer::price_call(&BSM, s, K, r, q, 1.0),
+      ),
+      (
+        "Carr-Madan call",
+        carr_madan.price_call(&BSM, s, K, r, q, 1.0),
+      ),
+      (
+        "Carr-Madan put",
+        carr_madan.price_put(&BSM, s, K, r, q, 1.0),
+      ),
+      ("FRFT call", fractional.price_call(&BSM, s, K, r, q, 1.0)),
+      ("FRFT put", fractional.price_put(&BSM, s, K, r, q, 1.0)),
+    ];
+    for (name, price) in prices.into_iter().filter(|(_, p)| !p.is_nan()) {
+      live.push(format!("{name} at ({s}, {r}, {q}): {price}"));
+    }
+    for (name, (_, surface)) in [
+      (
+        "Carr-Madan",
+        carr_madan.price_call_surface(&BSM, s, r, q, 1.0),
+      ),
+      ("FRFT", fractional.price_call_surface(&BSM, s, r, q, 1.0)),
+    ] {
+      let nodes = surface.iter().filter(|p| !p.is_nan()).count();
+      if nodes > 0 {
+        live.push(format!("{name} surface at ({s}, {r}, {q}): {nodes} nodes"));
+      }
+    }
+  }
+  assert!(live.is_empty(), "{live:#?}");
+}

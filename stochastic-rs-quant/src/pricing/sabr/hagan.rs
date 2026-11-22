@@ -157,8 +157,11 @@ fn smallest_positive_root([p3, p2, p1, p0]: [f64; 4], seed: f64) -> f64 {
   brent::zero(lo, hi, f64::MIN_POSITIVE, cubic).unwrap_or(f64::NAN)
 }
 
-/// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BsmPricer.
+/// Garman–Kohlhagen `(call, put)` at `sigma`, NaN for a `sigma` that is negative or not finite.
 pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
+  if !(sigma.is_finite() && sigma >= 0.0) {
+    return (f64::NAN, f64::NAN);
+  }
   // Garman-Kohlhagen puts the foreign rate in the model's dividend slot,
   // so the query's `(r, q)` pair is `(r_d, r_f)`.
   let bsm = BsmPricer::new(sigma, BsmCoc::GarmanKohlhagen1983);
@@ -175,7 +178,8 @@ pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi
   phi * (-r_f * tau).exp() * (k / f) * nd2
 }
 
-/// Garman–Kohlhagen `(call, put)` at the Hagan vol of `params` against the forward of `s`.
+/// Garman–Kohlhagen `(call, put)` at the Hagan vol of `params` against the forward of `s`; NaN
+/// unless that vol is finite and `> 0`, as [`SabrPricer`](super::SabrPricer)'s price is.
 pub fn model_price_hagan(
   s: f64,
   k: f64,
@@ -186,5 +190,8 @@ pub fn model_price_hagan(
 ) -> (f64, f64) {
   let fwd = forward_fx(s, tau, r_d, r_f);
   let sigma = hagan_implied_vol(k, fwd, tau, params);
+  if !(sigma.is_finite() && sigma > 0.0) {
+    return (f64::NAN, f64::NAN);
+  }
   bs_price_fx(s, k, r_d, r_f, tau, sigma)
 }

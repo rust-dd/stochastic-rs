@@ -10,7 +10,7 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 use crate::pricing::digital::expired;
-use crate::pricing::digital::not_positive;
+use crate::pricing::digital::in_log_domain;
 use crate::pricing::digital::vanilla_payoff;
 
 /// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
@@ -21,10 +21,10 @@ pub(super) fn floor_price(x: f64) -> f64 {
 }
 
 /// A call that needs no transform: the payoff at `t = 0`, NaN past expiry and, before it, for a
-/// spot or strike that is not positive.
+/// spot or strike that is not finite and positive or a rate that is not finite, as in COS.
 pub(super) fn settled_call(s: f64, k: f64, r: f64, q: f64, t: f64) -> Option<f64> {
   expired(t, &[r, q], || vanilla_payoff(OptionType::Call, s, k))
-    .or_else(|| not_positive(&[s, k]).then_some(f64::NAN))
+    .or_else(|| (!in_log_domain(&[s, k], &[r, q])).then_some(f64::NAN))
 }
 
 /// The put by parity on `call`, and the payoff or NaN from expiry on, where parity on a payoff
@@ -42,7 +42,7 @@ pub(super) fn parity_put(
 }
 
 /// A surface that needs no transform, on the grid `b + λu`: each node's payoff at `t = 0`, NaN
-/// past expiry and, before it, for a spot that is not positive.
+/// past expiry and, before it, for a spot that is not finite and positive or a rate not finite.
 pub(super) fn settled_surface(
   (n, b, lambda): (usize, f64, f64),
   s: f64,
@@ -55,7 +55,7 @@ pub(super) fn settled_surface(
       vanilla_payoff(OptionType::Call, s, k_u.exp())
     })
   };
-  if payoff(b).is_none() && !not_positive(&[s]) {
+  if payoff(b).is_none() && in_log_domain(&[s], &[r, q]) {
     return None;
   }
   let log_strikes = Array1::from_shape_fn(n, |u| b + lambda * u as f64);
@@ -102,7 +102,7 @@ impl CarrMadanPricer {
   /// The default grid, with `eta` refined until it spans `|ln s| + truncation_half_width(l_factor)`
   /// either side of `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
   ///
-  /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
+  /// Reference: Lord & Kahl (2010), Math. Finance 20(4), §3.2, DOI 10.1111/j.1467-9965.2010.00416.x
   ///
   /// ```
   /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
@@ -140,8 +140,8 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Call prices on the FFT strike grid `(log_strikes, call_prices)`, `k_u = b + λu` with
-  /// `b = −Nλ/2`; floored at zero, NaN kept; payoffs at `t = 0`, NaN past expiry and for `s ≤ 0`.
+  /// `(log_strikes, call_prices)` on `k_u = b + λu`, `b = −Nλ/2`, floored at zero, NaN kept; the
+  /// payoffs at `t = 0`; NaN past expiry, for an `s` not finite and positive or a rate not finite.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
@@ -211,7 +211,7 @@ impl CarrMadanPricer {
   }
 
   /// The call at `k`, node `N/2` of a grid centred on `ln k`: the payoff at `t = 0`; NaN past
-  /// expiry and, before it, for an `s` that is not positive or a `k` outside the default grid.
+  /// expiry and, before it, off [`Self::price_call_surface`]'s domain or outside the default grid.
   pub fn price_call(
     &self,
     model: &impl FourierModelExt,
@@ -271,9 +271,8 @@ mod tests {
   use crate::pricing::fourier::GilPelaezPricer;
   use crate::pricing::fourier::LewisPricer;
 
-  /// A characteristic function that overflows to `NaN`, standing in for a
-  /// user model blowing up at a parameter corner. Mirrors `cos.rs`'s
-  /// `NanModel`, which pins the same convention for `CosEngine::price`.
+  /// A characteristic function that is `NaN` everywhere, a user model blown up at a parameter
+  /// corner, as `cos.rs`'s `NanModel` is for `CosEngine::price`.
   struct NanChfModel;
 
   impl FourierModelExt for NanChfModel {
@@ -301,10 +300,8 @@ mod tests {
     assert!(price.is_nan(), "NaN strike must price NaN, got {price}");
   }
 
-  /// The FFT carries a `NaN` characteristic function straight through to the
-  /// strike grid; only the floor could lose it. Before the poison-check the
-  /// whole grid came back as exactly `0.0` and the interpolation on top of it
-  /// returned a plausible zero call price.
+  /// The FFT carries a `NaN` characteristic function to every node, and only the floor could lose
+  /// it: a floored grid of `0.0` would price a plausible zero call.
   #[test]
   fn carr_madan_surface_preserves_nan_from_chf_blowup() {
     let pricer = CarrMadanPricer::default();
@@ -362,9 +359,8 @@ mod tests {
     }
   }
 
-  /// The floor and the poison-check must stay separate operations: a negative
-  /// price is round-off and still floors to zero, a `NaN` is undefined and
-  /// travels on.
+  /// The floor and the poison check stay apart: a negative price is round-off and floors to zero,
+  /// a `NaN` is undefined and travels on.
   #[test]
   fn floor_price_separates_the_floor_from_the_poison_check() {
     assert_eq!(floor_price(-1e-12), 0.0);

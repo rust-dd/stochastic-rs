@@ -1,12 +1,11 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::QuantError;
 
-/// Cross-arch tolerance: these goldens come from `biv_norm` and
-/// `norm_cdf`, whose last bit is a hostage to FMA contraction and libm
-/// differences between the aarch64-darwin dev machine and CI's ubuntu
-/// x86_64.
+/// The goldens' last bit is `biv_norm`'s and `norm_cdf`'s, which FMA contraction and libm move
+/// between aarch64-darwin and CI's ubuntu x86_64.
 const TOL: f64 = 1e-12;
 
 /// Pinned prices for all four payoffs; `PutOnMin` and `PutOnMax` route through `MargrabePricer`.
@@ -24,9 +23,8 @@ fn stulz_matches_pre_refactor_goldens() {
     assert!((got - want).abs() < TOL, "{payoff:?} {got}");
   }
 
-  // Asymmetric: distinct spots, strike, both dividend yields, a negative
-  // correlation and a non-unit maturity, so a query field left behind on
-  // the struct could not survive by coinciding with a default.
+  // Distinct spots, strike and yields, a negative correlation and a non-unit maturity, so no query
+  // value left on the struct can pass by matching a default.
   let asymmetric = [
     (RainbowPayoff::CallOnMin, 4.089461008811323),
     (RainbowPayoff::CallOnMax, 39.80815996542313),
@@ -40,7 +38,7 @@ fn stulz_matches_pre_refactor_goldens() {
   }
 }
 
-/// One model instance prices a whole strike grid — the point of the split.
+/// One model instance prices a whole strike grid.
 #[test]
 fn stulz_one_model_prices_a_strike_grid() {
   let model = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, 0.25, 0.30, 0.4);
@@ -51,9 +49,8 @@ fn stulz_one_model_prices_a_strike_grid() {
   );
 }
 
-/// The maturity is a query argument, so one instance covers a term
-/// structure. A `tau` cached at construction would return the same number
-/// three times.
+/// One instance covers a term structure, which a `tau` cached at construction would answer with
+/// one number.
 #[test]
 fn stulz_one_model_prices_a_maturity_grid() {
   let model = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, 0.25, 0.30, 0.4);
@@ -105,6 +102,7 @@ fn stulz_min_matches_mc() {
     array![[1.0, 0.4], [0.4, 1.0]],
     200_000,
   )
+  .with_seed(Deterministic::new(42))
   .price(s.view(), 100.0, 0.05, q.view(), 1.0);
   let rel = (stulz - mc.mean).abs() / stulz.max(1e-10);
   assert!(rel < 0.03, "stulz={stulz}, mc={mc}, rel={rel}");
@@ -145,20 +143,16 @@ fn mc_call_on_max_above_min() {
     rho[[i, i]] = 1.0;
   }
   let mc_max = McRainbowPricer::new(RainbowPayoff::CallOnMax, sig.clone(), rho.clone(), 50_000)
+    .with_seed(Deterministic::new(42))
     .price(s.view(), 100.0, 0.05, q.view(), 1.0);
-  let mc_min = McRainbowPricer::new(RainbowPayoff::CallOnMin, sig, rho, 50_000).price(
-    s.view(),
-    100.0,
-    0.05,
-    q.view(),
-    1.0,
-  );
+  let mc_min = McRainbowPricer::new(RainbowPayoff::CallOnMin, sig, rho, 50_000)
+    .with_seed(Deterministic::new(42))
+    .price(s.view(), 100.0, 0.05, q.view(), 1.0);
   assert!(mc_max.mean > mc_min.mean);
 }
 
-/// One Monte Carlo model instance prices a whole strike grid. The
-/// strikes are far enough apart that the ordering survives the sampling
-/// error of independent simulations.
+/// One Monte Carlo instance prices a strike grid; its pinned seed gives every strike the same
+/// paths, so the order holds path by path.
 #[test]
 fn mc_rainbow_one_model_prices_a_strike_grid() {
   let s = array![100.0, 100.0];
@@ -168,7 +162,8 @@ fn mc_rainbow_one_model_prices_a_strike_grid() {
     array![0.25, 0.30],
     array![[1.0, 0.4], [0.4, 1.0]],
     50_000,
-  );
+  )
+  .with_seed(Deterministic::new(42));
   let prices = [80.0, 100.0, 130.0].map(|k| model.price(s.view(), k, 0.05, q.view(), 1.0).mean);
   assert!(
     prices[0] > prices[1] && prices[1] > prices[2],
@@ -176,9 +171,8 @@ fn mc_rainbow_one_model_prices_a_strike_grid() {
   );
 }
 
-/// The model fixes how many assets there are; a query that disagrees is
-/// reported by `try_price` as an `Err`, not a panic. Pinned because that
-/// is the reason the check did not move to the constructor.
+/// A query whose asset count disagrees with the model's is `try_price`'s `Err`, not a panic, which
+/// is why the check stays out of the constructor.
 #[test]
 fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
   let model = McRainbowPricer::new(
@@ -202,9 +196,7 @@ fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
   );
 }
 
-/// A correlation matrix that is symmetric but not positive definite is
-/// also an `Err` rather than a panic — the other half of what keeps the
-/// constructor unguarded.
+/// A symmetric `rho` that is not positive definite is `try_price`'s `Err` too, not a panic.
 #[test]
 fn mc_rainbow_try_price_reports_a_non_spd_correlation() {
   let model = McRainbowPricer::new(
@@ -224,19 +216,12 @@ fn mc_rainbow_try_price_reports_a_non_spd_correlation() {
   );
 }
 
-/// `StulzRainbowPricer::new` rejects a parameter that is not a
-/// volatility or not a correlation; `McRainbowPricer::new` rejects only
-/// the volatilities and the path count, leaving `rho` and the shapes to
-/// `try_price`.
-///
-/// The two messages are prefixed by their own type, so a `should_panic`
-/// anchored on one cannot be satisfied by the other firing.
+/// Stulz's `new` refuses a volatility or correlation off its domain, the Monte Carlo one the
+/// volatilities and the path count, leaving `rho` and the shapes to `try_price`.
 mod construction_validation {
   use super::*;
 
-  /// The negative call: `CallOnMax` at `sigma2 = -0.30` prices at
-  /// **-11.382123**, while the `CallOnMin` leg of the same model returns
-  /// a plausible `14.204697` against the correct `6.572032`.
+  /// `sigma2 = −0.3` priced `CallOnMax` at `−11.382123`, `CallOnMin` at `14.204697` for `6.572032`.
   #[test]
   #[should_panic(
     expected = "sigma2 must satisfy `sigma2.is_finite() && sigma2 >= 0.0`, got sigma2 = -0.3"
@@ -254,11 +239,8 @@ mod construction_validation {
     let _ = StulzRainbowPricer::new(RainbowPayoff::CallOnMin, -0.20, 0.30, 0.5);
   }
 
-  /// Not a wrong number — an assertion inside the third-party
-  /// `owens_t::biv_norm` whose message is the bare offending float,
-  /// `13000000.000000002`, naming neither the parameter nor the pricer.
-  /// The same `rho` is a silent wrong number on the `PutOnMin` /
-  /// `PutOnMax` legs, which route through `MargrabePricer`.
+  /// `rho = 5` tripped `owens_t::biv_norm`'s bare `13000000.000000002` on the calls and gave the
+  /// puts, through `MargrabePricer`, a silent wrong number.
   #[test]
   #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 5.0")]
   fn stulz_rejects_a_correlation_above_one() {
@@ -309,10 +291,8 @@ mod construction_validation {
     );
   }
 
-  /// The deliberate omission, pinned so it cannot drift: an out-of-range
-  /// `rho` entry stays constructible, because
-  /// `mc_rainbow_try_price_reports_a_non_spd_correlation` needs it to
-  /// reach `try_price` and come back as an `Err` rather than a panic.
+  /// An out-of-range `rho` builds, so `mc_rainbow_try_price_reports_a_non_spd_correlation` reaches
+  /// `try_price` and its `Err`.
   #[test]
   fn mc_rainbow_leaves_the_correlation_matrix_to_try_price() {
     let model = McRainbowPricer::new(

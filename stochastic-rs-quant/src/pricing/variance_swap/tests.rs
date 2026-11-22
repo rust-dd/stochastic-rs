@@ -123,9 +123,8 @@ fn replication_is_nan_at_a_maturity_that_is_not_positive() {
   }
 }
 
-/// The trapezoidal weights read `strikes[i±1]`, so one strike is not a
-/// coarse strip — it is not a strip. Checked at both reachable lengths so
-/// the guard cannot pass on the empty case alone.
+/// The trapezoidal weights read `strikes[i±1]`, so a strip needs two strikes; both shorter lengths
+/// are checked, so the guard cannot pass on the empty case alone.
 #[test]
 fn replication_rejects_a_strip_shorter_than_two_strikes() {
   for (strikes, prices) in [(&[][..], &[][..]), (&[100.0][..], &[2.0][..])] {
@@ -142,11 +141,8 @@ fn replication_rejects_a_strip_shorter_than_two_strikes() {
   }
 }
 
-/// The guards above are worth nothing if a `NaN` can still arrive as
-/// `0.0`, and `f64::max` hands back the finite operand when the other is
-/// `NaN` — so the final floor had to learn to test first. A `NaN` option
-/// price is the reachable source: the strikes are `debug_assert`ed finite,
-/// the prices never were.
+/// A NaN price, the reachable one as only the strikes are `debug_assert`ed finite, stays NaN
+/// rather than meeting `f64::max`'s floor, which hands back the finite operand.
 #[test]
 fn replication_does_not_floor_a_nan_price_to_zero() {
   let strikes = [90.0, 100.0, 110.0];
@@ -350,9 +346,8 @@ fn heston_fair_strike_keeps_a_nan_kappa_at_the_long_run_mean() {
   }
 }
 
-/// `tau == 0` is the genuine $T \to 0$ limit of
-/// $\frac{1-e^{-\kappa T}}{\kappa T} \to 1$, not a sentinel, so it keeps
-/// returning `v0` — the negative-maturity guard must not take it with it.
+/// `tau == 0` is the true limit `v0` of $\frac{1-e^{-\kappa T}}{\kappa T} \to 1$, not a sentinel,
+/// which the negative-maturity guard leaves alone.
 #[test]
 fn heston_fair_strike_zero_maturity_stays_the_v0_limit() {
   assert_eq!(

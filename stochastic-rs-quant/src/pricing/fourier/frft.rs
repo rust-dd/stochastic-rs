@@ -7,9 +7,9 @@
 //! \qquad k = 0,\dots,N-1
 //! $$
 //!
-//! Reference: Bailey, D.H. & Swarztrauber, P.N. (1991), "The fractional Fourier transform and applications", SIAM Review 33(3), 389–404
-//! Reference: Chourdakis, K. (2005), "Option pricing using the fractional FFT", Journal of Computational Finance 8(2), 1–18
-//! Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in Heston-like models", Mathematical Finance 20(4), §4
+//! Reference: Bailey & Swarztrauber (1991), SIAM Rev. 33(3), 389–404
+//! Reference: Chourdakis (2005), J. Comput. Finance 8(2), 1–18
+//! Reference: Lord & Kahl (2010), Math. Finance 20(4), §4
 
 use std::f64::consts::PI;
 
@@ -68,10 +68,8 @@ pub(crate) fn frft(x: ArrayView1<Complex64>, gamma: f64) -> Array1<Complex64> {
   out
 }
 
-/// FRFT-based Carr-Madan pricer with grid centring on the model-implied
-/// log-asset mean. Unlike [`super::pricer::CarrMadanPricer`] the
-/// integration step `eta` and the log-strike step `lambda` are
-/// independent.
+/// Carr–Madan on the fractional FFT, its grid centred on the model's log-asset mean, with `eta`
+/// and the log-strike step `lambda` independent, unlike [`super::pricer::CarrMadanPricer`].
 #[derive(Debug, Clone)]
 pub struct FrftCarrMadanPricer {
   /// Number of FFT points (must be a power of two).
@@ -271,10 +269,8 @@ mod tests {
     }
   }
 
-  /// FRFT Carr-Madan must match the analytic Black-Scholes call. The
-  /// reference value 7.94871378854164 is the same one the standard
-  /// Carr-Madan / Lewis / Gil-Pelaez tests pin. The centred grid should
-  /// hit it far tighter than the 0-centred standard pricer.
+  /// Centred FRFT Carr–Madan against Black–Scholes' `7.94871378854164`, which the Carr–Madan, Lewis
+  /// and Gil–Pelaez tests also pin, tighter than the 0-centred FFT reaches.
   #[test]
   fn frft_carr_madan_bsm_reference() {
     let model = BsmFourier { sigma: 0.15 };
@@ -287,9 +283,8 @@ mod tests {
     );
   }
 
-  /// Centred FRFT must agree with Gil-Pelaez (the quadrature reference)
-  /// for Heston across a strike ladder, tighter than the loose Fourier
-  /// tolerance the 0-centred FFT needs.
+  /// Centred FRFT agrees with Gil–Pelaez on a Heston strike ladder, tighter than the 0-centred FFT
+  /// and its loose Fourier tolerance.
   #[test]
   fn frft_carr_madan_heston_matches_gil_pelaez() {
     let model = HestonFourier::new(HestonParams {

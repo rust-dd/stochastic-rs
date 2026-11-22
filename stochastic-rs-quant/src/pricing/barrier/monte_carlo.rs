@@ -10,9 +10,11 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::BarrierType;
 use crate::OptionType;
+use crate::pricing::digital::not_positive;
 use crate::pricing::exotic::BarrierOption;
 use crate::pricing::exotic::assert_sigma;
 use crate::pricing::mc_stats::par_estimate;
+use crate::traits::RealExt;
 
 /// Monte Carlo price of the [`BarrierOption`] the closed form prices, rebate included, on
 /// `n_paths` Gbm paths monitored at each of `n_steps` steps and at the spot.
@@ -58,8 +60,8 @@ impl<S: SeedExt> McBarrierPricer<S> {
     }
   }
 
-  /// Discounted estimate under the log drift `(r − q − σ²/2) dt`; NaN for a NaN query or term,
-  /// `tau < 0` or a spot not positive before expiry, as the closed form.
+  /// Discounted estimate under the drift `(r − q − σ²/2) dt`; NaN from no path for a NaN query and
+  /// wherever [`BarrierPricer`](super::BarrierPricer) is, which reads a strike or rebate it pays.
   pub fn price(&self, option: &BarrierOption, s: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
     let BarrierOption {
       strike: k,
@@ -68,8 +70,22 @@ impl<S: SeedExt> McBarrierPricer<S> {
       barrier_type,
       option_type,
     } = *option;
-    let undefined = [s, r, q, tau, k, h, rebate].iter().any(|x| x.is_nan());
-    if undefined || tau < 0.0 || (s <= 0.0 && tau > 0.0) {
+    let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
+    let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
+    let breached = |x: f64| if up { x >= h } else { x <= h };
+    let (knocked, expiring) = (breached(s), tau == 0.0);
+    // A knocked-out option pays only its rebate and a knocked-in one its payoff; an unbreached one
+    // may pay either before expiry, and at it a knock-out its payoff and a knock-in its rebate.
+    let live = !knocked && !expiring;
+    let (pays_payoff, pays_rebate) = (knocked == knock_in || live, knocked != knock_in || live);
+    let strike_off = k.is_nan() || (!expiring && not_positive(&[k]));
+    let undefined = [s, r, q].iter().any(|x| x.is_nan()) || !h.is_finite();
+    if undefined
+      || !(0.0..f64::INFINITY).contains(&tau)
+      || (!expiring && s <= 0.0)
+      || (pays_payoff && strike_off)
+      || (pays_rebate && rebate.is_nan())
+    {
       return McEstimate {
         mean: f64::NAN,
         std_err: f64::NAN,
@@ -80,9 +96,6 @@ impl<S: SeedExt> McBarrierPricer<S> {
     let drift = (r - q - 0.5 * self.sigma * self.sigma) * dt;
     let vol = self.sigma * dt.sqrt();
     let discount = (-r * tau).exp();
-    let up = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::UpAndOut);
-    let knock_in = matches!(barrier_type, BarrierType::UpAndIn | BarrierType::DownAndIn);
-    let breached = |x: f64| if up { x >= h } else { x <= h };
     let base_seed = self.seed.clone().next_seed();
 
     let payoff_of = |path: usize| -> f64 {
@@ -103,8 +116,8 @@ impl<S: SeedExt> McBarrierPricer<S> {
       }
 
       let payoff = match option_type {
-        OptionType::Call => (s_curr - k).max(0.0),
-        OptionType::Put => (k - s_curr).max(0.0),
+        OptionType::Call => (s_curr - k).max_or_nan(0.0),
+        OptionType::Put => (k - s_curr).max_or_nan(0.0),
       };
       match (knock_in, hit) {
         (true, Some(_)) | (false, None) => payoff,

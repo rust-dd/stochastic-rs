@@ -12,9 +12,8 @@ use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
 use crate::traits::ToModel;
 
-/// Analytical reference Heston prices at
-/// (v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7),
-/// S=100, r=0.05, q=0, T=1.
+/// Heston calls at `(v0, κ, θ, σ, ρ) = (0.04, 1.5, 0.04, 0.3, −0.7)`, `S = 100`, `r = 0.05`,
+/// `q = 0`, `T = 1`.
 const HESTON_REF: [f64; 9] = [
   25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
 ];
@@ -326,10 +325,8 @@ fn the_fit_converts_to_the_hkde_model_of_its_parameters() {
   assert_eq!(fit.to_model().params(), fit.params);
 }
 
-/// The SHOP parameter set from Agazzotti et al. (2025), Table 1, is fully
-/// admissible. Check that the projection is a no-op on it: this guarantees
-/// that the published Table 1 numbers can be used verbatim as inputs to
-/// our calibrator / pricer without silent clipping.
+/// The projection leaves the SHOP set of Agazzotti et al. (2025), Table 1, as it is, so the
+/// published numbers reach the calibrator and the pricer unclipped.
 #[test]
 fn the_published_shop_set_is_admissible() {
   let original = SHOP;
@@ -350,10 +347,8 @@ fn the_published_shop_set_is_admissible() {
   );
 }
 
-/// Self-consistency test against the published SHOP calibration
-/// (Agazzotti et al. 2025, Table 1). We generate synthetic market prices
-/// from the paper's SHOP parameters and verify the calibrator recovers
-/// them starting from a perturbed guess.
+/// From a perturbed start the calibrator recovers the SHOP set of Agazzotti et al. (2025), Table 1,
+/// from the prices it implies.
 #[test]
 fn the_published_shop_set_is_recovered_from_its_own_prices() {
   let truth = SHOP;

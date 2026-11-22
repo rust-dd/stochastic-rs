@@ -184,6 +184,45 @@ def test_hscm_quotes_must_share_one_rate():
         sr.HscmCalibrator(100.0, options)
 
 
+HSCM = dict(v0=0.04, kappa_v=2.0, theta_v=0.04, sigma_v=0.3, rho0=-0.7, kappa_r=5.0, mu_r=-0.5, sigma_r=0.2, rho2=0.3)
+
+
+@pytest.mark.parametrize(
+    "field, value, want",
+    [
+        ("v0", float("nan"), r"v0 must satisfy `v0\.is_finite\(\) && v0 >= 0\.0`, got v0 = NaN"),
+        ("sigma_r", float("inf"), r"sigma_r must satisfy `sigma_r\.is_finite\(\) && sigma_r >= 0\.0`, got sigma_r = inf"),
+        ("kappa_v", float("inf"), r"kappa_v must satisfy `kappa_v\.is_finite\(\)`, got kappa_v = inf"),
+        ("kappa_r", float("nan"), r"kappa_r must satisfy `kappa_r\.is_finite\(\)`, got kappa_r = NaN"),
+        ("kappa_v", -2.0, r"kappa_v must satisfy `kappa_v \* theta_v >= 0\.0`, got kappa_v = -2\.0"),
+        ("rho2", float("nan"), r"rho2 must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&rho2\)`, got rho2 = NaN"),
+    ],
+)
+def test_the_hscm_model_refuses_what_its_rust_constructor_refuses(field, value, want):
+    with pytest.raises(ValueError, match=want):
+        sr.HscmModel(**{**HSCM, field: value})
+
+
+def test_the_hscm_model_builds_where_its_rust_constructor_does():
+    call = sr.HscmModel(**HSCM).price_call(100.0, 100.0, 0.05, 0.0, 0.5)
+    assert 0.0 < call < 100.0
+    for edge in [dict(v0=0.0, theta_v=0.0, sigma_v=0.0, sigma_r=0.0), dict(rho0=-1.0, mu_r=1.0, rho2=1.0)]:
+        sr.HscmModel(**{**HSCM, **edge})
+
+
+@pytest.mark.parametrize(
+    "build, want",
+    [
+        (lambda q: sr.BSMPricer(v=-0.2, **q), r"sigma must satisfy `sigma\.is_nan\(\) \|\| \(sigma\.is_finite\(\) && sigma >= 0\.0\)`, got sigma = -0\.2"),
+        (lambda q: sr.BachelierPricer(v=float("inf"), **q), r"sigma must satisfy `sigma\.is_finite\(\) && sigma >= 0\.0`, got sigma = inf"),
+        (lambda q: sr.QuantoPricer(v=0.2, r_f=0.05, v_fx=0.12, rho=1.5, fixed_rate=1.5, **q), r"rho must satisfy `\(-1\.0\.\.=1\.0\)\.contains\(&rho\)`, got rho = 1\.5"),
+    ],
+)
+def test_a_vanilla_pricer_refuses_a_volatility_or_correlation_off_its_domain(build, want):
+    with pytest.raises(ValueError, match=want):
+        build(dict(s=100.0, k=100.0, r=0.05, tau=1.0))
+
+
 def test_a_regularization_anchor_that_is_not_finite_is_refused_at_construction():
     slices = [sr.MarketSlice([90.0, 100.0, 110.0], [12.0, 6.0, 2.5], [True] * 3, 0.5)]
     anchor = [0.04, float("nan"), 0.04, 0.5, -0.5]
