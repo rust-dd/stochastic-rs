@@ -69,13 +69,10 @@ testpaths = ["stochastic-rs-py/tests"]
 python_files = "test_*.py"
 addopts = "-q"
 
-# The Python module is produced by the `stochastic-rs-py` cdylib crate (see
-# stochastic-rs-py/Cargo.toml), not by the workspace umbrella `stochastic-rs`
-# (which is a regular `lib`). `manifest-path` redirects maturin to the right
-# crate so `maturin build` / `maturin develop` work from the workspace root.
+# The module comes from the `stochastic-rs-py` cdylib, not the umbrella `lib`; `manifest-path`
+# points maturin at it, so `maturin build` and `maturin develop` run from the workspace root.
 [tool.maturin]
 manifest-path = "stochastic-rs-py/Cargo.toml"
 module-name = "stochastic_rs"
-# `features` is intentionally NOT pinned here. Linear algebra is pure Rust
-# (`faer`), so wheels build identically on every platform with no
-# platform-specific feature flags and no system BLAS.
+# No `features` pinned: the linear algebra is pure Rust (`faer`), so every platform builds the same
+# wheel with no feature flags and no system BLAS.

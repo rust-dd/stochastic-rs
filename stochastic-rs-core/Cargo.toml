@@ -15,7 +15,8 @@ categories = ["algorithms", "mathematics", "simulation"]
 [features]
 default = []
 python = ["dep:ndarray"]
-# Experimental `SimdRngDual` engine (two interleaved xoshiro streams); its seeded stream differs from `SimdRng`.
+# Experimental `SimdRngDual` engine (two interleaved xoshiro streams); its seeded stream differs
+# from `SimdRng`.
 unstable-dual-stream-rng = []
 
 [dependencies]

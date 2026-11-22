@@ -15,7 +15,8 @@ categories = ["mathematics", "science", "algorithms"]
 [features]
 default = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
-# Enables the experimental `SimdRngDual` engine for seeded streams: ~2–6 % faster bulk Normal fills on NEON, Exp at parity.
+# The experimental `SimdRngDual` engine for seeded streams: ~2–6 % faster bulk Normal fills on NEON,
+# Exp at parity.
 unstable-dual-stream-rng = ["stochastic-rs-core/unstable-dual-stream-rng"]
 
 [dependencies]
@@ -33,21 +34,8 @@ stochastic-rs-core = { workspace = true }
 wide = { workspace = true }
 
 [dev-dependencies]
-# `statrs` is dev-only — used to cross-validate closed-form `DistributionExt`
-# impls in `tests/distribution_ext_vs_reference.rs`. Production code never
-# delegates to statrs.
+# Dev-only, for `tests/distribution_ext_vs_reference.rs`; the library never delegates to statrs.
 statrs = { workspace = true }
-# Dev-only back-edge: `stochastic-rs-stats` (regular dep) depends on this
-# crate, so this is a dev-dependency cycle — legal in Cargo because
-# dev-dependencies never enter the library build, only `tests/`. Used for
-# the shared Kolmogorov-Smirnov / chi-square goodness-of-fit tests in
-# `stochastic_rs_stats::goodness_of_fit` rather than a fourth copy-pasted
-# KS helper in this crate's own test suite.
-#
-# Declared path-only, deliberately: a dev-dependency carrying a `version`
-# makes `cargo publish` demand that version already be on crates.io, and
-# `stochastic-rs-stats` cannot be there first because it depends on this
-# crate. Cargo strips path-only dev-dependencies from the published
-# manifest, so local `cargo test` keeps the back-edge and the registry
-# never sees the cycle.
+# A dev-only cycle (stats depends on this crate) for stats' shared goodness-of-fit tests; path-only,
+# as `cargo publish` strips a path-only dev-dependency but needs a versioned one on crates.io first.
 stochastic-rs-stats = { path = "../stochastic-rs-stats" }
