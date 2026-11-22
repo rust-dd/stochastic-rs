@@ -227,7 +227,7 @@ mod tests {
     let _ = QuantoPricer::new(0.2, 0.12, 0.3, f64::NAN, 1.5);
   }
 
-  /// `E_p` converts the payoff at a price of domestic per foreign currency, which is never negative.
+  /// `E_p` converts the payoff at a price of domestic per foreign currency, never a negative one.
   #[test]
   #[should_panic(
     expected = "fixed_rate must satisfy `fixed_rate.is_finite() && fixed_rate >= 0.0`, got fixed_rate = -1.5"
