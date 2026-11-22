@@ -397,10 +397,10 @@ pub(crate) fn not_positive(values: &[f64]) -> bool {
   !values.iter().all(|&x| x > 0.0)
 }
 
-/// Whether a formula that reads `ln s`, `ln k` and `e^{−rτ}` has a value: no spot or strike
-/// [`not_positive`], and every spot, strike and rate finite.
-pub(crate) fn in_log_domain(spots: &[f64], rates: &[f64]) -> bool {
-  !not_positive(spots) && spots.iter().chain(rates).all(|x| x.is_finite())
+/// Whether a formula that reads `ln s`, `ln k` and `e^{−rτ}` has a value: each of `positives`, the
+/// spots and strikes, finite and `> 0`, and each of `rates` finite.
+pub(crate) fn in_log_domain(positives: &[f64], rates: &[f64]) -> bool {
+  !not_positive(positives) && positives.iter().chain(rates).all(|x| x.is_finite())
 }
 
 /// `+1` for a call and `−1` for a put: the put's `N(−d)` differentiates to `−φ(d)`.
