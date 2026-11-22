@@ -331,17 +331,19 @@ fn a_correlation_held_at_its_bound_is_on_it_not_beside_it() {
   );
 }
 
-/// A restart from a minimum stays there, so a `converged` fit's own point is not improved tenfold.
+/// A restart from a minimum stays there: the default fit, `converged` or at its budget as the
+/// build's sine and cosine round, is not improved tenfold from its own point.
 #[test]
-fn the_default_fit_is_not_converged_where_a_restart_improves_it_tenfold() {
+fn the_default_fit_is_not_improved_tenfold_by_a_restart() {
   let calibrator = || DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
   let fit = calibrator().calibrate(None).unwrap();
   let again = calibrator().with_start(fit.params).calibrate(None).unwrap();
   let rmse = |fit: &Calibrated<DoubleHestonParams>| fit.loss.get(LossMetric::Rmse);
   let (first, second) = (rmse(&fit), rmse(&again));
   assert!(
-    !fit.converged || 10.0 * second >= first,
-    "{first:e} converged, {second:e} from it"
+    10.0 * second >= first,
+    "{first:e} ({:?}), {second:e} from it",
+    fit.message
   );
 }
 
