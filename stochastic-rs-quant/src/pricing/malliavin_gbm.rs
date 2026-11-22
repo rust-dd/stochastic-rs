@@ -39,15 +39,21 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
   0.5 * (1.0 + x.signum() * (1.0 - (-(x.abs()) / l).exp()))
 }
 
-/// A query no path is simulated for: the payoff at a zero horizon, and no price for a non-finite
-/// query, a spot or strike that is not positive, or a horizon at or inside `t_eval`.
+/// A query no path is simulated for: the payoff at a zero horizon, the certain path at `sigma = 0`,
+/// and NaN for a non-finite query, a spot or strike that is not positive, or `tau <= t_eval`.
 enum Degenerate {
   OffDomain,
   ZeroHorizon,
+  Certain {
+    r: f64,
+    q: f64,
+    tau: f64,
+    t_eval: f64,
+  },
 }
 
 impl Degenerate {
-  fn of(s: f64, k: f64, r: f64, q: f64, tau: f64, t_eval: f64) -> Option<Self> {
+  fn of(s: f64, k: f64, r: f64, q: f64, tau: f64, t_eval: f64, sigma: f64) -> Option<Self> {
     let finite = [s, k, r, q, tau].iter().all(|x| x.is_finite());
     if !finite || tau < 0.0 {
       Some(Self::OffDomain)
@@ -55,31 +61,40 @@ impl Degenerate {
       Some(Self::ZeroHorizon)
     } else if s <= 0.0 || k <= 0.0 || tau <= t_eval {
       Some(Self::OffDomain)
+    } else if sigma == 0.0 {
+      Some(Self::Certain { r, q, tau, t_eval })
     } else {
       None
     }
   }
 
   fn price_call_put(&self, s: f64, k: f64) -> CallPut {
-    let (call, put) = match self {
+    let (call, put) = match *self {
       Self::OffDomain => (f64::NAN, f64::NAN),
       Self::ZeroHorizon => ((s - k).max_or_nan(0.0), (k - s).max_or_nan(0.0)),
+      Self::Certain { r, q, tau, .. } => {
+        let (forward, discount) = (s * ((r - q) * tau).exp(), (-r * tau).exp());
+        let call = discount * (forward - k).max_or_nan(0.0);
+        (call, discount * (k - forward).max_or_nan(0.0))
+      }
     };
     CallPut { call, put }
   }
 
   /// The spot at `t_eval` and the conditional call there, on each of `m` paths.
   fn conditional(&self, s: f64, k: f64, m: usize) -> (Array1<f64>, Array1<f64>) {
-    match self {
-      Self::OffDomain => (
-        Array1::from_elem(m, f64::NAN),
-        Array1::from_elem(m, f64::NAN),
-      ),
-      Self::ZeroHorizon => (
-        Array1::from_elem(m, s),
-        Array1::from_elem(m, (s - k).max_or_nan(0.0)),
-      ),
-    }
+    let (s_t, c_t) = match *self {
+      Self::OffDomain => (f64::NAN, f64::NAN),
+      Self::ZeroHorizon => (s, (s - k).max_or_nan(0.0)),
+      Self::Certain { r, q, tau, t_eval } => {
+        let payoff = (s * ((r - q) * tau).exp() - k).max_or_nan(0.0);
+        (
+          s * ((r - q) * t_eval).exp(),
+          (-r * (tau - t_eval)).exp() * payoff,
+        )
+      }
+    };
+    (Array1::from_elem(m, s_t), Array1::from_elem(m, c_t))
   }
 }
 
@@ -166,10 +181,10 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     self.t_eval
   }
 
-  /// Call and put from one simulation of the plain Malliavin estimator, the payoff at `tau = 0`;
-  /// NaN off the query's domain, at `tau <= t_eval`, and where no path has a finite estimate.
+  /// Call and put from one simulation of the plain estimator, or none at `tau = 0` or `sigma = 0`,
+  /// where the path is certain; NaN off the domain, at `tau <= t_eval` or with no finite estimate.
   pub fn price_call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
-    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
       return limit.price_call_put(s, k);
     }
     let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
@@ -228,7 +243,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   /// Call and put from one simulation of the localized estimator, at
   /// [`price_call_put`](Self::price_call_put)'s limits.
   pub fn price_call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> CallPut {
-    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
       return limit.price_call_put(s, k);
     }
     let (_s_t, c_t) = self.conditional_call_malliavin_localized(s, k, r, q, tau);
@@ -278,7 +293,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
-    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
       return limit.conditional(s, k, self.n_paths);
     }
     let t_eval = self.t_eval;
@@ -356,7 +371,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
-    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval) {
+    if let Some(limit) = Degenerate::of(s, k, r, q, tau, self.t_eval, self.sigma) {
       return limit.conditional(s, k, self.n_paths);
     }
     let t_eval = self.t_eval;

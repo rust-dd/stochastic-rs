@@ -195,13 +195,47 @@ fn negative_bandwidth_is_rejected_by_the_cdf_too() {
   let _ = laplace_cdf(0.5, -1.0);
 }
 
-/// At `sigma = 0` no Brownian increment `dS/(σS)` is finite, so no path has an estimate and the
-/// price is NaN, not the empty average's `0.0`.
+/// A spot of `1e20` puts every weight `w ∝ 1/S_t` under the denominator's `1e-14` floor, so no path
+/// has an estimate and the price is NaN, not the empty average's `0.0`.
 #[test]
 fn no_finite_pathwise_estimate_prices_nan() {
-  let p = GbmMalliavinPricer::new(0.0, 64, 16, 0.5).with_seed(Deterministic::new(SEEDS[0]));
-  let CallPut { call, put } = p.price_call_put(110.0, 100.0, R, 0.0, TAU);
+  let p = GbmMalliavinPricer::new(0.1, 64, 16, 0.5).with_seed(Deterministic::new(SEEDS[0]));
+  let CallPut { call, put } = p.price_call_put(1e20, 1e20, R, 0.0, TAU);
   assert!(call.is_nan() && put.is_nan(), "({call}, {put})");
+}
+
+/// At `sigma = 0` the path `S e^{(r−q)t}` is certain, so both estimators price its discounted
+/// payoff and both conditionals hold its `S_t` and conditional call, as `BarrierPricer` does.
+#[test]
+fn a_zero_volatility_prices_the_certain_path() {
+  let p = GbmMalliavinPricer::new(0.0, 64, 16, 0.5).with_seed(Deterministic::new(SEEDS[0]));
+  let k = 100.0;
+  for (s, q) in [(110.0, 0.0), (90.0, 0.0), (110.0, 0.03)] {
+    let (carried, strike) = (s * (-q * TAU).exp(), k * (-R * TAU).exp());
+    let plain = p.price_call_put(s, k, R, q, TAU);
+    let off_call = (plain.call - (carried - strike).max(0.0)).abs();
+    let off_put = (plain.put - (strike - carried).max(0.0)).abs();
+    assert!(off_call < 1e-12 && off_put < 1e-12, "({s}, {q}): {plain:?}");
+    assert_eq!(
+      p.price_call_put_localized(s, k, R, q, TAU),
+      plain,
+      "({s}, {q})"
+    );
+    for (s_t, c_t) in [
+      p.conditional_call_malliavin(s, k, R, q, TAU),
+      p.conditional_call_malliavin_localized(s, k, R, q, TAU),
+    ] {
+      let on_path = s_t
+        .iter()
+        .all(|x| (x - s * ((R - q) * 0.5).exp()).abs() < 1e-12);
+      let towered = c_t
+        .iter()
+        .all(|c| (c * (-R * 0.5).exp() - plain.call).abs() < 1e-12);
+      assert!(on_path && towered, "({s}, {q}): {s_t} {c_t}");
+    }
+  }
+  let inside = p.price_call_put(110.0, k, R, 0.0, 0.5);
+  assert!(inside.call.is_nan() && inside.put.is_nan(), "{inside:?}");
 }
 
 /// A strike no path reaches zeroes `lf` and empties the localisation sum: the price is finite and
