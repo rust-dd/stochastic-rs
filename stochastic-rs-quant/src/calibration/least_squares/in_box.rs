@@ -516,6 +516,70 @@ mod tests {
     assert!(fitted[0] < 1.0, "{fitted}");
   }
 
+  /// Kou's `p`'s box: `θ₁` is reflected into it, as a Lévy fit folds a raw coordinate.
+  const REFLECTED: (f64, f64) = (0.01, 0.99);
+
+  /// `r = [θ₁ − 1000.97, θ₂ − 3]` with `θ₁` reflected into its box and `θ₂ = x₂`; `reach` is the
+  /// largest raw `|x₁|` the fit has set.
+  struct Reflected {
+    theta: Array1<f64>,
+    slope: f64,
+    reach: f64,
+  }
+
+  impl LeastSquaresProblem for Reflected {
+    fn set_params(&mut self, x: ArrayView1<f64>) {
+      let (lo, hi) = REFLECTED;
+      self.theta = ndarray::array![crate::calibration::periodic_map(x[0], lo, hi), x[1]];
+      self.slope = crate::calibration::periodic_slope(x[0], lo, hi);
+      self.reach = self.reach.max(x[0].abs());
+    }
+
+    fn params(&self) -> Array1<f64> {
+      self.theta.clone()
+    }
+
+    fn residuals(&mut self) -> Option<Array1<f64>> {
+      Some(ndarray::array![
+        self.theta[0] - 1000.97,
+        self.theta[1] - 3.0
+      ])
+    }
+
+    fn jacobian(&self) -> Option<Array2<f64>> {
+      Some(ndarray::array![[self.slope, 0.0], [0.0, 1.0]])
+    }
+  }
+
+  /// The first step sends `x₁` a thousand periods out, where its fold reaches the bound only to
+  /// its own spacing: the held `θ₁` is reported as 0.99 itself, on every libm.
+  #[test]
+  fn a_coordinate_held_on_its_bound_from_far_outside_its_box_is_reported_on_it() {
+    let rooms = |x: ArrayView1<f64>| {
+      let (lo, hi) = REFLECTED;
+      let folded = ndarray::array![crate::calibration::periodic_map(x[0], lo, hi), x[1]];
+      let slopes = ndarray::array![crate::calibration::periodic_slope(x[0], lo, hi), 1.0];
+      room(
+        &folded,
+        &[REFLECTED, (f64::NEG_INFINITY, FREE)],
+        slopes.view(),
+      )
+    };
+    let problem = Reflected {
+      theta: ndarray::array![0.5, 1e4],
+      slope: 1.0,
+      reach: 0.0,
+    };
+    let (fitted, report) = minimize_in_box(problem, LmOptions::default(), rooms);
+    assert!(
+      report.converged && fitted.reach > 1000.0,
+      "{report:?}, {}",
+      fitted.reach
+    );
+    assert_eq!(fitted.theta[0], 0.99, "{}", fitted.theta);
+    assert!((fitted.theta[1] - 3.0).abs() < 1e-9, "{}", fitted.theta);
+  }
+
   /// The first rests 1e-6 from a bound the cost falls across: its step is 1 and then 2e-7.
   #[test]
   fn a_coordinate_is_in_the_set_only_where_its_own_step_reaches_its_bound() {
