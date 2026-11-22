@@ -88,19 +88,12 @@ impl HscmParams {
   }
 }
 
+/// Through [`HestonStochCorrPricer::new`], so it panics where `new` does.
 impl From<HscmParams> for HestonStochCorrPricer {
   fn from(p: HscmParams) -> Self {
-    Self {
-      v0: p.v0,
-      kappa_v: p.kappa_v,
-      theta_v: p.theta_v,
-      sigma_v: p.sigma_v,
-      rho0: p.rho0,
-      kappa_r: p.kappa_r,
-      mu_r: p.mu_r,
-      sigma_r: p.sigma_r,
-      rho2: p.rho2,
-    }
+    HestonStochCorrPricer::new(
+      p.v0, p.kappa_v, p.theta_v, p.sigma_v, p.rho0, p.kappa_r, p.mu_r, p.sigma_r, p.rho2,
+    )
   }
 }
 
@@ -430,6 +423,16 @@ mod tests {
       matches!(&err, QuantError::InvalidInput { what: "options", reason } if reason.starts_with("tolerance")),
       "{err}"
     );
+  }
+
+  /// The conversion `to_model` reads builds through `new`, so it refuses what `new` refuses.
+  #[test]
+  #[should_panic(expected = "kappa_v must satisfy `kappa_v * theta_v >= 0.0`, got kappa_v = -2.0")]
+  fn the_conversion_to_a_pricer_refuses_what_new_refuses() {
+    let _ = HestonStochCorrPricer::from(HscmParams {
+      kappa_v: -2.0,
+      ..HscmParams::from_values(&DEFAULT_START)
+    });
   }
 
   #[test]
