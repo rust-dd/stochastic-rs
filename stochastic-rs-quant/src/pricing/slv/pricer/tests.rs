@@ -134,8 +134,8 @@ fn price_put_propagates_the_out_of_grid_nan() {
   assert!(p.is_nan(), "parity carries the NaN through, got {p}");
 }
 
-/// A negative spot fails the extent gate, since `x = ln(s)` is NaN and the payoff floor would turn
-/// it into a confident zero.
+/// A spot that is negative or NaN has no price before expiry: `x = ln(s)` would be NaN on every
+/// path.
 #[test]
 fn a_negative_spot_no_longer_prices_as_zero() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -148,8 +148,7 @@ fn a_negative_spot_no_longer_prices_as_zero() {
   );
 }
 
-/// Same laundering on the other axis: `sqrt(dt)` is `NaN` for a negative
-/// `tau`, and the `.max(0.0)` payoff floor turned that into `0.0` too.
+/// A negative maturity is past expiry, where every query is NaN.
 #[test]
 fn a_negative_maturity_no_longer_prices_as_zero() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -157,8 +156,7 @@ fn a_negative_maturity_no_longer_prices_as_zero() {
   assert!(c.is_nan(), "a negative maturity must not price, got {c}");
 }
 
-/// `tau = 0` is the genuine expiry limit, not an edge: it is inside the
-/// covered box and still returns intrinsic value.
+/// `tau = 0` is expiry, which pays the intrinsic value without a path.
 #[test]
 fn zero_maturity_stays_the_intrinsic_limit() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
@@ -167,6 +165,40 @@ fn zero_maturity_stays_the_intrinsic_limit() {
     (c - 10.0).abs() < 1e-9,
     "tau = 0 must still price intrinsic 10.0, got {c}"
   );
+}
+
+/// Before expiry a strike that is not positive has no price, a NaN one included; at `tau = 0` the
+/// payoff stands at any spot and rate, off the leverage grid as on it.
+#[test]
+fn a_strike_that_is_not_positive_is_nan_and_an_expired_query_its_payoff() {
+  let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));
+  let mut apart = Vec::new();
+  for k in [0.0, -5.0, f64::NAN] {
+    let estimate = pricer.price_call_estimate(100.0, k, 0.05, 0.02, 0.5);
+    let put = pricer.price_put(100.0, k, 0.05, 0.02, 0.5);
+    let empty = estimate.std_err.is_nan() && estimate.n_samples == 0;
+    if !(estimate.mean.is_nan() && empty && put.is_nan()) {
+      apart.push(format!("k = {k}: {estimate:?}, put {put}"));
+    }
+  }
+  for (s, k, call) in [
+    (0.0, 100.0, 0.0),
+    (-5.0, 100.0, 0.0),
+    (200.0, 100.0, 100.0),
+    (100.0, 90.0, 10.0),
+    (100.0, 100.0, 0.0),
+  ] {
+    let got = pricer.price_call(s, k, 0.05, 0.02, 0.0);
+    if got != call {
+      apart.push(format!("tau = 0, s = {s}, k = {k}: {got}, not {call}"));
+    }
+  }
+  let anchored = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
+  let got = anchored.price_call(110.0, 100.0, 0.2, 0.0, 0.0);
+  if got != 10.0 {
+    apart.push(format!("tau = 0 at another rate: {got}, not 10"));
+  }
+  assert!(apart.is_empty(), "{apart:#?}");
 }
 
 #[test]

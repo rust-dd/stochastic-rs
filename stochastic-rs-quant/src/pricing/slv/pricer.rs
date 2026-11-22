@@ -8,8 +8,14 @@ use stochastic_rs_stochastic::mc::McEstimate;
 
 use super::HestonSlvParams;
 use super::LeverageSurface;
+use crate::OptionType;
+use crate::pricing::digital::expired;
+use crate::pricing::digital::not_positive;
+use crate::pricing::digital::vanilla_payoff;
+use crate::pricing::mc_stats::pathless;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 /// A queried rate matches the calibration's up to float round-trip noise (rates are about `1e-2`),
@@ -92,15 +98,14 @@ impl<S: SeedExt> HestonSlvPricer<S> {
       .is_none_or(|(r0, q0)| (r - r0).abs() <= RATE_MATCH_TOL && (q - q0).abs() <= RATE_MATCH_TOL)
   }
 
-  /// The call price with its Monte Carlo error bar; NaN in every field, and no sample, where
-  /// [`price_call`](ModelPricer::price_call) is NaN.
+  /// The call price with its Monte Carlo error bar; with no sample, the payoff at `tau = 0` and NaN
+  /// in every field where [`price_call`](ModelPricer::price_call) is NaN.
   pub fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> McEstimate<f64> {
-    if !(self.rates_match(r, q) && self.leverage.covers(s, tau)) {
-      return McEstimate {
-        mean: f64::NAN,
-        std_err: f64::NAN,
-        n_samples: 0,
-      };
+    if let Some(payoff) = expired(tau, &[r, q], || vanilla_payoff(OptionType::Call, s, k)) {
+      return pathless(payoff);
+    }
+    if not_positive(&[s, k]) || !(self.rates_match(r, q) && self.leverage.covers(s, tau)) {
+      return pathless(f64::NAN);
     }
     let n_steps = ((tau * self.steps_per_year as f64).round() as usize).max(1);
     let dt = tau / n_steps as f64;
@@ -138,7 +143,7 @@ impl<S: SeedExt> HestonSlvPricer<S> {
       }
 
       let s_t = x.exp();
-      let payoff = (s_t - k).max(0.0);
+      let payoff = (s_t - k).max_or_nan(0.0);
       payoff_sum += payoff;
       payoff_sq_sum += payoff * payoff;
     }
@@ -153,8 +158,8 @@ impl<S: SeedExt> HestonSlvPricer<S> {
 }
 
 impl<S: SeedExt> ModelPricer for HestonSlvPricer<S> {
-  /// NaN for `(s, tau)` outside [`LeverageSurface::covers`] and, for a pricer from
-  /// [`new`](HestonSlvPricer::new), at rates other than its calibration's.
+  /// The payoff at `tau = 0`; NaN past expiry and, before it, at a spot or strike not positive, an
+  /// `(s, tau)` off [`LeverageSurface::covers`] or rates other than its calibration's.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_call_estimate(s, k, r, q, tau).mean
   }
