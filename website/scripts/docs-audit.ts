@@ -9,7 +9,6 @@ const ROOT = join(import.meta.dir, '..', 'content', 'docs');
 const WORKSPACE = join(import.meta.dir, '..', '..');
 
 let errors = 0;
-const warnings: string[] = [];
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
@@ -96,6 +95,4 @@ if (errors > 0) {
   process.exit(1);
 }
 
-console.log(
-  `✔ docs audit clean (${warnings.length} warning(s); see website/audit/AUDIT_*.md when stamped).`,
-);
+console.log('✔ docs audit clean: lint-mdx, meta.json coverage and RustExample paths.');
