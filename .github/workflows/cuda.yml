@@ -43,7 +43,8 @@ jobs:
           # Debuginfo only bloats the archive the GPU job has to download and unpack.
           CARGO_PROFILE_DEV_DEBUG: "0"
         run: cargo nextest archive -p stochastic-rs-stochastic --features cuda --lib --test device_law --archive-file cuda-tests.tar.zst --locked
-      # The GPU image ships the driver but not NVRTC or cuFFT; NVIDIA's wheels carry the CUDA 12.8 runtime libraries.
+      # The GPU image ships the driver but not NVRTC or cuFFT; NVIDIA's wheels carry the CUDA 12.8
+      # runtime libraries.
       - name: Fetch the NVRTC and cuFFT runtime libraries
         run: |
           python3 -m pip download --no-deps --only-binary=:all: -d wheels 'nvidia-cuda-nvrtc-cu12~=12.8.0' 'nvidia-cufft-cu12~=11.3.3'
