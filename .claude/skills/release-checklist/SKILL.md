@@ -46,9 +46,9 @@ The `stochastic-rs-py` crate is excluded from `cargo test`: it has no Rust
 tests, its pytest suite runs in the `python_smoke` job, and its wheels are
 built and smoke-tested in stage 7.
 
-## Stage 2 — version bumps (9 crates)
+## Stage 2 — version bumps (10 crates)
 
-The workspace has 9 crates that all share a version number. Bump them
+The workspace has 10 crates that all share a version number. Bump them
 together:
 
 ```
@@ -60,14 +60,17 @@ stochastic-rs-copulas
 stochastic-rs-stats
 stochastic-rs-quant
 stochastic-rs-ai
-stochastic-rs-py
+stochastic-rs-metal-kernels    (publish = false)
+stochastic-rs-py               (publish = false)
 ```
 
 **One-pass approach** (preferred): edit `Cargo.toml` `[workspace.package]`
-`version = "X.Y.Z"`, then in `[workspace.dependencies]` update every
-`stochastic-rs-*` line's `version` field. Sub-crates inherit the
-workspace-package version via `version.workspace = true` already, so this
-is the only file that needs editing for version itself.
+`version = "X.Y.Z"`, then in `[workspace.dependencies]` pin every
+`stochastic-rs-*` line exactly, `version = "=X.Y.Z"` (the user's ruling,
+2026-11-21): a caret requirement on an rc also matches the next rc, so a
+fresh resolve of an older release would mix sub-crate versions. Sub-crates
+inherit the workspace-package version via `version.workspace = true`
+already, so this is the only file that needs editing for version itself.
 
 Cross-checks after editing:
 
@@ -78,16 +81,24 @@ with a dirty-tree error that `git status` will not show you. `git add -f`
 any new or modified skill files before stage 4.
 
 ```bash
-# 2.1 No leftover old-version literals
-grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
+# 2.1 No leftover old-version literals: the READMEs, the website and CITATION.cff carry them too;
+#     every hit left must be history
+git grep -n -F "<previous version>" -- . ':!Cargo.lock'
 
 # 2.2 Workspace re-resolves
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
 
-# 2.3 After the bump, `cargo update --workspace` rewrites the 9 workspace versions in the
+# 2.3 After the bump, `cargo update --workspace` rewrites the 10 workspace versions in the
 #     committed Cargo.lock; commit it with the bump, or the umbrella `cargo publish` aborts
 cargo update --workspace
 git add Cargo.lock
+
+# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes):
+#     regenerate it per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
+PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
+  cargo check -p stochastic-rs-stochastic --features metal --locked
+METAL_OXIDE_ARTIFACTS=locked cargo check -p stochastic-rs-stochastic --features metal --locked
+git add stochastic-rs-stochastic/metal/src/device/metal.rs/bindings-fast
 ```
 
 ## Stage 3 — `MIGRATION.md` and `CITATION.cff`
@@ -289,9 +300,8 @@ wave ledgers (`A1*_WAVE_LEDGER.md`, `A2_WAVE_LEDGER.md`,
 `DETERMINISTIC_PARALLELISM_LEDGER.md`, …) and
 `docs/VALIDATION_COVERAGE_AUDIT_2026_08_12.md`.
 
-The workspace is on `3.0.0-beta.1` (root `Cargo.toml`,
-`[workspace.package] version`), so the next cut is a v3 beta / rc, not
-another v2 patch. Check the actual version before assuming.
+Read the version from the root `Cargo.toml` (`[workspace.package] version`) before
+assuming which cut comes next.
 
 Each stage is triggered by the user; do not autonomously start a
 release without explicit confirmation. Note the standing preference: an

@@ -45,7 +45,7 @@ The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature ne
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.4"
+stochastic-rs = "3.0.0-rc.5"
 ```
 
 Device back-ends and other optional parts are cargo features (`cuda`, `metal`, `accelerate`, `ai`, `unstable-dual-stream-rng`; `metal` requires Apple Silicon with macOS 15 or newer, `accelerate` requires macOS); the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust) and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags) page list what each pulls in. Sub-crates can be depended on directly for lean builds.

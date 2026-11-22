@@ -4,15 +4,16 @@
 #
 # Usage:
 #   ./publish.sh                 # publish for real (runs gate: fmt + clippy + tests)
-#   ./publish.sh --dry-run       # validate without uploading (still runs gate)
+#   ./publish.sh --dry-run       # each crate's dry run, without uploading (still runs gate)
 #   ./publish.sh --allow-dirty   # publish with uncommitted changes
 #   ./publish.sh --skip-gate     # bypass fmt/clippy/test gate (NOT recommended)
 #
 # Notes:
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
 #   Cargo.toml — it is a maturin-built cdylib for PyPI, not a crates.io
-#   crate). 210 PyO3 entries across distributions/stochastic/quant/copulas/
-#   stats; release via `.github/workflows/pypi.yml`.
+#   crate); release via `.github/workflows/pypi.yml`.
+# - `--dry-run` verifies each crate against its siblings on crates.io, so after a version bump it
+#   stops at the second crate; `cargo publish --workspace --dry-run --locked` checks them together.
 # - Crates already published at the current local version are skipped, so the
 #   script is safe to re-run if a publish fails partway through.
 # - Modern cargo (>=1.66) waits for the registry index to sync after each
@@ -29,7 +30,7 @@ for arg in "$@"; do
     --allow-dirty) ALLOW_DIRTY=(--allow-dirty) ;;
     --skip-gate)   SKIP_GATE=1 ;;
     -h|--help)
-      sed -n '2,20p' "$0"; exit 0 ;;
+      sed -n '2,/^$/p' "$0"; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 1 ;;
   esac
 done
@@ -58,7 +59,7 @@ PUBLISH_ORDER=(
   "stochastic-rs-stochastic"      # core, distributions
   "stochastic-rs-stats"           # core, distributions, stochastic
   "stochastic-rs-copulas"         # core, distributions
-  "stochastic-rs-quant"           # core, distributions, stochastic, stats, copulas
+  "stochastic-rs-quant"           # core, distributions, stochastic, stats
   "stochastic-rs-ai"              # core, distributions, stochastic, quant
   "stochastic-rs"                 # umbrella — last
 )
