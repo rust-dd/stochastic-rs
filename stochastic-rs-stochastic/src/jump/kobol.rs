@@ -48,7 +48,8 @@ pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Series terms; the terms past them enter as a Brownian motion of their drift and variance.
+  /// Series terms; the rest enter as a Brownian motion of their mean and variance, so the two
+  /// moments hold at any `j` and the law's shape once `j α / (T ‖σ‖) ≫ 1`.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -135,11 +136,11 @@ impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(j >= 2, "j must satisfy `j >= 2`, got j = {j:?}");
-
     assert!(
       alpha != T::one() || p == q,
       "alpha must satisfy `alpha != T::one() || p == q`, got alpha = {alpha:?}"
     );
+
     Self {
       backend: Cpu,
       d,
@@ -201,35 +202,12 @@ impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
     }
   }
 
-  /// What the series drops past its `j`-th term, from the constants its device declaration takes.
-  fn remainder(&self) -> SeriesRemainder {
-    let f = |v: T| v.to_f64().unwrap();
-    let (alpha, t) = (f(self.alpha), f(self.t_max()));
-    let rate = alpha / (f(self.total_coefficient()) * t);
-    let (plus, minus) = (f(self.lambda_plus), f(self.lambda_minus));
-    SeriesRemainder::new(
-      alpha,
-      rate,
-      t,
-      f(self.positive_share()),
-      plus,
-      minus,
-      1.0,
-      1.0,
-    )
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for Kobol<T, S, B>
-{
   /// The series constants, folded once: the arrival rate `α / (D (p + q) T)`, the exponential
   /// draw entering plainly, and the positive side taken with probability `p / (p + q)`.
-  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let (drift, variance) = self.remainder().expected_rates(self.j);
+  fn series_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
-      b_t: self.drift_rate() + T::from_f64_fast(drift),
-      rem_sd: T::from_f64_fast(variance.sqrt()),
+      b_t: self.drift_rate(),
+      rem_sd: T::zero(),
       rate: self.alpha / (self.total_coefficient() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
       e_scale: T::one(),
@@ -238,6 +216,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       lambda_plus: self.lambda_plus,
       lambda_minus: self.lambda_minus,
     }
+  }
+
+  /// What the series drops past its `j`-th term, from the constants of [`Self::series_spec`].
+  fn remainder(&self) -> SeriesRemainder {
+    let f = |v: T| v.to_f64().unwrap();
+    SeriesRemainder::of(&self.series_spec(), f(self.alpha), f(self.t_max()))
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Kobol<T, S, B>
+{
+  /// The series constants with the launch's remainder: its drift in `b_t`, its deviation `rem_sd`.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.remainder().launch(self.series_spec(), self.j)
   }
 
   fn initial_value(&self) -> T {
@@ -287,8 +280,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> KobolSampler<T, S> {
-    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
-    // on; reuse advances both. The side probability, total coefficient and drift do not read it.
+    // The uniform, Exp(1), arrival and normal sources are derived from `self.seed` in this order,
+    // which the seeded streams depend on.
     let t_max = self.t_max();
     let dt = self.dt();
     let w_plus = self.positive_share();
@@ -379,8 +372,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Kobol`] sampling state: the uniform and exponential sources of the Rosiński series,
-/// and a seed derived once more per fill for the Gamma arrival times `P`.
+/// Reusable [`Kobol`] sampling state: the series' uniform and exponential sources, the
+/// remainder's normal one, and a seed derived once more per fill for the arrival times.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct KobolSampler<T: FloatExt, S: SeedExt> {

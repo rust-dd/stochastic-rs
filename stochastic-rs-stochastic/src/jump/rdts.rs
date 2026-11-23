@@ -40,7 +40,8 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Series terms; the terms past them enter as a Brownian motion of their drift and variance.
+  /// Series terms; the rest enter as a Brownian motion of their mean and variance, so the two
+  /// moments hold at any `j` and the law's shape once `j α / (T ‖σ‖) ≫ 1`.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -150,35 +151,12 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
         - self.lambda_minus.powf(self.alpha - T::one()))
   }
 
-  /// What the series drops past its `j`-th term, from the constants its device declaration takes.
-  fn remainder(&self) -> SeriesRemainder {
-    let f = |v: T| v.to_f64().unwrap();
-    let (alpha, t) = (f(self.alpha), f(self.t_max()));
-    let rate = alpha / (2.0 * f(self.tempering_constant()) * t);
-    let (plus, minus) = (f(self.lambda_plus), f(self.lambda_minus));
-    SeriesRemainder::new(
-      alpha,
-      rate,
-      t,
-      0.5,
-      plus,
-      minus,
-      std::f64::consts::SQRT_2,
-      0.5,
-    )
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for Rdts<T, S, B>
-{
   /// The series constants, folded once: the arrival rate `α / (2 C T)`, the exponential draw
   /// entering as `√(2E)` (the law's Gaussian-tempered size), and the two sides equally likely.
-  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let (drift, variance) = self.remainder().expected_rates(self.j);
+  fn series_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
-      b_t: self.drift_rate() + T::from_f64_fast(drift),
-      rem_sd: T::from_f64_fast(variance.sqrt()),
+      b_t: self.drift_rate(),
+      rem_sd: T::zero(),
       rate: self.alpha / (T::from_usize_(2) * self.tempering_constant() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
       e_scale: T::from_f64_fast(std::f64::consts::SQRT_2),
@@ -187,6 +165,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       lambda_plus: self.lambda_plus,
       lambda_minus: self.lambda_minus,
     }
+  }
+
+  /// What the series drops past its `j`-th term, from the constants of [`Self::series_spec`].
+  fn remainder(&self) -> SeriesRemainder {
+    let f = |v: T| v.to_f64().unwrap();
+    SeriesRemainder::of(&self.series_spec(), f(self.alpha), f(self.t_max()))
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Rdts<T, S, B>
+{
+  /// The series constants with the launch's remainder: its drift in `b_t`, its deviation `rem_sd`.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.remainder().launch(self.series_spec(), self.j)
   }
 
   fn initial_value(&self) -> T {
@@ -236,8 +229,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> RdtsSampler<T, S> {
-    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
-    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
+    // The uniform, Exp(1), arrival and normal sources are derived from `self.seed` in this order,
+    // which the seeded streams depend on.
     let t_max = self.t_max();
     let dt = self.dt();
     let c = self.tempering_constant();
@@ -326,8 +319,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Rdts`] sampling state: the uniform and exponential sources of the Rosiński series,
-/// and a seed derived once more per fill for the Gamma arrival times `P`.
+/// Reusable [`Rdts`] sampling state: the series' uniform and exponential sources, the
+/// remainder's normal one, and a seed derived once more per fill for the arrival times.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct RdtsSampler<T: FloatExt, S: SeedExt> {

@@ -35,7 +35,7 @@ fn the_upper_gamma_function_reaches_non_positive_shapes() {
   ] {
     let at_one = upper_gamma_fraction(c, 1.0);
     close(
-      upper_gamma(c, x, at_one),
+      upper_pair(c, x, at_one).0,
       want,
       1e-13,
       &format!("Γ({c}, {x})"),
@@ -85,7 +85,7 @@ fn the_tempered_upper_integral_keeps_its_digits_below_one() {
   ] {
     let at_one = upper_gamma_fraction(c, 1.0);
     close(
-      tempered_upper(c, x, at_one),
+      upper_pair(c, x, at_one).1,
       want,
       1e-13,
       &format!("M({c}, {x})"),
@@ -96,21 +96,22 @@ fn the_tempered_upper_integral_keeps_its_digits_below_one() {
 /// A remainder over a unit horizon from the two sides' scales `C₊`, `C₋`.
 fn from_scales(alpha: f64, c: (f64, f64), lambda: (f64, f64), e_pow: f64) -> SeriesRemainder {
   let mass = c.0 + c.1;
-  let e_scale = if e_pow == 1.0 {
-    1.0
-  } else {
-    std::f64::consts::SQRT_2
-  };
-  SeriesRemainder::new(
-    alpha,
-    alpha / mass,
-    1.0,
-    c.0 / mass,
-    lambda.0,
-    lambda.1,
-    e_scale,
+  let spec = EulerSpec::TemperedStableSeries {
+    b_t: 0.0,
+    rate: alpha / mass,
+    inv_alpha: 1.0 / alpha,
+    e_scale: if e_pow == 1.0 {
+      1.0
+    } else {
+      std::f64::consts::SQRT_2
+    },
     e_pow,
-  )
+    w_plus: c.0 / mass,
+    lambda_plus: lambda.0,
+    lambda_minus: lambda.1,
+    rem_sd: 0.0,
+  };
+  SeriesRemainder::of(&spec, alpha, 1.0)
 }
 
 #[test]
@@ -307,7 +308,7 @@ fn the_expected_variance_completes_one_kept_term_to_the_law() {
 /// in numpy (`evidence/device-gap.log`): 0.5538 ± 0.0013 at `J = 64`, 0.3783 ± 0.0017 at 256.
 #[test]
 fn the_expected_variance_completes_the_kept_terms_of_unequal_sides() {
-  let remainder = SeriesRemainder::new(1.5, 1.5 / 1.2, 1.0, 2.0 / 3.0, 3.0, 5.0, 1.0, 1.0);
+  let remainder = from_scales(1.5, (0.8, 0.4), (3.0, 5.0), 1.0);
   for (terms, want, se) in [(64_usize, 0.5538, 0.0013), (256, 0.3783, 0.0017)] {
     let (_, variance) = remainder.expected_rates(terms);
     assert!(
@@ -321,4 +322,39 @@ fn the_expected_variance_completes_the_kept_terms_of_unequal_sides() {
 fn a_cut_too_small_to_represent_leaves_nothing() {
   let remainder = from_scales(0.01, (0.3, 0.3), (2.0, 6.0), 1.0);
   assert_eq!(remainder.rates(1e6), (0.0, 0.0));
+}
+
+/// The launch spec keeps the series constants, adds the remainder's drift and sets its deviation.
+#[test]
+fn the_launch_spec_carries_the_expected_rates() {
+  let remainder = from_scales(1.5, (0.5, 0.2), (2.0, 6.0), 1.0);
+  let (drift, variance) = remainder.expected_rates(64);
+  let base = EulerSpec::TemperedStableSeries {
+    b_t: 0.25,
+    rate: 1.5 / 0.7,
+    inv_alpha: 1.0 / 1.5,
+    e_scale: 1.0,
+    e_pow: 1.0,
+    w_plus: 0.5 / 0.7,
+    lambda_plus: 2.0,
+    lambda_minus: 6.0,
+    rem_sd: 0.0,
+  };
+  let EulerSpec::TemperedStableSeries {
+    b_t, rem_sd, rate, ..
+  } = remainder.launch(base, 64)
+  else {
+    unreachable!()
+  };
+  assert_eq!(
+    (b_t, rem_sd, rate),
+    (0.25 + drift, variance.sqrt(), 1.5 / 0.7)
+  );
+}
+
+/// A NaN variance stays NaN: the floor at zero is for rounding, not for a broken input.
+#[test]
+fn a_nan_rate_is_not_floored_to_zero() {
+  let remainder = from_scales(f64::NAN, (0.3, 0.3), (2.0, 6.0), 1.0);
+  assert!(remainder.rates(4.0).1.is_nan());
 }

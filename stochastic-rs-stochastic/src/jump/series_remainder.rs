@@ -21,12 +21,16 @@
 //! $$
 //!
 //! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
-//! Reference: Rosiński (2007), Thm 5.4, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Rosiński (2004), Thm 5.4, preprint of SPA 117(6), mediatum.ub.tum.de/doc/1072618
 
 use stochastic_rs_distributions::special::expm1_over;
 use stochastic_rs_distributions::special::gamma_li;
 use stochastic_rs_distributions::special::gamma_ui;
 use stochastic_rs_distributions::special::ln_gamma;
+
+use crate::euler::EulerSpec;
+use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Terms of the power series on `(0, 1]`: `1/k!` is below `1e-47` by then.
 const SERIES_TERMS: usize = 40;
@@ -48,22 +52,19 @@ const LEGENDRE_8: [(f64, f64); 4] = [
 /// Panels of the average over `Γ_J`, each under one standard deviation wide.
 const ARRIVAL_PANELS: usize = 24;
 
-/// `Σ_{k ≥ from} (−1)^k (1 − x^{c+k}) / (k! (c + k))` on `0 < x ≤ 1`: `∫_x^1 e^{−t} t^{c−1} dt`
-/// from `from = 0`. A zero `c + k` is the limit `−ln x`, not a pole.
-fn unit_series(c: f64, x: f64, from: usize) -> f64 {
+/// `Σ_{k ≥ 1} (−1)^k (1 − x^{c+k}) / (k! (c + k))` on `0 < x ≤ 1`: `−∫_x^1 (1 − e^{−t}) t^{c−1} dt`.
+/// A zero `c + k` is the limit `−ln x`, not a pole.
+fn unit_series(c: f64, x: f64) -> f64 {
   let ln_x = x.ln();
   let mut coefficient = 1.0;
   let mut sum = 0.0;
-  for k in 0..SERIES_TERMS {
-    if k > 0 {
-      coefficient /= -(k as f64);
-    }
-    if k >= from {
-      let term = coefficient * (-ln_x * expm1_over((c + k as f64) * ln_x));
-      sum += term;
-      if k > from && term.abs() <= SERIES_FLOOR * sum.abs() {
-        break;
-      }
+  for k in 1..SERIES_TERMS {
+    let k = k as f64;
+    coefficient /= -k;
+    let term = coefficient * (-ln_x * expm1_over((c + k) * ln_x));
+    sum += term;
+    if k > 1.0 && term.abs() <= SERIES_FLOOR * sum.abs() {
+      break;
     }
   }
   sum
@@ -107,15 +108,6 @@ fn upper_gamma_tail(c: f64, x: f64) -> f64 {
   }
 }
 
-/// `Γ(c, x)` for `c ≤ 0`, `x > 0`; `at_one` is `Γ(c, 1)`.
-fn upper_gamma(c: f64, x: f64, at_one: f64) -> f64 {
-  if x >= 1.0 {
-    upper_gamma_fraction(c, x)
-  } else {
-    at_one + unit_series(c, x, 0)
-  }
-}
-
 /// `L(c, x) = ∫_0^x (1 − e^{−t}) t^{c−1} dt`, `c > −1`.
 fn tempered_lower(c: f64, x: f64) -> f64 {
   let below_one = |x: f64| {
@@ -143,12 +135,19 @@ fn tempered_lower(c: f64, x: f64) -> f64 {
   }
 }
 
-/// `M(c, x) = ∫_x^∞ (1 − e^{−t}) t^{c−1} dt`, `c < 0`; `at_one` is `Γ(c, 1)`.
-fn tempered_upper(c: f64, x: f64, at_one: f64) -> f64 {
+/// `Γ(c, x)` and `M(c, x) = ∫_x^∞ (1 − e^{−t}) t^{c−1} dt` for `c < 0`, from one series or one
+/// fraction; `at_one` is `Γ(c, 1)`.
+fn upper_pair(c: f64, x: f64, at_one: f64) -> (f64, f64) {
   if x >= 1.0 {
-    -x.powf(c) / c - upper_gamma_fraction(c, x)
+    let upper = upper_gamma_fraction(c, x);
+    (upper, -x.powf(c) / c - upper)
   } else {
-    -1.0 / c - at_one - unit_series(c, x, 1)
+    let ln_x = x.ln();
+    let series = unit_series(c, x);
+    (
+      at_one - ln_x * expm1_over(c * ln_x) + series,
+      -1.0 / c - at_one - series,
+    )
   }
 }
 
@@ -181,18 +180,23 @@ pub(crate) struct SeriesRemainder {
 }
 
 impl SeriesRemainder {
-  /// From the series' own constants, the ones its device declaration takes.
-  #[allow(clippy::too_many_arguments)]
-  pub(crate) fn new(
-    alpha: f64,
-    rate: f64,
-    t_max: f64,
-    w_plus: f64,
-    lambda_plus: f64,
-    lambda_minus: f64,
-    e_scale: f64,
-    e_pow: f64,
-  ) -> Self {
+  /// From the series' device declaration, so the host and the launch read one set of constants.
+  pub(crate) fn of<T: FloatExt>(spec: &EulerSpec<T>, alpha: f64, t_max: f64) -> Self {
+    let EulerSpec::TemperedStableSeries {
+      rate,
+      e_scale,
+      e_pow,
+      w_plus,
+      lambda_plus,
+      lambda_minus,
+      ..
+    } = *spec
+    else {
+      unreachable!("a tempered stable series declares the series family");
+    };
+    let f = |v: T| v.to_f64().unwrap();
+    let (rate, w_plus, e_scale, e_pow) = (f(rate), f(w_plus), f(e_scale), f(e_pow));
+    let (lambda_plus, lambda_minus) = (f(lambda_plus), f(lambda_minus));
     let power = 1.0 / e_pow;
     let mass = alpha / (rate * t_max);
     let side = |sign: f64, weight: f64, lambda: f64| {
@@ -244,10 +248,10 @@ impl SeriesRemainder {
       if x == 0.0 {
         return (0.0, 0.0, 0.0);
       }
-      let tail_shape = -alpha / p;
       let i1 = side.second_moment * gamma_li((2.0 - alpha) / p, x);
       let i2 = side.first_moment * gamma_li(2.0 / p, x);
-      let i3 = side.tail * upper_gamma(tail_shape, x, self.tail_at_one);
+      let (upper, tempered) = upper_pair(-alpha / p, x, self.tail_at_one);
+      let (i3, k3) = (side.tail * upper, side.tail * tempered);
       let j1 = side.compensated * tempered_lower((1.0 - alpha) / p, x);
       let j0 = side.length * tempered_lower(1.0 / p, x);
       variance += side.scale
@@ -264,7 +268,6 @@ impl SeriesRemainder {
           -alpha * (j0 - limit) / (alpha + 1.0),
         )
       } else {
-        let k3 = side.tail * tempered_upper(tail_shape, x, self.tail_at_one);
         (
           j1 - inv_cut_alpha * j0 / (alpha + 1.0) + alpha * cut * k3 / (alpha + 1.0),
           cut - alpha * (j0 + cut * k3 / inv_cut_alpha) / (alpha + 1.0),
@@ -273,12 +276,41 @@ impl SeriesRemainder {
       drift -= side.sign * side.scale * compensated;
       term += side.sign * side.weight * capped;
     }
-    // The centring of unequal sides; at α = 1 it is logarithmic and has no finite continuation.
+    // The centring of unequal sides; at α = 1 it is logarithmic, which `Kobol::new` refuses.
     let imbalance = self.sides[0].scale - self.sides[1].scale;
     if imbalance != 0.0 && alpha != 1.0 && !saturated {
       drift -= imbalance * cut * inv_cut_alpha / (alpha - 1.0);
     }
-    (drift, variance.max(0.0), term)
+    (drift, variance.max_or_nan(0.0), term)
+  }
+
+  /// `spec` with the launch's remainder: its drift added to `b_t`, its deviation as `rem_sd`.
+  pub(crate) fn launch<T: FloatExt>(&self, spec: EulerSpec<T>, terms: usize) -> EulerSpec<T> {
+    let (drift, variance) = self.expected_rates(terms);
+    match spec {
+      EulerSpec::TemperedStableSeries {
+        b_t,
+        rate,
+        inv_alpha,
+        e_scale,
+        e_pow,
+        w_plus,
+        lambda_plus,
+        lambda_minus,
+        ..
+      } => EulerSpec::TemperedStableSeries {
+        b_t: b_t + T::from_f64_fast(drift),
+        rate,
+        inv_alpha,
+        e_scale,
+        e_pow,
+        w_plus,
+        lambda_plus,
+        lambda_minus,
+        rem_sd: T::from_f64_fast(variance.sqrt()),
+      },
+      other => other,
+    }
   }
 
   /// The constants a device launch takes: the drift averaged over `Γ_J ~ Gamma(J, 1)`, and the
@@ -315,7 +347,7 @@ impl SeriesRemainder {
     }
     let [_, drift, variance, kept, kept_square, within] = sums.map(|sum| sum / sums[0]);
     let between = kept_square - kept * kept;
-    (drift, (variance + (within - between) / t).max(0.0))
+    (drift, (variance + (within - between) / t).max_or_nan(0.0))
   }
 }
 
