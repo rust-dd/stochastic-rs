@@ -77,12 +77,10 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     });
   }
 
-  let quotes: Vec<(&BootstrapInstrument<T>, usize)> = order
-    .iter()
-    .map(|&index| (&instruments[index], number(index)))
-    .collect();
-  let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(quotes.len());
-  for &(instrument, quote) in &quotes {
+  let quote = |index: usize| (&instruments[index], number(index));
+  let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(order.len());
+  for &index in &order {
+    let (instrument, quote) = quote(index);
     let discount_factor = quote_node(Place::Next(&points), instrument, discount, method, quote)?;
     points.push(CurvePoint {
       time: instrument.maturity(),
@@ -90,6 +88,7 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     });
   }
   if !segment::is_local(method) {
+    let quotes: Vec<(&BootstrapInstrument<T>, usize)> = order.iter().map(|&i| quote(i)).collect();
     sweep::reprice_together(&mut points, &quotes, discount, method)?;
   }
   Ok(DiscountCurve::new(points, method))
