@@ -61,9 +61,9 @@ impl BsmPricer {
     ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) / (s * self.sigma * tau.sqrt())
   }
 
-  /// Gamma per 1% of spot.
+  /// `S·Γ/100`, the change in delta for a 1 % move in spot.
   pub fn gamma_percent(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    self.gamma(s, k, r, q, tau) / s * 100.0
+    self.gamma(s, k, r, q, tau) * s / 100.0
   }
 
   /// Theta — $\partial V/\partial t$ (calendar convention).
