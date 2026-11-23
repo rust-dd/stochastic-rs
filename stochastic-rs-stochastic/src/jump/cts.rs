@@ -1,5 +1,5 @@
 //! The standard classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi: one scale
-//! `C`, set for unit variance per unit time. `2CT` is the Lévy mass; `R_J` is the Gaussian remainder.
+//! `C`, set for unit variance per unit time. `2CT` is the Lévy mass, `R_J` the Gaussian remainder.
 //!
 //! $$
 //! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
@@ -19,7 +19,7 @@
 //! $$
 //!
 //! Reference: Rosiński (2007), Thm 5.1, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
-//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 //! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 //! Reference: Bianchi et al. (2010), Springer, 33–42, DOI 10.1007/978-88-470-1481-7_4
 //!

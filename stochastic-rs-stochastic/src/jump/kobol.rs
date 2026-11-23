@@ -10,7 +10,7 @@
 //! Reference: Koponen (1995), Phys. Rev. E 52(1), 1197–1199, DOI 10.1103/PhysRevE.52.1197
 //! Reference: Boyarchenko & Levendorskiĭ (2000), IJTAF 3(3), 549–552, DOI 10.1142/S0219024900000541
 //! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
-//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

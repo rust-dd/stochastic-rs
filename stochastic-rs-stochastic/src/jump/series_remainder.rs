@@ -1,5 +1,5 @@
 //! What a tempered stable shot-noise series drops past its `J`-th arrival, a Lévy process of
-//! jumps below `ε = (Γ_J · rate)^{-1/α}`, as the drift and variance of the Brownian motion replacing it.
+//! jumps below `ε = (Γ_J · rate)^{-1/α}`, as the drift and variance of the Brownian motion for it.
 //!
 //! $$
 //! \nu_s^\varepsilon((x,\varepsilon))=C_s\left(x^{-\alpha}-\varepsilon^{-\alpha}\right)
@@ -20,7 +20,7 @@
 //! -\frac{(C_+-C_-)\,\varepsilon^{1-\alpha}}{\alpha-1}
 //! $$
 //!
-//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 //! Reference: Rosiński (2007), Thm 5.4, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
 
 use stochastic_rs_distributions::special::expm1_over;

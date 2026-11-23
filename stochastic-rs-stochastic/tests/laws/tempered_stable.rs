@@ -2,7 +2,7 @@
 //! variance: each law against its Lévy measure's closed forms, at a short and a long series.
 //!
 //! Reference: Rosiński (2007), Thm 5.4, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
-//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 
 use ndarray::Array1;
 use num_complex::Complex64;
