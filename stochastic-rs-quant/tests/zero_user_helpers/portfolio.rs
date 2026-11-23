@@ -10,17 +10,23 @@ use stochastic_rs_quant::portfolio::momentum::build_portfolio_target_with_corr;
 use stochastic_rs_quant::portfolio::momentum::compute_scores;
 use stochastic_rs_quant::portfolio::types::OptimizerMethod;
 
-/// `ln(cᵢ / cᵢ₋₁)` per pair of consecutive closes; a pair with a non-positive close gives no
-/// return.
+/// `ln(cᵢ / cᵢ₋₁)` per pair of consecutive closes, NaN in its place for a pair with a close that
+/// is not finite and positive, so each return keeps its date.
 #[test]
 fn log_returns_series_is_the_log_ratio_of_consecutive_closes() {
   let closes = [100.0, 110.0, 99.0];
   let expected = [(110.0_f64 / 100.0).ln(), (99.0_f64 / 110.0).ln()];
   assert_eq!(log_returns_series(&closes).to_vec(), expected);
-  assert_eq!(
-    log_returns_series(&[100.0, 0.0, 99.0, 108.9]).to_vec(),
-    [(108.9_f64 / 99.0).ln()]
-  );
+  for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+    let returns = log_returns_series(&[100.0, bad, 99.0, 108.9]);
+    assert_eq!(returns.len(), 3, "{bad}");
+    assert!(
+      returns[0].is_nan() && returns[1].is_nan(),
+      "{bad}: {returns}"
+    );
+    assert_eq!(returns[2], (108.9_f64 / 99.0).ln());
+  }
+  assert!(log_returns_series(&[100.0]).is_empty() && log_returns_series(&[]).is_empty());
 }
 
 #[test]

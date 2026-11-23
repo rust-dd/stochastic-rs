@@ -47,15 +47,17 @@ fn pearson(x: &[f64], y: &[f64]) -> f64 {
   }
 }
 
-/// Log returns of consecutive closes; a pair with a non-positive or NaN close is dropped.
+/// Log returns of consecutive closes, one per pair so each keeps its date; NaN for a pair with a
+/// close that is not finite and positive.
 pub fn log_returns_series(closes: &[f64]) -> Array1<f64> {
-  let mut out = Vec::with_capacity(closes.len().saturating_sub(1));
-  for i in 1..closes.len() {
-    if closes[i - 1] > 0.0 && closes[i] > 0.0 {
-      out.push((closes[i] / closes[i - 1]).ln());
+  let usable = |close: f64| close.is_finite() && close > 0.0;
+  Array1::from_iter(closes.windows(2).map(|pair| {
+    if usable(pair[0]) && usable(pair[1]) {
+      (pair[1] / pair[0]).ln()
+    } else {
+      f64::NAN
     }
-  }
-  Array1::from(out)
+  }))
 }
 
 /// One row per asset holding the last `min_i len(returns_i)` observations of each series. The
