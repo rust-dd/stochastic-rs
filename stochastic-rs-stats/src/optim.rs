@@ -224,6 +224,8 @@ fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64
     .collect()
 }
 
+pub(crate) mod certificate;
+
 #[cfg(test)]
 mod tests {
   use basin::ApplicationStop;

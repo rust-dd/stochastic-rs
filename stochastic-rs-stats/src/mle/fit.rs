@@ -5,7 +5,6 @@ use basin::FirstOrderState;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use self::problem::Beside;
 use self::problem::MleProblem;
 use self::step_back::SteppingBack;
 use super::DiffusionModel;
@@ -13,6 +12,8 @@ use super::density::DensityApprox;
 use crate::StatsError;
 use crate::input::validate_view;
 use crate::optim::SolverStop;
+use crate::optim::certificate::Beside;
+use crate::optim::certificate::Stop;
 use crate::optim::lbfgsb;
 
 /// Result of maximum likelihood estimation.
@@ -62,14 +63,6 @@ impl fmt::Display for MleFit {
 /// What a further search must gain in log-likelihood to replace the estimate it started from.
 const GAIN: f64 = 1e-6;
 
-/// The most a step along one parameter gains in log-likelihood beside a converged estimate: on
-/// 117,768 fits the stationary ones read `2.3e-9` or less, and a stall anything up to 94.
-const STATIONARY: f64 = 1e-7;
-
-/// Roundings of the sum a gain must clear: on 366 fits of `1e4` to `3e6` points the walks beside
-/// an optimum gain `0.30` of one or less, and beside the stalls they flag `1.2` or more.
-const ROUNDINGS: f64 = 1.0;
-
 /// Searches after the first: each starts where the last one left a parameter unidentified.
 const STAGES: usize = 3;
 
@@ -83,47 +76,6 @@ struct Search {
   converged: bool,
   reason: SolverStop,
   iterations: usize,
-}
-
-/// Why a fit stopped, `Converged` alone being `converged = true`.
-enum Stop {
-  Converged,
-  Search(SolverStop),
-  NotStationary,
-  Bound(usize),
-  Edge,
-  Outside,
-}
-
-impl Stop {
-  /// The stop in the words of quant's calibrators, `names` the model's parameters.
-  fn message(&self, names: &[&str]) -> String {
-    let words = match self {
-      Self::Converged => "converged",
-      Self::Search(SolverStop::IterationCap | SolverStop::EvaluationBudget) => {
-        "evaluation budget exhausted"
-      }
-      Self::Search(SolverStop::NoProgress) => "no numerical progress",
-      Self::Search(SolverStop::Failed) => "solver failed",
-      Self::Search(_) | Self::Outside => "stopped without convergence",
-      Self::NotStationary => "not stationary",
-      Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
-      Self::Edge => "stopped at the edge of the law's support",
-    };
-    words.into()
-  }
-}
-
-impl Beside {
-  /// The stop the walks read, `held` saying that the parameter of the largest gain is on a bound.
-  fn stop(&self, held: bool) -> Stop {
-    match () {
-      _ if self.gain <= STATIONARY.max(ROUNDINGS * self.rounding) => Stop::Converged,
-      _ if held => Stop::Bound(self.along),
-      _ if self.walled => Stop::Edge,
-      _ => Stop::NotStationary,
-    }
-  }
 }
 
 /// The walks beside `at` and the stop they give a search that converged there: the solver's own
