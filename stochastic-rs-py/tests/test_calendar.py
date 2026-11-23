@@ -9,8 +9,8 @@ import pytest
 
 import stochastic_rs as sr
 
-# par_rate is (1 - DF) / annuity over <= 60 libm-built discount factors of <= 1 ulp: ~1e-15 in the
-# rate, with a margin for another platform's libm.
+# par_rate = (1 - D) / annuity: 1 ulp on D (0.16 numerator, 4.4 annuity) moves a 0.035 rate by ~6e-17;
+# 1e-14 leaves room for another libm.
 PAR_RATE_ABS = 1e-14
 
 
