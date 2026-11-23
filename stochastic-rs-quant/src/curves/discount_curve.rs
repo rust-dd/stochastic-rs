@@ -11,7 +11,6 @@ use super::interpolation;
 use super::types::Compounding;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// A calibrated discount curve built from (time, discount_factor) pairs.
@@ -41,7 +40,7 @@ impl<T: RealExt> DiscountCurve<T> {
     }
     let mut pts = points;
     pts.retain(|p| p.time > T::zero());
-    pts.sort_by(|a, b| ascending(&a.time, &b.time));
+    pts.sort_by(|a, b| a.time.nan_last(&b.time));
     if let Some(w) = pts.windows(2).find(|w| w[0].time == w[1].time) {
       panic!(
         "points must satisfy `a.time != b.time` for every pair, got time = {:?} twice",

@@ -1,8 +1,8 @@
 //! Optimization helpers shared by the estimator modules.
 //!
 //! One Nelder–Mead simplex: the three-parameter entry wraps the any-dimension one GARCH uses.
+use crate::traits::RealExt;
 
-use std::cmp::Ordering;
 use std::convert::Infallible;
 
 use basin::BoxBounds;
@@ -21,11 +21,6 @@ use basin::Solver;
 use basin::Stall;
 use basin::Termination;
 
-/// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
-pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
-  a.is_nan().cmp(&b.is_nan()).then(a.total_cmp(&b))
-}
-
 /// The start with the lowest objective; a NaN objective loses to every number.
 pub(crate) fn best_start<P: AsRef<[f64]>>(
   starts: impl IntoIterator<Item = P>,
@@ -34,7 +29,7 @@ pub(crate) fn best_start<P: AsRef<[f64]>>(
   starts
     .into_iter()
     .map(|start| (objective(start.as_ref()), start))
-    .min_by(|a, b| nan_last(a.0, b.0))
+    .min_by(|a, b| a.0.nan_last(&b.0))
     .map(|(_, start)| start)
 }
 
@@ -157,7 +152,7 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   while iters < max_iter {
     iters += 1;
     let mut order: Vec<usize> = (0..=n).collect();
-    order.sort_by(|&a, &b| nan_last(fvals[a], fvals[b]));
+    order.sort_by(|&a, &b| fvals[a].nan_last(&fvals[b]));
     let best = order[0];
     let worst = order[n];
     let second_worst = order[n - 1];
@@ -207,7 +202,7 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
     }
   }
   let best = (0..=n)
-    .min_by(|&a, &b| nan_last(fvals[a], fvals[b]))
+    .min_by(|&a, &b| fvals[a].nan_last(&fvals[b]))
     .expect("a simplex has n + 1 vertices");
   (simplex[best].clone(), iters, false)
 }
@@ -361,7 +356,7 @@ mod tests {
       let objective = |p: &[f64]| if p[0] == 1.0 { 3.0 } else { nan };
       assert_eq!(best_start([[0.0], [1.0], [2.0]], objective), Some([1.0]));
       assert_eq!(
-        nan_last(nan, f64::NEG_INFINITY),
+        nan.nan_last(&f64::NEG_INFINITY),
         std::cmp::Ordering::Greater
       );
     }

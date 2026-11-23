@@ -5,7 +5,13 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
+
 import stochastic_rs as sr
+
+# par_rate = (1 - D) / annuity: 1 ulp on D (0.16 numerator, 4.4 annuity) moves a 0.035 rate by ~6e-17;
+# 1e-14 leaves room for another libm.
+PAR_RATE_ABS = 1e-14
 
 
 def test_daycount_act365f_leap_year():
@@ -121,28 +127,19 @@ def test_schedule_builder_directions_imm_and_calendars_keep_their_dates():
 
 def test_par_rate_takes_one_two_four_or_twelve_payments_a_year():
     import numpy as np
-    import pytest
 
     curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 2.0, 5.0, 10.0]), np.array([0.02, 0.025, 0.03, 0.035, 0.04]), interp="log_df")
-    assert [curve.par_rate(5.0, f) for f in (1, 2, 4, 12)] == [
-        0.03539979136987701,
-        0.03508251360718011,
-        0.034930018735942335,
-        0.03482883900774336,
-    ]
-    assert [curve.par_rate(2.5, f) for f in (1, 2, 4, 12)] == [
-        0.033170135130105284,
-        0.03178438160960795,
-        0.031659114989185194,
-        0.031575961456323146,
-    ]
+    assert [curve.par_rate(5.0, f) for f in (1, 2, 4, 12)] == pytest.approx(
+        [0.03539979136987701, 0.03508251360718011, 0.034930018735942335, 0.03482883900774336], rel=0, abs=PAR_RATE_ABS
+    )
+    assert [curve.par_rate(2.5, f) for f in (1, 2, 4, 12)] == pytest.approx(
+        [0.033170135130105284, 0.03178438160960795, 0.031659114989185194, 0.031575961456323146], rel=0, abs=PAR_RATE_ABS
+    )
     with pytest.raises(ValueError, match="frequency must be 1, 2, 4 or 12 payments a year, got 3"):
         curve.par_rate(5.0, 3)
 
 
 def test_schedule_builder_keeps_its_direction_under_imm_false_and_refuses_forward_imm():
-    import pytest
-
     d = datetime.date
 
     def build(*calls):

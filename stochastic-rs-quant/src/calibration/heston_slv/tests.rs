@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::calibrator::clean_local_vol;
@@ -13,7 +14,6 @@ use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::LeverageSurface;
 use crate::pricing::slv::ParticleMethod;
-use crate::total_order::ascending;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
@@ -89,7 +89,7 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
       }
     }
   }
-  central.sort_by(ascending);
+  central.sort_by(RealExt::nan_last);
   let median = central[central.len() / 2];
   let worst = central[central.len() - 1];
   assert!(
@@ -137,7 +137,7 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
       }
     }
   }
-  central.sort_by(ascending);
+  central.sort_by(RealExt::nan_last);
   let median = central[central.len() / 2];
   let worst = central[central.len() - 1];
   assert!(

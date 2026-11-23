@@ -1,6 +1,8 @@
 //! Rank-based and optimizer-based long/short builders from [`MomentumScore`] inputs to
 //! [`MomentumPortfolio`] outputs.
 
+use stochastic_rs_distributions::RealExt;
+
 use super::super::data::align_return_series;
 use super::super::data::correlation_matrix;
 use super::super::data::covariance_matrix;
@@ -13,7 +15,6 @@ use super::types::MomentumScore;
 use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
-use crate::total_order::descending;
 
 /// Build rank-based long/short momentum portfolio, best score first; a NaN score is in neither
 /// leg.
@@ -30,7 +31,11 @@ pub fn build_portfolio(
   if order.is_empty() {
     return MomentumPortfolio::default();
   }
-  order.sort_by(|&a, &b| descending(&scores[a].momentum_score, &scores[b].momentum_score));
+  order.sort_by(|&a, &b| {
+    scores[a]
+      .momentum_score
+      .nan_last_descending(&scores[b].momentum_score)
+  });
 
   let long_count = long_n.min(order.len());
   let long_slice = &order[..long_count];

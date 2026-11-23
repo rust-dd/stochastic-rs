@@ -16,6 +16,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::traits::RealExt;
 
 /// Configuration for the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
@@ -97,7 +98,7 @@ pub fn anderson_darling_normal_test(
   validate(&sample, 8)?;
 
   let mut sorted = sample.to_vec();
-  sorted.sort_by(f64::total_cmp);
+  sorted.sort_by(f64::nan_last);
   let n = sorted.len();
   let n_f = n as f64;
   reject_constant(&sorted, "constant sample")?;

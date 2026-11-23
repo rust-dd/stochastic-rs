@@ -18,6 +18,7 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::validate;
 use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Result of the Hill estimator.
 #[derive(Debug, Clone)]
@@ -52,7 +53,7 @@ pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> Result<HillFit, S
       got: positive.len(),
     });
   }
-  positive.sort_by(|a, b| b.total_cmp(a));
+  positive.sort_by(f64::nan_last_descending);
   let threshold = positive[k];
   let log_threshold = threshold.ln();
   let xi = positive[..k]

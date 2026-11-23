@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "lint": "next lint",
+    "lint": "eslint .",
     "lint:mdx": "bun run scripts/lint-mdx.ts",
     "audit": "bun run scripts/docs-audit.ts",
     "python:parity": "bun run scripts/python-parity.ts",

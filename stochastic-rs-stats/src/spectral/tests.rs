@@ -14,6 +14,7 @@ use super::dominant_frequency_fft;
 use super::fft_spectrum_search;
 use super::periodogram_fft;
 use crate::StatsError;
+use crate::traits::RealExt;
 
 fn sine_wave(freq_hz: f64, sampling_rate: f64, n: usize, amplitude: f64, phase: f64) -> Vec<f64> {
   (0..n)
@@ -46,7 +47,7 @@ fn periodogram_detects_single_tone_frequency() {
     .iter()
     .enumerate()
     .skip(1)
-    .max_by(|a, b| a.1.total_cmp(b.1))
+    .max_by(|a, b| a.1.nan_last(b.1))
     .expect("periodogram must contain a peak");
 
   let f_est = pg.frequencies[idx];
@@ -90,7 +91,7 @@ fn fft_spectrum_search_finds_two_tones() {
   assert_eq!(peaks.len(), 2, "expected 2 peaks, got {peaks:?}");
 
   let mut freqs = peaks.iter().map(|p| p.frequency_hz).collect::<Vec<_>>();
-  freqs.sort_by(f64::total_cmp);
+  freqs.sort_by(f64::nan_last);
 
   let tol = fs / n as f64 * 2.0;
   assert!(

@@ -13,6 +13,7 @@ use num_complex::Complex64;
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::validate;
+use crate::traits::RealExt;
 
 /// Detrending strategy used before spectral estimation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -321,7 +322,7 @@ pub fn fft_spectrum_search(
       .zip(pg.spectrum.iter())
       .enumerate()
       .filter(|(i, (f, _))| (!cfg.exclude_dc || *i != 0) && **f >= min_f && **f <= max_f)
-      .max_by(|a, b| a.1.1.total_cmp(b.1.1))
+      .max_by(|a, b| a.1.1.nan_last(b.1.1))
       .map(|(i, (f, p))| (i, *f, *p))
     {
       return Ok(vec![SpectrumPeak {
@@ -334,7 +335,7 @@ pub fn fft_spectrum_search(
     return Ok(Vec::new());
   }
 
-  candidates.sort_by(|a, b| b.2.total_cmp(&a.2));
+  candidates.sort_by(|a, b| a.2.nan_last_descending(&b.2));
 
   let min_sep = cfg.min_separation_bins.max(1);
   let mut peaks = Vec::with_capacity(cfg.top_k);

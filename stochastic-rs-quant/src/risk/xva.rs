@@ -16,7 +16,6 @@ use ndarray::ArrayView2;
 use crate::QuantError;
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::curves::DiscountCurve;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Exposure profile on a date grid.
@@ -108,7 +107,7 @@ impl ExposureProfile {
       let mut positive = col.iter().map(|v| v.max(0.0)).collect::<Vec<_>>();
       epe.push(positive.iter().sum::<f64>() / paths);
       ene.push(col.iter().map(|v| (-v).max(0.0)).sum::<f64>() / paths);
-      positive.sort_by(ascending);
+      positive.sort_by(RealExt::nan_last);
       let rank = ((positive.len() - 1) as f64 * quantile).round() as usize;
       pfe.push(positive[rank]);
     }
