@@ -9,6 +9,7 @@
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4–5
 //! Reference: Bianchetti (2010), "Two Curves, One Price", Risk 23(8), 66–72
 
+use super::bootstrap::Place;
 use super::bootstrap::trial_node;
 use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;
@@ -17,10 +18,10 @@ use super::types::InterpolationMethod;
 use crate::QuantError;
 use crate::traits::RealExt;
 
-/// The pseudo-discount factor at the swap's maturity that sets its value on `discount` to zero,
-/// given the earlier `points`; `Optimizer` when no root is found.
+/// The pseudo-discount factor at the swap's maturity that sets its value on `discount` to zero, at
+/// `place`; `Optimizer` when no root is found.
 pub(super) fn swap_node<T: RealExt>(
-  points: &[CurvePoint<T>],
+  place: Place<'_, T>,
   rate: T,
   fixed_times: &[T],
   float_times: &[T],
@@ -34,22 +35,27 @@ pub(super) fn swap_node<T: RealExt>(
     .iter()
     .map(|t| discount.discount_factor(*t))
     .collect();
-  let (time, previous) = points
-    .last()
-    .map_or((T::zero(), T::one()), |p| (p.time, p.discount_factor));
-  // The forecast curve's forward over the gap taken as the discount curve's.
-  let carried = previous * discount.discount_factor(maturity) / discount.discount_factor(time);
-  let start = if carried.is_finite() && carried > T::zero() {
-    carried
-  } else {
-    previous
+  let (mut trial, slot, start) = match place {
+    Place::Next(points) => {
+      let (time, previous) = points
+        .last()
+        .map_or((T::zero(), T::one()), |p| (p.time, p.discount_factor));
+      // The forecast curve's forward over the gap taken as the discount curve's.
+      let carried = previous * discount.discount_factor(maturity) / discount.discount_factor(time);
+      let start = if carried.is_finite() && carried > T::zero() {
+        carried
+      } else {
+        previous
+      };
+      let node = CurvePoint {
+        time: maturity,
+        discount_factor: start,
+      };
+      let trial: Vec<CurvePoint<T>> = points.iter().copied().chain([node]).collect();
+      (trial, points.len(), start)
+    }
+    Place::At(curve, slot) => (curve.to_vec(), slot, curve[slot].discount_factor),
   };
-  let node = CurvePoint {
-    time: maturity,
-    discount_factor: start,
-  };
-  let mut trial: Vec<CurvePoint<T>> = points.iter().copied().chain([node]).collect();
-  let slot = trial.len() - 1;
   let residual = |p: T| {
     trial[slot].discount_factor = p;
     let floating = floating_leg_pv(float_times, &discounts, &trial, method);

@@ -1,5 +1,5 @@
-//! The cubic spline and the monotone convex method against independent references: scipy's
-//! `CubicSpline(bc_type="natural")` and Hagan & West (2006) §4 with Gauss–Legendre integrals.
+//! Cubic spline and monotone convex against scipy's natural `CubicSpline` and Hagan & West (2006)
+//! §4 by Gauss–Legendre; a bootstrapped curve against scipy's `root` on all its quotes at once.
 
 use ndarray::array;
 use stochastic_rs_quant::curves::BootstrapInstrument;
@@ -108,19 +108,19 @@ fn a_bootstrapped_cubic_curve_reads_the_natural_spline_between_its_pillars() {
     &semi_annual(CUBIC),
     &[
       (0.1, 0.997_026_706_520),
-      (0.75, 0.977_554_351_460),
-      (1.5, 0.953_413_091_361),
-      (3.0, 0.902_608_923_223),
-      (4.0, 0.869_486_407_421),
+      (0.75, 0.977_554_339_054),
+      (1.5, 0.953_413_364_253),
+      (3.0, 0.902_610_578_331),
+      (4.0, 0.869_487_755_236),
     ],
   );
   assert_reads(
     &paying_between_pillars(CUBIC),
     &[
-      (0.75, 0.977_664_118_144),
-      (1.5, 0.953_610_431_210),
-      (2.0, 0.936_289_732_234),
-      (3.0, 0.900_886_835_510),
+      (0.75, 0.977_664_086_090),
+      (1.5, 0.953_611_083_658),
+      (2.0, 0.936_291_326_207),
+      (3.0, 0.900_886_776_161),
     ],
   );
 }
@@ -132,20 +132,20 @@ fn monotone_convex_starts_at_the_origin_as_hagan_and_west_do() {
     &[
       (0.1, 0.997_074_211_487),
       (0.25, 0.992_675_705_709),
-      (0.75, 0.977_551_306_992),
-      (1.5, 0.953_270_279_697),
-      (3.0, 0.903_217_911_261),
-      (4.0, 0.869_959_102_843),
+      (0.75, 0.977_551_281_204),
+      (1.5, 0.953_270_979_130),
+      (3.0, 0.903_219_284_708),
+      (4.0, 0.869_959_892_464),
     ],
   );
   assert_reads(
     &paying_between_pillars(MONOTONE_CONVEX),
     &[
       (0.25, 0.992_653_311_706),
-      (0.75, 0.977_674_724_901),
-      (1.5, 0.953_477_360_634),
-      (2.0, 0.936_293_986_422),
-      (3.0, 0.900_887_690_664),
+      (0.75, 0.977_674_739_922),
+      (1.5, 0.953_476_978_100),
+      (2.0, 0.936_293_295_966),
+      (3.0, 0.900_887_715_958),
     ],
   );
   let curve = user(MONOTONE_CONVEX);

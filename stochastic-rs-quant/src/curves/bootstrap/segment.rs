@@ -16,6 +16,15 @@ pub(super) struct Segment<T> {
   right: T,
 }
 
+/// Whether `method` reads only the two pillars around a time, so a later pillar leaves every
+/// earlier interval as it was.
+pub(super) fn is_local(method: InterpolationMethod) -> bool {
+  matches!(
+    method,
+    InterpolationMethod::LogLinearOnDiscountFactors | InterpolationMethod::LinearOnZeroRates
+  )
+}
+
 impl<T: RealExt> Segment<T> {
   /// `None` under `CubicSplineOnZeroRates` and `MonotoneConvex`, whose reads take every pillar.
   pub(super) fn new(
@@ -23,11 +32,8 @@ impl<T: RealExt> Segment<T> {
     p1: &CurvePoint<T>,
     method: InterpolationMethod,
   ) -> Option<Self> {
-    match method {
-      InterpolationMethod::LogLinearOnDiscountFactors => Some(Self::of(true, p0, p1)),
-      InterpolationMethod::LinearOnZeroRates => Some(Self::of(false, p0, p1)),
-      _ => None,
-    }
+    let log_linear = method == InterpolationMethod::LogLinearOnDiscountFactors;
+    is_local(method).then(|| Self::of(log_linear, p0, p1))
   }
 
   fn of(log_linear: bool, p0: &CurvePoint<T>, p1: &CurvePoint<T>) -> Self {
