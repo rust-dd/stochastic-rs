@@ -53,6 +53,8 @@ lockfile update go in the same commit. Metal is gated with
 `all(feature = "metal", target_os = "macos", target_arch = "aarch64")`;
 Accelerate uses `all(feature = "accelerate", target_os = "macos")`.
 
+Any root `Cargo.toml` edit makes the committed Metal artifact stale (`inputs.json` hashes its bytes): `dev-rules` §15.
+
 ## Clippy usage
 
 Always run `cargo clippy` to adopt the latest compiler recommendations.

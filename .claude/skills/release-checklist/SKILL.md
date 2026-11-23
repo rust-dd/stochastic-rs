@@ -74,12 +74,6 @@ already, so this is the only file that needs editing for version itself.
 
 Cross-checks after editing:
 
-**One gotcha before you commit anything.** `.claude/` is gitignored, but
-`.agents/skills` is a symlink to `.claude/skills`, and the umbrella
-`cargo publish` walks it — untracked files under there abort the publish
-with a dirty-tree error that `git status` will not show you. `git add -f`
-any new or modified skill files before stage 4.
-
 ```bash
 # 2.1 No leftover old-version literals: the READMEs, the website and CITATION.cff carry them too;
 #     every hit left must be history
@@ -93,10 +87,8 @@ cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}'
 cargo update --workspace
 git add Cargo.lock
 
-# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes, so
-#     any edit of that file does, not only a version bump; the 8.1 next-dev bump too, and
-#     cargo-workspace-policy states the rule): regenerate it per
-#     .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
+# 2.4 Any root Cargo.toml edit (this bump, 8.1's too) makes the Metal artifact stale (dev-rules §15);
+#     regenerate per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
 PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
   cargo check -p stochastic-rs-stochastic --features metal --locked
 METAL_OXIDE_ARTIFACTS=locked cargo check -p stochastic-rs-stochastic --features metal --locked
@@ -129,6 +121,8 @@ There is no `docs/V1_TO_V2.md`; `MIGRATION.md` absorbed that role.
 Bump `CITATION.cff` alongside the crate version — `version` and
 `date-released`. Leave the two `identifiers:` DOIs alone for now; the
 version DOI is only known after stage 5.5.
+
+At the 3.0.0 cut, set `pyproject.toml`'s classifier back to `Development Status :: 5 - Production/Stable`.
 
 ## Stage 4 — local publish dry run
 
@@ -262,7 +256,7 @@ revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 ```bash
 # 8.1 Bump main to next-dev version (open the next rc / patch cycle)
 # (manual edit Cargo.toml workspace.package.version → "X.Y.Z+1-dev" or "X.Y+1.0-dev")
-cargo update --workspace && git add Cargo.lock
+cargo update --workspace && git add Cargo.lock   # then 2.4: the Metal artifact is stale again
 
 # 8.2 Verify docs.rs picked up the build (auto-triggered on crates.io publish)
 open https://docs.rs/stochastic-rs/X.Y.Z/
@@ -280,7 +274,7 @@ gh issue list --state open --label "v$(MAJOR.MINOR)"
   partially-published version will leave users with a broken graph.
 - **Do not** force-push `main` after a tag is published. The tag points
   at a specific commit; rewriting the branch breaks reproducibility.
-- **Do not** skip `cargo check --all-features`. The audit §4.1 trap
+- **Do not** skip the all-features clippy of stage 1.2. The audit §4.1 trap
   (a feature-gated symbol whose dispatch type didn't compile) escaped
   rc.0 because nothing in the test suite forced the all-features path.
 - **Do not** bump `stochastic-rs-py` ahead of the workspace. PyPI
