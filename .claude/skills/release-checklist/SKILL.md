@@ -31,7 +31,7 @@ git log -1 --oneline       # capture the HEAD commit for the release notes
 # 1.2 Tests + clippy + features matrix
 cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
-cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
+cargo clippy --workspace --all-targets --all-features -- -D warnings   # the §4.1 feature-flag traps; the Metal artifact must be fresh
 cargo check --workspace --no-default-features                # baseline build still works
 
 # 1.3 CUDA tests on the T4 runner (billed), by dispatch, never by toggling the `cuda` label
@@ -74,12 +74,6 @@ already, so this is the only file that needs editing for version itself.
 
 Cross-checks after editing:
 
-**One gotcha before you commit anything.** `.claude/` is gitignored, but
-`.agents/skills` is a symlink to `.claude/skills`, and the umbrella
-`cargo publish` walks it — untracked files under there abort the publish
-with a dirty-tree error that `git status` will not show you. `git add -f`
-any new or modified skill files before stage 4.
-
 ```bash
 # 2.1 No leftover old-version literals: the READMEs, the website and CITATION.cff carry them too;
 #     every hit left must be history
@@ -93,8 +87,8 @@ cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}'
 cargo update --workspace
 git add Cargo.lock
 
-# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes):
-#     regenerate it per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
+# 2.4 Any root Cargo.toml edit (this bump, 8.1's too) makes the Metal artifact stale (dev-rules §15);
+#     regenerate per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
 PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
   cargo check -p stochastic-rs-stochastic --features metal --locked
 METAL_OXIDE_ARTIFACTS=locked cargo check -p stochastic-rs-stochastic --features metal --locked
@@ -128,18 +122,25 @@ Bump `CITATION.cff` alongside the crate version — `version` and
 `date-released`. Leave the two `identifiers:` DOIs alone for now; the
 version DOI is only known after stage 5.5.
 
+At the 3.0.0 cut, set `pyproject.toml`'s classifier back to `Development Status :: 5 - Production/Stable`.
+
 ## Stage 4 — local publish dry run
 
 ```bash
 # 4.1 Package and verify the published crates together, in dependency order (core → distributions
 # → copulas → stochastic → stats → quant → ai → umbrella), against a local registry of the siblings.
 cargo publish --workspace --dry-run --locked
+# 4.2 The umbrella carries an `include` allow-list: its package is the sources, benches, examples,
+#     README, LICENSE and the KaTeX header, about sixty files
+cargo package -p stochastic-rs --list --locked | wc -l
+# 4.3 The stochastic package ships the prebuilt metallib
+cargo package -p stochastic-rs-stochastic --list --locked | grep metallib
 ```
 
-Not `./publish.sh --dry-run`: it verifies each crate against its siblings
-on crates.io, so after a version bump it fails at the second crate.
+`./publish.sh --dry-run` runs the same workspace dry run after its gate. CI's
+`hygiene.yml` runs `cargo publish --workspace --dry-run` on every pull request too.
 
-`publish.sh` (stage 6) runs its **own** fmt + clippy + test gate before
+`publish.sh` (stage 6) runs its **own** fmt + clippy (default-off and all-features) + test gate before
 publishing anything, so stage 1 and stage 6 overlap deliberately.
 Its other flags: `--allow-dirty` (publish with uncommitted changes) and
 `--skip-gate` (bypass the fmt/clippy/test gate — not recommended). It
@@ -255,7 +256,7 @@ revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 ```bash
 # 8.1 Bump main to next-dev version (open the next rc / patch cycle)
 # (manual edit Cargo.toml workspace.package.version → "X.Y.Z+1-dev" or "X.Y+1.0-dev")
-cargo update --workspace && git add Cargo.lock
+cargo update --workspace && git add Cargo.lock   # then 2.4: the Metal artifact is stale again
 
 # 8.2 Verify docs.rs picked up the build (auto-triggered on crates.io publish)
 open https://docs.rs/stochastic-rs/X.Y.Z/
@@ -273,7 +274,7 @@ gh issue list --state open --label "v$(MAJOR.MINOR)"
   partially-published version will leave users with a broken graph.
 - **Do not** force-push `main` after a tag is published. The tag points
   at a specific commit; rewriting the branch breaks reproducibility.
-- **Do not** skip `cargo check --all-features`. The audit §4.1 trap
+- **Do not** skip the all-features clippy of stage 1.2. The audit §4.1 trap
   (a feature-gated symbol whose dispatch type didn't compile) escaped
   rc.0 because nothing in the test suite forced the all-features path.
 - **Do not** bump `stochastic-rs-py` ahead of the workspace. PyPI

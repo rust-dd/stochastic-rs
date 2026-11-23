@@ -1,6 +1,7 @@
+use stochastic_rs_distributions::RealExt;
+
 use super::*;
 use crate::QuantError;
-use crate::total_order::ascending;
 
 /// Golden-section minimisation of a unimodal function on `[lo, hi]`.
 fn golden_section(f: &dyn Fn(f64) -> f64, mut lo: f64, mut hi: f64, iters: usize) -> f64 {
@@ -239,7 +240,7 @@ pub fn try_calibrate_essvi<T: RealExt>(
       ));
     }
     let anchor = (0..ks.len())
-      .min_by(|&i, &j| ascending(&ks[i].abs(), &ks[j].abs()))
+      .min_by(|&i, &j| ks[i].abs().nan_last(&ks[j].abs()))
       .expect("non-empty");
     let anchored = AnchoredSlice {
       k_star: ks[anchor],

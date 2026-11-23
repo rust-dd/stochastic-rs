@@ -2,6 +2,8 @@
 
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::traits::RealExt;
+
 /// Critical values at ascending levels; `value_at` takes the largest tabulated level ≤ `alpha`,
 /// so no decision runs at a size above `alpha`.
 #[derive(Clone, Debug, PartialEq)]
@@ -28,7 +30,7 @@ impl CriticalValues {
         "value must satisfy `!value.is_nan()`, got value = {value:?}"
       );
     }
-    entries.sort_by(|a, b| a.0.total_cmp(&b.0));
+    entries.sort_by(|a, b| a.0.nan_last(&b.0));
     assert!(
       entries.windows(2).all(|w| w[0].0 != w[1].0),
       "levels must satisfy `distinct`, got levels = {:?}",

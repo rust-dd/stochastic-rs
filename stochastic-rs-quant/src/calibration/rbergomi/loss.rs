@@ -1,4 +1,4 @@
-use crate::total_order::ascending;
+use stochastic_rs_distributions::RealExt;
 
 /// $W_1$ between the empirical measures of `x` and `y`, exact; NaN for an empty sample or one that
 /// holds a value that is not finite.
@@ -13,8 +13,8 @@ pub fn empirical_wasserstein_1(x: &[f64], y: &[f64]) -> f64 {
     return f64::NAN;
   }
   let (mut xs, mut ys) = (x.to_vec(), y.to_vec());
-  xs.sort_by(ascending);
-  ys.sort_by(ascending);
+  xs.sort_by(RealExt::nan_last);
+  ys.sort_by(RealExt::nan_last);
 
   // Both quantile functions are steps: `xs[i]` on `(i/n, (i+1)/n]`, `ys[j]` on `(j/m, (j+1)/m]`.
   let (n, m) = (xs.len(), ys.len());

@@ -30,7 +30,6 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Knob;
-use crate::total_order::ascending;
 
 /// Kelley's `α`; his `nelder.m` scales it by the first simplex's `σ₊/‖D‖`, which makes the test
 /// invariant to the units of the objective and of the parameters.
@@ -189,7 +188,7 @@ fn simplex_gradient(vertices: &[Vec<f64>], costs: &[f64]) -> Option<(Vec<f64>, V
   for column in 0..n {
     let pivot = (column..n).max_by(|&a, &b| {
       let (a, b) = (rows[a][column].abs(), rows[b][column].abs());
-      ascending(&a, &b)
+      a.nan_last(&b)
     })?;
     rows.swap(column, pivot);
     let lead = rows[column][column];

@@ -1,9 +1,10 @@
 //! Risk-adjusted momentum scores and decile aggregation over [`ModelEstimate`] inputs.
 
+use stochastic_rs_distributions::RealExt;
+
 use super::types::DecileBucket;
 use super::types::ModelEstimate;
 use super::types::MomentumScore;
-use crate::total_order::descending;
 
 /// Risk-adjusted scores `(return − risk_free) / vol`; NaN unless the vol is positive, which
 /// keeps the asset out of every ranking.
@@ -43,7 +44,7 @@ pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
   if sorted.is_empty() {
     return Vec::new();
   }
-  sorted.sort_by(|a, b| descending(&a.momentum_score, &b.momentum_score));
+  sorted.sort_by(|a, b| a.momentum_score.nan_last_descending(&b.momentum_score));
 
   let n = sorted.len();
   let n_buckets = 10.min(n);

@@ -14,7 +14,6 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.
@@ -67,7 +66,7 @@ impl<T: RealExt> SurvivalCurve<T> {
       );
     }
     let mut pts = points;
-    pts.sort_by(|a, b| ascending(&a.time, &b.time));
+    pts.sort_by(|a, b| a.time.nan_last(&b.time));
     if pts.is_empty() || pts[0].time > T::zero() {
       pts.insert(
         0,

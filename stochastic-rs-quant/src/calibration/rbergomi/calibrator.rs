@@ -4,6 +4,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::RealExt;
 
 use super::loss::empirical_wasserstein_1;
 use super::params::RBergomiCalibrationConfig;
@@ -19,7 +20,6 @@ use crate::calibration::CalibrationOptions;
 use crate::calibration::Knob;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::pricing::rbergomi::RBergomiPricer;
-use crate::total_order::ascending;
 use crate::traits::ToModel;
 
 impl<D> ToModel for Calibrated<RBergomiParams, D> {
@@ -86,7 +86,7 @@ impl RBergomiCalibrator {
       tol.is_finite() && tol >= 0.0,
       "config.improvement_tol must satisfy `config.improvement_tol.is_finite() && config.improvement_tol >= 0.0`, got config.improvement_tol = {tol:?}"
     );
-    market_slices.sort_by(|a, b| ascending(&a.tau, &b.tau));
+    market_slices.sort_by(|a, b| a.tau.nan_last(&b.tau));
     Self {
       s,
       r,

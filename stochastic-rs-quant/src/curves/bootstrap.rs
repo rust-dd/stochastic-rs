@@ -28,7 +28,6 @@ use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
 use crate::QuantError;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// A curve with one pillar per instrument that reprices every quote. `InsufficientData` for no
@@ -59,7 +58,11 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     validate::check(number(index), instrument, discount.is_some())?;
   }
   let mut order: Vec<usize> = (0..instruments.len()).collect();
-  order.sort_by(|&a, &b| ascending(&instruments[a].maturity(), &instruments[b].maturity()));
+  order.sort_by(|&a, &b| {
+    instruments[a]
+      .maturity()
+      .nan_last(&instruments[b].maturity())
+  });
   if let Some(pair) = order
     .windows(2)
     .find(|w| instruments[w[0]].maturity() == instruments[w[1]].maturity())

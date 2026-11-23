@@ -45,6 +45,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate_rows;
+use crate::traits::RealExt;
 
 /// 5% critical values of the trace statistic for $K - r = 1, \ldots, 12$
 /// (MacKinnon–Haug–Michelis 1999, unrestricted constant).
@@ -209,7 +210,7 @@ fn ordered_eigen(
       stage: "eigen decomposition",
     })?;
   let mut order: Vec<usize> = (0..k).collect();
-  order.sort_by(|&a, &b| values[b].total_cmp(&values[a]));
+  order.sort_by(|&a, &b| values[a].nan_last_descending(&values[b]));
   let raw = l_inv.t().dot(&vectors);
   let mut eigenvalues = Array1::<f64>::zeros(k);
   let mut eigenvectors = Array2::<f64>::zeros((k, k));

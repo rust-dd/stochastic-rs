@@ -8,13 +8,13 @@ use implied_vol::ImpliedBlackVolatility;
 use implied_vol::solver::Hybrid;
 use ndarray::Array2;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::quote::validate_quotes;
-use crate::total_order::ascending;
 
 /// Black implied volatility of an undiscounted price on a forward: `0.0` at the intrinsic price,
 /// `+∞` at the forward (the strike for a put), NaN outside them. Jäckel (2015), Wilmott 2015(75).
@@ -207,11 +207,11 @@ impl ImpliedVolSurface {
     }
 
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
-    tau_set.sort_by(ascending);
+    tau_set.sort_by(RealExt::nan_last);
     tau_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let mut strike_set: Vec<f64> = quotes.iter().map(|q| q.strike).collect();
-    strike_set.sort_by(ascending);
+    strike_set.sort_by(RealExt::nan_last);
     strike_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let fwd_map: std::collections::HashMap<u64, f64> =
