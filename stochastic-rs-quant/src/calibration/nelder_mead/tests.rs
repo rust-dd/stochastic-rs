@@ -162,19 +162,23 @@ fn nonfinite_simplex_costs_stop_without_convergence() {
     }
   }
 
-  let state = basin::BasicSimplexState::from_simplex(vec![vec![0.0], vec![1.0]]);
-  let result = basin::Executor::new(Nonfinite, basin::NelderMead::new(), state)
+  let state = SimplexProgress::from_simplex(vec![vec![0.0], vec![1.0]]);
+  let result = Executor::new(Nonfinite, standard_simplex(), state)
     .max_iter(100)
     .stop_when(|state| {
-      super::SimplexStandardDeviation::new(1e-10, vec![1.0])
+      SimplexStandardDeviation::new(1e-10, vec![1.0])
         .unwrap()
         .check(state)
     })
     .run()
     .unwrap();
-  assert_eq!(result.reason, basin::TerminationReason::SolverFailed);
+  let undefined = Termination::Application(ApplicationStop::new(SPREAD_UNDEFINED));
+  assert_eq!(result.report.termination, undefined);
   assert_eq!(result.iter(), 0);
-  assert_eq!(result.best_param(), &vec![0.0]);
+  assert_eq!(result.param(), &vec![0.0]);
+  let run = run_nelder_mead(Nonfinite, vec![vec![1.0], vec![2.0]], 100, 1e-10, true);
+  assert_eq!((run.stop, run.iterations), (SimplexStop::Undefined, 0));
+  assert_eq!((run.best, run.trail), (vec![1.0], vec![vec![1.0]]));
 }
 
 /// Kelley's §4 case (τ, θ, φ) = (1, 15, 10), not differentiable at the stagnation point: his run
@@ -250,4 +254,33 @@ fn a_lower_point_beside_a_spread_stop_restarts_the_fit() {
     "{:?}",
     run.best
   );
+}
+
+/// A bowl around `(c, −2c)`.
+struct Bowl(f64);
+
+impl CostFunction for Bowl {
+  type Param = Vec<f64>;
+  type Output = f64;
+  type Error = Infallible;
+
+  fn cost(&self, p: &Self::Param) -> Result<f64, Infallible> {
+    Ok((p[0] - self.0).powi(2) + (p[1] + 2.0 * self.0).powi(2))
+  }
+}
+
+/// basin's simplex stops read the simplex against `‖x‖` and `1e-8`: far from the origin, or under
+/// a tolerance below theirs, they would end a run ahead of the spread criterion.
+#[test]
+fn the_spread_criterion_alone_ends_a_run() {
+  for (centre, tolerance, reach) in [(1e6, 1e-10, 1e-4), (0.0, 1e-22, 1e-9)] {
+    let (x, y) = (centre + 3.0, 4.0 - 2.0 * centre);
+    let simplex = vec![vec![x, y], vec![x + 1.0, y], vec![x, y + 1.0]];
+    let run = run_nelder_mead(Bowl(centre), simplex, 2000, tolerance, false);
+    let gap = (run.best[0] - centre)
+      .abs()
+      .max((run.best[1] + 2.0 * centre).abs());
+    assert_eq!(run.stop, SimplexStop::Converged, "around {centre}");
+    assert!(gap < reach, "around {centre}: {gap:e}");
+  }
 }

@@ -197,15 +197,15 @@ fn a_stop_is_worded_as_the_calibrators_word_theirs() {
   assert_eq!(said(Stop::NotStationary), "not stationary");
   assert_eq!(said(Stop::Bound(0)), "stopped at the bound of theta");
   assert_eq!(said(Stop::Edge), "stopped at the edge of the law's support");
-  let budget = Stop::Search(TerminationReason::MaxIter);
+  let budget = Stop::Search(SolverStop::IterationCap);
   assert_eq!(said(budget), "evaluation budget exhausted");
-  let spent = Stop::Search(TerminationReason::MaxCostEvals);
+  let spent = Stop::Search(SolverStop::EvaluationBudget);
   assert_eq!(said(spent), "evaluation budget exhausted");
-  let stuck = Stop::Search(TerminationReason::NumericalNoProgress);
+  let stuck = Stop::Search(SolverStop::NoProgress);
   assert_eq!(said(stuck), "no numerical progress");
-  let failed = Stop::Search(TerminationReason::SolverFailed);
+  let failed = Stop::Search(SolverStop::Failed);
   assert_eq!(said(failed), "solver failed");
-  let other = Stop::Search(TerminationReason::MaxGradientEvals);
+  let other = Stop::Search(SolverStop::Other);
   assert_eq!(said(other), "stopped without convergence");
   assert_eq!(said(Stop::Outside), "stopped without convergence");
 }

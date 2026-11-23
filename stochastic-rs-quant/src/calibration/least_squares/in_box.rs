@@ -8,7 +8,6 @@ use std::cell::RefCell;
 
 use basin::Jacobian;
 use basin::Residual;
-use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -16,6 +15,7 @@ use ndarray::ArrayView1;
 use super::LeastSquaresProblem;
 use super::Objective;
 use super::Run;
+use super::SolverStop;
 
 /// How far each coordinate of the optimiser's point can fall and rise before its value meets a
 /// bound its map folds or clamps at, and `strip`, its stencil step: the paper's `ε`.
@@ -195,10 +195,7 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
     objective.model.borrow_mut().accept();
   }
   loop {
-    let own = matches!(
-      total.reason,
-      TerminationReason::SolverConverged | TerminationReason::NumericalNoProgress
-    );
+    let own = matches!(total.reason, SolverStop::Converged | SolverStop::NoProgress);
     let spent = || objective.evaluations.get();
     if own && bounds.change.borrow().is_none() && spent() < budget {
       // The solver stops on a step, before the Jacobian that tells the set where it stopped.
@@ -211,8 +208,8 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
     let out = |best: Array1<f64>| Run {
       best,
       reason: match spent() >= budget {
-        true => TerminationReason::MaxCostEvals,
-        false => TerminationReason::MaxIter,
+        true => SolverStop::EvaluationBudget,
+        false => SolverStop::IterationCap,
       },
       iterations: total.iterations,
       started: true,
@@ -234,7 +231,7 @@ pub(super) fn restarted<P: LeastSquaresProblem>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
   use stochastic_rs_distributions::RealExt;
 
   use super::super::LmOptions;
@@ -244,7 +241,7 @@ mod tests {
   use crate::calibration::stencil::room;
 
   /// `r = [θ₁ − a, θ₂ + θ₁ − 3]` with `θ₁ = |x₁|`, a fold at 0, and `θ₂ = x₂`.
-  struct Folded {
+  pub(in super::super) struct Folded {
     x: Array1<f64>,
     a: f64,
   }
@@ -269,14 +266,14 @@ mod tests {
     }
   }
 
-  fn outward(x: ArrayView1<f64>) -> Room {
+  pub(in super::super) fn outward(x: ArrayView1<f64>) -> Room {
     let boxed = ndarray::array![x[0].abs(), x[1]];
     let bounds = [(0.0, f64::INFINITY), (f64::NEG_INFINITY, f64::INFINITY)];
     let slopes = ndarray::array![if x[0] < 0.0 { -1.0 } else { 1.0 }, 1.0];
     room(&boxed, &bounds, slopes.view())
   }
 
-  fn folded(x: [f64; 2], a: f64) -> Folded {
+  pub(in super::super) fn folded(x: [f64; 2], a: f64) -> Folded {
     Folded {
       x: Array1::from_vec(x.to_vec()),
       a,

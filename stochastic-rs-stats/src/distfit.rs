@@ -20,10 +20,7 @@ pub mod variance_gamma;
 use std::convert::Infallible;
 
 use basin::CostFunction;
-use basin::Executor;
 use basin::Gradient;
-use basin::LbfgsState;
-use basin::Lbfgsb;
 
 pub use johnson_su::JohnsonSuFit;
 pub use johnson_su::fit_johnson_su;
@@ -38,8 +35,8 @@ use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::best_start;
-use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
+use crate::optim::polish;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -79,10 +76,12 @@ pub(crate) fn minimise<F: Fn(&[f64]) -> f64 + Clone>(
   let start = best_start(starts, &objective).expect("a non-empty starting grid");
   let (theta, iters, converged) = nelder_mead_vec(start, 5_000, &objective);
   let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, &objective);
-  let (theta, iters_polish) = Polish {
-    objective: objective.clone(),
-  }
-  .run(theta);
+  let (theta, iters_polish) = polish(
+    Polish {
+      objective: objective.clone(),
+    },
+    theta,
+  );
   (
     theta,
     iters + iters_restart + iters_polish,
@@ -91,31 +90,8 @@ pub(crate) fn minimise<F: Fn(&[f64]) -> f64 + Clone>(
 }
 
 /// The objective as a Basin problem with numerical gradients.
-#[derive(Clone)]
 struct Polish<F> {
   objective: F,
-}
-
-impl<F: Fn(&[f64]) -> f64 + Clone> Polish<F> {
-  fn run(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
-    let start_cost = (self.objective)(&theta);
-    let solver = Lbfgsb::with_line_search(more_thuente())
-      .unbounded()
-      .with_absolute_gradient_tolerance(f64::EPSILON.sqrt())
-      .with_absolute_cost_change_tolerance(f64::EPSILON);
-    let state = LbfgsState::new(theta.clone(), 10);
-    let result = Executor::new(self.clone(), solver, state)
-      .max_iter(200)
-      .run()
-      .expect("distribution-fitting objective is infallible");
-    let iters = result.iter() as usize;
-    let best = result.best_param();
-    if (self.objective)(best) < start_cost {
-      (best.clone(), iters)
-    } else {
-      (theta, iters)
-    }
-  }
 }
 
 impl<F: Fn(&[f64]) -> f64 + Clone> CostFunction for Polish<F> {

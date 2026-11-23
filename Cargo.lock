@@ -182,9 +182,9 @@ dependencies = [
 
 [[package]]
 name = "basin"
-version = "1.11.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fffea1dff2227a73e150b3defee598fba70e025505d819d4ee7dd22cbaf436e"
+checksum = "b0ea8cc5224c7a53c4086c95846765d5dd433da8e9f49dda2dfecccb051ceb1e"
 dependencies = [
  "ndarray",
  "num-traits",

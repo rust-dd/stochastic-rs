@@ -2,7 +2,10 @@ use std::convert::Infallible;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 
-use basin::BoxConstraints;
+use basin::BoxBounds;
+use basin::ConstraintDescription;
+use basin::ConstraintSet;
+use basin::Constraints;
 use basin::CostFunction;
 use basin::Gradient;
 use ndarray::ArrayView1;
@@ -353,12 +356,13 @@ impl Gradient for MleProblem<'_> {
   }
 }
 
-impl BoxConstraints for MleProblem<'_> {
-  fn lower(&self) -> &Self::Param {
-    &self.units.low
-  }
+impl Constraints for MleProblem<'_> {
+  type Set = ConstraintSet<BoxBounds<Vec<f64>>>;
 
-  fn upper(&self) -> &Self::Param {
-    &self.units.high
+  fn constraints(&self) -> <Self::Set as ConstraintDescription>::Borrowed<'_> {
+    ConstraintSet::new().with_bounds(BoxBounds::new(
+      Some(&self.units.low),
+      Some(&self.units.high),
+    ))
   }
 }

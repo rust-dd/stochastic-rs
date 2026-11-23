@@ -1,9 +1,7 @@
 use std::fmt;
 
 use basin::Executor;
-use basin::LbfgsState;
-use basin::Lbfgsb;
-use basin::TerminationReason;
+use basin::FirstOrderState;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
@@ -14,8 +12,8 @@ use super::DiffusionModel;
 use super::density::DensityApprox;
 use crate::StatsError;
 use crate::input::validate_view;
-use crate::optim::more_thuente;
-use crate::optim::stopped_on_tolerance;
+use crate::optim::SolverStop;
+use crate::optim::lbfgsb;
 
 /// Result of maximum likelihood estimation.
 #[derive(Clone, Debug)]
@@ -83,14 +81,14 @@ struct Search {
   params: Vec<f64>,
   cost: f64,
   converged: bool,
-  reason: TerminationReason,
+  reason: SolverStop,
   iterations: usize,
 }
 
 /// Why a fit stopped, `Converged` alone being `converged = true`.
 enum Stop {
   Converged,
-  Search(TerminationReason),
+  Search(SolverStop),
   NotStationary,
   Bound(usize),
   Edge,
@@ -102,11 +100,11 @@ impl Stop {
   fn message(&self, names: &[&str]) -> String {
     let words = match self {
       Self::Converged => "converged",
-      Self::Search(TerminationReason::MaxIter | TerminationReason::MaxCostEvals) => {
+      Self::Search(SolverStop::IterationCap | SolverStop::EvaluationBudget) => {
         "evaluation budget exhausted"
       }
-      Self::Search(TerminationReason::NumericalNoProgress) => "no numerical progress",
-      Self::Search(TerminationReason::SolverFailed) => "solver failed",
+      Self::Search(SolverStop::NoProgress) => "no numerical progress",
+      Self::Search(SolverStop::Failed) => "solver failed",
       Self::Search(_) | Self::Outside => "stopped without convergence",
       Self::NotStationary => "not stationary",
       Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
@@ -142,16 +140,15 @@ fn verdict(problem: &MleProblem<'_>, at: &[f64], lower: &[f64], upper: &[f64]) -
 /// problem's units: there the gradient tolerance is relative to each parameter's size.
 fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
   let units = problem.units();
-  let solver = Lbfgsb::with_line_search(SteppingBack(more_thuente()))
-    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
-    .with_absolute_cost_change_tolerance(f64::EPSILON);
-  let result = Executor::new(problem, solver, LbfgsState::new(units.of(start), 10))
+  let from = units.of(start);
+  let solver = lbfgsb(SteppingBack);
+  let result = Executor::new(problem, solver, FirstOrderState::new(from.clone()))
     .max_iter(200)
     .run()
-    .expect("MLE objective is infallible");
+    .expect("the box is ordered and the MLE objective infallible");
   let cost = result.best_cost();
-  let best = units.params(result.best_param());
-  let reason = result.reason;
+  let best = units.params(result.state.best().map_or(&from, |(best, _)| best));
+  let reason = SolverStop::from(&result.report.termination);
   let (params, converged, iterations) = resolve_fit_outcome(best, reason, result.iter());
   Search {
     params,
@@ -165,12 +162,12 @@ fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
 /// Resolves a Basin L-BFGS-B outcome into the public fit signals.
 fn resolve_fit_outcome(
   best_param: Vec<f64>,
-  reason: TerminationReason,
+  reason: SolverStop,
   iterations: u64,
 ) -> (Vec<f64>, bool, usize) {
   (
     best_param,
-    stopped_on_tolerance(reason),
+    reason == SolverStop::Converged,
     iterations as usize,
   )
 }

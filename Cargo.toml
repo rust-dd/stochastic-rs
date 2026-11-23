@@ -17,7 +17,7 @@ rust-version = "1.89"
 
 [workspace.dependencies]
 anyhow = "1.0.89"
-basin = { version = "1.11.0", default-features = false }
+basin = { version = "3.5.0", default-features = false }
 candle-core = "0.11.0"
 candle-nn = "0.11.0"
 chrono = "0.4.38"
