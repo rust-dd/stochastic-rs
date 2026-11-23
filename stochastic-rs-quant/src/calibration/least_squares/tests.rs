@@ -1,3 +1,5 @@
+use super::in_box::tests::folded;
+use super::in_box::tests::outward;
 use super::*;
 use crate::calibration::CalibrationOptions;
 
@@ -173,7 +175,7 @@ fn evaluation_budget_is_not_convergence() {
     },
   );
   assert!(!report.converged, "{report:?}");
-  assert_eq!(report.reason, TerminationReason::MaxCostEvals);
+  assert_eq!(report.reason, SolverStop::EvaluationBudget);
   assert_eq!(report.message(), "evaluation budget exhausted");
   assert_eq!(report.evaluations, 3);
   assert!(problem.x.iter().all(|v| v.is_finite()));
@@ -189,7 +191,7 @@ fn an_iteration_cap_below_the_budget_stops_the_fit() {
   let (capped, report) = minimize(Rosenbrock::new(), options(Some(2)));
   assert!(free_report.converged);
   assert!(!report.converged, "{report:?}");
-  assert_eq!(report.reason, TerminationReason::MaxIter);
+  assert_eq!(report.reason, SolverStop::IterationCap);
   assert!(report.evaluations < free_report.evaluations);
   assert!(distance_to_optimum(capped.x.view()) > distance_to_optimum(free.x.view()));
   let fit = report
@@ -206,7 +208,7 @@ fn failed_trial_restores_the_last_accepted_parameters() {
   problem.fail_at = Some(2);
   let (problem, report) = minimize(problem, LmOptions::default());
   assert!(!report.converged);
-  assert_eq!(report.reason, TerminationReason::SolverFailed);
+  assert_eq!(report.reason, SolverStop::Failed);
   assert_eq!(report.message(), "solver failed");
   assert_eq!(report.evaluations, 2);
   assert_eq!(problem.params(), initial);
@@ -232,7 +234,7 @@ fn nonfinite_residual_is_not_convergence() {
   problem.x[0] = f64::NAN;
   let (_, report) = minimize(problem, LmOptions::default());
   assert!(!report.converged);
-  assert_eq!(report.reason, TerminationReason::SolverFailed);
+  assert_eq!(report.reason, SolverStop::Failed);
 }
 
 #[test]
@@ -485,6 +487,14 @@ fn a_fit_resting_on_a_bound_with_its_minimum_outside_the_box_is_converged() {
   }
 }
 
+/// `minimize_reseated` restarts a converged pass on the iterations left under its cap.
+#[test]
+fn a_pass_converging_on_its_first_trial_has_spent_no_iteration() {
+  let (_, report) = stopped(Map::Clamp, 0.0, -0.5);
+  assert!(report.solver_converged(), "{report:?}");
+  assert_eq!((report.evaluations > 1, report.iterations), (true, 0));
+}
+
 /// basin's one step from `x = 14.5` ends past −700, where the logistic slope has underflowed.
 #[test]
 fn a_jacobian_that_is_flat_at_the_stop_is_a_flat_objective() {
@@ -533,4 +543,16 @@ fn a_problem_its_trail_and_the_checks_read_views() {
   trail.stage(&options, &[1.0, 1.0], &[1.5, 1.25], &(), rows.row(0));
   trail.accept();
   assert_eq!(trail.into_entries()[0].residuals, rows.row(0));
+}
+
+/// basin's pivoted QR rounds these trajectories: counts that move are a numerical change to review
+/// and record in MIGRATION.md, not to re-pin.
+#[test]
+fn two_pivoted_qr_fits_keep_their_iteration_and_evaluation_counts() {
+  let counts = |start, a| {
+    let (_, report) = minimize_in_box(folded(start, a), LmOptions::default(), outward);
+    (report.iterations, report.evaluations, report.converged)
+  };
+  assert_eq!(counts([0.0, 0.0], 0.5), (1, 5, true));
+  assert_eq!(counts([1.0, 0.0], -0.5), (20, 25, true));
 }

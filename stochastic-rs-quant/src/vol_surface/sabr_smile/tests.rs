@@ -1,6 +1,17 @@
-use super::*;
+use std::convert::Infallible;
+
+use basin::BoxBounds;
+use basin::ConstraintDescription;
+use basin::ConstraintSet;
+use basin::Constraints;
+use basin::ConvergenceTest;
 use basin::CostFunction;
+use basin::Executor;
+use basin::FirstOrderState;
 use basin::Gradient;
+use basin::Termination;
+
+use super::*;
 
 use crate::LossMetric;
 use crate::QuantError;
@@ -439,4 +450,67 @@ fn a_negative_hagan_volatility_at_a_strangle_strike_costs_nan() {
   assert!(problem.cost(&start.to_vec()).unwrap().is_nan());
   let (_, best) = objective::basin_hopping_opt(start, 20, 1.0, &problem);
   assert!(best.is_finite(), "{best}");
+}
+
+/// `10⁶ + ½·Σ 3ⁱ(xᵢ − 1)²` over a box that holds `x₀` at `0.5`: near the minimum a step lowers
+/// the cost by less than `10ε·10⁶` while the gradient is still large.
+struct Offset {
+  low: Vec<f64>,
+  high: Vec<f64>,
+}
+
+impl Offset {
+  fn weights() -> impl Iterator<Item = f64> {
+    (0..6).map(|i| 3f64.powi(i))
+  }
+}
+
+impl CostFunction for Offset {
+  type Param = Vec<f64>;
+  type Output = f64;
+  type Error = Infallible;
+
+  fn cost(&self, x: &Vec<f64>) -> Result<f64, Infallible> {
+    let bowl = Self::weights().zip(x).map(|(w, x)| w * (x - 1.0).powi(2));
+    Ok(1e6 + 0.5 * bowl.sum::<f64>())
+  }
+}
+
+impl Gradient for Offset {
+  type Gradient = Vec<f64>;
+
+  fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Infallible> {
+    Ok(Self::weights().zip(x).map(|(w, x)| w * (x - 1.0)).collect())
+  }
+}
+
+impl Constraints for Offset {
+  type Set = ConstraintSet<BoxBounds<Vec<f64>>>;
+
+  fn constraints(&self) -> <Self::Set as ConstraintDescription>::Borrowed<'_> {
+    ConstraintSet::new().with_bounds(BoxBounds::new(Some(&self.low), Some(&self.high)))
+  }
+}
+
+#[test]
+fn the_local_search_stops_on_its_gradient_or_cost_change_test_alone() {
+  let problem = Offset {
+    low: vec![0.0; 6],
+    high: vec![0.5, 2.0, 2.0, 2.0, 2.0, 2.0],
+  };
+  let start = (0..6).map(|i| 0.1 + 0.3 * i as f64).collect::<Vec<_>>();
+  let state = FirstOrderState::new(start);
+  let result = Executor::new(problem, objective::local_search(), state)
+    .max_iter(100)
+    .run()
+    .unwrap();
+  let Termination::Converged(met) = &result.report.termination else {
+    panic!("{:?}", result.report.termination);
+  };
+  let ours = [
+    ConvergenceTest::BoundClippedGradient,
+    ConvergenceTest::AbsoluteCostChange,
+  ];
+  let mut tests = met.criteria().iter().map(|criterion| &criterion.test);
+  assert!(tests.all(|test| ours.contains(test)), "{met:?}");
 }

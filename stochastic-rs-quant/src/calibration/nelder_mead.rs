@@ -12,14 +12,15 @@ use std::cell::Cell;
 use std::convert::Infallible;
 use std::rc::Rc;
 
-use basin::BasicSimplexState;
+use basin::ApplicationStop;
 use basin::CostFunction;
 use basin::Executor;
 use basin::NelderMead;
+use basin::SimplexProgress;
 use basin::SimplexState;
 use basin::State;
 use basin::StepOutcome;
-use basin::TerminationReason;
+use basin::Termination;
 use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 
@@ -42,6 +43,12 @@ const MAX_RESTARTS: usize = 3;
 /// crate's own choice reuses it as the extent a simplex has contracted to when it may stop.
 const FACTORIAL_STEP: f64 = 1e-3;
 
+/// The code of a [`SimplexStandardDeviation`] stop on a small spread; the driver reads it back.
+const SPREAD_SMALL: &str = "simplex spread small";
+
+/// The code of its stop on a spread no finite number measures.
+const SPREAD_UNDEFINED: &str = "simplex spread undefined";
+
 /// A stop: the vertex costs' sample standard deviation under `tolerance·(|f₀| + tolerance)`, `f₀`
 /// the start's best cost (R's `nmmin`), on a simplex within `0.001` of the start's step per axis.
 #[derive(Clone)]
@@ -62,7 +69,7 @@ impl SimplexStandardDeviation {
     })
   }
 
-  fn check<S>(&self, state: &S) -> Option<TerminationReason>
+  fn check<S>(&self, state: &S) -> Option<ApplicationStop>
   where
     S: SimplexState<Float = f64, Param = Vec<f64>>,
   {
@@ -74,9 +81,9 @@ impl SimplexStandardDeviation {
       .zip(self.steps.iter())
       .all(|(extent, step)| *extent <= FACTORIAL_STEP * step);
     match sample_standard_deviation(state.costs()) {
-      Some(sd) => (sd < threshold && contracted).then_some(TerminationReason::SimplexTolerance),
+      Some(sd) => (sd < threshold && contracted).then(|| ApplicationStop::new(SPREAD_SMALL)),
       // Undefined spread must not silently disable the stopping rule.
-      None => Some(TerminationReason::SolverFailed),
+      None => Some(ApplicationStop::new(SPREAD_UNDEFINED)),
     }
   }
 }
@@ -266,6 +273,16 @@ pub(crate) fn start_vertex(x: f64, factor: f64) -> f64 {
   }
 }
 
+/// Nelder–Mead at its standard coefficients with basin's own simplex stops off: the spread
+/// criterion and the factorial test alone end a run.
+fn standard_simplex() -> NelderMead<Vec<f64>> {
+  NelderMead::new()
+    .with_absolute_simplex_size_tolerance(None)
+    .with_relative_simplex_size_tolerance(None)
+    .with_absolute_simplex_cost_tolerance(None)
+    .with_relative_simplex_cost_tolerance(None)
+}
+
 fn mean(values: &[f64]) -> f64 {
   values.iter().sum::<f64>() / values.len() as f64
 }
@@ -303,8 +320,8 @@ where
   let (mut iterations, mut restarts) = (0, 0);
   let mut alpha = None;
   let (stop, best) = 'run: loop {
-    let state = BasicSimplexState::from_simplex(simplex);
-    let mut stepper = Executor::new(Shared(&problem), NelderMead::new(), state)
+    let state = SimplexProgress::from_simplex(simplex);
+    let mut stepper = Executor::new(Shared(&problem), standard_simplex(), state)
       .max_iter(max_iters - iterations)
       .stop_when({
         let criterion = criterion.clone();
@@ -314,17 +331,17 @@ where
       .expect("calibration objective is infallible");
     loop {
       if record {
-        trail.push(stepper.state().best_param().clone());
+        trail.push(stepper.state().param().clone());
       }
       let vertices = stepper.state().vertices().to_vec();
       let costs = stepper.state().costs().to_vec();
       let outcome = stepper.step().expect("calibration objective is infallible");
       let state = stepper.state();
-      if let StepOutcome::Stopped(reason) = outcome {
-        let best = state.best_param().clone();
-        let stop = match reason {
-          TerminationReason::SimplexTolerance => {
-            match factorial_test(&problem, &best, state.best_cost(), &steps) {
+      if let StepOutcome::Stopped(report) = outcome {
+        let best = state.param().clone();
+        let stop = match &report.termination {
+          Termination::Application(spread) if spread.code == SPREAD_SMALL => {
+            match factorial_test(&problem, &best, state.cost(), &steps) {
               Factorial::Minimum => SimplexStop::Converged,
               Factorial::Flat => SimplexStop::Flat,
               Factorial::Lower(_) if iterations == max_iters => SimplexStop::IterationCap,
@@ -340,15 +357,15 @@ where
               }
             }
           }
-          TerminationReason::MaxIter => SimplexStop::IterationCap,
+          Termination::Limit(_) => SimplexStop::IterationCap,
           _ => SimplexStop::Undefined,
         };
         break 'run (stop, best);
       }
       iterations += 1;
       let Some((gradient, edges)) = simplex_gradient(&vertices, &costs) else {
-        trail.extend(record.then(|| state.best_param().clone()));
-        break 'run (SimplexStop::Collapsed, state.best_param().clone());
+        trail.extend(record.then(|| state.param().clone()));
+        break 'run (SimplexStop::Collapsed, state.param().clone());
       };
       let squared_norm = gradient.iter().map(|g| g * g).sum::<f64>();
       let alpha = *alpha.get_or_insert_with(|| {
@@ -364,8 +381,8 @@ where
       if replaced.count() == 1 && decrease > -alpha * squared_norm / gradient.len() as f64 {
         restarts += 1;
         if restarts == MAX_RESTARTS {
-          trail.extend(record.then(|| state.best_param().clone()));
-          break 'run (SimplexStop::Stagnated, state.best_param().clone());
+          trail.extend(record.then(|| state.param().clone()));
+          break 'run (SimplexStop::Stagnated, state.param().clone());
         }
         simplex = oriented_restart(&vertices, &gradient, &edges);
         continue 'run;

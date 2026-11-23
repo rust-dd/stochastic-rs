@@ -6,16 +6,16 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 
+use basin::EvaluationKind;
 use basin::Executor;
 use basin::Jacobian;
 use basin::LevenbergMarquardt;
 use basin::LmDamping;
-use basin::NllsState;
+use basin::PointState;
 use basin::Residual;
 use basin::Solver;
 use basin::State;
 use basin::StepOutcome;
-use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -98,7 +98,7 @@ pub struct LmReport {
   pub evaluations: usize,
   /// Stepper iterations, one that rejects its trial included: the cap's unit.
   pub iterations: usize,
-  reason: TerminationReason,
+  reason: SolverStop,
   /// The start's residuals and Jacobian evaluated finite; without them the fit has no iterate.
   pub started: bool,
   /// The fit stopped where `‖Dx‖ ≤ ε‖r‖`: no step the size of `x` moves a residual's last bit.
@@ -192,18 +192,18 @@ impl LmReport {
   pub fn message(&self) -> &'static str {
     match self.reason {
       _ if self.flat => "flat objective",
-      TerminationReason::SolverConverged if self.converged => "converged",
-      TerminationReason::SolverConverged => "not stationary",
-      TerminationReason::MaxCostEvals | TerminationReason::MaxIter => "evaluation budget exhausted",
-      TerminationReason::NumericalNoProgress => "no numerical progress",
-      TerminationReason::SolverFailed => "solver failed",
-      _ => "stopped without convergence",
+      SolverStop::Converged if self.converged => "converged",
+      SolverStop::Converged => "not stationary",
+      SolverStop::EvaluationBudget | SolverStop::IterationCap => "evaluation budget exhausted",
+      SolverStop::NoProgress => "no numerical progress",
+      SolverStop::Failed => "solver failed",
+      SolverStop::Other => "stopped without convergence",
     }
   }
 
   /// Whether the solver itself stopped on its tolerances, before the first-order check.
   pub(crate) fn solver_converged(&self) -> bool {
-    self.reason == TerminationReason::SolverConverged
+    self.reason == SolverStop::Converged
   }
 
   /// Where the solver stopped, a fit whose `rmse` is within `accuracy` of `market`'s root mean
@@ -439,7 +439,7 @@ fn drive<P: LeastSquaresProblem>(
         converged: false,
         evaluations: 0,
         iterations: 0,
-        reason: TerminationReason::SolverFailed,
+        reason: SolverStop::Failed,
         started: false,
         flat: false,
         stationarity: 0.0,
@@ -478,13 +478,12 @@ fn drive<P: LeastSquaresProblem>(
     }
     None => best,
   };
-  let stationarity = match reason == TerminationReason::SolverConverged {
+  let stationarity = match reason == SolverStop::Converged {
     true => objective.stationarity(&best),
     false => 0.0,
   };
   let flat = objective.flat.get();
-  let converged =
-    reason == TerminationReason::SolverConverged && !flat && stationarity <= STATIONARY;
+  let converged = reason == SolverStop::Converged && !flat && stationarity <= STATIONARY;
   let evaluations = objective.evaluations.get();
   let mut model = objective.model.into_inner();
   if flat && !started {
@@ -509,7 +508,7 @@ fn drive<P: LeastSquaresProblem>(
 /// One solve: the last point it accepted, why it stopped, and its stepper iterations.
 struct Run {
   best: Array1<f64>,
-  reason: TerminationReason,
+  reason: SolverStop,
   iterations: usize,
   started: bool,
 }
@@ -525,17 +524,17 @@ fn run<'a, P, So>(
 ) -> Run
 where
   P: LeastSquaresProblem,
-  So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
+  So: Solver<&'a Objective<P>, PointState<Array1<f64>>, Error = ()>,
 {
   let mut best = initial.clone();
   let mut iterations = 0;
   let mut started = false;
-  let reason = match Executor::new(objective, solver, NllsState::new(initial))
+  let reason = match Executor::new(objective, solver, PointState::new(initial))
     .max_iter(max_iter as u64)
-    .max_cost_evals(budget as u64)
+    .max_evaluations(EvaluationKind::Residual, budget as u64)
     .into_stepper()
   {
-    Err(()) => TerminationReason::SolverFailed,
+    Err(()) => SolverStop::Failed,
     Ok(mut stepper) => {
       started = true;
       // `into_stepper` evaluated the start last, so the trail opens with it.
@@ -545,16 +544,18 @@ where
       loop {
         let cost = stepper.state().best_cost();
         match stepper.step() {
-          Err(()) => break TerminationReason::SolverFailed,
+          Err(()) => break SolverStop::Failed,
           Ok(outcome) => {
             // basin's LM moves its iterate only to a trial that lowers the cost.
-            if stepper.state().best_cost() < cost {
-              best.clone_from(stepper.state().best_param());
+            let improved = stepper.state().best().filter(|(_, lower)| *lower < cost);
+            if let Some((point, _)) = improved {
+              best.clone_from(point);
               objective.model.borrow_mut().accept();
             }
-            iterations = stepper.state().iter() as usize;
-            if let StepOutcome::Stopped(reason) = outcome {
-              break reason;
+            match outcome {
+              // The step that stops a solve is not counted: a converged pass ends under its cap.
+              StepOutcome::Continue => iterations = stepper.state().iter() as usize,
+              StepOutcome::Stopped(report) => break SolverStop::from(&report.termination),
             }
           }
         }
@@ -570,6 +571,7 @@ where
 }
 
 mod in_box;
+mod stop;
 mod trail;
 
 use in_box::Bounds;
@@ -578,6 +580,7 @@ pub(crate) use in_box::HELD;
 pub(crate) use in_box::Room;
 use in_box::Rooms;
 use in_box::restarted;
+use stop::SolverStop;
 pub(crate) use trail::Trail;
 
 #[cfg(test)]

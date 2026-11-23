@@ -1,14 +1,18 @@
 use std::convert::Infallible;
 
-use basin::BoxConstraints;
+use basin::BoxBounds;
+use basin::ConstraintDescription;
+use basin::ConstraintSet;
+use basin::ConstraintSolveError;
+use basin::Constraints;
 use basin::CostFunction;
+use basin::FirstOrderState;
 use basin::Gradient;
 use basin::InnerExecutor;
-use basin::LbfgsState;
 use basin::Lbfgsb;
 use basin::MoreThuente;
 use basin::Problem;
-use basin::TerminationReason;
+use basin::Solver;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::RealExt;
 
@@ -189,14 +193,34 @@ impl Gradient for SabrSmileProblem {
   }
 }
 
-impl BoxConstraints for SabrSmileProblem {
-  fn lower(&self) -> &Self::Param {
-    &self.bounds_lo
-  }
+impl Constraints for SabrSmileProblem {
+  type Set = ConstraintSet<BoxBounds<Vec<f64>>>;
 
-  fn upper(&self) -> &Self::Param {
-    &self.bounds_hi
+  fn constraints(&self) -> <Self::Set as ConstraintDescription>::Borrowed<'_> {
+    ConstraintSet::new().with_bounds(BoxBounds::new(Some(&self.bounds_lo), Some(&self.bounds_hi)))
   }
+}
+
+/// A hop's local search: L-BFGS-B over ten curvature pairs under Moré–Thuente, stopping on a `√ε`
+/// projected gradient or an `ε` cost change alone, its looser relative cost-reduction stop off.
+pub(super) fn local_search<P>()
+-> impl Solver<P, FirstOrderState<Vec<f64>>, Error = ConstraintSolveError<P::Error>>
+where
+  P: CostFunction<Param = Vec<f64>, Output = f64>
+    + Gradient<Gradient = Vec<f64>>
+    + Constraints<Set = ConstraintSet<BoxBounds<Vec<f64>>>>,
+{
+  let line_search = MoreThuente::new()
+    .with_sufficient_decrease_coefficient(1e-4)
+    .with_curvature_coefficient(0.9)
+    .with_relative_bracket_tolerance(1e-10)
+    .stpmin(f64::EPSILON.sqrt())
+    .stpmax(f64::INFINITY);
+  Lbfgsb::<Vec<f64>, f64, _>::with_line_search(line_search)
+    .with_m_capacity(10)
+    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
+    .with_relative_cost_reduction_tolerance(None)
+    .with_absolute_cost_change_tolerance(f64::EPSILON)
 }
 
 /// Basin-hopping over basin's L-BFGS-B on this crate's `SimdRng` stream, skipping failed local
@@ -219,16 +243,7 @@ pub(super) fn basin_hopping_opt(
 
   let temp = 1.0_f64;
 
-  let linesearch = MoreThuente::new()
-    .with_sufficient_decrease_coefficient(1e-4)
-    .with_curvature_coefficient(0.9)
-    .with_relative_bracket_tolerance(1e-10)
-    .stpmin(f64::EPSILON.sqrt())
-    .stpmax(f64::INFINITY);
-  let solver = Lbfgsb::with_line_search(linesearch)
-    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
-    .with_absolute_cost_change_tolerance(f64::EPSILON);
-  let mut local = InnerExecutor::new(solver).max_iter(100);
+  let mut local = InnerExecutor::new(local_search()).max_iter(100);
   let mut local_problem = Problem::new(problem.clone());
 
   for _ in 0..niter {
@@ -239,12 +254,12 @@ pub(super) fn basin_hopping_opt(
     }
 
     let x_init = x_trial.to_vec();
-    let state = LbfgsState::new(x_init, 10);
+    let state = FirstOrderState::new(x_init);
     let result = local
       .run(&mut local_problem, state)
-      .expect("Sabr smile objective is infallible");
+      .expect("Sabr smile bounds are ordered and its objective infallible");
 
-    if result.reason != TerminationReason::SolverFailed {
+    if !result.report.termination.is_failure() {
       let param = problem.clamp_params(result.param());
       let cost = problem
         .cost(&param.to_vec())

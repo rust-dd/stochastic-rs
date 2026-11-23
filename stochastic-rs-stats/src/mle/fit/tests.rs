@@ -332,18 +332,20 @@ fn a_fit_through_underflowing_densities_reaches_the_closed_form() {
 fn mle_result_signals_non_convergence_without_error() {
   let best = vec![0.5];
   let (params, converged, iterations) =
-    resolve_fit_outcome(best.clone(), TerminationReason::MaxIter, 200);
+    resolve_fit_outcome(best.clone(), SolverStop::IterationCap, 200);
 
   assert_eq!(params, best);
-  assert!(!converged, "MaxIter must not be reported as converged");
+  assert!(
+    !converged,
+    "an iteration cap must not be reported as converged"
+  );
   assert_eq!(iterations, 200);
 }
 
 #[test]
 fn mle_result_retains_best_point_on_solver_failure() {
   let best = vec![1.0, 2.0, 3.0];
-  let (params, converged, iterations) =
-    resolve_fit_outcome(best.clone(), TerminationReason::SolverFailed, 7);
+  let (params, converged, iterations) = resolve_fit_outcome(best.clone(), SolverStop::Failed, 7);
 
   assert_eq!(params, best);
   assert!(!converged);
@@ -354,7 +356,7 @@ fn mle_result_retains_best_point_on_solver_failure() {
 fn mle_result_signals_genuine_convergence() {
   let fitted = vec![1.23, 4.56];
   let (params, converged, iterations) =
-    resolve_fit_outcome(fitted.clone(), TerminationReason::SolverConverged, 17);
+    resolve_fit_outcome(fitted.clone(), SolverStop::Converged, 17);
 
   assert_eq!(params, fitted);
   assert!(converged);

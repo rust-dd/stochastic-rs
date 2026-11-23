@@ -41,10 +41,7 @@ mod units;
 use std::convert::Infallible;
 
 use basin::CostFunction;
-use basin::Executor;
 use basin::Gradient;
-use basin::LbfgsState;
-use basin::Lbfgsb;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -52,8 +49,8 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
+use crate::optim::polish;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -240,7 +237,7 @@ pub fn fit_garch<T: FloatExt>(
     nelder_mead_vec(&start, 5_000, |theta| problem.objective(theta));
   let (theta_nm, iters_restart, converged_restart) =
     nelder_mead_vec(&theta_nm, 5_000, |theta| problem.objective(theta));
-  let (theta, iters_lbfgs) = problem.polish(theta_nm);
+  let (theta, iters_lbfgs) = polish(problem, theta_nm);
 
   let fitted = transform::to_natural(&spec, &theta);
   let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
@@ -318,7 +315,6 @@ pub fn fit_garch<T: FloatExt>(
 
 /// The negative quasi-log-likelihood in unconstrained coordinates, shared by
 /// the simplex and the L-BFGS polish.
-#[derive(Clone)]
 struct Problem {
   spec: GarchSpec,
   returns: Vec<f64>,
@@ -330,28 +326,6 @@ impl Problem {
     let natural = transform::to_natural(&self.spec, theta);
     let ll = recursion::total_log_likelihood(&self.spec, &natural, &self.returns, self.backcast);
     if ll.is_finite() { -ll } else { 1e300 }
-  }
-
-  /// L-BFGS from the simplex optimum; keeps the simplex point unless the
-  /// best point found during polishing improves the objective.
-  fn polish(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
-    let start_cost = self.objective(&theta);
-    let solver = Lbfgsb::with_line_search(more_thuente())
-      .unbounded()
-      .with_absolute_gradient_tolerance(f64::EPSILON.sqrt())
-      .with_absolute_cost_change_tolerance(f64::EPSILON);
-    let state = LbfgsState::new(theta.clone(), 10);
-    let result = Executor::new(self.clone(), solver, state)
-      .max_iter(200)
-      .run()
-      .expect("GARCH objective is infallible");
-    let iters = result.iter() as usize;
-    let best = result.best_param();
-    if self.objective(best) < start_cost {
-      (best.clone(), iters)
-    } else {
-      (theta, iters)
-    }
   }
 }
 
