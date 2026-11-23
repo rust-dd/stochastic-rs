@@ -122,3 +122,27 @@ fn every_heston_constructor_rejects_a_bad_literal_by_name() {
 fn heston_params_new_names_the_broken_predicate() {
   let _ = HestonParams::new(0.04, 1.5, 0.04, 0.3, 1.5);
 }
+
+/// The `pricing` root carries each re-exported pricer's or model's parameter set beside it.
+#[test]
+fn the_pricing_root_carries_the_parameter_sets_beside_their_pricers() {
+  use std::any::TypeId;
+
+  use stochastic_rs_quant::pricing;
+  assert_eq!(
+    TypeId::of::<pricing::SabrParams>(),
+    TypeId::of::<pricing::sabr::SabrParams>()
+  );
+  assert_eq!(
+    TypeId::of::<pricing::HkdeParams>(),
+    TypeId::of::<pricing::fourier::HkdeParams>()
+  );
+  assert_eq!(
+    TypeId::of::<pricing::SvjParams>(),
+    TypeId::of::<pricing::fourier::SvjParams>()
+  );
+  assert_eq!(
+    TypeId::of::<pricing::HestonParams>(),
+    TypeId::of::<pricing::heston::HestonParams>()
+  );
+}
