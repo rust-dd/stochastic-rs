@@ -53,6 +53,8 @@ impl BachelierPricer {
 
   /// Normal volatility implied by a spot-quoted option `price`; `NaN` when
   /// the price sits below intrinsic value or the inputs are degenerate.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,
     price: f64,

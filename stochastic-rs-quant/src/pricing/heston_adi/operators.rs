@@ -64,6 +64,8 @@ impl Operators {
     let ds = |i: usize| s[i] - s[i - 1];
     let dv = |j: usize| v[j] - v[j - 1];
     let half_r = 0.5 * c.r_d;
+    // The stencil reads `s[i ± 1]` and `v[j ± 1]` and numbers its rows by `i` and `j`.
+    #[allow(clippy::needless_range_loop)]
     for j in 0..m2 {
       let vj = v[j];
       for i in 1..=m1 {

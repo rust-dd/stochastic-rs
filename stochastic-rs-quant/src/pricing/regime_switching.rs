@@ -178,6 +178,8 @@ impl Default for CosPricer {
 
 impl CosPricer {
   /// Price a European call option under regime-switching diffusion.
+  // The query, then the chain's generator, volatilities and starting state.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_call(
     &self,
     s: f64,
@@ -194,6 +196,8 @@ impl CosPricer {
   }
 
   /// Price a European put option under regime-switching diffusion.
+  // The query, then the chain's generator, volatilities and starting state.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_put(
     &self,
     s: f64,

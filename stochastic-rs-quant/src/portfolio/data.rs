@@ -151,6 +151,7 @@ pub fn covariance_matrix(sigmas: &[f64], corr: ArrayView2<f64>) -> Array2<f64> {
   cov
 }
 
+// Each entry divides by two diagonal entries, read by index.
 #[allow(clippy::needless_range_loop)]
 pub(crate) fn corr_from_cov(cov: ArrayView2<f64>) -> Array2<f64> {
   let n = cov.nrows();

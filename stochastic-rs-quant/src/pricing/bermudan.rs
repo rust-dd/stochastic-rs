@@ -136,6 +136,7 @@ impl BermudanLsmPricer {
 
 /// `n_paths` [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column `0`, drawn
 /// from a child of `seed`, which advances; panics if `n_steps` is zero.
+// The GBM's parameters, the grid and the seed.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_gbm_paths(
   s0: f64,

@@ -42,6 +42,8 @@ impl<T: RealExt> CrrModel<T> {
   /// V^{\mathrm{Am}}=\max\bigl(V,\ \text{intrinsic}\bigr),\qquad
   /// p=\frac{e^{(r-q)\Delta t}-d}{u-d}
   /// $$
+  // One argument per term of the query and the exercise style.
+  #[allow(clippy::too_many_arguments)]
   fn price_rollback(
     &self,
     s: T,

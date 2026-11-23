@@ -7,6 +7,8 @@ use crate::pricing::cf_quadrature::Walk;
 use crate::pricing::fourier::LewisPricer;
 
 /// The call of the fit's own model by Lewis, as its `ModelPricer` prices it, run as `walk` says.
+// The model, the query and the quadrature walk the fit reuses.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn fourier_call_price(
   model_type: LevyModelType,
   params: &[f64],
@@ -27,6 +29,8 @@ pub(super) fn fourier_call_price(
 }
 
 /// Price a European option (call or put) via put-call parity from the Fourier call price.
+// The model, the query and the quadrature walk the fit reuses.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn fourier_option_price(
   model_type: LevyModelType,
   params: &[f64],

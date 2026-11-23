@@ -113,8 +113,9 @@ fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
     problem.s = calibrator.s();
     problem.bounds_lo[..4].fill(calibrator.strike_lo);
     problem.bounds_hi[..4].fill(calibrator.strike_hi);
-    for i in 0..x.len() {
-      assert!((problem.bounds_lo[i]..=problem.bounds_hi[i]).contains(&x[i]));
+    let bounds = problem.bounds_lo.iter().zip(&problem.bounds_hi);
+    for ((lo, hi), xi) in bounds.zip(&x) {
+      assert!((lo..=hi).contains(&xi));
     }
     let objective = problem.cost(&x).unwrap();
     assert!(objective.is_finite());

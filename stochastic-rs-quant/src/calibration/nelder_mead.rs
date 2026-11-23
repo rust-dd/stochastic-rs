@@ -197,6 +197,8 @@ fn simplex_gradient(vertices: &[Vec<f64>], costs: &[f64]) -> Option<(Vec<f64>, V
     }
     for row in column + 1..n {
       let factor = rows[row][column] / lead;
+      // `rows[row]` and `rows[column]` are rows of one matrix; no iterator pair borrows both.
+      #[allow(clippy::needless_range_loop)]
       for k in column..=n {
         rows[row][k] -= factor * rows[column][k];
       }

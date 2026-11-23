@@ -130,7 +130,6 @@ impl PyBlackKarasinskiSwaptionCalibrator {
   /// `steps_per_year` sets the tree resolution.
   #[new]
   #[pyo3(signature = (quotes, curve, initial_rate, long_run_rate, notional=1.0, steps_per_year=8, max_iters=400))]
-  #[allow(clippy::too_many_arguments)]
   fn new(
     quotes: Vec<(f64, f64, f64, f64, String)>,
     curve: &PyDiscountCurve,

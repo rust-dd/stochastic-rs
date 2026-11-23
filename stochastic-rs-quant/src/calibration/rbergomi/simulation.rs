@@ -60,17 +60,17 @@ impl MsoeEngine {
     debug_assert_eq!(z.len(), self.dim());
     debug_assert_eq!(out.len(), self.dim());
     for (idx, item) in out.iter_mut().enumerate().take(self.dim()) {
-      let mut acc = 0.0;
-      for col in 0..=idx {
-        acc += self.chol_l[(idx, col)] * z[col];
-      }
-      *item = acc;
+      *item = z[..=idx]
+        .iter()
+        .enumerate()
+        .fold(0.0, |acc, (col, z)| acc + self.chol_l[(idx, col)] * z);
     }
   }
 }
 
 /// Terminal prices by the mSOE kernel under the log drift `(r − q − V_t/2) dt`: `s0` at zero
 /// maturity, NaN for a NaN or negative one, a NaN rate or a spot not positive; panics on no path.
+// The model, the query, the grid's size and the seed.
 #[allow(clippy::too_many_arguments)]
 pub fn simulate_rbergomi_terminal_samples(
   params: &RBergomiParams,

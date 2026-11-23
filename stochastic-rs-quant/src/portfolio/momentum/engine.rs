@@ -96,16 +96,16 @@ pub fn build_portfolio_target(
   aligned_returns: &[Vec<f64>],
   optimizer: OptimizerMethod,
 ) -> MomentumPortfolio {
-  build_portfolio_target_internal(
-    scores,
+  let inputs = TargetInputs {
     target_return,
     risk_free,
     optimizer,
-    0.05,
-    true,
-    None,
-    Some(aligned_returns),
-  )
+    cvar_alpha: 0.05,
+    allow_short: true,
+    corr: None,
+    aligned_returns: Some(aligned_returns),
+  };
+  build_portfolio_target_internal(scores, &inputs)
 }
 
 /// Build optimizer-based momentum portfolio using external correlation matrix.
@@ -116,31 +116,44 @@ pub fn build_portfolio_target_with_corr(
   corr: &[Vec<f64>],
   optimizer: OptimizerMethod,
 ) -> MomentumPortfolio {
-  build_portfolio_target_internal(
-    scores,
+  let inputs = TargetInputs {
     target_return,
     risk_free,
     optimizer,
-    0.05,
-    true,
-    Some(corr),
-    None,
-  )
+    cvar_alpha: 0.05,
+    allow_short: true,
+    corr: Some(corr),
+    aligned_returns: None,
+  };
+  build_portfolio_target_internal(scores, &inputs)
+}
+
+/// What a target-return build reads besides the scores: the optimizer's knobs and a correlation,
+/// given or estimated from aligned returns.
+pub(crate) struct TargetInputs<'a> {
+  pub(crate) target_return: f64,
+  pub(crate) risk_free: f64,
+  pub(crate) optimizer: OptimizerMethod,
+  pub(crate) cvar_alpha: f64,
+  pub(crate) allow_short: bool,
+  pub(crate) corr: Option<&'a [Vec<f64>]>,
+  pub(crate) aligned_returns: Option<&'a [Vec<f64>]>,
 }
 
 /// Internal target-return momentum builder shared by engine and public wrappers.
-// The engine's configuration and the wrappers' inputs, forwarded as they are.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_portfolio_target_internal(
   scores: &[MomentumScore],
-  target_return: f64,
-  risk_free: f64,
-  optimizer: OptimizerMethod,
-  cvar_alpha: f64,
-  allow_short: bool,
-  corr: Option<&[Vec<f64>]>,
-  aligned_returns: Option<&[Vec<f64>]>,
+  inputs: &TargetInputs<'_>,
 ) -> MomentumPortfolio {
+  let &TargetInputs {
+    target_return,
+    risk_free,
+    optimizer,
+    cvar_alpha,
+    allow_short,
+    corr,
+    aligned_returns,
+  } = inputs;
   if scores.is_empty() {
     return MomentumPortfolio::default();
   }

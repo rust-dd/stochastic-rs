@@ -9,6 +9,7 @@ use super::momentum::ModelEstimate;
 use super::momentum::MomentumBuildConfig;
 use super::momentum::MomentumPortfolio;
 use super::momentum::MomentumScore;
+use super::momentum::TargetInputs;
 use super::momentum::build_portfolio;
 use super::momentum::build_portfolio_target_internal;
 use super::momentum::compute_scores;
@@ -105,16 +106,16 @@ impl PortfolioEngine {
     let scores = self.score_momentum(evaluations);
 
     if let Some(target_return) = build.target_return {
-      build_portfolio_target_internal(
-        &scores,
+      let inputs = TargetInputs {
         target_return,
-        self.config.r,
-        self.config.optimizer,
-        self.config.cvar_alpha,
-        self.config.allow_short,
+        risk_free: self.config.r,
+        optimizer: self.config.optimizer,
+        cvar_alpha: self.config.cvar_alpha,
+        allow_short: self.config.allow_short,
         corr,
         aligned_returns,
-      )
+      };
+      build_portfolio_target_internal(&scores, &inputs)
     } else {
       build_portfolio(&scores, build.long_n, build.short_n, build.weighting, corr)
     }

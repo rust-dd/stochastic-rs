@@ -60,6 +60,8 @@ impl Default for OptimizerConfig {
 
 /// Runs the selected optimizer; `config` sets annualization (`periods_per_year`, default 252) and
 /// the mean-variance / mean-CVaR target-return penalty `lambda` (default 10).
+// The method, then every input any of the optimizers it dispatches to reads.
+#[allow(clippy::too_many_arguments)]
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],

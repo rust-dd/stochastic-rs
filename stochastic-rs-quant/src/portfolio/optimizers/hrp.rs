@@ -5,6 +5,7 @@ use super::helpers::mat_vec_mul;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
+// The bisection works on index ranges into `cov` and `corr`.
 #[allow(clippy::needless_range_loop)]
 /// Hierarchical Risk Parity optimizer.
 pub fn optimize_hrp(

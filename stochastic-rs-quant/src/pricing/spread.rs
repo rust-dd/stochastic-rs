@@ -198,6 +198,8 @@ impl<S: SeedExt> McSpreadPricer<S> {
 
   /// Either leg at one query point from one simulation; NaN for a NaN query, `tau < 0` or a spot
   /// that is not positive before expiry.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_option(
     &self,
     s1: f64,
@@ -241,6 +243,8 @@ impl<S: SeedExt> McSpreadPricer<S> {
   }
 
   /// Price the spread call $\max(S_1-S_2-K,0)$ at one query point.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_call(
     &self,
     s1: f64,
@@ -255,6 +259,8 @@ impl<S: SeedExt> McSpreadPricer<S> {
   }
 
   /// Price the spread put $\max(K-(S_1-S_2),0)$ at one query point.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_put(
     &self,
     s1: f64,

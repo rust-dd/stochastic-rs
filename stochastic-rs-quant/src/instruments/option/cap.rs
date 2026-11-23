@@ -170,6 +170,7 @@ impl<T: RealExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, V
   }
 }
 
+// The leg, its strike and vol, then the valuation's date, day counts and curves.
 #[allow(clippy::too_many_arguments)]
 fn price_cap_floor<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   leg: &Leg<T>,

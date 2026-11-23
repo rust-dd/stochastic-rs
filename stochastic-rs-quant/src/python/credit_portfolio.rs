@@ -115,7 +115,6 @@ impl PyCdoTranche {
   /// a `SurvivalCurve`; `payment_times` in years.
   #[new]
   #[pyo3(signature = (pool, attachment, detachment, spread, payment_times, correlation, accrual=1.0, quadrature_nodes=40, loss_buckets=400))]
-  #[allow(clippy::too_many_arguments)]
   fn new(
     pool: Vec<(f64, f64, Bound<'_, PyAny>)>,
     attachment: f64,
