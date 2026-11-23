@@ -1,7 +1,7 @@
 //! The tempered stable series at α > 1, where the terms past the `J`-th carry real mean and
 //! variance: each law against its Lévy measure's closed forms, at a short and a long series.
 //!
-//! Reference: Rosiński (2007), Thm 5.4, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Rosiński (2004), Thm 5.4, preprint of SPA 117(6), mediatum.ub.tum.de/doc/1072618
 //! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 
 use ndarray::Array1;
@@ -25,8 +25,9 @@ const PATHS: usize = 4_096;
 
 const SEEDS: [u64; 3] = [2718, 999, 42];
 
-/// A short and a long series: the law may not depend on where the series stops.
-const TERMS: [usize; 2] = [64, 512];
+/// Two terms, where the remainder is nearly the whole variance, and a short and a long series:
+/// the first two moments may not depend on where the series stops.
+const TERMS: [usize; 3] = [2, 64, 512];
 
 /// The mean and variance of `X_t` on one of the seeds, each within five standard errors.
 fn mean_and_variance_hold(
@@ -163,6 +164,40 @@ fn kobol_with_unequal_sides_has_the_moments_of_its_exponent() {
         variance,
         &format!("KoBoL at α = {alpha}, p = {p}, q = {q}, J = {j}"),
       );
+    }
+  }
+}
+
+/// Inside the horizon: the remainder accumulates one normal per step, so the standard CTS has
+/// mean 0 and variance `t` at a quarter of the grid as at its end, with the tempering mirrored.
+#[test]
+fn the_remainder_accumulates_along_the_grid() {
+  const POINTS: usize = 33;
+  let t = 2.0;
+  for j in [2, 64] {
+    let x = SEEDS.map(|seed| {
+      Cts::<f64, _>::new(
+        6.0,
+        2.0,
+        1.5,
+        POINTS,
+        j,
+        None,
+        Some(t),
+        Deterministic::new(seed),
+      )
+      .sample_par(PATHS)
+    });
+    for at in [(POINTS - 1) / 4, POINTS - 1] {
+      let time = t * at as f64 / (POINTS - 1) as f64;
+      let values = x
+        .each_ref()
+        .map(|paths| paths.iter().map(|p| p[at]).collect::<Vec<_>>());
+      let what = format!("CTS at α = 1.5, J = {j}, t = {time}");
+      let means = values.each_ref().map(|v| over_paths(v));
+      holds_on_one_of(&means, 0.0, &format!("{what}: mean"));
+      let variances = values.each_ref().map(|v| spread_over_paths(v));
+      holds_on_one_of(&variances, time, &format!("{what}: variance"));
     }
   }
 }
