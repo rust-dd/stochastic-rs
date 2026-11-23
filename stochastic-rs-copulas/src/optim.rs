@@ -5,13 +5,14 @@
 //! Reference: Brent (1973) errata, <https://maths-people.anu.edu.au/~brent/pub/pub011.html>
 
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::brent::MACHEPS;
 
 /// Brent's `√macheps`, the `eps` he recommends for `localmin`: a smooth minimum is located to that
 /// relative precision only.
 pub(crate) const SQRT_MACHEPS: f64 = 1.053_671_212_772_350_9e-8;
 
-/// Brent's `localmin`: `(x, f(x))` at a minimum of `f` on `(a, b)`, never at `a` or `b`, within
-/// `3 tol`, `tol = eps |x| + t`, for a δ-unimodal `f`, `δ < tol`, `eps ≥ 2 macheps`, `t > 0`.
+/// Brent's `localmin`: `(x, f(x))` at a minimum of a δ-unimodal `f` on `(a, b)` within `3 tol`,
+/// `tol = eps |x| + t > δ`, never at `a` or `b`; panics unless `eps ≥ 2 macheps` and `t > 0`.
 pub(crate) fn localmin(
   a: f64,
   b: f64,
@@ -19,6 +20,15 @@ pub(crate) fn localmin(
   t: f64,
   mut f: impl FnMut(f64) -> f64,
 ) -> (f64, f64) {
+  assert!(
+    eps.is_finite() && eps >= 2.0 * MACHEPS,
+    "eps must satisfy `eps.is_finite() && eps >= 2.0 * MACHEPS`, got eps = {eps:?}"
+  );
+  // At `t = 0` a minimum at `x = 0` leaves `tol = 0`, and the steps never shrink below it.
+  assert!(
+    t.is_finite() && t > 0.0,
+    "t must satisfy `t.is_finite() && t > 0.0`, got t = {t:?}"
+  );
   let (mut a, mut b) = (a, b);
   let c = 0.5 * (3.0 - 5.0_f64.sqrt());
   let mut x = a + c * (b - a);
@@ -207,8 +217,6 @@ pub(crate) fn nelder_mead(
 
 #[cfg(test)]
 mod tests {
-  use stochastic_rs_distributions::brent::MACHEPS;
-
   use super::*;
 
   #[test]
@@ -237,6 +245,34 @@ mod tests {
     let (x, _) = localmin(0.0, 1.0, SQRT_MACHEPS, t, |x| x * (x * x - 2.0) - 5.0);
     let tol = SQRT_MACHEPS * x.abs() + t;
     assert!((x - (2.0_f64 / 3.0).sqrt()).abs() <= 3.0 * tol, "{x}");
+  }
+
+  #[test]
+  #[should_panic(expected = "t must satisfy `t.is_finite() && t > 0.0`, got t = 0.0")]
+  fn localmin_refuses_no_absolute_tolerance() {
+    localmin(0.0, 1.0, SQRT_MACHEPS, 0.0, |x| (x - 0.5) * (x - 0.5));
+  }
+
+  #[test]
+  #[should_panic(expected = "t must satisfy `t.is_finite() && t > 0.0`, got t = NaN")]
+  fn localmin_refuses_a_nan_absolute_tolerance() {
+    localmin(0.0, 1.0, SQRT_MACHEPS, f64::NAN, |x| (x - 0.5) * (x - 0.5));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "eps must satisfy `eps.is_finite() && eps >= 2.0 * MACHEPS`, got eps = 1.1102230246251565e-16"
+  )]
+  fn localmin_refuses_a_relative_tolerance_below_twice_macheps() {
+    localmin(0.0, 1.0, MACHEPS, 1e-10, |x| (x - 0.5) * (x - 0.5));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "eps must satisfy `eps.is_finite() && eps >= 2.0 * MACHEPS`, got eps = NaN"
+  )]
+  fn localmin_refuses_a_nan_relative_tolerance() {
+    localmin(0.0, 1.0, f64::NAN, 1e-10, |x| (x - 0.5) * (x - 0.5));
   }
 
   /// A minimum at an end is approached from inside, to within `2 tol`, and `f` is never evaluated
