@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "33d7c17fc952dfa78ed6189b20eeff98f0b1ddde7b529e1e3d9357387a924af1",
+  "artifact": "2c5b4a7336160e16527bb23d87928d5de533f602973165e8059f585f477899f5",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -21,7 +21,7 @@
     "metal-oxide-macros 0.1.0-alpha.1 registry+https://github.com/rust-lang/crates.io-index"
   ],
   "files": {
-    "../Cargo.toml": "1fd02d8410c4e24d961ffe13d188654f194e5e55d2f3dc8f2155595b0e9d37e8",
+    "../Cargo.toml": "9943a022d0a2d381c1f5c01bd0863bf4edfa140cb8b03a6900edd85ad5c88e3e",
     "../stochastic-rs-metal-kernels/Cargo.toml": "0567c5d8ccc2c985fd3131a07eecc4f83829674b95551bce135d61d1917ef06e",
     "../stochastic-rs-metal-kernels/src/euler/args.rs": "cb9f5c1cf531151fe3fd102c97f846af8face76aee8cabacde116267c8b6db40",
     "../stochastic-rs-metal-kernels/src/euler/draws.rs": "4d5165dcac16ddfdd1628d33bbd0e2dd7c5b42f14f703064ce20125dd779d6ba",
