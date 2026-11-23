@@ -189,6 +189,7 @@ impl Float for R64 {
     min_value,
     min_positive_value,
     max_value,
+    epsilon,
   );
 
   delegate_unary!(

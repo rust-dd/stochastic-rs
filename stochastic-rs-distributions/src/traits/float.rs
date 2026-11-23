@@ -12,8 +12,8 @@ use num_complex::Complex;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-/// The scalar surface for code that only computes (pricers, Greeks, quadrature): no lanes, no RNG,
-/// so an AAD dual or tape node can implement it where [`FloatExt`] cannot.
+/// The scalar surface for code that only computes: no lanes or RNG, so an AAD dual can implement
+/// it. Its `Float::epsilon` must be its own machine epsilon; num-traits' default is `f32`'s.
 pub trait RealExt:
   num_traits::Float
   + num_traits::FromPrimitive
