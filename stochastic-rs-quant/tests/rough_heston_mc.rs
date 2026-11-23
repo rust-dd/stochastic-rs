@@ -128,7 +128,7 @@ impl LiftedScheme {
     let dt = TAU / self.steps as f64;
     let mut u = vec![0.0; self.weights.len()];
     let mut log_spot = 0.0;
-    for (k, pair) in normals.chunks_exact(2).enumerate() {
+    for (k, pair) in normals.as_chunks::<2>().0.iter().enumerate() {
       let factors = self.weights.iter().zip(&u);
       let variance = self.input_curve(dt * k as f64) + factors.map(|(c, u)| c * u).sum::<f64>();
       let floored = variance.max(0.0);

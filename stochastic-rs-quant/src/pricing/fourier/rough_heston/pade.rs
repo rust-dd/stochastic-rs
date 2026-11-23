@@ -62,6 +62,7 @@ impl Pade {
     }
   }
 
+  #[cfg(test)]
   pub(super) fn alpha(&self) -> f64 {
     self.alpha
   }

@@ -165,13 +165,13 @@ impl FourierModelExt for RoughHeston {
 }
 
 /// `ln E[e^{zX_t}]` in a scalar: complex `z = iξ` for the chf, the jet variable for cumulants.
-pub(super) trait LogChf {
+trait LogChf {
   fn log_chf<S: RiccatiScalar>(&self, t: f64, z: S) -> S;
 }
 
 /// 1 at `t = 0` and where `m₀ = 0` (`ξ = 0`, `−i`); NaN for a `t` or `ξ` that is not finite, or
 /// `t < 0`.
-pub(super) fn chf(cf: &impl LogChf, t: f64, xi: Complex64) -> Complex64 {
+fn chf(cf: &impl LogChf, t: f64, xi: Complex64) -> Complex64 {
   if !(t >= 0.0 && t.is_finite() && xi.is_finite()) {
     return Complex64::new(f64::NAN, f64::NAN);
   }
@@ -183,7 +183,7 @@ pub(super) fn chf(cf: &impl LogChf, t: f64, xi: Complex64) -> Complex64 {
 }
 
 /// The Taylor coefficients of `ln E[e^{sX_t}]` at `s = 0`, from one solve in the jet.
-pub(super) fn cumulants(cf: &impl LogChf, t: f64) -> Cumulants {
+fn cumulants(cf: &impl LogChf, t: f64) -> Cumulants {
   if !(t >= 0.0 && t.is_finite()) {
     return Cumulants {
       c1: f64::NAN,
@@ -205,14 +205,14 @@ pub(super) fn cumulants(cf: &impl LogChf, t: f64) -> Cumulants {
 
 /// The Riccati right-hand side all three papers share, `F(z, x) = m₀ + (ρνz − κ)x + ½ν²x²`.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Riccati {
-  pub(super) kappa: f64,
-  pub(super) nu: f64,
-  pub(super) rho: f64,
+struct Riccati {
+  kappa: f64,
+  nu: f64,
+  rho: f64,
 }
 
 impl Riccati {
-  pub(super) fn of(params: &RoughHestonParams) -> Self {
+  fn of(params: &RoughHestonParams) -> Self {
     Self {
       kappa: params.kappa,
       nu: params.nu,
@@ -221,13 +221,13 @@ impl Riccati {
   }
 
   /// `m₀ = ½z(z − 1) = −½ξ(ξ + i)` as a product: at `ξ = u − i` the sum rounds `u²` away against 1.
-  pub(super) fn moment<S: RiccatiScalar>(z: S) -> S {
+  fn moment<S: RiccatiScalar>(z: S) -> S {
     z * (z - S::real(1.0)) * 0.5
   }
 
   /// `x = known + c·F(z, x)` for the root whose slope is `−√disc`: the explicit value as `c → 0`
   /// and the stable equilibrium `r₋/ν` as `c → ∞`, so an implicit step holds at any `c`.
-  pub(super) fn implicit<S: RiccatiScalar>(&self, moment: S, z: S, c: f64, known: S) -> S {
+  fn implicit<S: RiccatiScalar>(&self, moment: S, z: S, c: f64, known: S) -> S {
     let square = 0.5 * self.nu * self.nu * c;
     let linear = (z * (self.rho * self.nu) - S::real(self.kappa)) * c - S::real(1.0);
     let constant = known + moment * c;
@@ -239,7 +239,7 @@ impl Riccati {
     }
   }
 
-  pub(super) fn rhs<S: RiccatiScalar>(&self, moment: S, z: S, x: S) -> S {
+  fn rhs<S: RiccatiScalar>(&self, moment: S, z: S, x: S) -> S {
     moment
       + (z * (self.rho * self.nu) - S::real(self.kappa)) * x
       + x * x * (0.5 * self.nu * self.nu)
