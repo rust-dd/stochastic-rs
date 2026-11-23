@@ -18,6 +18,7 @@ mod validate;
 pub use spec::BootstrapSpec;
 
 pub(super) use solve::trial_node;
+pub(crate) use validate::whole_periods;
 
 use self::segment::Segment;
 use super::discount_curve::DiscountCurve;

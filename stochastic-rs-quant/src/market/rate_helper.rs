@@ -21,6 +21,7 @@ use crate::curves::BootstrapSpec;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap::bootstrap_numbered;
+use crate::curves::bootstrap::whole_periods;
 use crate::traits::RealExt;
 
 mod ois;
@@ -134,8 +135,8 @@ impl<T: RealExt> RateHelper<T> for FraRateHelper<T> {
   }
 }
 
-/// Fixed-vs-float swap helper: a uniform `δ = 1 / frequency` schedule from [`Self::new`], or
-/// calendar-adjusted accruals priced one by one after [`Self::with_calendar`].
+/// Fixed-vs-float swap helper: a uniform `δ = 1 / frequency` schedule of whole periods from
+/// [`Self::new`], or calendar-adjusted accruals priced one by one after [`Self::with_calendar`].
 #[derive(Debug, Clone)]
 pub struct SwapRateHelper<T: RealExt> {
   /// Quote handle producing the par swap rate.
@@ -208,6 +209,17 @@ impl<T: RealExt> SwapRateHelper<T> {
     }
   }
 
+  /// The uniform swap's maturity, its whole number of fixed periods over the frequency as the
+  /// bootstrap counts them; a maturity off that grid passes through, for the bootstrap to refuse.
+  fn uniform_maturity(&self, valuation_date: NaiveDate) -> T {
+    let year_fraction = self
+      .day_count
+      .year_fraction(valuation_date, self.maturity_date);
+    let per_year = T::from_f64_fast(f64::from(self.fixed_frequency.periods_per_year()));
+    whole_periods(year_fraction, self.fixed_frequency)
+      .map_or(year_fraction, |periods| T::from_usize_(periods) / per_year)
+  }
+
   /// Year fraction of each fixed-leg payment from [`settlement_date`](Self::settlement_date);
   /// the leading settlement entry is skipped, so there is one entry per payment.
   pub fn payment_times(&self) -> Vec<T> {
@@ -222,9 +234,13 @@ impl<T: RealExt> SwapRateHelper<T> {
 
 impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
   fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self
-      .day_count
-      .year_fraction(valuation_date, self.maturity_date)
+    if self.calendar.is_some() {
+      self
+        .day_count
+        .year_fraction(valuation_date, self.maturity_date)
+    } else {
+      self.uniform_maturity(valuation_date)
+    }
   }
 
   fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
@@ -247,11 +263,8 @@ impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
         float_times: Vec::new(),
       })
     } else {
-      let maturity = self
-        .day_count
-        .year_fraction(valuation_date, self.maturity_date);
       Some(BootstrapInstrument::Swap {
-        maturity,
+        maturity: self.uniform_maturity(valuation_date),
         rate,
         frequency: self.fixed_frequency,
       })
@@ -381,6 +394,42 @@ mod tests {
     let df_long = curve.discount_factor(2.0);
     assert!(df_short > df_long);
     assert!(df_long > 0.0 && df_short < 1.0);
+  }
+
+  /// The `market` bench's seven helpers: each uniform swap's whole-period par rate is its quote.
+  #[test]
+  fn a_uniform_swap_helper_reprices_its_whole_period_par_rate() {
+    let date = |y, m| NaiveDate::from_ymd_opt(y, m, 1).expect("a first of the month");
+    let quote = |rate: f64| -> Handle<dyn Quote<f64>> {
+      Handle::new(Arc::new(SimpleQuote::new(rate)) as Arc<dyn Quote<f64>>)
+    };
+    let (valuation, act360) = (date(2025, 1), DayCountConvention::Actual360);
+    let deposit = DepositRateHelper::new(quote(0.03), valuation, date(2025, 2), act360);
+    let fra_6m = FraRateHelper::new(quote(0.032), date(2025, 2), date(2025, 7), act360);
+    let fra_1y = FraRateHelper::new(quote(0.035), date(2025, 7), date(2026, 1), act360);
+    let swaps: Vec<(f64, f64, SwapRateHelper<f64>)> =
+      [(2, 0.038), (5, 0.04), (10, 0.042), (30, 0.043)]
+        .map(|(years, rate)| {
+          let helper = SwapRateHelper::new(
+            quote(rate),
+            valuation,
+            date(2025 + years, 1),
+            Frequency::SemiAnnual,
+            DayCountConvention::Actual365Fixed,
+          );
+          (f64::from(years), rate, helper)
+        })
+        .into_iter()
+        .collect();
+    let mut helpers: Vec<&dyn RateHelper<f64>> = vec![&deposit, &fra_6m, &fra_1y];
+    helpers.extend(swaps.iter().map(|(_, _, h)| h as &dyn RateHelper<f64>));
+    let method = InterpolationMethod::LogLinearOnDiscountFactors;
+    let curve = build_curve(&helpers, valuation, method).unwrap();
+    for (years, rate, helper) in &swaps {
+      let par = curve.par_rate(*years, Frequency::SemiAnnual);
+      assert!((par - rate).abs() < 1e-14, "{years}y: {par}");
+      assert_eq!(helper.maturity(valuation), *years);
+    }
   }
 
   #[test]

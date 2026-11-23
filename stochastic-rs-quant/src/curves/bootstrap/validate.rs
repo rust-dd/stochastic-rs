@@ -87,6 +87,14 @@ pub(super) fn check<T: RealExt>(
   }
 }
 
+/// The whole number of `frequency` periods within 0.1 of `maturity · frequency`, at least one.
+pub(crate) fn whole_periods<T: RealExt>(maturity: T, frequency: Frequency) -> Option<usize> {
+  let raw = maturity * T::from_f64_fast(f64::from(frequency.periods_per_year()));
+  let rounded = raw.round();
+  let whole = (raw - rounded).abs() < T::from_f64_fast(0.1) && rounded >= T::one();
+  rounded.to_f64().filter(|_| whole).map(|n| n as usize)
+}
+
 /// A swap's payment count; `InvalidQuote` unless `maturity · frequency` is within 0.1 of a whole
 /// number of payments, at least one.
 pub(super) fn whole_payments<T: RealExt>(
@@ -94,11 +102,7 @@ pub(super) fn whole_payments<T: RealExt>(
   maturity: T,
   frequency: Frequency,
 ) -> Result<usize, QuantError> {
-  let raw = maturity * T::from_f64_fast(f64::from(frequency.periods_per_year()));
-  let rounded = raw.round();
-  let whole = (raw - rounded).abs() < T::from_f64_fast(0.1) && rounded >= T::one();
-  let count = rounded.to_f64().filter(|_| whole).map(|n| n as usize);
-  count.ok_or_else(|| QuantError::InvalidQuote {
+  whole_periods(maturity, frequency).ok_or_else(|| QuantError::InvalidQuote {
     index,
     reason: format!(
       "maturity must satisfy `(maturity * frequency - payments).abs() < 0.1` for a whole number of payments, got maturity = {maturity:?}, frequency = {frequency}"
