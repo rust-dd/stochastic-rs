@@ -255,29 +255,6 @@ fn a_jamshidian_swaption_with_no_critical_rate_is_nan() {
   }
 }
 
-/// A NaN read of the curve reaches the deterministic limit `σ = 0` too, where `max` dropped it.
-#[test]
-fn a_nan_curve_read_is_nan_at_zero_volatility() {
-  let curve = DiscountCurve::from_arrays(
-    array![1.0, 5.0, 10.0].view(),
-    array![0.97, f64::NAN, 0.67].view(),
-    InterpolationMethod::LinearOnZeroRates,
-  );
-  let coupons: Vec<f64> = (1..=10).map(|i| 1.0 + 0.5 * f64::from(i)).collect();
-  let price = price_jamshidian_hull_white(
-    SwaptionDirection::Payer,
-    0.03,
-    1e6,
-    1.0,
-    &coupons,
-    &[0.5; 10],
-    0.05,
-    0.0,
-    &curve,
-  );
-  assert!(price.is_nan(), "{price}");
-}
-
 #[test]
 #[should_panic(
   expected = "mean_reversion must satisfy `mean_reversion.is_finite()`, got mean_reversion = NaN"

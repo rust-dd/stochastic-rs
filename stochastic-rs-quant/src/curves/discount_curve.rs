@@ -25,7 +25,7 @@ pub struct DiscountCurve<T: RealExt> {
 
 impl<T: RealExt> DiscountCurve<T> {
   /// A curve through `points`, sorted by time, without a `t = 0` pillar (it is 1 there); panics
-  /// unless every time is finite and not negative and no two are equal.
+  /// unless each time is finite, not negative and unique, and each discount factor finite and > 0.
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
     if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
       panic!(
@@ -37,6 +37,15 @@ impl<T: RealExt> DiscountCurve<T> {
       panic!(
         "points must satisfy `p.time >= T::zero()` for every p, got p.time = {:?}",
         p.time
+      );
+    }
+    if let Some(p) = points
+      .iter()
+      .find(|p| !(p.discount_factor.is_finite() && p.discount_factor > T::zero()))
+    {
+      panic!(
+        "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = {:?}",
+        p.discount_factor
       );
     }
     let mut pts = points;
@@ -244,5 +253,43 @@ mod tests {
     let c = flat_curve();
     let r = c.zero_rate(1.0);
     assert!((r - 0.05).abs() < 1e-10, "zero rate {r} != 0.05");
+  }
+
+  fn with_pillar(discount_factor: f64) -> DiscountCurve<f64> {
+    let mut points = flat_curve().points().to_vec();
+    points[1].discount_factor = discount_factor;
+    DiscountCurve::new(points, InterpolationMethod::LogLinearOnDiscountFactors)
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = NaN"
+  )]
+  fn a_nan_discount_factor_is_refused() {
+    with_pillar(f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = inf"
+  )]
+  fn an_infinite_discount_factor_is_refused() {
+    with_pillar(f64::INFINITY);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = 0.0"
+  )]
+  fn a_zero_discount_factor_is_refused() {
+    with_pillar(0.0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = -0.5"
+  )]
+  fn a_negative_discount_factor_is_refused() {
+    with_pillar(-0.5);
   }
 }
