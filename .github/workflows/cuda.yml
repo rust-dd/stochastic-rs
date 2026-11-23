@@ -6,7 +6,7 @@ on:
   pull_request:
     types: [labeled]
   workflow_dispatch:
-  # `published` fires for a prerelease and for a full release alike; `prereleased` skipped the latter.
+  # `published` fires for a prerelease and a full release alike; `prereleased` would miss the latter.
   release:
     types: [published]
 

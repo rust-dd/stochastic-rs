@@ -12,9 +12,8 @@
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
 #   Cargo.toml — it is a maturin-built cdylib for PyPI, not a crates.io
 #   crate); release via `.github/workflows/pypi.yml`.
-# - `--dry-run` publishes the workspace in one `cargo publish --workspace --dry-run`, which verifies
-#   each crate against a local registry of its siblings; a per-crate dry run would look the
-#   siblings up on crates.io and stop at the second crate after a version bump.
+# - `--dry-run` is one `cargo publish --workspace --dry-run`, verified against a local registry of
+#   the siblings; a per-crate dry run would stop at the second crate after a bump.
 # - Crates already published at the current local version are skipped, so the
 #   script is safe to re-run if a publish fails partway through.
 # - Modern cargo (>=1.66) waits for the registry index to sync after each
