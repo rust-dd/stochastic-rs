@@ -36,8 +36,7 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
-use crate::stationarity::common::columns_unit_scaled;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::regression_at_unit_scale;
 use crate::traits::RealExt;
 
 /// Choice of CUSUM variant.
@@ -150,8 +149,7 @@ pub fn cusum_test(
   reject_constant(&y_slice, "constant series")?;
 
   let t_total = y.len();
-  let (y_unit, unit) = unit_scaled(y_slice.into_owned());
-  let (x_unit, _) = columns_unit_scaled(x);
+  let (y_unit, units, x_unit) = regression_at_unit_scale(y_slice.into_owned(), x);
   let w = recursive_residuals(ArrayView1::from(&y_unit), x_unit.view())?;
   debug_assert_eq!(w.len(), t_total - k);
 
@@ -163,7 +161,7 @@ pub fn cusum_test(
     CusumVariant::Cusumq => cusumq_branch(w, n_tilde, k, cfg.alpha),
   };
   let in_units = test.recursive_residuals.iter_mut();
-  in_units.for_each(|w| *w /= unit);
+  in_units.for_each(|w| *w = *w / units[1] / units[0]);
   Ok(test)
 }
 

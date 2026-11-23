@@ -194,7 +194,10 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
         intercept: T::from_f64_fast(intercept - in_units),
         r_squared: T::from_f64_fast(r_squared),
         log_scales: log_j.into_iter().map(T::from_f64_fast).collect(),
-        log_stats: (log_mu_corr.iter().map(|m| T::from_f64_fast(m - in_units))).collect(),
+        log_stats: log_mu_corr
+          .iter()
+          .map(|m| T::from_f64_fast(m - in_units))
+          .collect(),
       },
     })
   }

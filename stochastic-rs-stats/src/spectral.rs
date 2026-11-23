@@ -198,8 +198,8 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
   sum_w2
 }
 
-/// FFT periodogram of `signal`, at unit scale; `Err` below 4 points, on a non-finite one or a
-/// largest power past the doubles; panics unless `sampling_rate > 0` is finite and a given `nfft >= signal.len()`.
+/// FFT periodogram at unit scale; `Err` below 4 points, on a non-finite one or a largest power
+/// past the doubles; panics unless `sampling_rate > 0` is finite and `nfft >= signal.len()`.
 pub fn periodogram_fft(
   signal: ArrayView1<f64>,
   cfg: PeriodogramConfig,

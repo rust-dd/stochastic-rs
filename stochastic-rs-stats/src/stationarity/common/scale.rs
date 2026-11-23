@@ -81,7 +81,11 @@ pub(crate) fn columns_unit_scaled(x: ArrayView2<f64>) -> (Array2<f64>, Vec<f64>)
 /// `v` over `unit^power`, a value read off data times `unit` in the data's own units; `Numerical`
 /// where it leaves the normal doubles, zero from zero excepted.
 pub(crate) fn in_data_units(v: f64, unit: f64, power: f64) -> Result<f64, StatsError> {
-  let mapped = v / unit.powf(power);
+  // One factor at a time, as `per_unit`: the whole power can leave the doubles where `v` over it
+  // does not.
+  let whole = power.trunc();
+  let factor = if whole < 0.0 { 1.0 / unit } else { unit };
+  let mapped = per_unit(v, factor, whole.abs() as usize) / unit.powf(power - whole);
   if mapped.is_normal() || v == 0.0 {
     Ok(mapped)
   } else {
@@ -91,16 +95,16 @@ pub(crate) fn in_data_units(v: f64, unit: f64, power: f64) -> Result<f64, StatsE
   }
 }
 
-/// `y` at unit scale, [`centred`], at the unit of what is left, with the two units: what a statistic
-/// free of level and unit reads, as a level at unit scale leaves a spread of rounding beside it.
+/// `y` at unit scale, [`centred`], at the unit of what is left, with the two units: a level at unit
+/// scale leaves its spread beside rounding, and a statistic free of both reads neither.
 pub(crate) fn about_mean<T: RealExt>(y: Vec<T>) -> (Vec<T>, [T; 2]) {
   let (at_unit, unit) = unit_scaled(y);
   let (deviations, spread_unit) = unit_scaled(centred(&at_unit));
   (deviations, [unit, spread_unit])
 }
 
-/// `params` fitted to the data times `unit`, in the data's units (`params[i]` as `unit^powers[i]`);
-/// `Numerical` where one is not finite, or leaves the double range or rounds to zero there.
+/// `params` fitted to the data times `unit`, each as [`in_data_units`] at its power; `Numerical`
+/// where one is not finite at unit scale.
 pub(crate) fn params_in_data_units<const K: usize>(
   params: [f64; K],
   unit: f64,
@@ -109,13 +113,42 @@ pub(crate) fn params_in_data_units<const K: usize>(
   if !params.iter().all(|p| p.is_finite()) {
     return Err(StatsError::Numerical { stage: "estimate" });
   }
-  let mapped: [f64; K] = std::array::from_fn(|i| per_unit(params[i], unit, powers[i]));
-  if (0..K).any(|i| !mapped[i].is_finite() || (mapped[i] == 0.0 && params[i] != 0.0)) {
-    return Err(StatsError::Numerical {
-      stage: "data scale",
-    });
+  let mut mapped = params;
+  for (value, power) in mapped.iter_mut().zip(powers) {
+    *value = in_data_units(*value, unit, power as f64)?;
   }
   Ok(mapped)
+}
+
+/// Whether a column of `x` holds one nonzero value throughout, which puts the constant in its span.
+pub(crate) fn has_constant_column(x: ArrayView2<f64>) -> bool {
+  x.columns()
+    .into_iter()
+    .any(|c| c[0] != 0.0 && c.iter().all(|v| *v == c[0]))
+}
+
+/// `y` and each column of `x` at unit scale; about their means too where `x` holds a constant,
+/// which absorbs every level. `y`'s two units come back, the second 1 without a constant.
+pub(crate) fn regression_at_unit_scale(
+  y: Vec<f64>,
+  x: ArrayView2<f64>,
+) -> (Vec<f64>, [f64; 2], Array2<f64>) {
+  if !has_constant_column(x) {
+    let ((y, unit), (x, _)) = (unit_scaled(y), columns_unit_scaled(x));
+    return (y, [unit, 1.0], x);
+  }
+  let (y, units) = about_mean(y);
+  let mut scaled = x.to_owned();
+  for mut column in scaled.columns_mut() {
+    let level = column[0];
+    let values = column.to_vec();
+    let free = match values.iter().all(|v| *v == level) {
+      true => unit_scaled(values).0,
+      false => about_mean(values).0,
+    };
+    column.assign(&ndarray::Array1::from_vec(free));
+  }
+  (y, units, scaled)
 }
 
 /// `v`, read off data times `unit`, divided by `unit` `power` times: one factor at a time, so that
