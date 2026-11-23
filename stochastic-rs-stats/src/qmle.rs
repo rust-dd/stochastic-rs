@@ -22,6 +22,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
+use crate::stationarity::common::centred;
 use crate::stationarity::common::reject_exact_fit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
@@ -461,12 +462,9 @@ impl Ar1 {
     // About the means, as raw sums cancel where the level dwarfs the spread.
     let lagged_mean = lagged.iter().sum::<f64>() / mf;
     let next_mean = next.iter().sum::<f64>() / mf;
-    let (mut sxy, mut sxx) = (0.0, 0.0);
-    for (u, v) in lagged.iter().zip(next) {
-      let d = u - lagged_mean;
-      sxy += d * (v - next_mean);
-      sxx += d * d;
-    }
+    let (lagged, next) = (centred(lagged), centred(next));
+    let sxy = lagged.iter().zip(&next).map(|(u, v)| u * v).sum::<f64>();
+    let sxx = lagged.iter().map(|u| u * u).sum::<f64>();
     let beta = sxy / sxx;
     if !beta.is_finite() {
       return Err(StatsError::Numerical {
@@ -483,10 +481,10 @@ impl Ar1 {
     }
     let residuals = lagged
       .iter()
-      .zip(next)
-      .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
+      .zip(&next)
+      .map(|(u, v)| v - beta * u)
       .collect::<Vec<f64>>();
-    reject_exact_fit(next, &residuals, 1.0)?;
+    reject_exact_fit(&next, &residuals, 1.0)?;
     Ok(Self {
       lagged_mean,
       next_mean,

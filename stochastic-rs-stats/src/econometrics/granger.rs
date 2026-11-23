@@ -11,9 +11,11 @@ use stochastic_rs_distributions::special::beta_i as beta_reg;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
+use crate::stationarity::common::centred;
 use crate::stationarity::common::nested_f;
 use crate::stationarity::common::prepared;
 use crate::stationarity::common::reject_exact_fit;
+use crate::stationarity::common::unit_scaled;
 
 /// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
 #[derive(Debug, Clone)]
@@ -61,8 +63,13 @@ pub fn granger_causality_test(
     });
   }
   let needed = lags.saturating_mul(3).saturating_add(3);
-  // Each series at its own power of two, which `F` does not see, keeps every square in range.
-  let (y, x) = (prepared(y, needed)?, prepared(x, needed)?);
+  // `F` sees neither a series' level nor its unit: about its mean and at its own power of two,
+  // each keeps its digits beside the constant and every square in range.
+  let about_mean = |v: Vec<f64>| unit_scaled(centred(&v)).0;
+  let (y, x) = (
+    about_mean(prepared(y, needed)?),
+    about_mean(prepared(x, needed)?),
+  );
   let n_total = y.len();
   let n = n_total - lags;
 
@@ -265,6 +272,70 @@ mod tests {
             "y × {cy:e}, x × {cx:e}: {got:?} against {unit}"
           );
         }
+      }
+    }
+  }
+
+  /// Integers between 0 and `spread` that follow `0.5 y₋₁ + 0.7 x₋₁` and their driver.
+  fn driven_integers(n: usize, spread: f64) -> (Vec<f64>, Vec<f64>) {
+    let draw = |seed: u64, sd: f64| {
+      let mut buf = vec![0.0_f64; n];
+      SimdNormal::<f64>::new(0.0, sd)
+        .seeded(&Deterministic::new(seed))
+        .fill_slice(&mut buf);
+      buf
+    };
+    let (x, eps) = (draw(17, 1.0), draw(19, 0.3));
+    let mut y = vec![0.0_f64; n];
+    for i in 1..n {
+      y[i] = 0.5 * y[i - 1] + 0.7 * x[i - 1] + eps[i];
+    }
+    let lattice = |v: &[f64]| {
+      let level = |z: &f64| {
+        (0.5 * spread + 0.12 * spread * z)
+          .round()
+          .clamp(0.0, spread)
+      };
+      v.iter().map(level).collect::<Vec<f64>>()
+    };
+    (lattice(&y), lattice(&x))
+  }
+
+  /// `c + k ulp(c)` is exact, so `F` on neighbouring doubles is the integers' `F`, to the solve's
+  /// rounding `m ε κ²`: `300 · 2.2e-16 · κ²` is under `1e-9` for a centred design's `κ` below 120.
+  #[test]
+  fn granger_reads_series_of_neighbouring_doubles_as_their_integers() {
+    for spread in [60.0, 600.0] {
+      let (y, x) = driven_integers(300, spread);
+      let at = |y_level: f64, x_level: f64| {
+        let lift = |v: &[f64], level: f64| {
+          let ulp = level.next_up() - level;
+          Array1::from_iter(v.iter().map(|k| level + k * ulp))
+        };
+        let (y, x) = (lift(&y, y_level), lift(&x, x_level));
+        granger_causality_test(y.view(), x.view(), 2, 0.05).unwrap()
+      };
+      let integers = granger_causality_test(
+        Array1::from_vec(y.clone()).view(),
+        Array1::from_vec(x.clone()).view(),
+        2,
+        0.05,
+      )
+      .unwrap();
+      assert!(
+        integers.rejects_null,
+        "spread {spread}: F {}",
+        integers.statistic
+      );
+      for (y_level, x_level) in [(1.0, 1.0), (3.0, 1e8), (1e8, 5.0), (7e5, 7e5)] {
+        let lifted = at(y_level, x_level);
+        let gap = (lifted.statistic - integers.statistic).abs() / integers.statistic;
+        assert!(
+          gap < 1e-9,
+          "spread {spread}, levels {y_level}, {x_level}: F {} against the integers' {}",
+          lifted.statistic,
+          integers.statistic
+        );
       }
     }
   }

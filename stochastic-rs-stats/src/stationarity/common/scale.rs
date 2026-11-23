@@ -13,11 +13,15 @@ use crate::traits::RealExt;
 /// below this fraction is refused, as is a series whose variance an explosive tail dominates.
 const EXACT_FIT: f64 = 1e-24;
 
-/// `y` less its mean: a fit with a constant is the same, and keeps every digit of a variation that
-/// is small against the level, as arch's `PhillipsPerron` does; scale `y` first, the sum overflows.
+/// `y` less its mean, twice: the second pass takes off the rounding of the first's mean, as large
+/// as the variation itself where the level dwarfs it; scale `y` first, the sum overflows.
 pub(crate) fn centred(y: &[f64]) -> Vec<f64> {
-  let mean = y.iter().sum::<f64>() / y.len() as f64;
-  y.iter().map(|v| v - mean).collect()
+  let mut deviations = y.to_vec();
+  for _ in 0..2 {
+    let mean = deviations.iter().sum::<f64>() / deviations.len() as f64;
+    deviations.iter_mut().for_each(|v| *v -= mean);
+  }
+  deviations
 }
 
 /// The power of two nearest the inverse of the largest magnitude in `y`.

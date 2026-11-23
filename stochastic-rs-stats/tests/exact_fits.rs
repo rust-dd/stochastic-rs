@@ -271,7 +271,7 @@ fn leybourne_mccabe_keeps_a_persistent_walk_at_ar_lags_four() {
   assert!(
     got
       .as_ref()
-      .is_ok_and(|s| (s - 0.1969280235424315).abs() <= 1e-12),
+      .is_ok_and(|s| (s - 0.19692802354343703).abs() <= 1e-12),
     "{got:?}"
   );
 }
