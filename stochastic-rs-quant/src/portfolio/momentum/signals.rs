@@ -6,16 +6,17 @@ use super::types::DecileBucket;
 use super::types::ModelEstimate;
 use super::types::MomentumScore;
 
-/// Risk-adjusted scores `(return − risk_free) / vol`; NaN unless the vol is positive, which
-/// keeps the asset out of every ranking.
+/// Risk-adjusted scores `(return − risk_free) / vol`; NaN unless the vol is positive and the score
+/// finite, which keeps the asset out of every ranking.
 pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<MomentumScore> {
   evals
     .iter()
     .map(|e| {
       let implied_vol = e.implied_vol();
       let annualized_return = e.annualized_return();
-      let score = if implied_vol > 0.0 {
-        (annualized_return - risk_free) / implied_vol
+      let score = (annualized_return - risk_free) / implied_vol;
+      let score = if implied_vol > 0.0 && score.is_finite() {
+        score
       } else {
         f64::NAN
       };
@@ -33,12 +34,12 @@ pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<Mome
     .collect()
 }
 
-/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score is in
-/// no bucket.
+/// Split scored universe into 10 (or fewer) decile buckets, best score first; a score that is not
+/// finite is in no bucket.
 pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
   let mut sorted = scores
     .iter()
-    .filter(|s| !s.momentum_score.is_nan())
+    .filter(|s| s.momentum_score.is_finite())
     .cloned()
     .collect::<Vec<_>>();
   if sorted.is_empty() {

@@ -16,8 +16,8 @@ use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
 
-/// Build rank-based long/short momentum portfolio, best score first; a NaN score is in neither
-/// leg.
+/// Build rank-based long/short momentum portfolio, best score first; a score that is not finite is
+/// in neither leg.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -26,7 +26,7 @@ pub fn build_portfolio(
   corr: Option<&[Vec<f64>]>,
 ) -> MomentumPortfolio {
   let mut order = (0..scores.len())
-    .filter(|&i| !scores[i].momentum_score.is_nan())
+    .filter(|&i| scores[i].momentum_score.is_finite())
     .collect::<Vec<_>>();
   if order.is_empty() {
     return MomentumPortfolio::default();

@@ -1,5 +1,7 @@
 //! Weighting schemes for momentum legs and portfolio-vol aggregation.
 
+use stochastic_rs_distributions::RealExt;
+
 use super::types::MomentumScore;
 use super::types::WeightScheme;
 
@@ -20,16 +22,15 @@ pub(super) fn assign_weights(
       indices.iter().map(|&idx| (idx, w)).collect()
     }
     WeightScheme::ScoreWeighted => {
-      let raw: Vec<f64> = indices
-        .iter()
-        .map(|&idx| scores[idx].momentum_score.abs())
-        .collect();
-      let total: f64 = raw.iter().sum();
-
-      if total < 1e-15 {
+      let size = |idx: usize| scores[idx].momentum_score.abs();
+      let largest = f64::max_or_nan_fold(indices.iter().map(|&idx| size(idx)));
+      if largest == 0.0 {
         let w = 1.0 / indices.len() as f64;
         return indices.iter().map(|&idx| (idx, w)).collect();
       }
+      // Each size over the largest, so their sum cannot overflow.
+      let raw: Vec<f64> = indices.iter().map(|&idx| size(idx) / largest).collect();
+      let total: f64 = raw.iter().sum();
 
       indices
         .iter()

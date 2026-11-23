@@ -90,6 +90,66 @@ fn a_score_is_nan_unless_the_vol_is_positive() {
   assert_eq!(scores[2].momentum_score, (0.03 - 0.01) / 1e-13);
 }
 
+/// A score that overflows at a subnormal vol is NaN, as one at no vol is.
+#[test]
+fn a_score_that_overflows_is_nan() {
+  let mut evals = dummy_evals();
+  evals[0].implied_vol = 1e-310;
+  let score = compute_scores(&evals, 0.01)[0].momentum_score;
+  assert!(score.is_nan(), "{score}");
+}
+
+/// An infinite score of either sign is in neither leg and in no decile, as a NaN one is.
+#[test]
+fn an_infinite_score_is_in_neither_leg_and_in_no_decile() {
+  let mut scores = compute_scores(&dummy_evals(), 0.0);
+  for infinite in [f64::INFINITY, f64::NEG_INFINITY] {
+    scores[1].momentum_score = infinite;
+    let pf = build_portfolio(&scores, 2, 2, WeightScheme::ScoreWeighted, None);
+    let legs = pf.long_positions.iter().chain(&pf.short_positions);
+    assert!(
+      legs
+        .clone()
+        .all(|(ticker, w)| ticker != "BBB" && w.is_finite()),
+      "{pf:?}"
+    );
+    let buckets = decile_analysis(&scores);
+    assert!(
+      buckets
+        .iter()
+        .all(|b| !b.tickers.iter().any(|t| t == "BBB"))
+    );
+  }
+}
+
+/// `ScoreWeighted` is `|sᵢ| / Σ|sⱼ|` at any scale: scores whose sum overflows, or underflows below
+/// `1e-15`, still weigh by size; only all-zero scores weigh equally.
+#[test]
+fn score_weights_are_proportional_at_any_scale() {
+  let mut scores = compute_scores(&dummy_evals(), 0.0);
+  let weights = |scores: &[MomentumScore]| {
+    let pf = build_portfolio(scores, 3, 0, WeightScheme::ScoreWeighted, None);
+    pf.long_positions
+      .iter()
+      .map(|(_, w)| *w)
+      .collect::<Vec<_>>()
+  };
+  for (scale, want) in [
+    (1e308, [0.5, 1.0 / 3.0, 1.0 / 6.0]),
+    (1e-20, [0.5, 1.0 / 3.0, 1.0 / 6.0]),
+    (0.0, [1.0 / 3.0; 3]),
+  ] {
+    for (score, size) in scores.iter_mut().zip([1.5, 1.0, 0.5]) {
+      score.momentum_score = size * scale;
+    }
+    let got = weights(&scores);
+    assert!(
+      got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1e-15),
+      "{scale}: {got:?}"
+    );
+  }
+}
+
 #[test]
 fn compute_scores_from_custom_model_estimate_type() {
   struct CustomEstimate {
