@@ -140,8 +140,6 @@ def test_par_rate_takes_one_two_four_or_twelve_payments_a_year():
 
 
 def test_schedule_builder_keeps_its_direction_under_imm_false_and_refuses_forward_imm():
-    import pytest
-
     d = datetime.date
 
     def build(*calls):
