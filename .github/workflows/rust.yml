@@ -234,6 +234,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: bun install
         run: bun install
+      - name: ESLint (next/core-web-vitals)
+        run: bun run lint
       - name: Frontmatter + RustExample path audit
         run: bun run audit
       - name: Full site build (resolves every RustExample and internal link)
