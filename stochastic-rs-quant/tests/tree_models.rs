@@ -149,16 +149,18 @@ fn a_curve_fitted_tree_and_a_generic_caller_price_through_the_trait() {
   assert_pinned(payer.npv(&fitted), 0.097_845_745_443_896_8);
 }
 
-/// Past 3.3 years the curve's discount factor underflows to zero, so no level shift prices it.
+/// Past the last pillar the flat zero rate of 148 underflows the discount factor to zero, so no
+/// level shift prices the step there.
 #[test]
 fn a_curve_fitted_tree_prices_nan_where_its_curve_underflows() {
   let curve = stochastic_rs_quant::curves::DiscountCurve::from_zero_rates(
     ndarray::array![1.0, 5.0].view(),
-    ndarray::array![0.03, 300.0].view(),
+    ndarray::array![0.03, 148.0].view(),
     stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
   );
-  assert_eq!(curve.discount_factor(5.0), 0.0);
-  let fitted = CurveFittedHullWhiteTree::<f64>::new(0.1, 0.012, &curve, 5.0, 20);
+  assert!(curve.discount_factor(5.0) > 0.0);
+  assert_eq!(curve.discount_factor(5.25), 0.0);
+  let fitted = CurveFittedHullWhiteTree::<f64>::new(0.1, 0.012, &curve, 6.0, 24);
   let bond = fitted.zero_coupon_bond_price();
   assert!(bond.is_nan(), "{bond}");
 }

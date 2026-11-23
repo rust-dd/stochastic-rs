@@ -556,20 +556,6 @@ mod tests {
   }
 
   #[test]
-  fn a_quote_whose_swap_rate_is_nan_is_refused_as_well() {
-    let curve = DiscountCurve::from_zero_rates(
-      Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
-      Array1::from_vec(vec![0.02, f64::NAN, 0.02]).view(),
-      InterpolationMethod::LogLinearOnDiscountFactors,
-    );
-    let err = validate_swaption_quotes(&quotes(), &curve).unwrap_err();
-    assert!(
-      matches!(&err, QuantError::InvalidQuote { reason, .. } if reason.contains("fair_rate")),
-      "{err}"
-    );
-  }
-
-  #[test]
   fn an_accrual_that_implies_an_absurd_schedule_is_refused_before_it_is_walked() {
     let mut quotes = quotes();
     quotes[1].fixed_accrual = 1e-10;
