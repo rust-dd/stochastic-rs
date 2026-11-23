@@ -193,3 +193,35 @@ fn the_pade_cumulants_are_its_own_chf_s_and_near_the_adams_ones() {
     );
   }
 }
+
+/// On the strip `|φ| ≤ E[e^{−Im ξ·X}] ≤ 1`; where a pole of the approximant breaks that, the chf
+/// is NaN, never a finite value a price could be built on.
+#[test]
+fn a_value_no_characteristic_function_takes_is_nan() {
+  let cases = [
+    (
+      RoughHestonParams::new(0.04, 1.0, 0.04, 1.0, -0.9, 0.005),
+      0.05,
+    ),
+    (
+      RoughHestonParams::new(0.04, 0.01, 0.04, 0.6, -0.9, 0.005),
+      1.0,
+    ),
+  ];
+  for (p, tau) in cases {
+    let cf = PadeCf::new(p, 4);
+    let line = (1..800).map(|i| cf.chf(tau, Complex64::new(0.25 * f64::from(i), -0.5)));
+    let values = line.collect::<Vec<_>>();
+    assert!(
+      values.iter().any(|v| v.is_nan()),
+      "{p:?}: the approximant has no pole here"
+    );
+    for value in values {
+      assert!(
+        value.is_nan() || value.norm() <= 1.0 + 1e-12,
+        "{p:?}: |φ| = {}",
+        value.norm()
+      );
+    }
+  }
+}

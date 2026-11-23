@@ -211,3 +211,34 @@ fn off_the_strip_the_approximant_is_nan_and_the_adams_solution_is_not() {
   );
   assert!(adams.chf(1.0, Complex64::new(3.0, -2.5)).is_finite());
 }
+
+/// At the box's corners with `ν = 2` the approximant has poles: a call is NaN or inside its
+/// no-arbitrage bounds, never the `1e14` a finite `|φ| > 1` gave.
+#[test]
+fn at_a_large_vol_of_vol_the_approximant_prices_inside_the_bounds_or_not_at_all() {
+  let mut unpriced = 0;
+  for corner in 0..32 {
+    let pick = |bit: usize, lo: f64, hi: f64| if corner >> bit & 1 == 0 { lo } else { hi };
+    let p = RoughHestonParams {
+      v0: pick(0, 0.005, 0.25),
+      kappa: pick(1, 0.01, 10.0),
+      theta: pick(2, 0.001, 1.0),
+      nu: 2.0,
+      rho: pick(3, -0.9999, 0.9999),
+      hurst: pick(4, 0.005, 0.495),
+    };
+    for order in [3, 4] {
+      let model = RoughHeston::new(p, RoughHestonCf::Pade { order });
+      for (tau, k) in [(0.05, 1.0), (0.05, 1.1), (1.0, 0.9), (1.0, 1.0)] {
+        let call = model.price_call(1.0, k, 0.0, 0.0, tau);
+        unpriced += usize::from(call.is_nan());
+        let inside = call >= (1.0 - k).max(0.0) - 1e-6 && call <= 1.0;
+        assert!(
+          call.is_nan() || inside,
+          "{p:?} order {order} at ({tau}, {k}): {call}"
+        );
+      }
+    }
+  }
+  assert!(unpriced > 0, "no corner met a pole");
+}

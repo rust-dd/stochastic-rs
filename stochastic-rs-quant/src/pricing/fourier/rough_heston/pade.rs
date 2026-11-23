@@ -23,6 +23,9 @@ pub(super) const MAX_ORDER: usize = 6;
 /// Nodes of the time integral: 32 leave the chf within 1e-9 of 64 along Lewis's line.
 const NODES: usize = 32;
 
+/// What `|φ| ≤ 1` is held to: the exponential of a sum of 32 terms rounds well inside it.
+const ROUNDING: f64 = 1e-12;
+
 /// `(p̂₁…p̂_n, q₀…q_n)`, `p = m₀p̂`: the system divided by the moment every `b_k`, `g_k` carries.
 pub(super) type Coefficients<S> = ([S; MAX_ORDER], [S; MAX_ORDER + 1]);
 
@@ -191,16 +194,23 @@ impl PadeCf {
     }
   }
 
-  /// NaN off the strip `−1 ≤ Im ξ ≤ 0` the approximant is built on; `φ(ξ) = conj φ(−ξ̄)` carries
-  /// `Re ξ < 0` into it.
+  /// NaN off the strip `−1 ≤ Im ξ ≤ 0` the approximant is built on, and where `|φ| > 1`: on the
+  /// strip `|φ| ≤ E[e^{−Im ξ·X}] ≤ 1`, which a pole of the approximant breaks.
   pub(super) fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     if !(-1.0..=0.0).contains(&xi.im) {
       return Complex64::new(f64::NAN, f64::NAN);
     }
-    if xi.re < 0.0 {
-      return super::chf(self, t, -xi.conj()).conj();
+    // `φ(ξ) = conj φ(−ξ̄)` carries `Re ξ < 0` into the quarter plane of Gatheral & Radoičić's (1.7).
+    let value = if xi.re < 0.0 {
+      super::chf(self, t, -xi.conj()).conj()
+    } else {
+      super::chf(self, t, xi)
+    };
+    if value.norm() <= 1.0 + ROUNDING {
+      value
+    } else {
+      Complex64::new(f64::NAN, f64::NAN)
     }
-    super::chf(self, t, xi)
   }
 }
 
