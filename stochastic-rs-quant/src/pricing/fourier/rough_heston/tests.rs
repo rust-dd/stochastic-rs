@@ -2,6 +2,7 @@ use num_complex::Complex64;
 use stochastic_rs_distributions::special::gamma;
 
 mod adams;
+mod lifted;
 mod pade;
 mod published;
 mod scalar;
