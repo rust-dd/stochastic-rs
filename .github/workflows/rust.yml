@@ -299,7 +299,7 @@ jobs:
       - name: cargo nextest run (fill pinning test, dual-stream engine)
         run: cargo nextest run -p stochastic-rs-distributions --features unstable-dual-stream-rng --test fill_writes_every_element --profile ci --locked
       # nextest runs no doctests; this gates the doc examples, the README quickstart included.
-      # Release, since the Monte Carlo examples are too slow unoptimised; LTO would only slow the rebuild.
+      # Release: the Monte Carlo examples are too slow unoptimised; LTO only slows the rebuild.
       - name: cargo test --doc (workspace)
         run: cargo test --release --workspace --exclude stochastic-rs-py --doc --locked
         env:
