@@ -85,7 +85,7 @@ macro_rules! euler_memory {
     history { push (sigma * dz / sqrt($dt)) weights ($ct) },
 
   /// A tempered-stable process by its shot-noise series (Rosiński 2007): each term is sized
-  /// `min((Γ_j rate)^{-1/α}, e_scale E^{e_pow} U^{1/α} / λ_side)`; `rem_sd dz` is the terms dropped.
+  /// `min((Γ_j rate)^{-1/α}, e_scale E^{e_pow} U^{1/α} / λ_side)`; `rem_sd dz`: the dropped terms.
   110 => TemperedStableSeries { b_t, rate, inv_alpha, e_scale, e_pow, w_plus, lambda_plus, lambda_minus, rem_sd }
     state (x)
     noise (dz)
