@@ -131,7 +131,7 @@ fn the_literal_predictor_corrector_agrees_with_the_solved_corrector() {
 
 /// `D^αy = 1 − μy` at a unit step: the explicit scheme holds at `μΔ^α = 1` and diverges at 2.5,
 /// the solved corrector holds at 1000.
-/// Reference: Garrappa (2010), Int. J. Comput. Math. 87(10), 2281–2290, DOI 10.1080/00207160802624331
+/// Reference: Garrappa (2010), Int. J. Comput. Math. 87, 2281–2290, DOI 10.1080/00207160802624331
 #[test]
 fn the_explicit_scheme_has_a_stability_bound_and_the_solved_corrector_none() {
   let n = 600;

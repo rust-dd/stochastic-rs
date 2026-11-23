@@ -5,8 +5,7 @@
 //! \Theta = (V_0,\kappa,\theta,\nu,\rho,H),\qquad w_j = \bigl(S\,\psi(d_1)\sqrt{T_j}\bigr)^{-1}
 //! $$
 //!
-//! with `ψ` the normal pdf at the quote's own Black volatility, so a residual reads as a volatility
-//! error, and prices by the characteristic function the calibrator's selector names.
+//! `ψ` is the normal pdf at the quote's own Black volatility, so a residual reads as a vol error.
 //!
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173
 //! Reference: Gatheral & Radoičić (2024), arXiv:2310.09181

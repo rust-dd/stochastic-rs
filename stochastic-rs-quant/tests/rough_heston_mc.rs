@@ -53,9 +53,8 @@ fn assert_within_error_bars(what: &str, terminal: &[f64], model: &RoughHeston, b
   }
 }
 
-/// `RlHeston`'s paths against the Adams solution. Its Euler step prices calls high: by 4.6e-4 to
-/// 5.6e-4 at these strikes on 257 points and 160 000 paths, and by half that on 1025 points, the
-/// rate `Δ^{H+½}`; 6e-4 is that allowance, beside four standard errors at a fixed seed.
+/// `RlHeston` against the Adams solution: its Euler step prices calls up to 5.6e-4 high on 257
+/// points (160 000 paths; half that on 1025), so 6e-4 is allowed beside four standard errors.
 #[test]
 fn rl_heston_paths_price_as_the_adams_characteristic_function() {
   const POINTS: usize = 257;

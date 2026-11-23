@@ -6,9 +6,8 @@
 //! \bigl((k-j+2)^{\alpha+1} + (k-j)^{\alpha+1} - 2(k-j+1)^{\alpha+1}\bigr)
 //! $$
 //!
-//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, (26)–(27), DOI 10.1111/mafi.12173
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38, (26)–(27), DOI 10.1111/mafi.12173
 //! Reference: Diethelm et al. (2002), Nonlinear Dyn. 29, 3–22, DOI 10.1023/A:1016592219341
-//! Reference: Diethelm et al. (2004), Numer. Algorithms 36, 31–52, DOI 10.1023/B:NUMA.0000027736.85078.be
 
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma;

@@ -248,9 +248,8 @@ fn a_fit_under_another_selector_converts_to_that_selector_s_model() {
   );
 }
 
-/// Quotes of the Adams solution fitted by the (4,4) approximant: the fit cannot be exact, and
-/// lands where the approximant's accuracy puts it. The bounds are twice the gaps measured: an rmse
-/// of 1.9e-4 on a spot of 100, and 1.6e-4, 1.4e-2, 2.6e-3, 3.4e-3, 1.9e-3, 1.6e-2 of each value.
+/// The (4,4) approximant fitted to the Adams solution's quotes lands within its own accuracy:
+/// each bound is twice the gap measured, an rmse of 1.9e-4 on a spot of 100 the first.
 #[test]
 fn the_approximant_fits_the_adams_solution_s_quotes_to_its_accuracy() {
   let truth = RoughHeston::new(TRUTH, RoughHestonCf::Adams { steps: 100 });

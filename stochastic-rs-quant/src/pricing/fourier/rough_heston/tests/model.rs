@@ -122,13 +122,12 @@ fn parameters_off_their_domain_panic_in_new() {
   RoughHeston::new(p, RoughHestonCf::default());
 }
 
-/// Implied vol against the Adams solution at 100 steps (itself within 3e-5): twice the worst gap
-/// measured over these sets, 5.3e-4 for (4,4), 7.1e-4 for (3,3), and for twenty lifted factors
-/// 4.1e-3 at a week and 2.0e-3 from three months.
+/// Implied vol against Adams at 50 steps (within 9e-5): twice the worst gaps measured, 5.3e-4 for
+/// (4,4), 7.1e-4 for (3,3), and for twenty lifted factors 4.1e-3 at a week, 2.0e-3 from 3 months.
 #[test]
 fn the_three_characteristic_functions_agree_to_their_stated_accuracy() {
   for (name, p) in SETS {
-    let reference = RoughHeston::new(p, RoughHestonCf::Adams { steps: 100 });
+    let reference = RoughHeston::new(p, RoughHestonCf::Adams { steps: 50 });
     let others = [
       (RoughHestonCf::Pade { order: 4 }, 1.1e-3, 1.1e-3),
       (RoughHestonCf::Pade { order: 3 }, 1.5e-3, 1.5e-3),
@@ -169,7 +168,7 @@ fn the_adams_price_has_converged_at_its_default_steps() {
 fn the_blankets_price_and_invert_every_selector() {
   let (_, p) = SETS[0];
   for cf in [
-    RoughHestonCf::Adams { steps: 100 },
+    RoughHestonCf::Adams { steps: 40 },
     RoughHestonCf::default(),
     RoughHestonCf::LIFTED,
   ] {

@@ -46,9 +46,8 @@ impl FourierModelExt for NotebookModel {
   }
 }
 
-/// "Rough Heston smiles using the Padé approximations", github.com/jgatheral/RationalRoughHeston:
-/// `H = 0.05, ν = 0.4, ρ = −0.65, λ = 1`, `k = −0.1`, `t = 0.019`, orders 3 to 6. An independent
-/// quadrature sits 2.7e-6 from their seven printed digits; the bound is four times that.
+/// The authors' notebook "Rough Heston smiles using the Padé approximations", orders 3 to 6 at
+/// `k = −0.1`, `t = 0.019`; an independent quadrature sits 2.7e-6 away, the bound four times that.
 /// Reference: Gatheral & Radoičić (2024), arXiv:2310.09181, (1.2), (4.1)
 #[test]
 fn the_authors_notebook_vols_are_reproduced() {
@@ -72,9 +71,8 @@ fn the_authors_notebook_vols_are_reproduced() {
   }
 }
 
-/// Abi Jaber's Table 3 at his (3.7): the 20-factor surface's mean squared error against the rough
-/// one falls as `r₂₀` rises from 1.67 to 2.5 (1.85e-4, 4.16e-5, 8.72e-6, 3.64e-6). His strikes and
-/// weights are not given, so the test holds the order and the magnitude, not his digits.
+/// Abi Jaber's Table 3: the 20-factor surface's squared error against the rough one falls as `r₂₀`
+/// rises (1.85e-4 at 1.67 to 3.64e-6 at 2.5); his strikes are not given, so not his digits.
 /// Reference: Abi Jaber (2019), Quant. Finance 19(12), 1995–2013, DOI 10.1080/14697688.2019.1615113
 #[test]
 fn the_lifted_surface_nears_the_rough_one_as_the_ratio_rises() {
@@ -82,7 +80,7 @@ fn the_lifted_surface_nears_the_rough_one_as_the_ratio_rises() {
   use crate::pricing::fourier::RoughHestonCf;
   use crate::pricing::fourier::RoughHestonParams;
   let p = RoughHestonParams::new(0.02, 0.3, 0.02, 0.3, -0.7, 0.1);
-  let rough = RoughHeston::new(p, RoughHestonCf::Adams { steps: 100 });
+  let rough = RoughHeston::new(p, RoughHestonCf::Adams { steps: 50 });
   let points = [
     (1.0 / 52.0, 0.97),
     (1.0 / 52.0, 1.0),

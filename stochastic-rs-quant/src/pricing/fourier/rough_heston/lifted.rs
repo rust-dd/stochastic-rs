@@ -9,7 +9,7 @@
 //! The Riccati system steps by Euler, implicit in the mean reversions as his (C.2) and in `F` too.
 //!
 //! Reference: Abi Jaber (2019), Quant. Finance 19(12), 1995–2013, DOI 10.1080/14697688.2019.1615113
-//! Reference: Abi Jaber & El Euch (2019), SIAM J. Financ. Math. 10(2), 309–349, DOI 10.1137/18M1170236
+//! Reference: Abi Jaber & El Euch (2019), SIAM J. Financ. Math. 10, 309–349, DOI 10.1137/18M1170236
 
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma;
