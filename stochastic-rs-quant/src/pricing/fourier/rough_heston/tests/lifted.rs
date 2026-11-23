@@ -6,6 +6,7 @@ use super::super::LogChf;
 use super::super::RoughHestonParams;
 use super::super::chf;
 use super::super::cumulants;
+use super::super::lifted::Forcing;
 use super::super::lifted::LiftedCf;
 use super::ratios;
 use crate::pricing::fourier::FourierModelExt;
@@ -59,7 +60,7 @@ fn the_factors_approximate_the_fractional_kernel() {
   }
 }
 
-/// One factor of weight 1 and no mean reversion is Heston; (C.2) is first order.
+/// One factor of weight 1 and no mean reversion is Heston; Euler's step is first order.
 #[test]
 fn one_unit_factor_is_heston_at_first_order() {
   let p = HestonParams {
@@ -96,9 +97,10 @@ fn one_unit_factor_is_heston_at_first_order() {
   }
 }
 
-/// At `Δ·μ·Σcᵢ/(2 + xᵢΔ) = 1` the linearised step has the eigenvalue −1; a solve keeps half of it.
+/// At `Δ·μ·Σcᵢ/(2 + xᵢΔ) = 1` (C.2)'s linearised step has the eigenvalue −1, so its step count
+/// would have to grow with `|ξ|`; the step solved in `F` holds at any frequency.
 #[test]
-fn the_step_count_keeps_the_explicit_term_inside_its_stability_bound() {
+fn the_explicit_step_has_a_stability_bound_and_the_solved_one_none() {
   let cf = twenty();
   let dt = 1e-3;
   let mu = cf.load(dt).recip();
@@ -113,18 +115,27 @@ fn the_step_count_keeps_the_explicit_term_inside_its_stability_bound() {
       "{after} vs {before}"
     );
   }
-  for mu in [1.0, 1e3, 1e4] {
-    let steps = cf.steps_for(1.0, mu).expect("within the cap");
-    assert!(
-      steps >= 300 && mu * cf.load(1.0 / steps as f64) <= 0.5,
-      "μ = {mu}: {steps}"
-    );
+  for u in [1e3, 1e5, 1e7] {
+    let far = chf(&cf, 1.0, Complex64::new(u, -0.5));
+    assert!(far.norm() < 1e-12, "u = {u}: {far}");
   }
-  assert_eq!(cf.steps_for(1.0, 1e-3), Some(300));
-  assert_eq!(cf.steps_for(1.0, f64::NAN), None);
-  assert_eq!(cf.steps_for(1.0, 1e12), None);
-  assert!(chf(&cf, 0.25, Complex64::new(1e4, -0.5)).is_finite());
-  assert!(chf(&cf, 0.25, Complex64::new(1e13, -0.5)).is_nan());
+  let z = Complex64::new(0.5, 1e4);
+  assert!(!cf.solve(1.0, z, Forcing::Explicit).is_finite());
+}
+
+/// Where (C.2) is stable the two steps differ at first order, as two Euler schemes do.
+#[test]
+fn the_solved_step_is_abi_jaber_s_scheme_to_first_order() {
+  let z = Complex64::new(0.5, 3.0);
+  let gap = |steps: usize| {
+    let cf = LiftedCf::new(AJ, 20, 2.5, steps);
+    (cf.solve(1.0, z, Forcing::Solved) - cf.solve(1.0, z, Forcing::Explicit)).norm()
+  };
+  let gaps = [300, 600, 1200].map(gap);
+  assert!(gaps[2] < 1e-3, "{gaps:?}");
+  for ratio in ratios(&gaps) {
+    assert!((1.7..2.3).contains(&ratio), "{gaps:?}");
+  }
 }
 
 #[test]
@@ -143,7 +154,7 @@ fn the_lifted_chf_follows_the_domain_rule_and_its_cumulants_are_its_own() {
   let c2 = -(-f2p + 16.0 * fp - 30.0 * f0 + 16.0 * fm - f2m).re / (12.0 * h * h);
   assert!((got.c1 - c1).abs() < 1e-8, "{} vs {c1}", got.c1);
   assert!((got.c2 - c2).abs() < 1e-7, "{} vs {c2}", got.c2);
-  // At `V₀ = θ` the mean variance is flat, so `c₁ = −½V₀t`; (C.2), first order, leaves a relative
-  // 6.6e-5 at 300 steps, taken three times.
-  assert!((got.c1 / (-0.5 * AJ.v0) - 1.0).abs() < 2e-4, "{}", got.c1);
+  // At `V₀ = θ` the mean variance is flat, so `c₁ = −½V₀t`; Euler's first order leaves a relative
+  // 2.8e-4 at 300 steps, taken twice.
+  assert!((got.c1 / (-0.5 * AJ.v0) - 1.0).abs() < 6e-4, "{}", got.c1);
 }

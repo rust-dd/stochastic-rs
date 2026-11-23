@@ -12,6 +12,9 @@ use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
+use stochastic_rs_quant::pricing::fourier::RoughHeston;
+use stochastic_rs_quant::pricing::fourier::RoughHestonCf;
+use stochastic_rs_quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::traits::ModelPricer;
 
@@ -101,6 +104,27 @@ fn heston_gil_pelaez_calls_match_the_carry_in_the_exponent() {
       assert!(
         ((got - want) / want).abs() < 1e-10,
         "(r, q) = ({r}, {q}), k = {k}: {got} vs {want}"
+      );
+    }
+  }
+}
+
+/// A drift-free chf prices at any carry as its zero-rate call on the forward, discounted.
+#[test]
+fn rough_heston_is_drift_free_and_takes_the_carry_from_the_query() {
+  let p = RoughHestonParams::new(0.04, 1.0, 0.04, 0.4, -0.65, 0.1);
+  for cf in [RoughHestonCf::Adams { steps: 50 }, RoughHestonCf::default()] {
+    let m = RoughHeston::new(p, cf);
+    let one = m.chf(1.0, Complex64::new(0.0, -1.0));
+    assert_eq!(one, Complex64::ONE, "{cf:?}: E[e^X] = {one}");
+    assert!(m.cumulants(1.0).c1 < 0.0, "{cf:?}");
+    for (r, q) in CARRIES {
+      let forward = 100.0 * ((r - q) * 1.0_f64).exp();
+      let call = m.price_call(100.0, 110.0, r, q, 1.0);
+      let on_forward = (-r * 1.0_f64).exp() * m.price_call(forward, 110.0, 0.0, 0.0, 1.0);
+      assert!(
+        (call - on_forward).abs() < 1e-10 * call,
+        "{cf:?} at ({r}, {q}): {call} vs {on_forward}"
       );
     }
   }

@@ -45,6 +45,8 @@ pub use levy::VarianceGammaFourier;
 pub use pricer::CarrMadanPricer;
 pub use quadrature::GilPelaezPricer;
 pub use quadrature::LewisPricer;
+pub use rough_heston::RoughHeston;
+pub use rough_heston::RoughHestonCf;
 pub use rough_heston::RoughHestonParams;
 
 /// Trait for models that expose a characteristic function of the log-price,

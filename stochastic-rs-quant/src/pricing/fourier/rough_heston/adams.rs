@@ -79,8 +79,6 @@ impl Adams {
     let dt = t / self.steps as f64;
     let c = dt.powf(self.alpha) / gamma(self.alpha + 2.0);
     let moment = Riccati::moment(z);
-    let square = 0.5 * riccati.nu * riccati.nu * c;
-    let linear = (z * (riccati.rho * riccati.nu) - S::real(riccati.kappa)) * c - S::real(1.0);
     let mut h = Vec::with_capacity(self.steps + 1);
     let mut f = Vec::with_capacity(self.steps + 1);
     h.push(S::ZERO);
@@ -90,16 +88,7 @@ impl Adams {
         sum + f[j] * self.second_difference[k - j]
       });
       let next = match corrector {
-        Corrector::Solved => {
-          // The root whose slope is `−√disc`: the explicit value as `c → 0`, `r₋/ν` as `c → ∞`.
-          let constant = (history + moment) * c;
-          let root = (linear * linear - constant * (4.0 * square)).sqrt();
-          if linear.re() <= 0.0 {
-            constant * 2.0 / (root - linear)
-          } else {
-            (-linear - root) / S::real(2.0 * square)
-          }
-        }
+        Corrector::Solved => riccati.implicit(moment, z, c, history * c),
         #[cfg(test)]
         Corrector::Predicted => {
           let rectangle =

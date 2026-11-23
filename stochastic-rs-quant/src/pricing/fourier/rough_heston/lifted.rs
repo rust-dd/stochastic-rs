@@ -6,6 +6,8 @@
 //! g_0(t) = V_0 + \kappa\theta\sum_i c_i\,\frac{1-e^{-x_it}}{x_i}
 //! $$
 //!
+//! The Riccati system steps by Euler, implicit in the mean reversions as his (C.2) and in `F` too.
+//!
 //! Reference: Abi Jaber (2019), Quant. Finance 19(12), 1995–2013, DOI 10.1080/14697688.2019.1615113
 //! Reference: Abi Jaber & El Euch (2019), SIAM J. Financ. Math. 10(2), 309–349, DOI 10.1137/18M1170236
 
@@ -17,10 +19,16 @@ use super::Riccati;
 use super::RoughHestonParams;
 use super::scalar::RiccatiScalar;
 
-/// Past this a solve is NaN: about `ν|ξ|t = 10⁵` for twenty factors, beyond any price's reach.
-const MAX_STEPS: usize = 1 << 22;
+/// When the step reads `F(z, Σcψ)`: `Solved` at its end, by the quadratic it then closes on.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Forcing {
+  Solved,
+  /// At its start, Abi Jaber's (C.2): stable only while `Δ·ν|A|·Σcᵢ/(2 + xᵢΔ) < 1`.
+  #[cfg(test)]
+  Explicit,
+}
 
-/// The factors' weights `cᵢ` and mean reversions `xᵢ`, and the step count (C.2) starts from.
+/// The factors' weights `cᵢ` and mean reversions `xᵢ`, and the step count.
 #[derive(Clone, Debug)]
 pub(super) struct LiftedCf {
   params: RoughHestonParams,
@@ -62,27 +70,13 @@ impl LiftedCf {
   }
 
   /// `Δ·Σcᵢ/(2 + xᵢΔ)`: times the linearised rate `μ` it is 1 where (C.2)'s eigenvalue is −1.
+  #[cfg(test)]
   pub(super) fn load(&self, dt: f64) -> f64 {
     let factors = self.weights.iter().zip(&self.reversions);
     dt * factors.map(|(c, x)| c / (2.0 + x * dt)).sum::<f64>()
   }
 
-  /// The configured count doubled until `μ·load ≤ ½`; `None` for a NaN rate or past the cap.
-  pub(super) fn steps_for(&self, t: f64, mu: f64) -> Option<usize> {
-    let mut steps = self.steps;
-    while steps <= MAX_STEPS {
-      if mu * self.load(t / steps as f64) <= 0.5 {
-        return Some(steps);
-      }
-      if mu.is_nan() {
-        return None;
-      }
-      steps *= 2;
-    }
-    None
-  }
-
-  /// One step of (C.2): implicit in each mean reversion, explicit in `forcing = F(z, Σcψ)`.
+  /// `ψⁱ ← (ψⁱ + Δ·forcing)/(1 + xᵢΔ)`: (C.2)'s step, implicit in each mean reversion.
   pub(super) fn advance<S: RiccatiScalar>(&self, psi: &mut [S], dt: f64, forcing: S) {
     let step = forcing * dt;
     for (value, x) in psi.iter_mut().zip(&self.reversions) {
@@ -108,31 +102,41 @@ impl LiftedCf {
   }
 }
 
-impl LogChf for LiftedCf {
-  fn log_chf<S: RiccatiScalar>(&self, t: f64, z: S) -> S {
+impl LiftedCf {
+  /// (2.12) by the trapezoid on the grid of (2.10)'s Euler steps.
+  pub(super) fn solve<S: RiccatiScalar>(&self, t: f64, z: S, forcing: Forcing) -> S {
     let moment = Riccati::moment(z);
-    let square = self.riccati.nu * self.riccati.nu;
-    let reversion = S::real(self.riccati.kappa) - z * (self.riccati.rho * self.riccati.nu);
-    let rate = (reversion * reversion - moment * (2.0 * square))
-      .sqrt()
-      .norm();
-    let Some(steps) = self.steps_for(t, rate) else {
-      return S::real(f64::NAN);
-    };
+    let steps = self.steps;
     let dt = t / steps as f64;
     let curve = self.input_curve(dt, steps);
+    let damped = &self.weights / &self.reversions.mapv(|x| 1.0 + x * dt);
+    let total = |psi: &[S], weights: &Array1<f64>| {
+      let factors = psi.iter().zip(weights);
+      factors.fold(S::ZERO, |sum, (&value, &c)| sum + value * c)
+    };
     let mut psi = vec![S::ZERO; self.weights.len()];
-    let mut sum = S::ZERO;
-    for k in 0..=steps {
-      let factors = psi.iter().zip(&self.weights);
-      let total = factors.fold(S::ZERO, |sum, (&value, &c)| sum + value * c);
-      let forcing = self.riccati.rhs(moment, z, total);
-      let end = if k == 0 || k == steps { 0.5 } else { 1.0 };
-      sum = sum + forcing * (end * curve[steps - k]);
-      if k < steps {
-        self.advance(&mut psi, dt, forcing);
+    let mut force = moment;
+    let mut sum = force * (0.5 * curve[steps]);
+    for k in 1..=steps {
+      if matches!(forcing, Forcing::Solved) {
+        let known = total(&psi, &damped);
+        let next = self.riccati.implicit(moment, z, damped.sum() * dt, known);
+        force = self.riccati.rhs(moment, z, next);
       }
+      self.advance(&mut psi, dt, force);
+      #[cfg(test)]
+      if matches!(forcing, Forcing::Explicit) {
+        force = self.riccati.rhs(moment, z, total(&psi, &self.weights));
+      }
+      let end = if k == steps { 0.5 } else { 1.0 };
+      sum = sum + force * (end * curve[steps - k]);
     }
     sum * dt
+  }
+}
+
+impl LogChf for LiftedCf {
+  fn log_chf<S: RiccatiScalar>(&self, t: f64, z: S) -> S {
+    self.solve(t, z, Forcing::Solved)
   }
 }

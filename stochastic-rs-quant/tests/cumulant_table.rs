@@ -16,6 +16,9 @@ use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::KouFourier;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
 use stochastic_rs_quant::pricing::fourier::NigFourier;
+use stochastic_rs_quant::pricing::fourier::RoughHeston;
+use stochastic_rs_quant::pricing::fourier::RoughHestonCf;
+use stochastic_rs_quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::fourier::VarianceGammaFourier;
 use stochastic_rs_quant::pricing::heston::HestonParams;
@@ -538,4 +541,33 @@ fn the_default_cos_put_holds_for_three_regimes_at_a_short_maturity() {
     let want = model.price_put(100.0, k, 0.03, 0.01, 0.1);
     assert!((put - want).abs() < 1e-7, "K = {k}: {put} vs {want}");
   }
+}
+
+/// Rough Heston has no closed cumulants to pin: each selector's are its own chf's, by the stencils.
+#[test]
+fn the_rough_heston_cumulants_are_each_selector_s_own() {
+  let p = RoughHestonParams::new(0.04, 1.0, 0.06, 0.4, -0.65, 0.1);
+  let mut failures = Vec::new();
+  for cf in [
+    RoughHestonCf::Adams { steps: 100 },
+    RoughHestonCf::Pade { order: 4 },
+    RoughHestonCf::Pade { order: 3 },
+    RoughHestonCf::LIFTED,
+  ] {
+    let model = RoughHeston::new(p, cf);
+    for t in [0.25, 1.0] {
+      let c = model.cumulants(t);
+      let (n1, n2) = chf_c1_c2(&model, t, 2e-3);
+      if !within(c.c1, n1, 1e-8 * c.c2.max(1.0)) {
+        failures.push(format!("{cf:?} at {t} c1: {} vs {n1}", c.c1));
+      }
+      if !within(c.c2, n2, 1e-7 * c.c2.max(1.0)) {
+        failures.push(format!("{cf:?} at {t} c2: {} vs {n2}", c.c2));
+      }
+      if !c.c4.is_some_and(|c4| c4 > 0.0 && c4.is_finite()) {
+        failures.push(format!("{cf:?} at {t} c4: {:?}", c.c4));
+      }
+    }
+  }
+  assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

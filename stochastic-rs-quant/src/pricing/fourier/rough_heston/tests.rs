@@ -3,6 +3,7 @@ use stochastic_rs_distributions::special::gamma;
 
 mod adams;
 mod lifted;
+mod model;
 mod pade;
 mod published;
 mod scalar;
