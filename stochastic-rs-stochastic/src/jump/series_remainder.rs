@@ -52,8 +52,8 @@ const LEGENDRE_8: [(f64, f64); 4] = [
 /// Panels of the average over `Γ_J`, each under one standard deviation wide.
 const ARRIVAL_PANELS: usize = 24;
 
-/// `Σ_{k ≥ 1} (−1)^k (1 − x^{c+k}) / (k! (c + k))` on `0 < x ≤ 1`, `−∫_x^1 (1 − e^{−t}) t^{c−1} dt`.
-/// A zero `c + k` is the limit `−ln x`, not a pole.
+/// `Σ_{k ≥ 1} (−1)^k (1 − x^{c+k}) / (k! (c + k))` on `x ≤ 1`: `−∫_x^1 (1 − e^{−t}) t^{c−1} dt`,
+/// a zero `c + k` being the limit `−ln x`, not a pole.
 fn unit_series(c: f64, x: f64) -> f64 {
   let ln_x = x.ln();
   let mut coefficient = 1.0;
