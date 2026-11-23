@@ -31,7 +31,7 @@ git log -1 --oneline       # capture the HEAD commit for the release notes
 # 1.2 Tests + clippy + features matrix
 cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
-cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
+cargo clippy --workspace --all-targets --all-features -- -D warnings   # the §4.1 feature-flag traps; the Metal artifact must be fresh
 cargo check --workspace --no-default-features                # baseline build still works
 
 # 1.3 CUDA tests on the T4 runner (billed), by dispatch, never by toggling the `cuda` label
@@ -93,8 +93,10 @@ cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}'
 cargo update --workspace
 git add Cargo.lock
 
-# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes):
-#     regenerate it per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
+# 2.4 The bump makes the Metal artifact stale (its inputs.json hashes the root Cargo.toml's bytes, so
+#     any edit of that file does, not only a version bump; the 8.1 next-dev bump too, and
+#     cargo-workspace-policy states the rule): regenerate it per
+#     .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
 PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
   cargo check -p stochastic-rs-stochastic --features metal --locked
 METAL_OXIDE_ARTIFACTS=locked cargo check -p stochastic-rs-stochastic --features metal --locked
@@ -134,12 +136,17 @@ version DOI is only known after stage 5.5.
 # 4.1 Package and verify the published crates together, in dependency order (core → distributions
 # → copulas → stochastic → stats → quant → ai → umbrella), against a local registry of the siblings.
 cargo publish --workspace --dry-run --locked
+# 4.2 The umbrella carries an `include` allow-list: its package is the sources, benches, examples,
+#     README, LICENSE and the KaTeX header, about sixty files
+cargo package -p stochastic-rs --list --locked | wc -l
+# 4.3 The stochastic package ships the prebuilt metallib
+cargo package -p stochastic-rs-stochastic --list --locked | grep metallib
 ```
 
-Not `./publish.sh --dry-run`: it verifies each crate against its siblings
-on crates.io, so after a version bump it fails at the second crate.
+`./publish.sh --dry-run` runs the same workspace dry run after its gate. CI's
+`hygiene.yml` runs `cargo publish --workspace --dry-run` on every pull request too.
 
-`publish.sh` (stage 6) runs its **own** fmt + clippy + test gate before
+`publish.sh` (stage 6) runs its **own** fmt + clippy (default-off and all-features) + test gate before
 publishing anything, so stage 1 and stage 6 overlap deliberately.
 Its other flags: `--allow-dirty` (publish with uncommitted changes) and
 `--skip-gate` (bypass the fmt/clippy/test gate — not recommended). It
