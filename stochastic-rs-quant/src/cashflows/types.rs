@@ -229,11 +229,12 @@ fn simple_forward<T: RealExt>(
     .forecast_curve(tenor)
     .unwrap_or_else(|| curves.discount_curve());
   let accrual: T = day_count.year_fraction(period.accrual_start, period.accrual_end);
-  if !(accrual > T::zero()) {
-    return T::nan();
+  if accrual > T::zero() {
+    let read = |date: NaiveDate| curve.discount_factor(axis.year_fraction(valuation_date, date));
+    (read(period.accrual_start) / read(period.accrual_end) - T::one()) / accrual
+  } else {
+    T::nan()
   }
-  let read = |date: NaiveDate| curve.discount_factor(axis.year_fraction(valuation_date, date));
-  (read(period.accrual_start) / read(period.accrual_end) - T::one()) / accrual
 }
 
 /// OIS-style overnight compounded index.
@@ -395,10 +396,11 @@ impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
       .windows(2)
       .map(|w| self.day_count.year_fraction::<T>(w[0], w[1]) * read(w[1]))
       .fold(T::zero(), |sum, term| sum + term);
-    if !(annuity > T::zero()) {
-      return T::nan();
+    if annuity > T::zero() {
+      (read(period.accrual_start) - read(swap_end)) / annuity
+    } else {
+      T::nan()
     }
-    (read(period.accrual_start) - read(swap_end)) / annuity
   }
 }
 
