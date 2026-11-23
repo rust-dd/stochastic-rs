@@ -1,0 +1,41 @@
+[graph]
+all-features = true
+
+# Each ignore names the condition that retires it.
+[advisories]
+version = 2
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste is an unmaintained proc macro reached through gemm 0.19, by faer (every build) and candle; drop when gemm drops it" },
+  { id = "RUSTSEC-2026-0374", reason = "basic-toml is an unmaintained proc-macro dependency of plotly's askama (viz, and the umbrella's dev-dependencies); drop when askama drops it" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained but is the umbrella's public date type; drop when the date type is replaced" },
+  { id = "RUSTSEC-2026-0367", reason = "no code here opens a zip archive; zip comes in through candle-core and ndarray-npy; drop when both depend on a fixed zip" },
+  { id = "RUSTSEC-2026-0368", reason = "same as RUSTSEC-2026-0367, extract is never called" },
+  { id = "RUSTSEC-2026-0369", reason = "same as RUSTSEC-2026-0367, extract is never called" },
+  { id = "RUSTSEC-2026-0429", reason = "same as RUSTSEC-2026-0367, extract is never called" },
+  { id = "RUSTSEC-2026-0545", reason = "concerns zip's AES reads, whose feature is off here; drop with RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0546", reason = "same as RUSTSEC-2026-0367, extract is never called" },
+  { id = "RUSTSEC-2026-0547", reason = "concerns zip's legacy decoders, whose feature is off here; drop with RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0548", reason = "same as RUSTSEC-2026-0367, no archive is read" },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.9
+
+# The crate omits a license field; its LICENSE is MIT with upstream notices that the MIT terms already require keeping.
+[[licenses.clarify]]
+crate = "implied-vol"
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0x526ab6d5 }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

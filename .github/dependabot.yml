@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Lockfile-only: a root Cargo.toml edit would make the committed Metal artifact stale.
+  - package-ecosystem: cargo
+    directory: "/"
+    versioning-strategy: lockfile-only
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "metal-oxide"
+      - dependency-name: "metal-oxide-device"
+    groups:
+      cargo-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: bun
+    directory: "/website"
+    schedule:
+      interval: weekly
+    groups:
+      website-minor-and-patch:
+        update-types: ["minor", "patch"]

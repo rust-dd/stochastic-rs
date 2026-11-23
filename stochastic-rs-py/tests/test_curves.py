@@ -19,9 +19,16 @@ def flat(rate):
     return sr.DiscountCurve.from_zero_rates(np.array([0.25, 1.0, 5.0, 10.0]), np.full(4, rate), interp="log_df")
 
 
-def assert_close(got, want):
-    """A bootstrapped read passes through libm and a root: 1e-15, not the last bit."""
-    assert len(got) == len(want) and all(abs(g - w) <= 1e-15 for g, w in zip(got, want)), (got, want)
+# <= ~10 libm calls of <= 1 ulp (1.1e-16) on O(1) values, a forward difference over >= 0.25y
+# amplifying by <= 4: ~2e-15 against 1e-14.
+LIBM_ABS = 1e-14
+# A bootstrap node steps until a Newton or secant step is <= 4 eps relative, so it is exact to ~1e-15
+# and libm moves it by about that; 1e-14 leaves margin.
+NODE_ABS = 1e-14
+
+
+def assert_close(got, want, tol):
+    assert got == pytest.approx(want, rel=0, abs=tol), (got, want)
 
 
 def test_multi_curve_reads_a_tenor_string_and_rejects_one_that_names_no_tenor():
@@ -29,12 +36,12 @@ def test_multi_curve_reads_a_tenor_string_and_rejects_one_that_names_no_tenor():
     for tenor in ["3M", "3m", "O/N", "ON", "1M", "6M", "12M", "1Y"]:
         multi = sr.MultiCurve(ois)
         multi.add_forecast(tenor, forecast)
-        assert multi.projected_forward(tenor, 1.0, 1.25) == 0.025078288015047967
-        assert multi.basis_spread(tenor, 1.0, 1.25) == 0.005028204577444129
-        assert multi.fair_swap_rate(tenor, [0.0, 0.5, 1.0, 1.5, 2.0]) == 0.025156903081268722
+        assert_close(multi.projected_forward(tenor, 1.0, 1.25), 0.025078288015047967, LIBM_ABS)
+        assert_close(multi.basis_spread(tenor, 1.0, 1.25), 0.005028204577444129, LIBM_ABS)
+        assert_close(multi.fair_swap_rate(tenor, [0.0, 0.5, 1.0, 1.5, 2.0]), 0.025156903081268722, LIBM_ABS)
     multi = sr.MultiCurve(ois)
     multi.add_forecast("12M", forecast)
-    assert multi.projected_forward("1Y", 1.0, 1.25) == 0.025078288015047967
+    assert_close(multi.projected_forward("1Y", 1.0, 1.25), 0.025078288015047967, LIBM_ABS)
     assert multi.projected_forward("6M", 1.0, 1.5) is None
     assert multi.discount_factor(1.0) == ois.discount_factor(1.0)
     for call in (
@@ -61,7 +68,7 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
         curve = sr.DiscountCurve.from_zero_rates(times, rates, interp=interp)
         if interp == "monotone_convex":
             below = [curve.discount_factor(t) for t in (0.05, 0.1, 0.25, 0.4)]
-            assert below == [0.9985505514666794, 0.997100212529285, 0.9927141712772897, 0.9882140054334019]
+            assert_close(below, [0.9985505514666794, 0.997100212529285, 0.9927141712772897, 0.9882140054334019], LIBM_ABS)
             for t1, t2 in ((0.5 - 1e-7, 0.5), (0.5, 0.5 + 1e-7)):
                 assert abs(curve.forward_rate(t1, t2) - 0.032) < 1e-6
         else:
@@ -69,7 +76,7 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
                 assert abs(curve.discount_factor(t) - math.exp(-0.03 * t)) < 1e-15
                 assert abs(curve.zero_rate(t) - 0.03) < 1e-13
             assert abs(curve.forward_rate(0.1, 0.3) - 0.03) < 1e-13
-        assert [curve.discount_factor(t) for t in (0.5, 0.75, 1.5, 3.0, 7.0)] == from_the_first_pillar_on[interp]
+        assert_close([curve.discount_factor(t) for t in (0.5, 0.75, 1.5, 3.0, 7.0)], from_the_first_pillar_on[interp], LIBM_ABS)
         # A pillar at t = 0 is none: the curve is 1 there whatever rate it carries.
         with_origin = sr.DiscountCurve.from_zero_rates(np.append(0.0, times), np.append(0.07, rates), interp=interp)
         for t in (0.0, 0.1, 0.5, 0.75, 3.0, 7.0):
@@ -81,7 +88,7 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
     }
     for interp, pins in between_pillars.items():
         curve = sr.DiscountCurve.bootstrap_ois(schedules, par, interp=interp)
-        assert_close([curve.discount_factor(t) for t in (0.1, 0.75, 1.5, 3.0, 4.0)], pins)
+        assert_close([curve.discount_factor(t) for t in (0.1, 0.75, 1.5, 3.0, 4.0)], pins, NODE_ABS)
 
 
 def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_its_first_pillar():
@@ -98,7 +105,7 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9695831158726758,
         0.9528031937739929,
         0.9363136704879836,
-    ])
+    ], NODE_ABS)
     linear = sr.DiscountCurve.bootstrap_ois(schedules, rates, interp="linear")
     assert_close([linear.discount_factor(t) for t in reads], [
         0.9985122465546779,
@@ -110,7 +117,7 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9695820741914576,
         0.9532779954762216,
         0.9363028823658401,
-    ])
+    ], NODE_ABS)
     swaps = [(0.032, [1.0], [0.25, 0.5, 0.75, 1.0]), (0.034, [1.0, 2.0], [0.25 * i for i in range(1, 9)])]
     forecast = sr.DiscountCurve.bootstrap_forecast(flat(0.02), [(0.5, 0.03)], [], swaps, interp="log_df")
     assert_close([forecast.discount_factor(t) for t in (0.1, 0.25, 0.5, 1.0, 1.5, 2.0)], [
@@ -120,9 +127,9 @@ def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_
         0.9688515555947406,
         0.9517530767743727,
         0.9349563552008011,
-    ])
+    ], NODE_ABS)
     forecast = sr.DiscountCurve.bootstrap_forecast(flat(0.02), [(0.5, 0.03)], [], swaps, interp="linear")
-    assert_close([forecast.discount_factor(t) for t in (1.0, 2.0)], [0.9688504774188735, 0.9349496554140198])
+    assert_close([forecast.discount_factor(t) for t in (1.0, 2.0)], [0.9688504774188735, 0.9349496554140198], NODE_ABS)
 
 
 def test_a_bootstrap_quote_that_gives_no_pillar_raises_value_error():

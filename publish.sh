@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./publish.sh                 # publish for real (runs gate: fmt + clippy + tests)
-#   ./publish.sh --dry-run       # each crate's dry run, without uploading (still runs gate)
+#   ./publish.sh --dry-run       # one `cargo publish --workspace --dry-run`, no upload (still runs gate)
 #   ./publish.sh --allow-dirty   # publish with uncommitted changes
 #   ./publish.sh --skip-gate     # bypass fmt/clippy/test gate (NOT recommended)
 #
@@ -12,8 +12,8 @@
 # - `stochastic-rs-py` is intentionally skipped (publish = false in its
 #   Cargo.toml — it is a maturin-built cdylib for PyPI, not a crates.io
 #   crate); release via `.github/workflows/pypi.yml`.
-# - `--dry-run` verifies each crate against its siblings on crates.io, so after a version bump it
-#   stops at the second crate; `cargo publish --workspace --dry-run --locked` checks them together.
+# - `--dry-run` is one `cargo publish --workspace --dry-run`, verified against a local registry of
+#   the siblings; a per-crate dry run would stop at the second crate after a bump.
 # - Crates already published at the current local version are skipped, so the
 #   script is safe to re-run if a publish fails partway through.
 # - Modern cargo (>=1.66) waits for the registry index to sync after each
@@ -42,12 +42,15 @@ if [[ $SKIP_GATE -eq 0 ]]; then
   cargo fmt --all -- --check
 
   echo "==> pre-publish gate: cargo clippy --workspace --no-default-features"
-  cargo clippy --workspace --no-default-features --all-targets -- -D warnings
+  cargo clippy --workspace --no-default-features --all-targets --locked -- -D warnings
+
+  echo "==> pre-publish gate: cargo clippy --workspace --all-features"
+  cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
 
   echo "==> pre-publish gate: cargo test --workspace --exclude stochastic-rs-py"
   # No default features, to keep the gate tractable; CI covers the `ai` and `viz` combinations
   # before tagging.
-  cargo test --workspace --exclude stochastic-rs-py --no-default-features
+  cargo test --workspace --exclude stochastic-rs-py --no-default-features --locked
 else
   echo "==> WARNING: --skip-gate is set; skipping clippy + workspace test"
 fi
@@ -60,7 +63,7 @@ PUBLISH_ORDER=(
   "stochastic-rs-stats"           # core, distributions, stochastic
   "stochastic-rs-copulas"         # core, distributions
   "stochastic-rs-quant"           # core, distributions, stochastic, stats
-  "stochastic-rs-ai"              # core, distributions, stochastic, quant
+  "stochastic-rs-ai"              # core, distributions, quant
   "stochastic-rs"                 # umbrella — last
 )
 
@@ -99,18 +102,24 @@ publish_one() {
   echo
   echo "==> $crate (local=$lv, on crates.io=$published)"
 
-  if [[ ${#DRY_RUN[@]} -eq 0 && "$published" == "yes" ]]; then
+  if [[ "$published" == "yes" ]]; then
     echo "    already published at $lv — skipping"
     return 0
   fi
 
   set -x
-  cargo publish -p "$crate" \
+  cargo publish -p "$crate" --locked \
     ${extra[@]+"${extra[@]}"} \
-    ${DRY_RUN[@]+"${DRY_RUN[@]}"} \
     ${ALLOW_DIRTY[@]+"${ALLOW_DIRTY[@]}"}
   set +x
 }
+
+if [[ ${#DRY_RUN[@]} -gt 0 ]]; then
+  set -x
+  cargo publish --workspace --dry-run --locked ${ALLOW_DIRTY[@]+"${ALLOW_DIRTY[@]}"}
+  set +x
+  exit 0
+fi
 
 for spec in "${PUBLISH_ORDER[@]}"; do
   publish_one "$spec"
