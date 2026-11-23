@@ -51,8 +51,7 @@ pub struct ForwardRateAgreement<T: RealExt, I: RateIndex<T>> {
   /// Payment date. Equal to `start` for FRA-discounted (ISDA) settlement,
   /// or `end` for non-discounted settlement.
   pub payment: NaiveDate,
-  /// Day-count convention used both for the forecast lookup and the
-  /// accrual factor $\alpha$.
+  /// Day-count convention of the accrual factor $\alpha$; the forward accrues on the index's.
   pub day_count: DayCountConvention,
   /// Floating index producing the forecast rate.
   pub index: I,
@@ -127,7 +126,9 @@ impl<T: RealExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
   ) -> FraValuation<T> {
     let period =
       crate::cashflows::AccrualPeriod::new(self.start, self.end, self.payment, self.day_count);
-    let forward = self.index.forward_rate(curves, valuation_date, &period);
+    let forward = self
+      .index
+      .forward_rate(curves, valuation_date, discount_day_count, &period);
     let alpha = period.accrual_factor;
 
     let discount_curve = curves.discount_curve();

@@ -200,7 +200,7 @@ fn price_cap_floor<T: RealExt, V: VolatilityModel<T> + ?Sized>(
     let forward = coupon.observed_rate.unwrap_or_else(|| {
       coupon
         .index
-        .forward_rate(curves, valuation_date, &coupon.period)
+        .forward_rate(curves, valuation_date, discount_day_count, &coupon.period)
     }) + coupon.spread;
     let annuity = discount_factor * coupon.notional * coupon.period.accrual_factor;
     total_annuity += annuity;

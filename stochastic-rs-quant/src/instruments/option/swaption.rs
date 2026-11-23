@@ -188,8 +188,8 @@ mod tests {
     );
     let vol = ShiftedSabrVolatility::new(0.03_f64, 0.5, -0.2, 0.4, 0.03);
     for (direction, want) in [
-      (SwaptionDirection::Payer, 0.00332035121800069),
-      (SwaptionDirection::Receiver, 0.00267471982503446),
+      (SwaptionDirection::Payer, 0.0030874084210704613),
+      (SwaptionDirection::Receiver, 0.002863156417450957),
     ] {
       let swaption = EuropeanSwaption::new(direction, 0.03, d(2025, 1, 15), swap.clone(), vol);
       let v = swaption.valuation(

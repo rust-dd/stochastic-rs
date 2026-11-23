@@ -11,6 +11,7 @@ use super::RateIndex;
 use super::types::AccrualPeriod;
 use super::types::CmsIndex;
 use super::types::FloatingIndex;
+use crate::calendar::DayCountConvention;
 use crate::traits::RealExt;
 
 /// Fixed-rate coupon.
@@ -52,18 +53,29 @@ pub struct FloatingRateCoupon<T: RealExt> {
 }
 
 impl<T: RealExt> FloatingRateCoupon<T> {
-  /// Project or use the observed rate for the coupon.
-  pub fn rate(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
+  /// The observed rate, else the index's projection on the pricer's axis, plus the spread.
+  pub fn rate(
+    &self,
+    curves: &(impl CurveProvider<T> + ?Sized),
+    valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
+  ) -> T {
     self.observed_rate.unwrap_or_else(|| {
       self
         .index
-        .forward_rate(curves, valuation_date, &self.period)
+        .forward_rate(curves, valuation_date, discount_day_count, &self.period)
     }) + self.spread
   }
 
   /// Coupon amount.
-  pub fn amount(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
-    self.notional * self.period.accrual_factor * self.rate(curves, valuation_date)
+  pub fn amount(
+    &self,
+    curves: &(impl CurveProvider<T> + ?Sized),
+    valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
+  ) -> T {
+    let rate = self.rate(curves, valuation_date, discount_day_count);
+    self.notional * self.period.accrual_factor * rate
   }
 
   /// Accrued interest up to `as_of`.
@@ -71,9 +83,11 @@ impl<T: RealExt> FloatingRateCoupon<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     as_of: NaiveDate,
   ) -> T {
-    self.notional * self.period.accrued_factor(as_of) * self.rate(curves, valuation_date)
+    let rate = self.rate(curves, valuation_date, discount_day_count);
+    self.notional * self.period.accrued_factor(as_of) * rate
   }
 }
 
@@ -93,18 +107,29 @@ pub struct CmsCoupon<T: RealExt> {
 }
 
 impl<T: RealExt> CmsCoupon<T> {
-  /// Project or use the observed rate for the coupon.
-  pub fn rate(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
+  /// The observed rate, else the index's projection on the pricer's axis, plus the spread.
+  pub fn rate(
+    &self,
+    curves: &(impl CurveProvider<T> + ?Sized),
+    valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
+  ) -> T {
     self.observed_rate.unwrap_or_else(|| {
       self
         .index
-        .forward_rate(curves, valuation_date, &self.period)
+        .forward_rate(curves, valuation_date, discount_day_count, &self.period)
     }) + self.spread
   }
 
   /// Coupon amount.
-  pub fn amount(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
-    self.notional * self.period.accrual_factor * self.rate(curves, valuation_date)
+  pub fn amount(
+    &self,
+    curves: &(impl CurveProvider<T> + ?Sized),
+    valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
+  ) -> T {
+    let rate = self.rate(curves, valuation_date, discount_day_count);
+    self.notional * self.period.accrual_factor * rate
   }
 
   /// Accrued interest up to `as_of`.
@@ -112,9 +137,11 @@ impl<T: RealExt> CmsCoupon<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     as_of: NaiveDate,
   ) -> T {
-    self.notional * self.period.accrued_factor(as_of) * self.rate(curves, valuation_date)
+    let rate = self.rate(curves, valuation_date, discount_day_count);
+    self.notional * self.period.accrued_factor(as_of) * rate
   }
 }
 
@@ -148,12 +175,17 @@ impl<T: RealExt> Cashflow<T> {
     }
   }
 
-  /// Contract amount.
-  pub fn amount(&self, curves: &(impl CurveProvider<T> + ?Sized), valuation_date: NaiveDate) -> T {
+  /// Contract amount, a floating or CMS rate projected on the pricer's axis.
+  pub fn amount(
+    &self,
+    curves: &(impl CurveProvider<T> + ?Sized),
+    valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
+  ) -> T {
     match self {
       Self::Fixed(coupon) => coupon.amount(),
-      Self::Floating(coupon) => coupon.amount(curves, valuation_date),
-      Self::Cms(coupon) => coupon.amount(curves, valuation_date),
+      Self::Floating(coupon) => coupon.amount(curves, valuation_date, discount_day_count),
+      Self::Cms(coupon) => coupon.amount(curves, valuation_date, discount_day_count),
       Self::Simple(cashflow) => cashflow.amount,
     }
   }
@@ -163,12 +195,17 @@ impl<T: RealExt> Cashflow<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     as_of: NaiveDate,
   ) -> T {
     match self {
       Self::Fixed(coupon) => coupon.accrued_interest(as_of),
-      Self::Floating(coupon) => coupon.accrued_interest(curves, valuation_date, as_of),
-      Self::Cms(coupon) => coupon.accrued_interest(curves, valuation_date, as_of),
+      Self::Floating(coupon) => {
+        coupon.accrued_interest(curves, valuation_date, discount_day_count, as_of)
+      }
+      Self::Cms(coupon) => {
+        coupon.accrued_interest(curves, valuation_date, discount_day_count, as_of)
+      }
       Self::Simple(_) => T::zero(),
     }
   }

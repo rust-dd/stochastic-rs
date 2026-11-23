@@ -53,7 +53,7 @@ impl CashflowPricer {
       .discount_day_count
       .year_fraction(self.valuation_date, payment_date);
     let df = curves.discount_curve().discount_factor(tau);
-    df * cashflow.amount(curves, self.valuation_date)
+    df * cashflow.amount(curves, self.valuation_date, self.discount_day_count)
   }
 
   /// Sum the discounted NPV of every cashflow in a leg.
@@ -74,7 +74,10 @@ impl CashflowPricer {
     leg
       .cashflows()
       .iter()
-      .map(|cashflow| cashflow.accrued_interest(curves, self.valuation_date, self.valuation_date))
+      .map(|cashflow| {
+        let (date, axis) = (self.valuation_date, self.discount_day_count);
+        cashflow.accrued_interest(curves, date, axis, date)
+      })
       .fold(T::zero(), |acc, value| acc + value)
   }
 
