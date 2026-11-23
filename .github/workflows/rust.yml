@@ -5,9 +5,10 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  # A weekly run catches a new stable toolchain or a yanked dependency with no push to trigger it.
+  # A weekly run catches a new stable toolchain with no push to trigger it.
   schedule:
     - cron: "17 4 * * 1"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -151,7 +152,7 @@ jobs:
       - name: Device handle environment contract (cuda)
         run: cargo test -p stochastic-rs-stochastic --features cuda --test device_handle_env --locked
 
-  # Every published crate's documentation as docs.rs renders it: nightly, with `docsrs` set.
+  # Every published crate's documentation on a pinned nightly with `docsrs` set, as docs.rs builds it.
   docs_rs:
     runs-on: ubuntu-latest
     strategy:
@@ -169,12 +170,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-11-11
       - name: cargo doc (${{ matrix.crate }}, docsrs)
         run: cargo doc -p ${{ matrix.crate }} --no-deps --features "${{ matrix.features }}" --locked
         env:
           RUSTDOCFLAGS: --cfg docsrs -D warnings
 
-  # Every feature on its own, so a feature that compiles only beside another one is caught.
+  # Every feature on its own; the Apple-only ones are left out, since candle's Metal needs objc2.
   check_each_feature:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -186,10 +189,9 @@ jobs:
         with:
           tool: cargo-hack
       - name: cargo hack --each-feature check
-        run: cargo hack check --workspace --exclude stochastic-rs-py --each-feature --no-dev-deps --locked
+        run: cargo hack check --workspace --exclude stochastic-rs-py --each-feature --exclude-all-features --exclude-features metal,ai-metal,accelerate --locked
 
-  # Everything the Linux runner can build: the Apple back-ends are inert there and cudarc loads
-  # libcuda at run time, so no toolchain is missing.
+  # Every feature but the Apple-only ones: candle's Metal needs objc2, which fails off Apple targets.
   clippy_all_features:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -199,8 +201,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: cargo clippy (workspace, all features)
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: cargo clippy (workspace, every non-Apple feature)
+        run: >-
+          cargo clippy --workspace --all-targets --locked --features stochastic-rs/ai,stochastic-rs/viz,stochastic-rs/cuda,stochastic-rs/unstable-dual-stream-rng,stochastic-rs-ai/quant,stochastic-rs-ai/viz,stochastic-rs-ai/python,stochastic-rs-quant/python,stochastic-rs-quant/viz,stochastic-rs-copulas/python,stochastic-rs-core/python,stochastic-rs-distributions/python,stochastic-rs-stats/python,stochastic-rs-stochastic/python,stochastic-rs-py/ai,stochastic-rs-py/cuda -- -D warnings
 
   # Windows and macOS run the fast suite; they stay advisory until a first run says which tests
   # are platform-bound.
@@ -295,9 +298,8 @@ jobs:
       # ziggurats' 16-lane step and the dual engine's uninit stores.
       - name: cargo nextest run (fill pinning test, dual-stream engine)
         run: cargo nextest run -p stochastic-rs-distributions --features unstable-dual-stream-rng --test fill_writes_every_element --profile ci --locked
-      # nextest runs no doctests, so this step gates the crates' doc examples, the README quickstart
-      # rendered on docs.rs included. Release because the examples' Monte Carlo loops are far too slow
-      # unoptimised; fat LTO and one codegen unit are off, since they only slow the rebuild.
+      # nextest runs no doctests; this gates the doc examples, the README quickstart included.
+      # Release, since the Monte Carlo examples are too slow unoptimised; LTO would only slow the rebuild.
       - name: cargo test --doc (workspace)
         run: cargo test --release --workspace --exclude stochastic-rs-py --doc --locked
         env:
