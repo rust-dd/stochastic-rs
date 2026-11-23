@@ -75,7 +75,7 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 readme = "README.md"
 keywords = ["quantitative-finance", "option-pricing", "quantlib", "stochastic-processes", "monte-carlo"]
 categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
-include = ["src/**", "examples/**", "docs/katex-header.html", "/README.md", "/LICENSE"]
+include = ["/src/**/*.rs", "/examples/**/*.rs", "/docs/katex-header.html", "/README.md", "/LICENSE"]
 
 [dependencies]
 chrono = { workspace = true }

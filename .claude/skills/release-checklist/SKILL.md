@@ -87,7 +87,7 @@ cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}'
 cargo update --workspace
 git add Cargo.lock
 
-# 2.4 Any root Cargo.toml edit (this bump, 8.1's too) makes the Metal artifact stale (dev-rules §15);
+# 2.4 Any root Cargo.toml edit (this bump, 8.1's too) stales the Metal artifact (dev-rules §15);
 #     regenerate per .superpowers/sdd/rc5-lanes/metal-oxide-compiler.md, then the locked check
 PATH=<tools>/metal-shim:$PATH METAL_OXIDE_COMPILER=<compiler> \
   cargo check -p stochastic-rs-stochastic --features metal --locked
@@ -130,8 +130,8 @@ At the 3.0.0 cut, set `pyproject.toml`'s classifier back to `Development Status 
 # 4.1 Package and verify the published crates together, in dependency order (core → distributions
 # → copulas → stochastic → stats → quant → ai → umbrella), against a local registry of the siblings.
 cargo publish --workspace --dry-run --locked
-# 4.2 The umbrella carries an `include` allow-list: its package is the sources, benches, examples,
-#     README, LICENSE and the KaTeX header, about sixty files
+# 4.2 The umbrella carries an `include` allow-list: its package is the sources, examples, README,
+#     LICENSE and the KaTeX header, about twenty files and no benches
 cargo package -p stochastic-rs --list --locked | wc -l
 # 4.3 The stochastic package ships the prebuilt metallib
 cargo package -p stochastic-rs-stochastic --list --locked | grep metallib

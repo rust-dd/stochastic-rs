@@ -22,8 +22,8 @@ def flat(rate):
 # <= ~10 libm calls of <= 1 ulp (1.1e-16) on O(1) values, a forward difference over >= 0.25y
 # amplifying by <= 4: ~2e-15 against 1e-14.
 LIBM_ABS = 1e-14
-# A bootstrap node steps until a Newton or secant step is <= 4 eps relative, so it is exact to ~1e-15
-# and libm moves it by about that; 1e-14 leaves margin.
+# A bootstrap node stops at a Newton or secant step <= 4 eps relative, exact to ~1e-15;
+# libm moves it by about that, so 1e-14 leaves margin.
 NODE_ABS = 1e-14
 
 
