@@ -189,14 +189,14 @@ fn sunspot_series_has_about_eleven_year_cycle() {
   );
 }
 
-/// These finite points overflow their mean and NaN the taper: an `Err`, not a zero spectrum.
+/// At unit scale these points have a spectrum; in their own units its power is past the doubles.
 #[test]
-fn a_spectrum_that_overflows_is_a_numerical_error() {
+fn a_spectrum_past_the_doubles_names_the_data_scale() {
   let x = [1e308, 1e308, 1e308, 5e307];
   assert_eq!(
     periodogram_fft(ArrayView1::from(&x), PeriodogramConfig::default()).unwrap_err(),
     StatsError::Numerical {
-      stage: "periodogram"
+      stage: "data scale"
     }
   );
 }

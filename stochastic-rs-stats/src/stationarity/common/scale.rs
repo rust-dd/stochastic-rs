@@ -1,6 +1,8 @@
 //! A series at unit scale and centred, and the refusal of a constant's rounding or an exact fit.
 
+use ndarray::Array2;
 use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::ROUNDING_MARGIN;
 use crate::StatsError;
@@ -62,6 +64,31 @@ pub(crate) fn unit_scaled<T: RealExt>(mut y: Vec<T>) -> (Vec<T>, T) {
     *v = *v * unit;
   }
   (y, unit)
+}
+
+/// Each column of `x` times its own [`unit_scale`], and those scales.
+pub(crate) fn columns_unit_scaled(x: ArrayView2<f64>) -> (Array2<f64>, Vec<f64>) {
+  let mut scaled = x.to_owned();
+  let scale = |mut column: ndarray::ArrayViewMut1<f64>| {
+    let unit = unit_scale(&column.to_vec());
+    column.mapv_inplace(|v| v * unit);
+    unit
+  };
+  let units = scaled.columns_mut().into_iter().map(scale).collect();
+  (scaled, units)
+}
+
+/// `v` over `unit^power`, a value read off data times `unit` in the data's own units; `Numerical`
+/// where it leaves the normal doubles, zero from zero excepted.
+pub(crate) fn in_data_units(v: f64, unit: f64, power: f64) -> Result<f64, StatsError> {
+  let mapped = v / unit.powf(power);
+  if mapped.is_normal() || v == 0.0 {
+    Ok(mapped)
+  } else {
+    Err(StatsError::Numerical {
+      stage: "data scale",
+    })
+  }
 }
 
 /// `v`, read off data times `unit`, divided by `unit` `power` times: one factor at a time, so that

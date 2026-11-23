@@ -13,6 +13,9 @@ use num_complex::Complex64;
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::validate;
+use crate::stationarity::common::in_data_units;
+use crate::stationarity::common::per_unit;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::RealExt;
 
 /// Detrending strategy used before spectral estimation.
@@ -195,8 +198,8 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
   sum_w2
 }
 
-/// FFT periodogram of `signal`; `Err` below 4 points, on a non-finite one or an overflowing
-/// spectrum; panics unless `sampling_rate > 0` is finite and a given `nfft >= signal.len()`.
+/// FFT periodogram of `signal`, at unit scale; `Err` below 4 points, on a non-finite one or a
+/// largest power past the doubles; panics unless `sampling_rate > 0` is finite and a given `nfft >= signal.len()`.
 pub fn periodogram_fft(
   signal: ArrayView1<f64>,
   cfg: PeriodogramConfig,
@@ -218,7 +221,7 @@ pub fn periodogram_fft(
 
   let nfft = cfg.nfft.unwrap_or_else(|| n.next_power_of_two());
 
-  let mut x = signal.to_vec();
+  let (mut x, unit) = unit_scaled(signal.to_vec());
   detrend_in_place(&mut x, cfg.detrend);
   let sum_w2 = apply_window_in_place(&mut x, cfg.window);
 
@@ -249,14 +252,13 @@ pub fn periodogram_fft(
       p /= cfg.sampling_rate;
     }
 
-    if !p.is_finite() {
-      return Err(StatsError::Numerical {
-        stage: "periodogram",
-      });
-    }
     frequencies.push(k as f64 * resolution_hz);
     spectrum.push(p);
   }
+  // The largest power decides: a bin far below it may round to zero in the data's units.
+  let largest = f64::max_or_nan_fold(spectrum.iter().copied());
+  in_data_units(largest, unit, 2.0)?;
+  spectrum.iter_mut().for_each(|p| *p = per_unit(*p, unit, 2));
 
   Ok(PeriodogramResult {
     frequencies,

@@ -27,6 +27,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 use crate::input::validate_rows;
+use crate::stationarity::common::columns_unit_scaled;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -113,7 +114,8 @@ pub fn reset_test(
   validate_rows(x)?;
   // A constant column absorbs `y`'s mean, so `F` is that of `y` less it: an exact subtraction,
   // which keeps the digits the level would round away.
-  let constant = has_constant_column(x);
+  let (x, _) = columns_unit_scaled(x);
+  let constant = has_constant_column(x.view());
   let y_slice = if constant { centred(&y_slice) } else { y_slice };
 
   // Restricted OLS: y on x.

@@ -18,6 +18,7 @@ use super::FractalDimEstimator;
 use crate::StatsError;
 use crate::hurst::to_f64_vec;
 use crate::input::reject_constant;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Higuchi fractal-dimension estimator.
@@ -83,6 +84,8 @@ fn compute_with_diagnostic<T: FloatExt>(
     });
   }
   reject_constant(&to_f64_vec(x), "constant series")?;
+  let (scaled, unit) = unit_scaled(to_f64_vec(x));
+  let (x, in_units) = (ArrayView1::from(&scaled), unit.ln());
 
   let k_upper = kmax.min(n_times - 1);
   let mut x_reg = Array1::<f64>::zeros(k_upper);
@@ -101,8 +104,8 @@ fn compute_with_diagnostic<T: FloatExt>(
 
       let mut ll = 0.0_f64;
       for j in 1..=n_max {
-        let a = x[m + j * k].to_f64().unwrap();
-        let b = x[m + (j - 1) * k].to_f64().unwrap();
+        let a = x[m + j * k];
+        let b = x[m + (j - 1) * k];
         ll += (a - b).abs();
       }
 
@@ -131,6 +134,7 @@ fn compute_with_diagnostic<T: FloatExt>(
   let y_slice = &y_reg.as_slice().unwrap()[..used];
   let (slope, intercept) =
     linear_regression(x_slice, y_slice).map_err(|_| StatsError::Singular("log-log regression"))?;
+  let intercept = intercept - in_units;
 
   let log_scales: Vec<f64> = x_slice.to_vec();
   let log_stats: Vec<f64> = y_slice.to_vec();
@@ -153,5 +157,6 @@ fn compute_with_diagnostic<T: FloatExt>(
     0.0
   };
 
+  let log_stats = log_stats.iter().map(|l| l - in_units).collect();
   Ok((slope, intercept, r_squared, log_scales, log_stats))
 }

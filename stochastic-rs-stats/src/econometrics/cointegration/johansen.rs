@@ -45,6 +45,8 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate_rows;
+use crate::stationarity::common::columns_unit_scaled;
+use crate::stationarity::common::in_data_units;
 use crate::traits::RealExt;
 
 /// 5% critical values of the trace statistic for $K - r = 1, \ldots, 12$
@@ -127,6 +129,8 @@ struct Concentrated {
   eigenvalues: Array1<f64>,
   eigenvectors: Array2<f64>,
   n_eff: usize,
+  /// The power of two each series was multiplied by; every other field is read off those.
+  units: Vec<f64>,
 }
 
 fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, StatsError> {
@@ -147,6 +151,7 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
   for column in series.columns() {
     reject_constant(&as_slice_or_copy(column), "constant series")?;
   }
+  let (series, units) = columns_unit_scaled(series);
   let mut delta = Array2::<f64>::zeros((t - 1, k));
   for j in 0..k {
     for i in 0..(t - 1) {
@@ -189,7 +194,23 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
     eigenvalues,
     eigenvectors,
     n_eff,
+    units,
   })
+}
+
+/// `m`, read off series times `units`, in the series' own units: entry `(i, j)` over
+/// `units[i]^row · units[j]^column`; `Numerical` where one leaves the doubles.
+fn in_series_units(
+  m: &Array2<f64>,
+  units: &[f64],
+  (row, column): (i32, i32),
+) -> Result<Array2<f64>, StatsError> {
+  let mut mapped = m.clone();
+  for ((i, j), v) in mapped.indexed_iter_mut() {
+    let by_column = in_data_units(*v, units[j], f64::from(column))?;
+    *v = in_data_units(by_column, units[i], f64::from(row))?;
+  }
+  Ok(mapped)
 }
 
 /// Eigenpairs of $|\lambda S_{11} - M| = 0$ through $L^{-1} M L^{-\top} w = \lambda w$ with
@@ -279,7 +300,7 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> Result<JohansenTes
   let rank_max_eig = sequential_rank(&max_eig_statistics, &max_eig_critical_5pct);
   Ok(JohansenTest {
     eigenvalues: c.eigenvalues,
-    eigenvectors: c.eigenvectors,
+    eigenvectors: in_series_units(&c.eigenvectors, &c.units, (-1, 0))?,
     trace_statistics,
     max_eig_statistics,
     trace_critical_5pct,
@@ -312,25 +333,25 @@ pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> Result<Vec
   }
   let residuals = &target - &c.z2.dot(&coef);
   let sigma = residuals.t().dot(&residuals) / n_eff as f64;
-  let intercept = coef.row(0).to_owned();
+  let units = &c.units;
+  let per_series = Array1::from_iter(units.iter().map(|unit| 1.0 / unit));
+  let intercept = &coef.row(0) * &per_series;
   let gamma = (1..lags)
     .map(|l| {
-      coef
-        .slice(s![1 + (l - 1) * k..1 + l * k, ..])
-        .t()
-        .to_owned()
+      let block = coef.slice(s![1 + (l - 1) * k..1 + l * k, ..]);
+      in_series_units(&block.t().to_owned(), units, (1, -1))
     })
-    .collect();
+    .collect::<Result<_, _>>()?;
   Ok(VecmFit {
     rank,
     lags,
-    beta,
-    alpha,
-    pi,
+    beta: in_series_units(&beta, units, (-1, 0))?,
+    alpha: in_series_units(&alpha, units, (1, 0))?,
+    pi: in_series_units(&pi, units, (1, -1))?,
     gamma,
     intercept,
-    residuals,
-    sigma,
+    residuals: &residuals * &per_series,
+    sigma: in_series_units(&sigma, units, (1, 1))?,
     eigenvalues: c.eigenvalues,
     nobs: n_eff,
   })
