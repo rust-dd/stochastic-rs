@@ -1,5 +1,5 @@
-//! Merton's and Jamshidian's queries at their limits, their constructors' preconditions, and the
-//! rate helpers' error positions: the payoff at maturity, NaN off the domain, a panic on bad input.
+//! Merton's, Jamshidian's and the discount curve's queries at their limits, the constructors'
+//! preconditions and the rate helpers' error positions: NaN off the domain, a panic on bad input.
 
 use chrono::NaiveDate;
 use ndarray::array;
@@ -287,4 +287,22 @@ fn a_negative_hull_white_sigma_is_a_precondition() {
     0.05,
     -0.01,
   );
+}
+
+/// The curve starts at `t = 0`, where it is 1: a read before it, or at a NaN time, is NaN.
+#[test]
+fn a_discount_curve_read_before_its_origin_is_nan() {
+  let curve = DiscountCurve::from_zero_rates(
+    array![1.0, 5.0].view(),
+    array![0.03, 0.04].view(),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  assert_eq!(curve.discount_factor(0.0), 1.0);
+  for t in [-0.5, -f64::MIN_POSITIVE, f64::NAN, f64::NEG_INFINITY] {
+    assert!(curve.discount_factor(t).is_nan(), "{t}");
+    assert!(curve.forward_rate(t, 1.0).is_nan(), "{t}");
+    assert!(curve.simple_forward_rate(t, 1.0).is_nan(), "{t}");
+  }
+  let reads = curve.discount_factors(array![-1.0, 0.0, 1.0].view());
+  assert!(reads[0].is_nan() && reads[1] == 1.0 && reads[2] == (-0.03_f64).exp());
 }

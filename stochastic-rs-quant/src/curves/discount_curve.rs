@@ -118,11 +118,9 @@ impl<T: RealExt> DiscountCurve<T> {
     self.method
   }
 
-  /// Discount factor at `t`, 1 for `t <= 0`; before the first pillar as the method's function says.
+  /// Discount factor at `t`: 1 at `t = 0`, NaN before it or at a NaN `t`, and before the first
+  /// pillar as the method's function says.
   pub fn discount_factor(&self, t: T) -> T {
-    if t <= T::zero() {
-      return T::one();
-    }
     interpolation::interpolate_discount_factor(&self.points, t, self.method)
   }
 
@@ -139,7 +137,7 @@ impl<T: RealExt> DiscountCurve<T> {
     compounding.zero_rate(self.discount_factor(t), t)
   }
 
-  /// Continuously compounded forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
+  /// Continuously compounded forward rate between `t1` and `t2`; NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
@@ -153,7 +151,7 @@ impl<T: RealExt> DiscountCurve<T> {
     -(d2.ln() - d1.ln()) / (t2 - t1)
   }
 
-  /// Simple (money-market) forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
+  /// Simple (money-market) forward rate between `t1` and `t2`; NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// F(t_1, t_2) = \frac{1}{t_2 - t_1}\left(\frac{D(t_1)}{D(t_2)} - 1\right)
