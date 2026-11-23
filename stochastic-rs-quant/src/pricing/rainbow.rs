@@ -10,8 +10,8 @@
 //!   K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
 //! $$
 //!
-//! Reference: Stulz (1982), J. Financ. Econ. 10
-//! Reference: Johnson (1987), J. Financ. Quant. Anal. 22
+//! Reference: Stulz (1982), J. Financ. Econ. 10(2), 161–185, DOI 10.1016/0304-405X(82)90011-3
+//! Reference: Johnson (1987), J. Financ. Quant. Anal. 22(3), DOI 10.2307/2330963
 //! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed., Ch. 5
 
 use ndarray::Array1;

@@ -9,7 +9,7 @@
 //! i\xi\mu_k - \tfrac12\sigma_k^2\xi^2)\bigr)\bigr) \mathbf{1}
 //! $$
 //!
-//! Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
+//! Reference: Kirkby, PROJ, <https://github.com/jkirkby3/PROJ_Option_Pricing_Matlab>
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -161,7 +161,7 @@ impl RegimeSwitchingModel {
 
 /// Fang–Oosterlee COS pricer of a European option under the regime-switching diffusion.
 /// Reference: Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
-/// Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
+/// Reference: Kirkby, PROJ, <https://github.com/jkirkby3/PROJ_Option_Pricing_Matlab>
 #[derive(Debug, Clone)]
 pub struct CosPricer {
   /// Cosine terms, as [`CosEngine`]'s: `None`, the default, follows the chf's decay.

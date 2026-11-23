@@ -6,7 +6,7 @@
 //! D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}
 //! $$
 //!
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
 mod segment;

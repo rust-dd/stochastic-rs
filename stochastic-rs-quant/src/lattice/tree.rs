@@ -1,6 +1,6 @@
 //! Generic recombining binomial and trinomial trees.
 //!
-//! Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
+//! Reference: Cox et al. (1979), J. Financ. Econ. 7(3), 229–263, DOI 10.1016/0304-405X(79)90015-1
 
 use ndarray::Array1;
 

@@ -6,8 +6,8 @@
 //! $$
 //!
 //! Kirk's approximation for a nonzero strike is [`super::kirk`].
-//! Reference: Margrabe (1978), J. Finance 33
-//! Reference: Kirk (1995), "Correlation in the Energy Markets"
+//! Reference: Margrabe (1978), J. Finance 33(1), 177–186, DOI 10.1111/j.1540-6261.1978.tb03397.x
+//! Reference: Kirk (1995), "Correlation in the Energy Markets", Managing Energy Price Risk, 71–78
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;

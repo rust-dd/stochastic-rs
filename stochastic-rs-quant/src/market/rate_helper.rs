@@ -2,7 +2,7 @@
 //! [`crate::curves::BootstrapInstrument`], so a quote change needs only a new [`build_curve`].
 //!
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 
 use std::sync::Arc;
 

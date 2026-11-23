@@ -1,7 +1,7 @@
 //! Core types for yield curve construction.
 //!
 //! Reference: ISDA 2006 Definitions
-//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., Springer
+//! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
 
 use std::fmt::Display;
 

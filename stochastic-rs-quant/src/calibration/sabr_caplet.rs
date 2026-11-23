@@ -8,7 +8,7 @@
 //! $$
 //!
 //! Reference: Hagan et al. (2002), Wilmott Mag., 84–108
-//! Reference: Obłój (2008), Wilmott Mag.
+//! Reference: Obłój (2008), Wilmott Mag., arXiv:0708.0998
 
 use std::convert::Infallible;
 

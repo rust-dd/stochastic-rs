@@ -5,7 +5,7 @@
 //! D_{\mathrm{Mac}}=\frac{\sum_i t_i\,PV_i}{P}
 //! $$
 //!
-//! Reference: Fabozzi (2015), "Fixed Income Mathematics", 4th ed.
+//! Reference: Fabozzi (2006), Fixed Income Mathematics, 4th ed., ISBN 978-0-07-146073-6
 //! Reference: Ivanovski, Stojanovski & Ivanovska (2012), arXiv:1206.6998
 
 pub mod amortizing;

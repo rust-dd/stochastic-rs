@@ -1,7 +1,7 @@
 //! Nelson-Siegel-Svensson parametric yield curve model.
 //!
 //! Reference: Svensson (1994), "Estimating and Interpreting Forward Interest Rates", IMF WP 94/114
-//! Reference: BIS Papers No 25
+//! Reference: BIS Papers No. 25 (2005), <https://www.bis.org/publ/bppdf/bispap25.htm>
 //!
 //! $$
 //! y(\tau) = \beta_0 +

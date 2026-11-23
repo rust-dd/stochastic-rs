@@ -13,7 +13,7 @@
 //!
 //! Reference: Wilmott (2002), Wilmott Mag.
 //! Reference: Hess (2018), Mod. Stoch. Theory Appl., arXiv:1810.09670, DOI 10.15559/18-VMSTA107
-//! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed.
+//! Reference: Haug (2007), Option Pricing Formulas, 2nd ed., ISBN 978-0-07-138997-6
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;

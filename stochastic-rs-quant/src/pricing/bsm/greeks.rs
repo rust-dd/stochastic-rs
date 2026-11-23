@@ -188,7 +188,7 @@ impl BsmPricer {
   /// Ultima — $\partial^3 V/\partial \sigma^3$,
   /// $$\mathrm{Vega}\,(d_1^2 d_2^2 - d_1^2 - d_2^2 - d_1 d_2)/\sigma^2.$$
   ///
-  /// Reference: Haug (2007), *The Complete Guide to Option Pricing Formulas*, 2nd ed., DvommaDvol.
+  /// Reference: Haug (2007), Option Pricing Formulas, 2nd ed., ISBN 978-0-07-138997-6, DvommaDvol
   pub fn ultima(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 

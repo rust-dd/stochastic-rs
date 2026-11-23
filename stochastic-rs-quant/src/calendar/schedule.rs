@@ -1,7 +1,7 @@
 //! Coupon and payment date schedules with business-day adjustment, stubs and end-of-month
 //! preservation.
 //!
-//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16
+//! Reference: ISDA 2006 Definitions, §§ 4.15–4.16
 
 use chrono::NaiveDate;
 

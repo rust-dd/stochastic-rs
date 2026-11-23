@@ -1,7 +1,7 @@
 //! Interpolation methods for yield curve construction.
 //!
 //! Reference: Hagan & West (2006), Applied Mathematical Finance 13(2), 89–129
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 
 use ndarray::Array1;
 

@@ -1,6 +1,6 @@
 //! Cash flow periods, notionals, and rate index definitions.
 //!
-//! Reference: Henrard (2014), "Interest Rate Modelling in the Multi-Curve Framework", Palgrave
+//! Reference: Henrard (2014), Palgrave Macmillan, DOI 10.1057/9781137374660
 
 use std::fmt::Display;
 use std::str::FromStr;

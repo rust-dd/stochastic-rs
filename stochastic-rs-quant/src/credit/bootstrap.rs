@@ -6,7 +6,7 @@
 //! $$
 //!
 //! Reference: O'Kane & Turnbull (2003), "Valuation of Credit Default Swaps", Lehman Brothers QCR
-//! Reference: ISDA (2009), "The ISDA CDS Standard Model"
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model", <https://www.cdsmodel.com>
 
 use chrono::NaiveDate;
 use ndarray::Array1;

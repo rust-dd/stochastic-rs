@@ -11,7 +11,7 @@
 //! $$
 //!
 //! Puts by their symmetry relation.
-//! Reference: Bjerksund & Stensland (2002), NHH 2002/09, researchgate.net/publication/228801918
+//! Reference: Bjerksund & Stensland (2002), NHH Discussion Paper No. 2002/09
 
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
