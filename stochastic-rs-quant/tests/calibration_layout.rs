@@ -372,6 +372,7 @@ fn the_jump_and_two_factor_calibrators_share_the_shape() {
   assert_send_sync::<SvjCalibrator>();
   assert_send_sync::<DoubleHestonCalibrator>();
   assert_send_sync::<HkdeCalibrator>();
+  assert_send_sync::<stochastic_rs_quant::calibration::RoughHestonCalibrator>();
   let truth = HestonParams {
     v0: 0.04,
     kappa: 1.5,

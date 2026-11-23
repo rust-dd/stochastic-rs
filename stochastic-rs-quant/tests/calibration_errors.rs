@@ -14,12 +14,14 @@ use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
 use stochastic_rs_quant::calibration::levy::LevyCalibrator;
 use stochastic_rs_quant::calibration::levy::LevyModelType;
 use stochastic_rs_quant::calibration::levy::LevyParams;
+use stochastic_rs_quant::calibration::rough_heston::RoughHestonCalibrator;
 use stochastic_rs_quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs_quant::calibration::svj::SvjCalibrator;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::cgmysv::CgmysvParams;
 use stochastic_rs_quant::pricing::fourier::HkdeParams;
+use stochastic_rs_quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
@@ -158,7 +160,21 @@ fn hscm(s: f64, q: f64, quotes: Vec<OptionQuote>, nan_start: bool) -> Result<(),
     .map(drop)
 }
 
-const TABLE: [(&str, Fit); 9] = [
+fn rough_heston(s: f64, q: f64, quotes: Vec<OptionQuote>, nan: bool) -> Result<(), QuantError> {
+  let start = nan.then_some(RoughHestonParams {
+    v0: 0.04,
+    kappa: 1.0,
+    theta: 0.04,
+    nu: 0.4,
+    rho: -0.65,
+    hurst: NAN,
+  });
+  RoughHestonCalibrator::new(s, R, q, quotes)
+    .calibrate(start)
+    .map(drop)
+}
+
+const TABLE: [(&str, Fit); 10] = [
   ("bsm", bsm),
   ("heston", heston),
   ("sabr", sabr),
@@ -168,6 +184,7 @@ const TABLE: [(&str, Fit); 9] = [
   ("levy", levy),
   ("cgmysv", cgmysv),
   ("hscm", hscm),
+  ("rough heston", rough_heston),
 ];
 
 fn quotes() -> Vec<OptionQuote> {
@@ -212,13 +229,13 @@ fn every_quote_calibrator_answers_bad_market_data_with_err_and_a_bad_spot_with_a
 }
 
 /// A dividend yield of −1e4 overflows `S·e^{−qτ}`: no price exists at the start. HKDE reads it off
-/// its weights, which need a Black volatility, before the fit starts.
+/// its weights, which need a Black volatility, before the fit starts, as rough Heston does.
 #[test]
 fn a_carry_no_model_can_price_leaves_the_optimiser_without_an_iterate() {
   for (name, fit) in TABLE {
     let err = fit(S, -1e4, quotes(), false);
     let expected = match name {
-      "hkde" => matches!(err, Err(QuantError::InvalidQuote { index: 0, .. })),
+      "hkde" | "rough heston" => matches!(err, Err(QuantError::InvalidQuote { index: 0, .. })),
       _ => matches!(err, Err(QuantError::Optimizer { .. })),
     };
     assert!(expected, "{name}: {err:?}");
@@ -311,6 +328,7 @@ fn every_calibrator_is_send_and_sync() {
   assert_send_sync::<HscmCalibrator>();
   assert_send_sync::<RBergomiCalibrator>();
   assert_send_sync::<HestonSlvCalibrator>();
+  assert_send_sync::<RoughHestonCalibrator>();
 }
 
 /// The spot and the rates are set once, by the `new` that checks them, and read back by getter.
@@ -363,6 +381,10 @@ fn every_calibrator_reads_back_the_spot_and_rates_its_new_checked() {
       (c.s(), c.r(), c.q())
     },
     {
+      let c = RoughHestonCalibrator::new(s, r, q, quotes());
+      (c.s(), c.r(), c.q())
+    },
+    {
       let grid = Array2::zeros((2, 3));
       let c = HestonSlvCalibrator::new(s, r, q, vec![90.0, 100.0, 110.0], vec![0.5, 1.0], grid);
       (c.s(), c.r(), c.q())
@@ -379,7 +401,7 @@ fn every_calibrator_reads_back_the_spot_and_rates_its_new_checked() {
       (c.s(), c.r(), c.q())
     },
   ];
-  assert_eq!(read, [(s, r, q); 11]);
+  assert_eq!(read, [(s, r, q); 12]);
   let smile = SabrSmileQuotes {
     tau: 0.5,
     sigma_atm: 0.1,
