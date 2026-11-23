@@ -14,6 +14,7 @@
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173
 
 mod adams;
+mod pade;
 mod params;
 mod scalar;
 

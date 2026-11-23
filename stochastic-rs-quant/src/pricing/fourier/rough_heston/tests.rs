@@ -2,6 +2,8 @@ use num_complex::Complex64;
 use stochastic_rs_distributions::special::gamma;
 
 mod adams;
+mod pade;
+mod published;
 mod scalar;
 
 /// `E_{α,β}(x) = Σ xᵏ/Γ(αk + β)`, 80 terms: for `|x| ≤ 3`, where the tail is below rounding.
@@ -18,4 +20,18 @@ fn z_gr() -> Complex64 {
 /// Every ratio of consecutive errors, as halving the step shrinks them.
 fn ratios(errors: &[f64]) -> Vec<f64> {
   errors.windows(2).map(|pair| pair[0] / pair[1]).collect()
+}
+
+/// The call's Black volatility at zero rates, through the put where it is out of the money.
+fn implied_vol(model: &impl crate::traits::ModelPricer, k: f64, tau: f64) -> f64 {
+  use crate::OptionType;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
+  let side = if k < 1.0 {
+    OptionType::Put
+  } else {
+    OptionType::Call
+  };
+  let price = model.price_option(1.0, k, 0.0, 0.0, tau, side);
+  BsmPricer::new(0.2, BsmCoc::Merton1973).implied_volatility(price, 1.0, k, 0.0, 0.0, tau, side)
 }
