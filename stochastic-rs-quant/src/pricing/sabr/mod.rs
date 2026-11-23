@@ -13,10 +13,10 @@ mod pricer;
 mod tests;
 
 pub use hagan::alpha_from_atm_vol;
-pub use hagan::bs_price_fx;
+pub(crate) use hagan::bs_price_fx;
 pub use hagan::forward_fx;
 pub use hagan::fx_delta_from_forward;
 pub use hagan::hagan_implied_vol;
-pub use hagan::model_price_hagan;
+pub(crate) use hagan::model_price_hagan;
 pub use params::SabrParams;
 pub use pricer::SabrPricer;

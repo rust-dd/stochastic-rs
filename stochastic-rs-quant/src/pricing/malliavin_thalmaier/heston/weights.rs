@@ -188,18 +188,11 @@ impl<T: FloatExt> MultiHestonPaths<T> {
     param_asset: usize,
     r: T,
     tau: T,
-    spots: &[T],
-  ) -> Vec<T> {
+    spots: ArrayView1<T>,
+  ) -> Array1<T> {
     self
-      .try_malliavin_weights(
-        gamma_inv,
-        param_asset,
-        r,
-        tau,
-        Array1::from_iter(spots.iter().copied()).view(),
-      )
+      .try_malliavin_weights(gamma_inv, param_asset, r, tau, spots)
       .unwrap_or_else(|e| panic!("{e}"))
-      .to_vec()
   }
 
   /// Inverse of the Malliavin covariance matrix. Requires LAPACK.
