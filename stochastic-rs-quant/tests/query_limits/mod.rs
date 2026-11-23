@@ -15,7 +15,6 @@ use stochastic_rs_quant::curves::BootstrapSpec;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
-use stochastic_rs_quant::curves::IterativeOptions;
 use stochastic_rs_quant::curves::MultiCurve;
 use stochastic_rs_quant::curves::bootstrap;
 use stochastic_rs_quant::market::RateHelper;
@@ -512,10 +511,6 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     let quotes = [deposit(0.5), deposit(bad), deposit(1.0)];
     let spec = BootstrapSpec::new(&quotes, method);
     assert!(rejects_quote_1(bootstrap(spec)), "{bad}");
-    assert!(
-      rejects_quote_1(bootstrap(spec.iterative(IterativeOptions::default()))),
-      "{bad}"
-    );
     let swap = BootstrapInstrument::Swap {
       maturity: bad,
       rate: 0.03,

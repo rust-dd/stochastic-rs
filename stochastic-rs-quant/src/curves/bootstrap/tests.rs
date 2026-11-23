@@ -18,8 +18,9 @@ fn a_single_deposit_is_one_pillar() {
   assert_eq!(curve.discount_factor(1.0), 1.0 / 1.05);
 }
 
+/// A zero par rate is a root at one, on the edge of `(0, 1)`: the node is `1` exactly.
 #[test]
-fn the_iterative_solve_bisects_where_the_direct_root_leaves_the_unit_interval() {
+fn a_zero_par_rate_prices_its_node_at_one() {
   let inst: Vec<BootstrapInstrument<f64>> = vec![
     BootstrapInstrument::Deposit {
       maturity: 0.5,
@@ -32,15 +33,7 @@ fn the_iterative_solve_bisects_where_the_direct_root_leaves_the_unit_interval() 
     },
   ];
   let spec = BootstrapSpec::new(&inst, InterpolationMethod::LinearOnZeroRates);
-  let direct = bootstrap(spec).unwrap().discount_factor(1.0);
-  let bisected = bootstrap(spec.iterative(IterativeOptions::default()))
-    .unwrap()
-    .discount_factor(1.0);
-  assert_eq!(
-    direct, 1.0,
-    "a zero par rate is a root on the bracket's edge"
-  );
-  assert!(bisected < 1.0 && 1.0 - bisected < 2e-12, "{bisected:e}");
+  assert_eq!(bootstrap(spec).unwrap().discount_factor(1.0), 1.0);
 }
 
 const LOG_LINEAR: InterpolationMethod = InterpolationMethod::LogLinearOnDiscountFactors;
@@ -222,16 +215,4 @@ fn a_segment_reads_what_the_curve_reads_between_its_pillars() {
       }
     }
   }
-}
-
-#[test]
-fn the_iterative_solve_refuses_a_consistent_node_above_one() {
-  let inst = [six_month_deposit(-0.002), annual_swap(5.0, -0.001)];
-  let spec = BootstrapSpec::new(&inst, LOG_LINEAR);
-  assert!(bootstrap(spec).unwrap().discount_factor(5.0) > 1.0);
-  let refused = bootstrap(spec.iterative(IterativeOptions::default()));
-  assert!(
-    matches!(refused, Err(QuantError::Optimizer { .. })),
-    "{refused:?}"
-  );
 }

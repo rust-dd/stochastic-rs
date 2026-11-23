@@ -15,7 +15,6 @@ mod spec;
 mod validate;
 
 pub use spec::BootstrapSpec;
-pub use spec::IterativeOptions;
 
 pub(super) use solve::trial_node;
 
@@ -44,7 +43,6 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
   let BootstrapSpec {
     instruments,
     method,
-    iterative,
     discount,
   } = spec;
   let number = |index: usize| numbers.map_or(index, |numbers| numbers[index]);
@@ -94,7 +92,7 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
         method,
         quote,
       )?,
-      _ => single_curve_node(&points, instrument, method, iterative, quote)?,
+      _ => single_curve_node(&points, instrument, method, quote)?,
     };
     if !(discount_factor.is_finite() && discount_factor > T::zero()) {
       return Err(QuantError::InvalidQuote {
@@ -130,10 +128,6 @@ impl<T: RealExt, C: Iterator<Item = (T, T)> + Clone> Equation<T, C> {
   fn slope(&self) -> T {
     T::one() + self.rate * self.accrual
   }
-
-  fn implied_rate(&self, start: T, annuity: T, x: T) -> T {
-    (start - x) / (annuity + self.accrual * x)
-  }
 }
 
 /// The equation each single-curve quote prices, solved for its pillar.
@@ -141,7 +135,6 @@ fn single_curve_node<T: RealExt>(
   points: &[CurvePoint<T>],
   instrument: &BootstrapInstrument<T>,
   method: InterpolationMethod,
-  iterative: Option<IterativeOptions<T>>,
   quote: usize,
 ) -> Result<T, QuantError> {
   let maturity = instrument.maturity();
@@ -154,11 +147,11 @@ fn single_curve_node<T: RealExt>(
   match instrument {
     BootstrapInstrument::Deposit { rate, .. } => {
       let equation = single(T::zero(), *rate, maturity);
-      node(points, maturity, method, quote, None, equation)
+      node(points, maturity, method, quote, equation)
     }
     BootstrapInstrument::Fra { start, end, rate } => {
       let equation = single(*start, *rate, *end - *start);
-      node(points, maturity, method, quote, None, equation)
+      node(points, maturity, method, quote, equation)
     }
     BootstrapInstrument::Future {
       start,
@@ -170,7 +163,7 @@ fn single_curve_node<T: RealExt>(
       let futures_rate = (hundred - *price) / hundred;
       let convexity_adj = T::from_f64_fast(0.5) * *sigma * *sigma * *start * *end;
       let equation = single(*start, futures_rate - convexity_adj, *end - *start);
-      node(points, maturity, method, quote, None, equation)
+      node(points, maturity, method, quote, equation)
     }
     BootstrapInstrument::Swap {
       rate, frequency, ..
@@ -183,7 +176,7 @@ fn single_curve_node<T: RealExt>(
         accrual: delta,
         coupons: (1..payments).map(move |i| (T::from_f64_fast(i as f64) * delta, delta)),
       };
-      node(points, maturity, method, quote, iterative, equation)
+      node(points, maturity, method, quote, equation)
     }
     BootstrapInstrument::SwapWithSchedule {
       rate, fixed_times, ..
@@ -196,7 +189,7 @@ fn single_curve_node<T: RealExt>(
         accrual: maturity - earlier.last().copied().unwrap_or_else(T::zero),
         coupons: (0..earlier.len()).map(move |i| (earlier[i], earlier[i] - previous(i))),
       };
-      node(points, maturity, method, quote, None, equation)
+      node(points, maturity, method, quote, equation)
     }
   }
 }
@@ -208,7 +201,6 @@ fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
   maturity: T,
   method: InterpolationMethod,
   quote: usize,
-  iterative: Option<IterativeOptions<T>>,
   equation: Equation<T, C>,
 ) -> Result<T, QuantError> {
   let read = |t: T| pillar_read(points, t, method, quote);
@@ -245,7 +237,7 @@ fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
     }
     _ => Reads::Fixed { start, annuity },
   };
-  let node = match points.last() {
+  match points.last() {
     Some(last) if gapped => {
       let guess = if direct.is_finite() && direct > T::zero() {
         direct
@@ -263,19 +255,9 @@ fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
         reason: format!(
           "no discount factor reprices quote {quote} on the curve that holds its node"
         ),
-      })?
+      })
     }
-    _ => direct,
-  };
-  match iterative {
-    Some(options) if !(node > T::zero() && node < T::one()) => {
-      let error = |x: T| {
-        let (start, annuity, _) = reads.at(&equation, x);
-        equation.implied_rate(start, annuity, x) - equation.rate
-      };
-      bisect_swap_df(error, options, quote)
-    }
-    _ => Ok(node),
+    _ => Ok(direct),
   }
 }
 
@@ -361,37 +343,6 @@ fn pillar_read<T: RealExt>(
     });
   }
   Ok(interpolate_discount_factor(points, t, method))
-}
-
-/// The last discount factor in `(1e-6, 1)` where the swap's implied rate is within the tolerance
-/// of its quote, `error` the difference; `Optimizer` if none is.
-fn bisect_swap_df<T: RealExt>(
-  mut error: impl FnMut(T) -> T,
-  options: IterativeOptions<T>,
-  index: usize,
-) -> Result<T, QuantError> {
-  let mut lo = T::from_f64_fast(1e-6);
-  let mut hi = T::one();
-  let half = T::from_f64_fast(0.5);
-  for _ in 0..options.max_iterations {
-    let mid = half * (lo + hi);
-    let err = error(mid);
-    if err.abs() < options.tolerance {
-      return Ok(mid);
-    }
-    if err > T::zero() {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  Err(QuantError::Optimizer {
-    what: "bootstrap",
-    reason: format!(
-      "no discount factor in (1e-6, 1) reprices swap quote {index} within {:?} in {} bisections",
-      options.tolerance, options.max_iterations
-    ),
-  })
 }
 
 #[cfg(test)]

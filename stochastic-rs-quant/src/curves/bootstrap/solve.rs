@@ -133,4 +133,3 @@ mod tests {
     assert_eq!(trial_node(1.0, |x: f64| (f64::NAN * x, None)), None);
   }
 }
-

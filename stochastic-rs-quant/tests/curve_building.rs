@@ -20,7 +20,6 @@ use stochastic_rs_quant::curves::BootstrapSpec;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
-use stochastic_rs_quant::curves::IterativeOptions;
 use stochastic_rs_quant::curves::MultiCurve;
 use stochastic_rs_quant::curves::bootstrap;
 use stochastic_rs_quant::inflation::YearOnYearInflationSwap;
@@ -393,16 +392,11 @@ fn a_quote_that_gives_no_pillar_is_an_error_at_its_index() {
   let method = InterpolationMethod::LinearOnZeroRates;
   for (field, instrument) in bad {
     let quotes = [deposit(0.5, 0.03), instrument];
-    for spec in [
-      BootstrapSpec::new(&quotes, method),
-      BootstrapSpec::new(&quotes, method).iterative(IterativeOptions::default()),
-    ] {
-      match bootstrap(spec) {
-        Err(QuantError::InvalidQuote { index: 1, reason }) => {
-          assert!(reason.contains(field), "{:?}: {reason}", quotes[1])
-        }
-        other => panic!("{:?}: {other:?}", quotes[1]),
+    match bootstrap(BootstrapSpec::new(&quotes, method)) {
+      Err(QuantError::InvalidQuote { index: 1, reason }) => {
+        assert!(reason.contains(field), "{:?}: {reason}", quotes[1])
       }
+      other => panic!("{:?}: {other:?}", quotes[1]),
     }
   }
   let lone = [BootstrapInstrument::Fra {
@@ -455,7 +449,7 @@ fn a_solve_with_no_root_is_an_optimizer_error() {
       ..
     })
   ));
-  // A negative par rate puts the discount factor above one, outside the bisection's bracket.
+  // A negative par rate puts the discount factor above one, and the node there reprices it.
   let negative = [
     deposit(0.5, -0.004),
     BootstrapInstrument::Swap {
@@ -464,15 +458,10 @@ fn a_solve_with_no_root_is_an_optimizer_error() {
       frequency: Frequency::SemiAnnual,
     },
   ];
-  let direct = bootstrap(BootstrapSpec::new(&negative, method)).unwrap();
-  assert!(direct.discount_factor(1.0) > 1.0);
-  assert!(matches!(
-    bootstrap(BootstrapSpec::new(&negative, method).iterative(IterativeOptions::default())),
-    Err(QuantError::Optimizer {
-      what: "bootstrap",
-      ..
-    })
-  ));
+  let curve = bootstrap(BootstrapSpec::new(&negative, method)).unwrap();
+  assert!(curve.discount_factor(1.0) > 1.0);
+  let par = curve.par_rate(1.0, Frequency::SemiAnnual);
+  assert!((par + 0.005).abs() < 1e-15, "{par}");
 }
 
 #[test]

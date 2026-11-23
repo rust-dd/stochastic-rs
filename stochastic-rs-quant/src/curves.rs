@@ -22,7 +22,6 @@ pub mod svensson;
 pub mod types;
 
 pub use bootstrap::BootstrapSpec;
-pub use bootstrap::IterativeOptions;
 pub use bootstrap::bootstrap;
 pub use discount_curve::DiscountCurve;
 pub use interpolation::interpolate_discount_factor;
