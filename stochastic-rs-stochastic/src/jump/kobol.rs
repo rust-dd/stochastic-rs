@@ -63,7 +63,7 @@ pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
   /// Panics unless every parameter is finite, `d`, `p`, `q`, `lambda_plus`, `lambda_minus` are
-  /// positive, `0 < alpha < 2`, `n >= 2`, `j >= 2` and a given `t` is positive and finite.
+  /// positive, `0 < alpha < 2`, `alpha != 1` when `p != q`, `n, j >= 2` and a given `t` is positive.
   pub fn new(
     d: T,
     p: T,
@@ -136,6 +136,10 @@ impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(j >= 2, "j must satisfy `j >= 2`, got j = {j:?}");
 
+    assert!(
+      alpha != T::one() || p == q,
+      "alpha must satisfy `alpha != T::one() || p == q`, got alpha = {alpha:?}"
+    );
     Self {
       backend: Cpu,
       d,
