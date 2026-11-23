@@ -1,0 +1,39 @@
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste is a build-time proc macro reached only through candle's gemm, behind the ai feature" },
+  { id = "RUSTSEC-2026-0374", reason = "basic-toml is a build-time proc macro dependency of plotly's askama, behind viz" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained but is the umbrella's public date type; no drop-in replacement" },
+  { id = "RUSTSEC-2026-0367", reason = "no code here calls ZipArchive::extract; zip comes in through candle-core (ai) and ndarray-npy" },
+  { id = "RUSTSEC-2026-0368", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0369", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0429", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0545", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0546", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0547", reason = "see RUSTSEC-2026-0367" },
+  { id = "RUSTSEC-2026-0548", reason = "see RUSTSEC-2026-0367" },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.9
+
+[[licenses.clarify]]
+crate = "implied-vol"
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0x526ab6d5 }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

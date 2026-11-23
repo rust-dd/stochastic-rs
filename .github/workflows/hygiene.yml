@@ -1,0 +1,67 @@
+name: Hygiene
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "43 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # The packaged crates, verified together against a local registry of the siblings, as the
+  # release checklist's stage 4 does.
+  publish_dry_run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --workspace --dry-run
+        run: cargo publish --workspace --dry-run --locked
+
+  # Advisory until 3.0.0: the rc line breaks the API on purpose, so a failure is information.
+  semver_checks:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+      - name: cargo semver-checks against crates.io
+        run: cargo semver-checks --workspace --exclude stochastic-rs-py --exclude stochastic-rs-metal-kernels
+
+  # Resolves every dependency to its lowest allowed version; advisory, since a dependency's own
+  # lower bound is often what breaks.
+  minimal_versions:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check with -Z minimal-versions
+        run: |
+          cargo +nightly update -Z direct-minimal-versions
+          cargo check --workspace --exclude stochastic-rs-py --no-default-features
