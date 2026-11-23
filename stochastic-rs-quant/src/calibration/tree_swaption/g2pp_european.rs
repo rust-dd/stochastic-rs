@@ -20,7 +20,6 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::G2ppParams;
 use crate::instruments::option::types::SwaptionDirection;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Standard deviations of `x(T)` integrated each side, past the receiver's exponential growth.
@@ -330,7 +329,7 @@ fn breakpoints(range: f64, h1: &impl Fn(f64) -> (f64, f64)) -> Vec<f64> {
     }
     previous = (z, h);
   }
-  edges.sort_by(ascending);
+  edges.sort_by(RealExt::nan_last);
   edges.dedup();
   edges
 }

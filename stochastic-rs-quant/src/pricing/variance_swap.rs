@@ -19,9 +19,10 @@
 //! Reference: Bernard & Cui (2013), arXiv:1305.7092
 //! Reference: Carr & Madan (1998), in Volatility: New Estimation Techniques for Pricing Derivatives
 
+use stochastic_rs_distributions::RealExt;
+
 use crate::pricing::exotic::VarianceSwapTerms;
 use crate::pricing::heston::HestonParams;
-use crate::total_order::ascending;
 
 mod discrete;
 
@@ -73,7 +74,7 @@ impl VarianceSwapPricer {
     let k0_idx = strikes
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&(*a - fwd).abs(), &(*b - fwd).abs()))
+      .min_by(|(_, a), (_, b)| (*a - fwd).abs().nan_last(&(*b - fwd).abs()))
       .map(|(i, _)| i)
       .unwrap_or(0);
     let k0 = strikes[k0_idx];

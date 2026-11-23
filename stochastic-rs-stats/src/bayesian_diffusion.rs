@@ -26,6 +26,7 @@ use crate::qmle::path_spread;
 use crate::qmle::quasi_log_likelihood;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Posterior means and equal-tailed 95 % intervals in the names of [`Ou`] and [`Cir`]: `theta` the
 /// speed, `mu` the level.
@@ -211,7 +212,7 @@ fn mean(v: &[f64]) -> f64 {
 
 /// Equal-tailed 95 % credible interval (2.5 % / 97.5 % empirical quantiles).
 fn credible_interval(v: &mut [f64]) -> (f64, f64) {
-  v.sort_by(f64::total_cmp);
+  v.sort_by(f64::nan_last);
   let n = v.len();
   let lo = v[((0.025 * n as f64) as usize).min(n - 1)];
   let hi = v[((0.975 * n as f64) as usize).min(n - 1)];

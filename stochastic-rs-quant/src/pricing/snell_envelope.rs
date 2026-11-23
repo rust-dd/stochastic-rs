@@ -17,9 +17,10 @@
 //!
 //! Reference: Cox, Ross & Rubinstein (1979), J. Financ. Econ. 7(3), 229–263
 
+use stochastic_rs_distributions::RealExt;
+
 use super::digital::vanilla_payoff;
 use crate::OptionType;
-use crate::total_order::ascending;
 use crate::traits::ModelPricer;
 
 #[derive(Debug, Clone)]
@@ -202,7 +203,7 @@ impl SnellEnvelopePricer {
       }
     }
 
-    exercise_boundary.sort_by(|a, b| ascending(&a.0, &b.0));
+    exercise_boundary.sort_by(|a, b| a.0.nan_last(&b.0));
 
     SnellEnvelopeResult {
       price: am_values[0],

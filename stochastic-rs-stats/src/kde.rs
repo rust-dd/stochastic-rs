@@ -18,6 +18,7 @@ use crate::input::mean_in_order;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::traits::RealExt;
 
 /// Gaussian KDE over a copy of the sample.
 #[derive(Debug, Clone)]
@@ -96,7 +97,7 @@ pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let mean = mean_in_order(data);
   let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
   let mut sorted = sample.into_owned();
-  sorted.sort_by(f64::total_cmp);
+  sorted.sort_by(f64::nan_last);
   let iqr = quantile_sorted(&sorted, 0.75) - quantile_sorted(&sorted, 0.25);
   let scale = if iqr > 0.0 { std.min(iqr / 1.34) } else { std };
   if scale == 0.0 {
@@ -119,7 +120,7 @@ pub fn quantile(data: ArrayView1<f64>, p: f64) -> f64 {
     return f64::NAN;
   }
   let mut sorted = data.to_vec();
-  sorted.sort_by(f64::total_cmp);
+  sorted.sort_by(f64::nan_last);
   quantile_sorted(&sorted, p)
 }
 

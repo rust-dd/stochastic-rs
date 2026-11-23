@@ -127,6 +127,8 @@ pub fn fourier_model_surface_fft_with(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_distributions::RealExt;
+
   use super::*;
   use crate::OptionStyle;
   use crate::pricing::bsm::BsmCoc;
@@ -142,7 +144,6 @@ mod tests {
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
-  use crate::total_order::ascending;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
   const GRID_T: [f64; 2] = [0.25, 1.0];
@@ -178,7 +179,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
+      .min_by(|(_, a), (_, b)| a.abs().nan_last(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -296,7 +297,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
+      .min_by(|(_, a), (_, b)| a.abs().nan_last(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(

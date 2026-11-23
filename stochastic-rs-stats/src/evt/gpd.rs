@@ -36,6 +36,7 @@ use crate::optim::nelder_mead_vec;
 use crate::stationarity::common::per_unit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// GPD maximum-likelihood fit to threshold excesses.
 #[derive(Debug, Clone)]
@@ -207,7 +208,7 @@ pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit,
   reject_constant(&y, "constant excesses")?;
   let (mut y, unit) = unit_scaled(y);
   let n = y.len();
-  y.sort_by(f64::total_cmp);
+  y.sort_by(f64::nan_last);
   let nf = n as f64;
   let a0 = y.iter().sum::<f64>() / nf;
   let a1 = y
