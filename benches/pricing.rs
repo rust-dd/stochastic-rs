@@ -10,6 +10,7 @@ use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::aview1;
+use stochastic_rs::num_complex::Complex64;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::instruments::option::caplet::black_forward_caplet;
 use stochastic_rs::quant::pricing::AutocallablePricer;
@@ -41,6 +42,9 @@ use stochastic_rs::quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
 use stochastic_rs::quant::pricing::fourier::KouFourier;
 use stochastic_rs::quant::pricing::fourier::LewisPricer;
+use stochastic_rs::quant::pricing::fourier::RoughHeston;
+use stochastic_rs::quant::pricing::fourier::RoughHestonCf;
+use stochastic_rs::quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::lookback::LookbackPricer;
@@ -178,6 +182,41 @@ fn fourier(c: &mut Criterion) {
       STRIKES
         .iter()
         .map(|&k| GilPelaezPricer::price_call(&kou, S, k, R, Q, 1.0))
+        .sum::<f64>()
+    })
+  });
+  group.finish();
+}
+
+fn fourier_rough_heston(c: &mut Criterion) {
+  let mut group = c.benchmark_group("pricing/fourier_rough_heston");
+  group
+    .sample_size(20)
+    .measurement_time(Duration::from_secs(5));
+  let params = RoughHestonParams::new(0.04, 1.0, 0.04, 0.4, -0.65, 0.05);
+  let xi = Complex64::new(3.0, -0.5);
+  for (name, cf) in [
+    ("pade44", RoughHestonCf::default()),
+    ("adams200", RoughHestonCf::ADAMS),
+    ("lifted20", RoughHestonCf::LIFTED),
+  ] {
+    let model = RoughHeston::new(params, cf);
+    group.bench_function(format!("chf_{name}"), |b| {
+      b.iter(|| model.chf(black_box(1.0), black_box(xi)))
+    });
+    group.bench_function(format!("cumulants_{name}"), |b| {
+      b.iter(|| model.cumulants(black_box(1.0)))
+    });
+    group.bench_function(format!("lewis_{name}_1"), |b| {
+      b.iter(|| LewisPricer::price_call(&model, S, black_box(100.0), R, Q, 1.0))
+    });
+  }
+  let pade = RoughHeston::new(params, RoughHestonCf::default());
+  group.bench_function("lewis_pade44_9", |b| {
+    b.iter(|| {
+      STRIKES
+        .iter()
+        .map(|&k| LewisPricer::price_call(&pade, S, k, R, Q, 1.0))
         .sum::<f64>()
     })
   });
@@ -475,6 +514,7 @@ criterion_group!(
   benches,
   heston_pricer,
   fourier,
+  fourier_rough_heston,
   bsm_and_sabr,
   bench_exotics,
   bench_mc_exotics,
