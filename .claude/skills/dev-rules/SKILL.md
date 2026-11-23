@@ -253,3 +253,5 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   `Some(f64::NAN)` is "computed, undefined at this point".
 - **A reduction never drops a NaN.** `f64::max`/`min` skip a NaN operand; a slice takes
   `RealExt::max_or_nan_fold`/`min_or_nan_fold` (−∞/+∞ if empty), a pair `max_or_nan`/`min_or_nan`.
+- **Floats are ordered by `RealExt::nan_last`** (`nan_last_descending`): NaN last whatever its
+  sign, `±0` tied. Never `total_cmp`, which places a NaN by its sign bit, nor `partial_cmp().unwrap()`.

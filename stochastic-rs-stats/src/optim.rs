@@ -1,7 +1,6 @@
 //! Optimization helpers shared by the estimator modules.
 //!
 //! One Nelder–Mead simplex: the three-parameter entry wraps the any-dimension one GARCH uses.
-use crate::traits::RealExt;
 
 use std::convert::Infallible;
 
@@ -20,6 +19,8 @@ use basin::MoreThuente;
 use basin::Solver;
 use basin::Stall;
 use basin::Termination;
+
+use crate::traits::RealExt;
 
 /// The start with the lowest objective; a NaN objective loses to every number.
 pub(crate) fn best_start<P: AsRef<[f64]>>(
