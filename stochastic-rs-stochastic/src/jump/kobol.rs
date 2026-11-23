@@ -10,6 +10,7 @@
 //! Reference: Koponen (1995), Phys. Rev. E 52(1), 1197–1199, DOI 10.1103/PhysRevE.52.1197
 //! Reference: Boyarchenko & Levendorskiĭ (2000), IJTAF 3(3), 549–552, DOI 10.1142/S0219024900000541
 //! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -18,11 +19,13 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::jump::series_remainder::SeriesRemainder;
 use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -45,7 +48,7 @@ pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Truncation terms (J)
+  /// Series terms; the terms past them enter as a Brownian motion of their drift and variance.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -181,8 +184,8 @@ impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
     self.d * self.p + self.d * self.q
   }
 
-  /// The mean-compensating drift `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, finite and applied
-  /// only below `α = 1`.
+  /// The mean-compensating drift `-Γ(1 - α) (D p λ₊^{α-1} - D q λ₋^{α-1})`, applied only below
+  /// `α = 1`; above it the mean is the exponent's own, `Γ(1 - α) D (p λ₊^{α-1} - q λ₋^{α-1})`.
   fn drift_rate(&self) -> T {
     if self.alpha < T::one() {
       let g1 = gamma(1.0 - self.alpha.to_f64().unwrap());
@@ -193,6 +196,24 @@ impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
       T::zero()
     }
   }
+
+  /// What the series drops past its `j`-th term, from the constants its device declaration takes.
+  fn remainder(&self) -> SeriesRemainder {
+    let f = |v: T| v.to_f64().unwrap();
+    let (alpha, t) = (f(self.alpha), f(self.t_max()));
+    let rate = alpha / (f(self.total_coefficient()) * t);
+    let (plus, minus) = (f(self.lambda_plus), f(self.lambda_minus));
+    SeriesRemainder::new(
+      alpha,
+      rate,
+      t,
+      f(self.positive_share()),
+      plus,
+      minus,
+      1.0,
+      1.0,
+    )
+  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -201,8 +222,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The series constants, folded once: the arrival rate `α / (D (p + q) T)`, the exponential
   /// draw entering plainly, and the positive side taken with probability `p / (p + q)`.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let (drift, variance) = self.remainder().expected_rates(self.j);
     crate::euler::EulerSpec::TemperedStableSeries {
-      b_t: self.drift_rate(),
+      b_t: self.drift_rate() + T::from_f64_fast(drift),
+      rem_sd: T::from_f64_fast(variance.sqrt()),
       rate: self.alpha / (self.total_coefficient() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
       e_scale: T::one(),
@@ -283,6 +306,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
+      remainder: self.remainder(),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -369,6 +394,8 @@ pub struct KobolSampler<T: FloatExt, S: SeedExt> {
   uniform: Seeded<SimdUniform<T>>,
   exp: Seeded<SimdExp<T>>,
   seed: S,
+  remainder: SeriesRemainder,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
@@ -390,6 +417,9 @@ impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
     self.uniform.fill_slice(u.as_slice_mut().unwrap());
     let e = Array1::from_shape_fn(size, |_| self.exp.sample());
     let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
+    let (drift, variance) = self.remainder.rates(arrivals[n_terms].to_f64().unwrap());
+    let drift = b_t + T::from_f64_fast(drift);
+    let spread = T::from_f64_fast(variance.sqrt());
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -429,6 +459,7 @@ impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
 
     let mut k: usize = 0;
     let mut cum_jumps = T::zero();
+    let mut gauss = T::zero();
 
     for i in 1..out.len() {
       let t_i = T::from_usize_(i) * dt;
@@ -438,7 +469,8 @@ impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
         k += 1;
       }
 
-      out[i] = self.x0 + cum_jumps + b_t * t_i;
+      gauss += self.normal.sample();
+      out[i] = self.x0 + cum_jumps + drift * t_i + spread * gauss;
     }
   }
 }

@@ -15,4 +15,5 @@ pub mod merton;
 pub mod mjd_log;
 pub mod nig;
 pub mod rdts;
+pub(crate) mod series_remainder;
 pub mod vg;

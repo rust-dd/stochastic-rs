@@ -595,6 +595,8 @@ pub enum EulerSpec<T: FloatExt> {
     w_plus: T,
     lambda_plus: T,
     lambda_minus: T,
+    /// The diffusion that stands in for the terms past the last; their drift is in `b_t`.
+    rem_sd: T,
   },
   /// A Gaussian Volterra process by the reference quadrature, the kernel on
   /// the grid travelling as the launch's first curve.

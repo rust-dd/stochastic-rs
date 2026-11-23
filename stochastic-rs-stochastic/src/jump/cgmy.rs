@@ -1,4 +1,4 @@
-//! CGMY by Rosiński's series, stopped at `J` terms; `C` is an input, not a variance normalisation.
+//! CGMY by `J` terms of Rosiński's series and their Gaussian remainder `R_J`; `C` is an input.
 //!
 //! $$
 //! \nu(dx)=C\left(e^{-Mx}x^{-1-Y}\mathbf 1_{x>0}+e^{-G|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
@@ -8,12 +8,13 @@
 //!
 //! $$
 //! X(t)=\sum_{j=1}^{J}\Big(\Big(\frac{Y\Gamma_j}{2CT}\Big)^{-1/Y}\wedge
-//! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,\quad
+//! E_j\,U_j^{1/Y}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t+R_J(t),\quad
 //! V_j\in\{+M,-G\},\ P(V_j=+M)=P(V_j=-G)=\tfrac12
 //! $$
 //!
 //! Reference: Carr, Geman, Madan & Yor (2002), J. Business 75(2), 305–332, DOI 10.1086/338705
 //! Reference: Rosiński (2007), Stoch. Proc. Appl. 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Probab. 38(2), 482–493, DOI 10.1239/jap/996986757
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -22,11 +23,13 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::jump::series_remainder::SeriesRemainder;
 use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -45,7 +48,7 @@ pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T, // Y
   /// Number of time steps
   pub n: usize,
-  /// Truncation terms (J)
+  /// Series terms; the terms past them enter as a Brownian motion of their drift and variance.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -164,6 +167,23 @@ impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {
       T::zero()
     }
   }
+
+  /// What the series drops past its `j`-th term, from the constants its device declaration takes.
+  fn remainder(&self) -> SeriesRemainder {
+    let f = |v: T| v.to_f64().unwrap();
+    let (alpha, t) = (f(self.alpha), f(self.t_max()));
+    let rate = alpha / (2.0 * f(self.c) * t);
+    SeriesRemainder::new(
+      alpha,
+      rate,
+      t,
+      0.5,
+      f(self.lambda_plus),
+      f(self.lambda_minus),
+      1.0,
+      1.0,
+    )
+  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -172,8 +192,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The series constants folded once: the arrival bound's rate `Y / (2 C T)`,
   /// the exponential draw entering plainly, and the two sides equally likely.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let (drift, variance) = self.remainder().expected_rates(self.j);
     crate::euler::EulerSpec::TemperedStableSeries {
-      b_t: self.drift_rate(),
+      b_t: self.drift_rate() + T::from_f64_fast(drift),
+      rem_sd: T::from_f64_fast(variance.sqrt()),
       rate: self.alpha / (T::from_usize_(2) * self.c * self.t_max()),
       inv_alpha: T::one() / self.alpha,
       e_scale: T::one(),
@@ -251,6 +273,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
+      remainder: self.remainder(),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -336,6 +360,8 @@ pub struct CgmySampler<T: FloatExt, S: SeedExt> {
   uniform: Seeded<SimdUniform<T>>,
   exp: Seeded<SimdExp<T>>,
   seed: S,
+  remainder: SeriesRemainder,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
@@ -360,6 +386,9 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
     let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
+    let (drift, variance) = self.remainder.rates(arrivals[n_terms].to_f64().unwrap());
+    let drift = b_t + T::from_f64_fast(drift);
+    let spread = T::from_f64_fast(variance.sqrt());
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);
@@ -399,6 +428,7 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
 
     let mut k: usize = 0;
     let mut cum_jumps = T::zero();
+    let mut gauss = T::zero();
 
     for i in 1..out.len() {
       let t_i = T::from_usize_(i) * dt;
@@ -408,7 +438,8 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
         k += 1;
       }
 
-      out[i] = self.x0 + cum_jumps + b_t * t_i;
+      gauss += self.normal.sample();
+      out[i] = self.x0 + cum_jumps + drift * t_i + spread * gauss;
     }
   }
 }
