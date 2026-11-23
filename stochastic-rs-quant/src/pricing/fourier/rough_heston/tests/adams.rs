@@ -1,9 +1,14 @@
 use num_complex::Complex64;
 use stochastic_rs_distributions::special::gamma;
 
+use super::super::LogChf;
 use super::super::Riccati;
+use super::super::RoughHestonParams;
 use super::super::adams::Adams;
+use super::super::adams::AdamsCf;
 use super::super::adams::Corrector;
+use super::super::chf;
+use super::super::cumulants;
 use super::mittag_leffler;
 use super::ratios;
 use super::z_gr;
@@ -148,5 +153,128 @@ fn the_explicit_scheme_has_a_stability_bound_and_the_solved_corrector_none() {
     assert!(last(1.0, Corrector::Predicted) <= 2.0, "α = {alpha}");
     assert!(last(2.5, Corrector::Predicted) > 1e6, "α = {alpha}");
     assert!(last(1000.0, Corrector::Solved) <= 1.0 + 1e-9, "α = {alpha}");
+  }
+}
+
+fn gr_cf(steps: usize) -> AdamsCf {
+  AdamsCf::new(
+    RoughHestonParams {
+      v0: 0.04,
+      kappa: 1.0,
+      theta: 0.06,
+      nu: 0.4,
+      rho: -0.65,
+      hurst: 0.05,
+    },
+    steps,
+  )
+}
+
+#[test]
+fn the_adams_chf_is_one_at_the_martingale_points_and_nan_off_its_domain() {
+  let cf = gr_cf(64);
+  let xi = Complex64::new(3.0, -0.5);
+  for t in [0.02, 1.0, 5.0] {
+    assert_eq!(chf(&cf, t, Complex64::new(0.0, -1.0)), Complex64::ONE);
+    assert_eq!(chf(&cf, t, Complex64::ZERO), Complex64::ONE);
+    let mirrored = chf(&cf, t, -xi.conj());
+    assert!(
+      (mirrored - chf(&cf, t, xi).conj()).norm() < 1e-13,
+      "t = {t}"
+    );
+  }
+  assert_eq!(chf(&cf, 0.0, xi), Complex64::ONE);
+  for t in [-1.0, f64::NAN, f64::INFINITY] {
+    assert!(chf(&cf, t, xi).is_nan(), "t = {t}");
+    assert!(cumulants(&cf, t).c1.is_nan(), "t = {t}");
+  }
+  assert!(chf(&cf, 1.0, Complex64::new(f64::NAN, 0.0)).is_nan());
+  assert!(chf(&cf, 1.0, Complex64::new(f64::INFINITY, 0.0)).is_nan());
+  let at_expiry = cumulants(&cf, 0.0);
+  assert_eq!(
+    (at_expiry.c1, at_expiry.c2, at_expiry.c4),
+    (0.0, 0.0, Some(0.0))
+  );
+}
+
+/// `m₀[V₀t + κ(θ − V₀)t^{α+1}E_{α,α+2}(−κt^α)]`: `ln φ` at `ν = 0`, and `−2c₁` at any `ν`.
+fn integrated_curve(p: &RoughHestonParams, t: f64) -> f64 {
+  let alpha = p.alpha();
+  let y = t.powf(alpha);
+  let series = mittag_leffler(alpha, alpha + 2.0, -p.kappa * y);
+  p.v0 * t + p.kappa * (p.theta - p.v0) * t * y * series
+}
+
+#[test]
+fn without_vol_of_vol_the_chf_is_the_forward_variance_curve_s() {
+  let t = 1.5;
+  let z = z_gr();
+  let error = |steps: usize| {
+    let mut cf = gr_cf(steps);
+    cf.params.nu = 0.0;
+    cf.riccati.nu = 0.0;
+    let want = Riccati::moment(z) * integrated_curve(&cf.params, t);
+    (cf.log_chf(t, z) - want).norm() / want.norm()
+  };
+  let errors = [50, 100, 200, 400, 800].map(error);
+  assert!(errors[4] < 1e-5, "{errors:?}");
+  for ratio in ratios(&errors) {
+    assert!(ratio > 2.0_f64.powf(1.2), "{errors:?}");
+  }
+}
+
+/// `ln chf` along the real line by central stencils: `cumulant_table`'s first two, and a fourth
+/// difference whose own error is `O(h²)`.
+fn stencil_cumulants(cf: &impl LogChf, t: f64) -> (f64, f64, f64) {
+  let f = |u: f64| cf.log_chf(t, Complex64::new(0.0, u));
+  let h = 2e-3;
+  let (f2p, fp, f0, fm, f2m) = (f(2.0 * h), f(h), f(0.0), f(-h), f(-2.0 * h));
+  let c1 = (-f2p + 8.0 * fp - 8.0 * fm + f2m).im / (12.0 * h);
+  let c2 = -(-f2p + 16.0 * fp - 30.0 * f0 + 16.0 * fm - f2m).re / (12.0 * h * h);
+  let w = 0.05;
+  let c4 = (f(2.0 * w) - 4.0 * f(w) + 6.0 * f(0.0) - 4.0 * f(-w) + f(-2.0 * w)).re / w.powi(4);
+  (c1, c2, c4)
+}
+
+#[test]
+fn the_adams_cumulants_are_its_own_chf_s() {
+  let cf = gr_cf(100);
+  for t in [0.1, 1.0] {
+    let got = cumulants(&cf, t);
+    let (c1, c2, c4) = stencil_cumulants(&cf, t);
+    assert!(
+      (got.c1 - c1).abs() < 1e-8 * got.c2.max(1.0),
+      "{t}: {} vs {c1}",
+      got.c1
+    );
+    assert!(
+      (got.c2 - c2).abs() < 1e-7 * got.c2.max(1.0),
+      "{t}: {} vs {c2}",
+      got.c2
+    );
+    let fourth = got.c4.expect("the jet reaches the fourth order");
+    assert!(
+      (fourth - c4).abs() < 0.02 * c4.abs(),
+      "{t}: {fourth} vs {c4}"
+    );
+    // `c₁ = −½∫ξ` at any `ν`; 100 steps leave a relative 1.0e-4 at `t = 1`, taken 2.5 times.
+    let exact = -0.5 * integrated_curve(&cf.params, t);
+    assert!(
+      (got.c1 / exact - 1.0).abs() < 2.5e-4,
+      "{t}: {} vs {exact}",
+      got.c1
+    );
+  }
+}
+
+/// The scheme's order on the full equation, against 3200 steps.
+#[test]
+fn the_adams_chf_converges_at_the_scheme_s_order() {
+  let (t, z) = (1.0, z_gr());
+  let reference = gr_cf(3200).log_chf(t, z);
+  let errors = [100, 200, 400, 800].map(|steps| (gr_cf(steps).log_chf(t, z) - reference).norm());
+  assert!(errors[1] < 1e-4 * reference.norm(), "{errors:?}");
+  for ratio in ratios(&errors) {
+    assert!(ratio > 2.0_f64.powf(1.2), "{errors:?}");
   }
 }

@@ -13,7 +13,9 @@
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma;
 
+use super::LogChf;
 use super::Riccati;
+use super::RoughHestonParams;
 use super::scalar::RiccatiScalar;
 
 /// How (26)'s implicit term is met: `Solved` takes its quadratic's root, stable at any step.
@@ -122,5 +124,31 @@ impl Adams {
     let weighted = h.iter().zip(&self.fractional);
     let fractional = weighted.fold(S::ZERO, |sum, (&value, &weight)| sum + value * weight);
     (trapezoid, fractional * (dt.powf(rest) / gamma(rest + 2.0)))
+  }
+}
+
+/// El Euch & Rosenbaum's (23) on the scheme's grid: `κθ·I¹h + V₀·I^{1−α}h`.
+#[derive(Clone, Debug)]
+pub(super) struct AdamsCf {
+  pub(super) params: RoughHestonParams,
+  pub(super) riccati: Riccati,
+  scheme: Adams,
+}
+
+impl AdamsCf {
+  pub(super) fn new(params: RoughHestonParams, steps: usize) -> Self {
+    Self {
+      params,
+      riccati: Riccati::of(&params),
+      scheme: Adams::new(params.alpha(), steps),
+    }
+  }
+}
+
+impl LogChf for AdamsCf {
+  fn log_chf<S: RiccatiScalar>(&self, t: f64, z: S) -> S {
+    let h = self.scheme.path(t, z, &self.riccati, Corrector::Solved);
+    let (whole, fractional) = self.scheme.integrals(t, &h);
+    whole * (self.params.kappa * self.params.theta) + fractional * self.params.v0
   }
 }
