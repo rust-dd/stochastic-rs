@@ -24,7 +24,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
@@ -98,7 +98,7 @@ pub fn lo_mackinlay_test(
     raw.to_vec()
   };
   reject_constant(&returns, "zero-variance increments")?;
-  let (returns, _) = unit_scaled(returns);
+  let (returns, _) = about_mean(returns);
 
   let nq = returns.len();
   let nq_f = nq as f64;
@@ -142,16 +142,14 @@ pub fn lo_mackinlay_test(
     .sum::<f64>()
     .powi(2);
   let mut phi_robust = 0.0_f64;
-  if denom_delta_squared > 0.0 {
-    for j in 1..q {
-      let mut delta_j = 0.0_f64;
-      for t in (j + 1)..=nq {
-        delta_j += (returns[t - 1] - mean).powi(2) * (returns[t - 1 - j] - mean).powi(2);
-      }
-      delta_j /= denom_delta_squared;
-      let weight = 2.0 * (q_f - j as f64) / q_f;
-      phi_robust += weight * weight * delta_j;
+  for j in 1..q {
+    let mut delta_j = 0.0_f64;
+    for t in (j + 1)..=nq {
+      delta_j += (returns[t - 1] - mean).powi(2) * (returns[t - 1 - j] - mean).powi(2);
     }
+    delta_j /= denom_delta_squared;
+    let weight = 2.0 * (q_f - j as f64) / q_f;
+    phi_robust += weight * weight * delta_j;
   }
   // `δ(j)` is normalised by the squared sum of all returns, not the sample variance (Lo-Mac eq.17
   // vs eq.18), so `φ*` takes a factor `nq` to stand on `φ`'s scale.

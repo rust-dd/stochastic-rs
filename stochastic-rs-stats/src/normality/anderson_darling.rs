@@ -16,7 +16,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
 use crate::traits::RealExt;
 
 /// Configuration for the Anderson-Darling normality test.
@@ -99,7 +99,7 @@ pub fn anderson_darling_normal_test(
   validate(&sample, 8)?;
 
   reject_constant(&sample, "constant sample")?;
-  let (mut sorted, _) = unit_scaled(sample.into_owned());
+  let (mut sorted, _) = about_mean(sample.into_owned());
   sorted.sort_by(f64::nan_last);
   let n = sorted.len();
   let n_f = n as f64;

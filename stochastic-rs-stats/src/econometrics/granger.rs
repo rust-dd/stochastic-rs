@@ -11,11 +11,10 @@ use stochastic_rs_distributions::special::beta_i as beta_reg;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
-use crate::stationarity::common::centred;
+use crate::stationarity::common::about_mean;
 use crate::stationarity::common::nested_f;
 use crate::stationarity::common::prepared;
 use crate::stationarity::common::reject_exact_fit;
-use crate::stationarity::common::unit_scaled;
 
 /// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
 #[derive(Debug, Clone)]
@@ -65,10 +64,9 @@ pub fn granger_causality_test(
   let needed = lags.saturating_mul(3).saturating_add(3);
   // `F` sees neither a series' level nor its unit: about its mean and at its own power of two,
   // each keeps its digits beside the constant and every square in range.
-  let about_mean = |v: Vec<f64>| unit_scaled(centred(&v)).0;
   let (y, x) = (
-    about_mean(prepared(y, needed)?),
-    about_mean(prepared(x, needed)?),
+    about_mean(prepared(y, needed)?).0,
+    about_mean(prepared(x, needed)?).0,
   );
   let n_total = y.len();
   let n = n_total - lags;
@@ -129,9 +127,12 @@ fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> Result<(Array1<f64>, f64), Stats
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use ndarray::Array2;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::RealExt;
   use stochastic_rs_distributions::SimdDistribution;
+  use stochastic_rs_distributions::linalg::symmetric_eigen;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -302,7 +303,7 @@ mod tests {
   }
 
   /// `c + k ulp(c)` is exact, so `F` on neighbouring doubles is the integers' `F`, to the solve's
-  /// rounding `m ε κ²`: `300 · 2.2e-16 · κ²` is under `1e-9` for a centred design's `κ` below 120.
+  /// rounding `m ε κ²`, `κ²` the condition number of the centred lags' correlation matrix.
   #[test]
   fn granger_reads_series_of_neighbouring_doubles_as_their_integers() {
     for spread in [60.0, 600.0] {
@@ -327,11 +328,23 @@ mod tests {
         "spread {spread}: F {}",
         integers.statistic
       );
+      let lags = [&y[1..299], &y[..298], &x[1..299], &x[..298]].map(|lag| {
+        let mean = lag.iter().sum::<f64>() / 298.0;
+        let deviations = lag.iter().map(|v| v - mean).collect::<Vec<_>>();
+        let norm = deviations.iter().map(|d| d * d).sum::<f64>().sqrt();
+        deviations.iter().map(|d| d / norm).collect::<Vec<_>>()
+      });
+      let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(u, v)| u * v).sum::<f64>();
+      let correlations = Array2::from_shape_fn((4, 4), |(i, j)| dot(&lags[i], &lags[j]));
+      let (roots, _) = symmetric_eigen(correlations.view()).unwrap();
+      let condition =
+        f64::max_or_nan_fold(roots.iter().copied()) / f64::min_or_nan_fold(roots.iter().copied());
+      let bound = 298.0 * f64::EPSILON * condition;
       for (y_level, x_level) in [(1.0, 1.0), (3.0, 1e8), (1e8, 5.0), (7e5, 7e5)] {
         let lifted = at(y_level, x_level);
         let gap = (lifted.statistic - integers.statistic).abs() / integers.statistic;
         assert!(
-          gap < 1e-9,
+          gap <= bound,
           "spread {spread}, levels {y_level}, {x_level}: F {} against the integers' {}",
           lifted.statistic,
           integers.statistic

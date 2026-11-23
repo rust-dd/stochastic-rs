@@ -17,10 +17,10 @@ const EXACT_FIT: f64 = 1e-24;
 
 /// `y` less its mean, twice: the second pass takes off the rounding of the first's mean, as large
 /// as the variation itself where the level dwarfs it; scale `y` first, the sum overflows.
-pub(crate) fn centred(y: &[f64]) -> Vec<f64> {
+pub(crate) fn centred<T: RealExt>(y: &[T]) -> Vec<T> {
   let mut deviations = y.to_vec();
   for _ in 0..2 {
-    let mean = deviations.iter().sum::<f64>() / deviations.len() as f64;
+    let mean = deviations.iter().copied().sum::<T>() / T::from_usize_(deviations.len());
     deviations.iter_mut().for_each(|v| *v -= mean);
   }
   deviations
@@ -89,6 +89,33 @@ pub(crate) fn in_data_units(v: f64, unit: f64, power: f64) -> Result<f64, StatsE
       stage: "data scale",
     })
   }
+}
+
+/// `y` at unit scale, [`centred`], at the unit of what is left, with the two units: what a statistic
+/// free of level and unit reads, as a level at unit scale leaves a spread of rounding beside it.
+pub(crate) fn about_mean<T: RealExt>(y: Vec<T>) -> (Vec<T>, [T; 2]) {
+  let (at_unit, unit) = unit_scaled(y);
+  let (deviations, spread_unit) = unit_scaled(centred(&at_unit));
+  (deviations, [unit, spread_unit])
+}
+
+/// `params` fitted to the data times `unit`, in the data's units (`params[i]` as `unit^powers[i]`);
+/// `Numerical` where one is not finite, or leaves the double range or rounds to zero there.
+pub(crate) fn params_in_data_units<const K: usize>(
+  params: [f64; K],
+  unit: f64,
+  powers: [usize; K],
+) -> Result<[f64; K], StatsError> {
+  if !params.iter().all(|p| p.is_finite()) {
+    return Err(StatsError::Numerical { stage: "estimate" });
+  }
+  let mapped: [f64; K] = std::array::from_fn(|i| per_unit(params[i], unit, powers[i]));
+  if (0..K).any(|i| !mapped[i].is_finite() || (mapped[i] == 0.0 && params[i] != 0.0)) {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  Ok(mapped)
 }
 
 /// `v`, read off data times `unit`, divided by `unit` `power` times: one factor at a time, so that

@@ -17,7 +17,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
 use crate::traits::RealExt;
 
 /// Configuration for the Shapiro-Francia normality test.
@@ -113,7 +113,7 @@ pub fn shapiro_francia_test(
   validate(&sample, 8)?;
 
   reject_constant(&sample, "constant sample")?;
-  let (mut obs, _) = unit_scaled(sample.to_vec());
+  let (mut obs, _) = about_mean(sample.to_vec());
   obs.sort_by(f64::nan_last);
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 

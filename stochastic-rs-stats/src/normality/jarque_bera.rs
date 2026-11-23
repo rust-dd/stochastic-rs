@@ -12,7 +12,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
 
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
@@ -63,7 +63,7 @@ pub fn jarque_bera_test(
   let sample = as_slice_or_copy(sample);
   validate(&sample, 8)?;
   reject_constant(&sample, "constant sample")?;
-  let (sample, _) = unit_scaled(sample.into_owned());
+  let (sample, _) = about_mean(sample.into_owned());
 
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;

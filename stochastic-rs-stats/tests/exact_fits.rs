@@ -251,8 +251,8 @@ fn an_exact_fit_on_an_ill_conditioned_design_is_refused_at_every_scale() {
   }
 }
 
-/// A walk of AR(0.9) steps keeps its statistic at `ar_lags = 4`: the AR fit in levels is
-/// ill-conditioned but resolved, so neither the bound nor the exact-fit rule refuses it.
+/// A walk of AR(0.9) steps keeps its statistic at `ar_lags = 4`: ill-conditioned but resolved. One
+/// ulp on each input moves it a relative `2.1e-11` (`4e-12` here), so the pin is `1e-10`.
 #[test]
 fn leybourne_mccabe_keeps_a_persistent_walk_at_ar_lags_four() {
   let e = normals(2, 2000);
@@ -271,7 +271,7 @@ fn leybourne_mccabe_keeps_a_persistent_walk_at_ar_lags_four() {
   assert!(
     got
       .as_ref()
-      .is_ok_and(|s| (s - 0.19692802354343703).abs() <= 1e-12),
+      .is_ok_and(|s| (s - 0.19692802354343703).abs() <= 1e-10),
     "{got:?}"
   );
 }

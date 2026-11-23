@@ -18,11 +18,11 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
-use crate::evt::gpd::params_in_data_units;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::params_in_data_units;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 

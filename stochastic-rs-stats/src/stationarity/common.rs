@@ -10,9 +10,11 @@ use crate::traits::RealExt;
 
 mod scale;
 
+pub(crate) use scale::about_mean;
 pub(crate) use scale::centred;
 pub(crate) use scale::columns_unit_scaled;
 pub(crate) use scale::in_data_units;
+pub(crate) use scale::params_in_data_units;
 pub(crate) use scale::per_unit;
 pub(crate) use scale::prepared;
 pub(crate) use scale::prepared_with_unit;

@@ -20,7 +20,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate_view;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
 use crate::traits::FloatExt;
 
 /// Biased-denominator sample ACF (statsmodels' default), Box–Jenkins §2.1.4; `Err` on at most
@@ -37,7 +37,7 @@ pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Result<Array1<T>, S
   validate_view(x, max_lag.saturating_add(1))?;
   let x = as_slice_or_copy(x);
   reject_constant(&x, "constant series")?;
-  let (x, _) = unit_scaled(x.into_owned());
+  let (x, _) = about_mean(x.into_owned());
   let n = x.len();
 
   let mean = x.iter().copied().sum::<T>() / T::from_usize_(n);

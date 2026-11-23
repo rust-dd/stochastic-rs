@@ -60,7 +60,13 @@ fn normals(seed: u64, n: usize, sd: f64) -> Vec<f64> {
 /// A sample at a decimal size and its twin `2^k` times it, an exact product: at the ends of the
 /// doubles the twin is of ordinary size, so the pair pins the end's answer to the ordinary one.
 fn twins(sample: &[f64], reach: i32) -> Vec<(Array1<f64>, Array1<f64>, f64)> {
-  let ends = [(1e-200, 664_i32), (1e-170, 565), (1e300, -996)];
+  let ends = [
+    (1e-200, 664_i32),
+    (1e-170, 565),
+    (1e300, -996),
+    (1e-60, 199),
+    (1e60, -199),
+  ];
   let near = [
     (1.0, -1_i32),
     (1.0, 1),
@@ -580,4 +586,61 @@ fn johansen_and_the_vecm_answer_one_way_at_every_power_of_two_of_each_series() {
       .unwrap_err(),
     DATA_SCALE
   );
+}
+
+/// Integers of an AR(1) at slope 0.4 between 0 and `spread`.
+fn integers(n: usize, spread: f64) -> Vec<f64> {
+  let mut state = 0.0;
+  let step = |z: &f64| {
+    state = 0.4 * state + z;
+    (0.5 * spread + 0.15 * spread * state)
+      .round()
+      .clamp(0.0, spread)
+  };
+  normals(27, n, 1.0).iter().map(step).collect()
+}
+
+/// `c + k ulp(c)` is exact, so a sample of neighbouring doubles is its integers moved and scaled:
+/// a test free of both answers for the integers, to the sums' rounding `n² ε` in standard units.
+#[test]
+fn the_location_free_tests_read_neighbouring_doubles_as_their_integers() {
+  let n = 256;
+  let bound = (n * n) as f64 * f64::EPSILON * 20.0;
+  let answers = |x: &Array1<f64>, ulp: f64| {
+    let cfg = LoMacKinlayConfig {
+      input_is_log_prices: false,
+      ..LoMacKinlayConfig::default()
+    };
+    [
+      anderson_darling_normal_test(x.view(), AndersonDarlingConfig::default())
+        .unwrap()
+        .statistic,
+      jarque_bera_test(x.view(), JarqueBeraConfig::default())
+        .unwrap()
+        .statistic,
+      shapiro_francia_test(x.view(), ShapiroFranciaConfig::default())
+        .unwrap()
+        .statistic,
+      acf(x.view(), 1).unwrap()[0],
+      lo_mackinlay_test(x.view(), cfg).unwrap().variance_ratio,
+      silverman_bandwidth(x.view()).unwrap() / ulp,
+      Dfa::default().estimate(x.view()).unwrap().hurst,
+    ]
+  };
+  for spread in [40.0, 600.0] {
+    let steps = integers(n, spread);
+    let theirs = answers(&Array1::from_vec(steps.clone()), 1.0);
+    // At `1e-250` a step, and so the bandwidth in the data's units, is still a normal double.
+    for level in [1.0_f64, 3.0, 1e300, 1e-250, -7e5] {
+      let ulp = level.abs().next_up() - level.abs();
+      let lifted = Array1::from_iter(steps.iter().map(|k| level + k * ulp));
+      let ours = answers(&lifted, ulp);
+      for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
+        assert!(
+          (a - b).abs() <= bound * (1.0 + b.abs()),
+          "spread {spread}, level {level}, statistic {i}: {a} against the integers' {b}"
+        );
+      }
+    }
+  }
 }
