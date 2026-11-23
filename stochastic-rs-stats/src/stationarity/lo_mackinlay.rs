@@ -24,6 +24,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::stationarity::common::unit_scaled;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
@@ -97,6 +98,7 @@ pub fn lo_mackinlay_test(
     raw.to_vec()
   };
   reject_constant(&returns, "zero-variance increments")?;
+  let (returns, _) = unit_scaled(returns);
 
   let nq = returns.len();
   let nq_f = nq as f64;
@@ -112,9 +114,6 @@ pub fn lo_mackinlay_test(
     var1 += d * d;
   }
   var1 /= nq_f - 1.0;
-  if var1 <= 0.0 {
-    return Err(StatsError::DegenerateData("zero-variance increments"));
-  }
 
   // Overlapping `q`-period variance (Lo-Mac eq.7) with the unbiased denominator `m`, whose `q`
   // puts it on the one-period scale: `VR = σ_c²(q) / σ_a²(1)` with no further factor.

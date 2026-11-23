@@ -14,10 +14,10 @@ use ndarray::ArrayView1;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
-use crate::input::mean_in_order;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::RealExt;
 
 /// Gaussian KDE over a copy of the sample.
@@ -93,17 +93,14 @@ pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let sample = as_slice_or_copy(data);
   validate(&sample, 2)?;
   reject_constant(&sample, "zero spread")?;
-  let nf = data.len() as f64;
-  let mean = mean_in_order(data);
-  let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
-  let mut sorted = sample.into_owned();
+  let (mut sorted, unit) = unit_scaled(sample.into_owned());
+  let nf = sorted.len() as f64;
+  let mean = sorted.iter().sum::<f64>() / nf;
+  let std = (sorted.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
   sorted.sort_by(f64::nan_last);
   let iqr = quantile_sorted(&sorted, 0.75) - quantile_sorted(&sorted, 0.25);
   let scale = if iqr > 0.0 { std.min(iqr / 1.34) } else { std };
-  if scale == 0.0 {
-    return Err(StatsError::DegenerateData("zero spread"));
-  }
-  let h = 0.9 * scale * nf.powf(-1.0 / 5.0);
+  let h = 0.9 * scale * nf.powf(-1.0 / 5.0) / unit;
   if h.is_finite() && h > 0.0 {
     Ok(h)
   } else {

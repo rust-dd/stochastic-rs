@@ -21,6 +21,7 @@ use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
 use crate::input::reject_constant;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Detrended fluctuation analysis Hurst estimator.
@@ -118,6 +119,7 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
 
     let xs = to_f64_vec::<T>(x);
     reject_constant(&xs, "constant series")?;
+    let (xs, unit) = unit_scaled(xs);
     let mean: f64 = xs.iter().sum::<f64>() / xs.len() as f64;
 
     // Integrate (or skip integration when the caller already did so).
@@ -199,10 +201,10 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
       nobs: n,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(alpha),
-        intercept: T::from_f64_fast(intercept),
+        intercept: T::from_f64_fast(intercept - unit.ln()),
         r_squared: T::from_f64_fast(r_squared),
         log_scales: log_s.into_iter().map(T::from_f64_fast).collect(),
-        log_stats: log_f.into_iter().map(T::from_f64_fast).collect(),
+        log_stats: (log_f.iter().map(|f| T::from_f64_fast(f - unit.ln()))).collect(),
       },
     })
   }
