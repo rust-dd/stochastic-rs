@@ -24,18 +24,42 @@ pub(crate) fn centred(y: &[f64]) -> Vec<f64> {
   deviations
 }
 
-/// The power of two nearest the inverse of the largest magnitude in `y`.
-fn unit_scale(y: &[f64]) -> f64 {
-  let spread = f64::max_or_nan_fold(y.iter().map(|v| v.abs()));
-  2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022))
+/// `2^k` for a `k` whose power is a normal double.
+fn two_to(k: i32) -> f64 {
+  f64::from_bits(((1023 + k) as u64) << 52)
+}
+
+/// The `k` whose `2^k` is nearest `size` in ratio, from its binary exponent and mantissa: a rounded
+/// `log2` reads the exponent into the answer beside `√2`. 0 unless `size` is positive and finite.
+fn nearest_power_of_two(size: f64) -> i32 {
+  if !(size > 0.0 && size.is_finite()) {
+    return 0;
+  }
+  let (normal, shift) = if size < f64::MIN_POSITIVE {
+    (size * two_to(54), -54)
+  } else {
+    (size, 0)
+  };
+  let bits = normal.to_bits();
+  let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023 + shift;
+  let mantissa = f64::from_bits((bits & ((1 << 52) - 1)) | (1023 << 52));
+  exponent + i32::from(mantissa >= std::f64::consts::SQRT_2)
+}
+
+/// The power of two nearest the inverse of the largest magnitude in `y`, held inside `T`'s range.
+fn unit_scale<T: RealExt>(y: &[T]) -> T {
+  let size = T::max_or_nan_fold(y.iter().map(|v| v.abs()));
+  let range = nearest_power_of_two(T::max_value().to_f64().unwrap()) - 2;
+  let k = nearest_power_of_two(size.to_f64().unwrap()).clamp(-range, range);
+  T::from_f64_fast(two_to(-k))
 }
 
 /// `y` times its [`unit_scale`], and that scale: exact, it leaves a scale-free statistic as it is
 /// and puts it on the scale of the trend terms beside it.
-pub(crate) fn unit_scaled(mut y: Vec<f64>) -> (Vec<f64>, f64) {
+pub(crate) fn unit_scaled<T: RealExt>(mut y: Vec<T>) -> (Vec<T>, T) {
   let unit = unit_scale(&y);
   for v in &mut y {
-    *v *= unit;
+    *v = *v * unit;
   }
   (y, unit)
 }
@@ -93,4 +117,39 @@ pub(crate) fn reject_exact_fit(
     return Err(StatsError::DegenerateData("zero residual variance"));
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A power of two moves no bit: the unit of `m 2^e` is the unit of `m` over `2^e`, also for the
+  /// mantissas beside `√2`, where a rounded `log2` reads the exponent into its answer.
+  #[test]
+  fn the_unit_of_a_series_follows_a_power_of_two_exactly() {
+    let root = std::f64::consts::SQRT_2.to_bits();
+    for offset in (-2000_i64..=2000).step_by(125).chain([-1, 0, 1]) {
+      let mantissa = f64::from_bits(root.wrapping_add_signed(offset));
+      let unit = unit_scale(&[mantissa]);
+      for e in [-1000, -700, -52, -3, -1, 1, 3, 52, 700, 1000] {
+        let scaled = unit_scale(&[-mantissa * two_to(e)]);
+        assert_eq!(
+          scaled * two_to(e),
+          unit,
+          "mantissa √2 {offset:+} ulps at 2^{e}"
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn the_unit_is_the_nearest_power_of_two_to_the_inverse_of_the_largest_size() {
+    for (size, unit) in [(1.0, 1.0), (1.4, 1.0), (1.5, 0.5), (0.7, 2.0), (0.75, 1.0)] {
+      assert_eq!(unit_scale(&[0.1 * size, -size]), unit, "{size}");
+    }
+    assert_eq!(unit_scale(&[5e-324_f64]), two_to(1022));
+    assert_eq!(unit_scale(&[f64::MAX]), two_to(-1022));
+    assert_eq!(unit_scale(&[3.0e-45_f32, 0.0]), 2f32.powi(126));
+    assert_eq!(unit_scale(&[0.0_f64, -0.0]), 1.0);
+  }
 }
