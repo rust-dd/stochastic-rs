@@ -405,11 +405,12 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   let (x, unit) = unit_scaled(x);
   let Ar1 {
     lagged_mean,
-    next_mean,
+    mean_step,
     beta,
     residuals,
   } = Ar1::of(&x, DiffusionKind::OrnsteinUhlenbeck)?;
-  let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
+  // `(next − β lagged)/(1 − β)` cancels at the level; the two means differ by the mean step.
+  let mu = lagged_mean + mean_step / (1.0 - beta);
   let theta = -beta.ln() / dt;
 
   let mf = residuals.len() as f64;
@@ -442,7 +443,8 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
 /// `x[1..]` regressed on `x[..n-1]` about their means, the closed form's slope and residuals.
 pub(crate) struct Ar1 {
   lagged_mean: f64,
-  next_mean: f64,
+  /// `(x[n-1] − x[0]) / (n − 1)`, the regressand's mean less the regressor's.
+  mean_step: f64,
   beta: f64,
   residuals: Vec<f64>,
 }
@@ -460,8 +462,10 @@ impl Ar1 {
     let mf = m as f64;
 
     // About the means, as raw sums cancel where the level dwarfs the spread.
-    let lagged_mean = lagged.iter().sum::<f64>() / mf;
-    let next_mean = next.iter().sum::<f64>() / mf;
+    let first_mean = lagged.iter().sum::<f64>() / mf;
+    // The first mean's rounding is the mean of the deviations from it; one rounding at the level.
+    let lagged_mean = first_mean + lagged.iter().map(|u| u - first_mean).sum::<f64>() / mf;
+    let mean_step = (x[m] - x[0]) / mf;
     let (lagged, next) = (centred(lagged), centred(next));
     let sxy = lagged.iter().zip(&next).map(|(u, v)| u * v).sum::<f64>();
     let sxx = lagged.iter().map(|u| u * u).sum::<f64>();
@@ -487,7 +491,7 @@ impl Ar1 {
     reject_exact_fit(&next, &residuals, 1.0)?;
     Ok(Self {
       lagged_mean,
-      next_mean,
+      mean_step,
       beta,
       residuals,
     })

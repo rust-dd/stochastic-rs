@@ -546,6 +546,13 @@ fn the_ou_closed_form_reads_a_path_of_neighbouring_doubles_as_its_integers() {
         "spread {spread}, level {level}: sigma {sigma} against {}",
         reference.sigma
       );
+      // The level is one rounded mean at `ulp(c)`, and the step over `1 − β` one more.
+      let mu = (fit.mu - level) / ulp;
+      assert!(
+        (mu - reference.mu).abs() <= 1.0 + 1.0 / (1.0 - theirs),
+        "spread {spread}, level {level}: mu {mu} lattice steps against {}",
+        reference.mu
+      );
     }
   }
 }
