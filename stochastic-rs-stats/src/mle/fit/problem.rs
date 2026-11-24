@@ -217,7 +217,7 @@ impl<'a> MleProblem<'a> {
   }
 
   /// What steps along one parameter find beside `at`, in the problem's units: each axis varies on
-  /// `1 + |z|` there, the gradient's own step.
+  /// `1 + |z|` there, the gradient's own step. The point of the gain is in the parameters' units.
   pub(super) fn beside(&self, at: &[f64]) -> Beside {
     let z = self.units.of(at);
     let axis = |i: usize| Axis {
@@ -228,7 +228,9 @@ impl<'a> MleProblem<'a> {
     let axes = (0..z.len()).map(axis).collect::<Vec<_>>();
     let valued =
       |z: &[f64]| Some(self.eval_nll(&self.units.scaled(z))).filter(|cost| *cost < NO_LIKELIHOOD);
-    beside(valued, &z, &axes, self.sample.len() - 1)
+    let mut read = beside(valued, &z, &axes, self.sample.len() - 1);
+    read.best = self.units.params(&read.best);
+    read
   }
 
   pub(super) fn eval_nll(&self, params: &[f64]) -> f64 {

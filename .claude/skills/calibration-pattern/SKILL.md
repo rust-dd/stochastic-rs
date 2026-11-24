@@ -7,7 +7,7 @@ description: How to implement a model calibrator in stochastic-rs (BSM, Heston, 
 
 A calibrator in `stochastic-rs-quant` takes its market data in its constructor,
 fits a model from a start and returns a `Calibrated<Params, D>` or a `QuantError`.
-Sixteen quant calibrators share this one shape
+Seventeen quant calibrators share this one shape
 (`stochastic-rs-quant/tests/calibration_errors.rs` asserts `Send + Sync` for each);
 `ToModel` and `ToShortRateModel` bridge a result to the pricer or lattice model it
 determines.
@@ -71,13 +71,14 @@ pub struct Calibrated<P, D = ()> {
 ```
 
 `D` holds output beside the parameters (`SmileStrikes` for `SabrSmileCalibrator`,
-the inner Heston fit for `HestonSlvCalibrator`) and is `()` everywhere else.
+the inner Heston fit for `HestonSlvCalibrator`, the `RoughHestonCf` a
+`RoughHestonCalibrator` priced by) and is `()` everywhere else.
 `CalibrationHistory<P> { iteration, params, residuals, loss }` holds the start as
 entry 0 and then each accepted iterate, when the options record history; the trail
 belongs to the result, never to the calibrator.
 
 `CalibrationOptions { max_iterations, tolerance, patience, record_history,
-loss_metrics, regularization }` is the knob set fifteen of the sixteen take through
+loss_metrics, regularization }` is the knob set sixteen of the seventeen take through
 `with_options`; `SabrSmileCalibrator` keeps its basin-hopping knobs
 (`with_basin_hopping_iters`, `with_short_tenor_threshold`, `with_strike_bounds`,
 `with_success_tol`). `max_iterations: None` keeps each optimiser's own cap (the
@@ -288,7 +289,7 @@ file you are copying from rather than assuming.
   (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`), which pass their own
   `LmOptions`. Two wrappers drive the same core: Heston and CGMYSV call
   `reseat::minimize_reseated`, which restarts a fit stopped on a saturated logistic
-  coordinate, and the boxed fits (HKDE, SVJ, Double Heston and Lévy) call
+  coordinate, and the boxed fits (HKDE, SVJ, Double Heston, Lévy and rough Heston) call
   `least_squares::minimize_in_box`, which holds a coordinate on a bound its step
   reaches when the cost falls across it.
   - **The pull.** The core appends `CalibrationOptions::regularization`'s rows

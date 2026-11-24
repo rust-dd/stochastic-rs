@@ -28,6 +28,7 @@ use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 use crate::input::validate_rows;
 use crate::stationarity::common::columns_unit_scaled;
+use crate::stationarity::common::has_constant_column;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -162,13 +163,6 @@ pub fn reset_test(
     df_num,
     df_den,
   })
-}
-
-/// Whether a column of `x` holds one nonzero value throughout, which puts the constant in its span.
-fn has_constant_column(x: ArrayView2<f64>) -> bool {
-  x.columns()
-    .into_iter()
-    .any(|c| c[0] != 0.0 && c.iter().all(|v| *v == c[0]))
 }
 
 fn standardised(v: &[f64]) -> Vec<f64> {

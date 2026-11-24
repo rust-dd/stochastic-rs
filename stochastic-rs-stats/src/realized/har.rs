@@ -22,7 +22,9 @@ use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::centred;
 use crate::stationarity::common::params_in_data_units;
+use crate::stationarity::common::per_unit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -65,7 +67,12 @@ impl HarRv {
     let rv = as_slice_or_copy(daily_rv);
     validate(&rv, MONTHLY_LAGS + 6)?;
     reject_constant(&rv, "constant series")?;
-    let (rv, unit) = unit_scaled(rv.into_owned());
+    let rv = rv.iter().map(|v| v.to_f64().unwrap()).collect::<Vec<_>>();
+    let (rv, unit) = unit_scaled(rv);
+    // The fit is of the deviations from the level, which its constant absorbs and maps back.
+    let first_mean = rv.iter().sum::<f64>() / rv.len() as f64;
+    let level = first_mean + rv.iter().map(|v| v - first_mean).sum::<f64>() / rv.len() as f64;
+    let (rv, spread_unit) = unit_scaled(centred(&rv));
     let (x, y) = build_design_matrix(ArrayView1::from(&rv));
     let beta = ols(&x, &y);
     let resid = residuals(&x, &y, &beta);
@@ -78,8 +85,9 @@ impl HarRv {
     } else {
       1.0 - rss / tss
     };
-    let unit = unit.to_f64().unwrap();
-    let [intercept, rss] = params_in_data_units([beta[0], rss], unit, [1, 2])?;
+    let intercept = beta[0] / spread_unit + level * (1.0 - beta[1] - beta[2] - beta[3]);
+    let rss = per_unit(rss, spread_unit, 2);
+    let [intercept, rss] = params_in_data_units([intercept, rss], unit, [1, 2])?;
     Ok(Self {
       fit: HarFit {
         intercept,

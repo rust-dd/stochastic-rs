@@ -7,6 +7,7 @@ use super::GarchKind;
 use super::GarchSpec;
 use super::MeanSpec;
 use crate::StatsError;
+use crate::stationarity::common::in_the_doubles;
 use crate::stationarity::common::per_unit;
 
 /// `ω`'s place in the flat layout, after `μ` where the mean is estimated.
@@ -31,7 +32,7 @@ fn egarch_shift(unit: f64) -> f64 {
 }
 
 /// `natural`, fitted to the returns times `unit`, in the returns' units; `Numerical` where one
-/// leaves the double range there, or a nonzero one that scales rounds to zero.
+/// leaves the normal doubles there.
 pub(super) fn params(spec: &GarchSpec, natural: &[f64], unit: f64) -> Result<Vec<f64>, StatsError> {
   let mut out = natural
     .iter()
@@ -42,12 +43,8 @@ pub(super) fn params(spec: &GarchSpec, natural: &[f64], unit: f64) -> Result<Vec
     let beta = natural[natural.len() - spec.q..].iter().sum::<f64>();
     out[omega_index(spec)] -= egarch_shift(unit) * (1.0 - beta);
   }
-  let lost =
-    |i: usize| !out[i].is_finite() || (power(spec, i) > 0 && out[i] == 0.0 && natural[i] != 0.0);
-  if (0..out.len()).any(lost) {
-    return Err(StatsError::Numerical {
-      stage: "data scale",
-    });
+  for (value, fitted) in out.iter().zip(natural) {
+    in_the_doubles(*value, *fitted)?;
   }
   Ok(out)
 }

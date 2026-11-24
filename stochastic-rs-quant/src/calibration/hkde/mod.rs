@@ -38,6 +38,7 @@ mod loss;
 mod params;
 
 pub use calibrator::HkdeCalibrator;
+pub(crate) use loss::market_weight;
 
 use crate::calibration::Calibrated;
 use crate::pricing::fourier::HkdeParams;

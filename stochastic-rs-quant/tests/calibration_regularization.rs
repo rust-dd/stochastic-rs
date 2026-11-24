@@ -12,6 +12,7 @@ use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
 use stochastic_rs_quant::calibration::levy::LevyCalibrator;
 use stochastic_rs_quant::calibration::levy::LevyModelType;
 use stochastic_rs_quant::calibration::levy::LevyParams;
+use stochastic_rs_quant::calibration::rough_heston::RoughHestonCalibrator;
 use stochastic_rs_quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs_quant::calibration::svj::SvjCalibrator;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
@@ -24,6 +25,9 @@ use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::HkdeFourier;
 use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
+use stochastic_rs_quant::pricing::fourier::RoughHeston;
+use stochastic_rs_quant::pricing::fourier::RoughHestonCf;
+use stochastic_rs_quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
@@ -212,6 +216,18 @@ fn cgmysv_holds_v0_at_its_anchor_through_its_logistic_coordinates() {
 }
 
 #[test]
+fn rough_heston_holds_its_hurst_exponent_at_its_anchor() {
+  let truth = RoughHestonParams::new(0.04, 1.0, 0.04, 0.3, -0.65, 0.1);
+  let model = RoughHeston::new(truth, RoughHestonCf::default());
+  let fit = RoughHestonCalibrator::new(S, R, Q, quotes(&model, &[90.0, 100.0, 110.0], 0.25))
+    .with_start(truth)
+    .with_options(pull(6, 5, 0.2))
+    .calibrate(None)
+    .unwrap();
+  near("hurst", fit.params.hurst, 0.2);
+}
+
+#[test]
 fn a_pull_of_another_length_is_each_fits_dimension_mismatch() {
   let wrong = || {
     CalibrationOptions::default()
@@ -271,7 +287,14 @@ fn a_pull_of_another_length_is_each_fits_dimension_mismatch() {
     ),
     (
       8,
-      CgmysvCalibrator::new(S, R, Q, market)
+      CgmysvCalibrator::new(S, R, Q, market.clone())
+        .with_options(wrong())
+        .calibrate(None)
+        .map(drop),
+    ),
+    (
+      6,
+      RoughHestonCalibrator::new(S, R, Q, market)
         .with_options(wrong())
         .calibrate(None)
         .map(drop),

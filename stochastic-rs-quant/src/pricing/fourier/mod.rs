@@ -21,6 +21,7 @@ mod hybrid;
 mod levy;
 mod pricer;
 mod quadrature;
+mod rough_heston;
 
 pub use bsm::BsmFourier;
 pub use cos::CosEngine;
@@ -44,6 +45,9 @@ pub use levy::VarianceGammaFourier;
 pub use pricer::CarrMadanPricer;
 pub use quadrature::GilPelaezPricer;
 pub use quadrature::LewisPricer;
+pub use rough_heston::RoughHeston;
+pub use rough_heston::RoughHestonCf;
+pub use rough_heston::RoughHestonParams;
 
 /// Trait for models that expose a characteristic function of the log-price,
 /// enabling pricing via Fourier inversion.

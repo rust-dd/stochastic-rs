@@ -23,6 +23,7 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
 use crate::stationarity::common::centred;
+use crate::stationarity::common::in_the_doubles;
 use crate::stationarity::common::reject_exact_fit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
@@ -242,7 +243,7 @@ pub(crate) fn diffusion_path<T: FloatExt>(
 }
 
 /// `[θ, μ, σ]` of the path times `unit` in the path's own units, `x → cx` taking `μ` to `cμ` and
-/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` is not finite there, or `σ` zero.
+/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` leaves the normal doubles there.
 pub(crate) fn in_data_units(
   kind: DiffusionKind,
   [theta, mu, sigma]: [f64; 3],
@@ -252,13 +253,16 @@ pub(crate) fn in_data_units(
     DiffusionKind::OrnsteinUhlenbeck => unit,
     DiffusionKind::Cir => unit.sqrt(),
   };
-  let (mu, sigma) = (mu / unit, sigma / sigma_unit);
-  if !(mu.is_finite() && sigma.is_finite()) || sigma == 0.0 {
+  let in_units = [
+    in_the_doubles(mu / unit, mu)?,
+    in_the_doubles(sigma / sigma_unit, sigma)?,
+  ];
+  if in_units[1] == 0.0 {
     return Err(StatsError::Numerical {
       stage: "data scale",
     });
   }
-  Ok([theta, mu, sigma])
+  Ok([theta, in_units[0], in_units[1]])
 }
 
 /// What `transitions` log-densities of the path times `unit` lack of the path's own: a density of
