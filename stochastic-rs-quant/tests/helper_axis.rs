@@ -18,6 +18,7 @@ use stochastic_rs_quant::instruments::SwaptionDirection;
 use stochastic_rs_quant::instruments::VanillaInterestRateSwap;
 use stochastic_rs_quant::market::DepositRateHelper;
 use stochastic_rs_quant::market::FraRateHelper;
+use stochastic_rs_quant::market::FuturesRateHelper;
 use stochastic_rs_quant::market::Handle;
 use stochastic_rs_quant::market::Quote;
 use stochastic_rs_quant::market::RateHelper;
@@ -137,5 +138,29 @@ fn a_swap_helpers_curve_reprices_the_dated_swap_it_quotes() {
         );
       }
     }
+  }
+}
+
+/// A futures helper's convexity-adjusted rate, `σ²·t₁·t₂/2` on the axis' times, is the ACT/360
+/// forward its period reads on the ACT/365F axis.
+#[test]
+fn a_futures_helper_reprices_its_adjusted_forward_on_the_axis() {
+  let valuation = d(2025, 1, 1);
+  let (start, end) = (d(2025, 3, 19), d(2025, 6, 18));
+  let deposit = DepositRateHelper::new(quote(0.03), valuation, start, ACT360);
+  let future = FuturesRateHelper::new(quote(96.5), start, end, ACT360, 0.01);
+  let helpers: [&dyn RateHelper<f64>; 2] = [&deposit, &future];
+  let (t1, t2) = (
+    AXIS.year_fraction::<f64>(valuation, start),
+    AXIS.year_fraction::<f64>(valuation, end),
+  );
+  let adjusted = 0.035 - 0.5 * 0.01 * 0.01 * t1 * t2;
+  for method in METHODS {
+    let curve = build_curve(&helpers, valuation, AXIS, method).unwrap();
+    let rate = forward(&curve, valuation, start, end);
+    assert!(
+      (rate - adjusted).abs() < 1e-14,
+      "{method:?}: {rate} against {adjusted}"
+    );
   }
 }
