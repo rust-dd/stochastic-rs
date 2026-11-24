@@ -7,13 +7,14 @@ use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::traits::DistributionExt;
 
 use super::Sample;
-use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use super::words;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::Coordinate;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::traits::FloatExt;
 
 /// Hansen skew-t maximum-likelihood fit with location and scale.
@@ -41,9 +42,10 @@ pub struct SkewTFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and the normal
+  /// limit fits worse: stationary, not global.
   pub converged: bool,
-  /// `converged` or `iteration cap reached`.
+  /// `converged`, or why not: `not stationary`, `eta is not identified`, `iteration cap reached`, …
   pub message: String,
 }
 
@@ -72,7 +74,14 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
       starts.push(vec![mean, sd.ln(), (eta0 - 2.0).ln(), lambda0.atanh()]);
     }
   }
-  let (theta, iterations, converged) = minimise(&starts, objective);
+  let coordinates = [
+    Coordinate::location(mean, sd),
+    Coordinate::log(sd.ln()),
+    Coordinate::shape(0.0),
+    Coordinate::free(),
+  ];
+  let found = minimise(objective, by_differences, &starts, &coordinates, x.len());
+  let theta = &found.at;
   let natural = [
     theta[0],
     theta[1].exp(),
@@ -103,8 +112,8 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
     aic: 8.0 - 2.0 * fit.log_likelihood,
     bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
-    iterations,
-    converged,
-    message: words(converged),
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["mu", "sigma", "eta", "lambda"]),
   })
 }
