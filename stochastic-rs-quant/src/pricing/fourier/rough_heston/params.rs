@@ -2,6 +2,7 @@
 
 /// `V = V0 + K∗κ(θ − V) + K∗ν√V dW`, `K(t) = t^{H−½}/Γ(H+½)`, `d⟨W^S, W^v⟩ = ρ dt`.
 /// Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, (3), DOI 10.1111/mafi.12173
+/// Reference: Abi Jaber et al. (2019), Ann. Appl. Probab. 29(5), 3155–3200, DOI 10.1214/19-AAP1477
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RoughHestonParams {
   /// Initial variance (not a volatility).

@@ -151,8 +151,8 @@ fn the_three_characteristic_functions_agree_to_their_stated_accuracy() {
   }
 }
 
-/// 100 steps against 200: at the scheme's order `1 + α` the default's own error is under a third of
-/// the gap, 1e-5 where the gap is under 4e-5.
+/// 100 steps against 200: the errors' ratio is near 3, so the default's own is half the gap,
+/// under 2e-5 where the gap is under 4e-5.
 #[test]
 fn the_adams_price_has_converged_at_its_default_steps() {
   let (_, p) = SETS[0];

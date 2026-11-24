@@ -200,7 +200,7 @@ impl PadeCf {
     if !(-1.0..=0.0).contains(&xi.im) {
       return Complex64::new(f64::NAN, f64::NAN);
     }
-    // `φ(ξ) = conj φ(−ξ̄)` carries `Re ξ < 0` into the quarter plane of Gatheral & Radoičić's (1.7).
+    // `φ(ξ) = conj φ(−ξ̄)` carries `Re ξ < 0` into the quarter plane the approximant is built on.
     let value = if xi.re < 0.0 {
       super::chf(self, t, -xi.conj()).conj()
     } else {

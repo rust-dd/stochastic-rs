@@ -13,6 +13,8 @@
 //!
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173
 //! Reference: Gatheral & Radoičić (2019), IJTAF 22(3), 1950010, DOI 10.1142/S0219024919500109
+//! Reference: Gatheral & Radoičić (2024), arXiv:2310.09181
+//! Reference: Abi Jaber et al. (2019), Ann. Appl. Probab. 29(5), 3155–3200, DOI 10.1214/19-AAP1477
 //! Reference: Abi Jaber (2019), Quant. Finance 19(12), 1995–2013, DOI 10.1080/14697688.2019.1615113
 
 mod adams;
@@ -40,11 +42,11 @@ pub enum RoughHestonCf {
   /// The fractional Riccati equation by the Adams scheme on `steps` steps, its implicit corrector
   /// solved exactly: the reference, `O(steps²)` a frequency.
   Adams { steps: usize },
-  /// Gatheral & Radoičić's rational approximation of order 3 or 4: the fast one, within about
-  /// 1e-3 of Adams in implied vol for `ν ≤ 0.6`, and NaN off the strip `−1 ≤ Im ξ ≤ 0`.
+  /// Gatheral & Radoičić's rational approximation, order 3 or 4: fast, validated to `ν = 0.4` (use
+  /// `Adams` beyond); NaN off the strip `−1 ≤ Im ξ ≤ 0` and where a pole of it gives `|φ| > 1`.
   Pade { order: usize },
-  /// Abi Jaber's lifted model, `factors` factors on the geometric partition of ratio `ratio`, its
-  /// Riccati system by implicit Euler on `steps` steps: another model, near the rough one.
+  /// Abi Jaber's lifted model, `factors` factors on the geometric partition of ratio `ratio`, by
+  /// implicit Euler: another model near the rough one; 300 steps leave up to 4.7e-4 implied vol.
   Lifted {
     factors: usize,
     ratio: f64,
@@ -145,7 +147,8 @@ impl RoughHeston {
 }
 
 impl FourierModelExt for RoughHeston {
-  /// 1 at `t = 0`; NaN for a `t` that is negative or not finite, and under `Pade` off its strip.
+  /// 1 at `t = 0`; NaN for a `t` that is negative or not finite, and under `Pade` off its strip,
+  /// at any `t`, and where its value exceeds 1 in modulus.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     match &self.engine {
       Engine::Adams(cf) => chf(cf, t, xi),

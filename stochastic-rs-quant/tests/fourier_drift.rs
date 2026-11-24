@@ -113,7 +113,11 @@ fn heston_gil_pelaez_calls_match_the_carry_in_the_exponent() {
 #[test]
 fn rough_heston_is_drift_free_and_takes_the_carry_from_the_query() {
   let p = RoughHestonParams::new(0.04, 1.0, 0.04, 0.4, -0.65, 0.1);
-  for cf in [RoughHestonCf::Adams { steps: 50 }, RoughHestonCf::default()] {
+  for cf in [
+    RoughHestonCf::Adams { steps: 50 },
+    RoughHestonCf::default(),
+    RoughHestonCf::LIFTED,
+  ] {
     let m = RoughHeston::new(p, cf);
     let one = m.chf(1.0, Complex64::new(0.0, -1.0));
     assert_eq!(one, Complex64::ONE, "{cf:?}: E[e^X] = {one}");
