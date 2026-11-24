@@ -112,11 +112,7 @@ fn every_interpolation_reprices_a_swap_past_the_last_pillar() {
 
 #[test]
 fn a_schedule_swap_past_the_last_pillar_takes_the_same_node() {
-  let schedule = BootstrapInstrument::SwapWithSchedule {
-    rate: 0.04,
-    fixed_times: vec![1.0, 2.0, 3.0, 4.0, 5.0],
-    float_times: vec![5.0],
-  };
+  let schedule = BootstrapInstrument::swap_on_times(0.04, vec![1.0, 2.0, 3.0, 4.0, 5.0], vec![5.0]);
   for method in [LOG_LINEAR, LINEAR_ZERO] {
     let by_schedule = built(&[six_month_deposit(0.03), schedule.clone()], method);
     let by_frequency = built(&[six_month_deposit(0.03), annual_swap(5.0, 0.04)], method);

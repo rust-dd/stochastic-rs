@@ -221,11 +221,7 @@ fn deposit(maturity: f64, rate: f64) -> BootstrapInstrument<f64> {
 }
 
 fn schedule_swap(rate: f64, fixed: &[f64], float: &[f64]) -> BootstrapInstrument<f64> {
-  BootstrapInstrument::SwapWithSchedule {
-    rate,
-    fixed_times: fixed.to_vec(),
-    float_times: float.to_vec(),
-  }
+  BootstrapInstrument::swap_on_times(rate, fixed.to_vec(), float.to_vec())
 }
 
 fn quarters(n: usize) -> Vec<f64> {

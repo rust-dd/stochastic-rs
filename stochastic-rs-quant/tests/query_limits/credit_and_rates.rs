@@ -4,6 +4,7 @@
 use chrono::NaiveDate;
 use ndarray::array;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::credit::MertonStructural;
 use stochastic_rs_quant::curves::BootstrapInstrument;
@@ -148,14 +149,18 @@ fn a_rate_helpers_errors_name_every_quote_by_the_helpers_own_position() {
   struct Quoted(Option<BootstrapInstrument<f64>>);
 
   impl RateHelper<f64> for Quoted {
-    fn maturity(&self, _: NaiveDate) -> f64 {
+    fn maturity(&self, _: NaiveDate, _: DayCountConvention) -> f64 {
       self
         .0
         .as_ref()
         .map_or(f64::NAN, BootstrapInstrument::maturity)
     }
 
-    fn to_instrument(&self, _: NaiveDate) -> Option<BootstrapInstrument<f64>> {
+    fn to_instrument(
+      &self,
+      _: NaiveDate,
+      _: DayCountConvention,
+    ) -> Option<BootstrapInstrument<f64>> {
       self.0.clone()
     }
   }
@@ -174,14 +179,17 @@ fn a_rate_helpers_errors_name_every_quote_by_the_helpers_own_position() {
   }));
   let (unquoted, first, second) = (Quoted(None), deposit(), deposit());
   let date = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
-  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let (axis, method) = (
+    DayCountConvention::Actual365Fixed,
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
   let unsolved: [&dyn RateHelper<f64>; 3] = [&unquoted, &first, &swap];
-  match build_curve(&unsolved, date, method) {
+  match build_curve(&unsolved, date, axis, method) {
     Err(QuantError::Optimizer { reason, .. }) => assert!(reason.contains("quote 2 "), "{reason}"),
     other => panic!("{other:?}"),
   }
   let twice: [&dyn RateHelper<f64>; 3] = [&unquoted, &first, &second];
-  match build_curve(&twice, date, method) {
+  match build_curve(&twice, date, axis, method) {
     Err(QuantError::InvalidQuote { index: 2, reason }) => {
       assert!(reason.contains("quote 1's"), "{reason}")
     }

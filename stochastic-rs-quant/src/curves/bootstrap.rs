@@ -18,7 +18,6 @@ mod validate;
 pub use spec::BootstrapSpec;
 
 pub(super) use solve::trial_node;
-pub(crate) use validate::whole_periods;
 
 use self::segment::Segment;
 use super::discount_curve::DiscountCurve;
@@ -137,13 +136,14 @@ fn quote_node<T: RealExt>(
       BootstrapInstrument::SwapWithSchedule {
         rate,
         fixed_times,
+        fixed_accruals,
         float_times,
       },
       Some(discount),
     ) => dual_curve::swap_node(
       place,
       *rate,
-      fixed_times,
+      (fixed_times, fixed_accruals),
       float_times,
       discount,
       method,
@@ -214,8 +214,8 @@ fn single_curve_node<T: RealExt>(
     } => {
       let hundred = T::from_f64_fast(100.0);
       let futures_rate = (hundred - *price) / hundred;
-      let convexity_adj = T::from_f64_fast(0.5) * *sigma * *sigma * *start * *end;
-      let equation = single(*start, futures_rate - convexity_adj, *end - *start);
+      let convexity = futures_convexity(*sigma, *start, *end);
+      let equation = single(*start, futures_rate - convexity, *end - *start);
       node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::Swap {
@@ -232,15 +232,17 @@ fn single_curve_node<T: RealExt>(
       node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::SwapWithSchedule {
-      rate, fixed_times, ..
+      rate,
+      fixed_times,
+      fixed_accruals,
+      ..
     } => {
-      let earlier = &fixed_times[..fixed_times.len() - 1];
-      let previous = |i: usize| if i == 0 { T::zero() } else { earlier[i - 1] };
+      let last = fixed_times.len() - 1;
       let equation = Equation {
         start: T::zero(),
         rate: *rate,
-        accrual: maturity - earlier.last().copied().unwrap_or_else(T::zero),
-        coupons: (0..earlier.len()).map(move |i| (earlier[i], earlier[i] - previous(i))),
+        accrual: fixed_accruals[last],
+        coupons: (0..last).map(move |i| (fixed_times[i], fixed_accruals[i])),
       };
       node(place, maturity, method, quote, equation)
     }
@@ -409,6 +411,11 @@ impl<T: RealExt> Reads<T> {
       }
     }
   }
+}
+
+/// Hull's convexity adjustment `σ²·t₁·t₂/2`, a futures rate less it being the forward's.
+pub(crate) fn futures_convexity<T: RealExt>(sigma: T, start: T, end: T) -> T {
+  T::from_f64_fast(0.5) * sigma * sigma * start * end
 }
 
 /// The curve built so far at `t`; `InvalidQuote` when `t > 0` is read before any pillar exists.

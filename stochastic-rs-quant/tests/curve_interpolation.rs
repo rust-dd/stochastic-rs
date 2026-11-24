@@ -29,11 +29,7 @@ fn bootstrapped(
   let quotes: Vec<BootstrapInstrument<f64>> = schedules
     .iter()
     .zip(rates)
-    .map(|(times, &rate)| BootstrapInstrument::SwapWithSchedule {
-      rate,
-      fixed_times: times.to_vec(),
-      float_times: Vec::new(),
-    })
+    .map(|(times, &rate)| BootstrapInstrument::swap_on_times(rate, times.to_vec(), Vec::new()))
     .collect();
   bootstrap(BootstrapSpec::new(&quotes, method)).unwrap()
 }

@@ -66,11 +66,8 @@ fn quotes(
   for years in [1_usize, 2, 3, 5, 7] {
     let fixed: Vec<f64> = (1..=years).map(|i| i as f64).collect();
     let float: Vec<f64> = (1..=4 * years).map(|i| 0.25 * i as f64).collect();
-    q.push(BootstrapInstrument::SwapWithSchedule {
-      rate: par_rate(discount, tenor_df, &fixed, &float),
-      fixed_times: fixed,
-      float_times: float,
-    });
+    let rate = par_rate(discount, tenor_df, &fixed, &float);
+    q.push(BootstrapInstrument::swap_on_times(rate, fixed, float));
   }
   q
 }
@@ -134,11 +131,11 @@ fn deposit_and_fra_extend_the_short_end_multiplicatively() {
 #[test]
 fn rejects_swap_schedules_with_different_maturities() {
   let ois = flat(0.02);
-  let q = [BootstrapInstrument::SwapWithSchedule {
-    rate: 0.02,
-    fixed_times: vec![1.0, 2.0],
-    float_times: vec![0.5, 1.0, 1.5],
-  }];
+  let q = [BootstrapInstrument::swap_on_times(
+    0.02,
+    vec![1.0, 2.0],
+    vec![0.5, 1.0, 1.5],
+  )];
   assert!(matches!(
     forecast_curve(&q, &ois),
     Err(QuantError::InvalidQuote { index: 0, .. })

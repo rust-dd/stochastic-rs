@@ -67,10 +67,19 @@ pub(super) fn check<T: RealExt>(
     }
     BootstrapInstrument::SwapWithSchedule {
       fixed_times,
+      fixed_accruals,
       float_times,
       ..
     } => {
       increasing("fixed_times", fixed_times).or_else(bad)?;
+      let positive = fixed_accruals
+        .iter()
+        .all(|accrual| accrual.is_finite() && *accrual > T::zero());
+      if fixed_accruals.len() != fixed_times.len() || !positive {
+        return bad(format!(
+          "fixed_accruals must hold one finite positive accrual per fixed time, got {fixed_accruals:?}"
+        ));
+      }
       if !dual_curve {
         return Ok(());
       }
@@ -88,7 +97,7 @@ pub(super) fn check<T: RealExt>(
 }
 
 /// The whole number of `frequency` periods within 0.1 of `maturity · frequency`, at least one.
-pub(crate) fn whole_periods<T: RealExt>(maturity: T, frequency: Frequency) -> Option<usize> {
+fn whole_periods<T: RealExt>(maturity: T, frequency: Frequency) -> Option<usize> {
   let raw = maturity * T::from_f64_fast(f64::from(frequency.periods_per_year()));
   let rounded = raw.round();
   let whole = (raw - rounded).abs() < T::from_f64_fast(0.1) && rounded >= T::one();

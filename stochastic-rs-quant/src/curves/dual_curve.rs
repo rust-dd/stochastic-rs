@@ -23,14 +23,14 @@ use crate::traits::RealExt;
 pub(super) fn swap_node<T: RealExt>(
   place: Place<'_, T>,
   rate: T,
-  fixed_times: &[T],
+  (fixed_times, fixed_accruals): (&[T], &[T]),
   float_times: &[T],
   discount: &DiscountCurve<T>,
   method: InterpolationMethod,
   index: usize,
 ) -> Result<T, QuantError> {
   let maturity = fixed_times.last().copied().unwrap_or_else(T::nan);
-  let fixed_pv = fixed_leg_pv(rate, fixed_times, discount);
+  let fixed_pv = fixed_leg_pv(rate, fixed_times, fixed_accruals, discount);
   let discounts: Vec<T> = float_times
     .iter()
     .map(|t| discount.discount_factor(*t))
@@ -69,15 +69,20 @@ pub(super) fn swap_node<T: RealExt>(
   })
 }
 
-/// `S Σ_j δ_j D(t_j)` with `t_0 = 0`.
-fn fixed_leg_pv<T: RealExt>(rate: T, fixed_times: &[T], discount: &DiscountCurve<T>) -> T {
-  let mut pv = T::zero();
-  let mut prev = T::zero();
-  for t in fixed_times {
-    pv += (*t - prev) * discount.discount_factor(*t);
-    prev = *t;
-  }
-  rate * pv
+/// `S Σ_j δ_j D(t_j)`.
+fn fixed_leg_pv<T: RealExt>(
+  rate: T,
+  fixed_times: &[T],
+  fixed_accruals: &[T],
+  discount: &DiscountCurve<T>,
+) -> T {
+  let annuity = fixed_times
+    .iter()
+    .zip(fixed_accruals)
+    .fold(T::zero(), |sum, (&t, &accrual)| {
+      sum + accrual * discount.discount_factor(t)
+    });
+  rate * annuity
 }
 
 /// `Σ_i D(t_i) (P_x(t_{i−1}) / P_x(t_i) − 1)` on the given `D(t_i)`, the pseudo-discount factors

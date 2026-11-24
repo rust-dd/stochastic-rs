@@ -117,16 +117,35 @@ pub enum BootstrapInstrument<T: RealExt> {
     rate: T,
     frequency: Frequency,
   },
-  /// Par swap on explicit payment times in years, the last fixed one its maturity. `float_times`
-  /// is read only against an exogenous discount curve, where the floating leg does not telescope.
+  /// Par swap paying `rate · fixed_accruals[i]` at `fixed_times[i]`, the last its maturity;
+  /// `float_times` matter only against an exogenous discount curve, where floating won't telescope.
   SwapWithSchedule {
     rate: T,
     fixed_times: Vec<T>,
+    fixed_accruals: Vec<T>,
     float_times: Vec<T>,
   },
 }
 
 impl<T: RealExt> BootstrapInstrument<T> {
+  /// A [`Self::SwapWithSchedule`] whose coupons accrue the gaps between their times, from `0`.
+  pub fn swap_on_times(rate: T, fixed_times: Vec<T>, float_times: Vec<T>) -> Self {
+    let fixed_accruals = fixed_times
+      .iter()
+      .scan(T::zero(), |previous, &t| {
+        let accrual = t - *previous;
+        *previous = t;
+        Some(accrual)
+      })
+      .collect();
+    Self::SwapWithSchedule {
+      rate,
+      fixed_times,
+      fixed_accruals,
+      float_times,
+    }
+  }
+
   /// The maturity (or end date) of the instrument; NaN for an empty schedule.
   pub fn maturity(&self) -> T {
     match self {

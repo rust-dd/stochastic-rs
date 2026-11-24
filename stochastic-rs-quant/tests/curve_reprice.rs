@@ -114,13 +114,17 @@ fn implied(curve: &DiscountCurve<f64>, quote: &BootstrapInstrument<f64>) -> f64 
         .sum::<f64>();
       (1.0 - d(*maturity)) / (coupons + delta * d(*maturity))
     }
-    BootstrapInstrument::SwapWithSchedule { fixed_times, .. } => {
-      let (mut annuity, mut previous) = (0.0, 0.0);
-      for &t in fixed_times {
-        annuity += (t - previous) * d(t);
-        previous = t;
-      }
-      (1.0 - d(previous)) / annuity
+    BootstrapInstrument::SwapWithSchedule {
+      fixed_times,
+      fixed_accruals,
+      ..
+    } => {
+      let annuity = fixed_times
+        .iter()
+        .zip(fixed_accruals)
+        .map(|(&t, accrual)| accrual * d(t))
+        .sum::<f64>();
+      (1.0 - d(fixed_times[fixed_times.len() - 1])) / annuity
     }
     _ => unreachable!("{quote:?}"),
   }
@@ -169,11 +173,11 @@ fn every_forecast_swap_reprices_on_the_curve_it_built() {
     rate: 0.031,
   }];
   for (years, rate) in [(1_usize, 0.0262), (2, 0.0271), (3, 0.0278), (5, 0.0289)] {
-    quotes.push(BootstrapInstrument::SwapWithSchedule {
+    quotes.push(BootstrapInstrument::swap_on_times(
       rate,
-      fixed_times: (1..=years).map(|i| i as f64).collect(),
-      float_times: (1..=4 * years).map(|i| 0.25 * i as f64).collect(),
-    });
+      (1..=years).map(|i| i as f64).collect(),
+      (1..=4 * years).map(|i| 0.25 * i as f64).collect(),
+    ));
   }
   for method in METHODS {
     let spec = BootstrapSpec::new(&quotes, method).discounting_with(&ois);
@@ -183,6 +187,7 @@ fn every_forecast_swap_reprices_on_the_curve_it_built() {
         rate,
         fixed_times,
         float_times,
+        ..
       } = quote
       else {
         unreachable!()

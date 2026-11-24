@@ -5,6 +5,7 @@ use ndarray::Array1;
 use stochastic_rs_quant::CallPut;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::cashflows::RateTenor;
 use stochastic_rs_quant::credit::HazardInterpolation;
@@ -526,11 +527,8 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     Array1::from_vec(vec![0.02; 3]).view(),
     method,
   );
-  let swap = BootstrapInstrument::SwapWithSchedule {
-    rate: 0.03,
-    fixed_times: vec![1.0, f64::NAN],
-    float_times: vec![0.5, 1.0, f64::NAN],
-  };
+  let swap =
+    BootstrapInstrument::swap_on_times(0.03, vec![1.0, f64::NAN], vec![0.5, 1.0, f64::NAN]);
   let quotes = [
     BootstrapInstrument::Deposit {
       maturity: 0.25,
@@ -549,11 +547,15 @@ fn a_rate_helper_at_a_non_finite_maturity_is_an_invalid_quote_at_its_own_index()
   struct Pillar(f64, bool);
 
   impl RateHelper<f64> for Pillar {
-    fn maturity(&self, _: NaiveDate) -> f64 {
+    fn maturity(&self, _: NaiveDate, _: DayCountConvention) -> f64 {
       self.0
     }
 
-    fn to_instrument(&self, _: NaiveDate) -> Option<BootstrapInstrument<f64>> {
+    fn to_instrument(
+      &self,
+      _: NaiveDate,
+      _: DayCountConvention,
+    ) -> Option<BootstrapInstrument<f64>> {
       self.1.then_some(BootstrapInstrument::Deposit {
         maturity: self.0,
         rate: 0.03,
@@ -569,10 +571,11 @@ fn a_rate_helper_at_a_non_finite_maturity_is_an_invalid_quote_at_its_own_index()
   );
   let helpers: [&dyn RateHelper<f64>; 3] = [&unquoted, &short, &broken];
   let method = InterpolationMethod::LogLinearOnDiscountFactors;
-  let result = build_curve(&helpers, date, method);
+  let axis = DayCountConvention::Actual365Fixed;
+  let result = build_curve(&helpers, date, axis, method);
   assert!(
     matches!(result, Err(QuantError::InvalidQuote { index: 2, .. })),
     "{result:?}"
   );
-  assert!(build_curve(&helpers[..2], date, method).is_ok());
+  assert!(build_curve(&helpers[..2], date, axis, method).is_ok());
 }
