@@ -1,5 +1,5 @@
-//! Gauss–Seidel sweeps for an interpolation whose later pillars reshape its earlier intervals: each
-//! quote re-solved in its slot of the whole curve, in pillar order, until no node moves.
+//! Gauss–Seidel sweeps for an interpolation whose later pillars reshape its earlier intervals, each
+//! quote re-solved in its slot of the curve; strongly uneven pillars can make the sweeps oscillate.
 //!
 //! Reference: QuantLib, `IterativeBootstrap::calculate`, ql/termstructures/iterativebootstrap.hpp
 //! Reference: QuantLib, `accuracy_` = 1e-12, ql/termstructures/yield/piecewiseyieldcurve.hpp

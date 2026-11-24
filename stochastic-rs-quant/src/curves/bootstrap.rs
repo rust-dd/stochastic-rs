@@ -30,7 +30,7 @@ use crate::QuantError;
 use crate::traits::RealExt;
 
 /// A curve with one pillar per instrument that reprices every quote. `InsufficientData` for no
-/// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` when its nodes don't solve.
+/// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` if its nodes don't settle.
 pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve<T>, QuantError> {
   bootstrap_numbered(spec, None)
 }

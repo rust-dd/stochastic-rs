@@ -77,9 +77,11 @@ pub enum InterpolationMethod {
   LinearOnZeroRates,
   /// Log-linear interpolation on discount factors (piecewise constant forward rates).
   LogLinearOnDiscountFactors,
-  /// Natural cubic spline on zero rates.
+  /// Natural cubic spline on zero rates. Its bootstrap sweeps every node together, which can fail
+  /// to settle on strongly uneven pillars such as `0.5, 1, 1.5, 2, 29.5, 30`.
   CubicSplineOnZeroRates,
-  /// Monotone convex on forward rates (Hagan & West, 2006).
+  /// Monotone convex on forward rates (Hagan & West, 2006). Its bootstrap sweeps every node
+  /// together, which can fail to settle on strongly uneven pillars.
   MonotoneConvex,
 }
 
