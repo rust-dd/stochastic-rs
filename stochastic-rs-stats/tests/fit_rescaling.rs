@@ -113,10 +113,10 @@ fn fits() -> Vec<(&'static str, Array1<f64>, Fit, Vec<i32>)> {
     (
       "gpd_pwm",
       excesses(),
-      // A closed form with no standard error: a thousandth of each estimate stands in for one.
+      // A closed form with no standard error: a hundredth of each estimate stands in for one.
       Box::new(|x| {
         fit_gpd_pwm(x.view())
-          .map(|f| (vec![f.sigma, f.xi], vec![1e-3 * f.sigma, 1e-3 * f.xi.abs()]))
+          .map(|f| (vec![f.sigma, f.xi], vec![1e-2 * f.sigma, 1e-2 * f.xi.abs()]))
       }),
       vec![1, 0],
     ),
@@ -156,9 +156,8 @@ fn a_power_of_two_scale_moves_no_bit() {
   }
 }
 
-/// At `1e±150` and `1e±300` a parameter reads the unit fit's within `1e-3` of its standard error:
-/// both fits pass the `1e-7` check, `√(2e-7)` errors from the maximum each. GARCH's variance at
-/// `1e±300` has no double.
+/// At `1e±150` and `1e±300` a parameter reads the unit fit's within `1e-4` of its standard error
+/// (measured: `1.3e-5` at most, Johnson SU); GARCH's variance at `1e±300` has no double.
 #[test]
 fn a_scale_far_from_one_fits_the_same_law() {
   for (name, x, fit, powers) in fits() {
@@ -179,7 +178,7 @@ fn a_scale_far_from_one_fits_the_same_law() {
       for (i, &power) in powers.iter().enumerate() {
         let read = scaled(got[i], 1.0 / c, power);
         assert!(
-          (read - base[i]).abs() <= 1e-3 * errors[i],
+          (read - base[i]).abs() <= 1e-4 * errors[i],
           "{name} at {c:e}: parameter {i} reads {read} against {}",
           base[i]
         );
