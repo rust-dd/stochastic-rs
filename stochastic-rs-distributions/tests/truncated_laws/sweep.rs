@@ -8,6 +8,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::traits::DistributionSampler;
+use stochastic_rs_distributions::traits::RealExt;
 use stochastic_rs_distributions::traits::SimdKernel;
 
 use crate::parents;
@@ -456,7 +457,7 @@ fn ks_best_p<D: DistributionExt + Distribution<f64>>(law: &D) -> f64 {
     .map(|seed| {
       let mut rng = SimdRng::from_seed(seed);
       let mut xs: Vec<f64> = (0..10_000).map(|_| law.sample(&mut rng)).collect();
-      xs.sort_by(f64::total_cmp);
+      xs.sort_by(f64::nan_last);
       let n = xs.len() as f64;
       let mut d: f64 = 0.0;
       let mut i = 0;

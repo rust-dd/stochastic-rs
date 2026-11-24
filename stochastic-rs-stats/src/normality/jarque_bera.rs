@@ -12,6 +12,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::stationarity::common::about_mean;
 
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
@@ -52,8 +53,8 @@ impl crate::traits::HypothesisTest for JarqueBeraTest {
   }
 }
 
-/// Jarque–Bera normality test; `Err` below 8 points, on a non-finite or constant sample or on
-/// moments that overflow, and panics unless `0 < alpha < 1`.
+/// Jarque–Bera normality test at unit scale; `Err` below 8 points and on a non-finite or constant
+/// sample, and panics unless `0 < alpha < 1`.
 pub fn jarque_bera_test(
   sample: ArrayView1<f64>,
   cfg: JarqueBeraConfig,
@@ -62,6 +63,7 @@ pub fn jarque_bera_test(
   let sample = as_slice_or_copy(sample);
   validate(&sample, 8)?;
   reject_constant(&sample, "constant sample")?;
+  let (sample, _) = about_mean(sample.into_owned());
 
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;
@@ -79,12 +81,6 @@ pub fn jarque_bera_test(
   m2 /= n;
   m3 /= n;
   m4 /= n;
-
-  if !(m2.is_finite() && m3.is_finite() && m4.is_finite()) {
-    return Err(StatsError::Numerical {
-      stage: "sample moments",
-    });
-  }
 
   let skewness = m3 / m2.powf(1.5);
   let kurtosis = m4 / (m2 * m2);
@@ -178,14 +174,17 @@ mod tests {
     );
   }
 
+  /// The fourth moment of `±1e80` is past the doubles; the statistic of `±c` is `n/6 = 4/3`, to
+  /// its sums' rounding, and `2^-266` times the sample, an exact product, moves no bit.
   #[test]
-  fn overflowing_moments_are_a_numerical_error() {
-    let x = [1e80, -1e80, 1e80, -1e80, 1e80, -1e80, 1e80, -1e80];
-    assert_eq!(
-      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap_err(),
-      StatsError::Numerical {
-        stage: "sample moments"
-      }
-    );
+  fn a_sample_whose_moments_would_overflow_answers_as_at_unit_scale() {
+    let answer = |size: f64| {
+      let x = [size, -size, size, -size, size, -size, size, -size];
+      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap()
+    };
+    let (far, near) = (answer(1e80), answer(1e80 * 2f64.powi(-266)));
+    assert_eq!(far.statistic, near.statistic);
+    let gap = (far.statistic - 4.0 / 3.0).abs();
+    assert!(gap < 16.0 * f64::EPSILON, "{}", far.statistic);
   }
 }

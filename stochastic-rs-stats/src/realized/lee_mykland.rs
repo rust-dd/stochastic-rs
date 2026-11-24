@@ -24,6 +24,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate_view;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// $c = \mathbb E|U| = \sqrt{2/\pi}$ for a standard normal $U$: the scale of
@@ -73,7 +74,7 @@ pub fn lee_mykland_test<T: FloatExt>(
   reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
 
-  let r: Vec<f64> = returns.iter().map(|x| x.to_f64().unwrap()).collect();
+  let (r, unit) = unit_scaled(returns.iter().map(|x| x.to_f64().unwrap()).collect());
   let mut statistics = Array1::<f64>::from_elem(n, f64::NAN);
   let mut local_volatility = Array1::<f64>::from_elem(n, f64::NAN);
   let scale = 1.0 / (window - 2) as f64;
@@ -83,7 +84,7 @@ pub fn lee_mykland_test<T: FloatExt>(
       sum += r[j].abs() * r[j - 1].abs();
     }
     let sigma = (scale * sum).sqrt();
-    local_volatility[i] = sigma;
+    local_volatility[i] = sigma / unit;
     statistics[i] = r[i] / sigma;
   }
 

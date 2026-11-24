@@ -8,6 +8,7 @@ use crate::tests::scalar_draws;
 use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
+use crate::traits::RealExt;
 
 /// Every f32 draw is finite where the lane cosine of a `v` within an ulp of ±π/2 goes negative:
 /// seed 2 hits it 352 453 draws in, for any `alpha`.
@@ -76,7 +77,7 @@ fn near_unit_index_takes_the_general_formula() {
   let d = SimdAlphaStable::<f64>::new(1.0 - 1e-7, 0.5, 1.0, 0.0);
   let mut xs = vec![0.0; 20_001];
   d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
-  xs.sort_by(f64::total_cmp);
+  xs.sort_by(f64::nan_last);
   let median = xs[10_000];
   assert!(
     (median / 3_183_098.863_513_323 - 1.0).abs() < 1e-4,
@@ -85,7 +86,7 @@ fn near_unit_index_takes_the_general_formula() {
   let exact = SimdAlphaStable::<f64>::new(1.0, 0.5, 1.0, 0.0);
   let mut ys = vec![0.0; 20_001];
   exact.seeded(&Deterministic::new(3)).fill_slice(&mut ys);
-  ys.sort_by(f64::total_cmp);
+  ys.sort_by(f64::nan_last);
   assert!(
     (ys[10_000] - 0.2235).abs() < 0.06,
     "α = 1 median {}",
