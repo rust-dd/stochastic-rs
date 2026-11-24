@@ -14,7 +14,7 @@ use rand::Rng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 /// The scalar surface for code that only computes: no lanes or RNG, so an AAD dual can implement
-/// it. Its `Float::epsilon` must be its own machine epsilon; num-traits' default is `f32`'s.
+/// it.
 pub trait RealExt:
   num_traits::Float
   + num_traits::FromPrimitive
@@ -43,6 +43,9 @@ pub trait RealExt:
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
+  /// The gap from one to the next value: required, since num-traits' default `Float::epsilon` is
+  /// `f32`'s whatever the scalar.
+  fn machine_epsilon() -> Self;
 
   /// The larger of the two, NaN when either is NaN — `Float::max` returns the other operand
   /// instead.

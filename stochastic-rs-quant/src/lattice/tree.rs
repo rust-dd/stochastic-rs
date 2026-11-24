@@ -215,8 +215,8 @@ fn check_probabilities<T: RealExt>(level: usize, node: usize, branch: &Trinomial
   }
   let total = branch.down_probability + branch.middle_probability + branch.up_probability;
   assert!(
-    (total - T::one()).abs() <= T::from_f64_fast(8.0) * T::epsilon(),
-    "branches[{level}][{node}] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::epsilon()`, \
+    (total - T::one()).abs() <= T::from_f64_fast(8.0) * T::machine_epsilon(),
+    "branches[{level}][{node}] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::machine_epsilon()`, \
      got down + middle + up = {total:?}"
   );
 }

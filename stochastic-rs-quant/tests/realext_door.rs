@@ -328,6 +328,10 @@ impl RealExt for R64 {
   fn min_positive_val() -> Self {
     R64(f64::MIN_POSITIVE)
   }
+
+  fn machine_epsilon() -> Self {
+    R64(f64::EPSILON)
+  }
 }
 
 /// The CRR rollback is generic over the scalar, so `R64` pricing it opens the door to any

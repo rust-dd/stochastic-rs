@@ -69,7 +69,7 @@ impl<T: RealExt> ZeroCouponInflationSwap<T> {
 
   /// Par rate that makes the swap NPV zero.
   pub fn fair_fixed_rate(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
-    if self.tau <= T::epsilon() {
+    if self.tau <= T::machine_epsilon() {
       return T::zero();
     }
     curve
@@ -121,7 +121,7 @@ impl<T: RealExt> YearOnYearInflationSwap<T> {
     let mut prev_t = T::zero();
     for i in 0..self.payment_times.len() {
       let t_i = self.payment_times[i];
-      let r_prev = if prev_t <= T::epsilon() {
+      let r_prev = if prev_t <= T::machine_epsilon() {
         T::one()
       } else {
         curve.forward_index_ratio(prev_t)
@@ -168,7 +168,7 @@ impl<T: RealExt> YearOnYearInflationSwap<T> {
     for i in 0..self.payment_times.len() {
       weight += self.notional * self.accrual_factors[i] * self.nominal_discount_factors[i];
     }
-    if weight.abs() < T::epsilon() {
+    if weight.abs() < T::machine_epsilon() {
       return T::zero();
     }
     inf_pv / weight

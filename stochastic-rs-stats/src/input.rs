@@ -99,7 +99,7 @@ const ROUNDING_RANGE: f64 = 4.0;
 pub(crate) fn reject_constant<T: FloatExt>(y: &[T], what: &'static str) -> Result<(), StatsError> {
   let low = T::min_or_nan_fold(y.iter().copied());
   let high = T::max_or_nan_fold(y.iter().copied());
-  let bound = T::from_f64_fast(ROUNDING_RANGE) * T::epsilon() * low.abs().max(high.abs());
+  let bound = T::from_f64_fast(ROUNDING_RANGE) * T::machine_epsilon() * low.abs().max(high.abs());
   // A non-finite end is no constant's rounding: `validate` answers for it.
   if y.len() < 2 || (low.is_finite() && high.is_finite() && high - low <= bound) {
     return Err(StatsError::DegenerateData(what));

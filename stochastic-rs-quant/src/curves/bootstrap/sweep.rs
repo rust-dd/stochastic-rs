@@ -24,7 +24,7 @@ pub(super) fn reprice_together<T: RealExt>(
   discount: Option<&DiscountCurve<T>>,
   method: InterpolationMethod,
 ) -> Result<(), QuantError> {
-  let tolerance = T::from_f64_fast(1024.0) * T::epsilon();
+  let tolerance = T::from_f64_fast(1024.0) * T::machine_epsilon();
   let mut largest = T::zero();
   for _ in 0..MAX_SWEEPS {
     largest = T::zero();

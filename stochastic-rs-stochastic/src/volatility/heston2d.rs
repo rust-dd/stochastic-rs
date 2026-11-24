@@ -80,7 +80,7 @@ impl<T> From<[Array1<T>; 4]> for Heston2DPaths<T> {
 /// panics unless the matrix is positive semidefinite.
 fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
   // A valid rank-deficient correlation matrix can produce a tiny negative pivot after rounding.
-  let tol = T::from_f64_fast(1e-10).max(T::from_f64_fast(100.0) * T::epsilon());
+  let tol = T::from_f64_fast(1e-10).max(T::from_f64_fast(100.0) * T::machine_epsilon());
   let nonneg = |x: T, pivot: usize| {
     assert!(x >= -tol, "correlation matrix not PSD at pivot {}", pivot);
     x.max(T::zero())

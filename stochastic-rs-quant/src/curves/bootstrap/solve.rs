@@ -10,7 +10,7 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
   start: T,
   mut residual: impl FnMut(T) -> (T, Option<T>),
 ) -> Option<T> {
-  let tolerance = T::from_f64_fast(4.0) * T::epsilon();
+  let tolerance = T::from_f64_fast(4.0) * T::machine_epsilon();
   let (mut x, (mut f, mut slope)) = (start, residual(start));
   let mut previous: Option<(T, T)> = None;
   let mut bracket: Option<[(T, T); 2]> = None;
@@ -31,7 +31,7 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
     let (next, probe) = match (slope, previous) {
       (Some(d), _) => (x - f / d, false),
       (None, Some((xp, fp))) => (x - f * (x - xp) / (f - fp), false),
-      (None, None) => (x * (T::one() + T::epsilon().sqrt()), true),
+      (None, None) => (x * (T::one() + T::machine_epsilon().sqrt()), true),
     };
     let converged = |n: T| !probe && n.is_finite() && (n - x).abs() <= tolerance * n.abs();
     if converged(next) && next > T::zero() {
