@@ -117,7 +117,8 @@ impl<T: RealExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
     }
   }
 
-  /// Full valuation under the supplied curves.
+  /// Full valuation on the curves: once paid, worth zero with NaN rates; NaN while unpaid after
+  /// its start, its fixing being past.
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,
@@ -126,18 +127,21 @@ impl<T: RealExt, I: RateIndex<T>> ForwardRateAgreement<T, I> {
   ) -> FraValuation<T> {
     let period =
       crate::cashflows::AccrualPeriod::new(self.start, self.end, self.payment, self.day_count);
+    let alpha = period.accrual_factor;
+    if self.payment <= valuation_date {
+      return FraValuation {
+        forward_rate: T::nan(),
+        accrual_factor: alpha,
+        discount_factor: T::zero(),
+        par_rate: T::nan(),
+        npv: T::zero(),
+      };
+    }
     let forward = self
       .index
       .forward_rate(curves, valuation_date, discount_day_count, &period);
-    let alpha = period.accrual_factor;
-
-    let discount_curve = curves.discount_curve();
     let t_pay = discount_day_count.year_fraction(valuation_date, self.payment);
-    let df_pay = if self.payment <= valuation_date {
-      T::zero()
-    } else {
-      discount_curve.discount_factor(t_pay)
-    };
+    let df_pay = curves.discount_curve().discount_factor(t_pay);
 
     let mut npv = self.notional * alpha * (forward - self.strike) * df_pay;
     if matches!(self.position, FraPosition::Short) {

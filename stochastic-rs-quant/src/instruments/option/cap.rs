@@ -38,7 +38,8 @@ impl<T: RealExt, V: VolatilityModel<T>> Cap<T, V> {
     Self { strike, leg, vol }
   }
 
-  /// Valuation summary.
+  /// Valuation summary; NaN while a caplet that fixed before the valuation date has no observed
+  /// rate ([`Leg::with_fixings`]).
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,
@@ -89,7 +90,8 @@ impl<T: RealExt, V: VolatilityModel<T>> Floor<T, V> {
     Self { strike, leg, vol }
   }
 
-  /// Valuation summary.
+  /// Valuation summary; NaN while a caplet that fixed before the valuation date has no observed
+  /// rate ([`Leg::with_fixings`]).
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,
@@ -138,7 +140,7 @@ impl<T: RealExt, VC: VolatilityModel<T>, VF: VolatilityModel<T>> Collar<T, VC, V
     Self { cap, floor }
   }
 
-  /// Valuation summary (long cap minus long floor).
+  /// Valuation summary (long cap minus long floor); NaN as the cap's and the floor's are.
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,

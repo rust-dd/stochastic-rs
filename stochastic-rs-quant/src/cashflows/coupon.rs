@@ -53,7 +53,8 @@ pub struct FloatingRateCoupon<T: RealExt> {
 }
 
 impl<T: RealExt> FloatingRateCoupon<T> {
-  /// The observed rate, else the index's projection on the pricer's axis, plus the spread.
+  /// The observed rate, else the index's projection on the pricer's axis, plus the spread; NaN
+  /// for a coupon that fixed before the valuation date with no observed rate.
   pub fn rate(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -78,7 +79,8 @@ impl<T: RealExt> FloatingRateCoupon<T> {
     self.notional * self.period.accrual_factor * rate
   }
 
-  /// Accrued interest up to `as_of`.
+  /// Accrued interest up to `as_of`: zero outside the period, without reading the rate, and NaN
+  /// for an accruing coupon whose fixing is past and not observed.
   pub fn accrued_interest(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -86,8 +88,11 @@ impl<T: RealExt> FloatingRateCoupon<T> {
     discount_day_count: DayCountConvention,
     as_of: NaiveDate,
   ) -> T {
-    let rate = self.rate(curves, valuation_date, discount_day_count);
-    self.notional * self.period.accrued_factor(as_of) * rate
+    let accrued = self.period.accrued_factor(as_of);
+    if accrued == T::zero() {
+      return T::zero();
+    }
+    self.notional * accrued * self.rate(curves, valuation_date, discount_day_count)
   }
 }
 
@@ -107,7 +112,8 @@ pub struct CmsCoupon<T: RealExt> {
 }
 
 impl<T: RealExt> CmsCoupon<T> {
-  /// The observed rate, else the index's projection on the pricer's axis, plus the spread.
+  /// The observed rate, else the index's projection on the pricer's axis, plus the spread; NaN
+  /// for a coupon that fixed before the valuation date with no observed rate.
   pub fn rate(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -132,7 +138,8 @@ impl<T: RealExt> CmsCoupon<T> {
     self.notional * self.period.accrual_factor * rate
   }
 
-  /// Accrued interest up to `as_of`.
+  /// Accrued interest up to `as_of`: zero outside the period, without reading the rate, and NaN
+  /// for an accruing coupon whose fixing is past and not observed.
   pub fn accrued_interest(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
@@ -140,8 +147,11 @@ impl<T: RealExt> CmsCoupon<T> {
     discount_day_count: DayCountConvention,
     as_of: NaiveDate,
   ) -> T {
-    let rate = self.rate(curves, valuation_date, discount_day_count);
-    self.notional * self.period.accrued_factor(as_of) * rate
+    let accrued = self.period.accrued_factor(as_of);
+    if accrued == T::zero() {
+      return T::zero();
+    }
+    self.notional * accrued * self.rate(curves, valuation_date, discount_day_count)
   }
 }
 
