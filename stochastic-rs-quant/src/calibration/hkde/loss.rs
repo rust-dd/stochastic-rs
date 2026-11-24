@@ -164,7 +164,7 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
 
 /// Eq. 13's weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$ at the quote's implied
 /// volatility at the carry `r − q`; the reason, as `Err`, when the weights cannot use the quote.
-pub(super) fn market_weight(s: f64, r: f64, q: f64, quote: &OptionQuote) -> Result<f64, String> {
+pub(crate) fn market_weight(s: f64, r: f64, q: f64, quote: &OptionQuote) -> Result<f64, String> {
   // The pricer's own volatility is unused: only its carry convention enters the inversion.
   let sigma = BsmPricer::new(0.2, BsmCoc::Merton1973).implied_volatility(
     quote.price,

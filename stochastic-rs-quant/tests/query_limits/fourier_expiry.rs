@@ -8,6 +8,9 @@ use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
+use stochastic_rs_quant::pricing::fourier::RoughHeston;
+use stochastic_rs_quant::pricing::fourier::RoughHestonCf;
+use stochastic_rs_quant::pricing::fourier::RoughHestonParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::traits::ModelPricer;
 
@@ -64,6 +67,17 @@ fn the_blanket_model_pricer_follows_the_expiry_rule() {
   assert_expiry_rule("blanket, Heston", |option_type, s, tau| {
     heston.price_option(s, K, R, Q, tau, option_type)
   });
+  let rough = RoughHestonParams::new(0.04, 1.0, 0.04, 0.4, -0.65, 0.1);
+  for cf in [
+    RoughHestonCf::Adams { steps: 8 },
+    RoughHestonCf::default(),
+    RoughHestonCf::LIFTED,
+  ] {
+    let model = RoughHeston::new(rough, cf);
+    assert_expiry_rule("blanket, rough Heston", |option_type, s, tau| {
+      model.price_option(s, K, R, Q, tau, option_type)
+    });
+  }
 }
 
 #[test]
