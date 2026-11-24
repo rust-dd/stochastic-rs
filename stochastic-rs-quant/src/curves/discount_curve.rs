@@ -131,7 +131,7 @@ impl<T: RealExt> DiscountCurve<T> {
     -self.discount_factor(t).ln() / t
   }
 
-  /// Zero rate at time `t` under a given compounding convention.
+  /// Zero rate at time `t` under a given compounding convention; NaN at a non-positive `t`.
   pub fn zero_rate_with_compounding(&self, t: T, compounding: Compounding) -> T {
     compounding.zero_rate(self.discount_factor(t), t)
   }
@@ -188,12 +188,12 @@ impl<T: RealExt> DiscountCurve<T> {
     (T::one() - self.discount_factor(t_n)) / annuity
   }
 
-  /// Extract zero rates at the given maturities.
+  /// [`zero_rate`](Self::zero_rate) at each maturity: NaN at a non-positive one.
   pub fn zero_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(maturities.iter().map(|&t| self.zero_rate(t)).collect())
   }
 
-  /// Extract discount factors at the given maturities.
+  /// [`discount_factor`](Self::discount_factor) at each maturity: NaN before the origin.
   pub fn discount_factors(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(
       maturities

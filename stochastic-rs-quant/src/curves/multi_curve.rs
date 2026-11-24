@@ -47,7 +47,8 @@ impl<T: RealExt> MultiCurve<T> {
       .map(|(_, c)| c)
   }
 
-  /// Projected simple forward rate from the forecast curve for `tenor` over `[t1, t2]`.
+  /// Projected simple forward rate from the forecast curve for `tenor` over `[t1, t2]`; `None` for
+  /// an unknown `tenor`, NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// L(t_1, t_2) = \frac{1}{\delta}\left(\frac{D_{\text{forecast}}(t_1)}{D_{\text{forecast}}(t_2)} - 1\right)
@@ -58,7 +59,8 @@ impl<T: RealExt> MultiCurve<T> {
       .map(|fc| fc.simple_forward_rate(t1, t2))
   }
 
-  /// Basis spread between a forecast curve and the OIS discount curve.
+  /// Basis spread between a forecast curve and the OIS discount curve; `None` for an unknown
+  /// `tenor`, NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// s(t_1, t_2) = L_{\text{forecast}}(t_1, t_2) - L_{\text{OIS}}(t_1, t_2)
@@ -99,7 +101,8 @@ impl<T: RealExt> MultiCurve<T> {
     Some(pv)
   }
 
-  /// Present value of a fixed leg using OIS discounting.
+  /// Present value of a fixed leg using OIS discounting; NaN for a payment time before the
+  /// origin.
   pub fn pv_fixed_leg(&self, schedule: ArrayView1<T>, fixed_rate: T, notional: T) -> T {
     let n = schedule.len();
     if n < 2 {
