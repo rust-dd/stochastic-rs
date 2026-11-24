@@ -418,4 +418,14 @@ mod tests {
     let s = Array1::from(vec![0.04, 0.05, 0.045, 0.05]);
     let _ = fit_cir_gmm(s.view(), 0.0);
   }
+
+  /// The GMM fit maps `μ` and `σ` back by the rule the other fits use.
+  #[test]
+  fn a_fit_that_is_subnormal_in_the_paths_units_is_a_data_scale_error() {
+    let path = simulate_cir(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 2000, 7).mapv(|v| v * 1e-310);
+    let lost = StatsError::Numerical {
+      stage: "data scale",
+    };
+    assert_eq!(fit_cir_gmm(path.view(), 1.0 / 252.0).unwrap_err(), lost);
+  }
 }

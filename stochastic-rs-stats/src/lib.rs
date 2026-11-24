@@ -28,7 +28,8 @@ pub mod kde;
 pub mod log_realized_variance_qml;
 pub mod mle;
 pub mod normality;
-pub(crate) mod optim;
+#[doc(hidden)]
+pub mod optim;
 pub mod particle_mle;
 pub mod qmle;
 pub mod realized;
