@@ -50,7 +50,7 @@ pub trait RealExt:
   + std::ops::SubAssign
   + 'static
 {
-  // from_usize_, from_f64_fast, pi, two_pi, min_positive_val
+  // from_usize_, from_f64_fast, pi, two_pi, min_positive_val, machine_epsilon
 }
 
 pub trait SimdFloatExt: RealExt + Sealed {

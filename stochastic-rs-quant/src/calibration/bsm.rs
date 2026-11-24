@@ -250,7 +250,7 @@ impl LeastSquaresProblem for BsmProblem<'_> {
       ..
     } = *self.calibrator;
     let model = BsmPricer::new(self.effective_params().sigma, BsmCoc::Merton1973);
-    let mut J = Array2::zeros((quotes.len(), 1));
+    let mut jacobian = Array2::zeros((quotes.len(), 1));
 
     for (idx, quote) in quotes.iter().enumerate() {
       let (k, tau) = (quote.strike, quote.tau);
@@ -263,10 +263,10 @@ impl LeastSquaresProblem for BsmProblem<'_> {
       } else {
         vega / VEGA_FLOOR
       };
-      J[(idx, 0)] = slope * self.reflection;
+      jacobian[(idx, 0)] = slope * self.reflection;
     }
 
-    Some(J)
+    Some(jacobian)
   }
 
   fn accept(&mut self) {

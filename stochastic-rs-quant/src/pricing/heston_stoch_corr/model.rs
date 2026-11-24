@@ -50,6 +50,7 @@ pub struct HestonStochCorrPricer {
 impl HestonStochCorrPricer {
   /// Panics unless `v0`, `theta_v`, `sigma_v`, `sigma_r` are finite and `≥ 0`, the `kappa`s finite,
   /// `κ_v θ_v ≥ 0` and each correlation in `[−1, 1]`; `sigma_v = 0` is the deterministic variance.
+  // One argument per parameter of the model.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     v0: f64,
@@ -133,6 +134,8 @@ impl HestonStochCorrPricer {
 
   /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the model's
   /// parameters; NaN for a price outside the no-arbitrage bounds.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,
     c_price: f64,

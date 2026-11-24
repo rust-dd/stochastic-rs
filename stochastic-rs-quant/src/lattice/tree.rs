@@ -1,6 +1,6 @@
 //! Generic recombining binomial and trinomial trees.
 //!
-//! Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
+//! Reference: Cox et al. (1979), J. Financ. Econ. 7(3), 229–263, DOI 10.1016/0304-405X(79)90015-1
 
 use ndarray::Array1;
 
@@ -215,8 +215,8 @@ fn check_probabilities<T: RealExt>(level: usize, node: usize, branch: &Trinomial
   }
   let total = branch.down_probability + branch.middle_probability + branch.up_probability;
   assert!(
-    (total - T::one()).abs() <= T::from_f64_fast(8.0) * T::epsilon(),
-    "branches[{level}][{node}] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::epsilon()`, \
+    (total - T::one()).abs() <= T::from_f64_fast(8.0) * T::machine_epsilon(),
+    "branches[{level}][{node}] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::machine_epsilon()`, \
      got down + middle + up = {total:?}"
   );
 }

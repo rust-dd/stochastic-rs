@@ -30,7 +30,7 @@
 //! Reference: Sanfelici & Toscano (2024), the FMVol MATLAB library, arXiv:2402.00172
 //! Reference: Malliavin & Mancino (2002), Finance and Stochastics 6(1), 49–61
 //! Reference: Malliavin & Mancino (2009), The Annals of Statistics 37(4), 1983–2010
-//! Reference: Mancino, Recchioni & Sanfelici (2017), "Fourier-Malliavin Volatility Estimation"
+//! Reference: Mancino, Recchioni & Sanfelici (2017), Springer, DOI 10.1007/978-3-319-50969-3
 
 use ndarray::Array1;
 

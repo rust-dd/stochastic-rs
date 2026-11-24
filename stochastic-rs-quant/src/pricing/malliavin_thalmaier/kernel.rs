@@ -202,9 +202,7 @@ where
     for k in (0..d).rev() {
       if multi_idx[k] + 1 < n_quad {
         multi_idx[k] += 1;
-        for reset in (k + 1)..d {
-          multi_idx[reset] = 0;
-        }
+        multi_idx[k + 1..].fill(0);
         exhausted = false;
         break;
       }

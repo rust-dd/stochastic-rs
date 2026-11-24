@@ -2,7 +2,7 @@
 //! [`crate::curves::BootstrapInstrument`], so a quote change needs only a new [`build_curve`].
 //!
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §4
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 
 use std::sync::Arc;
 
@@ -21,19 +21,24 @@ use crate::curves::BootstrapSpec;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap::bootstrap_numbered;
+use crate::curves::bootstrap::futures_convexity;
 use crate::traits::RealExt;
 
 mod ois;
 
 pub use ois::OisRateHelper;
 
-/// Quote-driven curve input: the current quote and its conventions as a [`BootstrapInstrument`];
-/// `None` for a missing or invalid quote, which the caller skips.
+/// Quote-driven curve input: the current quote and its conventions as a [`BootstrapInstrument`]
+/// whose times sit on the curve's `axis`; `None` for a missing or invalid quote, which is skipped.
 pub trait RateHelper<T: RealExt>: Send + Sync {
-  /// Current maturity (in years from the valuation date).
-  fn maturity(&self, valuation_date: NaiveDate) -> T;
-  /// Convert the wrapped quote into a curve [`BootstrapInstrument`].
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>>;
+  /// The pillar's time on `axis` from the valuation date.
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T;
+  /// The wrapped quote as a curve [`BootstrapInstrument`] on `axis`.
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>>;
 }
 
 fn read_quote<T: RealExt>(handle: &Handle<dyn Quote<T>>) -> Option<T> {
@@ -43,7 +48,13 @@ fn read_quote<T: RealExt>(handle: &Handle<dyn Quote<T>>) -> Option<T> {
   })
 }
 
-/// Money-market deposit helper.
+/// A simple `rate` accruing `accrual` restated over the `span` it covers on the axis, so the
+/// instrument's discount ratio is the quote's `1 + rate · accrual`.
+fn over_span<T: RealExt>(rate: T, accrual: T, span: T) -> T {
+  rate * accrual / span
+}
+
+/// Money-market deposit helper: it accrues from the valuation date, the bootstrap's origin.
 #[derive(Debug, Clone)]
 pub struct DepositRateHelper<T: RealExt> {
   /// Quote handle producing the deposit rate.
@@ -74,18 +85,24 @@ impl<T: RealExt> DepositRateHelper<T> {
 }
 
 impl<T: RealExt> RateHelper<T> for DepositRateHelper<T> {
-  fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self
-      .day_count
-      .year_fraction(valuation_date, self.maturity_date)
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T {
+    axis.year_fraction(valuation_date, self.maturity_date)
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
-    let maturity = self
+    let maturity = axis.year_fraction(valuation_date, self.maturity_date);
+    let accrual = self
       .day_count
       .year_fraction(valuation_date, self.maturity_date);
-    Some(BootstrapInstrument::Deposit { maturity, rate })
+    Some(BootstrapInstrument::Deposit {
+      maturity,
+      rate: over_span(rate, accrual, maturity),
+    })
   }
 }
 
@@ -98,7 +115,7 @@ pub struct FraRateHelper<T: RealExt> {
   pub start_date: NaiveDate,
   /// FRA reference-period end.
   pub end_date: NaiveDate,
-  /// Day count convention used to express the period in years.
+  /// Day count convention of the FRA's accrual.
   pub day_count: DayCountConvention,
 }
 
@@ -120,22 +137,29 @@ impl<T: RealExt> FraRateHelper<T> {
 }
 
 impl<T: RealExt> RateHelper<T> for FraRateHelper<T> {
-  fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self.day_count.year_fraction(valuation_date, self.end_date)
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T {
+    axis.year_fraction(valuation_date, self.end_date)
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
-    let start = self
-      .day_count
-      .year_fraction(valuation_date, self.start_date);
-    let end = self.day_count.year_fraction(valuation_date, self.end_date);
-    Some(BootstrapInstrument::Fra { start, end, rate })
+    let start = axis.year_fraction(valuation_date, self.start_date);
+    let end = axis.year_fraction(valuation_date, self.end_date);
+    let accrual = self.day_count.year_fraction(self.start_date, self.end_date);
+    Some(BootstrapInstrument::Fra {
+      start,
+      end,
+      rate: over_span(rate, accrual, end - start),
+    })
   }
 }
 
-/// Fixed-vs-float swap helper: a uniform `δ = 1 / frequency` schedule from [`Self::new`], or
-/// calendar-adjusted accruals priced one by one after [`Self::with_calendar`].
+/// Fixed-vs-float swap helper: its fixed leg pays on its schedule's dates, each at its time on the
+/// curve's axis and accruing on `day_count`; on one curve the floating leg telescopes.
 #[derive(Debug, Clone)]
 pub struct SwapRateHelper<T: RealExt> {
   /// Quote handle producing the par swap rate.
@@ -146,10 +170,10 @@ pub struct SwapRateHelper<T: RealExt> {
   pub maturity_date: NaiveDate,
   /// Fixed-leg payment frequency.
   pub fixed_frequency: Frequency,
-  /// Day-count convention used to express the maturity in years.
+  /// Day count of the fixed leg's accruals.
   pub day_count: DayCountConvention,
-  /// Calendar for the business-day-adjusted payment schedule; `None` keeps the uniform
-  /// [`BootstrapInstrument::Swap`] path.
+  /// Calendar for the business-day-adjusted payment schedule; `None` pays on the unadjusted
+  /// dates.
   pub calendar: Option<SharedCalendar>,
   /// Business day convention of each generated payment date, read only when
   /// [`calendar`](Self::calendar) is `Some`.
@@ -157,8 +181,7 @@ pub struct SwapRateHelper<T: RealExt> {
 }
 
 impl<T: RealExt> SwapRateHelper<T> {
-  /// A helper on the uniform [`BootstrapInstrument::Swap`] path; [`Self::with_calendar`] switches
-  /// it to an explicit schedule.
+  /// A helper paying on the unadjusted schedule; [`Self::with_calendar`] adjusts its dates.
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
     settlement_date: NaiveDate,
@@ -177,8 +200,8 @@ impl<T: RealExt> SwapRateHelper<T> {
     }
   }
 
-  /// Switches to an explicit [`Schedule`](crate::calendar::Schedule) (backward generation,
-  /// `ShortFirst` stub) routed through [`BootstrapInstrument::SwapWithSchedule`].
+  /// Adjusts the payment dates of the [`Schedule`](crate::calendar::Schedule) (backward
+  /// generation, `ShortFirst` stub) on `calendar` by `convention`.
   pub fn with_calendar(
     mut self,
     calendar: SharedCalendar,
@@ -221,42 +244,45 @@ impl<T: RealExt> SwapRateHelper<T> {
 }
 
 impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
-  fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self
-      .day_count
-      .year_fraction(valuation_date, self.maturity_date)
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T {
+    let last = self.built_schedule().last().copied();
+    last.map_or_else(T::nan, |date| axis.year_fraction(valuation_date, date))
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
-    if self.calendar.is_some() {
-      // Year fractions run from `valuation_date`, the bootstrap origin, not from
-      // `settlement_date`.
-      let dates = self.built_schedule();
-      let fixed_times: Vec<T> = dates
-        .iter()
-        .skip(1)
-        .map(|&d| self.day_count.year_fraction(valuation_date, d))
-        .collect();
-      if fixed_times.is_empty() {
-        return None;
-      }
-      Some(BootstrapInstrument::SwapWithSchedule {
-        rate,
-        fixed_times,
-        float_times: Vec::new(),
-      })
-    } else {
-      let maturity = self
-        .day_count
-        .year_fraction(valuation_date, self.maturity_date);
-      Some(BootstrapInstrument::Swap {
-        maturity,
-        rate,
-        frequency: self.fixed_frequency,
-      })
-    }
+    let dates = self.built_schedule();
+    let payments = dates.get(1..).unwrap_or_default();
+    fixed_leg(rate, payments, valuation_date, axis, self.day_count)
   }
+}
+
+/// The par swap paying on `dates` after the valuation date, each at its time on `axis` and
+/// accruing on `day_count`, the first from the valuation date as the floating leg does.
+fn fixed_leg<T: RealExt>(
+  rate: T,
+  dates: &[NaiveDate],
+  valuation_date: NaiveDate,
+  axis: DayCountConvention,
+  day_count: DayCountConvention,
+) -> Option<BootstrapInstrument<T>> {
+  let mut previous = valuation_date;
+  let (mut fixed_times, mut fixed_accruals) = (Vec::new(), Vec::new());
+  for &date in dates.iter().filter(|&&date| date > valuation_date) {
+    fixed_times.push(axis.year_fraction(valuation_date, date));
+    fixed_accruals.push(day_count.year_fraction(previous, date));
+    previous = date;
+  }
+  (!fixed_times.is_empty()).then_some(BootstrapInstrument::SwapWithSchedule {
+    rate,
+    fixed_times,
+    fixed_accruals,
+    float_times: Vec::new(),
+  })
 }
 
 /// Interest-rate futures helper with convexity adjustment.
@@ -268,7 +294,7 @@ pub struct FuturesRateHelper<T: RealExt> {
   pub start_date: NaiveDate,
   /// End date of the underlying period.
   pub end_date: NaiveDate,
-  /// Day-count used to compute the tenor.
+  /// Day count of the underlying rate's accrual.
   pub day_count: DayCountConvention,
   /// Rate volatility used for the convexity adjustment
   /// $\tfrac12\sigma^2 T_1 T_2$ following Hull (2017), §6.4.
@@ -296,36 +322,49 @@ impl<T: RealExt> FuturesRateHelper<T> {
 }
 
 impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
-  fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self.day_count.year_fraction(valuation_date, self.end_date)
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T {
+    axis.year_fraction(valuation_date, self.end_date)
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
+  /// The price restated so that the convexity-adjusted rate accrues over the axis' span what it
+  /// accrues on `day_count`.
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>> {
     let price = read_quote(&self.price_quote)?;
-    let start = self
-      .day_count
-      .year_fraction(valuation_date, self.start_date);
-    let end = self.day_count.year_fraction(valuation_date, self.end_date);
+    let start = axis.year_fraction(valuation_date, self.start_date);
+    let end = axis.year_fraction(valuation_date, self.end_date);
+    let accrual = self.day_count.year_fraction(self.start_date, self.end_date);
+    let hundred = T::from_f64_fast(100.0);
+    let convexity = futures_convexity(self.sigma, start, end);
+    let forward = over_span(
+      (hundred - price) / hundred - convexity,
+      accrual,
+      end - start,
+    );
     Some(BootstrapInstrument::Future {
       start,
       end,
-      price,
+      price: hundred * (T::one() - forward - convexity),
       sigma: self.sigma,
     })
   }
 }
 
-/// [`bootstrap()`](fn@crate::curves::bootstrap) over the quoted helpers, skipping the rest; its
-/// errors name each quote by the helper's own index.
+/// [`bootstrap()`](fn@crate::curves::bootstrap) over the quoted helpers, every time on `axis`, the
+/// day count a pricer then reads the curve with; its errors name each quote by its helper's index.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
+  axis: DayCountConvention,
   method: InterpolationMethod,
 ) -> Result<DiscountCurve<T>, QuantError> {
   let (origin, instruments): (Vec<usize>, Vec<BootstrapInstrument<T>>) = helpers
     .iter()
     .enumerate()
-    .filter_map(|(index, helper)| Some((index, helper.to_instrument(valuation_date)?)))
+    .filter_map(|(index, helper)| Some((index, helper.to_instrument(valuation_date, axis)?)))
     .unzip();
   bootstrap_numbered(BootstrapSpec::new(&instruments, method), Some(&origin))
 }
@@ -375,7 +414,9 @@ mod tests {
     );
 
     let helpers: Vec<&dyn RateHelper<f64>> = vec![&dep, &fra, &swap];
-    let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates).unwrap();
+    let axis = DayCountConvention::Actual365Fixed;
+    let method = InterpolationMethod::LinearOnZeroRates;
+    let curve = build_curve(&helpers, val_date, axis, method).unwrap();
     assert_eq!(curve.len(), 3);
     let df_short = curve.discount_factor(0.25);
     let df_long = curve.discount_factor(2.0);
@@ -394,20 +435,21 @@ mod tests {
       NaiveDate::from_ymd_opt(2025, 4, 1).expect("2025-04-01 is a valid date literal"),
       DayCountConvention::Actual360,
     );
-    match helper.to_instrument(val_date).unwrap() {
+    let axis = DayCountConvention::Actual360;
+    match helper.to_instrument(val_date, axis).unwrap() {
       BootstrapInstrument::Deposit { rate, .. } => assert!((rate - 0.02).abs() < 1e-12),
       _ => panic!("expected deposit"),
     }
     q.set_value(0.035);
-    match helper.to_instrument(val_date).unwrap() {
+    match helper.to_instrument(val_date, axis).unwrap() {
       BootstrapInstrument::Deposit { rate, .. } => assert!((rate - 0.035).abs() < 1e-12),
       _ => panic!("expected deposit"),
     }
   }
 
+  /// Without a calendar the fixed leg pays on the raw dates: times on the axis, 30/360 accruals.
   #[test]
-  fn swap_rate_helper_uniform_path_is_legacy_swap() {
-    // Without a calendar, `new()` yields the uniform-frequency `BootstrapInstrument::Swap` variant.
+  fn a_swap_helper_pays_on_its_unadjusted_dates() {
     let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 valid");
     let mat = months_later(val_date, 24);
     let q = Arc::new(SimpleQuote::<f64>::new(0.04));
@@ -417,17 +459,26 @@ mod tests {
       val_date,
       mat,
       Frequency::SemiAnnual,
-      DayCountConvention::Actual365Fixed,
+      DayCountConvention::Thirty360,
     );
-    match helper.to_instrument(val_date).unwrap() {
-      BootstrapInstrument::Swap {
-        rate, frequency, ..
+    let axis = DayCountConvention::Actual365Fixed;
+    match helper.to_instrument(val_date, axis).unwrap() {
+      BootstrapInstrument::SwapWithSchedule {
+        rate,
+        fixed_times,
+        fixed_accruals,
+        ..
       } => {
-        assert!((rate - 0.04).abs() < 1e-12);
-        assert_eq!(frequency, Frequency::SemiAnnual);
+        assert_eq!(rate, 0.04);
+        assert_eq!(
+          fixed_times,
+          [181.0, 365.0, 546.0, 730.0].map(|days| days / 365.0)
+        );
+        assert_eq!(fixed_accruals, [0.5; 4]);
       }
-      other => panic!("expected uniform BootstrapInstrument::Swap, got {other:?}"),
+      other => panic!("expected SwapWithSchedule, got {other:?}"),
     }
+    assert_eq!(helper.maturity(val_date, axis), 2.0);
   }
 
   #[test]
@@ -462,7 +513,10 @@ mod tests {
       assert!(w[0] < w[1], "payment_times must be strictly increasing");
     }
 
-    match helper.to_instrument(val_date).unwrap() {
+    match helper
+      .to_instrument(val_date, DayCountConvention::Actual365Fixed)
+      .unwrap()
+    {
       BootstrapInstrument::SwapWithSchedule {
         rate, fixed_times, ..
       } => {

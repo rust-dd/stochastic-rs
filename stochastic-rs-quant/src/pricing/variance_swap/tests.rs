@@ -29,7 +29,7 @@ fn bsm_fair_strike_is_sigma_squared() {
 #[test]
 fn realized_variance_constant_path_is_zero() {
   let prices = vec![100.0; 252];
-  let rv = VarianceSwapPricer::realized_variance(&prices, BUSINESS_DAY_252_DT);
+  let rv = VarianceSwapPricer::realized_variance(&prices, BUSINESS_DAY_252_DT).unwrap();
   assert!((rv - 0.0).abs() < 1e-15);
 }
 
@@ -38,7 +38,7 @@ fn realized_variance_recovers_known_drift() {
   let dt: f64 = BUSINESS_DAY_252_DT;
   let daily = 0.20 * dt.sqrt();
   let prices: Vec<f64> = (0..253).map(|i| 100.0 * (daily * i as f64).exp()).collect();
-  let rv = VarianceSwapPricer::realized_variance(&prices, dt);
+  let rv = VarianceSwapPricer::realized_variance(&prices, dt).unwrap();
   assert!((rv - 0.04).abs() < 0.005, "rv={rv}, expected≈0.04");
 }
 
@@ -159,17 +159,33 @@ fn replication_does_not_floor_a_nan_price_to_zero() {
   );
 }
 
-/// One price is no observation at all, which must not read as the zero of a constant path.
+/// No or one price is no observation, which must not read as the zero of a constant path.
 #[test]
-#[should_panic(expected = "realized variance needs at least 2 prices (got 1)")]
-fn realized_variance_rejects_a_single_price() {
-  let _ = VarianceSwapPricer::realized_variance(&[100.0], BUSINESS_DAY_252_DT);
+fn realized_variance_needs_two_prices() {
+  for prices in [&[][..], &[100.0][..]] {
+    let result = VarianceSwapPricer::realized_variance(prices, BUSINESS_DAY_252_DT);
+    assert!(
+      matches!(result, Err(QuantError::InsufficientData { what: "prices", needed: 2, got }) if got == prices.len()),
+      "{result:?}"
+    );
+  }
 }
 
 #[test]
-#[should_panic(expected = "realized variance needs at least 2 prices (got 0)")]
-fn realized_variance_rejects_an_empty_path() {
-  let _ = VarianceSwapPricer::realized_variance(&[], BUSINESS_DAY_252_DT);
+fn realized_variance_refuses_a_price_that_is_not_finite_and_positive() {
+  for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+    let result = VarianceSwapPricer::realized_variance(&[100.0, bad, 101.0], BUSINESS_DAY_252_DT);
+    assert!(
+      matches!(result, Err(QuantError::InvalidInput { what: "prices", .. })),
+      "{bad}: {result:?}"
+    );
+  }
+}
+
+#[test]
+#[should_panic(expected = "dt must satisfy `dt.is_finite() && dt > 0.0`, got dt = 0.0")]
+fn realized_variance_panics_on_a_sampling_interval_that_is_not_positive() {
+  let _ = VarianceSwapPricer::realized_variance(&[100.0, 101.0], 0.0);
 }
 
 /// The variance strike is a computed input: off `k_var > 0` the Jensen term has no value.

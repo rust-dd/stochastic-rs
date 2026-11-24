@@ -43,6 +43,42 @@ fn product_rule_adds_the_off_diagonal_weight_correction() {
   assert!((weights[1] - ordinary[1] - tangent / terminal[1]).abs() < 1e-12);
 }
 
+fn two_asset_paths() -> MultiHestonPaths<f64> {
+  let mut prices = Array2::<f64>::zeros((2, 2));
+  let mut vols = Array2::<f64>::from_elem((2, 2), 0.04);
+  for (asset, (spot, end)) in [(100.0, 104.0), (80.0, 77.0)].into_iter().enumerate() {
+    prices[[asset, 0]] = spot;
+    prices[[asset, 1]] = end;
+    vols[[asset, 1]] = 0.05;
+  }
+  MultiHestonPaths {
+    prices,
+    vols,
+    n_assets: 2,
+    n_steps: 2,
+    conditional_weights_exact: true,
+  }
+}
+
+/// The panicking twin of `try_malliavin_weights`, at its signature: the same weights, its error as
+/// the panic.
+#[test]
+fn malliavin_weights_is_the_panicking_twin_of_the_fallible_form() {
+  let (paths, spots) = (two_asset_paths(), array![100.0, 80.0]);
+  let gamma_inv = paths.gamma_inv(Array2::<f64>::eye(2).view(), 1.0);
+  let weights = paths.malliavin_weights(gamma_inv.view(), 1, 0.03, 1.0, spots.view());
+  let fallible = paths.try_malliavin_weights(gamma_inv.view(), 1, 0.03, 1.0, spots.view());
+  assert_eq!(weights, fallible.unwrap());
+}
+
+#[test]
+#[should_panic(expected = "invalid spots: spot 0 must be finite and positive, got -100.0")]
+fn malliavin_weights_panics_with_the_fallible_forms_error() {
+  let paths = two_asset_paths();
+  let gamma_inv = paths.gamma_inv(Array2::<f64>::eye(2).view(), 1.0);
+  paths.malliavin_weights(gamma_inv.view(), 0, 0.03, 1.0, array![-100.0, 80.0].view());
+}
+
 #[test]
 fn log_euler_reconstructs_the_price_noise_exactly() {
   let asset = super::super::AssetParams {

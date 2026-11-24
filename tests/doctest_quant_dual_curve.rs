@@ -52,11 +52,11 @@ fn dual_curve_bootstrap_recovers_the_tenor_basis() {
         Some(leg)
       })
       .sum();
-    quotes.push(BootstrapInstrument::SwapWithSchedule {
-      rate: float_pv / annuity,
+    quotes.push(BootstrapInstrument::swap_on_times(
+      float_pv / annuity,
       fixed_times,
       float_times,
-    });
+    ));
   }
 
   // Forecast curve against OIS discounting: pseudo-discount factors come back exactly.

@@ -390,6 +390,7 @@ impl StepBuffers {
 
 /// One Hundsdorfer–Verwer step (Wyns & Du Toit (3.1)) from level `prev` to `next`, or a fully
 /// implicit Euler half-step of the Rannacher start, mixed derivative included in its solve.
+// One Douglas step's mesh, operators, scheme knobs and buffers.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn step(
   mesh: &Mesh,
@@ -411,6 +412,8 @@ pub(super) fn step(
   prev.mixed.apply(w, &mut b.f0);
   prev.x.apply_x(mesh, w, &mut b.f1);
   along_v.apply_v(mesh, w, &mut b.f2);
+  // Five buffers of one length, updated in step.
+  #[allow(clippy::needless_range_loop)]
   for k in 0..n {
     b.y0[k] = w[k] + dt * (b.f0[k] + b.f1[k] + b.f2[k]);
   }

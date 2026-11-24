@@ -5,8 +5,8 @@
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell\in\mathbb{R}:\mathbb{P}(L>\ell)\le 1-\alpha\}.
 //! $$
 //!
-//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill
-//! Reference: Basel Committee on Banking Supervision (2006), "A Revised Framework" (Basel II)
+//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill, ISBN 978-0-07-146495-6
+//! Reference: BCBS (2006), Basel II, comprehensive version, <https://www.bis.org/publ/bcbs128.htm>
 
 use std::fmt::Display;
 

@@ -109,8 +109,7 @@ fn adi(case: usize, v0: f64) -> HestonAdiPricer {
 /// `0 < v < 1` to the paper's 1 % at `m2 = 50`.
 #[test]
 fn matches_the_semi_analytic_price_on_table_1() {
-  for case in 0..4 {
-    let (_, _, _, _, r_d, r_f, tau) = TABLE_1[case];
+  for (case, &(_, _, _, _, r_d, r_f, tau)) in TABLE_1.iter().enumerate() {
     for (s, v0) in [(90.0, 0.04), (100.0, 0.04), (110.0, 0.09), (120.0, 0.16)] {
       let want = analytic(case, s, v0);
       let got = adi(case, v0).price_call(s, 100.0, r_d, r_f, tau);

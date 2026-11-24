@@ -4,17 +4,16 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::*;
 use crate::QuantError;
 
-fn iid_basket(
-  n: usize,
-  sigma: f64,
-  rho: f64,
-) -> (
+/// `(spots, weights, volatilities, yields, correlation)`.
+type Basket = (
   Array1<f64>,
   Array1<f64>,
   Array1<f64>,
   Array1<f64>,
   Array2<f64>,
-) {
+);
+
+fn iid_basket(n: usize, sigma: f64, rho: f64) -> Basket {
   let s = Array1::from_elem(n, 100.0);
   let w = Array1::from_elem(n, 1.0 / n as f64);
   let sig = Array1::from_elem(n, sigma);
@@ -32,13 +31,7 @@ const TOL: f64 = 1e-12;
 
 /// Distinct weights, spots, volatilities and yields, a non-round strike and a non-unit maturity,
 /// so no query value left on the struct can pass by matching a default.
-fn asymmetric_basket() -> (
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array2<f64>,
-) {
+fn asymmetric_basket() -> Basket {
   (
     array![95.0, 110.0, 88.0],
     array![0.5, 0.3, 0.2],

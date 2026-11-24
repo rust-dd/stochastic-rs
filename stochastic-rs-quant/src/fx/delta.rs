@@ -1,9 +1,9 @@
 //! FX delta conventions (spot or forward, raw or premium-adjusted) and ATM conventions, with
 //! `F = Se^{(r_d − r_f)τ}` and `D_f = e^{−r_f τ}`.
 //!
-//! Reference: Reiswich & Wystup (2010), "FX Volatility Smile Construction", Wilmott Magazine
-//! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley
-//! Reference: Clark (2011), "Foreign Exchange Option Pricing", Wiley
+//! Reference: Reiswich & Wystup (2012), Wilmott 2012(60), 58–69, DOI 10.1002/wilm.10132
+//! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley, ISBN 978-0-470-75419-1
+//! Reference: Clark (2011), "Foreign Exchange Option Pricing", Wiley, ISBN 978-0-470-68368-2
 
 use std::f64::consts::FRAC_2_PI;
 

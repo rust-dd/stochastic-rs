@@ -114,6 +114,8 @@ impl HestonPricer {
 
   /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the model's
   /// parameters; NaN for a price outside the no-arbitrage bounds.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,
     c_price: f64,

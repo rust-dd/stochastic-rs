@@ -253,6 +253,7 @@ impl FirstOrder {
 
 /// A fixing at `t_fix <= 0` is known, so it pays its intrinsic value on `s0` without a vol or
 /// a convexity adjustment.
+// One argument per term of the coupon and the volatility read for it.
 #[allow(clippy::too_many_arguments)]
 fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   strike: T,

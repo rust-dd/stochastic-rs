@@ -4,7 +4,7 @@
 //! Reference: Sanfelici & Toscano (2024), arXiv:2402.00172
 //! Reference: Malliavin & Mancino (2002), Finance and Stochastics 6(1), 49–61
 //! Reference: Malliavin & Mancino (2009), The Annals of Statistics 37(4), 1983–2010
-//! Reference: Mancino & Recchioni (2015)
+//! Reference: Mancino & Recchioni (2015), PLoS ONE 10(9), DOI 10.1371/journal.pone.0139041
 //! Reference: Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3
 
 use ndarray::Array1;

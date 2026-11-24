@@ -184,6 +184,10 @@ fn thirty360_european(d1: NaiveDate, d2: NaiveDate) -> i64 {
 /// 30E/360 ISDA: like 30E/360 but the EOM-Feb (28 or 29) day is treated as 30
 /// for non-terminal dates only. ISDA Definitions 2006 §4.16(h).
 fn thirty360_european_isda(d1: NaiveDate, d2: NaiveDate) -> i64 {
+  // February's last day becomes 30 as a start only, so a same-day count would be −2 without this.
+  if d1 == d2 {
+    return 0;
+  }
   let (y1, m1) = (d1.year() as i64, d1.month() as i64);
   let (y2, m2) = (d2.year() as i64, d2.month() as i64);
   let mut dd1 = d1.day() as i64;
@@ -306,6 +310,16 @@ mod tests {
   use chrono::NaiveDate;
 
   use super::*;
+
+  /// February's last day is 30 as a start under 30E/360 ISDA, so a same-day count once gave −2.
+  #[test]
+  fn thirty360_european_isda_counts_no_days_from_a_date_to_itself() {
+    for (year, month, day) in [(2025, 2, 28), (2024, 2, 29), (2025, 3, 31), (2025, 6, 15)] {
+      let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
+      let isda = DayCountConvention::Thirty360EuropeanIsda;
+      assert_eq!(isda.year_fraction::<f64>(date, date), 0.0, "{date}");
+    }
+  }
 
   #[test]
   fn act365_full_year() {

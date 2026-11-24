@@ -84,13 +84,7 @@ impl PyDiscountCurve {
     let instruments: Vec<BootstrapInstrument<f64>> = payment_schedules
       .into_iter()
       .zip(rates)
-      .map(
-        |(fixed_times, rate)| BootstrapInstrument::SwapWithSchedule {
-          rate,
-          fixed_times,
-          float_times: Vec::new(),
-        },
-      )
+      .map(|(fixed_times, rate)| BootstrapInstrument::swap_on_times(rate, fixed_times, Vec::new()))
       .collect();
     Ok(Self {
       inner: bootstrap(BootstrapSpec::new(&instruments, method))
@@ -122,11 +116,7 @@ impl PyDiscountCurve {
         .map(|(start, end, rate)| BootstrapInstrument::Fra { start, end, rate }),
     );
     instruments.extend(swaps.into_iter().map(|(rate, fixed_times, float_times)| {
-      BootstrapInstrument::SwapWithSchedule {
-        rate,
-        fixed_times,
-        float_times,
-      }
+      BootstrapInstrument::swap_on_times(rate, fixed_times, float_times)
     }));
     Ok(Self {
       inner: bootstrap(BootstrapSpec::new(&instruments, method).discounting_with(&discount.inner))

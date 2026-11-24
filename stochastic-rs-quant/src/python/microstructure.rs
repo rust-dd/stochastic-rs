@@ -192,6 +192,12 @@ pub fn propagator_price_impact<'py>(
   ))
 }
 
+/// The trades an order makes, `(price, size, taker id, maker id)` each.
+type Fills = Vec<(f64, f64, u64, u64)>;
+
+/// One side of the book, `(price, total size)` per level.
+type Levels = Vec<(f64, f64)>;
+
 /// Limit order book — supports add / cancel / market-order execution.
 #[pyclass(name = "OrderBook", unsendable)]
 pub struct PyOrderBook {
@@ -219,12 +225,7 @@ impl PyOrderBook {
 
   /// Add a limit order. Returns
   /// `(order_id, [(price, size, taker_id, maker_id)] of immediate fills)`.
-  fn add_order(
-    &mut self,
-    side: &str,
-    price: f64,
-    size: f64,
-  ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>)> {
+  fn add_order(&mut self, side: &str, price: f64, size: f64) -> PyResult<(u64, Fills)> {
     let s = parse_side(side)?;
     let placed = self.inner.add_order(s, price, size);
     Ok((
@@ -238,11 +239,7 @@ impl PyOrderBook {
   }
 
   /// Execute a market order. Returns `(taker_id, [trades], remaining_unfilled_size)`.
-  fn execute_order(
-    &mut self,
-    side: &str,
-    size: f64,
-  ) -> PyResult<(u64, Vec<(f64, f64, u64, u64)>, f64)> {
+  fn execute_order(&mut self, side: &str, size: f64) -> PyResult<(u64, Fills, f64)> {
     let s = parse_side(side)?;
     let filled = self.inner.execute_order(s, size);
     Ok((
@@ -277,7 +274,7 @@ impl PyOrderBook {
   }
 
   /// Returns `(bids, asks)` where each side is `[(price, total_size)]`.
-  fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+  fn depth(&self) -> (Levels, Levels) {
     let side = |levels: Vec<crate::order_book::Level>| {
       levels.into_iter().map(|l| (l.price, l.size)).collect()
     };

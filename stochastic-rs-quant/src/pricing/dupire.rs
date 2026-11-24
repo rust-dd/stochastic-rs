@@ -34,7 +34,12 @@ pub struct Dupire {
   pub dc_dt: Option<Array2<f64>>,
 }
 
+/// `(∂C/∂K, ∂²C/∂K², ∂C/∂T)`, the derivatives a custom local volatility reads.
+type Derivatives<'a> = (&'a Array2<f64>, &'a Array2<f64>, &'a Array2<f64>);
+
 impl Dupire {
+  // The call grid, its carry and step, and the optional derivative grids.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     ks: Vec<f64>,
     ts: Vec<f64>,
@@ -380,7 +385,7 @@ impl Dupire {
     Ok(out)
   }
 
-  fn custom_derivatives(&self) -> Result<(&Array2<f64>, &Array2<f64>, &Array2<f64>), QuantError> {
+  fn custom_derivatives(&self) -> Result<Derivatives<'_>, QuantError> {
     let missing = |what| QuantError::MissingInput {
       what,
       detail: "the custom-derivative local volatility reads it".to_string(),

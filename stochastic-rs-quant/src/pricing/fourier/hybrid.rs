@@ -122,7 +122,7 @@ impl HkdeParams {
 /// dv_t = \kappa(\theta-v_t)\,dt + \sigma\sqrt{v_t}\,dW_t^v
 /// $$
 ///
-/// Reference: Kirkby, PROJ\_Option\_Pricing\_Matlab
+/// Reference: Kirkby, PROJ, <https://github.com/jkirkby3/PROJ_Option_Pricing_Matlab>
 #[derive(Debug, Clone)]
 pub struct HkdeFourier {
   params: HkdeParams,
@@ -278,7 +278,7 @@ impl SvjParams {
 /// \quad dv = \kappa(\theta - v)\,dt + \sigma\sqrt{v}\,dW^v
 /// $$
 ///
-/// Reference: Bates (1996), "Jumps and Stochastic Volatility"
+/// Reference: Bates (1996), Rev. Financ. Stud. 9(1), 69–107, DOI 10.1093/rfs/9.1.69
 #[derive(Debug, Clone)]
 pub struct BatesFourier {
   params: SvjParams,

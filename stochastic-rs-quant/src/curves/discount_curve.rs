@@ -24,7 +24,7 @@ pub struct DiscountCurve<T: RealExt> {
 
 impl<T: RealExt> DiscountCurve<T> {
   /// A curve through `points`, sorted by time, without a `t = 0` pillar (it is 1 there); panics
-  /// unless every time is finite and not negative and no two are equal.
+  /// unless each time is finite, not negative and unique, and each discount factor finite and > 0.
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
     if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
       panic!(
@@ -36,6 +36,15 @@ impl<T: RealExt> DiscountCurve<T> {
       panic!(
         "points must satisfy `p.time >= T::zero()` for every p, got p.time = {:?}",
         p.time
+      );
+    }
+    if let Some(p) = points
+      .iter()
+      .find(|p| !(p.discount_factor.is_finite() && p.discount_factor > T::zero()))
+    {
+      panic!(
+        "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = {:?}",
+        p.discount_factor
       );
     }
     let mut pts = points;
@@ -108,11 +117,9 @@ impl<T: RealExt> DiscountCurve<T> {
     self.method
   }
 
-  /// Discount factor at `t`, 1 for `t <= 0`; before the first pillar as the method's function says.
+  /// Discount factor at `t`: 1 at `t = 0`, NaN before it or at a NaN `t`, and before the first
+  /// pillar as the method's function says.
   pub fn discount_factor(&self, t: T) -> T {
-    if t <= T::zero() {
-      return T::one();
-    }
     interpolation::interpolate_discount_factor(&self.points, t, self.method)
   }
 
@@ -124,12 +131,12 @@ impl<T: RealExt> DiscountCurve<T> {
     -self.discount_factor(t).ln() / t
   }
 
-  /// Zero rate at time `t` under a given compounding convention.
+  /// Zero rate at time `t` under a given compounding convention; NaN at a non-positive `t`.
   pub fn zero_rate_with_compounding(&self, t: T, compounding: Compounding) -> T {
     compounding.zero_rate(self.discount_factor(t), t)
   }
 
-  /// Continuously compounded forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
+  /// Continuously compounded forward rate between `t1` and `t2`; NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
@@ -143,7 +150,7 @@ impl<T: RealExt> DiscountCurve<T> {
     -(d2.ln() - d1.ln()) / (t2 - t1)
   }
 
-  /// Simple (money-market) forward rate between `t1` and `t2`; NaN unless `t2 > t1`.
+  /// Simple (money-market) forward rate between `t1` and `t2`; NaN unless `t2 > t1 >= 0`.
   ///
   /// $$
   /// F(t_1, t_2) = \frac{1}{t_2 - t_1}\left(\frac{D(t_1)}{D(t_2)} - 1\right)
@@ -181,12 +188,12 @@ impl<T: RealExt> DiscountCurve<T> {
     (T::one() - self.discount_factor(t_n)) / annuity
   }
 
-  /// Extract zero rates at the given maturities.
+  /// [`zero_rate`](Self::zero_rate) at each maturity: NaN at a non-positive one.
   pub fn zero_rates(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(maturities.iter().map(|&t| self.zero_rate(t)).collect())
   }
 
-  /// Extract discount factors at the given maturities.
+  /// [`discount_factor`](Self::discount_factor) at each maturity: NaN before the origin.
   pub fn discount_factors(&self, maturities: ArrayView1<T>) -> Array1<T> {
     Array1::from_vec(
       maturities
@@ -243,5 +250,43 @@ mod tests {
     let c = flat_curve();
     let r = c.zero_rate(1.0);
     assert!((r - 0.05).abs() < 1e-10, "zero rate {r} != 0.05");
+  }
+
+  fn with_pillar(discount_factor: f64) -> DiscountCurve<f64> {
+    let mut points = flat_curve().points().to_vec();
+    points[1].discount_factor = discount_factor;
+    DiscountCurve::new(points, InterpolationMethod::LogLinearOnDiscountFactors)
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = NaN"
+  )]
+  fn a_nan_discount_factor_is_refused() {
+    with_pillar(f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = inf"
+  )]
+  fn an_infinite_discount_factor_is_refused() {
+    with_pillar(f64::INFINITY);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = 0.0"
+  )]
+  fn a_zero_discount_factor_is_refused() {
+    with_pillar(0.0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "points must satisfy `p.discount_factor.is_finite() && p.discount_factor > T::zero()` for every p, got p.discount_factor = -0.5"
+  )]
+  fn a_negative_discount_factor_is_refused() {
+    with_pillar(-0.5);
   }
 }

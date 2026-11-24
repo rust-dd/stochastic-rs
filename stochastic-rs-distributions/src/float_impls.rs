@@ -52,6 +52,10 @@ impl RealExt for f64 {
   fn min_positive_val() -> f64 {
     f64::MIN_POSITIVE
   }
+
+  fn machine_epsilon() -> f64 {
+    f64::EPSILON
+  }
 }
 
 impl RealExt for f32 {
@@ -79,6 +83,10 @@ impl RealExt for f32 {
 
   fn min_positive_val() -> f32 {
     f32::MIN_POSITIVE
+  }
+
+  fn machine_epsilon() -> f32 {
+    f32::EPSILON
   }
 }
 

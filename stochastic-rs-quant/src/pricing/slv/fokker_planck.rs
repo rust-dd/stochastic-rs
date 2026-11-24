@@ -371,6 +371,9 @@ pub fn heston_slv_density(
   Ok(density)
 }
 
+/// The leverage rows a march records, `(time, leverage over the spot mesh)` each.
+type LeverageRows = Vec<(f64, Vec<f64>)>;
+
 /// Marches the density from the Dirac start over the time grid, one leverage
 /// row per (sub)step from `source`, and records the snapshots.
 fn march(
@@ -381,7 +384,7 @@ fn march(
   method: &FokkerPlanckMethod,
   first_row: Vec<f64>,
   mut source: Source<'_>,
-) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity), QuantError> {
+) -> Result<(LeverageRows, FokkerPlanckDensity), QuantError> {
   let (rho, xi, kappa, theta) = (
     params.heston.rho,
     params.sigma_mixed(),

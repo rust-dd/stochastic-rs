@@ -29,18 +29,17 @@ pub fn empirical_wasserstein_1(x: &[f64], y: &[f64]) -> f64 {
   acc / (n * m) as f64
 }
 
-/// Computes bid-ask calibration tolerance:
-/// $\varepsilon = \frac1M \sum_j |\mathrm{ask}_j - \mathrm{bid}_j|$.
+/// The mean width $\frac1M \sum_j |\mathrm{ask}_j - \mathrm{bid}_j|$, NaN for no quote; panics
+/// unless there is one ask per bid.
 pub fn bid_ask_tolerance(bid: &[f64], ask: &[f64]) -> f64 {
-  if bid.is_empty() || ask.is_empty() {
-    return 0.0;
+  assert!(
+    ask.len() == bid.len(),
+    "ask must satisfy `ask.len() == bid.len()`, got ask.len() = {}, bid.len() = {}",
+    ask.len(),
+    bid.len()
+  );
+  if bid.is_empty() {
+    return f64::NAN;
   }
-  let m = bid.len().min(ask.len());
-  bid
-    .iter()
-    .zip(ask.iter())
-    .take(m)
-    .map(|(b, a)| (a - b).abs())
-    .sum::<f64>()
-    / m as f64
+  bid.iter().zip(ask).map(|(b, a)| (a - b).abs()).sum::<f64>() / bid.len() as f64
 }

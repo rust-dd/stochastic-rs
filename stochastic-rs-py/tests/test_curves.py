@@ -83,8 +83,8 @@ def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_conv
             assert with_origin.discount_factor(t) == curve.discount_factor(t)
     schedules, par = [[0.5], [0.5, 1.0], [0.5, 1.0, 1.5, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]], [0.03, 0.031, 0.033, 0.036]
     between_pillars = {
-        "cubic": [0.9970267065196697, 0.9775543514599756, 0.95341309136086, 0.9026089232232755, 0.8694864074212039],
-        "monotone_convex": [0.997074211487444, 0.9775513069916826, 0.953270279696725, 0.903217911261217, 0.8699591028427767],
+        "cubic": [0.9970267065196697, 0.9775543390544579, 0.9534133642530097, 0.902610578331464, 0.8694877552355871],
+        "monotone_convex": [0.997074211487444, 0.9775512812037299, 0.9532709791297318, 0.9032192847075059, 0.8699598924637715],
     }
     for interp, pins in between_pillars.items():
         curve = sr.DiscountCurve.bootstrap_ois(schedules, par, interp=interp)

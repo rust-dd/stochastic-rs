@@ -42,7 +42,7 @@ pub(super) fn validate_irregular_inputs<T: RealExt>(
   }
 
   let span = times[times.len() - 1] - times[0];
-  let tolerance = T::from_f64_fast(64.0) * T::epsilon() * span.abs().max(period.abs());
+  let tolerance = T::from_f64_fast(64.0) * T::machine_epsilon() * span.abs().max(period.abs());
   if (span - period).abs() > tolerance {
     return Err(QuantError::invalid(
       "observation times",
@@ -217,7 +217,7 @@ impl<T: RealExt> FmVol<T> {
 
   pub(super) fn validate_compatible_period(&self, other: &Self) -> Result<(), QuantError> {
     let period_tolerance =
-      T::from_f64_fast(64.0) * T::epsilon() * self.period.abs().max(other.period.abs());
+      T::from_f64_fast(64.0) * T::machine_epsilon() * self.period.abs().max(other.period.abs());
     if (self.period - other.period).abs() > period_tolerance {
       return Err(QuantError::invalid(
         "Fourier-Malliavin engine pair",
@@ -233,7 +233,7 @@ impl<T: RealExt> FmVol<T> {
       .max(other.origin.abs())
       .max(self.period.abs())
       .max(other.period.abs());
-    let origin_tolerance = T::from_f64_fast(64.0) * T::epsilon() * origin_scale;
+    let origin_tolerance = T::from_f64_fast(64.0) * T::machine_epsilon() * origin_scale;
     if (self.origin - other.origin).abs() > origin_tolerance {
       return Err(QuantError::invalid(
         "Fourier-Malliavin engine pair",

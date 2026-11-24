@@ -11,7 +11,7 @@
 //! \psi_t = \frac{b}{2}\Bigl(\frac{-m}{\sqrt{m^2+\sigma^2}}+\rho\Bigr)
 //! $$
 //!
-//! Reference: Gatheral (2006), The Volatility Surface
+//! Reference: Gatheral (2006), The Volatility Surface, Wiley, ISBN 978-0-471-79251-2
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
 use ndarray::Array1;

@@ -72,6 +72,7 @@ impl SabrPricer {
 
   /// The price at the query's forward `f`, for a fit that prices each quote at many parameter
   /// sets and computes its forward once; NaN as [`price_call`](Self::price_call) is.
+  // One argument per term of the query, the forward computed once.
   #[allow(clippy::too_many_arguments)]
   pub(crate) fn price_at_forward(
     &self,
@@ -92,6 +93,8 @@ impl SabrPricer {
 
   /// Black volatility implied by `c_price` under the carry `b = r - q`, whatever the SABR
   /// parameters; NaN for a price outside the no-arbitrage bounds.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,
     c_price: f64,

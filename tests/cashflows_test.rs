@@ -107,7 +107,12 @@ fn floating_coupon_uses_multicurve_forecast_curve() {
   let expected_forward = ((0.04 * delta).exp() - 1.0) / delta;
   let expected_amount = 250.0 * delta * (expected_forward + 0.0010);
 
-  approx(coupon.amount(&curves, valuation), expected_amount, 1e-10);
+  let axis = DayCountConvention::Actual365Fixed;
+  approx(
+    coupon.amount(&curves, valuation, axis),
+    expected_amount,
+    1e-10,
+  );
 }
 
 #[test]
@@ -152,7 +157,12 @@ fn cms_coupon_matches_forward_swap_rate_under_flat_curve() {
     DayCountConvention::Actual365Fixed.year_fraction(valuation, d(2024, 7, 15));
   let expected_amount = 100.0 * coupon_delta * swap_rate;
 
-  approx(coupon.amount(&curve, valuation), expected_amount, 1e-10);
+  let axis = DayCountConvention::Actual365Fixed;
+  approx(
+    coupon.amount(&curve, valuation, axis),
+    expected_amount,
+    1e-10,
+  );
 }
 
 #[test]
@@ -173,6 +183,7 @@ fn accrued_interest_matches_partial_fixed_period() {
 
   let elapsed: f64 = DayCountConvention::Actual360.year_fraction(start, as_of);
   let expected = 500.0 * 0.06 * elapsed;
-  let accrued = leg.cashflows()[0].accrued_interest(&flat_curve(0.03, 1.0), as_of, as_of);
+  let axis = DayCountConvention::Actual365Fixed;
+  let accrued = leg.cashflows()[0].accrued_interest(&flat_curve(0.03, 1.0), as_of, axis, as_of);
   approx(accrued, expected, 1e-10);
 }

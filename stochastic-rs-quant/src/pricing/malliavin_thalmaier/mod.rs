@@ -14,7 +14,7 @@
 //! Reference: Malliavin & Thalmaier (2006), Springer, Theorem 4.23
 //! Reference: Kohatsu-Higa & Yasuda (2008), RIMS Kôkyûroku 1580, 124–135
 //! Reference: Nualart, The Malliavin Calculus and Related Topics, Prop. 2.1.5
-//! Reference: Bally & Caramellino, Lower bounds for the density of Itô processes (preprint)
+//! Reference: Bally & Caramellino (2013), Potential Anal. 39(2), DOI 10.1007/s11118-012-9324-7
 //! Source: <https://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1580-11.pdf>
 
 pub mod engine;

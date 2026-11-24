@@ -22,7 +22,7 @@ pub trait InflationCurve<T: RealExt>: Debug + Send + Sync {
   /// $(1 + b_{\text{ZC}}(T))^T = I(0,T)/I(0)$; NaN at a non-positive (or sub-epsilon) `t`.
   fn breakeven_rate(&self, t: T) -> T {
     let ratio = self.forward_index_ratio(t);
-    if t <= T::epsilon() {
+    if t <= T::machine_epsilon() {
       return T::nan();
     }
     ratio.powf(T::one() / t) - T::one()
@@ -79,7 +79,7 @@ impl<T: RealExt> ZeroCouponInflationCurve<T> {
 
 impl<T: RealExt> InflationCurve<T> for ZeroCouponInflationCurve<T> {
   fn forward_index_ratio(&self, t: T) -> T {
-    if t <= T::epsilon() {
+    if t <= T::machine_epsilon() {
       return T::one();
     }
     let b = self.interp_breakeven(t);

@@ -182,6 +182,8 @@ fn fourier_call_price(
   LewisPricer::price_call_walk(&model, s, k, r, q, t, walk)
 }
 
+// The model, the query and the quadrature walk the fit reuses.
+#[allow(clippy::too_many_arguments)]
 fn fourier_option_price(
   params: &CgmysvParams,
   s: f64,

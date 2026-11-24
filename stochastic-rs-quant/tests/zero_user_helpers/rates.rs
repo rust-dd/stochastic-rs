@@ -7,12 +7,15 @@ use stochastic_rs_quant::calendar::ScheduleBuilder;
 use stochastic_rs_quant::cashflows::AccrualPeriod;
 use stochastic_rs_quant::cashflows::NotionalSchedule;
 use stochastic_rs_quant::cashflows::RateTenor;
+use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::MultiCurve;
 use stochastic_rs_quant::curves::interpolation::zero_rates_from_points;
 use stochastic_rs_quant::fx::CurrencyPair;
 use stochastic_rs_quant::fx::currency;
+use stochastic_rs_quant::fx::forward::FxForward;
 use stochastic_rs_quant::instruments::FixedRateBond;
 use stochastic_rs_quant::market::ibor;
 use stochastic_rs_quant::market::overnight;
@@ -148,4 +151,58 @@ fn zero_rates_from_points_is_minus_log_discount_over_time() {
   for (rate, expected) in rates.iter().zip([0.03, 0.035, 0.041]) {
     assert!((rate - expected).abs() < 1e-15, "{rate} against {expected}");
   }
+}
+
+/// A flat 3 % continuous curve, `D(t) = e^{−0.03t}` at every `t`.
+fn flat_three_percent() -> DiscountCurve<f64> {
+  DiscountCurve::from_zero_rates(
+    array![0.5, 1.0, 5.0].view(),
+    array![0.03, 0.03, 0.03].view(),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  )
+}
+
+/// `Σᵢ (tᵢ − tᵢ₋₁)·D(tᵢ)·rate·notional` over the schedule's four periods from its first date.
+#[test]
+fn pv_fixed_leg_sums_each_accrual_discounted_to_its_end() {
+  let curves = MultiCurve::new(flat_three_percent());
+  let schedule = [0.5_f64, 1.0, 1.5, 2.25, 3.0];
+  let by_hand = schedule
+    .windows(2)
+    .map(|w| (w[1] - w[0]) * (-0.03 * w[1]).exp() * 0.04 * 1e6)
+    .sum::<f64>();
+  let got = curves.pv_fixed_leg(array![0.5, 1.0, 1.5, 2.25, 3.0].view(), 0.04, 1e6);
+  assert!((got - by_hand).abs() < 1e-9, "{got} vs {by_hand}");
+}
+
+/// The zero rate under each compounding inverts `D(2) = e^{−0.06}`.
+#[test]
+fn zero_rate_with_compounding_inverts_the_discount_factor() {
+  let (curve, t) = (flat_three_percent(), 2.0);
+  let df = (-0.03_f64 * t).exp();
+  for (compounding, want) in [
+    (Compounding::Continuous, 0.03),
+    (Compounding::Simple, (1.0 / df - 1.0) / t),
+    (Compounding::Periodic(1), df.powf(-1.0 / t) - 1.0),
+    (
+      Compounding::Periodic(4),
+      4.0 * (df.powf(-1.0 / (4.0 * t)) - 1.0),
+    ),
+  ] {
+    let got = curve.zero_rate_with_compounding(t, compounding);
+    assert!((got - want).abs() < 1e-15, "{compounding}: {got} vs {want}");
+  }
+  assert_eq!(
+    curve.zero_rate_with_compounding(t, Compounding::Continuous),
+    curve.zero_rate(t)
+  );
+}
+
+/// `r_f = r_d − ln(F/S)/τ` recovers the foreign rate a forward was priced with.
+#[test]
+fn implied_foreign_rate_round_trips_the_forward() {
+  let pair = CurrencyPair::new(currency::EUR, currency::USD);
+  let forward = FxForward::new(pair, 1.1, 0.03, 0.01, 0.75).forward_rate();
+  let got = FxForward::<f64>::implied_foreign_rate(1.1, forward, 0.03, 0.75);
+  assert!((got - 0.01).abs() < 1e-15, "{got}");
 }

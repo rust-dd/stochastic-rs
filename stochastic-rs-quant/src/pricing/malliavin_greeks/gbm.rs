@@ -34,6 +34,7 @@ pub struct GbmMalliavinGreeks<S: SeedExt = Unseeded> {
 impl GbmMalliavinGreeks {
   /// Panics unless `n_paths >= 1` and `n_steps >= 2`, the grid of one step; the estimators answer
   /// NaN for an `s`, `r`, `q` or `tau` off their domain.
+  // The model, the query and the simulation's size.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     sigma: f64,

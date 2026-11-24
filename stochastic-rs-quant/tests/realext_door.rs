@@ -189,6 +189,7 @@ impl Float for R64 {
     min_value,
     min_positive_value,
     max_value,
+    epsilon,
   );
 
   delegate_unary!(
@@ -327,6 +328,10 @@ impl RealExt for R64 {
   fn min_positive_val() -> Self {
     R64(f64::MIN_POSITIVE)
   }
+
+  fn machine_epsilon() -> Self {
+    R64(f64::EPSILON)
+  }
 }
 
 /// The CRR rollback is generic over the scalar, so `R64` pricing it opens the door to any
@@ -440,11 +445,11 @@ fn a_realext_only_scalar_bootstraps_a_forecast_curve_in_a_few_trial_curves_per_s
         prev = t;
       }
       let annuity: f64 = (1..=years).map(|i| ois(i as f64)).sum();
-      quotes.push(BootstrapInstrument::SwapWithSchedule {
-        rate: c(floating / annuity),
-        fixed_times: (1..=years).map(|i| c(i as f64)).collect(),
-        float_times: float.into_iter().map(c).collect(),
-      });
+      quotes.push(BootstrapInstrument::swap_on_times(
+        c(floating / annuity),
+        (1..=years).map(|i| c(i as f64)).collect(),
+        float.into_iter().map(c).collect(),
+      ));
     }
     quotes
   }

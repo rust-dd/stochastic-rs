@@ -74,7 +74,8 @@ impl<T: RealExt> BasisSwap<T> {
     }
   }
 
-  /// Basis-swap valuation summary.
+  /// Basis-swap valuation summary; NaN while a coupon that fixed before the valuation date has no
+  /// observed rate ([`Leg::with_fixings`]).
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,

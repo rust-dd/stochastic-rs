@@ -32,6 +32,8 @@ pub(super) fn rr_sigma(k_call: f64, k_put: f64, f: f64, tau: f64, params: &SabrP
   sc - sp
 }
 
+// The butterfly's query, its two strikes, the model and the reference vol.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn bf_premium_mismatch(
   s: f64,
   k_call: f64,

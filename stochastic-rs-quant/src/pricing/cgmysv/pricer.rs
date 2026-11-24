@@ -81,8 +81,8 @@ impl<S: SeedExt> CgmysvPricer<S> {
 
     let dt = tau / self.n_steps as f64;
     let mut omega = vec![0.0_f64; n];
-    for m in 1..=self.n_steps {
-      omega[m] = p.omega(m as f64 * dt);
+    for (m, slot) in omega.iter_mut().enumerate().skip(1) {
+      *slot = p.omega(m as f64 * dt);
     }
 
     let mut s_paths = Array2::zeros((self.n_paths, n));

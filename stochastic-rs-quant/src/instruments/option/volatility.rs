@@ -7,7 +7,7 @@
 //! \sigma_{\mathrm{Sabr}}(F,K,\tau)
 //! $$
 //!
-//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine
+//! Reference: Hagan et al. (2002), "Managing Smile Risk", Wilmott Mag., 84–108
 //! Reference: Rubinstein (1983), J. Finance 38(1), 213–217, DOI: 10.1111/j.1540-6261.1983.tb03636.x
 
 use super::types::VolatilityQuoteKind;
@@ -123,7 +123,7 @@ impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
 /// Shifted SABR for negative or near-zero rates: the displacement is added to the forward and
 /// the strike, so a call on $F$ at $K$ is a call on $F + s$ at $K + s$.
 ///
-/// Reference: Oblój (2008), "Fine-tune your smile: Correction to Hagan et al.", Wilmott Magazine
+/// Reference: Obłój (2008), "Fine-tune your smile", Wilmott Mag., arXiv:0708.0998
 #[derive(Debug, Clone, Copy)]
 pub struct ShiftedSabrVolatility<T: RealExt> {
   /// Sabr level parameter $\alpha$ in the shifted coordinates.

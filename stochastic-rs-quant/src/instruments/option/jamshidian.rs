@@ -17,6 +17,7 @@ use crate::traits::RealExt;
 
 /// Hull-White swaption by Jamshidian, the notional repaid with the last coupon; at `tau = 0` the
 /// swap's value floored at 0, NaN for a negative or NaN `tau` or no root `r*`; panics on a bad leg.
+// One argument per term of the swaption and of the Hull–White model.
 #[allow(clippy::too_many_arguments)]
 pub fn price_jamshidian_hull_white<T: RealExt>(
   direction: SwaptionDirection,
@@ -207,6 +208,7 @@ pub struct JamshidianHullWhiteSwaption<T: RealExt> {
 
 impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
   /// Panics unless `mean_reversion` is finite and `sigma` finite and not negative.
+  // One argument per term of the swaption and of the Hull–White model.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     direction: SwaptionDirection,

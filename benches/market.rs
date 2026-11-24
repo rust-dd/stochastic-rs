@@ -97,6 +97,7 @@ fn bench_reactive_bootstrap(c: &mut Criterion) {
       let curve = build_curve(
         &helpers,
         val_date,
+        DayCountConvention::Actual365Fixed,
         InterpolationMethod::LogLinearOnDiscountFactors,
       )
       .unwrap();

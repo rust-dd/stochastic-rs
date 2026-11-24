@@ -9,6 +9,7 @@ use crate::cashflows::CurveProvider;
 use crate::cashflows::FloatingIndex;
 use crate::cashflows::Leg;
 use crate::cashflows::NotionalSchedule;
+use crate::market::FixingHistory;
 use crate::traits::RealExt;
 
 /// Floating-rate note backed by a floating coupon leg plus redemption.
@@ -55,6 +56,13 @@ impl<T: RealExt> FloatingRateBond<T> {
       coupon_day_count,
       leg,
     }
+  }
+
+  /// [`Leg::with_fixings`] on the coupons: a seasoned note is NaN until its running coupon has its
+  /// fixing.
+  pub fn with_fixings(mut self, fixings: &FixingHistory<T>) -> Self {
+    self.leg = self.leg.with_fixings(fixings);
+    self
   }
 
   /// Borrow the underlying cashflow leg.

@@ -171,7 +171,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     let v = T::pi() * (u - T::from(0.5).unwrap());
     let w = -e.ln();
     let phi = alpha * (v + self.cms_b);
-    let denom = v.cos().max(T::epsilon()).powf(T::one() / alpha);
+    let denom = v.cos().max(T::machine_epsilon()).powf(T::one() / alpha);
     let ratio = ((v - phi).cos() / w).max(T::min_positive_val());
     let tail = ratio.powf((T::one() - alpha) / alpha);
     self.location + self.scale * self.cms_s * (phi.sin() / denom) * tail
@@ -227,7 +227,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     let inv_alpha = T::one() / alpha;
     let exp_term = (T::one() - alpha) / alpha;
     let min_pos = T::splat(T::min_positive_val());
-    let cos_floor = T::splat(T::epsilon());
+    let cos_floor = T::splat(T::machine_epsilon());
 
     let mut u = [T::zero(); 8];
     let mut e = [T::zero(); 8];

@@ -58,7 +58,7 @@ impl<T: RealExt> FmVol<T> {
     let three = T::from_f64_fast(3.0);
     let a = two * T::from_usize_(self.n_freq) * self.mesh / self.period;
     let r = a - a.floor();
-    let eta = if a.abs() > T::epsilon() {
+    let eta = if a.abs() > T::machine_epsilon() {
       r * (T::one() - r) / (two * a * a)
     } else {
       T::zero()
