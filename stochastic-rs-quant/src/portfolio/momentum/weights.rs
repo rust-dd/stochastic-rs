@@ -29,8 +29,11 @@ pub(super) fn assign_weights(
         return indices.iter().map(|&idx| (idx, w)).collect();
       }
       // Each size over the largest, so their sum cannot overflow.
-      let raw: Vec<f64> = indices.iter().map(|&idx| size(idx) / largest).collect();
-      let total: f64 = raw.iter().sum();
+      let raw = indices
+        .iter()
+        .map(|&idx| size(idx) / largest)
+        .collect::<Vec<_>>();
+      let total = raw.iter().sum::<f64>();
 
       indices
         .iter()

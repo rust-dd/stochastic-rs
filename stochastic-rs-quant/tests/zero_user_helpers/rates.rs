@@ -167,10 +167,10 @@ fn flat_three_percent() -> DiscountCurve<f64> {
 fn pv_fixed_leg_sums_each_accrual_discounted_to_its_end() {
   let curves = MultiCurve::new(flat_three_percent());
   let schedule = [0.5_f64, 1.0, 1.5, 2.25, 3.0];
-  let by_hand: f64 = schedule
+  let by_hand = schedule
     .windows(2)
     .map(|w| (w[1] - w[0]) * (-0.03 * w[1]).exp() * 0.04 * 1e6)
-    .sum();
+    .sum::<f64>();
   let got = curves.pv_fixed_leg(array![0.5, 1.0, 1.5, 2.25, 3.0].view(), 0.04, 1e6);
   assert!((got - by_hand).abs() < 1e-9, "{got} vs {by_hand}");
 }

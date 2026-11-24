@@ -88,7 +88,7 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     });
   }
   if !segment::is_local(method) {
-    let quotes: Vec<(&BootstrapInstrument<T>, usize)> = order.iter().map(|&i| quote(i)).collect();
+    let quotes = order.iter().map(|&i| quote(i)).collect::<Vec<_>>();
     sweep::reprice_together(&mut points, &quotes, discount, method)?;
   }
   Ok(DiscountCurve::new(points, method))

@@ -93,10 +93,10 @@ fn an_act360_cms_coupon_fixes_the_swap_rate_on_the_pricers_axis() {
     d(2027, 7, 5),
     d(2028, 1, 5),
   ];
-  let annuity: f64 = swap_dates
+  let annuity = swap_dates
     .windows(2)
     .map(|w| ACT360.year_fraction::<f64>(w[0], w[1]) * read(w[1]))
-    .sum();
+    .sum::<f64>();
   let swap_rate = (read(swap_dates[0]) - read(swap_dates[4])) / annuity;
   let (start, end) = (schedule.adjusted_dates[0], schedule.adjusted_dates[1]);
   let expected = read(end) * ACT360.year_fraction::<f64>(start, end) * swap_rate;

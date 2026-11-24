@@ -109,7 +109,9 @@ fn implied(curve: &DiscountCurve<f64>, quote: &BootstrapInstrument<f64>) -> f64 
     } => {
       let delta = 1.0 / f64::from(frequency.periods_per_year());
       let payments = (maturity / delta).round() as usize;
-      let coupons: f64 = (1..payments).map(|i| delta * d(i as f64 * delta)).sum();
+      let coupons = (1..payments)
+        .map(|i| delta * d(i as f64 * delta))
+        .sum::<f64>();
       (1.0 - d(*maturity)) / (coupons + delta * d(*maturity))
     }
     BootstrapInstrument::SwapWithSchedule { fixed_times, .. } => {

@@ -407,20 +407,16 @@ mod tests {
     let deposit = DepositRateHelper::new(quote(0.03), valuation, date(2025, 2), act360);
     let fra_6m = FraRateHelper::new(quote(0.032), date(2025, 2), date(2025, 7), act360);
     let fra_1y = FraRateHelper::new(quote(0.035), date(2025, 7), date(2026, 1), act360);
-    let swaps: Vec<(f64, f64, SwapRateHelper<f64>)> =
-      [(2, 0.038), (5, 0.04), (10, 0.042), (30, 0.043)]
-        .map(|(years, rate)| {
-          let helper = SwapRateHelper::new(
-            quote(rate),
-            valuation,
-            date(2025 + years, 1),
-            Frequency::SemiAnnual,
-            DayCountConvention::Actual365Fixed,
-          );
-          (f64::from(years), rate, helper)
-        })
-        .into_iter()
-        .collect();
+    let swaps = [(2, 0.038), (5, 0.04), (10, 0.042), (30, 0.043)].map(|(years, rate)| {
+      let helper = SwapRateHelper::new(
+        quote(rate),
+        valuation,
+        date(2025 + years, 1),
+        Frequency::SemiAnnual,
+        DayCountConvention::Actual365Fixed,
+      );
+      (f64::from(years), rate, helper)
+    });
     let mut helpers: Vec<&dyn RateHelper<f64>> = vec![&deposit, &fra_6m, &fra_1y];
     helpers.extend(swaps.iter().map(|(_, _, h)| h as &dyn RateHelper<f64>));
     let method = InterpolationMethod::LogLinearOnDiscountFactors;

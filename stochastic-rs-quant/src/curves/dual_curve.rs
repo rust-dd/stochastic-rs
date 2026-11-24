@@ -51,7 +51,7 @@ pub(super) fn swap_node<T: RealExt>(
         time: maturity,
         discount_factor: start,
       };
-      let trial: Vec<CurvePoint<T>> = points.iter().copied().chain([node]).collect();
+      let trial = points.iter().copied().chain([node]).collect::<Vec<_>>();
       (trial, points.len(), start)
     }
     Place::At(curve, slot) => (curve.to_vec(), slot, curve[slot].discount_factor),
