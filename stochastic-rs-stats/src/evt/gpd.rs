@@ -33,6 +33,7 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
+use crate::stationarity::common::params_in_data_units;
 use crate::stationarity::common::per_unit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
@@ -292,25 +293,6 @@ pub(crate) struct DataUnits<const K: usize> {
   pub(crate) std_errors: Array1<f64>,
   pub(crate) covariance: Array2<f64>,
   pub(crate) log_likelihood: f64,
-}
-
-/// `params` fitted to the data times `unit`, in the data's units (`params[i]` as `unit^powers[i]`);
-/// `Numerical` where one is not finite, or leaves the double range or rounds to zero there.
-pub(crate) fn params_in_data_units<const K: usize>(
-  params: [f64; K],
-  unit: f64,
-  powers: [usize; K],
-) -> Result<[f64; K], StatsError> {
-  if !params.iter().all(|p| p.is_finite()) {
-    return Err(StatsError::Numerical { stage: "estimate" });
-  }
-  let mapped: [f64; K] = std::array::from_fn(|i| per_unit(params[i], unit, powers[i]));
-  if (0..K).any(|i| !mapped[i].is_finite() || (mapped[i] == 0.0 && params[i] != 0.0)) {
-    return Err(StatsError::Numerical {
-      stage: "data scale",
-    });
-  }
-  Ok(mapped)
 }
 
 /// [`params_in_data_units`], the covariance and `ℓ + n ln unit`; a standard error is rooted at unit

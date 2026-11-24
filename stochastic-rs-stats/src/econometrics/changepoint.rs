@@ -13,6 +13,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
@@ -45,10 +46,12 @@ pub fn cusum<T: FloatExt>(
   validate(&y, 2)?;
   reject_constant(&y, "constant series")?;
   let n = series.len();
-  let mut x = Array1::<f64>::zeros(n);
-  for i in 0..n {
-    x[i] = series[i].to_f64().unwrap();
-  }
+  let (x, _) = unit_scaled(
+    series
+      .iter()
+      .map(|v| v.to_f64().unwrap())
+      .collect::<Vec<_>>(),
+  );
   let mean = x.iter().sum::<f64>() / n as f64;
   let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0);
   let sd = var.sqrt();

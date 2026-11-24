@@ -17,7 +17,7 @@ fn a_family_declares_at_most_one_per_path_block() {
 #[test]
 fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
   let (rate, alpha, e_scale, e_pow, w_plus, lp, lm) = (0.25, 0.5, 0.5, 0.5, 0.4, 2.0, 6.0);
-  let params = [0.01, rate, 1.0 / alpha, e_scale, e_pow, w_plus, lp, lm];
+  let params = [0.01, rate, 1.0 / alpha, e_scale, e_pow, w_plus, lp, lm, 0.0];
   let (gj, ej, uj): (f64, f64, f64) = (2.0, 1.5, 0.3);
   let cap = (gj * rate).powf(-1.0 / alpha);
   for (uv, side, sign) in [(0.2, lp, 1.0), (0.9, lm, -1.0)] {
@@ -50,6 +50,19 @@ fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
       0.2
     )
     .is_none()
+  );
+}
+
+/// The series step: the drift, the diffusion standing in for the terms past the last, and the
+/// step's cell of terms (none here).
+#[test]
+fn the_series_step_adds_the_remainder_diffusion() {
+  let (b_t, rem_sd) = (0.01, 0.3);
+  let params = [b_t, 0.25, 2.0, 1.0, 1.0, 0.5, 2.0, 6.0, rem_sd];
+  let (x, dt, dz) = (0.5, 1.0 / 253.0, -0.07);
+  assert_eq!(
+    step1(Family::TemperedStableSeries, x, &params, dt, dz),
+    x + b_t * dt + rem_sd * dz + 0.0
   );
 }
 

@@ -1,5 +1,5 @@
 //! The standard classical tempered stable process of Kim, Rachev, Bianchi & Fabozzi: one scale
-//! `C`, set for unit variance per unit time. The series stops at `J` terms; `2CT` is its Lévy mass.
+//! `C`, set for unit variance per unit time. `2CT` is the Lévy mass, `R_J` the Gaussian remainder.
 //!
 //! $$
 //! \nu(dx)=C\left(e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
@@ -9,7 +9,8 @@
 //!
 //! $$
 //! X_t=\sum_{j=1}^{J}\Big(\Big(\frac{\alpha\Gamma_j}{2CT}\Big)^{-1/\alpha}\wedge
-//! E_j\,U_j^{1/\alpha}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t,
+//! E_j\,U_j^{1/\alpha}\,|V_j|^{-1}\Big)\frac{V_j}{|V_j|}\mathbf 1_{\{\tau_j\le t\}}+b_T\,t
+//! +R_J(t),
 //! $$
 //!
 //! $$
@@ -18,6 +19,7 @@
 //! $$
 //!
 //! Reference: Rosiński (2007), Thm 5.1, SPA 117(6), 677–707, DOI 10.1016/j.spa.2006.10.003
+//! Reference: Asmussen & Rosiński (2001), J. Appl. Prob. 38(2), 482–493, DOI 10.1239/jap/996986757
 //! Reference: Kim et al. (2010), JBF 34(9), 2096–2109, DOI 10.1016/j.jbankfin.2010.01.015
 //! Reference: Bianchi et al. (2010), Springer, 33–42, DOI 10.1007/978-88-470-1481-7_4
 //!
@@ -29,11 +31,13 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::jump::series_remainder::SeriesRemainder;
 use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -51,7 +55,8 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of time steps
   pub n: usize,
-  /// Series terms; at α > 1 the dropped small jumps carry part of the variance.
+  /// Series terms; the rest enter as a Brownian motion of their mean and variance, so the two
+  /// moments hold at any `j` and the law's shape once `j α / (T ‖σ‖) ≫ 1`.
   pub j: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -158,16 +163,13 @@ impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {
       * (self.lambda_plus.powf(self.alpha - T::one())
         - self.lambda_minus.powf(self.alpha - T::one()))
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for Cts<T, S, B>
-{
   /// The series constants, folded once: the arrival rate `α / (2 C T)`, as the host divides by the
   /// scale alone, the exponential draw entering plainly, and the two sides equally likely.
-  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+  fn series_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TemperedStableSeries {
       b_t: self.drift_rate(),
+      rem_sd: T::zero(),
       rate: self.alpha / (T::from_usize_(2) * self.tempering_constant() * self.t_max()),
       inv_alpha: T::one() / self.alpha,
       e_scale: T::one(),
@@ -176,6 +178,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       lambda_plus: self.lambda_plus,
       lambda_minus: self.lambda_minus,
     }
+  }
+
+  /// What the series drops past its `j`-th term, from the constants of [`Self::series_spec`].
+  fn remainder(&self) -> SeriesRemainder {
+    let f = |v: T| v.to_f64().unwrap();
+    SeriesRemainder::of(&self.series_spec(), f(self.alpha), f(self.t_max()))
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Cts<T, S, B>
+{
+  /// The series constants with the launch's remainder: its drift in `b_t`, its deviation `rem_sd`.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.remainder().launch(self.series_spec(), self.j)
   }
 
   fn initial_value(&self) -> T {
@@ -225,8 +242,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> CtsSampler<T, S> {
-    // Uniform, then Exp(1) sources are derived from `self.seed`, an order the pinned streams depend
-    // on; reuse advances both. The scale `C` and the drift `b_t` do not read the seed.
+    // The uniform, Exp(1), arrival and normal sources are derived from `self.seed` in this order,
+    // which the seeded streams depend on.
     let t_max = self.t_max();
     let dt = self.dt();
     let c = self.tempering_constant();
@@ -246,6 +263,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
+      remainder: self.remainder(),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -313,8 +332,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Cts`] sampling state: the uniform and exponential sources of the Rosiński series,
-/// and a seed derived once more per fill for the Gamma arrival times `P`.
+/// Reusable [`Cts`] sampling state: the series' uniform and exponential sources, the
+/// remainder's normal one, and a seed derived once more per fill for the arrival times.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CtsSampler<T: FloatExt, S: SeedExt> {
@@ -331,6 +350,8 @@ pub struct CtsSampler<T: FloatExt, S: SeedExt> {
   uniform: Seeded<SimdUniform<T>>,
   exp: Seeded<SimdExp<T>>,
   seed: S,
+  remainder: SeriesRemainder,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
@@ -351,6 +372,9 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
     self.uniform.fill_slice(u.as_slice_mut().unwrap());
     let e = Array1::from_shape_fn(size, |_| self.exp.sample());
     let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
+    let (drift, variance) = self.remainder.rates(arrivals[n_terms].to_f64().unwrap());
+    let drift = b_t + T::from_f64_fast(drift);
+    let spread = T::from_f64_fast(variance.sqrt());
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -386,6 +410,7 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
 
     let mut k: usize = 0;
     let mut cum_jumps = T::zero();
+    let mut gauss = T::zero();
 
     for i in 1..out.len() {
       let t_i = T::from_usize_(i) * dt;
@@ -395,8 +420,8 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
         k += 1;
       }
 
-      // direct formula: x(t_i) = x0 + Σ_{τ_j <= t_i} jump_j + b_t * t_i
-      out[i] = self.x0 + cum_jumps + b_t * t_i;
+      gauss += self.normal.sample();
+      out[i] = self.x0 + cum_jumps + drift * t_i + spread * gauss;
     }
   }
 }
