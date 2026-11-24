@@ -22,6 +22,8 @@ use super::HurstFit;
 use super::to_f64_vec;
 use crate::StatsError;
 use crate::input::reject_constant;
+use crate::stationarity::common::in_data_units;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 const PATH: &str = "constant or zero-variance path";
@@ -61,6 +63,34 @@ impl Variations {
   }
 }
 
+/// A path that is no constant, times its power-of-two unit, and that unit.
+fn at_unit_scale<T: FloatExt>(x: ArrayView1<T>) -> Result<(Vec<T>, f64), StatsError> {
+  reject_constant(&to_f64_vec(x), PATH)?;
+  let (scaled, unit) = unit_scaled(x.to_vec());
+  Ok((scaled, unit.to_f64().unwrap()))
+}
+
+/// The fit of `h`, its two variations read off the path times `unit` and mapped back as the
+/// path's `power`-th power; `Err` where one leaves the doubles there.
+fn variations_fit<T: FloatExt>(
+  h: f64,
+  variations: [f64; 2],
+  unit: f64,
+  power: f64,
+  nobs: usize,
+) -> Result<HurstFit<T>, StatsError> {
+  let [v_short, v_long] = variations.map(|v| in_data_units(v, unit, power));
+  Ok(HurstFit {
+    hurst: T::from_f64_fast(h),
+    std_err: None,
+    nobs,
+    diagnostic: HurstDiagnostic::Variations {
+      v_short: T::from_f64_fast(v_short?),
+      v_long: T::from_f64_fast(v_long?),
+    },
+  })
+}
+
 impl<T: FloatExt> HurstEstimator<T> for Variations {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
@@ -69,33 +99,19 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
         if n < 7 {
           return Err(StatsError::InsufficientData { needed: 7, got: n });
         }
-        reject_constant(&to_f64_vec(x), PATH)?;
+        let (scaled, unit) = at_unit_scale(x)?;
+        let x = ArrayView1::from(&scaled);
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
-        Ok(HurstFit {
-          hurst: T::from_f64_fast(h),
-          std_err: None,
-          nobs: n,
-          diagnostic: HurstDiagnostic::Variations {
-            v_short: T::from_f64_fast(v1),
-            v_long: T::from_f64_fast(v2),
-          },
-        })
+        variations_fit(h, [v1, v2], unit, 2.0, n)
       }
       VariationKind::CentralDiff => {
         if n < 5 {
           return Err(StatsError::InsufficientData { needed: 5, got: n });
         }
-        reject_constant(&to_f64_vec(x), PATH)?;
+        let (scaled, unit) = at_unit_scale(x)?;
+        let x = ArrayView1::from(&scaled);
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
-        Ok(HurstFit {
-          hurst: T::from_f64_fast(h),
-          std_err: None,
-          nobs: n,
-          diagnostic: HurstDiagnostic::Variations {
-            v_short: T::from_f64_fast(v1),
-            v_long: T::from_f64_fast(v2),
-          },
-        })
+        variations_fit(h, [v1, v2], unit, 2.0, n)
       }
       VariationKind::PowerVariation { k, p } => {
         if k == 0 {
@@ -119,17 +135,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
             got: n,
           });
         }
-        reject_constant(&to_f64_vec(x), PATH)?;
+        let (scaled, unit) = at_unit_scale(x)?;
+        let x = ArrayView1::from(&scaled);
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
-        Ok(HurstFit {
-          hurst: T::from_f64_fast(h),
-          std_err: None,
-          nobs: n,
-          diagnostic: HurstDiagnostic::Variations {
-            v_short: T::from_f64_fast(v1),
-            v_long: T::from_f64_fast(v2),
-          },
-        })
+        variations_fit(h, [v1, v2], unit, p, n)
       }
     }
   }

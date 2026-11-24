@@ -701,6 +701,7 @@ impl<T: FloatExt> EulerSpec<T> {
         w_plus,
         lambda_plus,
         lambda_minus,
+        rem_sd,
       } => (
         Family::TemperedStableSeries.code(),
         pad([
@@ -712,6 +713,7 @@ impl<T: FloatExt> EulerSpec<T> {
           w_plus,
           lambda_plus,
           lambda_minus,
+          rem_sd,
         ]),
       ),
       EulerSpec::VolterraReference => (Family::VolterraReference.code(), pad([])),

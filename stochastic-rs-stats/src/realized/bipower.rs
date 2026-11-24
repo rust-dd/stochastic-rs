@@ -15,6 +15,8 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate_view;
 use crate::realized::variance::realized_variance;
+use crate::stationarity::common::params_in_data_units;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Bipower variation $BV = \frac{\pi}{2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$, robust to finite-activity
@@ -120,8 +122,8 @@ impl crate::traits::HypothesisTest for BnsJumpTest {
   }
 }
 
-/// BNS jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns, on a non-finite one, a
-/// constant series or a zero bipower variation, and panics unless `0 < alpha < 1`.
+/// BNS jump test, `N(0, 1)` under no jump; `Err` below 3 returns, on a non-finite one, a constant
+/// series, a zero bipower variation or measures past the doubles; panics unless `0 < alpha < 1`.
 pub fn bns_jump_test<T: FloatExt>(
   returns: ArrayView1<T>,
   alpha: f64,
@@ -130,9 +132,11 @@ pub fn bns_jump_test<T: FloatExt>(
   validate_view(returns, 3)?;
   reject_constant(&as_slice_or_copy(returns), "constant series")?;
   let n = returns.len();
-  let rv = realized_variance(returns).to_f64().unwrap();
-  let bv = bipower_variation(returns).to_f64().unwrap();
-  let tpq = tripower_quarticity(returns).to_f64().unwrap();
+  let (scaled, unit) = unit_scaled(returns.to_vec());
+  let scaled = ArrayView1::from(&scaled);
+  let rv = realized_variance(scaled).to_f64().unwrap();
+  let bv = bipower_variation(scaled).to_f64().unwrap();
+  let tpq = tripower_quarticity(scaled).to_f64().unwrap();
   let theta = (std::f64::consts::FRAC_PI_2).powi(2) + std::f64::consts::PI - 5.0;
   let nn = n as f64;
   if !(bv > 0.0 && rv > 0.0) {
@@ -144,14 +148,15 @@ pub fn bns_jump_test<T: FloatExt>(
   let denom = (theta * ratio.max(1.0)).sqrt();
   let statistic = nn.sqrt() * (rv.ln() - bv.ln()) / denom;
   let p_value = two_sided_p_value(statistic);
+  let in_units = params_in_data_units([rv, bv, tpq], unit.to_f64().unwrap(), [2, 2, 4])?;
   Ok(BnsJumpTest {
     statistic,
     p_value: Some(p_value),
     critical_values: None,
     rejects_null: p_value < alpha,
-    rv,
-    bv,
-    tpq,
+    rv: in_units[0],
+    bv: in_units[1],
+    tpq: in_units[2],
   })
 }
 

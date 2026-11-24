@@ -42,6 +42,7 @@ use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::cts::Cts;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
+use stochastic_rs_stochastic::jump::kobol::Kobol;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -165,6 +166,8 @@ refuses! {
     => Cts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
   the_rapidly_decreasing_drift_has_a_pole_at_alpha_one: "alpha must satisfy `alpha != T::one()`, got alpha = 1.0"
     => Rdts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
+  kobol_with_unequal_sides_has_no_centring_at_alpha_one: "alpha must satisfy `alpha != T::one() || p == q`, got alpha = 1.0"
+    => Kobol::<f64>::new(0.4, 2.0, 1.0, 3.0, 5.0, 1.0, 64, 8, None, None, Unseeded);
   a_volterra_kernel_validates_its_parameter: "h must satisfy `h > T::zero() && h < T::one()`, got h = 1.5"
     => Volterra::<f64>::new(VolterraKernelSpec::FractionalBM { h: 1.5 }, 64, None, Unseeded);
   a_power_law_kernel_is_square_integrable: "gamma must satisfy `gamma.is_finite() && gamma > T::from_f64_fast(-0.5)`, got gamma = -0.5"

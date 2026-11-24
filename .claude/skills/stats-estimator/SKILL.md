@@ -56,6 +56,10 @@ pub fn fit_foo<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<FooFit, St
   degeneracy. `reject_constant` is the crate's one near-constant rule: a range within `4 ε` of the
   largest magnitude is a constant's rounding and refused as the constant itself. A method on which a
   constant is no degeneracy (PELT's no change, an EWMA's `r²`) says why in its doc.
+- **A scale-free statistic runs at unit scale**: after validation, `unit_scaled` (the data times
+  the power of two nearest the inverse of its largest size, exact). A power of two then moves no bit
+  of the answer, and an underflow is never named a degenerate series. An answer in the data's units
+  is mapped back by the same power; one past the doubles is `Numerical { stage: "data scale" }`.
 
 ## 2. The result struct
 

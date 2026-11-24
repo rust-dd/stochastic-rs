@@ -17,6 +17,8 @@ use super::FractalDimEstimator;
 use crate::StatsError;
 use crate::hurst::to_f64_vec;
 use crate::input::reject_constant;
+use crate::stationarity::common::in_data_units;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Variogram-ratio fractal-dimension estimator.
@@ -84,16 +86,18 @@ fn compute_with_diagnostic<T: FloatExt>(
     });
   }
   reject_constant(&to_f64_vec(x), "constant or zero-variance path")?;
+  let (scaled, unit) = unit_scaled(to_f64_vec(x));
+  let x = ArrayView1::from(&scaled);
 
   let sum1: f64 = (1..x.len())
     .map(|i| {
-      let d = x[i].to_f64().unwrap() - x[i - 1].to_f64().unwrap();
+      let d = x[i] - x[i - 1];
       d.abs().powf(p_f64)
     })
     .sum();
   let sum2: f64 = (2..x.len())
     .map(|i| {
-      let d = x[i].to_f64().unwrap() - x[i - 2].to_f64().unwrap();
+      let d = x[i] - x[i - 2];
       d.abs().powf(p_f64)
     })
     .sum();
@@ -106,5 +110,6 @@ fn compute_with_diagnostic<T: FloatExt>(
   }
 
   let d = 2.0 - (1.0 / p_f64) * ((v2.ln() - v1.ln()) / LN_2);
-  Ok((d, v1, v2))
+  let in_units = |v: f64| in_data_units(v, unit, p_f64);
+  Ok((d, in_units(v1)?, in_units(v2)?))
 }
