@@ -61,6 +61,15 @@ impl Stop {
     matches!(self, Self::Converged)
   }
 
+  /// The stop of a search that started from a capped stage's point: no convergence either.
+  pub(crate) fn after(self, capped: bool) -> Self {
+    if capped && self.converged() {
+      Self::Capped
+    } else {
+      self
+    }
+  }
+
   /// The stop in the words of quant's calibrators, `names` the fit's parameters.
   pub(crate) fn message(&self, names: &[&str]) -> String {
     let words = match self {

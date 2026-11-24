@@ -58,10 +58,10 @@ pub struct QmleFit {
   pub kind: DiffusionKind,
   /// The Gaussian quasi-log-likelihood at the fit, for OU the exact one.
   pub log_likelihood: f64,
-  /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
+  /// Iterations of the simplex, the polishes and the refits; 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
-  /// No step along one parameter of the search gains `1e-7` in quasi-log-likelihood, and none
-  /// rests on a bound or is unidentified; `true` for the closed form, a stationary point.
+  /// No step along one parameter gains `1e-7` in quasi-log-likelihood, and for CIR the limit
+  /// `θ → 0` does not fit as well where the quadratic model puts it within 36 standard errors.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
   /// `<name> is not identified`, `iteration cap reached`, …
@@ -211,7 +211,7 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
   let coordinates = [
-    Coordinate::log(start[0]),
+    carrier.speed(start[0]),
     carrier.level(start[1]),
     Coordinate::log(start[2]),
   ];
@@ -355,6 +355,14 @@ impl Carrier {
     match self {
       Self::Standardised { mean, .. } => (mean, 0.0),
       Self::Log { mean } => (mean, mean.ln()),
+    }
+  }
+
+  /// The speed's coordinate: where the level is a logarithm, `θ → 0` leaves it unidentified.
+  fn speed(self, start: f64) -> Coordinate {
+    match self {
+      Self::Standardised { .. } => Coordinate::log(start),
+      Self::Log { .. } => Coordinate::log(start).fading(1),
     }
   }
 

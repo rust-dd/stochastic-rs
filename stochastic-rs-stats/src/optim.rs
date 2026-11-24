@@ -4,6 +4,7 @@
 use crate::traits::RealExt;
 
 pub(crate) mod certificate;
+mod curvature;
 mod lbfgs;
 mod legacy_simplex;
 pub(crate) mod search;

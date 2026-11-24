@@ -51,10 +51,10 @@ pub struct GmmCirFit {
   /// Hansen's over-identification statistic, `χ²₁` under the model.
   pub j_stat: f64,
   pub j_pvalue: f64,
-  /// Simplex iterations over both stages.
+  /// Iterations of both stages' simplexes, the polishes and the refits at `θ → 0`.
   pub iterations: usize,
-  /// No step along one parameter gains `1e-7` in `T q / 2`, the second stage's criterion in
-  /// log-likelihood units, and none rests on a bound or is unidentified.
+  /// No step along one parameter gains `1e-7` in the second stage's `T q / 2`, the limit
+  /// `θ → 0` does not fit as well where it is read, and the first stage did not cap.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
   /// `<name> is not identified`, `iteration cap reached`, …
@@ -139,8 +139,9 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     let q = half_t * objective(p[0].exp(), p[1].exp(), p[2].exp(), w);
     if q.is_finite() { q } else { NO_VALUE }
   };
-  let coordinates = start.map(Coordinate::log);
-  let (p1, first) = descend(
+  let [theta, mu, sigma] = start.map(Coordinate::log);
+  let coordinates = [theta.fading(1), mu, sigma];
+  let (p1, first, capped) = descend(
     |p| criterion(p, &stage1),
     by_differences,
     &[start.to_vec()],
@@ -177,6 +178,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let (j_stat, j_pvalue) = j_test(rows1.len(), objective(theta, mu, sigma, &w2))?;
   let [theta, mu, sigma] = in_data_units(DiffusionKind::Cir, [theta, mu, sigma], unit)?;
 
+  let stop = second.stop.after(capped);
   Ok(GmmCirFit {
     theta,
     mu,
@@ -184,8 +186,8 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     j_stat,
     j_pvalue,
     iterations: first + second.iterations,
-    converged: second.stop.converged(),
-    message: second.stop.message(&["theta", "mu", "sigma"]),
+    converged: stop.converged(),
+    message: stop.message(&["theta", "mu", "sigma"]),
   })
 }
 
