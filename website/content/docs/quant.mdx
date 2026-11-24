@@ -210,7 +210,7 @@ print(g2.calibrate())                                  # (a, b, sigma, eta, rho,
 </Tab>
 </Tabs>
 
-For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below the tolerance times the start's cost (`CalibrationOptions::tolerance`, 1e-10 by default) on a simplex that has contracted, with no lower point beside its best vertex; reaching the iteration cap, a `stagnated` or `simplex collapsed` stop, a `flat objective` or nonfinite simplex costs return `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
+For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below the tolerance times the start's cost (`CalibrationOptions::tolerance`, 1e-10 by default) on a simplex that has contracted, with no lower point beside its best vertex; reaching the iteration cap, a `no numerical progress` stop (a stagnated or collapsed simplex), a `flat objective` or nonfinite simplex costs return `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
 
 ### eSSVI slices with arbitrage-free interpolation
 
