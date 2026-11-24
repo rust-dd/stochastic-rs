@@ -555,6 +555,21 @@ mod tests {
     HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start);
   }
 
+  /// Past its one pillar the curve's factors overflow, so a 2y×3y swap rate is `∞ − ∞`.
+  #[test]
+  fn a_quote_whose_swap_rate_is_nan_is_refused_as_well() {
+    let curve = DiscountCurve::from_zero_rates(
+      Array1::from_vec(vec![1.0]).view(),
+      Array1::from_vec(vec![-700.0]).view(),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let err = validate_swaption_quotes(&quotes()[1..], &curve).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { reason, .. } if reason.contains("fair_rate = NaN")),
+      "{err}"
+    );
+  }
+
   #[test]
   fn an_accrual_that_implies_an_absurd_schedule_is_refused_before_it_is_walked() {
     let mut quotes = quotes();

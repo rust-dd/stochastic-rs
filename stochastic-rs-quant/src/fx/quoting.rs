@@ -2,7 +2,6 @@
 //! EUR > GBP > AUD > NZD > USD > CAD > CHF > NOK > SEK > JPY > rest.
 //!
 //! Reference: BIS Triennial Central Bank Survey (2022), <https://www.bis.org/statistics/rpfx22.htm>
-//! Reference: Thomson Reuters spot FX quoting conventions
 
 use super::currency::Currency;
 use crate::traits::RealExt;

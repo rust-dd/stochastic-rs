@@ -16,7 +16,7 @@ use crate::pricing::fourier::Cumulants;
 use crate::pricing::fourier::FourierModelExt;
 
 /// Within this of `α = 1` eq. (3)'s differences over `α − 1` cancel, and the `expm1` form holds the
-/// digits eq. (3) keeps beyond it (both about `1e-11` at the edge, by an mpmath scan).
+/// digits eq. (3) keeps beyond it; an mpmath scan finds the two forms equally accurate at the edge.
 const ALPHA_ONE_BAND: f64 = 0.1;
 
 /// CGMYSV parameters (Eq. 4): a CGMY jump process `Z_t` run on the CIR clock `𝒱_t = ∫₀ᵗ v_s ds`.
