@@ -556,3 +556,17 @@ fn the_ou_closed_form_reads_a_path_of_neighbouring_doubles_as_its_integers() {
     }
   }
 }
+
+/// A level or a `σ` that is a subnormal in the path's own units holds a few of its digits only: the
+/// closed form and the QMLE refuse it as the other fits do, where rc.5 answered it.
+#[test]
+fn a_fit_that_is_subnormal_in_the_paths_units_is_a_data_scale_error() {
+  let path = negative_level_path().mapv(|v| v * 1e-310);
+  let dt = 100.0 / 9_999.0;
+  let lost = StatsError::Numerical {
+    stage: "data scale",
+  };
+  assert_eq!(fit_ou_mle(path.view(), dt).unwrap_err(), lost);
+  let kind = DiffusionKind::OrnsteinUhlenbeck;
+  assert_eq!(fit_diffusion_qmle(path.view(), dt, kind).unwrap_err(), lost);
+}

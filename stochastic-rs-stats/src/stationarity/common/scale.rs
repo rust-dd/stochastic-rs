@@ -85,7 +85,15 @@ pub(crate) fn in_data_units(v: f64, unit: f64, power: f64) -> Result<f64, StatsE
   // does not.
   let whole = power.trunc();
   let factor = if whole < 0.0 { 1.0 / unit } else { unit };
-  let mapped = per_unit(v, factor, whole.abs() as usize) / unit.powf(power - whole);
+  in_the_doubles(
+    per_unit(v, factor, whole.abs() as usize) / unit.powf(power - whole),
+    v,
+  )
+}
+
+/// `mapped`, the value of `v` in the data's own units, unless it left the normal doubles there:
+/// the crate's one rule for it, zero from zero excepted.
+pub(crate) fn in_the_doubles(mapped: f64, v: f64) -> Result<f64, StatsError> {
   if mapped.is_normal() || v == 0.0 {
     Ok(mapped)
   } else {

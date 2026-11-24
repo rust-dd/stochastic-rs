@@ -15,6 +15,7 @@ pub(crate) use scale::centred;
 pub(crate) use scale::columns_unit_scaled;
 pub(crate) use scale::has_constant_column;
 pub(crate) use scale::in_data_units;
+pub(crate) use scale::in_the_doubles;
 pub(crate) use scale::params_in_data_units;
 pub(crate) use scale::per_unit;
 pub(crate) use scale::prepared;

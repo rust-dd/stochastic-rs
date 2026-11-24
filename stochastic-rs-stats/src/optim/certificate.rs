@@ -97,7 +97,7 @@ impl Beside {
 }
 
 /// The largest gain a step along one axis realises beside `at`: `ε^{1/3}` of its scale either way,
-/// four times further while `objective` (`None`: no value) does not rise, or its parabola's minimum.
+/// four times further while `objective` (`None`: no value) does not rise, or its parabola's low.
 pub(crate) fn beside(
   objective: impl Fn(&[f64]) -> Option<f64>,
   at: &[f64],
