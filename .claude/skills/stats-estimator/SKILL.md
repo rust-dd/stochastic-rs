@@ -74,6 +74,8 @@ pub struct FooFit {
   pub std_err: Option<f64>,
   pub nobs: usize,
   pub converged: bool,
+  /// `converged`, or why not.
+  pub message: String,
 }
 
 /// Foo test (null: a unit root); the table holds the 1 %, 5 % and 10 % levels.

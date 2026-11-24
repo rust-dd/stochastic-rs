@@ -189,6 +189,11 @@ impl PyGarchFit {
   }
 
   #[getter]
+  fn message(&self) -> &str {
+    &self.inner.message
+  }
+
+  #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }

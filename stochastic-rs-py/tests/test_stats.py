@@ -143,6 +143,7 @@ def test_evt_pipeline_on_a_pareto_tail():
     assert hill.k == 500 and hill.nobs == 20000
     pot = sr.PotFit(losses, 3.0)
     assert pot.converged and pot.n_exceedances >= 10
+    assert pot.message == "converged"
     var99 = pot.quantile(0.99)
     assert pot.expected_shortfall(0.99) > var99 > pot.threshold
     assert pot.std_errors().shape == (2,)
@@ -150,6 +151,7 @@ def test_evt_pipeline_on_a_pareto_tail():
     assert maxima.shape == (200,)
     gev = sr.GevFit(maxima)
     assert gev.converged and gev.std_errors().shape == (3,)
+    assert gev.message == "converged"
     assert gev.return_level(50.0) > gev.mu
     excess = sr.mean_excess(losses, np.array([1.0, 2.0, 1e9]))
     assert np.isfinite(excess[:2]).all() and np.isnan(excess[2])

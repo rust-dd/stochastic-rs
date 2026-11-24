@@ -118,6 +118,11 @@ impl PyGpdFit {
   fn converged(&self) -> bool {
     self.inner.converged
   }
+
+  #[getter]
+  fn message(&self) -> &str {
+    &self.inner.message
+  }
 }
 
 #[pyclass(name = "PotFit", unsendable)]
@@ -191,6 +196,11 @@ impl PyPotFit {
   #[getter]
   fn converged(&self) -> bool {
     self.inner.gpd.converged
+  }
+
+  #[getter]
+  fn message(&self) -> &str {
+    &self.inner.gpd.message
   }
 }
 
@@ -270,6 +280,11 @@ impl PyGevFit {
   #[getter]
   fn converged(&self) -> bool {
     self.inner.converged
+  }
+
+  #[getter]
+  fn message(&self) -> &str {
+    &self.inner.message
   }
 }
 
