@@ -29,6 +29,7 @@ use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
 use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
@@ -62,8 +63,8 @@ pub struct GevFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
-  /// a bound or is unidentified: stationary along each, not global.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and no limit of
+  /// the family fits as well: stationary along each, not global.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
   /// `<name> is not identified`, `iteration cap reached`, …
@@ -85,10 +86,10 @@ impl GevFit {
   }
 }
 
-/// Negative GEV log-likelihood; `1e300` outside the feasible region.
+/// Negative GEV log-likelihood; [`NO_VALUE`] outside the feasible region.
 fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let n = z.len() as f64;
   if xi.abs() < 1e-12 {
@@ -104,7 +105,7 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
   for &v in z {
     let w = xi * (v - mu) / sigma;
     if w <= -1.0 {
-      return 1e300;
+      return NO_VALUE;
     }
     let log_t = w.ln_1p();
     log_terms += log_t;

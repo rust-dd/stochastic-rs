@@ -45,6 +45,7 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
 use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
@@ -199,8 +200,8 @@ pub struct GarchFit {
   pub backcast: f64,
   /// Simplex iterations plus L-BFGS polishing iterations.
   pub iterations: usize,
-  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
-  /// a bound or is unidentified: stationary along each, not global.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and no limit of
+  /// the family fits as well: stationary along each, not global.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
   /// `<name> is not identified`, `iteration cap reached`, …
@@ -326,6 +327,6 @@ impl Problem {
   fn objective(&self, theta: &[f64]) -> f64 {
     let natural = transform::to_natural(&self.spec, theta);
     let ll = recursion::total_log_likelihood(&self.spec, &natural, &self.returns, self.backcast);
-    if ll.is_finite() { -ll } else { 1e300 }
+    if ll.is_finite() { -ll } else { NO_VALUE }
   }
 }

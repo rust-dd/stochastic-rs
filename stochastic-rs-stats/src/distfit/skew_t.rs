@@ -13,6 +13,7 @@ use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
 use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
 use crate::optim::search::minimise;
 use crate::traits::FloatExt;
@@ -51,7 +52,7 @@ pub struct SkewTFit {
 
 fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && eta > 2.0 && eta.is_finite() && lambda.abs() < 1.0) {
-    return 1e300;
+    return NO_VALUE;
   }
   let d = SimdSkewT::<f64>::new(eta, lambda);
   let log_sigma = sigma.ln();

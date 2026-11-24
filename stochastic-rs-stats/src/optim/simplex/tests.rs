@@ -258,8 +258,8 @@ impl CostFunction for Lifted {
   }
 }
 
-/// At a cost near `1e3` the relative test passes a spread of `1e-6` and the absolute one its own
-/// `1e-9`: it runs on, to a lower point.
+/// The relative test passes a spread of `2e-3`, `1e-9` of the start's cost of `2e6`, and the
+/// absolute one its own `1e-9`: it runs on, to a lower point.
 #[test]
 fn an_absolute_spread_is_not_scaled_by_the_cost() {
   let simplex = vec![vec![1.0, 1.0], vec![1.1, 1.0], vec![1.0, 1.1]];

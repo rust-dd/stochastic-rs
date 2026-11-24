@@ -31,6 +31,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
+use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
 use crate::optim::simplex::SimplexStop;
 use crate::stationarity::common::unit_scaled;
@@ -63,14 +64,14 @@ pub(crate) fn sample<T: FloatExt>(
   Ok(Sample { x, mean, sd, unit })
 }
 
-/// Negative log-likelihood from a per-observation log-density, `1e300`
+/// Negative log-likelihood from a per-observation log-density, [`NO_VALUE`]
 /// when any term is not finite.
 pub(crate) fn negative_log_likelihood<F: Fn(f64) -> f64>(x: &[f64], log_density: F) -> f64 {
   let mut total = 0.0;
   for &v in x {
     let l = log_density(v);
     if !l.is_finite() {
-      return 1e300;
+      return NO_VALUE;
     }
     total -= l;
   }

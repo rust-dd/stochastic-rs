@@ -32,6 +32,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
 use crate::optim::search::minimise;
 use crate::stationarity::common::params_in_data_units;
@@ -115,10 +116,10 @@ impl PotFit {
   }
 }
 
-/// Negative GPD log-likelihood; `1e300` outside the feasible region.
+/// Negative GPD log-likelihood; [`NO_VALUE`] outside the feasible region.
 fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let n = y.len() as f64;
   if xi.abs() < 1e-12 {
@@ -128,7 +129,7 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   for &v in y {
     let w = xi * v / sigma;
     if w <= -1.0 {
-      return 1e300;
+      return NO_VALUE;
     }
     acc += w.ln_1p();
   }
