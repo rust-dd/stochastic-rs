@@ -142,10 +142,10 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
         intercept: T::from_f64_fast(intercept - in_units),
         r_squared: T::from_f64_fast(r_squared),
         log_scales: log_freq.into_iter().map(T::from_f64_fast).collect(),
-        log_stats: (log_periodogram
+        log_stats: log_periodogram
           .iter()
-          .map(|p| T::from_f64_fast(p - in_units)))
-        .collect(),
+          .map(|p| T::from_f64_fast(p - in_units))
+          .collect(),
       },
     })
   }

@@ -4,6 +4,7 @@ use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::econometrics::cointegration::fit_vecm;
 use stochastic_rs_stats::econometrics::cointegration::johansen_test;
 use stochastic_rs_stats::econometrics::cusum;
+use stochastic_rs_stats::econometrics::pelt;
 use stochastic_rs_stats::fractal_dim::FdDiagnostic;
 use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
 use stochastic_rs_stats::fractal_dim::Higuchi;
@@ -345,4 +346,71 @@ fn johansen_and_the_vecm_answer_one_way_at_every_power_of_two_of_each_series() {
       .unwrap_err(),
     DATA_SCALE
   );
+}
+
+/// `c + k ulp(c)` is exact, so a series of neighbouring doubles is its integers moved and scaled:
+/// the break tests, the chart and HAR's fit, free of both, answer for the integers to `n² ε`.
+#[test]
+fn the_break_tests_and_har_read_neighbouring_doubles_as_their_integers() {
+  let n = 512;
+  let bound = (n * n) as f64 * f64::EPSILON * 20.0;
+  let mut state = 0.0;
+  let steps = normals(28, n, 1.0);
+  let steps = steps.iter().map(|z| {
+    state = 0.4 * state + z;
+    (20.0 + 6.0 * state).round().clamp(0.0, 40.0)
+  });
+  let steps = steps.collect::<Vec<_>>();
+  let regressor = normals(29, n, 1.0);
+  let answers = |y: &Array1<f64>| {
+    let x = design(&regressor, 1.0);
+    let chart = cusum(y.view(), 0.5, 5.0).unwrap();
+    let har = HarRv::fit(y.view()).unwrap().fit;
+    [
+      chart.alarms.len() as f64,
+      cusum_test(y.view(), x.view(), CusumConfig::default())
+        .unwrap()
+        .statistic,
+      andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default())
+        .unwrap()
+        .statistic,
+      har.r_squared,
+      har.beta_d,
+    ]
+  };
+  let theirs = answers(&Array1::from_vec(steps.clone()));
+  for level in [1.0_f64, 3.0, 1e8, -7e5] {
+    let ulp = level.abs().next_up() - level.abs();
+    let ours = answers(&Array1::from_iter(steps.iter().map(|k| level + k * ulp)));
+    for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
+      assert!(
+        (a - b).abs() <= bound * (1.0 + b.abs()),
+        "level {level}, answer {i}: {a} against the integers' {b}"
+      );
+    }
+  }
+}
+
+/// A level is no part of a mean-shift cost: one shift is one changepoint at `1e8` and `1e10` too.
+#[test]
+fn pelt_finds_the_same_changepoints_at_every_level() {
+  let mut series = normals(30, 400, 0.5);
+  series[200..].iter_mut().for_each(|v| *v += 2.0);
+  let at = |level: f64| {
+    let lifted = Array1::from_iter(series.iter().map(|v| v + level));
+    pelt(lifted.view(), 10.0, 5).unwrap()
+  };
+  let plain = at(0.0);
+  assert_eq!(plain.changepoints, vec![200]);
+  for level in [1e6, 1e8, 1e10] {
+    let lifted = at(level);
+    assert_eq!(lifted.changepoints, plain.changepoints, "level {level:e}");
+    // The lifted values round at `ulp(level)`, each of 400 by half a step of its deviation.
+    let rounding = 400.0 * 4.0 * level * f64::EPSILON;
+    assert!(
+      (lifted.cost - plain.cost).abs() <= rounding,
+      "level {level:e}: {}",
+      lifted.cost
+    );
+  }
 }

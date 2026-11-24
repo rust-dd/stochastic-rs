@@ -13,7 +13,8 @@ use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
-use crate::stationarity::common::unit_scaled;
+use crate::stationarity::common::about_mean;
+use crate::stationarity::common::centred;
 use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
@@ -46,7 +47,7 @@ pub fn cusum<T: FloatExt>(
   validate(&y, 2)?;
   reject_constant(&y, "constant series")?;
   let n = series.len();
-  let (x, _) = unit_scaled(
+  let (x, _) = about_mean(
     series
       .iter()
       .map(|v| v.to_f64().unwrap())
@@ -104,10 +105,16 @@ pub fn pelt<T: FloatExt>(
   );
   validate_view(series, 1)?;
   let n = series.len();
+  // About the mean: `s₂ − s²/len` cancels at a level, which no segment's cost depends on.
+  let values = centred(
+    &series
+      .iter()
+      .map(|v| v.to_f64().unwrap())
+      .collect::<Vec<_>>(),
+  );
   let mut prefix = vec![0.0_f64; n + 1];
   let mut prefix_sq = vec![0.0_f64; n + 1];
-  for i in 0..n {
-    let v = series[i].to_f64().unwrap();
+  for (i, v) in values.into_iter().enumerate() {
     prefix[i + 1] = prefix[i] + v;
     prefix_sq[i + 1] = prefix_sq[i] + v * v;
   }
