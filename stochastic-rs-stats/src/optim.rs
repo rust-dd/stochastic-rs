@@ -22,6 +22,8 @@ use basin::Termination;
 
 use crate::traits::RealExt;
 
+pub(crate) mod certificate;
+
 /// The start with the lowest objective; a NaN objective loses to every number.
 pub(crate) fn best_start<P: AsRef<[f64]>>(
   starts: impl IntoIterator<Item = P>,
@@ -223,8 +225,6 @@ fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64
     })
     .collect()
 }
-
-pub(crate) mod certificate;
 
 #[cfg(test)]
 mod tests {

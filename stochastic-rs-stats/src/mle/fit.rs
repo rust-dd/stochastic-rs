@@ -37,7 +37,7 @@ pub struct MleFit {
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>` (the parameter
   /// a step off its bound gains along), `stopped at the edge of the law's support`, …
   pub message: String,
-  /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 16
+  /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 19
   /// searches. `0` when the model has no free parameters (trivially `converged = true`).
   pub iterations: usize,
 }
@@ -68,6 +68,9 @@ const STAGES: usize = 3;
 
 /// Searches that may run again in the units of where the last one ended.
 const RESCALES: usize = 12;
+
+/// Searches from the point of a gain the first-order check found, quant's count of reseats.
+const RESEATS: usize = 3;
 
 /// Where an L-BFGS-B search ended: the best point, the objective there and the fit signals.
 struct Search {
@@ -194,13 +197,31 @@ pub fn fit_mle(
       }
       fit = next;
     }
-    let stop = if fit.converged {
+    let read = |model: &mut dyn DiffusionModel, fit: &Search| {
       let at = &fit.params;
-      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, at);
-      verdict(&problem, at, &lower, &upper).1
-    } else {
-      Stop::Search(fit.reason)
+      let problem = MleProblem::new(model, sample, dt, density, &lower, &upper, at);
+      match fit.converged {
+        true => verdict(&problem, at, &lower, &upper),
+        false => (Beside::nothing(at), Stop::Search(fit.reason)),
+      }
     };
+    let (mut beside, mut stop) = read(&mut *model, &fit);
+    // A step beside the estimate gains: the search runs again from that step's point, in its
+    // units, and the lower cost stays. A fit the check passes is never searched again.
+    for _ in 0..RESEATS {
+      if !matches!(stop, Stop::NotStationary | Stop::Bound(_)) {
+        break;
+      }
+      let from = beside.best.clone();
+      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &from);
+      let next = search(problem, &from);
+      iterations += next.iterations;
+      if next.cost >= fit.cost {
+        break;
+      }
+      fit = next;
+      (beside, stop) = read(&mut *model, &fit);
+    }
     (fit.params, stop, iterations)
   };
 

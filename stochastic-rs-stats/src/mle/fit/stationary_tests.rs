@@ -113,10 +113,10 @@ fn a_point_stalled_at_the_speeds_bound_is_not_stationary() {
   }
 }
 
-/// From a `σ` of `1e-6` on data at `1e9` the staged search returns `σ` in a unit where its
-/// gradient is under the tolerance, `0.3 %` off: a step along it gains `0.01`, so it is no stop.
+/// From a `σ` of `1e-6` on data at `1e9` the staged search leaves `σ` `0.3 %` off, `0.01` short:
+/// a step along it gains, so the search runs again from that step and ends at the closed form.
 #[test]
-fn a_fit_whose_sigma_a_search_could_not_move_is_not_stationary() {
+fn a_fit_whose_sigma_a_search_could_not_move_is_searched_again_from_the_gain() {
   let dt = 1.0 / 252.0;
   let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, 104).mapv(|v| 1e9 * v);
   let closed = fit_ou_mle(path.view(), dt).unwrap();
@@ -126,8 +126,8 @@ fn a_fit_whose_sigma_a_search_could_not_move_is_not_stationary() {
   let exact = DensityApprox::Exact;
   let fit = fit_mle(&mut model, path.view(), dt, exact, Some(bounds)).unwrap();
   let short = closed.log_likelihood - fit.log_likelihood;
-  assert!((0.005..0.02).contains(&short), "{short} below");
-  assert_eq!((fit.converged, &*fit.message), (false, "not stationary"));
+  assert!(short.abs() < 1e-6, "{short} below");
+  assert_eq!((fit.converged, &*fit.message), (true, "converged"));
 }
 
 /// 16 monthly points leave Ozaki's likelihood a second maximum, 1.2 below the one the fit from
@@ -220,6 +220,7 @@ fn a_gain_counts_above_the_rounding_and_names_the_parameter_it_is_along() {
       along: 1,
       rounding,
       walled,
+      best: Vec::new(),
     };
     beside.stop(held).message(&["theta", "mu", "sigma"])
   };
