@@ -195,7 +195,7 @@ pub(crate) fn minimise(
   // A gain beside the point, by the check or by the probe: the finisher runs from the point of
   // it, and the lower stays. A point both pass is never searched again.
   for round in 0..=RESEATS {
-    let from = match stop {
+    let lower = match stop {
       Stop::NotStationary | Stop::Bound(_) => found.best.clone(),
       Stop::Converged => {
         let (lower, steps) = probe(&at);
@@ -208,16 +208,20 @@ pub(crate) fn minimise(
       }
       _ => break,
     };
-    if round == RESEATS {
-      break;
-    }
-    let (next, steps) = finish(&boxed, from);
+    // The last round has no search left: its gain is kept and its verdict stands.
+    let (next, steps) = if round < RESEATS {
+      finish(&boxed, lower)
+    } else {
+      (lower, 0)
+    };
     iterations += steps;
     if boxed(&next) >= boxed(&at) {
       break;
     }
     at = next;
-    (found, stop) = read(&at);
+    if round < RESEATS {
+      (found, stop) = read(&at);
+    }
   }
   let capped = run.stop == SimplexStop::IterationCap;
   let stop = match stop {
@@ -353,5 +357,17 @@ mod tests {
     let found = unfinished(rosenbrock);
     assert!(rosenbrock(&found.at) > 1.0, "{}", rosenbrock(&found.at));
     assert_eq!(found.stop.message(&["p"; 30]), "iteration cap reached");
+  }
+
+  /// The last round's gain is not left behind: the answer is the lowest point evaluated.
+  #[test]
+  fn the_lowest_point_seen_is_returned() {
+    let lowest = std::cell::Cell::new(f64::INFINITY);
+    let found = unfinished(|p| {
+      let cost = rosenbrock(p);
+      lowest.set(lowest.get().min(cost));
+      cost
+    });
+    assert_eq!(rosenbrock(&found.at), lowest.get());
   }
 }
