@@ -42,21 +42,35 @@ const SPREAD_SMALL: &str = "simplex spread small";
 /// The code of its stop on a spread no finite number measures.
 const SPREAD_UNDEFINED: &str = "simplex spread undefined";
 
-/// A stop: the vertex costs' sample standard deviation under `tolerance·(|f₀| + tolerance)`, `f₀`
-/// the start's best cost (R's `nmmin`), on a simplex within `0.001` of the start's step per axis.
+/// What a small spread of the vertex costs is measured against.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Spread {
+  /// `tolerance·(|f₀| + tolerance)`, `f₀` the start's best cost (R's `nmmin`).
+  Relative(f64),
+  /// The tolerance itself, in the cost's own unit: what a likelihood's first-order check reads.
+  Absolute(f64),
+}
+
+/// A stop: the vertex costs' sample standard deviation under its [`Spread`], on a simplex within
+/// `0.001` of the start's step per axis.
 #[derive(Clone)]
 pub struct SimplexStandardDeviation {
-  tolerance: f64,
+  spread: Spread,
   start: Rc<Cell<Option<f64>>>,
   steps: Rc<Vec<f64>>,
 }
 
 impl SimplexStandardDeviation {
   pub fn new(tolerance: f64, steps: Vec<f64>) -> Option<Self> {
+    Self::within(Spread::Relative(tolerance), steps)
+  }
+
+  pub fn within(spread: Spread, steps: Vec<f64>) -> Option<Self> {
     let (start, steps) = (Rc::new(Cell::new(None)), Rc::new(steps));
+    let (Spread::Relative(tolerance) | Spread::Absolute(tolerance)) = spread;
     let valid = tolerance.is_finite() && tolerance >= 0.0;
     valid.then_some(Self {
-      tolerance,
+      spread,
       start,
       steps,
     })
@@ -68,7 +82,10 @@ impl SimplexStandardDeviation {
   {
     let start = self.start.get().unwrap_or(state.costs()[0]);
     self.start.set(Some(start));
-    let threshold = self.tolerance * (start.abs() + self.tolerance);
+    let threshold = match self.spread {
+      Spread::Relative(tolerance) => tolerance * (start.abs() + tolerance),
+      Spread::Absolute(tolerance) => tolerance,
+    };
     let contracted = extents(state.vertices())
       .iter()
       .zip(self.steps.iter())
@@ -278,13 +295,33 @@ pub fn run_nelder_mead<P>(
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
+  run_nelder_mead_within(
+    problem,
+    simplex,
+    max_iters,
+    Spread::Relative(sd_tolerance),
+    record,
+  )
+}
+
+/// [`run_nelder_mead`] to a stated [`Spread`] of the vertex costs.
+pub fn run_nelder_mead_within<P>(
+  problem: P,
+  simplex: Vec<Vec<f64>>,
+  max_iters: u64,
+  spread: Spread,
+  record: bool,
+) -> SimplexRun
+where
+  P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
+{
   assert!(
     simplex.len() >= 2,
     "simplex must contain at least two vertices"
   );
   let mut trail = Vec::new();
   let steps = extents(&simplex);
-  let Some(criterion) = SimplexStandardDeviation::new(sd_tolerance, steps.clone()) else {
+  let Some(criterion) = SimplexStandardDeviation::within(spread, steps.clone()) else {
     let best = simplex[0].clone();
     trail.extend(record.then(|| best.clone()));
     return SimplexRun {
