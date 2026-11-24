@@ -32,7 +32,7 @@ fn egarch_shift(unit: f64) -> f64 {
 }
 
 /// `natural`, fitted to the returns times `unit`, in the returns' units; `Numerical` where one
-/// leaves the normal doubles there.
+/// that carries the unit leaves the normal doubles there, or any is not finite.
 pub(super) fn params(spec: &GarchSpec, natural: &[f64], unit: f64) -> Result<Vec<f64>, StatsError> {
   let mut out = natural
     .iter()
@@ -43,8 +43,11 @@ pub(super) fn params(spec: &GarchSpec, natural: &[f64], unit: f64) -> Result<Vec
     let beta = natural[natural.len() - spec.q..].iter().sum::<f64>();
     out[omega_index(spec)] -= egarch_shift(unit) * (1.0 - beta);
   }
-  for (value, fitted) in out.iter().zip(natural) {
-    in_the_doubles(*value, *fitted)?;
+  for (i, (value, fitted)) in out.iter().zip(natural).enumerate() {
+    // A parameter free of the returns' unit is as it was fitted, however small: only the ones
+    // that scale can leave the doubles, and EGARCH's shifted `ω` its finiteness.
+    let scales = power(spec, i) > 0 || !value.is_finite();
+    in_the_doubles(*value, if scales { *fitted } else { 0.0 })?;
   }
   Ok(out)
 }
@@ -116,5 +119,24 @@ mod tests {
     let mapped = params(&spec, &[0.5, -0.1, 0.1, 0.0, 0.9], unit).unwrap();
     assert_eq!(mapped[0], 2.0);
     assert!((mapped[1] - (-0.1 - s * (1.0 - 0.9))).abs() < 1e-15);
+  }
+
+  /// `α` and `β` carry no unit: one as small as a subnormal is the fit's own, where an `ω` that
+  /// the unit takes below the normal doubles is lost.
+  #[test]
+  fn a_unit_free_parameter_is_never_a_data_scale_error() {
+    let spec = GarchSpec::garch(1, 1);
+    let omega = super::omega_index(&spec);
+    let mut natural = vec![0.1; spec.n_params()];
+    natural[omega + 1] = 1e-310;
+    let mapped = params(&spec, &natural, 2f64.powi(100)).unwrap();
+    assert_eq!(mapped[omega + 1], 1e-310);
+    natural[omega] = 1e-300;
+    assert_eq!(
+      params(&spec, &natural, 2f64.powi(100)).unwrap_err(),
+      crate::StatsError::Numerical {
+        stage: "data scale"
+      }
+    );
   }
 }
