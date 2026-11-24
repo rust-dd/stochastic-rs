@@ -27,8 +27,8 @@ pub struct RoughHestonCalibrator {
   /// `None` starts from (0.04, 1, 0.04, 0.3, −0.65, 0.1); a start outside the box is reflected
   /// into it, not clamped.
   pub start: Option<RoughHestonParams>,
-  /// The characteristic function every price of the fit uses and its result converts by; it sets
-  /// `ν`'s bound, 0.4 under the approximant and 2 under `Adams` and `Lifted`.
+  /// The characteristic function the fit prices and converts by; the approximant is validated to
+  /// `ν = 0.4`, a bound a fit left on reports, where the box's own bounds are constrained optima.
   pub cf: RoughHestonCf,
   /// Levenberg–Marquardt knobs; `regularization` pulls `(V₀, κ, θ, ν, ρ, H)`.
   pub options: CalibrationOptions,
@@ -99,8 +99,8 @@ impl crate::traits::Calibrator for RoughHestonCalibrator {
   type Output = Calibrated<RoughHestonParams, RoughHestonCf>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`. A fit left on a bound of its box is not converged and says
-  /// which; `InvalidInput` for a start or `cf` off its domain, `InvalidQuote`, `Optimizer`.
+  /// A start replaces `self.start`. A fit left on its selector's validity bound is not converged
+  /// and says so; `InvalidInput` for a start or `cf` off its domain, `InvalidQuote`, `Optimizer`.
   fn calibrate(&self, initial: Option<RoughHestonParams>) -> Result<Self::Output, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
@@ -123,7 +123,7 @@ impl crate::traits::Calibrator for RoughHestonCalibrator {
       self.options.loss_metrics,
       fitted.trail.into_entries(),
     )?;
-    let fit = match held(fit.params, &bounds) {
+    let fit = match held(fit.params, &self.cf) {
       Some(name) => fit.at_bound(name),
       None => fit,
     };

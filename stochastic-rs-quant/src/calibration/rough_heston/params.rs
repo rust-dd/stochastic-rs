@@ -12,21 +12,31 @@ pub(super) type Bounds = [(f64, f64); 6];
 
 pub(super) const NAMES: [&str; 6] = ["v0", "kappa", "theta", "nu", "rho", "hurst"];
 
-/// The box of `(V₀, κ, θ, ν, ρ, H)` under `cf`: `H` inside `(0, ½)`, `κ` above 0, and `ν` to 0.4
-/// under the approximant, the range it is validated on, to 2 under the two solves.
+/// The model's own box of `(V₀, κ, θ, ν, ρ, H)`: `H` inside `(0, ½)`, `κ` above 0.
+const MODEL: Bounds = [
+  (0.005, 0.25),
+  (0.01, 10.0),
+  (0.001, 1.0),
+  (0.01, 2.0),
+  (-0.9999, 0.9999),
+  (0.005, 0.495),
+];
+
+/// Where `cf` is validated to less than the model's box: the approximant to `ν = 0.4`.
+fn validity(cf: &RoughHestonCf) -> &'static [(usize, f64)] {
+  match cf {
+    RoughHestonCf::Pade { .. } => &[(3, 0.4)],
+    _ => &[],
+  }
+}
+
+/// The fit's box under `cf`: the model's, cut at the selector's validity bounds.
 pub(super) fn bounds(cf: &RoughHestonCf) -> Bounds {
-  let most = match cf {
-    RoughHestonCf::Pade { .. } => 0.4,
-    _ => 2.0,
-  };
-  [
-    (0.005, 0.25),
-    (0.01, 10.0),
-    (0.001, 1.0),
-    (0.01, most),
-    (-0.9999, 0.9999),
-    (0.005, 0.495),
-  ]
+  let mut bounds = MODEL;
+  for &(j, most) in validity(cf) {
+    bounds[j].1 = most;
+  }
+  bounds
 }
 
 /// A raw point folded into `bounds`, coordinate by coordinate.
@@ -44,13 +54,12 @@ pub(super) fn room_in(bounds: Bounds) -> impl Fn(ArrayView1<f64>) -> Room + 'sta
   }
 }
 
-/// The first parameter a fit left on a bound of its box.
-pub(super) fn held(params: RoughHestonParams, bounds: &Bounds) -> Option<&'static str> {
+/// The first parameter a fit left on a validity bound of `cf`: the selector's limit, where a
+/// bound of the model's own box is a constrained optimum.
+pub(super) fn held(params: RoughHestonParams, cf: &RoughHestonCf) -> Option<&'static str> {
   let values = Array1::from(params);
-  let on_bound =
-    |(&value, &(lo, hi)): (&f64, &(f64, f64))| (value - lo).min(hi - value) <= 1e-9 * (hi - lo);
-  let place = values.iter().zip(bounds).position(on_bound);
-  place.map(|j| NAMES[j])
+  let on_bound = |&&(j, most): &&(usize, f64)| most - values[j] <= 1e-9 * (most - MODEL[j].0);
+  validity(cf).iter().find(on_bound).map(|&(j, _)| NAMES[j])
 }
 
 impl From<RoughHestonParams> for Array1<f64> {

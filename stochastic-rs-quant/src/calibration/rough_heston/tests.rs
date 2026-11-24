@@ -300,8 +300,8 @@ fn a_pade_fit_stops_at_its_vol_of_vol_bound_where_an_adams_fit_goes_on() {
     &[90.0, 100.0, 110.0],
   );
   let pade = RoughHestonCalibrator::new(S, R, 0.0, market.clone())
-    .with_start(START)
-    .with_options(capped.clone())
+    .with_start(RoughHestonParams { nu: 0.399, ..TRUTH })
+    .with_options(capped.clone().with_max_iterations(20))
     .calibrate(None)
     .unwrap();
   let stop = pade.message.as_deref();
@@ -312,7 +312,7 @@ fn a_pade_fit_stops_at_its_vol_of_vol_bound_where_an_adams_fit_goes_on() {
   assert_eq!(pade.params.nu, 0.4);
   let adams = RoughHestonCalibrator::new(S, R, 0.0, market)
     .with_cf(cf)
-    .with_start(START)
+    .with_start(RoughHestonParams { nu: 0.8, ..TRUTH })
     .with_options(capped)
     .calibrate(None)
     .unwrap();
@@ -322,4 +322,31 @@ fn a_pade_fit_stops_at_its_vol_of_vol_bound_where_an_adams_fit_goes_on() {
     "{:?}",
     adams.params
   );
+}
+
+/// A bound of the model's own box is not a validity limit: quotes priced at `ρ = −0.9999` are
+/// fitted on that bound, a constrained optimum, and the fit is converged.
+#[test]
+fn a_fit_on_a_bound_of_the_model_s_box_is_converged() {
+  let cf = RoughHestonCf::Adams { steps: 16 };
+  let truth = RoughHestonParams {
+    rho: -0.9999,
+    ..TRUTH
+  };
+  let market = quotes(
+    &RoughHeston::new(truth, cf),
+    &[0.25, 1.0],
+    &[90.0, 100.0, 110.0],
+  );
+  let fit = RoughHestonCalibrator::new(S, R, 0.0, market)
+    .with_cf(cf)
+    .with_start(RoughHestonParams {
+      rho: -0.95,
+      ..TRUTH
+    })
+    .with_options(CalibrationOptions::default().with_max_iterations(40))
+    .calibrate(None)
+    .unwrap();
+  assert!(fit.converged, "{:?}: {:?}", fit.message, fit.params);
+  assert!((fit.params.rho + 0.9999).abs() < 1e-6, "{:?}", fit.params);
 }
