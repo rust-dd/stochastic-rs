@@ -99,7 +99,7 @@ def test_garch_fit_recovers_persistence_below_one():
         r[t] = eps
         sigma2 = omega + alpha * eps * eps + beta * sigma2
     fit = sr.GarchFit(r, kind="garch", p=1, q=1, mean="zero")
-    assert fit.converged
+    assert fit.converged and fit.message == "converged"
     assert fit.param_names() == ["omega", "alpha[1]", "beta[1]"]
     assert fit.params().shape == (3,)
     assert 0.0 < fit.persistence < 1.0
@@ -157,6 +157,7 @@ def test_evt_pipeline_on_a_pareto_tail():
     assert np.isfinite(excess[:2]).all() and np.isnan(excess[2])
     gpd = sr.GpdFit(losses[losses > 3.0] - 3.0)
     assert abs(gpd.xi - pot.xi) < 1e-12
+    assert gpd.message == "converged"
 
 
 def test_distribution_fits_run_and_rank():
@@ -169,6 +170,7 @@ def test_distribution_fits_run_and_rank():
     assert jsu.converged and jsu.delta > 0.0 and jsu.lambda_ > 0.0
     vg = sr.VarianceGammaFit(r)
     assert vg.converged and vg.sigma > 0.0 and vg.nu > 0.0
+    assert [skt.message, jsu.message, vg.message] == ["converged"] * 3
     assert np.isfinite([skt.aic, jsu.aic, vg.aic]).all()
     pwm = sr.GpdPwm(np.abs(r[np.abs(r) > 0.5]) - 0.5)
     assert np.isfinite(pwm.xi) and pwm.nobs >= 2
