@@ -56,7 +56,7 @@ pub(crate) enum Stop {
   Edge,
   Outside,
   Unidentified(usize),
-  Simplex(SimplexStop),
+  Capped,
 }
 
 impl Stop {
@@ -73,7 +73,7 @@ impl Stop {
       Self::NotStationary => "not stationary",
       Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
       Self::Unidentified(open) => return format!("{} is not identified", names[*open]),
-      Self::Simplex(stop) => stop.message(),
+      Self::Capped => SimplexStop::IterationCap.message(),
       Self::Edge => "stopped at the edge of the law's support",
     };
     words.into()
@@ -307,7 +307,7 @@ mod tests {
       Stop::Unidentified(1).message(&names),
       "sigma is not identified"
     );
-    let capped = Stop::Simplex(SimplexStop::IterationCap);
+    let capped = Stop::Capped;
     assert_eq!(capped.message(&names), "iteration cap reached");
     assert!(!capped.converged() && Stop::Converged.converged());
   }

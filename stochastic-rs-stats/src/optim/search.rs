@@ -219,14 +219,13 @@ pub(crate) fn minimise(
     at = next;
     (found, stop) = read(&at);
   }
+  let capped = run.stop == SimplexStop::IterationCap;
   let stop = match stop {
+    // The check passes stalls a capped search leaves, so a cap is never a convergence.
+    _ if capped => Stop::Capped,
     Stop::Converged => resting(&at, coordinates)
       .or_else(|| unidentified(valued, &at, coordinates))
-      .unwrap_or(match run.stop {
-        // The check passes stalls a capped search leaves, so a cap is never a convergence.
-        SimplexStop::IterationCap => Stop::Simplex(run.stop),
-        _ => Stop::Converged,
-      }),
+      .unwrap_or(Stop::Converged),
     stop => stop,
   };
   Found {
@@ -333,6 +332,26 @@ mod tests {
     let coordinates = [(); 30].map(|()| Coordinate::free());
     let start = vec![vec![-1.2; 30]];
     let found = minimise(valley, by_differences, &start, &coordinates, 1000);
+    assert_eq!(found.stop.message(&["p"; 30]), "iteration cap reached");
+  }
+
+  fn rosenbrock(p: &[f64]) -> f64 {
+    let link = |w: &[f64]| 100.0 * (w[1] - w[0] * w[0]).powi(2) + (1.0 - w[0]).powi(2);
+    p.windows(2).map(link).sum::<f64>()
+  }
+
+  /// A capped search no finisher completes, in thirty coordinates.
+  fn unfinished(objective: impl Fn(&[f64]) -> f64) -> Found {
+    let coordinates = [(); 30].map(|()| Coordinate::free());
+    let as_it_is = |_: &dyn Fn(&[f64]) -> f64, p: Vec<f64>| (p, 0);
+    minimise(objective, as_it_is, &[vec![-1.2; 30]], &coordinates, 1000)
+  }
+
+  /// The cap is the search's stop, named before what the check finds beside its point.
+  #[test]
+  fn a_capped_search_the_check_fails_reads_the_cap() {
+    let found = unfinished(rosenbrock);
+    assert!(rosenbrock(&found.at) > 1.0, "{}", rosenbrock(&found.at));
     assert_eq!(found.stop.message(&["p"; 30]), "iteration cap reached");
   }
 }
