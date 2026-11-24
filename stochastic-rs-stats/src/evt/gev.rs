@@ -61,7 +61,7 @@ pub struct GevFit {
   pub bic: f64,
   /// Number of block maxima.
   pub nobs: usize,
-  /// Simplex iterations.
+  /// Iterations of the simplex and of every L-BFGS polish.
   pub iterations: usize,
   /// No step along one parameter of the search gains `1e-7` in log-likelihood, and no limit of
   /// the family fits as well: stationary along each, not global.

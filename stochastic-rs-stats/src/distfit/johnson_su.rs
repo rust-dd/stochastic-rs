@@ -14,6 +14,7 @@ use super::words;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::NO_VALUE;
 use crate::traits::FloatExt;
 
 /// Johnson SU maximum-likelihood fit.
@@ -49,7 +50,7 @@ pub struct JohnsonSuFit {
 
 fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
   if !(delta > 0.0 && lambda > 0.0 && delta.is_finite() && lambda.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda);
   negative_log_likelihood(x, |v| {

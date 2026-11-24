@@ -41,12 +41,12 @@ pub struct SkewTFit {
   pub bic: f64,
   /// Number of observations.
   pub nobs: usize,
-  /// Simplex iterations.
+  /// Iterations of the simplex and of every L-BFGS polish and refit at a limit.
   pub iterations: usize,
-  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and the normal
-  /// limit fits worse: stationary, not global.
+  /// No step along one parameter gains `1e-7` in log-likelihood, and neither limit in `η` that
+  /// the quadratic model puts within 36 standard errors fits as well: stationary, not global.
   pub converged: bool,
-  /// `converged`, or why not: `not stationary`, `eta is not identified`, `iteration cap reached`, …
+  /// `converged`, or why not: `not stationary`, `eta is not identified`, `iteration cap reached`…
   pub message: String,
 }
 

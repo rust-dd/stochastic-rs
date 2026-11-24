@@ -60,7 +60,7 @@ pub struct GpdFit {
   pub bic: f64,
   /// Number of excesses.
   pub nobs: usize,
-  /// Simplex iterations.
+  /// Iterations of the simplex and of every L-BFGS polish.
   pub iterations: usize,
   /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
   /// a bound or is unidentified: stationary along each, not global.

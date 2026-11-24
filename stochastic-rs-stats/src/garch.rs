@@ -198,10 +198,10 @@ pub struct GarchFit {
   pub persistence: f64,
   /// Backcast variance seeding the recursion.
   pub backcast: f64,
-  /// Simplex iterations plus L-BFGS polishing iterations.
+  /// Iterations of the simplex and of every L-BFGS polish and refit at a limit.
   pub iterations: usize,
-  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and no limit of
-  /// the family fits as well: stationary along each, not global.
+  /// No step along one parameter gains `1e-7` in log-likelihood, and no limit of the family that
+  /// the quadratic model puts within 36 standard errors fits as well: stationary, not global.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
   /// `<name> is not identified`, `iteration cap reached`, …

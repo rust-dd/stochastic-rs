@@ -16,6 +16,7 @@ use super::words;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::NO_VALUE;
 use crate::traits::FloatExt;
 
 /// Variance-gamma maximum-likelihood fit.
@@ -51,7 +52,7 @@ pub struct VarianceGammaFit {
 
 fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && nu > 0.0 && nu.is_finite() && theta.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let d = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu);
   negative_log_likelihood(x, |v| {
