@@ -17,11 +17,6 @@ pub mod skew_t;
 mod tests;
 pub mod variance_gamma;
 
-use std::convert::Infallible;
-
-use basin::CostFunction;
-use basin::Gradient;
-
 pub use johnson_su::JohnsonSuFit;
 pub use johnson_su::fit_johnson_su;
 use ndarray::ArrayView1;
@@ -36,7 +31,8 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
-use crate::optim::polish;
+use crate::optim::search::by_differences;
+use crate::optim::simplex::SimplexStop;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -67,60 +63,6 @@ pub(crate) fn sample<T: FloatExt>(
   Ok(Sample { x, mean, sd, unit })
 }
 
-/// The best of `starts`, a Nelder–Mead simplex with one restart, then an L-BFGS polish kept only if
-/// it lowers the objective; returns the optimum, the iterations and whether the simplex converged.
-pub(crate) fn minimise<F: Fn(&[f64]) -> f64 + Clone>(
-  starts: &[Vec<f64>],
-  objective: F,
-) -> (Vec<f64>, usize, bool) {
-  let start = best_start(starts, &objective).expect("a non-empty starting grid");
-  let (theta, iters, converged) = nelder_mead_vec(start, 5_000, &objective);
-  let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, &objective);
-  let (theta, iters_polish) = polish(
-    Polish {
-      objective: objective.clone(),
-    },
-    theta,
-  );
-  (
-    theta,
-    iters + iters_restart + iters_polish,
-    converged || converged_restart,
-  )
-}
-
-/// The objective as a Basin problem with numerical gradients.
-struct Polish<F> {
-  objective: F,
-}
-
-impl<F: Fn(&[f64]) -> f64 + Clone> CostFunction for Polish<F> {
-  type Param = Vec<f64>;
-  type Output = f64;
-  type Error = Infallible;
-
-  fn cost(&self, theta: &Self::Param) -> Result<Self::Output, Self::Error> {
-    Ok((self.objective)(theta))
-  }
-}
-
-impl<F: Fn(&[f64]) -> f64 + Clone> Gradient for Polish<F> {
-  type Gradient = Vec<f64>;
-
-  fn gradient(&self, theta: &Self::Param) -> Result<Self::Gradient, Self::Error> {
-    let mut grad = vec![0.0; theta.len()];
-    for i in 0..theta.len() {
-      let step = 1e-6 * (1.0 + theta[i].abs());
-      let mut plus = theta.clone();
-      let mut minus = theta.clone();
-      plus[i] += step;
-      minus[i] -= step;
-      grad[i] = ((self.objective)(&plus) - (self.objective)(&minus)) / (2.0 * step);
-    }
-    Ok(grad)
-  }
-}
-
 /// Negative log-likelihood from a per-observation log-density, `1e300`
 /// when any term is not finite.
 pub(crate) fn negative_log_likelihood<F: Fn(f64) -> f64>(x: &[f64], log_density: F) -> f64 {
@@ -133,4 +75,24 @@ pub(crate) fn negative_log_likelihood<F: Fn(f64) -> f64>(x: &[f64], log_density:
     total -= l;
   }
   total
+}
+
+/// Skew-t's and variance gamma's search until theirs passes its census: the best of `starts`, a
+/// simplex and its restart, the L-BFGS polish; the optimum, the iterations, a simplex's verdict.
+pub(crate) fn minimise(
+  starts: &[Vec<f64>],
+  objective: impl Fn(&[f64]) -> f64,
+) -> (Vec<f64>, usize, bool) {
+  const CAP: usize = 5_000;
+  let start = best_start(starts, &objective).expect("a non-empty starting grid");
+  let (theta, first, met) = nelder_mead_vec(start, CAP, &objective);
+  let (theta, second, met_again) = nelder_mead_vec(&theta, CAP, &objective);
+  let (theta, polish) = by_differences(&objective, theta);
+  (theta, first + second + polish, met || met_again)
+}
+
+/// The message of that search, which a simplex ends by its spread or by its cap.
+pub(crate) fn words(converged: bool) -> String {
+  let stop = [SimplexStop::IterationCap, SimplexStop::Converged][usize::from(converged)];
+  stop.message().into()
 }

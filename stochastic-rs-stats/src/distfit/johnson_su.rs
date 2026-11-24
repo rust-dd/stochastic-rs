@@ -7,12 +7,14 @@ use stochastic_rs_distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs_distributions::traits::DistributionExt;
 
 use super::Sample;
-use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::Coordinate;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::traits::FloatExt;
 
 /// Johnson SU maximum-likelihood fit.
@@ -40,8 +42,12 @@ pub struct JohnsonSuFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
+  /// a bound or is unidentified: stationary along each, not global.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
@@ -65,7 +71,14 @@ pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> Result<JohnsonSuFit, 
       starts.push(vec![gamma0, delta0.ln(), mean, sd.ln()]);
     }
   }
-  let (theta, iterations, converged) = minimise(&starts, objective);
+  let coordinates = [
+    Coordinate::free(),
+    Coordinate::shape(0.0),
+    Coordinate::location(mean, sd),
+    Coordinate::log(sd.ln()),
+  ];
+  let found = minimise(objective, by_differences, &starts, &coordinates, x.len());
+  let theta = &found.at;
   let natural = [theta[0], theta[1].exp(), theta[2], theta[3].exp()];
   let log_likelihood = -log_density(&x, natural[0], natural[1], natural[2], natural[3]);
   let nll = |p: &[f64]| log_density(&x, p[0], p[1], p[2], p[3]);
@@ -91,7 +104,8 @@ pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> Result<JohnsonSuFit, 
     aic: 8.0 - 2.0 * fit.log_likelihood,
     bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
-    iterations,
-    converged,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["gamma", "delta", "xi", "lambda"]),
   })
 }

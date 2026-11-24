@@ -6,6 +6,7 @@ use crate::traits::RealExt;
 pub(crate) mod certificate;
 mod lbfgs;
 mod legacy_simplex;
+pub(crate) mod search;
 pub mod simplex;
 mod stop;
 

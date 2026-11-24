@@ -2,6 +2,8 @@
 //! estimate, in the objective's own units, and the stop that reading gives.
 
 use super::SolverStop;
+use super::simplex::SimplexStop;
+use crate::traits::RealExt;
 
 /// The most a step along one parameter gains in log-likelihood beside a converged estimate: on
 /// 117,768 fits the stationary ones read `2.3e-9` or less, and a stall anything up to 94.
@@ -14,6 +16,12 @@ const ROUNDINGS: f64 = 1.0;
 /// The least count of roundings a sum is given: below 256 terms a walk needs this allowance to
 /// cross a flat stretch, as one census stall of 100 points shows.
 const SHORT: f64 = 16.0;
+
+/// Half of `χ²₁(0.95)`, the rise in the objective at the end of a 95 % likelihood interval.
+pub(crate) const IDENTIFIED: f64 = 1.92;
+
+/// Quarterings of a first step that has no value, down to `4⁻⁸` of it.
+const SHORTENINGS: usize = 8;
 
 /// Steps of a walk beside an estimate, the last `4⁶³` times the first: past any box met.
 const FURTHEST: usize = 64;
@@ -47,9 +55,15 @@ pub(crate) enum Stop {
   Bound(usize),
   Edge,
   Outside,
+  Unidentified(usize),
+  Simplex(SimplexStop),
 }
 
 impl Stop {
+  pub(crate) fn converged(&self) -> bool {
+    matches!(self, Self::Converged)
+  }
+
   /// The stop in the words of quant's calibrators, `names` the fit's parameters.
   pub(crate) fn message(&self, names: &[&str]) -> String {
     let words = match self {
@@ -58,6 +72,8 @@ impl Stop {
       Self::Search(stop) => stop.words(),
       Self::NotStationary => "not stationary",
       Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
+      Self::Unidentified(open) => return format!("{} is not identified", names[*open]),
+      Self::Simplex(stop) => stop.message(),
       Self::Edge => "stopped at the edge of the law's support",
     };
     words.into()
@@ -77,7 +93,7 @@ impl Beside {
   }
 
   /// What a gain must clear: the crate's bound, or the sum's own rounding where that is larger.
-  fn bar(&self) -> f64 {
+  pub(crate) fn bar(&self) -> f64 {
     STATIONARY.max(ROUNDINGS * self.rounding)
   }
 
@@ -120,6 +136,8 @@ pub(crate) fn beside(
   let bar = beside.bar();
   // A sum's rounding is no rise: below it the walk goes on, across a flat stretch.
   let rise = ROUNDINGS * beside.rounding;
+  // Half the two first steps' difference along each axis they are whole on: the slope there.
+  let mut slopes = vec![0.0; at.len()];
   for (i, axis) in axes.iter().enumerate() {
     let first = f64::EPSILON.cbrt() * axis.scale;
     // What each first step costs where it is a whole step onto a point with a value.
@@ -133,10 +151,20 @@ pub(crate) fn beside(
           break;
         }
         moved[i] = to;
-        let cost = objective(&moved);
+        let mut cost = objective(&moved);
         beside.walled |= nth == 0 && cost.is_none();
         if nth == 0 && to == at[i] + step {
           *whole = cost;
+        }
+        // A first step past the edge of the objective's domain is shortened until it has a
+        // value: a slope into the edge is a gain no whole step can read.
+        for _ in 0..SHORTENINGS {
+          if nth > 0 || cost.is_some() {
+            break;
+          }
+          step *= 0.25;
+          moved[i] = at[i] + step;
+          cost = objective(&moved);
         }
         let Some(cost) = cost.filter(|cost| *cost <= here + rise) else {
           break;
@@ -153,6 +181,7 @@ pub(crate) fn beside(
     let [Some(up), Some(down)] = whole else {
       continue;
     };
+    slopes[i] = 0.5 * (up - down);
     let curvature = up + down - 2.0 * here;
     if !(up > here + rise && down > here + rise) || (up - down).powi(2) <= 8.0 * curvature * bar {
       continue;
@@ -163,6 +192,27 @@ pub(crate) fn beside(
     if realised > beside.gain {
       (beside.gain, beside.along) = (realised, i);
       beside.best = moved;
+    }
+  }
+  // A valley no axis runs along: one walk down the slopes, the steepest axis by its first step.
+  let steepest = f64::max_or_nan_fold(slopes.iter().map(|g| g.abs()));
+  if steepest > 0.0 {
+    let along = (0..at.len())
+      .find(|i| slopes[*i].abs() == steepest)
+      .unwrap_or(0);
+    let down = |i: usize| -slopes[i] / steepest * f64::EPSILON.cbrt() * axes[i].scale;
+    let mut reach = 1.0;
+    for _ in 0..FURTHEST {
+      let step = |i: usize| (at[i] + reach * down(i)).clamp(axes[i].low, axes[i].high);
+      let moved = (0..at.len()).map(step).collect::<Vec<_>>();
+      let Some(cost) = objective(&moved).filter(|cost| *cost <= here + rise) else {
+        break;
+      };
+      if here - cost > beside.gain {
+        (beside.gain, beside.along) = (here - cost, along);
+        beside.best = moved;
+      }
+      reach *= 4.0;
     }
   }
   beside
@@ -220,6 +270,46 @@ mod tests {
       |z: &[f64]| (z[0] <= 0.3 + 0.5 * ROOT).then(|| 1e4 + 2e9 * (z[0] - 0.3).powi(2));
     let read = beside(objective, &[0.3], &axis(-1.0, 1.0), 1000);
     assert!(read.walled && read.gain == 0.0, "{}", read.gain);
+  }
+
+  /// The objective falls into the edge of its domain an eighth of a first step away: the
+  /// shortened step reads the fall, and the stop is the edge's.
+  #[test]
+  fn a_fall_into_the_edge_of_the_domain_is_read() {
+    let objective = |z: &[f64]| (z[0] <= 0.3 + 0.125 * ROOT).then(|| 1e4 - 1e3 * (z[0] - 0.3));
+    let read = beside(objective, &[0.3], &axis(-1.0, 1.0), 1000);
+    assert!(read.walled && read.gain > read.bar(), "{}", read.gain);
+    assert!(matches!(read.stop(false), Stop::Edge));
+  }
+
+  /// A valley along `x = y` falling by `2e-3` a unit: a step along either axis climbs its wall,
+  /// and the walk down the two slopes gains what neither can.
+  #[test]
+  fn a_valley_no_axis_runs_along_is_walked_down_its_slopes() {
+    let objective = |z: &[f64]| Some(1e6 * (z[0] - z[1]).powi(2) - 1e-3 * (z[0] + z[1]));
+    let axes = [axis(-1.0, 1.0), axis(-1.0, 1.0)].map(|[axis]| axis);
+    let read = beside(objective, &[0.0, 0.0], &axes, 1000);
+    assert!(read.gain > read.bar(), "{}", read.gain);
+    assert_eq!(read.best[0], read.best[1]);
+    assert!(matches!(read.stop(false), Stop::NotStationary));
+  }
+
+  #[test]
+  fn each_stop_of_a_search_has_its_words() {
+    let names = ["mu", "sigma"];
+    assert_eq!(Stop::Converged.message(&names), "converged");
+    assert_eq!(Stop::NotStationary.message(&names), "not stationary");
+    assert_eq!(
+      Stop::Bound(1).message(&names),
+      "stopped at the bound of sigma"
+    );
+    assert_eq!(
+      Stop::Unidentified(1).message(&names),
+      "sigma is not identified"
+    );
+    let capped = Stop::Simplex(SimplexStop::IterationCap);
+    assert_eq!(capped.message(&names), "iteration cap reached");
+    assert!(!capped.converged() && Stop::Converged.converged());
   }
 
   /// Within a first step of a bound the two steps are unequal, and the three points no parabola's.

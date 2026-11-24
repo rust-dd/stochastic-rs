@@ -28,8 +28,9 @@ use super::gpd::information_inverse;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::optim::best_start;
-use crate::optim::nelder_mead_vec;
+use crate::optim::search::Coordinate;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
@@ -61,8 +62,12 @@ pub struct GevFit {
   pub nobs: usize,
   /// Simplex iterations.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values, which a stall passes too.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
+  /// a bound or is unidentified: stationary along each, not global.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 impl GevFit {
@@ -125,13 +130,14 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError>
   let objective = |p: &[f64]| negative_log_likelihood(&z, p[0], p[1].exp(), p[2]);
   let sigma0 = 6.0_f64.sqrt() * sd / std::f64::consts::PI;
   let mu0 = mean - EULER_MASCHERONI * sigma0;
-  let start = best_start(
-    [-0.2, 0.0, 0.1, 0.3].map(|xi0| [mu0, sigma0.ln(), xi0]),
-    objective,
-  )
-  .expect("a non-empty starting grid");
-  let (theta, iters, converged) = nelder_mead_vec(&start, 5_000, objective);
-  let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, objective);
+  let starts = [-0.2, 0.0, 0.1, 0.3].map(|xi0| vec![mu0, sigma0.ln(), xi0]);
+  let coordinates = [
+    Coordinate::location(mean, sd),
+    Coordinate::log(sd.ln()),
+    Coordinate::free(),
+  ];
+  let found = minimise(objective, by_differences, &starts, &coordinates, n);
+  let theta = &found.at;
   let (mu, sigma, xi) = (theta[0], theta[1].exp(), theta[2]);
   let log_likelihood = -negative_log_likelihood(&z, mu, sigma, xi);
 
@@ -156,8 +162,9 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError>
     aic: 6.0 - 2.0 * fit.log_likelihood,
     bic: 3.0 * (n as f64).ln() - 2.0 * fit.log_likelihood,
     nobs: n,
-    iterations: iters + iters_restart,
-    converged: converged || converged_restart,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["mu", "sigma", "xi"]),
   })
 }
 

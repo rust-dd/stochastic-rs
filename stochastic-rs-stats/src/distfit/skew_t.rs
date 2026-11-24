@@ -10,6 +10,7 @@ use super::Sample;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
+use super::words;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
@@ -42,6 +43,8 @@ pub struct SkewTFit {
   pub iterations: usize,
   /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
   pub converged: bool,
+  /// `converged` or `iteration cap reached`.
+  pub message: String,
 }
 
 fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
@@ -102,5 +105,6 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
     nobs: x.len(),
     iterations,
     converged,
+    message: words(converged),
   })
 }

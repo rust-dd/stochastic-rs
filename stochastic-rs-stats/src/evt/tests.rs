@@ -57,6 +57,7 @@ fn samples_are_bit_identical_to_the_python_generator() {
 fn gpd_fit_matches_scipy() {
   let fit = fit_gpd(gpd_sample().view()).unwrap();
   assert!(fit.converged);
+  assert_eq!(fit.message, "converged");
   assert_eq!(fit.nobs, 2_000);
   assert_close(fit.sigma, 1.944_730_724_656_302_8, 1e-4, "sigma");
   assert_close(fit.xi, 0.275_986_903_122_822_65, 1e-4, "xi");
@@ -124,6 +125,7 @@ fn pot_var_and_es_match_the_qrm_formulas() {
 fn gev_fit_matches_scipy() {
   let fit = fit_gev(gev_sample().view()).unwrap();
   assert!(fit.converged);
+  assert_eq!(fit.message, "converged");
   assert_eq!(fit.nobs, 500);
   assert_close(fit.mu, 1.051_093_874_083_600_7, 1e-4, "mu");
   assert_close(fit.sigma, 0.545_236_613_390_745_7, 1e-4, "sigma");
@@ -336,4 +338,13 @@ fn a_nan_observation_makes_its_block_maximum_nan() {
   let maxima = block_maxima(array![1.0_f64, 2.0, f64::NAN, 0.5, 3.0, 1.0].view(), 3);
   assert!(maxima[0].is_nan());
   assert_eq!(maxima[1], 3.0);
+}
+
+/// Uniform excesses end at `1`: the likelihood climbs to `ξ = -1` and past it without bound,
+/// where the support's end meets the largest observation.
+#[test]
+fn a_gpd_fit_of_a_bounded_sample_stops_at_the_edge_of_the_support() {
+  let fit = fit_gpd(Array1::from(lcg(7, 500)).view()).unwrap();
+  assert!(!fit.converged);
+  assert_eq!(fit.message, "stopped at the edge of the law's support");
 }

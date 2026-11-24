@@ -138,10 +138,10 @@ fn a_step_whose_unit_variance_underflows_has_no_start() {
   assert_eq!(fit_cir_gmm(x.view(), dt).map(|f| f.sigma), refused);
 }
 
-/// Stage 1 weighs the moments of the path over its mean, so a factor that is no power of two, and
-/// so rounds the path, moves the GMM fit by that rounding; the path's own would follow its unit.
+/// A factor that is no power of two rounds the path, and the two searches part: each ends where
+/// the check's `1e-7` in `(n − 1) q / 2` holds, which on these paths is within `1e-6` of the other.
 #[test]
-fn a_decimal_scale_moves_the_gmm_fit_by_its_rounding_alone() {
+fn a_decimal_scale_moves_the_gmm_fit_within_the_searchs_tolerance() {
   let dt = 1.0 / 252.0;
   for seed in [3u64, 7, 29] {
     let x = simulate_cir(2.0, 0.06, 0.2, 0.06, dt, 500, seed);
@@ -156,7 +156,7 @@ fn a_decimal_scale_moves_the_gmm_fit_by_its_rounding_alone() {
       ];
       for (a, b) in pairs {
         assert!(
-          (a / b - 1.0).abs() < 1e-8,
+          (a / b - 1.0).abs() < 1e-6,
           "seed {seed} x{c:e}: {a} for {b}"
         );
       }

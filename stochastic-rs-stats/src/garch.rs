@@ -38,10 +38,6 @@ mod tests;
 mod transform;
 mod units;
 
-use std::convert::Infallible;
-
-use basin::CostFunction;
-use basin::Gradient;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -49,8 +45,9 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::optim::nelder_mead_vec;
-use crate::optim::polish;
+use crate::optim::search::Coordinate;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -203,8 +200,12 @@ pub struct GarchFit {
   pub backcast: f64,
   /// Simplex iterations plus L-BFGS polishing iterations.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
+  /// a bound or is unidentified: stationary along each, not global.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
   /// Number of observations.
   pub nobs: usize,
 }
@@ -233,13 +234,15 @@ pub fn fit_garch<T: FloatExt>(
     backcast,
   };
   let start = transform::best_start(&spec, mean, backcast, |theta| problem.objective(theta));
-  let (theta_nm, iters_nm, converged) =
-    nelder_mead_vec(&start, 5_000, |theta| problem.objective(theta));
-  let (theta_nm, iters_restart, converged_restart) =
-    nelder_mead_vec(&theta_nm, 5_000, |theta| problem.objective(theta));
-  let (theta, iters_lbfgs) = polish(problem, theta_nm);
+  // Every coordinate is one of `transform`'s, which bounds it: none is the search's to hold.
+  let coordinates = start.iter().map(|_| Coordinate::free());
+  let coordinates = coordinates.collect::<Vec<_>>();
+  let objective = |theta: &[f64]| problem.objective(theta);
+  let found = minimise(objective, by_differences, &[start], &coordinates, n);
+  let theta = &found.at;
 
-  let fitted = transform::to_natural(&spec, &theta);
+  let names = spec.param_names();
+  let fitted = transform::to_natural(&spec, theta);
   let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
   if !(fitted.iter().all(|v| v.is_finite()) && log_likelihood.is_finite()) {
     return Err(StatsError::Numerical { stage: "estimate" });
@@ -307,14 +310,16 @@ pub fn fit_garch<T: FloatExt>(
     bic: kf * (n as f64).ln() - 2.0 * log_likelihood,
     persistence,
     backcast,
-    iterations: iters_nm + iters_restart + iters_lbfgs,
-    converged: converged || converged_restart,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found
+      .stop
+      .message(&names.iter().map(String::as_str).collect::<Vec<_>>()),
     nobs: n,
   })
 }
 
-/// The negative quasi-log-likelihood in unconstrained coordinates, shared by
-/// the simplex and the L-BFGS polish.
+/// The negative quasi-log-likelihood in unconstrained coordinates.
 struct Problem {
   spec: GarchSpec,
   returns: Vec<f64>,
@@ -326,32 +331,5 @@ impl Problem {
     let natural = transform::to_natural(&self.spec, theta);
     let ll = recursion::total_log_likelihood(&self.spec, &natural, &self.returns, self.backcast);
     if ll.is_finite() { -ll } else { 1e300 }
-  }
-}
-
-impl CostFunction for Problem {
-  type Param = Vec<f64>;
-  type Output = f64;
-  type Error = Infallible;
-
-  fn cost(&self, theta: &Self::Param) -> Result<Self::Output, Self::Error> {
-    Ok(self.objective(theta))
-  }
-}
-
-impl Gradient for Problem {
-  type Gradient = Vec<f64>;
-
-  fn gradient(&self, theta: &Self::Param) -> Result<Self::Gradient, Self::Error> {
-    let mut grad = vec![0.0; theta.len()];
-    for i in 0..theta.len() {
-      let step = 1e-6 * (1.0 + theta[i].abs());
-      let mut plus = theta.clone();
-      let mut minus = theta.clone();
-      plus[i] += step;
-      minus[i] -= step;
-      grad[i] = (self.objective(&plus) - self.objective(&minus)) / (2.0 * step);
-    }
-    Ok(grad)
   }
 }
