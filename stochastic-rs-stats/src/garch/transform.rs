@@ -16,6 +16,8 @@
 use super::GarchKind;
 use super::GarchSpec;
 use super::MeanSpec;
+use crate::optim::search::Coordinate;
+use crate::optim::search::LOGIT;
 use crate::traits::RealExt;
 
 fn sigmoid(x: f64) -> f64 {
@@ -136,6 +138,53 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
     }
   }
   theta
+}
+
+/// The search's coordinates and the names their stops word: [`GarchSpec::param_names`], then
+/// `persistence`, then each GJR `alpha[i] + gamma[i]`. A share's low end is the bound of the
+/// parameter that vanishes there, its high end that of the first, which vanishes with the rest.
+pub(super) fn coordinates(
+  spec: &GarchSpec,
+  mean: f64,
+  backcast: f64,
+) -> (Vec<Coordinate>, Vec<String>) {
+  let mut names = spec.param_names();
+  let mut coordinates = Vec::with_capacity(names.len());
+  if spec.mean == MeanSpec::Constant {
+    coordinates.push(Coordinate::location(mean, backcast.sqrt()));
+  }
+  let first = coordinates.len() + 1;
+  let persistence = names.len();
+  names.push("persistence".to_string());
+  let (p, q) = (spec.p, spec.q);
+  let weights = match spec.kind {
+    GarchKind::Garch => {
+      coordinates.push(Coordinate::log(backcast.ln()));
+      coordinates.push(Coordinate::share(LOGIT, persistence, persistence));
+      (first..first + p + q).collect::<Vec<_>>()
+    }
+    GarchKind::GjrGarch => {
+      coordinates.push(Coordinate::log(backcast.ln()));
+      coordinates.push(Coordinate::share(LOGIT, persistence, persistence));
+      let sums = names.len()..names.len() + p;
+      names.extend((1..=p).map(|i| format!("alpha[{i}] + gamma[{i}]")));
+      (first..first + p)
+        .chain(sums)
+        .chain(first + 2 * p..first + 2 * p + q)
+        .collect()
+    }
+    GarchKind::Egarch => {
+      coordinates.extend((0..1 + 2 * p).map(|_| Coordinate::free()));
+      if q > 0 {
+        // `tanh` is `±1` to the doubles' spacing at half a logit's reach.
+        coordinates.push(Coordinate::share(0.5 * LOGIT, persistence, persistence));
+      }
+      (first + 2 * p..first + 2 * p + q).collect()
+    }
+  };
+  let shares = weights.iter().skip(1);
+  coordinates.extend(shares.map(|&vanishing| Coordinate::share(LOGIT, vanishing, weights[0])));
+  (coordinates, names)
 }
 
 /// Typical magnitude of each natural parameter, the scale of its finite-difference step:

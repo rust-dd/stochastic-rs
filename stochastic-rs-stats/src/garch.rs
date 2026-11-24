@@ -45,7 +45,6 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::optim::search::Coordinate;
 use crate::optim::search::by_differences;
 use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
@@ -234,14 +233,11 @@ pub fn fit_garch<T: FloatExt>(
     backcast,
   };
   let start = transform::best_start(&spec, mean, backcast, |theta| problem.objective(theta));
-  // Every coordinate is one of `transform`'s, which bounds it: none is the search's to hold.
-  let coordinates = start.iter().map(|_| Coordinate::free());
-  let coordinates = coordinates.collect::<Vec<_>>();
+  let (coordinates, words) = transform::coordinates(&spec, mean, backcast);
   let objective = |theta: &[f64]| problem.objective(theta);
   let found = minimise(objective, by_differences, &[start], &coordinates, n);
   let theta = &found.at;
 
-  let names = spec.param_names();
   let fitted = transform::to_natural(&spec, theta);
   let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
   if !(fitted.iter().all(|v| v.is_finite()) && log_likelihood.is_finite()) {
@@ -314,7 +310,7 @@ pub fn fit_garch<T: FloatExt>(
     converged: found.stop.converged(),
     message: found
       .stop
-      .message(&names.iter().map(String::as_str).collect::<Vec<_>>()),
+      .message(&words.iter().map(String::as_str).collect::<Vec<_>>()),
     nobs: n,
   })
 }

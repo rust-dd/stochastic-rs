@@ -29,6 +29,7 @@ use crate::StatsError;
 use crate::optim::search::Coordinate;
 use crate::optim::search::NO_VALUE;
 use crate::optim::search::by_differences;
+use crate::optim::search::descend;
 use crate::optim::search::minimise;
 use crate::qmle::Ar1;
 use crate::qmle::Carrier;
@@ -139,14 +140,12 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     if q.is_finite() { q } else { NO_VALUE }
   };
   let coordinates = start.map(Coordinate::log);
-  let first = minimise(
+  let (p1, first) = descend(
     |p| criterion(p, &stage1),
     by_differences,
     &[start.to_vec()],
     &coordinates,
-    x.len() - 1,
   );
-  let p1 = &first.at;
   let (theta1, mu1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
 
   // Stage 2 weights by `Ŝ⁻¹` at the stage-1 estimate, Hansen's efficient choice.
@@ -168,7 +167,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let second = minimise(
     |p| criterion(p, &w2),
     by_differences,
-    std::slice::from_ref(p1),
+    std::slice::from_ref(&p1),
     &coordinates,
     x.len() - 1,
   );
@@ -184,7 +183,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     sigma,
     j_stat,
     j_pvalue,
-    iterations: first.iterations + second.iterations,
+    iterations: first + second.iterations,
     converged: second.stop.converged(),
     message: second.stop.message(&["theta", "mu", "sigma"]),
   })

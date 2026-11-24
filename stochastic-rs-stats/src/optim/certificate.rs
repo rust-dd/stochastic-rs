@@ -17,9 +17,6 @@ const ROUNDINGS: f64 = 1.0;
 /// cross a flat stretch, as one census stall of 100 points shows.
 const SHORT: f64 = 16.0;
 
-/// Half of `χ²₁(0.95)`, the rise in the objective at the end of a 95 % likelihood interval.
-pub(crate) const IDENTIFIED: f64 = 1.92;
-
 /// Quarterings of a first step that has no value, down to `4⁻⁸` of it.
 const SHORTENINGS: usize = 8;
 

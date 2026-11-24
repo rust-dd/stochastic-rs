@@ -16,8 +16,10 @@ use crate::mle::DiffusionModel;
 use crate::mle::density::DensityApprox;
 use crate::optim::certificate::Axis;
 use crate::optim::certificate::Beside;
-use crate::optim::certificate::IDENTIFIED;
 use crate::optim::certificate::beside;
+
+/// Half of `χ²₁(0.95)`, the drop in log-likelihood at the end of a 95 % likelihood interval.
+const IDENTIFIED: f64 = 1.92;
 
 /// The objective at a point without a likelihood, above every sum [`ranked`] returns.
 pub(super) const NO_LIKELIHOOD: f64 = 1e100;
