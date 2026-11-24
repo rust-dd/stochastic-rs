@@ -11,6 +11,7 @@
 use gauss_quad::GaussJacobi;
 use ndarray::Array1;
 use num_complex::Complex64;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::gamma;
 
 use super::LogChf;
@@ -140,13 +141,15 @@ impl Pade {
 fn solve<S: RiccatiScalar>(mut rows: [[S; MAX_ORDER + 1]; MAX_ORDER], n: usize) -> [S; MAX_ORDER] {
   for column in 0..n {
     let pivot = (column..n)
-      .max_by(|&a, &b| rows[a][column].norm().total_cmp(&rows[b][column].norm()))
+      .max_by(|&a, &b| rows[a][column].norm().nan_last(&rows[b][column].norm()))
       .expect("the range is not empty");
     rows.swap(column, pivot);
-    for row in column + 1..n {
-      let factor = rows[row][column] / rows[column][column];
-      for entry in column..=n {
-        rows[row][entry] = rows[row][entry] - factor * rows[column][entry];
+    let (above, below) = rows.split_at_mut(column + 1);
+    let pivot_row = &above[column][column..=n];
+    for row in &mut below[..n - column - 1] {
+      let factor = row[column] / pivot_row[0];
+      for (entry, &pivot) in row[column..=n].iter_mut().zip(pivot_row) {
+        *entry = *entry - factor * pivot;
       }
     }
   }
