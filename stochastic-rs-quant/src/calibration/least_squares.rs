@@ -194,10 +194,7 @@ impl LmReport {
       _ if self.flat => "flat objective",
       SolverStop::Converged if self.converged => "converged",
       SolverStop::Converged => "not stationary",
-      SolverStop::EvaluationBudget | SolverStop::IterationCap => "evaluation budget exhausted",
-      SolverStop::NoProgress => "no numerical progress",
-      SolverStop::Failed => "solver failed",
-      SolverStop::Other => "stopped without convergence",
+      stop => stop.words(),
     }
   }
 
@@ -571,7 +568,6 @@ where
 }
 
 mod in_box;
-mod stop;
 mod trail;
 
 use in_box::Bounds;
@@ -580,7 +576,7 @@ pub(crate) use in_box::HELD;
 pub(crate) use in_box::Room;
 use in_box::Rooms;
 use in_box::restarted;
-use stop::SolverStop;
+use stochastic_rs_stats::optim::SolverStop;
 pub(crate) use trail::Trail;
 
 #[cfg(test)]

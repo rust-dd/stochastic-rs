@@ -54,12 +54,8 @@ impl Stop {
   pub(crate) fn message(&self, names: &[&str]) -> String {
     let words = match self {
       Self::Converged => "converged",
-      Self::Search(SolverStop::IterationCap | SolverStop::EvaluationBudget) => {
-        "evaluation budget exhausted"
-      }
-      Self::Search(SolverStop::NoProgress) => "no numerical progress",
-      Self::Search(SolverStop::Failed) => "solver failed",
-      Self::Search(_) | Self::Outside => "stopped without convergence",
+      Self::Search(SolverStop::Converged) | Self::Outside => SolverStop::Other.words(),
+      Self::Search(stop) => stop.words(),
       Self::NotStationary => "not stationary",
       Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
       Self::Edge => "stopped at the edge of the law's support",

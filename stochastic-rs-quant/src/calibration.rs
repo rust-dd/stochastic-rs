@@ -60,7 +60,6 @@ pub use levy::LevyCalibrator;
 pub use levy::LevyModelType;
 pub use levy::LevyParams;
 pub(crate) use nelder_mead::nelder_mead_fit;
-pub(crate) use nelder_mead::run_nelder_mead;
 pub(crate) use nelder_mead::start_vertex;
 pub use regularization::Regularization;
 pub use sabr::SabrCalibrator;
