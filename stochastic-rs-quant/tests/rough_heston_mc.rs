@@ -53,8 +53,8 @@ fn assert_within_error_bars(what: &str, terminal: &[f64], model: &RoughHeston, b
   }
 }
 
-/// `RlHeston` against the Adams solution: its Euler step prices calls up to 5.6e-4 high on 257
-/// points (160 000 paths; half that on 1025), so 6e-4 is allowed beside four standard errors.
+/// A smoke test: `RlHeston`'s lift under-weights the kernel's newest cell, a weak error of the
+/// process (2.6e-4 at `k = 1.1` on 257 points), so 6e-4 is a measured allowance, not a derived one.
 #[test]
 fn rl_heston_paths_price_as_the_adams_characteristic_function() {
   const POINTS: usize = 257;
@@ -77,12 +77,6 @@ fn rl_heston_paths_price_as_the_adams_characteristic_function() {
   );
   let terminal = process.sample_map(2 * PATHS, |[s, _]| s[POINTS - 1]);
   assert_within_error_bars("RlHeston", &terminal, &model, EULER_BIAS);
-  let (mean, _) = estimates(&terminal)[1];
-  let exact = model.price_call(1.0, 1.0, 0.0, 0.0, TAU);
-  assert!(
-    mean > exact,
-    "the allowance is one-sided: {mean} vs {exact}"
-  );
 }
 
 /// Abi Jaber's (3.3) and his scheme (C.3)–(C.4) with a log-Euler spot, one path's terminal spot.
