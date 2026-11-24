@@ -47,8 +47,8 @@ const SHAPE_FOLDS: f64 = 18.0;
 /// `z²/2` at `z = 0.1` model-based standard errors, in summed log-likelihood.
 const AT_LIMIT: f64 = 5e-3;
 
-/// Standard errors of the quadratic model at the estimate past which a limit is not read: an
-/// error of one `e`-fold over a logarithm's whole reach.
+/// Model-based standard errors past which a limit is not read, a convention. It assumes the
+/// profile to a limit is nowhere `K²/z² = 1.3e5` flatter than the quadratic model at the estimate.
 const SCREEN: f64 = FOLDS;
 
 /// The second differences' steps in a coordinate's scale: the simplex's own, then an eighth of
