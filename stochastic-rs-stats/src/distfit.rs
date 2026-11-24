@@ -77,8 +77,8 @@ pub(crate) fn negative_log_likelihood<F: Fn(f64) -> f64>(x: &[f64], log_density:
   total
 }
 
-/// Skew-t's and variance gamma's search until theirs passes its census: the best of `starts`, a
-/// simplex and its restart, the L-BFGS polish; the optimum, the iterations, a simplex's verdict.
+/// Johnson SU's and variance gamma's search: the best of `starts`, a simplex and its restart, the
+/// L-BFGS polish; the optimum, the iterations, a simplex's verdict.
 pub(crate) fn minimise(
   starts: &[Vec<f64>],
   objective: impl Fn(&[f64]) -> f64,
@@ -93,6 +93,10 @@ pub(crate) fn minimise(
 
 /// The message of that search, which a simplex ends by its spread or by its cap.
 pub(crate) fn words(converged: bool) -> String {
-  let stop = [SimplexStop::IterationCap, SimplexStop::Converged][usize::from(converged)];
+  let stop = if converged {
+    SimplexStop::Converged
+  } else {
+    SimplexStop::IterationCap
+  };
   stop.message().into()
 }
