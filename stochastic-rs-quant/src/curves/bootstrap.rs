@@ -41,12 +41,33 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
   spec: BootstrapSpec<'_, T>,
   numbers: Option<&[usize]>,
 ) -> Result<DiscountCurve<T>, QuantError> {
+  let (mut points, order) = first_pass(spec, numbers)?;
+  if !segment::is_local(spec.method) {
+    let quotes = order
+      .iter()
+      .map(|&index| (&spec.instruments[index], number(numbers, index)))
+      .collect::<Vec<_>>();
+    sweep::reprice_together(&mut points, &quotes, spec.discount, spec.method)?;
+  }
+  Ok(DiscountCurve::new(points, spec.method))
+}
+
+fn number(numbers: Option<&[usize]>, index: usize) -> usize {
+  numbers.map_or(index, |numbers| numbers[index])
+}
+
+/// Each node solved past the pillars before it, in maturity order: the whole bootstrap of a local
+/// method and the first pass of a global one. Returns the pillars and the quotes' order.
+fn first_pass<T: RealExt>(
+  spec: BootstrapSpec<'_, T>,
+  numbers: Option<&[usize]>,
+) -> Result<(Vec<CurvePoint<T>>, Vec<usize>), QuantError> {
   let BootstrapSpec {
     instruments,
     method,
     discount,
   } = spec;
-  let number = |index: usize| numbers.map_or(index, |numbers| numbers[index]);
+  let number = |index: usize| number(numbers, index);
   if instruments.is_empty() {
     return Err(QuantError::InsufficientData {
       what: "instruments",
@@ -57,7 +78,7 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
   for (index, instrument) in instruments.iter().enumerate() {
     validate::check(number(index), instrument, discount.is_some())?;
   }
-  let mut order: Vec<usize> = (0..instruments.len()).collect();
+  let mut order = (0..instruments.len()).collect::<Vec<_>>();
   order.sort_by(|&a, &b| {
     instruments[a]
       .maturity()
@@ -77,21 +98,22 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     });
   }
 
-  let quote = |index: usize| (&instruments[index], number(index));
-  let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(order.len());
+  let mut points = Vec::<CurvePoint<T>>::with_capacity(order.len());
   for &index in &order {
-    let (instrument, quote) = quote(index);
-    let discount_factor = quote_node(Place::Next(&points), instrument, discount, method, quote)?;
+    let instrument = &instruments[index];
+    let discount_factor = quote_node(
+      Place::Next(&points),
+      instrument,
+      discount,
+      method,
+      number(index),
+    )?;
     points.push(CurvePoint {
       time: instrument.maturity(),
       discount_factor,
     });
   }
-  if !segment::is_local(method) {
-    let quotes = order.iter().map(|&i| quote(i)).collect::<Vec<_>>();
-    sweep::reprice_together(&mut points, &quotes, discount, method)?;
-  }
-  Ok(DiscountCurve::new(points, method))
+  Ok((points, order))
 }
 
 /// Where a quote's node is solved: past the pillars built so far, or in its slot of the whole
