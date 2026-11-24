@@ -3,7 +3,7 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 
 use super::calibrator::RoughHestonCalibrator;
-use super::params::BOX;
+use super::params::Bounds;
 use super::params::folded;
 use crate::OptionQuote;
 use crate::OptionType;
@@ -25,7 +25,8 @@ use crate::pricing::fourier::RoughHestonParams;
 pub(super) struct RoughHestonProblem<'a> {
   calibrator: &'a RoughHestonCalibrator,
   sqrt_weights: Vec<f64>,
-  /// The folded point, inside `BOX`.
+  bounds: Bounds,
+  /// The folded point, inside `bounds`.
   pub(super) params: RoughHestonParams,
   /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
   reflections: Array1<f64>,
@@ -38,6 +39,7 @@ impl<'a> RoughHestonProblem<'a> {
   pub(super) fn new(
     calibrator: &'a RoughHestonCalibrator,
     start: RoughHestonParams,
+    bounds: Bounds,
   ) -> Result<Self, QuantError> {
     let RoughHestonCalibrator { s, r, q, .. } = *calibrator;
     let weights = calibrator.quotes.iter().enumerate().map(|(index, quote)| {
@@ -48,6 +50,7 @@ impl<'a> RoughHestonProblem<'a> {
     Ok(Self {
       calibrator,
       sqrt_weights: weights.collect::<Result<Vec<_>, _>>()?,
+      bounds,
       params: start,
       reflections: Array1::ones(6),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
@@ -95,7 +98,7 @@ impl<'a> RoughHestonProblem<'a> {
     let mut jacobian = Array2::zeros((quotes.len(), point.len()));
     for (j, mut column) in jacobian.columns_mut().into_iter().enumerate() {
       let x = point[j];
-      column.assign(&derivative(x, scale * step(x), BOX[j], |value| {
+      column.assign(&derivative(x, scale * step(x), self.bounds[j], |value| {
         let mut moved = point.clone();
         moved[j] = value;
         let moved = RoughHeston::new(RoughHestonParams::from(moved), self.calibrator.cf);
@@ -111,8 +114,8 @@ impl<'a> RoughHestonProblem<'a> {
 
 impl LeastSquaresProblem for RoughHestonProblem<'_> {
   fn set_params(&mut self, params: ArrayView1<f64>) {
-    self.reflections = periodic_slopes(params, &BOX);
-    self.params = folded(params);
+    self.reflections = periodic_slopes(params, &self.bounds);
+    self.params = folded(params, &self.bounds);
   }
 
   fn params(&self) -> Array1<f64> {

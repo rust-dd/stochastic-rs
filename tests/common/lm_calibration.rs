@@ -165,14 +165,14 @@ pub fn cases() -> Vec<Case> {
   }
   let ks = (0..21).map(|i| -0.5 + 0.05 * i as f64).collect::<Vec<_>>();
   let rough = RoughHeston::new(
-    RoughHestonParams::new(0.04, 1.0, 0.05, 0.4, -0.65, 0.1),
+    RoughHestonParams::new(0.04, 1.0, 0.05, 0.3, -0.65, 0.1),
     RoughHestonCf::default(),
   );
   let rough_strikes = Array1::from_vec(vec![90.0, 95.0, 100.0, 105.0, 110.0]);
   let rough_quotes = calls(&rough_strikes, &[0.05, 0.25, 1.0], |k, tau| {
     rough.price_call(100.0, k, 0.03, 0.0, tau)
   });
-  let rough_start = RoughHestonParams::new(0.05, 1.4, 0.04, 0.3, -0.5, 0.15);
+  let rough_start = RoughHestonParams::new(0.05, 1.4, 0.04, 0.2, -0.5, 0.15);
   cases.push(calibration(
     "rough_heston/pade44_15",
     RoughHestonCalibrator::new(100.0, 0.03, 0.0, rough_quotes).with_start(rough_start),

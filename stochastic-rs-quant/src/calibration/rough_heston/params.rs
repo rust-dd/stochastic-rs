@@ -5,30 +5,52 @@ use super::super::periodic_map;
 use crate::calibration::least_squares::Room;
 use crate::calibration::periodic_slopes;
 use crate::calibration::stencil::room;
+use crate::pricing::fourier::RoughHestonCf;
 use crate::pricing::fourier::RoughHestonParams;
 
-/// `(V₀, κ, θ, ν, ρ, H)`: `H`'s bounds keep it inside `(0, ½)`, `κ`'s above 0, and the model has no
-/// condition coupling two of them.
-pub(super) const BOX: [(f64, f64); 6] = [
-  (0.005, 0.25),
-  (0.01, 10.0),
-  (0.001, 1.0),
-  (0.01, 2.0),
-  (-0.9999, 0.9999),
-  (0.005, 0.495),
-];
+pub(super) type Bounds = [(f64, f64); 6];
 
-/// A raw point folded into `BOX`, coordinate by coordinate.
-pub(super) fn folded(x: ArrayView1<f64>) -> RoughHestonParams {
-  let places = x.iter().zip(&BOX);
+pub(super) const NAMES: [&str; 6] = ["v0", "kappa", "theta", "nu", "rho", "hurst"];
+
+/// The box of `(V₀, κ, θ, ν, ρ, H)` under `cf`: `H` inside `(0, ½)`, `κ` above 0, and `ν` to 0.4
+/// under the approximant, the range it is validated on, to 2 under the two solves.
+pub(super) fn bounds(cf: &RoughHestonCf) -> Bounds {
+  let most = match cf {
+    RoughHestonCf::Pade { .. } => 0.4,
+    _ => 2.0,
+  };
+  [
+    (0.005, 0.25),
+    (0.01, 10.0),
+    (0.001, 1.0),
+    (0.01, most),
+    (-0.9999, 0.9999),
+    (0.005, 0.495),
+  ]
+}
+
+/// A raw point folded into `bounds`, coordinate by coordinate.
+pub(super) fn folded(x: ArrayView1<f64>, bounds: &Bounds) -> RoughHestonParams {
+  let places = x.iter().zip(bounds);
   let values = places.map(|(&x, &(lo, hi))| periodic_map(x, lo, hi));
   RoughHestonParams::from(values.collect::<Array1<f64>>())
 }
 
-/// Each raw coordinate's room before its folded value meets a bound of `BOX`.
-pub(super) fn room_in_box(x: ArrayView1<f64>) -> Room {
-  let point = Array1::from(folded(x));
-  room(&point, &BOX, periodic_slopes(x, &BOX).view())
+/// Each raw coordinate's room before its folded value meets a bound.
+pub(super) fn room_in(bounds: Bounds) -> impl Fn(ArrayView1<f64>) -> Room + 'static {
+  move |x| {
+    let point = Array1::from(folded(x, &bounds));
+    room(&point, &bounds, periodic_slopes(x, &bounds).view())
+  }
+}
+
+/// The first parameter a fit left on a bound of its box.
+pub(super) fn held(params: RoughHestonParams, bounds: &Bounds) -> Option<&'static str> {
+  let values = Array1::from(params);
+  let on_bound =
+    |(&value, &(lo, hi)): (&f64, &(f64, f64))| (value - lo).min(hi - value) <= 1e-9 * (hi - lo);
+  let place = values.iter().zip(bounds).position(on_bound);
+  place.map(|j| NAMES[j])
 }
 
 impl From<RoughHestonParams> for Array1<f64> {

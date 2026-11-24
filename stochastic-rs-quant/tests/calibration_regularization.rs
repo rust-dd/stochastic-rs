@@ -217,7 +217,7 @@ fn cgmysv_holds_v0_at_its_anchor_through_its_logistic_coordinates() {
 
 #[test]
 fn rough_heston_holds_its_hurst_exponent_at_its_anchor() {
-  let truth = RoughHestonParams::new(0.04, 1.0, 0.04, 0.4, -0.65, 0.1);
+  let truth = RoughHestonParams::new(0.04, 1.0, 0.04, 0.3, -0.65, 0.1);
   let model = RoughHeston::new(truth, RoughHestonCf::default());
   let fit = RoughHestonCalibrator::new(S, R, Q, quotes(&model, &[90.0, 100.0, 110.0], 0.25))
     .with_start(truth)

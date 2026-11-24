@@ -1,8 +1,10 @@
 use ndarray::Array1;
 
 use super::loss::RoughHestonProblem;
+use super::params::bounds;
 use super::params::folded;
-use super::params::room_in_box;
+use super::params::held;
+use super::params::room_in;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
@@ -22,9 +24,11 @@ pub struct RoughHestonCalibrator {
   pub(super) q: f64,
   /// The weights are read off these prices when a fit starts.
   pub quotes: Vec<OptionQuote>,
-  /// `None` starts from (0.04, 1, 0.04, 0.4, −0.65, 0.1); a start is folded into the box.
+  /// `None` starts from (0.04, 1, 0.04, 0.3, −0.65, 0.1); a start outside the box is reflected
+  /// into it, not clamped.
   pub start: Option<RoughHestonParams>,
-  /// The characteristic function every price of the fit uses, and its result converts by.
+  /// The characteristic function every price of the fit uses and its result converts by; it sets
+  /// `ν`'s bound, 0.4 under the approximant and 2 under `Adams` and `Lifted`.
   pub cf: RoughHestonCf,
   /// Levenberg–Marquardt knobs; `regularization` pulls `(V₀, κ, θ, ν, ρ, H)`.
   pub options: CalibrationOptions,
@@ -83,7 +87,7 @@ impl RoughHestonCalibrator {
       v0: 0.04,
       kappa: 1.0,
       theta: 0.04,
-      nu: 0.4,
+      nu: 0.3,
       rho: -0.65,
       hurst: 0.1,
     }
@@ -95,8 +99,8 @@ impl crate::traits::Calibrator for RoughHestonCalibrator {
   type Output = Calibrated<RoughHestonParams, RoughHestonCf>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` for a start or a `cf` off its domain,
-  /// `InvalidQuote` for a quote no vol at `r − q` weights, `Optimizer`, the options' errors.
+  /// A start replaces `self.start`. A fit left on a bound of its box is not converged and says
+  /// which; `InvalidInput` for a start or `cf` off its domain, `InvalidQuote`, `Optimizer`.
   fn calibrate(&self, initial: Option<RoughHestonParams>) -> Result<Self::Output, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
@@ -107,9 +111,10 @@ impl crate::traits::Calibrator for RoughHestonCalibrator {
       return Err(QuantError::invalid("cf", reason));
     }
     let lm = self.options.lm(true, 6)?;
-    let start = folded(Array1::from(start).view());
-    let problem = RoughHestonProblem::new(self, start)?;
-    let (fitted, report) = minimize_in_box(problem, lm, room_in_box);
+    let bounds = bounds(&self.cf);
+    let start = folded(Array1::from(start).view(), &bounds);
+    let problem = RoughHestonProblem::new(self, start, bounds)?;
+    let (fitted, report) = minimize_in_box(problem, lm, room_in(bounds));
     let model = fitted.model_prices(&fitted.params);
     let fit = report.calibrated(
       fitted.params,
@@ -118,6 +123,10 @@ impl crate::traits::Calibrator for RoughHestonCalibrator {
       self.options.loss_metrics,
       fitted.trail.into_entries(),
     )?;
+    let fit = match held(fit.params, &bounds) {
+      Some(name) => fit.at_bound(name),
+      None => fit,
+    };
     Ok(fit.with_diagnostics(self.cf))
   }
 }

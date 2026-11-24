@@ -1,9 +1,9 @@
 use ndarray::Array1;
 
 use super::loss::RoughHestonProblem;
-use super::params::BOX;
+use super::params::bounds;
 use super::params::folded;
-use super::params::room_in_box;
+use super::params::room_in;
 use super::*;
 use crate::LossMetric;
 use crate::OptionQuote;
@@ -29,7 +29,7 @@ const TRUTH: RoughHestonParams = RoughHestonParams {
   v0: 0.04,
   kappa: 1.0,
   theta: 0.05,
-  nu: 0.4,
+  nu: 0.3,
   rho: -0.65,
   hurst: 0.1,
 };
@@ -38,7 +38,7 @@ const START: RoughHestonParams = RoughHestonParams {
   v0: 0.05,
   kappa: 1.4,
   theta: 0.04,
-  nu: 0.3,
+  nu: 0.2,
   rho: -0.5,
   hurst: 0.15,
 };
@@ -59,6 +59,16 @@ fn quotes(model: &RoughHeston, taus: &[f64], strikes: &[f64]) -> Vec<OptionQuote
     })
     .collect()
 }
+
+/// The box of the selectors whose `ν` runs to 2.
+const BOX: [(f64, f64); 6] = [
+  (0.005, 0.25),
+  (0.01, 10.0),
+  (0.001, 1.0),
+  (0.01, 2.0),
+  (-0.9999, 0.9999),
+  (0.005, 0.495),
+];
 
 /// A scheme coarse enough for a stencil sweep: the fit's mechanics do not read the selector.
 const COARSE: RoughHestonCf = RoughHestonCf::Adams { steps: 8 };
@@ -113,12 +123,13 @@ fn a_start_or_a_selector_off_its_domain_is_an_error_and_a_panic_in_its_builder()
 /// lies reflected; `H` folds at 0.005 and 0.495, inside `(0, ½)`.
 #[test]
 fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
+  assert_eq!(bounds(&COARSE), BOX);
   let base = Array1::from(START);
   let rooms = |j: usize, value: f64| {
     let mut x = base.clone();
     x[j] = value;
-    let room = room_in_box(x.view());
-    (room.down[j], room.up[j], folded(x.view()))
+    let room = room_in(BOX)(x.view());
+    (room.down[j], room.up[j], folded(x.view(), &BOX))
   };
   for (j, value, want) in [
     (5, 0.1, (0.095, 0.395)),
@@ -142,9 +153,9 @@ fn the_room_of_each_coordinate_is_its_distance_to_its_bounds() {
 #[test]
 fn the_natural_jacobian_matches_central_differences() {
   let calibrator = coarse_calibrator();
-  let mut problem = RoughHestonProblem::new(&calibrator, START).unwrap();
+  let mut problem = RoughHestonProblem::new(&calibrator, START, bounds(&calibrator.cf)).unwrap();
   for x in [
-    ndarray::array![0.04, 1.0, 0.05, 0.4, -0.65, 0.1],
+    ndarray::array![0.04, 1.0, 0.05, 0.3, -0.65, 0.1],
     ndarray::array![0.3, 10.5, 0.05, 2.2, -1.2, 0.6],
   ] {
     problem.set_params(x.view());
@@ -160,7 +171,7 @@ fn the_natural_jacobian_matches_central_differences() {
 #[test]
 fn the_jacobian_is_the_slope_of_the_residuals_across_the_box() {
   let calibrator = coarse_calibrator();
-  let mut problem = RoughHestonProblem::new(&calibrator, START).unwrap();
+  let mut problem = RoughHestonProblem::new(&calibrator, START, bounds(&calibrator.cf)).unwrap();
   let on_the_box = |_: usize, x: f64| 2e-3 * x.abs().max(1e-2);
   let base = problem.params();
   for (label, point) in box_points(base.view(), &BOX, &[true; 6]) {
@@ -178,7 +189,7 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
   let model = RoughHeston::new(TRUTH, RoughHestonCf::default());
   let market = quotes(&model, &[0.1, 1.0], &[95.0, 105.0]);
   let calibrator = RoughHestonCalibrator::new(S, R, 0.0, market);
-  let problem = RoughHestonProblem::new(&calibrator, START).unwrap();
+  let problem = RoughHestonProblem::new(&calibrator, START, bounds(&calibrator.cf)).unwrap();
   let error = step_doubling_error(|scale| problem.difference_jacobian(scale));
   assert!(error < 1e-4, "{error:e}");
 }
@@ -268,4 +279,47 @@ fn the_approximant_fits_the_adams_solution_s_quotes_to_its_accuracy() {
     let gap = (got[j] - want[j]).abs() / want[j].abs();
     assert!(gap < bound, "coordinate {j}: {} vs {}", got[j], want[j]);
   }
+}
+
+/// The approximant is validated to `ν = 0.4`, so its box ends there; quotes priced at `ν = 1`
+/// hold its fit on that bound, and the Adams fit, whose box runs to 2, recovers them.
+#[test]
+fn a_pade_fit_stops_at_its_vol_of_vol_bound_where_an_adams_fit_goes_on() {
+  let cf = RoughHestonCf::Adams { steps: 16 };
+  assert_eq!(bounds(&RoughHestonCf::default())[3], (0.01, 0.4));
+  assert_eq!(bounds(&RoughHestonCf::Pade { order: 3 })[3], (0.01, 0.4));
+  assert_eq!(
+    (bounds(&cf)[3], bounds(&RoughHestonCf::LIFTED)[3]),
+    ((0.01, 2.0), (0.01, 2.0))
+  );
+  let capped = CalibrationOptions::default().with_max_iterations(40);
+  let truth = RoughHestonParams { nu: 1.0, ..TRUTH };
+  let market = quotes(
+    &RoughHeston::new(truth, cf),
+    &[0.25, 1.0],
+    &[90.0, 100.0, 110.0],
+  );
+  let pade = RoughHestonCalibrator::new(S, R, 0.0, market.clone())
+    .with_start(START)
+    .with_options(capped.clone())
+    .calibrate(None)
+    .unwrap();
+  let stop = pade.message.as_deref();
+  assert!(
+    !pade.converged && stop == Some("stopped at the bound of nu"),
+    "{stop:?}"
+  );
+  assert_eq!(pade.params.nu, 0.4);
+  let adams = RoughHestonCalibrator::new(S, R, 0.0, market)
+    .with_cf(cf)
+    .with_start(START)
+    .with_options(capped)
+    .calibrate(None)
+    .unwrap();
+
+  assert!(
+    adams.converged && (adams.params.nu - 1.0).abs() < 1e-6,
+    "{:?}",
+    adams.params
+  );
 }
