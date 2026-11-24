@@ -310,9 +310,8 @@ pub(crate) fn minimise(
   }
 }
 
-/// The limit of the family that fits best among those the estimate reaches at no cost: the pin
-/// goes there by doubled steps, the finisher after each, and stops where the fit has risen
-/// [`AT_LIMIT`] above the cost at `at`. `at` moves to a lower fit at a limit.
+/// The best-fitting limit a pin reaches by doubled steps, the finisher after each, without the
+/// fit rising [`AT_LIMIT`] above the cost at `at`; `at` moves to a lower fit at a limit.
 fn fitting(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,

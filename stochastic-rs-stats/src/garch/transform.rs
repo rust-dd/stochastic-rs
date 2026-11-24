@@ -140,9 +140,8 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
   theta
 }
 
-/// The search's coordinates and the names their stops word: [`GarchSpec::param_names`], then
-/// `persistence`, then each GJR `alpha[i] + gamma[i]`. A share's low end is the bound of the
-/// parameter that vanishes there, its high end that of the first, which vanishes with the rest.
+/// The search's coordinates and their stops' names: the parameters', `persistence`, each GJR
+/// `alpha[i] + gamma[i]`. A share's low end bounds what vanishes there, its high end the first.
 pub(super) fn coordinates(
   spec: &GarchSpec,
   mean: f64,
