@@ -10,4 +10,5 @@ mod laws {
   pub(crate) mod levy;
   pub(crate) mod noise;
   pub(crate) mod short_rate;
+  pub(crate) mod tempered_stable;
 }
