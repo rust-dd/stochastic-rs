@@ -3,6 +3,7 @@ use ndarray::Array1;
 use super::loss::RoughHestonProblem;
 use super::params::bounds;
 use super::params::folded;
+use super::params::held;
 use super::params::room_in;
 use super::*;
 use crate::LossMetric;
@@ -292,6 +293,9 @@ fn a_pade_fit_stops_at_its_vol_of_vol_bound_where_an_adams_fit_goes_on() {
     (bounds(&cf)[3], bounds(&RoughHestonCf::LIFTED)[3]),
     ((0.01, 2.0), (0.01, 2.0))
   );
+  assert_eq!(bounds(&RoughHestonCf::default())[4], (-0.85, 0.75));
+  assert_eq!(bounds(&RoughHestonCf::Pade { order: 3 })[4], (-0.99, 0.85));
+  assert_eq!(bounds(&cf)[4], (-0.9999, 0.9999));
   let capped = CalibrationOptions::default().with_max_iterations(40);
   let truth = RoughHestonParams { nu: 1.0, ..TRUTH };
   let market = quotes(
@@ -349,4 +353,46 @@ fn a_fit_on_a_bound_of_the_model_s_box_is_converged() {
     .unwrap();
   assert!(fit.converged, "{:?}: {:?}", fit.message, fit.params);
   assert!((fit.params.rho + 0.9999).abs() < 1e-6, "{:?}", fit.params);
+}
+
+/// Only a validity bound inside the model's box is a stop: `ν`'s floor and the solves' bounds are
+/// the model's.
+#[test]
+fn a_validity_bound_is_named_and_a_model_bound_is_not() {
+  let pade = RoughHestonCf::default();
+  let at = |nu: f64, rho: f64| RoughHestonParams { nu, rho, ..TRUTH };
+  assert_eq!(held(at(0.4, -0.65), &pade), Some("nu"));
+  assert_eq!(held(at(0.3, -0.85), &pade), Some("rho"));
+  assert_eq!(held(at(0.3, 0.75), &pade), Some("rho"));
+  assert_eq!(
+    held(at(0.3, -0.99), &RoughHestonCf::Pade { order: 3 }),
+    Some("rho")
+  );
+  assert_eq!(held(at(0.01, -0.65), &pade), None);
+  assert_eq!(held(at(0.3, -0.65), &pade), None);
+  assert_eq!(held(at(2.0, -0.9999), &RoughHestonCf::ADAMS), None);
+  assert_eq!(held(at(2.0, 0.9999), &RoughHestonCf::LIFTED), None);
+}
+
+/// At the corners of each order's validity box a call is finite and no more than 1e-6 under its
+/// intrinsic value: the approximant's own error where the time value is smaller, as Adams shows.
+#[test]
+fn inside_its_validity_box_the_approximant_prices_every_corner() {
+  for order in [3, 4] {
+    let cf = RoughHestonCf::Pade { order };
+    let b = bounds(&cf);
+    for corner in 0..64 {
+      let pick = |j: usize| if corner >> j & 1 == 0 { b[j].0 } else { b[j].1 };
+      let p = RoughHestonParams::new(pick(0), pick(1), pick(2), pick(3), pick(4), pick(5));
+      let model = RoughHeston::new(p, cf);
+      for (tau, k) in [(0.05, 0.9), (1.0, 0.9), (0.05, 1.1)] {
+        let call = model.price_call(1.0, k, 0.0, 0.0, tau);
+        let floor = (1.0 - k).max(0.0) - 1e-6;
+        assert!(
+          call >= floor && call <= 1.0,
+          "{p:?} order {order} at ({tau}, {k}): {call}"
+        );
+      }
+    }
+  }
 }

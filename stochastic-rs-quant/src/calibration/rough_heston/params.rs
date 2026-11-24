@@ -22,19 +22,21 @@ const MODEL: Bounds = [
   (0.005, 0.495),
 ];
 
-/// Where `cf` is validated to less than the model's box: the approximant to `ν = 0.4`.
-fn validity(cf: &RoughHestonCf) -> &'static [(usize, f64)] {
+/// `(coordinate, lowest, highest)` where `cf` is validated on less than the model's box: the
+/// approximant to `ν = 0.4`, and in `ρ` while it is neither NaN nor 1e-6 under a call's intrinsic.
+fn validity(cf: &RoughHestonCf) -> &'static [(usize, f64, f64)] {
   match cf {
-    RoughHestonCf::Pade { .. } => &[(3, 0.4)],
-    _ => &[],
+    RoughHestonCf::Pade { order: 3 } => &[(3, 0.01, 0.4), (4, -0.99, 0.85)],
+    RoughHestonCf::Pade { .. } => &[(3, 0.01, 0.4), (4, -0.85, 0.75)],
+    RoughHestonCf::Adams { .. } | RoughHestonCf::Lifted { .. } => &[],
   }
 }
 
 /// The fit's box under `cf`: the model's, cut at the selector's validity bounds.
 pub(super) fn bounds(cf: &RoughHestonCf) -> Bounds {
   let mut bounds = MODEL;
-  for &(j, most) in validity(cf) {
-    bounds[j].1 = most;
+  for &(j, least, most) in validity(cf) {
+    bounds[j] = (bounds[j].0.max(least), bounds[j].1.min(most));
   }
   bounds
 }
@@ -54,12 +56,16 @@ pub(super) fn room_in(bounds: Bounds) -> impl Fn(ArrayView1<f64>) -> Room + 'sta
   }
 }
 
-/// The first parameter a fit left on a validity bound of `cf`: the selector's limit, where a
-/// bound of the model's own box is a constrained optimum.
+/// The first parameter a fit left on a validity bound of `cf` inside the model's box: the
+/// selector's limit, where a bound of the model's own box is a constrained optimum.
 pub(super) fn held(params: RoughHestonParams, cf: &RoughHestonCf) -> Option<&'static str> {
   let values = Array1::from(params);
-  let on_bound = |&&(j, most): &&(usize, f64)| most - values[j] <= 1e-9 * (most - MODEL[j].0);
-  validity(cf).iter().find(on_bound).map(|&(j, _)| NAMES[j])
+  let on_bound = |&&(j, least, most): &&(usize, f64, f64)| {
+    let (lo, hi) = MODEL[j];
+    let near = |bound: f64| (values[j] - bound).abs() <= 1e-9 * (hi - lo);
+    (least > lo && near(least)) || (most < hi && near(most))
+  };
+  validity(cf).iter().find(on_bound).map(|&(j, ..)| NAMES[j])
 }
 
 impl From<RoughHestonParams> for Array1<f64> {

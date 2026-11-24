@@ -42,8 +42,8 @@ pub enum RoughHestonCf {
   /// The fractional Riccati equation by the Adams scheme on `steps` steps, its implicit corrector
   /// solved exactly: the reference, `O(steps²)` a frequency.
   Adams { steps: usize },
-  /// Gatheral & Radoičić's rational approximation, order 3 or 4: fast, validated to `ν = 0.4` (use
-  /// `Adams` beyond); NaN off the strip `−1 ≤ Im ξ ≤ 0` and where a pole of it gives `|φ| > 1`.
+  /// Gatheral & Radoičić's rational approximation, order 3 or 4: fast, validated for `ν ≤ 0.4` and
+  /// `ρ ∈ [−0.85, 0.75]` ([−0.99, 0.85] at order 3); NaN off `−1 ≤ Im ξ ≤ 0` and where `|φ| > 1`.
   Pade { order: usize },
   /// Abi Jaber's lifted model, `factors` factors on the geometric partition of ratio `ratio`, by
   /// implicit Euler: another model near the rough one; 300 steps leave up to 4.7e-4 implied vol.

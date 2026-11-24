@@ -27,8 +27,8 @@ pub struct RoughHestonCalibrator {
   /// `None` starts from (0.04, 1, 0.04, 0.3, −0.65, 0.1); a start outside the box is reflected
   /// into it, not clamped.
   pub start: Option<RoughHestonParams>,
-  /// The characteristic function the fit prices and converts by; the approximant is validated to
-  /// `ν = 0.4`, a bound a fit left on reports, where the box's own bounds are constrained optima.
+  /// The characteristic function the fit prices and converts by. The approximant's validated `ν`
+  /// and `ρ` range cuts the box; a fit left on that cut reports it, on a model bound converges.
   pub cf: RoughHestonCf,
   /// Levenberg–Marquardt knobs; `regularization` pulls `(V₀, κ, θ, ν, ρ, H)`.
   pub options: CalibrationOptions,

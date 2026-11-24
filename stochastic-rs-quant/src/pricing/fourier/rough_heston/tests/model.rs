@@ -212,8 +212,8 @@ fn off_the_strip_the_approximant_is_nan_and_the_adams_solution_is_not() {
   assert!(adams.chf(1.0, Complex64::new(3.0, -2.5)).is_finite());
 }
 
-/// At the box's corners with `ν = 2` the approximant has poles: a call is NaN or inside its
-/// no-arbitrage bounds, never the `1e14` a finite `|φ| > 1` gave.
+/// At the box's corners with `ν = 2` a call is NaN or inside its bounds, not the `1e14` a finite
+/// `|φ| > 1` gave; 1e-4 allows the approximant's own error off its validated range (4.0e-5 seen).
 #[test]
 fn at_a_large_vol_of_vol_the_approximant_prices_inside_the_bounds_or_not_at_all() {
   let mut unpriced = 0;
@@ -229,10 +229,16 @@ fn at_a_large_vol_of_vol_the_approximant_prices_inside_the_bounds_or_not_at_all(
     };
     for order in [3, 4] {
       let model = RoughHeston::new(p, RoughHestonCf::Pade { order });
-      for (tau, k) in [(0.05, 1.0), (0.05, 1.1), (1.0, 0.9), (1.0, 1.0)] {
+      for (tau, k) in [
+        (0.05, 0.9),
+        (0.05, 1.0),
+        (0.05, 1.1),
+        (1.0, 0.9),
+        (1.0, 1.0),
+      ] {
         let call = model.price_call(1.0, k, 0.0, 0.0, tau);
         unpriced += usize::from(call.is_nan());
-        let inside = call >= (1.0 - k).max(0.0) - 1e-6 && call <= 1.0;
+        let inside = call >= (1.0 - k).max(0.0) - 1e-4 && call <= 1.0;
         assert!(
           call.is_nan() || inside,
           "{p:?} order {order} at ({tau}, {k}): {call}"
