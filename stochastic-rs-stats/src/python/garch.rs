@@ -15,7 +15,7 @@ pub struct PyGarchFit {
 #[pymethods]
 impl PyGarchFit {
   /// Gaussian QMLE; `kind` is "garch", "gjr" or "egarch" (fitted on `alpha >= |gamma|` and
-  /// non-increasing `beta >= 0` summing under one), `mean` "constant" (estimated jointly) or "zero".
+  /// non-increasing `beta >= 0` summing under one); `mean` is "constant" or "zero".
   #[new]
   #[pyo3(signature = (returns, kind="garch", p=1, q=1, mean="constant"))]
   fn new<'py>(

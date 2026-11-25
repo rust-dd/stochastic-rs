@@ -53,7 +53,7 @@ const SHAPE_FOLDS: f64 = 18.0;
 const AT_LIMIT: f64 = 5e-3;
 
 /// Model-based standard errors past which a limit is not read, a convention. It assumes a limit
-/// the model puts `K²/2 = 648` above the estimate is not in fact within `Δ` of it, a factor `1.3e5`.
+/// the model puts `K²/2 = 648` above the estimate is not in fact within `Δ` of it (`1.3e5`).
 const SCREEN: f64 = FOLDS;
 
 /// The second differences' steps in a coordinate's scale: the simplex's own, then an eighth of
