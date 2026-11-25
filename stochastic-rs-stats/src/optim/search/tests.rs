@@ -203,3 +203,24 @@ fn a_search_restarts_from_a_fit_on_the_path_below_the_limit() {
     found.stop.message(&["mu", "eta"])
   );
 }
+
+/// Wells at `-17, -15, -11, -3, 13`, each deeper and each on the pin's way from the one before
+/// alone: four searches find a lower well, and the fourth has no restart left.
+#[test]
+fn a_search_out_of_restarts_returns_the_lower_fit_and_is_not_stationary() {
+  let wells = [-17.0, -15.0, -11.0, -3.0, 13.0];
+  let stairs = |p: &[f64]| {
+    let well =
+      |(k, at): (usize, &f64)| (0.5 + 0.05 * k as f64) * (-2.0 * (p[1] - at).powi(2)).exp();
+    10.0 + 50.0 * (p[0] - 0.3).powi(2) - wells.iter().enumerate().map(well).sum::<f64>()
+  };
+  let start = [vec![0.3, -17.0]];
+  let found = minimise(stairs, by_differences, &start, &shaped(), 1000);
+  assert_eq!(
+    (
+      found.stop.message(&["mu", "eta"]).as_str(),
+      found.at[1].round()
+    ),
+    ("not stationary", 13.0)
+  );
+}
