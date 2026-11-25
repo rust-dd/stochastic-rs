@@ -19,7 +19,7 @@ use super::simplex::run_nelder_mead_within;
 /// What an objective answers where it has no value, above every sum it returns.
 pub(crate) const NO_VALUE: f64 = 1e300;
 
-/// Simplex iterations at most: the GARCH, EVT and skew-t searches' own; the QMLE and GMM had 2,000.
+/// Simplex iterations at most.
 const CAP: u64 = 5_000;
 
 /// The simplex's first step along a coordinate, in its scale.
@@ -35,6 +35,9 @@ const FINISHED_SPREAD: f64 = 1e-9;
 /// Searches from the point of a gain the check found, `fit_mle`'s count.
 const RESEATS: usize = 3;
 
+/// Searches from a fit on a limit's path that is lower than the answer; each lowers the cost.
+const RESTARTS: usize = 3;
+
 /// `e`-folds the logarithm of a scale may run from its centre: past `ln(1/ε)` the scale is under
 /// the spacing of the doubles at the data's size.
 const FOLDS: f64 = 36.0;
@@ -47,8 +50,8 @@ const SHAPE_FOLDS: f64 = 18.0;
 /// `z²/2` at `z = 0.1` model-based standard errors, in summed log-likelihood.
 const AT_LIMIT: f64 = 5e-3;
 
-/// Model-based standard errors past which a limit is not read, a convention. It assumes the
-/// profile to a limit is nowhere `K²/z² = 1.3e5` flatter than the quadratic model at the estimate.
+/// Model-based standard errors past which a limit is not read, a convention. It assumes a limit
+/// the model puts `K²/2 = 648` above the estimate is not in fact within `Δ` of it, a factor `1.3e5`.
 const SCREEN: f64 = FOLDS;
 
 /// The second differences' steps in a coordinate's scale: the simplex's own, then an eighth of
@@ -296,6 +299,40 @@ pub(crate) fn minimise(
   terms: usize,
 ) -> Found {
   let boxed = boxed(&objective, coordinates);
+  let (mut from, mut iterations) = (starts.to_vec(), 0);
+  for restart in 0..=RESTARTS {
+    let (found, lower) = search(&boxed, &finish, &from, coordinates, terms);
+    iterations += found.iterations;
+    match lower {
+      Some(point) if restart < RESTARTS => from = vec![point],
+      // Out of restarts with a lower fit still on a path: that fit, and no convergence.
+      Some(at) => {
+        let stop = Stop::NotStationary;
+        return Found {
+          at,
+          stop,
+          iterations,
+        };
+      }
+      None => {
+        return Found {
+          iterations,
+          ..found
+        };
+      }
+    }
+  }
+  unreachable!("the last restart returns")
+}
+
+/// One search from the best of `starts`: its answer, and a fit on a limit's path below it.
+fn search(
+  boxed: &dyn Fn(&[f64]) -> f64,
+  finish: &impl Finish,
+  starts: &[Vec<f64>],
+  coordinates: &[Coordinate],
+  terms: usize,
+) -> (Found, Option<Vec<f64>>) {
   let valued = |p: &[f64]| Some(boxed(p)).filter(|cost| *cost < NO_VALUE);
   // On a valley a simplex stops short and the finisher follows; elsewhere the check reads the
   // simplex's own point, at the tighter spread.
@@ -304,7 +341,7 @@ pub(crate) fn minimise(
   } else {
     (Spread::Absolute(SPREAD), false)
   };
-  let (mut at, mut iterations, capped) = descent(&boxed, &finish, starts, coordinates, stop);
+  let (mut at, mut iterations, capped) = descent(boxed, finish, starts, coordinates, stop);
   let axes = coordinates.iter().map(|c| Axis {
     low: c.low,
     high: c.high,
@@ -326,7 +363,7 @@ pub(crate) fn minimise(
     };
     // The last round has no search left: its gain is kept and its verdict stands.
     let (next, steps) = if round < RESEATS {
-      finish(&boxed, lower)
+      finish(boxed, lower)
     } else {
       (lower, 0)
     };
@@ -339,23 +376,37 @@ pub(crate) fn minimise(
       (found, stop) = read(&at);
     }
   }
+  let mut lower = None;
   // A stop that names a parameter comes first, then the cap, which is never a convergence: the
   // check passes stalls a capped search leaves.
   if matches!(stop, Stop::Converged | Stop::NotStationary | Stop::Edge) {
-    let (limit, steps) = fitting(&boxed, &finish, &mut at, coordinates);
+    let (limit, steps, inside) = fitting(boxed, finish, &mut at, coordinates, found.bar());
     iterations += steps;
+    lower = inside;
     let named = limit.or_else(|| resting(&at, coordinates));
     stop = named.unwrap_or(if capped { Stop::Capped } else { stop });
   }
-  Found {
+  let found = Found {
     at,
     stop,
     iterations,
-  }
+  };
+  (found, lower)
 }
 
-/// Whether each coordinate has a limit within [`SCREEN`] standard errors of `at` by the
-/// quadratic model there; with no such model (no value, no positive curvature) every limit is.
+/// Where a pin toward `limit` along coordinate `i` ends: the limit, or short of it where a held
+/// logarithm is `1/√ε` above its centre, its own limit as a shape's is.
+fn pin_end(limit: &Limit, i: usize, at: &[f64], coordinates: &[Coordinate]) -> f64 {
+  let room = limit.held.map_or(f64::INFINITY, |held| {
+    let other = &coordinates[held];
+    (0.5 * (other.low + other.high) + SHAPE_FOLDS - at[held]).max(0.0)
+  });
+  let toward = (limit.at - at[i]).signum();
+  at[i] + toward * (limit.at - at[i]).abs().min(room)
+}
+
+/// Whether each coordinate has a limit whose pin ends within [`SCREEN`] standard errors of `at`
+/// by the quadratic model there; with no such model (no value, no positive curvature) each is.
 fn screened(
   objective: &dyn Fn(&[f64]) -> f64,
   at: &[f64],
@@ -375,33 +426,32 @@ fn screened(
   };
   let near = |(i, c): (usize, &Coordinate)| {
     let reach = SCREEN * errors[i];
-    c.limits
+    let ends = c
+      .limits
       .iter()
-      .any(|limit| (limit.at - at[i]).abs() <= reach)
+      .map(|limit| pin_end(limit, i, at, coordinates));
+    ends.into_iter().any(|end| (end - at[i]).abs() <= reach)
   };
   coordinates.iter().enumerate().map(near).collect()
 }
 
-/// The best-fitting limit whose fit is within [`AT_LIMIT`] of the cost at `at`: the pin goes to
-/// a screened limit by doubled steps, the finisher after each. `at` moves to a lower fit.
+/// The best-fitting limit whose fit is within [`AT_LIMIT`] of the cost at `at`, which moves to a
+/// lower one; and a fit on a pin's way that is more than `bar` below that answer.
 fn fitting(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
   at: &mut Vec<f64>,
   coordinates: &[Coordinate],
-) -> (Option<Stop>, usize) {
+  bar: f64,
+) -> (Option<Stop>, usize, Option<Vec<f64>>) {
   let (here, mut iterations) = (boxed(at), 0);
   let mut best = (here + AT_LIMIT, None, at.clone());
+  let mut inside = (f64::INFINITY, at.clone());
   let read = screened(boxed, at, coordinates);
   for (i, coordinate) in coordinates.iter().enumerate().filter(|(i, _)| read[*i]) {
     for limit in &coordinate.limits {
-      let toward = (limit.at - at[i]).signum();
-      // A held logarithm is its limit `1/√ε` above its centre, as a shape is: the pin ends there.
-      let room = limit.held.map_or(f64::INFINITY, |held| {
-        let other = &coordinates[held];
-        (0.5 * (other.low + other.high) + SHAPE_FOLDS - at[held]).max(0.0)
-      });
-      let end = at[i] + toward * (limit.at - at[i]).abs().min(room);
+      let end = pin_end(limit, i, at, coordinates);
+      let toward = (end - at[i]).signum();
       let steps = (0..STAGES).map(|k| at[i] + toward * coordinate.scale * f64::from(1 << k));
       let short = steps.take_while(|value| (end - value) * toward > 0.0);
       let mut fit = at.clone();
@@ -418,6 +468,10 @@ fn fitting(
         let (free, steps) = finish(&|p: &[f64]| boxed(&pin(p)), from);
         iterations += steps;
         fit = pin(&free);
+        let cost = boxed(&fit);
+        if value != end && cost < inside.0 {
+          inside = (cost, fit.clone());
+        }
       }
       let cost = boxed(&fit);
       if cost <= best.0 && (best.1.is_none() || cost < best.0) {
@@ -428,7 +482,9 @@ fn fitting(
   if best.0 < here {
     *at = best.2;
   }
-  (best.1, iterations)
+  let answer = best.0.min(here);
+  let lower = (inside.0 < answer - bar).then_some(inside.1);
+  (best.1, iterations, lower)
 }
 
 /// The stop of a point within the check's first step of one of the crate's own bounds: no

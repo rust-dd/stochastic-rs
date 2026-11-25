@@ -205,3 +205,33 @@ fn an_egarch_fit_with_two_variance_lags_converges_inside_the_region() {
   let (alpha, gamma, betas) = (fit.params[2], fit.params[3], [fit.params[4], fit.params[5]]);
   assert!(alpha >= gamma.abs() && betas.iter().all(|b| *b >= 0.0) && betas[0] + betas[1] < 1.0);
 }
+
+/// The census's GJR path (250 points, seed 31, from splitmix64): the pin toward `β = 0` passes
+/// an interior maximum at `β ≈ 0.08`, `0.05` above the fit at the bound.
+#[test]
+fn a_search_restarts_from_a_better_fit_on_a_limits_path() {
+  let mut state = 531_u64;
+  let mut uniform = || {
+    state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    let mut z = state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (((z ^ (z >> 31)) >> 11) as f64 + 0.5) / (1u64 << 53) as f64
+  };
+  let mut normal =
+    || (-2.0 * uniform().ln()).sqrt() * (2.0 * std::f64::consts::PI * uniform()).cos();
+  let mut h = 1e-4_f64;
+  let step = |_| {
+    let r = h.sqrt() * normal();
+    h = 1e-4 * 0.04 + (0.03 + if r < 0.0 { 0.10 } else { 0.0 }) * r * r + 0.88 * h;
+    r
+  };
+  let path = (0..250).map(step).collect::<Array1<f64>>();
+  let fit = fit_garch(path.view(), GarchSpec::gjr(1, 1)).unwrap();
+  assert!(
+    fit.log_likelihood > 797.69,
+    "{} [{}]",
+    fit.log_likelihood,
+    fit.message
+  );
+}

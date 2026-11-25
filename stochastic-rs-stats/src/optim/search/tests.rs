@@ -184,3 +184,22 @@ fn a_capped_stage_is_reported() {
     "not stationary"
   );
 }
+
+/// Toward the limit the pin crosses a basin `0.95` deep at six units; the limit itself is `0.44`
+/// under the first estimate. The search starts again in the basin and ends there.
+#[test]
+fn a_search_restarts_from_a_fit_on_the_path_below_the_limit() {
+  let basin = |p: &[f64]| {
+    let near = 0.05 * (1.0 - (-p[1] * p[1]).exp());
+    let deep = (-(p[1] - 6.0).powi(2) / 8.0).exp();
+    let far = 0.5 / (1.0 + (14.0 - p[1]).exp());
+    10.0 + 50.0 * (p[0] - 0.3).powi(2) + near - deep - far
+  };
+  let found = search(basin, &shaped());
+  assert!((found.at[1] - 6.0).abs() < 0.5, "{:?}", found.at);
+  assert!(
+    found.stop.converged(),
+    "{}",
+    found.stop.message(&["mu", "eta"])
+  );
+}
