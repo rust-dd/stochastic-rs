@@ -6,12 +6,14 @@
 //! \alpha_i = s w_i,\quad \beta_j = s w_{p+j},\\
 //! \text{GJR}:&\quad \alpha_i = 2 s w_i,\quad \alpha_i + \gamma_i = 2 s w_{p+i},\quad
 //! \beta_j = s w_{2p+j},\quad \sum\alpha_i + \tfrac12\sum\gamma_i + \sum\beta_j = s,\\
-//! \text{EGARCH}:&\quad \sum\beta_j = \tanh(\theta_s) \in (-1, 1),\quad
-//! \beta_j = w_j \tanh(\theta_s),
+//! \text{EGARCH}:&\quad \alpha_i \pm \gamma_i = e^{\theta_a} v_{2i - 1},\ e^{\theta_a} v_{2i},\quad
+//! \beta_j = w_j\,\sigma(\theta_s),
 //! \end{aligned}
 //! $$
 //!
-//! `w` is a softmax whose first logit is pinned at zero; `μ`, and EGARCH's `ω`, `α`, `γ`, are free.
+//! `w` and `v` are softmaxes whose first logit is pinned at zero; `μ` and EGARCH's `ω` are free.
+//! EGARCH's region is the invertible one of Straumann & Mikosch (2006, Example 3.8) for (1,1),
+//! `0 ≤ β < 1`, `α ≥ |γ|`; lag by lag for higher orders, which extends theirs.
 
 use super::GarchKind;
 use super::GarchSpec;
@@ -72,9 +74,13 @@ pub(super) fn to_natural(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
       out.extend((0..q).map(|k| s * w[2 * p + k]));
     }
     GarchKind::Egarch => {
-      out.extend_from_slice(&theta[i..i + 1 + 2 * p]);
+      out.push(theta[i]);
+      let total = theta[i + 1].exp();
+      let w = softmax(&theta[i + 2..i + 1 + 2 * p]);
+      out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] + w[2 * k + 1])));
+      out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] - w[2 * k + 1])));
       if q > 0 {
-        let s = theta[i + 1 + 2 * p].tanh();
+        let s = sigmoid(theta[i + 1 + 2 * p]);
         let w = softmax(&theta[i + 2 + 2 * p..i + 1 + 2 * p + q]);
         out.extend(w.iter().map(|x| s * x));
       }
@@ -127,11 +133,16 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
     }
     GarchKind::Egarch => {
       theta.push(split.omega);
-      theta.extend_from_slice(split.alpha);
-      theta.extend_from_slice(split.gamma);
+      let lags = split.alpha.iter().zip(split.gamma);
+      let slopes: Vec<f64> = lags.flat_map(|(a, g)| [a + g, a - g]).collect();
+      let total = slopes.iter().sum::<f64>();
+      theta.push(total.ln());
+      theta.extend(logits(
+        &slopes.iter().map(|x| x / total).collect::<Vec<_>>(),
+      ));
       if spec.q > 0 {
         let s = split.beta.iter().sum::<f64>();
-        theta.push(s.atanh());
+        theta.push(logit(s));
         let weights: Vec<f64> = split.beta.iter().map(|b| b / s).collect();
         theta.extend(logits(&weights));
       }
@@ -173,12 +184,22 @@ pub(super) fn coordinates(
         .collect()
     }
     GarchKind::Egarch => {
-      coordinates.extend((0..1 + 2 * p).map(|_| Coordinate::free()));
+      coordinates.push(Coordinate::free());
+      let betas = first + 2 * p;
+      let slopes = (names.len()..names.len() + 2 * p).collect::<Vec<_>>();
+      names.extend(
+        (1..=p).flat_map(|i| ['+', '-'].map(|sign| format!("alpha[{i}] {sign} gamma[{i}]"))),
+      );
+      // With no news curve left the variance is constant, whatever `β` is.
+      let size = Coordinate::log(0.0);
+      coordinates.push(if q > 0 { size.vanishing(betas) } else { size });
+      let shares = slopes.iter().skip(1);
+      coordinates.extend(shares.map(|&vanishing| Coordinate::share(LOGIT, vanishing, slopes[0])));
       if q > 0 {
-        // `tanh` is `±1` to the doubles' spacing at half a logit's reach.
-        coordinates.push(Coordinate::share(0.5 * LOGIT, persistence, persistence));
+        let low = if q == 1 { betas } else { persistence };
+        coordinates.push(Coordinate::share(LOGIT, low, persistence));
       }
-      (first + 2 * p..first + 2 * p + q).collect()
+      (betas..betas + q).collect()
     }
   };
   let shares = weights.iter().skip(1);

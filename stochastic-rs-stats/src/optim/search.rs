@@ -146,6 +146,17 @@ impl Coordinate {
     self
   }
 
+  /// The logarithm with its low end a limit where the family loses `orphan`, not identified there.
+  pub(crate) fn vanishing(mut self, orphan: usize) -> Self {
+    self.limits.push(Limit {
+      at: self.low,
+      word: Word::Unidentified,
+      names: Some(orphan),
+      held: None,
+    });
+    self
+  }
+
   /// A logit, or half of one, within `reach`: each end is the bound of the parameter it names.
   pub(crate) fn share(reach: f64, below: usize, above: usize) -> Self {
     let limit = |at: f64, names: usize| Limit {

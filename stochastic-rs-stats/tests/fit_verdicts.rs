@@ -153,3 +153,55 @@ fn a_cir_fit_of_a_path_without_reversion_does_not_identify_mu() {
     (false, "mu is not identified")
   );
 }
+
+/// EGARCH(1,q) at `α = 0.15`, `γ = −0.08`, the log-variance about zero.
+fn egarch_path(seed: u64, n: usize, beta: [f64; 2]) -> Array1<f64> {
+  let (mut last, mut before) = (0.0_f64, 0.0_f64);
+  let step = |z: f64| {
+    let r = (0.5 * last).exp() * z;
+    let news = 0.15 * (z.abs() - (2.0 / std::f64::consts::PI).sqrt()) - 0.08 * z;
+    (before, last) = (last, news + beta[0] * last + beta[1] * before);
+    r
+  };
+  draws(seed, n).into_iter().map(step).collect()
+}
+
+fn egarch(sample: Array1<f64>, q: usize) -> stochastic_rs_stats::garch::GarchFit {
+  fit_garch(sample.view(), GarchSpec::egarch(1, q)).unwrap()
+}
+
+/// White noise has no news curve: one of its slopes runs to zero.
+#[test]
+fn an_egarch_fit_of_white_noise_stops_at_the_bound_of_a_slope() {
+  let fit = egarch(Array1::from(draws(3, 250)), 1);
+  let slope = "stopped at the bound of alpha[1] + gamma[1]";
+  assert_eq!((fit.converged, fit.message.as_str()), (false, slope));
+}
+
+/// Free of the invertible region this sample's estimate was `α̂ = 0.126` under `|γ̂| = 0.184`.
+#[test]
+fn an_egarch_fit_once_outside_the_invertible_region_stops_at_the_bound_of_a_slope() {
+  let fit = egarch(Array1::from(draws(4, 250)), 1);
+  assert_eq!(fit.message, "stopped at the bound of alpha[1] - gamma[1]");
+  assert!(fit.params[2] >= fit.params[3].abs() && (0.0..1.0).contains(&fit.params[4]));
+}
+
+#[test]
+fn an_egarch_fit_of_its_own_law_converges_inside_the_region() {
+  let fit = egarch(egarch_path(2, 2_000, [0.95, 0.0]), 1);
+  assert_eq!((fit.converged, fit.message.as_str()), (true, "converged"));
+  let truth = [0.15, -0.08, 0.95];
+  for (i, truth) in truth.into_iter().enumerate() {
+    let off = (fit.params[2 + i] - truth).abs() / fit.std_errors[2 + i];
+    assert!(off < 4.0, "parameter {i} is {off} errors off");
+  }
+}
+
+/// Two lags of the log-variance, `β = (0.6, 0.3)`: each `β̂ⱼ ≥ 0`, their sum under one.
+#[test]
+fn an_egarch_fit_with_two_variance_lags_converges_inside_the_region() {
+  let fit = egarch(egarch_path(1, 2_000, [0.6, 0.3]), 2);
+  assert_eq!((fit.converged, fit.message.as_str()), (true, "converged"));
+  let (alpha, gamma, betas) = (fit.params[2], fit.params[3], [fit.params[4], fit.params[5]]);
+  assert!(alpha >= gamma.abs() && betas.iter().all(|b| *b >= 0.0) && betas[0] + betas[1] < 1.0);
+}
