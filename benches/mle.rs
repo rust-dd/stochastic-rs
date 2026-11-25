@@ -234,11 +234,20 @@ fn bench_garch_fit(c: &mut Criterion) {
       Deterministic::new(42),
     );
     let returns = process.sample();
-    for (name, spec) in [
+    // The two orders above (1,1) are benched at 1,000 points only.
+    let higher = [
+      ("Gjr12", GarchSpec::gjr(1, 2)),
+      ("Egarch21", GarchSpec::egarch(2, 1)),
+    ];
+    let specs = [
       ("Garch11", GarchSpec::garch(1, 1)),
       ("Gjr11", GarchSpec::gjr(1, 1)),
       ("Egarch11", GarchSpec::egarch(1, 1)),
-    ] {
+    ];
+    for (name, spec) in specs
+      .into_iter()
+      .chain(higher.into_iter().take(if n == 1_000 { 2 } else { 0 }))
+    {
       group.bench_function(BenchmarkId::new(name, label), |b| {
         b.iter(|| black_box(fit_garch(returns.view(), spec).unwrap()))
       });
