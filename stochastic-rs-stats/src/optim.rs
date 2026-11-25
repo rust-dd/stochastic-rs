@@ -23,11 +23,18 @@ pub(crate) fn best_start<P: AsRef<[f64]>>(
   starts: impl IntoIterator<Item = P>,
   objective: impl Fn(&[f64]) -> f64,
 ) -> Option<P> {
+  costed_start(starts, objective).map(|(_, start)| start)
+}
+
+/// [`best_start`] with its cost.
+pub(crate) fn costed_start<P: AsRef<[f64]>>(
+  starts: impl IntoIterator<Item = P>,
+  objective: impl Fn(&[f64]) -> f64,
+) -> Option<(f64, P)> {
   starts
     .into_iter()
     .map(|start| (objective(start.as_ref()), start))
     .min_by(|a, b| a.0.nan_last(&b.0))
-    .map(|(_, start)| start)
 }
 
 #[cfg(test)]

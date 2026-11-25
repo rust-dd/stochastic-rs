@@ -11,6 +11,7 @@ use super::certificate::Axis;
 use super::certificate::Stop;
 use super::certificate::bar;
 use super::certificate::beside;
+use super::costed_start;
 use super::curvature::standard_errors;
 use super::polish;
 use super::simplex::SimplexStop;
@@ -257,16 +258,14 @@ fn simplex(from: &[f64], coordinates: &[Coordinate], step: f64) -> Vec<Vec<f64>>
   simplex
 }
 
-/// The simplex from the best of `starts` to `spread`, and the finisher where it capped or
-/// `finished`: the point, the iterations, and whether the simplex ran into its cap.
+/// The simplex from `start` to `spread`, and the finisher where it capped or `finished`: the point, the iterations, and whether the simplex ran into its cap.
 fn descent(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
-  starts: &[Vec<f64>],
+  start: &[f64],
   coordinates: &[Coordinate],
   (spread, finished): (Spread, bool),
 ) -> (Vec<f64>, usize, bool) {
-  let start = best_start(starts, boxed).expect("a non-empty starting grid");
   let first = simplex(start, coordinates, STEP);
   let run = run_nelder_mead_within(Cost(boxed), first, CAP, spread, false);
   let capped = run.stop == SimplexStop::IterationCap;
@@ -288,7 +287,8 @@ pub(crate) fn descend(
 ) -> (Vec<f64>, usize, bool) {
   let boxed = boxed(&objective, coordinates);
   let stop = (Spread::Absolute(SPREAD), false);
-  descent(&boxed, &finish, starts, coordinates, stop)
+  let start = best_start(starts, &boxed).expect("a non-empty starting grid");
+  descent(&boxed, &finish, start, coordinates, stop)
 }
 
 /// The minimum of `objective`, a sum of `terms` and [`NO_VALUE`] where it has none: a descent
@@ -301,16 +301,17 @@ pub(crate) fn minimise(
   terms: usize,
 ) -> Found {
   let boxed = boxed(&objective, coordinates);
-  let best =
-    |group: &&[Vec<f64>]| best_start(*group, &boxed).map_or(NO_VALUE, |start| boxed(start));
-  let costs = groups.iter().map(best).collect::<Vec<_>>();
-  let first = (0..groups.len())
-    .min_by(|a, b| costs[*a].nan_last(&costs[*b]))
+  let picks = groups.iter().map(|group| costed_start(*group, &boxed));
+  let picks = picks
+    .collect::<Option<Vec<_>>>()
+    .expect("a start in every group");
+  let first = (0..picks.len())
+    .min_by(|a, b| picks[*a].0.nan_last(&picks[*b].0))
     .expect("a group of starts");
-  let mut kept = restarting(&boxed, &finish, groups[first], coordinates, terms);
+  let mut kept = restarting(&boxed, &finish, picks[first].1, coordinates, terms);
   let mut iterations = kept.iterations;
   for group in (0..groups.len()).filter(|group| *group != first) {
-    let next = restarting(&boxed, &finish, groups[group], coordinates, terms);
+    let next = restarting(&boxed, &finish, picks[group].1, coordinates, terms);
     iterations += next.iterations;
     let cost = boxed(&kept.at);
     if boxed(&next.at) < cost - bar(cost, terms) {
@@ -320,20 +321,20 @@ pub(crate) fn minimise(
   Found { iterations, ..kept }
 }
 
-/// One descent from the best of `starts`, begun again from a lower fit on a limit's path.
+/// One descent from `start`, begun again from a lower fit on a limit's path.
 fn restarting(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
-  starts: &[Vec<f64>],
+  start: &[f64],
   coordinates: &[Coordinate],
   terms: usize,
 ) -> Found {
-  let (mut from, mut iterations) = (starts.to_vec(), 0);
+  let (mut from, mut iterations) = (start.to_vec(), 0);
   for restart in 0..=RESTARTS {
     let (found, lower) = search(boxed, finish, &from, coordinates, terms);
     iterations += found.iterations;
     match lower {
-      Some(point) if restart < RESTARTS => from = vec![point],
+      Some(point) if restart < RESTARTS => from = point,
       // Out of restarts with a lower fit still on a path: that fit, and no convergence.
       Some(at) => {
         let stop = Stop::NotStationary;
@@ -354,11 +355,11 @@ fn restarting(
   unreachable!("the last restart returns")
 }
 
-/// One search from the best of `starts`: its answer, and a fit on a limit's path below it.
+/// One search from `start`: its answer, and a fit on a limit's path below it.
 fn search(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
-  starts: &[Vec<f64>],
+  start: &[f64],
   coordinates: &[Coordinate],
   terms: usize,
 ) -> (Found, Option<Vec<f64>>) {
@@ -370,7 +371,7 @@ fn search(
   } else {
     (Spread::Absolute(SPREAD), false)
   };
-  let (mut at, mut iterations, capped) = descent(boxed, finish, starts, coordinates, stop);
+  let (mut at, mut iterations, capped) = descent(boxed, finish, start, coordinates, stop);
   let axes = coordinates.iter().map(|c| Axis {
     low: c.low,
     high: c.high,

@@ -11,7 +11,8 @@
 //! \end{aligned}
 //! $$
 //!
-//! `w` and `v` are softmaxes whose first logit is pinned at zero; `μ` and EGARCH's `ω` are free.
+//! `w` and `v` are sticks: each logit is the share a weight takes of what the earlier ones leave,
+//! the first weight keeping the rest. `μ` and EGARCH's `ω` are free.
 //! EGARCH(1,1)'s region is Straumann & Mikosch's (2006, Example 3.8); above it the crate's own.
 
 use super::GarchKind;
@@ -29,7 +30,7 @@ fn logit(p: f64) -> f64 {
   (p / (1.0 - p)).ln()
 }
 
-/// Softmax over `logits.len() + 1` slots, the first logit pinned at zero.
+/// Softmax over `logits.len() + 1` slots, the first logit pinned at zero: a stick's one break.
 fn softmax(logits: &[f64]) -> Vec<f64> {
   let max = f64::max_or_nan_fold(std::iter::once(0.0).chain(logits.iter().copied()));
   let mut w: Vec<f64> = std::iter::once(0.0)
@@ -43,9 +44,24 @@ fn softmax(logits: &[f64]) -> Vec<f64> {
   w
 }
 
-/// Logits of positive `weights` with the first pinned at zero.
-fn logits(weights: &[f64]) -> Vec<f64> {
-  weights[1..].iter().map(|w| (w / weights[0]).ln()).collect()
+/// A stick broken by `logits`: weight `k` takes the share `σ(l_k)` of what the earlier ones leave,
+/// and the first keeps the rest. One weight vanishes alone at an end of one logit.
+fn stick(logits: &[f64]) -> Vec<f64> {
+  let mut weights = vec![1.0];
+  for logit in logits {
+    let split = softmax(&[*logit]);
+    weights.push(weights[0] * split[1]);
+    weights[0] *= split[0];
+  }
+  weights
+}
+
+/// The logits that break a stick into positive `weights`.
+fn breaks(weights: &[f64]) -> Vec<f64> {
+  let rest = |k: usize| weights[k + 1..].iter().fold(weights[0], |sum, w| sum + w);
+  (1..weights.len())
+    .map(|k| (weights[k] / rest(k)).ln())
+    .collect()
 }
 
 /// Unconstrained coordinates → natural parameters.
@@ -61,13 +77,13 @@ pub(super) fn to_natural(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
     GarchKind::Garch => {
       out.push(theta[i].exp());
       let s = sigmoid(theta[i + 1]);
-      let w = softmax(&theta[i + 2..i + 1 + p + q]);
+      let w = stick(&theta[i + 2..i + 1 + p + q]);
       out.extend(w.iter().map(|x| s * x));
     }
     GarchKind::GjrGarch => {
       out.push(theta[i].exp());
       let s = sigmoid(theta[i + 1]);
-      let w = softmax(&theta[i + 2..i + 1 + 2 * p + q]);
+      let w = stick(&theta[i + 2..i + 1 + 2 * p + q]);
       out.extend((0..p).map(|k| 2.0 * s * w[k]));
       out.extend((0..p).map(|k| 2.0 * s * w[p + k] - 2.0 * s * w[k]));
       out.extend((0..q).map(|k| s * w[2 * p + k]));
@@ -75,7 +91,7 @@ pub(super) fn to_natural(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
     GarchKind::Egarch => {
       out.push(theta[i]);
       let total = theta[i + 1].exp();
-      let w = softmax(&theta[i + 2..i + 1 + 2 * p]);
+      let w = stick(&theta[i + 2..i + 1 + 2 * p]);
       out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] + w[2 * k + 1])));
       out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] - w[2 * k + 1])));
       if q > 0 {
@@ -113,7 +129,7 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
         .chain(split.beta)
         .map(|c| c / s)
         .collect();
-      theta.extend(logits(&weights));
+      theta.extend(breaks(&weights));
     }
     GarchKind::GjrGarch => {
       theta.push(split.omega.ln());
@@ -134,7 +150,7 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
         )
         .chain(split.beta.iter().map(|b| b / s))
         .collect();
-      theta.extend(logits(&weights));
+      theta.extend(breaks(&weights));
     }
     GarchKind::Egarch => {
       theta.push(split.omega);
@@ -142,7 +158,7 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
       let slopes: Vec<f64> = lags.flat_map(|(a, g)| [a + g, a - g]).collect();
       let total = slopes.iter().sum::<f64>();
       theta.push(total.ln());
-      theta.extend(logits(
+      theta.extend(breaks(
         &slopes.iter().map(|x| x / total).collect::<Vec<_>>(),
       ));
       if spec.q > 0 {
@@ -156,7 +172,7 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
 }
 
 /// The search's coordinates and their stops' names: the parameters', `persistence`, and the
-/// sums and differences a share's ends bound. A softmax share's high end is the first weight's.
+/// sums and differences a share's ends bound, and the weights that vanish together at an end.
 pub(super) fn coordinates(
   spec: &GarchSpec,
   mean: f64,
@@ -197,11 +213,9 @@ pub(super) fn coordinates(
       // With no news curve left the variance is constant, whatever `β` is.
       let size = Coordinate::log(0.0);
       coordinates.push(if q > 0 { size.vanishing(betas) } else { size });
-      let shares = slopes.iter().skip(1);
-      coordinates.extend(shares.map(|&vanishing| Coordinate::share(LOGIT, vanishing, slopes[0])));
+      coordinates.extend(shares(&slopes, &mut names));
       if q > 0 {
-        let low = if q == 1 { betas } else { persistence };
-        coordinates.push(Coordinate::share(LOGIT, low, persistence));
+        coordinates.push(Coordinate::share(LOGIT, betas, persistence));
       }
       // Each ratio `β_{k+1}/β_k` ends where the later lag vanishes or the two are equal.
       for k in 1..q {
@@ -211,9 +225,26 @@ pub(super) fn coordinates(
       Vec::new()
     }
   };
-  let shares = weights.iter().skip(1);
-  coordinates.extend(shares.map(|&vanishing| Coordinate::share(LOGIT, vanishing, weights[0])));
+  coordinates.extend(shares(&weights, &mut names));
   (coordinates, names)
+}
+
+/// A stick's logits as coordinates: the low end of logit `k` bounds weight `k`; at its high end
+/// the first weight and every later one vanish, and the end is named after each of them.
+fn shares(weights: &[usize], names: &mut Vec<String>) -> Vec<Coordinate> {
+  let share = |k: usize| {
+    let gone = [&weights[..1], &weights[k + 1..]].concat();
+    let high = match gone[..] {
+      [alone] => alone,
+      _ => {
+        let each = gone.iter().map(|name| names[*name].as_str());
+        names.push(each.collect::<Vec<_>>().join(" and "));
+        names.len() - 1
+      }
+    };
+    Coordinate::share(LOGIT, weights[k], high)
+  };
+  (1..weights.len()).map(share).collect()
 }
 
 /// Typical magnitude of each natural parameter, the scale of its finite-difference step:

@@ -309,3 +309,52 @@ fn a_garch_fit_descends_from_every_persistence_level() {
     );
   }
 }
+
+/// EGARCH(2,1) at `α = (0.10, 0.05)`, `γ = (−0.05, −0.02)`, `β = 0.95`: three samples whose
+/// likelihood rises across `α₁ + γ₁ = 0`, the first of four slopes.
+#[test]
+fn an_egarch_fit_with_two_news_lags_reads_the_first_slopes_bound() {
+  for seed in [14_u64, 16, 44] {
+    let level = 1e-4_f64.ln();
+    let news = |a: f64, g: f64, z: f64| a * (z.abs() - (2.0 / std::f64::consts::PI).sqrt()) + g * z;
+    let (mut log_h, mut before) = (level, 0.0_f64);
+    let step = |z: f64| {
+      let r = (0.5 * log_h).exp() * z;
+      log_h = level * 0.05 + news(0.10, -0.05, z) + news(0.05, -0.02, before) + 0.95 * log_h;
+      before = z;
+      r
+    };
+    let path = mixed(seed + 1000, 250)
+      .into_iter()
+      .map(step)
+      .collect::<Array1<f64>>();
+    let fit = fit_garch(path.view(), GarchSpec::egarch(2, 1)).unwrap();
+    let slope = "stopped at the bound of alpha[1] + gamma[1]";
+    assert_eq!(
+      (fit.converged, fit.message.as_str()),
+      (false, slope),
+      "seed {seed}"
+    );
+  }
+}
+
+/// GJR(1,2) at `α = 0.03`, `γ = 0.10`, `β = (0.58, 0.30)`: a sample whose `α̂₁` is zero, the first
+/// of four weights.
+#[test]
+fn a_gjr_fit_with_two_variance_lags_reads_the_first_weights_bound() {
+  let (mut last, mut before) = (1e-4_f64, 1e-4_f64);
+  let step = |e: f64| {
+    let r = last.sqrt() * e;
+    let news = (0.03 + if r < 0.0 { 0.10 } else { 0.0 }) * r * r;
+    let omega = 1e-4 * (1.0 - 0.03 - 0.05 - 0.88);
+    (before, last) = (last, omega + news + 0.58 * last + 0.30 * before);
+    r
+  };
+  let path = mixed(936, 250)
+    .into_iter()
+    .map(step)
+    .collect::<Array1<f64>>();
+  let fit = fit_garch(path.view(), GarchSpec::gjr(1, 2)).unwrap();
+  let bound = "stopped at the bound of alpha[1]";
+  assert_eq!((fit.converged, fit.message.as_str()), (false, bound));
+}
