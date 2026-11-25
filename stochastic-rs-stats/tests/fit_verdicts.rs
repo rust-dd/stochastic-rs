@@ -116,7 +116,7 @@ fn a_skew_t_fit_of_a_cauchy_sample_stops_at_the_bound_of_eta() {
   );
 }
 
-/// The census's slow CIR path (`θ = 0.02`, 1,000 points, seed 24, from splitmix64): four years
+/// A slow CIR path (`θ = 0.02`, 1,000 points, splitmix64 from 9,024): four years
 /// that show no reversion, where `θ̂` runs to zero and the data tell `θμ` alone.
 fn slow_cir() -> Array1<f64> {
   let mut state = 9_024_u64;
@@ -180,7 +180,7 @@ fn an_egarch_fit_of_white_noise_stops_at_the_bound_of_a_slope() {
 
 /// White noise whose likelihood is highest at `α < |γ|`: the fit ends on that slope's bound.
 #[test]
-fn an_egarch_fit_once_outside_the_invertible_region_stops_at_the_bound_of_a_slope() {
+fn an_egarch_fit_once_outside_straumann_and_mikoschs_region_stops_at_the_bound_of_a_slope() {
   let fit = egarch(Array1::from(draws(4, 250)), 1);
   assert_eq!(fit.message, "stopped at the bound of alpha[1] - gamma[1]");
   assert!(fit.params[2] >= fit.params[3].abs() && (0.0..1.0).contains(&fit.params[4]));
@@ -197,16 +197,17 @@ fn an_egarch_fit_of_its_own_law_converges_inside_the_region() {
   }
 }
 
-/// Two lags of the log-variance, `β = (0.6, 0.3)`: each `β̂ⱼ ≥ 0`, their sum under one.
+/// Two lags of the log-variance, `β = (0.6, 0.3)`: `β̂₁ ≥ β̂₂ ≥ 0`, their sum under one.
 #[test]
 fn an_egarch_fit_with_two_variance_lags_converges_inside_the_region() {
   let fit = egarch(egarch_path(1, 2_000, [0.6, 0.3]), 2);
   assert_eq!((fit.converged, fit.message.as_str()), (true, "converged"));
   let (alpha, gamma, betas) = (fit.params[2], fit.params[3], [fit.params[4], fit.params[5]]);
-  assert!(alpha >= gamma.abs() && betas.iter().all(|b| *b >= 0.0) && betas[0] + betas[1] < 1.0);
+  let ordered = betas[0] >= betas[1] && betas[1] >= 0.0 && betas[0] + betas[1] < 1.0;
+  assert!(alpha >= gamma.abs() && ordered);
 }
 
-/// The census's GJR path (250 points, seed 31, from splitmix64): the pin toward `β = 0` passes
+/// A GJR path (250 points, splitmix64 from 531): the pin toward `β = 0` passes
 /// an interior maximum at `β ≈ 0.08`, `0.05` above the fit at the bound.
 #[test]
 fn a_search_restarts_from_a_better_fit_on_a_limits_path() {
@@ -236,7 +237,7 @@ fn a_search_restarts_from_a_better_fit_on_a_limits_path() {
   );
 }
 
-/// The census's normals, from splitmix64.
+/// Standard normals from splitmix64 by Box–Muller.
 fn mixed(seed: u64, n: usize) -> Vec<f64> {
   let mut state = seed;
   let mut uniform = || {
@@ -265,7 +266,7 @@ fn exponent(fit: &stochastic_rs_stats::garch::GarchFit) -> f64 {
   sum / fit.standardized_residuals.len() as f64
 }
 
-/// Two census samples of EGARCH(1,2) at `β = (0.6, 0.3)` whose likelihood is higher at `β₂` near
+/// Two samples of EGARCH(1,2) at `β = (0.6, 0.3)` whose likelihood is higher at `β₂` near
 /// one over `β₁` near zero, where the inverted recursion expands.
 #[test]
 fn an_egarch_fit_with_two_variance_lags_keeps_them_ordered_and_contracting() {
@@ -292,7 +293,7 @@ fn an_egarch_fit_with_two_variance_lags_keeps_them_ordered_and_contracting() {
   }
 }
 
-/// Two white-noise census samples with a second maximum `0.301` and `0.130` above the one a
+/// Two white-noise samples with a second maximum `0.301` and `0.130` above the one a
 /// single descent from the best start reaches.
 #[test]
 fn a_garch_fit_descends_from_every_persistence_level() {

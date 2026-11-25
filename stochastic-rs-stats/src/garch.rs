@@ -29,7 +29,7 @@
 //! Reference: Bollerslev (1986), J. Econometrics 31(3), 307-327, DOI: 10.1016/0304-4076(86)90063-1
 //! Reference: Nelson (1991), Econometrica 59(2), 347-370, DOI: 10.2307/2938260
 //! Reference: Straumann & Mikosch (2006), Ann. Statist. 34(5), 2449-2495, Example 3.8,
-//! DOI: 10.1214/009053606000000803 (EGARCH(1,1)'s invertible region)
+//! DOI: 10.1214/009053606000000803 (EGARCH(1,1)'s region)
 //! Reference: Glosten et al. (1993), J. Fin. 48(5), 1779-1801, 10.1111/j.1540-6261.1993.tb05128.x
 //! Reference: Bollerslev–Wooldridge (1992), Econom. Rev. 11(2), 143-172, 10.1080/07474939208800229
 
@@ -110,7 +110,7 @@ impl GarchSpec {
   }
 
   /// EGARCH($p$, $q$) with a constant mean, fitted on $\alpha_i \ge |\gamma_i|$,
-  /// $\beta_1 \ge \dots \ge \beta_q \ge 0$, $\sum\beta_j < 1$: for (1,1), the invertible region.
+  /// $\beta_1 \ge \dots \ge \beta_q \ge 0$, $\sum\beta_j < 1$: for (1,1), Straumann & Mikosch's (2006, Ex. 3.8).
   pub fn egarch(p: usize, q: usize) -> Self {
     Self {
       kind: GarchKind::Egarch,
