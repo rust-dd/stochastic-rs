@@ -218,7 +218,7 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   let found = minimise(
     neg_ll,
     by_differences,
-    &[start.to_vec()],
+    &[&[start.to_vec()]],
     &coordinates,
     x.len() - 1,
   );

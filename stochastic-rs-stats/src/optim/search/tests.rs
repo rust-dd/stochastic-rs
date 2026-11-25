@@ -2,7 +2,7 @@ use super::*;
 
 fn search(objective: impl Fn(&[f64]) -> f64, coordinates: &[Coordinate]) -> Found {
   let start = vec![vec![0.0; coordinates.len()]];
-  minimise(objective, by_differences, &start, coordinates, 1000)
+  minimise(objective, by_differences, &[&start], coordinates, 1000)
 }
 
 fn pair() -> [Coordinate; 2] {
@@ -67,7 +67,7 @@ fn a_capped_search_is_not_converged() {
   };
   let coordinates = [(); 30].map(|()| Coordinate::free());
   let start = vec![vec![-1.2; 30]];
-  let found = minimise(valley, by_differences, &start, &coordinates, 1000);
+  let found = minimise(valley, by_differences, &[&start], &coordinates, 1000);
   assert_eq!(found.stop.message(&["p"; 30]), "iteration cap reached");
 }
 
@@ -80,7 +80,13 @@ fn rosenbrock(p: &[f64]) -> f64 {
 fn unfinished(objective: impl Fn(&[f64]) -> f64) -> Found {
   let coordinates = [(); 30].map(|()| Coordinate::free());
   let as_it_is = |_: &dyn Fn(&[f64]) -> f64, p: Vec<f64>| (p, 0);
-  minimise(objective, as_it_is, &[vec![-1.2; 30]], &coordinates, 1000)
+  minimise(
+    objective,
+    as_it_is,
+    &[&[vec![-1.2; 30]]],
+    &coordinates,
+    1000,
+  )
 }
 
 /// The cap is the search's stop, named before what the check finds beside its point.
@@ -146,7 +152,7 @@ fn a_named_stop_comes_before_the_cap() {
   let found = minimise(
     |p| rosenbrock(&p[..30]),
     as_it_is,
-    &[start],
+    &[&[start]],
     &coordinates,
     1000,
   );
@@ -215,12 +221,38 @@ fn a_search_out_of_restarts_returns_the_lower_fit_and_is_not_stationary() {
     10.0 + 50.0 * (p[0] - 0.3).powi(2) - wells.iter().enumerate().map(well).sum::<f64>()
   };
   let start = [vec![0.3, -17.0]];
-  let found = minimise(stairs, by_differences, &start, &shaped(), 1000);
+  let found = minimise(stairs, by_differences, &[&start], &shaped(), 1000);
   assert_eq!(
     (
       found.stop.message(&["mu", "eta"]).as_str(),
       found.at[1].round()
     ),
     ("not stationary", 13.0)
+  );
+}
+
+/// Two wells, the shallow one under the better start: the descent from the other group ends
+/// lower and is kept; between equal wells the best start's own stays.
+#[test]
+fn a_descent_from_another_group_is_kept_only_where_it_ends_lower() {
+  let wells = |deep: f64| {
+    move |p: &[f64]| {
+      10.0 - (-4.0 * (p[0] + 2.0).powi(2)).exp() - deep * (-4.0 * (p[0] - 2.0).powi(2)).exp()
+    }
+  };
+  let coordinates = [Coordinate::free()];
+  let (near, far) = ([vec![-1.5]], [vec![2.9]]);
+  let groups = [&near[..], &far[..]];
+  let lower = minimise(wells(2.0), by_differences, &groups, &coordinates, 1000);
+  assert!(
+    (lower.at[0] - 2.0).abs() < 1e-3 && lower.stop.converged(),
+    "{:?}",
+    lower.at
+  );
+  let equal = minimise(wells(1.0), by_differences, &groups, &coordinates, 1000);
+  assert!(
+    (equal.at[0] + 2.0).abs() < 1e-3 && equal.stop.converged(),
+    "{:?}",
+    equal.at
   );
 }

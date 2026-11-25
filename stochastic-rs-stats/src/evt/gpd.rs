@@ -160,7 +160,7 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsE
     starts.push(vec![(mean * (1.0 - xi0)).ln(), xi0]);
   }
   let coordinates = [Coordinate::log(mean.ln()), Coordinate::free()];
-  let found = minimise(objective, by_differences, &starts, &coordinates, n);
+  let found = minimise(objective, by_differences, &[&starts], &coordinates, n);
   let theta = &found.at;
   let sigma = theta[0].exp();
   let xi = theta[1];

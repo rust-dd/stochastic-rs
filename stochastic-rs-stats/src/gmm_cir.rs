@@ -168,7 +168,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let second = minimise(
     |p| criterion(p, &w2),
     by_differences,
-    std::slice::from_ref(&p1),
+    &[std::slice::from_ref(&p1)],
     &coordinates,
     x.len() - 1,
   );

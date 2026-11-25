@@ -9,12 +9,14 @@ use basin::Gradient;
 use super::best_start;
 use super::certificate::Axis;
 use super::certificate::Stop;
+use super::certificate::bar;
 use super::certificate::beside;
 use super::curvature::standard_errors;
 use super::polish;
 use super::simplex::SimplexStop;
 use super::simplex::Spread;
 use super::simplex::run_nelder_mead_within;
+use crate::traits::RealExt;
 
 /// What an objective answers where it has no value, above every sum it returns.
 pub(crate) const NO_VALUE: f64 = 1e300;
@@ -289,19 +291,46 @@ pub(crate) fn descend(
   descent(&boxed, &finish, starts, coordinates, stop)
 }
 
-/// The minimum of `objective`, a sum of `terms` and [`NO_VALUE`] where it has none, from the best
-/// of `starts`; `finish` polishes a point, never to a higher cost.
+/// The minimum of `objective`, a sum of `terms` and [`NO_VALUE`] where it has none: a descent
+/// from the best start of each group, the best start's kept unless another is lower by the bar.
 pub(crate) fn minimise(
   objective: impl Fn(&[f64]) -> f64,
   finish: impl Finish,
-  starts: &[Vec<f64>],
+  groups: &[&[Vec<f64>]],
   coordinates: &[Coordinate],
   terms: usize,
 ) -> Found {
   let boxed = boxed(&objective, coordinates);
+  let best =
+    |group: &&[Vec<f64>]| best_start(*group, &boxed).map_or(NO_VALUE, |start| boxed(start));
+  let costs = groups.iter().map(best).collect::<Vec<_>>();
+  let first = (0..groups.len())
+    .min_by(|a, b| costs[*a].nan_last(&costs[*b]))
+    .expect("a group of starts");
+  let mut kept = restarting(&boxed, &finish, groups[first], coordinates, terms);
+  let mut iterations = kept.iterations;
+  for group in (0..groups.len()).filter(|group| *group != first) {
+    let next = restarting(&boxed, &finish, groups[group], coordinates, terms);
+    iterations += next.iterations;
+    let cost = boxed(&kept.at);
+    if boxed(&next.at) < cost - bar(cost, terms) {
+      kept = next;
+    }
+  }
+  Found { iterations, ..kept }
+}
+
+/// One descent from the best of `starts`, begun again from a lower fit on a limit's path.
+fn restarting(
+  boxed: &dyn Fn(&[f64]) -> f64,
+  finish: &impl Finish,
+  starts: &[Vec<f64>],
+  coordinates: &[Coordinate],
+  terms: usize,
+) -> Found {
   let (mut from, mut iterations) = (starts.to_vec(), 0);
   for restart in 0..=RESTARTS {
-    let (found, lower) = search(&boxed, &finish, &from, coordinates, terms);
+    let (found, lower) = search(boxed, finish, &from, coordinates, terms);
     iterations += found.iterations;
     match lower {
       Some(point) if restart < RESTARTS => from = vec![point],

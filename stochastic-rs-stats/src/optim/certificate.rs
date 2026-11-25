@@ -114,6 +114,16 @@ impl Beside {
   }
 }
 
+/// The rounding of a sum of `additions` terms near `cost`: `ε max(√N, 16) (1 + |f|)`.
+fn rounding(cost: f64, additions: usize) -> f64 {
+  f64::EPSILON * (additions as f64).sqrt().max(SHORT) * (1.0 + cost.abs())
+}
+
+/// What one cost must be under another by to count as lower: the check's bar at that cost.
+pub(crate) fn bar(cost: f64, additions: usize) -> f64 {
+  STATIONARY.max(ROUNDINGS * rounding(cost, additions))
+}
+
 /// The largest gain a step along one axis realises beside `at`: `ε^{1/3}` of its scale either way,
 /// four times further while `objective` (`None`: no value) does not rise, or its parabola's low.
 pub(crate) fn beside(
@@ -135,7 +145,7 @@ pub(crate) fn beside(
   let mut beside = Beside {
     gain: 0.0,
     along: 0,
-    rounding: f64::EPSILON * (additions as f64).sqrt().max(SHORT) * (1.0 + here.abs()),
+    rounding: rounding(here, additions),
     walled: false,
     best: at.to_vec(),
   };

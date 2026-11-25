@@ -109,8 +109,8 @@ impl GarchSpec {
     }
   }
 
-  /// EGARCH($p$, $q$) with a constant mean, fitted on the invertible region: every
-  /// $\beta_j \ge 0$, $\sum\beta_j < 1$ and $\alpha_i \ge |\gamma_i|$.
+  /// EGARCH($p$, $q$) with a constant mean, fitted on $\alpha_i \ge |\gamma_i|$,
+  /// $\beta_1 \ge \dots \ge \beta_q \ge 0$, $\sum\beta_j < 1$: for (1,1), the invertible region.
   pub fn egarch(p: usize, q: usize) -> Self {
     Self {
       kind: GarchKind::Egarch,
@@ -236,10 +236,11 @@ pub fn fit_garch<T: FloatExt>(
     returns: r.clone(),
     backcast,
   };
-  let start = transform::best_start(&spec, mean, backcast, |theta| problem.objective(theta));
+  let starts = transform::starts(&spec, mean, backcast);
+  let groups = starts.iter().map(Vec::as_slice).collect::<Vec<_>>();
   let (coordinates, words) = transform::coordinates(&spec, mean, backcast);
   let objective = |theta: &[f64]| problem.objective(theta);
-  let found = minimise(objective, by_differences, &[start], &coordinates, n);
+  let found = minimise(objective, by_differences, &groups, &coordinates, n);
   let theta = &found.at;
 
   let fitted = transform::to_natural(&spec, theta);

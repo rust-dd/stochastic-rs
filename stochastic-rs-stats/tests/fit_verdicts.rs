@@ -178,7 +178,7 @@ fn an_egarch_fit_of_white_noise_stops_at_the_bound_of_a_slope() {
   assert_eq!((fit.converged, fit.message.as_str()), (false, slope));
 }
 
-/// Free of the invertible region this sample's estimate was `α̂ = 0.126` under `|γ̂| = 0.184`.
+/// White noise whose likelihood is highest at `α < |γ|`: the fit ends on that slope's bound.
 #[test]
 fn an_egarch_fit_once_outside_the_invertible_region_stops_at_the_bound_of_a_slope() {
   let fit = egarch(Array1::from(draws(4, 250)), 1);
@@ -234,4 +234,78 @@ fn a_search_restarts_from_a_better_fit_on_a_limits_path() {
     fit.log_likelihood,
     fit.message
   );
+}
+
+/// The census's normals, from splitmix64.
+fn mixed(seed: u64, n: usize) -> Vec<f64> {
+  let mut state = seed;
+  let mut uniform = || {
+    state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    let mut z = state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (((z ^ (z >> 31)) >> 11) as f64 + 0.5) / (1u64 << 53) as f64
+  };
+  let normal = |_| (-2.0 * uniform().ln()).sqrt() * (2.0 * std::f64::consts::PI * uniform()).cos();
+  (0..n).map(normal).collect()
+}
+
+/// The top Lyapunov exponent of EGARCH(1,2)'s inverted recursion along the fitted path: the
+/// log-variance's Jacobian has the first row `(β₁ − ½(γz + α|z|), β₂)` over `(1, 0)`.
+fn exponent(fit: &stochastic_rs_stats::garch::GarchFit) -> f64 {
+  let (alpha, gamma, beta) = (fit.params[2], fit.params[3], [fit.params[4], fit.params[5]]);
+  let (mut v, mut sum) = ([1.0_f64, 0.0], 0.0);
+  for z in &fit.standardized_residuals {
+    let slope = beta[0] - 0.5 * (gamma * z + alpha * z.abs());
+    let next = [slope * v[0] + beta[1] * v[1], v[0]];
+    let norm = next[0].hypot(next[1]);
+    sum += norm.ln();
+    v = [next[0] / norm, next[1] / norm];
+  }
+  sum / fit.standardized_residuals.len() as f64
+}
+
+/// Two census samples of EGARCH(1,2) at `β = (0.6, 0.3)` whose likelihood is higher at `β₂` near
+/// one over `β₁` near zero, where the inverted recursion expands.
+#[test]
+fn an_egarch_fit_with_two_variance_lags_keeps_them_ordered_and_contracting() {
+  for seed in [16_u64, 27] {
+    let level = 1e-4_f64.ln();
+    let (mut last, mut before) = (level, level);
+    let step = |z: f64| {
+      let r = (0.5 * last).exp() * z;
+      let news = 0.15 * (z.abs() - (2.0 / std::f64::consts::PI).sqrt()) - 0.08 * z;
+      (before, last) = (last, level * 0.1 + news + 0.6 * last + 0.3 * before);
+      r
+    };
+    let path = mixed(seed + 700, 250)
+      .into_iter()
+      .map(step)
+      .collect::<Array1<f64>>();
+    let fit = egarch(path, 2);
+    let (first, second) = (fit.params[4], fit.params[5]);
+    assert!(
+      first >= second && second >= 0.0,
+      "seed {seed}: {first}, {second}"
+    );
+    assert!(exponent(&fit) <= 0.0, "seed {seed}: {}", exponent(&fit));
+  }
+}
+
+/// Two white-noise census samples with a second maximum `0.301` and `0.130` above the one a
+/// single descent from the best start reaches.
+#[test]
+fn a_garch_fit_descends_from_every_persistence_level() {
+  for (seed, single) in [(18_u64, 6_399.359_270_958), (50, 6_394.212_803_119)] {
+    let noise = mixed(seed, 2_000)
+      .into_iter()
+      .map(|z| 1e-2 * z)
+      .collect::<Array1<f64>>();
+    let fit = fit_garch(noise.view(), GarchSpec::garch(1, 1)).unwrap();
+    assert!(
+      fit.log_likelihood > single + 0.12,
+      "seed {seed}: {}",
+      fit.log_likelihood
+    );
+  }
 }

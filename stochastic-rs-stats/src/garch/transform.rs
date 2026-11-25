@@ -1,4 +1,4 @@
-//! Bijection from unconstrained coordinates onto the stationarity region, which no step can leave.
+//! Bijection from unconstrained coordinates onto each kind's region, which no step can leave.
 //!
 //! $$
 //! \begin{aligned}
@@ -7,13 +7,12 @@
 //! \text{GJR}:&\quad \alpha_i = 2 s w_i,\quad \alpha_i + \gamma_i = 2 s w_{p+i},\quad
 //! \beta_j = s w_{2p+j},\quad \sum\alpha_i + \tfrac12\sum\gamma_i + \sum\beta_j = s,\\
 //! \text{EGARCH}:&\quad \alpha_i \pm \gamma_i = e^{\theta_a} v_{2i - 1},\ e^{\theta_a} v_{2i},\quad
-//! \beta_j = w_j\,\sigma(\theta_s),
+//! \sum\beta_j = \sigma(\theta_s),\quad \beta_{j+1} = \beta_j\,\sigma(\theta_j),
 //! \end{aligned}
 //! $$
 //!
 //! `w` and `v` are softmaxes whose first logit is pinned at zero; `μ` and EGARCH's `ω` are free.
-//! EGARCH's region is the invertible one of Straumann & Mikosch (2006, Example 3.8) for (1,1),
-//! `0 ≤ β < 1`, `α ≥ |γ|`; lag by lag for higher orders, which extends theirs.
+//! EGARCH(1,1)'s region is Straumann & Mikosch's (2006, Example 3.8); above it the crate's own.
 
 use super::GarchKind;
 use super::GarchSpec;
@@ -80,9 +79,15 @@ pub(super) fn to_natural(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
       out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] + w[2 * k + 1])));
       out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] - w[2 * k + 1])));
       if q > 0 {
-        let s = sigmoid(theta[i + 1 + 2 * p]);
-        let w = softmax(&theta[i + 2 + 2 * p..i + 1 + 2 * p + q]);
-        out.extend(w.iter().map(|x| s * x));
+        // `β₁ ≥ β₂ ≥ … ≥ 0`: at a frozen news slope the companion polynomial's margin at `−1`,
+        // `1 + β₁ − β₂ + β₃ − …`, is then at least one, as one lag's `1 + β` is.
+        let ratios = theta[i + 2 + 2 * p..i + 1 + 2 * p + q].iter();
+        let mut shares = vec![1.0];
+        for ratio in ratios {
+          shares.push(shares[shares.len() - 1] * sigmoid(*ratio));
+        }
+        let s = sigmoid(theta[i + 1 + 2 * p]) / shares.iter().sum::<f64>();
+        out.extend(shares.iter().map(|x| s * x));
       }
     }
   }
@@ -143,16 +148,15 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
       if spec.q > 0 {
         let s = split.beta.iter().sum::<f64>();
         theta.push(logit(s));
-        let weights: Vec<f64> = split.beta.iter().map(|b| b / s).collect();
-        theta.extend(logits(&weights));
+        theta.extend(split.beta.windows(2).map(|pair| logit(pair[1] / pair[0])));
       }
     }
   }
   theta
 }
 
-/// The search's coordinates and their stops' names: the parameters', `persistence`, each GJR
-/// `alpha[i] + gamma[i]`. A share's low end bounds what vanishes there, its high end the first.
+/// The search's coordinates and their stops' names: the parameters', `persistence`, and the
+/// sums and differences a share's ends bound. A softmax share's high end is the first weight's.
 pub(super) fn coordinates(
   spec: &GarchSpec,
   mean: f64,
@@ -199,7 +203,12 @@ pub(super) fn coordinates(
         let low = if q == 1 { betas } else { persistence };
         coordinates.push(Coordinate::share(LOGIT, low, persistence));
       }
-      (betas..betas + q).collect()
+      // Each ratio `β_{k+1}/β_k` ends where the later lag vanishes or the two are equal.
+      for k in 1..q {
+        names.push(format!("beta[{k}] - beta[{}]", k + 1));
+        coordinates.push(Coordinate::share(LOGIT, betas + k, names.len() - 1));
+      }
+      Vec::new()
     }
   };
   let shares = weights.iter().skip(1);
@@ -223,65 +232,37 @@ pub(super) fn natural_scales(spec: &GarchSpec, backcast: f64) -> Vec<f64> {
   scales
 }
 
-/// The best point of a small persistence × shock-share grid of
-/// variance-targeted starting values, in unconstrained coordinates.
-pub(super) fn best_start<F: Fn(&[f64]) -> f64>(
-  spec: &GarchSpec,
-  mean: f64,
-  backcast: f64,
-  objective: F,
-) -> Vec<f64> {
-  let mut best: Option<(f64, Vec<f64>)> = None;
-  for natural in starting_grid(spec, mean, backcast) {
-    let theta = to_unconstrained(spec, &natural);
-    let cost = objective(&theta);
-    let better = match &best {
-      Some((c, _)) => cost < *c,
-      None => true,
-    };
-    if better {
-      best = Some((cost, theta));
-    }
-  }
-  best.expect("the starting grid is never empty").1
-}
-
-fn starting_grid(spec: &GarchSpec, mean: f64, backcast: f64) -> Vec<Vec<f64>> {
+/// Variance-targeted starts in unconstrained coordinates, one group to a persistence level.
+pub(super) fn starts(spec: &GarchSpec, mean: f64, backcast: f64) -> Vec<Vec<Vec<f64>>> {
   const PERSISTENCE: [f64; 4] = [0.80, 0.90, 0.95, 0.98];
   const LEVEL_SHOCK: [f64; 4] = [0.03, 0.08, 0.15, 0.25];
   const LOG_SHOCK: [f64; 3] = [0.05, 0.15, 0.30];
   const ARCH_ONLY: [f64; 4] = [0.10, 0.30, 0.50, 0.80];
-  let mut grid = Vec::new();
-  match spec.kind {
-    GarchKind::Garch | GarchKind::GjrGarch => {
-      if spec.q == 0 {
-        for &a in &ARCH_ONLY {
-          grid.push(natural_start(spec, mean, backcast * (1.0 - a), a, 0.0));
-        }
-      } else {
-        for &s in &PERSISTENCE {
-          for &a in &LEVEL_SHOCK {
-            grid.push(natural_start(spec, mean, backcast * (1.0 - s), a, s - a));
-          }
-        }
-      }
+  let level = |shocks: &[f64], start: &dyn Fn(f64) -> Vec<f64>| {
+    let thetas = shocks.iter().map(|&a| to_unconstrained(spec, &start(a)));
+    thetas.collect::<Vec<_>>()
+  };
+  let log_backcast = backcast.ln();
+  let levels = |shocks: &[f64], start: &dyn Fn(f64, f64) -> Vec<f64>| {
+    let groups = PERSISTENCE.iter().map(|&s| level(shocks, &|a| start(a, s)));
+    groups.collect::<Vec<_>>()
+  };
+  match (spec.kind, spec.q) {
+    (GarchKind::Egarch, 0) => {
+      vec![level(&LOG_SHOCK, &|a| {
+        natural_start(spec, mean, log_backcast, a, 0.0)
+      })]
     }
-    GarchKind::Egarch => {
-      let log_backcast = backcast.ln();
-      if spec.q == 0 {
-        for &a in &LOG_SHOCK {
-          grid.push(natural_start(spec, mean, log_backcast, a, 0.0));
-        }
-      } else {
-        for &s in &PERSISTENCE {
-          for &a in &LOG_SHOCK {
-            grid.push(natural_start(spec, mean, (1.0 - s) * log_backcast, a, s));
-          }
-        }
-      }
-    }
+    (GarchKind::Egarch, _) => levels(&LOG_SHOCK, &|a, s| {
+      natural_start(spec, mean, (1.0 - s) * log_backcast, a, s)
+    }),
+    (_, 0) => vec![level(&ARCH_ONLY, &|a| {
+      natural_start(spec, mean, backcast * (1.0 - a), a, 0.0)
+    })],
+    _ => levels(&LEVEL_SHOCK, &|a, s| {
+      natural_start(spec, mean, backcast * (1.0 - s), a, s - a)
+    }),
   }
-  grid
 }
 
 /// Natural start with the shock total spread evenly over the $\alpha_i$,
@@ -302,8 +283,14 @@ fn natural_start(
   if spec.has_gamma() {
     v.extend(std::iter::repeat_n(0.0, spec.p));
   }
-  if spec.q > 0 {
-    v.extend(std::iter::repeat_n(beta_total / spec.q as f64, spec.q));
-  }
+  // EGARCH's lags start non-increasing, each half the one before; the others start equal.
+  let halving = if spec.kind == GarchKind::Egarch {
+    0.5_f64
+  } else {
+    1.0
+  };
+  let shares = (0..spec.q).map(|k| halving.powi(k as i32));
+  let total = shares.clone().sum::<f64>();
+  v.extend(shares.map(|share| beta_total * share / total));
   v
 }
