@@ -109,7 +109,8 @@ impl GarchSpec {
     }
   }
 
-  /// EGARCH($p$, $q$) with a constant mean.
+  /// EGARCH($p$, $q$) with a constant mean, fitted on the invertible region: every
+  /// $\beta_j \ge 0$, $\sum\beta_j < 1$ and $\alpha_i \ge |\gamma_i|$.
   pub fn egarch(p: usize, q: usize) -> Self {
     Self {
       kind: GarchKind::Egarch,

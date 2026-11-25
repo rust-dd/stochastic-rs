@@ -341,7 +341,7 @@ fn a_nan_observation_makes_its_block_maximum_nan() {
 }
 
 /// Uniform excesses end at `1`: past `ξ = -1` the likelihood tends to `∞` as the support's end
-/// meets the largest observation (Drees, Ferreira & de Haan 2004, p. 3), and has no maximum.
+/// meets the largest observation (Drees, Ferreira & de Haan 2004, arXiv:math/0407062 p. 3), and has no maximum.
 #[test]
 fn a_gpd_fit_of_a_bounded_sample_stops_at_the_edge_of_the_support() {
   let fit = fit_gpd(Array1::from(lcg(7, 500)).view()).unwrap();
