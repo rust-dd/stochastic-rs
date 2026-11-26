@@ -311,25 +311,46 @@ fn a_garch_fit_descends_from_every_persistence_level() {
   }
 }
 
-/// EGARCH(2,1) at `α = (0.10, 0.05)`, `γ = (−0.05, −0.02)`, `β = 0.95`: three samples whose
-/// likelihood rises across `α₁ + γ₁ = 0`, the first of four slopes.
+/// EGARCH(2,1) at `α = (0.10, 0.05)`, `γ = (−0.05, −0.02)`, `β = 0.95`.
+fn egarch21(seed: u64, n: usize) -> stochastic_rs_stats::garch::GarchFit {
+  let level = 1e-4_f64.ln();
+  let news = |a: f64, g: f64, z: f64| a * (z.abs() - (2.0 / std::f64::consts::PI).sqrt()) + g * z;
+  let (mut log_h, mut before) = (level, 0.0_f64);
+  let step = |z: f64| {
+    let r = (0.5 * log_h).exp() * z;
+    log_h = level * 0.05 + news(0.10, -0.05, z) + news(0.05, -0.02, before) + 0.95 * log_h;
+    before = z;
+    r
+  };
+  let path = mixed(seed + 1000, n)
+    .into_iter()
+    .map(step)
+    .collect::<Array1<f64>>();
+  fit_garch(path.view(), GarchSpec::egarch(2, 1)).unwrap()
+}
+
+/// GJR(1,2) at `α = 0.03`, `γ = 0.10`, `β = (0.58, 0.30)`, 250 points.
+fn gjr12(seed: u64) -> stochastic_rs_stats::garch::GarchFit {
+  let (mut last, mut before) = (1e-4_f64, 1e-4_f64);
+  let step = |e: f64| {
+    let r = last.sqrt() * e;
+    let news = (0.03 + if r < 0.0 { 0.10 } else { 0.0 }) * r * r;
+    let omega = 1e-4 * (1.0 - 0.03 - 0.05 - 0.88);
+    (before, last) = (last, omega + news + 0.58 * last + 0.30 * before);
+    r
+  };
+  let path = mixed(seed + 900, 250)
+    .into_iter()
+    .map(step)
+    .collect::<Array1<f64>>();
+  fit_garch(path.view(), GarchSpec::gjr(1, 2)).unwrap()
+}
+
+/// Three samples whose likelihood rises across `α₁ + γ₁ = 0`, the first of four slopes.
 #[test]
 fn an_egarch_fit_with_two_news_lags_reads_the_first_slopes_bound() {
   for seed in [14_u64, 16, 44] {
-    let level = 1e-4_f64.ln();
-    let news = |a: f64, g: f64, z: f64| a * (z.abs() - (2.0 / std::f64::consts::PI).sqrt()) + g * z;
-    let (mut log_h, mut before) = (level, 0.0_f64);
-    let step = |z: f64| {
-      let r = (0.5 * log_h).exp() * z;
-      log_h = level * 0.05 + news(0.10, -0.05, z) + news(0.05, -0.02, before) + 0.95 * log_h;
-      before = z;
-      r
-    };
-    let path = mixed(seed + 1000, 250)
-      .into_iter()
-      .map(step)
-      .collect::<Array1<f64>>();
-    let fit = fit_garch(path.view(), GarchSpec::egarch(2, 1)).unwrap();
+    let fit = egarch21(seed, 250);
     let slope = "stopped at the bound of alpha[1] + gamma[1]";
     assert_eq!(
       (fit.converged, fit.message.as_str()),
@@ -339,23 +360,57 @@ fn an_egarch_fit_with_two_news_lags_reads_the_first_slopes_bound() {
   }
 }
 
-/// GJR(1,2) at `α = 0.03`, `γ = 0.10`, `β = (0.58, 0.30)`: a sample whose `α̂₁` is zero, the first
-/// of four weights.
+/// A sample whose `α̂₁` is zero, the first of four weights.
 #[test]
 fn a_gjr_fit_with_two_variance_lags_reads_the_first_weights_bound() {
-  let (mut last, mut before) = (1e-4_f64, 1e-4_f64);
-  let step = |e: f64| {
-    let r = last.sqrt() * e;
-    let news = (0.03 + if r < 0.0 { 0.10 } else { 0.0 }) * r * r;
-    let omega = 1e-4 * (1.0 - 0.03 - 0.05 - 0.88);
-    (before, last) = (last, omega + news + 0.58 * last + 0.30 * before);
-    r
-  };
-  let path = mixed(936, 250)
-    .into_iter()
-    .map(step)
-    .collect::<Array1<f64>>();
-  let fit = fit_garch(path.view(), GarchSpec::gjr(1, 2)).unwrap();
+  let fit = gjr12(36);
   let bound = "stopped at the bound of alpha[1]";
   assert_eq!((fit.converged, fit.message.as_str()), (false, bound));
+}
+
+/// How far each fit is short of the log-likelihood beside it, which is at most the `1e-6` two
+/// searches of one maximum agree within.
+fn reaches<const N: usize>(fits: [(stochastic_rs_stats::garch::GarchFit, f64); N]) {
+  let short = fits.map(|(fit, reached)| reached - fit.log_likelihood);
+  assert!(
+    short.iter().all(|short| *short <= 1e-6),
+    "short by {short:?}"
+  );
+}
+
+/// Two samples on which a search ends with `α₁` and `β₂` both at zero, a corner of the chart,
+/// while the likelihood rises with `α₁` alone: by `4.6` a unit on the second.
+#[test]
+fn a_gjr_fit_leaves_a_corner_its_likelihood_rises_from() {
+  reaches([
+    (gjr12(17), 739.741_043_169_627_9),
+    (gjr12(38), 865.962_887_328_566_6),
+  ]);
+}
+
+/// A sample on which three of four slopes end at zero and the likelihood rises with `α₂ − γ₂`.
+#[test]
+fn an_egarch_fit_with_two_news_lags_leaves_a_corner_its_likelihood_rises_from() {
+  reaches([(egarch21(5, 2_000), 6_525.189_428_362_585)]);
+}
+
+/// White noise on which a weight rests at zero after the others moved, the likelihood by then
+/// rising with it: GJR's `α + γ` (seed 44), and an EGARCH slope (seed 19; seed 30, 2,000 points).
+#[test]
+fn a_fit_of_white_noise_leaves_a_bound_its_likelihood_rises_from() {
+  let noise = |seed: u64, n: usize, scale: f64| {
+    let scaled = mixed(seed, n).into_iter().map(|z| scale * z);
+    scaled.collect::<Array1<f64>>()
+  };
+  let gjr = fit_garch(
+    noise(544, 250, 1e-4_f64.sqrt()).view(),
+    GarchSpec::gjr(1, 1),
+  )
+  .unwrap();
+  let scale = (0.5 * 1e-4_f64.ln()).exp();
+  reaches([
+    (gjr, 803.232_169_987_153_2),
+    (egarch(noise(619, 250, scale), 1), 799.595_660_427_965_1),
+    (egarch(noise(630, 2_000, scale), 1), 6_344.829_926_108_22),
+  ]);
 }

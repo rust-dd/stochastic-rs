@@ -19,6 +19,15 @@ use super::simplex::Spread;
 use super::simplex::run_nelder_mead_within;
 use crate::traits::RealExt;
 
+mod chart;
+
+pub(crate) use chart::Coordinate;
+use chart::FOLDS;
+pub(crate) use chart::LOGIT;
+use chart::Limit;
+pub(crate) use chart::Parameter;
+use chart::SHAPE_FOLDS;
+
 /// What an objective answers where it has no value, above every sum it returns.
 pub(crate) const NO_VALUE: f64 = 1e300;
 
@@ -41,14 +50,6 @@ const RESEATS: usize = 3;
 /// Searches from a fit on a limit's path that is lower than the answer; each lowers the cost.
 const RESTARTS: usize = 3;
 
-/// `e`-folds the logarithm of a scale may run from its centre: past `ln(1/ε)` the scale is under
-/// the spacing of the doubles at the data's size.
-const FOLDS: f64 = 36.0;
-
-/// `e`-folds the logarithm of a shape may run: past `ln(1/√ε)` a law is its limit to the rounding
-/// of a likelihood, as Student's is the normal's.
-const SHAPE_FOLDS: f64 = 18.0;
-
 /// How far above the estimate's cost a limit's fit may end and fit as well. A convention:
 /// `z²/2` at `z = 0.1` model-based standard errors, in summed log-likelihood.
 const AT_LIMIT: f64 = 5e-3;
@@ -63,133 +64,6 @@ const CURVATURE_STEPS: [f64; 2] = [STEP, 0.125 * STEP];
 
 /// Doublings of a first step that carry a pin from an estimate to any bound.
 const STAGES: i32 = 6;
-
-/// What a fit as good at a limit says of the parameter it names.
-#[derive(Clone, Copy)]
-enum Word {
-  Unidentified,
-  Bound,
-}
-
-/// A limit the family declares along a coordinate: its place, its word, the name it words, and
-/// a logarithm that rises as this one falls, their product held.
-struct Limit {
-  at: f64,
-  word: Word,
-  names: Option<usize>,
-  held: Option<usize>,
-}
-
-impl Limit {
-  fn stop(&self, coordinate: usize) -> Stop {
-    let names = self.names.unwrap_or(coordinate);
-    match self.word {
-      Word::Unidentified => Stop::Unidentified(names),
-      Word::Bound => Stop::Bound(names),
-    }
-  }
-}
-
-/// One coordinate of a search: the size it varies on, the crate's own bounds on it, and the
-/// limits of the family along it.
-pub(crate) struct Coordinate {
-  scale: f64,
-  low: f64,
-  high: f64,
-  limits: Vec<Limit>,
-  /// The others follow it down a valley to its limit, where a simplex stops short.
-  valley: bool,
-}
-
-impl Coordinate {
-  fn within(scale: f64, low: f64, high: f64) -> Self {
-    Self {
-      scale,
-      low,
-      high,
-      limits: Vec::new(),
-      valley: false,
-    }
-  }
-
-  /// A location of a sample centred at `centre` with spread `spread`, held within `1/ε` spreads.
-  pub(crate) fn location(centre: f64, spread: f64) -> Self {
-    let reach = spread / f64::EPSILON;
-    Self::within(spread, centre - reach, centre + reach)
-  }
-
-  /// The logarithm of a scale whose natural size is `e^centre`.
-  pub(crate) fn log(centre: f64) -> Self {
-    Self::within(1.0, centre - FOLDS, centre + FOLDS)
-  }
-
-  /// The logarithm of a shape: its far end is the law's limit, which leaves it unidentified,
-  /// and its near end the shape's own bound.
-  pub(crate) fn shape(centre: f64) -> Self {
-    let (low, high) = (centre - SHAPE_FOLDS, centre + SHAPE_FOLDS);
-    let limit = |at: f64, word: Word| Limit {
-      at,
-      word,
-      names: None,
-      held: None,
-    };
-    Self {
-      limits: vec![limit(high, Word::Unidentified), limit(low, Word::Bound)],
-      valley: true,
-      ..Self::within(1.0, low, high)
-    }
-  }
-
-  /// The logarithm with its low end a limit: the parameter vanishes there, and the logarithm
-  /// `orphan` is not identified, the data telling their product alone.
-  pub(crate) fn fading(mut self, orphan: usize) -> Self {
-    self.limits.push(Limit {
-      at: self.low,
-      word: Word::Unidentified,
-      names: Some(orphan),
-      held: Some(orphan),
-    });
-    self
-  }
-
-  /// The logarithm with its low end a limit where the family loses `orphan`, not identified there.
-  pub(crate) fn vanishing(mut self, orphan: usize) -> Self {
-    self.limits.push(Limit {
-      at: self.low,
-      word: Word::Unidentified,
-      names: Some(orphan),
-      held: None,
-    });
-    self
-  }
-
-  /// A logit, or half of one, within `reach`: each end is the bound of the parameter it names.
-  pub(crate) fn share(reach: f64, below: usize, above: usize) -> Self {
-    let limit = |at: f64, names: usize| Limit {
-      at,
-      word: Word::Bound,
-      names: Some(names),
-      held: None,
-    };
-    Self {
-      limits: vec![limit(-reach, below), limit(reach, above)],
-      ..Self::within(1.0, -reach, reach)
-    }
-  }
-
-  /// A coordinate of unit size that the objective bounds itself.
-  pub(crate) fn free() -> Self {
-    Self::within(1.0, f64::NEG_INFINITY, f64::INFINITY)
-  }
-
-  /// The limit the coordinate's bound at `value` is, if the family declares one there.
-  fn limit(&self, value: f64) -> Option<&Limit> {
-    self.limits.iter().find(|limit| limit.at == value)
-  }
-}
-
-/// The reach of a logit: past it the share is `0` or `1` to the spacing of the doubles.
-pub(crate) const LOGIT: f64 = FOLDS;
 
 /// Where a search ended and what the first-order check says of the point.
 pub(crate) struct Found {
@@ -293,14 +167,23 @@ pub(crate) fn descend(
 
 /// The minimum of `objective`, a sum of `terms` and [`NO_VALUE`] where it has none: a descent
 /// from the best start of each group, the best start's kept unless another is lower by the bar.
+/// `weights` are the parameters of the limits that are no one coordinate's end.
 pub(crate) fn minimise(
   objective: impl Fn(&[f64]) -> f64,
   finish: impl Finish,
   groups: &[&[Vec<f64>]],
   coordinates: &[Coordinate],
+  weights: &[Parameter],
   terms: usize,
 ) -> Found {
   let boxed = boxed(&objective, coordinates);
+  let own = chart::own(coordinates);
+  let parameters = own.iter().chain(weights).collect::<Vec<_>>();
+  let chart = Chart {
+    coordinates,
+    parameters: &parameters,
+    terms,
+  };
   let picks = groups.iter().map(|group| costed_start(*group, &boxed));
   let picks = picks
     .collect::<Option<Vec<_>>>()
@@ -308,10 +191,10 @@ pub(crate) fn minimise(
   let first = (0..picks.len())
     .min_by(|a, b| picks[*a].0.nan_last(&picks[*b].0))
     .expect("a group of starts");
-  let mut kept = restarting(&boxed, &finish, picks[first].1, coordinates, terms);
+  let mut kept = restarting(&boxed, &finish, picks[first].1, &chart);
   let mut iterations = kept.iterations;
   for group in (0..groups.len()).filter(|group| *group != first) {
-    let next = restarting(&boxed, &finish, picks[group].1, coordinates, terms);
+    let next = restarting(&boxed, &finish, picks[group].1, &chart);
     iterations += next.iterations;
     let cost = boxed(&kept.at);
     if boxed(&next.at) < cost - bar(cost, terms) {
@@ -321,21 +204,28 @@ pub(crate) fn minimise(
   Found { iterations, ..kept }
 }
 
-/// One descent from `start`, begun again from a lower fit on a limit's path.
+/// What a search reads of its family: the coordinates, the parameters of their limits, and the
+/// objective's count of terms.
+struct Chart<'a> {
+  coordinates: &'a [Coordinate],
+  parameters: &'a [&'a Parameter<'a>],
+  terms: usize,
+}
+
+/// One descent from `start`, begun again from a lower point a limit's path or parameter shows.
 fn restarting(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
   start: &[f64],
-  coordinates: &[Coordinate],
-  terms: usize,
+  chart: &Chart,
 ) -> Found {
   let (mut from, mut iterations) = (start.to_vec(), 0);
   for restart in 0..=RESTARTS {
-    let (found, lower) = search(boxed, finish, &from, coordinates, terms);
+    let (found, lower) = search(boxed, finish, &from, chart);
     iterations += found.iterations;
     match lower {
       Some(point) if restart < RESTARTS => from = point,
-      // Out of restarts with a lower fit still on a path: that fit, and no convergence.
+      // Out of restarts with a lower point still in sight: that point, and no convergence.
       Some(at) => {
         let stop = Stop::NotStationary;
         return Found {
@@ -355,14 +245,15 @@ fn restarting(
   unreachable!("the last restart returns")
 }
 
-/// One search from `start`: its answer, and a fit on a limit's path below it.
+/// One search from `start`: its answer, and the lowest point below it that a limit's path or a
+/// step along a limit's parameter shows.
 fn search(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
   start: &[f64],
-  coordinates: &[Coordinate],
-  terms: usize,
+  chart: &Chart,
 ) -> (Found, Option<Vec<f64>>) {
+  let (coordinates, terms) = (chart.coordinates, chart.terms);
   let valued = |p: &[f64]| Some(boxed(p)).filter(|cost| *cost < NO_VALUE);
   // On a valley a simplex stops short and the finisher follows; elsewhere the check reads the
   // simplex's own point, at the tighter spread.
@@ -416,12 +307,38 @@ fn search(
     let named = limit.or_else(|| resting(&at, coordinates));
     stop = named.unwrap_or(if capped { Stop::Capped } else { stop });
   }
+  let released = released(boxed, &at, chart);
+  let lower = [lower, released].into_iter().flatten();
+  let lower = lower.min_by(|a, b| boxed(a).nan_last(&boxed(b)));
   let found = Found {
     at,
     stop,
     iterations,
   };
   (found, lower)
+}
+
+/// The point of the largest gain past the bar that a step along one limit's parameter realises
+/// beside `at`, the walks of [`beside`] on that axis alone.
+fn released(boxed: &dyn Fn(&[f64]) -> f64, at: &[f64], chart: &Chart) -> Option<Vec<f64>> {
+  let here = boxed(at);
+  let mut best = (bar(here, chart.terms), None);
+  for parameter in chart.parameters {
+    let cost = |value: &[f64]| {
+      let moved = (parameter.moved)(at, value[0])?;
+      Some(boxed(&moved)).filter(|cost| *cost < NO_VALUE)
+    };
+    let axis = std::slice::from_ref(&parameter.axis);
+    let read = beside(cost, &[(parameter.of)(at)], axis, chart.terms);
+    let Some(moved) = (parameter.moved)(at, read.best[0]) else {
+      continue;
+    };
+    let gain = here - boxed(&moved);
+    if read.gain > read.bar() && gain > best.0 {
+      best = (gain, Some(moved));
+    }
+  }
+  best.1
 }
 
 /// Where a pin toward `limit` along coordinate `i` ends: the limit, or short of it where a held

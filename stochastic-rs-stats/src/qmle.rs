@@ -220,6 +220,7 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
     by_differences,
     &[&[start.to_vec()]],
     &coordinates,
+    &[],
     x.len() - 1,
   );
   let p = [found.at[0], found.at[1], found.at[2]];

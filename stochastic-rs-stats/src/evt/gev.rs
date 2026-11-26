@@ -137,7 +137,7 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError>
     Coordinate::log(sd.ln()),
     Coordinate::free(),
   ];
-  let found = minimise(objective, by_differences, &[&starts], &coordinates, n);
+  let found = minimise(objective, by_differences, &[&starts], &coordinates, &[], n);
   let theta = &found.at;
   let (mu, sigma, xi) = (theta[0], theta[1].exp(), theta[2]);
   let log_likelihood = -negative_log_likelihood(&z, mu, sigma, xi);

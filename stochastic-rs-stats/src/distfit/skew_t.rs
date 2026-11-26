@@ -81,7 +81,14 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
     Coordinate::shape(0.0),
     Coordinate::free(),
   ];
-  let found = minimise(objective, by_differences, &[&starts], &coordinates, x.len());
+  let found = minimise(
+    objective,
+    by_differences,
+    &[&starts],
+    &coordinates,
+    &[],
+    x.len(),
+  );
   let theta = &found.at;
   let natural = [
     theta[0],

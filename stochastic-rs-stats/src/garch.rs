@@ -240,7 +240,15 @@ pub fn fit_garch<T: FloatExt>(
   let groups = starts.iter().map(Vec::as_slice).collect::<Vec<_>>();
   let (coordinates, words) = transform::coordinates(&spec, mean, backcast);
   let objective = |theta: &[f64]| problem.objective(theta);
-  let found = minimise(objective, by_differences, &groups, &coordinates, n);
+  let weights = transform::weights(spec);
+  let found = minimise(
+    objective,
+    by_differences,
+    &groups,
+    &coordinates,
+    &weights,
+    n,
+  );
   let theta = &found.at;
 
   let fitted = transform::to_natural(&spec, theta);

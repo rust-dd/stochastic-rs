@@ -2,7 +2,7 @@ use super::*;
 
 fn search(objective: impl Fn(&[f64]) -> f64, coordinates: &[Coordinate]) -> Found {
   let start = vec![vec![0.0; coordinates.len()]];
-  minimise(objective, by_differences, &[&start], coordinates, 1000)
+  minimise(objective, by_differences, &[&start], coordinates, &[], 1000)
 }
 
 fn pair() -> [Coordinate; 2] {
@@ -67,7 +67,7 @@ fn a_capped_search_is_not_converged() {
   };
   let coordinates = [(); 30].map(|()| Coordinate::free());
   let start = vec![vec![-1.2; 30]];
-  let found = minimise(valley, by_differences, &[&start], &coordinates, 1000);
+  let found = minimise(valley, by_differences, &[&start], &coordinates, &[], 1000);
   assert_eq!(found.stop.message(&["p"; 30]), "iteration cap reached");
 }
 
@@ -85,6 +85,7 @@ fn unfinished(objective: impl Fn(&[f64]) -> f64) -> Found {
     as_it_is,
     &[&[vec![-1.2; 30]]],
     &coordinates,
+    &[],
     1000,
   )
 }
@@ -154,6 +155,7 @@ fn a_named_stop_comes_before_the_cap() {
     as_it_is,
     &[&[start]],
     &coordinates,
+    &[],
     1000,
   );
   let mut names = vec!["p"; 30];
@@ -221,7 +223,7 @@ fn a_search_out_of_restarts_returns_the_lower_fit_and_is_not_stationary() {
     10.0 + 50.0 * (p[0] - 0.3).powi(2) - wells.iter().enumerate().map(well).sum::<f64>()
   };
   let start = [vec![0.3, -17.0]];
-  let found = minimise(stairs, by_differences, &[&start], &shaped(), 1000);
+  let found = minimise(stairs, by_differences, &[&start], &shaped(), &[], 1000);
   assert_eq!(
     (
       found.stop.message(&["mu", "eta"]).as_str(),
@@ -243,13 +245,13 @@ fn a_descent_from_another_group_is_kept_only_where_it_ends_lower() {
   let coordinates = [Coordinate::free()];
   let (near, far) = ([vec![-1.5]], [vec![2.9]]);
   let groups = [&near[..], &far[..]];
-  let lower = minimise(wells(2.0), by_differences, &groups, &coordinates, 1000);
+  let lower = minimise(wells(2.0), by_differences, &groups, &coordinates, &[], 1000);
   assert!(
     (lower.at[0] - 2.0).abs() < 1e-3 && lower.stop.converged(),
     "{:?}",
     lower.at
   );
-  let equal = minimise(wells(1.0), by_differences, &groups, &coordinates, 1000);
+  let equal = minimise(wells(1.0), by_differences, &groups, &coordinates, &[], 1000);
   assert!(
     (equal.at[0] + 2.0).abs() < 1e-3 && equal.stop.converged(),
     "{:?}",

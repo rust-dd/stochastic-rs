@@ -18,8 +18,10 @@
 use super::GarchKind;
 use super::GarchSpec;
 use super::MeanSpec;
+use crate::optim::certificate::Axis;
 use crate::optim::search::Coordinate;
 use crate::optim::search::LOGIT;
+use crate::optim::search::Parameter;
 use crate::traits::RealExt;
 
 fn sigmoid(x: f64) -> f64 {
@@ -220,7 +222,7 @@ pub(super) fn coordinates(
       // Each ratio `β_{k+1}/β_k` ends where the later lag vanishes or the two are equal.
       for k in 1..q {
         names.push(format!("beta[{k}] - beta[{}]", k + 1));
-        coordinates.push(Coordinate::share(LOGIT, betas + k, names.len() - 1));
+        coordinates.push(Coordinate::split(LOGIT, betas + k, names.len() - 1));
       }
       Vec::new()
     }
@@ -242,9 +244,114 @@ fn shares(weights: &[usize], names: &mut Vec<String>) -> Vec<Coordinate> {
         names.len() - 1
       }
     };
-    Coordinate::share(LOGIT, weights[k], high)
+    Coordinate::split(LOGIT, weights[k], high)
   };
   (1..weights.len()).map(share).collect()
+}
+
+/// The weights each bound of the region is a zero of, at `theta`: GARCH's `α` and `β`, GJR's
+/// `α`, `α + γ` and `β`, EGARCH's `α ± γ`, `β_k − β_{k+1}` and `β_q`.
+fn weights_of(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
+  let i = usize::from(spec.mean == MeanSpec::Constant);
+  let (p, q) = (spec.p, spec.q);
+  match spec.kind {
+    GarchKind::Garch => {
+      let s = sigmoid(theta[i + 1]);
+      let w = stick(&theta[i + 2..i + 1 + p + q]);
+      w.iter().map(|x| s * x).collect()
+    }
+    GarchKind::GjrGarch => {
+      let s = sigmoid(theta[i + 1]);
+      let w = stick(&theta[i + 2..i + 1 + 2 * p + q]);
+      let news = (0..2 * p).map(|k| 2.0 * s * w[k]);
+      news.chain((0..q).map(|k| s * w[2 * p + k])).collect()
+    }
+    GarchKind::Egarch => {
+      let total = theta[i + 1].exp();
+      let w = stick(&theta[i + 2..i + 1 + 2 * p]);
+      let mut out = w.iter().map(|x| total * x).collect::<Vec<_>>();
+      if q > 0 {
+        let ratios = &theta[i + 2 + 2 * p..i + 1 + 2 * p + q];
+        let mut shares = vec![1.0];
+        for ratio in ratios {
+          shares.push(shares[shares.len() - 1] * sigmoid(*ratio));
+        }
+        let s = sigmoid(theta[i + 1 + 2 * p]) / shares.iter().sum::<f64>();
+        out.extend((0..q - 1).map(|k| s * shares[k] * sigmoid(-ratios[k])));
+        out.push(s * shares[q - 1]);
+      }
+      out
+    }
+  }
+}
+
+/// The chart's point of `weights` with `theta`'s location and level, `None` outside the region.
+/// A logit past the chart's reach is held at it, and one no weight identifies is zero.
+fn chart_of(spec: &GarchSpec, theta: &[f64], weights: &[f64]) -> Option<Vec<f64>> {
+  if !weights.iter().all(|w| *w >= 0.0) {
+    return None;
+  }
+  let (p, q) = (spec.p, spec.q);
+  let first = usize::from(spec.mean == MeanSpec::Constant) + 1;
+  let mut chart = theta[..first].to_vec();
+  let of = |total: f64, parts: &[f64]| breaks(&parts.iter().map(|x| x / total).collect::<Vec<_>>());
+  if spec.kind == GarchKind::Egarch {
+    let (slopes, steps) = weights.split_at(2 * p);
+    let total = slopes.iter().sum::<f64>();
+    chart.push(total.ln());
+    chart.extend(of(total, slopes));
+    if q > 0 {
+      let mut beta = steps.to_vec();
+      for k in (0..q - 1).rev() {
+        beta[k] += beta[k + 1];
+      }
+      let s = beta.iter().sum::<f64>();
+      if s >= 1.0 {
+        return None;
+      }
+      chart.push(logit(s));
+      chart.extend(beta.windows(2).map(|pair| logit(pair[1] / pair[0])));
+    }
+  } else {
+    let halves = if spec.has_gamma() { 2 * p } else { 0 };
+    let shares = weights.iter().enumerate();
+    let shares = shares.map(|(k, w)| if k < halves { 0.5 * w } else { *w });
+    let shares = shares.collect::<Vec<_>>();
+    let s = shares.iter().sum::<f64>();
+    if s >= 1.0 {
+      return None;
+    }
+    chart.push(logit(s));
+    chart.extend(of(s, &shares));
+  }
+  let held = |v: f64| {
+    if v.is_nan() {
+      0.0
+    } else {
+      v.clamp(-LOGIT, LOGIT)
+    }
+  };
+  chart[first..].iter_mut().for_each(|v| *v = held(*v));
+  Some(chart)
+}
+
+/// The family's weights as the parameters of its bounds: a step along one holds the others.
+pub(super) fn weights(spec: GarchSpec) -> Vec<Parameter<'static>> {
+  let gamma = if spec.has_gamma() { spec.p } else { 0 };
+  let weight = |k: usize| Parameter {
+    of: Box::new(move |theta: &[f64]| weights_of(&spec, theta)[k]),
+    moved: Box::new(move |theta: &[f64], to: f64| {
+      let mut weights = weights_of(&spec, theta);
+      weights[k] = to;
+      chart_of(&spec, theta, &weights)
+    }),
+    axis: Axis {
+      low: 0.0,
+      high: f64::INFINITY,
+      scale: 1.0,
+    },
+  };
+  (0..spec.p + gamma + spec.q).map(weight).collect()
 }
 
 /// Typical magnitude of each natural parameter, the scale of its finite-difference step:

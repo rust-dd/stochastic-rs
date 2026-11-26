@@ -170,6 +170,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     by_differences,
     &[std::slice::from_ref(&p1)],
     &coordinates,
+    &[],
     x.len() - 1,
   );
   let p2 = &second.at;
