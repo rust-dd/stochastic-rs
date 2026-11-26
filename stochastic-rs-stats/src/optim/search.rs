@@ -168,7 +168,6 @@ pub(crate) fn descend(
 
 /// The minimum of `objective`, a sum of `terms` and [`NO_VALUE`] where it has none: a descent
 /// from the best start of each group, the best start's kept unless another is lower by the bar.
-/// `weights` are the parameters of the limits that are no one coordinate's end.
 pub(crate) fn minimise(
   objective: impl Fn(&[f64]) -> f64,
   finish: impl Finish,
