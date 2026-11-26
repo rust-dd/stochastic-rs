@@ -234,7 +234,6 @@ fn bench_garch_fit(c: &mut Criterion) {
       Deterministic::new(42),
     );
     let returns = process.sample();
-    // The two orders above (1,1) are benched at 1,000 points only.
     let higher = [
       ("Gjr12", GarchSpec::gjr(1, 2)),
       ("Egarch21", GarchSpec::egarch(2, 1)),

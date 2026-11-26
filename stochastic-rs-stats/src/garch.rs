@@ -109,8 +109,8 @@ impl GarchSpec {
     }
   }
 
-  /// EGARCH($p$, $q$) with a constant mean, fitted on $\alpha_i \ge |\gamma_i|$,
-  /// $\beta_1 \ge \dots \ge \beta_q \ge 0$, $\sum\beta_j < 1$: for (1,1), Straumann & Mikosch's (2006, Ex. 3.8).
+  /// EGARCH($p$, $q$) with a constant mean on $\alpha_i \ge |\gamma_i|$, $\beta_1 \ge \dots \ge
+  /// \beta_q \ge 0$, $\sum\beta_j < 1$: at (1,1) the region of Straumann & Mikosch (2006, Ex. 3.8).
   pub fn egarch(p: usize, q: usize) -> Self {
     Self {
       kind: GarchKind::Egarch,

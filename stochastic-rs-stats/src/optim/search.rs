@@ -132,7 +132,8 @@ fn simplex(from: &[f64], coordinates: &[Coordinate], step: f64) -> Vec<Vec<f64>>
   simplex
 }
 
-/// The simplex from `start` to `spread`, and the finisher where it capped or `finished`: the point, the iterations, and whether the simplex ran into its cap.
+/// The simplex from `start` to `spread`, and the finisher where it capped or `finished`: the
+/// point, the iterations, and whether the simplex ran into its cap.
 fn descent(
   boxed: &dyn Fn(&[f64]) -> f64,
   finish: &impl Finish,
