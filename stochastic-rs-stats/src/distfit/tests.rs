@@ -47,6 +47,7 @@ fn samples_are_bit_identical_to_the_python_generator() {
 fn johnson_su_fit_matches_the_scipy_optimum() {
   let fit = fit_johnson_su(skewed_sample(0.2).view()).unwrap();
   assert!(fit.converged);
+  assert_eq!(fit.message, "converged");
   assert_eq!(fit.nobs, 1_500);
   let loglik = -2_207.705_168_550_967_3;
   assert!(
@@ -69,6 +70,7 @@ fn johnson_su_fit_matches_the_scipy_optimum() {
 fn skew_t_fit_matches_the_arch_optimum() {
   let fit = fit_skew_t(skewed_sample(0.03).view()).unwrap();
   assert!(fit.converged);
+  assert_eq!(fit.message, "converged");
   let loglik = -1_538.591_372_939_148_2;
   assert!(
     fit.log_likelihood >= loglik - 1e-6,
@@ -96,6 +98,7 @@ fn skew_t_fit_matches_the_arch_optimum() {
 fn variance_gamma_fit_matches_the_scipy_optimum() {
   let fit = fit_variance_gamma(skewed_sample(0.2).view()).unwrap();
   assert!(fit.converged);
+  assert_eq!(fit.message, "converged");
   let loglik = -2_215.084_505_676_344_6;
   assert!(
     fit.log_likelihood >= loglik - 1e-6,

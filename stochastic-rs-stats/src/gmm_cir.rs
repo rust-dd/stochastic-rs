@@ -26,7 +26,11 @@ use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
-use crate::optim::nelder_mead;
+use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::descend;
+use crate::optim::search::minimise;
 use crate::qmle::Ar1;
 use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
@@ -47,10 +51,14 @@ pub struct GmmCirFit {
   /// Hansen's over-identification statistic, `χ²₁` under the model.
   pub j_stat: f64,
   pub j_pvalue: f64,
-  /// Simplex iterations over both stages.
+  /// Iterations of both stages' simplexes, the polishes and the refits at `θ → 0`.
   pub iterations: usize,
-  /// Both stages' simplexes met a `1e-10` spread of their values, which a stall passes too.
+  /// No step along one parameter gains `1e-7` in the second stage's `T q / 2`, the limit
+  /// `θ → 0` does not fit as well where it is read, and the first stage did not cap.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 impl GmmCirFit {
@@ -125,9 +133,20 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     w
   };
 
-  let (p1, it1, conv1) = nelder_mead(start, 2000, |p| {
-    objective(p[0].exp(), p[1].exp(), p[2].exp(), &stage1)
-  });
+  // `T q / 2` is a `χ²` over two, the unit the search's tolerances and its check are stated in.
+  let half_t = 0.5 * (x.len() - 1) as f64;
+  let criterion = |p: &[f64], w: &[[f64; 4]; 4]| {
+    let q = half_t * objective(p[0].exp(), p[1].exp(), p[2].exp(), w);
+    if q.is_finite() { q } else { NO_VALUE }
+  };
+  let [theta, mu, sigma] = start.map(Coordinate::log);
+  let coordinates = [theta.fading(1), mu, sigma];
+  let (p1, first, capped) = descend(
+    |p| criterion(p, &stage1),
+    by_differences,
+    &[start.to_vec()],
+    &coordinates,
+  );
   let (theta1, mu1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
 
   // Stage 2 weights by `Ŝ⁻¹` at the stage-1 estimate, Hansen's efficient choice.
@@ -146,22 +165,30 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   }
   let w2 = weighting_matrix(&s_hat)?;
 
-  let (p2, it2, conv2) = nelder_mead([p1[0], p1[1], p1[2]], 2000, |p| {
-    objective(p[0].exp(), p[1].exp(), p[2].exp(), &w2)
-  });
+  let second = minimise(
+    |p| criterion(p, &w2),
+    by_differences,
+    &[std::slice::from_ref(&p1)],
+    &coordinates,
+    &[],
+    x.len() - 1,
+  );
+  let p2 = &second.at;
   let (theta, mu, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());
 
   let (j_stat, j_pvalue) = j_test(rows1.len(), objective(theta, mu, sigma, &w2))?;
   let [theta, mu, sigma] = in_data_units(DiffusionKind::Cir, [theta, mu, sigma], unit)?;
 
+  let stop = second.stop.after(capped);
   Ok(GmmCirFit {
     theta,
     mu,
     sigma,
     j_stat,
     j_pvalue,
-    iterations: it1 + it2,
-    converged: conv1 && conv2,
+    iterations: first + second.iterations,
+    converged: stop.converged(),
+    message: stop.message(&["theta", "mu", "sigma"]),
   })
 }
 
@@ -271,6 +298,7 @@ mod tests {
       let path = simulate_cir(tht, mt, st, 0.04, dt, 8000, seed);
       (seed, fit_cir_gmm(path.view(), dt).unwrap())
     });
+    assert!(fits.iter().all(|(_, r)| r.message == "converged"));
     let ok = fits.iter().any(|(_, r)| {
       r.converged
         && (r.mu - mt).abs() / mt < 0.12

@@ -1,4 +1,4 @@
-//! Bijection from unconstrained coordinates onto the stationarity region, which no step can leave.
+//! Bijection from unconstrained coordinates onto each kind's region, which no step can leave.
 //!
 //! $$
 //! \begin{aligned}
@@ -6,16 +6,22 @@
 //! \alpha_i = s w_i,\quad \beta_j = s w_{p+j},\\
 //! \text{GJR}:&\quad \alpha_i = 2 s w_i,\quad \alpha_i + \gamma_i = 2 s w_{p+i},\quad
 //! \beta_j = s w_{2p+j},\quad \sum\alpha_i + \tfrac12\sum\gamma_i + \sum\beta_j = s,\\
-//! \text{EGARCH}:&\quad \sum\beta_j = \tanh(\theta_s) \in (-1, 1),\quad
-//! \beta_j = w_j \tanh(\theta_s),
+//! \text{EGARCH}:&\quad \alpha_i \pm \gamma_i = e^{\theta_a} v_{2i - 1},\ e^{\theta_a} v_{2i},\quad
+//! \sum\beta_j = \sigma(\theta_s),\quad \beta_{j+1} = \beta_j\,\sigma(\theta_j),
 //! \end{aligned}
 //! $$
 //!
-//! `w` is a softmax whose first logit is pinned at zero; `μ`, and EGARCH's `ω`, `α`, `γ`, are free.
+//! `w` and `v` are sticks: each logit is the share a weight takes of what the earlier ones leave,
+//! the first weight keeping the rest. `μ` and EGARCH's `ω` are free.
+//! EGARCH(1,1)'s region is Straumann & Mikosch's (2006, Example 3.8); above it the crate's own.
 
 use super::GarchKind;
 use super::GarchSpec;
 use super::MeanSpec;
+use crate::optim::certificate::Axis;
+use crate::optim::search::Coordinate;
+use crate::optim::search::LOGIT;
+use crate::optim::search::Parameter;
 use crate::traits::RealExt;
 
 fn sigmoid(x: f64) -> f64 {
@@ -26,7 +32,7 @@ fn logit(p: f64) -> f64 {
   (p / (1.0 - p)).ln()
 }
 
-/// Softmax over `logits.len() + 1` slots, the first logit pinned at zero.
+/// Softmax over `logits.len() + 1` slots, the first logit pinned at zero: a stick's one break.
 fn softmax(logits: &[f64]) -> Vec<f64> {
   let max = f64::max_or_nan_fold(std::iter::once(0.0).chain(logits.iter().copied()));
   let mut w: Vec<f64> = std::iter::once(0.0)
@@ -40,9 +46,24 @@ fn softmax(logits: &[f64]) -> Vec<f64> {
   w
 }
 
-/// Logits of positive `weights` with the first pinned at zero.
-fn logits(weights: &[f64]) -> Vec<f64> {
-  weights[1..].iter().map(|w| (w / weights[0]).ln()).collect()
+/// A stick broken by `logits`: weight `k` takes the share `σ(l_k)` of what the earlier ones leave,
+/// and the first keeps the rest. One weight vanishes alone at an end of one logit.
+fn stick(logits: &[f64]) -> Vec<f64> {
+  let mut weights = vec![1.0];
+  for logit in logits {
+    let split = softmax(&[*logit]);
+    weights.push(weights[0] * split[1]);
+    weights[0] *= split[0];
+  }
+  weights
+}
+
+/// The logits that break a stick into positive `weights`.
+fn breaks(weights: &[f64]) -> Vec<f64> {
+  let rest = |k: usize| weights[k + 1..].iter().fold(weights[0], |sum, w| sum + w);
+  (1..weights.len())
+    .map(|k| (weights[k] / rest(k)).ln())
+    .collect()
 }
 
 /// Unconstrained coordinates → natural parameters.
@@ -58,23 +79,33 @@ pub(super) fn to_natural(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
     GarchKind::Garch => {
       out.push(theta[i].exp());
       let s = sigmoid(theta[i + 1]);
-      let w = softmax(&theta[i + 2..i + 1 + p + q]);
+      let w = stick(&theta[i + 2..i + 1 + p + q]);
       out.extend(w.iter().map(|x| s * x));
     }
     GarchKind::GjrGarch => {
       out.push(theta[i].exp());
       let s = sigmoid(theta[i + 1]);
-      let w = softmax(&theta[i + 2..i + 1 + 2 * p + q]);
+      let w = stick(&theta[i + 2..i + 1 + 2 * p + q]);
       out.extend((0..p).map(|k| 2.0 * s * w[k]));
       out.extend((0..p).map(|k| 2.0 * s * w[p + k] - 2.0 * s * w[k]));
       out.extend((0..q).map(|k| s * w[2 * p + k]));
     }
     GarchKind::Egarch => {
-      out.extend_from_slice(&theta[i..i + 1 + 2 * p]);
+      out.push(theta[i]);
+      let total = theta[i + 1].exp();
+      let w = stick(&theta[i + 2..i + 1 + 2 * p]);
+      out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] + w[2 * k + 1])));
+      out.extend((0..p).map(|k| 0.5 * total * (w[2 * k] - w[2 * k + 1])));
       if q > 0 {
-        let s = theta[i + 1 + 2 * p].tanh();
-        let w = softmax(&theta[i + 2 + 2 * p..i + 1 + 2 * p + q]);
-        out.extend(w.iter().map(|x| s * x));
+        // `β₁ ≥ β₂ ≥ … ≥ 0`: at a frozen news slope the companion polynomial's margin at `−1`,
+        // `1 + β₁ − β₂ + β₃ − …`, is then at least one, as one lag's `1 + β` is.
+        let ratios = theta[i + 2 + 2 * p..i + 1 + 2 * p + q].iter();
+        let mut shares = vec![1.0];
+        for ratio in ratios {
+          shares.push(shares[shares.len() - 1] * sigmoid(*ratio));
+        }
+        let s = sigmoid(theta[i + 1 + 2 * p]) / shares.iter().sum::<f64>();
+        out.extend(shares.iter().map(|x| s * x));
       }
     }
   }
@@ -100,7 +131,7 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
         .chain(split.beta)
         .map(|c| c / s)
         .collect();
-      theta.extend(logits(&weights));
+      theta.extend(breaks(&weights));
     }
     GarchKind::GjrGarch => {
       theta.push(split.omega.ln());
@@ -121,21 +152,206 @@ pub(super) fn to_unconstrained(spec: &GarchSpec, natural: &[f64]) -> Vec<f64> {
         )
         .chain(split.beta.iter().map(|b| b / s))
         .collect();
-      theta.extend(logits(&weights));
+      theta.extend(breaks(&weights));
     }
     GarchKind::Egarch => {
       theta.push(split.omega);
-      theta.extend_from_slice(split.alpha);
-      theta.extend_from_slice(split.gamma);
+      let lags = split.alpha.iter().zip(split.gamma);
+      let slopes: Vec<f64> = lags.flat_map(|(a, g)| [a + g, a - g]).collect();
+      let total = slopes.iter().sum::<f64>();
+      theta.push(total.ln());
+      theta.extend(breaks(
+        &slopes.iter().map(|x| x / total).collect::<Vec<_>>(),
+      ));
       if spec.q > 0 {
         let s = split.beta.iter().sum::<f64>();
-        theta.push(s.atanh());
-        let weights: Vec<f64> = split.beta.iter().map(|b| b / s).collect();
-        theta.extend(logits(&weights));
+        theta.push(logit(s));
+        theta.extend(split.beta.windows(2).map(|pair| logit(pair[1] / pair[0])));
       }
     }
   }
   theta
+}
+
+/// The search's coordinates and their stops' names: the parameters', `persistence`, and the
+/// sums and differences a share's ends bound, and the weights that vanish together at an end.
+pub(super) fn coordinates(
+  spec: &GarchSpec,
+  mean: f64,
+  backcast: f64,
+) -> (Vec<Coordinate>, Vec<String>) {
+  let mut names = spec.param_names();
+  let mut coordinates = Vec::with_capacity(names.len());
+  if spec.mean == MeanSpec::Constant {
+    coordinates.push(Coordinate::location(mean, backcast.sqrt()));
+  }
+  let first = coordinates.len() + 1;
+  let persistence = names.len();
+  names.push("persistence".to_string());
+  let (p, q) = (spec.p, spec.q);
+  let weights = match spec.kind {
+    GarchKind::Garch => {
+      coordinates.push(Coordinate::log(backcast.ln()));
+      coordinates.push(Coordinate::share(LOGIT, persistence, persistence));
+      (first..first + p + q).collect::<Vec<_>>()
+    }
+    GarchKind::GjrGarch => {
+      coordinates.push(Coordinate::log(backcast.ln()));
+      coordinates.push(Coordinate::share(LOGIT, persistence, persistence));
+      let sums = names.len()..names.len() + p;
+      names.extend((1..=p).map(|i| format!("alpha[{i}] + gamma[{i}]")));
+      (first..first + p)
+        .chain(sums)
+        .chain(first + 2 * p..first + 2 * p + q)
+        .collect()
+    }
+    GarchKind::Egarch => {
+      coordinates.push(Coordinate::free());
+      let betas = first + 2 * p;
+      let slopes = (names.len()..names.len() + 2 * p).collect::<Vec<_>>();
+      names.extend(
+        (1..=p).flat_map(|i| ['+', '-'].map(|sign| format!("alpha[{i}] {sign} gamma[{i}]"))),
+      );
+      // With no news curve left the variance is constant, whatever `β` is.
+      let size = Coordinate::log(0.0);
+      coordinates.push(if q > 0 { size.vanishing(betas) } else { size });
+      coordinates.extend(shares(&slopes, &mut names));
+      if q > 0 {
+        coordinates.push(Coordinate::share(LOGIT, betas, persistence));
+      }
+      // Each ratio `β_{k+1}/β_k` ends where the later lag vanishes or the two are equal.
+      for k in 1..q {
+        names.push(format!("beta[{k}] - beta[{}]", k + 1));
+        coordinates.push(Coordinate::split(LOGIT, betas + k, names.len() - 1));
+      }
+      Vec::new()
+    }
+  };
+  coordinates.extend(shares(&weights, &mut names));
+  (coordinates, names)
+}
+
+/// A stick's logits as coordinates: the low end of logit `k` bounds weight `k`; at its high end
+/// the first weight and every later one vanish, and the end is named after each of them.
+fn shares(weights: &[usize], names: &mut Vec<String>) -> Vec<Coordinate> {
+  let share = |k: usize| {
+    let gone = [&weights[..1], &weights[k + 1..]].concat();
+    let high = match gone[..] {
+      [alone] => alone,
+      _ => {
+        let each = gone.iter().map(|name| names[*name].as_str());
+        names.push(each.collect::<Vec<_>>().join(" and "));
+        names.len() - 1
+      }
+    };
+    Coordinate::split(LOGIT, weights[k], high)
+  };
+  (1..weights.len()).map(share).collect()
+}
+
+/// The weights each bound of the region is a zero of, at `theta`: GARCH's `α` and `β`, GJR's
+/// `α`, `α + γ` and `β`, EGARCH's `α ± γ`, `β_k − β_{k+1}` and `β_q`.
+fn weights_of(spec: &GarchSpec, theta: &[f64]) -> Vec<f64> {
+  let i = usize::from(spec.mean == MeanSpec::Constant);
+  let (p, q) = (spec.p, spec.q);
+  match spec.kind {
+    GarchKind::Garch => {
+      let s = sigmoid(theta[i + 1]);
+      let w = stick(&theta[i + 2..i + 1 + p + q]);
+      w.iter().map(|x| s * x).collect()
+    }
+    GarchKind::GjrGarch => {
+      let s = sigmoid(theta[i + 1]);
+      let w = stick(&theta[i + 2..i + 1 + 2 * p + q]);
+      let news = (0..2 * p).map(|k| 2.0 * s * w[k]);
+      news.chain((0..q).map(|k| s * w[2 * p + k])).collect()
+    }
+    GarchKind::Egarch => {
+      let total = theta[i + 1].exp();
+      let w = stick(&theta[i + 2..i + 1 + 2 * p]);
+      let mut out = w.iter().map(|x| total * x).collect::<Vec<_>>();
+      if q > 0 {
+        let ratios = &theta[i + 2 + 2 * p..i + 1 + 2 * p + q];
+        let mut shares = vec![1.0];
+        for ratio in ratios {
+          shares.push(shares[shares.len() - 1] * sigmoid(*ratio));
+        }
+        let s = sigmoid(theta[i + 1 + 2 * p]) / shares.iter().sum::<f64>();
+        out.extend((0..q - 1).map(|k| s * shares[k] * sigmoid(-ratios[k])));
+        out.push(s * shares[q - 1]);
+      }
+      out
+    }
+  }
+}
+
+/// The chart's point of `weights` with `theta`'s location and level, `None` outside the region.
+/// A logit past the chart's reach is held at it, and one no weight identifies is zero.
+fn chart_of(spec: &GarchSpec, theta: &[f64], weights: &[f64]) -> Option<Vec<f64>> {
+  if !weights.iter().all(|w| *w >= 0.0) {
+    return None;
+  }
+  let (p, q) = (spec.p, spec.q);
+  let first = usize::from(spec.mean == MeanSpec::Constant) + 1;
+  let mut chart = theta[..first].to_vec();
+  let of = |total: f64, parts: &[f64]| breaks(&parts.iter().map(|x| x / total).collect::<Vec<_>>());
+  if spec.kind == GarchKind::Egarch {
+    let (slopes, steps) = weights.split_at(2 * p);
+    let total = slopes.iter().sum::<f64>();
+    chart.push(total.ln());
+    chart.extend(of(total, slopes));
+    if q > 0 {
+      let mut beta = steps.to_vec();
+      for k in (0..q - 1).rev() {
+        beta[k] += beta[k + 1];
+      }
+      let s = beta.iter().sum::<f64>();
+      if s >= 1.0 {
+        return None;
+      }
+      chart.push(logit(s));
+      chart.extend(beta.windows(2).map(|pair| logit(pair[1] / pair[0])));
+    }
+  } else {
+    let halves = if spec.has_gamma() { 2 * p } else { 0 };
+    let shares = weights.iter().enumerate();
+    let shares = shares.map(|(k, w)| if k < halves { 0.5 * w } else { *w });
+    let shares = shares.collect::<Vec<_>>();
+    let s = shares.iter().sum::<f64>();
+    if s >= 1.0 {
+      return None;
+    }
+    chart.push(logit(s));
+    chart.extend(of(s, &shares));
+  }
+  let held = |v: f64| {
+    if v.is_nan() {
+      0.0
+    } else {
+      v.clamp(-LOGIT, LOGIT)
+    }
+  };
+  chart[first..].iter_mut().for_each(|v| *v = held(*v));
+  Some(chart)
+}
+
+/// The family's weights as the parameters of its bounds: a step along one holds the others.
+pub(super) fn weights(spec: GarchSpec) -> Vec<Parameter<'static>> {
+  let gamma = if spec.has_gamma() { spec.p } else { 0 };
+  let weight = |k: usize| Parameter {
+    of: Box::new(move |theta: &[f64]| weights_of(&spec, theta)[k]),
+    moved: Box::new(move |theta: &[f64], to: f64| {
+      let mut weights = weights_of(&spec, theta);
+      weights[k] = to;
+      chart_of(&spec, theta, &weights)
+    }),
+    axis: Axis {
+      low: 0.0,
+      high: f64::INFINITY,
+      scale: 1.0,
+    },
+  };
+  (0..spec.p + gamma + spec.q).map(weight).collect()
 }
 
 /// Typical magnitude of each natural parameter, the scale of its finite-difference step:
@@ -154,65 +370,37 @@ pub(super) fn natural_scales(spec: &GarchSpec, backcast: f64) -> Vec<f64> {
   scales
 }
 
-/// The best point of a small persistence × shock-share grid of
-/// variance-targeted starting values, in unconstrained coordinates.
-pub(super) fn best_start<F: Fn(&[f64]) -> f64>(
-  spec: &GarchSpec,
-  mean: f64,
-  backcast: f64,
-  objective: F,
-) -> Vec<f64> {
-  let mut best: Option<(f64, Vec<f64>)> = None;
-  for natural in starting_grid(spec, mean, backcast) {
-    let theta = to_unconstrained(spec, &natural);
-    let cost = objective(&theta);
-    let better = match &best {
-      Some((c, _)) => cost < *c,
-      None => true,
-    };
-    if better {
-      best = Some((cost, theta));
-    }
-  }
-  best.expect("the starting grid is never empty").1
-}
-
-fn starting_grid(spec: &GarchSpec, mean: f64, backcast: f64) -> Vec<Vec<f64>> {
+/// Variance-targeted starts in unconstrained coordinates, one group to a persistence level.
+pub(super) fn starts(spec: &GarchSpec, mean: f64, backcast: f64) -> Vec<Vec<Vec<f64>>> {
   const PERSISTENCE: [f64; 4] = [0.80, 0.90, 0.95, 0.98];
   const LEVEL_SHOCK: [f64; 4] = [0.03, 0.08, 0.15, 0.25];
   const LOG_SHOCK: [f64; 3] = [0.05, 0.15, 0.30];
   const ARCH_ONLY: [f64; 4] = [0.10, 0.30, 0.50, 0.80];
-  let mut grid = Vec::new();
-  match spec.kind {
-    GarchKind::Garch | GarchKind::GjrGarch => {
-      if spec.q == 0 {
-        for &a in &ARCH_ONLY {
-          grid.push(natural_start(spec, mean, backcast * (1.0 - a), a, 0.0));
-        }
-      } else {
-        for &s in &PERSISTENCE {
-          for &a in &LEVEL_SHOCK {
-            grid.push(natural_start(spec, mean, backcast * (1.0 - s), a, s - a));
-          }
-        }
-      }
+  let level = |shocks: &[f64], start: &dyn Fn(f64) -> Vec<f64>| {
+    let thetas = shocks.iter().map(|&a| to_unconstrained(spec, &start(a)));
+    thetas.collect::<Vec<_>>()
+  };
+  let log_backcast = backcast.ln();
+  let levels = |shocks: &[f64], start: &dyn Fn(f64, f64) -> Vec<f64>| {
+    let groups = PERSISTENCE.iter().map(|&s| level(shocks, &|a| start(a, s)));
+    groups.collect::<Vec<_>>()
+  };
+  match (spec.kind, spec.q) {
+    (GarchKind::Egarch, 0) => {
+      vec![level(&LOG_SHOCK, &|a| {
+        natural_start(spec, mean, log_backcast, a, 0.0)
+      })]
     }
-    GarchKind::Egarch => {
-      let log_backcast = backcast.ln();
-      if spec.q == 0 {
-        for &a in &LOG_SHOCK {
-          grid.push(natural_start(spec, mean, log_backcast, a, 0.0));
-        }
-      } else {
-        for &s in &PERSISTENCE {
-          for &a in &LOG_SHOCK {
-            grid.push(natural_start(spec, mean, (1.0 - s) * log_backcast, a, s));
-          }
-        }
-      }
-    }
+    (GarchKind::Egarch, _) => levels(&LOG_SHOCK, &|a, s| {
+      natural_start(spec, mean, (1.0 - s) * log_backcast, a, s)
+    }),
+    (_, 0) => vec![level(&ARCH_ONLY, &|a| {
+      natural_start(spec, mean, backcast * (1.0 - a), a, 0.0)
+    })],
+    _ => levels(&LEVEL_SHOCK, &|a, s| {
+      natural_start(spec, mean, backcast * (1.0 - s), a, s - a)
+    }),
   }
-  grid
 }
 
 /// Natural start with the shock total spread evenly over the $\alpha_i$,
@@ -233,8 +421,14 @@ fn natural_start(
   if spec.has_gamma() {
     v.extend(std::iter::repeat_n(0.0, spec.p));
   }
-  if spec.q > 0 {
-    v.extend(std::iter::repeat_n(beta_total / spec.q as f64, spec.q));
-  }
+  // EGARCH's lags start non-increasing, each half the one before; the others start equal.
+  let halving = if spec.kind == GarchKind::Egarch {
+    0.5_f64
+  } else {
+    1.0
+  };
+  let shares = (0..spec.q).map(|k| halving.powi(k as i32));
+  let total = shares.clone().sum::<f64>();
+  v.extend(shares.map(|share| beta_total * share / total));
   v
 }

@@ -7,16 +7,22 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
+use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::distfit::fit_johnson_su;
+use stochastic_rs::stats::distfit::fit_skew_t;
 use stochastic_rs::stats::evt::block_maxima;
 use stochastic_rs::stats::evt::fit_gev;
 use stochastic_rs::stats::evt::fit_hill;
 use stochastic_rs::stats::evt::fit_pot;
 use stochastic_rs::stats::garch::GarchSpec;
 use stochastic_rs::stats::garch::fit_garch;
+use stochastic_rs::stats::gmm_cir::fit_cir_gmm;
 use stochastic_rs::stats::mle::DensityApprox;
 use stochastic_rs::stats::mle::fit_mle;
+use stochastic_rs::stats::qmle::DiffusionKind;
+use stochastic_rs::stats::qmle::fit_diffusion_qmle;
 use stochastic_rs::stochastic::autoregressive::garch::Garch;
 use stochastic_rs::stochastic::diffusion::cir::Cir;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
@@ -228,11 +234,19 @@ fn bench_garch_fit(c: &mut Criterion) {
       Deterministic::new(42),
     );
     let returns = process.sample();
-    for (name, spec) in [
+    let higher = [
+      ("Gjr12", GarchSpec::gjr(1, 2)),
+      ("Egarch21", GarchSpec::egarch(2, 1)),
+    ];
+    let specs = [
       ("Garch11", GarchSpec::garch(1, 1)),
       ("Gjr11", GarchSpec::gjr(1, 1)),
       ("Egarch11", GarchSpec::egarch(1, 1)),
-    ] {
+    ];
+    for (name, spec) in specs
+      .into_iter()
+      .chain(higher.into_iter().take(if n == 1_000 { 2 } else { 0 }))
+    {
       group.bench_function(BenchmarkId::new(name, label), |b| {
         b.iter(|| black_box(fit_garch(returns.view(), spec).unwrap()))
       });
@@ -261,12 +275,62 @@ fn bench_evt_fit(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_simplex_fit(c: &mut Criterion) {
+  let mut group = c.benchmark_group("simplex_fit");
+  group.measurement_time(Duration::from_secs(5));
+  let dt = 1.0 / 252.0;
+  let ou = Ou::new(
+    2.0,
+    0.5,
+    0.2,
+    2_000,
+    Some(0.5),
+    Some(2_000.0 * dt),
+    Deterministic::new(3),
+  )
+  .sample();
+  let cir = Cir::new(
+    3.0,
+    0.3,
+    0.2,
+    2_000,
+    Some(0.3),
+    Some(2_000.0 * dt),
+    VarianceBoundary::Absorption,
+    Deterministic::new(4),
+  )
+  .sample();
+  group.bench_function("qmle_ou_2k", |b| {
+    let kind = DiffusionKind::OrnsteinUhlenbeck;
+    b.iter(|| black_box(fit_diffusion_qmle(ou.view(), dt, kind).unwrap()))
+  });
+  group.bench_function("qmle_cir_2k", |b| {
+    b.iter(|| black_box(fit_diffusion_qmle(cir.view(), dt, DiffusionKind::Cir).unwrap()))
+  });
+  group.bench_function("gmm_cir_2k", |b| {
+    b.iter(|| black_box(fit_cir_gmm(cir.view(), dt).unwrap()))
+  });
+  let mut z = vec![0.0; 2_000];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(5))
+    .fill_slice(&mut z);
+  let skewed = ndarray::Array1::from_iter(z.iter().map(|z| 0.1 + 0.5 * ((z + 0.4) / 1.6).sinh()));
+  group.bench_function("johnson_su_2k", |b| {
+    b.iter(|| black_box(fit_johnson_su(skewed.view()).unwrap()))
+  });
+  group.bench_function("skew_t_2k", |b| {
+    b.iter(|| black_box(fit_skew_t(skewed.view()).unwrap()))
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_density_eval,
   bench_log_likelihood,
   bench_mle_fit,
   bench_garch_fit,
-  bench_evt_fit
+  bench_evt_fit,
+  bench_simplex_fit
 );
 criterion_main!(benches);

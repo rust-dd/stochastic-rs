@@ -245,3 +245,44 @@ fn the_spread_criterion_alone_ends_a_run() {
     assert!(gap < reach, "around {centre}: {gap:e}");
   }
 }
+
+struct Lifted;
+
+impl CostFunction for Lifted {
+  type Param = Vec<f64>;
+  type Output = f64;
+  type Error = Infallible;
+
+  fn cost(&self, x: &Self::Param) -> Result<f64, Infallible> {
+    Ok(1e3 + 1e6 * x.iter().map(|value| value.powi(2)).sum::<f64>())
+  }
+}
+
+/// The relative test passes a spread of `2e-3`, `1e-9` of the start's cost of `2e6`, and the
+/// absolute one its own `1e-9`: it runs on, to a lower point.
+#[test]
+fn an_absolute_spread_is_not_scaled_by_the_cost() {
+  let simplex = vec![vec![1.0, 1.0], vec![1.1, 1.0], vec![1.0, 1.1]];
+  let relative = run_nelder_mead(Lifted, simplex.clone(), 5_000, 1e-9, false);
+  let absolute = run_nelder_mead_within(Lifted, simplex, 5_000, Spread::Absolute(1e-9), false);
+  let excess = |run: &SimplexRun| run.best.iter().map(|v| 1e6 * v * v).sum::<f64>();
+  assert_eq!(relative.stop, SimplexStop::Converged);
+  assert_eq!(absolute.stop, SimplexStop::Converged);
+  assert!(absolute.iterations > relative.iterations);
+  assert!(excess(&absolute) < excess(&relative));
+}
+
+#[test]
+fn every_stop_has_its_word() {
+  let words = [
+    (SimplexStop::Converged, "converged"),
+    (SimplexStop::Flat, "flat objective"),
+    (SimplexStop::IterationCap, "iteration cap reached"),
+    (SimplexStop::Stagnated, "no numerical progress"),
+    (SimplexStop::Collapsed, "no numerical progress"),
+    (SimplexStop::Undefined, "solver failed"),
+  ];
+  for (stop, word) in words {
+    assert_eq!(stop.message(), word, "{stop:?}");
+  }
+}

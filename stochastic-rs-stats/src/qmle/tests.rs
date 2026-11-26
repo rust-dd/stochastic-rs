@@ -46,6 +46,7 @@ fn literal(kind: DiffusionKind) -> QmleFit {
     log_likelihood: 0.0,
     iterations: 0,
     converged: true,
+    message: "converged".into(),
   }
 }
 
@@ -88,6 +89,7 @@ fn qmle_ou_recovers_true_params() {
       fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap(),
     )
   });
+  assert!(fits.iter().all(|(_, q)| q.message == "converged"));
   let ok = fits.iter().any(|(_, q)| {
     q.converged
       && (q.mu - mt).abs() / mt < 0.2
@@ -113,6 +115,7 @@ fn qmle_cir_recovers_true_params() {
       fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap(),
     )
   });
+  assert!(fits.iter().all(|(_, q)| q.message == "converged"));
   let ok = fits.iter().any(|(_, q)| {
     q.converged
       && (q.mu - mt).abs() / mt < 0.12

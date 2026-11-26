@@ -67,7 +67,8 @@ fn check_fit(
   let r = lcg_garch_returns();
   let fit = fit_garch(r.view(), spec).unwrap();
   assert_close(fit.backcast, BACKCAST, 1e-12, "backcast");
-  assert!(fit.converged, "simplex did not converge");
+  assert!(fit.converged, "{}", fit.message);
+  assert_eq!(fit.message, "converged");
   assert!(
     fit.log_likelihood >= loglik - 1e-7,
     "worse likelihood than arch: {} vs {loglik}",

@@ -18,8 +18,9 @@ use crate::optim::certificate::Axis;
 use crate::optim::certificate::Beside;
 use crate::optim::certificate::beside;
 
-/// Half of `χ²₁(0.95)`, the drop in log-likelihood at the end of a 95 % likelihood interval.
-const IDENTIFIED: f64 = 1.92;
+/// What a move of one parameter alone to a box end may cost and still count as loose: half of
+/// `χ²₁(0.95)`. It picks a restart's point and words no fit.
+const LOOSE: f64 = 1.92;
 
 /// The objective at a point without a likelihood, above every sum [`ranked`] returns.
 pub(super) const NO_LIKELIHOOD: f64 = 1e100;
@@ -181,7 +182,7 @@ impl<'a> MleProblem<'a> {
   }
 
   /// With two or more loose moves, `at` with each such parameter back at `start`'s value: a move
-  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`IDENTIFIED`].
+  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`LOOSE`].
   pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
     let here = self.eval_nll(at);
     let mut from = at.to_vec();
@@ -204,7 +205,7 @@ impl<'a> MleProblem<'a> {
         .filter(|&to| {
           let mut moved = at.to_vec();
           moved[i] = to;
-          self.eval_nll(&moved) - here < IDENTIFIED
+          self.eval_nll(&moved) - here < LOOSE
         })
         .count();
       if loose > 0 {

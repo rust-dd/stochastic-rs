@@ -21,7 +21,10 @@ use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
-use crate::optim::nelder_mead;
+use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::stationarity::common::centred;
 use crate::stationarity::common::in_the_doubles;
 use crate::stationarity::common::reject_exact_fit;
@@ -55,10 +58,14 @@ pub struct QmleFit {
   pub kind: DiffusionKind,
   /// The Gaussian quasi-log-likelihood at the fit, for OU the exact one.
   pub log_likelihood: f64,
-  /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
+  /// Iterations of the simplex, the polishes and the refits; 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
-  /// The simplex met a `1e-10` spread of its values, a stall included; `true` for the closed form.
+  /// No step along one parameter gains `1e-7` in quasi-log-likelihood, and for CIR the limit
+  /// `θ → 0` does not fit as well where the quadratic model puts it within 36 standard errors.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 impl QmleFit {
@@ -197,13 +204,26 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
   Ar1::of(&x, kind)?;
   let carrier = Carrier::new(&x, kind)?;
-  let neg_ll = |p: &[f64; 3]| -> f64 {
-    let [theta, mu, sigma] = carrier.params(*p);
-    -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
+  let neg_ll = |p: &[f64]| -> f64 {
+    let [theta, mu, sigma] = carrier.params([p[0], p[1], p[2]]);
+    let cost = -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma);
+    if cost.is_finite() { cost } else { NO_VALUE }
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
-
-  let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
+  let coordinates = [
+    carrier.speed(start[0]),
+    carrier.level(start[1]),
+    Coordinate::log(start[2]),
+  ];
+  let found = minimise(
+    neg_ll,
+    by_differences,
+    &[&[start.to_vec()]],
+    &coordinates,
+    &[],
+    x.len() - 1,
+  );
+  let p = [found.at[0], found.at[1], found.at[2]];
   let log_likelihood = -neg_ll(&p) + log_density_shift(x.len() - 1, unit);
   if !log_likelihood.is_finite() {
     return Err(StatsError::Numerical {
@@ -218,8 +238,9 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
     sigma,
     kind,
     log_likelihood,
-    iterations,
-    converged,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["theta", "mu", "sigma"]),
   })
 }
 
@@ -338,6 +359,22 @@ impl Carrier {
     }
   }
 
+  /// The speed's coordinate: where the level is a logarithm, `θ → 0` leaves it unidentified.
+  fn speed(self, start: f64) -> Coordinate {
+    match self {
+      Self::Standardised { .. } => Coordinate::log(start),
+      Self::Log { .. } => Coordinate::log(start).fading(1),
+    }
+  }
+
+  /// The level's coordinate in a search from `start`: the standardised level, or its logarithm.
+  fn level(self, start: f64) -> Coordinate {
+    match self {
+      Self::Standardised { .. } => Coordinate::location(0.0, 1.0),
+      Self::Log { .. } => Coordinate::log(start),
+    }
+  }
+
   pub(crate) fn mean(self) -> f64 {
     match self {
       Self::Standardised { mean, .. } | Self::Log { mean } => mean,
@@ -441,6 +478,7 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     log_likelihood: ll + log_density_shift(residuals.len(), unit),
     iterations: 0,
     converged: true,
+    message: "converged".into(),
   })
 }
 

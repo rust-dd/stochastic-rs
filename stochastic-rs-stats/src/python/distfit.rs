@@ -67,6 +67,11 @@ macro_rules! fit_class {
       fn converged(&self) -> bool {
         self.inner.converged
       }
+
+      #[getter]
+      fn message(&self) -> &str {
+        &self.inner.message
+      }
     }
   };
 }

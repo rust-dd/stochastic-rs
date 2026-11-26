@@ -31,8 +31,10 @@ use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
-use crate::optim::best_start;
-use crate::optim::nelder_mead_vec;
+use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::stationarity::common::params_in_data_units;
 use crate::stationarity::common::per_unit;
 use crate::stationarity::common::unit_scaled;
@@ -58,10 +60,14 @@ pub struct GpdFit {
   pub bic: f64,
   /// Number of excesses.
   pub nobs: usize,
-  /// Simplex iterations.
+  /// Iterations of the simplex and of every L-BFGS polish.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values, which a stall passes too.
+  /// No step along one parameter of the search gains `1e-7` in log-likelihood, and none rests on
+  /// a bound or is unidentified: stationary along each, not global.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 /// Peaks-over-threshold tail model: a [`GpdFit`] on the excesses over
@@ -110,10 +116,10 @@ impl PotFit {
   }
 }
 
-/// Negative GPD log-likelihood; `1e300` outside the feasible region.
+/// Negative GPD log-likelihood; [`NO_VALUE`] outside the feasible region.
 fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let n = y.len() as f64;
   if xi.abs() < 1e-12 {
@@ -123,7 +129,7 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   for &v in y {
     let w = xi * v / sigma;
     if w <= -1.0 {
-      return 1e300;
+      return NO_VALUE;
     }
     acc += w.ln_1p();
   }
@@ -146,16 +152,16 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsE
 
   let objective = |p: &[f64]| negative_log_likelihood(&y, p[0].exp(), p[1]);
   let ratio = mean * mean / var;
-  let mut starts = vec![[
+  let mut starts = vec![vec![
     (0.5 * mean * (1.0 + ratio)).ln(),
     (0.5 * (1.0 - ratio)).clamp(-0.45, 0.9),
   ]];
   for xi0 in [-0.2, 0.0, 0.2, 0.5] {
-    starts.push([(mean * (1.0 - xi0)).ln(), xi0]);
+    starts.push(vec![(mean * (1.0 - xi0)).ln(), xi0]);
   }
-  let start = best_start(starts, objective).expect("a non-empty starting grid");
-  let (theta, iters, converged) = nelder_mead_vec(&start, 5_000, objective);
-  let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, objective);
+  let coordinates = [Coordinate::log(mean.ln()), Coordinate::free()];
+  let found = minimise(objective, by_differences, &[&starts], &coordinates, &[], n);
+  let theta = &found.at;
   let sigma = theta[0].exp();
   let xi = theta[1];
   let log_likelihood = -negative_log_likelihood(&y, sigma, xi);
@@ -173,8 +179,9 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsE
     aic: 4.0 - 2.0 * fit.log_likelihood,
     bic: 2.0 * (n as f64).ln() - 2.0 * fit.log_likelihood,
     nobs: n,
-    iterations: iters + iters_restart,
-    converged: converged || converged_restart,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["sigma", "xi"]),
   })
 }
 
