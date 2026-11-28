@@ -331,6 +331,7 @@ pub(super) fn every_family() -> Vec<Probe> {
         w_plus: 0.5,
         lambda_plus: 3.0,
         lambda_minus: 3.0,
+        rem_sd: 0.2,
       },
       0.0,
     ),

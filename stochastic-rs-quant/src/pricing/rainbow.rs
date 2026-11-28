@@ -10,8 +10,8 @@
 //!   K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
 //! $$
 //!
-//! Reference: Stulz (1982), J. Financ. Econ. 10
-//! Reference: Johnson (1987), J. Financ. Quant. Anal. 22
+//! Reference: Stulz (1982), J. Financ. Econ. 10(2), 161–185, DOI 10.1016/0304-405X(82)90011-3
+//! Reference: Johnson (1987), J. Financ. Quant. Anal. 22(3), DOI 10.2307/2330963
 //! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed., Ch. 5
 
 use ndarray::Array1;
@@ -103,6 +103,8 @@ impl StulzRainbowPricer {
   }
 
   /// The contract at one query point: its payoff at `tau = 0`, NaN past expiry.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     if let Some(value) = expired(tau, &[r, q1, q2], || self.payoff.evaluate(&[s1, s2], k)) {
       return value;
@@ -115,6 +117,8 @@ impl StulzRainbowPricer {
     }
   }
 
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   fn call_on_min(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let v1 = self.sigma1;
     let v2 = self.sigma2;
@@ -139,6 +143,8 @@ impl StulzRainbowPricer {
       - k * (-r * t).exp() * bvn(y1 - v1 * sqrt_t, y2 - v2 * sqrt_t, rho)
   }
 
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   fn call_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     use crate::pricing::bsm::BsmCoc;
     use crate::pricing::bsm::BsmPricer;
@@ -151,6 +157,8 @@ impl StulzRainbowPricer {
     c1 + c2 - self.call_on_min(s1, s2, k, r, q1, q2, tau)
   }
 
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   fn put_on_min(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     // Min-option parity, `P_min = C_min + Ke^{−rT} − F_min`, `F_min` the discounted `E[min]`.
     let call_min = self.call_on_min(s1, s2, k, r, q1, q2, tau);
@@ -164,6 +172,8 @@ impl StulzRainbowPricer {
     call_min + k * (-r * tau).exp() - f_min
   }
 
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   fn put_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let call_max = self.call_on_max(s1, s2, k, r, q1, q2, tau);
     use crate::pricing::spread::MargrabePricer;

@@ -221,7 +221,7 @@ fn a_nan_branch_probability_is_a_precondition() {
 
 #[test]
 #[should_panic(
-  expected = "branches[0][0] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::epsilon()`, got down + middle + up = 1.25"
+  expected = "branches[0][0] must satisfy `(down + middle + up - T::one()).abs() <= 8.0 * T::machine_epsilon()`, got down + middle + up = 1.25"
 )]
 fn a_branch_that_does_not_sum_to_one_is_a_precondition() {
   one_step(0.25, 0.5, 0.5);

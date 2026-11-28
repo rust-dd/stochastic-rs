@@ -113,6 +113,7 @@ impl BsmPricer {
 
   /// Black volatility implied by `c_price` under this convention's carry [`b`](Self::b), whatever
   /// `sigma` is; NaN for a price outside the no-arbitrage bounds.
+  // One argument per term of the query.
   #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,

@@ -8,6 +8,7 @@
 //! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
 //! Reference: Henrard (2013), arXiv:1304.4474
 
+use crate::calendar::DayCountConvention;
 use crate::curves::DiscountCurve;
 use crate::curves::MultiCurve;
 use crate::traits::RealExt;
@@ -68,11 +69,13 @@ pub trait RateIndex<T: RealExt>: Clone + Send + Sync {
   /// The tenor whose forecast curve the index reads.
   fn tenor(&self) -> RateTenor;
 
-  /// Forecast the coupon rate over an accrual period.
+  /// The coupon rate over `period`, its curve read at `discount_day_count` year fractions from
+  /// `valuation_date`, the pricer's time axis; NaN for a period that starts before that date.
   fn forward_rate(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: chrono::NaiveDate,
+    discount_day_count: DayCountConvention,
     period: &AccrualPeriod<T>,
   ) -> T;
 }

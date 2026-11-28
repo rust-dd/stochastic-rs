@@ -1,153 +1,40 @@
-//! Optimization helpers shared by the estimator modules.
-//!
-//! One Nelder–Mead simplex: the three-parameter entry wraps the any-dimension one GARCH uses.
+//! Optimization the estimator modules share, and `stochastic-rs-quant` with them: the stop
+//! classes and their words, the first-order check, the L-BFGS searches and the simplex.
 
-use std::cmp::Ordering;
+use crate::traits::RealExt;
 
-use basin::MoreThuente;
-use basin::TerminationReason;
+pub(crate) mod certificate;
+mod curvature;
+mod lbfgs;
+mod legacy_simplex;
+pub(crate) mod search;
+pub mod simplex;
+mod stop;
 
-/// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
-pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
-  a.is_nan().cmp(&b.is_nan()).then(a.total_cmp(&b))
-}
+pub(crate) use lbfgs::lbfgsb;
+pub(crate) use lbfgs::more_thuente;
+pub(crate) use lbfgs::polish;
+pub(crate) use legacy_simplex::nelder_mead;
+pub(crate) use legacy_simplex::nelder_mead_vec;
+pub use stop::SolverStop;
 
 /// The start with the lowest objective; a NaN objective loses to every number.
 pub(crate) fn best_start<P: AsRef<[f64]>>(
   starts: impl IntoIterator<Item = P>,
   objective: impl Fn(&[f64]) -> f64,
 ) -> Option<P> {
+  costed_start(starts, objective).map(|(_, start)| start)
+}
+
+/// [`best_start`] with its cost.
+pub(crate) fn costed_start<P: AsRef<[f64]>>(
+  starts: impl IntoIterator<Item = P>,
+  objective: impl Fn(&[f64]) -> f64,
+) -> Option<(f64, P)> {
   starts
     .into_iter()
     .map(|start| (objective(start.as_ref()), start))
-    .min_by(|a, b| nan_last(a.0, b.0))
-    .map(|(_, start)| start)
-}
-
-/// Whether a basin search stopped on one of its tolerances, not on a budget or a failure.
-pub(crate) fn stopped_on_tolerance(reason: TerminationReason) -> bool {
-  matches!(
-    reason,
-    TerminationReason::CostTolerance
-      | TerminationReason::ProjectedGradientTolerance
-      | TerminationReason::SolverConverged
-  )
-}
-
-/// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.
-pub(crate) fn more_thuente() -> MoreThuente<f64> {
-  MoreThuente::new()
-    .with_sufficient_decrease_coefficient(1e-4)
-    .with_curvature_coefficient(0.9)
-    .with_relative_bracket_tolerance(1e-10)
-    .stpmin(f64::EPSILON.sqrt())
-    .stpmax(f64::INFINITY)
-}
-
-/// Nelder–Mead minimiser of a three-parameter objective: `(argmin, iterations, converged)`.
-/// `max_iter` bounds a Monte-Carlo objective, whose resampling kinks never reach the tolerance.
-pub(crate) fn nelder_mead<F: Fn(&[f64; 3]) -> f64>(
-  start: [f64; 3],
-  max_iter: usize,
-  f: F,
-) -> ([f64; 3], usize, bool) {
-  let (p, iters, converged) = nelder_mead_vec(&start, max_iter, |p| f(&[p[0], p[1], p[2]]));
-  ([p[0], p[1], p[2]], iters, converged)
-}
-
-/// Nelder–Mead minimiser in any dimension, with [`nelder_mead`]'s coefficients and `1e-10` spread
-/// tolerance; the initial simplex offsets each coordinate by `0.1`.
-pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
-  start: &[f64],
-  max_iter: usize,
-  f: F,
-) -> (Vec<f64>, usize, bool) {
-  const ALPHA: f64 = 1.0;
-  const GAMMA: f64 = 2.0;
-  const RHO: f64 = 0.5;
-  const SHRINK: f64 = 0.5;
-  const TOL: f64 = 1e-10;
-
-  let n = start.len();
-  let mut simplex: Vec<Vec<f64>> = vec![start.to_vec(); n + 1];
-  for i in 0..n {
-    simplex[i + 1][i] += 0.1;
-  }
-  let mut fvals: Vec<f64> = simplex.iter().map(|p| f(p)).collect();
-
-  let mut iters = 0;
-  while iters < max_iter {
-    iters += 1;
-    let mut order: Vec<usize> = (0..=n).collect();
-    order.sort_by(|&a, &b| nan_last(fvals[a], fvals[b]));
-    let best = order[0];
-    let worst = order[n];
-    let second_worst = order[n - 1];
-
-    if (fvals[worst] - fvals[best]).abs() < TOL {
-      return (simplex[best].clone(), iters, true);
-    }
-
-    let mut centroid = vec![0.0; n];
-    for &o in &order[..n] {
-      for d in 0..n {
-        centroid[d] += simplex[o][d] / n as f64;
-      }
-    }
-
-    let reflect = combine(&centroid, &simplex[worst], ALPHA, true);
-    let f_reflect = f(&reflect);
-
-    if f_reflect < fvals[best] {
-      let expand = combine(&centroid, &simplex[worst], ALPHA * GAMMA, true);
-      let f_expand = f(&expand);
-      if f_expand < f_reflect {
-        simplex[worst] = expand;
-        fvals[worst] = f_expand;
-      } else {
-        simplex[worst] = reflect;
-        fvals[worst] = f_reflect;
-      }
-    } else if f_reflect < fvals[second_worst] {
-      simplex[worst] = reflect;
-      fvals[worst] = f_reflect;
-    } else {
-      let contract = combine(&centroid, &simplex[worst], RHO, false);
-      let f_contract = f(&contract);
-      if f_contract < fvals[worst] {
-        simplex[worst] = contract;
-        fvals[worst] = f_contract;
-      } else {
-        let anchor = simplex[best].clone();
-        for &o in &order[1..] {
-          for d in 0..n {
-            simplex[o][d] = anchor[d] + SHRINK * (simplex[o][d] - anchor[d]);
-          }
-          fvals[o] = f(&simplex[o]);
-        }
-      }
-    }
-  }
-  let best = (0..=n)
-    .min_by(|&a, &b| nan_last(fvals[a], fvals[b]))
-    .expect("a simplex has n + 1 vertices");
-  (simplex[best].clone(), iters, false)
-}
-
-/// Reflection (`reflect = true`) or contraction (`reflect = false`) of the
-/// worst vertex through the centroid with the given coefficient.
-fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64> {
-  centroid
-    .iter()
-    .zip(worst)
-    .map(|(c, w)| {
-      if reflect {
-        c + coef * (c - w)
-      } else {
-        c + coef * (w - c)
-      }
-    })
-    .collect()
+    .min_by(|a, b| a.0.nan_last(&b.0))
 }
 
 #[cfg(test)]
@@ -161,25 +48,9 @@ mod tests {
       let objective = |p: &[f64]| if p[0] == 1.0 { 3.0 } else { nan };
       assert_eq!(best_start([[0.0], [1.0], [2.0]], objective), Some([1.0]));
       assert_eq!(
-        nan_last(nan, f64::NEG_INFINITY),
+        nan.nan_last(&f64::NEG_INFINITY),
         std::cmp::Ordering::Greater
       );
-    }
-  }
-
-  /// A NaN vertex ranks worst, so the simplex reflects away from it instead of shrinking onto it.
-  #[test]
-  fn the_simplex_leaves_a_nan_vertex() {
-    for nan in [f64::NAN, -f64::NAN] {
-      let objective = |p: &[f64]| {
-        if p[0] < 0.05 {
-          nan
-        } else {
-          (p[0] - 1.0).powi(2)
-        }
-      };
-      let (argmin, _, converged) = nelder_mead_vec(&[0.0], 500, objective);
-      assert!(converged && objective(&argmin) < 0.02, "{nan}: {argmin:?}");
     }
   }
 }

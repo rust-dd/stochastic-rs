@@ -104,7 +104,8 @@ impl<T: RealExt> VanillaInterestRateSwap<T> {
     )
   }
 
-  /// Swap valuation summary.
+  /// Swap valuation summary; NaN while a floating coupon that fixed before the valuation date has
+  /// no observed rate ([`Leg::with_fixings`]).
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,

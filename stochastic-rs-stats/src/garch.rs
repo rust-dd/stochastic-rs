@@ -28,6 +28,8 @@
 //!
 //! Reference: Bollerslev (1986), J. Econometrics 31(3), 307-327, DOI: 10.1016/0304-4076(86)90063-1
 //! Reference: Nelson (1991), Econometrica 59(2), 347-370, DOI: 10.2307/2938260
+//! Reference: Straumann & Mikosch (2006), Ann. Statist. 34(5), 2449-2495, Example 3.8,
+//! DOI: 10.1214/009053606000000803 (EGARCH(1,1)'s region)
 //! Reference: Glosten et al. (1993), J. Fin. 48(5), 1779-1801, 10.1111/j.1540-6261.1993.tb05128.x
 //! Reference: Bollerslev–Wooldridge (1992), Econom. Rev. 11(2), 143-172, 10.1080/07474939208800229
 
@@ -38,13 +40,6 @@ mod tests;
 mod transform;
 mod units;
 
-use std::convert::Infallible;
-
-use basin::CostFunction;
-use basin::Executor;
-use basin::Gradient;
-use basin::LbfgsState;
-use basin::Lbfgsb;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -52,8 +47,9 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::optim::more_thuente;
-use crate::optim::nelder_mead_vec;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
@@ -113,7 +109,8 @@ impl GarchSpec {
     }
   }
 
-  /// EGARCH($p$, $q$) with a constant mean.
+  /// EGARCH($p$, $q$) with a constant mean on $\alpha_i \ge |\gamma_i|$, $\beta_1 \ge \dots \ge
+  /// \beta_q \ge 0$, $\sum\beta_j < 1$: at (1,1) the region of Straumann & Mikosch (2006, Ex. 3.8).
   pub fn egarch(p: usize, q: usize) -> Self {
     Self {
       kind: GarchKind::Egarch,
@@ -204,10 +201,14 @@ pub struct GarchFit {
   pub persistence: f64,
   /// Backcast variance seeding the recursion.
   pub backcast: f64,
-  /// Simplex iterations plus L-BFGS polishing iterations.
+  /// Iterations of the simplex and of every L-BFGS polish and refit at a limit.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
+  /// No step along a coordinate of the search, or along a parameter that is zero at a limit, gains
+  /// `1e-7` in log-likelihood, and no limit within 36 model standard errors fits as well: local.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
   /// Number of observations.
   pub nobs: usize,
 }
@@ -235,14 +236,22 @@ pub fn fit_garch<T: FloatExt>(
     returns: r.clone(),
     backcast,
   };
-  let start = transform::best_start(&spec, mean, backcast, |theta| problem.objective(theta));
-  let (theta_nm, iters_nm, converged) =
-    nelder_mead_vec(&start, 5_000, |theta| problem.objective(theta));
-  let (theta_nm, iters_restart, converged_restart) =
-    nelder_mead_vec(&theta_nm, 5_000, |theta| problem.objective(theta));
-  let (theta, iters_lbfgs) = problem.polish(theta_nm);
+  let starts = transform::starts(&spec, mean, backcast);
+  let groups = starts.iter().map(Vec::as_slice).collect::<Vec<_>>();
+  let (coordinates, words) = transform::coordinates(&spec, mean, backcast);
+  let objective = |theta: &[f64]| problem.objective(theta);
+  let weights = transform::weights(spec);
+  let found = minimise(
+    objective,
+    by_differences,
+    &groups,
+    &coordinates,
+    &weights,
+    n,
+  );
+  let theta = &found.at;
 
-  let fitted = transform::to_natural(&spec, &theta);
+  let fitted = transform::to_natural(&spec, theta);
   let (log_likelihood, _) = recursion::log_likelihood_terms(&spec, &fitted, &r, backcast);
   if !(fitted.iter().all(|v| v.is_finite()) && log_likelihood.is_finite()) {
     return Err(StatsError::Numerical { stage: "estimate" });
@@ -310,15 +319,16 @@ pub fn fit_garch<T: FloatExt>(
     bic: kf * (n as f64).ln() - 2.0 * log_likelihood,
     persistence,
     backcast,
-    iterations: iters_nm + iters_restart + iters_lbfgs,
-    converged: converged || converged_restart,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found
+      .stop
+      .message(&words.iter().map(String::as_str).collect::<Vec<_>>()),
     nobs: n,
   })
 }
 
-/// The negative quasi-log-likelihood in unconstrained coordinates, shared by
-/// the simplex and the L-BFGS polish.
-#[derive(Clone)]
+/// The negative quasi-log-likelihood in unconstrained coordinates.
 struct Problem {
   spec: GarchSpec,
   returns: Vec<f64>,
@@ -329,55 +339,6 @@ impl Problem {
   fn objective(&self, theta: &[f64]) -> f64 {
     let natural = transform::to_natural(&self.spec, theta);
     let ll = recursion::total_log_likelihood(&self.spec, &natural, &self.returns, self.backcast);
-    if ll.is_finite() { -ll } else { 1e300 }
-  }
-
-  /// L-BFGS from the simplex optimum; keeps the simplex point unless the
-  /// best point found during polishing improves the objective.
-  fn polish(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
-    let start_cost = self.objective(&theta);
-    let solver = Lbfgsb::with_line_search(more_thuente())
-      .unbounded()
-      .with_absolute_gradient_tolerance(f64::EPSILON.sqrt())
-      .with_absolute_cost_change_tolerance(f64::EPSILON);
-    let state = LbfgsState::new(theta.clone(), 10);
-    let result = Executor::new(self.clone(), solver, state)
-      .max_iter(200)
-      .run()
-      .expect("GARCH objective is infallible");
-    let iters = result.iter() as usize;
-    let best = result.best_param();
-    if self.objective(best) < start_cost {
-      (best.clone(), iters)
-    } else {
-      (theta, iters)
-    }
-  }
-}
-
-impl CostFunction for Problem {
-  type Param = Vec<f64>;
-  type Output = f64;
-  type Error = Infallible;
-
-  fn cost(&self, theta: &Self::Param) -> Result<Self::Output, Self::Error> {
-    Ok(self.objective(theta))
-  }
-}
-
-impl Gradient for Problem {
-  type Gradient = Vec<f64>;
-
-  fn gradient(&self, theta: &Self::Param) -> Result<Self::Gradient, Self::Error> {
-    let mut grad = vec![0.0; theta.len()];
-    for i in 0..theta.len() {
-      let step = 1e-6 * (1.0 + theta[i].abs());
-      let mut plus = theta.clone();
-      let mut minus = theta.clone();
-      plus[i] += step;
-      minus[i] -= step;
-      grad[i] = (self.objective(&plus) - self.objective(&minus)) / (2.0 * step);
-    }
-    Ok(grad)
+    if ll.is_finite() { -ll } else { NO_VALUE }
   }
 }

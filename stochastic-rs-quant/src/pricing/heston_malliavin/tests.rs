@@ -243,10 +243,13 @@ fn near_unit_correlation_is_rejected_before_simulation() {
   let _ = HestonMalliavinEstimator::new(bsm_limit_model(0.999_999), config(2_000, 8, 9));
 }
 
+/// A field set off its domain and the panic `new` raises for it.
+type Breaks<C> = (fn(&mut C), &'static str);
+
 /// Each broken control panics in `new`, naming it.
 #[test]
 fn a_broken_config_panics_in_new() {
-  let cases: [(fn(&mut HestonMalliavinConfig<Deterministic>), &str); 9] = [
+  let cases: [Breaks<HestonMalliavinConfig<Deterministic>>; 9] = [
     (
       |c| c.paths = 5,
       "paths must satisfy `paths >= 4 && paths.is_multiple_of(2)`, got paths = 5",
@@ -314,7 +317,7 @@ fn a_broken_model_parameter_panics_in_new() {
     dividend_yield: 0.01,
     tau: 0.5,
   };
-  let cases: [(fn(&mut HestonModel), &str); 11] = [
+  let cases: [Breaks<HestonModel>; 11] = [
     (
       |m| m.s = -1.0,
       "s must satisfy `s.is_finite() && s > 0.0`, got s = -1.0",

@@ -54,14 +54,12 @@ fn from_provider_recovers_surface_from_mock_chain() {
   });
 
   let surface = ImpliedVolSurface::from_provider(&mp, "ACME", r, 0.0).unwrap();
-  for j in 0..taus.len() {
-    for i in 0..strikes.len() {
+  for (j, tau) in taus.iter().enumerate() {
+    for (i, k) in strikes.iter().enumerate() {
       let iv = surface.ivs[[j, i]];
       assert!(
         (iv - sigma).abs() < 1e-10,
-        "recovered iv={iv} vs σ={sigma} at T={}, K={}",
-        taus[j],
-        strikes[i]
+        "recovered iv={iv} vs σ={sigma} at T={tau}, K={k}"
       );
     }
   }
@@ -108,14 +106,12 @@ fn from_prices_round_trip() {
     OptionType::Call,
   );
 
-  for j in 0..maturities.len() {
-    for i in 0..strikes.len() {
+  for (j, tau) in maturities.iter().enumerate() {
+    for (i, k) in strikes.iter().enumerate() {
       let iv = surface.ivs[[j, i]];
       assert!(
         (iv - sigma).abs() < 1e-6,
-        "iv={iv} vs sigma={sigma} at T={}, K={}",
-        maturities[j],
-        strikes[i]
+        "iv={iv} vs sigma={sigma} at T={tau}, K={k}"
       );
     }
   }

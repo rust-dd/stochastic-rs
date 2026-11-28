@@ -3,10 +3,6 @@
 
 // A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::needless_range_loop)]
 
 #[cfg(doctest)]
 mod doctest_fields;
@@ -14,7 +10,6 @@ mod doctest_fields;
 mod doctest_names;
 mod error;
 mod linalg;
-mod total_order;
 
 pub mod traits;
 

@@ -158,8 +158,7 @@ impl LeastSquaresProblem for SsviLmProblem {
       let phi = p.phi(theta);
       let log_ratio = (theta / (1.0 + theta)).ln();
 
-      for i in 0..slice.log_moneyness.len() {
-        let k = slice.log_moneyness[i];
+      for &k in &slice.log_moneyness {
         let pk_plus_rho = phi * k + p.rho;
         let r2 = pk_plus_rho * pk_plus_rho + 1.0 - p.rho * p.rho;
         let r = r2.max(1e-30).sqrt();

@@ -1,21 +1,20 @@
 use std::fmt;
 
 use basin::Executor;
-use basin::LbfgsState;
-use basin::Lbfgsb;
-use basin::TerminationReason;
+use basin::FirstOrderState;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use self::problem::Beside;
 use self::problem::MleProblem;
 use self::step_back::SteppingBack;
 use super::DiffusionModel;
 use super::density::DensityApprox;
 use crate::StatsError;
 use crate::input::validate_view;
-use crate::optim::more_thuente;
-use crate::optim::stopped_on_tolerance;
+use crate::optim::SolverStop;
+use crate::optim::certificate::Beside;
+use crate::optim::certificate::Stop;
+use crate::optim::lbfgsb;
 
 /// Result of maximum likelihood estimation.
 #[derive(Clone, Debug)]
@@ -38,7 +37,7 @@ pub struct MleFit {
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>` (the parameter
   /// a step off its bound gains along), `stopped at the edge of the law's support`, …
   pub message: String,
-  /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 16
+  /// L-BFGS-B iterations summed over every search run, kept or not, at most 200 each and 19
   /// searches. `0` when the model has no free parameters (trivially `converged = true`).
   pub iterations: usize,
 }
@@ -64,68 +63,22 @@ impl fmt::Display for MleFit {
 /// What a further search must gain in log-likelihood to replace the estimate it started from.
 const GAIN: f64 = 1e-6;
 
-/// The most a step along one parameter gains in log-likelihood beside a converged estimate: on
-/// 117,768 fits the stationary ones read `2.3e-9` or less, and a stall anything up to 94.
-const STATIONARY: f64 = 1e-7;
-
-/// Roundings of the sum a gain must clear: on 366 fits of `1e4` to `3e6` points the walks beside
-/// an optimum gain `0.30` of one or less, and beside the stalls they flag `1.2` or more.
-const ROUNDINGS: f64 = 1.0;
-
 /// Searches after the first: each starts where the last one left a parameter unidentified.
 const STAGES: usize = 3;
 
 /// Searches that may run again in the units of where the last one ended.
 const RESCALES: usize = 12;
 
+/// Searches from the point of a gain the first-order check found, quant's count of reseats.
+const RESEATS: usize = 3;
+
 /// Where an L-BFGS-B search ended: the best point, the objective there and the fit signals.
 struct Search {
   params: Vec<f64>,
   cost: f64,
   converged: bool,
-  reason: TerminationReason,
+  reason: SolverStop,
   iterations: usize,
-}
-
-/// Why a fit stopped, `Converged` alone being `converged = true`.
-enum Stop {
-  Converged,
-  Search(TerminationReason),
-  NotStationary,
-  Bound(usize),
-  Edge,
-  Outside,
-}
-
-impl Stop {
-  /// The stop in the words of quant's calibrators, `names` the model's parameters.
-  fn message(&self, names: &[&str]) -> String {
-    let words = match self {
-      Self::Converged => "converged",
-      Self::Search(TerminationReason::MaxIter | TerminationReason::MaxCostEvals) => {
-        "evaluation budget exhausted"
-      }
-      Self::Search(TerminationReason::NumericalNoProgress) => "no numerical progress",
-      Self::Search(TerminationReason::SolverFailed) => "solver failed",
-      Self::Search(_) | Self::Outside => "stopped without convergence",
-      Self::NotStationary => "not stationary",
-      Self::Bound(held) => return format!("stopped at the bound of {}", names[*held]),
-      Self::Edge => "stopped at the edge of the law's support",
-    };
-    words.into()
-  }
-}
-
-impl Beside {
-  /// The stop the walks read, `held` saying that the parameter of the largest gain is on a bound.
-  fn stop(&self, held: bool) -> Stop {
-    match () {
-      _ if self.gain <= STATIONARY.max(ROUNDINGS * self.rounding) => Stop::Converged,
-      _ if held => Stop::Bound(self.along),
-      _ if self.walled => Stop::Edge,
-      _ => Stop::NotStationary,
-    }
-  }
 }
 
 /// The walks beside `at` and the stop they give a search that converged there: the solver's own
@@ -142,16 +95,15 @@ fn verdict(problem: &MleProblem<'_>, at: &[f64], lower: &[f64], upper: &[f64]) -
 /// problem's units: there the gradient tolerance is relative to each parameter's size.
 fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
   let units = problem.units();
-  let solver = Lbfgsb::with_line_search(SteppingBack(more_thuente()))
-    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
-    .with_absolute_cost_change_tolerance(f64::EPSILON);
-  let result = Executor::new(problem, solver, LbfgsState::new(units.of(start), 10))
+  let from = units.of(start);
+  let solver = lbfgsb(SteppingBack);
+  let result = Executor::new(problem, solver, FirstOrderState::new(from.clone()))
     .max_iter(200)
     .run()
-    .expect("MLE objective is infallible");
+    .expect("the box is ordered and the MLE objective infallible");
   let cost = result.best_cost();
-  let best = units.params(result.best_param());
-  let reason = result.reason;
+  let best = units.params(result.state.best().map_or(&from, |(best, _)| best));
+  let reason = SolverStop::from(&result.report.termination);
   let (params, converged, iterations) = resolve_fit_outcome(best, reason, result.iter());
   Search {
     params,
@@ -165,12 +117,12 @@ fn search(problem: MleProblem<'_>, start: &[f64]) -> Search {
 /// Resolves a Basin L-BFGS-B outcome into the public fit signals.
 fn resolve_fit_outcome(
   best_param: Vec<f64>,
-  reason: TerminationReason,
+  reason: SolverStop,
   iterations: u64,
 ) -> (Vec<f64>, bool, usize) {
   (
     best_param,
-    stopped_on_tolerance(reason),
+    reason == SolverStop::Converged,
     iterations as usize,
   )
 }
@@ -245,13 +197,31 @@ pub fn fit_mle(
       }
       fit = next;
     }
-    let stop = if fit.converged {
+    let read = |model: &mut dyn DiffusionModel, fit: &Search| {
       let at = &fit.params;
-      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, at);
-      verdict(&problem, at, &lower, &upper).1
-    } else {
-      Stop::Search(fit.reason)
+      let problem = MleProblem::new(model, sample, dt, density, &lower, &upper, at);
+      match fit.converged {
+        true => verdict(&problem, at, &lower, &upper),
+        false => (Beside::nothing(at), Stop::Search(fit.reason)),
+      }
     };
+    let (mut beside, mut stop) = read(&mut *model, &fit);
+    // A step beside the estimate gains: the search runs again from that step's point, in its
+    // units, and the lower cost stays. A fit the check passes is never searched again.
+    for _ in 0..RESEATS {
+      if !matches!(stop, Stop::NotStationary | Stop::Bound(_)) {
+        break;
+      }
+      let from = beside.best.clone();
+      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper, &from);
+      let next = search(problem, &from);
+      iterations += next.iterations;
+      if next.cost >= fit.cost {
+        break;
+      }
+      fit = next;
+      (beside, stop) = read(&mut *model, &fit);
+    }
     (fit.params, stop, iterations)
   };
 

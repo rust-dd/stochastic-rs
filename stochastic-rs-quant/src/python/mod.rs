@@ -2,6 +2,7 @@
 //! bond closed forms, registered by the `stochastic-rs-py` cdylib.
 
 #![cfg(feature = "python")]
+// A pyo3 signature takes one argument per Python keyword.
 #![allow(clippy::too_many_arguments)]
 
 use pyo3::exceptions::PyValueError;

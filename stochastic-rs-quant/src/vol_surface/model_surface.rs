@@ -86,6 +86,8 @@ pub fn fourier_model_surface_fft(
 
 /// [`fourier_model_surface_fft`] on `2^n_pow2` log-strikes (12 or 13 typical), damped by `alpha`
 /// `> 0`: 0.75 (Lord–Kahl 2010) for equity smiles, 0.25–0.5 for low vol, 1.0–1.5 for rough skew.
+// The model, the query, its grid and the FFT's size and damping.
+#[allow(clippy::too_many_arguments)]
 pub fn fourier_model_surface_fft_with(
   model: &impl FourierModelExt,
   s: f64,
@@ -127,6 +129,8 @@ pub fn fourier_model_surface_fft_with(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_distributions::RealExt;
+
   use super::*;
   use crate::OptionStyle;
   use crate::pricing::bsm::BsmCoc;
@@ -142,7 +146,6 @@ mod tests {
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
-  use crate::total_order::ascending;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
   const GRID_T: [f64; 2] = [0.25, 1.0];
@@ -161,14 +164,12 @@ mod tests {
     let maturities = vec![0.25, 0.5, 1.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    for j in 0..maturities.len() {
-      for i in 0..strikes.len() {
+    for (j, tau) in maturities.iter().enumerate() {
+      for (i, k) in strikes.iter().enumerate() {
         let iv = surface.ivs[[j, i]];
         assert!(
           iv.is_finite() && iv > 0.0 && iv < 2.0,
-          "Heston IV should be reasonable: iv={iv} at T={}, K={}",
-          maturities[j],
-          strikes[i]
+          "Heston IV should be reasonable: iv={iv} at T={tau}, K={k}"
         );
       }
     }
@@ -178,7 +179,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
+      .min_by(|(_, a), (_, b)| a.abs().nan_last(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -243,14 +244,12 @@ mod tests {
     let maturities = vec![0.25, 0.5, 1.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    for j in 0..maturities.len() {
-      for i in 0..strikes.len() {
+    for (j, tau) in maturities.iter().enumerate() {
+      for (i, k) in strikes.iter().enumerate() {
         let iv = surface.ivs[[j, i]];
         assert!(
           iv.is_finite() && iv > 0.0,
-          "Vg IV should be positive: iv={iv} at T={}, K={}",
-          maturities[j],
-          strikes[i]
+          "Vg IV should be positive: iv={iv} at T={tau}, K={k}"
         );
       }
     }
@@ -279,14 +278,12 @@ mod tests {
     let maturities = vec![0.25, 0.5, 1.0];
     let surface = model.vol_surface(100.0, 0.05, 0.0, &strikes, &maturities);
 
-    for j in 0..maturities.len() {
-      for i in 0..strikes.len() {
+    for (j, tau) in maturities.iter().enumerate() {
+      for (i, k) in strikes.iter().enumerate() {
         let iv = surface.ivs[[j, i]];
         assert!(
           iv.is_finite() && iv > 0.0 && iv < 2.0,
-          "Double Heston IV should be reasonable: iv={iv} at T={}, K={}",
-          maturities[j],
-          strikes[i]
+          "Double Heston IV should be reasonable: iv={iv} at T={tau}, K={k}"
         );
       }
     }
@@ -296,7 +293,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
+      .min_by(|(_, a), (_, b)| a.abs().nan_last(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(

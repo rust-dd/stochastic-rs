@@ -37,24 +37,36 @@ fn fit_cir(path: &Array1<f64>, dt: f64, start: [f64; 3], density: DensityApprox)
   fit_mle(&mut model, path.view(), dt, density, None).unwrap()
 }
 
-/// From (5, −1, 2) an Ozaki fit of 100 daily points stops against the edge of the law's support,
-/// some 350 below the fit from the law: it is not converged.
+/// Where a search from (5, −1, 2) can stop on 100 daily points, ~350 below the law's fit, only the
+/// verdict runs: the law's edge lies 3–5 % inside the first steps along θ and μ; σ's walk gains.
 #[test]
 fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
   let dt = 1.0 / 252.0;
-  let mut converged = vec![];
-  for (speed, seed) in [(0.3, 68), (2.0, 99)] {
+  let stops = [
+    (0.3, 68, [5.464196259, -1.092867303, 1.978279161]),
+    (2.0, 99, [5.504348451, -1.100874201, 1.977574921]),
+  ];
+  for (speed, seed, at) in stops {
     let path = simulate_ou(speed, 0.03, 0.02, 0.03, dt, 100, seed);
     let best = fit_ou(&path, dt, [speed, 0.03, 0.02], DensityApprox::Ozaki);
-    let fit = fit_ou(&path, dt, [5.0, -1.0, 2.0], DensityApprox::Ozaki);
-    let short = best.log_likelihood - fit.log_likelihood;
-    assert!(short > 300.0, "speed {speed}: {short} below");
-    if fit.converged {
-      converged.push(format!("speed {speed}: {short} below at {}", fit.params));
-    }
-    assert_eq!(fit.message, "stopped at the edge of the law's support");
+    let mut model = Ou::new(at[0], at[1], at[2], 2, None, None, Deterministic::new(0));
+    let bounds = model.param_bounds();
+    let (lower, upper) = bounds.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+    let ozaki = DensityApprox::Ozaki;
+    let problem = MleProblem::new(&mut model, path.view(), dt, ozaki, &lower, &upper, &at);
+    let short = best.log_likelihood + problem.eval_nll(&at);
+    let (_, stop) = verdict(&problem, &at, &lower, &upper);
+    assert!(
+      (300.0..400.0).contains(&short),
+      "speed {speed}: {short} below"
+    );
+    assert!(!stop.converged(), "speed {speed}: converged at {at:?}");
+    let message = stop.message(&["theta", "mu", "sigma"]);
+    assert_eq!(
+      message, "stopped at the edge of the law's support",
+      "speed {speed}"
+    );
   }
-  assert!(converged.is_empty(), "{converged:#?}");
 }
 
 /// What the walks beside `at` read on a CIR `path`, and the stop and message they give a search
@@ -113,10 +125,10 @@ fn a_point_stalled_at_the_speeds_bound_is_not_stationary() {
   }
 }
 
-/// From a `σ` of `1e-6` on data at `1e9` the staged search returns `σ` in a unit where its
-/// gradient is under the tolerance, `0.3 %` off: a step along it gains `0.01`, so it is no stop.
+/// From a `σ` of `1e-6` on data at `1e9` the staged search leaves `σ` `0.3 %` off, `0.01` short:
+/// a step along it gains, so the search runs again from that step and ends at the closed form.
 #[test]
-fn a_fit_whose_sigma_a_search_could_not_move_is_not_stationary() {
+fn a_fit_whose_sigma_a_search_could_not_move_is_searched_again_from_the_gain() {
   let dt = 1.0 / 252.0;
   let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, 104).mapv(|v| 1e9 * v);
   let closed = fit_ou_mle(path.view(), dt).unwrap();
@@ -126,8 +138,8 @@ fn a_fit_whose_sigma_a_search_could_not_move_is_not_stationary() {
   let exact = DensityApprox::Exact;
   let fit = fit_mle(&mut model, path.view(), dt, exact, Some(bounds)).unwrap();
   let short = closed.log_likelihood - fit.log_likelihood;
-  assert!((0.005..0.02).contains(&short), "{short} below");
-  assert_eq!((fit.converged, &*fit.message), (false, "not stationary"));
+  assert!(short.abs() < 1e-6, "{short} below");
+  assert_eq!((fit.converged, &*fit.message), (true, "converged"));
 }
 
 /// 16 monthly points leave Ozaki's likelihood a second maximum, 1.2 below the one the fit from
@@ -197,15 +209,15 @@ fn a_stop_is_worded_as_the_calibrators_word_theirs() {
   assert_eq!(said(Stop::NotStationary), "not stationary");
   assert_eq!(said(Stop::Bound(0)), "stopped at the bound of theta");
   assert_eq!(said(Stop::Edge), "stopped at the edge of the law's support");
-  let budget = Stop::Search(TerminationReason::MaxIter);
+  let budget = Stop::Search(SolverStop::IterationCap);
   assert_eq!(said(budget), "evaluation budget exhausted");
-  let spent = Stop::Search(TerminationReason::MaxCostEvals);
+  let spent = Stop::Search(SolverStop::EvaluationBudget);
   assert_eq!(said(spent), "evaluation budget exhausted");
-  let stuck = Stop::Search(TerminationReason::NumericalNoProgress);
+  let stuck = Stop::Search(SolverStop::NoProgress);
   assert_eq!(said(stuck), "no numerical progress");
-  let failed = Stop::Search(TerminationReason::SolverFailed);
+  let failed = Stop::Search(SolverStop::Failed);
   assert_eq!(said(failed), "solver failed");
-  let other = Stop::Search(TerminationReason::MaxGradientEvals);
+  let other = Stop::Search(SolverStop::Other);
   assert_eq!(said(other), "stopped without convergence");
   assert_eq!(said(Stop::Outside), "stopped without convergence");
 }
@@ -220,6 +232,7 @@ fn a_gain_counts_above_the_rounding_and_names_the_parameter_it_is_along() {
       along: 1,
       rounding,
       walled,
+      best: Vec::new(),
     };
     beside.stop(held).message(&["theta", "mu", "sigma"])
   };

@@ -8,7 +8,7 @@
 //! $$
 //!
 //! Reference: O'Kane (2008), "Modelling Single-name and Multi-name Credit Derivatives", Ch. 10–11
-//! Reference: ISDA (2009), "The ISDA CDS Standard Model"
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model", <https://www.cdsmodel.com>
 
 use chrono::NaiveDate;
 use ndarray::Array1;

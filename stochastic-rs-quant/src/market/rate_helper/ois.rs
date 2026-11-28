@@ -6,8 +6,10 @@
 use chrono::NaiveDate;
 
 use super::RateHelper;
+use super::fixed_leg;
 use super::read_quote;
 use crate::calendar::BusinessDayConvention;
+use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::ScheduleBuilder;
 use crate::curves::BootstrapInstrument;
@@ -95,31 +97,20 @@ impl<T: RealExt> OisRateHelper<T> {
 }
 
 impl<T: RealExt> RateHelper<T> for OisRateHelper<T> {
-  fn maturity(&self, valuation_date: NaiveDate) -> T {
-    self
-      .index
-      .index
-      .day_count
-      .year_fraction(valuation_date, self.maturity_date)
+  fn maturity(&self, valuation_date: NaiveDate, axis: DayCountConvention) -> T {
+    let last = self.payment_dates().last().copied();
+    last.map_or_else(T::nan, |date| axis.year_fraction(valuation_date, date))
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
+  /// The fixed leg accrues on the index's day count, its times on `axis`.
+  fn to_instrument(
+    &self,
+    valuation_date: NaiveDate,
+    axis: DayCountConvention,
+  ) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
     let day_count = self.index.index.day_count;
-    let fixed_times: Vec<T> = self
-      .payment_dates()
-      .into_iter()
-      .map(|d| day_count.year_fraction(valuation_date, d))
-      .filter(|t| *t > T::zero())
-      .collect();
-    if fixed_times.is_empty() {
-      return None;
-    }
-    Some(BootstrapInstrument::SwapWithSchedule {
-      rate,
-      fixed_times,
-      float_times: Vec::new(),
-    })
+    fixed_leg(rate, &self.payment_dates(), valuation_date, axis, day_count)
   }
 }
 
@@ -173,15 +164,21 @@ mod tests {
     assert_eq!(dates.len(), 3, "three annual payments: {dates:?}");
     assert!(dates.windows(2).all(|w| w[0] < w[1]));
     let Some(BootstrapInstrument::SwapWithSchedule {
-      fixed_times, rate, ..
-    }) = long.to_instrument(settle)
+      fixed_times,
+      fixed_accruals,
+      rate,
+      ..
+    }) = long.to_instrument(settle, DayCountConvention::Actual365Fixed)
     else {
       panic!("expected a scheduled swap")
     };
     assert_eq!(rate, 0.04);
-    // Actual/360 year fractions of annual dates sit near 1.014 per year.
-    assert!((fixed_times[0] - 365.0 / 360.0).abs() < 0.01);
-    assert!((fixed_times[2] - 3.0 * 365.25 / 360.0).abs() < 0.02);
+    // Times on the ACT/365F axis, accruals on SOFR's ACT/360; 2028 is a leap year.
+    assert_eq!(fixed_times, [1.0, 2.0, 1096.0 / 365.0]);
+    assert_eq!(
+      fixed_accruals,
+      [365.0 / 360.0, 365.0 / 360.0, 366.0 / 360.0]
+    );
   }
 
   /// The par OIS rates of a flat 3 % continuously compounded curve bootstrap back to its
@@ -208,7 +205,7 @@ mod tests {
       }
       let par = (1.0 - df(*times.last().unwrap())) / annuity;
       let helper = OisRateHelper::new(handle(par), settle, maturity, overnight::sofr::<f64>());
-      instruments.push(helper.to_instrument(settle).expect("quote present"));
+      instruments.push(helper.to_instrument(settle, dc).expect("quote present"));
     }
     let curve = bootstrap(BootstrapSpec::new(
       &instruments,
@@ -235,6 +232,10 @@ mod tests {
       date(2028, 1, 5),
       overnight::estr::<f64>(),
     );
-    assert!(helper.to_instrument(settle).is_none());
+    assert!(
+      helper
+        .to_instrument(settle, DayCountConvention::Actual365Fixed)
+        .is_none()
+    );
   }
 }

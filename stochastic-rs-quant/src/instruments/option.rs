@@ -6,7 +6,7 @@
 //! V_{\mathrm{swpn}}=A\,[s\Phi(d_1)-K\Phi(d_2)]
 //! $$
 //!
-//! Reference: Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine
+//! Reference: Hagan et al. (2002), "Managing Smile Risk", Wilmott Mag., 84–108
 //! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5, §6.7, §13
 //! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §29
 

@@ -113,25 +113,21 @@ fn fit_alpha_schedule<T: RealExt>(
   arrow_debreu[0][0] = T::one();
 
   for m in 0..steps {
-    let width_m = tree.states[m].len();
     let p_next = curve.discount_factor(T::from_usize_(m + 1) * dt);
 
-    let mut weighted_sum = T::zero();
-    for j in 0..width_m {
-      let x_j = tree.states[m][j];
-      weighted_sum += arrow_debreu[m][j] * (-x_j * dt).exp();
-    }
+    let level = tree.states[m].iter().zip(arrow_debreu[m].iter());
+    let weighted_sum = level
+      .clone()
+      .fold(T::zero(), |sum, (&x_j, &q_j)| sum + q_j * (-x_j * dt).exp());
 
     let alpha_m = -(p_next / weighted_sum).ln() / dt;
     alpha[m] = alpha_m;
 
     let width_next = tree.states[m + 1].len();
     let mut next = Array1::zeros(width_next);
-    for j in 0..width_m {
-      let branch = tree.branches[m][j];
-      let x_j = tree.states[m][j];
+    for (branch, (&x_j, &q_j)) in tree.branches[m].iter().zip(level) {
       let discount = (-(x_j + alpha_m) * dt).exp();
-      let base = arrow_debreu[m][j] * discount;
+      let base = q_j * discount;
       next[branch.center_index - 1] += base * branch.down_probability;
       next[branch.center_index] += base * branch.middle_probability;
       next[branch.center_index + 1] += base * branch.up_probability;

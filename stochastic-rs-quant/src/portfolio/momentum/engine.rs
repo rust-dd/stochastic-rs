@@ -1,6 +1,8 @@
 //! Rank-based and optimizer-based long/short builders from [`MomentumScore`] inputs to
 //! [`MomentumPortfolio`] outputs.
 
+use stochastic_rs_distributions::RealExt;
+
 use super::super::data::align_return_series;
 use super::super::data::correlation_matrix;
 use super::super::data::covariance_matrix;
@@ -13,10 +15,9 @@ use super::types::MomentumScore;
 use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
-use crate::total_order::descending;
 
-/// Build rank-based long/short momentum portfolio, best score first; a NaN score is in neither
-/// leg.
+/// Build rank-based long/short momentum portfolio, best score first; a score that is not finite is
+/// in neither leg.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -25,12 +26,16 @@ pub fn build_portfolio(
   corr: Option<&[Vec<f64>]>,
 ) -> MomentumPortfolio {
   let mut order = (0..scores.len())
-    .filter(|&i| !scores[i].momentum_score.is_nan())
+    .filter(|&i| scores[i].momentum_score.is_finite())
     .collect::<Vec<_>>();
   if order.is_empty() {
     return MomentumPortfolio::default();
   }
-  order.sort_by(|&a, &b| descending(&scores[a].momentum_score, &scores[b].momentum_score));
+  order.sort_by(|&a, &b| {
+    scores[a]
+      .momentum_score
+      .nan_last_descending(&scores[b].momentum_score)
+  });
 
   let long_count = long_n.min(order.len());
   let long_slice = &order[..long_count];
@@ -91,16 +96,16 @@ pub fn build_portfolio_target(
   aligned_returns: &[Vec<f64>],
   optimizer: OptimizerMethod,
 ) -> MomentumPortfolio {
-  build_portfolio_target_internal(
-    scores,
+  let inputs = TargetInputs {
     target_return,
     risk_free,
     optimizer,
-    0.05,
-    true,
-    None,
-    Some(aligned_returns),
-  )
+    cvar_alpha: 0.05,
+    allow_short: true,
+    corr: None,
+    aligned_returns: Some(aligned_returns),
+  };
+  build_portfolio_target_internal(scores, &inputs)
 }
 
 /// Build optimizer-based momentum portfolio using external correlation matrix.
@@ -111,31 +116,44 @@ pub fn build_portfolio_target_with_corr(
   corr: &[Vec<f64>],
   optimizer: OptimizerMethod,
 ) -> MomentumPortfolio {
-  build_portfolio_target_internal(
-    scores,
+  let inputs = TargetInputs {
     target_return,
     risk_free,
     optimizer,
-    0.05,
-    true,
-    Some(corr),
-    None,
-  )
+    cvar_alpha: 0.05,
+    allow_short: true,
+    corr: Some(corr),
+    aligned_returns: None,
+  };
+  build_portfolio_target_internal(scores, &inputs)
+}
+
+/// What a target-return build reads besides the scores: the optimizer's knobs and a correlation,
+/// given or estimated from aligned returns.
+pub(crate) struct TargetInputs<'a> {
+  pub(crate) target_return: f64,
+  pub(crate) risk_free: f64,
+  pub(crate) optimizer: OptimizerMethod,
+  pub(crate) cvar_alpha: f64,
+  pub(crate) allow_short: bool,
+  pub(crate) corr: Option<&'a [Vec<f64>]>,
+  pub(crate) aligned_returns: Option<&'a [Vec<f64>]>,
 }
 
 /// Internal target-return momentum builder shared by engine and public wrappers.
-// The engine's configuration and the wrappers' inputs, forwarded as they are.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_portfolio_target_internal(
   scores: &[MomentumScore],
-  target_return: f64,
-  risk_free: f64,
-  optimizer: OptimizerMethod,
-  cvar_alpha: f64,
-  allow_short: bool,
-  corr: Option<&[Vec<f64>]>,
-  aligned_returns: Option<&[Vec<f64>]>,
+  inputs: &TargetInputs<'_>,
 ) -> MomentumPortfolio {
+  let &TargetInputs {
+    target_return,
+    risk_free,
+    optimizer,
+    cvar_alpha,
+    allow_short,
+    corr,
+    aligned_returns,
+  } = inputs;
   if scores.is_empty() {
     return MomentumPortfolio::default();
   }

@@ -316,7 +316,6 @@ pub struct PyQuantoPricer {
 impl PyQuantoPricer {
   #[new]
   #[pyo3(signature = (s, v, k, r, tau, r_f, v_fx, rho, fixed_rate, option_type="call", q=None))]
-  #[allow(clippy::too_many_arguments)]
   fn new(
     s: f64,
     v: f64,
@@ -466,7 +465,6 @@ impl PyHestonAdiPricer {
   /// the call into a down-and-out call.
   #[new]
   #[pyo3(signature = (s, v0, k, r, kappa, theta, sigma, rho, tau, q=None, m1=100, m2=50, steps=50, scheme="mcs", damping=true, barrier=None))]
-  #[allow(clippy::too_many_arguments)]
   fn new(
     s: f64,
     v0: f64,

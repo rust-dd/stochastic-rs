@@ -18,6 +18,8 @@ pub(super) struct Mesh {
 impl Mesh {
   /// Log-spot mesh `x0 + c sinh(ξ)` with `x0` a node (`m1` odd); variance uniform on `[0, v0]` and
   /// `v0 + d sinh(ξ)` above, so `0` and `v0` are exact nodes (Wyns & Du Toit (2016), §4).
+  // Each axis' centre, half-width, stretch and node count.
+  #[allow(clippy::too_many_arguments)]
   pub(crate) fn new(
     x0: f64,
     x_half_width: f64,

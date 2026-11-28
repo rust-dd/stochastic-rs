@@ -28,6 +28,7 @@ use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
 use crate::input::reject_constant;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Rescaled-range Hurst estimator.
@@ -113,6 +114,7 @@ impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
 
     let xs_raw = to_f64_vec::<T>(x);
     reject_constant(&xs_raw, "constant series")?;
+    let (xs_raw, _) = unit_scaled(xs_raw);
     let xs: Vec<f64> = if self.take_differences {
       xs_raw.windows(2).map(|w| w[1] - w[0]).collect()
     } else {

@@ -21,7 +21,12 @@ use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
-use crate::optim::nelder_mead;
+use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
+use crate::stationarity::common::centred;
+use crate::stationarity::common::in_the_doubles;
 use crate::stationarity::common::reject_exact_fit;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
@@ -53,10 +58,14 @@ pub struct QmleFit {
   pub kind: DiffusionKind,
   /// The Gaussian quasi-log-likelihood at the fit, for OU the exact one.
   pub log_likelihood: f64,
-  /// Simplex iterations, 0 for [`fit_ou_mle`]'s closed form.
+  /// Iterations of the simplex, the polishes and the refits; 0 for [`fit_ou_mle`]'s closed form.
   pub iterations: usize,
-  /// The simplex met a `1e-10` spread of its values, a stall included; `true` for the closed form.
+  /// No step along one parameter gains `1e-7` in quasi-log-likelihood, and for CIR the limit
+  /// `θ → 0` does not fit as well where the quadratic model puts it within 36 standard errors.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`,
+  /// `<name> is not identified`, `iteration cap reached`, …
+  pub message: String,
 }
 
 impl QmleFit {
@@ -195,13 +204,26 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
   Ar1::of(&x, kind)?;
   let carrier = Carrier::new(&x, kind)?;
-  let neg_ll = |p: &[f64; 3]| -> f64 {
-    let [theta, mu, sigma] = carrier.params(*p);
-    -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
+  let neg_ll = |p: &[f64]| -> f64 {
+    let [theta, mu, sigma] = carrier.params([p[0], p[1], p[2]]);
+    let cost = -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma);
+    if cost.is_finite() { cost } else { NO_VALUE }
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
-
-  let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
+  let coordinates = [
+    carrier.speed(start[0]),
+    carrier.level(start[1]),
+    Coordinate::log(start[2]),
+  ];
+  let found = minimise(
+    neg_ll,
+    by_differences,
+    &[&[start.to_vec()]],
+    &coordinates,
+    &[],
+    x.len() - 1,
+  );
+  let p = [found.at[0], found.at[1], found.at[2]];
   let log_likelihood = -neg_ll(&p) + log_density_shift(x.len() - 1, unit);
   if !log_likelihood.is_finite() {
     return Err(StatsError::Numerical {
@@ -216,8 +238,9 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
     sigma,
     kind,
     log_likelihood,
-    iterations,
-    converged,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["theta", "mu", "sigma"]),
   })
 }
 
@@ -241,7 +264,7 @@ pub(crate) fn diffusion_path<T: FloatExt>(
 }
 
 /// `[θ, μ, σ]` of the path times `unit` in the path's own units, `x → cx` taking `μ` to `cμ` and
-/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` is not finite there, or `σ` zero.
+/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` leaves the normal doubles there.
 pub(crate) fn in_data_units(
   kind: DiffusionKind,
   [theta, mu, sigma]: [f64; 3],
@@ -251,13 +274,16 @@ pub(crate) fn in_data_units(
     DiffusionKind::OrnsteinUhlenbeck => unit,
     DiffusionKind::Cir => unit.sqrt(),
   };
-  let (mu, sigma) = (mu / unit, sigma / sigma_unit);
-  if !(mu.is_finite() && sigma.is_finite()) || sigma == 0.0 {
+  let in_units = [
+    in_the_doubles(mu / unit, mu)?,
+    in_the_doubles(sigma / sigma_unit, sigma)?,
+  ];
+  if in_units[1] == 0.0 {
     return Err(StatsError::Numerical {
       stage: "data scale",
     });
   }
-  Ok([theta, mu, sigma])
+  Ok([theta, in_units[0], in_units[1]])
 }
 
 /// What `transitions` log-densities of the path times `unit` lack of the path's own: a density of
@@ -333,6 +359,22 @@ impl Carrier {
     }
   }
 
+  /// The speed's coordinate: where the level is a logarithm, `θ → 0` leaves it unidentified.
+  fn speed(self, start: f64) -> Coordinate {
+    match self {
+      Self::Standardised { .. } => Coordinate::log(start),
+      Self::Log { .. } => Coordinate::log(start).fading(1),
+    }
+  }
+
+  /// The level's coordinate in a search from `start`: the standardised level, or its logarithm.
+  fn level(self, start: f64) -> Coordinate {
+    match self {
+      Self::Standardised { .. } => Coordinate::location(0.0, 1.0),
+      Self::Log { .. } => Coordinate::log(start),
+    }
+  }
+
   pub(crate) fn mean(self) -> f64 {
     match self {
       Self::Standardised { mean, .. } | Self::Log { mean } => mean,
@@ -404,11 +446,12 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   let (x, unit) = unit_scaled(x);
   let Ar1 {
     lagged_mean,
-    next_mean,
+    mean_step,
     beta,
     residuals,
   } = Ar1::of(&x, DiffusionKind::OrnsteinUhlenbeck)?;
-  let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
+  // `(next − β lagged)/(1 − β)` cancels at the level; the two means differ by the mean step.
+  let mu = lagged_mean + mean_step / (1.0 - beta);
   let theta = -beta.ln() / dt;
 
   let mf = residuals.len() as f64;
@@ -435,13 +478,15 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     log_likelihood: ll + log_density_shift(residuals.len(), unit),
     iterations: 0,
     converged: true,
+    message: "converged".into(),
   })
 }
 
 /// `x[1..]` regressed on `x[..n-1]` about their means, the closed form's slope and residuals.
 pub(crate) struct Ar1 {
   lagged_mean: f64,
-  next_mean: f64,
+  /// `(x[n-1] − x[0]) / (n − 1)`, the regressand's mean less the regressor's.
+  mean_step: f64,
   beta: f64,
   residuals: Vec<f64>,
 }
@@ -459,14 +504,13 @@ impl Ar1 {
     let mf = m as f64;
 
     // About the means, as raw sums cancel where the level dwarfs the spread.
-    let lagged_mean = lagged.iter().sum::<f64>() / mf;
-    let next_mean = next.iter().sum::<f64>() / mf;
-    let (mut sxy, mut sxx) = (0.0, 0.0);
-    for (u, v) in lagged.iter().zip(next) {
-      let d = u - lagged_mean;
-      sxy += d * (v - next_mean);
-      sxx += d * d;
-    }
+    let first_mean = lagged.iter().sum::<f64>() / mf;
+    // The first mean's rounding is the mean of the deviations from it; one rounding at the level.
+    let lagged_mean = first_mean + lagged.iter().map(|u| u - first_mean).sum::<f64>() / mf;
+    let mean_step = (x[m] - x[0]) / mf;
+    let (lagged, next) = (centred(lagged), centred(next));
+    let sxy = lagged.iter().zip(&next).map(|(u, v)| u * v).sum::<f64>();
+    let sxx = lagged.iter().map(|u| u * u).sum::<f64>();
     let beta = sxy / sxx;
     if !beta.is_finite() {
       return Err(StatsError::Numerical {
@@ -483,13 +527,13 @@ impl Ar1 {
     }
     let residuals = lagged
       .iter()
-      .zip(next)
-      .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
+      .zip(&next)
+      .map(|(u, v)| v - beta * u)
       .collect::<Vec<f64>>();
-    reject_exact_fit(next, &residuals, 1.0)?;
+    reject_exact_fit(&next, &residuals, 1.0)?;
     Ok(Self {
       lagged_mean,
-      next_mean,
+      mean_step,
       beta,
       residuals,
     })

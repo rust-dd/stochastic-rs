@@ -6,16 +6,16 @@
 //! D(t_n) = \frac{1 - S\sum_{i=1}^{n-1}\delta_i\,D(t_i)}{1 + S\,\delta_n}
 //! $$
 //!
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
 mod segment;
 mod solve;
 mod spec;
+mod sweep;
 mod validate;
 
 pub use spec::BootstrapSpec;
-pub use spec::IterativeOptions;
 
 pub(super) use solve::trial_node;
 
@@ -27,11 +27,10 @@ use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
 use crate::QuantError;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
-/// A curve with one pillar per instrument, by increasing maturity. `InsufficientData` for no
-/// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` for a solve with no root.
+/// A curve with one pillar per instrument that reprices every quote. `InsufficientData` for no
+/// instrument, `InvalidQuote` for one that gives no pillar, `Optimizer` if its nodes don't settle.
 pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve<T>, QuantError> {
   bootstrap_numbered(spec, None)
 }
@@ -41,13 +40,33 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
   spec: BootstrapSpec<'_, T>,
   numbers: Option<&[usize]>,
 ) -> Result<DiscountCurve<T>, QuantError> {
+  let (mut points, order) = first_pass(spec, numbers)?;
+  if !segment::is_local(spec.method) {
+    let quotes = order
+      .iter()
+      .map(|&index| (&spec.instruments[index], number(numbers, index)))
+      .collect::<Vec<_>>();
+    sweep::reprice_together(&mut points, &quotes, spec.discount, spec.method)?;
+  }
+  Ok(DiscountCurve::new(points, spec.method))
+}
+
+fn number(numbers: Option<&[usize]>, index: usize) -> usize {
+  numbers.map_or(index, |numbers| numbers[index])
+}
+
+/// Each node solved past the pillars before it, in maturity order: the whole bootstrap of a local
+/// method and the first pass of a global one. Returns the pillars and the quotes' order.
+fn first_pass<T: RealExt>(
+  spec: BootstrapSpec<'_, T>,
+  numbers: Option<&[usize]>,
+) -> Result<(Vec<CurvePoint<T>>, Vec<usize>), QuantError> {
   let BootstrapSpec {
     instruments,
     method,
-    iterative,
     discount,
   } = spec;
-  let number = |index: usize| numbers.map_or(index, |numbers| numbers[index]);
+  let number = |index: usize| number(numbers, index);
   if instruments.is_empty() {
     return Err(QuantError::InsufficientData {
       what: "instruments",
@@ -58,8 +77,12 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
   for (index, instrument) in instruments.iter().enumerate() {
     validate::check(number(index), instrument, discount.is_some())?;
   }
-  let mut order: Vec<usize> = (0..instruments.len()).collect();
-  order.sort_by(|&a, &b| ascending(&instruments[a].maturity(), &instruments[b].maturity()));
+  let mut order = (0..instruments.len()).collect::<Vec<_>>();
+  order.sort_by(|&a, &b| {
+    instruments[a]
+      .maturity()
+      .nan_last(&instruments[b].maturity())
+  });
   if let Some(pair) = order
     .windows(2)
     .find(|w| instruments[w[0]].maturity() == instruments[w[1]].maturity())
@@ -74,42 +97,70 @@ pub(crate) fn bootstrap_numbered<T: RealExt>(
     });
   }
 
-  let mut points: Vec<CurvePoint<T>> = Vec::with_capacity(order.len());
-  for index in order {
-    let (instrument, quote) = (&instruments[index], number(index));
-    let discount_factor = match (instrument, discount) {
-      (
-        BootstrapInstrument::SwapWithSchedule {
-          rate,
-          fixed_times,
-          float_times,
-        },
-        Some(discount),
-      ) => dual_curve::swap_node(
-        &points,
-        *rate,
-        fixed_times,
-        float_times,
-        discount,
-        method,
-        quote,
-      )?,
-      _ => single_curve_node(&points, instrument, method, iterative, quote)?,
-    };
-    if !(discount_factor.is_finite() && discount_factor > T::zero()) {
-      return Err(QuantError::InvalidQuote {
-        index: quote,
-        reason: format!(
-          "the quote implies a discount factor that is not finite and positive, got {discount_factor:?}"
-        ),
-      });
-    }
+  let mut points = Vec::<CurvePoint<T>>::with_capacity(order.len());
+  for &index in &order {
+    let instrument = &instruments[index];
+    let discount_factor = quote_node(
+      Place::Next(&points),
+      instrument,
+      discount,
+      method,
+      number(index),
+    )?;
     points.push(CurvePoint {
       time: instrument.maturity(),
       discount_factor,
     });
   }
-  Ok(DiscountCurve::new(points, method))
+  Ok((points, order))
+}
+
+/// Where a quote's node is solved: past the pillars built so far, or in its slot of the whole
+/// curve, every other pillar held.
+#[derive(Clone, Copy)]
+pub(in crate::curves) enum Place<'a, T: RealExt> {
+  Next(&'a [CurvePoint<T>]),
+  At(&'a [CurvePoint<T>], usize),
+}
+
+/// The node that reprices `instrument` at `place`; `InvalidQuote` unless it is finite and positive.
+fn quote_node<T: RealExt>(
+  place: Place<'_, T>,
+  instrument: &BootstrapInstrument<T>,
+  discount: Option<&DiscountCurve<T>>,
+  method: InterpolationMethod,
+  quote: usize,
+) -> Result<T, QuantError> {
+  let discount_factor = match (instrument, discount) {
+    (
+      BootstrapInstrument::SwapWithSchedule {
+        rate,
+        fixed_times,
+        fixed_accruals,
+        float_times,
+      },
+      Some(discount),
+    ) => dual_curve::swap_node(
+      place,
+      *rate,
+      (fixed_times, fixed_accruals),
+      float_times,
+      discount,
+      method,
+      quote,
+    )?,
+    _ => single_curve_node(place, instrument, method, quote)?,
+  };
+  if discount_factor.is_finite() && discount_factor > T::zero() {
+    Ok(discount_factor)
+  } else {
+    Err(QuantError::InvalidQuote {
+      index: quote,
+      reason: format!(
+        "the quote implies a discount factor that is not finite and positive, got {discount_factor:?}"
+      ),
+    })
+  }
 }
 
 /// A quote's equation in the discount factor `x` at its maturity,
@@ -130,18 +181,13 @@ impl<T: RealExt, C: Iterator<Item = (T, T)> + Clone> Equation<T, C> {
   fn slope(&self) -> T {
     T::one() + self.rate * self.accrual
   }
-
-  fn implied_rate(&self, start: T, annuity: T, x: T) -> T {
-    (start - x) / (annuity + self.accrual * x)
-  }
 }
 
 /// The equation each single-curve quote prices, solved for its pillar.
 fn single_curve_node<T: RealExt>(
-  points: &[CurvePoint<T>],
+  place: Place<'_, T>,
   instrument: &BootstrapInstrument<T>,
   method: InterpolationMethod,
-  iterative: Option<IterativeOptions<T>>,
   quote: usize,
 ) -> Result<T, QuantError> {
   let maturity = instrument.maturity();
@@ -154,11 +200,11 @@ fn single_curve_node<T: RealExt>(
   match instrument {
     BootstrapInstrument::Deposit { rate, .. } => {
       let equation = single(T::zero(), *rate, maturity);
-      node(points, maturity, method, quote, None, equation)
+      node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::Fra { start, end, rate } => {
       let equation = single(*start, *rate, *end - *start);
-      node(points, maturity, method, quote, None, equation)
+      node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::Future {
       start,
@@ -168,9 +214,9 @@ fn single_curve_node<T: RealExt>(
     } => {
       let hundred = T::from_f64_fast(100.0);
       let futures_rate = (hundred - *price) / hundred;
-      let convexity_adj = T::from_f64_fast(0.5) * *sigma * *sigma * *start * *end;
-      let equation = single(*start, futures_rate - convexity_adj, *end - *start);
-      node(points, maturity, method, quote, None, equation)
+      let convexity = futures_convexity(*sigma, *start, *end);
+      let equation = single(*start, futures_rate - convexity, *end - *start);
+      node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::Swap {
       rate, frequency, ..
@@ -183,20 +229,22 @@ fn single_curve_node<T: RealExt>(
         accrual: delta,
         coupons: (1..payments).map(move |i| (T::from_f64_fast(i as f64) * delta, delta)),
       };
-      node(points, maturity, method, quote, iterative, equation)
+      node(place, maturity, method, quote, equation)
     }
     BootstrapInstrument::SwapWithSchedule {
-      rate, fixed_times, ..
+      rate,
+      fixed_times,
+      fixed_accruals,
+      ..
     } => {
-      let earlier = &fixed_times[..fixed_times.len() - 1];
-      let previous = |i: usize| if i == 0 { T::zero() } else { earlier[i - 1] };
+      let last = fixed_times.len() - 1;
       let equation = Equation {
         start: T::zero(),
         rate: *rate,
-        accrual: maturity - earlier.last().copied().unwrap_or_else(T::zero),
-        coupons: (0..earlier.len()).map(move |i| (earlier[i], earlier[i] - previous(i))),
+        accrual: fixed_accruals[last],
+        coupons: (0..last).map(move |i| (fixed_times[i], fixed_accruals[i])),
       };
-      node(points, maturity, method, quote, None, equation)
+      node(place, maturity, method, quote, equation)
     }
   }
 }
@@ -204,13 +252,16 @@ fn single_curve_node<T: RealExt>(
 /// The node at `maturity` that solves `equation`: its direct formula where every read sits at or
 /// before the last pillar, else its root on the curve that holds it, from the direct value.
 fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
-  points: &[CurvePoint<T>],
+  place: Place<'_, T>,
   maturity: T,
   method: InterpolationMethod,
   quote: usize,
-  iterative: Option<IterativeOptions<T>>,
   equation: Equation<T, C>,
 ) -> Result<T, QuantError> {
+  let points = match place {
+    Place::Next(points) => points,
+    Place::At(curve, slot) => return node_at(curve, slot, method, quote, equation),
+  };
   let read = |t: T| pillar_read(points, t, method, quote);
   let past = |t: T| points.last().is_some_and(|last| t > last.time);
   let start = read(equation.start)?;
@@ -239,13 +290,14 @@ fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
         },
         None => Reads::Whole {
           trial: points.iter().copied().chain([node]).collect(),
+          slot: points.len(),
           method,
         },
       }
     }
     _ => Reads::Fixed { start, annuity },
   };
-  let node = match points.last() {
+  match points.last() {
     Some(last) if gapped => {
       let guess = if direct.is_finite() && direct > T::zero() {
         direct
@@ -258,24 +310,36 @@ fn node<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
           slopes.map(|(start, annuity)| equation.value(start, annuity) - equation.slope());
         (equation.value(start, annuity) - equation.slope() * x, slope)
       };
-      trial_node(guess, residual).ok_or_else(|| QuantError::Optimizer {
-        what: "bootstrap",
-        reason: format!(
-          "no discount factor reprices quote {quote} on the curve that holds its node"
-        ),
-      })?
+      trial_node(guess, residual).ok_or_else(|| no_root(quote))
     }
-    _ => direct,
+    _ => Ok(direct),
+  }
+}
+
+/// `equation`'s root in its slot of the whole `curve`, from the node there.
+fn node_at<T: RealExt, C: Iterator<Item = (T, T)> + Clone>(
+  curve: &[CurvePoint<T>],
+  slot: usize,
+  method: InterpolationMethod,
+  quote: usize,
+  equation: Equation<T, C>,
+) -> Result<T, QuantError> {
+  let mut reads = Reads::Whole {
+    trial: curve.to_vec(),
+    slot,
+    method,
   };
-  match iterative {
-    Some(options) if !(node > T::zero() && node < T::one()) => {
-      let error = |x: T| {
-        let (start, annuity, _) = reads.at(&equation, x);
-        equation.implied_rate(start, annuity, x) - equation.rate
-      };
-      bisect_swap_df(error, options, quote)
-    }
-    _ => Ok(node),
+  let residual = |x: T| {
+    let (start, annuity, _) = reads.at(&equation, x);
+    (equation.value(start, annuity) - equation.slope() * x, None)
+  };
+  trial_node(curve[slot].discount_factor, residual).ok_or_else(|| no_root(quote))
+}
+
+fn no_root(quote: usize) -> QuantError {
+  QuantError::Optimizer {
+    what: "bootstrap",
+    reason: format!("no discount factor reprices quote {quote} on the curve that holds its node"),
   }
 }
 
@@ -290,9 +354,11 @@ enum Reads<T: RealExt> {
     known: T,
     skip: usize,
   },
-  /// A method whose later pillar reshapes the earlier intervals: every read on the trial curve.
+  /// A method whose later pillar reshapes the earlier intervals: every read on the trial curve,
+  /// its node at `slot`.
   Whole {
     trial: Vec<CurvePoint<T>>,
+    slot: usize,
     method: InterpolationMethod,
   },
 }
@@ -328,9 +394,12 @@ impl<T: RealExt> Reads<T> {
         }
         (start, annuity, Some((start_slope, weighted / x)))
       }
-      Reads::Whole { trial, method } => {
-        let slot = trial.len() - 1;
-        trial[slot].discount_factor = x;
+      Reads::Whole {
+        trial,
+        slot,
+        method,
+      } => {
+        trial[*slot].discount_factor = x;
         let (trial, method) = (&trial[..], *method);
         let read = |t: T| interpolate_discount_factor(trial, t, method);
         let start = read(equation.start);
@@ -342,6 +411,11 @@ impl<T: RealExt> Reads<T> {
       }
     }
   }
+}
+
+/// Hull's convexity adjustment `σ²·t₁·t₂/2`, a futures rate less it being the forward's.
+pub(crate) fn futures_convexity<T: RealExt>(sigma: T, start: T, end: T) -> T {
+  T::from_f64_fast(0.5) * sigma * sigma * start * end
 }
 
 /// The curve built so far at `t`; `InvalidQuote` when `t > 0` is read before any pillar exists.
@@ -361,37 +435,6 @@ fn pillar_read<T: RealExt>(
     });
   }
   Ok(interpolate_discount_factor(points, t, method))
-}
-
-/// The last discount factor in `(1e-6, 1)` where the swap's implied rate is within the tolerance
-/// of its quote, `error` the difference; `Optimizer` if none is.
-fn bisect_swap_df<T: RealExt>(
-  mut error: impl FnMut(T) -> T,
-  options: IterativeOptions<T>,
-  index: usize,
-) -> Result<T, QuantError> {
-  let mut lo = T::from_f64_fast(1e-6);
-  let mut hi = T::one();
-  let half = T::from_f64_fast(0.5);
-  for _ in 0..options.max_iterations {
-    let mid = half * (lo + hi);
-    let err = error(mid);
-    if err.abs() < options.tolerance {
-      return Ok(mid);
-    }
-    if err > T::zero() {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  Err(QuantError::Optimizer {
-    what: "bootstrap",
-    reason: format!(
-      "no discount factor in (1e-6, 1) reprices swap quote {index} within {:?} in {} bisections",
-      options.tolerance, options.max_iterations
-    ),
-  })
 }
 
 #[cfg(test)]

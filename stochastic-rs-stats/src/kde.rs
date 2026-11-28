@@ -14,10 +14,11 @@ use ndarray::ArrayView1;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
-use crate::input::mean_in_order;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::about_mean;
+use crate::traits::RealExt;
 
 /// Gaussian KDE over a copy of the sample.
 #[derive(Debug, Clone)]
@@ -87,27 +88,24 @@ impl GaussianKde {
 }
 
 /// Silverman's rule, `σ̂` alone when the interquartile range is zero; `Err` below two points, on a
-/// non-finite one or zero spread, `Err(Numerical { stage: "silverman bandwidth" })` on overflow.
+/// non-finite one or zero spread, `Err(Numerical { stage: "data scale" })` past the doubles.
 pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let sample = as_slice_or_copy(data);
   validate(&sample, 2)?;
   reject_constant(&sample, "zero spread")?;
-  let nf = data.len() as f64;
-  let mean = mean_in_order(data);
-  let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
-  let mut sorted = sample.into_owned();
-  sorted.sort_by(f64::total_cmp);
+  let (mut sorted, units) = about_mean(sample.into_owned());
+  let nf = sorted.len() as f64;
+  let mean = sorted.iter().sum::<f64>() / nf;
+  let std = (sorted.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
+  sorted.sort_by(f64::nan_last);
   let iqr = quantile_sorted(&sorted, 0.75) - quantile_sorted(&sorted, 0.25);
   let scale = if iqr > 0.0 { std.min(iqr / 1.34) } else { std };
-  if scale == 0.0 {
-    return Err(StatsError::DegenerateData("zero spread"));
-  }
-  let h = 0.9 * scale * nf.powf(-1.0 / 5.0);
+  let h = 0.9 * scale * nf.powf(-1.0 / 5.0) / units[1] / units[0];
   if h.is_finite() && h > 0.0 {
     Ok(h)
   } else {
     Err(StatsError::Numerical {
-      stage: "silverman bandwidth",
+      stage: "data scale",
     })
   }
 }
@@ -119,7 +117,7 @@ pub fn quantile(data: ArrayView1<f64>, p: f64) -> f64 {
     return f64::NAN;
   }
   let mut sorted = data.to_vec();
-  sorted.sort_by(f64::total_cmp);
+  sorted.sort_by(f64::nan_last);
   quantile_sorted(&sorted, p)
 }
 

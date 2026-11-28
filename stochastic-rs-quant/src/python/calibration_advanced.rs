@@ -32,6 +32,8 @@ impl PySvjCalibrator {
   }
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, mu_j, sigma_j, converged, loss_rmse)`.
+  // Python receives the fit as one tuple.
+  #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
@@ -82,6 +84,7 @@ impl PyDoubleHestonCalibrator {
 
   /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2)`, then
   /// `converged` and `loss_rmse`, as one tuple.
+  // Python receives the fit as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     use crate::traits::CalibrationResult;
@@ -183,6 +186,7 @@ impl PyHkdeCalibrator {
   }
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, p_up, eta1, eta2, converged, loss_rmse)`.
+  // Python receives the fit as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
     use crate::traits::CalibrationResult;
@@ -303,6 +307,7 @@ impl PyCgmysvCalibrator {
 
   /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0)`, then `converged`,
   /// `loss_rmse` and `iterations`, as one tuple.
+  // Python receives the fit as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
     use crate::traits::CalibrationResult;

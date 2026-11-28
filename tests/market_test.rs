@@ -160,9 +160,11 @@ fn helper_driven_curve_roundtrips_par_swap() {
   );
 
   let helpers: Vec<&dyn RateHelper<f64>> = vec![&dep, &fra, &swap];
+  let axis = DayCountConvention::Actual365Fixed;
   let curve = build_curve(
     &helpers,
     val_date,
+    axis,
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
   .unwrap();
@@ -177,6 +179,7 @@ fn helper_driven_curve_roundtrips_par_swap() {
   let curve2 = build_curve(
     &helpers,
     val_date,
+    axis,
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
   .unwrap();

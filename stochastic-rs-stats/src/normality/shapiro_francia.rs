@@ -17,6 +17,8 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::stationarity::common::about_mean;
+use crate::traits::RealExt;
 
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
@@ -110,9 +112,9 @@ pub fn shapiro_francia_test(
   let sample = as_slice_or_copy(sample);
   validate(&sample, 8)?;
 
-  let mut obs = sample.to_vec();
-  obs.sort_by(f64::total_cmp);
-  reject_constant(&obs, "constant sample")?;
+  reject_constant(&sample, "constant sample")?;
+  let (mut obs, _) = about_mean(sample.to_vec());
+  obs.sort_by(f64::nan_last);
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();
@@ -123,7 +125,7 @@ pub fn shapiro_francia_test(
   let mut left_tail_hits = 0usize;
   for _ in 0..cfg.bootstrap_samples {
     normals.fill_slice(&mut normal_draw);
-    normal_draw.sort_by(f64::total_cmp);
+    normal_draw.sort_by(f64::nan_last);
     let w = shapiro_francia_statistic_sorted(&normal_draw);
     if w <= obs_stat {
       left_tail_hits += 1;

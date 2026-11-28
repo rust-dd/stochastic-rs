@@ -150,6 +150,58 @@ fn rapidly_decreasing_tempered_stable_agrees_with_the_cpu_law() {
   law_agrees(&host, &device, 0.0, "RDTS");
 }
 
+/// Above `α = 1` the terms past the last carry a tenth of the variance and, with unequal
+/// tempering, of the mean: the launch's remainder constants against the host's per-path ones.
+#[test]
+fn classical_tempered_stable_agrees_with_the_cpu_law_above_one() {
+  let build = || {
+    Cts::<f32, _>::new(
+      2.0,
+      6.0,
+      1.5,
+      N,
+      J,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(157),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  law_agrees(&host, &device, 0.0, "CTS at α = 1.5");
+  agrees(
+    terminal_std(&device),
+    1.0,
+    0.06,
+    "CTS at α = 1.5: unit variance",
+  );
+}
+
+/// Unequal sides above `α = 1`: the remainder's drift is what centres the series.
+#[test]
+fn kobol_with_unequal_sides_agrees_with_the_cpu_law_above_one() {
+  let build = || {
+    Kobol::<f32, _>::new(
+      0.4,
+      2.0,
+      1.0,
+      3.0,
+      5.0,
+      1.5,
+      N,
+      J,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(163),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  law_agrees(&host, &device, 0.0, "Kobol at α = 1.5");
+}
+
 /// A grid longer than the kernels' series cells samples on the host, and is
 /// then the host build to the bit.
 #[test]

@@ -28,6 +28,7 @@ use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
 use crate::input::reject_constant;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// The Daubechies-4 scaling (low-pass) filter, `Σ hₖ = √2` and `Σ h²ₖ = 1`; not Brouste & Iacus's
@@ -114,6 +115,8 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
 
     let signal_raw = to_f64_vec::<T>(x);
     reject_constant(&signal_raw, "constant series")?;
+    let (signal_raw, unit) = unit_scaled(signal_raw);
+    let in_units = 2.0 * unit.log2();
     let signal: Vec<f64> = if self.take_differences {
       signal_raw.windows(2).map(|w| w[1] - w[0]).collect()
     } else {
@@ -188,10 +191,13 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
-        intercept: T::from_f64_fast(intercept),
+        intercept: T::from_f64_fast(intercept - in_units),
         r_squared: T::from_f64_fast(r_squared),
         log_scales: log_j.into_iter().map(T::from_f64_fast).collect(),
-        log_stats: log_mu_corr.into_iter().map(T::from_f64_fast).collect(),
+        log_stats: log_mu_corr
+          .iter()
+          .map(|m| T::from_f64_fast(m - in_units))
+          .collect(),
       },
     })
   }

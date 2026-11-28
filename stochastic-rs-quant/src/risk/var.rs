@@ -5,8 +5,8 @@
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell\in\mathbb{R}:\mathbb{P}(L>\ell)\le 1-\alpha\}.
 //! $$
 //!
-//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill
-//! Reference: Basel Committee on Banking Supervision (2006), "A Revised Framework" (Basel II)
+//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill, ISBN 978-0-07-146495-6
+//! Reference: BCBS (2006), Basel II, comprehensive version, <https://www.bis.org/publ/bcbs128.htm>
 
 use std::fmt::Display;
 
@@ -17,7 +17,6 @@ use stochastic_rs_distributions::special::ndtri;
 use super::input::finite;
 use super::input::validate_samples;
 use crate::QuantError;
-use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpretation of the input sample.
@@ -145,8 +144,8 @@ fn empirical_var<T: RealExt>(
   Ok(sample_quantile(&sorted, confidence))
 }
 
-/// The losses sorted by [`ascending`], which puts NaN last and ±∞ at the ends, so the samples are
-/// scanned for a non-finite one only when an end is not finite.
+/// The losses by `RealExt::nan_last`, NaN last and ±∞ at the ends, so the samples are scanned
+/// for a non-finite one only when an end is not finite.
 pub(crate) fn sorted_losses<T: RealExt>(
   samples: ArrayView1<T>,
   orientation: PnlOrLoss,
@@ -156,7 +155,7 @@ pub(crate) fn sorted_losses<T: RealExt>(
     PnlOrLoss::Pnl => samples.iter().map(|&v| -v).collect::<Vec<_>>(),
     PnlOrLoss::Loss => samples.to_vec(),
   };
-  sorted.sort_by(ascending);
+  sorted.sort_by(RealExt::nan_last);
   let finite_end = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
   if !(finite_end(sorted.first()) && finite_end(sorted.last())) {
     validate_samples(samples, what, 1)?;

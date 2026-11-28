@@ -5,6 +5,7 @@
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 
 use super::analytics::SmileAnalytics;
 use super::implied::ImpliedVolSurface;
@@ -13,7 +14,6 @@ use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
 use crate::OptionType;
 use crate::calibration::Calibrated;
-use crate::total_order::ascending;
 use crate::traits::ToModel;
 
 /// Result of the full vol-surface pipeline.
@@ -145,7 +145,7 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
     .collect();
 
   // De-dupe & sort calendar k-grid for cheaper / deterministic checking.
-  calendar_ks.sort_by(ascending);
+  calendar_ks.sort_by(RealExt::nan_last);
   calendar_ks.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
   let calendar_spread_free = ssvi_surface.is_calendar_spread_free(&calendar_ks);

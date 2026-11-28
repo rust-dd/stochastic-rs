@@ -32,6 +32,7 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
+use crate::stationarity::common::regression_at_unit_scale;
 use crate::traits::RealExt;
 
 /// Which aggregation of the local Wald statistic to report.
@@ -148,6 +149,8 @@ pub fn andrews_ploberger_test(
     });
   }
 
+  let (y_unit, _, x) = regression_at_unit_scale(y_slice.into_owned(), x);
+  let y = ArrayView1::from(&y_unit);
   let mut wald_path: Vec<(f64, f64)> = Vec::with_capacity(t1_hi - t1_lo + 1);
   for t1 in t1_lo..=t1_hi {
     let w = local_wald(y.view(), x.view(), t1, k);

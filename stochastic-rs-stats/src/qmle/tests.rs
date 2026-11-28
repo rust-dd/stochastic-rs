@@ -1,6 +1,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::params::VarianceBoundary;
@@ -43,6 +46,7 @@ fn literal(kind: DiffusionKind) -> QmleFit {
     log_likelihood: 0.0,
     iterations: 0,
     converged: true,
+    message: "converged".into(),
   }
 }
 
@@ -85,6 +89,7 @@ fn qmle_ou_recovers_true_params() {
       fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap(),
     )
   });
+  assert!(fits.iter().all(|(_, q)| q.message == "converged"));
   let ok = fits.iter().any(|(_, q)| {
     q.converged
       && (q.mu - mt).abs() / mt < 0.2
@@ -110,6 +115,7 @@ fn qmle_cir_recovers_true_params() {
       fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap(),
     )
   });
+  assert!(fits.iter().all(|(_, q)| q.message == "converged"));
   let ok = fits.iter().any(|(_, q)| {
     q.converged
       && (q.mu - mt).abs() / mt < 0.12
@@ -489,4 +495,81 @@ fn ou_mle_reads_theta_off_a_slope_near_one() {
   x[0] = 1000.0;
   let fit = fit_ou_mle(x.view(), dt).unwrap();
   assert!(fit.theta < 0.99, "theta = {}", fit.theta);
+}
+
+/// Integers of an AR(1) at slope 0.6 around `spread / 2`, between 0 and `spread`.
+fn integer_ar1(n: usize, spread: f64, seed: u64) -> Vec<f64> {
+  let mut noise = vec![0.0_f64; n];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(seed))
+    .fill_slice(&mut noise);
+  let mut state = 0.0;
+  let level = |z: f64| {
+    (0.5 * spread + 0.16 * spread * z)
+      .round()
+      .clamp(0.0, spread)
+  };
+  let step = |z: &f64| {
+    state = 0.6 * state + 0.8 * z;
+    level(state)
+  };
+  noise.iter().map(step).collect()
+}
+
+/// `c + k ulp(c)` is exact, so a path of neighbouring doubles at `c` is the integers' path moved
+/// and scaled: the slope is theirs to `2(m+3)ε(Σ|dᵢeᵢ|/|Σdᵢeᵢ| + 1)`, the sums' own rounding.
+#[test]
+fn the_ou_closed_form_reads_a_path_of_neighbouring_doubles_as_its_integers() {
+  let dt = 1.0;
+  for spread in [20.0, 600.0] {
+    let integers = integer_ar1(400, spread, 31);
+    let m = (integers.len() - 1) as f64;
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let (lagged, next) = (&integers[..399], &integers[1..]);
+    let (lagged_mean, next_mean) = (mean(lagged), mean(next));
+    let products = lagged
+      .iter()
+      .zip(next)
+      .map(|(u, v)| (u - lagged_mean) * (v - next_mean));
+    let (sum, size) = products.fold((0.0, 0.0), |(s, a), p| (s + p, a + p.abs()));
+    let bound = 2.0 * (m + 3.0) * f64::EPSILON * (size / sum.abs() + 1.0);
+    let reference = fit_ou_mle(Array1::from_vec(integers.clone()).view(), dt).unwrap();
+    for level in [1.0_f64, 3.0, 1e3, 1e8, -7e5] {
+      let ulp = level.abs().next_up() - level.abs();
+      let path = Array1::from_iter(integers.iter().map(|k| level + k * ulp));
+      let fit = fit_ou_mle(path.view(), dt).unwrap();
+      let (slope, theirs) = ((-fit.theta * dt).exp(), (-reference.theta * dt).exp());
+      assert!(
+        (slope - theirs).abs() <= bound * theirs,
+        "spread {spread}, level {level}: slope {slope} against the integers' {theirs}"
+      );
+      let sigma = fit.sigma / ulp;
+      assert!(
+        (sigma - reference.sigma).abs() <= 4.0 * bound * reference.sigma,
+        "spread {spread}, level {level}: sigma {sigma} against {}",
+        reference.sigma
+      );
+      // The level is one rounded mean at `ulp(c)`, and the step over `1 − β` one more.
+      let mu = (fit.mu - level) / ulp;
+      assert!(
+        (mu - reference.mu).abs() <= 1.0 + 1.0 / (1.0 - theirs),
+        "spread {spread}, level {level}: mu {mu} lattice steps against {}",
+        reference.mu
+      );
+    }
+  }
+}
+
+/// A level or a `σ` that is a subnormal in the path's own units holds a few of its digits only: the
+/// closed form and the QMLE refuse it as the other fits do, where rc.5 answered it.
+#[test]
+fn a_fit_that_is_subnormal_in_the_paths_units_is_a_data_scale_error() {
+  let path = negative_level_path().mapv(|v| v * 1e-310);
+  let dt = 100.0 / 9_999.0;
+  let lost = StatsError::Numerical {
+    stage: "data scale",
+  };
+  assert_eq!(fit_ou_mle(path.view(), dt).unwrap_err(), lost);
+  let kind = DiffusionKind::OrnsteinUhlenbeck;
+  assert_eq!(fit_diffusion_qmle(path.view(), dt, kind).unwrap_err(), lost);
 }

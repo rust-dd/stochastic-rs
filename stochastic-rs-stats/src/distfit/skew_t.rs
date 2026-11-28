@@ -7,12 +7,15 @@ use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::traits::DistributionExt;
 
 use super::Sample;
-use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::Coordinate;
+use crate::optim::search::NO_VALUE;
+use crate::optim::search::by_differences;
+use crate::optim::search::minimise;
 use crate::traits::FloatExt;
 
 /// Hansen skew-t maximum-likelihood fit with location and scale.
@@ -38,15 +41,18 @@ pub struct SkewTFit {
   pub bic: f64,
   /// Number of observations.
   pub nobs: usize,
-  /// Simplex iterations.
+  /// Iterations of the simplex and of every L-BFGS polish and refit at a limit.
   pub iterations: usize,
-  /// The simplex or its restart met a `1e-10` spread of its values; the L-BFGS polish is untested.
+  /// No step along one parameter gains `1e-7` in log-likelihood, and neither limit in `η` that
+  /// the quadratic model puts within 36 standard errors fits as well: stationary, not global.
   pub converged: bool,
+  /// `converged`, or why not: `not stationary`, `eta is not identified`, `iteration cap reached`…
+  pub message: String,
 }
 
 fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && eta > 2.0 && eta.is_finite() && lambda.abs() < 1.0) {
-    return 1e300;
+    return NO_VALUE;
   }
   let d = SimdSkewT::<f64>::new(eta, lambda);
   let log_sigma = sigma.ln();
@@ -69,7 +75,21 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
       starts.push(vec![mean, sd.ln(), (eta0 - 2.0).ln(), lambda0.atanh()]);
     }
   }
-  let (theta, iterations, converged) = minimise(&starts, objective);
+  let coordinates = [
+    Coordinate::location(mean, sd),
+    Coordinate::log(sd.ln()),
+    Coordinate::shape(0.0),
+    Coordinate::free(),
+  ];
+  let found = minimise(
+    objective,
+    by_differences,
+    &[&starts],
+    &coordinates,
+    &[],
+    x.len(),
+  );
+  let theta = &found.at;
   let natural = [
     theta[0],
     theta[1].exp(),
@@ -100,7 +120,8 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsErr
     aic: 8.0 - 2.0 * fit.log_likelihood,
     bic: 4.0 * n.ln() - 2.0 * fit.log_likelihood,
     nobs: x.len(),
-    iterations,
-    converged,
+    iterations: found.iterations,
+    converged: found.stop.converged(),
+    message: found.stop.message(&["mu", "sigma", "eta", "lambda"]),
   })
 }

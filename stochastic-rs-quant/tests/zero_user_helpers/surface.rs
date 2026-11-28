@@ -2,6 +2,7 @@ use ndarray::Array2;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_quant::pricing::dupire::Dupire;
 use stochastic_rs_quant::vol_surface::SviRawParams;
+use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
 
 fn grid() -> Vec<f64> {
   (0..201).map(|i| -1.5 + 3.0 * i as f64 / 200.0).collect()
@@ -51,6 +52,26 @@ fn local_vol_slice_is_a_row_of_the_local_vol_surface() {
         a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan()),
         "row {j}: {a} vs {b}"
       );
+    }
+  }
+}
+
+/// Each cell is the flat input read row-major as `(maturity, strike)`, the axes as given.
+#[test]
+fn from_flat_iv_grid_reads_the_grid_row_major() {
+  let flat: Vec<f32> = vec![0.2, 0.21, 0.22, 0.25, 0.24, 0.23];
+  let surface = ImpliedVolSurface::from_flat_iv_grid(
+    vec![90.0, 100.0, 110.0],
+    vec![0.5, 1.0],
+    vec![101.0, 102.0],
+    &flat,
+  );
+  assert_eq!(surface.strikes, [90.0, 100.0, 110.0]);
+  assert_eq!(surface.maturities, [0.5, 1.0]);
+  assert_eq!(surface.forwards, [101.0, 102.0]);
+  for (t, row) in surface.ivs.outer_iter().enumerate() {
+    for (k, &iv) in row.iter().enumerate() {
+      assert_eq!(iv, f64::from(flat[3 * t + k]), "({t}, {k})");
     }
   }
 }

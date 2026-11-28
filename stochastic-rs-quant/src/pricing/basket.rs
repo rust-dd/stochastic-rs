@@ -1,7 +1,7 @@
 //! Basket options on `B = Σ wᵢSᵢ`: the geometric one in closed form, the arithmetic one by Levy's
 //! two-moment lognormal, and either average by Monte Carlo under any correlation.
 //!
-//! Reference: Levy (1992), J. Int. Money Finance 11
+//! Reference: Levy (1992), J. Int. Money Finance 11(5), 474–491, DOI 10.1016/0261-5606(92)90013-N
 //! Reference: Turnbull & Wakeman (1991), "A quick algorithm for pricing European average options"
 //! Reference: Hu et al. (2023), arXiv:2302.08041
 use ndarray::Array1;

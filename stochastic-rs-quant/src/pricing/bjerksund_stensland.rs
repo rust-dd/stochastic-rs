@@ -11,7 +11,7 @@
 //! $$
 //!
 //! Puts by their symmetry relation.
-//! Reference: Bjerksund & Stensland (2002), NHH 2002/09, researchgate.net/publication/228801918
+//! Reference: Bjerksund & Stensland (2002), NHH Discussion Paper No. 2002/09
 
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -72,6 +72,8 @@ impl BjerksundStensland2002Pricer {
   }
 
   /// The $\phi$ intermediate function.
+  // Bjerksund & Stensland's φ, by its own arguments.
+  #[allow(clippy::too_many_arguments)]
   fn phi(&self, fs: f64, t: f64, gamma: f64, h: f64, i: f64, r: f64, b: f64, v: f64) -> f64 {
     let v2 = v * v;
     let d1 = -((fs / h).ln() + (b + (gamma - 0.5) * v2) * t) / (v * t.sqrt());
@@ -84,6 +86,8 @@ impl BjerksundStensland2002Pricer {
   }
 
   /// The $\psi$ intermediate function (uses bivariate normal CDF).
+  // Bjerksund & Stensland's ψ, by its own arguments.
+  #[allow(clippy::too_many_arguments)]
   fn psi(
     &self,
     fs: f64,

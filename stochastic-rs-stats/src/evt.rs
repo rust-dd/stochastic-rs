@@ -13,6 +13,8 @@
 //! Reference: Hosking & Wallis (1987), Technometrics 29(3), 339-349, 10.1080/00401706.1987.10488243
 //! Reference: Coles (2001), Springer Series in Statistics, ch. 3-4, DOI: 10.1007/978-1-4471-3675-0
 //! Reference: McNeil, Frey & Embrechts (2015), Quantitative Risk Management, 2nd ed., §5.2
+//! Reference: Drees, Ferreira & de Haan (2004), arXiv:math/0407062, p. 3 (the GPD likelihood has
+//! no maximum once `ξ < −1`); Ann. Appl. Probab. 14(3), 1179-1201, DOI: 10.1214/105051604000000279
 
 pub mod gev;
 pub mod gpd;

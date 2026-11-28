@@ -148,10 +148,13 @@ fn sabr_one_model_prices_a_grid() {
   }
 }
 
+/// `(K, F, tau, alpha, beta, rho, nu, implied vol)`.
+type HaganCase = (f64, f64, f64, f64, f64, f64, f64, f64);
+
 /// Hagan (2002, Eq. A.69a) general-β implied vol — reference values.
 #[test]
 fn hagan_implied_vol_reference() {
-  let cases: &[(f64, f64, f64, f64, f64, f64, f64, f64)] = &[
+  let cases: &[HaganCase] = &[
     (
       100.0,
       100.0,
@@ -334,7 +337,7 @@ fn alpha_from_atm_vol_close_roots_reference() {
 #[test]
 fn hagan_matches_an_independent_high_precision_implementation() {
   // (K, F, tau, alpha, beta, rho, nu, mpmath value at 40 digits)
-  let cases: &[(f64, f64, f64, f64, f64, f64, f64, f64)] = &[
+  let cases: &[HaganCase] = &[
     (100.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.20210416666666668),
     (110.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.19666956015138031),
     (90.0, 100.0, 1.0, 0.2, 1.0, -0.3, 0.5, 0.21189336164560343),

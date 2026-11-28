@@ -22,6 +22,10 @@ use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
+use crate::stationarity::common::centred;
+use crate::stationarity::common::params_in_data_units;
+use crate::stationarity::common::per_unit;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Daily horizon for the HAR weekly component.
@@ -57,13 +61,19 @@ pub struct HarRv {
 }
 
 impl HarRv {
-  /// HAR-RV by least squares on a daily realized-variance history; `Err` below `MONTHLY_LAGS + 6`
-  /// observations (more rows than the four regressors), on a non-finite one or a constant series.
+  /// HAR-RV by least squares at unit scale; `Err` below `MONTHLY_LAGS + 6` observations, on a
+  /// non-finite one, a constant series or a residual sum of squares past the doubles.
   pub fn fit<T: FloatExt>(daily_rv: ArrayView1<T>) -> Result<Self, StatsError> {
     let rv = as_slice_or_copy(daily_rv);
     validate(&rv, MONTHLY_LAGS + 6)?;
     reject_constant(&rv, "constant series")?;
-    let (x, y) = build_design_matrix(daily_rv);
+    let rv = rv.iter().map(|v| v.to_f64().unwrap()).collect::<Vec<_>>();
+    let (rv, unit) = unit_scaled(rv);
+    // The fit is of the deviations from the level, which its constant absorbs and maps back.
+    let first_mean = rv.iter().sum::<f64>() / rv.len() as f64;
+    let level = first_mean + rv.iter().map(|v| v - first_mean).sum::<f64>() / rv.len() as f64;
+    let (rv, spread_unit) = unit_scaled(centred(&rv));
+    let (x, y) = build_design_matrix(ArrayView1::from(&rv));
     let beta = ols(&x, &y);
     let resid = residuals(&x, &y, &beta);
     let rss: f64 = resid.iter().map(|v| v * v).sum();
@@ -75,9 +85,12 @@ impl HarRv {
     } else {
       1.0 - rss / tss
     };
+    let intercept = beta[0] / spread_unit + level * (1.0 - beta[1] - beta[2] - beta[3]);
+    let rss = per_unit(rss, spread_unit, 2);
+    let [intercept, rss] = params_in_data_units([intercept, rss], unit, [1, 2])?;
     Ok(Self {
       fit: HarFit {
-        intercept: beta[0],
+        intercept,
         beta_d: beta[1],
         beta_w: beta[2],
         beta_m: beta[3],

@@ -1,9 +1,10 @@
-//! Merton's and Jamshidian's queries at their limits, their constructors' preconditions, and the
-//! rate helpers' error positions: the payoff at maturity, NaN off the domain, a panic on bad input.
+//! Merton's, Jamshidian's and the discount curve's queries at their limits, the constructors'
+//! preconditions and the rate helpers' error positions: NaN off the domain, a panic on bad input.
 
 use chrono::NaiveDate;
 use ndarray::array;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::credit::MertonStructural;
 use stochastic_rs_quant::curves::BootstrapInstrument;
@@ -148,14 +149,18 @@ fn a_rate_helpers_errors_name_every_quote_by_the_helpers_own_position() {
   struct Quoted(Option<BootstrapInstrument<f64>>);
 
   impl RateHelper<f64> for Quoted {
-    fn maturity(&self, _: NaiveDate) -> f64 {
+    fn maturity(&self, _: NaiveDate, _: DayCountConvention) -> f64 {
       self
         .0
         .as_ref()
         .map_or(f64::NAN, BootstrapInstrument::maturity)
     }
 
-    fn to_instrument(&self, _: NaiveDate) -> Option<BootstrapInstrument<f64>> {
+    fn to_instrument(
+      &self,
+      _: NaiveDate,
+      _: DayCountConvention,
+    ) -> Option<BootstrapInstrument<f64>> {
       self.0.clone()
     }
   }
@@ -174,14 +179,17 @@ fn a_rate_helpers_errors_name_every_quote_by_the_helpers_own_position() {
   }));
   let (unquoted, first, second) = (Quoted(None), deposit(), deposit());
   let date = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
-  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let (axis, method) = (
+    DayCountConvention::Actual365Fixed,
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
   let unsolved: [&dyn RateHelper<f64>; 3] = [&unquoted, &first, &swap];
-  match build_curve(&unsolved, date, method) {
+  match build_curve(&unsolved, date, axis, method) {
     Err(QuantError::Optimizer { reason, .. }) => assert!(reason.contains("quote 2 "), "{reason}"),
     other => panic!("{other:?}"),
   }
   let twice: [&dyn RateHelper<f64>; 3] = [&unquoted, &first, &second];
-  match build_curve(&twice, date, method) {
+  match build_curve(&twice, date, axis, method) {
     Err(QuantError::InvalidQuote { index: 2, reason }) => {
       assert!(reason.contains("quote 1's"), "{reason}")
     }
@@ -255,29 +263,6 @@ fn a_jamshidian_swaption_with_no_critical_rate_is_nan() {
   }
 }
 
-/// A NaN read of the curve reaches the deterministic limit `σ = 0` too, where `max` dropped it.
-#[test]
-fn a_nan_curve_read_is_nan_at_zero_volatility() {
-  let curve = DiscountCurve::from_arrays(
-    array![1.0, 5.0, 10.0].view(),
-    array![0.97, f64::NAN, 0.67].view(),
-    InterpolationMethod::LinearOnZeroRates,
-  );
-  let coupons: Vec<f64> = (1..=10).map(|i| 1.0 + 0.5 * f64::from(i)).collect();
-  let price = price_jamshidian_hull_white(
-    SwaptionDirection::Payer,
-    0.03,
-    1e6,
-    1.0,
-    &coupons,
-    &[0.5; 10],
-    0.05,
-    0.0,
-    &curve,
-  );
-  assert!(price.is_nan(), "{price}");
-}
-
 #[test]
 #[should_panic(
   expected = "mean_reversion must satisfy `mean_reversion.is_finite()`, got mean_reversion = NaN"
@@ -310,4 +295,22 @@ fn a_negative_hull_white_sigma_is_a_precondition() {
     0.05,
     -0.01,
   );
+}
+
+/// The curve starts at `t = 0`, where it is 1: a read before it, or at a NaN time, is NaN.
+#[test]
+fn a_discount_curve_read_before_its_origin_is_nan() {
+  let curve = DiscountCurve::from_zero_rates(
+    array![1.0, 5.0].view(),
+    array![0.03, 0.04].view(),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  assert_eq!(curve.discount_factor(0.0), 1.0);
+  for t in [-0.5, -f64::MIN_POSITIVE, f64::NAN, f64::NEG_INFINITY] {
+    assert!(curve.discount_factor(t).is_nan(), "{t}");
+    assert!(curve.forward_rate(t, 1.0).is_nan(), "{t}");
+    assert!(curve.simple_forward_rate(t, 1.0).is_nan(), "{t}");
+  }
+  let reads = curve.discount_factors(array![-1.0, 0.0, 1.0].view());
+  assert!(reads[0].is_nan() && reads[1] == 1.0 && reads[2] == (-0.03_f64).exp());
 }

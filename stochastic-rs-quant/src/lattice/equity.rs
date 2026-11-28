@@ -42,6 +42,8 @@ impl<T: RealExt> CrrModel<T> {
   /// V^{\mathrm{Am}}=\max\bigl(V,\ \text{intrinsic}\bigr),\qquad
   /// p=\frac{e^{(r-q)\Delta t}-d}{u-d}
   /// $$
+  // One argument per term of the query and the exercise style.
+  #[allow(clippy::too_many_arguments)]
   fn price_rollback(
     &self,
     s: T,
@@ -99,7 +101,7 @@ impl<T: RealExt> CrrModel<T> {
 
   /// American price by comparing continuation with exercise at every node.
   ///
-  /// Reference: Cox, Ross & Rubinstein (1979), "Option Pricing: A Simplified Approach", JFE 7(3)
+  /// Reference: Cox et al. (1979), J. Financ. Econ. 7(3), 229–263, DOI 10.1016/0304-405X(79)90015-1
   pub fn price_american(&self, s: T, k: T, r: T, q: T, tau: T, option_type: OptionType) -> T {
     self.price_rollback(s, k, r, q, tau, option_type, OptionStyle::American)
   }
@@ -197,7 +199,7 @@ mod tests {
   }
 
   /// Bjerksund–Stensland's closed-form American approximation, cross-checked against the rollback.
-  /// Reference: Bjerksund & Stensland (2002), NHH discussion paper 2002/09
+  /// Reference: Bjerksund & Stensland (2002), NHH Discussion Paper No. 2002/09
   #[test]
   fn crr_american_put_matches_bjerksund_stensland() {
     let (s, k, r, q, sigma, tau) = (100.0, 110.0, 0.05, 0.0, 0.2, 1.0);

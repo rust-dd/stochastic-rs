@@ -6,7 +6,7 @@
 //! \mathrm{MDD}=\min_t\mathrm{DD}_t.
 //! $$
 //!
-//! Reference: Magdon-Ismail & Atiya (2004), "Maximum Drawdown", Risk Magazine, October
+//! Reference: Magdon-Ismail & Atiya (2004), "Maximum Drawdown", Risk 17(10), 99–102, SSRN 874069
 
 use ndarray::Array1;
 use ndarray::ArrayView1;

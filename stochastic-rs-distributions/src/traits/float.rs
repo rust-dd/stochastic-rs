@@ -1,5 +1,6 @@
 //! Foundational `RealExt`, `SimdFloatExt` and `FloatExt` traits.
 
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::iter::Sum;
 use std::mem::MaybeUninit;
@@ -12,8 +13,8 @@ use num_complex::Complex;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-/// The scalar surface for code that only computes (pricers, Greeks, quadrature): no lanes, no RNG,
-/// so an AAD dual or tape node can implement it where [`FloatExt`] cannot.
+/// The scalar surface for code that only computes: no lanes or RNG, so an AAD dual can implement
+/// it.
 pub trait RealExt:
   num_traits::Float
   + num_traits::FromPrimitive
@@ -42,6 +43,9 @@ pub trait RealExt:
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
+  /// The gap from one to the next value: required, since num-traits' default `Float::epsilon` is
+  /// `f32`'s whatever the scalar.
+  fn machine_epsilon() -> Self;
 
   /// The larger of the two, NaN when either is NaN — `Float::max` returns the other operand
   /// instead.
@@ -85,6 +89,22 @@ pub trait RealExt:
         (m.min(x), n | x.is_nan())
       });
     if nan { Self::nan() } else { min }
+  }
+
+  /// Ascending with NaN last whatever its sign, where `total_cmp` places a NaN by its sign bit;
+  /// branch-free: an `if` chain sorts 100k samples about 4× slower.
+  #[inline]
+  fn nan_last(&self, other: &Self) -> Ordering {
+    let (a_nan, b_nan) = (self.is_nan(), other.is_nan());
+    let less = (self < other) | (!a_nan & b_nan);
+    let greater = (other < self) | (a_nan & !b_nan);
+    greater.cmp(&less)
+  }
+
+  /// Descending with NaN last whatever its sign.
+  #[inline]
+  fn nan_last_descending(&self, other: &Self) -> Ordering {
+    (-*self).nan_last(&-*other)
   }
 }
 
@@ -225,6 +245,47 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 #[cfg(test)]
 mod tests {
   use super::RealExt;
+
+  #[test]
+  fn nan_last_puts_every_nan_last_whatever_its_sign() {
+    let mut xs = [f64::NAN, 2.0, -f64::NAN, -1.0, 0.0];
+    xs.sort_by(f64::nan_last);
+    assert_eq!(xs[..3], [-1.0, 0.0, 2.0]);
+    assert!(xs[3..].iter().all(|x| x.is_nan()));
+    let mut ys = [f32::NAN, 2.0, -f32::NAN, f32::NEG_INFINITY, f32::INFINITY];
+    ys.sort_by(f32::nan_last);
+    assert_eq!(ys[..3], [f32::NEG_INFINITY, 2.0, f32::INFINITY]);
+    assert!(ys[3..].iter().all(|y| y.is_nan()));
+  }
+
+  #[test]
+  fn nan_last_descending_puts_every_nan_last_whatever_its_sign() {
+    let mut xs = [f64::NAN, 2.0, -f64::NAN, -1.0, 0.0];
+    xs.sort_by(f64::nan_last_descending);
+    assert_eq!(xs[..3], [2.0, 0.0, -1.0]);
+    assert!(xs[3..].iter().all(|x| x.is_nan()));
+  }
+
+  #[test]
+  fn nan_last_ties_the_signed_zeros_and_any_two_nans() {
+    use std::cmp::Ordering;
+    assert_eq!((-0.0_f64).nan_last(&0.0), Ordering::Equal);
+    assert_eq!(0.0_f64.nan_last_descending(&-0.0), Ordering::Equal);
+    assert_eq!(f64::NAN.nan_last(&-f64::NAN), Ordering::Equal);
+    assert_eq!((-f64::NAN).nan_last_descending(&f64::NAN), Ordering::Equal);
+  }
+
+  /// Arithmetic leaves a NaN's sign unspecified (x86 sets it), so both signs must lose a minimum.
+  #[test]
+  fn a_nan_of_either_sign_never_wins_a_minimum_or_a_maximum() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let xs = [nan, 3.0, f64::NEG_INFINITY, nan];
+      let least = xs.iter().copied().min_by(f64::nan_last);
+      assert_eq!(least, Some(f64::NEG_INFINITY));
+      let greatest = xs.iter().copied().min_by(f64::nan_last_descending);
+      assert_eq!(greatest, Some(3.0));
+    }
+  }
 
   #[test]
   fn max_and_min_or_nan_folds() {

@@ -1,7 +1,7 @@
 //! Bump-and-reprice Greeks on pricing closures and bucket DV01, one curve pillar shifted at a
 //! time.
 //!
-//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Hagan & West (2008), Wilmott Mag., May, 70–81
 //! Reference: Ho (1992), "Key Rate Durations", Journal of Fixed Income 2(2), 29–44
 
 use ndarray::Array1;

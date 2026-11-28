@@ -17,7 +17,7 @@ rust-version = "1.89"
 
 [workspace.dependencies]
 anyhow = "1.0.89"
-basin = { version = "1.11.0", default-features = false }
+basin = { version = "3.5.0", default-features = false }
 candle-core = "0.11.0"
 candle-nn = "0.11.0"
 chrono = "0.4.38"
@@ -59,7 +59,7 @@ stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = 
 stochastic-rs-quant = { path = "stochastic-rs-quant", version = "=3.0.0-rc.5" }
 stochastic-rs-stats = { path = "stochastic-rs-stats", version = "=3.0.0-rc.5" }
 stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "=3.0.0-rc.5" }
-syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
+syn = { version = "3.0.6", default-features = false, features = ["full", "parsing"] }
 wide = "1.6.1"
 
 [package]
@@ -75,7 +75,7 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 readme = "README.md"
 keywords = ["quantitative-finance", "option-pricing", "quantlib", "stochastic-processes", "monte-carlo"]
 categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
-exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/volatility/*TrainSet.txt.gz", ]
+include = ["/src/**/*.rs", "/examples/**/*.rs", "/docs/katex-header.html", "/README.md", "/LICENSE"]
 
 [dependencies]
 chrono = { workspace = true }

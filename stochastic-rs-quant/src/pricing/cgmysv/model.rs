@@ -9,10 +9,15 @@
 use std::f64::consts::PI;
 
 use num_complex::Complex64;
+use stochastic_rs_distributions::special::expm1_over;
 use stochastic_rs_distributions::special::gamma;
 
 use crate::pricing::fourier::Cumulants;
 use crate::pricing::fourier::FourierModelExt;
+
+/// Within this of `α = 1` eq. (3)'s differences over `α − 1` cancel, and the `expm1` form holds the
+/// digits eq. (3) keeps beyond it; an mpmath scan finds the two forms equally accurate at the edge.
+const ALPHA_ONE_BAND: f64 = 0.1;
 
 /// CGMYSV parameters (Eq. 4): a CGMY jump process `Z_t` run on the CIR clock `𝒱_t = ∫₀ᵗ v_s ds`.
 #[derive(Debug, Clone)]
@@ -51,7 +56,8 @@ impl CgmysvParams {
       / (g2a * (self.lambda_plus.powf(self.alpha - 2.0) + self.lambda_minus.powf(self.alpha - 2.0)))
   }
 
-  /// Lévy symbol of the standard Cgmy distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
+  /// Lévy symbol of the standard CGMY law (eq. 3); within `ALPHA_ONE_BAND` of `α = 1` (CGMY's
+  /// `Y = 1`) its terms over `α − 1` go through `x ln x·expm1(z)/z`, `z = (α − 1) ln x`.
   ///
   /// $$
   /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu +
@@ -59,20 +65,25 @@ impl CgmysvParams {
   ///   {\alpha(\alpha-1)\,D}
   /// $$
   pub fn psi_std_cgmy(&self, u: Complex64) -> Complex64 {
-    let a = self.alpha;
-    let lp = self.lambda_plus;
-    let lm = self.lambda_minus;
-    let i = Complex64::i();
+    let (a, lp, lm) = (self.alpha, self.lambda_plus, self.lambda_minus);
+    let (i, excess) = (Complex64::i(), a - 1.0);
     let denom_base = lp.powf(a - 2.0) + lm.powf(a - 2.0);
-
-    let drift = (lp.powf(a - 1.0) - lm.powf(a - 1.0)) / ((a - 1.0) * denom_base) * i * u;
-
-    let jumps = ((Complex64::from(lp) - i * u).powf(a) - lp.powf(a)
-      + (Complex64::from(lm) + i * u).powf(a)
-      - lm.powf(a))
-      / (a * (a - 1.0) * denom_base);
-
-    drift + jumps
+    let (cp, cm) = (Complex64::from(lp), Complex64::from(lm));
+    let (drift, jumps) = if excess.abs() < ALPHA_ONE_BAND {
+      let rate = |x: f64| x.ln() * expm1_over(excess * x.ln());
+      // `(x^α − x)/(α − 1)`: the `x` terms of the four powers cancel exactly, leaving these.
+      let lifted = |x: Complex64| {
+        let ln = x.ln();
+        x * ln * expm1_over_complex(excess * ln)
+      };
+      let jumps = lifted(cp - i * u) - lifted(cp) + lifted(cm + i * u) - lifted(cm);
+      ((rate(lp) - rate(lm)) / denom_base, jumps / (a * denom_base))
+    } else {
+      let drift = (lp.powf(excess) - lm.powf(excess)) / (excess * denom_base);
+      let jumps = (cp - i * u).powf(a) - lp.powf(a) + (cm + i * u).powf(a) - lm.powf(a);
+      (drift, jumps / (a * excess * denom_base))
+    };
+    drift * i * u + jumps
   }
 
   /// CIR joint chf $E[e^{ia\mathcal V_t + ib v_t} \mid v_0 = x]$ (Eq. 2) as one exponential over
@@ -147,6 +158,20 @@ impl CgmysvParams {
   }
 }
 
+/// `(e^w − 1)/w`, 1 at `w = 0`; its numerator `expm1(Re w)·cos(Im w) − 2 sin²(Im w/2)` plus
+/// `i·e^{Re w}·sin(Im w)`, with no `e^w − 1` subtraction.
+fn expm1_over_complex(w: Complex64) -> Complex64 {
+  if w == Complex64::new(0.0, 0.0) {
+    return Complex64::new(1.0, 0.0);
+  }
+  let (u, v) = (w.re, w.im);
+  let expm1 = Complex64::new(
+    u.exp_m1() * v.cos() - 2.0 * (0.5 * v).sin().powi(2),
+    u.exp() * v.sin(),
+  );
+  expm1 / w
+}
+
 impl FourierModelExt for CgmysvModel {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let omega = self.params.omega(t);
@@ -199,6 +224,60 @@ mod tests {
         rho: -2.638349514477035,
         v0: 0.00841920903908928,
       },
+    }
+  }
+
+  /// `ψ` by mpmath at 50 digits: eq. (3)'s `Y = 1` limit at `α = 1`, and eq. (3) beside it, where
+  /// its two `1/(α − 1)` terms cancel.
+  #[test]
+  fn psi_is_its_closed_form_at_and_around_alpha_one() {
+    // [alpha, Re u, Im u, Re ψ, Im ψ]
+    let rows: [[f64; 5]; 11] = [
+      [1.0, 1.0, 0.0, -0.4967122709584561, 0.02923005022301507],
+      [
+        0.99999999,
+        1.0,
+        0.0,
+        -0.4967122709012182,
+        0.029230050605515187,
+      ],
+      [
+        1.00000001,
+        1.0,
+        0.0,
+        -0.4967122710156941,
+        0.029230049840514954,
+      ],
+      [0.5184, 1.0, 0.0, -0.4934461888639707, 0.047992751533444206],
+      [1.0, 5.0, 0.0, -11.02427028751554, 2.813365957405119],
+      [
+        0.99999999,
+        5.0,
+        0.0,
+        -11.024270264419577,
+        2.8133659890499914,
+      ],
+      [1.00000001, 5.0, 0.0, -11.024270310611502, 2.813365925760246],
+      [1.0, 3.0, -0.5, -3.8425533134487724, 2.0231702490781864],
+      [
+        1.00000001,
+        3.0,
+        -0.5,
+        -3.842553320763754,
+        2.0231702431142202,
+      ],
+      [0.5184, 3.0, -0.5, -3.4757500636262995, 2.288153505522367],
+      [1.5, 3.0, -0.5, -4.170863571884386, 1.7248497608695201],
+    ];
+    for [alpha, re, im, want_re, want_im] in rows {
+      let params = CgmysvParams { alpha, ..paper() };
+      let want = Complex64::new(want_re, want_im);
+      let got = params.psi_std_cgmy(Complex64::new(re, im));
+      let error = (got - want).norm() / want.norm();
+      assert!(
+        error < 1e-12,
+        "alpha = {alpha}, u = {re} + {im}i: {got} vs {want}, {error:e}"
+      );
     }
   }
 

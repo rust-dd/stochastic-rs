@@ -1,6 +1,6 @@
 {
   "format": 3,
-  "artifact": "33d7c17fc952dfa78ed6189b20eeff98f0b1ddde7b529e1e3d9357387a924af1",
+  "artifact": "f4de615499a7dbee372a4b2fef5062451d3ebf911980e6d7da253c316ea4b19e",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
@@ -21,7 +21,7 @@
     "metal-oxide-macros 0.1.0-alpha.1 registry+https://github.com/rust-lang/crates.io-index"
   ],
   "files": {
-    "../Cargo.toml": "1fd02d8410c4e24d961ffe13d188654f194e5e55d2f3dc8f2155595b0e9d37e8",
+    "../Cargo.toml": "34e4177378e3bdfa2e555762795dbaf1c59d707ff3a7014c136673f34254223e",
     "../stochastic-rs-metal-kernels/Cargo.toml": "0567c5d8ccc2c985fd3131a07eecc4f83829674b95551bce135d61d1917ef06e",
     "../stochastic-rs-metal-kernels/src/euler/args.rs": "cb9f5c1cf531151fe3fd102c97f846af8face76aee8cabacde116267c8b6db40",
     "../stochastic-rs-metal-kernels/src/euler/draws.rs": "4d5165dcac16ddfdd1628d33bbd0e2dd7c5b42f14f703064ce20125dd779d6ba",
@@ -49,7 +49,7 @@
     "src/euler/families/definitions/diffusions.rs": "3fbf38dfdf90a2d9b6d8a75c8fe5b15dcae7b02355e0a4b25fdf5b90ee35c17c",
     "src/euler/families/definitions/jump_schemes.rs": "e692823dd0d1ce16cd8f1abb62dde40e75c1731d200e88ad6f9581e62f56b4d1",
     "src/euler/families/definitions/lifts.rs": "af2317c9a7b710a2b6eb759470525dc5a3e1b565a09c2f60825861cd0c28a973",
-    "src/euler/families/definitions/memory.rs": "f33d44ffd762dc9928e9306d4706bb5260bf869b4db72797c5c9901163ac107a",
+    "src/euler/families/definitions/memory.rs": "c67b76dff42cadecf25486dede3006340791f252dd3eb9ae00c0e1f26ab54824",
     "src/euler/families/definitions/mod.rs": "8b09cf2f4dd0485d1fd4ac7689d3c5e61b9f227bfe925fd9834ffc105234010e",
     "src/euler/families/definitions/multifactor.rs": "1158c20bfc880979b6083cde33965b8f271c196f0219b235e8451c5eca580126",
     "src/euler/families/definitions/systems.rs": "8b056d72dae2ba38a09b1f4bca30ffc9cf1c275e84bdb355cea6614b2c18868d",

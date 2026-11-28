@@ -186,10 +186,7 @@ impl<S: SeedExt> McBasketPricer<S> {
           (0..n_assets).map(|i| self.weights[i] * s_t[i]).sum::<f64>()
         }
         BasketAverageType::Geometric => {
-          let mut log_g = 0.0;
-          for i in 0..n_assets {
-            log_g += self.weights[i] * s_t[i].ln();
-          }
+          let log_g = (self.weights.iter().zip(&s_t)).fold(0.0, |sum, (w, s)| sum + w * s.ln());
           log_g.exp()
         }
       };

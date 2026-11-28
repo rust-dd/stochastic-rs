@@ -23,7 +23,14 @@ pub(super) fn run_nelder_mead<P>(
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
-  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance, false).best
+  stochastic_rs_stats::optim::simplex::run_nelder_mead(
+    problem,
+    simplex,
+    max_iters,
+    sd_tolerance,
+    false,
+  )
+  .best
 }
 
 pub use cvar::empirical_cvar;
@@ -60,6 +67,8 @@ impl Default for OptimizerConfig {
 
 /// Runs the selected optimizer; `config` sets annualization (`periods_per_year`, default 252) and
 /// the mean-variance / mean-CVaR target-return penalty `lambda` (default 10).
+// The method, then every input any of the optimizers it dispatches to reads.
+#[allow(clippy::too_many_arguments)]
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],

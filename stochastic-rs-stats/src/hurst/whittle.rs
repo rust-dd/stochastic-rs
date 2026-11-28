@@ -14,12 +14,14 @@
 use std::convert::Infallible;
 use std::f64::consts::PI;
 
-use basin::BoxConstraints;
+use basin::BoxBounds;
+use basin::ConstraintDescription;
+use basin::ConstraintSet;
+use basin::Constraints;
 use basin::CostFunction;
 use basin::Executor;
+use basin::FirstOrderState;
 use basin::Gradient;
-use basin::LbfgsState;
-use basin::Lbfgsb;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma;
 
@@ -27,8 +29,8 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::optim::lbfgsb;
 use crate::optim::more_thuente;
-use crate::optim::stopped_on_tolerance;
 
 /// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
@@ -363,28 +365,24 @@ impl Gradient for WhittleProblem {
   }
 }
 
-impl BoxConstraints for WhittleProblem {
-  fn lower(&self) -> &Self::Param {
-    &self.lower
-  }
+impl Constraints for WhittleProblem {
+  type Set = ConstraintSet<BoxBounds<Vec<f64>>>;
 
-  fn upper(&self) -> &Self::Param {
-    &self.upper
+  fn constraints(&self) -> <Self::Set as ConstraintDescription>::Borrowed<'_> {
+    ConstraintSet::new().with_bounds(BoxBounds::new(Some(&self.lower), Some(&self.upper)))
   }
 }
 
 fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64, bool) {
   let init = vec![h_init, v_init];
-  let solver = Lbfgsb::with_line_search(more_thuente())
-    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
-    .with_absolute_cost_change_tolerance(f64::EPSILON);
-  let state = LbfgsState::new(init, 10);
-  let result = Executor::new(problem.clone(), solver, state)
+  let state = FirstOrderState::new(init.clone());
+  let result = Executor::new(problem.clone(), lbfgsb(more_thuente()), state)
     .max_iter(200)
     .run()
-    .expect("Whittle objective is infallible");
-  let converged = stopped_on_tolerance(result.reason);
-  let best = problem.clamp(result.best_param());
+    .expect("the Whittle box is ordered and its objective infallible");
+  let converged = result.report.termination.is_converged();
+  // A search that met no finite objective leaves the start, which the caller reports.
+  let best = problem.clamp(result.state.best().map_or(&init, |(best, _)| best));
   (best[0], best[1], problem.eval(&best), converged)
 }
 

@@ -9,6 +9,7 @@ mod signals;
 mod types;
 mod weights;
 
+pub(crate) use engine::TargetInputs;
 pub use engine::build_portfolio;
 pub use engine::build_portfolio_target;
 pub(crate) use engine::build_portfolio_target_internal;

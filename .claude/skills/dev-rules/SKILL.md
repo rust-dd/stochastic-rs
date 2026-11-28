@@ -253,3 +253,13 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   `Some(f64::NAN)` is "computed, undefined at this point".
 - **A reduction never drops a NaN.** `f64::max`/`min` skip a NaN operand; a slice takes
   `RealExt::max_or_nan_fold`/`min_or_nan_fold` (−∞/+∞ if empty), a pair `max_or_nan`/`min_or_nan`.
+- **Floats are ordered by `RealExt::nan_last`** (`nan_last_descending`): NaN last whatever its
+  sign, `±0` tied. Never `total_cmp`, which places a NaN by its sign bit, nor `partial_cmp().unwrap()`.
+
+## 15. Any root `Cargo.toml` edit makes the Metal artifact stale
+
+`stochastic-rs-stochastic/metal/src/device/metal.rs/bindings-fast/inputs.json` hashes the root manifest's bytes, so every edit of the root `Cargo.toml` (a version or dependency bump, a new line, an `include` change, a comment) leaves the committed artifact stale. Every macOS `--features metal` build then fails: the all-features clippy, the py `metal,accelerate` check, `METAL_OXIDE_ARTIFACTS=locked` and CI's `check_macos_backends`.
+
+- The other inputs are the `stochastic-rs-metal-kernels` crate, the family definitions, `euler/philox.rs` and metal-oxide's `Cargo.lock` entries.
+- Regenerate it as its own `chore:` commit, by the procedure in `.superpowers/sdd/rc5-lanes/metal-oxide-compiler.md`; a lane does not, the controller does.
+- Batch root-manifest edits so the artifact is regenerated once. Dependabot's cargo updates are lockfile-only for this reason.

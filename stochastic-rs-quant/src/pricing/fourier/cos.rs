@@ -60,6 +60,8 @@ impl CosEngine {
 
   /// A call is the put plus parity: the payoff at `t = 0`; NaN past expiry and, before it, for a
   /// rate not finite, an `s0` or `k` not finite and positive, or a NaN `chf` or truncation range.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,
@@ -86,6 +88,8 @@ impl CosEngine {
 
   /// [`CosEngine::price`] at each strike, bit for bit for runtime model parameters: equal ranges
   /// share nodes and `chf`. Fang & Oosterlee's Eq. (30) prices on one common range instead.
+  // One argument per term of the query.
+  #[allow(clippy::too_many_arguments)]
   pub fn price_strikes<M: FourierModelExt + ?Sized>(
     &self,
     model: &M,

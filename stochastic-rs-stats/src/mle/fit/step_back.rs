@@ -5,8 +5,9 @@ use basin::LineSearchBounds;
 use basin::LineSearchEvaluation;
 use basin::LineSearchOutcome;
 use basin::LineSearchResult;
-use basin::MoreThuente;
 use basin::Problem;
+
+use crate::optim::more_thuente;
 
 /// An objective that reports whether a line search met a point where it has no value.
 pub(super) trait Walled {
@@ -20,7 +21,7 @@ pub(super) trait Walled {
 /// Moré–Thuente that steps back: a search that met a point without a value runs again under a
 /// step cap, halved until none is met, so no interpolation reads the penalty.
 /// Reference: basin's `HagerZhang`, whose non-finite trials "cause the search to contract".
-pub(super) struct SteppingBack(pub(super) MoreThuente<f64>);
+pub(super) struct SteppingBack;
 
 impl<P> LineSearch<P, Vec<f64>, f64> for SteppingBack
 where
@@ -36,7 +37,7 @@ where
     gradient: &Vec<f64>,
     direction: &Vec<f64>,
   ) -> Result<f64, Self::Error> {
-    self.0.next(problem, param, cost, gradient, direction)
+    more_thuente().next(problem, param, cost, gradient, direction)
   }
 
   fn next_with_bounds(
@@ -51,11 +52,9 @@ where
     // A trial below the least step, the first one `1/‖d‖` on a steep start or the step to a bound,
     // would be lifted `√ε ‖d‖` away or refused: the least step is then that fraction of the trial.
     let trial = bounds.initial();
-    let least = self.0.stpmin * if trial < self.0.stpmin { trial } else { 1.0 };
-    let mut search = MoreThuente {
-      stpmin: least,
-      ..self.0
-    };
+    let search = more_thuente();
+    let least = search.stpmin * if trial < search.stpmin { trial } else { 1.0 };
+    let mut search = search.stpmin(least);
     let mut run = |problem: &mut Problem<P>, bounds| {
       problem.inner().watch(true);
       let result = search.next_with_bounds(problem, param, cost, gradient, direction, bounds);
@@ -90,7 +89,6 @@ mod tests {
   use std::convert::Infallible;
 
   use super::*;
-  use crate::optim::more_thuente;
 
   /// `(x − 3)²` up to `x = 1` and the penalty past it; `seen` holds each value handed out.
   struct Cliff {
@@ -160,7 +158,7 @@ mod tests {
     let mut problem = cliff();
     let bounds = LineSearchBounds::new(1.0, 10.0);
     let (at, slope, along) = (vec![0.0], vec![-6.0], vec![6.0]);
-    let result = SteppingBack(more_thuente())
+    let result = SteppingBack
       .next_with_bounds(&mut problem, &at, 9.0, &slope, &along, bounds)
       .unwrap();
     assert_eq!(result.outcome, LineSearchOutcome::Step(0.125));
@@ -223,7 +221,7 @@ mod tests {
   fn a_first_trial_below_the_least_step_is_not_lifted_to_it() {
     let bounds = LineSearchBounds::new(1e-20, 1e10);
     let (at, slope, along) = (vec![1.0], vec![1e20], vec![-1e20]);
-    let result = SteppingBack(more_thuente())
+    let result = SteppingBack
       .next_with_bounds(
         &mut Problem::new(Steep),
         &at,
@@ -282,7 +280,7 @@ mod tests {
     let bounds = LineSearchBounds::new(1e-13, 1e-13);
     let (at, slope, along) = (vec![1.0], vec![1.0], vec![-1e12]);
     let mut problem = Problem::new(Slope);
-    let result = SteppingBack(more_thuente())
+    let result = SteppingBack
       .next_with_bounds(&mut problem, &at, 1.0, &slope, &along, bounds)
       .unwrap();
     assert_eq!(result.outcome, LineSearchOutcome::Step(1e-13));
@@ -299,7 +297,7 @@ mod tests {
     let mut problem = cliff();
     let bounds = LineSearchBounds::new(1.0, 10.0);
     let (at, slope, along) = (vec![1.0], vec![-4.0], vec![4.0]);
-    let result = SteppingBack(more_thuente())
+    let result = SteppingBack
       .next_with_bounds(&mut problem, &at, 4.0, &slope, &along, bounds)
       .unwrap();
     assert!(!matches!(result.outcome, LineSearchOutcome::Step(step) if step > 0.0));

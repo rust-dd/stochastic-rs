@@ -5,18 +5,34 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # A weekly run catches a new stable toolchain with no push to trigger it.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # The 1.89 floor, per feature set: a dependency or a new std API that needs a newer compiler
+  # shows in the leg that pulls it in.
   msrv:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - "--workspace --no-default-features --all-targets"
+          - "-p stochastic-rs --all-targets"
+          - "-p stochastic-rs --features ai"
+          - "-p stochastic-rs --features viz"
+          - "-p stochastic-rs --features unstable-dual-stream-rng"
+          - "-p stochastic-rs-stochastic --features cuda"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
-      - name: Cargo check (MSRV)
-        run: cargo check --workspace --no-default-features --all-targets --locked
+      - name: Cargo check (MSRV, ${{ matrix.check }})
+        run: cargo check ${{ matrix.check }} --locked
 
   # Every sub-crate compiles on its own with no default features, which catches a broken
   # inter-crate boundary before the umbrella jobs see it.
@@ -34,7 +50,7 @@ jobs:
           - stochastic-rs-quant
           - stochastic-rs-ai
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (${{ matrix.crate }})
         run: cargo check -p ${{ matrix.crate }} --no-default-features --locked
@@ -53,7 +69,7 @@ jobs:
           - "ai,viz"
           - "unstable-dual-stream-rng"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (features=${{ matrix.features }})
         run: |
@@ -67,7 +83,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -94,7 +110,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate)
         run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
@@ -108,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate on Linux)
         run: cargo check -p stochastic-rs --features metal,accelerate --all-targets --locked
@@ -123,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -136,6 +152,83 @@ jobs:
       - name: Device handle environment contract (cuda)
         run: cargo test -p stochastic-rs-stochastic --features cuda --test device_handle_env --locked
 
+  # Every published crate's documentation on a pinned nightly with `docsrs` set, as docs.rs builds it.
+  docs_rs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: stochastic-rs-core, features: "" }
+          - { crate: stochastic-rs-distributions, features: "" }
+          - { crate: stochastic-rs-stochastic, features: "" }
+          - { crate: stochastic-rs-copulas, features: "" }
+          - { crate: stochastic-rs-stats, features: "" }
+          - { crate: stochastic-rs-quant, features: "" }
+          - { crate: stochastic-rs-ai, features: "" }
+          - { crate: stochastic-rs, features: "ai,viz" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-11-11
+      - name: cargo doc (${{ matrix.crate }}, docsrs)
+        run: cargo doc -p ${{ matrix.crate }} --no-deps --features "${{ matrix.features }}" --locked
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings
+
+  # Every feature on its own; the Apple-only ones are left out, since candle's Metal needs objc2.
+  check_each_feature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      - name: cargo hack --each-feature check
+        run: cargo hack check --workspace --exclude stochastic-rs-py --each-feature --exclude-all-features --exclude-features metal,ai-metal,accelerate --locked
+
+  # Every feature but the Apple-only ones: candle's Metal needs objc2, which fails off Apple targets.
+  clippy_all_features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo clippy (workspace, every non-Apple feature)
+        run: >-
+          cargo clippy --workspace --all-targets --locked --features stochastic-rs/ai,stochastic-rs/viz,stochastic-rs/cuda,stochastic-rs/unstable-dual-stream-rng,stochastic-rs-ai/quant,stochastic-rs-ai/viz,stochastic-rs-ai/python,stochastic-rs-quant/python,stochastic-rs-quant/viz,stochastic-rs-copulas/python,stochastic-rs-core/python,stochastic-rs-distributions/python,stochastic-rs-stats/python,stochastic-rs-stochastic/python,stochastic-rs-py/ai,stochastic-rs-py/cuda -- -D warnings
+
+  # Windows and macOS run the fast suite; they stay advisory until a first run says which tests
+  # are platform-bound.
+  test_platforms:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      # The exact stream hashes are pinned on one machine's libm, so they run in the local gates;
+      # the distributions' close twins run here.
+      - name: cargo nextest run (workspace)
+        run: >-
+          cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
+          -E 'not (binary(stream_snapshots) & (test(/::exact$/) | test(=seeded_copula_streams_are_pinned)))'
+
   # The MDX pages render `tests/doctest_*.rs` by path; this build catches a dangling or renamed one
   # and is the only job that looks inside `website/`.
   docs_website:
@@ -144,10 +237,12 @@ jobs:
       run:
         working-directory: website
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - name: bun install
         run: bun install
+      - name: ESLint (next/core-web-vitals)
+        run: bun run lint
       - name: Frontmatter + RustExample path audit
         run: bun run audit
       - name: Full site build (resolves every RustExample and internal link)
@@ -159,7 +254,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
@@ -188,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install nextest
@@ -207,10 +302,13 @@ jobs:
       # ziggurats' 16-lane step and the dual engine's uninit stores.
       - name: cargo nextest run (fill pinning test, dual-stream engine)
         run: cargo nextest run -p stochastic-rs-distributions --features unstable-dual-stream-rng --test fill_writes_every_element --profile ci --locked
-      # nextest runs no doctests, so this step gates the crates' doc examples, the README quickstart
-      # rendered on docs.rs included.
+      # nextest runs no doctests; this gates the doc examples, the README quickstart included.
+      # Release: the Monte Carlo examples are too slow unoptimised; LTO only slows the rebuild.
       - name: cargo test --doc (workspace)
         run: cargo test --release --workspace --exclude stochastic-rs-py --doc --locked
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
 
   # Full test run with coverage. Heavyweight + instrumented, so it
   # only runs on pushes to main; the fast `test` job gates pull requests.
@@ -220,7 +318,7 @@ jobs:
     timeout-minutes: 240
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # nightly-2026-07-25 (rustc da86f4d07) ICEs in rustc_codegen_ssa on `tokio` under coverage, so
       # this pins the last good one, nightly-2026-07-22, until upstream fixes it.
@@ -230,7 +328,7 @@ jobs:
           components: llvm-tools-preview
 
       - name: Add llvm-tools to PATH
-        run: echo "${HOME}/.rustup/toolchains/$(rustup show active-toolchain | cut -d' ' -f1)/bin" >> $GITHUB_PATH
+        run: echo "${HOME}/.rustup/toolchains/$(rustup show active-toolchain | cut -d' ' -f1)/bin" >> "$GITHUB_PATH"
 
       - name: Install grcov
         run: cargo install grcov

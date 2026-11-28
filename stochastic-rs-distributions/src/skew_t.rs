@@ -348,6 +348,7 @@ mod tests {
   use super::*;
   use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionSampler;
+  use crate::traits::RealExt;
 
   fn close(a: f64, b: f64, rel: f64) -> bool {
     (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -479,7 +480,7 @@ mod tests {
       // Bowley's quartile skewness converges whatever the tails do and `quantile` gives its target;
       // band: five delta-method SEs, each `sqrt(p(1-p)/n) / pdf(q_p)` (Serfling 1980, §2.3.3).
       let mut sorted = xs.clone();
-      sorted.sort_by(f64::total_cmp);
+      sorted.sort_by(f64::nan_last);
       let sample_at = |p: f64| sorted[((n as f64) * p) as usize];
       let bowley = |a: f64, b: f64, c: f64| (c + a - 2.0 * b) / (c - a);
       let sampled = bowley(sample_at(0.25), sample_at(0.5), sample_at(0.75));

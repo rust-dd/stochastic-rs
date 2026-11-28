@@ -13,6 +13,7 @@ use super::types::FloatingIndex;
 use super::types::NotionalSchedule;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Schedule;
+use crate::market::FixingHistory;
 use crate::traits::RealExt;
 
 /// Ordered sequence of cash flows.
@@ -119,6 +120,22 @@ impl<T: RealExt> Leg<T> {
       amount,
     }));
     self.cashflows.sort_by_key(Cashflow::payment_date);
+    self
+  }
+
+  /// Fixes each floating and CMS coupon `fixings` holds a rate for on its accrual start, the date
+  /// it fixes on here; the rest keep projecting off the curve.
+  pub fn with_fixings(mut self, fixings: &FixingHistory<T>) -> Self {
+    for cashflow in &mut self.cashflows {
+      let (start, observed) = match cashflow {
+        Cashflow::Floating(coupon) => (coupon.period.accrual_start, &mut coupon.observed_rate),
+        Cashflow::Cms(coupon) => (coupon.period.accrual_start, &mut coupon.observed_rate),
+        _ => continue,
+      };
+      if let Some(rate) = fixings.get(start) {
+        *observed = Some(rate);
+      }
+    }
     self
   }
 

@@ -33,8 +33,17 @@ pub struct BermudanLsmPricer {
 }
 
 impl BermudanLsmPricer {
-  /// Panics unless `n_basis >= 2`, the constant and at least one power of the spot.
+  /// Panics unless `r` is finite, `tau` finite and `> 0`, and `n_basis >= 2` (the constant and at
+  /// least one power of the spot).
   pub fn new(r: f64, tau: f64, n_basis: usize) -> Self {
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      tau.is_finite() && tau > 0.0,
+      "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}"
+    );
     assert!(
       n_basis >= 2,
       "n_basis must satisfy `n_basis >= 2`, got n_basis = {n_basis:?}"
@@ -127,6 +136,7 @@ impl BermudanLsmPricer {
 
 /// `n_paths` [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column `0`, drawn
 /// from a child of `seed`, which advances; panics if `n_steps` is zero.
+// The GBM's parameters, the grid and the seed.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_gbm_paths(
   s0: f64,
@@ -258,6 +268,42 @@ mod tests {
   #[should_panic(expected = "n_basis must satisfy `n_basis >= 2`, got n_basis = 1")]
   fn a_regression_on_one_basis_function_is_refused() {
     let _ = BermudanLsmPricer::new(0.05, 1.0, 1);
+  }
+
+  #[test]
+  #[should_panic(expected = "r must satisfy `r.is_finite()`, got r = NaN")]
+  fn a_nan_rate_is_refused() {
+    let _ = BermudanLsmPricer::new(f64::NAN, 1.0, 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "r must satisfy `r.is_finite()`, got r = inf")]
+  fn an_infinite_rate_is_refused() {
+    let _ = BermudanLsmPricer::new(f64::INFINITY, 1.0, 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = 0.0")]
+  fn a_zero_maturity_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, 0.0, 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = -1.0")]
+  fn a_negative_maturity_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, -1.0, 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = NaN")]
+  fn a_nan_maturity_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, f64::NAN, 3);
+  }
+
+  #[test]
+  #[should_panic(expected = "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = inf")]
+  fn an_infinite_maturity_is_refused() {
+    let _ = BermudanLsmPricer::new(0.05, f64::INFINITY, 3);
   }
 
   #[test]

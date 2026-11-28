@@ -19,9 +19,11 @@
 //! Reference: Bernard & Cui (2013), arXiv:1305.7092
 //! Reference: Carr & Madan (1998), in Volatility: New Estimation Techniques for Pricing Derivatives
 
+use stochastic_rs_distributions::RealExt;
+
+use crate::QuantError;
 use crate::pricing::exotic::VarianceSwapTerms;
 use crate::pricing::heston::HestonParams;
-use crate::total_order::ascending;
 
 mod discrete;
 
@@ -73,7 +75,7 @@ impl VarianceSwapPricer {
     let k0_idx = strikes
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| ascending(&(*a - fwd).abs(), &(*b - fwd).abs()))
+      .min_by(|(_, a), (_, b)| (*a - fwd).abs().nan_last(&(*b - fwd).abs()))
       .map(|(i, _)| i)
       .unwrap_or(0);
     let k0 = strikes[k0_idx];
@@ -139,20 +141,36 @@ impl VarianceSwapPricer {
   }
 
   /// Realised variance $\frac{1}{N\Delta t}\sum_{i=1}^N (\ln S_i/S_{i-1})^2$ of a path sampled
-  /// every `dt` years (`1.0 / 252.0` on trading days); panics on fewer than two prices.
-  pub fn realized_variance(prices: &[f64], dt: f64) -> f64 {
+  /// every `dt` years: `Err` below two prices or at one not finite and > 0; panics unless `dt > 0`.
+  pub fn realized_variance(prices: &[f64], dt: f64) -> Result<f64, QuantError> {
     assert!(
-      prices.len() >= 2,
-      "realized variance needs at least 2 prices (got {})",
-      prices.len()
+      dt.is_finite() && dt > 0.0,
+      "dt must satisfy `dt.is_finite() && dt > 0.0`, got dt = {dt:?}"
     );
+    if prices.len() < 2 {
+      return Err(QuantError::InsufficientData {
+        what: "prices",
+        needed: 2,
+        got: prices.len(),
+      });
+    }
+    if let Some((i, price)) = prices
+      .iter()
+      .enumerate()
+      .find(|(_, p)| !(p.is_finite() && **p > 0.0))
+    {
+      return Err(QuantError::invalid(
+        "prices",
+        format!("price {i} must be finite and positive, got {price:?}"),
+      ));
+    }
     let n = prices.len() - 1;
     let mut rv = 0.0;
     for i in 1..=n {
       let lr = (prices[i] / prices[i - 1]).ln();
       rv += lr * lr;
     }
-    rv / (n as f64 * dt)
+    Ok(rv / (n as f64 * dt))
   }
 
   /// P&L of a long variance-swap position, $N \times (\hat\sigma^2 - K_{\text{var}})$.

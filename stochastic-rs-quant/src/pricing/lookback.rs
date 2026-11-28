@@ -9,7 +9,7 @@
 //! where `b = r − q` is the cost of carry.
 //! Reference: Goldman, Sosin & Gatto (1979), J. Finance 34(5), 1111–1127
 //! Reference: Conze & Viswanathan (1991), J. Finance 46(5), 1893–1907
-//! Reference: Haug (2007), The Complete Guide to Option Pricing Formulas, 2nd ed.
+//! Reference: Haug (2007), Option Pricing Formulas, 2nd ed., ISBN 978-0-07-138997-6
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;

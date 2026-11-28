@@ -119,7 +119,7 @@ pub fn kolmogorov_smirnov_test(
   assert_alpha(cfg.alpha);
   let mut sorted = sample.to_vec();
   validate(&sorted, 2)?;
-  sorted.sort_by(f64::total_cmp);
+  sorted.sort_by(f64::nan_last);
   let n = sorted.len();
   let n_f = n as f64;
 
@@ -159,7 +159,7 @@ fn off_the_unit_interval(sample: ArrayView1<f64>, off: &[f64]) -> StatsError {
   let (index, &value) = sample
     .iter()
     .enumerate()
-    .find(|(_, v)| off.binary_search_by(|o| o.total_cmp(v)).is_ok())
+    .find(|(_, v)| off.binary_search_by(|o| o.nan_last(v)).is_ok())
     .expect("every point of `off` is drawn from the sample");
   StatsError::InvalidObservation {
     index,

@@ -68,7 +68,6 @@ impl PyHullWhiteBond {
   /// Direct constructor — pass the curve projection numerics if you
   /// already have them. Most users want `from_curve` instead.
   #[new]
-  #[allow(clippy::too_many_arguments)]
   #[pyo3(signature = (r_t, alpha, sigma, t, tau, p0_at_t, p0_at_maturity, f0_at_t))]
   fn new(
     r_t: f64,

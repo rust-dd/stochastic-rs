@@ -443,9 +443,11 @@ fn the_jacobian_at_twice_its_step_is_the_same() {
   }
 }
 
+type OffDomain = (LevyModelType, Vec<f64>, fn(&[f64]) -> f64);
+
 /// `(model, a point of its box without E[e^X], the model's own condition)`: Madan, Carr & Chang's
 /// `1 − θν − σ²ν/2`, Barndorff-Nielsen's `α − |β + 1|`, `M − 1` and `η₁ − 1`, each to be positive.
-fn points_without_a_martingale() -> Vec<(LevyModelType, Vec<f64>, fn(&[f64]) -> f64)> {
+fn points_without_a_martingale() -> Vec<OffDomain> {
   let vg = |p: &[f64]| 1.0 - p[1] * p[2] - 0.5 * p[0] * p[0] * p[2];
   let nig = |p: &[f64]| p[0] - (p[1] + 1.0).abs().max(p[1].abs());
   vec![

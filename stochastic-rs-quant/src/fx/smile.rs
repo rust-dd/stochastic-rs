@@ -7,7 +7,7 @@
 //! $$
 //!
 //! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley, §3
-//! Reference: Reiswich & Wystup (2010), "FX Volatility Smile Construction", Wilmott Magazine
+//! Reference: Reiswich & Wystup (2012), Wilmott 2012(60), 58–69, DOI 10.1002/wilm.10132
 //! Reference: Perederiy (2018), "Vanna-Volga Method for Normal Volatilities", arXiv:1810.07457
 
 use super::delta::AtmConvention;

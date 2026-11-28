@@ -1,0 +1,72 @@
+name: Hygiene
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "43 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Bans, licenses and sources gate; a newly published advisory is reported without failing the run.
+  deny:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [advisories, bans licenses sources]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check ${{ matrix.checks }}
+
+  # The packaged crates, verified together against a local registry of the siblings, as the
+  # release checklist's stage 4 does.
+  publish_dry_run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --workspace --dry-run
+        run: cargo publish --workspace --dry-run --locked
+
+  # Advisory, and silent until 3.0.0 is on crates.io: the baseline is the newest stable release, 2.6.x.
+  semver_checks:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+      - name: cargo semver-checks against crates.io
+        run: cargo semver-checks --workspace --exclude stochastic-rs-py --exclude stochastic-rs-metal-kernels --default-features
+
+  # Lowers the direct dependencies to their declared floors; advisory, since a floor is often stale.
+  minimal_versions:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check with -Z direct-minimal-versions
+        run: |
+          cargo +nightly update -Z direct-minimal-versions
+          cargo check --workspace --exclude stochastic-rs-py --no-default-features

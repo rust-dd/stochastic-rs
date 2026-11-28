@@ -40,7 +40,6 @@ pub struct PyHscmModel {
 #[pymethods]
 impl PyHscmModel {
   #[new]
-  #[allow(clippy::too_many_arguments)]
   fn new(
     v0: f64,
     kappa_v: f64,
@@ -138,6 +137,7 @@ impl PyHscmCalibrator {
   /// `(kappa_v, theta_v, sigma_v, v0, kappa_r, mu_r, sigma_r, rho0, rho2, rmse, converged)`, the
   /// calibrator's internal order, not `HscmModel`'s constructor order.
   #[pyo3(signature = (initial_guess=None))]
+  // Python receives the fit as one tuple.
   #[allow(clippy::type_complexity)]
   fn calibrate(
     &self,

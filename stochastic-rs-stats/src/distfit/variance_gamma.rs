@@ -12,9 +12,11 @@ use super::Sample;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
+use super::words;
 use crate::StatsError;
 use crate::evt::gpd::fit_in_data_units;
 use crate::evt::gpd::information_inverse;
+use crate::optim::search::NO_VALUE;
 use crate::traits::FloatExt;
 
 /// Variance-gamma maximum-likelihood fit.
@@ -44,11 +46,13 @@ pub struct VarianceGammaFit {
   pub iterations: usize,
   /// The joint and the profile search each met a `1e-10` simplex spread, in its run or restart.
   pub converged: bool,
+  /// `converged` or `iteration cap reached`.
+  pub message: String,
 }
 
 fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && nu > 0.0 && nu.is_finite() && theta.is_finite()) {
-    return 1e300;
+    return NO_VALUE;
   }
   let d = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu);
   negative_log_likelihood(x, |v| {
@@ -106,5 +110,6 @@ pub fn fit_variance_gamma<T: FloatExt>(
     nobs: x.len(),
     iterations,
     converged,
+    message: words(converged),
   })
 }

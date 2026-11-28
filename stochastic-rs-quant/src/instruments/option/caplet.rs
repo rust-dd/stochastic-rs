@@ -100,6 +100,7 @@ pub fn bachelier_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sig
 
 /// Caplet or floorlet price at the valuation date: `tau` runs to the forward's fixing date,
 /// `accrual_factor` is $\alpha$ and `discount_factor` is $P(t,t_p)$ to the payment date.
+// One argument per term of the caplet and the volatility it is priced at.
 #[allow(clippy::too_many_arguments)]
 pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   forward: T,

@@ -2,7 +2,10 @@ use std::convert::Infallible;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 
-use basin::BoxConstraints;
+use basin::BoxBounds;
+use basin::ConstraintDescription;
+use basin::ConstraintSet;
+use basin::Constraints;
 use basin::CostFunction;
 use basin::Gradient;
 use ndarray::ArrayView1;
@@ -11,9 +14,13 @@ use parking_lot::Mutex;
 use super::step_back::Walled;
 use crate::mle::DiffusionModel;
 use crate::mle::density::DensityApprox;
+use crate::optim::certificate::Axis;
+use crate::optim::certificate::Beside;
+use crate::optim::certificate::beside;
 
-/// Half of `χ²₁(0.95)`, the drop in log-likelihood at the end of a 95 % likelihood interval.
-const IDENTIFIED: f64 = 1.92;
+/// What a move of one parameter alone to a box end may cost and still count as loose: half of
+/// `χ²₁(0.95)`. It picks a restart's point and words no fit.
+const LOOSE: f64 = 1.92;
 
 /// The objective at a point without a likelihood, above every sum [`ranked`] returns.
 pub(super) const NO_LIKELIHOOD: f64 = 1e100;
@@ -32,21 +39,6 @@ pub(super) fn ranked(nll: f64) -> f64 {
   } else {
     KNEE * (1.0 + (nll / KNEE).ln())
   }
-}
-
-/// Steps of a walk beside an estimate, the last `4⁶³` times the gradient's: past any box met.
-const FURTHEST: usize = 64;
-
-/// What the walks of [`MleProblem::beside`] found.
-pub(super) struct Beside {
-  /// The most one of them gains in log-likelihood.
-  pub(super) gain: f64,
-  /// The parameter that walk steps along.
-  pub(super) along: usize,
-  /// The rounding of the summed log-likelihood at the estimate, `ε √N (1 + |ℓ|)`.
-  pub(super) rounding: f64,
-  /// The gradient's own step, the first of a walk, met a point without a likelihood.
-  pub(super) walled: bool,
 }
 
 /// The solver's coordinates: each parameter over its unit, with the caller's box in them.
@@ -190,7 +182,7 @@ impl<'a> MleProblem<'a> {
   }
 
   /// With two or more loose moves, `at` with each such parameter back at `start`'s value: a move
-  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`IDENTIFIED`].
+  /// alone to a box end, or to a `start` left far behind for an infinite one, under [`LOOSE`].
   pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
     let here = self.eval_nll(at);
     let mut from = at.to_vec();
@@ -213,7 +205,7 @@ impl<'a> MleProblem<'a> {
         .filter(|&to| {
           let mut moved = at.to_vec();
           moved[i] = to;
-          self.eval_nll(&moved) - here < IDENTIFIED
+          self.eval_nll(&moved) - here < LOOSE
         })
         .count();
       if loose > 0 {
@@ -225,45 +217,21 @@ impl<'a> MleProblem<'a> {
     if loose_ends < 2 { at.to_vec() } else { from }
   }
 
-  /// What steps along one parameter find beside `at`, in the problem's units: from the
-  /// gradient's step, either way, four times further while the cost is not above `at`'s.
+  /// What steps along one parameter find beside `at`, in the problem's units: each axis varies on
+  /// `1 + |z|` there, the gradient's own step. The point of the gain is in the parameters' units.
   pub(super) fn beside(&self, at: &[f64]) -> Beside {
-    let (low, high) = (&self.units.low, &self.units.high);
     let z = self.units.of(at);
-    let here = self.eval_nll(&self.units.scaled(&z));
-    // A sum's rounding is no rise: below it the walk goes on, across a flat stretch.
-    let rise = 16.0 * f64::EPSILON * (1.0 + here.abs());
-    // `N` additions each round a partial sum near `|ℓ|` by `ε/2`, and the roundings add as a walk.
-    let additions = (self.sample.len() - 1) as f64;
-    let mut beside = Beside {
-      gain: 0.0,
-      along: 0,
-      rounding: f64::EPSILON * additions.sqrt() * (1.0 + here.abs()),
-      walled: false,
+    let axis = |i: usize| Axis {
+      low: self.units.low[i],
+      high: self.units.high[i],
+      scale: 1.0 + z[i].abs(),
     };
-    for i in 0..z.len() {
-      for side in [1.0, -1.0] {
-        let mut step = side * f64::EPSILON.cbrt() * (1.0 + z[i].abs());
-        let mut moved = z.clone();
-        for nth in 0..FURTHEST {
-          let to = (z[i] + step).clamp(low[i], high[i]);
-          if to == moved[i] || !to.is_finite() {
-            break;
-          }
-          moved[i] = to;
-          let cost = self.eval_nll(&self.units.scaled(&moved));
-          beside.walled |= nth == 0 && cost >= NO_LIKELIHOOD;
-          if cost > here + rise {
-            break;
-          }
-          if here - cost > beside.gain {
-            (beside.gain, beside.along) = (here - cost, i);
-          }
-          step *= 4.0;
-        }
-      }
-    }
-    beside
+    let axes = (0..z.len()).map(axis).collect::<Vec<_>>();
+    let valued =
+      |z: &[f64]| Some(self.eval_nll(&self.units.scaled(z))).filter(|cost| *cost < NO_LIKELIHOOD);
+    let mut read = beside(valued, &z, &axes, self.sample.len() - 1);
+    read.best = self.units.params(&read.best);
+    read
   }
 
   pub(super) fn eval_nll(&self, params: &[f64]) -> f64 {
@@ -353,12 +321,13 @@ impl Gradient for MleProblem<'_> {
   }
 }
 
-impl BoxConstraints for MleProblem<'_> {
-  fn lower(&self) -> &Self::Param {
-    &self.units.low
-  }
+impl Constraints for MleProblem<'_> {
+  type Set = ConstraintSet<BoxBounds<Vec<f64>>>;
 
-  fn upper(&self) -> &Self::Param {
-    &self.units.high
+  fn constraints(&self) -> <Self::Set as ConstraintDescription>::Borrowed<'_> {
+    ConstraintSet::new().with_bounds(BoxBounds::new(
+      Some(&self.units.low),
+      Some(&self.units.high),
+    ))
   }
 }

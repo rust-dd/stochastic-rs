@@ -7,7 +7,7 @@
 //! $$
 //!
 //! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
-//! Reference: Henrard (2014), "Interest Rate Modelling in the Multi-Curve Framework", Palgrave
+//! Reference: Henrard (2014), Palgrave Macmillan, DOI 10.1057/9781137374660
 //! Reference: Gellert & Schlögl (2021), "Short Rate Dynamics", arXiv:2101.04308
 
 pub mod book;

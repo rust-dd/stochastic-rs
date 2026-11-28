@@ -26,6 +26,7 @@ use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
 use crate::input::reject_constant;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// GPH log-periodogram Hurst estimator.
@@ -73,6 +74,8 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
 
     let xs = to_f64_vec::<T>(x);
     reject_constant(&xs, "constant series")?;
+    let (xs, unit) = unit_scaled(xs);
+    let in_units = 2.0 * unit.ln();
     let series: Vec<f64> = if self.take_differences {
       xs.windows(2).map(|w| w[1] - w[0]).collect()
     } else {
@@ -136,10 +139,13 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
       nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
-        intercept: T::from_f64_fast(intercept),
+        intercept: T::from_f64_fast(intercept - in_units),
         r_squared: T::from_f64_fast(r_squared),
         log_scales: log_freq.into_iter().map(T::from_f64_fast).collect(),
-        log_stats: log_periodogram.into_iter().map(T::from_f64_fast).collect(),
+        log_stats: log_periodogram
+          .iter()
+          .map(|p| T::from_f64_fast(p - in_units))
+          .collect(),
       },
     })
   }

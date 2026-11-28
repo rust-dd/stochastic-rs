@@ -10,8 +10,7 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
   start: T,
   mut residual: impl FnMut(T) -> (T, Option<T>),
 ) -> Option<T> {
-  // f64's ulp whatever `T`: `Float::epsilon` defaults to f32's for a scalar that does not set it.
-  let tolerance = T::from_f64_fast(4.0 * f64::EPSILON);
+  let tolerance = T::from_f64_fast(4.0) * T::machine_epsilon();
   let (mut x, (mut f, mut slope)) = (start, residual(start));
   let mut previous: Option<(T, T)> = None;
   let mut bracket: Option<[(T, T); 2]> = None;
@@ -32,7 +31,7 @@ pub(in crate::curves) fn trial_node<T: RealExt>(
     let (next, probe) = match (slope, previous) {
       (Some(d), _) => (x - f / d, false),
       (None, Some((xp, fp))) => (x - f * (x - xp) / (f - fp), false),
-      (None, None) => (x * (T::one() + T::from_f64_fast(2f64.powi(-26))), true),
+      (None, None) => (x * (T::one() + T::machine_epsilon().sqrt()), true),
     };
     let converged = |n: T| !probe && n.is_finite() && (n - x).abs() <= tolerance * n.abs();
     if converged(next) && next > T::zero() {
@@ -104,6 +103,21 @@ mod tests {
       );
       assert!(calls <= if slope { 6 } else { 9 }, "{slope}: {calls} calls");
     }
+  }
+
+  /// `x^1.7 = 0.35` by secant steps: `f32` stops at its own precision in as few calls as `f64`.
+  #[test]
+  fn an_f32_root_stops_at_its_own_epsilon() {
+    let root = 0.35_f64.powf(1.0 / 1.7);
+    let calls = Cell::new(0);
+    let got = trial_node(0.3_f32, |x: f32| {
+      calls.set(calls.get() + 1);
+      (x.powf(1.7) - 0.35, None)
+    })
+    .unwrap();
+    let error = (f64::from(got) - root).abs() / root;
+    assert!(error <= 4.0 * f64::from(f32::EPSILON), "{got}: {error:e}");
+    assert!(calls.get() <= 9, "{} calls", calls.get());
   }
 
   /// Newton from 3 on `ln x` steps below 0; Brent's bracket around the start finds 1.

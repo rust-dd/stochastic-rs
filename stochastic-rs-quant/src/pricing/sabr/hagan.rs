@@ -158,7 +158,7 @@ fn smallest_positive_root([p3, p2, p1, p0]: [f64; 4], seed: f64) -> f64 {
 }
 
 /// Garman–Kohlhagen `(call, put)` at `sigma`, NaN for a `sigma` that is negative or not finite.
-pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
+pub(crate) fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
   if !(sigma.is_finite() && sigma >= 0.0) {
     return (f64::NAN, f64::NAN);
   }
@@ -180,7 +180,7 @@ pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi
 
 /// Garman–Kohlhagen `(call, put)` at the Hagan vol of `params` against the forward of `s`; NaN
 /// unless that vol is finite and `> 0`, as [`SabrPricer`](super::SabrPricer)'s price is.
-pub fn model_price_hagan(
+pub(crate) fn model_price_hagan(
   s: f64,
   k: f64,
   r_d: f64,

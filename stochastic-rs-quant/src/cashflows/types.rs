@@ -1,6 +1,6 @@
 //! Cash flow periods, notionals, and rate index definitions.
 //!
-//! Reference: Henrard (2014), "Interest Rate Modelling in the Multi-Curve Framework", Palgrave
+//! Reference: Henrard (2014), Palgrave Macmillan, DOI 10.1057/9781137374660
 
 use std::fmt::Display;
 use std::str::FromStr;
@@ -208,18 +208,32 @@ impl<T: RealExt> RateIndex<T> for IborIndex<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     period: &AccrualPeriod<T>,
   ) -> T {
-    let curve = curves
-      .forecast_curve(self.tenor)
-      .unwrap_or_else(|| curves.discount_curve());
-    let t0 = self
-      .day_count
-      .year_fraction(valuation_date, period.accrual_start);
-    let t1 = self
-      .day_count
-      .year_fraction(valuation_date, period.accrual_end);
-    curve.simple_forward_rate(t0, t1)
+    let on_axis = (valuation_date, discount_day_count);
+    simple_forward(curves, self.tenor, self.day_count, on_axis, period)
+  }
+}
+
+/// `(P(τ₀)/P(τ₁) − 1)/δ` on the tenor's curve, `τ` on the pricer's axis and `δ` the index's
+/// accrual over the period, as QuantLib's `forecastFixing`; NaN unless `δ > 0`.
+fn simple_forward<T: RealExt>(
+  curves: &(impl CurveProvider<T> + ?Sized),
+  tenor: RateTenor,
+  day_count: DayCountConvention,
+  (valuation_date, axis): (NaiveDate, DayCountConvention),
+  period: &AccrualPeriod<T>,
+) -> T {
+  let curve = curves
+    .forecast_curve(tenor)
+    .unwrap_or_else(|| curves.discount_curve());
+  let accrual: T = day_count.year_fraction(period.accrual_start, period.accrual_end);
+  if accrual > T::zero() {
+    let read = |date: NaiveDate| curve.discount_factor(axis.year_fraction(valuation_date, date));
+    (read(period.accrual_start) / read(period.accrual_end) - T::one()) / accrual
+  } else {
+    T::nan()
   }
 }
 
@@ -256,18 +270,11 @@ impl<T: RealExt> RateIndex<T> for OvernightIndex<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     period: &AccrualPeriod<T>,
   ) -> T {
-    let curve = curves
-      .forecast_curve(self.tenor)
-      .unwrap_or_else(|| curves.discount_curve());
-    let t0 = self
-      .day_count
-      .year_fraction(valuation_date, period.accrual_start);
-    let t1 = self
-      .day_count
-      .year_fraction(valuation_date, period.accrual_end);
-    curve.simple_forward_rate(t0, t1)
+    let on_axis = (valuation_date, discount_day_count);
+    simple_forward(curves, self.tenor, self.day_count, on_axis, period)
   }
 }
 
@@ -307,11 +314,14 @@ impl<T: RealExt> RateIndex<T> for FloatingIndex<T> {
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     period: &AccrualPeriod<T>,
   ) -> T {
     match self {
-      Self::Ibor(index) => index.forward_rate(curves, valuation_date, period),
-      Self::Overnight(index) => index.forward_rate(curves, valuation_date, period),
+      Self::Ibor(index) => index.forward_rate(curves, valuation_date, discount_day_count, period),
+      Self::Overnight(index) => {
+        index.forward_rate(curves, valuation_date, discount_day_count, period)
+      }
     }
   }
 }
@@ -357,15 +367,21 @@ impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
     self.tenor
   }
 
+  /// The forward swap rate from the period's start, its annuity accrued on the index's day count
+  /// and read on the pricer's axis; NaN where the annuity is not positive.
   fn forward_rate(
     &self,
     curves: &(impl CurveProvider<T> + ?Sized),
     valuation_date: NaiveDate,
+    discount_day_count: DayCountConvention,
     period: &AccrualPeriod<T>,
   ) -> T {
     let curve = curves
       .forecast_curve(self.tenor)
       .unwrap_or_else(|| curves.discount_curve());
+    let read = |date: NaiveDate| {
+      curve.discount_factor(discount_day_count.year_fraction(valuation_date, date))
+    };
     let swap_end = add_months(
       period.accrual_start,
       self.swap_tenor_months,
@@ -376,27 +392,15 @@ impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
       swap_end,
       self.payment_frequency.months(),
     );
-
-    let mut annuity = T::zero();
-    for window in schedule.windows(2) {
-      let t0 = self.day_count.year_fraction(valuation_date, window[0]);
-      let t1 = self.day_count.year_fraction(valuation_date, window[1]);
-      let delta: T = self.day_count.year_fraction(window[0], window[1]);
-      annuity += delta * curve.discount_factor(t1);
-      if t1 < t0 {
-        return T::zero();
-      }
+    let annuity = schedule
+      .windows(2)
+      .map(|w| self.day_count.year_fraction::<T>(w[0], w[1]) * read(w[1]))
+      .fold(T::zero(), |sum, term| sum + term);
+    if annuity > T::zero() {
+      (read(period.accrual_start) - read(swap_end)) / annuity
+    } else {
+      T::nan()
     }
-
-    if annuity.abs() <= T::min_positive_val() {
-      return T::zero();
-    }
-
-    let start = self
-      .day_count
-      .year_fraction(valuation_date, period.accrual_start);
-    let end = self.day_count.year_fraction(valuation_date, swap_end);
-    (curve.discount_factor(start) - curve.discount_factor(end)) / annuity
   }
 }
 

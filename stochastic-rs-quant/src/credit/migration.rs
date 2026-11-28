@@ -391,10 +391,9 @@ mod tests {
   /// `expm` of `Q = [[-α, α], [β, -β]]` at `α = 0.1`, `β = 0.05` against the closed form
   /// `(1/λ) [[β + α·e^{-λ}, α(1-e^{-λ})], [β(1-e^{-λ}), α + β·e^{-λ}]]`, `λ = α + β`.
   #[test]
-  fn expm_matches_scipy_2x2_generator() {
+  fn expm_of_a_two_state_generator_is_its_closed_form() {
     let q = array![[-0.1, 0.1], [0.05, -0.05]];
     let p = expm(&q);
-    // Reference: closed-form 2-state continuous-time Markov chain.
     let lam = 0.15;
     let e = (-lam_f64(lam)).exp();
     let expected = array![
