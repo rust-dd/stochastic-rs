@@ -37,24 +37,33 @@ fn fit_cir(path: &Array1<f64>, dt: f64, start: [f64; 3], density: DensityApprox)
   fit_mle(&mut model, path.view(), dt, density, None).unwrap()
 }
 
-/// From (5, −1, 2) an Ozaki fit of 100 daily points stops against the edge of the law's support,
-/// some 350 below the fit from the law: it is not converged.
+/// Where a search from (5, −1, 2) can stop on 100 daily points, ~350 below the fit from the law, no
+/// search runs: the law's edge lies 3 % inside the first steps along θ and μ; σ's walk gains.
 #[test]
 fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
   let dt = 1.0 / 252.0;
-  let mut converged = vec![];
-  for (speed, seed) in [(0.3, 68), (2.0, 99)] {
+  let stops = [
+    (0.3, 68, [5.464196259, -1.092867303, 1.978279161]),
+    (2.0, 99, [5.504348451, -1.100874201, 1.977574921]),
+  ];
+  for (speed, seed, at) in stops {
     let path = simulate_ou(speed, 0.03, 0.02, 0.03, dt, 100, seed);
     let best = fit_ou(&path, dt, [speed, 0.03, 0.02], DensityApprox::Ozaki);
-    let fit = fit_ou(&path, dt, [5.0, -1.0, 2.0], DensityApprox::Ozaki);
-    let short = best.log_likelihood - fit.log_likelihood;
+    let mut model = Ou::new(at[0], at[1], at[2], 2, None, None, Deterministic::new(0));
+    let bounds = model.param_bounds();
+    let (lower, upper) = bounds.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+    let ozaki = DensityApprox::Ozaki;
+    let problem = MleProblem::new(&mut model, path.view(), dt, ozaki, &lower, &upper, &at);
+    let short = best.log_likelihood + problem.eval_nll(&at);
+    let (_, stop) = verdict(&problem, &at, &lower, &upper);
     assert!(short > 300.0, "speed {speed}: {short} below");
-    if fit.converged {
-      converged.push(format!("speed {speed}: {short} below at {}", fit.params));
-    }
-    assert_eq!(fit.message, "stopped at the edge of the law's support");
+    assert!(!stop.converged(), "speed {speed}: converged at {at:?}");
+    let message = stop.message(&["theta", "mu", "sigma"]);
+    assert_eq!(
+      message, "stopped at the edge of the law's support",
+      "speed {speed}"
+    );
   }
-  assert!(converged.is_empty(), "{converged:#?}");
 }
 
 /// What the walks beside `at` read on a CIR `path`, and the stop and message they give a search
