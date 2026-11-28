@@ -37,8 +37,8 @@ fn fit_cir(path: &Array1<f64>, dt: f64, start: [f64; 3], density: DensityApprox)
   fit_mle(&mut model, path.view(), dt, density, None).unwrap()
 }
 
-/// Where a search from (5, −1, 2) can stop on 100 daily points, ~350 below the fit from the law, no
-/// search runs: the law's edge lies 3 % inside the first steps along θ and μ; σ's walk gains.
+/// Where a search from (5, −1, 2) can stop on 100 daily points, ~350 below the law's fit, only the
+/// verdict runs: the law's edge lies 3–5 % inside the first steps along θ and μ; σ's walk gains.
 #[test]
 fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
   let dt = 1.0 / 252.0;
@@ -56,7 +56,10 @@ fn an_ozaki_fit_that_stops_against_the_supports_edge_is_not_converged() {
     let problem = MleProblem::new(&mut model, path.view(), dt, ozaki, &lower, &upper, &at);
     let short = best.log_likelihood + problem.eval_nll(&at);
     let (_, stop) = verdict(&problem, &at, &lower, &upper);
-    assert!(short > 300.0, "speed {speed}: {short} below");
+    assert!(
+      (300.0..400.0).contains(&short),
+      "speed {speed}: {short} below"
+    );
     assert!(!stop.converged(), "speed {speed}: converged at {at:?}");
     let message = stop.message(&["theta", "mu", "sigma"]);
     assert_eq!(

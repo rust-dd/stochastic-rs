@@ -222,8 +222,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      # The exact stream pins hold on the pinning machine's libm alone, so they run in the local
-      # gates; the distributions' close twins run here.
+      # The exact stream hashes are pinned on one machine's libm, so they run in the local gates;
+      # the distributions' close twins run here.
       - name: cargo nextest run (workspace)
         run: >-
           cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
