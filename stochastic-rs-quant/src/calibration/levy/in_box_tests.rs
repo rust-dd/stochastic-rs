@@ -264,8 +264,8 @@ fn the_natural_jacobian_matches_central_differences() {
   }
 }
 
-/// Kou on the Heston reference from its default start and three that end on `p`'s and `η₁`'s
-/// bounds under both Apple's libm and glibc's: each held parameter is reported as its bound.
+/// Kou from its Heston-reference fit, and from it with `η₁` 0.05 under or `p` 1e-8 over its bound:
+/// the cost falls across both bounds and the rest is fitted, so the first Jacobians hold both.
 #[test]
 fn a_parameter_held_on_its_bound_is_reported_on_it() {
   let heston = [
@@ -274,30 +274,19 @@ fn a_parameter_held_on_its_bound_is_reported_on_it() {
   let rows = STRIKES.iter().zip(heston);
   let quotes = rows.map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call));
   let quotes = quotes.collect::<Vec<_>>();
-  for values in [
-    default_params(LevyModelType::Kou),
-    vec![
-      0.8017750140506811,
-      8.915867989722884,
-      0.6704299757246529,
-      9.605403898749048,
-      25.686786353841043,
-    ],
-    vec![
-      1.6756961353153987,
-      6.603725777301496,
-      0.6329321150453943,
-      36.26626736821878,
-      77.2608822389938,
-    ],
-    vec![
-      0.6769692410964633,
-      6.06811831591065,
-      0.3954486265557783,
-      35.54301445378511,
-      85.08377283772047,
-    ],
-  ] {
+  let fit = [
+    0.1019814039302243,
+    1.861275865851886,
+    0.01,
+    100.0,
+    10.69542399138686,
+  ];
+  let beside = |i: usize, value: f64| {
+    let mut values = fit.to_vec();
+    values[i] = value;
+    values
+  };
+  for values in [fit.to_vec(), beside(3, 99.95), beside(2, 0.01 + 1e-8)] {
     let start = LevyParams {
       values: values.clone(),
       model_type: LevyModelType::Kou,

@@ -239,7 +239,7 @@ fn check_exact(name: &str, capture: impl Fn(u64) -> Snapshot) {
     let got = capture(seed);
     assert_eq!(
       got.hashes, want.hashes,
-      "{name} seed {seed}: exact stream hashes"
+      "{name} seed {seed}: exact stream hashes, pinned on one machine's libm; re-pin: STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-distributions --features unstable-dual-stream-rng --test stream_snapshots -- --ignored print_constants"
     );
   }
 }
