@@ -222,8 +222,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
+      # The exact stream pins hold on the pinning machine's libm alone, so they run in the local
+      # gates; the distributions' close twins run here.
       - name: cargo nextest run (workspace)
-        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
+        run: >-
+          cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
+          -E 'not (binary(stream_snapshots) & (test(/::exact$/) | test(=seeded_copula_streams_are_pinned)))'
 
   # The MDX pages render `tests/doctest_*.rs` by path; this build catches a dangling or renamed one
   # and is the only job that looks inside `website/`.
